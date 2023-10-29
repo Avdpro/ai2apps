@@ -1,0 +1,41 @@
+{
+    "title": "TabOS Documents",
+    "docs": {
+        "Overview":{
+            "path": "overview.md",
+            "sub": {
+                "Tab-OS": "ccedit/README.md",
+                "vfact.js": "terminal/README.md",
+                "Road map": "diskit/README.md"
+            }
+        },
+
+        "Applications-": 20,
+        "Applications": {
+            "path": "applications.md",
+            "sub": {
+                "Visual Editor": "veditor/veditor.md",
+                "Terminal": "terminal/README.md",
+                "Files": "diskit/README.md"
+            }
+        },
+        "CLI Tools": "tools.md",
+
+        "Dev-": 20,
+        "Development": {
+            "path": "development.md",
+            "sub": {
+                "API Reference": {
+                    "path":"refs/refs.md"
+                },
+                "Examples": {
+                    "path":"examples/examples.md"
+                },
+                "Current Features-": 20,
+                "Current Features": "features.md",
+                "Next version": "next.md",
+                "Road map": "roadmap.md"
+            }
+        }
+    }
+}

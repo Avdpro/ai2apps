@@ -1,0 +1,12 @@
+{
+    "title": "Tab-OS 文档",
+    "docs": {
+        "系统概览": "overview_cn.md",
+
+        "所即所得的IDE-": 50,
+        "Tab-OS IDE": "veditor/veditor_cn.md",
+
+        "路线图-": 50,
+        "路线图": "roadmap_cn.md"
+    }
+}
