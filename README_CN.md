@@ -35,7 +35,7 @@ node ./start.js
   
 ![home](assets/aahome_cn.png)  
 
-这是成功启动后的AI2Apps桌面状态。点击左侧 Docker 中的"项目向导"开始创建 AI Agent项目。当前版本有几个可以选择的 AI Agent 项目模版。要创建最简单的 AI Agent，可以选择第一个模版："简单的 AI Agent 应用"开始。  
+这是成功启动后的AI2Apps桌面状态。点击左侧 Dock 中的"项目向导"开始创建 AI Agent项目。当前版本有几个可以选择的 AI Agent 项目模版。要创建最简单的 AI Agent，可以选择第一个模版："简单的 AI Agent 应用"开始。  
 输入项目名称路径（例如：MyAgent）后，点击创建按钮，系统会创建并打开项目开发环境。  
   
 ![home](assets/aaide_01_cn.png)  
@@ -71,7 +71,7 @@ AI2Apps的"设计即开发"模式可以保证代码与设计随时同步，不�
 AI2Apps 可以通过 Add-On 方便的进行功能扩展，开发者可以根据需要制作自己的插件。  
   
 
-## 编辑 Agent
+## 如何编写 Agent
 在AI2Apps中，每个 Agent 是一个独立的js文件，拓扑图信息以注释的形式保存在文件末尾，
 从而保证了设计与实现随时同步。  
 Agent文件编辑界面有"代码"和"画布"两种模式，打开 Agent 后默认进入画布模式。

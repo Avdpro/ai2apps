@@ -1,104 +1,174 @@
-# AI2Apps Public Beta
+# AI2Apps Experimental public Beta Test
 
-## What is AI2Apps?
-CokeCodes is designed to be a **in-browser** Web/App development environment. It brings the essence of morden OS (like MacOS, Windows, Unix) to the browser. Developers can do all works within browser. Even it's in such early stage, 90% of my coding work is done in browser with CokeCodes tools now.
+## Overview of AI2Apps
+AI2Apps is dedicated to the rapid development of practical AI Agent Apps. 
+Based on Tab-OS, AI2Apps provides a complete web-based visual development tool-set. 
+AI2Apps includes powerful and easy-to-use AI controls, 
+allowing developers to quickly build their own AI Agents through drag-and-drop and directly generate publishable apps.
 
-You can review current CokeCodes at [www.cokecodes.com](https://www.cokecodes.com)  
+## Getting Started
+AI2Apps can be used directly on the website or deployed locally using this project.
+
+### 1. Using the Web Version Directly
+From a desktop browser, open URL:
+   
+[https://www.ai2apps.com](https://www.ai2apps.com)
   
-## Why work in browser?
-With new features keep coming out, morden browsers can do much more than just browsing. PWA web apps already taking more roles from native apps. Why not our coding environment?  
-- **No system contamination**: Setup a new project work environment won't install anything or make any changes out side the browser. Your computer/ device always stay clean. 
+The first time you open the website, it will install and configure the development environment, 
+which may take a few seconds to 1 minute depending on the browser and network. 
+During beta testing, to access AI models, registration and login to Tab-OS are required (Tab-OS registration is free). 
+After successful registration/login, you can create AI Agent projects using the project wizard.
 
-- **Domain Sandboxed**: Cause of the browser' nature, they are strongly isolated. You can think the **sand boxes as computers**. You can have **dedicate computer for each project**. Start and switch between them is lightning fast. Removing a sandbox cleans everything, so neat.   
-Currently, beside *www*, **cokecodes.com** has serveral sandbox you can play with:
-   - [sandbox001.cokecodes.com](https://sandbox001.cokecodes.com)
-   - [sandbox002.cokecodes.com](https://sandbox002.cokecodes.com)
-   - [sandbox003.cokecodes.com](https://sandbox003.cokecodes.com)
-   - [sandbox004.cokecodes.com](https://sandbox004.cokecodes.com)
-   - [sandbox005.cokecodes.com](https://sandbox005.cokecodes.com)
+### 2. Deploying Locally
+Download this project in the local environment:
+```
+git clone https://github.com/Avdpro/ai2apps.git
+```
+Edit the `.env` file and configure the correct OpenAI Key and server port (default port is 3015):
+```
+APIROOT=https://www.ai2apps.com/ws/
+OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+PORT=3015
+```
+Start the service:
+```
+node ./start.js
+```
+Assuming the specified port is 3015, open in the browser:
+`http://localhost:3015/`
+Similar to using ai2apps.com directly, the first visit will go through the installation and configuration.
 
-- **Same experience**: CokeCodes' tool and applications works just as good as similar tools run in native. They launch in a blink, and run smoothly the in browsers.  Especially comparing to apps based on node like runtimes, browsers' Javascript VM can be even better.   
+![home](assets/aahome_en.png)
 
-- **Any device, any time**: Browsers are best cross-platform-environment out there. PWA apps can run on all morden major browsers on desktop or mobile devices. With it's inbuilt cloud feature, you can easily pick up your work any where, any time. 
+This is the AI2Apps desktop status after a successful launch. 
+Click on "Projects" in the Dock on left side  to start creating AI Agent projects. 
+The current version offers several AI Agent project templates to choose from. 
+To create the simplest AI Agent, select the first template: "Simple AI Agent App" to begin. 
+After entering the project name path (e.g., MyAgent) and clicking the create button, the system will create and open the project development environment.
 
-## Productivity
-- **Work offline**: As PWA apps, all CokeCodes tools/apps can work offline so you won't concern about the network connection while working. 
+![home](assets/aaide_01_en.png)
 
-- **Cloud repository**: Projects (disks) in CokeCodes file system can be synced with CokeCodes cloud repository. You can access your works anytime, anywhere, on any devices. More public clouds support is on the way.
 
-- **Packages**: CokeCodes has a **npm** like package system. Libs, tools and apps are delivered as packages. With minor modifications, most node packages can be port into browser. You can install, update packages to setup or enhance your coding power. You can make your own packages and share with others too. 
+## Advantages of Development with AI2Apps
 
-## Applications
-CokeCodes currently has a **desktop** and 3 major PWA web app tools: **CCEditor**, **Terminal** and **Diskit**:  
-  
-### CCEditor  
-![ccedit](git/ccedit_01.png)  
+#### **1. Design and Coding at Same Time, Rapid Prototyping**  
+By dragging and dropping to draw topology diagrams, you can quickly design agent logic. The topology diagram is automatically synchronized to agent code, saving a significant amount of programming time.
 
-**CCEditor** is a full-functional **code text editor**. It's based on the great work of **CodeMirror**. It got almost all the cool features that morden code editors have: **Syntax highlights**, **Code folding**, **Autocompletion**, **Linter integration**, **Search and replace**, **Bracket and tag matching**, **Marks/ todos** and more.  
+#### **2. Agents Can Be Packaged Directly as Apps**  
+Completed AI agents can be packaged as standalone web/mobile apps (currently supporting iOS and Android systems). They can also be integrated as AI extensions into existing websites/apps with just a few lines of code.
 
-### Terminal  
-![ccedit](git/terminal_01.png)  
+#### **3. Powerful Debugging Features**  
+AI2Apps offers great agent debugging features: breakpoints, step-by-step execution, GPT Cheat, and more, allowing developers to quickly pinpoint issues and optimize agent performance. This can greatly save development time and reduce AI invocation costs.
 
-**Terminal** is a UNIX terminal like CLI environment which can run commands (ls, cwd, cd, cp, rm...), apps and scripts.  
-  
-### Diskit  
-![ccedit](git/diskit_01.png)  
+#### **4. More Efficient Interaction with Users**  
+In most cases, chatting is not the best way to interact with users. 
+AI2Apps provides various UI controls to support agent development, 
+such as menus, buttons, charts, etc., allowing agents to interact with users like professional apps.
 
-**Diskit** is the file manager of CokeCokes system. It works like just **File Explorer** in Windows or **Finder** in MacOS.
+#### **5. Localization Support**  
+Developing localization support using traditional development methods is often tedious and boring. 
+With the assistance of AI in AI2Apps, you can easily develop the entire agent in multiple languages with just a few clicks, 
+making the process efficient and enjoyable.
 
-## Tools
-Besides common terminal commands like ls, cd, cp, cat, rm... This concept demo also includes several helper command line tool for development:
-- **cloud**: CokeCokes account/ login util tool.
+### **6. Easier Product Maintenance**  
+Traditional development methods cannot guarantee real-time synchronization between code implementation and original design. Design documents often cannot serve as effective references during maintenance.  
 
-- **disk**: Disk management tool, also sync (checkin, checkout, commit, update) the locale disk with could repositories. 
+AI2Apps' "design and coding at same time" mode ensures that the code and design are always synchronized, avoiding the disconnect between design and implementation.  
 
-- **pkg**: Package management tool, you can init/install/import/share/update packages with it.
+Compared to reading complex code line by line, the advantages of AI agent code containing topology diagrams in later maintenance are enormous. It not only provides a clear understanding of the original code's design rationale but also allows for quicker identification of code issues.
 
-- **rollup**: A rough port of **rollup**, it currently only accept config file as options. Simple **terser** and **babel** plugins can be used. More plugins will be ported.
-  
-## Open source:
-CokeCodes' core system, applications and command tools are all write in Javascript and all **open source**. You can easily make your own tools, addons even applications to aid your work and share with others. You can host your private CokeCodes server, too.
+#### **7. Expansion Through Add-Ons**  
+AI2Apps allows easy functional extension through add-ons, 
+enabling developers to create their own add-on according to their needs.
 
-## Incomming more
-This version of CokeCodes is just a concept preview. It just proves a all-in-browser development environment is possible. I do not suggest to use CokeCodes as real development tool for now. More features are incomming, check the **Roadmap** below and stay tuned!
+## How to Write an Agent
 
-## Dev road map:
-- **Overall**:
-	- Better mobile devices (phones and tablets) support
-	- Better JSX/ TS edit support
-	- **HMR** support for React and VUE 
-	- More documents  
-	- Cloud disk allow member access
-	- Port **Emscripten** or **CLang** to enable **C++** and other WASM developments
-	- **Python** support based on **Pyodide**
-	- rollup watch feature
-	- node naked support
-	
-- **File system/ Diskit**:
-	- **watch** changes callback
-	- File **sync access** solution
-	- Sync disk with other repository like GitHub, DropBox
-	- Sync disk with locale folder  
-	
-- **CCEdit**:
-	- Migrate to **CodeMirror 6** 
-	- Settings, themes, night mode...
-	- Support more coding language (JSX, TS, PY, C/C++, Java...)
-	- Support collaborate coding
-	- **Addon-Cody**: powerful WYSWYG UI-Builder tool behind the major CokeCodes apps.
+In AI2Apps, each agent is an independent JavaScript (js) file, 
+with the topology information saved as comments at the end of the file, 
+ensuring that design and implementation are always in sync.
 
-- **Terminal**
-	- Support |grep and > operation
-	- Upgrade commands' usage more like UNIX
-	- Port more commands from UNIX
-	
-- **Tools, utility packages**:
-	- Port **Babel**, **webpack** and more utilities to have better support React/ VUE projects.
-	- Server mockup/develop mechanism with database simulator
-	- Self-host CokeCodes server setup guide.
-	- Mobile app wrap and publish tool
-	- **CCCompare**: "Beyond Compare" like compare application, "Beyond Compare" is one of my favorite apps for all times.
+The Agent file editing UI has two modes: "Code" and "Canvas". When you open an Agent, it defaults to use the Canvas mode.
 
-## Like the idea?
-CokeCodes is a hobby project. Although very simple and rough, it is indeed working and looks really promising. My earlier web/app development tool chain is node+WebStorm, now my work is done 90% in browser. Hope with new incomming features, it hits 100%!  
-If you like **work in browser**, have ideas to improve, welcome to contact me at: pxavdpro@gmail.com.
+#### Canvas Mode
+The development UI in Canvas mode:
+
+![home](assets/aaide_01_en.png)
+
+On the left is the structure view of the Agent, displaying the Agent object and its list of "execution segment" (SEG) it contains. 
+You can click on items to select objects.  
+
+In the middle is the Agent Topology Canvas, where you can create SEG objects by dragging and dropping and connect SEGs by dragging them.  
+
+On the right is the object property editor view, where editable properties of the currently selected object are listed, such as model selection and temperature parameters when calling ChatGPT.
+
+#### Code Mode
+The development UI in Code mode:
+
+![home](assets/aaide_02_en.png)
+
+The left and right sides remain the same, displaying the structure view of the Agent and object property editing view. 
+The middle part contains the Agent code.
+When editing the Agent topology diagram and object properties, the code updates automatically. 
+Developers can also manually write code to implement logic that cannot be achieved through visual editing.
+
+#### Running the Agent
+
+![home](assets/aa_run_en.png)
+
+The run button is located in the left structure view tool bar and the comprehensive toolbar at the bottom of the UI. 
+Clicking the run button allows you to run the current Agent project in debug mode or Device-App mode.
+Once the Agent is running, you can test it through dialogue.
+
+#### Debugging the Agent
+
+![home](assets/aa_debug_en.png)
+
+Starting the AI Agent in Debug mode enters debugging mode. In debugging mode, clicking the "Debug" button at the top of the UI enters the debug view.  
+**Data Flow and Breakpoints**  
+The left side of the debug view shows the running data flow, 
+where you can view detailed conversation processes, including the content of each step input/output. 
+Clicking the step names in the flow allows you to open detailed infomation on the right and set breakpoints.
+
+**Step-by-step Execution and Breakpoint Operations**
+You can enable step-by-step execution at the bottom of the UI. 
+When executing the AI Agent step-by-step or encountering breakpoints, 
+the debugger pauses agent execution and reports the current step's execution information to the user. 
+Users can modify input/output data for the step to see different effects.
+
+**GPT Cheat**
+During debugging, you can use GPT Cheat. Clicking on the step that calls GPT allows you to add GPT Cheat in the right panel. 
+GPT Cheat can simulate (bypass) ChatGPT calls with pre-set results, saving time and costs.
+
+**Topology Trace Debugging Information**
+
+![home](assets/aa_trace_en.png)
+
+During the debugging process of the AI Agent, the Agent's topology diagram is updated synchronously, indicating the path of execution calls and the process of various parameter transmissions.
+The paths taken during execution are highlighted with bold blue curves, and the input/output of execution is listed in the **Trace Log** of the object property view.
+
+### Gas and Consumption
+If you use your own deployed AI2App runtime and use your own OpenAI Key, 
+calling ChatGPT will consume the your own OpenAI traffic.
+In this case, there are no restrictions on the system.  
+
+If you run/debug the Agent in the www.ai2apps.com web environment, the system will incur OpenAI costs when your agent making ChatGPT calls.
+To avoid excessive billing, the system limits users' usage of ChatGPT through "Gas".
+
+### Obtaining Free Gas
+After successful registration and login to Tab-OS, users will receive a certain amount of free gas.
+Upon logging in each day, users will also receive additional energy based on their current user rank. 
+Recommending new members successfully can also earn users free system tokens, 
+which can be used to exchange for gas.
+
+## Publishing an Agent
+Developed Agent can be packaged and published as a web or mobile application (iOS/Android). 
+The current AI2Apps beta test version does not provide the packaging function.
+Once the system is more stable and complete, the packaging function will be provided in later versions.
+
+## Future Plans for AI2Apps:
+- Support for more LLM models, such as Llama-2, MPT, Falcon, and Pythia
+- Support for drawing / seeing AI models
+- Support for speech recognition/synthesis AI models
+- Programming sandbox
+- Browser plugin development
+- More documentation and examples
