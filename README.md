@@ -130,7 +130,7 @@ The left side of the debug view shows the running data flow,
 where you can view detailed conversation processes, including the content of each step input/output. 
 Clicking the step names in the flow allows you to open detailed infomation on the right and set breakpoints.
 
-**Step-by-step Execution and Breakpoint Operations**
+**Step-by-step Execution and Breakpoint Operations**  
 You can enable step-by-step execution at the bottom of the UI. 
 When executing the AI Agent step-by-step or encountering breakpoints, 
 the debugger pauses agent execution and reports the current step's execution information to the user. 
