@@ -124,6 +124,7 @@ Once the Agent is running, you can test it through dialogue.
 ![home](assets/aa_debug_en.png)
 
 Starting the AI Agent in Debug mode enters debugging mode. In debugging mode, clicking the "Debug" button at the top of the UI enters the debug view.  
+
 **Data Flow and Breakpoints**  
 The left side of the debug view shows the running data flow, 
 where you can view detailed conversation processes, including the content of each step input/output. 
