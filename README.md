@@ -157,7 +157,7 @@ To avoid excessive billing, the system limits users' usage of ChatGPT through "G
 
 ### Obtaining Free Gas
 After successful registration and login to Tab-OS, users will receive a certain amount of free gas.
-Upon logging in each day, users will also receive additional energy based on their current user rank. 
+Upon logging in each day, users will also receive additional gas based on their current user rank. 
 Recommending new members successfully can also earn users free system tokens, 
 which can be used to exchange for gas.
 
