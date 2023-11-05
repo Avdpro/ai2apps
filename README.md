@@ -1,4 +1,4 @@
-# AI2Apps Experimental public Beta Test
+# AI2Apps Experimental Public Beta
 
 ## Overview of AI2Apps
 AI2Apps is dedicated to the rapid development of practical AI Agent Apps. 
