@@ -70,7 +70,7 @@ Developing localization support using traditional development methods is often t
 With the assistance of AI in AI2Apps, you can easily develop the entire agent in multiple languages with just a few clicks, 
 making the process efficient and enjoyable.
 
-### **6. Easier Product Maintenance**  
+#### **6. Easier Product Maintenance**  
 Traditional development methods cannot guarantee real-time synchronization between code implementation and original design. Design documents often cannot serve as effective references during maintenance.  
 
 AI2Apps' "design and coding at same time" mode ensures that the code and design are always synchronized, avoiding the disconnect between design and implementation.  
