@@ -13095,6 +13095,7 @@ module$1.exports['once'];
 	let appParams={};
 	VFACT.appParams=appParams;
 	VFACT.appURL=document.location.href;
+	VFACT.appEntry=document.location.pathname;
 	VFACT.appPath=pathLib.dirname(document.location.pathname);
 	VFACT.appOrigin=document.location.origin;
 	pos=appURL.indexOf("?");
@@ -13115,14 +13116,18 @@ module$1.exports['once'];
 			}
 		});
 	}
-	if(VFACT.appPath.startsWith("//")){
-		VFACT.appFilePath=VFACT.appPath.substring(1);
-	}else if(VFACT.appPath.startsWith("/~/")){
-		VFACT.appFilePath=VFACT.appPath.substring(2);
+	if(VFACT.appEntry.startsWith("//")){
+		VFACT.appFilePath=VFACT.appEntry.substring(1);
+	}else if(VFACT.appEntry.startsWith("/~/")){
+		VFACT.appFilePath=VFACT.appEntry.substring(2);
 	}else {
-		VFACT.appFilePath=VFACT.appPath;
+		VFACT.appFilePath=VFACT.appEntry;
 	}
-	VFACT.appDirFilePath=pathLib.dirname(VFACT.appFilePath);
+	if(VFACT.appFilePath){
+		VFACT.appDirFilePath=pathLib.dirname(VFACT.appFilePath);
+	}else {
+		VFACT.appDirFilePath="";
+	}
 }
 
 //****************************************************************************
@@ -13245,18 +13250,18 @@ let createApp=async function(){
 	appObj.appOrigin=VFACT.appOrigin;
 	appObj.appFilePath=VFACT.appFilePath;
 	appObj.path2AppFilePath=function(path){
-		return pathLib.join(appObj.appDirFilePath,path);
+		return pathLib.join(VFACT.appDirFilePath,path);
 	};
 	appObj.path2AppURL=function(path){
 		let appDir;
 		if(path[0]==="/"){
-			return appObj.appOrigin+path;
+			return VFACT.appOrigin+path;
 		}
-		appDir=appObj.appDir;
+		appDir=VFACT.appPath;
 		if(appDir.startsWith("//")){
-			return appObj.appOrigin+"/"+pathLib.join(appObj.appDir,path);
+			return VFACT.appOrigin+"/"+pathLib.join(appDir,path);
 		}
-		return appObj.appOrigin+pathLib.join(appObj.appDir,path);
+		return VFACT.appOrigin+pathLib.join(appDir,path);
 	};
 	makeObjEventEmitter(appObj);
 	makeNotify(appObj);
@@ -14009,7 +14014,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 104,
+		"versionIdx": 113,
 		"zip": "coke.zip"
 	},
 	{
@@ -14019,7 +14024,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 119,
+		"versionIdx": 127,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14034,12 +14039,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 81,
+		"versionIdx": 82,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 92,
+		"versionIdx": 98,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14049,7 +14054,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 10,
+		"versionIdx": 17,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14059,7 +14064,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-MobileHome",
-		"versionIdx": 2,
+		"versionIdx": 6,
 		"zip": "MobileHome.zip"
 	}
 ];
@@ -14067,7 +14072,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 104,
+		"versionIdx": 113,
 		"zip": "coke.zip"
 	},
 	{
@@ -14077,7 +14082,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 119,
+		"versionIdx": 127,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14097,7 +14102,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 10,
+		"versionIdx": 17,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14107,7 +14112,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-MobileHome",
-		"versionIdx": 2,
+		"versionIdx": 6,
 		"zip": "MobileHome.zip"
 	}
 ];
