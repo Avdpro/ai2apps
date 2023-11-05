@@ -1,7 +1,7 @@
 # AI2Apps 实验测试版说明
 
 ## AI2Apps概览
-AI2App致力于快速便捷的开发落可地应用的 AI Agents。AI2Apps 基于 Tab-OS，提供了完整的网页化的可视化开发工具。
+AI2Apps致力于快速便捷的开发落可地应用的 AI Agents。AI2Apps 基于 Tab-OS，提供了完整的网页化的可视化开发工具。
 AI2Apps 拥有很多强大易用的 AI 控件，开发者可以在几分钟内通过拖拽迅速构建自己的 AI Agent，
 并直接生成可以发布的App。 
 
@@ -124,7 +124,7 @@ Agent 启动后，你可以通过对话测试 Agent。
 执行经过的路径会用加粗的蓝色曲线高亮显示，执行的输入输出则会在对象属性视图的**Trace Log**中列出。
 
 ### 能量及消耗
-如果使用自己部署的AI2App环境并配置了 OpenAI Key，调用 ChatGPT 将使用开发者本人的 OpenAI 流量。
+如果使用自己部署的AI2Apps环境并配置了 OpenAI Key，调用 ChatGPT 将使用开发者本人的 OpenAI 流量。
 这种情况下系统不会有任何限制。   
 如果使用的是www.ai2apps.com环境运行/调试 Agent，在执行ChatGPT调用时会产生由系统承担的 OpenAI 费用。
 为了避免账单崩溃，系统通过"能量"限制用户对ChatGPT的调用量。  

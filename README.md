@@ -148,7 +148,7 @@ During the debugging process of the AI Agent, the Agent's topology diagram is up
 The paths taken during execution are highlighted with bold blue curves, and the input/output of execution is listed in the **Trace Log** of the object property view.
 
 ### Gas and Consumption
-If you use your own deployed AI2App runtime and use your own OpenAI Key, 
+If you use your own deployed AI2Apps runtime and use your own OpenAI Key, 
 calling ChatGPT will consume the your own OpenAI traffic.
 In this case, there are no restrictions on the system.  
 
