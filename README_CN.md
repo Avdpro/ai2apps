@@ -19,16 +19,24 @@ AI2Apps可以直接在网页中使用，也可以用本项目部署在本地使�
 ```
 git clone https://github.com/Avdpro/ai2apps.git
 ```
+**在ai2apps目录下：**  
 编辑 `.env` 文件，配置正确的OpenAI Key以及服务端口，默认的端口是3015：
 ```
 APIROOT=https://www.ai2apps.com/ws/
 OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 PORT=3015
 ```
+
+安装依赖：
+```
+nmp install
+```
+
 启动服务：
 ```
 node ./start.js
 ```
+
 假设指定的端口是3015，则用浏览器打开:
 `http://localhost:3015/`
 与直接使用ai2apps.com一样，第一次访问会进行安装配置。  

@@ -30,6 +30,10 @@ APIROOT=https://www.ai2apps.com/ws/
 OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 PORT=3015
 ```
+Install packages:
+```
+nmp install
+```
 Start the service:
 ```
 node ./start.js
