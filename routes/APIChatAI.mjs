@@ -52,6 +52,7 @@ function tokenForMessages(messages,list){
 			}else{
 				num=0;
 			}
+			num+=key.length;
 			num_tokens+=num;
 			curMsgNum+=num;
 		}
@@ -281,12 +282,104 @@ export default function(app,router,apiMap) {
 			}
 			
 		};
-	}else{
+		
 		//-------------------------------------------------------------------
-		apiMap['checkAICallStatus'] = proxyCall;
-		apiMap['readAIChatStream'] = proxyCall;
-		apiMap['AICallStream'] = proxyCall;
-		apiMap['AICalculateTokens'] = proxyCall;
+		apiMap['AIDraw']=async function (req,res,next){
+			let reqVO, needRawResponse;
+			let platform;
+			let callVO, resVO;
+			let prompt,model,img,size;
+			reqVO = req.body.vo;
+			needRawResponse = !!reqVO.rawResponse;
+			
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			model=reqVO.model||"dall-e-3";
+			prompt= reqVO.prompt;
+			size=reqVO.size||"1024x1024";
+			
+			callVO={
+				model: model,
+				prompt: prompt,
+				n: 1,
+				size: size,
+				response_format:"b64_json"
+			};
+			const response = await openAI.createImage(callVO);
+			img = response.data.data[0].b64_json;
+			resVO={code: 200, img: img};
+			if(needRawResponse){
+				resVO.rawResponse=response;
+			}
+			res.json(resVO);
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['AITTS']=async function (req,res,next){
+			let reqVO;
+			let platform;
+			let callDone,apiURL,httpOpts,postText,postAPI,httpReq;
+			let inputText,model,mp3,voice;
+			reqVO = req.body.vo;
+			
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			model=reqVO.model||"tts-1";
+			inputText= reqVO.input||reqVO.text;
+			voice= reqVO.voice||"alloy";
+			
+			//Here we use plain Http call:
+			{
+				callDone=false;
+				apiURL = "https://api.openai.com/v1/audio/speech";
+				httpOpts = {
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${OPENAI_API_KEY}`,
+						'User-Agent': 'node.js',
+					}
+				};
+				postText=JSON.stringify({
+					"model": model,
+					"input": inputText,
+					"voice": voice
+				});
+				httpOpts.headers['Content-Type']='application/json';
+				httpOpts.headers['Content-Length']=Buffer.byteLength(postText);
+				postAPI=followRedirects.https;
+				httpReq = postAPI.request(apiURL, httpOpts, (response) => {
+					let data = [];
+					if (response.statusCode !== 200) {
+						httpReq.destroy();
+						res.json({ code: response.statusCode, info: response.statusMessage || "Network error" });
+						callDone=true;
+						return;
+					}
+					response.on('data', function (chunk) {
+						data.push(chunk);
+					});
+					response.on('end', function () {
+						try {
+							let buffer = Buffer.concat(data);
+							let text = buffer.toString("base64");
+							callDone=true;
+							res.json({code:200,mp3:text});
+							//TODO: charge gas:
+						} catch (err) {
+							callDone=true;
+							res.json({ code: 500, info: "" + err });
+						}
+					});
+				});
+				httpReq.on('error', (e) => {
+					if(!callDone) {
+						res.json({ code: 500, info: "" + e });
+					}
+				});
+				if(postText) {
+					httpReq.write(postText);
+				}
+				httpReq.end();
+			}
+		};
 	}
 	
 };
