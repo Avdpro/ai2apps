@@ -167,7 +167,7 @@ which can be used to exchange for gas.
 
 ## Publishing an Agent
 Developed Agent can be packaged and published as a web or mobile application (iOS/Android). 
-The current AI2Apps beta test version does not provide the packaging function.
+The current AI2Apps beta test version only supports packaging for iOS XCode simulator.
 Once the system is more stable and complete, the packaging function will be provided in later versions.
 
 ## Future Plans for AI2Apps:
