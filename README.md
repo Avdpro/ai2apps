@@ -60,8 +60,6 @@ After entering the project name path (e.g., MyAgent) and clicking the create but
 #### **1. Design and Coding at Same Time, Rapid Prototyping**  
 By dragging and dropping to draw topology diagrams, you can quickly design agent logic. The topology diagram is automatically synchronized to agent code, saving a significant amount of programming time.
 
-![home](assets/DocVideo2_EN.mov)
-
 #### **2. Agents Can Be Packaged Directly as Apps**  
 Completed AI agents can be packaged as standalone web/mobile apps (currently supporting iOS and Android systems). They can also be integrated as AI extensions into existing websites/apps with just a few lines of code.
 
