@@ -1,5 +1,7 @@
 # AI2Apps 实验测试版说明
 
+![home](assets/DocVideo1_EN.mov)
+
 ## AI2Apps概览
 AI2Apps致力于快速便捷的开发落可地应用的 AI Agents。AI2Apps 基于 Tab-OS，提供了完整的网页化的可视化开发工具。
 AI2Apps 拥有很多强大易用的 AI 控件，开发者可以在几分钟内通过拖拽迅速构建自己的 AI Agent，
