@@ -265,18 +265,6 @@ JAXDisk$1.diskHash={};
 			set("disks", [], JAXDisk$1.sysStore).then(() => {
 			});
 		}
-		//this.checkDisks();
-		/*
-		return get("disks", JAXDisk.sysStore).then(list => {
-			if (Array.isArray(list)) {
-				//list.push("books");
-				JAXDisk.disks = new Set(list);
-			} else {
-				JAXDisk.disks = new Set();
-				set("disks", [], JAXDisk.sysStore).then(() => {
-				});
-			}
-		});*/
 	};
 	
 	//------------------------------------------------------------------------
@@ -3517,9 +3505,11 @@ let swClient={
 	
 	//------------------------------------------------------------------------
 	swClient.startListen=function(heartBeat){
+		if(!theSW){
+			return;
+		}
 		if(!listenCnt){
 			listenCnt=1;
-			//theSW.onmessage=handleMessage;
 			theSW.addEventListener("message",handleMessage);
 			if(heartBeat && swControler){//Only root/page tabos need heart-beat
 				this.startHeartBeat();
@@ -3531,10 +3521,12 @@ let swClient={
 
 	//------------------------------------------------------------------------
 	swClient.stopListenSW=function(){
+		if(!theSW){
+			return;
+		}
 		if(listenCnt>0) {
 			listenCnt--;
 			if(!listenCnt){
-				//theSW.onmessage=null;
 				theSW.removeEventListener("message",handleMessage);
 			}
 		}
@@ -3542,21 +3534,23 @@ let swClient={
 	
 	//------------------------------------------------------------------------
 	swClient.postMessage=function(msg,vo){
-		swControler.postMessage({...vo,msg:msg});
+		swControler && swControler.postMessage({...vo,msg:msg});
 	};
 	
 	//------------------------------------------------------------------------
 	handleMessage=function(event){
 		let data=event.data;
 		let msg=data.msg;
-		swClient.emit(msg,data);
+		swClient && swClient.emit(msg,data);
 	};
 	
 	//------------------------------------------------------------------------
 	setupSWClient=async function(heartBeat){
+		if(!swClient)
+			return;
 		makeObjEventEmitter$1(swClient);
 		tabOS.swClient=swClient;
-		swClient.startListen(heartBeat);
+		swClient && swClient.startListen(heartBeat);
 	};
 }
 
@@ -3580,6 +3574,8 @@ let swClient={
 		let path=data.path;
 		let stub=routeRegs[path];
 		data.callId;
+		if(!swControler)
+			return;
 		if(!stub){
 			swControler.postMessage({msg:"RouteRes",callId:data.callId,res:{code:404,body:"Route not found."}});
 		}else {
@@ -3645,6 +3641,9 @@ let swClient={
 
 	//------------------------------------------------------------------------
 	tabOS.regRoute=async function(path,callback){
+		if(!swControler){
+			return;
+		}
 		if(!tabOS.swClient){
 			throw new Error("service worker client not ready: "+path);
 		}
@@ -3669,6 +3668,9 @@ let swClient={
 	//-----------------------------------------------------------------------
 	tabOS.stopRoute=function(path,callback){
 		let stub;
+		if(!swControler){
+			return;
+		}
 		stub=routeRegs[path];
 		if(stub){
 			if(callback && callback!==stub.callback){
@@ -3834,6 +3836,9 @@ let swClient={
 		do{
 			win=win.parent;
 			parentOS=win.tabOS;
+			if(win.parent===win){
+				break;
+			}
 		}while(!parentOS && win);
 		if(!parentOS){
 			return await setupRootOS();
@@ -3872,11 +3877,14 @@ let swClient={
 			return setupPms;//Already
 		}
 		//Check service worker:
-		theSW=navigator.serviceWorker;
-		if(!theSW){
-			throw Error("Missing TabOS service worker.");
+		theSW=navigator.serviceWorker||null;
+		if(theSW){
+			swControler=theSW.controller;
+		}else {
+			if(!window.webkit){
+				throw Error("Missing TabOS service worker.");
+			}
 		}
-		swControler=theSW.controller;
 		if(window.parent===window) {
 			//This is a full-browser-tab page, check if this is the root page
 			if((!isRoot) && document.referrer.startsWith(document.location.origin)){
@@ -14014,17 +14022,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 118,
+		"versionIdx": 123,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 62,
+		"versionIdx": 63,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 129,
+		"versionIdx": 130,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14044,7 +14052,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 104,
+		"versionIdx": 107,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14054,12 +14062,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 20,
+		"versionIdx": 26,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 85,
+		"versionIdx": 86,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14072,17 +14080,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 118,
+		"versionIdx": 123,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 62,
+		"versionIdx": 63,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 129,
+		"versionIdx": 130,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14102,12 +14110,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 20,
+		"versionIdx": 26,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 85,
+		"versionIdx": 86,
 		"zip": "StdUI.zip"
 	},
 	{
