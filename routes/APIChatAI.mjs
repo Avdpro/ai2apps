@@ -1,6 +1,7 @@
 import { Configuration, OpenAIApi } from "openai";
 import {encode} from "gpt-3-encoder";
 import {proxyCall} from "../util/ProxyCall.js";
+import { Readable } from "stream"
 
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY;
 let configuration,openAI;
@@ -152,7 +153,7 @@ export default function(app,router,apiMap) {
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
 						rawResVO.data.on('data', (data) => {
 							let txtData;
-							let pts, pos, choices, choice0, delta, content, func, funcCall;
+							let pts, pos, choices, choice0, delta, content, func, funcCall, toolCalls;
 							txtData = data.toString().trim();
 							//console.log(JSON.stringify(txtData));
 							//console.log(rawResVO);
@@ -197,6 +198,45 @@ export default function(app,router,apiMap) {
 															}
 															if(args){
 																stub["arguments"]+=args;
+															}
+														}
+														//toolCalls support:
+														toolCalls=delta.toolCalls;
+														if(toolCalls){
+															let srcList,tgtList,i,n,idx,srcStub,tgtStub,srcFunc,tgtFunc;
+															srcList=toolCalls;
+															tgtList=streamVO.toolCalls;
+															if(!tgtList){
+																tgtList=streamVO.toolCalls=[];
+															}
+															n=srcList.length;
+															for(i=0;i<n;i++){
+																srcStub=srcList[i];
+																idx=srcStub.index>=0?srcStub.index>=0:i;
+																tgtStub=tgtList[idx];
+																if(!tgtStub){
+																	tgtStub=tgtList[idx]={
+																		index:idx,id:"",type:"function",
+																		function:{
+																			name:"",arguments:""
+																		}
+																	};
+																}
+																if("index" in srcStub){
+																	tgtStub.index=srcStub.index;
+																}
+																if("id" in srcStub){
+																	tgtStub.id+=srcStub.id;
+																}
+																if("type" in srcStub){
+																	tgtStub.type="function";//srcStub.type;
+																}
+																srcFunc=srcStub.function;
+																tgtFunc=tgtStub.function;
+																if(srcFunc){
+																	tgtFunc.name+=srcFunc.name||"";
+																	tgtFunc.arguments+=srcFunc.arguments||"";
+																}
 															}
 														}
 													}
@@ -247,8 +287,15 @@ export default function(app,router,apiMap) {
 					n: reqVO.best_of || reqVO.n || 1,
 					frequency_penalty: reqVO.frequency_penalty || 0,
 					presence_penalty: reqVO.presence_penalty || 0,
+					response_format:reqVO.responseFormat||"text",
 					messages: reqVO.messages,
 				};
+				if(reqVO.seed!==undefined){
+					let seed=parseInt(reqVO.seed);
+					if(seed>=0) {
+						callVO.seed = seed;
+					}
+				}
 				if(reqVO.functions){
 					callVO.functions=reqVO.functions;
 					callVO.function_call=reqVO.function_call||"auto";
@@ -304,6 +351,12 @@ export default function(app,router,apiMap) {
 				size: size,
 				response_format:"b64_json"
 			};
+			if(reqVO.seed!==undefined){
+				let seed=parseInt(reqVO.seed);
+				if(seed>=0) {
+					callVO.seed = seed;
+				}
+			}
 			const response = await openAI.createImage(callVO);
 			img = response.data.data[0].b64_json;
 			resVO={code: 200, img: img};
@@ -313,6 +366,111 @@ export default function(app,router,apiMap) {
 			res.json(resVO);
 		};
 		
+		//-------------------------------------------------------------------
+		//NOTE: Not working... will fix later
+		apiMap['AIEditDraw']=async function (req,res,next){
+			let reqVO, userId, token, needRawResponse;
+			let platform;
+			let callVO, resVO;
+			let prompt,model,img,size;
+			let orgImg,mskImg;
+			reqVO = req.body.vo;
+			needRawResponse = !!reqVO.rawResponse;
+			
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			model=reqVO.model||"dall-e-2";
+			prompt= reqVO.prompt;
+			size=reqVO.size||"1024x1024";
+			orgImg=reqVO.image;
+			if(!orgImg){
+				res.json({ code: 400, info: "Missing image to edit." });
+				return;
+			}
+			mskImg=reqVO.mask;
+			
+			callVO={
+				model: model,
+				image:orgImg,
+				prompt: prompt,
+				n: 1,
+				size: size,
+				response_format:"b64_json"
+			};
+			if(mskImg){
+				callVO.mask=mskImg;
+			}
+			if(reqVO.seed!==undefined){
+				let seed=parseInt(reqVO.seed);
+				if(seed>=0) {
+					callVO.seed = seed;
+				}
+			}
+			const response = await openAI.createImageEdit(callVO);
+			//console.log(response);
+			//console.log(response.data.data[0].b64_json);
+			img = response.data.data[0].b64_json;
+			resVO={code: 200, img: img, revised_prompt:response.data.data[0].revised_prompt};
+			if(needRawResponse){
+				resVO.rawResponse=response;
+			}
+			res.json(resVO);
+		};
+		
+		//-------------------------------------------------------------------
+		//NOTE: Not working... will fix later
+		apiMap['AIDrawVariation']=async function (req,res,next){
+			let reqVO, needRawResponse;
+			let platform;
+			let callVO, resVO;
+			let model,orgImg,img,size;
+			reqVO = req.body.vo;
+			needRawResponse = !!reqVO.rawResponse;
+			
+			function createStreamFromBase64(base64String) {
+				const buffer = Buffer.from(base64String, 'base64');
+				const stream = Readable.from(buffer);
+				return stream;
+			}
+			
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			model=reqVO.model||"dall-e-2";
+			size=reqVO.size||"1024x1024";
+			orgImg=reqVO.image;
+			if(!orgImg){
+				res.json({ code: 400, info: "Missing image to edit." });
+				return;
+			}
+			{
+				let pos=orgImg.indexOf("base64,");
+				if(pos>=0){
+					orgImg=orgImg.substring(pos+7);
+				}
+				orgImg=createStreamFromBase64(orgImg);
+			}
+			
+			callVO={
+				model: model,
+				image: orgImg,
+				n: 1,
+				size: size,
+				response_format:"b64_json"
+			};
+			if(reqVO.seed!==undefined){
+				let seed=parseInt(reqVO.seed);
+				if(seed>=0) {
+					callVO.seed = seed;
+				}
+			}
+			
+			const response = await openAI.createImageVariation(orgImg,1,size,"b64_json");
+			img = response.data.data[0].b64_json;
+			resVO={code: 200, img: img, revised_prompt:response.data.data[0].revised_prompt};
+			if(needRawResponse){
+				resVO.rawResponse=response;
+			}
+			res.json(resVO);
+		};
+
 		//-------------------------------------------------------------------
 		apiMap['AITTS']=async function (req,res,next){
 			let reqVO;
