@@ -2,6 +2,7 @@ import { Configuration, OpenAIApi } from "openai";
 import {encode} from "gpt-3-encoder";
 import {proxyCall} from "../util/ProxyCall.js";
 import { Readable } from "stream"
+import followRedirects from "follow-redirects";
 
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY;
 let configuration,openAI;
@@ -201,7 +202,7 @@ export default function(app,router,apiMap) {
 															}
 														}
 														//toolCalls support:
-														toolCalls=delta.toolCalls;
+														toolCalls=delta.tool_calls;
 														if(toolCalls){
 															let srcList,tgtList,i,n,idx,srcStub,tgtStub,srcFunc,tgtFunc;
 															srcList=toolCalls;
@@ -212,7 +213,7 @@ export default function(app,router,apiMap) {
 															n=srcList.length;
 															for(i=0;i<n;i++){
 																srcStub=srcList[i];
-																idx=srcStub.index>=0?srcStub.index>=0:i;
+																idx=srcStub.index>=0?srcStub.index:i;
 																tgtStub=tgtList[idx];
 																if(!tgtStub){
 																	tgtStub=tgtList[idx]={
@@ -235,7 +236,7 @@ export default function(app,router,apiMap) {
 																tgtFunc=tgtStub.function;
 																if(srcFunc){
 																	tgtFunc.name+=srcFunc.name||"";
-																	tgtFunc.arguments+=srcFunc.arguments||"";
+																	tgtFunc.arguments+=srcFunc["arguments"]||"";
 																}
 															}
 														}
@@ -287,9 +288,12 @@ export default function(app,router,apiMap) {
 					n: reqVO.best_of || reqVO.n || 1,
 					frequency_penalty: reqVO.frequency_penalty || 0,
 					presence_penalty: reqVO.presence_penalty || 0,
-					response_format:reqVO.responseFormat||"text",
+					//response_format:reqVO.responseFormat||"text",
 					messages: reqVO.messages,
 				};
+				if(reqVO.responseFormat && reqVO.responseFormat!=="text"){
+					callVO.response_format=reqVO.responseFormat;
+				}
 				if(reqVO.seed!==undefined){
 					let seed=parseInt(reqVO.seed);
 					if(seed>=0) {
@@ -297,8 +301,22 @@ export default function(app,router,apiMap) {
 					}
 				}
 				if(reqVO.functions){
-					callVO.functions=reqVO.functions;
-					callVO.function_call=reqVO.function_call||"auto";
+					if(reqVO.parallelFunction){
+						let funcStub
+						let list=reqVO.functions;
+						let tools=[];
+						for(funcStub of list){
+							tools.push({
+								type:"function",
+								function:funcStub
+							});
+						}
+						callVO.tools = tools;
+						callVO.tool_choice = reqVO.function_call || "auto";
+					}else {
+						callVO.functions = reqVO.functions;
+						callVO.function_call = reqVO.function_call || "auto";
+					}
 				}
 				return callVO;
 			}
@@ -540,4 +558,79 @@ export default function(app,router,apiMap) {
 		};
 	}
 	
+	//***********************************************************************
+	//Web API Call
+	//***********************************************************************
+	{
+		apiMap['webAPICall']=async function(req,res,next){
+			let reqVO;
+			let apiURL, httpOpts, httpReq, postText,callDone,postAPI,headers;
+			reqVO = req.body.vo;
+			{
+				let bodyType;
+				callDone=false;
+				apiURL = reqVO.url;
+				httpOpts = {
+					method: reqVO.method,
+					headers: {
+						'User-Agent': 'node.js',
+					}
+				};
+				bodyType=reqVO.argMode;
+				headers=reqVO.headers;
+				switch(bodyType){
+					case "JSON":
+						postText=JSON.stringify(reqVO.json);
+						httpOpts.headers['Content-Type']='application/json';
+						httpOpts.headers['Content-Length']=Buffer.byteLength(postText);
+						break;
+					case "TEXT":
+						postText=reqVO.data;
+						httpOpts.headers['Content-Type']='text/plain';
+						httpOpts.headers['Content-Length']=Buffer.byteLength(postText);
+						break;
+				}
+				if(headers) {
+					Object.assign(httpOpts.headers, headers);
+				}
+				if(apiURL.startsWith("http://")){
+					postAPI=followRedirects.http;
+				}else{
+					postAPI=followRedirects.https;
+				}
+				httpReq = postAPI.request(apiURL, httpOpts, (response) => {
+					let data = [];
+					if (response.statusCode !== 200) {
+						httpReq.destroy();
+						res.json({ code: response.statusCode, info: response.statusMessage || "Network error" });
+						callDone=true;
+						return;
+					}
+					response.on('data', function (chunk) {
+						data.push(chunk);
+					});
+					response.on('end', function () {
+						try {
+							let buffer = Buffer.concat(data);
+							let text = buffer.toString();
+							callDone=true;
+							res.json({code:200,data:text});
+						} catch (err) {
+							callDone=true;
+							res.json({ code: 500, info: "" + err });
+						}
+					});
+				});
+				httpReq.on('error', (e) => {
+					if(!callDone) {
+						res.json({ code: 500, info: "" + e });
+					}
+				});
+				if(postText) {
+					httpReq.write(postText);
+				}
+				httpReq.end();
+			}
+		};
+	}
 };
