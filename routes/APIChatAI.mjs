@@ -134,7 +134,7 @@ export default function(app,router,apiMap) {
 					try {
 						let streamVO, streamId;
 						callVO.stream = true;
-						console.log("Call Code VO:");
+						console.log("AI Call VO:");
 						console.log(callVO);
 						rawResVO = await openAI.createChatCompletion(callVO, { responseType: 'stream' });
 						if (rawResVO.status !== 200) {
@@ -324,6 +324,29 @@ export default function(app,router,apiMap) {
 		
 		//-------------------------------------------------------------------
 		apiMap['AICallStream'] = async function (req, res, next) {
+			let reqVO = req.body.vo;
+			if(reqVO.model==="gpt-4-32k"){
+				//TODO: 1. Build callVO that match your API:
+				let callVO = await Make_YOUR_LLM_CALL_VO(reqVO);
+				//TODO: 2. Call your own LLM API:
+				let result= await YOUR_WON_LLM_API(callVO);
+				//TODO: 2. add a call stream
+				let streamId = getStreamId();
+				let streamVO = {
+					streamId,
+					textGot: result,
+					textRead: "",
+					closed: true,
+					waitFunc: null,
+					errorFunc: null,
+					timer: null
+				};
+				streamMap.set(streamId, streamVO);
+				//Response client:
+				let resVO = { code: 200, streamId: streamId };
+				res.json(resVO);
+				return;
+			}
 			return await AIStreamCall(plainCall, req, res);
 		};
 		
@@ -628,6 +651,80 @@ export default function(app,router,apiMap) {
 				});
 				if(postText) {
 					httpReq.write(postText);
+				}
+				httpReq.end();
+			}
+		};
+		
+		apiMap['WebFetch']=async function(req,res,next){
+			let reqVO;
+			let apiURL, httpOpts, httpReq, postText,callDone,postAPI,headers;
+			reqVO = req.body.vo;
+			{
+				let body;
+				callDone=false;
+				apiURL = reqVO.url;
+				httpOpts = {
+					method: reqVO.method,
+					headers: {
+						'User-Agent': 'node.js',
+					}
+				};
+				headers=reqVO.headers;
+				if(headers) {
+					Object.assign(httpOpts.headers, headers);
+				}
+				body=reqVO.body;
+				if(body) {
+					body = Buffer.from(body, "base64");
+					httpOpts.headers['Content-Length'] = ""+Buffer.byteLength(body);
+				}else{
+					httpOpts.headers['Content-Length'] = "0";
+				}
+				if(apiURL.startsWith("http://")){
+					postAPI=followRedirects.http;
+				}else{
+					postAPI=followRedirects.https;
+				}
+				httpReq = postAPI.request(apiURL, httpOpts, (response) => {
+					let data = [];
+					let headers;
+					headers=response.headers;
+					if(headers["Content-Type"]){
+						res.setHeader('Content-Type',headers["Content-Type"]);
+					}
+					response.on('data', function (chunk) {
+						data.push(chunk);
+					});
+					response.on('end', function () {
+						try {
+							let buffer = Buffer.concat(data);
+							res.status(response.statusCode);
+							if(headers["Content-Type"]){
+								res.setHeader('Content-Type',headers["Content-Type"]);
+							}
+							res.setHeader('Content-Length',""+Buffer.byteLength(buffer));
+							res.send(buffer);
+							res.end();
+							callDone=true;
+						} catch (err) {
+							res.status(500);
+							res.send(Buffer.from("Http fetch error" + err));
+							res.end();
+							callDone=true;
+						}
+					});
+				});
+				httpReq.on('error', (e) => {
+					if(!callDone) {
+						res.status(500);
+						res.send(Buffer.from("Http fetch error" + e));
+						res.end();
+						callDone=true;
+					}
+				});
+				if(body) {
+					httpReq.send(body);
 				}
 				httpReq.end();
 			}
