@@ -6701,7 +6701,6 @@ function setupBasic(typeDef){
 				}
 			}else {
 				valMap[funcPptIdx]=null;
-				valMap[pptXIdx]=val;
 				return "";
 			}
 		}else {
@@ -14137,7 +14136,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 126,
+		"versionIdx": 145,
 		"zip": "coke.zip"
 	},
 	{
@@ -14147,7 +14146,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 132,
+		"versionIdx": 139,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14162,12 +14161,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 82,
+		"versionIdx": 95,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 112,
+		"versionIdx": 113,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14177,7 +14176,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 30,
+		"versionIdx": 31,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14195,7 +14194,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 126,
+		"versionIdx": 145,
 		"zip": "coke.zip"
 	},
 	{
@@ -14205,7 +14204,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 132,
+		"versionIdx": 139,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14225,7 +14224,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 30,
+		"versionIdx": 31,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14237,6 +14236,39 @@ var mobileDiskInfo = [
 		"name": "-MobileHome",
 		"versionIdx": 6,
 		"zip": "MobileHome.zip"
+	}
+];
+
+var previewDiskInfo = [
+	{
+		"name": "coke",
+		"versionIdx": 145,
+		"zip": "coke.zip"
+	},
+	{
+		"name": "-tabos",
+		"versionIdx": 64,
+		"zip": "tabos.zip"
+	},
+	{
+		"name": "-homekit",
+		"versionIdx": 139,
+		"zip": "homekit.zip"
+	},
+	{
+		"name": "-aichat",
+		"versionIdx": 31,
+		"zip": "aichat.zip"
+	},
+	{
+		"name": "-StdUI",
+		"versionIdx": 86,
+		"zip": "StdUI.zip"
+	},
+	{
+		"name": "-PVHome",
+		"versionIdx": 3,
+		"zip": "PVHome.zip"
 	}
 ];
 
@@ -14301,7 +14333,13 @@ appCfg.proxyCfg=function(proxy){
 };
 
 /*#{EndDoc*/
-if(window.screen.width<500){
+if(location.host.startsWith("pv.")){
+	appCfg.isPreview=true;
+	appCfg.diskInfo=previewDiskInfo;
+}else if(VFACT.appParams.key&&VFACT.appParams.slot&&VFACT.appParams.userId){
+	appCfg.isPreview=true;
+	appCfg.diskInfo=previewDiskInfo;
+}else if(window.screen.width<500){
 	appCfg.isMobile=true;
 	appCfg.diskInfo=mobileDiskInfo;
 }else {
@@ -14822,14 +14860,14 @@ let dataSetup=_DataSetup;
 let downloadDir="/download";
 
 //----------------------------------------------------------------------------
-dataSetup.checkOS=async function(logger){
+dataSetup.checkOS=async function(logger,checkVersion=true){
 	logger.log("Checking installed Tab-OS:");
 	if(!await this.checkWorker(logger)){
 		logger.log("Service-worker: NA");
 		return false;
 	}
 	logger.log("Service-worker: OK.");
-	if(!await this.checkDisks(logger)){
+	if(!await this.checkDisks(logger,checkVersion)){
 		return false;
 	}
 	return true;
@@ -14877,11 +14915,11 @@ dataSetup.checkWorker=async function(logger){
 };
 
 //----------------------------------------------------------------------------
-dataSetup.checkDisks=async function(logger){
+dataSetup.checkDisks=async function(logger,checkVersion=true){
 	let list,vo;
 	list=appCfg.diskInfo;
 	for(vo of list){
-		if(!await this.checkDiskVersion(vo.name,vo.versionIdx)){
+		if(!await this.checkDiskVersion(vo.name,checkVersion?vo.versionIdx:1)){
 			logger.log("Disk "+vo.name+": Failed.");
 			return false;
 		}
@@ -14958,7 +14996,6 @@ dataSetup.checkDiskVersion=async function(diskName,checkVersionIdx){
 		vo=JSON.parse(text);
 		diskVsnIdx=vo.versionIdx||0;
 		return diskVsnIdx>=checkVersionIdx;
-		//return diskVsnIdx>0;//=checkVersionIdx;
 	}catch(e){
 		return false;
 	}
@@ -15721,7 +15758,7 @@ dataSetup.installPackage=async function(tty,pkgName,curDisk="coke",options={}){
 //					"type": "objclass",
 //					"def": "ObjClass",
 //					"jaxId": "1GFLV36AF0",
-//					"editVersion": 22,
+//					"editVersion": 24,
 //					"attrs": {
 //						"constructArgs": {
 //							"type": "object",
@@ -16766,9 +16803,11 @@ var checkOutDisk;
 
 //Auto genterated by Cody
 /*}#1GFLQJK0D0StartDoc*/
+appCfg.lanCode||VFACT.lanCode||"EN";
 //----------------------------------------------------------------------------
 let MainUI=function(app){
 	let cssVO,self;
+	appCfg.lanCode||VFACT.lanCode||"EN";
 	
 	let title="Multiverse for Developers";
 	let caption="Setup Tab-OS";
@@ -16777,8 +16816,8 @@ let MainUI=function(app){
 	let dataSetup=null;
 	let tty=null;
 	let appParams=app.appParams;
-	let domain,pos;
-	domain=document.location.hostname;
+	let hostName,domain,pos;
+	hostName=domain=document.location.hostname;
 	pos=domain.indexOf(":");
 	if(pos>0){
 		domain="";//With port number?
@@ -16790,9 +16829,21 @@ let MainUI=function(app){
 			domain="";
 		}
 	}
-	if(domain==="www"||!domain){
-		title="Multiverse for Developers";
-		caption="Setup Tab-OS Home Universe";
+	if(appCfg.isPreview){
+		if(hostName==="pv.ai2apps.com"){
+			title="AI2Apps App Preview";
+		}else {
+			title="Tab-OS App Preview";
+		}
+		caption="Setup preview...";
+	}else if(domain==="www"||!domain){
+		if(hostName.endsWith("ai2apps.com")){
+			title="AI2Apps.com";
+			caption="Setup AI2Apps...";
+		}else {
+			title="Multiverse for Developers";
+			caption="Setup Tab-OS Home Universe";
+		}
 	}else {
 		title="Universe Portal: "+domain.toUpperCase();
 		caption="Setup Universe";
@@ -16806,58 +16857,59 @@ let MainUI=function(app){
 	/*}#1GFLQJK0D1PostState*/
 	cssVO={
 		"hash":"1GFLQJK0D1",nameHost:true,
-		"type":"view","x":0,"y":0,"w":"FW","h":"FH","autoLayout":true,"styleClass":"",
+		"type":"view","x":0,"y":0,"w":"FW","h":"FH","autoLayout":true,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
 		children:[
 			{
 				"hash":"1GG1LG6II0",
-				"type":"text","id":"TxtTitle","x":"FW/2","y":15,"w":"FW>=500?500:FW-10","h":24,"anchorX":1,"styleClass":"","color":[120,120,130],"text":title,"fontSize":24,
-				"fontWeight":"bold","fontStyle":"normal","textDecoration":"",
+				"type":"text","id":"TxtTitle","x":"FW/2","y":15,"w":"FW>=500?500:FW-10","h":24,"anchorX":1,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
+				"color":[120,120,130],"text":title,"fontSize":24,"fontWeight":"bold","fontStyle":"normal","textDecoration":"",
 			},
 			{
 				"hash":"1GFLTI4GC0",
-				"type":"box","x":"FW/2","y":50,"w":"FW>=500?500:FW-10","h":"FH>660?600:FH-60","anchorX":1,"overflow":1,"styleClass":"","background":[255,255,255,1],
-				"border":2,"corner":6,
+				"type":"box","x":"FW/2","y":50,"w":"FW>=500?500:FW-10","h":"FH>660?600:FH-60","anchorX":1,"overflow":1,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
+				"background":[255,255,255,1],"border":2,"corner":6,
 				children:[
 					{
 						"hash":"1GFLTTKRI0",
-						"type":"box","id":"BoxHeader","x":0,"y":0,"w":"FW","h":24,"styleClass":"","background":"linear-gradient(to bottom, rgba(220,220,220,1),rgba(200,200,200,1))",
+						"type":"box","id":"BoxHeader","x":0,"y":0,"w":"FW","h":24,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","background":"linear-gradient(to bottom, rgba(220,220,220,1),rgba(200,200,200,1))",
 						"border":[0,0,1,0],
 						children:[
 							{
 								"hash":"1GFLU4DC30",
-								"type":"box","x":5,"y":4,"w":16,"h":16,"styleClass":"","background":[245,245,245,1],"border":1,"corner":9,
+								"type":"box","x":5,"y":4,"w":16,"h":16,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","background":[245,245,245,1],"border":1,"corner":9,
 							},
 							{
 								"hash":"1GFLU6CFN0",
-								"type":"box","x":23,"y":4,"w":16,"h":16,"styleClass":"","background":[245,245,245,1],"border":1,"corner":9,
+								"type":"box","x":23,"y":4,"w":16,"h":16,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","background":[245,245,245,1],"border":1,"corner":9,
 							},
 							{
 								"hash":"1GFLU6HPD0",
-								"type":"box","x":41,"y":4,"w":16,"h":16,"styleClass":"","background":[245,245,245,1],"border":1,"corner":9,
+								"type":"box","x":41,"y":4,"w":16,"h":16,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","background":[245,245,245,1],"border":1,"corner":9,
 							},
 							{
 								"hash":"1GFLU72L70",
-								"type":"text","id":"TxtCaption","x":62,"y":0,"w":"","h":"FH","styleClass":"","color":[50,50,50],"text":caption,"fontSize":15,"fontWeight":"normal",
-								"fontStyle":"normal","textDecoration":"","alignV":1,
+								"type":"text","id":"TxtCaption","x":62,"y":0,"w":"","h":"FH","minW":"","minH":"","maxW":"","maxH":"","styleClass":"","color":[50,50,50],"text":caption,
+								"fontSize":15,"fontWeight":"normal","fontStyle":"normal","textDecoration":"","alignV":1,
 							}
 						],
 					},
 					{
 						"hash":"1GFLUAVAR0",
-						"type":"hud","id":"BoxTTY","x":5,"y":24,"w":"FW-10","h":"FH-29","styleClass":"",
+						"type":"hud","id":"BoxTTY","x":5,"y":24,"w":"FW-10","h":"FH-29","minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
 					},
 					{
 						"hash":"1GKJRQNAK0",
-						"type":"hud","id":"BoxRestoreFile","x":5,"y":24,"w":"FW-10","h":"FH-29","styleClass":"",
+						"type":"hud","id":"BoxRestoreFile","x":5,"y":24,"w":"FW-10","h":"FH-29","minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
 						children:[
 							{
 								"hash":"1GKJS0SDA0",
-								"type":"box","id":"BoxDrop","x":"30","y":30,"w":"FW-60","h":150,"styleClass":"","background":[255,255,255,1],"border":2,"borderStyle":2,"corner":6,
+								"type":"box","id":"BoxDrop","x":"30","y":30,"w":"FW-60","h":150,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","background":[255,255,255,1],
+								"border":2,"borderStyle":2,"corner":6,
 								children:[
 									{
 										"hash":"1GKJS0SDB0",
-										"type":"text","x":0,"y":0,"w":"FW","h":"FH","uiEvent":-1,"styleClass":"","color":[0,0,0],"text":"Drag Universe Zip File Here","fontSize":20,
-										"fontWeight":"normal","fontStyle":"normal","textDecoration":"","alignH":1,"alignV":1,
+										"type":"text","x":0,"y":0,"w":"FW","h":"FH","uiEvent":-1,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","color":[0,0,0],"text":"Drag Universe Zip File Here",
+										"fontSize":20,"fontWeight":"normal","fontStyle":"normal","textDecoration":"","alignH":1,"alignV":1,
 									}
 								],
 								/*#{1GKJS0SDA0Codes*/
@@ -16865,21 +16917,22 @@ let MainUI=function(app){
 							},
 							{
 								"hash":"1GKJS1TIK0",
-								"type":"text","x":0,"y":200,"w":"FW","h":20,"styleClass":"","color":[0,0,0],"text":"OR","fontSize":20,"fontWeight":"normal","fontStyle":"normal",
-								"textDecoration":"","alignH":1,
+								"type":"text","x":0,"y":200,"w":"FW","h":20,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","color":[0,0,0],"text":"OR","fontSize":20,
+								"fontWeight":"normal","fontStyle":"normal","textDecoration":"","alignH":1,
 							},
 							{
 								"hash":"1GKJSO0PF0",
-								"type":"button","x":"FW/2","y":240,"w":240,"h":30,"anchorX":1,"cursor":"pointer","styleClass":"",
+								"type":"button","x":"FW/2","y":240,"w":240,"h":30,"anchorX":1,"cursor":"pointer","minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
 								children:[
 									{
 										"hash":"1GKJSP42O0",
-										"type":"box","id":"BtnOpen","x":"FW/2","y":0,"w":240,"h":30,"anchorX":1,"uiEvent":-1,"styleClass":"","background":[42,124,255,1],"corner":3,
+										"type":"box","id":"BtnOpen","x":"FW/2","y":0,"w":240,"h":30,"anchorX":1,"uiEvent":-1,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"",
+										"background":[42,124,255,1],"corner":3,
 										children:[
 											{
 												"hash":"1GKJSP42P0",
-												"type":"text","x":0,"y":0,"w":"FW","h":"FH","autoLayout":true,"uiEvent":-1,"styleClass":"","color":[255,255,255],"text":"Choose Universe Zip File",
-												"fontWeight":"normal","fontStyle":"normal","textDecoration":"","alignH":1,"alignV":1,
+												"type":"text","x":0,"y":0,"w":"FW","h":"FH","autoLayout":true,"uiEvent":-1,"minW":"","minH":"","maxW":"","maxH":"","styleClass":"","color":[255,255,255],
+												"text":"Choose Universe Zip File","fontWeight":"normal","fontStyle":"normal","textDecoration":"","alignH":1,"alignV":1,
 											}
 										],
 									}
@@ -16922,6 +16975,7 @@ let MainUI=function(app){
 		},
 		OnCreate:function(){
 			self=this;
+			
 			/*#{1GFLQJK0D1Create*/
 			tty=new LitTTY(self.BoxTTY.webObj,null);
 			self.showFace("work");
@@ -16947,7 +17001,15 @@ let MainUI=function(app){
 	/*#{1GFLQJK0D1PostCSSVO*/
 	//------------------------------------------------------------------------
 	cssVO.maybeInstall=async function(){
-		if(!await dataSetup.checkOS(tty)){
+		let checkVersion;
+		if(appCfg.isPreview){
+			checkVersion=true;
+		}else if(appCfg.isMobile){
+			checkVersion=true;
+		}else {
+			checkVersion=false;
+		}
+		if(!await dataSetup.checkOS(tty,checkVersion)){
 			await dataSetup.setupOS(tty);
 		}
 		tty.log("Tab-OS installed, will launch Tab-OS Home...");
@@ -16977,8 +17039,12 @@ let MainUI=function(app){
 	
 	//------------------------------------------------------------------------
 	cssVO.openOS=function(){
-		if(appParams.path){
+		if(location.host.startsWith("pv.")){
+			document.location.href = document.location.origin + `/~/-PVHome/app.html`;
+		}else if(appParams.path){
 			document.location.href=document.location.origin+appParams.path;
+		}else if(appCfg.isPreview){
+			document.location.href = document.location.origin + `/~/-PVHome/app.html?userId=${VFACT.appParams.userId}&slot=${VFACT.appParams.slot}&key=${VFACT.appParams.key}`;
 		}else {
 			document.location.href = document.location.origin + "/@homekit";
 		}
@@ -17116,6 +17182,13 @@ let MainUI=function(app){
 //			"editVersion": 0,
 //			"attrs": {}
 //		},
+//		"model": {
+//			"type": "object",
+//			"def": "Object",
+//			"jaxId": "1HGTK4CSE0",
+//			"editVersion": 0,
+//			"attrs": {}
+//		},
 //		"createArgs": {
 //			"type": "object",
 //			"def": "Object",
@@ -17159,6 +17232,8 @@ let MainUI=function(app){
 //		"gearH": "100",
 //		"gearCatalog": "",
 //		"description": "",
+//		"fixPose": "false",
+//		"previewImg": "",
 //		"faceTags": {
 //			"type": "object",
 //			"def": "FaceTags",
@@ -17172,8 +17247,12 @@ let MainUI=function(app){
 //					"editVersion": 10,
 //					"attrs": {
 //						"mockup": "false",
+//						"previewEntry": "false",
+//						"mockupNext": "",
+//						"description": "",
 //						"preFunc": "false",
 //						"faceFunc": "false",
+//						"delay": "0",
 //						"faceTimes": {
 //							"type": "object",
 //							"jaxId": "1GKKF4F6V0",
@@ -17189,8 +17268,12 @@ let MainUI=function(app){
 //					"editVersion": 8,
 //					"attrs": {
 //						"mockup": "false",
+//						"previewEntry": "false",
+//						"mockupNext": "",
+//						"description": "",
 //						"preFunc": "false",
 //						"faceFunc": "false",
+//						"delay": "0",
 //						"faceTimes": {
 //							"type": "object",
 //							"jaxId": "1GKKF4F6V1",
@@ -17200,6 +17283,13 @@ let MainUI=function(app){
 //					}
 //				}
 //			}
+//		},
+//		"mockupStates": {
+//			"type": "object",
+//			"def": "MockupObj",
+//			"jaxId": "1HGTK4CSE1",
+//			"editVersion": 0,
+//			"attrs": {}
 //		},
 //		"hud": {
 //			"type": "hudobj",
@@ -17248,12 +17338,12 @@ let MainUI=function(app){
 //							"type": "hudobj",
 //							"def": "text",
 //							"jaxId": "1GG1LG6II0",
-//							"editVersion": 20,
+//							"editVersion": 21,
 //							"attrs": {
 //								"properties": {
 //									"type": "object",
 //									"jaxId": "1GG1LRFDF0",
-//									"editVersion": 194,
+//									"editVersion": 196,
 //									"attrs": {
 //										"type": "text",
 //										"id": "TxtTitle",
@@ -17291,8 +17381,6 @@ let MainUI=function(app){
 //										"underline": "false",
 //										"alignH": "Left",
 //										"alignV": "Top",
-//										"autoSizeW": "false",
-//										"autoSizeH": "false",
 //										"wrap": "false",
 //										"ellipsis": "false",
 //										"select": "false",
@@ -17302,7 +17390,9 @@ let MainUI=function(app){
 //										"shadowBlur": "3",
 //										"shadowColor": "[0,0,0,1.00]",
 //										"shadowEx": "",
-//										"maxTextW": "0"
+//										"maxTextW": "0",
+//										"autoSizeW": "false",
+//										"autoSizeH": "false"
 //									}
 //								},
 //								"subHuds": {
@@ -17352,7 +17442,9 @@ let MainUI=function(app){
 //								},
 //								"mockup": "false",
 //								"codes": "false",
-//								"locked": "false"
+//								"locked": "false",
+//								"container": "false",
+//								"nameVal": "false"
 //							}
 //						},
 //						{
@@ -17413,7 +17505,7 @@ let MainUI=function(app){
 //											"type": "hudobj",
 //											"def": "box",
 //											"jaxId": "1GFLTTKRI0",
-//											"editVersion": 21,
+//											"editVersion": 22,
 //											"attrs": {
 //												"properties": {
 //													"type": "object",
@@ -17561,7 +17653,9 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "false",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "true",
+//																"nameVal": "false"
 //															}
 //														},
 //														{
@@ -17662,7 +17756,9 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "false",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "true",
+//																"nameVal": "false"
 //															}
 //														},
 //														{
@@ -17763,14 +17859,16 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "false",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "true",
+//																"nameVal": "false"
 //															}
 //														},
 //														{
 //															"type": "hudobj",
 //															"def": "text",
 //															"jaxId": "1GFLU72L70",
-//															"editVersion": 21,
+//															"editVersion": 22,
 //															"attrs": {
 //																"properties": {
 //																	"type": "object",
@@ -17813,8 +17911,6 @@ let MainUI=function(app){
 //																		"underline": "false",
 //																		"alignH": "Left",
 //																		"alignV": "Center",
-//																		"autoSizeW": "false",
-//																		"autoSizeH": "false",
 //																		"wrap": "false",
 //																		"ellipsis": "false",
 //																		"select": "false",
@@ -17824,7 +17920,9 @@ let MainUI=function(app){
 //																		"shadowBlur": "3",
 //																		"shadowColor": "[0,0,0,1.00]",
 //																		"shadowEx": "",
-//																		"maxTextW": "0"
+//																		"maxTextW": "0",
+//																		"autoSizeW": "false",
+//																		"autoSizeH": "false"
 //																	}
 //																},
 //																"subHuds": {
@@ -17874,7 +17972,9 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "false",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "false",
+//																"nameVal": "false"
 //															}
 //														}
 //													]
@@ -17922,14 +18022,16 @@ let MainUI=function(app){
 //												},
 //												"mockup": "false",
 //												"codes": "false",
-//												"locked": "false"
+//												"locked": "false",
+//												"container": "true",
+//												"nameVal": "false"
 //											}
 //										},
 //										{
 //											"type": "hudobj",
 //											"def": "hud",
 //											"jaxId": "1GFLUAVAR0",
-//											"editVersion": 23,
+//											"editVersion": 24,
 //											"attrs": {
 //												"properties": {
 //													"type": "object",
@@ -18043,14 +18145,17 @@ let MainUI=function(app){
 //												},
 //												"mockup": "false",
 //												"codes": "false",
-//												"locked": "false"
+//												"locked": "false",
+//												"container": "true",
+//												"nameVal": "false",
+//												"exposeContainer": "false"
 //											}
 //										},
 //										{
 //											"type": "hudobj",
 //											"def": "hud",
 //											"jaxId": "1GKJRQNAK0",
-//											"editVersion": 21,
+//											"editVersion": 22,
 //											"attrs": {
 //												"properties": {
 //													"type": "object",
@@ -18093,7 +18198,7 @@ let MainUI=function(app){
 //															"type": "hudobj",
 //															"def": "box",
 //															"jaxId": "1GKJS0SDA0",
-//															"editVersion": 21,
+//															"editVersion": 22,
 //															"attrs": {
 //																"properties": {
 //																	"type": "object",
@@ -18190,8 +18295,6 @@ let MainUI=function(app){
 //																						"underline": "false",
 //																						"alignH": "Center",
 //																						"alignV": "Center",
-//																						"autoSizeW": "false",
-//																						"autoSizeH": "false",
 //																						"wrap": "false",
 //																						"ellipsis": "false",
 //																						"select": "false",
@@ -18201,7 +18304,9 @@ let MainUI=function(app){
 //																						"shadowBlur": "3",
 //																						"shadowColor": "[0,0,0,1.00]",
 //																						"shadowEx": "",
-//																						"maxTextW": "0"
+//																						"maxTextW": "0",
+//																						"autoSizeW": "false",
+//																						"autoSizeH": "false"
 //																					}
 //																				},
 //																				"subHuds": {
@@ -18251,7 +18356,9 @@ let MainUI=function(app){
 //																				},
 //																				"mockup": "false",
 //																				"codes": "false",
-//																				"locked": "false"
+//																				"locked": "false",
+//																				"container": "false",
+//																				"nameVal": "false"
 //																			}
 //																		}
 //																	]
@@ -18299,7 +18406,9 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "true",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "true",
+//																"nameVal": "false"
 //															}
 //														},
 //														{
@@ -18349,8 +18458,6 @@ let MainUI=function(app){
 //																		"underline": "false",
 //																		"alignH": "Center",
 //																		"alignV": "Top",
-//																		"autoSizeW": "false",
-//																		"autoSizeH": "false",
 //																		"wrap": "false",
 //																		"ellipsis": "false",
 //																		"select": "false",
@@ -18360,7 +18467,9 @@ let MainUI=function(app){
 //																		"shadowBlur": "3",
 //																		"shadowColor": "[0,0,0,1.00]",
 //																		"shadowEx": "",
-//																		"maxTextW": "0"
+//																		"maxTextW": "0",
+//																		"autoSizeW": "false",
+//																		"autoSizeH": "false"
 //																	}
 //																},
 //																"subHuds": {
@@ -18410,7 +18519,9 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "false",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "false",
+//																"nameVal": "false"
 //															}
 //														},
 //														{
@@ -18462,7 +18573,7 @@ let MainUI=function(app){
 //																			"type": "hudobj",
 //																			"def": "box",
 //																			"jaxId": "1GKJSP42O0",
-//																			"editVersion": 20,
+//																			"editVersion": 21,
 //																			"attrs": {
 //																				"properties": {
 //																					"type": "object",
@@ -18559,8 +18670,6 @@ let MainUI=function(app){
 //																										"underline": "false",
 //																										"alignH": "Center",
 //																										"alignV": "Center",
-//																										"autoSizeW": "false",
-//																										"autoSizeH": "false",
 //																										"wrap": "false",
 //																										"ellipsis": "false",
 //																										"select": "false",
@@ -18570,7 +18679,9 @@ let MainUI=function(app){
 //																										"shadowBlur": "3",
 //																										"shadowColor": "[0,0,0,1.00]",
 //																										"shadowEx": "",
-//																										"maxTextW": "0"
+//																										"maxTextW": "0",
+//																										"autoSizeW": "false",
+//																										"autoSizeH": "false"
 //																									}
 //																								},
 //																								"subHuds": {
@@ -18620,7 +18731,9 @@ let MainUI=function(app){
 //																								},
 //																								"mockup": "false",
 //																								"codes": "false",
-//																								"locked": "false"
+//																								"locked": "false",
+//																								"container": "false",
+//																								"nameVal": "false"
 //																							}
 //																						}
 //																					]
@@ -18668,7 +18781,9 @@ let MainUI=function(app){
 //																				},
 //																				"mockup": "false",
 //																				"codes": "false",
-//																				"locked": "false"
+//																				"locked": "false",
+//																				"container": "true",
+//																				"nameVal": "false"
 //																			}
 //																		}
 //																	]
@@ -18716,7 +18831,9 @@ let MainUI=function(app){
 //																},
 //																"mockup": "false",
 //																"codes": "true",
-//																"locked": "false"
+//																"locked": "false",
+//																"container": "true",
+//																"nameVal": "false"
 //															}
 //														}
 //													]
@@ -18795,7 +18912,10 @@ let MainUI=function(app){
 //												},
 //												"mockup": "false",
 //												"codes": "false",
-//												"locked": "false"
+//												"locked": "false",
+//												"container": "true",
+//												"nameVal": "false",
+//												"exposeContainer": "false"
 //											}
 //										}
 //									]
@@ -18843,7 +18963,9 @@ let MainUI=function(app){
 //								},
 //								"mockup": "false",
 //								"codes": "false",
-//								"locked": "false"
+//								"locked": "false",
+//								"container": "true",
+//								"nameVal": "false"
 //							}
 //						}
 //					]
@@ -18891,7 +19013,9 @@ let MainUI=function(app){
 //				},
 //				"mockup": "false",
 //				"codes": "false",
-//				"locked": "false"
+//				"locked": "false",
+//				"container": "true",
+//				"nameVal": "false"
 //			}
 //		},
 //		"exposeGear": "false",
@@ -18913,31 +19037,57 @@ let MainUI=function(app){
 //				"autoLayout": "false",
 //				"display": "true",
 //				"contentLayout": "false",
-//				"innerLayout": "false",
+//				"subAlign": "false",
+//				"itemsAlign": "false",
+//				"itemsWrap": "false",
 //				"clip": "false",
 //				"uiEvent": "false",
 //				"alpha": "false",
 //				"rotate": "false",
 //				"scale": "false",
 //				"filter": "false",
+//				"aspect": "false",
 //				"cursor": "false",
 //				"zIndex": "false",
+//				"flex": "false",
 //				"margin": "false",
-//				"marginL": "false",
-//				"marginR": "false",
-//				"marginT": "false",
-//				"marginB": "false",
+//				"traceSize": "false",
 //				"padding": "false",
-//				"paddingL": "false",
-//				"paddingR": "false",
-//				"paddingT": "false",
-//				"paddingB": "false",
 //				"minW": "false",
 //				"minH": "false",
 //				"maxW": "false",
 //				"maxH": "false",
 //				"styleClass": "false",
-//				"attach": "false"
+//				"innerLayout": {
+//					"valText": "false"
+//				},
+//				"marginL": {
+//					"valText": "false"
+//				},
+//				"marginR": {
+//					"valText": "false"
+//				},
+//				"marginT": {
+//					"valText": "false"
+//				},
+//				"marginB": {
+//					"valText": "false"
+//				},
+//				"paddingL": {
+//					"valText": "false"
+//				},
+//				"paddingR": {
+//					"valText": "false"
+//				},
+//				"paddingT": {
+//					"valText": "false"
+//				},
+//				"paddingB": {
+//					"valText": "false"
+//				},
+//				"attach": {
+//					"valText": "false"
+//				}
 //			}
 //		},
 //		"exposeStateAttrs": {
