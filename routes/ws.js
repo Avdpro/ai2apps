@@ -1,5 +1,5 @@
 var express = require('express');
-var chatAI,gitAPI,previewAPI,utilsAPI;
+var chatAI,gitAPI,previewAPI,utilsAPI,fileAPI;
 var router = express.Router();
 var proxyCall=require('../util/ProxyCall.js').proxyCall;
 
@@ -11,6 +11,11 @@ module.exports =function(app) {
 		chatAI(app,router,apiMap);
 	});
 	
+	//Register fileSync:
+	import("./APIFiles.mjs").then((mode)=>{
+		fileAPI=mode.default;
+		fileAPI(app,router,apiMap);
+	});
 	//Register UtilsAPI:
 	import("./APIUtils.mjs").then((mode)=>{
 		utilsAPI=mode.default;
@@ -22,7 +27,7 @@ module.exports =function(app) {
 	router.post('/', function (req, res, next) {
 		let msg,reqVO,handler,ret;
 		reqVO = req.body;
-		console.log(reqVO);
+		//console.log(reqVO);
 		msg=reqVO.msg;
 		switch (reqVO.msg) {
 			default:

@@ -14136,7 +14136,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 145,
+		"versionIdx": 147,
 		"zip": "coke.zip"
 	},
 	{
@@ -14146,7 +14146,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 139,
+		"versionIdx": 140,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14194,7 +14194,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 145,
+		"versionIdx": 147,
 		"zip": "coke.zip"
 	},
 	{
@@ -14204,7 +14204,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 139,
+		"versionIdx": 140,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14242,7 +14242,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 145,
+		"versionIdx": 147,
 		"zip": "coke.zip"
 	},
 	{
@@ -14252,7 +14252,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 139,
+		"versionIdx": 140,
 		"zip": "homekit.zip"
 	},
 	{
@@ -17039,12 +17039,16 @@ let MainUI=function(app){
 	
 	//------------------------------------------------------------------------
 	cssVO.openOS=function(){
-		if(location.host.startsWith("pv.")){
-			document.location.href = document.location.origin + `/~/-PVHome/app.html`;
+		if(appCfg.isPreview){
+			if(VFACT.appParams.userId){
+				document.location.href = document.location.origin + `/~/-PVHome/app.html?userId=${VFACT.appParams.userId}&slot=${VFACT.appParams.slot}&key=${VFACT.appParams.key}`;
+			}else if(location.host.startsWith("pv.")){
+				document.location.href = document.location.origin + `/~/-PVHome/app.html`;
+			}
 		}else if(appParams.path){
 			document.location.href=document.location.origin+appParams.path;
-		}else if(appCfg.isPreview){
-			document.location.href = document.location.origin + `/~/-PVHome/app.html?userId=${VFACT.appParams.userId}&slot=${VFACT.appParams.slot}&key=${VFACT.appParams.key}`;
+		}else if(location.host.startsWith("pv.")){
+			document.location.href = document.location.origin + `/~/-PVHome/app.html`;
 		}else {
 			document.location.href = document.location.origin + "/@homekit";
 		}

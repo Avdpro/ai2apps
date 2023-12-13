@@ -22,6 +22,7 @@ app.initCokeCodesApp=async function(){
 	// view engine setup
 	app.set('views', path.join(__dirname, 'views'));
 	app.set('view engine', 'pug');
+	app.set("AppHomePath",__dirname);
 
 	app.use(logger('dev'));
 	
