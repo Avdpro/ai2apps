@@ -14136,7 +14136,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 147,
+		"versionIdx": 150,
 		"zip": "coke.zip"
 	},
 	{
@@ -14161,12 +14161,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 95,
+		"versionIdx": 96,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 113,
+		"versionIdx": 114,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14176,7 +14176,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 31,
+		"versionIdx": 32,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14194,7 +14194,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 147,
+		"versionIdx": 150,
 		"zip": "coke.zip"
 	},
 	{
@@ -14224,7 +14224,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 31,
+		"versionIdx": 32,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14242,7 +14242,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 147,
+		"versionIdx": 150,
 		"zip": "coke.zip"
 	},
 	{
@@ -14257,7 +14257,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 31,
+		"versionIdx": 32,
 		"zip": "aichat.zip"
 	},
 	{
@@ -14267,7 +14267,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-PVHome",
-		"versionIdx": 3,
+		"versionIdx": 4,
 		"zip": "PVHome.zip"
 	}
 ];
@@ -14336,15 +14336,19 @@ appCfg.proxyCfg=function(proxy){
 if(location.host.startsWith("pv.")){
 	appCfg.isPreview=true;
 	appCfg.diskInfo=previewDiskInfo;
+	appCfg.minCokeVsn=149;
 }else if(VFACT.appParams.key&&VFACT.appParams.slot&&VFACT.appParams.userId){
 	appCfg.isPreview=true;
 	appCfg.diskInfo=previewDiskInfo;
+	appCfg.minCokeVsn=148;
 }else if(window.screen.width<500){
 	appCfg.isMobile=true;
 	appCfg.diskInfo=mobileDiskInfo;
+	appCfg.minCokeVsn=148;
 }else {
 	appCfg.isMobile=false;
 	appCfg.diskInfo=diskInfo;
+	appCfg.minCokeVsn=148;
 }
 /*Cody Project Doc*/
 //{
@@ -14919,9 +14923,16 @@ dataSetup.checkDisks=async function(logger,checkVersion=true){
 	let list,vo;
 	list=appCfg.diskInfo;
 	for(vo of list){
-		if(!await this.checkDiskVersion(vo.name,checkVersion?vo.versionIdx:1)){
-			logger.log("Disk "+vo.name+": Failed.");
-			return false;
+		if(!checkVersion && vo.name==="coke"){
+			if(!await this.checkDiskVersion(vo.name,appCfg.minCokeVsn)){
+				logger.log("Disk "+vo.name+": Failed.");
+				return false;
+			}
+		}else {
+			if(!await this.checkDiskVersion(vo.name,checkVersion?vo.versionIdx:1)){
+				logger.log("Disk "+vo.name+": Failed.");
+				return false;
+			}
 		}
 		logger.log("Disk "+vo.name+": OK.");
 	}
@@ -15758,7 +15769,7 @@ dataSetup.installPackage=async function(tty,pkgName,curDisk="coke",options={}){
 //					"type": "objclass",
 //					"def": "ObjClass",
 //					"jaxId": "1GFLV36AF0",
-//					"editVersion": 24,
+//					"editVersion": 26,
 //					"attrs": {
 //						"constructArgs": {
 //							"type": "object",
@@ -17003,7 +17014,7 @@ let MainUI=function(app){
 	cssVO.maybeInstall=async function(){
 		let checkVersion;
 		if(appCfg.isPreview){
-			checkVersion=true;
+			checkVersion=false;
 		}else if(appCfg.isMobile){
 			checkVersion=true;
 		}else {
@@ -17229,6 +17240,10 @@ let MainUI=function(app){
 //			"editVersion": 0,
 //			"attrs": {}
 //		},
+//		"segs": {
+//			"type": "array",
+//			"attrs": []
+//		},
 //		"exportTarget": "\"jax\"",
 //		"gearName": "",
 //		"gearIcon": "gears.svg",
@@ -17342,7 +17357,7 @@ let MainUI=function(app){
 //							"type": "hudobj",
 //							"def": "text",
 //							"jaxId": "1GG1LG6II0",
-//							"editVersion": 21,
+//							"editVersion": 22,
 //							"attrs": {
 //								"properties": {
 //									"type": "object",
@@ -17509,7 +17524,7 @@ let MainUI=function(app){
 //											"type": "hudobj",
 //											"def": "box",
 //											"jaxId": "1GFLTTKRI0",
-//											"editVersion": 22,
+//											"editVersion": 23,
 //											"attrs": {
 //												"properties": {
 //													"type": "object",
@@ -17872,7 +17887,7 @@ let MainUI=function(app){
 //															"type": "hudobj",
 //															"def": "text",
 //															"jaxId": "1GFLU72L70",
-//															"editVersion": 22,
+//															"editVersion": 23,
 //															"attrs": {
 //																"properties": {
 //																	"type": "object",
@@ -18035,7 +18050,7 @@ let MainUI=function(app){
 //											"type": "hudobj",
 //											"def": "hud",
 //											"jaxId": "1GFLUAVAR0",
-//											"editVersion": 24,
+//											"editVersion": 25,
 //											"attrs": {
 //												"properties": {
 //													"type": "object",
@@ -18159,7 +18174,7 @@ let MainUI=function(app){
 //											"type": "hudobj",
 //											"def": "hud",
 //											"jaxId": "1GKJRQNAK0",
-//											"editVersion": 22,
+//											"editVersion": 23,
 //											"attrs": {
 //												"properties": {
 //													"type": "object",
@@ -18202,7 +18217,7 @@ let MainUI=function(app){
 //															"type": "hudobj",
 //															"def": "box",
 //															"jaxId": "1GKJS0SDA0",
-//															"editVersion": 22,
+//															"editVersion": 23,
 //															"attrs": {
 //																"properties": {
 //																	"type": "object",
@@ -18577,7 +18592,7 @@ let MainUI=function(app){
 //																			"type": "hudobj",
 //																			"def": "box",
 //																			"jaxId": "1GKJSP42O0",
-//																			"editVersion": 21,
+//																			"editVersion": 22,
 //																			"attrs": {
 //																				"properties": {
 //																					"type": "object",
