@@ -10549,6 +10549,7 @@ VFACTObj.setupDocker=setupDocker;
 			css=defFunc(obj,i,view);
 			if(css){
 				css.position="relative";
+				css.dataObj=obj;
 				item=view.appendNewChild(css);
 				if(watchFunc && watchFunc(item)===false){
 					view.removeChild(item);
@@ -10558,6 +10559,73 @@ VFACTObj.setupDocker=setupDocker;
 			}
 		}
 		return items;
+	};
+
+	//------------------------------------------------------------------------
+	VFACT.syncDataList2View=function(view,list,defFunc,clear=false){
+		let items,obj,css,i,n,j,m,item,bkItems,idx,nxt,rItems;
+		if((!view)||(!list)||(!defFunc)){
+			if(view && clear){
+				view.clearChildren();
+			}
+			return [];
+		}
+		if(clear){
+			return VFACT.dataList2View(view,list,defFunc,true,null);
+		}
+		rItems=[];
+		bkItems=[];
+		n=list.length;
+		for(i=0;i<n;i++){
+			obj=list[i];
+			item=items[i];
+			nxt=items[i+1]||null;
+			if(item.dataObj===obj){
+				rItems.push(item);
+				continue;
+			}
+			
+			//Check back-up:
+			idx=bkItems.findIdx((hud)=>hud.dataObj===obj);
+			if(idx>=0){
+				item=bkItems[item];
+				bkItems.splice(idx,1);
+				view.insertBefore(item,nxt);
+				item.release();
+				rItems.push(item);
+			}
+			item.hold();
+			bkItems.push(item);
+			view.removeChild(item);
+			items=view.children;
+			m=items.length;
+			//Check reset items:
+			for(j=i;j<m;j++){
+				item=items[j];
+				if(item.dataObj===obj){
+					item.hold();
+					view.removeChild(item);
+					view.insertBefore(item,nxt);
+					item.release();
+					rItems.push(item);
+					break;
+				}
+			}
+			//Create new item:			
+			css=defFunc(obj,i,view);
+			if(css){
+				css.position="relative";
+				css.dataObj=obj;
+				item=view.appendNewChild(css);
+				rItems.push(item);
+			}
+		}
+		n=bkItems.length;
+		for(i=0;i<n;i++){
+			bkItems[i].release();
+		}
+		bkItems.splice(0);
+		return rItems;
 	};
 }
 
@@ -13445,6 +13513,9 @@ let initApp=async function(appObj,uiDef,opts={}){
 				return dlgHash[url];
 			}
 			try{
+				if(!url.startsWith("/")){
+					url=appObj.path2AppURL(url);
+				}
 				dlgHash[url]=(await import(url)).default;
 			}catch(err){
 				return null;
@@ -14136,7 +14207,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 150,
+		"versionIdx": 156,
 		"zip": "coke.zip"
 	},
 	{
@@ -14166,7 +14237,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 114,
+		"versionIdx": 115,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14194,7 +14265,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 150,
+		"versionIdx": 156,
 		"zip": "coke.zip"
 	},
 	{
@@ -14242,7 +14313,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 150,
+		"versionIdx": 156,
 		"zip": "coke.zip"
 	},
 	{
@@ -14267,7 +14338,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-PVHome",
-		"versionIdx": 4,
+		"versionIdx": 9,
 		"zip": "PVHome.zip"
 	}
 ];
