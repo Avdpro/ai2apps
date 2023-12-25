@@ -544,7 +544,7 @@ self.addEventListener('fetch', async (evt)=>{
 	function checkLeadDiskPath(urlObj,lead,disk,prefix=""){
 		let refFile,pos;
 		let pathname;
-		pathname=urlObj.pathname;
+		pathname=decodeURI(urlObj.pathname);
 		if(!pathname.startsWith(lead)){
 			return false;
 		}
@@ -579,7 +579,8 @@ self.addEventListener('fetch', async (evt)=>{
 	function checkLeadPath(urlObj,lead) {
 		let ref, pkgText, refFile, dir, pos;
 		let pathname, disk, diskStore,refPathName;
-		pathname = urlObj.pathname;
+		//pathname = urlObj.pathname;
+		pathname=decodeURI(urlObj.pathname);
 		if (!pathname.startsWith(lead)) {
 			return false;
 		}
@@ -767,18 +768,6 @@ self.addEventListener('fetch', async (evt)=>{
 		if(checkLeadDiskPath(reqURLObj,'/jaxweb/',"-jaxweb","")){
 			return;
 		}
-		/*if(checkLeadDiskPath(reqURLObj,'/jaxweb/lib/',"-jaxweb","lib/")){
-			return;
-		}
-		if(checkLeadDiskPath(reqURLObj,'/jaxweb/assets/',"-jaxweb","assets/")){
-			return;
-		}
-		if(checkLeadDiskPath(reqURLObj,'/jaxweb/extern/',"-jaxweb","extern/")){
-			return;
-		}
-		if(checkLeadDiskPath(reqURLObj,'/jaxweb/utils/',"-jaxweb","utils/")){
-			return;
-		}*/
 	}
 	
 	evt.respondWith(fetch(evt.request));

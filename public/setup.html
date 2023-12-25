@@ -3469,7 +3469,7 @@ cokeNT.getLastAccount=function(){
 
 //----------------------------------------------------------------------------
 //Check if logined://
-cokeNT.checkLogin=async function(readInfo=false){
+cokeNT.checkLogin=async function(readInfo=false,checkNT=false){
 	let loginVO,time;
 	if(this.checkLoginTimer){
 		clearTimeout(this.checkLoginTimer);
@@ -3499,6 +3499,20 @@ cokeNT.checkLogin=async function(readInfo=false){
 		return false;
 	}
 	this.loginVO=loginVO;
+	if(checkNT){
+		let res;
+		try{
+			res=await this.makeCall("userCurrency",{});
+			if(!res || res.code!==200){
+				throw "Offline";
+			}
+		}catch(err){
+			this.loginDone=0;
+			this.emitNotify("Offline");
+			localStorage.removeItem("LoginVO");
+			return false;
+		}
+	}
 	if(!this.loginDone){
 		this.loginDone=1;
 		this.emitNotify("Online");
@@ -9284,6 +9298,8 @@ function setupButton(typeDef){
 	
 	let _OnMouseDown,_OnMouseEnter,_OnMouseLeave,_OnMouseUp,_OnMouseUpOut,_OnContextMenu;
 	typeDef.allocPptIdx("OnMouseDown");
+	let lastDownX,lastDownY;
+	const MOVE_GAP=70;
 	
 	_OnMouseDown=function(valMap,evt){
 		if(!valMap[pptEnableIdx]){
@@ -9303,6 +9319,8 @@ function setupButton(typeDef){
 			evt.stopPropagation();
 		}else {
 			let overcall;
+			lastDownX=evt.x;
+			lastDownY=evt.y;
 			overcall=valMap[pptOnButtonDownIdx];
 			if(overcall && overcall(1,evt)){
 				return;
@@ -9368,10 +9386,18 @@ function setupButton(typeDef){
 	};
 	
 	_OnMouseUp=function(valMap,evt){
+		let dx,dy;
 		if(!valMap[pptEnableIdx]){
 			return;
 		}
 		if(!valMap[pptIsPenDownIdx]){
+			return;
+		}
+		dx=evt.x-lastDownX;
+		dy=evt.y-lastDownY;
+		dx=dx<0?-dx:dx;
+		dy=dy<0?-dy:dy;
+		if(dx+dy>MOVE_GAP){
 			return;
 		}
 		/*if(evt.target!==valMap[pptWebObjIdx]){
@@ -14207,17 +14233,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 159,
+		"versionIdx": 164,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 64,
+		"versionIdx": 66,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14237,7 +14263,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 116,
+		"versionIdx": 118,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14247,12 +14273,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 32,
+		"versionIdx": 39,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 86,
+		"versionIdx": 91,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14265,17 +14291,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 159,
+		"versionIdx": 164,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 64,
+		"versionIdx": 66,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14295,12 +14321,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 32,
+		"versionIdx": 39,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 86,
+		"versionIdx": 91,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14313,32 +14339,32 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 159,
+		"versionIdx": 164,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 64,
+		"versionIdx": 66,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 32,
+		"versionIdx": 39,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 86,
+		"versionIdx": 91,
 		"zip": "StdUI.zip"
 	},
 	{
 		"name": "-PVHome",
-		"versionIdx": 9,
+		"versionIdx": 10,
 		"zip": "PVHome.zip"
 	}
 ];
