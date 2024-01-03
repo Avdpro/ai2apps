@@ -79,7 +79,7 @@ export default function(app,router,apiMap) {
 		
 		//-------------------------------------------------------------------
 		apiMap['readAIChatStream'] = async function (req, res, next) {
-			let reqVO, streamId, streamVO, textRead, textGot, pms, functionCall;
+			let reqVO, streamId, streamVO, textRead, textGot, pms, functionCall,toolCalls;
 			reqVO = req.body.vo;
 			streamId = reqVO.streamId;
 			if (!streamId) {
@@ -92,15 +92,21 @@ export default function(app,router,apiMap) {
 				return;
 			}
 			functionCall=streamVO.functionCall;
+			toolCalls=streamVO.toolCalls;
 			if(functionCall){
 				textGot = JSON.stringify(functionCall);
+			}else if(toolCalls){
+				textGot = JSON.stringify(toolCalls);
+			
 			}else{
-				textGot = streamVO.textGot;
+				textGot = streamVO.content;
 			}
 			textRead = streamVO.textRead;
 			if (textRead !== textGot || streamVO.closed) {
 				if(functionCall){
 					res.json({ code: 200, message: textGot, closed: streamVO.closed, functionCall: functionCall});
+				}else if(toolCalls){
+					res.json({ code: 200, message: textGot, closed: streamVO.closed, toolCalls: toolCalls});
 				}else {
 					res.json({ code: 200, message: textGot, closed: streamVO.closed });
 				}
@@ -113,7 +119,8 @@ export default function(app,router,apiMap) {
 				streamVO.errorFunc = reject;
 			})
 			await pms;
-			streamVO.textRead = streamVO.textGot;
+			textGot = streamVO.content;
+			streamVO.textRead = textGot;
 			res.json({ code: 200, message: textGot, closed: streamVO.closed });
 		};
 		
