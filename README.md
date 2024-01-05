@@ -34,7 +34,7 @@ PORT=3015
 ```
 Install packages:
 ```
-nmp install
+npm install
 ```
 Start the service:
 ```
