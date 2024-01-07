@@ -1,16 +1,15 @@
-import { Configuration, OpenAIApi } from "openai";
+import OpenAI from "openai";
 import {encode} from "gpt-3-encoder";
 import {proxyCall} from "../util/ProxyCall.js";
 import { Readable } from "stream"
 import followRedirects from "follow-redirects";
 
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY;
-let configuration,openAI;
+let openAI;
 if(OPENAI_API_KEY && OPENAI_API_KEY!=="[YOUR OPENAI KEY]") {
-	configuration = new Configuration({
-		apiKey: OPENAI_API_KEY,
+	openAI = new OpenAI({
+		apiKey:OPENAI_API_KEY,
 	});
-	openAI = new OpenAIApi(configuration);
 }else{
 	openAI=null;
 }
@@ -68,6 +67,27 @@ function tokenForMessages(messages,list){
 //---------------------------------------------------------------------------
 //API for AI calls
 export default function(app,router,apiMap) {
+	
+	//-----------------------------------------------------------------------
+	async function getUserInfo (req, userId, token, projection) {
+		return null;
+	}
+	
+	//-----------------------------------------------------------------------
+	async function checkAITokenCall (userInfo, platform, model) {
+		return { code: 200 };
+	}
+
+	//-----------------------------------------------------------------------
+	async function useAITokens (userInfo, platform, model, usageVO) {
+		return null;
+	}
+	
+	//-----------------------------------------------------------------------
+	async function chargePointsByChat (userInfo, messages, replay, platform, model) {
+		return;
+	}
+	
 	//***********************************************************************
 	//Basic AI Calls:
 	//***********************************************************************
@@ -125,6 +145,64 @@ export default function(app,router,apiMap) {
 		};
 		
 		//-------------------------------------------------------------------
+		let AICall = async function (callAIObj, req, res) {
+			let reqVO;
+			let platform;
+			let callVO, rawResVO, resVO;
+			reqVO = req.body.vo;
+			
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			//Make AI-Call:
+			switch (platform) {
+				case "OpenAI": {
+					callVO = callAIObj.buildCallVO(reqVO);
+					console.log(callVO);
+					//Check gas
+					{
+						resVO = await checkAITokenCall(null, platform, callVO.model);
+						if (resVO.code !== 200) {
+							res.json(resVO);
+							return;
+						}
+					}
+					
+					try {
+						let content="";
+						try {
+							rawResVO = await openAI.chat.completions.create(callVO, {});
+						}catch(error){
+							if (error instanceof OpenAI.APIError) {
+								console.error(error.status);  // e.g. 401
+								console.error(error.message); // e.g. The authentication token you passed was invalid...
+								console.error(error.code);  // e.g. 'invalid_api_key'
+								console.error(error.type);  // e.g. 'invalid_request_error'
+								res.json({code: error.status,info:`Error ${error.code}(error.type): ${error.message}`});
+							} else {
+								// Non-API error
+								console.log(error);
+								res.json({code: 500,info:`openAI.chat.completions.create error: ${""+error}`});
+							}
+							return;
+						}
+						content=rawResVO.choices[0].message;
+						resVO = { code: 200,message:content};
+						res.json(resVO);
+						
+						//Charge user token:
+						chargePointsByChat(null, callVO.messages, content, platform, callVO.model);
+					} catch (err) {
+						console.log(err);
+					}
+					return;
+				}
+				default: {
+					res.json({ code: 405, info: `Platform ${platform} is not supported.` });
+					return;
+				}
+			}
+		};
+		
+		//-------------------------------------------------------------------
 		let AIStreamCall = async function (callAIObj, req, res) {
 			let reqVO, needRawResponse;
 			let platform;
@@ -132,21 +210,42 @@ export default function(app,router,apiMap) {
 			reqVO = req.body.vo;
 			needRawResponse = !!reqVO.rawResponse;
 			
-			platform = reqVO.platform || "OpenAI";//Only OpenAI supported.
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
 			switch (platform) {
 				case "OpenAI": {
 					callVO = callAIObj.buildCallVO(reqVO);
+					//console.log(callVO);
+					//Check gas
+					{
+						resVO = await checkAITokenCall(null, platform, callVO.model);
+						if (resVO.code !== 200) {
+							res.json(resVO);
+							return;
+						}
+					}
 					
 					try {
-						let streamVO, streamId;
+						let streamVO, streamId,chatStream;
 						let dataLeft="";
 						callVO.stream = true;
-						console.log("AI Call VO:");
-						console.log(callVO);
-						rawResVO = await openAI.createChatCompletion(callVO, { responseType: 'stream' });
-						if (rawResVO.status !== 200) {
-							throw rawResVO;
+						//console.log("Call Code VO:");
+						//console.log(callVO);
+						try {
+							chatStream = await openAI.chat.completions.create(callVO, { responseType: 'stream' });
+						}catch(error){
+							if (error instanceof OpenAI.APIError) {
+								console.error(error.status);  // e.g. 401
+								console.error(error.message); // e.g. The authentication token you passed was invalid...
+								console.error(error.code);  // e.g. 'invalid_api_key'
+								console.error(error.type);  // e.g. 'invalid_request_error'
+								res.json({code: error.status,info:`Error ${error.code}(error.type): ${error.message}`});
+							} else {
+								// Non-API error
+								console.log(error);
+								res.json({code: 500,info:`openAI.chat.completions.create error: ${""+error}`});
+							}
+							return;
 						}
 						
 						streamId = getStreamId();
@@ -161,112 +260,80 @@ export default function(app,router,apiMap) {
 							timer: null
 						}
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-						rawResVO.data.on('data', (data) => {
-							let txtData,lineText;
-							let pts, pos, choices, choice0, delta, content, func, funcCall, toolCalls;
-							txtData = data.toString().trim();
-							//console.log(txtData);
-							//console.log(rawResVO);
-							clearTimeout(streamVO.timer);
-							if(dataLeft) {
-								txtData = dataLeft + txtData;
-							}
-							pts = txtData.split("\n\n");
-							for (txtData of pts) {
-								if (txtData.endsWith("[DONE]")) {
-									let func;
-									streamVO.closed = true;
-									func = streamVO.waitFunc;
-									if (func) {
-										streamVO.waitFunc = null;
-										func();
-									}
-									console.log("Fin: "+streamVO.content);
-									//charge points by chat:
-									//chargePointsByChat(userInfo, callVO.messages, streamVO.content, platform, callVO.model);
-								} else {
-									lineText=txtData;
-									pos = txtData.indexOf("{");
-									if (pos > 0) {
-										txtData = txtData.substring(pos);
-										try {
-											data = JSON.parse(txtData);
-											dataLeft="";
-											choices = data.choices;
-											if (choices) {
-												choice0 = choices[0];
-												if (choice0) {
-													delta = choice0.delta;
-													if (delta) {
-														if(delta.role){
-															streamVO.role=streamVO.role?streamVO.role+delta.role:delta.role;
+						
+						resVO = { code: 200, streamId: streamId };
+						streamMap.set(streamId, streamVO);
+						res.json(resVO);
+						
+						{
+							let choice0,delta,content,funcCall,toolCalls,func;
+							for await (const part of chatStream) {
+								choice0=part.choices[0];
+								//console.log(choice0);
+								if (choice0) {
+									delta = choice0.delta;
+									if (delta) {
+										if (delta.role) {
+											streamVO.role = streamVO.role ? streamVO.role + delta.role : delta.role;
+										}
+										content = delta.content;
+										if (content) {
+											streamVO.content += content;
+										}
+										funcCall = delta.function_call;
+										if (funcCall) {
+											let stub, name, args;
+											stub = streamVO.functionCall;
+											if (!stub) {
+												stub = streamVO.functionCall = { name: "", arguments: "" };
+											}
+											name = funcCall.name;
+											args = funcCall['arguments'];
+											if (name) {
+												stub.name += funcCall.name;
+											}
+											if (args) {
+												stub["arguments"] += args;
+											}
+										}
+										//toolCalls support:
+										toolCalls = delta.tool_calls;
+										if (toolCalls) {
+											let srcList, tgtList, i, n, idx, srcStub, tgtStub, srcFunc, tgtFunc;
+											srcList = toolCalls;
+											tgtList = streamVO.toolCalls;
+											if (!tgtList) {
+												tgtList = streamVO.toolCalls = [];
+											}
+											n = srcList.length;
+											for (i = 0; i < n; i++) {
+												srcStub = srcList[i];
+												idx = srcStub.index >= 0 ? srcStub.index : i;
+												tgtStub = tgtList[idx];
+												if (!tgtStub) {
+													tgtStub = tgtList[idx] = {
+														index: idx, id: "", type: "function",
+														function: {
+															name: "", arguments: ""
 														}
-														content = delta.content;
-														if (content) {
-															streamVO.content += content;
-														}
-														funcCall=delta.function_call;
-														if(funcCall){
-															let stub,name,args;
-															stub=streamVO.functionCall;
-															if(!stub){
-																stub=streamVO.functionCall={name:"",arguments:""};
-															}
-															name=funcCall.name;
-															args=funcCall["arguments"];
-															if(name){
-																stub.name+=funcCall.name;
-															}
-															if(args){
-																stub["arguments"]+=args;
-															}
-														}
-														//toolCalls support:
-														toolCalls=delta.tool_calls;
-														if(toolCalls){
-															let srcList,tgtList,i,n,idx,srcStub,tgtStub,srcFunc,tgtFunc;
-															srcList=toolCalls;
-															tgtList=streamVO.toolCalls;
-															if(!tgtList){
-																tgtList=streamVO.toolCalls=[];
-															}
-															n=srcList.length;
-															for(i=0;i<n;i++){
-																srcStub=srcList[i];
-																idx=srcStub.index>=0?srcStub.index:i;
-																tgtStub=tgtList[idx];
-																if(!tgtStub){
-																	tgtStub=tgtList[idx]={
-																		index:idx,id:"",type:"function",
-																		function:{
-																			name:"",arguments:""
-																		}
-																	};
-																}
-																if("index" in srcStub){
-																	tgtStub.index=srcStub.index;
-																}
-																if("id" in srcStub){
-																	tgtStub.id+=srcStub.id;
-																}
-																if("type" in srcStub){
-																	tgtStub.type="function";//srcStub.type;
-																}
-																srcFunc=srcStub.function;
-																tgtFunc=tgtStub.function;
-																if(srcFunc){
-																	tgtFunc.name+=srcFunc.name||"";
-																	tgtFunc.arguments+=srcFunc["arguments"]||"";
-																}
-															}
-														}
-													}
+													};
+												}
+												if ("index" in srcStub) {
+													tgtStub.index = srcStub.index;
+												}
+												if ("id" in srcStub) {
+													tgtStub.id += srcStub.id;
+												}
+												if ("type" in srcStub) {
+													tgtStub.type = "function";//srcStub.type;
+												}
+												srcFunc = srcStub.function;
+												tgtFunc = tgtStub.function;
+												if (srcFunc) {
+													tgtFunc.name += srcFunc.name || "";
+													tgtFunc["arguments"] += srcFunc["arguments"] || "";
 												}
 											}
-										}catch(err){
-											//console.log("Error parse stream: ");
-											//console.log(txtData);
-											dataLeft=lineText;
 										}
 									}
 								}
@@ -278,14 +345,16 @@ export default function(app,router,apiMap) {
 									}
 								}
 							}
-							streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-						});
-						resVO = { code: 200, streamId: streamId };
-						streamMap.set(streamId, streamVO);
-						if (needRawResponse) {
-							resVO.rawResponse = rawResVO;
+							streamVO.closed = true;
+							func = streamVO.waitFunc;
+							if (func) {
+								streamVO.waitFunc = null;
+								func();
+							}
+							//console.log("Fin: "+streamVO.content);
+							//charge points by chat:
+							chargePointsByChat(null, callVO.messages, streamVO.content, platform, callVO.model);
 						}
-						res.json(resVO);
 					} catch (err) {
 						console.log(err);
 						throw err;
@@ -299,6 +368,7 @@ export default function(app,router,apiMap) {
 			}
 		};
 		
+		//-------------------------------------------------------------------
 		let plainCall = {
 			buildCallVO (reqVO) {
 				let callVO = {
@@ -309,11 +379,10 @@ export default function(app,router,apiMap) {
 					n: reqVO.best_of || reqVO.n || 1,
 					frequency_penalty: reqVO.frequency_penalty || 0,
 					presence_penalty: reqVO.presence_penalty || 0,
-					//response_format:reqVO.responseFormat||"text",
 					messages: reqVO.messages,
 				};
-				if(reqVO.responseFormat && reqVO.responseFormat!=="text"){
-					callVO.response_format=reqVO.responseFormat;
+				if(reqVO.response_format && reqVO.response_format!=="text"){
+					callVO.response_format={type:reqVO.response_format};
 				}
 				if(reqVO.seed!==undefined){
 					let seed=parseInt(reqVO.seed);
@@ -343,6 +412,11 @@ export default function(app,router,apiMap) {
 			}
 		};
 		
+		//-------------------------------------------------------------------
+		apiMap['AICall'] = async function (req, res, next) {
+			return await AICall(plainCall, req, res);
+		};
+
 		//-------------------------------------------------------------------
 		apiMap['AICallStream'] = async function (req, res, next) {
 			let reqVO = req.body.vo;
@@ -394,145 +468,84 @@ export default function(app,router,apiMap) {
 		
 		//-------------------------------------------------------------------
 		apiMap['AIDraw']=async function (req,res,next){
-			let reqVO, needRawResponse;
+			let reqVO;
 			let platform;
 			let callVO, resVO;
 			let prompt,model,img,size;
 			reqVO = req.body.vo;
-			needRawResponse = !!reqVO.rawResponse;
 			
-			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			platform = reqVO.platform;
 			model=reqVO.model||"dall-e-3";
 			prompt= reqVO.prompt;
 			size=reqVO.size||"1024x1024";
-			
-			callVO={
-				model: model,
-				prompt: prompt,
-				n: 1,
-				size: size,
-				response_format:"b64_json"
-			};
-			if(reqVO.seed!==undefined){
-				let seed=parseInt(reqVO.seed);
-				if(seed>=0) {
-					callVO.seed = seed;
-				}
-			}
-			const response = await openAI.createImage(callVO);
-			img = response.data.data[0].b64_json;
-			resVO={code: 200, img: img};
-			if(needRawResponse){
-				resVO.rawResponse=response;
-			}
-			res.json(resVO);
-		};
-		
-		//-------------------------------------------------------------------
-		//NOTE: Not working... will fix later
-		apiMap['AIEditDraw']=async function (req,res,next){
-			let reqVO, userId, token, needRawResponse;
-			let platform;
-			let callVO, resVO;
-			let prompt,model,img,size;
-			let orgImg,mskImg;
-			reqVO = req.body.vo;
-			needRawResponse = !!reqVO.rawResponse;
-			
-			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
-			model=reqVO.model||"dall-e-2";
-			prompt= reqVO.prompt;
-			size=reqVO.size||"1024x1024";
-			orgImg=reqVO.image;
-			if(!orgImg){
-				res.json({ code: 400, info: "Missing image to edit." });
-				return;
-			}
-			mskImg=reqVO.mask;
-			
-			callVO={
-				model: model,
-				image:orgImg,
-				prompt: prompt,
-				n: 1,
-				size: size,
-				response_format:"b64_json"
-			};
-			if(mskImg){
-				callVO.mask=mskImg;
-			}
-			if(reqVO.seed!==undefined){
-				let seed=parseInt(reqVO.seed);
-				if(seed>=0) {
-					callVO.seed = seed;
-				}
-			}
-			const response = await openAI.createImageEdit(callVO);
-			//console.log(response);
-			//console.log(response.data.data[0].b64_json);
-			img = response.data.data[0].b64_json;
-			resVO={code: 200, img: img, revised_prompt:response.data.data[0].revised_prompt};
-			if(needRawResponse){
-				resVO.rawResponse=response;
-			}
-			res.json(resVO);
-		};
-		
-		//-------------------------------------------------------------------
-		//NOTE: Not working... will fix later
-		apiMap['AIDrawVariation']=async function (req,res,next){
-			let reqVO, needRawResponse;
-			let platform;
-			let callVO, resVO;
-			let model,orgImg,img,size;
-			reqVO = req.body.vo;
-			needRawResponse = !!reqVO.rawResponse;
-			
-			function createStreamFromBase64(base64String) {
-				const buffer = Buffer.from(base64String, 'base64');
-				const stream = Readable.from(buffer);
-				return stream;
-			}
-			
-			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
-			model=reqVO.model||"dall-e-2";
-			size=reqVO.size||"1024x1024";
-			orgImg=reqVO.image;
-			if(!orgImg){
-				res.json({ code: 400, info: "Missing image to edit." });
-				return;
-			}
-			{
-				let pos=orgImg.indexOf("base64,");
-				if(pos>=0){
-					orgImg=orgImg.substring(pos+7);
-				}
-				orgImg=createStreamFromBase64(orgImg);
-			}
-			
-			callVO={
-				model: model,
-				image: orgImg,
-				n: 1,
-				size: size,
-				response_format:"b64_json"
-			};
-			if(reqVO.seed!==undefined){
-				let seed=parseInt(reqVO.seed);
-				if(seed>=0) {
-					callVO.seed = seed;
-				}
-			}
-			
-			const response = await openAI.createImageVariation(orgImg,1,size,"b64_json");
-			img = response.data.data[0].b64_json;
-			resVO={code: 200, img: img, revised_prompt:response.data.data[0].revised_prompt};
-			if(needRawResponse){
-				resVO.rawResponse=response;
-			}
-			res.json(resVO);
-		};
 
+			if(!platform){
+				switch(model){
+					case "dall-e-3":
+						platform="OpenAI";
+						break;
+					case "dall-e-2":
+						platform="OpenAI";
+						break;
+					default:
+						platform="OpenAI";
+						break;
+				}
+			}
+			
+			//Check gas
+			{
+				resVO = await checkAITokenCall(null, platform, model);
+				if (resVO.code !== 200) {
+					res.json(resVO);
+					return;
+				}
+			}
+			switch(platform){
+				case "OpenAI":{
+					callVO={
+						model: model,
+						prompt: prompt,
+						n: 1,
+						size: size,
+						response_format:"b64_json"
+					};
+					if(reqVO.seed!==undefined){
+						let seed=parseInt(reqVO.seed);
+						if(seed>=0) {
+							callVO.seed = seed;
+						}
+					}
+					try {
+						const response = await openAI.images.generate(callVO);
+						img = response.data[0].b64_json;
+						resVO = { code: 200, img: img};
+						res.json(resVO);
+					}catch(error){
+						if (error instanceof OpenAI.APIError) {
+							console.error(error.status);  // e.g. 401
+							console.error(error.message); // e.g. The authentication token you passed was invalid...
+							console.error(error.code);  // e.g. 'invalid_api_key'
+							console.error(error.type);  // e.g. 'invalid_request_error'
+							res.json({code: error.status,info:`Error ${error.code}(error.type): ${error.message}`});
+						} else {
+							// Non-API error
+							console.log(error);
+							res.json({code: 500,info:`openAI.chat.completions.create error: ${""+error}`});
+						}
+						return;
+					}
+					//charge points by chat:
+					chargePointsByChat(null, prompt, "", platform, model);
+					return;
+				}
+				default: {
+					res.json({code: 400,info:`Platform: ${platform} not supported.`});
+					return;
+				}
+			}
+		};
+		
 		//-------------------------------------------------------------------
 		apiMap['AITTS']=async function (req,res,next){
 			let reqVO;

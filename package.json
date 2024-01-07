@@ -11,11 +11,12 @@
     "debug": "~2.6.9",
     "dotenv": "^16.0.3",
     "express": "~4.16.1",
+    "follow-redirects": "^1.15.4",
     "gpt-3-encoder": "^1.1.4",
     "http-errors": "~1.6.3",
     "morgan": "~1.9.1",
     "node-fetch": "^3.3.2",
-    "openai": "^3.3.0",
+    "openai": "^4.0.0",
     "pug": "2.0.0-beta11",
     "unzipper": "^0.10.14"
   },
