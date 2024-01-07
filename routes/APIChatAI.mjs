@@ -140,6 +140,7 @@ export default function(app,router,apiMap) {
 					
 					try {
 						let streamVO, streamId;
+						let dataLeft="";
 						callVO.stream = true;
 						console.log("AI Call VO:");
 						console.log(callVO);
@@ -151,7 +152,8 @@ export default function(app,router,apiMap) {
 						streamId = getStreamId();
 						streamVO = {
 							streamId,
-							textGot: "",
+							role:"",
+							content: "",
 							textRead: "",
 							closed: false,
 							waitFunc: null,
@@ -160,12 +162,15 @@ export default function(app,router,apiMap) {
 						}
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
 						rawResVO.data.on('data', (data) => {
-							let txtData;
+							let txtData,lineText;
 							let pts, pos, choices, choice0, delta, content, func, funcCall, toolCalls;
 							txtData = data.toString().trim();
-							//console.log(JSON.stringify(txtData));
+							//console.log(txtData);
 							//console.log(rawResVO);
 							clearTimeout(streamVO.timer);
+							if(dataLeft) {
+								txtData = dataLeft + txtData;
+							}
 							pts = txtData.split("\n\n");
 							for (txtData of pts) {
 								if (txtData.endsWith("[DONE]")) {
@@ -176,21 +181,29 @@ export default function(app,router,apiMap) {
 										streamVO.waitFunc = null;
 										func();
 									}
+									console.log("Fin: "+streamVO.content);
+									//charge points by chat:
+									//chargePointsByChat(userInfo, callVO.messages, streamVO.content, platform, callVO.model);
 								} else {
+									lineText=txtData;
 									pos = txtData.indexOf("{");
 									if (pos > 0) {
 										txtData = txtData.substring(pos);
 										try {
 											data = JSON.parse(txtData);
+											dataLeft="";
 											choices = data.choices;
 											if (choices) {
 												choice0 = choices[0];
 												if (choice0) {
 													delta = choice0.delta;
 													if (delta) {
+														if(delta.role){
+															streamVO.role=streamVO.role?streamVO.role+delta.role:delta.role;
+														}
 														content = delta.content;
 														if (content) {
-															streamVO.textGot += content;
+															streamVO.content += content;
 														}
 														funcCall=delta.function_call;
 														if(funcCall){
@@ -251,12 +264,13 @@ export default function(app,router,apiMap) {
 												}
 											}
 										}catch(err){
-											console.log("Error parse stream: ");
-											console.log(txtData);
+											//console.log("Error parse stream: ");
+											//console.log(txtData);
+											dataLeft=lineText;
 										}
 									}
 								}
-								if (streamVO.textGot !== streamVO.textRead) {
+								if (streamVO.content !== streamVO.textRead) {
 									func = streamVO.waitFunc;
 									if (func) {
 										streamVO.waitFunc = null;
