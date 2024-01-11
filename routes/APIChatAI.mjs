@@ -337,6 +337,10 @@ export default function(app,router,apiMap) {
 										}
 									}
 								}
+								if(streamVO.timer){
+									clearTimeout(streamVO.timer);
+									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+								}
 								if (streamVO.content !== streamVO.textRead) {
 									func = streamVO.waitFunc;
 									if (func) {

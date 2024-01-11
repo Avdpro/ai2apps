@@ -14235,7 +14235,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 171,
+		"versionIdx": 176,
 		"zip": "coke.zip"
 	},
 	{
@@ -14245,7 +14245,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 144,
+		"versionIdx": 146,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14265,7 +14265,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 123,
+		"versionIdx": 124,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14285,7 +14285,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-MobileHome",
-		"versionIdx": 6,
+		"versionIdx": 7,
 		"zip": "MobileHome.zip"
 	}
 ];
@@ -14293,7 +14293,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 171,
+		"versionIdx": 176,
 		"zip": "coke.zip"
 	},
 	{
@@ -14303,7 +14303,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 144,
+		"versionIdx": 146,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14333,7 +14333,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-MobileHome",
-		"versionIdx": 6,
+		"versionIdx": 7,
 		"zip": "MobileHome.zip"
 	}
 ];
@@ -14341,7 +14341,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 171,
+		"versionIdx": 176,
 		"zip": "coke.zip"
 	},
 	{
@@ -14351,7 +14351,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 144,
+		"versionIdx": 146,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14368,34 +14368,6 @@ var previewDiskInfo = [
 		"name": "-PVHome",
 		"versionIdx": 10,
 		"zip": "PVHome.zip"
-	}
-];
-
-var appsDiskInfo = [
-	{
-		"name": "coke",
-		"versionIdx": 171,
-		"zip": "coke.zip"
-	},
-	{
-		"name": "-tabos",
-		"versionIdx": 67,
-		"zip": "tabos.zip"
-	},
-	{
-		"name": "-homekit",
-		"versionIdx": 144,
-		"zip": "homekit.zip"
-	},
-	{
-		"name": "-aichat",
-		"versionIdx": 41,
-		"zip": "aichat.zip"
-	},
-	{
-		"name": "-StdUI",
-		"versionIdx": 101,
-		"zip": "StdUI.zip"
 	}
 ];
 
@@ -14463,17 +14435,12 @@ appCfg.proxyCfg=function(proxy){
 {
 	let host=location.host;
 	let pts=host.split(".");
+	let appId;
 	if(pts[1]==="apps"){
-		let appId;
 		appId=pts[0];
 		appCfg.isSetupApps=true;
 		appCfg.appId=appId;
-		appsDiskInfo.push({
-			name:`-${appId}`,
-			versionIdx:0,
-			zip:`/apps?id=${appId}`
-		});
-		appCfg.diskInfo=appsDiskInfo;
+		appCfg.diskInfo=mobileDiskInfo;
 		appCfg.minCokeVsn=149;
 	}else if(host.startsWith("pv.")){
 		appCfg.isPreview=true;
@@ -14487,10 +14454,18 @@ appCfg.proxyCfg=function(proxy){
 		appCfg.isMobile=true;
 		appCfg.diskInfo=mobileDiskInfo;
 		appCfg.minCokeVsn=148;
+		appId=VFACT.appParams.app;
+		if(appId){
+			appCfg.appId=appId;
+		}
 	}else {
 		appCfg.isMobile=false;
 		appCfg.diskInfo=diskInfo;
 		appCfg.minCokeVsn=148;
+		appId=VFACT.appParams.app;
+		if(appId){
+			appCfg.appId=appId;
+		}
 	}
 }
 /*Cody Project Doc*/
@@ -16605,7 +16580,7 @@ let MainUI=function(app){
 	//------------------------------------------------------------------------
 	cssVO.openOS=function(){
 		if(appCfg.isSetupApps){
-			document.location.href = document.location.origin + `/~/-app/app.html`;
+			document.location.href = document.location.origin + `/~/-MobileHome/app.html?app=${appCfg.appId}`;
 		}else if(appCfg.isPreview){
 			if(VFACT.appParams.userId){
 				document.location.href = document.location.origin + `/~/-PVHome/app.html?userId=${VFACT.appParams.userId}&slot=${VFACT.appParams.slot}&key=${VFACT.appParams.key}`;
@@ -16617,7 +16592,11 @@ let MainUI=function(app){
 		}else if(location.host.startsWith("pv.")){
 			document.location.href = document.location.origin + `/~/-PVHome/app.html`;
 		}else {
-			document.location.href = document.location.origin + "/@homekit";
+			if(appParams.app){
+				document.location.href = document.location.origin + `/@homekit?app=${appParams.app}`;
+			}else {
+				document.location.href = document.location.origin + "/@homekit";
+			}
 		}
 	};
 	
