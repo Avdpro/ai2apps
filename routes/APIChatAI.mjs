@@ -631,6 +631,9 @@ export default function(app,router,apiMap) {
 				let bodyType;
 				callDone=false;
 				apiURL = reqVO.url;
+				if(process.env["WEBCALL_"+apiURL]){
+					apiURL=process.env["WEBCALL_"+apiURL];
+				}
 				httpOpts = {
 					method: reqVO.method,
 					headers: {
