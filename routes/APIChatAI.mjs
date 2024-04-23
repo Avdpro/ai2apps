@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import Anthropic from '@anthropic-ai/sdk';
+import {GoogleGenerativeAI} from "@google/generative-ai";
 import {encode} from "gpt-3-encoder";
 import {proxyCall} from "../util/ProxyCall.js";
 import { Readable } from "stream"
@@ -16,6 +18,19 @@ if(OPENAI_API_KEY && OPENAI_API_KEY!=="[YOUR OPENAI KEY]") {
 const streamMap=new Map();
 let nextStreamId=0;
 
+//---------------------------------------------------------------------------
+//Anthropic:
+const CLAUDE_API_KEY=process.env.CLAUDE_API_KEY;
+const anthropic = new Anthropic({
+	apiKey: CLAUDE_API_KEY
+});
+
+//---------------------------------------------------------------------------
+//Google:
+const GOOGLEAI_API_KEY=process.env.GOOGLEAI_API_KEY;
+const googleAI = new GoogleGenerativeAI(GOOGLEAI_API_KEY);
+const googleAIModels={};
+const DAYTIME=24*3600*1000;
 //---------------------------------------------------------------------------
 function getStreamId(){
 	nextStreamId++;
@@ -213,8 +228,76 @@ export default function(app,router,apiMap) {
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
 			switch (platform) {
+				case "Claude":{
+					let streamId,streamVO,stream,func,messages;
+					callVO = callAIObj.buildCallVO(reqVO,platform);
+					//Check gas
+					{
+						resVO = await checkAITokenCall(userInfo, platform, callVO.model);
+						if (resVO.code !== 200) {
+							res.json(resVO);
+							return;
+						}
+					}
+					try {
+						streamId = getStreamId();
+						streamVO = {
+							streamId,
+							role:"",
+							content: "",
+							textRead: "",
+							closed: false,
+							waitFunc: null,
+							errorFunc: null,
+							timer: null
+						}
+						messages=reqVO.messages;
+						if(messages[0].role==="system"){
+							callVO.system=messages[0].content;
+							messages.shift();
+						}
+						callVO.messages=messages;
+						stream = anthropic.messages
+							.stream(callVO)
+							.on('text', (text) => {
+								let func;
+								streamVO.content+=text;
+								if(streamVO.timer){
+									clearTimeout(streamVO.timer);
+									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+								}
+								if (streamVO.content !== streamVO.textRead) {
+									func = streamVO.waitFunc;
+									if (func) {
+										streamVO.waitFunc = null;
+										func();
+									}
+								}
+							});
+						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+						
+						resVO = { code: 200, streamId: streamId };
+						streamMap.set(streamId, streamVO);
+						res.json(resVO);
+
+						const message = await stream.finalMessage();
+						streamVO.closed = true;
+						func = streamVO.waitFunc;
+						if (func) {
+							streamVO.waitFunc = null;
+							func();
+						}
+						chargePointsByUsage(userInfo,message.usage.input_tokens,message.usage.output_tokens,platform,callVO.model);
+					}catch(err){
+						console.error(err);
+						if(!res.headersSent) {
+							res.json({ code: 500, err: "" + err });
+						}
+					}
+					break;
+				}
 				case "OpenAI": {
-					callVO = callAIObj.buildCallVO(reqVO);
+					callVO = callAIObj.buildCallVO(reqVO,platform);
 					//console.log(callVO);
 					//Check gas
 					{
@@ -361,7 +444,6 @@ export default function(app,router,apiMap) {
 						}
 					} catch (err) {
 						console.log(err);
-						throw err;
 					}
 					return;
 				}
@@ -369,50 +451,157 @@ export default function(app,router,apiMap) {
 					res.json({ code: 405, info: `Platform ${platform} is no supported.` });
 					return;
 				}
+				case "Google":{
+					let streamId,streamVO,stream,func;
+					callVO = callAIObj.buildCallVO(reqVO,platform);
+					try {
+						let modelName,model,chat,messages,history,result,prompt;
+						modelName=reqVO.model || 'gemini-pro';
+						model=googleAIModels[modelName];
+						if(!model){
+							model=googleAI.getGenerativeModel({model:modelName});
+							googleAIModels[modelName]=model;
+						}
+						messages=reqVO.messages;
+						history=[];
+						for(let msg of messages){
+							let role;
+							role=msg.role;
+							if(role==="system"){
+								history.push({ role: "user", parts: "Chat background: "+msg.content });
+								history.push({ role: "model", parts: "OK, let's start!"});
+							}else {
+								role = role === "user" ? "user" : "model";
+								history.push({ role: role, parts: msg.content });
+							}
+						}
+						prompt=history.pop().parts;
+						chat=model.startChat({history:history,generationConfig:callVO});
+						result = await chat.sendMessageStream(prompt);
+						
+						streamId = getStreamId();
+						streamVO = {
+							streamId,
+							role:"",
+							content: "",
+							textRead: "",
+							closed: false,
+							waitFunc: null,
+							errorFunc: null,
+							timer: null
+						}
+						resVO = { code: 200, streamId: streamId };
+						streamMap.set(streamId, streamVO);
+						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+						res.json(resVO);
+						
+						for await (const chunk of result.stream) {
+							const chunkText = chunk.text();
+							console.log(chunkText);
+							streamVO.content += chunkText;
+							if(streamVO.timer){
+								clearTimeout(streamVO.timer);
+								streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+							}
+							if (streamVO.content !== streamVO.textRead) {
+								func = streamVO.waitFunc;
+								if (func) {
+									streamVO.waitFunc = null;
+									func();
+								}
+							}
+						}
+						streamVO.closed = true;
+						func = streamVO.waitFunc;
+						if (func) {
+							streamVO.waitFunc = null;
+							func();
+						}
+					}catch(err){
+						console.error(err);
+						if(!res.headersSent) {
+							res.json({ code: 500, err: "" + err });
+						}
+					}
+				}
 			}
 		};
 		
 		//-------------------------------------------------------------------
 		let plainCall = {
-			buildCallVO (reqVO) {
-				let callVO = {
-					model: reqVO.model || "gpt-3.5-turbo",
-					temperature: reqVO.temperature || 0.7,
-					max_tokens: reqVO.max_tokens || 3092,
-					top_p: reqVO.top_p || 1,
-					n: reqVO.best_of || reqVO.n || 1,
-					frequency_penalty: reqVO.frequency_penalty || 0,
-					presence_penalty: reqVO.presence_penalty || 0,
-					messages: reqVO.messages,
-				};
-				if(reqVO.response_format && reqVO.response_format!=="text"){
-					callVO.response_format={type:reqVO.response_format};
-				}
-				if(reqVO.seed!==undefined){
-					let seed=parseInt(reqVO.seed);
-					if(seed>=0) {
-						callVO.seed = seed;
-					}
-				}
-				if(reqVO.functions){
-					if(reqVO.parallelFunction){
-						let funcStub
-						let list=reqVO.functions;
-						let tools=[];
-						for(funcStub of list){
-							tools.push({
-								type:"function",
-								function:funcStub
-							});
+			buildCallVO (reqVO,platform) {
+				switch(platform){
+					default:
+					case "OpenAI":{
+						let callVO = {
+							model: reqVO.model || "gpt-3.5-turbo",
+							temperature: reqVO.temperature || 0.7,
+							max_tokens: reqVO.max_tokens || 3092,
+							top_p: reqVO.top_p || 1,
+							n: reqVO.best_of || reqVO.n || 1,
+							frequency_penalty: reqVO.frequency_penalty || 0,
+							presence_penalty: reqVO.presence_penalty || 0,
+							messages: reqVO.messages,
+						};
+						if(reqVO.response_format && reqVO.response_format!=="text"){
+							callVO.response_format={type:reqVO.response_format};
 						}
-						callVO.tools = tools;
-						callVO.tool_choice = reqVO.function_call || "auto";
-					}else {
-						callVO.functions = reqVO.functions;
-						callVO.function_call = reqVO.function_call || "auto";
+						if(reqVO.seed!==undefined){
+							let seed=parseInt(reqVO.seed);
+							if(seed>=0) {
+								callVO.seed = seed;
+							}
+						}
+						if(reqVO.functions){
+							if(reqVO.parallelFunction){
+								let funcStub
+								let list=reqVO.functions;
+								let tools=[];
+								for(funcStub of list){
+									tools.push({
+										type:"function",
+										function:funcStub
+									});
+								}
+								callVO.tools = tools;
+								callVO.tool_choice = reqVO.function_call || "auto";
+							}else {
+								callVO.functions = reqVO.functions;
+								callVO.function_call = reqVO.function_call || "auto";
+							}
+						}
+						return callVO;
+					}
+					case "Claude":{
+						let callVO;
+						callVO={
+							model: reqVO.model || 'claude-3-sonnet-20240229',
+							max_tokens: reqVO.max_tokens || 1024,
+						};
+						if(reqVO.temperature>=0) {
+							callVO.temperature = reqVO.temperature;
+						}else if(reqVO.top_p>=0) {
+							callVO.top_p = reqVO.top_p;
+						}else{
+							callVO.temperature = 1.0;
+						}
+						return callVO;
+					}
+					case "Google":{
+						let callVO;
+						callVO={
+							maxOutputTokens: reqVO.max_tokens || 1024,
+							temperature: reqVO.temperature || 0.7,
+						};
+						if(reqVO.temperature>=0) {
+							callVO.temperature = reqVO.temperature;
+						}else if(reqVO.top_p>=0) {
+							callVO.topP = reqVO.top_p;
+						}
+						return callVO;
+						
 					}
 				}
-				return callVO;
 			}
 		};
 		

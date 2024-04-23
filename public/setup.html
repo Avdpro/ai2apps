@@ -4164,7 +4164,9 @@ VFACT={
 		lanCode=code;
 	},
 	classRegs:{
-	}
+	},
+	"sharedPath":"/~/-tabos/shared",
+	"sharedAssets":"/~/-tabos/shared/assets",
 };
 //****************************************************************************
 //shared util functions:
@@ -4189,6 +4191,9 @@ let callAfter$1;
 			return;
 		}
 		if(valMap){
+			if(valMap.$_pptMap){
+				valMap=valMap.$_pptMap;
+			}
 			window.setTimeout(()=>{
 				if(valMap[pptRefCountIdx]>0){
 					func();
@@ -4808,6 +4813,186 @@ VFACT.loadConfig=function(urlFix){
 };
 
 VFACT.loadConfig();
+
+//****************************************************************************
+//UI templates:
+//****************************************************************************
+{
+	let uiTemplates={};
+	let uiEditTemplates={};
+	VFACT.regUITemplate=function(name,template){
+		uiTemplates[name]=template;
+	};
+	VFACT.getUITemplate=function(name){
+		let def;
+		def=uiTemplates[name];
+		if(def instanceof Function){
+			return def();
+		}
+		return def;
+	};
+	VFACT.getUITemplates=function(){
+		return uiTemplates;
+	};
+
+	VFACT.regEditUITemplate=function(name,template){
+		uiEditTemplates[name]=template;
+	};
+	VFACT.getEditUITemplate=function(name){
+		let def;
+		def=uiEditTemplates[name];
+		if(def instanceof Function){
+			return def();
+		}
+		return def;
+	};
+	VFACT.getEditUITemplates=function(){
+		return uiEditTemplates;
+	};
+	
+	VFACT.newUITemplateObj=function(template){
+		let obj,ppts,pptName,pptTmp,pptType;
+		if(typeof(template)==="string"){
+			template=uiEditTemplates[template]||uiTemplates[template];
+		}
+		if(!template){
+			return null;
+		}
+		ppts=template.properties;
+		if(!ppts){
+			return {};
+		}
+		obj={};
+		for(pptName in ppts){
+			pptTmp=ppts[pptName];
+			pptType=pptTmp.type;
+			switch(pptType){
+				default:
+					obj[pptName]=pptTmp.defaultValue;
+					break;
+				case "object":
+					obj[pptName]=VFACT.newUITemplateObj(pptTmp);
+					break;
+				case "array":{
+					let ary,elmtTmpt,initLen,initVal;
+					ary=obj[pptName]=[];
+					elmtTmpt=pptTmp.element;
+					initLen=pptTmp.initLength;
+					if(initLen>0){
+						let i,elmtType,elmtClass;
+						if(elmtTmpt){
+							elmtType=elmtTmpt.type;
+							for(i=0;i<initLen;i++){
+								switch(elmtType){
+									case "auto":
+									case "string":
+									default:
+										initVal=elmtTmpt.defaultValue||"";
+										ary.push(initVal);
+										break;
+									case "int":
+									case "number":
+										initVal=elmtTmpt.defaultValue||0;
+										ary.push(initVal);
+										break;
+									case "bool":
+										initVal=elmtTmpt.defaultValue||true;
+										ary.push(initVal);
+										break;
+									case "object":
+										elmtClass=elmtTmpt.class;
+										if(elmtClass){
+											ary.push(VFACT.newUITemplateObj(elmtClass));
+										}else {
+											ary.push({});
+										}
+										break;
+									case "array":
+										ary.push([]);
+										break;
+								}
+							}
+														
+						}else {
+							for(i=0;i<initLen;i++){
+								ary.push("");	
+							}
+						}
+					}
+					break;
+				}
+			}
+		}
+		return obj;
+	};
+	
+	VFACT.genTemplateByVal=function(pptVal,pptName){
+		let pptType;
+		pptType=typeof(pptVal);
+		switch(pptType){
+			case "undefined":
+			default:
+				pptType="auto";
+				return {name:pptName,type:pptType};
+			case "string":
+				pptType="string";
+				return {name:pptName,type:pptType};
+			case "boolean":
+				pptType="bool";
+				return {name:pptName,type:pptType};
+			case "number":
+				pptType="number";
+				return {name:pptName,type:pptType};
+			case "object":
+				if(pptVal===null){
+					pptType="auto";
+					return {name:pptName,type:pptType};
+				}else if(Array.isArray(pptVal)){
+					pptType="array";
+					return {name:pptName,type:pptType};
+				}else {
+					pptType="object";
+					return {name:pptName,type:pptType,class:null};
+				}
+		}
+		return null;
+	};
+	
+	VFACT.genTemplateByObject=function(obj,name=""){
+		let pptName,pptVal,pptTmpt;
+		let ppts={};
+		let tmpt={
+			name:name,type:"object",
+			properties:ppts
+		};
+		for(pptName in obj){
+			pptVal=obj[pptName];
+			pptTmpt=VFACT.genTemplateByVal(pptVal,pptName);
+			if(pptTmpt){
+				ppts[pptName]=pptTmpt;
+			}
+		}
+		return tmpt;
+	};
+}
+
+//****************************************************************************
+//DataLine:
+//****************************************************************************
+{
+	let uiDataViewLines={};
+	VFACT.regDataViewLine=function(name,def){
+		uiDataViewLines[name]=def;
+	};
+	
+	VFACT.getDataViewLine=function(name){
+		return uiDataViewLines[name];
+	};
+	
+	VFACT.getDataViewLines=function(){
+		return uiDataViewLines;
+	};
+}
 
 let makeNotify$1;
 {
@@ -9860,15 +10045,18 @@ function setupEditCore(typeDef,isMemo){
 					selection.addRange(range);			
 				}
 			}else {
-				if(webObj.setSelectionRange){
-					webObj.setSelectionRange(0,webObj.value.length);
-				}else {
-					let myDiv = webObj;
-					let range = document.createRange();
-					range.selectNodeContents(myDiv);
-					let selection = window.getSelection();
-					selection.removeAllRanges();
-					selection.addRange(range);			
+				try{
+					if(webObj.setSelectionRange){
+						webObj.setSelectionRange(0,webObj.value.length);
+					}else {
+						let myDiv = webObj;
+						let range = document.createRange();
+						range.selectNodeContents(myDiv);
+						let selection = window.getSelection();
+						selection.removeAllRanges();
+						selection.addRange(range);			
+					}
+				}catch(err){
 				}
 			}
 		};
@@ -10501,7 +10689,7 @@ VFACTObj.setupDocker=setupDocker;
 }
 
 //****************************************************************************
-//Scroll to show item:
+//:Scroll to show item:
 //****************************************************************************
 {
 	//------------------------------------------------------------------------
@@ -10540,7 +10728,7 @@ VFACTObj.setupDocker=setupDocker;
 }
 
 //****************************************************************************
-//Fonts
+//:Fonts
 //****************************************************************************
 {
 	//------------------------------------------------------------------------
@@ -10558,7 +10746,7 @@ VFACTObj.setupDocker=setupDocker;
 }
 
 //****************************************************************************
-//ShowList
+//:ShowList
 //****************************************************************************
 {
 	//------------------------------------------------------------------------
@@ -11989,12 +12177,16 @@ var posix = {
 	},
 	
 	normalize: function normalize(path) {
+		let isAbsolute,isSuperAbsolute,trailingSeparator;
 		assertPath(path);
 		
 		if (path.length === 0) return '.';
 		
-		var isAbsolute = path.charCodeAt(0) === 47 /*/*/;
-		var trailingSeparator = path.charCodeAt(path.length - 1) === 47 /*/*/;
+		isAbsolute = path.charCodeAt(0) === 47 /*/*/;
+		if(isAbsolute){
+			isSuperAbsolute = path.charCodeAt(1) === 47 /*/*/;
+		}
+		trailingSeparator = path.charCodeAt(path.length - 1) === 47 /*/*/;
 		
 		// Normalize the path
 		path = normalizeStringPosix(path, !isAbsolute);
@@ -12002,6 +12194,7 @@ var posix = {
 		if (path.length === 0 && !isAbsolute) path = '.';
 		if (path.length > 0 && trailingSeparator) path += '/';
 		
+		if(isSuperAbsolute) return '//'+path;
 		if (isAbsolute) return '/' + path;
 		return path;
 	},
@@ -13583,23 +13776,22 @@ let initApp=async function(appObj,uiDef,opts={}){
 				dlgHud.display=true;
 				dlgLayer.appendChild(dlgHud);
 			}else if(shared){//If dialog is sharing instance, try use shared instance:
-				dlgHud=dlgFunc.sharedDlg;
+				shared=""+shared;
+				if(!dlgFunc.sharedDlgs){
+					dlgFunc.sharedDlgs={};
+				}
+				dlgHud=dlgFunc.sharedDlgs[shared];
 				if(!dlgHud) {
 					dlgCSS = dlgFunc(appObj);
 					dlgHud = dlgLayer.appendNewChild(dlgCSS);
-					if (shared) {
-						dlgFunc.sharedDlg = dlgHud;
-						dlgHud.hold();
-					}
+					dlgFunc.sharedDlgs[shared]= dlgHud;
+					dlgHud.hold();
 				}else {
 					dlgLayer.appendChild(dlgHud);
 				}
 			}else {
 				dlgCSS = dlgFunc(appObj);
 				dlgHud = dlgLayer.appendNewChild(dlgCSS);
-				if (shared) {
-					dlgFunc.sharedDlg = dlgHud;
-				}
 			}
 			if(checkBG) {
 				if (dlgHud.showDlgBGMask) {
@@ -14234,17 +14426,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 189,
+		"versionIdx": 203,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 68,
+		"versionIdx": 87,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 149,
+		"versionIdx": 160,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14259,12 +14451,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 97,
+		"versionIdx": 98,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 129,
+		"versionIdx": 140,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14274,12 +14466,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 45,
+		"versionIdx": 57,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 101,
+		"versionIdx": 279,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14292,17 +14484,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 189,
+		"versionIdx": 203,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 68,
+		"versionIdx": 87,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 149,
+		"versionIdx": 160,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14322,12 +14514,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 45,
+		"versionIdx": 57,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 101,
+		"versionIdx": 279,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14340,27 +14532,27 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 189,
+		"versionIdx": 203,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 68,
+		"versionIdx": 87,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 149,
+		"versionIdx": 160,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 45,
+		"versionIdx": 57,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 101,
+		"versionIdx": 279,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14440,19 +14632,19 @@ appCfg.proxyCfg=function(proxy){
 		appCfg.isSetupApps=true;
 		appCfg.appId=appId;
 		appCfg.diskInfo=mobileDiskInfo;
-		appCfg.minCokeVsn=149;
+		appCfg.minCokeVsn=177;
 	}else if(host.startsWith("pv.")){
 		appCfg.isPreview=true;
 		appCfg.diskInfo=previewDiskInfo;
-		appCfg.minCokeVsn=149;
+		appCfg.minCokeVsn=177;
 	}else if(VFACT.appParams.key&&VFACT.appParams.slot&&VFACT.appParams.userId){
 		appCfg.isPreview=true;
 		appCfg.diskInfo=previewDiskInfo;
-		appCfg.minCokeVsn=148;
+		appCfg.minCokeVsn=177;
 	}else if(window.screen.width<500){
 		appCfg.isMobile=true;
 		appCfg.diskInfo=mobileDiskInfo;
-		appCfg.minCokeVsn=148;
+		appCfg.minCokeVsn=177;
 		appId=VFACT.appParams.app;
 		if(appId){
 			appCfg.appId=appId;
@@ -14460,7 +14652,7 @@ appCfg.proxyCfg=function(proxy){
 	}else {
 		appCfg.isMobile=false;
 		appCfg.diskInfo=diskInfo;
-		appCfg.minCokeVsn=148;
+		appCfg.minCokeVsn=177;
 		appId=VFACT.appParams.app;
 		if(appId){
 			appCfg.appId=appId;
