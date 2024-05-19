@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
 import {GoogleGenerativeAI} from "@google/generative-ai";
+import ollama from "ollama";
+
 import {encode} from "gpt-3-encoder";
 import {proxyCall} from "../util/ProxyCall.js";
 import { Readable } from "stream"
@@ -451,6 +453,72 @@ export default function(app,router,apiMap) {
 					res.json({ code: 405, info: `Platform ${platform} is no supported.` });
 					return;
 				}
+				case "Ollama":{
+					let streamId,streamVO,chatStream,func,messages;
+					callVO = callAIObj.buildCallVO(reqVO,platform);
+					callVO.stream=true;
+					try {
+						streamId = getStreamId();
+						streamVO = {
+							streamId,
+							role:"",
+							content: "",
+							textRead: "",
+							closed: false,
+							waitFunc: null,
+							errorFunc: null,
+							timer: null
+						}
+						messages=reqVO.messages;
+						callVO.messages=messages;
+						
+						try {
+							chatStream = await ollama.chat(callVO, { responseType: 'stream' });
+						}catch(error){
+							console.log(error);
+							res.json({code: 500,info:`Ollama chat error: ${""+error}`});
+							return;
+						}
+						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+						
+						resVO = { code: 200, streamId: streamId };
+						streamMap.set(streamId, streamVO);
+						res.json(resVO);
+						
+						{
+							let content;
+							for await (const part of chatStream) {
+								content = part.message.content;
+								if (content) {
+									streamVO.content += content;
+								}
+								if(streamVO.timer){
+									clearTimeout(streamVO.timer);
+									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+								}
+								if (streamVO.content !== streamVO.textRead) {
+									func = streamVO.waitFunc;
+									if (func) {
+										streamVO.waitFunc = null;
+										func();
+									}
+								}
+							}
+						}
+						streamVO.closed = true;
+						func = streamVO.waitFunc;
+						if (func) {
+							streamVO.waitFunc = null;
+							func();
+						}
+					}catch(err){
+						console.error(err);
+						if(!res.headersSent) {
+							res.json({ code: 500, err: "" + err });
+						}
+					}
+					break;
+				}
 				case "Google":{
 					let streamId,streamVO,stream,func;
 					callVO = callAIObj.buildCallVO(reqVO,platform);
@@ -600,6 +668,16 @@ export default function(app,router,apiMap) {
 						}
 						return callVO;
 						
+					}
+					case "Ollama":{
+						let callVO;
+						callVO={
+							model: reqVO.model,
+						};
+						if(reqVO.response_format && reqVO.response_format!=="text"){
+							callVO.format="json";
+						}
+						return callVO;
 					}
 				}
 			}

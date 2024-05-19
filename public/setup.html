@@ -12177,15 +12177,12 @@ var posix = {
 	},
 	
 	normalize: function normalize(path) {
-		let isAbsolute,isSuperAbsolute,trailingSeparator;
+		let isAbsolute,trailingSeparator;
 		assertPath(path);
 		
 		if (path.length === 0) return '.';
 		
 		isAbsolute = path.charCodeAt(0) === 47 /*/*/;
-		if(isAbsolute){
-			isSuperAbsolute = path.charCodeAt(1) === 47 /*/*/;
-		}
 		trailingSeparator = path.charCodeAt(path.length - 1) === 47 /*/*/;
 		
 		// Normalize the path
@@ -12194,7 +12191,6 @@ var posix = {
 		if (path.length === 0 && !isAbsolute) path = '.';
 		if (path.length > 0 && trailingSeparator) path += '/';
 		
-		if(isSuperAbsolute) return '//'+path;
 		if (isAbsolute) return '/' + path;
 		return path;
 	},
@@ -12223,6 +12219,28 @@ var posix = {
 		return posix.normalize(joined);
 	},
 	
+	joinTabOSURL: function join() {
+		if (arguments.length === 0)
+			return '.';
+		var joined;
+		for (var i = 0; i < arguments.length; ++i) {
+			var arg = arguments[i];
+			assertPath(arg);
+			if (arg.length > 0) {
+				if (joined === undefined)
+					joined = arg;
+				else
+					joined += '/' + arg;
+			}
+		}
+		if (joined === undefined)
+			return '.';
+		if(joined.startsWith("//")){
+			return "/"+posix.normalize(joined);
+		}
+		return posix.normalize(joined);
+	},
+
 	relative: function relative(from, to) {
 		assertPath(from);
 		assertPath(to);
@@ -13667,7 +13685,7 @@ let createApp=async function(){
 		}
 		appDir=VFACT.appPath;
 		if(appDir.startsWith("//")){
-			return VFACT.appOrigin+"/"+pathLib.join(appDir,path);
+			return VFACT.appOrigin+"/~"+pathLib.join(appDir,path);
 		}
 		return VFACT.appOrigin+pathLib.join(appDir,path);
 	};
@@ -13692,6 +13710,10 @@ let initApp=async function(appObj,uiDef,opts={}){
 		opts.tip=1;
 	}
 	appFrame=appObj.appFrame=opts.appFrame||null;
+	
+	if(appFrame && appFrame.appParams){
+		VFACT.appParams=appFrame.appParams;
+	}
 
 	if(Array.isArray(uiDef)){
 		uiDefs=uiDef;
@@ -14426,17 +14448,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 203,
+		"versionIdx": 207,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 87,
+		"versionIdx": 89,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 160,
+		"versionIdx": 164,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14451,12 +14473,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 98,
+		"versionIdx": 99,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14466,12 +14488,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 57,
+		"versionIdx": 60,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 279,
+		"versionIdx": 309,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14484,17 +14506,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 203,
+		"versionIdx": 207,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 87,
+		"versionIdx": 89,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 160,
+		"versionIdx": 164,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14514,12 +14536,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 57,
+		"versionIdx": 60,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 279,
+		"versionIdx": 309,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14532,27 +14554,27 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 203,
+		"versionIdx": 207,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 87,
+		"versionIdx": 89,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 160,
+		"versionIdx": 164,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 57,
+		"versionIdx": 60,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 279,
+		"versionIdx": 309,
 		"zip": "StdUI.zip"
 	},
 	{

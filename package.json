@@ -19,8 +19,10 @@
     "http-errors": "~1.6.3",
     "morgan": "~1.9.1",
     "node-fetch": "^3.3.2",
+    "ollama": "^0.5.1",
     "openai": "^4.0.0",
     "pug": "2.0.0-beta11",
+    "puppeteer": "^22.3.0",
     "unzipper": "^0.10.14"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ var express = require('express');
 var chatAI,gitAPI,previewAPI,utilsAPI,fileAPI;
 var router = express.Router();
 var proxyCall=require('../util/ProxyCall.js').proxyCall;
+const USE_AAEE=process.env.AAEE;
 
 module.exports =function(app) {
 	var apiMap={};
@@ -23,6 +24,14 @@ module.exports =function(app) {
 	});
 	
 	
+	//Register AAEE if has it:
+	if(USE_AAEE){
+		let aaeeAPI;
+		import("../aaee/aaee.mjs").then((mode)=>{
+			aaeeAPI=mode.default;
+			aaeeAPI(app,router,apiMap);
+		});
+	}
 	/* GET users listing. */
 	router.post('/', function (req, res, next) {
 		let msg,reqVO,handler,ret;
