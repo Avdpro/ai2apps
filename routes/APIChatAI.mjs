@@ -8,6 +8,31 @@ import {proxyCall} from "../util/ProxyCall.js";
 import { Readable } from "stream"
 import followRedirects from "follow-redirects";
 
+const AIPlatforms={
+	"OpenAI":{
+		"gpt-4o":{model:"gpt-4o",label:"GPT-4O"},
+		"gpt-3.5-turbo":{model:"gpt-3.5-turbo",label:"GPT-3.5"},
+		"gpt-3.5-turbo-16k":{model:"gpt-3.5-turbo-16k",label:"GPT-3.5-16K"},
+		"gpt-4":{model:"gpt-4",label:"GPT-4"},
+		"gpt-4-turbo":{model:"gpt-4-turbo",label:"GPT-4 Turbo"},
+	},
+	"Google":{
+		"gemini-pro":{model:"gemini-pro",label:"Gemini Pro"}
+	},
+	"Claude":{
+		"claude-3-sonnet-20240229":{model:"claude-3-sonnet-20240229",label:"Claude 3 Sonnet"},
+		"claude-3-opus-20240229":{model:"claude-3-opus-20240229",label:"Claude 3 Opus"}
+	},
+	"Ollama":{
+		"llama3":{model:"llama3",label:"LLAMA3 8b"},
+		"llama3:70b":{model:"llama3:70b",label:"LLAMA3 70b"},
+		"llama3-gradient":{model:"llama3-gradient",label:"LLAMA3 1024K 8b"},
+		"llama3-gradient:70b":{model:"llama3-gradient:70b",label:"LLAMA3 1024K 70b"},
+		"terrence/openbuddy":{model:"terrence/openbuddy",label:"LLAMA3 Chinese"},
+		"phi3":{model:"phi3",label:"Phi3"},
+		"moondream":{model:"moondream",label:"Moon Dream"},
+	}
+};
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY;
 let openAI;
 if(OPENAI_API_KEY && OPENAI_API_KEY!=="[YOUR OPENAI KEY]") {
@@ -314,6 +339,7 @@ export default function(app,router,apiMap) {
 						let streamVO, streamId,chatStream;
 						let dataLeft="";
 						callVO.stream = true;
+						callVO.stream_options={include_usage:true};
 						//console.log("Call Code VO:");
 						//console.log(callVO);
 						try {
@@ -352,7 +378,9 @@ export default function(app,router,apiMap) {
 						
 						{
 							let choice0,delta,content,funcCall,toolCalls,func;
+							let inputTokens=0,outputTokens=0;
 							for await (const part of chatStream) {
+								//console.log(part);
 								choice0=part.choices[0];
 								//console.log(choice0);
 								if (choice0) {
@@ -421,7 +449,14 @@ export default function(app,router,apiMap) {
 											}
 										}
 									}
+								}else{
+									console.log(part);
+									if(part.usage){
+										inputTokens=part.usage.prompt_tokens||0;
+										outputTokens=part.usage.completion_tokens||0;
+									}
 								}
+								
 								if(streamVO.timer){
 									clearTimeout(streamVO.timer);
 									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
@@ -442,10 +477,14 @@ export default function(app,router,apiMap) {
 							}
 							//console.log("Fin: "+streamVO.content);
 							//charge points by chat:
-							chargePointsByChat(null, callVO.messages, streamVO.content, platform, callVO.model);
+							if(inputTokens>0){
+								//chargePointsByUsage(null,inputTokens,outputTokens,platform,callVO.model);
+							}else {
+								//chargePointsByChat(null, callVO.messages, streamVO.content, platform, callVO.model);
+							}
 						}
 					} catch (err) {
-						console.log(err);
+						console.error(err);
 					}
 					return;
 				}
@@ -738,6 +777,33 @@ export default function(app,router,apiMap) {
 		};
 		
 		//-------------------------------------------------------------------
+		apiMap['AIGetPlatforms'] = async function (req, res, next) {
+			res.json({code:200,platforms:["OpenAI","Claude","Google","Ollama"]});
+		
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['AIGetModels'] = async function (req, res, next) {
+			let reqVO=req.body.vo;
+			let platform,models;
+			switch(reqVO.platform){
+				case "Ollama":
+					platform=AIPlatforms["Ollama"];
+					models=Object.values(platform);
+					//TODO: Call Ollama API to get models:
+					break;
+				default:
+					platform=AIPlatforms[reqVO.platform];
+					if(!platform){
+						res.json({code:400,info:`Unknown platform: ${reqVO.platform}`});
+						return;
+					}
+					models=Object.values(platform);
+					break;
+			}
+			res.json({code:200,models:models});
+			
+		};
 		apiMap['AIDraw']=async function (req,res,next){
 			let reqVO;
 			let platform;

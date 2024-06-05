@@ -3369,6 +3369,8 @@ let CokeNT=function(){
 	makeNotify$2(this);
 	this.loginVO=null;				//Cloud-Login-VO
 	this.loginDone=0;				//Is login done and ok
+	this.loginPreview=false;		//Is logined as a preview user?
+	this.previewVO=null;			//Preview login-info
 	this.checkLoginTimer=null;		//Timer to check login
 };
 let cokeNT=CokeNT.prototype={};
@@ -3448,7 +3450,7 @@ cokeNT.login=async function(callVO){
 
 //----------------------------------------------------------------------------
 //Log out cokecodes:
-cokeNT.logout=async function(callVO){
+cokeNT.logout=async function(){
 	if(this.loginDone){
 		localStorage.setItem("LastAccount",this.loginVO.email);
 	}
@@ -3518,6 +3520,39 @@ cokeNT.checkLogin=async function(readInfo=false,checkNT=false){
 };
 
 //----------------------------------------------------------------------------
+cokeNT.maybePreview=async function(){
+	let voText,vo;
+	let res;
+	if(this.loginDone && this.loginVO){
+		return true;
+	}
+	voText=localStorage.getItem("PreviewLogin");
+	if(!voText){
+		this.loginPreview=false;
+		return false;
+	}
+	try{
+		vo=JSON.parse(voText);
+	}catch(err){
+		this.loginPreview=false;
+		return false;
+	}
+	try{
+		res=await this.makeCall("previewLogin",vo);
+		if(!res || res.code!==200){
+			this.loginPreview=false;
+			return false;
+		}
+	}catch(err){
+		this.loginPreview=false;
+		return false;
+	}
+	this.loginPreview=true;
+	this.previewVO=vo;
+	return true;
+};
+
+//----------------------------------------------------------------------------
 //Save login info:
 cokeNT.saveLoginInfo=function(vo){
 	let voText;
@@ -3564,6 +3599,13 @@ cokeNT.makeCall=async function(msg,vo,timeout=0){
 	if(this.loginDone){
 		vo.userId=this.loginVO.userId;
 		vo.token=this.loginVO.token;
+	}else {
+		let pvVO=this.previewVO;
+		if(pvVO){
+			vo.pvUserId=pvVO.userId;
+			vo.pvSlot=pvVO.slot;
+			vo.pvKey=pvVO.key;
+		}
 	}
 	try{
 		return await WebAPI.makeCall(msg,vo,timeout);
@@ -14448,17 +14490,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 211,
+		"versionIdx": 214,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 89,
+		"versionIdx": 91,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 166,
+		"versionIdx": 167,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14473,12 +14515,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 99,
+		"versionIdx": 100,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 145,
+		"versionIdx": 149,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14488,12 +14530,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 62,
+		"versionIdx": 73,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 309,
+		"versionIdx": 313,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14506,17 +14548,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 211,
+		"versionIdx": 214,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 89,
+		"versionIdx": 91,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 166,
+		"versionIdx": 167,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14536,12 +14578,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 62,
+		"versionIdx": 73,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 309,
+		"versionIdx": 313,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14554,32 +14596,32 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 211,
+		"versionIdx": 214,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 89,
+		"versionIdx": 91,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 166,
+		"versionIdx": 167,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 62,
+		"versionIdx": 73,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 309,
+		"versionIdx": 313,
 		"zip": "StdUI.zip"
 	},
 	{
 		"name": "-PVHome",
-		"versionIdx": 10,
+		"versionIdx": 15,
 		"zip": "PVHome.zip"
 	}
 ];

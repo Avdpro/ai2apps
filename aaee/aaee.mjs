@@ -1,12 +1,15 @@
 import puppeteer from 'puppeteer';
 import setupReadability from './AAEReadability.mjs';
 import clipboardy from "clipboardy";
-import pathLib from 'path'
+import pathLib from 'path';
+import { promises as fs } from 'fs';
+
 
 const AAEE_VERSION="0.0.1";
 const AAFarm_Executable=process.env.AAF_EXECUATABLE;
 const AAFarm_Entry=process.env.AAF_ENTRY;
 const AAFarm_DataDir=process.env.AAF_DATADIR;
+const AAFarm_DataDirRoot=process.env.AAF_DATADIR_PATH;
 
 const browserAliasMap=new Map();
 const browserMap=new Map();
@@ -17,6 +20,11 @@ let nextPageId=0;
 let nextContextId=0;
 let nextHandleId=0;
 let ensureCodeLib=null;
+
+let nextTempBrowserId=1;
+
+const aliasPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 
 async function sleep(time){
 	let func,pms;
@@ -109,9 +117,10 @@ export default async function(app,router,apiMap) {
 			reqVO = req.body.vo;
 			browsers=browserAliasMap.values();
 			list=[];
-			for(browser of browsers){
-				browserId=browser.aaeeId;
-				alias=browser.alias;
+			for(browserId of browsers){
+				browser=browserMap.get(browserId);
+				//browserId=browser.aaeeId;
+				alias=browser.aaeeAlias;
 				stub={id:browserId,alias:alias};
 				pages=await browser.pages();
 				stub.pages=[];
@@ -123,7 +132,7 @@ export default async function(app,router,apiMap) {
 				}
 				list.push(stub);
 			}
-			res.json({ code: 200, browsers: browsers });
+			res.json({ code: 200, browsers: list});
 		};
 		
 		const killBrowserTime=5*60*1000;
@@ -136,25 +145,72 @@ export default async function(app,router,apiMap) {
 			if(alias){
 				browserId=browserAliasMap.get(alias);
 				if(browserId){
-					res.json({ code: 200, browser: browserId });
+					res.json({ code: 200, browser: browserId,alias:alias });
 					return;
+				}
+				if((!aliasPattern.test(alias)) || alias.startsWith("TMP_")){
+					res.json({ code: 400, info:"Browser alias is invalid." });
+					return;
+				}
+			}
+			//Check auto data dir
+			if(alias && AAFarm_DataDirRoot){
+				if(opts.autoDataDir){
+					let dirPath = AAFarm_DataDirRoot;
+					if (dirPath[0] !== "/") {
+						//make it full path
+						dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
+					}
+					dirPath = pathLib.join(dirPath, alias);
+					try{
+						await fs.access(dirPath);
+						opts.userDataDir = dirPath;
+					}catch(err){
+						try {
+							await fs.mkdir(dirPath, { recursive: true });
+							opts.userDataDir = dirPath;
+						}catch(err){
+							//Do not use data-dir.
+						}
+					}
+				}else{
+					//Check dir for alias
+					let dirPath = AAFarm_DataDirRoot;
+					if (dirPath[0] !== "/") {
+						//make it full path
+						dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
+					}
+					dirPath = pathLib.join(dirPath, alias);
+					try{
+						await fs.access(dirPath);
+						opts.userDataDir = dirPath;
+					}catch(err){
+						//Do not use data-dir.
+					}
 				}
 			}
 			browserId = "" + (nextBrowserId++);
 			browser = await puppeteer.launch(opts);
 			browserMap.set(browserId, browser);
 			browser.pageMap=new Map();
-			res.json({ code: 200, browser: browserId });
+
 			if(alias){
 				browserAliasMap.set(alias,browserId);
+				browser.aaeeAlias=alias;
+			}else{
+				alias="TMP_"+(nextTempBrowserId++);
+				browserAliasMap.set(alias,browserId);
+				browser.aaeeAlias=alias;
 			}
+			res.json({ code: 200, browser: browserId, alias:alias});
+
 			browser.killTimer=setTimeout(async ()=>{
 				closeBrowser(browser);
 			},killBrowserTime);
 			browser.on("disconnected", () => {
 				browserMap.delete(browserId);
 				if(alias) {
-					browserAliasMap.delete("AAHOME");
+					browserAliasMap.delete(alias);
 				}
 			});
 		};
@@ -2166,6 +2222,7 @@ export default async function(app,router,apiMap) {
 		browserMap.set(browserId, browser);
 		browser.pageMap=new Map();
 		browserAliasMap.set("AAHOME",browserId);
+		browser.aaeeAlias="AAHOME";
 		browser.on("disconnected",()=>{
 			browserMap.delete(browserId);
 			browserAliasMap.delete("AAHOME");
