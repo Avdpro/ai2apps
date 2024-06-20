@@ -1,14 +1,16 @@
 import puppeteer from 'puppeteer';
+import startPPT from "./pptstart.mjs";
 import setupReadability from './AAEReadability.mjs';
 import clipboardy from "clipboardy";
 import pathLib from 'path';
 import { promises as fs } from 'fs';
+import { Buffer } from 'buffer'
+import fsp from 'fs/promises'
 
 
 const AAEE_VERSION="0.0.1";
 const AAFarm_Executable=process.env.AAF_EXECUATABLE;
 const AAFarm_Entry=process.env.AAF_ENTRY;
-const AAFarm_DataDir=process.env.AAF_DATADIR;
 const AAFarm_DataDirRoot=process.env.AAF_DATADIR_PATH;
 
 const browserAliasMap=new Map();
@@ -24,7 +26,6 @@ let ensureCodeLib=null;
 let nextTempBrowserId=1;
 
 const aliasPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-
 
 async function sleep(time){
 	let func,pms;
@@ -98,6 +99,14 @@ function randomTag(digit=6,time=true){
 	}
 	return "$"+result+time;
 }
+
+async function deleteFile(filePath) {
+	try {
+		await fsp.unlink(filePath);
+	} catch (err) {
+	}
+}
+
 export default async function(app,router,apiMap) {
 	//-------------------------------------------------------------------
 	apiMap['aaeeGetVersion'] = async function (req, res, next) {
@@ -138,7 +147,7 @@ export default async function(app,router,apiMap) {
 		const killBrowserTime=5*60*1000;
 		//-------------------------------------------------------------------
 		apiMap['aaeeOpenBrowser'] = async function (req, res, next) {
-			let reqVO, opts, browserId, browser, alias;
+			let reqVO, opts, browserId, browser, alias,dirPath;
 			reqVO = req.body.vo;
 			opts = reqVO.opts || reqVO.options || {};
 			alias=reqVO.alias;
@@ -153,10 +162,11 @@ export default async function(app,router,apiMap) {
 					return;
 				}
 			}
+			dirPath=null;
 			//Check auto data dir
 			if(alias && AAFarm_DataDirRoot){
 				if(opts.autoDataDir){
-					let dirPath = AAFarm_DataDirRoot;
+					dirPath = AAFarm_DataDirRoot;
 					if (dirPath[0] !== "/") {
 						//make it full path
 						dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
@@ -189,11 +199,36 @@ export default async function(app,router,apiMap) {
 					}
 				}
 			}
+			//check if use executable path:
+			if(!opts.executablePath){
+				let exePath;
+				exePath=AAFarm_Executable;
+				if(exePath){
+					if (exePath[0] !== "/") {
+						exePath = pathLib.join(app.get("AppHomePath"), exePath);
+					}
+					opts.executablePath=exePath;
+				}
+			}
 			browserId = "" + (nextBrowserId++);
-			browser = await puppeteer.launch(opts);
+			browser = await startPPT(opts);
 			browserMap.set(browserId, browser);
 			browser.pageMap=new Map();
-
+			if(opts.userDataDir){
+				let zonePath=pathLib.join(opts.userDataDir,"AAEZone");
+				try{
+					await fs.access(zonePath);
+					browser.aaeZonePath=zonePath;
+				}catch(err){
+					try {
+						await fs.mkdir(zonePath, { recursive: true });
+						browser.aaeZonePath=zonePath;
+					}catch(err){
+						//Do not use data-dir.
+					}
+				}
+			}
+			
 			if(alias){
 				browserAliasMap.set(alias,browserId);
 				browser.aaeeAlias=alias;
@@ -361,6 +396,52 @@ export default async function(app,router,apiMap) {
 			}
 			await context.close;
 			contextMap.delete(contextId);
+			res.json({ code: 200});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['aaeeSaveFile']=async function(req,res,next){
+			let reqVO, browserId, browser, zonePath, fileData, fileName;
+			let buf;
+			reqVO = req.body.vo;
+			browserId = reqVO.browser;
+			fileData = reqVO.data;
+			fileName = reqVO.fileName;
+			
+			browser = browserMap.get(browserId);
+			if (!browser) {
+				res.json({ code: 400, info: "Browser not found." });
+				return;
+			}
+			zonePath=browser.aaeZonePath;
+			if(!zonePath){
+				res.json({ code: 500, info: "Browser don't have AAEZone." });
+				return;
+			}
+			buf = Buffer.from(fileData, "base64");
+			await fsp.writeFile(zonePath+"/"+fileName, buf);
+			res.json({ code: 200});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['aaeeDeleteFile']=async function(req,res,next){
+			let reqVO, browserId, browser, zonePath, fileName;
+			let buf;
+			reqVO = req.body.vo;
+			browserId = reqVO.browser;
+			fileName = reqVO.fileName;
+			
+			browser = browserMap.get(browserId);
+			if (!browser) {
+				res.json({ code: 400, info: "Browser not found." });
+				return;
+			}
+			zonePath=browser.aaeZonePath;
+			if(!zonePath){
+				res.json({ code: 500, info: "Browser don't have AAEZone." });
+				return;
+			}
+			deleteFile(zonePath+"/"+fileName);
 			res.json({ code: 200});
 		};
 	}
@@ -786,9 +867,11 @@ export default async function(app,router,apiMap) {
 					case "deviceprompt":
 						await page.waitForDevicePrompt(options);
 						break;
-					case "filechooser":
-						await page.waitForFileChooser(options);
+					case "filechooser": {
+						let dlg=await page.waitForFileChooser(options);
+						page.aaeFileDialog=dlg;
 						break;
+					}
 					case "networkidle":
 						await page.waitForNetworkIdle(options);
 						break;
@@ -1026,7 +1109,7 @@ export default async function(app,router,apiMap) {
 								wraped.text=node.innerText||node.textContent;
 							}
 							wraped.touchable=false;
-							if(node.getBoundingClientRect && ((node.offsetWidth>0 && node.offsetHeight) || node===document.body)){
+							if(node.getBoundingClientRect && ((node.offsetWidth>0 || node.offsetHeight>0) || node===document.body)){
 								rect=node.getBoundingClientRect();
 								if(rect){
 									let styles;
@@ -1837,16 +1920,26 @@ export default async function(app,router,apiMap) {
 		//-------------------------------------------------------------------
 		{
 			//---------------------------------------------------------------
-			apiMap['aaeAcceptDialog']=async function (req, res, next) {
-				let reqVO, pageId, page,done,timeout,startTime;
+			apiMap['aaeeAcceptDialog']=async function (req, res, next) {
+				let reqVO, pageId, page;
 				reqVO = req.body.vo;
+				let browserId = reqVO.browser;
+				let browser = browserMap.get(browserId);
+				if (!browser) {
+					res.json({ code: 400, info: "Browser not found." });
+					return;
+				}
 				pageId = reqVO.page;
-				page = pageMap.get(pageId);
-				timeout = reqVO.timeout>=0?reqVO.timeout:30000;
+				page = browser.pageMap.get(pageId);
 				if (!page) {
 					res.json({ code: 400, info: "Page not found." });
 					return;
 				}
+				let frameId=reqVO.frame;
+				if(frameId){
+					page=page.aaeeObjsMap.get(frameId);
+				}
+				
 				if(page.aaeDialog){
 					await page.aaeDialog.accept(reqVO.value);
 					page.aaeDialog=null;
@@ -1854,25 +1947,59 @@ export default async function(app,router,apiMap) {
 					return;
 				}
 				if(page.aaeFileDialog){
-					await page.aaeFileDialog.accept(reqVO.files||reqVO.files);
-					page.aaeFileDialog=null;
-					res.json({ code: 200});
+					//Mapping files' path:
+					let zonePath,files;
+					zonePath=browser.aaeZonePath;
+					if(!zonePath){
+						res.json({ code: 500, info: "AcceptFileChooser:Browser don't have AAEZone." });
+						return;
+					}
+					files=reqVO.files;
+					if(files) {
+						files = files.map((item) => {
+							if (item.indexOf("/") >= 0) {
+								throw Error("AcceptFileChooser: file path error.");
+							}
+							return zonePath + "/" + item;
+						});
+						await page.aaeFileDialog.accept(files);
+						page.aaeFileDialog = null;
+						res.json({ code: 200 });
+						if (reqVO.deleteFile) {
+							for (let path of files) {
+								deleteFile(path);
+							}
+						}
+					}else{
+						res.json({ code: 400, info: "AcceptFileChooser: Missing files for accept FileChooser." });
+					}
 					return;
 				}
 				throw Error("No dialog to accept");
 			};
 			
 			//---------------------------------------------------------------
-			apiMap['aaeDismissDialog']=async function (req, res, next) {
-				let reqVO, pageId, page,done,timeout,startTime;
+			apiMap['aaeeDismissDialog']=async function (req, res, next) {
+				let reqVO, pageId, page;
 				reqVO = req.body.vo;
+				let browserId = reqVO.browser;
+				let browser = browserMap.get(browserId);
+
+				if (!browser) {
+					res.json({ code: 400, info: "Browser not found." });
+					return;
+				}
 				pageId = reqVO.page;
-				page = pageMap.get(pageId);
-				timeout = reqVO.timeout>=0?reqVO.timeout:30000;
+				page = browser.pageMap.get(pageId);
 				if (!page) {
 					res.json({ code: 400, info: "Page not found." });
 					return;
 				}
+				let frameId=reqVO.frame;
+				if(frameId){
+					page=page.aaeeObjsMap.get(frameId);
+				}
+
 				if(page.aaeDialog){
 					await page.aaeDialog.dismiss();
 					page.aaeDialog=null;
@@ -2208,17 +2335,18 @@ export default async function(app,router,apiMap) {
 		}
 
 		//UserData path:
-		dataDir=AAFarm_DataDir;
+		dataDir=AAFarm_DataDirRoot;
 		if(dataDir) {
 			if (dataDir[0] !== "/") {
 				dataDir = pathLib.join(app.get("AppHomePath"), dataDir);
 			}
-			opts.userDataDir=dataDir;
+			opts.userDataDir=pathLib.join(dataDir,"AAHOME");
 		}
 		opts.defaultViewport=null;
 		
 		let browserId = "" + (nextBrowserId++);
-		let browser = await puppeteer.launch(opts);
+		//let browser = await puppeteer.launch(opts);
+		let browser = await startPPT(opts);
 		browserMap.set(browserId, browser);
 		browser.pageMap=new Map();
 		browserAliasMap.set("AAHOME",browserId);
@@ -2228,6 +2356,21 @@ export default async function(app,router,apiMap) {
 			browserAliasMap.delete("AAHOME");
 		});
 		
+		if(opts.userDataDir){
+			let zonePath=pathLib.join(opts.userDataDir,"AAEZone");
+			try{
+				await fs.access(zonePath);
+				browser.aaeZonePath=zonePath;
+			}catch(err){
+				try {
+					await fs.mkdir(zonePath, { recursive: true });
+					browser.aaeZonePath=zonePath;
+				}catch(err){
+					//Do not use data-dir.
+				}
+			}
+		}
+
 		let pageMap=browser.pageMap;
 		let pageId = "" + (nextPageId++);
 		let page = await browser.newPage();

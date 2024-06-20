@@ -9838,6 +9838,7 @@ function setupEditCore(typeDef,isMemo){
 		if(oldPrefix){
 			def=oldPrefix.call(typeDef,pxy,def,webObj,styleObj,valMap);
 		}
+		webObj.setAttribute('autocomplete', 'off');
 		//init event handlers:
 		webObj.onfocus=function(evt){
 			let call,autoSelect;
@@ -9880,8 +9881,10 @@ function setupEditCore(typeDef,isMemo){
 				}
 				if(evt.code==="Enter"){
 					enterKeyTime=Date.now();
-					call=valMap[pptOnUpdateIdx];
-					call && call(evt);
+					if((!evt.isComposing) &&(!evt.shiftKey)){
+						call=valMap[pptOnUpdateIdx];
+						call && call(evt);
+					}
 				}else if(evt.code==="Escape"){
 					call=valMap[pptOnCancelIdx];
 					call && call(evt);
@@ -9898,11 +9901,15 @@ function setupEditCore(typeDef,isMemo){
 				}
 				if(evt.code==="Enter"){
 					enterKeyTime=Date.now();
-					call=valMap[pptOnUpdateIdx];
-					call && call(evt);
+					if((!evt.isComposing)){
+						call=valMap[pptOnUpdateIdx];
+						call && call(evt);
+					}
 				}else if(evt.code==="Escape"){
-					call=valMap[pptOnCancelIdx];
-					call && call(evt);
+					if((!evt.isComposing)){
+						call=valMap[pptOnCancelIdx];
+						call && call(evt);
+					}
 				}else if(evt.code==="ArrowUp"){
 					call=valMap[pptOnPressKeyUpIdx];
 					if(call && call(evt)){
@@ -9942,7 +9949,6 @@ function setupEditCore(typeDef,isMemo){
 		};
 		return def;
 	};
-	
 	//------------------------------------------------------------------------
 	//ppt color:
 	{
@@ -10299,6 +10305,14 @@ function setupDocker(typeDef){
 		}
 		return def;
 	};
+
+	typeDef.OnFree=function(valMap){
+		let subUIs,subUI;
+		subUIs=valMap[pptUIListIdx];
+		for(subUI of subUIs){
+			subUI.release();
+		}
+	};
 	
 	//--------------------------------------------------------------------
 	let oldPostCreate=typeDef.postCreate;
@@ -10317,6 +10331,7 @@ function setupDocker(typeDef){
 				subUI=node.$_pxy;
 				if(subUI){
 					subUI.display=0;//Hide theUI
+					subUI.hold();
 					subUIs.push(subUI);
 				}
 			}
@@ -14490,12 +14505,12 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 214,
+		"versionIdx": 217,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 91,
+		"versionIdx": 92,
 		"zip": "tabos.zip"
 	},
 	{
@@ -14515,12 +14530,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 100,
+		"versionIdx": 101,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 149,
+		"versionIdx": 152,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14530,12 +14545,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 73,
+		"versionIdx": 74,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 313,
+		"versionIdx": 317,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14548,12 +14563,12 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 214,
+		"versionIdx": 217,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 91,
+		"versionIdx": 92,
 		"zip": "tabos.zip"
 	},
 	{
@@ -14578,12 +14593,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 73,
+		"versionIdx": 74,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 313,
+		"versionIdx": 317,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14596,12 +14611,12 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 214,
+		"versionIdx": 217,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 91,
+		"versionIdx": 92,
 		"zip": "tabos.zip"
 	},
 	{
@@ -14611,12 +14626,12 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 73,
+		"versionIdx": 74,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 313,
+		"versionIdx": 317,
 		"zip": "StdUI.zip"
 	},
 	{

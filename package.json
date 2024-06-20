@@ -23,6 +23,8 @@
     "openai": "^4.0.0",
     "pug": "2.0.0-beta11",
     "puppeteer": "^22.3.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "unzipper": "^0.10.14"
   },
   "devDependencies": {
