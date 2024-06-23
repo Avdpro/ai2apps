@@ -1,14 +1,20 @@
 <a name="readme-top"></a>
-
+[English](README.md) [中文](README_ZH.md)
 # AI2Apps
 
 ## 新闻
 
-:fire: May 25, 2024: AI2Apps 支持用户通过内置的浏览器控制组件构建Web Agent。
+:fire: June 20, 2024: 浏览器控制能力全面升级！支持Web Agent通过Zero-shot方式学会控制网页， 支持用户构建可自适应适配目标网页的Web Agent+RPA。
 
-:fire: May 25, 2024: AI2Apps 支持用户通过Ollama调用本地计算机上的大型语言模型。
+:fire: June 15, 2024: 支持Agent/组件 的全自动、半自动开发机制。无需编程，用户可通过与Agent语言交互来构建新Agent/组件。
 
-:fire: May 25, 2024: AI2Apps 支持用户将已有Agent作为API或组件使用。
+:fire: June 15, 2024: 支持Agent/组件 的发布和发现。用户之间可自由共享Agent/组件。
+
+:fire: May 25, 2024: 支持用户通过内置的浏览器控制组件构建Web Agent。
+
+:fire: May 25, 2024: 支持用户通过Ollama调用本地计算机上的大型语言模型。
+
+:fire: May 25, 2024: 支持用户将已有Agent作为API或组件使用。
 
 :fire: May 9, 2024: [Vitalbridge Capital](http://www.vitalbridge.com/blog/复旦大学ai³徐盈辉研究员：agent的可视化创作界面-|-agent-insights?id=428)发布了对AI2Apps团队成员的专访文章。
 
@@ -202,8 +208,6 @@ Agent 启动后，你可以通过对话测试 Agent。
 
 ## Coming Soon：
 - 支持Wechat bot
-- 支持API (智能体)发布、发现机制
-- 支持支持API (智能体)自动、半自动开发机制
 - 更多文档及例子
 
 ## 引用
