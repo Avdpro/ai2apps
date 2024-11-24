@@ -5,6 +5,8 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+const WebSocket = require('ws');
+//const cors = require('cors');
 var envCfg=null;
 
 var indexRouter = require('./routes/index');
@@ -54,5 +56,44 @@ app.initCokeCodesApp=async function(){
 	});
 };
 
+//---------------------------------------------------------------------------
+app.setupWebSocket=async function(server){
+	let wss,selectorMap;
+	selectorMap=app.get("WebSocketSelectorMap");
+	wss=app.wss=new WebSocket.Server({ server });
+	wss.on('connection',(ws)=>{
+		function handleMessage(message){
+			let msgJSON,selector;
+			if (message instanceof Buffer || message instanceof Uint8Array) {
+				message = message.toString();
+			}
+			if(typeof(message)!=='string'){
+				ws.close(1003,"Only JSON-text message allowed");
+				return;
+			}
+			try{
+				msgJSON=JSON.parse(message);
+			}catch (err){
+				ws.close(1003,"Only JSON-text message allowed");
+				return;
+			}
+			if(msgJSON.msg!=="CONNECT"){
+				ws.close(1002,"First message must be CONNECT");
+				return;
+			}
+			selector=msgJSON.selector;
+			selector=selectorMap.get(selector);
+			if(!selector){
+				ws.close(1002,"Can't find handler");
+				return;
+			}
+			selector(ws,msgJSON);
+			ws.aaConnected=true;
+			ws.off('message',handleMessage);
+		}
+		ws.aaConnected=false;
+		ws.on('message',handleMessage);
+	});
+};
 
 module.exports = app;

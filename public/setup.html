@@ -219,14 +219,14 @@ let notifyModifyAct;
 JAXDisk$1=function(diskName,majorDisk=null,code="")
 {
 	this.name=diskName;
-	//this.dbStore=new Store('JAXDisk_'+diskName, code?(code+"@"+diskName):diskName);
+	
 	this.dbStore=new JAXDiskStore(diskName);
 	this.writeObj=null;
 	this.writeVsn=0;
 	if(majorDisk){
 		majorDisk.subDisk[code]=this;
 	}else {
-		JAXDisk$1.diskHash[diskName] = this;
+		JAXDisk$1.liveDisks[diskName] = this;
 		this.subDisk={};
 	}
 	this.refCount=1;
@@ -238,12 +238,22 @@ JAXDisk$1=function(diskName,majorDisk=null,code="")
 };
 jaxDisk=JAXDisk$1.prototype={};
 
+{
+	let dlv;
+	dlv=localStorage.getItem("TABOS-DISKLIST");
+	if(!dlv){
+		dlv="1";
+		localStorage.setItem("TABOS-DISKLIST",dlv);
+	}
+	JAXDisk$1.diskListVsn=dlv;
+}
+
 //----------------------------------------------------------------------------
 //All available disk:
 //JAXDisk.sysStore=new Store('JAXDisk_', "System");
 JAXDisk$1.sysStore=JAXDiskStore.systemStore();
 JAXDisk$1.disks=null;
-JAXDisk$1.diskHash={};
+JAXDisk$1.liveDisks={};
 
 //****************************************************************************
 //JAXDisk static-system functions:
@@ -258,12 +268,10 @@ JAXDisk$1.diskHash={};
 		}
 		list=await get("disks",JAXDisk$1.sysStore);
 		if (Array.isArray(list)) {
-			//list.push("books");
 			JAXDisk$1.disks = new Set(list);
 		} else {
 			JAXDisk$1.disks = new Set();
-			set("disks", [], JAXDisk$1.sysStore).then(() => {
-			});
+			set("disks", [], JAXDisk$1.sysStore);
 		}
 	};
 	
@@ -274,16 +282,12 @@ JAXDisk$1.diskHash={};
 		let deleteDisk=(name)=>{
 			console.log("CheckDisk: delete disk: "+name);
 			disks.delete(name);
-			delete this.diskHash[name];
+			delete this.liveDisks[name];
 			needSync=true;
 		};
 		
 		needSync=false;
 		disks=this.disks;
-		/*list=await get("disks", JAXDisk.sysStore);
-		if(!Array.isArray(list)){
-			return;
-		}*/
 		for(name of disks){
 			try{
 				//console.log("CheckDisk: "+name);
@@ -329,91 +333,91 @@ JAXDisk$1.diskHash={};
 	
 	//------------------------------------------------------------------------
 	JAXDisk$1.syncDiskSet=async function(){
-		let list,name,disks;
+		let list,name,diskSet,liveDisks;
 		list=await get("disks", JAXDisk$1.sysStore);
 		if(!Array.isArray(list)){
+			//Disk list lost...
 			return;
 		}
-		disks=JAXDisk$1.disks;
-		for(name of list){
-			if(!disks.has(name)){
-				disks.add(name);
+		diskSet=JAXDisk$1.disks=new Set(list);
+		liveDisks=JAXDisk$1.liveDisks;
+		for(name in liveDisks){
+			if(!diskSet.has(name)){
+				delete liveDisks[name];
 			}
 		}
 	};
 	
-	//---------------------------------------------------------------------------
+	//------------------------------------------------------------------------
+	JAXDisk$1.checkDiskIdx=async function(){
+		let dlv;
+		dlv=localStorage.getItem("TABOS-DISKLIST");
+		if(dlv){
+			if(dlv===JAXDisk$1.diskListVsn){
+				return;
+			}
+			await JAXDisk$1.syncDiskSet();
+			JAXDisk$1.diskListVsn=dlv;
+		}
+	};
+	
+	//------------------------------------------------------------------------
+	JAXDisk$1.incDiskIdx=function(){
+		let dlv;
+		dlv=parseInt(JAXDisk$1.diskListVsn)||1;
+		dlv=""+(dlv+1);
+		localStorage.setItem("TABOS-DISKLIST",dlv);
+	};
+	
+	//------------------------------------------------------------------------
 	//Open an disk, may create new disk if param create is true:
 	JAXDisk$1.openDisk = async function (diskName, create) {
 		let disk;
-		if(!this.disks) {
-			await this.init();
+		async function checkAlive(disk){
+			let alive;
+			//Check disk alive
+			alive=await disk.checkAlive();
+			return alive?disk:null;
 		}
-		disk = this.diskHash[diskName];
+		if(!JAXDisk$1.disks) {
+			await JAXDisk$1.init();
+		}else {
+			await JAXDisk$1.checkDiskIdx();
+		}
+		disk = JAXDisk$1.liveDisks[diskName];
 		if (disk) {
 			//Check if the disk is still there:
-			try {
-				let list = await get("disks", JAXDisk$1.sysStore);
-				if (list.indexOf(diskName) >= 0) {
-					disk.refCount++;
-					return disk;
-				} else {
-					//The disk is removed.
-					this.disks.delete(diskName);
-					delete this.diskHash[diskName];
-					if(create){
-						return await JAXDisk$1.newDisk(diskName);
-					}
-					return null;
-				}
-			}catch(err) {
-				return null;
-			}
+			return await checkAlive(disk);
 		}
-		if (!this.disks.has(diskName)) {
-			let list=await get("disks",JAXDisk$1.sysStore);
-			if(list && list.indexOf(diskName)>=0){
-				this.disks.add(diskName);
-				return new JAXDisk$1(diskName);
-			}
-			if (create) {
-				return await JAXDisk$1.newDisk(diskName);
-			}
-			return null;
+		if (JAXDisk$1.disks.has(diskName)) {
+			disk=new JAXDisk$1(diskName);
+			return await checkAlive(disk);
 		}//else:
-		let list=await get("disks",JAXDisk$1.sysStore);
-		if(list && list.indexOf(diskName)>=0) {
-			return new JAXDisk$1(diskName);
+		if(create) {
+			disk=await JAXDisk$1.newDisk(diskName);
+			return await checkAlive(disk);
 		}
-		//The disk is removed.
-		this.disks.delete(diskName);
-		delete this.diskHash[diskName];
 		return null;
 	};
 	
 	//---------------------------------------------------------------------------
 	//Check if a disk is exist:
+	JAXDisk$1.isDiskExist = async function (diskName) {
+		if(!JAXDisk$1.disks) {
+			await JAXDisk$1.init();
+		}else {
+			await JAXDisk$1.checkDiskIdx();
+		}
+		if(JAXDisk$1.disks.has(diskName)){
+			return true;
+		}
+		return false;
+	};
+
+	//---------------------------------------------------------------------------
+	//Check if a disk is exist:
 	JAXDisk$1.diskExist = function (diskName,doubleCheck=0) {
-		var self=this;
-		return new Promise((resolve, reject) => {
-			if (self.disks.has(diskName)) {
-				resolve(1);
-			} else {
-				if(doubleCheck){
-					//Check again with DB:
-					return get("disks",JAXDisk$1.sysStore).then(list=>{
-						if(list.indexOf(diskName)>=0){
-							JAXDisk$1.disks.add(diskName);
-							resolve(1);
-						}else {
-							resolve(0);
-						}
-					});
-				}else {
-					resolve(0);
-				}
-			}
-		});
+		return JAXDisk$1.disks.has(diskName);
 	};
 	
 	//---------------------------------------------------------------------------
@@ -423,14 +427,14 @@ JAXDisk$1.diskHash={};
 		if(diskName.indexOf("/")>=0 || diskName.indexOf("*")>=0){
 			throw new Error("New disk: illegal name.");
 		}
-		await JAXDisk$1.syncDiskSet();
-		if (self.disks.has(diskName)) {
-			diskObj=await self.openDisk(diskName,0);
+		await JAXDisk$1.checkDiskIdx();
+		if (JAXDisk$1.disks.has(diskName)) {
+			diskObj=await JAXDisk$1.openDisk(diskName,0);
 			if(diskObj){
 				return diskObj;
 			}
 		}
-		self.disks.add(diskName);
+		JAXDisk$1.disks.add(diskName);
 		await set('disks', Array.from(self.disks), self.sysStore);
 		store=new JAXDiskStore(diskName);
 		rootObj=await get(".",store);
@@ -438,6 +442,8 @@ JAXDisk$1.diskHash={};
 			await set(".",{},store);
 		}
 		diskObj=new JAXDisk$1(diskName);
+		//Update DiksList
+		JAXDisk$1.incDiskIdx();
 		return diskObj;
 	};
 	
@@ -454,7 +460,6 @@ JAXDisk$1.diskHash={};
 		}
 		infoStore=disk.infoStore;
 		if(!infoStore){
-			//disk.infoStore=infoStore=new Store('JAXDiskInfo_'+diskName, diskName,1);
 			disk.infoStore=infoStore=new JAXDiskStore(diskName, "info");
 		}
 		return await get("info",infoStore);
@@ -534,9 +539,8 @@ JAXDisk$1.diskHash={};
 	//---------------------------------------------------------------------------
 	//Remove a disk, clear the DB(but not drop the db)
 	JAXDisk$1.dropDisk = async function (diskName,dropDB=false) {
-		let self,diskObj;
-		self=this;
-		diskObj=await self.openDisk(diskName,false);
+		let diskObj;
+		diskObj=await JAXDisk$1.openDisk(diskName,false);
 		if(diskObj){
 			try {
 				if (diskObj.dbStore) {
@@ -553,15 +557,19 @@ JAXDisk$1.diskHash={};
 				return false;
 			}
 		}else {
+			JAXDisk$1.disks.delete(diskName);
+			delete JAXDisk$1.liveDisks[diskName];
+			await set('disks', Array.from(JAXDisk$1.disks), JAXDisk$1.sysStore);
+			JAXDisk$1.incDiskIdx();
 			return false;
 		}
-		await self.syncDiskSet();
-		self.disks.delete(diskName);
-		delete self.diskHash[diskName];
-		await set('disks', Array.from(self.disks), self.sysStore);
+		JAXDisk$1.disks.delete(diskName);
+		delete JAXDisk$1.liveDisks[diskName];
+		await set('disks', Array.from(JAXDisk$1.disks), JAXDisk$1.sysStore);
 		if(dropDB){
 			drop(diskObj.dbStore.dbName);
 		}
+		JAXDisk$1.incDiskIdx();
 		return true;
 	};
 	
@@ -569,7 +577,7 @@ JAXDisk$1.diskHash={};
 	//Get current disks list:
 	JAXDisk$1.getDisks=function(sync=false){
 		if(sync){
-			JAXDisk$1.syncDiskSet();
+			JAXDisk$1.checkDiskIdx();
 		}
 		return Array.from(this.disks);
 	};
@@ -577,20 +585,12 @@ JAXDisk$1.diskHash={};
 	//---------------------------------------------------------------------------
 	//Get current disk names
 	JAXDisk$1.getDiskNames=async function(sync=false){
-		let list,i,n,name,disk;
-		await this.init(true);
-		list=Array.from((this.disks));
-		n=list.length;
-		for(i=0;i<n;i++){
-			name=list[i];
-			disk=await JAXDisk$1.openDisk(name,0);
-			if(!disk){
-				list.splice(i,1);
-				JAXDisk$1.disks.delete(name);
-				delete JAXDisk$1.diskHash[name];
-				n--;i--;
-			}
+		let list;
+		if(!JAXDisk$1.disks) {
+			await JAXDisk$1.init();
 		}
+		await JAXDisk$1.checkDiskIdx();
+		list=Array.from((this.disks));
 		return list;
 	};
 	
@@ -654,6 +654,20 @@ JAXDisk$1.diskHash={};
 //JAXDisk member functions
 //****************************************************************************
 {
+	//------------------------------------------------------------------------
+	jaxDisk.checkAlive=async function(){
+		let fileObj;
+		try{
+			fileObj=await get(".",this.dbStore);
+			if(fileObj&&typeof(fileObj)==="object"){
+				return true;
+			}
+			return false;
+		}catch(err){
+			return false;
+		}
+	};
+	
 	//-----------------------------------------------------------------------
 	//Upgrade a disk for sync access:
 	jaxDisk.syncAccess=async function(){
@@ -771,7 +785,7 @@ JAXDisk$1.diskHash={};
 	
 	//-----------------------------------------------------------------------
 	//Delete an entry-item, if path is a dir, also delete the whole dir tree under it.
-	jaxDisk.del=async function(path,opts=null){
+	jaxDisk.del=jaxDisk.delete=async function(path,opts=null){
 		let self=this;
 		let writeVsn,actorId,delPath;
 		
@@ -1171,7 +1185,8 @@ JAXDisk$1.diskHash={};
 		if(!dir){
 			dir='.';
 			if(fileName===""){
-				return {name:self.name,dir:1,disk:1};
+				let info=await JAXDisk$1.getDiskAttr(self.name,"FSEntryInfo");
+				return {...info,name:self.name,dir:1,disk:1};
 			}
 		}
 		let dirObj=await get(dir,self.dbStore);
@@ -1194,26 +1209,32 @@ JAXDisk$1.diskHash={};
 		delete info.dir;
 		delete info.disk;
 		entry=await this.getEntry(path);
-		if(typeof(entry)==="object"){
+		if(entry && typeof(entry)==="object"){
 			let dir,fileName,writeVersion;
-			[fileName,dir]=divPath(path);
-			if(dir.startsWith("/")){
-				dir=dir.substring(1);
+			if(entry.disk){
+				let orgInfo=await JAXDisk$1.getDiskAttr(self.name,"FSEntryInfo");
+				info={...orgInfo,...info};
+				await JAXDisk$1.setDiskAttr(self.name,"FSEntryInfo",info);
+			}else {
+				[fileName,dir]=divPath(path);
+				if(dir.startsWith("/")){
+					dir=dir.substring(1);
+				}
+				if(!dir){
+					dir='.';
+				}
+				Object.assign(entry,info);
+				if(self.writeObj){
+					await self.writeObj;
+				}
+				writeVersion=self.writeVsn++;
+				self.writeObj=pms=get(dir,self.dbStore).then((dirInfo)=>{
+					dirInfo[fileName]=entry;
+					return set(dir,dirInfo,self.dbStore);
+				});
+				pms.writeVsn=writeVersion;
+				return pms;
 			}
-			if(!dir){
-				dir='.';
-			}
-			Object.assign(entry,info);
-			if(self.writeObj){
-				await self.writeObj;
-			}
-			writeVersion=self.writeVsn++;
-			self.writeObj=pms=get(dir,self.dbStore).then((dirInfo)=>{
-				dirInfo[fileName]=entry;
-				return set(dir,dirInfo,self.dbStore);
-			});
-			pms.writeVsn=writeVersion;
-			return pms;
 		}
 	};
 	
@@ -1457,7 +1478,7 @@ JAXDisk$1.diskHash={};
 			diskName=fullPath.substring(1,pos);
 			diskPath=fullPath.substring(pos+1);
 		}
-		disk=JAXDisk$1.diskHash[diskName];
+		disk=JAXDisk$1.liveDisks[diskName];
 		return [disk,diskPath,diskName];
 	};
 	
@@ -1495,7 +1516,7 @@ JAXDisk$1.diskHash={};
 		}else {
 			diskName=fullPath.substring(1,pos);
 		}
-		disk=JAXDisk$1.diskHash[diskName];
+		disk=JAXDisk$1.liveDisks[diskName];
 		return disk;
 	
 	};
@@ -3428,6 +3449,8 @@ cokeNT.login=async function(callVO){
 	}
 	vo=await WebAPI.makeCall("apiPath",{});
 	if(vo && vo.path){
+		let tabOS;
+		tabOS=window.tabOS;
 		WebAPI.setAPIPath(vo.path);
 		vo=await WebAPI.makeCall("userLogin",callVO);
 		if(vo.code===200){
@@ -3437,8 +3460,17 @@ cokeNT.login=async function(callVO){
 			this.loginVO=vo;
 			this.userId=vo.userid;
 			this.emitNotify("Online");
+			if(tabOS){
+				tabOS.emitGlobalNotify("Online");
+			}
 			return true;
 		}else {
+			if(this.loginDone){
+				this.emitNotify("Offline");
+				if(tabOS){
+					tabOS.emitGlobalNotify("Offline");
+				}
+			}
 			this.loginVO=null;
 			this.loginDone=0;
 			localStorage.removeItem("LoginVO");
@@ -3451,6 +3483,7 @@ cokeNT.login=async function(callVO){
 //----------------------------------------------------------------------------
 //Log out cokecodes:
 cokeNT.logout=async function(){
+	let tabOS=window.tabOS;
 	if(this.loginDone){
 		localStorage.setItem("LastAccount",this.loginVO.email);
 	}
@@ -3458,6 +3491,9 @@ cokeNT.logout=async function(){
 	this.loginDone=0;
 	localStorage.removeItem("LoginVO");
 	this.emitNotify("Offline");
+	if(tabOS){
+		tabOS.emitGlobalNotify("Offline");
+	}
 	return true;
 };
 
@@ -3469,7 +3505,8 @@ cokeNT.getLastAccount=function(){
 //----------------------------------------------------------------------------
 //Check if logined://
 cokeNT.checkLogin=async function(readInfo=false,checkNT=false){
-	let loginVO,time;
+	let loginVO,time,tabOS;
+	tabOS=window.tabOS;
 	if(this.checkLoginTimer){
 		clearTimeout(this.checkLoginTimer);
 		this.checkLoginTimer=null;
@@ -3508,6 +3545,9 @@ cokeNT.checkLogin=async function(readInfo=false,checkNT=false){
 		}catch(err){
 			this.loginDone=0;
 			this.emitNotify("Offline");
+			if(tabOS){
+				tabOS.emitGlobalNotify("Offline");
+			}
 			localStorage.removeItem("LoginVO");
 			return false;
 		}
@@ -3577,8 +3617,9 @@ cokeNT.loadLoginInfo=function(){
 //----------------------------------------------------------------------------
 //Register a new user: regVO={email:string,passwordSHA:string,name:string}
 cokeNT.register=async function(regVO){
-	var self,vo;
+	var self,vo,tabOS;
 	self=this;
+	tabOS=window.tabOS;
 	vo=await WebAPI.makeCall("userReg",regVO);
 	if(vo.code===200){
 		vo.apiPath=await WebAPI.getPath();
@@ -3587,6 +3628,9 @@ cokeNT.register=async function(regVO){
 		self.loginVO=vo;
 		self.userId=vo.userid;
 		self.emitNotify("Online");
+		if(tabOS){
+			tabOS.emitGlobalNotify("Online");
+		}
 		return true;
 	}else {
 		throw "Register error "+vo.code+": "+vo.info;
@@ -3596,7 +3640,7 @@ cokeNT.register=async function(regVO){
 //----------------------------------------------------------------------------
 //Make a call, if logined, append userId and token
 cokeNT.makeCall=async function(msg,vo,timeout=0){
-	if(this.loginDone){
+	if(this.loginVO){
 		vo.userId=this.loginVO.userId;
 		vo.token=this.loginVO.token;
 	}else {
@@ -3930,7 +3974,7 @@ let swClient={
 //OS features and API:
 //****************************************************************************
 {
-	let setupPms=null,setupRootOS,setupFrameOS,setupPageOS;
+	let setupPms=null,setupRootOS,setupFrameOS;
 	
 	//------------------------------------------------------------------------
 	setupRootOS=async function(){
@@ -3942,46 +3986,6 @@ let swClient={
 		
 		tabOS.osTag=""+Date.now()+"-"+Math.trunc(Math.random()*1000);
 		
-		//init task:
-		tabTask.initTask();
-		tabOS.task=tabTask;
-
-		//Fin:
-		tabFS=tabOS.fs;
-		tabFS.swClient=tabOS.swClient;
-		tabFS.swControler=swControler;
-		tabFS.regRoute=tabOS.regRoute;
-		tabFS.stopRoute=tabOS.stopRoute;
-		tabFS.watch=tabOS.watch.bind(tabOS);
-		tabFS.unwatch=tabOS.unwatch.bind(tabOS);
-		window.tabOS=tabOS;
-	};
-	
-	//------------------------------------------------------------------------
-	setupPageOS=async function(){
-		let parentOS=window.parentTabOS;
-		if(!parentOS){
-			let rootWin;
-			//wait parentTabOS;
-			//alert("Refresh tabos app window or open tabos app manually will break the task management chain.");
-			//rootWin=window.open("","TabOSHome");
-			rootWin=window.opener;
-			if(rootWin && rootWin.openTabOSAppPage){
-				//Post a message to root win to open this app
-				console.log("Will call root-win to open app");
-				rootWin.openTabOSAppPage(document.location.href,window.name);
-			}else {
-				await setupRootOS();
-				return;
-			}
-			window.close();
-			throw "Wait home";
-		}
-		setupSWClient(true);//Start SWClient with heart beat
-		tabOS.rootOS=parentOS.rootOS;
-		tabOS.fs=await createFS();//Always create own FS
-		tabOS.osTag=tabOS.rootOS.osTag;
-
 		//init task:
 		tabTask.initTask();
 		tabOS.task=tabTask;
@@ -4054,34 +4058,29 @@ let swClient={
 			}
 		}
 		if(window.parent===window) {
-			//This is a full-browser-tab page, check if this is the root page
-			if((!isRoot) && document.referrer.startsWith(document.location.origin)){
-				setupPms=setupPageOS();
-				return await setupPms;
-			}
 			//We are the root:
-			if(tabOS.allowRoot){
-				window.openTabOSAppPage=function(url,name){
-					setTimeout(()=>{
-						let appWin=window.open(url,name);
-						appWin.parentTabOS=window.tabOS;
-					},100);
-				};
-				setupPms=setupRootOS();
-				return await setupPms;
-			}else {
-				window.openTabOSAppPage=function(url,name){
-					setTimeout(()=>{
-						let appWin=window.open(url,name);
-						appWin.parentTabOS=window.tabOS;
-					},100);
-				};
-				setupPms=setupRootOS();
-				return await setupPms;
-			}
+			setupPms=setupRootOS();
+			await setupPms;
+		}else {
+			setupPms=setupFrameOS();
+			await setupPms;
 		}
-		setupPms=setupFrameOS();
-		return await setupPms;
+		makeObjEventEmitter$1(tabOS);
+		makeNotify$2(tabOS);
+		swClient.on("GlobalNotify",(msg)=>{
+			tabOS.emitNotify(msg.message);
+		});
+	};
+	
+	//------------------------------------------------------------------------
+	tabOS.emitGlobalNotify=async function(msg){
+		let gMsg;
+		if(swClient){
+			gMsg={client:swClient.uuid,message:msg};
+			swClient.postMessage("GlobalNotify",gMsg);
+		}else {
+			tabOS.emitNotify(msg);
+		}
 	};
 }
 
@@ -4371,7 +4370,8 @@ let $PVT;
 }
 
 let TypeDef;
-let typeDefs = {};
+let typeDefs$1 = {};
+VFACT.hudTypeDefs=typeDefs$1;
 //****************************************************************************
 //TypeDef:
 //****************************************************************************
@@ -4416,13 +4416,13 @@ let typeDefs = {};
 			this.initStyle = { ...this.initStyle, ...initStyle };
 		}
 		this.initClass = initClass || null;
-		typeDefs[name] = this;
+		typeDefs$1[name] = this;
 		this.preCreateCodes = [];
 		this.postCreateCodes = [];
 	};
 	let _typeDef = TypeDef.prototype = {};
 	TypeDef.aliasType = function (orgName, newName) {
-		typeDefs[newName] = typeDefs[orgName];
+		typeDefs$1[newName] = typeDefs$1[orgName];
 	};
 	_typeDef.defineIdxOnlyPpt = function (name, initVal, hasPVT = false) {
 		let idx = this.allocPptIdx(name, initVal);
@@ -4565,7 +4565,7 @@ let typeDefs = {};
 			return null;
 		}
 		
-		typeDef=typeDefs[type];
+		typeDef=typeDefs$1[type];
 		if(!typeDef){
 			console.log(`Can't find component type: ${type}`);
 			return null;
@@ -4576,8 +4576,9 @@ let typeDefs = {};
 		let funcGetMap=type.getMap;
 		let pptList=[...type.defaultPpts];
 		pptList[pptPVTMapIdx]=new Map();//the PVT map
-		//TODO: Support HTML-element direct creates:
+		
 		if(type.createElement){
+			//Use HTML-element direct creates:
 			webObj=type.createElement(def,pptList);
 		}else {
 			webObj=document.createElement("div");
@@ -4592,6 +4593,7 @@ let typeDefs = {};
 			Object.assign(styleObj,type.initStyle);
 		}
 		self=new VFACTObj(type,webObj,styleObj,pptList);
+		self.constructor=def.constructor;
 		self.$_hookSetAttr=function(attrName,func){
 			let oldFunc;
 			if(!hookMap){
@@ -6966,12 +6968,16 @@ function setupBasic(typeDef){
 				}
 			};
 			getX=function(valMap){
-				let webObj;
+				let webObj,x;
+				x=valMap[pptXIdx];
+				if(isFinite(x)){
+					return x;
+				}
 				webObj=valMap[pptWebObjIdx];
 				if(webObj.offsetParent){
 					return webObj.offsetLeft;
 				}
-				return valMap[pptXIdx];
+				return x;
 			};
 			typeDef.definePpt("x",getX,setX,true);
 		}
@@ -6991,12 +6997,16 @@ function setupBasic(typeDef){
 				}
 			};
 			getY=function(valMap){
-				let webObj;
+				let webObj,y;
+				y=valMap[pptYIdx];
+				if(isFinite(y)){
+					return y;
+				}
 				webObj=valMap[pptWebObjIdx];
 				if(webObj.offsetParent){
 					return webObj.offsetTop;
 				}
-				return valMap[pptYIdx];
+				return y;
 			};
 			typeDef.definePpt("y",getY,setY,true);
 		}
@@ -8632,6 +8642,7 @@ function setupText(typeDef){
 	let pptShadowBlurIdx=typeDef.allocPptIdx("textShadowBlur",2);
 	let pptShadowColorIdx=typeDef.allocPptIdx("textShadowColor",[0,0,0,0.5]);
 	let pptSizeCacheIdx=typeDef.allocPptIdx("sizeCache",null);
+	let pptLineClampIdx=typeDef.allocPptIdx("lineClamp");
 	
 	let applyShadow;
 	let setShadow,getShadow;
@@ -8895,22 +8906,56 @@ function setupText(typeDef){
 	}
 	
 	//--------------------------------------------------------------------------
+	let updateWrap=function(valMap){
+		let wrap=valMap[pptWrapIdx];
+		let ellipsis=valMap[pptEllipsisIdx];
+		let lineClamp=valMap[pptLineClampIdx];
+		let styleObj=valMap[pptStyleObjIdx];
+		let txtStyle=valMap[pptTextDivIdx].style;
+		if(lineClamp){
+			txtStyle.display="-webkit-box";
+			txtStyle.webkitBoxOrient="vertical";
+			txtStyle.webkitLineClamp=""+lineClamp;
+			txtStyle.overflow="hidden";
+			txtStyle.textOverflow= "ellipsis";
+			txtStyle.minWidth="";
+			styleObj.whiteSpace="";
+			styleObj.wordBreak="break-word";
+		}else if(ellipsis){
+			txtStyle.display="";
+			txtStyle.webkitBoxOrient="";
+			txtStyle.webkitLineClamp="";
+			txtStyle.overflow="hidden";
+			txtStyle.textOverflow="ellipsis";
+			txtStyle.minWidth="0px";
+			styleObj.whiteSpace="nowrap";
+			styleObj.wordBreak="keep-all";
+		}else if(wrap){
+			txtStyle.display="";
+			txtStyle.webkitBoxOrient="";
+			txtStyle.webkitLineClamp="";
+			txtStyle.overflow="";
+			txtStyle.textOverflow= "";
+			txtStyle.minWidth="";
+			styleObj.whiteSpace="";
+			styleObj.wordBreak="break-word";
+		}else {
+			txtStyle.display="";
+			txtStyle.webkitBoxOrient="";
+			txtStyle.webkitLineClamp="";
+			txtStyle.overflow="";
+			txtStyle.textOverflow= "";
+			txtStyle.minWidth="";
+			styleObj.whiteSpace="nowrap";
+			styleObj.wordBreak="keep-all";
+		}
+	};
+	//--------------------------------------------------------------------------
 	//ppt wrap:
 	{
 		let setVal=function(valMap,val){
-			let txtStyle;
-			let styleObj=valMap[pptStyleObjIdx];
-			txtStyle=valMap[pptTextDivIdx].style;
 			valMap[pptWrapIdx]=!!val;
-			if(val){
-				valMap[pptEllipsisIdx]=false;
-				styleObj.whiteSpace="";
-				styleObj.wordBreak="break-word";
-				txtStyle.textOverflow= "";
-			}else {
-				styleObj.whiteSpace="nowrap";
-				styleObj.wordBreak="keep-all";
-			}
+			updateWrap(valMap);
 			valMap[pptSizeCacheIdx]=null;
 		};
 		let getVal=function(valMap){
@@ -8923,28 +8968,28 @@ function setupText(typeDef){
 	//ppt ellipsis:
 	{
 		let setVal=function(valMap,val){
-			let txtStyle;
-			let styleObj=valMap[pptStyleObjIdx];
-			txtStyle=valMap[pptTextDivIdx].style;
 			valMap[pptEllipsisIdx]=!!val;
-			if(val){
-				valMap[pptWrapIdx]=false;
-				styleObj.whiteSpace="nowrap";
-				styleObj.wordBreak="keep-all";
-				txtStyle.minWidth="0px";
-				txtStyle.overflow="hidden";
-				txtStyle.textOverflow="ellipsis";
-			}else {
-				txtStyle.textOverflow= "";
-				txtStyle.minWidth="";
-				txtStyle.overflow="";
-			}
+			updateWrap(valMap);
 			valMap[pptSizeCacheIdx]=null;
 		};
 		let getVal=function(valMap){
 			return valMap[pptEllipsisIdx];
 		};
 		typeDef.definePpt("ellipsis",getVal,setVal,true);
+	}
+	
+	//------------------------------------------------------------------------
+	//ppt lineClamp:
+	{
+		let setVal=function(valMap,val){
+			valMap[pptLineClampIdx]=val;
+			updateWrap(valMap);
+			valMap[pptSizeCacheIdx]=null;
+		};
+		let getVal=function(valMap){
+			return valMap[pptSizeCacheIdx];
+		};
+		typeDef.definePpt("lineClamp",getVal,setVal,true);
 	}
 	
 	//--------------------------------------------------------------------------
@@ -9870,6 +9915,37 @@ function setupEditCore(typeDef,isMemo){
 				}
 			}
 		};
+		if(isMemo){
+			webObj.addEventListener('paste', function (event) {
+				event.preventDefault();
+
+				let text = (event.clipboardData || window.clipboardData).getData('text');
+
+				const selection = window.getSelection();
+				if (!selection.rangeCount) return;
+
+				const range = selection.getRangeAt(0);
+				range.deleteContents();
+
+				const textNode = document.createTextNode(text);
+				range.insertNode(textNode);
+
+				range.setStartAfter(textNode);
+				range.setEndAfter(textNode);
+				selection.removeAllRanges();
+				selection.addRange(range);
+				let call,time;
+				call=valMap[pptOnInputIdx];
+				call && call(event);
+				call=valMap[pptOnChangeIdx];
+				if(call){
+					time=Date.now()-enterKeyTime;
+					if(time<30) {
+						call(event);
+					}
+				}
+			});
+		}
 		if(isMemo){
 			webObj.onkeydown=function(evt){
 				let call;
@@ -11128,7 +11204,11 @@ let setupTree=function(typeDef,isJAX=false){
 				nodes=new Proxy(webNodes,{
 					get:function(obj,pName){
 						if(pName>=0){
-							return webNodes[pName].$_pxy;
+							let node=webNodes[pName];
+							if(!node){
+								return null;
+							}
+							return node.$_pxy;
 						}
 						if(pName==="length"){
 							return webNodes.length;
@@ -11529,6 +11609,9 @@ let setupTree=function(typeDef,isJAX=false){
 			let valMap=this;
 			let list,nodeWebObj,idx,n;
 			let webObj=valMap[pptWebObjIdx];
+			if(!node || !node.$_webObj){
+				return -1;
+			}
 			nodeWebObj=node.$_webObj;
 			list=webObj.childNodes;
 			n=list.length;
@@ -11967,6 +12050,140 @@ let setupTree=function(typeDef,isJAX=false){
 };
 VFACTObj.setupTree=setupTree;
 
+const typeDefs=VFACT.hudTypeDefs;
+let exposeHudAIBaisc,genSubHudAIExpose,exposeHudAI,genAppAIExpose;
+
+genSubHudAIExpose=async function(hud,appAIVO,opts){
+	let subList,children,i,n,subHud,subVO;
+	subList=[];
+	children=hud.children;
+	if(!children){
+		return null;
+	}
+	n=children.length;
+	for(i=0;i<n;i++){
+		subHud=children[i];
+		if(subHud && subHud.display){
+			subVO=await exposeHudAI(subHud,appAIVO,opts);
+			if(Array.isArray(subVO)){
+				subList.push(...subVO);
+			}else if(subVO && (subHud.exposeToAI || (subVO.children && subVO.children.length)||(subVO.functions && subVO.functions.length))){
+				subList.push(subVO);
+			}
+		}
+	}
+	if(subList.length){
+		return subList;
+	}
+	return null;
+};
+VFACT.genSubHudAIExpose=genSubHudAIExpose;
+
+//----------------------------------------------------------------------------
+exposeHudAIBaisc=async function(hud,appAIVO,opts){
+	let hudType,typeDef,aiVO,idx,desc,rect;
+	
+	idx=appAIVO.hudList.length;
+	hudType=hud.type;
+	typeDef=typeDefs[hudType];
+	
+	//Basic ppts:
+	aiVO={
+		index:idx,id:hud.id,type:hud.type,
+	};
+	appAIVO.hudList.push({hud:hud,vo:aiVO});
+
+	//Rect:
+	rect=hud.getBoundingClientRect();
+	if(!rect){
+		return null;
+	}
+	aiVO.screenRect={x:rect.x,y:rect.y,width:rect.width,height:rect.height};
+	
+	if(hud.exposeAI instanceof Function){
+		Object.assign(aiVO,await hud.exposeAI);
+	}
+
+	//Desc:
+	if(hud.getAIDescription){
+		aiVO.description=hud.getAIDescription();
+	}else {
+		desc=hud.descAI;
+		if(desc instanceof Function){
+			aiVO.description=desc.call(hud);
+		}else if(typeof(desc)==="string"){
+			if(desc[0]==="#"){
+				let func=new Function(desc.substring(1));
+				aiVO.description=func.call(hud);
+			}else {
+				aiVO.description=desc;
+			}
+		}
+	}
+	if(typeDef && typeDef.fillAIExpose){
+		typeDef.fillAIExpose(hud,aiVO,opts);
+	}
+	return aiVO;
+};
+VFACT.exposeHudAIBaisc=exposeHudAIBaisc;
+
+//----------------------------------------------------------------------------
+/**
+ * This function is used to expose HUD elements to the AI system for processing.
+ *
+ * @param hud {Object} - The HUD element to be exposed.
+ * @param appAIVO {Object} - The result AI-Spot VO where the HUD info will fiill in.
+ * @param opts {Object} - Additional options for HUD exposure.
+ */
+exposeHudAI=async function(hud,appAIVO,opts){
+	let cnstr,aiVO,subList;
+	cnstr=hud.constructor;
+	if(cnstr && cnstr.exposeAI){
+		return cnstr.exposeAI(hud,appAIVO,opts)
+	}
+	aiVO=await exposeHudAIBaisc(hud,appAIVO,opts);
+	if(opts.recursive!==false){
+		subList=await genSubHudAIExpose(hud,appAIVO,opts);
+		if(subList && subList.length){
+			aiVO.children=subList;
+		}
+	}
+	if(!hud.exposeToAI && !aiVO.description){
+		if(aiVO.children && aiVO.children.length){
+			return aiVO.children;
+		}
+	}
+	return aiVO;
+};
+VFACT.exposeHudAI=exposeHudAI;
+
+//----------------------------------------------------------------------------
+genAppAIExpose=async function(app,opts){
+	let appAIVO,appUI,desc;
+	appAIVO={
+		hudList:[],
+		uiTree:null
+	};
+	desc=app.desc||app.description;
+	if(desc instanceof Function){
+		appAIVO.description=desc.call(app);
+	}else if(typeof(desc)==="string"){
+		if(desc[0]==="#"){
+			let func=new Function(desc.substring(1));
+			appAIVO.description=func.call(app);
+		}else {
+			appAIVO.description=desc;
+		}
+	}
+	if(app.exposeAI){
+		Object.assign(appAIVO,await app.exposeAI());
+	}
+	appUI=app.appUI;
+	appAIVO.hudTree=await exposeHudAI(appUI,appAIVO,{});
+	return appAIVO;
+};
+VFACT.genAppAIExpose=genAppAIExpose;
+
 //animate function:
 VFACT.animate=VFACTAni.animate;
 
@@ -11999,6 +12216,9 @@ VFACTObj.setupText(typeJAXText$1);
 //VFACTObj.setupHierarchy(typeJAXText);
 VFACTObj.setupFaces(typeJAXText$1);
 VFACTObj.setupClick(typeJAXText$1);
+typeJAXText$1.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.text=hud.text;
+};
 
 let typeJAXButton$1=new TypeDef("button",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXButton$1);
@@ -12007,6 +12227,9 @@ VFACTObj.setupFaces(typeJAXButton$1);
 VFACTObj.setupClick(typeJAXButton$1);
 VFACTObj.setupButton(typeJAXButton$1);
 TypeDef.aliasType("button","btn");
+typeJAXButton$1.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.enable=hud.enable;
+};
 
 let typeJAXEdit$1=new TypeDef("edit",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXEdit$1);
@@ -12014,6 +12237,9 @@ VFACTObj.setupNoneHierarchy(typeJAXEdit$1);
 VFACTObj.setupFaces(typeJAXEdit$1);
 VFACTObj.setupBox(typeJAXEdit$1);
 VFACTObj.setupEdit(typeJAXEdit$1);
+typeJAXEdit$1.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.text=hud.text;
+};
 
 let typeJAXEditMemo$1=new TypeDef("memo",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXEditMemo$1);
@@ -12021,6 +12247,9 @@ VFACTObj.setupNoneHierarchy(typeJAXEditMemo$1);
 VFACTObj.setupFaces(typeJAXEditMemo$1);
 VFACTObj.setupBox(typeJAXEditMemo$1);
 VFACTObj.setupEditMemo(typeJAXEditMemo$1);
+typeJAXEditMemo$1.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.text=hud.text;
+};
 
 let typeJAXDocker$1=new TypeDef("dock",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXDocker$1);
@@ -12032,6 +12261,7 @@ let typeJAXTree$1=new TypeDef("tree",{position:"absolute",overFlow:"auto"});
 VFACTObj.setupBasic(typeJAXTree$1);
 VFACTObj.setupHierarchy(typeJAXTree$1);
 VFACTObj.setupFaces(typeJAXTree$1);
+VFACTObj.setupClick(typeJAXTree$1);
 VFACTObj.setupTree(typeJAXTree$1);
 
 //animate function:
@@ -12066,6 +12296,9 @@ VFACTObj.setupText(typeJAXText);
 //VFACTObj.setupHierarchy(typeJAXText);
 VFACTObj.setupFaces(typeJAXText);
 VFACTObj.setupClick(typeJAXText);
+typeJAXText.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.text=hud.text;
+};
 
 let typeJAXButton=new TypeDef("button",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXButton);
@@ -12074,6 +12307,9 @@ VFACTObj.setupFaces(typeJAXButton);
 VFACTObj.setupClick(typeJAXButton);
 VFACTObj.setupButton(typeJAXButton);
 TypeDef.aliasType("button","btn");
+typeJAXButton.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.enable=hud.enable;
+};
 
 let typeJAXEdit=new TypeDef("edit",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXEdit);
@@ -12081,6 +12317,9 @@ VFACTObj.setupNoneHierarchy(typeJAXEdit);
 VFACTObj.setupFaces(typeJAXEdit);
 VFACTObj.setupBox(typeJAXEdit);
 VFACTObj.setupEdit(typeJAXEdit);
+typeJAXEdit.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.text=hud.text;
+};
 
 let typeJAXEditMemo=new TypeDef("memo",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXEditMemo);
@@ -12088,6 +12327,9 @@ VFACTObj.setupNoneHierarchy(typeJAXEditMemo);
 VFACTObj.setupFaces(typeJAXEditMemo);
 VFACTObj.setupBox(typeJAXEditMemo);
 VFACTObj.setupEditMemo(typeJAXEditMemo);
+typeJAXEditMemo.fillAIExpose=function(hud,aiVO,opts){
+	aiVO.text=hud.text;
+};
 
 let typeJAXDocker=new TypeDef("dock",{position:"absolute"});
 VFACTObj.setupBasic(typeJAXDocker);
@@ -12099,6 +12341,7 @@ let typeJAXTree=new TypeDef("tree",{position:"absolute",overFlow:"auto"});
 VFACTObj.setupBasic(typeJAXTree);
 VFACTObj.setupHierarchy(typeJAXTree);
 VFACTObj.setupFaces(typeJAXTree);
+VFACTObj.setupClick(typeJAXTree);
 VFACTObj.setupTree(typeJAXTree);
 
 //>>>>>>Node2Coke>>>>>>
@@ -12277,13 +12520,15 @@ var posix = {
 	},
 	
 	joinTabOSURL: function join() {
+		var joined;
 		if (arguments.length === 0)
 			return '.';
-		var joined;
 		for (var i = 0; i < arguments.length; ++i) {
 			var arg = arguments[i];
 			assertPath(arg);
-			if (arg.length > 0) {
+			if(arg[0]==="/"){
+				joined = arg;
+			}else if (arg.length > 0) {
 				if (joined === undefined)
 					joined = arg;
 				else
@@ -13770,6 +14015,7 @@ let initApp=async function(appObj,uiDef,opts={}){
 	
 	if(appFrame && appFrame.appParams){
 		VFACT.appParams=appFrame.appParams;
+		appObj.appParams=appFrame.appParams;
 	}
 
 	if(Array.isArray(uiDef)){
@@ -13781,18 +14027,25 @@ let initApp=async function(appObj,uiDef,opts={}){
 	}
 
 	appObj.OnAppCreate=function(){
-		this.children[0];
+		appObj.appUI=this.children[0];
 		dlgLayer=this.DlgLayer;
 	};
 
 	//************************************************************************
-	//Enable dialog feature?
+	//:Enable dialog feature?
 	//************************************************************************
 	let isShowDlg=0;
 	let dlgList=[];
 	if(opts.dialog){
 		uiDefs.push({
 			type:"box",id:"DlgLayer",x:0,y:0,w:"100%",h:"100%",zIndex:200,display:0,
+			OnCreate(){
+				this.webObj.addEventListener('contextmenu', e => {
+					e.stopPropagation();
+					e.preventDefault();
+					appObj.OnDlgBGClick(e);
+				},false);
+			},
 			OnClick:function(evt){
 				appObj.OnDlgBGClick(evt);
 			}
@@ -14036,7 +14289,7 @@ let initApp=async function(appObj,uiDef,opts={}){
 		//--------------------------------------------------------------------
 		appObj.showWait=function(info,time=500){
 			if(isShowWait){
-				waitDlg.TxtInfo=info;
+				waitDlg.TxtInfo.text=info;
 				return;//
 			}
 			isShowWait=1;
@@ -14060,7 +14313,7 @@ let initApp=async function(appObj,uiDef,opts={}){
 	if(opts.mask);
 
 	//************************************************************************
-	//Enable tip feature?
+	//:Enable tip feature?
 	//************************************************************************
 	if(opts.tip){
 		let cssTipBox;
@@ -14248,7 +14501,7 @@ let initApp=async function(appObj,uiDef,opts={}){
 	}
 	
 	//************************************************************************
-	//Enable hud layer? By default it's on:
+	//:Enable hud layer? By default it's on:
 	//************************************************************************
 	if(opts.hud!==false){
 		uiDefs.push({
@@ -14260,7 +14513,7 @@ let initApp=async function(appObj,uiDef,opts={}){
 	}
 	
 	//************************************************************************
-	//Enable shortcuts feature?
+	//:Enable shortcuts feature?
 	//************************************************************************
 	if(opts.shortcuts){
 		let switchApping=0;
@@ -14388,21 +14641,23 @@ let initApp=async function(appObj,uiDef,opts={}){
 					}
 				}
 			}
-			//Check internal doc switing:
-			if(opts.switchDoc && e.code==="Escape"){
-				if(e.ctrlKey && !e.metaKey){
-					//See if we can switch doc:
-					if(switchDocing){
-						if(e.shiftKey){
-							opts.switchDoc.pre();
+			if(e.code==="Escape"){
+				//Check internal doc switing:
+				if(opts.switchDoc){
+					if(e.ctrlKey && !e.metaKey){
+						//See if we can switch doc:
+						if(switchDocing){
+							if(e.shiftKey){
+								opts.switchDoc.pre();
+							}else {
+								opts.switchDoc.next();
+							}
+							return 1;
 						}else {
-							opts.switchDoc.next();
+							switchDocing=1;
+							opts.switchDoc.start();
+							return 1;
 						}
-						return 1;
-					}else {
-						switchDocing=1;
-						opts.switchDoc.start();
-						return 1;
 					}
 				}
 			}
@@ -14505,17 +14760,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 217,
+		"versionIdx": 227,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 92,
+		"versionIdx": 138,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 167,
+		"versionIdx": 186,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14525,17 +14780,17 @@ var diskInfo = [
 	},
 	{
 		"name": "-files",
-		"versionIdx": 67,
+		"versionIdx": 71,
 		"zip": "files.zip"
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 101,
+		"versionIdx": 109,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 152,
+		"versionIdx": 184,
 		"zip": "editkit.zip"
 	},
 	{
@@ -14545,12 +14800,17 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 74,
+		"versionIdx": 110,
 		"zip": "aichat.zip"
 	},
 	{
+		"name": "-aae",
+		"versionIdx": 150,
+		"zip": "aae.zip"
+	},
+	{
 		"name": "-StdUI",
-		"versionIdx": 317,
+		"versionIdx": 368,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14563,17 +14823,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 217,
+		"versionIdx": 227,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 92,
+		"versionIdx": 138,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 167,
+		"versionIdx": 186,
 		"zip": "homekit.zip"
 	},
 	{
@@ -14583,7 +14843,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-files",
-		"versionIdx": 67,
+		"versionIdx": 71,
 		"zip": "files.zip"
 	},
 	{
@@ -14593,12 +14853,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 74,
+		"versionIdx": 110,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 317,
+		"versionIdx": 368,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -14611,33 +14871,121 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 217,
+		"versionIdx": 227,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 92,
+		"versionIdx": 138,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 167,
+		"versionIdx": 186,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 74,
+		"versionIdx": 110,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 317,
+		"versionIdx": 368,
 		"zip": "StdUI.zip"
 	},
 	{
 		"name": "-PVHome",
 		"versionIdx": 15,
 		"zip": "PVHome.zip"
+	}
+];
+
+var botnodeDiskInfo = [
+	{
+		"name": "coke",
+		"versionIdx": 227,
+		"zip": "coke.zip"
+	},
+	{
+		"name": "-tabos",
+		"versionIdx": 138,
+		"zip": "tabos.zip"
+	},
+	{
+		"name": "-homekit",
+		"versionIdx": 186,
+		"zip": "homekit.zip"
+	},
+	{
+		"name": "-aichat",
+		"versionIdx": 110,
+		"zip": "aichat.zip"
+	},
+	{
+		"name": "-StdUI",
+		"versionIdx": 368,
+		"zip": "StdUI.zip"
+	},
+	{
+		"name": "coke",
+		"versionIdx": 227,
+		"zip": "coke.zip"
+	},
+	{
+		"name": "-tabos",
+		"versionIdx": 138,
+		"zip": "tabos.zip"
+	},
+	{
+		"name": "-homekit",
+		"versionIdx": 186,
+		"zip": "homekit.zip"
+	},
+	{
+		"name": "-terminal",
+		"versionIdx": 65,
+		"zip": "terminal.zip"
+	},
+	{
+		"name": "-files",
+		"versionIdx": 71,
+		"zip": "files.zip"
+	},
+	{
+		"name": "-tabedit",
+		"versionIdx": 109,
+		"zip": "tabedit.zip"
+	},
+	{
+		"name": "-editkit",
+		"versionIdx": 184,
+		"zip": "editkit.zip"
+	},
+	{
+		"name": "-books",
+		"versionIdx": 21,
+		"zip": "books.zip"
+	},
+	{
+		"name": "-aichat",
+		"versionIdx": 110,
+		"zip": "aichat.zip"
+	},
+	{
+		"name": "-StdUI",
+		"versionIdx": 368,
+		"zip": "StdUI.zip"
+	},
+	{
+		"name": "-MobileHome",
+		"versionIdx": 7,
+		"zip": "MobileHome.zip"
+	},
+	{
+		"name": "-aae",
+		"versionIdx": 150,
+		"zip": "aae.zip"
 	}
 ];
 
@@ -14706,6 +15054,7 @@ appCfg.proxyCfg=function(proxy){
 	let host=location.host;
 	let pts=host.split(".");
 	let appId;
+	let appParams=VFACT.appParams;
 	if(pts[1]==="apps"){
 		appId=pts[0];
 		appCfg.isSetupApps=true;
@@ -14715,6 +15064,11 @@ appCfg.proxyCfg=function(proxy){
 	}else if(host.startsWith("pv.")){
 		appCfg.isPreview=true;
 		appCfg.diskInfo=previewDiskInfo;
+		appCfg.minCokeVsn=177;
+	}else if(appParams.botnode){
+		appCfg.isMobile=false;
+		appCfg.isPreview=false;
+		appCfg.diskInfo=botnodeDiskInfo;
 		appCfg.minCokeVsn=177;
 	}else if(VFACT.appParams.key&&VFACT.appParams.slot&&VFACT.appParams.userId){
 		appCfg.isPreview=true;
@@ -14819,6 +15173,7 @@ let zip2Path=async function(path,zipFile,dirZipName=0,tty=null,peelRoot=false,de
 	var zipDir,zipDirs,zipName,disk,zipData;
 	let basePath,pts,diskName;
 	let rootName,willPeel=false;
+	let newItems=[];
 
 	async function arrayBuffer(file){
 		if(file.arrayBuffer){
@@ -14859,6 +15214,9 @@ let zip2Path=async function(path,zipFile,dirZipName=0,tty=null,peelRoot=false,de
 	if(zipFile instanceof Uint8Array){
 		zipData=zipFile;
 		zipDir=basePath;
+	}else if(zipFile.buffer && zipFile.byteLength===zipFile.length && zipFile.length>=0){
+		zipData=new Uint8Array(zipFile.buffer);
+		zipDir=basePath;
 	}else if(zipFile instanceof ArrayBuffer){
 		zipData=zipFile;
 		zipDir=basePath;
@@ -14893,12 +15251,10 @@ let zip2Path=async function(path,zipFile,dirZipName=0,tty=null,peelRoot=false,de
 			}
 			buf=await zipObj.async("uint8array");
 			await disk.saveFile(filePath,buf);
+			newItems.push("/"+diskName+"/"+filePath);
 			if(time>0){
 				await disk.setEntryInfo(filePath,{modifyTime:time+deltaTime,createTime:time+deltaTime});
 			}
-			/*await zipObj.async("uint8array").then((buf)=>{
-				return disk.saveFile(filePath,buf);
-			});*/
 		}
 		return true;
 	}
@@ -14909,6 +15265,7 @@ let zip2Path=async function(path,zipFile,dirZipName=0,tty=null,peelRoot=false,de
 		for(i=0;i<n;i++){
 			path=list[i];
 			await disk.newDir(path);
+			newItems.push("/"+diskName+"/"+path);
 		}
 		return true;
 	}
@@ -14916,6 +15273,89 @@ let zip2Path=async function(path,zipFile,dirZipName=0,tty=null,peelRoot=false,de
 	if(tty){
 		tty.textOut("Reading zip...");
 	}
+	
+	let zip=await JSZip$1.loadAsync(zipData);
+	{
+		let stub;
+		let list=[];
+		if(zip.length===1){
+			let zipObj=zip[0];
+			if(zipObj.dir);
+			//TODO: 单个文件?
+		}else {
+			if(peelRoot){
+				let pos;
+				willPeel=true;
+				//First, find root:
+				zip.forEach((path,zipObj)=>{
+					if(!willPeel)
+						return;
+					if(!rootName){
+						pos=path.indexOf("/");
+						if(pos<0){
+							if(zipObj.dir){
+								rootName=path+"/";
+							}else {
+								willPeel=false;
+							}
+						}else {
+							rootName=path.substring(0,pos+1);
+						}
+					}else {
+						if(!path.startsWith(rootName)){
+							willPeel=false;
+						}
+					}
+				});
+			}
+			if(willPeel && rootName){
+				let peelLength;
+				peelLength=rootName.length;
+				zip.forEach((path,zipObj)=>{
+					if(zipObj.dir){
+						if(path!==rootName){
+							let dirPath;
+							path=path.substring(peelLength);
+							dirPath=pathLib.join(zipDir,path);
+							zipDirs.push(dirPath);
+						}
+					}else {
+						path=path.substring(peelLength);
+						stub={path:path,zipObj:zipObj};
+						if(zipObj.date && zipObj.date.getTime){
+							stub.time=Date.parse(zipObj.date).getTime();
+						}
+						list.push(stub);
+					}
+				});
+			}else {
+				zip.forEach((path,zipObj)=>{
+					if(zipObj.dir){
+						let dirPath;
+						dirPath=pathLib.join(zipDir,path);
+						zipDirs.push(dirPath);
+					}else {
+						stub={path:path,zipObj:zipObj};
+						if(zipObj.date){
+							try{
+								stub.time=Date.parse(zipObj.date).getTime();
+							}catch(err){
+							}
+						}
+						list.push(stub);
+					}
+				});
+			}
+			await doFiles(list);
+			await doDirs(zipDirs);
+			if(tty){
+				tty.clearLine();
+				tty.textOut("Extract zip done.\n");
+			}
+			return newItems;
+		}
+	}
+	
 	return JSZip$1.loadAsync(zipData).then(zip=>{
 		let stub;
 		let list=[];
@@ -16861,6 +17301,8 @@ let MainUI=function(app){
 			document.location.href=document.location.origin+appParams.path;
 		}else if(location.host.startsWith("pv.")){
 			document.location.href = document.location.origin + `/~/-PVHome/app.html`;
+		}else if(appParams.botnode){
+				document.location.href = document.location.origin + "/@aae/dashboard.html";
 		}else {
 			if(appParams.app){
 				document.location.href = document.location.origin + `/@homekit?app=${appParams.app}`;
@@ -17170,6 +17612,7 @@ let MainUI=function(app){
 //										"alignV": "Top",
 //										"wrap": "false",
 //										"ellipsis": "false",
+//										"lineClamp": "0",
 //										"select": "false",
 //										"shadow": "false",
 //										"shadowX": "0",
@@ -17628,6 +18071,7 @@ let MainUI=function(app){
 //																		"alignV": "Center",
 //																		"wrap": "false",
 //																		"ellipsis": "false",
+//																		"lineClamp": "0",
 //																		"select": "false",
 //																		"shadow": "false",
 //																		"shadowX": "0",
@@ -17955,6 +18399,7 @@ let MainUI=function(app){
 //																						"alignV": "Center",
 //																						"wrap": "false",
 //																						"ellipsis": "false",
+//																						"lineClamp": "0",
 //																						"select": "false",
 //																						"shadow": "false",
 //																						"shadowX": "0",
@@ -18090,6 +18535,7 @@ let MainUI=function(app){
 //																		"alignV": "Top",
 //																		"wrap": "false",
 //																		"ellipsis": "false",
+//																		"lineClamp": "0",
 //																		"select": "false",
 //																		"shadow": "false",
 //																		"shadowX": "0",
@@ -18278,6 +18724,7 @@ let MainUI=function(app){
 //																										"alignV": "Center",
 //																										"wrap": "false",
 //																										"ellipsis": "false",
+//																										"lineClamp": "0",
 //																										"select": "false",
 //																										"shadow": "false",
 //																										"shadowX": "0",

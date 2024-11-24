@@ -11,6 +11,7 @@ import followRedirects from "follow-redirects";
 const AIPlatforms={
 	"OpenAI":{
 		"gpt-4o":{model:"gpt-4o",label:"GPT-4O"},
+		"gpt-4o-mini":{model:"gpt-4o-mini",label:"GPT-4O-mini"},
 		"gpt-3.5-turbo":{model:"gpt-3.5-turbo",label:"GPT-3.5"},
 		"gpt-3.5-turbo-16k":{model:"gpt-3.5-turbo-16k",label:"GPT-3.5-16K"},
 		"gpt-4":{model:"gpt-4",label:"GPT-4"},
@@ -20,6 +21,8 @@ const AIPlatforms={
 		"gemini-pro":{model:"gemini-pro",label:"Gemini Pro"}
 	},
 	"Claude":{
+		"claude-3-5-sonnet-latest":{model:"claude-3-5-sonnet-latest",label:"Claude 3.5 Sonnet"},
+		"claude-3-5-sonnet-20240620":{model:"claude-3-5-sonnet-20240620",label:"Claude 3.5 Sonnet 240620"},
 		"claude-3-sonnet-20240229":{model:"claude-3-sonnet-20240229",label:"Claude 3 Sonnet"},
 		"claude-3-opus-20240229":{model:"claude-3-opus-20240229",label:"Claude 3 Opus"}
 	},
@@ -166,11 +169,11 @@ export default function(app,router,apiMap) {
 			textRead = streamVO.textRead;
 			if (textRead !== textGot || streamVO.closed) {
 				if(functionCall){
-					res.json({ code: 200, message: textGot, closed: streamVO.closed, functionCall: functionCall});
+					res.json({ code: 200, message: textGot, closed: streamVO.closed, functionCall: functionCall,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
 				}else if(toolCalls){
-					res.json({ code: 200, message: textGot, closed: streamVO.closed, toolCalls: toolCalls});
+					res.json({ code: 200, message: textGot, closed: streamVO.closed, toolCalls: toolCalls,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
 				}else {
-					res.json({ code: 200, message: textGot, closed: streamVO.closed });
+					res.json({ code: 200, message: textGot, closed: streamVO.closed ,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
 				}
 				streamVO.textRead = textGot;
 				return;
@@ -255,6 +258,72 @@ export default function(app,router,apiMap) {
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
 			switch (platform) {
+				case "Ollama":{
+					let streamId,streamVO,chatStream,func,messages;
+					callVO = callAIObj.buildCallVO(reqVO,platform);
+					callVO.stream=true;
+					try {
+						streamId = getStreamId();
+						streamVO = {
+							streamId,
+							role:"",
+							content: "",
+							textRead: "",
+							closed: false,
+							waitFunc: null,
+							errorFunc: null,
+							timer: null
+						}
+						messages=reqVO.messages;
+						callVO.messages=messages;
+						
+						try {
+							chatStream = await ollama.chat(callVO, { responseType: 'stream' });
+						}catch(error){
+							console.log(error);
+							res.json({code: 500,info:`Ollama chat error: ${""+error}`});
+							return;
+						}
+						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+						
+						resVO = { code: 200, streamId: streamId };
+						streamMap.set(streamId, streamVO);
+						res.json(resVO);
+						
+						{
+							let content;
+							for await (const part of chatStream) {
+								content = part.message.content;
+								if (content) {
+									streamVO.content += content;
+								}
+								if(streamVO.timer){
+									clearTimeout(streamVO.timer);
+									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+								}
+								if (streamVO.content !== streamVO.textRead) {
+									func = streamVO.waitFunc;
+									if (func) {
+										streamVO.waitFunc = null;
+										func();
+									}
+								}
+							}
+						}
+						streamVO.closed = true;
+						func = streamVO.waitFunc;
+						if (func) {
+							streamVO.waitFunc = null;
+							func();
+						}
+					}catch(err){
+						console.error(err);
+						if(!res.headersSent) {
+							res.json({ code: 500, err: "" + err });
+						}
+					}
+					break;
+				}
 				case "Claude":{
 					let streamId,streamVO,stream,func,messages;
 					callVO = callAIObj.buildCallVO(reqVO,platform);
@@ -312,6 +381,8 @@ export default function(app,router,apiMap) {
 						func = streamVO.waitFunc;
 						if (func) {
 							streamVO.waitFunc = null;
+							streamVO.inputTokens=message.usage.input_tokens;
+							streamVO.outputTokens=message.usage.output_tokens;
 							func();
 						}
 						chargePointsByUsage(userInfo,message.usage.input_tokens,message.usage.output_tokens,platform,callVO.model);
@@ -325,8 +396,6 @@ export default function(app,router,apiMap) {
 				}
 				case "OpenAI": {
 					callVO = callAIObj.buildCallVO(reqVO,platform);
-					//console.log(callVO);
-					//Check gas
 					{
 						resVO = await checkAITokenCall(null, platform, callVO.model);
 						if (resVO.code !== 200) {
@@ -380,9 +449,7 @@ export default function(app,router,apiMap) {
 							let choice0,delta,content,funcCall,toolCalls,func;
 							let inputTokens=0,outputTokens=0;
 							for await (const part of chatStream) {
-								//console.log(part);
 								choice0=part.choices[0];
-								//console.log(choice0);
 								if (choice0) {
 									delta = choice0.delta;
 									if (delta) {
@@ -450,7 +517,7 @@ export default function(app,router,apiMap) {
 										}
 									}
 								}else{
-									console.log(part);
+									//console.log(part);
 									if(part.usage){
 										inputTokens=part.usage.prompt_tokens||0;
 										outputTokens=part.usage.completion_tokens||0;
@@ -470,6 +537,8 @@ export default function(app,router,apiMap) {
 								}
 							}
 							streamVO.closed = true;
+							streamVO.inputTokens=inputTokens;
+							streamVO.outputTokens=outputTokens;
 							func = streamVO.waitFunc;
 							if (func) {
 								streamVO.waitFunc = null;
@@ -492,74 +561,9 @@ export default function(app,router,apiMap) {
 					res.json({ code: 405, info: `Platform ${platform} is no supported.` });
 					return;
 				}
-				case "Ollama":{
-					let streamId,streamVO,chatStream,func,messages;
-					callVO = callAIObj.buildCallVO(reqVO,platform);
-					callVO.stream=true;
-					try {
-						streamId = getStreamId();
-						streamVO = {
-							streamId,
-							role:"",
-							content: "",
-							textRead: "",
-							closed: false,
-							waitFunc: null,
-							errorFunc: null,
-							timer: null
-						}
-						messages=reqVO.messages;
-						callVO.messages=messages;
-						
-						try {
-							chatStream = await ollama.chat(callVO, { responseType: 'stream' });
-						}catch(error){
-							console.log(error);
-							res.json({code: 500,info:`Ollama chat error: ${""+error}`});
-							return;
-						}
-						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-						
-						resVO = { code: 200, streamId: streamId };
-						streamMap.set(streamId, streamVO);
-						res.json(resVO);
-						
-						{
-							let content;
-							for await (const part of chatStream) {
-								content = part.message.content;
-								if (content) {
-									streamVO.content += content;
-								}
-								if(streamVO.timer){
-									clearTimeout(streamVO.timer);
-									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-								}
-								if (streamVO.content !== streamVO.textRead) {
-									func = streamVO.waitFunc;
-									if (func) {
-										streamVO.waitFunc = null;
-										func();
-									}
-								}
-							}
-						}
-						streamVO.closed = true;
-						func = streamVO.waitFunc;
-						if (func) {
-							streamVO.waitFunc = null;
-							func();
-						}
-					}catch(err){
-						console.error(err);
-						if(!res.headersSent) {
-							res.json({ code: 500, err: "" + err });
-						}
-					}
-					break;
-				}
 				case "Google":{
 					let streamId,streamVO,stream,func;
+					let tokenUsage,inputTokens,outputTokens;
 					callVO = callAIObj.buildCallVO(reqVO,platform);
 					try {
 						let modelName,model,chat,messages,history,result,prompt;
@@ -585,6 +589,10 @@ export default function(app,router,apiMap) {
 						prompt=history.pop().parts;
 						chat=model.startChat({history:history,generationConfig:callVO});
 						result = await chat.sendMessageStream(prompt);
+
+						//Count input tokens:
+						tokenUsage=await model.countTokens({ contents:[...history,{role:"user",parts:[{text:prompt}]}]});
+						inputTokens=tokenUsage.totalTokens;
 						
 						streamId = getStreamId();
 						streamVO = {
@@ -619,6 +627,10 @@ export default function(app,router,apiMap) {
 							}
 						}
 						streamVO.closed = true;
+
+						//Count output tokens:
+						tokenUsage=await model.countTokens({contents:[{role:"model",parts:[{role:"model",parts:[{text:streamVO.content}]}]}]});
+						outputTokens=tokenUsage.totalTokens;
 						func = streamVO.waitFunc;
 						if (func) {
 							streamVO.waitFunc = null;
@@ -729,29 +741,6 @@ export default function(app,router,apiMap) {
 
 		//-------------------------------------------------------------------
 		apiMap['AICallStream'] = async function (req, res, next) {
-			let reqVO = req.body.vo;
-			if(reqVO.model==="gpt-4-32k"){
-				//TODO: 1. Build callVO that match your API:
-				let callVO = await Make_YOUR_LLM_CALL_VO(reqVO);
-				//TODO: 2. Call your own LLM API:
-				let result= await YOUR_WON_LLM_API(callVO);
-				//TODO: 2. add a call stream
-				let streamId = getStreamId();
-				let streamVO = {
-					streamId,
-					textGot: result,
-					textRead: "",
-					closed: true,
-					waitFunc: null,
-					errorFunc: null,
-					timer: null
-				};
-				streamMap.set(streamId, streamVO);
-				//Response client:
-				let resVO = { code: 200, streamId: streamId };
-				res.json(resVO);
-				return;
-			}
 			return await AIStreamCall(plainCall, req, res);
 		};
 		

@@ -1,0 +1,10 @@
+{
+	"name":"TestNode",
+	"description":"Test agent node.",
+	"globalContext":{
+		"OpenAI":{
+			"key":"[open-ai-key]"
+		}
+	},
+	"agents":["agent.py","agent2.py"]
+}

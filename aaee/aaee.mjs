@@ -12,6 +12,7 @@ const AAEE_VERSION="0.0.1";
 const AAFarm_Executable=process.env.AAF_EXECUATABLE;
 const AAFarm_Entry=process.env.AAF_ENTRY;
 const AAFarm_DataDirRoot=process.env.AAF_DATADIR_PATH;
+const killBrowserTime=5*60*1000;
 
 const browserAliasMap=new Map();
 const browserMap=new Map();
@@ -107,6 +108,128 @@ async function deleteFile(filePath) {
 	}
 }
 
+//-------------------------------------------------------------------
+async function closeBrowser(browser){
+	let list,page,pageId;
+	browser.killTimer=null;
+	list=await browser.pages();
+	//Clear pages under this browser:
+	await browser.close();
+}
+
+async function openBrowser(alias,opts,keepAlive){
+	let browserId, browser, dirPath;
+	if(alias){
+		if((!aliasPattern.test(alias)) || alias.startsWith("TMP_")){
+			throw Error("Browser alias is invalid.");
+		}
+		browserId=browserAliasMap.get(alias);
+		if(browserId){
+			browser=browserMap.get(browserId);
+			if(browser){
+				return browser;
+			}
+		}
+	}
+	dirPath=null;
+	//Check auto data dir
+	if(alias && AAFarm_DataDirRoot){
+		if(opts.autoDataDir){
+			dirPath = AAFarm_DataDirRoot;
+			if (dirPath[0] !== "/") {
+				//make it full path
+				dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
+			}
+			dirPath = pathLib.join(dirPath, alias);
+			try{
+				await fs.access(dirPath);
+				opts.userDataDir = dirPath;
+			}catch(err){
+				try {
+					await fs.mkdir(dirPath, { recursive: true });
+					opts.userDataDir = dirPath;
+				}catch(err){
+					//Do not use data-dir.
+				}
+			}
+		}else{
+			//Check dir for alias
+			let dirPath = AAFarm_DataDirRoot;
+			if (dirPath[0] !== "/") {
+				//make it full path
+				dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
+			}
+			dirPath = pathLib.join(dirPath, alias);
+			try{
+				await fs.access(dirPath);
+				opts.userDataDir = dirPath;
+			}catch(err){
+				//Do not use data-dir.
+			}
+		}
+	}
+	
+	//check if use executable path:
+	if(!opts.executablePath){
+		let exePath;
+		exePath=AAFarm_Executable;
+		if(exePath){
+			if (exePath[0] !== "/" && (exePath[1]===":" && exePath[2]===":")) {
+				exePath = pathLib.join(app.get("AppHomePath"), exePath);
+			}
+			opts.executablePath=exePath;
+		}
+	}
+	browserId = "" + (nextBrowserId++);
+	browser = await startPPT(opts);
+	browser.aaeBrowserId=browserId;
+	browserMap.set(browserId, browser);
+	browser.pageMap=new Map();
+	if(opts.userDataDir){
+		let zonePath=pathLib.join(opts.userDataDir,"AAEZone");
+		try{
+			await fs.access(zonePath);
+			browser.aaeZonePath=zonePath;
+		}catch(err){
+			try {
+				await fs.mkdir(zonePath, { recursive: true });
+				browser.aaeZonePath=zonePath;
+			}catch(err){
+				//Do not use data-dir.
+			}
+		}
+	}
+	
+	if(alias){
+		browserAliasMap.set(alias,browserId);
+		browser.aaeeAlias=alias;
+	}else{
+		alias="TMP_"+(nextTempBrowserId++);
+		browserAliasMap.set(alias,browserId);
+		browser.aaeeAlias=alias;
+	}
+	if(!keepAlive) {
+		browser.killTimer = setTimeout(async () => {
+			closeBrowser(browser);
+		}, killBrowserTime);
+	}
+	
+	browser.aaePc=browser.process();
+	
+	browser.on("disconnected", () => {
+		browserMap.delete(browserId);
+		if(alias) {
+			browserAliasMap.delete(alias);
+		}
+		//Do something about the process:
+		try{
+			browser.aaePc.kill("SIGKILL");
+		}catch(err){
+		}
+	});
+	return browser;
+}
+
 export default async function(app,router,apiMap) {
 	//-------------------------------------------------------------------
 	apiMap['aaeeGetVersion'] = async function (req, res, next) {
@@ -144,135 +267,44 @@ export default async function(app,router,apiMap) {
 			res.json({ code: 200, browsers: list});
 		};
 		
-		const killBrowserTime=5*60*1000;
 		//-------------------------------------------------------------------
 		apiMap['aaeeOpenBrowser'] = async function (req, res, next) {
 			let reqVO, opts, browserId, browser, alias,dirPath;
 			reqVO = req.body.vo;
 			opts = reqVO.opts || reqVO.options || {};
 			alias=reqVO.alias;
-			if(alias){
-				browserId=browserAliasMap.get(alias);
-				if(browserId){
-					res.json({ code: 200, browser: browserId,alias:alias });
-					return;
-				}
-				if((!aliasPattern.test(alias)) || alias.startsWith("TMP_")){
-					res.json({ code: 400, info:"Browser alias is invalid." });
-					return;
-				}
-			}
-			dirPath=null;
-			//Check auto data dir
-			if(alias && AAFarm_DataDirRoot){
-				if(opts.autoDataDir){
-					dirPath = AAFarm_DataDirRoot;
-					if (dirPath[0] !== "/") {
-						//make it full path
-						dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
-					}
-					dirPath = pathLib.join(dirPath, alias);
-					try{
-						await fs.access(dirPath);
-						opts.userDataDir = dirPath;
-					}catch(err){
-						try {
-							await fs.mkdir(dirPath, { recursive: true });
-							opts.userDataDir = dirPath;
-						}catch(err){
-							//Do not use data-dir.
-						}
-					}
-				}else{
-					//Check dir for alias
-					let dirPath = AAFarm_DataDirRoot;
-					if (dirPath[0] !== "/") {
-						//make it full path
-						dirPath = pathLib.join(app.get("AppHomePath"), dirPath);
-					}
-					dirPath = pathLib.join(dirPath, alias);
-					try{
-						await fs.access(dirPath);
-						opts.userDataDir = dirPath;
-					}catch(err){
-						//Do not use data-dir.
-					}
-				}
-			}
-			//check if use executable path:
-			if(!opts.executablePath){
-				let exePath;
-				exePath=AAFarm_Executable;
-				if(exePath){
-					if (exePath[0] !== "/") {
-						exePath = pathLib.join(app.get("AppHomePath"), exePath);
-					}
-					opts.executablePath=exePath;
-				}
-			}
-			browserId = "" + (nextBrowserId++);
-			browser = await startPPT(opts);
-			browserMap.set(browserId, browser);
-			browser.pageMap=new Map();
-			if(opts.userDataDir){
-				let zonePath=pathLib.join(opts.userDataDir,"AAEZone");
-				try{
-					await fs.access(zonePath);
-					browser.aaeZonePath=zonePath;
-				}catch(err){
-					try {
-						await fs.mkdir(zonePath, { recursive: true });
-						browser.aaeZonePath=zonePath;
-					}catch(err){
-						//Do not use data-dir.
-					}
-				}
-			}
-			
-			if(alias){
-				browserAliasMap.set(alias,browserId);
-				browser.aaeeAlias=alias;
-			}else{
-				alias="TMP_"+(nextTempBrowserId++);
-				browserAliasMap.set(alias,browserId);
-				browser.aaeeAlias=alias;
-			}
-			res.json({ code: 200, browser: browserId, alias:alias});
-
-			browser.killTimer=setTimeout(async ()=>{
-				closeBrowser(browser);
-			},killBrowserTime);
-			browser.on("disconnected", () => {
-				browserMap.delete(browserId);
-				if(alias) {
-					browserAliasMap.delete(alias);
-				}
-			});
+			browser=await openBrowser(alias,opts);
+			res.json({ code: 200, browser: browser.aaeBrowserId, alias:alias});
 		};
-		
-		//-------------------------------------------------------------------
-		async function closeBrowser(browser){
-			let list,page,pageId;
-			browser.killTimer=null;
-			list=await browser.pages();
-			//Clear pages under this browser:
-			await browser.close();
-		}
 		
 		//-------------------------------------------------------------------
 		apiMap['aaeeGetPageByTitle'] = async function (req, res, next) {
 			let reqVO, browserId, browser,title,page;
 			reqVO = req.body.vo;
 			browserId = reqVO.browser;
+			title=reqVO.title;
+			if(!browserId){
+				let browsers=browserMap.values();
+				for(browser of browsers){
+					let pages=await browser.pages();
+					for(page of pages){
+						if((await page.title())===title){
+							res.json({ code: 200,browser:browser.aaeBrowserId,alias:browser.aaeeAlias,page:getPageId(browser.pageMap,page)});
+							return;
+						}
+					}
+				}
+				res.json({ code: 200,page:null});
+				return;
+			}
 			browser = browserMap.get(browserId);
 			if (!browser) {
 				res.json({ code: 400, info: "Browser not found." });
 				return;
 			}
-			title=reqVO.title;
 			let pages=await browser.pages();
 			for(page of pages){
-				if(page.title()===title){
+				if((await page.title())===title){
 					res.json({ code: 200,page:getPageId(browser.pageMap,page)});
 					return;
 				}
@@ -787,23 +819,71 @@ export default async function(app,router,apiMap) {
 				await page.addStyleTag({ type, content, path, url });
 				res.json({ code: 200 });
 			};
-
+			
 			//---------------------------------------------------------------
-			apiMap['aaeeEvaluate'] = async function (req, res, next) {
-				let reqVO, pageId, page,code,params,result;
+			apiMap['aaeeGetCodeTag'] = async function (req, res, next) {
+				let reqVO, pageId, page, codeTag;
 				reqVO = req.body.vo;
+				let browserId = reqVO.browser;
+				let browser = browserMap.get(browserId);
+				if (!browser) {
+					res.json({ code: 400, info: "Browser not found." });
+					return;
+				}
 				pageId = reqVO.page;
-				page = pageMap.get(pageId);
-				code = reqVO.code;
-				params = reqVO.parmams;
+				page = browser.pageMap.get(pageId);
 				if (!page) {
 					res.json({ code: 400, info: "Page not found." });
 					return;
 				}
-				if(params){
-					result=await page.evaluate(code,...params);
-				}else{
-					result=await page.evaluate(code);
+				let frameId = reqVO.frame;
+				if (frameId) {
+					page = page.aaeeObjsMap.get(frameId);
+				}
+				if (!page) {
+					res.json({ code: 400, info: "Page not found." });
+					return;
+				}
+				codeTag=await ensureCodeLib(page);
+				res.json({ code: 200, codeTag: codeTag });
+			};
+			
+			//---------------------------------------------------------------
+			apiMap['aaeeEvaluate'] = async function (req, res, next) {
+				let reqVO, pageId, page,code,opts,args,result;
+				reqVO = req.body.vo;
+				let browserId = reqVO.browser;
+				let browser = browserMap.get(browserId);
+				if (!browser) {
+					res.json({ code: 400, info: "Browser not found." });
+					return;
+				}
+				pageId = reqVO.page;
+				page = browser.pageMap.get(pageId);
+				if (!page) {
+					res.json({ code: 400, info: "Page not found." });
+					return;
+				}
+				let frameId=reqVO.frame;
+				if(frameId){
+					page=page.aaeeObjsMap.get(frameId);
+				}
+				code = reqVO.code;
+				if (!page) {
+					res.json({ code: 400, info: "Page not found." });
+					return;
+				}
+				opts = reqVO.opts||{};
+				args = reqVO.args||opts.args;
+				if(opts.argNames){
+					let func=new Function(...opts.argNames,code);
+					result = await page.evaluate(func, ...args);
+				}else {
+					if (args) {
+						result = await page.evaluate(code, ...args);
+					} else {
+						result = await page.evaluate(code);
+					}
 				}
 				res.json({ code: 200,result:result});
 			};
@@ -920,7 +1000,7 @@ export default async function(app,router,apiMap) {
 					res.json({ code: 400, info: "Page not found." });
 					return;
 				}
-				baseNode=reqVO.baseNode;
+				baseNode=reqVO.baseNode||null;
 				timeout=options?(options.timeout||0):0;
 				codeTag=await ensureCodeLib(page);
 				startTime=Date.now();
@@ -2319,6 +2399,17 @@ export default async function(app,router,apiMap) {
 				}while (1);
 			};
 		}
+		
+		//-------------------------------------------------------------------
+		//Utilities:
+		//-------------------------------------------------------------------
+		{
+			//-------------------------------------------------------------------
+			apiMap['aaeeGetClipboard'] = async function (req, res, next) {
+				let content = await clipboardy.read();
+				res.json({code:200,content:content});
+			};
+		}
 	}
 	
 	if(AAFarm_Entry){
@@ -2347,6 +2438,8 @@ export default async function(app,router,apiMap) {
 		let browserId = "" + (nextBrowserId++);
 		//let browser = await puppeteer.launch(opts);
 		let browser = await startPPT(opts);
+		browser.aaePc=browser.process();
+		browser.aaeBrowserId=browserId;
 		browserMap.set(browserId, browser);
 		browser.pageMap=new Map();
 		browserAliasMap.set("AAHOME",browserId);
@@ -2354,6 +2447,11 @@ export default async function(app,router,apiMap) {
 		browser.on("disconnected",()=>{
 			browserMap.delete(browserId);
 			browserAliasMap.delete("AAHOME");
+			//Do something about the process:
+			try{
+				browser.aaePc.kill("SIGKILL");
+			}catch(err){
+			}
 		});
 		
 		if(opts.userDataDir){
@@ -2382,3 +2480,4 @@ export default async function(app,router,apiMap) {
 		}
 	}
 }
+export {browserMap,browserAliasMap,getBrowserId,openBrowser};

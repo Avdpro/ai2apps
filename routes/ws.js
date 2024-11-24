@@ -3,6 +3,7 @@ var chatAI,gitAPI,previewAPI,utilsAPI,fileAPI;
 var router = express.Router();
 var proxyCall=require('../util/ProxyCall.js').proxyCall;
 const USE_AAEE=process.env.AAEE;
+const USE_AGENTHUB=process.env.AGENT_HUB==="TRUE";
 
 module.exports =function(app) {
 	var apiMap={};
@@ -30,6 +31,13 @@ module.exports =function(app) {
 		import("../aaee/aaee.mjs").then((mode)=>{
 			aaeeAPI=mode.default;
 			aaeeAPI(app,router,apiMap);
+		});
+	}
+	if(USE_AGENTHUB){
+		let ahAPI;
+		import("../agenthub/AhSystem.mjs").then((mode)=>{
+			ahAPI=mode.default;
+			ahAPI(app,router,apiMap);
 		});
 	}
 	/* GET users listing. */

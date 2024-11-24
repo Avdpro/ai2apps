@@ -8,6 +8,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",
     "@google/generative-ai": "^0.2.1",
+    "adm-zip": "^0.5.16",
     "clipboardy": "^4.0.0",
     "cookie-parser": "~1.4.4",
     "cors": "^2.8.5",
@@ -25,7 +26,8 @@
     "puppeteer": "^22.3.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "unzipper": "^0.10.14"
+    "unzipper": "^0.10.14",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@rollup/plugin-alias": "^3.1.5",

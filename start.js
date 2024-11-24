@@ -23,6 +23,10 @@ app.initCokeCodesApp().then(()=>{
 	server.on('error', onError);
 	server.on('listening', onListening);
 	
+	if(app.setupWebSocket){
+		app.setupWebSocket(server);
+	}
+
 });
 
 /**

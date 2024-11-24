@@ -287,22 +287,22 @@ self.addEventListener('fetch', async (evt)=>{
 								//Use absolute path:
 								return `${refOrg}/${rootPath}/${exportPath}`;
 							}
-							return `${refOrg}//${diskName}/${dir}/${pkgName}/${rootPath}/${exportPath}`;
+							return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${rootPath}/${exportPath}`;
 						}
 					}
 					if(rootPath.startsWith("/")){
 						//Use absolute path:
-						return `${refOrg}/${rootPath}/${filePath}`;
+						return `${refOrg}/~${rootPath}/${filePath}`;
 					}
 					//Use pkg-related path:
-					return `${refOrg}//${diskName}/${dir}/${pkgName}/${rootPath}/${filePath}`;
+					return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${rootPath}/${filePath}`;
 				}else{
 					if(mainPath.startsWith("/")){
 						//Use absolute path:
-						return `${refOrg}/${mainPath}`;
+						return `${refOrg}/~${mainPath}`;
 					}
 					//Use pkg-related path:
-					return `${refOrg}//${diskName}/${dir}/${pkgName}/${cokeJSON.main}`;
+					return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${cokeJSON.main}`;
 				}
 			}else if(!tagName){
 				//Installed package, tagName is not provided, use default tag:
@@ -314,19 +314,19 @@ self.addEventListener('fetch', async (evt)=>{
 					if(exports){
 						let exportPath=exports[filePath];
 						if(exportPath){
-							return `${refOrg}//${diskName}/${dir}/${pkgName}/${tagName}/${exportPath}`;
+							return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${tagName}/${exportPath}`;
 						}
 					}
-					return `${refOrg}//${diskName}/${dir}/${pkgName}/${cokeJSON.tag}/${filePath}`;
+					return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${cokeJSON.tag}/${filePath}`;
 				}else {
 					let mainPath;
 					mainPath=cokeJSON.main;
 					if(mainPath.startsWith("/")){
 						//Use absolute path:
-						return `${refOrg}/${mainPath}`;
+						return `${refOrg}/~${mainPath}`;
 					}
 					//Use pkg-related path:
-					return `${refOrg}//${diskName}/${dir}/${pkgName}/${cokeJSON.main}`;
+					return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${cokeJSON.main}`;
 				}
 			}else{
 				let tagObj=tags[tagName];
@@ -342,19 +342,19 @@ self.addEventListener('fetch', async (evt)=>{
 							if(exports){
 								let exportPath=exports[filePath];
 								if(exportPath){
-									return `${refOrg}//${diskName}/${dir}/${pkgName}/${tagName}/${exportPath}`;
+									return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${tagName}/${exportPath}`;
 								}
 							}
-							return `${refOrg}//${diskName}/${dir}/${pkgName}/${tagName}/${filePath}`;
+							return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${tagName}/${filePath}`;
 						} else {
 							let mainPath;
 							mainPath = tagObj.main;
 							if (mainPath.startsWith("/")) {
 								//Use absolute path:
-								return `${refOrg}/${mainPath}`;
+								return `${refOrg}/~${mainPath}`;
 							}
 							//Use pkg-related path:
-							return `${refOrg}//${diskName}/${dir}/${pkgName}/${tagName}/${tagObj.main}`;
+							return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${tagName}/${tagObj.main}`;
 						}
 					}
 				}else{
@@ -381,12 +381,12 @@ self.addEventListener('fetch', async (evt)=>{
 							if(exports){
 								let exportPath=exports[filePath];
 								if(exportPath){
-									return `${refOrg}//${diskName}/${dir}/${pkgName}/${maxName}/${exportPath}`;
+									return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${maxName}/${exportPath}`;
 								}
 							}
-							return `${refOrg}//${diskName}/${dir}/${pkgName}/${maxName}/${filePath}`;
+							return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${maxName}/${filePath}`;
 						}else {
-							return `${refOrg}//${diskName}/${dir}/${pkgName}/${maxName}/${maxVO.main}`;
+							return `${refOrg}/~/${diskName}/${dir}/${pkgName}/${maxName}/${maxVO.main}`;
 						}
 					}
 				}
@@ -944,6 +944,15 @@ self.addEventListener('message', function(event) {
 				tasks.reverse();
 				client.postMessage({msg:"Tasks",tasks:tasks,reqId:reqId});
 			});
+			break;
+		}
+		case "GlobalNotify":{
+			self.clients.matchAll({ type: 'window' }).then(clients => {
+				clients.forEach(client => {
+					client.postMessage(data);
+				});
+			});
+			break;
 		}
 	}
 });
