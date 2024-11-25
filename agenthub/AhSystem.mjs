@@ -1,5 +1,6 @@
 import pathLib from "path";
 import {AhAgentNode} from "./AhAgentNode.mjs";
+import {proxyCall} from "../util/ProxyCall.js";
 
 //***************************************************************************
 //AhSystem
@@ -94,9 +95,13 @@ let AhSystem,ahSystem;
 	//-----------------------------------------------------------------------
 	ahSystem.handleCallHub=async function(msg,vo,session){
 		let handler;
-		handler=this.apiMap[msg];
+		handler=this.apiMap[msg]||proxyCall;
 		if(handler){
-			let callReq,callRes,result;
+			let callReq,callRes,result,pms,callback,callerr;
+			pms=new Promise((resolve,reject)=>{
+				callback=resolve;
+				callerr=reject;
+			});
 			callReq={
 				body:{msg:msg,vo:vo},
 			};
@@ -108,12 +113,19 @@ let AhSystem,ahSystem;
 			callRes={
 				json:async function(res){
 					result=res;
+					callback();
 				}
 			}
-			await handler(callReq,callRes);
+			try {
+				await handler(callReq, callRes);
+			}catch(err){
+				callback();
+				result={code:500,info:""+err};
+			}
+			await pms;
 			return result;
 		}else{
-			throw Error(`Can't find Hub-Call handler for message: "${msg}"`);
+			return {code:404,info:`Can't find callHub handler: ${msg}`};
 		}
 	};
 	

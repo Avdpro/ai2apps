@@ -34,6 +34,7 @@ app.initCokeCodesApp=async function(){
 	app.use(express.static(path.join(__dirname, 'public')));
 
 	mongoDB=null;
+	app.set('WebSocketSelectorMap',new Map());
 
 	app.use('/', indexRouter);
 	app.use('//', swrootRouter);
