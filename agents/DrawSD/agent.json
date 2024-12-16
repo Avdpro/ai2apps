@@ -1,0 +1,13 @@
+{
+	"name": "DrawSD",
+	"label":"DrawSD",
+	"expose": true,
+	"description":"Draw picture with Diffuser, Prompts should apply rule of AI drawing.",
+	"conda":"AIWork",
+	"globalContext":{
+	},
+	"agents":["ChatDraw.py"],
+	"chatEntry":"ChatDraw.py",
+	"agents":["ChatDraw.py","ToolDraw.py"],
+	"tools":["ToolDraw.py"]
+}

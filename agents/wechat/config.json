@@ -1,0 +1,5 @@
+{
+	"botPath": "data/bots",
+	"channel_type": "wx",
+	"hot_reload": true
+}

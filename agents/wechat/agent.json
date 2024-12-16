@@ -1,0 +1,14 @@
+{
+    "name": "Wechat",
+    "label":"Wechat",
+    "expose": true,
+    "description":"Wechat,微信用户管理、通信等",
+    "conda":"AIWork",
+    "globalContext":{
+    },
+    "chatEntry":"Wechat.py",
+    "agents":["agent.py"],
+    "tools":["datetime_text.py","mathexp.py"],
+    "debug": true,
+    "debugPort": 5505
+}

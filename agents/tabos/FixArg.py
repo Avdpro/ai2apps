@@ -7,7 +7,7 @@ import importlib
 ##{1ID42HC6Q0MoreImports#
 from session import trimJSON 
 ##}1ID42HC6Q0MoreImports#
-__Ln="EN"#Active language
+
 true=True
 false=False
 undefined=None
@@ -41,6 +41,7 @@ async def FixArg(session):
 	
 	context, globalContext = None, None
 	self = None
+	__Ln = session.language or "CN"
 	CheckCommand, CallGPT, HasMissing, Done, InputArgs = None, None, None, None, None
 	##{1ID42HC6Q0LocalVals#
 	##}1ID42HC6Q0LocalVals#
@@ -63,11 +64,7 @@ async def FixArg(session):
 	##}1ID42HC6Q0PreContext#
 	globalContext = session.globalContext
 	context = {
-		"args":{
-			"type":"auto","mockup":"","desc":""
-		},
-		##{1ID42HC6Q5ExCtxAttrs#
-		##}1ID42HC6Q5ExCtxAttrs#
+		"args":""
 	}
 	##{1ID42HC6Q0PostContext#
 	##}1ID42HC6Q0PostContext#
@@ -149,6 +146,8 @@ async def FixArg(session):
 自然语言指令：{command}
 """
 		if(prompt):
+			if not isinstance(prompt,str):
+				prompt=json.dumps(prompt)
 			messages.append({"role":"user","content":prompt})
 		##{1ID42M5R60PreCall#
 		##}1ID42M5R60PreCall#
@@ -304,8 +303,8 @@ if(DocPyAgentExporter){
 		name:"fixArgs",showName:(($ln==="CN")?("修正参数"):/*EN*/("Fix arguments")),icon:"args.svg",catalog:["Code"],
 		attrs:{
 			...SegObjShellAttr,
-			"argTemplate":{name:"argTemplate",type:"auto",key:1,fixed:1,initVal:""},
-			"command":{name:"command",type:"auto",key:1,fixed:1,initVal:""},
+			"argTemplate":{name:"argTemplate",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
+			"command":{name:"command",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
 		listHint:["id","argTemplate","command","codes","desc"],

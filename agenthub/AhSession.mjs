@@ -32,14 +32,14 @@ let AhSession,ahSession;
 	/**
 	 * Start agent session instance:
 	 */
-	ahSession.start=async function(){
+	ahSession.start=async function(options){
 		//Call agentNode to startSession:
 		let readyPms;
 		readyPms=new Promise((resolve,reject)=>{
 			this.nodeReadyCallback=resolve;
 			this.nodeReadyError=reject;
 		});
-		await this.nodeWS.send(JSON.stringify({msg:"CreateSession",sessionId:this.sessionId}));
+		await this.nodeWS.send(JSON.stringify({msg:"CreateSession",sessionId:this.sessionId,options:options}));
 		await readyPms;
 		
 		//Start listen for user-client websocket connection:

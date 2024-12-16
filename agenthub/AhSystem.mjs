@@ -1,6 +1,8 @@
 import pathLib from "path";
 import {AhAgentNode} from "./AhAgentNode.mjs";
 import {proxyCall} from "../util/ProxyCall.js";
+import { promises as fs } from 'fs';
+import AhFileLib from "./AhFileLib.mjs"
 
 //***************************************************************************
 //AhSystem
@@ -14,6 +16,10 @@ let AhSystem,ahSystem;
 	//-----------------------------------------------------------------------
 	AhSystem=function(app){
 		this.app=app;
+		this.configJSON=null;
+		this.description="Agent Hub.";
+		this.staticNodes=[];
+		this.staticNodeMap=new Map();
 		this.nodeMap=new Map();
 		//Make agent dir path:
 		this.agentDir=AH_AgentDir;
@@ -24,6 +30,44 @@ let AhSystem,ahSystem;
 		}
 	};
 	ahSystem=AhSystem.prototype={};
+	
+	//-----------------------------------------------------------------------
+	ahSystem.startHub=async function(){
+		let hubJSON,nodes,nodeName,nodePath,nodeJSON;
+		try {
+			hubJSON=await fs.readFile(pathLib.join(this.agentDir, "agenthub.json"), "utf8");
+			hubJSON=JSON.parse(hubJSON);
+		}catch(err){
+			hubJSON=null;
+		}
+		if(!hubJSON){
+			return;
+		}
+		this.configJSON=hubJSON;
+		this.description=hubJSON.description||this.description;
+		nodes=hubJSON.nodes;
+		for(nodeName in nodes){
+			nodePath=nodes[nodeName];
+			try {
+				nodeJSON=await fs.readFile(pathLib.join(this.agentDir, nodePath,"agent.json"), "utf8");
+				nodeJSON=JSON.parse(nodeJSON);
+			}catch(err){
+				nodeJSON={
+					name:nodeName,
+				}
+			}
+			console.log(`Static node ${nodeName} loaded.`);
+			nodeJSON.name=nodeName;
+			if(nodeJSON.expose!==false){
+				this.staticNodes.push(nodeJSON);
+				this.staticNodeMap.set(nodeName,nodeJSON);
+			}
+			if(nodeJSON.autoStart){
+				await this.startAgentNode(nodeName,nodePath,{checkUpdate:nodeJSON.checkUpdate});
+				console.log(`Static node ${nodeName} started.`);
+			}
+		}
+	};
 	
 	//-----------------------------------------------------------------------
 	ahSystem.startAgentNode=async function(nodeName,path,options){
@@ -61,15 +105,33 @@ let AhSystem,ahSystem;
 		
 		agentNode=new AhAgentNode(this,nodeName);
 		this.nodeMap.set(nodeName,agentNode);
-		await agentNode.start(path,options);
+		try {
+			await agentNode.start(path, options);
+		}catch(err){
+			if(this.nodeMap.get(nodeName)===agentNode){
+				this.nodeMap.delete(nodeName);
+			}
+			throw err;
+		}
 		return agentNode;
 	};
 	
 	//-----------------------------------------------------------------------
-	ahSystem.createSession=async function(nodeName){
-		let agent,session;
-		agent=await this.getAgentNode(nodeName);
-		session=await agent.newSession();
+	ahSystem.stopAgentNode=async function(nodeName){
+		let agentNode;
+		//Find current instance:
+		agentNode=this.nodeMap.get(nodeName);
+		if(agentNode) {
+			this.nodeMap.delete(nodeName);
+			await agentNode.stop();
+		}
+	}
+	
+	//-----------------------------------------------------------------------
+	ahSystem.createSession=async function(nodeName,options){
+		let agentNode,session;
+		agentNode=await this.getAgentNode(nodeName);
+		session=await agentNode.newSession(options);
 		return session;
 	};
 	
@@ -93,7 +155,7 @@ let AhSystem,ahSystem;
 	};
 	
 	//-----------------------------------------------------------------------
-	ahSystem.handleCallHub=async function(msg,vo,session){
+	ahSystem.handleCallHub=async function(msg,vo,session,devKey){
 		let handler;
 		handler=this.apiMap[msg]||proxyCall;
 		if(handler){
@@ -103,7 +165,8 @@ let AhSystem,ahSystem;
 				callerr=reject;
 			});
 			callReq={
-				body:{msg:msg,vo:vo},
+				body:{msg:msg,vo:vo,devKey:devKey},
+				headers:{host:"AgentHub"}
 			};
 			if(session){
 				callReq.headers={host:session.userReqHost};
@@ -119,7 +182,7 @@ let AhSystem,ahSystem;
 			try {
 				await handler(callReq, callRes);
 			}catch(err){
-				callback();
+				callerr(err);
 				result={code:500,info:""+err};
 			}
 			await pms;
@@ -135,6 +198,9 @@ let AhSystem,ahSystem;
 		self=this;
 		app=self.app;
 		this.apiMap=apiMap;
+		
+		await self.startHub();
+		await AhFileLib.setup(self,app,router,apiMap);
 		
 		//Apply external agent connection:
 		let selectorMap=app.get("WebSocketSelectorMap");
@@ -178,15 +244,17 @@ let AhSystem,ahSystem;
 		//-------------------------------------------------------------------
 		apiMap['AhCreateSession']=async function(req,res){
 			let reqVO,nodeName,options,session;
-			let userId,token;
+			let userId,token,language;
 			reqVO = req.body.vo;
 			nodeName=reqVO.node;
 			options=reqVO.options||{};
+			language=reqVO.language||options.language||self.configJSON.language||"CN";
 			if(!nodeName){
 				res.json({ code: 400, info:`CreateSession: Missing agent-node-name to create.`});
 				return;
 			}
-			session=await self.createSession(nodeName);
+			options.language=language;
+			session=await self.createSession(nodeName,options);
 			if(!session){
 				res.json({ code: 500, info:`Create session failed`});
 				return;
@@ -196,6 +264,92 @@ let AhSystem,ahSystem;
 			session.userId=reqVO.userId;
 			session.userToken = reqVO.token;
 			res.json({ code: 200, sessionId: session.sessionId});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['AhListAgentNodes']=async function(req,res){
+			let reqVO,userId,token,nodeMap,nodeVO,node,staticVO;
+			let list;
+			reqVO = req.body.vo;
+			nodeMap=new Map();
+			list=self.staticNodes;
+			for(nodeVO of list){
+				nodeMap.set(nodeVO.name,{...nodeVO,active:false,external:false});
+			}
+			list=Array.from(self.nodeMap.values());
+			for(node of list){
+				staticVO=nodeMap.get(node.name);
+				nodeVO={
+					name:node.name,
+					description:node.description,
+					chatEntry:node.chatEntry,
+					userGroups:Array.from(node.userGroups.values()),
+					agents:node.agents,
+					active:true,
+					external:true
+				};
+				if(staticVO){
+					Object.assign(staticVO,nodeVO);
+				}else {
+					nodeMap.set(nodeVO.name, nodeVO);
+				}
+			}
+			res.json({ code: 200, nodes:Array.from(nodeMap.values())});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['AhNodeState']=async function(req,res){
+			let reqVO,nodeName,node,stateVO,list;
+			reqVO = req.body.vo;
+			nodeName=reqVO.name;
+			if(!nodeName){
+				res.json({ code: 400, info:`StopAgentNode: Missing AgentNode name to stop.`});
+				return;
+			}
+			node=self.nodeMap.get(nodeName);
+			if(node) {//Make sure path:
+				stateVO={
+					name:node.name,
+					description:node.description,
+					chatEntry:node.chatEntry,
+					agents:node.agents,
+					active:true,
+					workload:node.workload,
+				};
+				res.json({code:200,state:stateVO});
+				return;
+			}
+			list=self.staticNodes;
+			for(stateVO of list){
+				if(stateVO.name===nodeName){
+					stateVO={
+						name:stateVO.name,
+						description:stateVO.description,
+						chatEntry:stateVO.chatEntry,
+						agents:stateVO.agents,
+						active:false
+					};
+					res.json({code:200,state:stateVO});
+					return;
+				}
+			}
+			res.json({code:404,info:`Node ${nodeName} not found.`});
+		}
+		
+		//-------------------------------------------------------------------
+		apiMap['StopAgentNode']=async function(req,res){
+			let reqVO,nodeName,node;
+			reqVO = req.body.vo;
+			nodeName=reqVO.name;
+			if(!nodeName){
+				res.json({ code: 400, info:`StopAgentNode: Missing AgentNode name to stop.`});
+				return;
+			}
+			node=self.nodeMap.get(nodeName);
+			if(node){//Make sure path:
+				self.stopAgentNode(nodeName);
+			}
+			res.json({ code: 200});
 		};
 	};
 }

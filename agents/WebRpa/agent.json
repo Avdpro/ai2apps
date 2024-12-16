@@ -1,0 +1,11 @@
+{
+    "name": "WebRpa",
+    "label":"WebRpa",
+    "expose": true,
+    "description":"Web RPA actions.",
+    "globalContext":{
+    },
+    "chatEntry":null,
+    "agents":["agent.js"],
+    "tools":["agent.js"]
+}

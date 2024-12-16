@@ -1,0 +1,13 @@
+{
+    "channels": [
+        "wechat"
+    ],
+    "name": "智能体助理1号",
+    "id": "Bot-1",
+    "chatChannel": "wechat",
+    "chatEntry": "agent.py",
+    "hot_reload": true,
+    "masterNickname": "DarthFalcon",
+    "masterId": "@a2056d68fdee5cd0a2b0f55fddf986a548625921722728e5a4cca4f11984490f",
+    "readMessageTime": 1734302755
+}

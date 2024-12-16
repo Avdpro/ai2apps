@@ -1013,7 +1013,7 @@ export default async function(app,router,apiMap) {
 						res.json({code:200,node:node});
 						return;
 					}
-					sleep(200);
+					await sleep(200);
 					if(timeout>0 && Date.now()-startTime>timeout){
 						if(node){
 							res.json({code:500,info:"WaitQuery time out."});
@@ -1969,6 +1969,7 @@ export default async function(app,router,apiMap) {
 							return codeLib.queryNode(aaeId,selector,opts);
 						},codeTag,null,query, {});
 						if(node && node.rect){
+							let rect=node.rect;
 							await moveMouseTo(page,rect.x+rect.width*0.5+dx,rect.y+rect.height*0.5+dx,opts.smooth);
 							await clickMouse(page);
 						}

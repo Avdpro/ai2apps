@@ -14,11 +14,13 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import traceback
 import inspect
-import re
+import sys
 
 pathLib = os.path
-
 openAI = None
+
+
+# *****************************************************************************
 def setupOpenAI(session):
 	global openAI
 	if openAI:
@@ -29,6 +31,7 @@ def setupOpenAI(session):
 		return openAI
 	return None
 
+# *****************************************************************************
 def trimJSON(input_string):
 	try:
 		start_idx = input_string.index('{')
@@ -47,14 +50,85 @@ def trimJSON(input_string):
 	return None
 
 
+# *****************************************************************************
 def import_module_from_file(file_path):
 	name = pathLib.basename(file_path)
 	if name.endswith(".py"):
 		name = name[:-3]
-	spec = importlib.util.spec_from_file_location(name, file_path)
-	module = importlib.util.module_from_spec(spec)
-	spec.loader.exec_module(module)
+	if name in sys.modules:
+		module = sys.modules[name]
+	else:
+		spec = importlib.util.spec_from_file_location(name, file_path)
+		module = importlib.util.module_from_spec(spec)
+		spec.loader.exec_module(module)
 	return module
+
+
+# *****************************************************************************
+def getErrorLocation(e):
+	tb = e.__traceback__
+	while tb.tb_next is not None:
+		tb = tb.tb_next  # 获取最后一层堆栈信息
+
+	file_name = tb.tb_frame.f_code.co_filename
+	line_number = tb.tb_lineno
+	function_name = tb.tb_frame.f_code.co_name
+	return f"File: {file_name}, Line: {line_number}, Function: {function_name}"
+
+
+# *****************************************************************************
+def to_dict(obj, max_depth=3, _visited=None, _current_depth=0):
+	"""
+	将对象递归转化为字典，支持最大递归深度和循环引用检测。
+
+	:param obj: 要转化的对象
+	:param max_depth: 最大递归深度
+	:param _visited: 内部使用，用于记录已经处理过的对象，避免循环引用
+	:param _current_depth: 当前递归深度
+	:return: 转化后的字典
+	"""
+	# 初始化 visited 集合，记录已访问的对象
+	if _visited is None:
+		_visited = set()
+
+	# 如果超过最大递归深度，返回字符串表示
+	if _current_depth > max_depth:
+		return f"<Max depth reached: {type(obj).__name__}>"
+
+	# 如果对象是 None、基本类型或可以直接 JSON 序列化，直接返回
+	if obj is None or isinstance(obj, (str, int, float, bool)):
+		return obj
+
+	# 如果是字典，递归处理其键值
+	if isinstance(obj, dict):
+		return {to_dict(k, max_depth, _visited, _current_depth + 1):
+				to_dict(v, max_depth, _visited, _current_depth + 1)
+				for k, v in obj.items()}
+
+	# 如果是列表或元组，递归处理其元素
+	if isinstance(obj, (list, tuple)):
+		return [to_dict(item, max_depth, _visited, _current_depth + 1) for item in obj]
+
+	# 检查对象是否已经访问过，防止循环引用
+	obj_id = id(obj)
+	if obj_id in _visited:
+		return f"<Circular reference: {type(obj).__name__}>"
+	_visited.add(obj_id)
+
+	# 尝试将对象的属性转化为字典
+	result = {}
+	if hasattr(obj, "__dict__"):  # 处理有 __dict__ 属性的对象
+		result = {key: to_dict(value, max_depth, _visited, _current_depth + 1)
+				  for key, value in vars(obj).items()}
+	elif hasattr(obj, "__slots__"):  # 处理有 __slots__ 的对象
+		result = {key: to_dict(getattr(obj, key), max_depth, _visited, _current_depth + 1)
+				  for key in obj.__slots__ if hasattr(obj, key)}
+	else:
+		result = f"<Unsupported object type: {type(obj).__name__}>"
+
+	# 从 _visited 中移除对象，允许其在其他上下文中再次被处理
+	_visited.remove(obj_id)
+	return result
 
 
 class AISession:
@@ -64,7 +138,7 @@ class AISession:
 	agentDict = {}
 	globalContext = {}
 
-	def __init__(self, basePath, node=None, sessionId=None):
+	def __init__(self, basePath, node=None, sessionId=None,options={}):
 		self.basePath = basePath
 		self.curPath = None
 		self.agentNode = node
@@ -73,6 +147,10 @@ class AISession:
 		self.callMap = {}
 		self.version = "0.0.2"
 		self.curAgent = None
+		self.options = options or {}
+		self.language = self.options.get('language') or "CN"
+		self.snsBot=options.get("snsBot", None)
+		self.snsChatUserId = None
 
 	# -------------------------------------------------------------------------
 	# Show version:
@@ -80,7 +158,11 @@ class AISession:
 		print("AIChatSession 0.02")
 
 	# -------------------------------------------------------------------------
+	# Network APIs:
+	# -------------------------------------------------------------------------
 	async def sendToClient(self, msg, vo):
+		if not self.agentNode.websocket:
+			return
 		message = {
 			"msg": "MessageToClient",
 			"sessionId": self.sessionId,
@@ -94,6 +176,8 @@ class AISession:
 
 	# -------------------------------------------------------------------------
 	async def callClient(self, msg, vo):
+		if not self.agentNode.websocket:
+			return
 		callId = str(self.nextCallId)
 		self.nextCallId += 1
 		pms=asyncio.Future()
@@ -125,8 +209,40 @@ class AISession:
 		self.callMap.pop(callId, None)
 		stub["pms"].set_exception(Exception(error))
 
+	# -----------------------------------------------------------------------
+	async def callHub(self,msg,vo):
+		return await self.agentNode.callHub(msg,vo,self)
+
 	# -------------------------------------------------------------------------
-	# Load agent from file:
+	async def webCall(self, vo, fromAgent, timeout):
+		url = vo.url
+		method = vo["method"] if ("method" in vo) else "GET"
+		headers = vo["headers"] if ("headers" in vo) else {}
+		argMode = vo["argMode"] if ("argMode" in vo) else None
+
+		if argMode == "JSON":
+			headers["Content-Type"] = "application/json"
+			with httpx.Client() as client:
+				response = client.request(method, url, headers=headers, json=vo["json"])
+		elif argMode == "TEXT":
+			headers["Content-Type"] = "text/plain"
+			with httpx.Client() as client:
+				response = client.request(method, url, headers=headers, data=vo["text"])
+		elif argMode == "DATA":
+			headers["Content-Type"] = "application/octet-stream"
+			with httpx.Client() as client:
+				response = client.request(method, url, headers=headers, data=vo["data"])
+		else:
+			with httpx.Client() as client:
+				response = client.request(method, url, headers=headers)
+		if response.status_code == httpx.codes.OK:
+			return {"code": 200, "data": response.text}
+		else:
+			return {"code": response.status_code, "info": response.text}
+
+	# -------------------------------------------------------------------------
+	# Load/ run agent
+	# -------------------------------------------------------------------------
 	async def loadAgent(self, fromAgent, path):
 		agent = None
 		agentDict = self.agentDict
@@ -143,11 +259,11 @@ class AISession:
 		entryPath=path
 		if entryPath.startswith("/@"):
 			entryPath = "../"+entryPath[2:]
-			if not fromAgent:
-				entryPath = pathLib.join(self.basePath, entryPath)
-			else:
-				entryPath = pathLib.join(fromAgent.get("baseDir") or self.basePath, entryPath)
-			entryPath = pathLib.abspath(entryPath)
+		if not fromAgent:
+			entryPath = pathLib.join(self.basePath, entryPath)
+		else:
+			entryPath = pathLib.join(fromAgent.get("baseDir") or self.basePath, entryPath)
+		entryPath = pathLib.abspath(entryPath)
 		try:
 			module = import_module_from_file(entryPath)
 			agent = getattr(module, "default")
@@ -157,6 +273,7 @@ class AISession:
 			print(f"Failed to load agent from {path}: {e}")
 			raise e
 
+	# -------------------------------------------------------------------------
 	async def runSeg(self, agent, segVO):
 		result = None
 		catchSeg = None
@@ -183,17 +300,28 @@ class AISession:
 				if seg and ("catchSeg" in result):
 					return await self.runSeg(agent,result)
 		except Exception as e:
-			print(f"Caught error: {e}")
-			print(f"Exception type: {type(e).__name__}")
-			print(f"Exception message: {e}")
+			print(f"Caught error: [{type(e).__name__}]: {e}")
 			print("Traceback (most recent call last):")
 			traceback.print_tb(e.__traceback__)  # 打印详细堆栈信息
+			info=f"Caught error: {e} at {getErrorLocation(e)}"
 			if catchSeg:
-				catchSegVO = {"input": e, "seg": catchSeg}
+				catchSegVO = {"input": info, "seg": catchSeg}
 				result = await self.runSeg(agent,catchSegVO)
 			else:
 				raise e
 		return result
+
+	# -------------------------------------------------------------------------
+	# Create a new agent, but not execute it:
+	async def createAgent(self,agentPath):
+		fromAgent=self.curAgent
+		if callable(agentPath):
+			agent = agentPath
+		else:
+			agent = await self.loadAgent(fromAgent, agentPath)
+		agent = await agent(self)
+		await self.logAgentStart(agent)
+		return agent
 
 	# -------------------------------------------------------------------------
 	# Execute an agent:
@@ -203,11 +331,15 @@ class AISession:
 			agent = agentPath
 		else:
 			agent = await self.loadAgent(fromAgent, agentPath)
-		agent = await agent(self)
-		await self.logAgentStart(agent)
-		entry = await agent["execChat"](input)
-		result = await self.runSeg(agent,entry)
-		self.curAgent = fromAgent
+		try:
+			agent = await agent(self)
+			self.curAgent = agent
+			await self.logAgentStart(agent)
+			entry = await agent["execChat"](input)
+			result = await self.runSeg(agent,entry)
+			await self.logAgentEnd(agent,result)
+		finally:
+			self.curAgent = fromAgent
 		return result
 
 	# -------------------------------------------------------------------------
@@ -217,23 +349,38 @@ class AISession:
 		return await self.runSeg(agent,execVO)
 
 	# -------------------------------------------------------------------------
-	async def logAgentStart(self,agent):
+	async def pipeChat(self, path, input, hideInter=False):
+		return await self.execAgent(path, input)
+
+	# -------------------------------------------------------------------------
+	# Make logs
+	# -------------------------------------------------------------------------
+	async def logAgentStart(self,agent,arg=""):
 		if not self.agentNode:
 			return
 		log={
 			"type":"StartAgent",
-			"agent":agent.get("jaxId")
+			"agent":agent.get("jaxId"),
+			"name":agent.get("name"),
+			"url":agent.get("url"),
+			"input":arg,
 		}
+		if await self.agentNode.sendDebugLog(log):
+			return
 		await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
-	async def logAgentEnd(self,agent):
+	async def logAgentEnd(self,agent,result=""):
 		if not self.agentNode:
 			return
 		log={
-			"type":"StarEnd",
-			"agent":agent.get("jaxId")
+			"type":"EndAgent",
+			"agent":agent.get("jaxId"),
+			"name": agent.get("name"),
+			"result": result,
 		}
+		if await self.agentNode.sendDebugLog(log):
+			return
 		await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
@@ -243,12 +390,20 @@ class AISession:
 		seg=segVO.get("seg",None)
 		if not seg:
 			return
+		inputVO = segVO.get("input", None) or segVO.get("result", None)
+		try:
+			inputJSON=json.dumps(inputVO)
+		except Exception as e:
+			try:
+				inputVO = to_dict(inputVO,3)
+			except Exception as e:
+				inputVO = "[Object]"
 		segAct={
 			"agent":agent.get("jaxId"),
 			"name": seg.get("name", "seg"),
 			"url": seg.get("url", ""),
 			"jaxId": seg.get("jaxId", ""),
-			"input": segVO.get("input",None) or segVO.get("result",None),
+			"input": inputVO,
 			"fromSeg": segVO.get("preSeg", None),
 			"fromOutlet": segVO.get("outlet", None)
 		}
@@ -258,6 +413,8 @@ class AISession:
 			"session":self.sessionId,
 			"seg":segAct
 		}
+		if await self.agentNode.sendDebugLog(log):
+			return segAct
 		await self.sendToClient("DebugLog", log)
 		return segAct
 
@@ -265,16 +422,58 @@ class AISession:
 	async def logSegEnd(self,agent,segAct,result):
 		if not self.agentNode:
 			return
-		segAct["result"] = result.get("result",None)
+		if result:
+			result = result.get("result", None)
+			try:
+				resultJSON=json.dumps(result)
+			except Exception as e:
+				try:
+					result=to_dict(result)
+				except Exception as e:
+					result ="[Object]"
+		segAct["result"] =result
 		log={
 			"type":"EndSeg",
 			"session":self.sessionId,
 			"seg":segAct
 		}
+		if await self.agentNode.sendDebugLog(log):
+			return
 		await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
-	# APIs for agent to call:
+	async def logLlmCall(self,codeURL,opts,messages):
+		if not self.agentNode:
+			return
+		log={
+			"type":"LlmCall",
+			"session":self.sessionId,
+			"code":codeURL,
+			"options":opts,
+			"messages":messages
+		}
+		if await self.agentNode.sendDebugLog(log):
+			return
+		await self.sendToClient("DebugLog", log)
+
+	# -------------------------------------------------------------------------
+	async def logLlmResult(self,codeURL,opts,messages,result):
+		if not self.agentNode:
+			return
+		log={
+			"type":"LlmResult",
+			"session":self.sessionId,
+			"code":codeURL,
+			"options":opts,
+			"messages":messages,
+			"result": result
+		}
+		if await self.agentNode.sendDebugLog(log):
+			return
+		await self.sendToClient("DebugLog", log)
+
+	# -------------------------------------------------------------------------
+	# APIs for agent to call-tool or I/O with AgentHub:
 	# -------------------------------------------------------------------------
 	# import file:
 	async def importFile(self, path):
@@ -331,8 +530,96 @@ class AISession:
 		file.close()
 
 	# -------------------------------------------------------------------------
+	async def saveHubTextFile(self, fileName, text):
+		content = base64.b64encode(text)
+		content = content.decode("utf-8")
+		return await self.saveHubFile(fileName, content)
+
+	# -------------------------------------------------------------------------
+	async def saveHubFile(self, fileName, content):
+		if isinstance(content, str):
+			if content.startswith("data:"):
+				pos = content.find(",")  # 找到逗号的索引
+				content = content[pos + 1:]  # 从逗号后的位置开始截取			content = content.encode("utf-8")
+		elif isinstance(content, (bytes, bytearray)):
+			content = base64.b64encode(content)
+			content = content.decode("utf-8")
+		else:
+			try:
+				content = json.dumps(content)
+			except Exception as e:
+				content = ""+content
+			content = content.encode("utf-8")
+			content = base64.b64encode(content)
+			content = content.decode("utf-8")
+		res=await self.callHub("AhFileSave",{"fileName":fileName,"data":content})
+		if res and res.get("code")==200:
+			return res.get('fileName')
+		if res:
+			raise Exception(f"Save hub file ${fileName} failed {res.get('code')}: {res.get('info')}")
+		raise Exception(f"Save hub file ${fileName} failed.")
+
+	# -------------------------------------------------------------------------
+	async def loadHubFile(self, fileName, outputFormat="utf-8"):
+		outputFormat=outputFormat.lower()
+		res=await self.callHub("AhFileLoad",{"fileName":fileName})
+		if (not res) or (res.get("code")!=200):
+			if res:
+				raise Exception(f"Load hub file ${fileName} failed {res.get('code')}: {res.get('info')}")
+			else:
+				raise Exception(f"Load hub file ${fileName} failed.")
+		if outputFormat=="utf-8" or outputFormat=="text" or outputFormat=="utf8":
+			decoded_bytes = base64.b64decode(res.get('data'))
+			return decoded_bytes.decode('utf-8')
+		elif outputFormat=="json":
+			decoded_bytes = base64.b64decode(res.get('data'))
+			text=decoded_bytes.decode('utf-8')
+			return json.loads(text)
+		elif outputFormat=="data" or outputFormat=="bytes":
+			return base64.b64decode(res.get('data'))
+		elif outputFormat=="dataurl":
+			ext=pathLib.splitext(fileName)[1]
+			if ext==".json":
+				return "data:application/json;base64,"+res.get('data')
+			if ext==".jpg" or ext==".jpeg":
+				return "data:image/jpeg;base64,"+res.get('data')
+			if ext==".png":
+				return "data:image/png;base64,"+res.get('data')
+			if ext==".txt":
+				return "data:text/plain;base64,"+res.get('data')
+			return "data:application/octet-stream;base64,"+res.get('data')
+		return res.get('data')
+
+	# -------------------------------------------------------------------------
+	async def normURL(self,url):
+		if url.startswith("hub://"):
+			fileName=url.split("hub://")[1]
+			return self.loadHubFile(fileName,"dataurl")
+		return url
+
+	# -----------------------------------------------------------------------
+	# Interactive with user:
+	# -----------------------------------------------------------------------
+	# input from user
+	async def askChatInput(self, vo):
+		if self.agentNode:
+			askVO = {
+				"role": vo.get("role", "assistant"),
+				"prompt": vo.get("prompt") or "Please input",
+				"initText": vo.get("initText", "")
+			}
+			if self.snsBot:
+				return await self.snsBot.agentAskUserChat(askVO,self.snsChatUserId or None)
+			return await self.callClient("AskChatInput", askVO)
+		elif "prompt" in vo:
+			prompt = vo["prompt"] or "Please input: "
+		else:
+			prompt = "Please input: "
+		return input(prompt)
+
+	# -------------------------------------------------------------------------
 	# output text/image to user
-	async def addChatText(self, role, content, opts):
+	async def addChatText(self, role, content, opts={}):
 		if self.agentNode:
 			blockVO = {
 				"role": role,
@@ -342,9 +629,12 @@ class AISession:
 				blockVO["txtHeader"]=self.agentNode.name
 			if opts:
 				if "image" in opts:
-					blockVO.image = opts["image"]
+					blockVO["image"] = opts["image"]
 				if "audio" in opts:
-					blockVO.audio = opts["audio"]
+					blockVO["audio"] = opts["audio"]
+			if self.snsBot:
+				await self.snsBot.agentSendUserChat(blockVO,self.snsChatUserId or None,opts)
+				return
 			await self.sendToClient("ChatBlock", blockVO)
 		elif (opts):
 			print(f"[{role}]: {content}")
@@ -372,8 +662,10 @@ class AISession:
 
 	# -----------------------------------------------------------------------
 	async def resizeImage(self, data_url, maxSize, imgFormat):
-		# 从dataURL中提取图片数据
-		image_data = base64.b64decode(data_url.split(',')[1])
+		if data_url[:6]=="hub://":
+			image_data=await self.loadHubFile(data_url[6:],"data")
+		else:# 从dataURL中提取图片数据
+			image_data = base64.b64decode(data_url.split(',')[1])
 
 		# 使用Pillow打开图片
 		image = Image.open(BytesIO(image_data))
@@ -403,26 +695,71 @@ class AISession:
 			data_url_resized = f"data:image/jpeg;base64,{image_base64}"
 		return data_url_resized
 
-	# -----------------------------------------------------------------------
-	# input from user
-	async def askChatInput(self, vo):
+	# -------------------------------------------------------------------------
+	# Show command line menu and get select:
+	def showMenu(self, prompt, items):
+		idx = None
+		print(prompt)
+		n = len(items)
+		for i in range(n):
+			print(f"[{i + 1}]: ")
+			print("    " + items[i]["text"])
+		while (True):
+			idx = input("Input a index of your choice: ")
+			try:
+				idx = int(idx)
+			except Exception as e:
+				idx = -1
+			idx = idx - 1
+			if 0 <= idx < n:
+				break
+		return items[idx]
+
+	# -------------------------------------------------------------------------
+	# Show confirm buttons, menu...
+	async def askUserRaw(self, vo):
 		if self.agentNode:
-			askVO = {
-				"role": vo.get("role", "assistant"),
-				"prompt": vo.get("prompt") or "Please input",
-				"initText": vo.get("initText", "")
-			}
-			return await self.callClient("AskChatInput", askVO)
-		elif "prompt" in vo:
-			prompt = vo["prompt"] or "Please input: "
+			if self.snsBot:
+				return await self.snsBot.agentAskUserRaw(vo,self.snsChatUserId or None)
+			return await self.callClient("AskUserRaw", vo)
 		else:
-			prompt = "Please input: "
-		return input(prompt)
+			askType = vo["type"]
+			# --Button confirm:
+			if askType == "confirm":
+				items = []
+				if vo["button1"]:
+					items.append({"text": vo["button1"], "code": 1})
+				else:
+					items.append({"text": "OK", "code": 1})
+				if vo["button2"]:
+					items.append({"text": vo["button2"], "code": 0})
+				else:
+					items.append({"text": "Cancel", "code": 0})
+				if vo["button3"]:
+					items.append({"text": vo["button3"], "code": 2})
+				item = self.showMenu(vo["prompt"], items)
+				return [item["text"], item["code"]]
+			# --Menu selections:
+			if askType == "menu":
+				items = vo["items"]
+				item = self.showMenu(vo["prompt"], items)
+				return [item["text"], item]
+			# --Input:
+			if askType == "input":
+				# --File:
+				if "path" in vo:
+					if "prompt" in vo:
+						prompt = vo["prompt"] or "Please input: "
+					else:
+						prompt = "Please input: "
+					inputPath = path = input(prompt)
+					if not path.startswith("/"):
+						path = pathLib.join(self.basePath, path)
+						path = pathLib.abspath(path)
+					return [inputPath, path]
 
 	# -----------------------------------------------------------------------
-	async def callHub(self,msg,vo):
-		return await self.agentNode.callHub(msg,vo,self)
-
+	# Call LLM and other AI features:
 	# -----------------------------------------------------------------------
 	async def callHubLLM(self,opts,messages,waitBlk):
 		callVO={
@@ -465,7 +802,8 @@ class AISession:
 				streamObj["inputTokens"]=res.get("inputTokens")
 			if res.get("outputTokens")>=0:
 				streamObj["outputTokens"]=res.get("outputTokens")
-			await self.sendToClient("SetWaitBlockText", {"block": waitBlk, "text": pmt})
+			if waitBlk:
+				await self.sendToClient("SetWaitBlockText", {"block": waitBlk, "text": pmt})
 
 		content=streamObj["content"]
 		functionCall = streamObj.get("functionCall")
@@ -514,10 +852,10 @@ class AISession:
 		return result
 
 	# -----------------------------------------------------------------------
-	# Call LLM:
 	async def callSegLLM(self, codeURL, opts, messages, fromSeg):
 		platform, model, completion = None, None, None
-		waitBlk=0
+		await self.logLlmCall(codeURL,opts, messages)
+		waitBlk=None
 		apiHash = None
 		model2Platform = {
 			"gpt-4o": "OpenAI",
@@ -536,7 +874,9 @@ class AISession:
 		else:
 			model = "gpt-4o-minio"
 		platform = model2Platform.get(model) or opts.get("platform")
-		if self.agentNode:
+		if self.snsBot:
+			waitBlk=None
+		elif self.agentNode:
 			waitBlk = await self.callClient("AddWaitBlock", {"text":"..."})
 		try:
 			if platform == "OpenAI":
@@ -605,7 +945,7 @@ class AISession:
 								tool+=delta.tool_calls
 							if delta.function_call:
 								funcCall+=delta.function_call
-							if self.agentNode:
+							if (waitBlk is not None) and self.agentNode:
 								waitText=tool if tool else (funcCall if funcCall else content)
 								asyncio.run(self.sendToClient("SetWaitBlockText", {"block": waitBlk, "text": waitText}))
 
@@ -645,7 +985,9 @@ class AISession:
 							"name": callName,
 							"content": callResult,
 						})
-					return await self.callSegLLM(codeURL, opts, messages, False)
+					result=await self.callSegLLM(codeURL, opts, messages, False)
+					await self.logLlmResult(codeURL, opts, messages,result)
+					return result
 				if result.function_call:
 					functionCall = result.function_call
 					# print("Will call function")
@@ -663,13 +1005,18 @@ class AISession:
 					messages.append({
 						"role": "function", "name": callName, "content": callResult
 					})
-					return await self.callSegLLM(codeURL, opts, messages, False)
+					result=await self.callSegLLM(codeURL, opts, messages, False)
+					await self.logLlmResult(codeURL, opts, messages, result.content)
+					return result
+				await self.logLlmResult(codeURL, opts, messages, result.content)
 				return result.content
 			else:
-				return await self.callHubLLM(opts, messages, waitBlk)
+				result=await self.callHubLLM(opts, messages, waitBlk)
+				await self.logLlmResult(codeURL, opts, messages, result)
+				return result
 				# raise Exception(f"Unknown platform: {platform}, model: {model}")
 		finally:
-			if self.agentNode:
+			if (waitBlk is not None) and self.agentNode:
 				await self.sendToClient("RemoveWaitBlock", {"block":waitBlk})
 
 	# -------------------------------------------------------------------------
@@ -738,97 +1085,31 @@ class AISession:
 		return {"code": 400, "info": f"Unknown model: {model}"}
 
 	# -------------------------------------------------------------------------
-	async def pipeChat(self, path, input, hideInter):
-		return await self.execAgent(path, input)
+	# Wait util API
+	# -------------------------------------------------------------------------
+	async def showWait(self,text):
+		if self.snsBot:
+			blockVO = {
+				"role": "assistant",
+				"text": text,
+			}
+			await self.snsBot.agentSendUserChat(blockVO, self.snsChatUserId or None, {})
+			return 1
+		return await self.callClient("AddWaitBlock", {"text": text or "..."})
 
 	# -------------------------------------------------------------------------
-	async def webCall(self, vo, fromAgent, timeout):
-		url = vo.url
-		method = vo["method"] if ("method" in vo) else "GET"
-		headers = vo["headers"] if ("headers" in vo) else {}
-		argMode = vo["argMode"] if ("argMode" in vo) else None
-
-		if argMode == "JSON":
-			headers["Content-Type"] = "application/json"
-			with httpx.Client() as client:
-				response = client.request(method, url, headers=headers, json=vo["json"])
-		elif argMode == "TEXT":
-			headers["Content-Type"] = "text/plain"
-			with httpx.Client() as client:
-				response = client.request(method, url, headers=headers, data=vo["text"])
-		elif argMode == "DATA":
-			headers["Content-Type"] = "application/octet-stream"
-			with httpx.Client() as client:
-				response = client.request(method, url, headers=headers, data=vo["data"])
-		else:
-			with httpx.Client() as client:
-				response = client.request(method, url, headers=headers)
-		if response.status_code == httpx.codes.OK:
-			return {"code": 200, "data": response.text}
-		else:
-			return {"code": response.status_code, "info": response.text}
+	async def setWaitText(self,waitBlk,text):
+		if self.snsBot:
+			#TODO: Code this?
+			return
+		await self.sendToClient("SetWaitBlockText", {"block": waitBlk, "text": text})
 
 	# -------------------------------------------------------------------------
-	# Show command line menu and get select:
-	def showMenu(self, prompt, items):
-		idx = None
-		print(prompt)
-		n = len(items)
-		for i in range(n):
-			print(f"[{i + 1}]: ")
-			print("    " + items[i]["text"])
-		while (True):
-			idx = input("Input a index of your choice: ")
-			try:
-				idx = int(idx)
-			except Exception as e:
-				idx = -1
-			idx = idx - 1
-			if 0 <= idx < n:
-				break
-		return items[idx]
-
-	# -------------------------------------------------------------------------
-	# Show confirm buttons, menu...
-	async def askUserRaw(self, vo):
-		if self.agentNode:
-			return await self.callClient("AskUserRaw", vo)
-		else:
-			askType = vo["type"]
-			# --Button confirm:
-			if askType == "confirm":
-				items = []
-				if vo["button1"]:
-					items.append({"text": vo["button1"], "code": 1})
-				else:
-					items.append({"text": "OK", "code": 1})
-				if vo["button2"]:
-					items.append({"text": vo["button2"], "code": 0})
-				else:
-					items.append({"text": "Cancel", "code": 0})
-				if vo["button3"]:
-					items.append({"text": vo["button3"], "code": 2})
-				item = self.showMenu(vo["prompt"], items)
-				return [item["text"], item["code"]]
-			# --Menu selections:
-			if askType == "menu":
-				items = vo["items"]
-				item = self.showMenu(vo["prompt"], items)
-				return [item["text"], item]
-			# --Input:
-			if askType == "input":
-				# --File:
-				if "path" in vo:
-					if "prompt" in vo:
-						prompt = vo["prompt"] or "Please input: "
-					else:
-						prompt = "Please input: "
-					inputPath = path = input(prompt)
-					if not path.startswith("/"):
-						path = pathLib.join(self.basePath, path)
-						path = pathLib.abspath(path)
-					return [inputPath, path]
-
+	async def removeWait(self,waitBlk):
+		if self.snsBot:
+			#TODO: Code this?
+			return
+		await self.sendToClient("RemoveWaitBlock", {"block": waitBlk})
 
 # Exports:
 __all__ = ["AISession","trimJSON"]

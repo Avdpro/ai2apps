@@ -5,15 +5,47 @@ import base64
 import urllib.parse
 import importlib
 ##{1ID3S33F20MoreImports#
-import RemoteSession from remotesession.py
+from remotesession import RemoteSession
 ##}1ID3S33F20MoreImports#
-__Ln="EN"#Active language
+
 true=True
 false=False
 undefined=None
 pathLib= os.path
 agentURL= pathLib.abspath(__file__)
 basePath=pathLib.dirname(agentURL)
+
+argsTemplate={
+	"properties":{
+		"nodeName":{
+			"name":"nodeName","type":"string",
+			"label":"Agent Node",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"callAgent":{
+			"name":"callAgent","type":"string",
+			"label":"Agent",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"callArg":{
+			"name":"callArg","type":"auto",
+			"label":"Call argument(s)",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"checkUpdate":{
+			"name":"checkUpdate","type":"bool",
+			"label":"Check Update",
+			"defaultValue":"",
+			"desc":"",
+		}
+	},
+	##{1ID3S33F20ArgsView#
+	##}1ID3S33F20ArgsView#
+}
+
 ##{1ID3S33F20StartDoc#
 ##}1ID3S33F20StartDoc#
 ##----------------------------------------------------------------------------
@@ -25,17 +57,19 @@ async def RemoteChat(session):
 	
 	context, globalContext = None, None
 	self = None
+	__Ln = session.language or "CN"
 	Exec = None
 	##{1ID3S33F20LocalVals#
 	##}1ID3S33F20LocalVals#
 	
 	
 	def parseAgentArgs(input):
+		nonlocal nodeName,callAgent,callArg,checkUpdate
 		if isinstance(input, dict):
-			nodeName=input["nodeName"]
-			callAgent=input["callAgent"]
-			callArg=input["callArg"]
-			checkUpdate=input["checkUpdate"]
+			nodeName=input.get("nodeName")
+			callAgent=input.get("callAgent")
+			callArg=input.get("callArg")
+			checkUpdate=input.get("checkUpdate")
 		else:
 			nodeName=None
 			callAgent=None
@@ -139,6 +173,7 @@ ChatAPI=[{
 //:Export Edit-AddOn:
 const DocPyAgentExporter=VFACT.classRegs.DocPyAgentExporter;
 if(DocPyAgentExporter){
+	const $ln=VFACT.lanCode;
 	const EditAttr=VFACT.classRegs.EditAttr;
 	const EditAISeg=VFACT.classRegs.EditAISeg;
 	const EditAISegOutlet=VFACT.classRegs.EditAISegOutlet;
@@ -153,10 +188,10 @@ if(DocPyAgentExporter){
 		name:"RemoteChat",showName:"Remote Call",icon:"agent.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
-			"nodeName":{name:"nodeName",type:"string",key:1,fixed:1,initVal:""},
-			"callAgent":{name:"callAgent",type:"string",key:1,fixed:1,initVal:""},
-			"callArg":{name:"callArg",type:"auto",key:1,fixed:1,initVal:""},
-			"checkUpdate":{name:"checkUpdate",type:"bool",key:1,fixed:1,initVal:""},
+			"nodeName":{name:"nodeName",showName:(($ln==="CN")?("代理节点"):("Agent Node")),type:"string",key:1,fixed:1,initVal:""},
+			"callAgent":{name:"callAgent",showName:(($ln==="CN")?("代理"):("Agent")),type:"string",key:1,fixed:1,initVal:""},
+			"callArg":{name:"callArg",showName:(($ln==="CN")?("调用参数"):("Call argument(s)")),type:"auto",key:1,fixed:1,initVal:""},
+			"checkUpdate":{name:"checkUpdate",showName:(($ln==="CN")?("检查更新"):("Check Update")),type:"bool",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
 		listHint:["id","nodeName","callAgent","callArg","checkUpdate","codes","desc"],

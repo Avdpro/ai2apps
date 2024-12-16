@@ -1,7 +1,10 @@
 import os
 import sys
 import asyncio
+import nest_asyncio
 from AgentNode import AgentNode
+
+nest_asyncio.apply()
 
 pathLib = os.path
 
@@ -19,5 +22,5 @@ agentNode = AgentNode(agentPath, host , name)
 
 # Set up an async looper for async calls:
 loop = asyncio.get_event_loop()
-
-loop.run_until_complete(agentNode.start())
+loop.set_debug(True)  # 启用调试
+loop.run_until_complete(agentNode.start(True))

@@ -18,6 +18,9 @@
     "follow-redirects": "^1.15.4",
     "gpt-3-encoder": "^1.1.4",
     "http-errors": "~1.6.3",
+    "lockfile": "^1.0.4",
+    "mongodb": "^3.6.11",
+    "mongoose": "^5.13.7",
     "morgan": "~1.9.1",
     "node-fetch": "^3.3.2",
     "ollama": "^0.5.1",
@@ -26,6 +29,7 @@
     "puppeteer": "^22.3.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "sharp": "^0.33.5",
     "unzipper": "^0.10.14",
     "ws": "^8.18.0"
   },

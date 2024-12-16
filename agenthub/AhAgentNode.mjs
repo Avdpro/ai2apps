@@ -38,6 +38,11 @@ let AhAgentNode,ahAgentNode;
 		this.app=system.app;
 		this.name=name;
 		this.type=null;
+		this.description=null;
+		this.chatEntry=null;
+		this.userGroups=new Set();
+		this.agents=[];
+		
 		this.path=null;
 		this.entryPath=null;
 		this.entryDate=0;
@@ -46,10 +51,12 @@ let AhAgentNode,ahAgentNode;
 		this.connectCallback=null;
 		this.connectCallErr=null;
 		this.nodeWS=null;
-		this.description=null;
+		
 		this.sessionMap=new Map();
 		this.callMap=new Map();
 		this.handlerMap=new Map();
+		
+		this.workload=0;
 	};
 	ahAgentNode=AhAgentNode.prototype={};
 	const Type_Python="Python";
@@ -58,10 +65,14 @@ let AhAgentNode,ahAgentNode;
 	//-----------------------------------------------------------------------
 	ahAgentNode.OnNodeConnect=async function(ws,connectMsg){
 		let nodeInfo;
-
+		
+		let timeouts=0;
 		nodeInfo=connectMsg.info;
 		this.name=this.name||nodeInfo.name;
 		this.description=nodeInfo.description||"Agent node.";
+		this.chatEntry=nodeInfo.chatEntry||null;
+		this.userGroups=new Set(nodeInfo.userGroups||[]);
+		this.agents=nodeInfo.agents||[];
 
 		//TODO: parse more agentNode info:
 		
@@ -79,7 +90,9 @@ let AhAgentNode,ahAgentNode;
 				message={};
 			}
 			msgCode=message.msg;
-			console.log(`Message from AgentNode: ${msgCode}`);
+			if(msgCode!=="State") {
+				console.log(`Message from AgentNode: ${msgCode}`);
+			}
 			try{
 				switch(msgCode){
 					case "CallClient": {//Agent call server/session-client:
@@ -159,13 +172,14 @@ let AhAgentNode,ahAgentNode;
 						break;
 					}
 					case "CallHub":{
-						let callVO,callId,result;
+						let callVO,callId,result,devKey;
 						let sessionId;
 						callVO=message.message;
 						callId=message.callId;
+						devKey=message.devKey;
 						sessionId=message.session||message.sessionId;
 						try {
-							result = await this.callHub(callVO.msg, callVO.vo,sessionId)
+							result = await this.callHub(callVO.msg, callVO.vo,sessionId,devKey)
 							await ws.send(JSON.stringify({ msg: "CallResult", callId: callId, result: result }));
 						}catch(err){
 							await ws.send(JSON.stringify({ msg: "CallResult", callId: callId, error: ""+err}));
@@ -194,6 +208,10 @@ let AhAgentNode,ahAgentNode;
 						this.OnExecAgentEnd(message);
 						return;
 					}
+					case "State":
+						timeouts=0;
+						this.workload=message.workload||0;
+						break;
 				}
 			}catch (err){
 				console.log("Handle bot message error:");
@@ -215,7 +233,6 @@ let AhAgentNode,ahAgentNode;
 			}
 		});
 		
-		
 		ws.send(JSON.stringify({msg:"CONNECTED"}));
 		let callback=this.connectCallback;
 		if(callback){
@@ -223,11 +240,25 @@ let AhAgentNode,ahAgentNode;
 			this.connectCallErr=null;
 			callback();
 		}
+		this.heartBeat=setInterval(async ()=>{
+			try {
+				if(this.nodeWS) {
+					await this.nodeWS.send(JSON.stringify({ msg: "State", message: {} }));//TODO: add hub state
+					timeouts++;
+					if (timeouts >= 5) {
+						//ws.close(3001,"Timeout")
+					}
+				}else{
+					clearInterval(this.heartBeat);
+				}
+			}catch(err){
+			}
+		},2000)
 	};
 	
 	//-----------------------------------------------------------------------
 	ahAgentNode.start=async function(path,options){
-		let conda,ext,pms,nodeJSON,pathTime,entryPath,hostAddress;
+		let jsonPath,conda,ext,pms,nodeJSON,pathTime,entryPath,hostAddress;
 		
 		if(this.starting){
 			console.log(`AgentNode ${this.name} is starting.`);
@@ -276,7 +307,7 @@ let AhAgentNode,ahAgentNode;
 			case ".js":{
 				this.type=Type_Node;
 				let process;
-				process=this.process = spawn('bash', ['-i', '-c', `node ${entryPath}`]);
+				process=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`]);
 				process.stdout.on('data', (data) => {
 					console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 				});
@@ -378,6 +409,10 @@ let AhAgentNode,ahAgentNode;
 		let sessions,ssn;
 		
 		this.stoping=true;
+		if(this.heartBeat) {
+			clearInterval(this.heartBeat);
+			this.heartBeat=null;
+		}
 		sessions = this.sessionMap.values();
 		for (ssn of sessions) {
 			if (ssn.isExecuting) {
@@ -413,11 +448,11 @@ let AhAgentNode,ahAgentNode;
 	 * @param options
 	 * @returns {Promise<void>}
 	 */
-	ahAgentNode.newSession=async function(){
+	ahAgentNode.newSession=async function(options){
 		let session;
 		session=new AhSession(this);
 		this.sessionMap.set(session.sessionId,session);
-		await session.start();
+		await session.start(options);
 		return session;
 	};
 	
@@ -477,7 +512,7 @@ let AhAgentNode,ahAgentNode;
 	};
 	
 	//-----------------------------------------------------------------------
-	ahAgentNode.call=async function(msg,vo,sessionId,timeout){
+	ahAgentNode.call=ahAgentNode.callNode=async function(msg,vo,sessionId,timeout){
 		let msgVO,callId,pms,errCbk,stub;
 		callId=""+(nextCallId++);
 		msgVO={msg:msg,vo:vo};
@@ -500,7 +535,7 @@ let AhAgentNode,ahAgentNode;
 	};
 	
 	//-----------------------------------------------------------------------
-	ahAgentNode.callHub=async function(msg,vo,sessionId){
+	ahAgentNode.callHub=async function(msg,vo,sessionId,devKey){
 		let handler,result,session;
 		if(sessionId){
 			session=this.sessionMap.get(sessionId);
@@ -509,7 +544,7 @@ let AhAgentNode,ahAgentNode;
 		if(handler){
 			return await handler(msg,vo);
 		}
-		return this.system.handleCallHub(msg,vo,session);
+		return this.system.handleCallHub(msg,vo,session,devKey);
 	};
 }
 export default AhAgentNode;
