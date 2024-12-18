@@ -239,8 +239,9 @@ async def NodeChat(session):
 	}
 	
 	async def ApplyTool_exec(input):#//:1IDM801C80
-		if input.get("agentNode"):
-			return {"seg":CallNode,"result":(input),"preSeg":"1IDM801C80","outlet":"1IDNFDD380"}
+		if input.get("node"):
+			output=input
+			return {"seg":CallNode,"result":(output),"preSeg":"1IDM801C80","outlet":"1IDNFDD380"}
 		if input.get("tool"):
 			output=input
 			return {"seg":CallTool,"result":(output),"preSeg":"1IDM801C80","outlet":"1IDM8TC5H0"}
@@ -438,10 +439,10 @@ async def NodeChat(session):
 		result=input
 		##{1IDNFHMRQ0Code#
 		nodes=context["agentNodes"]
-		if not nodes[input.get("node")]:
+		if not nodes.get(input.get("node")):
 			raise Exception(f'Node \"{input.get("node")}\" not found. Are you confusing Node and Tool? Choose tool or agent node.')
 		await addTaskLog({"type":"CallAgentNode","node":input.get("node"),"prompt":input.get("prompt")})
-		await session.addChatText("log",f"Call agent-node: \"{input.node}.\"")
+		await session.addChatText("log",f"Call agent-node: \"{input.get('node')}.\"")
 		result=await RemoteSession.exec(session,input.get("node"),"/@tabos/NodeChat.py",input.get("prompt"),{});
 		##}1IDNFHMRQ0Code#
 		return {"seg":NodeResult,"result":(result),"preSeg":"1IDNFHMRQ0","outlet":"1IDNFKO8H3"}
@@ -837,7 +838,7 @@ return {api:ChatAPI,export:Exports};
 #									"attrs": {
 #										"id": "CallNode",
 #										"desc": "输出节点。",
-#										"output": "",
+#										"output": "#input",
 #										"codes": "false",
 #										"context": {
 #											"jaxId": "1IDNFKO8K0",
@@ -851,7 +852,7 @@ return {api:ChatAPI,export:Exports};
 #												"cast": ""
 #											}
 #										},
-#										"condition": "#input.get(\"agentNode\")"
+#										"condition": "#input.get(\"node\")"
 #									},
 #									"linkedSeg": "1IDNFGGSI0"
 #								},

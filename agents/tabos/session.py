@@ -633,7 +633,8 @@ class AISession:
 				if "audio" in opts:
 					blockVO["audio"] = opts["audio"]
 			if self.snsBot:
-				await self.snsBot.agentSendUserChat(blockVO,self.snsChatUserId or None,opts)
+				if role!="user":
+					await self.snsBot.agentSendUserChat(blockVO,self.snsChatUserId or None,opts)
 				return
 			await self.sendToClient("ChatBlock", blockVO)
 		elif (opts):

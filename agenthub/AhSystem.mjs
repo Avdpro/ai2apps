@@ -38,7 +38,7 @@ let AhSystem,ahSystem;
 			hubJSON=await fs.readFile(pathLib.join(this.agentDir, "agenthub.json"), "utf8");
 			hubJSON=JSON.parse(hubJSON);
 		}catch(err){
-			hubJSON=null;
+			hubJSON= {};
 		}
 		if(!hubJSON){
 			return;

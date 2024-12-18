@@ -22,7 +22,7 @@ async def master(session):
 	context, globalContext = None, None
 	self = None
 	__Ln = session.language or "CN"
-	CheckHi, ReplyHi, AskChat, ReplyChat, AskButtons, ReplyLo, ReplyYo, AskMenu, ReplyRepeat, ReadImage, ReplyImage, CallNodeChat, AskCmd, CallNode = None, None, None, None, None, None, None, None, None, None, None, None, None, None
+	CheckHi, ReplyHi, AskChat, ReplyChat, AskButtons, ReplyLo, ReplyYo, AskMenu, ReplyRepeat, ReadImage, ReplyImage, CallNodeChat, AskCmd, CallNode, NodeChatResult = None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 	##{1IEHE15JV0LocalVals#
 	##}1IEHE15JV0LocalVals#
 	
@@ -41,13 +41,13 @@ async def master(session):
 	agent,segs = None, {}
 	
 	async def CheckHi_exec(input):#//:1IEHE28IF0
-		if input.content=="hi":
-			return {"seg":AskMenu,"result":(input),"preSeg":"1IEHE28IF0","outlet":"1IEHE5KDD0"}
+		if input.content=="x" or input.content=="X":
+			return {"seg":AskMenu,"result":(input),"preSeg":"1IEHE28IF0","outlet":"1IEJT4CPM0"}
 		if input.ctype.value=="image":
 			output=input
 			return {"seg":ReadImage,"result":(output),"preSeg":"1IEHE28IF0","outlet":"1IEIKM4B00"}
-		if input.content=="x" or input.content=="X":
-			return {"seg":AskCmd,"result":(input),"preSeg":"1IEHE28IF0","outlet":"1IEJT4CPM0"}
+		if input.content=="hi":
+			return {"seg":AskCmd,"result":(input),"preSeg":"1IEHE28IF0","outlet":"1IEHE5KDD0"}
 		if input.content=="o" or input.content=="O":
 			return {"seg":CallNode,"result":(input),"preSeg":"1IEHE28IF0","outlet":"1IF443OAJ0"}
 		#default/else:
@@ -225,9 +225,9 @@ async def master(session):
 	async def CallNodeChat_exec(input):#//:1IEJT4L950
 		result=None
 		sourcePath=pathLib.join(basePath,"/@tabos/NodeChat.py")
-		arg={}
+		arg=input
 		result= await session.pipeChat(sourcePath,arg,false)
-		return {"result":result}
+		return {"seg":NodeChatResult,"result":(result),"preSeg":"1IEJT4L950","outlet":"1IEJT7FVE0"}
 	segs["CallNodeChat"]=CallNodeChat={
 		"exec":CallNodeChat_exec,
 		"name":"CallNodeChat",
@@ -268,6 +268,19 @@ async def master(session):
 		"exec":CallNode_exec,
 		"jaxId":"1IF43UGLC0",
 		"url":"CallNode@"+agentURL
+	}
+	
+	async def NodeChatResult_exec(input):#//:1IF93MDVS0
+		result=input
+		role="assistant"
+		content=input.get("result")
+		await session.addChatText(role,content,{})
+		return {"result":result}
+	segs["NodeChatResult"]=NodeChatResult={
+		"exec":NodeChatResult_exec,
+		"name":"NodeChatResult",
+		"jaxId":"1IF93MDVS0",
+		"url":"NodeChatResult@"+agentURL
 	}
 	
 	async def execAgent(input):
@@ -408,25 +421,25 @@ return {api:ChatAPI,export:Exports};
 #								{
 #									"type": "aioutlet",
 #									"def": "AIConditionOutlet",
-#									"jaxId": "1IEHE5KDD0",
+#									"jaxId": "1IEJT4CPM0",
 #									"attrs": {
-#										"id": "IsHi",
+#										"id": "IsX",
 #										"desc": "输出节点。",
 #										"output": "",
 #										"codes": "false",
 #										"context": {
-#											"jaxId": "1IEHE5KDF2",
+#											"jaxId": "1IEJT4CPP0",
 #											"attrs": {
 #												"cast": ""
 #											}
 #										},
 #										"global": {
-#											"jaxId": "1IEHE5KDF3",
+#											"jaxId": "1IEJT4CPP1",
 #											"attrs": {
 #												"cast": ""
 #											}
 #										},
-#										"condition": "#input.content==\"hi\""
+#										"condition": "#input.content==\"x\" or input.content==\"X\""
 #									},
 #									"linkedSeg": "1IEHMCM410"
 #								},
@@ -458,25 +471,25 @@ return {api:ChatAPI,export:Exports};
 #								{
 #									"type": "aioutlet",
 #									"def": "AIConditionOutlet",
-#									"jaxId": "1IEJT4CPM0",
+#									"jaxId": "1IEHE5KDD0",
 #									"attrs": {
-#										"id": "IsX",
+#										"id": "IsHi",
 #										"desc": "输出节点。",
 #										"output": "",
 #										"codes": "false",
 #										"context": {
-#											"jaxId": "1IEJT4CPP0",
+#											"jaxId": "1IEHE5KDF2",
 #											"attrs": {
 #												"cast": ""
 #											}
 #										},
 #										"global": {
-#											"jaxId": "1IEJT4CPP1",
+#											"jaxId": "1IEHE5KDF3",
 #											"attrs": {
 #												"cast": ""
 #											}
 #										},
-#										"condition": "#input.content==\"x\" or input.content==\"X\""
+#										"condition": "#input.content==\"hi\""
 #									},
 #									"linkedSeg": "1IEJT66A30"
 #								},
@@ -1051,7 +1064,8 @@ return {api:ChatAPI,export:Exports};
 #							"attrs": {
 #								"id": "Result",
 #								"desc": "输出节点。"
-#							}
+#							},
+#							"linkedSeg": "1IF93MDVS0"
 #						}
 #					}
 #				},
@@ -1129,6 +1143,43 @@ return {api:ChatAPI,export:Exports};
 #						"checkUpdate": "true",
 #						"outlet": {
 #							"jaxId": "1IF443OAL0",
+#							"attrs": {
+#								"id": "Result",
+#								"desc": "输出节点。"
+#							}
+#						}
+#					}
+#				},
+#				{
+#					"type": "aiseg",
+#					"def": "output",
+#					"jaxId": "1IF93MDVS0",
+#					"attrs": {
+#						"id": "NodeChatResult",
+#						"viewName": "",
+#						"label": "",
+#						"x": "805",
+#						"y": "750",
+#						"desc": "这是一个AISeg。",
+#						"codes": "false",
+#						"mkpInput": "$$input$$",
+#						"segMark": "None",
+#						"context": {
+#							"jaxId": "1IF93MSQ20",
+#							"attrs": {
+#								"cast": ""
+#							}
+#						},
+#						"global": {
+#							"jaxId": "1IF93MSQ21",
+#							"attrs": {
+#								"cast": ""
+#							}
+#						},
+#						"role": "Assistant",
+#						"text": "#input.get(\"result\")",
+#						"outlet": {
+#							"jaxId": "1IF93MSPR0",
 #							"attrs": {
 #								"id": "Result",
 #								"desc": "输出节点。"

@@ -356,7 +356,7 @@ let AgentNode,agentNode;
 		};
 		
 		const port = this.nodeJSON.debugPort || 5001;
-		this.debugServer = new WebSocketServer({ port });
+		this.debugServer = new WebSocketServer({ port ,maxPayload:1024*1024*10});
 		this.debugServer.on('connection', handler);
 		
 		console.log('Debug WebSocket server started');

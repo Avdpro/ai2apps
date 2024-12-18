@@ -12,6 +12,9 @@ class RemoteSession:
 		self.is_connected = False
 		self.execPms = None
 		self.startPms=None
+		self.wsTask=None
+		self.msgTask=None
+		self.messages=[]
 
 	@staticmethod
 	async def exec(session, node_name, agent, input_data, options=None):
@@ -31,28 +34,36 @@ class RemoteSession:
 
 		sessionId = res["sessionId"]
 		remote_session = RemoteSession(session, sessionId)
+		await remote_session.connect()
 		await remote_session.start()
 		return await remote_session.exec_agent(agent, input_data)
 
-	async def start(self):
+	# -----------------------------------------------------------------------
+	async def connect(self):
 		session=self.session
-		self.startPms=asyncio.Future()
+		ws = await websockets.connect(session.agentNode.host,max_size=10 * 1024 * 1024)
+		self.ws = ws
+		self.isAlive = True
 
+	# -----------------------------------------------------------------------
+	async def start(self):
 		async def on_open():
 			await self.ws.send(json.dumps({"msg": "CONNECT", "selector": self.sessionId}))
 			print("Remote session WS connected.")
 
+		self.startPms=asyncio.Future()
 		try:
-			ws=await websockets.connect(session.agentNode.host)
-			self.ws = ws
-			self.isAlive = True
-			task=asyncio.create_task(self.run())
-			await asyncio.gather(on_open(), self.startPms)
+			self.wsTask=asyncio.create_task(self.runWS())
+			self.msgTask = asyncio.create_task(self.runMsg())
+			await on_open()
+			await self.startPms
+			# await asyncio.gather(on_open(), self.startPms)
 		except Exception as e:
 			print("RemoteSession start failed:", e)
 			raise
 
-	async def run(self):
+	# -----------------------------------------------------------------------
+	async def runMsg(self):
 		async def on_message(msg):
 			msg_vo = json.loads(msg)
 			msg_code = msg_vo.get("msg")
@@ -60,7 +71,6 @@ class RemoteSession:
 			if len(log)>2048:
 				log=log[:2048]
 			print(log)
-
 			if not self.is_connected and msg_code == "CONNECTED":
 				self.is_connected = True
 				self.execPms = None
@@ -72,9 +82,18 @@ class RemoteSession:
 				if handler:
 					await handler(msg_vo)
 
+		while self.isAlive:
+			if len(self.messages)>0:
+				msg=self.messages.pop(0)
+				await on_message(msg)
+			await asyncio.sleep(0.1)
+
+	# -----------------------------------------------------------------------
+	async def runWS(self):
 		async def on_close():
 			if self.is_connected:
 				self.is_connected = False
+				self.isAlive=False
 				if self.execPms:
 					self.execPms.set_exception(Exception("Session end."))
 			else:
@@ -86,13 +105,25 @@ class RemoteSession:
 		try:
 			while self.isAlive:
 				message = await self.ws.recv()
-				await on_message(message)
+				if message:
+					self.messages.append(message)
 				await asyncio.sleep(0.1)
-		except websockets.ConnectionClosed:
-			await on_close()
+		except websockets.ConnectionClosed as e:
+			print(f"Connection lost{e}")
+			if self.isAlive and self.is_connected:
+				await on_close()
 		finally:
 			if self.ws:
 				await self.ws.close()
+
+	async def endExec(self,result):
+		self.isAlive=False
+		self.is_connected=False
+		await self.ws.close()
+		await asyncio.gather(self.wsTask,self.msgTask)
+		self.wsTask=None
+		self.msgTask=None
+		return result
 
 	async def exec_agent(self, agent, prompt):
 		if not self.ws:
@@ -110,6 +141,7 @@ class RemoteSession:
 		try:
 			result = await self.execPms
 			print("RemoteSession execute result: ", result)
+			await self.endExec(result)
 			return result
 		except Exception as e:
 			print("Execution error:", e)
@@ -152,8 +184,6 @@ class RemoteSession:
 	async def WSMSG_ExecAgentEnd(self, msg):
 		result = msg.get("result")
 		error = msg.get("error")
-
-		await self.ws.close()
 
 		if error:
 			if self.execPms:

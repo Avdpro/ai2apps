@@ -7,6 +7,6 @@
     "chatChannel": "wechat",
     "chatEntry": "stdchat/agent.py",
     "hot_reload": true,
-    "masterNickname": "DarthFalcon",
-    "readMessageTime": 1733651989
+    "masterNickname": "Your-Wechat-Nickname",
+    "readMessageTime": 0
 }

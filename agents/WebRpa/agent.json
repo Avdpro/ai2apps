@@ -7,5 +7,7 @@
     },
     "chatEntry":null,
     "agents":["agent.js"],
-    "tools":["agent.js"]
+    "tools":["agent.js"],
+    "debug": true,
+    "debugPort": 5002
 }

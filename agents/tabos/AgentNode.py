@@ -443,7 +443,7 @@ class AgentNode:
 					self.wsDebug=None
 					self.debugConnected=False
 
-		server = await websockets.serve(handler, "localhost",self.nodeJSON.get("debugPort",5001))
+		server = await websockets.serve(handler, "localhost",self.nodeJSON.get("debugPort",5001), max_size=None)
 		self.debugServer = server
 		loop = asyncio.get_running_loop()
 		loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(shutdown(server)))

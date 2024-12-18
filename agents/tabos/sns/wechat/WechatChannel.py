@@ -123,7 +123,12 @@ class WechatChannel(SnsChannel):
 					message=messages.get()
 					msgType=message.get("type")
 					if msgType=="text" or msgType=="message":
-						itChat.send(""+message.get("content"),toUserName=message.get("userName"))
+						content=message.get("content")
+						if isinstance(content,dict):
+							content=json.dumps(content)
+						else:
+							content=str(content)
+						itChat.send(content,toUserName=message.get("userName"))
 					elif msgType == "image":
 						itChat.send_image(file_=message.get("file"),toUserName=message.get("userName"))
 					elif msgType == "voice":

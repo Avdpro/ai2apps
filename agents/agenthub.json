@@ -1,0 +1,27 @@
+{
+    "user":"Your-AI2Apps-account-email-address",
+    "devKey": "YOUR-Dev-Key",
+    "host": "ws://localhost:3015",
+    "label": "Agent Hub",
+    "description": "",
+    "language": "CN",
+    "nodes": {
+        "DrawSD":"DrawSD",
+    },
+    "globalContext":{
+        "models": {
+            "expert": {
+                "platform": "OpenAI",
+                "model": "gpt-4o"
+            },
+            "standard": {
+                "platform": "OpenAI",
+                "model": "gpt-4o"
+            },
+            "lite": {
+                "platform": "OpenAI",
+                "model": "gpt-4o-mini"
+            }
+        }
+    }
+}
