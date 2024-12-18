@@ -1,0 +1,15 @@
+aiofiles==24.1.0
+diffusers==0.29.0
+HTMLParser==0.0.2
+httpx==0.28.1
+nest_asyncio==1.6.0
+openai==1.57.4
+Pillow==11.0.0
+playsound==1.3.0
+pyee==12.1.1
+PyQRCode==1.2.1
+qrcode==7.4.2
+Requests==2.32.3
+sympy==1.12
+torch==2.5.1
+websockets==10.4
