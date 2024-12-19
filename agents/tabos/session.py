@@ -799,9 +799,9 @@ class AISession:
 				streamObj["functionCall"]=res.get("functionCall")
 			if res.get("toolCalls"):
 				streamObj["toolCalls"]=res.get("toolCalls")
-			if res.get("inputTokens")>=0:
+			if res.get("inputTokens"):
 				streamObj["inputTokens"]=res.get("inputTokens")
-			if res.get("outputTokens")>=0:
+			if res.get("outputTokens"):
 				streamObj["outputTokens"]=res.get("outputTokens")
 			if waitBlk:
 				await self.sendToClient("SetWaitBlockText", {"block": waitBlk, "text": pmt})

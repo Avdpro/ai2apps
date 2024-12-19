@@ -97,7 +97,11 @@ let AgentNode,agentNode;
 		this.host = this.host || hubConfig.host;
 		this.devKey= this.nodeJSON.devKey||this.hubJSON.devKey||null;
 		
-		this.startDebug();
+		try {
+			await this.startDebug();
+		}catch(err){
+			console.warn(`Agent ${this.name} start debug failed: ${err}`);
+		}
 		
 		this.websocket = new WebSocket(this.host);
 		this.websocket.on('open', () => this.onOpen());
@@ -356,8 +360,15 @@ let AgentNode,agentNode;
 		};
 		
 		const port = this.nodeJSON.debugPort || 5001;
-		this.debugServer = new WebSocketServer({ port ,maxPayload:1024*1024*10});
-		this.debugServer.on('connection', handler);
+		try {
+			this.debugServer = new WebSocketServer({ port, maxPayload: 1024 * 1024 * 10 });
+			this.debugServer.on('connection', handler);
+			this.debugServer.on('error', (err)=>{
+				console.log(`Agent ${this.name} start debug error: ${err}`);
+			});
+		}catch(err){
+			console.warn(`Agent ${this.name} start debug error: ${err}`);
+		}
 		
 		console.log('Debug WebSocket server started');
 		
