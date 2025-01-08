@@ -74,6 +74,7 @@ let AgentNode,agentNode;
 		this.debugStepTask = null;
 		this.debugServer = null;
 		
+		this.termMap=new Map();
 	}
 	agentNode=AgentNode.prototype={};
 	
@@ -162,6 +163,9 @@ let AgentNode,agentNode;
 					break;
 				case 'CallResult':
 					await this.callResult(message);
+					break;
+				case 'XTermData':
+					await this.writeXTermData(message);
 					break;
 			}
 		}
@@ -282,6 +286,22 @@ let AgentNode,agentNode;
 	};
 	
 	//-----------------------------------------------------------------------
+	agentNode.sendToHub=async function(msg,vo,session){
+		let message = {
+			msg: msg,
+			message: vo
+		};
+		if(session){
+			message.session=session.sessionId;
+		}
+		if(this.devKey){
+			message.devKey=this.devKey;
+		}
+		message=JSON.stringify(message);
+		this.websocket.send(message);
+	};
+	
+	//-----------------------------------------------------------------------
 	agentNode.hubCallResult = async function (callId, result) {
 		const stub = this.callMap.get(callId);
 		if (!stub) return;
@@ -397,6 +417,22 @@ let AgentNode,agentNode;
 		} catch (err) {
 			console.error(err);
 		}
+	};
+	
+	//-----------------------------------------------------------------------
+	agentNode.regTerminal=function(term){
+		this.termMap.set(term.sessionId,term);
+	};
+	
+	//-----------------------------------------------------------------------
+	agentNode.writeXTermData=async function(message){
+		let sessionId,msgVO,term;
+		sessionId=message.session||message.sessionId;
+		term=this.termMap.get(sessionId);
+		if(!term){
+			return;
+		}
+		term.write(message.data);
 	};
 }
 

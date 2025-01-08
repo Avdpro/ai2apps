@@ -51,6 +51,7 @@ let AhSession,ahSession;
 				callback=resolve;
 			});
 			selectorMap.set(selectCode,(ws)=>{
+				selectorMap.delete(selectCode);
 				this.clientWS=ws;
 				ws.on('message',async (message)=>{
 					if (message instanceof Buffer || message instanceof Uint8Array) {

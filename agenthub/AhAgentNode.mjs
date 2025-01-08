@@ -2,6 +2,7 @@ import {spawn} from "child_process";
 import { promises as fs } from 'fs';
 import pathLib from "path";
 import {AhSession} from "./AhSession.mjs";
+import AhXTerm from './AhXTerm.mjs'
 
 //---------------------------------------------------------------------------
 async function getLatestModifiedTime(dirPath) {
@@ -55,6 +56,7 @@ let AhAgentNode,ahAgentNode;
 		this.sessionMap=new Map();
 		this.callMap=new Map();
 		this.handlerMap=new Map();
+		this.termMap=new Map();
 		
 		this.workload=0;
 	};
@@ -208,10 +210,20 @@ let AhAgentNode,ahAgentNode;
 						this.OnExecAgentEnd(message);
 						return;
 					}
-					case "State":
-						timeouts=0;
-						this.workload=message.workload||0;
-						break;
+					case "State": {
+						timeouts = 0;
+						this.workload = message.workload || 0;
+						return;
+					}
+					case "XTermData":{//AgentNode send data to client terminal:
+						let callVO,sessionId,term;
+						callVO=message.message;
+						sessionId=callVO.session||callVO.sessionId;
+						term=this.termMap.get(sessionId);
+						if(term){
+							term.write(callVO.data);
+						}
+					}
 				}
 			}catch (err){
 				console.log("Handle bot message error:");
@@ -454,6 +466,25 @@ let AhAgentNode,ahAgentNode;
 		this.sessionMap.set(session.sessionId,session);
 		await session.start(options);
 		return session;
+	};
+	
+	//-----------------------------------------------------------------------
+	ahAgentNode.newTerm=async function(options){
+		let term;
+		term=new AhXTerm(this);
+		this.termMap.set(term.sessionId,term);
+		term.start(options);
+		return term;
+	};
+	
+	//----------------------------------------------------------------------
+	ahAgentNode.closeTerm=async function(sessionId){
+		let term;
+		term=this.termMap.get(sessionId);
+		if(term){
+			await term.close();
+			this.termMap.delete(sessionId);
+		}
 	};
 	
 	//-----------------------------------------------------------------------

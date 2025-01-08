@@ -22,17 +22,16 @@ function setupOpenAI(session) {
 // *****************************************************************************
 function trimJSON(inputString) {
 	try {
+		let value;
 		let startIdx = inputString.indexOf("{");
 		if (startIdx === -1) return null;
-		
-		const decoder = new JSONDecoder();
-		while (startIdx < inputString.length) {
+		let endIdx=inputString.lastIndexOf("}");
+		while (endIdx > 0) {
 			try {
-				const { value } = decoder.decode(inputString.slice(startIdx));
+				value = JSON.parse(inputString.substring(startIdx,endIdx+1));
 				return value;
 			} catch {
-				startIdx = inputString.indexOf("{", startIdx + 1);
-				if (startIdx === -1) break;
+				endIdx = inputString.indexOf("}", endIdx - 1);
 			}
 		}
 	} catch {
@@ -57,24 +56,36 @@ function getErrorLocation(e) {
 }
 
 class ChatSession {
-	static basePath = null;
-	static curAgent = null;
-	static curPath = null;
 	static agentDict = {};
-	static globalContext = {};
 	
 	constructor(basePath, node = null, sessionId = null, options = {}) {
 		this.basePath = basePath;
 		this.curPath = null;
 		this.agentNode = node;
+		this.curAgent = null;
 		this.sessionId = sessionId;
 		this.nextCallId = 0;
 		this.callMap = new Map();
 		this.version = "0.0.2";
-		this.curAgent = null;
 		this.options = options || {};
 		this.language = this.options.language || "CN";
-		this.globalContext=options.globalContext||{};
+		this.globalContext={};
+		{
+			let gc;
+			gc=node.hubJSON?node.hubJSON.globalContext:null;
+			if(gc){
+				Object.assign(this.globalContext,gc);
+			}
+			gc=node.nodeJSON.globalContext;
+			if(gc){
+				Object.assign(this.globalContext,gc);
+			}
+			gc=options?options.globalContext:null;
+			if(gc){
+				Object.assign(this.globalContext,gc);
+			}
+		}
+		this.termMap=new Map();
 	}
 	
 	// -------------------------------------------------------------------------
@@ -189,7 +200,7 @@ class ChatSession {
 				}
 				await this.logSegEnd(agent, segAct, result);
 				
-				if (result.result) {
+				if ("result" in result) {
 					input = result.result;
 				}
 				
@@ -560,7 +571,7 @@ class ChatSession {
 		let res;
 		const callVO = {
 			platform: opts.platform || "OpenAI",
-			model: opts.model || "gpt-4o",
+			model: opts.model||opts.mode || "gpt-4o-mini",
 			temperature: opts.temperature || 0,
 			max_tokens: opts.maxToken || 4096,
 			messages,
@@ -569,6 +580,19 @@ class ChatSession {
 			frequency_penalty: opts.fqcP || 0,
 			response_format: opts.responseFormat || "text",
 		};
+		{
+			let models=this.globalContext.models||{};
+			let name=callVO.model;
+			if(name[0]==="$"){
+				name=name.substring(1);
+				let vo=models[name];
+				if(!vo){
+					throw Error(`Can't find platform shortcut: ${name}`);
+				}
+				callVO.platform=vo.platform;
+				callVO.model=vo.model;
+			}
+		}
 		const seed = opts.seed;
 		if (seed) {
 			callVO.seed = seed;
@@ -707,6 +731,11 @@ class ChatSession {
 				
 				const useStream = opts.stream !== false;
 				const temperature = opts.temperature || 1;
+
+				let resFormat=opts.responseFormat;
+				if(typeof(resFormat)!=="object"){
+					resFormat=resFormat === "json_object" ? "json_object" : "text";
+				}
 				
 				let completion;
 				if (opts.apis) {
@@ -723,7 +752,7 @@ class ChatSession {
 						messages,
 						tools,
 						tool_choice: "auto",
-						response_format: opts.responseFormat === "json_object" ? "json_object" : "text",
+						response_format:resFormat,
 						stream: useStream,
 					});
 				} else {
@@ -731,16 +760,55 @@ class ChatSession {
 						model,
 						temperature,
 						messages,
-						response_format: opts.responseFormat === "json_object" ? "json_object" : "text",
+						response_format: resFormat,
 						stream: useStream,
 					});
 				}
 				
 				if (useStream) {
 					const content = [];
+					const toolCalls=[];
+					let refusal="";
 					for await (const chunk of completion) {
 						const delta = chunk.choices[0].delta;
 						if (delta.content) content.push(delta.content);
+						if (delta.tool_calls) {
+							let srcList, tgtList, i, n, idx, srcStub, tgtStub, srcFunc, tgtFunc;
+							srcList = delta.tool_calls;
+							tgtList = toolCalls;
+							n = srcList.length;
+							for (i = 0; i < n; i++) {
+								srcStub = srcList[i];
+								idx = srcStub.index >= 0 ? srcStub.index : i;
+								tgtStub = tgtList[idx];
+								if (!tgtStub) {
+									tgtStub = tgtList[idx] = {
+										index: idx, id: "", type: "function",
+										function: {
+											name: "", arguments: ""
+										}
+									};
+								}
+								if ("index" in srcStub) {
+									tgtStub.index = srcStub.index;
+								}
+								if ("id" in srcStub) {
+									tgtStub.id += srcStub.id;
+								}
+								if ("type" in srcStub) {
+									tgtStub.type = "function";//srcStub.type;
+								}
+								srcFunc = srcStub.function;
+								tgtFunc = tgtStub.function;
+								if (srcFunc) {
+									tgtFunc.name += srcFunc.name || "";
+									tgtFunc["arguments"] += srcFunc["arguments"] || "";
+								}
+							}
+						}
+						if(delta.refusal){
+							refusal+=delta.refusal;
+						}
 						if (this.agentNode) {
 							await this.sendToClient("SetWaitBlockText", {
 								block: waitBlk,
@@ -749,9 +817,16 @@ class ChatSession {
 						}
 					}
 					let result=content.join("");
+					if(refusal){
+						throw Error(`AI refusal: ${refusal}`);
+					}
 					await this.logLlmResult(codeURL,opts,messages,result);
 					return result;
 				} else {
+					let refusal=completion.choices[0].message.refusal;
+					if(refusal){
+						throw Error(`AI refusal: ${refusal}`);
+					}
 					let result=completion.choices[0].message.content;
 					await this.logLlmResult(codeURL,opts,messages,result);
 					return result;
@@ -834,6 +909,12 @@ class ChatSession {
 	async removeWait(waitBlk) {
 		await this.sendToClient("RemoveWaitBlock", { block: waitBlk });
 	}	// Additional methods would follow the same pattern
+	
+	//-----------------------------------------------------------------------
+	regTerminal(term){
+		this.termMap.set(term.sessionId,term);
+		this.agentNode.regTerminal(term);
+	}
 }
 
 export default ChatSession;

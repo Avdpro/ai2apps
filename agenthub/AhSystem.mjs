@@ -136,6 +136,26 @@ let AhSystem,ahSystem;
 	};
 	
 	//-----------------------------------------------------------------------
+	ahSystem.createTerm=async function(nodeName,options){
+		let agentNode,term;
+		agentNode=await this.getAgentNode(nodeName);
+		if(agentNode) {
+			term = await agentNode.newTerm(options);
+			return term;
+		}
+		return null;
+	};
+	
+	//-----------------------------------------------------------------------
+	ahSystem.closeTerm=async function(nodeName,sessionId){
+		let agentNode,term;
+		agentNode=await this.getAgentNode(nodeName);
+		if(agentNode){
+			await agentNode.closeTerm(sessionId);
+		}
+	}
+	
+	//-----------------------------------------------------------------------
 	ahSystem.getAgentNode=async function(path,options){
 		let agent;
 		agent=this.nodeMap.get(path);
@@ -349,6 +369,60 @@ let AhSystem,ahSystem;
 			if(node){//Make sure path:
 				self.stopAgentNode(nodeName);
 			}
+			res.json({ code: 200});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['AhInstallAgentNode']=async function(req,res){
+			let reqVO,nodeName,node,nodeData;
+			reqVO = req.body.vo;
+			nodeName=reqVO.name;
+			nodeData=reqVO.data;
+			if(!nodeName){
+				res.json({ code: 400, info:`AhInstallAgentNode: Missing AgentNode name to install.`});
+				return;
+			}
+			node=self.nodeMap.get(nodeName);
+			if(node){//Make sure path:
+				self.stopAgentNode(nodeName);
+			}
+			//TODO: make dir and extract data:
+			
+			res.json({ code: 200});
+			
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap['XTermCreate']=async function(req,res){
+			let reqVO,nodeName,options,term;
+			let userId,token,language;
+			reqVO = req.body.vo;
+			nodeName=reqVO.node;
+			options=reqVO.options||{};
+			if(!nodeName){
+				res.json({ code: 400, info:`CreateSession: Missing agent-node-name to create.`});
+				return;
+			}
+			
+			term=await self.createTerm(nodeName,options);
+			term.userReqHost=req.headers.host;
+			term.userId=reqVO.userId;
+			term.userToken = reqVO.token;
+			res.json({ code: 200, sessionId:term.sessionId});
+		};
+
+		//-------------------------------------------------------------------
+		apiMap['XTermClose']=async function(req,res){
+			let reqVO,nodeName,term;
+			let userId,token,language,sessionId;
+			reqVO = req.body.vo;
+			nodeName=reqVO.node;
+			sessionId=reqVO.session||reqVO.sessionId;
+			if(!nodeName){
+				res.json({ code: 400, info:`CreateSession: Missing agent-node-name to create.`});
+				return;
+			}
+			await self.closeTerm(nodeName,sessionId);
 			res.json({ code: 200});
 		};
 	};

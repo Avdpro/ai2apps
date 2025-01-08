@@ -61,7 +61,7 @@ app.initCokeCodesApp=async function(){
 app.setupWebSocket=async function(server){
 	let wss,selectorMap;
 	selectorMap=app.get("WebSocketSelectorMap");
-	wss=app.wss=new WebSocket.Server({ server });
+	wss=app.wss=new WebSocket.Server({ server:server,maxPayload:10*1024*1024 });
 	wss.on('connection',(ws)=>{
 		function handleMessage(message){
 			let msgJSON,selector;

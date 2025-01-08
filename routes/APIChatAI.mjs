@@ -3,10 +3,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import {GoogleGenerativeAI} from "@google/generative-ai";
 import ollama from "ollama";
 
-import {encode} from "gpt-3-encoder";
-import {proxyCall} from "../util/ProxyCall.js";
-import { Readable } from "stream"
 import followRedirects from "follow-redirects";
+import {Readable} from "stream";
+
+import {proxyCall} from "../util/ProxyCall.js";
+import {setupTokenUtils,tokenForMessages,charForMessages,checkAITokenCall,useAITokens,chargePointsByChat,chargePointsByUsage} from "../util/TokenUtils.mjs";
+const getUserInfo=null,getPVUserInfo=null;
+
 
 const AIPlatforms={
 	"OpenAI":{
@@ -36,6 +39,9 @@ const AIPlatforms={
 		"moondream":{model:"moondream",label:"Moon Dream"},
 	}
 };
+
+//---------------------------------------------------------------------------
+//OpenAI:
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY;
 let openAI;
 if(OPENAI_API_KEY && OPENAI_API_KEY!=="[YOUR OPENAI KEY]") {
@@ -45,93 +51,64 @@ if(OPENAI_API_KEY && OPENAI_API_KEY!=="[YOUR OPENAI KEY]") {
 }else{
 	openAI=null;
 }
-const streamMap=new Map();
-let nextStreamId=0;
 
 //---------------------------------------------------------------------------
 //Anthropic:
 const CLAUDE_API_KEY=process.env.CLAUDE_API_KEY;
-const anthropic = new Anthropic({
-	apiKey: CLAUDE_API_KEY
-});
+let anthropic=null;
+if(CLAUDE_API_KEY) {
+	anthropic = new Anthropic({
+		apiKey: CLAUDE_API_KEY
+	});
+}
 
 //---------------------------------------------------------------------------
 //Google:
 const GOOGLEAI_API_KEY=process.env.GOOGLEAI_API_KEY;
-const googleAI = new GoogleGenerativeAI(GOOGLEAI_API_KEY);
-const googleAIModels={};
+let googleAI=null;
+if(GOOGLEAI_API_KEY) {
+	googleAI = new GoogleGenerativeAI(GOOGLEAI_API_KEY);
+}
+let googleAIModels={};
+
 const DAYTIME=24*3600*1000;
-//---------------------------------------------------------------------------
-function getStreamId(){
-	nextStreamId++;
-	return "STREAM_"+nextStreamId;
-}
+const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
 
-//---------------------------------------------------------------------------
-function shutdownStream(streamId){
-	let streamVO;
-	streamVO=streamMap.get(streamId);
-	if(!streamVO)
-		return;
-	if(!streamVO.closed) {
-		if (streamVO.errorFunc) {
-			streamVO.errorFunc("Timeout")
-		}
-	}
-	streamMap.delete(streamId);
-}
+//***************************************************************************
+//Stream utils:
+//***************************************************************************
+const streamMap=new Map();
+let nextStreamId=0;
+let getStreamId,shutdownStream;
+{
+	//-----------------------------------------------------------------------
+	getStreamId=function(){
+		nextStreamId++;
+		return "STREAM_"+nextStreamId;
+	};
 
-
-//---------------------------------------------------------------------------
-function tokenForMessages(messages,list){
-	let message,num_tokens,num,curMsgNum;
-	const token_per_message=4;
-	let key,value;
-	num_tokens=0;
-	for(message of messages){
-		num_tokens+=token_per_message;
-		curMsgNum=token_per_message;
-		for(key in message){
-			value=message[key];
-			if(value) {
-				num = encode(""+value).length;
-			}else{
-				num=0;
+	//-----------------------------------------------------------------------
+	shutdownStream=function(streamId){
+		let streamVO;
+		streamVO=streamMap.get(streamId);
+		if(!streamVO)
+			return;
+		if(!streamVO.closed) {
+			if (streamVO.errorFunc) {
+				streamVO.errorFunc("Timeout")
 			}
-			num+=key.length;
-			num_tokens+=num;
-			curMsgNum+=num;
 		}
-		if(list){
-			list.push(curMsgNum);
-		}
-	}
-	return num_tokens;
+		streamMap.delete(streamId);
+	};
 }
 
 //---------------------------------------------------------------------------
 //API for AI calls
 export default function(app,router,apiMap) {
-	
-	//-----------------------------------------------------------------------
-	async function getUserInfo (req, userId, token, projection) {
-		return null;
-	}
-	
-	//-----------------------------------------------------------------------
-	async function checkAITokenCall (userInfo, platform, model) {
-		return { code: 200 };
-	}
-
-	//-----------------------------------------------------------------------
-	async function useAITokens (userInfo, platform, model, usageVO) {
-		return null;
-	}
-	
-	//-----------------------------------------------------------------------
-	async function chargePointsByChat (userInfo, messages, replay, platform, model) {
-		return;
-	}
+	const env = app.get("env");
+	const dbUser = app.get("DBUser");
+	const dbPreview= app.get("DBPreview");
+	setupTokenUtils(app);
 	
 	//***********************************************************************
 	//Basic AI Calls:
@@ -139,6 +116,30 @@ export default function(app,router,apiMap) {
 	if(openAI){
 		//-------------------------------------------------------------------
 		apiMap['checkAICallStatus']=async function(req,res,next){
+			let reqVO, userInfo, resVO;
+			reqVO = req.body.vo;
+			if(getUserInfo) {
+				let userId,token;
+				userId = reqVO.userId;
+				token = reqVO.token;
+				if (!userId) {
+					res.json({ code: 403, info: "UserId/Token invalid." });
+					return;
+				}
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+				resVO = await checkAITokenCall(userInfo, reqVO.platform, reqVO.model);
+				if (resVO.code !== 200) {
+					res.json({code: 401,info:"Gas is not enough to make AICall."});
+					return;
+				}
+			}
 			res.json({ code: 200, info: "AICall is ready." });
 		};
 		
@@ -167,7 +168,11 @@ export default function(app,router,apiMap) {
 				textGot = streamVO.content;
 			}
 			textRead = streamVO.textRead;
-			if (textRead !== textGot || streamVO.closed) {
+			if(streamVO.closed && streamVO.refusal){
+				streamVO.textRead = textGot;
+				res.json({ code: 500, info:`AI refused: ${streamVO.refusal}`});
+				return;
+			}else if (textRead !== textGot || streamVO.closed) {
 				if(functionCall){
 					res.json({ code: 200, message: textGot, closed: streamVO.closed, functionCall: functionCall,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
 				}else if(toolCalls){
@@ -186,15 +191,29 @@ export default function(app,router,apiMap) {
 			await pms;
 			textGot = streamVO.content;
 			streamVO.textRead = textGot;
-			res.json({ code: 200, message: textGot, closed: streamVO.closed });
+			res.json({ code: 200, message: textGot, closed: streamVO.closed,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens });
 		};
 		
 		//-------------------------------------------------------------------
 		let AICall = async function (callAIObj, req, res) {
-			let reqVO;
+			let reqVO,userInfo=null;
 			let platform;
 			let callVO, rawResVO, resVO;
 			reqVO = req.body.vo;
+			
+			if(getUserInfo) {
+				let userId, token;
+				userId = reqVO.userId;
+				token = reqVO.token;
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
 			
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
@@ -204,7 +223,7 @@ export default function(app,router,apiMap) {
 					console.log(callVO);
 					//Check gas
 					{
-						resVO = await checkAITokenCall(null, platform, callVO.model);
+						resVO = await checkAITokenCall(userInfo, platform, callVO.model);
 						if (resVO.code !== 200) {
 							res.json(resVO);
 							return;
@@ -234,7 +253,7 @@ export default function(app,router,apiMap) {
 						res.json(resVO);
 						
 						//Charge user token:
-						chargePointsByChat(null, callVO.messages, content, platform, callVO.model);
+						chargePointsByChat(userInfo, callVO.messages, content, platform, callVO.model);
 					} catch (err) {
 						console.log(err);
 					}
@@ -249,13 +268,26 @@ export default function(app,router,apiMap) {
 		
 		//-------------------------------------------------------------------
 		let AIStreamCall = async function (callAIObj, req, res) {
-			let reqVO, needRawResponse;
-			let platform;
-			let callVO, rawResVO, resVO;
-			reqVO = req.body.vo;
-			needRawResponse = !!reqVO.rawResponse;
+			let reqVO,userInfo=null;
+			let platform, callVO, resVO;
 			
-			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			reqVO = req.body.vo;
+
+			if(getUserInfo) {
+				let userId, token;
+				userId = reqVO.userId;
+				token = reqVO.token;
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
+			
+			platform = reqVO.platform || "OpenAI";
 			//Make AI-Call:
 			switch (platform) {
 				case "Ollama":{
@@ -397,7 +429,7 @@ export default function(app,router,apiMap) {
 				case "OpenAI": {
 					callVO = callAIObj.buildCallVO(reqVO,platform);
 					{
-						resVO = await checkAITokenCall(null, platform, callVO.model);
+						resVO = await checkAITokenCall(userInfo, platform, callVO.model);
 						if (resVO.code !== 200) {
 							res.json(resVO);
 							return;
@@ -446,7 +478,7 @@ export default function(app,router,apiMap) {
 						res.json(resVO);
 						
 						{
-							let choice0,delta,content,funcCall,toolCalls,func;
+							let choice0,delta,content,funcCall,toolCalls,func,refusal;
 							let inputTokens=0,outputTokens=0;
 							for await (const part of chatStream) {
 								choice0=part.choices[0];
@@ -515,6 +547,10 @@ export default function(app,router,apiMap) {
 												}
 											}
 										}
+										refusal=delta.refusal;
+										if(refusal){
+											streamVO.refusal=(streamVO.refusal||"")+refusal;
+										}
 									}
 								}else{
 									//console.log(part);
@@ -537,8 +573,8 @@ export default function(app,router,apiMap) {
 								}
 							}
 							streamVO.closed = true;
-							streamVO.inputTokens=inputTokens;
-							streamVO.outputTokens=outputTokens;
+							streamVO.inputTokens=inputTokens||0;
+							streamVO.outputTokens=outputTokens||0;
 							func = streamVO.waitFunc;
 							if (func) {
 								streamVO.waitFunc = null;
@@ -547,9 +583,9 @@ export default function(app,router,apiMap) {
 							//console.log("Fin: "+streamVO.content);
 							//charge points by chat:
 							if(inputTokens>0){
-								//chargePointsByUsage(null,inputTokens,outputTokens,platform,callVO.model);
+								chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,callVO.model);
 							}else {
-								//chargePointsByChat(null, callVO.messages, streamVO.content, platform, callVO.model);
+								chargePointsByChat(userInfo, callVO.messages, streamVO.content, platform, callVO.model);
 							}
 						}
 					} catch (err) {
@@ -631,6 +667,9 @@ export default function(app,router,apiMap) {
 						//Count output tokens:
 						tokenUsage=await model.countTokens({contents:[{role:"model",parts:[{role:"model",parts:[{text:streamVO.content}]}]}]});
 						outputTokens=tokenUsage.totalTokens;
+						
+						chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,callVO.model);
+
 						func = streamVO.waitFunc;
 						if (func) {
 							streamVO.waitFunc = null;
@@ -663,7 +702,11 @@ export default function(app,router,apiMap) {
 							messages: reqVO.messages,
 						};
 						if(reqVO.response_format && reqVO.response_format!=="text"){
-							callVO.response_format={type:reqVO.response_format};
+							if(reqVO.response_format==="json") {
+								callVO.response_format = { type: reqVO.response_format };
+							}else if(typeof(reqVO.response_format==="object")){
+								callVO.response_format = reqVO.response_format;
+							}
 						}
 						if(reqVO.seed!==undefined){
 							let seed=parseInt(reqVO.seed);
@@ -752,6 +795,7 @@ export default function(app,router,apiMap) {
 			platform=reqVO.platform||"OpenAI";
 			messages=reqVO.messages;
 			switch(platform){
+				default:
 				case "OpenAI": {
 					let totalNum,list=[];
 					if(typeof(messages)==="string"){
@@ -762,7 +806,7 @@ export default function(app,router,apiMap) {
 					break;
 				}
 			}
-			
+			res.json({code:400,info:"Platform not supported."});
 		};
 		
 		//-------------------------------------------------------------------
@@ -793,13 +837,32 @@ export default function(app,router,apiMap) {
 			res.json({code:200,models:models});
 			
 		};
+	}
+	
+	//***********************************************************************
+	//Image related:
+	//***********************************************************************
+	if(openAI){
+		//-------------------------------------------------------------------
 		apiMap['AIDraw']=async function (req,res,next){
-			let reqVO;
+			let reqVO,userInfo=null;
 			let platform;
 			let callVO, resVO;
 			let prompt,model,img,size;
 			reqVO = req.body.vo;
 			
+			if(getUserInfo) {
+				let userId = reqVO.userId;
+				let token = reqVO.token;
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
 			platform = reqVO.platform;
 			model=reqVO.model||"dall-e-3";
 			prompt= reqVO.prompt;
@@ -821,7 +884,7 @@ export default function(app,router,apiMap) {
 			
 			//Check gas
 			{
-				resVO = await checkAITokenCall(null, platform, model);
+				resVO = await checkAITokenCall(userInfo, platform, model);
 				if (resVO.code !== 200) {
 					res.json(resVO);
 					return;
@@ -862,7 +925,7 @@ export default function(app,router,apiMap) {
 						return;
 					}
 					//charge points by chat:
-					chargePointsByChat(null, prompt, "", platform, model);
+					chargePointsByChat(userInfo, prompt, "", platform, model);
 					return;
 				}
 				default: {
@@ -873,19 +936,189 @@ export default function(app,router,apiMap) {
 		};
 		
 		//-------------------------------------------------------------------
-		apiMap['AITTS']=async function (req,res,next){
-			let reqVO;
+		apiMap['AIEditDraw']=async function (req,res,next){
+			let reqVO, userInfo=null;
 			let platform;
+			let callVO, resVO;
+			let prompt,model,img,size;
+			let orgImg,mskImg;
+			reqVO = req.body.vo;
+			if(getUserInfo) {
+				let userId = reqVO.userId;
+				let token = reqVO.token;
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			model=reqVO.model||"dall-e-2";
+			prompt= reqVO.prompt;
+			size=reqVO.size||"1024x1024";
+			orgImg=reqVO.image;
+			if(!orgImg){
+				res.json({ code: 400, info: "Missing image to edit." });
+				return;
+			}
+			mskImg=reqVO.mask;
+			
+			//Check gas
+			{
+				resVO = await checkAITokenCall(userInfo, platform, model);
+				if (resVO.code !== 200) {
+					res.json(resVO);
+					return;
+				}
+			}
+			callVO={
+				model: model,
+				image:orgImg,
+				prompt: prompt,
+				n: 1,
+				size: size,
+				response_format:"b64_json"
+			};
+			if(mskImg){
+				callVO.mask=mskImg;
+			}
+			if(reqVO.seed!==undefined){
+				let seed=parseInt(reqVO.seed);
+				if(seed>=0) {
+					callVO.seed = seed;
+				}
+			}
+			const response = await openAI.createImageEdit(callVO);
+			//console.log(response);
+			//console.log(response.data.data[0].b64_json);
+			img = response.data.data[0].b64_json;
+			resVO={code: 200, img: img, revised_prompt:response.data.data[0].revised_prompt};
+			res.json(resVO);
+			//charge points by chat:
+			chargePointsByChat(userInfo, prompt, "", platform, model);
+		};
+
+		//-------------------------------------------------------------------
+		apiMap['AIDrawVariation']=async function (req,res,next){
+			let reqVO,userInfo=null;
+			let platform;
+			let callVO, resVO;
+			let model,orgImg,img,size;
+			reqVO = req.body.vo;
+			
+			function createStreamFromBase64(base64String) {
+				const buffer = Buffer.from(base64String, 'base64');
+				return Readable.from(buffer);
+			}
+
+			if(getUserInfo) {
+				let userId = reqVO.userId;
+				let token = reqVO.token;
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
+			
+			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
+			model=reqVO.model||"dall-e-2";
+			size=reqVO.size||"1024x1024";
+			orgImg=reqVO.image;
+			if(!orgImg){
+				res.json({ code: 400, info: "Missing image to edit." });
+				return;
+			}
+			{
+				let pos=orgImg.indexOf("base64,");
+				if(pos>=0){
+					orgImg=orgImg.substring(pos+7);
+				}
+				orgImg=createStreamFromBase64(orgImg);
+			}
+			
+			//Check gas
+			{
+				resVO = await checkAITokenCall(userInfo, platform, model);
+				if (resVO.code !== 200) {
+					res.json(resVO);
+					return;
+				}
+			}
+			callVO={
+				model: model,
+				image: orgImg,
+				n: 1,
+				size: size,
+				response_format:"b64_json"
+			};
+			if(reqVO.seed!==undefined){
+				let seed=parseInt(reqVO.seed);
+				if(seed>=0) {
+					callVO.seed = seed;
+				}
+			}
+
+			const response = await openAI.createImageVariation(orgImg,1,size,"b64_json");
+			//const response = await openAI.createImageVariation(orgImg,1);
+			//console.log(response);
+			//console.log(response.data.data[0].b64_json);
+			img = response.data.data[0].b64_json;
+			resVO={code: 200, img: img, revised_prompt:response.data.data[0].revised_prompt};
+			res.json(resVO);
+			//charge points by chat:
+			chargePointsByChat(userInfo, "", "", platform, model);
+		};
+	}
+	
+	//***********************************************************************
+	//Audio related:
+	//***********************************************************************
+	if(openAI){
+		//-------------------------------------------------------------------
+		apiMap['AITTS']=async function (req,res,next){
+			let reqVO, userInfo=null;
+			let platform;
+			let callVO, rawResVO, resVO;
 			let callDone,apiURL,httpOpts,postText,postAPI,httpReq;
 			let inputText,model,mp3,voice;
 			reqVO = req.body.vo;
 			
+			if(getUserInfo) {
+				let userId = reqVO.userId;
+				let token = reqVO.token;
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			model=reqVO.model||"tts-1";
 			inputText= reqVO.input||reqVO.text;
 			voice= reqVO.voice||"alloy";
 			
-			//Here we use plain Http call:
+			//Check gas
+			{
+				resVO = await checkAITokenCall(userInfo, platform, model);
+				if (resVO.code !== 200) {
+					res.json(resVO);
+					return;
+				}
+			}
+			
+			//charge points by chat:
+			chargePointsByChat(userInfo, inputText, "", platform, model);
+
 			{
 				callDone=false;
 				apiURL = "https://api.openai.com/v1/audio/speech";
@@ -946,9 +1179,25 @@ export default function(app,router,apiMap) {
 	//***********************************************************************
 	{
 		apiMap['webAPICall']=async function(req,res,next){
-			let reqVO;
+			let reqVO, userInfo=null, resVO;
 			let apiURL, httpOpts, httpReq, postText,callDone,postAPI,headers;
 			reqVO = req.body.vo;
+			if(getUserInfo) {
+				let userId = reqVO.userId;
+				let token = reqVO.token;
+				if(!userId){
+					res.json({ code: 403, info: "UserId/Token invalid." });
+					return;
+				}
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+					if (!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+			}
 			{
 				let bodyType;
 				callDone=false;
@@ -1020,9 +1269,29 @@ export default function(app,router,apiMap) {
 		};
 		
 		apiMap['WebFetch']=async function(req,res,next){
-			let reqVO;
+			let reqVO, userInfo=null, resVO,replaceKey;
 			let apiURL, httpOpts, httpReq, postText,callDone,postAPI,headers;
 			reqVO = req.body.vo;
+			replaceKey=reqVO.replaceKey;
+			if(typeof(replaceKey)==="string"){
+				//TODO: Apply replaceKey
+				/*
+				let userId = reqVO.userId;
+				let token = reqVO.token;
+				if(!userId){
+					res.json({ code: 403, info: "UserId/Token invalid." });
+					return;
+				}
+				userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+				if (!userInfo) {
+					userInfo= await getPVUserInfo(req,USERINFO_PROJECTION);
+					if(!userInfo) {
+						res.json({ code: 403, info: "UserId/Token invalid." });
+						return;
+					}
+				}
+				*/
+			}
 			{
 				let body;
 				callDone=false;

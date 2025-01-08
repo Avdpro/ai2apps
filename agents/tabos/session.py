@@ -138,7 +138,7 @@ class AISession:
 	agentDict = {}
 	globalContext = {}
 
-	def __init__(self, basePath, node=None, sessionId=None,options={}):
+	def __init__(self, basePath, node=None, sessionId=None,options=None):
 		self.basePath = basePath
 		self.curPath = None
 		self.agentNode = node
@@ -151,6 +151,21 @@ class AISession:
 		self.language = self.options.get('language') or "CN"
 		self.snsBot=options.get("snsBot", None)
 		self.snsChatUserId = None
+		nodeJSON=node.hubJSON
+		if nodeJSON:
+			nodeGlobal=nodeJSON.get("globalContext")
+			if nodeGlobal:
+				self.globalContext.update(nodeGlobal)
+		nodeJSON=node.nodeJSON
+		if nodeJSON:
+			nodeGlobal=nodeJSON.get("globalContext")
+			if nodeGlobal:
+				self.globalContext.update(nodeGlobal)
+		nodeGlobal=self.options.get("globalContext")
+		if nodeGlobal:
+			self.globalContext.update(nodeGlobal)
+
+		
 
 	# -------------------------------------------------------------------------
 	# Show version:
@@ -774,7 +789,15 @@ class AISession:
 			"frequency_penalty":opts.get("fqcP",0),
 			"response_format":opts.get("responseFormat","text")
 		}
-
+		models=self.globalContext.get("models") or {}
+		name=callVO.get("model")
+		if name[:1]=="$":
+			name=name[1:]
+			vo=models.get(name)
+			if not vo:
+				raise Exception(f"Can't find platform shortcut: {name}")
+			callVO["platform"]=vo["platform"]
+			callVO["model"]=vo["model"]
 		seed=opts.get("seed",None)
 		if seed:
 			callVO.seed=seed
