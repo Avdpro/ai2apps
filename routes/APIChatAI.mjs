@@ -702,7 +702,7 @@ export default function(app,router,apiMap) {
 							messages: reqVO.messages,
 						};
 						if(reqVO.response_format && reqVO.response_format!=="text"){
-							if(typeof(reqVO.response_format==="object")){
+							if(typeof(reqVO.response_format)==="object"){
 								callVO.response_format = reqVO.response_format;
 							}else{
 								callVO.response_format = { type: reqVO.response_format };

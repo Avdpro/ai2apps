@@ -62,16 +62,22 @@ class AgentNode:
 	def __init__(self, path, host, name):
 		if not path.startswith("/"):
 			path=pathLib.join(hubPath,path)
+
+		if path not in sys.path:
+			sys.path.insert(0, path)  # Make sure we are in path.
+
 		path = pathLib.normpath(path)
 		if path.endswith(".json"):
 			jsonPath=path
 			path=pathLib.dirname(jsonPath)
 		else:
 			jsonPath=pathLib.join(path,"agent.json")
+
 		self.path=path
 		self.hubPath = hubPath
 		self.name = name or None
 		self.host = host
+		self.address = None
 		self.connected = False
 		self.websocket = None
 		self.agent = None
@@ -83,11 +89,14 @@ class AgentNode:
 		self.callHandlers={}
 		self.workload=0
 		# debugs:
+		self.slowMo=False
 		self.debugServer=None
 		self.wsDebug=None
+		self.debugSockets=[]
 		self.debugConnected=False
 		self.debugStepRun=False
 		self.debugStepTask=None
+		self.debugPort=5001
 
 		# Read config json:
 		try:
@@ -106,6 +115,8 @@ class AgentNode:
 			self.name = nodeJSON.get("name", self.name)
 		if not self.host:
 			self.host = hubConfig.get("host", self.host)
+		if not self.address:
+			self.host = hubConfig.get("address", self.host)
 		self.devKey=nodeJSON.get("devKey", None) or hubConfig.get("devKey", None)
 
 	# -------------------------------------------------------------------------
@@ -113,7 +124,7 @@ class AgentNode:
 	async def start(self,run=True):
 		if self.nodeJSON.get("debug"):
 			task=asyncio.create_task(self.startDebug())
-		self.websocket = await websockets.connect(self.host)
+		self.websocket = await websockets.connect(self.host,max_size=10485760)
 		await self.onOpen()
 		if run:
 			await self.run()
@@ -124,8 +135,11 @@ class AgentNode:
 			while True:
 				message = await self.websocket.recv()
 				await self.onMessage(message)
-		except websockets.ConnectionClosed:
+		except websockets.ConnectionClosed as e:
+			print(f"Websocket connection closed: {e}")
 			await self.onClose()
+		except Exception as e:
+			print(f"Websocket exception: {e}")
 		finally:
 			# Make sure close:
 			await self.websocket.close()
@@ -153,7 +167,12 @@ class AgentNode:
 
 		msgCode=message.get("msg",None)
 		if msgCode!="State":
-			print(f"Got websocket message: {message}")
+			log=f"Got websocket message: {message}"
+			if(len(log)<1024*10):
+				print(log)
+			else:
+				shortLog=log[:1024*5]+"..."+log[-1024*5:]
+				print(shortLog)
 
 		# check if connected, if not, check if message is "CONNECTED", then call onConnected
 		if not self.connected:
@@ -257,6 +276,9 @@ class AgentNode:
 
 	# -------------------------------------------------------------------------
 	async def execAgent(self, sessionId, path, prompt):
+		cwd = os.getcwd()  # pathLib.dirname(pathLib.realpath(__file__))
+		print("Agent run path:", cwd)
+
 		ssn = self.sessionMap.get(sessionId, None)
 		if not ssn:
 			return False
@@ -405,8 +427,9 @@ class AgentNode:
 			await server.wait_closed()
 			print("Debug Server closed.")
 
-		async def handler(websocket, path):
+		async def handler(websocket):
 			print("Debug client connected")
+			"""
 			curWebSocket = self.wsDebug
 			if curWebSocket:
 				print("New client connected, close old connection")
@@ -417,6 +440,8 @@ class AgentNode:
 				self.debugStepTask.set_result(True)
 				self.debugStepTask=None
 			self.wsDebug=websocket
+			"""
+			self.debugSockets.append(websocket)
 			self.debugConnected=True
 			try:
 				async for message in websocket: # client should not send message to here?
@@ -433,17 +458,32 @@ class AgentNode:
 						if self.debugStepTask:
 							self.debugStepTask.set_result(True)
 							self.debugStepTask = None
+					elif cmd=="SlowMo":
+						self.slowMo=message.get("enable",False)
 				# await websocket.send(f"Echo: {message}")
-			except websockets.ConnectionClosed:
-				if self.wsDebug==websocket:
-					print("Client disconnected")
-					if self.debugStepTask:
-						self.debugStepTask.set_result(True)
-						self.debugStepTask = None
-					self.wsDebug=None
-					self.debugConnected=False
+				print("Websocket for end")
+				try:
+					self.debugSockets.remove(websocket)
+					if len(self.debugSockets) == 0:
+						self.debugConnected = False
+				except ValueError:
+					print("Could not find websocket on close")
+			except Exception as e:
+				try:
+					self.debugSockets.remove(websocket)
+					if len(self.debugSockets) == 0:
+						self.debugConnected = False
+				except ValueError:
+					print("Could not find websocket on close")
 
-		server = await websockets.serve(handler, "localhost",self.nodeJSON.get("debugPort",5001), max_size=None)
+		self.debugPort=self.nodeJSON.get("debugPort",5001)
+		while True:
+			try:
+				server = await websockets.serve(handler, "localhost",self.debugPort, max_size=None)
+				print(f"Debug server started at port: {self.debugPort}")
+				break
+			except OSError as e:
+				self.debugPort+=1
 		self.debugServer = server
 		loop = asyncio.get_running_loop()
 		loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(shutdown(server)))
@@ -453,21 +493,31 @@ class AgentNode:
 
 	async def sendDebugLog(self,log):
 		try:
+			"""
 			if not self.wsDebug:
 				return False
+			"""
 			logType=log.get("type")
 			try:
 				log=json.dumps(log)
 			except Exception as e:
 				return False
-			await self.wsDebug.send(log)
 
+			for ws in self.debugSockets:
+				try:
+					await ws.send(log)
+				except Exception as e:
+					print("Error sending debug log",e)
 			if logType=="StartSeg" and self.debugStepRun:
-				await self.wsDebug.send(json.dumps({"type":"StepPaused"}))
+				for ws in self.debugSockets:
+					try:
+						await ws.send(json.dumps({"type":"StepPaused"}))
+					except Exception as e:
+						print("Error sending debug log",e)
 				loop = asyncio.get_event_loop()
 				self.debugStepTask=loop.create_future()
 				await self.debugStepTask
-				return True
 			return True
 		except Exception as e:
+			print("SendDebugLog error",e)
 			return False

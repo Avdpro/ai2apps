@@ -5,25 +5,33 @@ import {AhSession} from "./AhSession.mjs";
 import AhXTerm from './AhXTerm.mjs'
 
 //---------------------------------------------------------------------------
-async function getLatestModifiedTime(dirPath) {
+async function getLatestModifiedTime(dirPath,deep=0) {
 	let latestTime = 0;
+	let lastestFile=null;
 	
-	async function findLatestTime(directory) {
+	async function findLatestTime(directory,deep) {
 		const files = await fs.readdir(directory, { withFileTypes: true });
 		
 		for (const file of files) {
 			const filePath = pathLib.join(directory, file.name);
+			const ext=pathLib.extname(filePath);
 			const stats = await fs.stat(filePath);
 			
 			if (file.isDirectory()) {
-				await findLatestTime(filePath);
+				if(deep>0) {
+					await findLatestTime(filePath, deep - 1);
+				}
 			} else if (stats.mtimeMs > latestTime) {
+				/*if(["js",".mjs",".py",".json"].includes(ext)) {
+					latestTime = stats.mtimeMs;
+				}*/
 				latestTime = stats.mtimeMs;
+				lastestFile=filePath;
 			}
 		}
 	}
-	
-	await findLatestTime(dirPath);
+	console.log("Lastest file: "+lastestFile);
+	await findLatestTime(dirPath,deep);
 	return latestTime;
 }
 
@@ -319,7 +327,11 @@ let AhAgentNode,ahAgentNode;
 			case ".js":{
 				this.type=Type_Node;
 				let process;
-				process=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`]);
+				process=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+					{
+						cwd:this.path,
+						//stdio: 'inherit'
+					});
 				process.stdout.on('data', (data) => {
 					console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 				});
@@ -347,7 +359,11 @@ let AhAgentNode,ahAgentNode;
 				if(conda){
 					let process;
 					let condaPath=this.system.condaPath;
-					process=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`]);
+					process=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+						{
+							cwd:this.path,
+							//stdio: 'inherit'
+						});
 					process.stdout.on('data', (data) => {
 						console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 					});
@@ -366,10 +382,18 @@ let AhAgentNode,ahAgentNode;
 							this.connectCallback=null;
 							callErr(info);
 						}
+						if(this.starting){
+							callErr(`AgentNode start failed, code: ${code}`);
+						}
 					});
+					console.log(`process started: ${process}`);
 				}else{
 					let process;
-					process=this.process = spawn('bash', ['-i', '-c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`]);
+					process=this.process = spawn('bash', ['-i', '-c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+						{
+							cwd:this.path,
+							//stdio: 'inherit'
+						});
 					process.stdout.on('data', (data) => {
 						console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 					});
@@ -387,6 +411,9 @@ let AhAgentNode,ahAgentNode;
 							this.connectCallErr=null;
 							this.connectCallback=null;
 							callErr(info);
+						}
+						if(this.starting){
+							callErr(`AgentNode start failed, code: ${code}`);
 						}
 					});
 				}
@@ -438,7 +465,7 @@ let AhAgentNode,ahAgentNode;
 		this.system.OnNodeStop(this.name,this);
 		if(this.process){
 			try {
-				this.process.kill('SIGTERM');
+				this.process.kill('SIGKILL');
 				this.process = null;
 			}catch(err){
 				//Do thing

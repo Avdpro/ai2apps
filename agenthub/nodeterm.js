@@ -2929,7 +2929,7 @@ Terminal.prototype.copyBuffer = function(lines) {
 	return out;
 };
 
-Terminal.prototype.getContent = function(){
+Terminal.prototype.getRawContent = function(){
 	let lines,h,line;
 	let out = '', buf = '', ch, x, y, xl, tmp;
 	
@@ -2954,9 +2954,16 @@ Terminal.prototype.getContent = function(){
 		buf = '';
 		out += '\n';
 	}
+	return out;
+};
+
+Terminal.prototype.getContent = function(){
+	let out;
+	out=this.getRawContent();
 	out=out.trim();
 	return out;
 };
+
 
 Terminal.prototype.clear = function(text){
 	let i;
@@ -2965,6 +2972,10 @@ Terminal.prototype.clear = function(text){
 	while(i--) {
 		this.lines.push(this.blankLine());
 	}
+	this.ybase = 0;
+	this.ydisp = 0;
+	this.x = 0;
+	this.y = 0;
 	if(text) {
 		this.write(text);
 	}

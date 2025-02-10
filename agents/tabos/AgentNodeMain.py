@@ -11,8 +11,9 @@ pathLib = os.path
 getArrayItem = lambda arr, index: arr[index] if 0 <= index < len(arr) else None
 
 # Get current path:
-current_path = pathLib.dirname(pathLib.realpath(__file__))
+current_path = cwd=os.getcwd() # pathLib.dirname(pathLib.realpath(__file__))
 print("Run path:", current_path)
+print("System path: ",sys.path)
 
 # argv[1]: agentPath, argv[2]: host address, argv[3]: host name
 agentPath=getArrayItem(sys.argv,1)

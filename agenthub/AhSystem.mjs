@@ -87,7 +87,7 @@ let AhSystem,ahSystem;
 		//Find current instance:
 		agentNode=this.nodeMap.get(nodeName);
 		if(agentNode){
-			if(options.forceRestart){
+			if(options.forceRestart || !agentNode.nodeWS){
 				this.nodeMap.delete(nodeName);
 				await agentNode.stop();
 				agentNode=null;

@@ -4,6 +4,7 @@ import json
 import base64
 import urllib.parse
 import importlib
+from session import trimJSON
 ##{1ID42HC6Q0MoreImports#
 from session import trimJSON 
 ##}1ID42HC6Q0MoreImports#
@@ -147,7 +148,7 @@ async def FixArg(session):
 """
 		if(prompt):
 			if not isinstance(prompt,str):
-				prompt=json.dumps(prompt)
+				prompt=json.dumps(prompt,indent=4)
 			messages.append({"role":"user","content":prompt})
 		##{1ID42M5R60PreCall#
 		##}1ID42M5R60PreCall#
@@ -372,7 +373,8 @@ return {api:ChatAPI,export:Exports};
 #							"attrs": {}
 #						},
 #						"mockupOnly": "false",
-#						"nullMockup": "false"
+#						"nullMockup": "false",
+#						"exportClass": "false"
 #					},
 #					"mockups": {}
 #				}
@@ -384,6 +386,7 @@ return {api:ChatAPI,export:Exports};
 #		},
 #		"entry": "",
 #		"autoStart": "true",
+#		"inBrowser": "true",
 #		"debug": "true",
 #		"apiArgs": {
 #			"jaxId": "1ID42HC6Q3",
@@ -585,7 +588,8 @@ return {api:ChatAPI,export:Exports};
 #							"attrs": []
 #						},
 #						"parallelFunction": "false",
-#						"responseFormat": "json_object"
+#						"responseFormat": "json_object",
+#						"formatDef": "\"\""
 #					}
 #				},
 #				{

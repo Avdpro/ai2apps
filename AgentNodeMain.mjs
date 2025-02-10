@@ -16,7 +16,7 @@ if(envFileName){
 }else {
 	dotEnv.config();
 }
-
+await AgentNode.setupPath();
 let agentNode=new AgentNode(agentPath,hostAddr,name);
 agentNode.start();
 

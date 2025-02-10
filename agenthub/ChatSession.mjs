@@ -3,6 +3,14 @@ import pathLib from "path";
 import sharp from "sharp";
 import OpenAI from "openai";
 
+async function sleep(time){
+	let func,pms;
+	pms=new Promise((resolve,reject)=>{
+		setTimeout(resolve,time);
+	});
+	return pms;
+}
+
 let openAI = null;
 
 // *****************************************************************************
@@ -55,6 +63,8 @@ function getErrorLocation(e) {
 	return "NA";
 }
 
+let frameSeqId=0;
+
 class ChatSession {
 	static agentDict = {};
 	
@@ -63,6 +73,7 @@ class ChatSession {
 		this.curPath = null;
 		this.agentNode = node;
 		this.curAgent = null;
+		this.curAISeg=null;
 		this.sessionId = sessionId;
 		this.nextCallId = 0;
 		this.callMap = new Map();
@@ -86,6 +97,9 @@ class ChatSession {
 			}
 		}
 		this.termMap=new Map();
+		
+		this.debugStarted=false;
+		this.debugConnected=false;
 	}
 	
 	// -------------------------------------------------------------------------
@@ -93,6 +107,17 @@ class ChatSession {
 	showVersion() {
 		console.log("ChatSession 0.02");
 	}
+	
+	//--------------------------------------------------------------------------
+	async startDebug(agentURL,entryDef){
+		this.debugStarted=true;
+		try{
+			await this.callClient("ConnectAgentDebug",{address:this.agentNode.address,port:this.agentNode.debugPort,entryURL:agentURL,entryAgent:entryDef});
+		}catch(err){
+			return;
+		}
+		this.debugConnected=true;
+	};
 	
 	// -------------------------------------------------------------------------
 	async sendToClient(msg, vo) {
@@ -141,6 +166,26 @@ class ChatSession {
 	}
 	
 	//-----------------------------------------------------------------------
+	async handleMessage(msg,vo){
+		let handler;
+		handler=this["WSMsg_"+msg];
+		if(!handler){
+			throw Error(`Session message handler for "${msg}" not found.`);
+		}
+		return await handler(vo);
+	}
+	
+	//-----------------------------------------------------------------------
+	async handleCall(msg,vo){
+		let handler;
+		handler=this["WSCall_"+msg];
+		if(!handler){
+			throw Error(`Session call handler for "${msg}" not found.`);
+		}
+		return await handler(vo);
+	}
+	
+	//-----------------------------------------------------------------------
 	async loadAgent(fromAgent, path) {
 		let agent = null;
 		const agentDict=ChatSession.agentDict;
@@ -153,7 +198,9 @@ class ChatSession {
 			path = pathLib.resolve(path);
 		}
 		agent = agentDict[path];
-		if (agent) return agent;
+		if (agent){
+			return agent;
+		}
 		
 		let entryPath = path;
 		if (entryPath.startsWith("/@")) {
@@ -167,11 +214,24 @@ class ChatSession {
 			}
 			entryPath = pathLib.resolve(entryPath);
 		}
-		
 		try {
 			const module = await importModuleFromFile(entryPath);
 			agent = module.default;
 			agentDict[path] = agent;
+			try{
+				let code,pos,mark;
+				code=await fsp.readFile(entryPath,"utf8");
+				mark="/*Cody Project Doc*/";
+				pos=code.indexOf(mark);
+				if(pos>0){
+					code=code.substring(pos+mark.length);
+					code=code.replaceAll("\n//","\n");
+					agent.sourceDef=JSON.parse(code);
+				}
+			}catch(e){
+				//do nothing;
+				agent.sourceDef=null;
+			}
 			return agent;
 		} catch (e) {
 			console.error(`Failed to load agent from ${path}: ${e.message}`);
@@ -185,6 +245,7 @@ class ChatSession {
 		let catchSeg = null;
 		let input = segVO.input || segVO.result || "";
 		let seg = segVO.seg;
+		let oldSeg=this.curAISeg;
 		
 		if ("catchSeg" in segVO) {
 			catchSeg = segVO.catchSeg;
@@ -193,11 +254,13 @@ class ChatSession {
 		try {
 			while (seg) {
 				const segAct = await this.logSegStart(agent, result || segVO);
+				this.curAISeg=seg;
 				if(seg instanceof Function){
 					result = await seg(input);
 				}else {
 					result = await seg.exec(input);
 				}
+				this.curAISeg=oldSeg;
 				await this.logSegEnd(agent, segAct, result);
 				
 				if ("result" in result) {
@@ -221,11 +284,14 @@ class ChatSession {
 			
 			const info = `Caught error: ${e} at ${getErrorLocation(e)}`;
 			if (catchSeg) {
-				const catchSegVO = { input: info, seg: catchSeg };
+				await this.logCatchError(agent,""+e);
+				const catchSegVO = { input: info, seg: catchSeg ,preSeg:segVO.preSeg,outlet:segVO.catchlet};
 				result = await this.runSeg(agent, catchSegVO);
 			} else {
 				throw e;
 			}
+		} finally {
+			this.curAISeg=oldSeg;
 		}
 		return result;
 	}
@@ -233,28 +299,60 @@ class ChatSession {
 	//-----------------------------------------------------------------------
 	async execAgent(agentPath, input) {
 		const fromAgent = this.curAgent;
-		
-		let agent;
+		let agent,sourceDef;
 		if (typeof agentPath === "function") {
 			agent = agentPath;
 		} else {
 			agent = await this.loadAgent(fromAgent, agentPath);
 		}
-		
+		sourceDef=agent.sourceDef;
 		agent = await agent(this);
+		agent.sourceDef=sourceDef;
+		agent.agentFrameId=frameSeqId++;
+		this.curAgent=agent;
+		
+		if(!this.debugStarted){
+			await this.startDebug(agent.url,sourceDef);
+		}
 		
 		await this.logAgentStart(agent,input);
 		const entry = await agent.execChat(input);
-		const result = await this.runSeg(agent, entry);
+		let result = await this.runSeg(agent, entry);
 		await this.logAgentEnd(agent,result);
+		if(agent.endChat){
+			result=await agent.endChat(result)||result;
+		}
 		this.curAgent = fromAgent; // Restore the previous agent
 		return result;
 	}
 	
 	//-----------------------------------------------------------------------
-	async execAISeg(agent, seg, input) {
-		const execVO = { seg, input };
+	//TODO: Never called?
+	async execAISeg(agent, seg, input,fromSeg,fromOutlet) {
+		const execVO = {
+			seg:seg,
+			input:input,
+			preSeg:fromSeg,
+			outlet:fromOutlet
+		};
 		return await this.runSeg(agent, execVO);
+	}
+	
+	//-----------------------------------------------------------------------
+	async runAISeg(agent, seg, input,fromSeg,fromOutlet) {
+		const execVO = {
+			seg:seg,
+			input:input,
+			preSeg:fromSeg,
+			outlet:fromOutlet
+		};
+		return await this.runSeg(agent, execVO);
+	}
+	
+	//-----------------------------------------------------------------------
+	async debugLog(log){
+		console.log(log);
+		await this.logSegLog(log,this.curAgent,this.curAISeg);
 	}
 	
 	//-----------------------------------------------------------------------
@@ -266,12 +364,14 @@ class ChatSession {
 			agent: agent.jaxId,
 			name:agent.name,
 			url:agent.url,
-			input:input
+			input:input,
+			sourceDef:agent.sourceDef,
+			frameId:agent.agentFrameId
 		};
 		if(await this.agentNode.sendDebugLog(log)){
 			return;
 		}
-		await this.sendToClient("DebugLog", log);
+		//await this.sendToClient("DebugLog", log);
 	}
 	
 	//-----------------------------------------------------------------------
@@ -282,20 +382,24 @@ class ChatSession {
 			agent: agent.jaxId,
 			name:agent.name,
 			url:agent.url,
-			result:result
+			frameId:agent.agentFrameId,
+			result:result,
 		};
 		if(await this.agentNode.sendDebugLog(log)){
 			return;
 		}
-		await this.sendToClient("DebugLog", log);
+		//await this.sendToClient("DebugLog", log);
 	}
 	
 	//-----------------------------------------------------------------------
 	async logSegStart(agent, segVO) {
-		if (!this.agentNode) return;
+		let agentNode=this.agentNode;
+		if (!agentNode)
+			return;
 		
 		const seg = segVO.seg || null;
-		if (!seg) return;
+		if (!seg)
+			return;
 		
 		const segAct = {
 			agent: agent.jaxId,
@@ -313,10 +417,16 @@ class ChatSession {
 			session: this.sessionId,
 			seg: segAct,
 		};
-		if(await this.agentNode.sendDebugLog(log)){
+		if(await agentNode.sendDebugLog(log)){
+			if(agentNode.slowMo){
+				await sleep(500);
+			}
 			return segAct;
 		}
-		await this.sendToClient("DebugLog", log);
+		//await this.sendToClient("DebugLog", log);
+		if(agentNode.slowMo){
+			await sleep(500);
+		}
 		return segAct;
 	}
 	
@@ -333,11 +443,23 @@ class ChatSession {
 		if(await this.agentNode.sendDebugLog(log)){
 			return;
 		}
-		await this.sendToClient("DebugLog", log);
+		//await this.sendToClient("DebugLog", log);
+	}
+	
+	async logCatchError(agent,error){
+		if (!this.agentNode) return;
+		const log = {
+			type: "CatchError",
+			agent: agent.jaxId,
+			url:agent.url,
+			frameId:agent.agentFrameId,
+			error:""+error,
+		};
+		await this.agentNode.sendDebugLog(log);
 	}
 	
 	//-----------------------------------------------------------------------
-	async logLlmCall(codeURL,opts,messages){
+	async logLlmCall(codeURL,opts,messages,fromSeg,agent,seg){
 		if(!this.agentNode){
 			return;
 		}
@@ -348,14 +470,24 @@ class ChatSession {
 			"options":opts,
 			"messages":messages
 		};
+		if(agent && agent.jaxId){
+			log.agent=agent.jaxId;
+		}
+		if(seg && seg.jaxId){
+			log.seg={
+				name:seg.name,
+				url:seg.url,
+				jaxId:seg.jaxId
+			};
+		}
 		if(await this.agentNode.sendDebugLog(log)){
 			return;
 		}
-		await this.sendToClient("DebugLog", log);
+		//await this.sendToClient("DebugLog", log);
 	}
 	
 	//-----------------------------------------------------------------------
-	async logLlmResult(codeURL,opts,messages,result){
+	async logLlmResult(codeURL,opts,messages,result,agent,seg){
 		if(!this.agentNode){
 			return;
 		}
@@ -367,12 +499,40 @@ class ChatSession {
 			"messages":messages,
 			"result":result
 		};
+		if(agent && agent.jaxId){
+			log.agent=agent.jaxId;
+		}
+		if(seg && seg.jaxId){
+			log.seg={
+				name:seg.name,
+				url:seg.url,
+				jaxId:seg.jaxId
+			};
+		}
 		if(await this.agentNode.sendDebugLog(log)){
 			return;
 		}
-		await this.sendToClient("DebugLog", log);
+		//await this.sendToClient("DebugLog", log);
 	}
-
+	
+	//-----------------------------------------------------------------------
+	async logSegLog(message,agent,seg){
+		if(!this.agentNode){
+			return;
+		}
+		let log={
+			"type":"DebugLog",
+			"session":this.sessionId,
+			"agent":agent?agent.jaxId:null,
+			"seg":seg?seg.jaxId:null,
+			"log":message
+		};
+		if(await this.agentNode.sendDebugLog(log)){
+			return;
+		}
+		//await this.sendToClient("DebugLog", log);
+	}
+	
 	//-----------------------------------------------------------------------
 	async importFile(filePath) {
 		const name = pathLib.basename(filePath).replace(/\.js$/, "");
@@ -454,6 +614,7 @@ class ChatSession {
 		
 		const res = await this.callHub("AhFileSave", { fileName, data: content });
 		if (res && res.code === 200) {
+			await this.callClient("NewHubFile",res.fileName);
 			return res.fileName;
 		}
 		const errorInfo = res ? `${res.code}: ${res.info}` : "Unknown error";
@@ -557,6 +718,7 @@ class ChatSession {
 			role: vo.role || "assistant",
 			prompt: vo.prompt || "Please input",
 			initText: vo.initText || "",
+			placeholder:vo.placeholder||""
 		};
 		return await this.callClient("AskChatInput", askVO);
 	}
@@ -605,7 +767,8 @@ class ChatSession {
 				callVO.parallelFunction = true;
 			}
 		}
-		
+		console.log(`Call LLM: ${JSON.stringify(callVO)}`);
+		console.log(callVO);
 		res = await this.callHub("AICallStream", callVO);
 		if (res.code !== 200) {
 			throw new Error(`AIStreamCall failed: ${res.code}:${res.info}`);
@@ -712,10 +875,24 @@ class ChatSession {
 			"gpt-4-1106-preview": "OpenAI",
 		};
 
-		await this.logLlmCall(codeURL,opts,messages);
+		await this.logLlmCall(codeURL,opts,messages,fromSeg,this.curAgent,this.curAISeg);
 		
-		const model = opts.model || opts.mode || "gpt-4o-mini";
-		const platform = model2Platform[model] || opts.platform;
+		let model = opts.model || opts.mode || "gpt-4o-mini";
+		let platform;
+		{
+			let models=this.globalContext.models||{};
+			if(model[0]==="$"){
+				model=model.substring(1);
+				let vo=models[model];
+				if(!vo){
+					throw Error(`Can't find platform shortcut: ${name}`);
+				}
+				platform=vo.platform;
+				model=vo.model;
+			}else{
+				platform= model2Platform[model] || opts.platform;
+			}
+		}
 		
 		let waitBlk = 0;
 		if (this.agentNode) {
@@ -726,7 +903,10 @@ class ChatSession {
 			if (platform === "OpenAI") {
 				const openAI = setupOpenAI(this);
 				if (!openAI) {
-					return await this.callHubLLM(opts, messages, waitBlk);
+					let result;
+					result=await this.callHubLLM(opts, messages, waitBlk);
+					await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
+					return result;
 				}
 				
 				const useStream = opts.stream !== false;
@@ -820,7 +1000,7 @@ class ChatSession {
 					if(refusal){
 						throw Error(`AI refusal: ${refusal}`);
 					}
-					await this.logLlmResult(codeURL,opts,messages,result);
+					await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
 					return result;
 				} else {
 					let refusal=completion.choices[0].message.refusal;
@@ -828,12 +1008,12 @@ class ChatSession {
 						throw Error(`AI refusal: ${refusal}`);
 					}
 					let result=completion.choices[0].message.content;
-					await this.logLlmResult(codeURL,opts,messages,result);
+					await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
 					return result;
 				}
 			} else {
 				let result=await this.callHubLLM(opts, messages, waitBlk);
-				await this.logLlmResult(codeURL,opts,messages,result);
+				await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
 				return result;
 			}
 		} finally {
@@ -893,6 +1073,11 @@ class ChatSession {
 	//-----------------------------------------------------------------------
 	async askUserRaw(vo) {
 		return await this.callClient("AskUserRaw", vo);
+	}
+	
+	//-----------------------------------------------------------------------
+	async askUserDlg(vo) {
+		return await this.callClient("AskUserDlg", vo);
 	}
 	
 	//-----------------------------------------------------------------------

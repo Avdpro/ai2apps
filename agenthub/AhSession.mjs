@@ -69,7 +69,7 @@ let AhSession,ahSession;
 								callId=message.callId;
 								msg=message.message.msg;
 								try {
-									result = await this.callAgent(message.message.msg, message.message.vo);
+									result = await this.callAgent(message.message.msg, message.message.vo,message.timeout||0);
 								}catch(err) {
 									ws.send(JSON.stringify({msg:"CallResult",callId:callId,error:""+err}));
 									return;
@@ -113,6 +113,10 @@ let AhSession,ahSession;
 				
 				ws.on('close',async(event)=>{
 					this.OnClose(event.code,event.reason);
+				});
+				
+				ws.on('error',(data)=>{
+					console.log(`Client websocket error:`,data);
 				});
 				ws.send(JSON.stringify({msg:"CONNECTED"}));
 				callback();

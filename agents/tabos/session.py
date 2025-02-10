@@ -9,7 +9,7 @@ import importlib
 import importlib.util
 from PIL import Image
 from openai import OpenAI
-from playsound import playsound
+# from playsound import playsound
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import traceback
@@ -130,6 +130,7 @@ def to_dict(obj, max_depth=3, _visited=None, _current_depth=0):
 	_visited.remove(obj_id)
 	return result
 
+frameSeqId=0
 
 class AISession:
 	basePath = None
@@ -151,6 +152,9 @@ class AISession:
 		self.language = self.options.get('language') or "CN"
 		self.snsBot=options.get("snsBot", None)
 		self.snsChatUserId = None
+		self.debugStarted=False
+		self.debugConnected=False
+
 		nodeJSON=node.hubJSON
 		if nodeJSON:
 			nodeGlobal=nodeJSON.get("globalContext")
@@ -175,6 +179,15 @@ class AISession:
 	# -------------------------------------------------------------------------
 	# Network APIs:
 	# -------------------------------------------------------------------------
+	async def startDebug(self,agentURL,entryDef):
+		self.debugStarted=True
+		try:
+			await self.callClient("ConnectAgentDebug",{"address":self.agentNode.address,"port":self.agentNode.debugPort,"entryURL":agentURL,"entryAgent":entryDef})
+			print("Debug client connected")
+		except Exception as e:
+			return False
+		self.debugConnected=True
+
 	async def sendToClient(self, msg, vo):
 		if not self.agentNode.websocket:
 			return
@@ -283,6 +296,23 @@ class AISession:
 			module = import_module_from_file(entryPath)
 			agent = getattr(module, "default")
 			self.agentDict[path] = agent
+
+			# TODO: Read source def:
+			codes=""
+			try:
+				# 打开文件并读取内容
+				with open(entryPath, 'r', encoding='utf-8') as file:
+					codes = file.read()
+					if codes:
+						mark = "#Cody Project Doc"
+						pos = codes.find(mark)
+						if pos > 0:
+							codes = codes[pos + len(mark):]
+							codes = codes.replace("\n#", "\n")
+							agent.sourceDef = json.loads(codes)
+			except Exception as e:
+				print(f"Read sourceDef error：{e}")
+				agent.sourceDef=None
 			return agent
 		except Exception as e:
 			print(f"Failed to load agent from {path}: {e}")
@@ -320,6 +350,7 @@ class AISession:
 			traceback.print_tb(e.__traceback__)  # 打印详细堆栈信息
 			info=f"Caught error: {e} at {getErrorLocation(e)}"
 			if catchSeg:
+				await self.logCatchError(agent,info)
 				catchSegVO = {"input": info, "seg": catchSeg}
 				result = await self.runSeg(agent,catchSegVO)
 			else:
@@ -329,25 +360,39 @@ class AISession:
 	# -------------------------------------------------------------------------
 	# Create a new agent, but not execute it:
 	async def createAgent(self,agentPath):
+		global frameSeqId
 		fromAgent=self.curAgent
 		if callable(agentPath):
 			agent = agentPath
 		else:
 			agent = await self.loadAgent(fromAgent, agentPath)
 		agent = await agent(self)
+		agent["agentFrameId"]=frameSeqId
+		frameSeqId+=1
 		await self.logAgentStart(agent)
 		return agent
 
 	# -------------------------------------------------------------------------
 	# Execute an agent:
 	async def execAgent(self,agentPath, input):
+		global frameSeqId
 		fromAgent=self.curAgent
+
 		if callable(agentPath):
 			agent = agentPath
 		else:
 			agent = await self.loadAgent(fromAgent, agentPath)
 		try:
+			sourceDef=agent.sourceDef
 			agent = await agent(self)
+			# sourceDef = agent.get("sourceDef")
+			agent["sourceDef"] = sourceDef
+			agent["agentFrameId"] = frameSeqId
+			frameSeqId += 1
+
+			if not self.debugStarted:
+				await self.startDebug(agent.get("url"), sourceDef)
+
 			self.curAgent = agent
 			await self.logAgentStart(agent)
 			entry = await agent["execChat"](input)
@@ -379,10 +424,12 @@ class AISession:
 			"name":agent.get("name"),
 			"url":agent.get("url"),
 			"input":arg,
+			"frameId":agent.get("agentFrameId"),
+			"sourceDef":agent.get("sourceDef")
 		}
 		if await self.agentNode.sendDebugLog(log):
 			return
-		await self.sendToClient("DebugLog", log)
+		# await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
 	async def logAgentEnd(self,agent,result=""):
@@ -392,11 +439,12 @@ class AISession:
 			"type":"EndAgent",
 			"agent":agent.get("jaxId"),
 			"name": agent.get("name"),
+			"frameId":agent.get("agentFrameId"),
 			"result": result,
 		}
 		if await self.agentNode.sendDebugLog(log):
 			return
-		await self.sendToClient("DebugLog", log)
+		# await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
 	async def logSegStart(self,agent,segVO):
@@ -430,7 +478,7 @@ class AISession:
 		}
 		if await self.agentNode.sendDebugLog(log):
 			return segAct
-		await self.sendToClient("DebugLog", log)
+		# await self.sendToClient("DebugLog", log)
 		return segAct
 
 	# -------------------------------------------------------------------------
@@ -454,7 +502,19 @@ class AISession:
 		}
 		if await self.agentNode.sendDebugLog(log):
 			return
-		await self.sendToClient("DebugLog", log)
+		# await self.sendToClient("DebugLog", log)
+
+	# -------------------------------------------------------------------------
+	async def logCatchError(self,agent,error):
+		if not self.agentNode:
+			return
+		log={
+			"type":"CatchError",
+			"agent":agent.get("jaxId"),
+			"frameId":agent.get("agentFrameId"),
+			"error":f"{error}",
+		}
+		await self.agentNode.sendDebugLog(log)
 
 	# -------------------------------------------------------------------------
 	async def logLlmCall(self,codeURL,opts,messages):
@@ -469,7 +529,7 @@ class AISession:
 		}
 		if await self.agentNode.sendDebugLog(log):
 			return
-		await self.sendToClient("DebugLog", log)
+		# await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
 	async def logLlmResult(self,codeURL,opts,messages,result):
@@ -485,7 +545,7 @@ class AISession:
 		}
 		if await self.agentNode.sendDebugLog(log):
 			return
-		await self.sendToClient("DebugLog", log)
+		# await self.sendToClient("DebugLog", log)
 
 	# -------------------------------------------------------------------------
 	# APIs for agent to call-tool or I/O with AgentHub:
@@ -522,14 +582,25 @@ class AISession:
 
 	# -------------------------------------------------------------------------
 	async def readFile(self, path, outputFormat):
+		content=None
+		orgPath=path
 		if not path.startswith("/"):
 			path = pathLib.join(self.basePath, path)
 			path = pathLib.abspath(path)
-		file = open(path, "rb")
-		content = file.read()
-		file.close()
+		try:
+			with open(path, 'rb') as file:
+				content = file.read()
+		except Exception as e:
+			try:
+				content=base64.b64decode(orgPath)
+			except Exception as e:
+				content=None
+		if not content:
+			return None
 		if outputFormat == "text":
 			return content.decode("utf-8")
+		if outputFormat == "base64":
+			return base64.b64encode(content).decode('utf-8')
 		return content
 
 	# -------------------------------------------------------------------------
@@ -568,7 +639,9 @@ class AISession:
 			content = base64.b64encode(content)
 			content = content.decode("utf-8")
 		res=await self.callHub("AhFileSave",{"fileName":fileName,"data":content})
+		#TODO: DebugLog file:
 		if res and res.get("code")==200:
+			await self.callClient("NewHubFile",res.get('fileName'))
 			return res.get('fileName')
 		if res:
 			raise Exception(f"Save hub file ${fileName} failed {res.get('code')}: {res.get('info')}")
@@ -602,6 +675,12 @@ class AISession:
 				return "data:image/png;base64,"+res.get('data')
 			if ext==".txt":
 				return "data:text/plain;base64,"+res.get('data')
+			if ext==".mp3":
+				return "data:audio/mpeg;base64,"+res.get('data')
+			if ext==".js":
+				return "data:application/javascript;base64,"+res.get('data')
+			if ext==".md":
+				return "data:text/markdown;base64,"+res.get('data')
 			return "data:application/octet-stream;base64,"+res.get('data')
 		return res.get('data')
 
@@ -670,10 +749,10 @@ class AISession:
 				file.write(mp3_data)
 				file.close()
 				try:
-					playsound(tempPath)
+					# playsound(tempPath)
 					os.remove(tempPath)
 				except Exception as e:
-					print(f"Error in playsound: {e}")
+					# print(f"Error in playsound: {e}")
 					print(f"The temp audio file is: {tempPath}")
 
 	# -----------------------------------------------------------------------

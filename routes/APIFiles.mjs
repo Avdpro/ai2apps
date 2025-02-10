@@ -175,6 +175,7 @@ export default function(app,router,apiMap) {
 			}
 			path=pathLib.join(dirBase,path);
 			try {
+				let fname=pathLib.basename(path);
 				state = await asyncFS.stat(path);
 				stub = { name: fname };
 				isDir = state.isDirectory();
@@ -358,6 +359,78 @@ export default function(app,router,apiMap) {
 				res.json({code:200});
 			}catch(err){
 				res.json({code:500,info:"Delete error."});
+			}
+		};
+		
+		//-----------------------------------------------------------------------
+		//Copy a file up:
+		apiMap["fileCopy"]= async function (req, res, next) {
+			let reqVO;
+			let dir,path,dirBase,buf,data,newPath;
+			reqVO=req.body.vo;
+			dir=reqVO.dir;
+			path=reqVO.path||"";
+			newPath=reqVO.newPath;
+			{
+				let pos;
+				pos=dir.indexOf("/");
+				if(pos){
+					path=pathLib.join(dir.substring(pos+1),path);
+					newPath=pathLib.join(dir.substring(pos+1),newPath);
+					dir=dir.substring(0,pos);
+				}
+			}
+			dirBase=env["FILEDIR_"+dir];
+			if(!dirBase){
+				res.json({code:400,info:"Dir invalid."});
+				return;
+			}
+			if(dirBase[0]!=="/"){
+				dirBase=pathLib.join(app.get("AppHomePath"),dirBase);
+			}
+			path=pathLib.join(dirBase,path);
+			newPath=pathLib.join(dirBase,newPath);
+			try {
+				await asyncFS.cp(path, newPath, { recursive: true, force: true });
+				res.json({code:200});
+			}catch (e){
+				res.json({code:500,info:"Copy error."});
+			}
+		};
+		
+		//-----------------------------------------------------------------------
+		//Rename a file up:
+		apiMap["fileRename"]= async function (req, res, next) {
+			let reqVO;
+			let dir,path,dirBase,buf,data,newPath;
+			reqVO=req.body.vo;
+			dir=reqVO.dir;
+			path=reqVO.path||"";
+			newPath=reqVO.newPath;
+			{
+				let pos;
+				pos=dir.indexOf("/");
+				if(pos){
+					path=pathLib.join(dir.substring(pos+1),path);
+					newPath=pathLib.join(dir.substring(pos+1),newPath);
+					dir=dir.substring(0,pos);
+				}
+			}
+			dirBase=env["FILEDIR_"+dir];
+			if(!dirBase){
+				res.json({code:400,info:"Dir invalid."});
+				return;
+			}
+			if(dirBase[0]!=="/"){
+				dirBase=pathLib.join(app.get("AppHomePath"),dirBase);
+			}
+			path=pathLib.join(dirBase,path);
+			newPath=pathLib.join(dirBase,newPath);
+			try {
+				await asyncFS.rename(path, newPath);
+				res.json({code:200});
+			}catch(err){
+				res.json({code:500,info:`Rename error: ${err}`});
 			}
 		};
 	}

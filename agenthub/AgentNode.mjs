@@ -29,9 +29,8 @@ async function readJSON(filePath) {
 	}
 }
 
-const hubPath = process.env.AGENT_HUB_AGENTDIR||"agents";
-const hubConfig = await readJSON(pathLib.join(currentPath, "../agents/agenthub.json"));
-
+let hubPath;
+let hubConfig;
 //***************************************************************************
 //AgentNode:
 //***************************************************************************
@@ -56,6 +55,7 @@ let AgentNode,agentNode;
 		this.hubPath = hubPath;
 		this.name = name || null;
 		this.host = host;
+		this.address=null;
 		this.connected = false;
 		this.websocket = null;
 		this.agent = null;
@@ -69,14 +69,24 @@ let AgentNode,agentNode;
 		this.workload = 0;
 		
 		this.debugStepRun = false;
-		this.wsDebug = null;
+		this.debugClients=[];
 		this.debugConnected = false;
-		this.debugStepTask = null;
 		this.debugServer = null;
+		this.slowMo=false;
+		this.debugPort=-1;
 		
 		this.termMap=new Map();
 	}
 	agentNode=AgentNode.prototype={};
+	
+	//-----------------------------------------------------------------------
+	AgentNode.setupPath=async function(){
+		hubPath=process.env.AGENT_HUB_AGENTDIR||pathLib.join(currentPath,"../agents");
+		if(hubPath[0]!=="/"){
+			hubPath=pathLib.join(currentPath,"../",hubPath);
+		}
+		hubConfig=await readJSON(pathLib.join(currentPath, "../agents/agenthub.json"));
+	};
 	
 	//-----------------------------------------------------------------------
 	agentNode.start = async function () {
@@ -97,6 +107,7 @@ let AgentNode,agentNode;
 		this.name = this.nodeJSON.name || this.name;
 		this.host = this.host || hubConfig.host;
 		this.devKey= this.nodeJSON.devKey||this.hubJSON.devKey||null;
+		this.address=this.nodeJSON.address||this.address;
 		
 		try {
 			await this.startDebug();
@@ -155,9 +166,20 @@ let AgentNode,agentNode;
 					this.websocket.close(1000);
 					//TODO: Code this:
 					break;
-				case 'Call':
-					await this.handleCallMessage(message);
+				case 'Message':{
+					await this.handleMessage(message);
 					break;
+				}
+				case 'Call': {
+					let result;
+					try {
+						result = await this.handleCall(message);
+						this.websocket.send(JSON.stringify({ msg: "CallResult", result:result,callId:message.callId,session:message.session,sessionId:message.sessionId}));
+					}catch (err){
+						this.websocket.send(JSON.stringify({ msg: "CallResult", error:""+err,callId:message.callId,session:message.session,sessionId:message.sessionId}));
+					}
+					break;
+				}
 				case 'ExecAgent':
 					await this.execAgentMessage(message);
 					break;
@@ -223,10 +245,37 @@ let AgentNode,agentNode;
 		return result;
 	};
 	
+	
 	//-----------------------------------------------------------------------
-	agentNode.handleCall = async function (message) {
+	agentNode.handleMessage=async function(message){
+		const sessionId=message.session||message.sessionId;
 		const callMsg = message.message?.msg;
 		const callVO = message.message?.vo;
+		
+		if(sessionId){
+			let session;
+			session=this.sessionMap.get(sessionId);
+			if(!session){
+				throw `Session "sessionId" not found.`;
+			}
+			return await session.handleMessage(callMsg,callVO);
+		}
+	};
+	
+	//-----------------------------------------------------------------------
+	agentNode.handleCall = async function (message) {
+		const sessionId=message.session||message.sessionId;
+		const callMsg = message.message?.msg;
+		const callVO = message.message?.vo;
+		
+		if(sessionId){
+			let session;
+			session=this.sessionMap.get(sessionId);
+			if(!session){
+				throw `Session "sessionId" not found.`;
+			}
+			return await session.handleCall(callMsg,callVO);
+		}
 		
 		if (callMsg === 'State') {
 			return { workload: this.workload };
@@ -326,22 +375,9 @@ let AgentNode,agentNode;
 		
 		const handler = async (ws, req) => {
 			console.log('Debug client connected');
-			const curWebSocket = this.wsDebug;
 			
-			if (curWebSocket) {
-				console.log('New client connected, close old connection');
-				this.wsDebug = null;
-				this.debugConnected = false;
-				await curWebSocket.close();
-			}
-			
-			if (this.debugStepTask) {
-				this.debugStepTask.resolve(true);
-				this.debugStepTask = null;
-			}
-			
-			this.wsDebug = ws;
 			this.debugConnected = true;
+			this.debugClients.push(ws);
 			
 			ws.on('message', async (message) => {
 				try {
@@ -349,17 +385,33 @@ let AgentNode,agentNode;
 					const parsedMessage = JSON.parse(message);
 					const cmd = parsedMessage.cmd;
 					
+					//TODO: apply these to session?
 					if (cmd === 'StepRunOn') {
-						this.debugStepRun = true;
-						await this.sendDebugLog({ type: 'StepRunOn' });
+						ws.debugStepRun = true;
+						await ws.send(JSON.stringify({ type: 'StepRunOn' }));
 					} else if (cmd === 'StepRunOff') {
-						this.debugStepRun = false;
-						await this.sendDebugLog({ type: 'StepRunOff' });
-					} else if (cmd === 'RunStep') {
-						if (this.debugStepTask) {
-							this.debugStepTask.resolve(true);
-							this.debugStepTask = null;
+						ws.debugStepRun = false;
+						if (ws.debugStepTask) {
+							let callback=ws.debugStepCallback;
+							ws.debugStepTask = null;
+							if(callback) {
+								ws.debugStepCallback=null;
+								callback(true);
+							}
 						}
+						await ws.send(JSON.stringify({ type: 'StepRunOff' }));
+					} else if (cmd === 'RunStep') {
+						if (ws.debugStepTask) {
+							let callback=ws.debugStepCallback;
+							ws.debugStepTask = null;
+							if(callback) {
+								ws.debugStepCallback=null;
+								callback(true);
+							}
+							await ws.send(JSON.stringify({ type: 'StepRun' }));
+						}
+					} else if (cmd === 'SlowMo') {
+						this.slowMo=!!parsedMessage.enable;
 					}
 				} catch (err) {
 					console.error(err);
@@ -367,51 +419,62 @@ let AgentNode,agentNode;
 			});
 			
 			ws.on('close', () => {
+				let idx;
 				console.log('Client disconnected');
-				if (this.wsDebug === ws) {
-					if (this.debugStepTask) {
-						this.debugStepTask.resolve(true);
-						this.debugStepTask = null;
+				if (ws.debugStepTask) {
+					let callback=ws.debugStepCallback;
+					ws.debugStepTask = null;
+					if(callback) {
+						ws.debugStepCallback=null;
+						callback(true);
 					}
-					this.wsDebug = null;
-					this.debugConnected = false;
 				}
+				idx=this.debugClients.indexOf(ws);
+				if(idx>=0) {
+					this.debugClients.splice(idx,1);
+					if(!this.debugClients.length){
+						this.debugConnected=false;
+					}
+				}
+				
 			});
 		};
 		
-		const port = this.nodeJSON.debugPort || 5001;
-		try {
-			this.debugServer = new WebSocketServer({ port, maxPayload: 1024 * 1024 * 10 });
-			this.debugServer.on('connection', handler);
-			this.debugServer.on('error', (err)=>{
-				console.log(`Agent ${this.name} start debug error: ${err}`);
-			});
-		}catch(err){
-			console.warn(`Agent ${this.name} start debug error: ${err}`);
-		}
-		
-		console.log('Debug WebSocket server started');
-		
-		/*
-		process.on('SIGINT', async () => {
-			await shutdown(this.debugServer);
-		});*/
+		let port = this.nodeJSON.debugPort || 5001;
+		let portError=false;
+		do {
+			try {
+				this.debugServer = new WebSocketServer({ port, maxPayload: 1024 * 1024 * 10 });
+				this.debugServer.on('connection', handler);
+				console.log(`Debug WebSocket server started at port: ${port}`);
+				this.debugPort=port;
+			} catch (err) {
+				if(err.code==='EADDRINUSE'){
+					portError=true;
+					port+=1;
+				}
+				console.warn(`Agent ${this.name} start debug error: ${err}`);
+			}
+		}while(portError);
+		this.debugServer.on('error', (err) => {
+			console.log(`Agent ${this.name} start debug error: ${err}`);
+		});
 	};
 	
 	//-----------------------------------------------------------------------
 	agentNode.sendDebugLog=async function(log) {
 		try {
-			if (!this.wsDebug)
-				return false;
 			const logType = log.type;
 			const serializedLog = JSON.stringify(log);
-			await this.wsDebug.send(serializedLog);
-			if (logType === 'StartSeg' && this.debugStepRun) {
-				await this.wsDebug.send(JSON.stringify({ type: 'StepPaused' }));
-				this.debugStepTask = new Promise((resolve) => {
-					this.debugStepTask = { resolve };
-				});
-				await this.debugStepTask;
+			for(let ws of this.debugClients) {
+				await ws.send(serializedLog);
+				if (logType === 'StartSeg' && ws.debugStepRun) {
+					await ws.send(JSON.stringify({ type: 'StepPaused' }));
+					ws.debugStepTask = new Promise((resolve) => {
+						ws.debugStepCallback = resolve;
+					});
+					await ws.debugStepTask;
+				}
 			}
 			return true;
 		} catch (err) {

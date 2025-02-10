@@ -1,0 +1,40 @@
+{
+    "name": "AgentBuilder",
+    "label":"AgentBuilder",
+    "expose": true,
+    "description":"Create/build AI agent to add new features.",
+    "globalContext":{
+		"models":{
+			"free":{"platform":"Ollma","model":"llama3.2"},
+			"fast":{"platform":"OpenAI","model":"gpt-4o-mini"},
+			"low":{"platform":"OpenAI","model":"gpt-4o-mini"},
+			"mid":{"platform":"OpenAI","model":"gpt-4o-mini"},
+			"standard":{"platform":"OpenAI","model":"gpt-4o-mini"},
+			"high":{"platform":"OpenAI","model":"gpt-4o"},
+			"accurate":{"platform":"OpenAI","model":"gpt-4o"},
+			"plan":{"platform":"OpenAI","model":"gpt-4o"},
+			"code":{"platform":"OpenAI","model":"gpt-4o"},
+			"chat":{"platform":"OpenAI","model":"gpt-4o-mini"},
+			"view":{"platform":"OpenAI","model":"gpt-4o"}
+		},
+		"rag":{
+			"solution":"http://localhost:222/solution/",
+			"qa":"http://localhost:222/qa/"
+		}
+    },
+	"entry":"../../AgentNodeMain.mjs",
+    "chatEntry":null,
+    "agents":["agent.js"],
+    "tools":{
+		"setup":["CodeModifyFile.js"],
+		"genGuide":["ToolReadFile.js","ToolReadDir.js","RpaReadPage.js","RpaWebSearch.js"],
+		"issue":["RpaChatGPT.js","RpaReadPage.js","RpaStackOverflow.js","RpaWebSearch.js"],
+		"fixIssue":["ToolReadFile.js","ToolReadDir.js","ToolModifyFile.js","RpaReadPage.js"],
+		"bashTest":["CodeModifyFile.js","ToolReadFile.js","ToolReadDir.js","ToolModifyFile.js","RpaReadPage.js"],
+		"webUITest":["CodeModifyFile.js","RpaReadPage.js"],
+		"guideSetup":["ToolModifyFile.js","ToolReadFile.js","ToolReadDir.js","PrjCheckCondaEnv.js","ToolBrew.js","ToolHfModel.js"],
+		"coding":[]
+	},
+    "rootPath": "projects",
+	"debugPort": 9115
+}

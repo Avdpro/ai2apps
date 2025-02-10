@@ -16,6 +16,8 @@ async function getCondaPath() {
 	}
 }
 
+const idleTime=15000;
+
 //****************************************************************************
 //BashFrame
 //****************************************************************************
@@ -37,6 +39,14 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.killPms=null;
 		this.killCallback=null;
 		this.waitBuf="";
+		this.idleTime=0;
+		
+		this.lastActiveTime=0;
+		this.waitIdlePms=null;
+		this.cmdWaitIdle=false;
+		this.waitIdleCallback=null;
+		this.idleTimer=null;
+		this.isIdle=false;
 	};
 	agentNodeTerminal=AgentNodeTerminal.prototype={};
 	
@@ -73,14 +83,23 @@ let AgentNodeTerminal,agentNodeTerminal;
 		//Handle data:
 		{
 			shell.onData((data) => {
+				this.lastActiveTime=Date.now();
+				this.isIdle=false;
 				terminal.write(data);
 				this.waitBuf += data.toString();
 				process.stdout.write(data);
-				if (this.waitBuf.includes('__AGENT_SHELL__> ')) {
-					this.idle=true;
-					if(this.waitCallback){
-						this.waitCallback();
+				if (this.waitBuf.includes('__AGENT_SHELL__> ')) {//Idle:
+					let callback;
+					this.OnIdle();
+					callback=this.waitCallback;
+					if(callback){
+						this.waitCallback=null;
 						this.waitBuf="";
+						callback();
+					}
+				}else{
+					if(this.idleTimer){
+						this._idleTimer();
 					}
 				}
 				if(this.clientReady && this.sessionId){
@@ -158,6 +177,10 @@ let AgentNodeTerminal,agentNodeTerminal;
 	agentNodeTerminal.write=function(text){
 		this.waitBuf="";
 		this.shell.write(text);
+		this.isIdle=false;
+		if(this.idleTimer){
+			this._idleTimer();
+		}
 	};
 	
 	//------------------------------------------------------------------------
@@ -183,19 +206,36 @@ let AgentNodeTerminal,agentNodeTerminal;
 	};
 	
 	//------------------------------------------------------------------------
-	agentNodeTerminal.runCommands=async function(commands){
-		let command,cntLen,content;
+	agentNodeTerminal.runCommands=async function(commands,opts){
+		let command,cntLen,content,i,n;
 		if(!commands){
 			return;
+		}
+		if(opts){
+			this.idleTime=opts.idleTime||0;
+		}else{
+			this.idleTime=0;
 		}
 		content=this.getContent();
 		cntLen=content.length;
 		if(!Array.isArray(commands)){
 			commands=[commands];
 		}
-		for(command of commands){
+		n=commands.length;
+		if(n>0) {
+			this.cmdWaitIdle=false;
+			//Run commands before last command:
+			for (i = 0; i < n - 1; i++) {
+				command = commands[i];
+				await this._command(command);
+			}
+			//Run last command:
+			this.cmdWaitIdle=true;//Set idle trigger:
+			this._idleTimer();
+			command = commands[i];
 			await this._command(command);
 		}
+	
 		content=this.getContent();
 		return content.substring(cntLen);
 	};
@@ -206,8 +246,74 @@ let AgentNodeTerminal,agentNodeTerminal;
 	};
 	
 	//------------------------------------------------------------------------
+	agentNodeTerminal.getRawContent=function(){
+		return this.terminal.getRawContent();
+	};
+	
+	//------------------------------------------------------------------------
 	agentNodeTerminal.getContent=function(){
 		return this.terminal.getContent();
+	};
+	
+	//------------------------------------------------------------------------
+	agentNodeTerminal._idleTimer=function(){
+		if(this.idleTimer){
+			clearTimeout(this.idleTimer);
+		}
+		this.idleTimer=setTimeout(()=>{
+			this.idleTimer=null;
+			this.OnIdle();
+		},this.idleTime||idleTime);
+	};
+	
+	//------------------------------------------------------------------------
+	agentNodeTerminal.waitIdle=async function(force=false){
+		let pms;
+		if((!force) && this.isIdle){
+			return;
+		}
+		if(this.waitIdlePms){
+			return await this.waitIdlePms;
+		}
+		this._idleTimer();
+		pms=this.waitIdlePms=new Promise((resolve,reject)=>{
+			this.waitIdleCallback=resolve;
+		});
+		return pms;
+	};
+	
+	//------------------------------------------------------------------------
+	agentNodeTerminal.OnIdle=function(){
+		let callback;
+		if(this.idleTimer){
+			clearTimeout(this.idleTimer);
+			this.idleTimer=null;
+		}
+		this.isIdle=true;
+		this.waitIdlePms=null;
+		callback=this.waitIdleCallback;
+		if(callback){
+			this.waitIdleCallback=null;
+			callback();
+		}
+		if(this.cmdWaitIdle){
+			let callback;
+			this.cmdWaitIdle=false;
+			callback=this.waitCallback;
+			if(callback){
+				this.waitCallback=null;
+				this.waitBuf="";
+				callback();
+			}
+		}
+	};
+	
+	//------------------------------------------------------------------------
+	agentNodeTerminal.cwd=async function(){
+		let result,lines;
+		result=await this.runCommands("pwd");
+		lines=result.split("\n");
+		return lines[1].trim();
 	};
 }
 export default AgentNodeTerminal;

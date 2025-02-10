@@ -76,8 +76,9 @@ let AhFileLib,ahFileLib;
 		let buf,path,data;
 		path=pathLib.join(this.fileDir,fileName);
 		try {
-			buf = await asyncFS.readFile(path);
-			data = buf.toString("base64");
+			data = await asyncFS.readFile(path, {encoding: "base64"});
+			//data = buf.toString("base64");
+			await saveFileFromBase64(data,this.fileDir,"test-"+fileName,true);
 		}catch(err){
 			data="";
 		}

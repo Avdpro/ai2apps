@@ -1,5 +1,5 @@
 var express = require('express');
-var chatAI,gitAPI,previewAPI,utilsAPI,fileAPI;
+var chatAI,gitAPI,previewAPI,utilsAPI,fileAPI,appsAPI,mircoAPI,ragAPI;
 var router = express.Router();
 var proxyCall=require('../util/ProxyCall.js').proxyCall;
 const USE_AAEE=process.env.AAEE;
@@ -24,6 +24,10 @@ module.exports =function(app) {
 		utilsAPI(app,router,apiMap);
 	});
 	
+	import("./APIRag.mjs").then((mode)=>{
+		ragAPI=mode.default;
+		ragAPI(app,router,apiMap);
+	});
 	
 	//Register AAEE if has it:
 	if(USE_AAEE){
