@@ -122,7 +122,7 @@ class AgentNode:
 	# -------------------------------------------------------------------------
 	# Create a websocket connect to host
 	async def start(self,run=True):
-		if self.nodeJSON.get("debug"):
+		if self.nodeJSON.get("debug")is not False:
 			task=asyncio.create_task(self.startDebug())
 		self.websocket = await websockets.connect(self.host,max_size=10485760)
 		await self.onOpen()
