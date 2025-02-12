@@ -6,7 +6,7 @@
     "description": "",
     "language": "CN",
     "nodes": {
-        "DrawSD":"DrawSD",
+        "DrawSD":"DrawSD"
     },
     "globalContext":{
         "models": {
