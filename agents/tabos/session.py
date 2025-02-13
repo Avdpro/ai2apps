@@ -243,7 +243,7 @@ class AISession:
 
 	# -------------------------------------------------------------------------
 	async def webCall(self, vo, fromAgent, timeout):
-		url = vo.url
+		url = vo.get("url")
 		method = vo["method"] if ("method" in vo) else "GET"
 		headers = vo["headers"] if ("headers" in vo) else {}
 		argMode = vo["argMode"] if ("argMode" in vo) else None
