@@ -13,6 +13,22 @@ class Store {
 			};
 		});
 	}
+	async __withIDBStore(type, callback,key) {
+		let db,pms;
+		db=await this._dbp;
+		pms=new Promise((resolve,reject)=>{
+			const transaction = db.transaction(this.storeName, type);
+			transaction.oncomplete = () => resolve(transaction);
+			transaction.onabort = transaction.onerror = () => reject(transaction.error);
+		});
+		let transaction=await pms;
+		try {
+			callback(transaction.objectStore(this.storeName));
+		}catch(err){
+			console.error(err);
+			console.log(`_withIDBStore error key: ${key}`);
+		}
+	}
 	_withIDBStore(type, callback) {
 		return this._dbp.then(db => new Promise((resolve, reject) => {
 			const transaction = db.transaction(this.storeName, type);
@@ -32,7 +48,7 @@ function get(key, store = getDefaultStore()) {
 	let req;
 	return store._withIDBStore('readonly', store => {
 		req = store.get(key);
-	}).then(() => req.result);
+	},key).then(() => req.result);
 }
 function set(key, value, store = getDefaultStore()) {
 	return store._withIDBStore('readwrite', store => {
@@ -65,6 +81,7 @@ function keys(store = getDefaultStore()) {
 
 var sysStore=new Store('CokeCodes', "System");
 var diskStores={};
+var infoStores={};
 //var scriptURL=new URL(self.serviceWorker.scriptURL);
 var hostOrigin=self.origin;
 
@@ -200,11 +217,89 @@ async function routeCall(evt){
 	});
 }
 
+var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+// Use a lookup table to find the index.
+var lookup = typeof Uint8Array === 'undefined' ? [] : new Uint8Array(256);
+for (var i = 0; i < chars.length; i++) {
+	lookup[chars.charCodeAt(i)] = i;
+}
+const base64_decode = function (base64) {
+	var bufferLength = base64.length * 0.75, len = base64.length, i, p = 0, encoded1, encoded2, encoded3, encoded4;
+	if (base64[base64.length - 1] === '=') {
+		bufferLength--;
+		if (base64[base64.length - 2] === '=') {
+			bufferLength--;
+		}
+	}
+	var arraybuffer = new ArrayBuffer(bufferLength);
+	var bytes = new Uint8Array(arraybuffer);
+	for (i = 0; i < len; i += 4) {
+		encoded1 = lookup[base64.charCodeAt(i)];
+		encoded2 = lookup[base64.charCodeAt(i + 1)];
+		encoded3 = lookup[base64.charCodeAt(i + 2)];
+		encoded4 = lookup[base64.charCodeAt(i + 3)];
+		bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+		bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+		bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
+	}
+	return bytes;
+};
+
 //---------------------------------------------------------------------------
 //Fetch event handler:
 self.addEventListener('fetch', async (evt)=>{
 	var req,pos,reqURLObj,refURLObj,fullPath,ext;
 	
+	async function checkNTPath(disk,filePath){
+		let infoStore,ntPath;
+		infoStore = infoStores[disk];
+		if(!infoStore) {
+			infoStores[disk] = infoStore = new Store('Disk_' + disk, "info");
+		}
+		ntPath=await get("attr_ntPath",infoStore);
+		if(ntPath){
+			let res;
+			//TODO:
+			try {
+				res = await fetch("/ws/", {
+					method: 'POST',
+					cache: 'no-cache',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ msg: "fileDownload", vo: { dir: ntPath, path: filePath } })
+				});
+				if (res.ok) {
+					let json,buf;
+					json=await res.json();
+					buf=base64_decode(json.data);
+					[contentType,cache]=getCntType(filePath);
+					return new Response(buf, {
+						status: 200,
+						headers: {
+							'Content-Type': contentType,
+							'cache-control': cache
+						}
+					});
+				}else{
+					return new Response('<p>Can not find server-disk file!</p>', {
+						status: 404,
+						headers: { 'Content-Type': 'text/html' }
+					});
+				}
+			}catch(err){
+				return new Response('<p>Can not find server-disk file!</p>', {
+					status: 404,
+					headers: { 'Content-Type': 'text/html' }
+				});
+			}
+		}else{
+			return new Response('<p>Can not find disk file!</p>', {
+				status: 404,
+				headers: { 'Content-Type': 'text/html' }
+			});
+		}
+	}
 	//Return a local-disk-path file respond:
 	async function respondLocal(disk,filePath){
 		let diskStore;
@@ -231,10 +326,11 @@ self.addEventListener('fetch', async (evt)=>{
 						}
 					});
 				} else {
-					return new Response('<p>Can not find disk file!</p>', {
+					return checkNTPath(disk,filePath);
+					/*return new Response('<p>Can not find disk file!</p>', {
 						status: 404,
 						headers: { 'Content-Type': 'text/html' }
-					});
+					});*/
 				}
 			});
 		}

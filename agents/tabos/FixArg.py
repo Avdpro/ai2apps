@@ -527,7 +527,9 @@ return {api:ChatAPI,export:Exports};
 #								}
 #							]
 #						}
-#					}
+#					},
+#					"icon": "condition.svg",
+#					"reverseOutlets": true
 #				},
 #				{
 #					"type": "aiseg",
@@ -590,7 +592,8 @@ return {api:ChatAPI,export:Exports};
 #						"parallelFunction": "false",
 #						"responseFormat": "json_object",
 #						"formatDef": "\"\""
-#					}
+#					},
+#					"icon": "llm.svg"
 #				},
 #				{
 #					"type": "aiseg",
@@ -656,7 +659,9 @@ return {api:ChatAPI,export:Exports};
 #								}
 #							]
 #						}
-#					}
+#					},
+#					"icon": "condition.svg",
+#					"reverseOutlets": true
 #				},
 #				{
 #					"type": "aiseg",
@@ -691,7 +696,8 @@ return {api:ChatAPI,export:Exports};
 #							}
 #						},
 #						"result": "#input"
-#					}
+#					},
+#					"icon": "tab_css.svg"
 #				},
 #				{
 #					"type": "aiseg",
@@ -739,7 +745,8 @@ return {api:ChatAPI,export:Exports};
 #								"desc": "输出节点。"
 #							}
 #						}
-#					}
+#					},
+#					"icon": "rename.svg"
 #				},
 #				{
 #					"type": "aiseg",
@@ -759,7 +766,9 @@ return {api:ChatAPI,export:Exports};
 #							"linkedSeg": "1ID42ODO30"
 #						},
 #						"dir": "L2R"
-#					}
+#					},
+#					"icon": "arrowright.svg",
+#					"isConnector": true
 #				}
 #			]
 #		},

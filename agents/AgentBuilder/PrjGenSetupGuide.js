@@ -33,7 +33,7 @@ let PrjGenSetupGuide=async function(session){
 你的输出应该分步骤，尽量清晰简洁，不要包括与当前平台的安装配置无关的信息。
 请最终输出Markdown格式的安装部署指南。
 `;
-	let ragAddress="http://localhost:222/solution/";
+	let ragAddress=globalContext.rag?.solution||"http://localhost:222/solution/";
 	
 	/*#{1IH3DV3E30LocalVals*/
 	if(globalContext.rag && globalContext.rag.solution){
@@ -187,9 +187,10 @@ ${guide}
 	
 	segs["ShowGuide"]=ShowGuide=async function(input){//:1IH3E1F0B0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=(($ln==="CN")?(`## ${guideChanged?"修改后的":""}安装指南 \n${guide}`):(`## ${guideChanged?"Modified ":""}Setup Guide \n${guide}`));
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:AskFix,result:(result),preSeg:"1IH3E1F0B0",outlet:"1IH3EFDB74"};
 	};
 	ShowGuide.jaxId="1IH3E1F0B0"
@@ -387,9 +388,10 @@ ${guide}
 	
 	segs["ShowRAG"]=ShowRAG=async function(input){//:1II2MG6ME0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=`知识库中找到的安装指南 \n${guide}`;
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:AskUseRAG,result:(result),preSeg:"1II2MG6ME0",outlet:"1II2MS12Q0"};
 	};
 	ShowRAG.jaxId="1II2MG6ME0"
@@ -595,7 +597,7 @@ export{PrjGenSetupGuide,ChatAPI};
 //				},
 //				"ragAddress": {
 //					"type": "string",
-//					"valText": "http://localhost:222/solution/"
+//					"valText": "#globalContext.rag?.solution||\"http://localhost:222/solution/\""
 //				}
 //			}
 //		},
