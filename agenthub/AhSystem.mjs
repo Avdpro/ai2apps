@@ -3,6 +3,26 @@ import {AhAgentNode} from "./AhAgentNode.mjs";
 import {proxyCall} from "../util/ProxyCall.js";
 import { promises as fs } from 'fs';
 import AhFileLib from "./AhFileLib.mjs"
+import { exec } from 'child_process';
+import util from "util";
+
+const execPromise = util.promisify(exec);
+const checkCondaInstallation = async () => {
+	try {
+		const { stdout, stderr } = await execPromise('conda info --base');
+		if (stderr) {
+			return null;
+		}
+		const condaPath = stdout.trim();
+		if (condaPath) {
+			return condaPath;
+		} else {
+			return null;
+		}
+	}catch(error){
+		return null;
+	}
+};
 
 //***************************************************************************
 //AhSystem
@@ -10,8 +30,9 @@ import AhFileLib from "./AhFileLib.mjs"
 let AhSystem,ahSystem;
 {
 	const AH_AgentDir=process.env.AGENT_HUB_AGENTDIR||"agents";
-	const AH_CondaPath=process.env.AGENT_HUB_CONDAPATH||"~/anaconda3/etc/profile.d/conda.sh";
+	let AH_CondaPath=process.env.AGENT_HUB_CONDAPATH;
 	const AH_CondaEnv=process.env.AGENT_HUB_CONDAENV||null;
+	
 	
 	//-----------------------------------------------------------------------
 	AhSystem=function(app){
@@ -34,6 +55,19 @@ let AhSystem,ahSystem;
 	//-----------------------------------------------------------------------
 	ahSystem.startHub=async function(){
 		let hubJSON,nodes,nodeName,nodePath,nodeJSON;
+		
+		if(!this.condaPath){
+			//get conda path:
+			console.log("Finding current system conda path");
+			this.condaPath=await checkCondaInstallation();
+			if(this.condaPath){
+				console.log(`Found conda: ${this.condaPath}`);
+				this.condaPath+="/etc/profile.d/conda.sh";
+			}else{
+				console.log("Warning: conda not found in the system. You may encounter issues when running python agents.");
+			}
+		}
+		
 		try {
 			hubJSON=await fs.readFile(pathLib.join(this.agentDir, "agenthub.json"), "utf8");
 			hubJSON=JSON.parse(hubJSON);

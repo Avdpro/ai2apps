@@ -198,6 +198,8 @@ async function openBrowser(alias,opts,keepAlive){
 		}, killBrowserTime);
 	}
 	
+	
+	
 	browser.aaePc=browser.process();
 	
 	browser.on("disconnected", () => {
@@ -1120,15 +1122,14 @@ webRpa.waitQuery=async function(pageFrame,selector,opts){
 		node=await pageFrame.evaluate((codeTag,aaeId,selector,opts)=>{
 			let codeLib=window[codeTag];
 			return codeLib.queryNode(aaeId,selector,opts);
-		},codeTag,aaeId,selector,options);
+		},codeTag,aaeId,selector,opts);
 		if(node){
 			return node;
 		}
 		await sleep(200);
 		if(timeout>0 && Date.now()-startTime>timeout){
-			if(node){
-				return null;
-			}
+			throw Error("Timeout");
+			//return null;
 		}
 	}while(1);
 }
