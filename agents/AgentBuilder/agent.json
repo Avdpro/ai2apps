@@ -20,7 +20,8 @@
 		"rag":{
 			"solution":"http://localhost:222/solution/",
 			"qa":"http://localhost:222/qa/"
-		}
+		},
+		"autoBash":false
     },
 	"entry":"../../AgentNodeMain.mjs",
     "chatEntry":null,

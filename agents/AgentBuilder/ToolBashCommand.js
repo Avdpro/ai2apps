@@ -57,7 +57,8 @@ let ToolBashCommand=async function(session){
 		let prompt=((($ln==="CN")?(`确认执行命令：${commands.join("\n")}`):(`Confirm execute commands: ${commands.join("\n")}`)))||input;
 		let countdown=false;
 		let placeholder=(undefined)||null;
-		let silent=false;
+		let withChat=true;
+		let silent=globalContext.autoBash;
 		let items=[
 			{icon:"/~/tabos/shared/assets/run.svg"||"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("执行"):("Execute")),code:0},
 			{icon:"/~/tabos/shared/assets/mouse.svg"||"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("人工执行"):("Manually execute")),code:1},
@@ -71,7 +72,7 @@ let ToolBashCommand=async function(session){
 			result=input;
 			return {seg:RunStep,result:(result),preSeg:"1IH8F36M93",outlet:"1IH8F36MA1"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:true,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {seg:Chat,result:(result),preSeg:"1IH8F36M93",outlet:"1IH8F36MA0"};
@@ -607,8 +608,9 @@ export{ToolBashCommand,ChatAPI};
 //								}
 //							]
 //						},
-//						"silent": "false",
-//						"countdown": "None"
+//						"silent": "#globalContext.autoBash",
+//						"countdown": "None",
+//						"silentOutlet": "Exec"
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true

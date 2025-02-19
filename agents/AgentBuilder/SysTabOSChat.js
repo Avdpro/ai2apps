@@ -72,7 +72,7 @@ let SysTabOSChat=async function(session){
 		let result=input;
 		let opts={};
 		let role="assistant";
-		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话，你可以输入/bye结束对话。"):("Welcome to the AI2Apps System Chat. You can enter /bye to end the conversation."));
+		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
 		return {seg:InitTools,result:(result),preSeg:"1IKE6V3JM0",outlet:"1IKE74LT70"};
 	};
@@ -836,10 +836,10 @@ export{SysTabOSChat};
 //						"role": "Assistant",
 //						"text": {
 //							"type": "string",
-//							"valText": "Welcome to the AI2Apps System Chat. You can enter /bye to end the conversation.",
+//							"valText": "Welcome to the AI2Apps System Chat.",
 //							"localize": {
-//								"EN": "Welcome to the AI2Apps System Chat. You can enter /bye to end the conversation.",
-//								"CN": "欢迎使用AI2Apps系统对话，你可以输入/bye结束对话。"
+//								"EN": "Welcome to the AI2Apps System Chat.",
+//								"CN": "欢迎使用AI2Apps系统对话."
 //							},
 //							"localizable": true
 //						},

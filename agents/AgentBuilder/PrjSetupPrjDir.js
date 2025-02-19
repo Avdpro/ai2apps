@@ -277,11 +277,12 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["DirOK"]=DirOK=async function(input){//:1IG66KEUC0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content="项目工程目录准备好了。";
 		/*#{1IG66KEUC0PreCodes*/
 		/*}#1IG66KEUC0PreCodes*/
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		/*#{1IG66KEUC0PostCodes*/
 		addLog(`Project dir create and git-download success.`);
 		result={result:"Finish",content:"Project dir create and git-download success."};
@@ -320,6 +321,7 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["ShowGitError"]=ShowGitError=async function(input){//:1IG98VL0V0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=`
 Git安装失败：
@@ -327,7 +329,7 @@ Git安装失败：
 ${input}
 \`\`\`
 `;
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:AskRetry,result:(result),preSeg:"1IG98VL0V0",outlet:"1IG9A1AOV0"};
 	};
 	ShowGitError.jaxId="1IG98VL0V0"
@@ -568,9 +570,10 @@ ${project.readme}
 	
 	segs["TipPreview"]=TipPreview=async function(input){//:1II1BCUQH0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=(($ln==="CN")?("项目已下载完毕，评估项目需求。"):("Project downloaded successfully, checking project requirements."));
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:PreviewPrj,result:(result),preSeg:"1II1BCUQH0",outlet:"1II1BIEUQ0"};
 	};
 	TipPreview.jaxId="1II1BCUQH0"
@@ -578,6 +581,7 @@ ${project.readme}
 	
 	segs["ShowSummary"]=ShowSummary=async function(input){//:1IJ0RFB3T0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=`
 ### 项目简介
@@ -592,7 +596,7 @@ ${input.warn}
 ### 总结：
 ${input.summary}
 `;
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:AskSetup,result:(result),preSeg:"1IJ0RFB3T0",outlet:"1IJ0RJS5G0"};
 	};
 	ShowSummary.jaxId="1IJ0RFB3T0"
@@ -601,7 +605,7 @@ ${input.summary}
 	segs["AbortSetup"]=AbortSetup=async function(input){//:1IJ0RJ6910
 		let result=input
 		/*#{1IJ0RJ6910Code*/
-		result={"Abort",content:"User aborted."};
+		result={result:"Abort",content:"User aborted."};
 		/*}#1IJ0RJ6910Code*/
 		return {result:result};
 	};
@@ -612,6 +616,7 @@ ${input.summary}
 		let prompt=((($ln==="CN")?("是否继续安装/部署本项目？"):("Do you want to continue installing/deploying this project?")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("继续设置"):("Continue setup")),code:0},
@@ -624,7 +629,7 @@ ${input.summary}
 			result=input;
 			return {seg:CheckPython,result:(result),preSeg:"1IJ0SEMOH0",outlet:"1IJ0SEMNU0"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
