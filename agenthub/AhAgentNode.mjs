@@ -294,9 +294,7 @@ let AhAgentNode,ahAgentNode;
 			nodeJSON=JSON.parse(nodeJSON);
 			nodeJSON.entry=nodeJSON.entry||"../tabos/AgentNodeMain.py"
 		}catch(err){
-			nodeJSON={
-				entry:"../tabos/AgentNodeMain.py"
-			}
+			throw Error(`Can't read/parse ${pathLib.join(path, "agent.json")}. Please make sure your agent path and agent.json is correct.`);
 		}
 		entryPath=this.entryPath=pathLib.join(path,nodeJSON.entry);
 		
