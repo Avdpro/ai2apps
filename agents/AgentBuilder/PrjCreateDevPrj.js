@@ -30,6 +30,11 @@ const argsTemplate={
 			"required":false,
 			"defaultValue":"",
 			"desc":"",
+		},
+		"prjMeta":{
+			"name":"prjMeta","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1IK2OCGG60ArgsView*/
@@ -40,11 +45,11 @@ const argsTemplate={
 /*}#1IK2OCGG60StartDoc*/
 //----------------------------------------------------------------------------
 let PrjCreateDevPrj=async function(session){
-	let diskId,diskName,editCfg;
+	let diskId,diskName,editCfg,prjMeta;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,CreateTTY,TipCheckOut,CheckOutDisk,TipFilterJSON,FilterJSON,CheckSetupScript,SetupScript,TipError,SaveEditCfg,AskOpenPrj,OpenIDE,Exit;
+	let Start,CreateTTY,TipCheckOut,CheckOutDisk,TipFilterJSON,FilterJSON,CheckSetupScript,SetupScript,TipError,SaveEditCfg,AskOpenPrj,OpenIDE,Exit,IsBackend,HasBackend,TipNoBackend,TipEnd;
 	let tty=null;
 	
 	/*#{1IK2OCGG60LocalVals*/
@@ -55,10 +60,12 @@ let PrjCreateDevPrj=async function(session){
 			diskId=input.diskId;
 			diskName=input.diskName;
 			editCfg=input.editCfg;
+			prjMeta=input.prjMeta;
 		}else{
 			diskId=undefined;
 			diskName=undefined;
 			editCfg=undefined;
+			prjMeta=undefined;
 		}
 		/*#{1IK2OCGG60ParseArgs*/
 		/*}#1IK2OCGG60ParseArgs*/
@@ -76,7 +83,7 @@ let PrjCreateDevPrj=async function(session){
 		/*#{1IK2RV2SP0Code*/
 		false
 		/*}#1IK2RV2SP0Code*/
-		return {seg:CreateTTY,result:(result),preSeg:"1IK2RV2SP0",outlet:"1IK2S287H0",catchSeg:TipError,catchlet:"1IK2S287H1"};
+		return {seg:IsBackend,result:(result),preSeg:"1IK2RV2SP0",outlet:"1IK2S287H0",catchSeg:TipError,catchlet:"1IK2S287H1"};
 	};
 	Start.jaxId="1IK2RV2SP0"
 	Start.url="Start@"+agentURL
@@ -264,6 +271,76 @@ let PrjCreateDevPrj=async function(session){
 	Exit.jaxId="1IK2SAA710"
 	Exit.url="Exit@"+agentURL
 	
+	segs["IsBackend"]=IsBackend=async function(input){//:1ILCQGG880
+		let result=input;
+		if(prjMeta.backend){
+			return {seg:HasBackend,result:(input),preSeg:"1ILCQGG880",outlet:"1ILCQSBT10"};
+		}
+		return {seg:CreateTTY,result:(result),preSeg:"1ILCQGG880",outlet:"1ILCQSBT11"};
+	};
+	IsBackend.jaxId="1ILCQGG880"
+	IsBackend.url="IsBackend@"+agentURL
+	
+	segs["HasBackend"]=HasBackend=async function(input){//:1ILCQI90F0
+		let result=input;
+		/*#{1ILCQI90F0Start*/
+		let hasBackend,res;
+		hasBackend=false;
+		res=await tabNT.makeCall("AhListAgentNodes",{});
+		if(res && res.code===200){
+			hasBackend=true;
+		}
+		/*}#1ILCQI90F0Start*/
+		if(!hasBackend){
+			return {seg:TipNoBackend,result:(input),preSeg:"1ILCQI90F0",outlet:"1ILCQSBT12"};
+		}
+		/*#{1ILCQI90F0Post*/
+		/*}#1ILCQI90F0Post*/
+		return {seg:CreateTTY,result:(result),preSeg:"1ILCQI90F0",outlet:"1ILCQSBT13"};
+	};
+	HasBackend.jaxId="1ILCQI90F0"
+	HasBackend.url="HasBackend@"+agentURL
+	
+	segs["TipNoBackend"]=TipNoBackend=async function(input){//:1ILCQJ5HR0
+		let prompt=((($ln==="CN")?("当前项目运行在后端，需要部署在本地的AI2Apps实例。当前AI2Apps环境不是本地部署的，或者后端没有正常运行。如果继续创建工程，你可以查看/编辑工程内容，但是无法运行。是否仍然创建项目？"):("This project is running on the backend and requires deployment on a local AI2Apps instance. The current AI2Apps environment is not deployed locally, or the backend is not running properly. If you continue to create the project, you can view/edit the project content but cannot run it. Do you still want to create the project?")))||input;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let withChat=false;
+		let silent=false;
+		let items=[
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("放弃创建工程"):("Cancel creating project")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("仍然创建工程"):("Continue Creating Project")),code:1},
+		];
+		let result="";
+		let item=null;
+		
+		if(silent){
+			result="";
+			return {seg:TipEnd,result:(result),preSeg:"1ILCQJ5HR0",outlet:"1ILCQJ5H80"};
+		}
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		if(typeof(item)==='string'){
+			result=item;
+			return {result:result};
+		}else if(item.code===0){
+			return {seg:TipEnd,result:(result),preSeg:"1ILCQJ5HR0",outlet:"1ILCQJ5H80"};
+		}else if(item.code===1){
+			return {seg:CreateTTY,result:(result),preSeg:"1ILCQJ5HR0",outlet:"1ILCQJ5H81"};
+		}
+		return {result:result};
+	};
+	TipNoBackend.jaxId="1ILCQJ5HR0"
+	TipNoBackend.url="TipNoBackend@"+agentURL
+	
+	segs["TipEnd"]=TipEnd=async function(input){//:1ILCQR3M10
+		let result=input
+		/*#{1ILCQR3M10Code*/
+		/*}#1ILCQR3M10Code*/
+		return {result:result};
+	};
+	TipEnd.jaxId="1ILCQR3M10"
+	TipEnd.url="TipEnd@"+agentURL
+	
 	agent={
 		isAIAgent:true,
 		session:session,
@@ -273,7 +350,7 @@ let PrjCreateDevPrj=async function(session){
 		jaxId:"1IK2OCGG60",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{diskId,diskName,editCfg}*/){
+		execChat:async function(input/*{diskId,diskName,editCfg,prjMeta}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IK2OCGG60PreEntry*/
@@ -378,6 +455,16 @@ export{PrjCreateDevPrj};
 //						"desc": "",
 //						"required": "false"
 //					}
+//				},
+//				"prjMeta": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1ILCPJFAR0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
 //				}
 //			}
 //		},
@@ -432,7 +519,7 @@ export{PrjCreateDevPrj};
 //								"id": "Try",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IK2RBN550"
+//							"linkedSeg": "1ILCQGG880"
 //						},
 //						"catchlet": {
 //							"jaxId": "1IK2S287H1",
@@ -453,8 +540,8 @@ export{PrjCreateDevPrj};
 //						"id": "CreateTTY",
 //						"viewName": "",
 //						"label": "",
-//						"x": "265",
-//						"y": "300",
+//						"x": "545",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -490,8 +577,8 @@ export{PrjCreateDevPrj};
 //						"id": "TipCheckOut",
 //						"viewName": "",
 //						"label": "",
-//						"x": "495",
-//						"y": "300",
+//						"x": "775",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -537,8 +624,8 @@ export{PrjCreateDevPrj};
 //						"id": "CheckOutDisk",
 //						"viewName": "",
 //						"label": "",
-//						"x": "735",
-//						"y": "300",
+//						"x": "1015",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -574,8 +661,8 @@ export{PrjCreateDevPrj};
 //						"id": "TipFilterJSON",
 //						"viewName": "",
 //						"label": "",
-//						"x": "985",
-//						"y": "300",
+//						"x": "1265",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -621,8 +708,8 @@ export{PrjCreateDevPrj};
 //						"id": "FilterJSON",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1240",
-//						"y": "300",
+//						"x": "1520",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -658,8 +745,8 @@ export{PrjCreateDevPrj};
 //						"id": "CheckSetupScript",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1480",
-//						"y": "300",
+//						"x": "1760",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -726,8 +813,8 @@ export{PrjCreateDevPrj};
 //						"id": "SetupScript",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1765",
-//						"y": "245",
+//						"x": "2045",
+//						"y": "270",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -804,8 +891,8 @@ export{PrjCreateDevPrj};
 //						"id": "SaveEditCfg",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2010",
-//						"y": "315",
+//						"x": "2290",
+//						"y": "340",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -841,8 +928,8 @@ export{PrjCreateDevPrj};
 //						"id": "AskOpenPrj",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2265",
-//						"y": "315",
+//						"x": "2545",
+//						"y": "340",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -949,8 +1036,8 @@ export{PrjCreateDevPrj};
 //						"id": "OpenIDE",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2535",
-//						"y": "240",
+//						"x": "2815",
+//						"y": "265",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -985,8 +1072,8 @@ export{PrjCreateDevPrj};
 //						"id": "Exit",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2535",
-//						"y": "345",
+//						"x": "2815",
+//						"y": "370",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -1012,6 +1099,352 @@ export{PrjCreateDevPrj};
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1ILCQGG880",
+//					"attrs": {
+//						"id": "IsBackend",
+//						"viewName": "",
+//						"label": "",
+//						"x": "270",
+//						"y": "310",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILCQSBT90",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILCQSBT91",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILCQSBT11",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1IK2RBN550"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1ILCQSBT10",
+//									"attrs": {
+//										"id": "Backend",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1ILCQSBT92",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1ILCQSBT93",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#prjMeta.backend"
+//									},
+//									"linkedSeg": "1ILCQI90F0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1ILCQI90F0",
+//					"attrs": {
+//						"id": "HasBackend",
+//						"viewName": "",
+//						"label": "",
+//						"x": "530",
+//						"y": "155",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILCQSBT94",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILCQSBT95",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILCQSBT13",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1ILCTBJ880"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1ILCQSBT12",
+//									"attrs": {
+//										"id": "NoBackend",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1ILCQSBT96",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1ILCQSBT97",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#!hasBackend"
+//									},
+//									"linkedSeg": "1ILCQJ5HR0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askMenu",
+//					"jaxId": "1ILCQJ5HR0",
+//					"attrs": {
+//						"id": "TipNoBackend",
+//						"viewName": "",
+//						"label": "",
+//						"x": "805",
+//						"y": "140",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "This project is running on the backend and requires deployment on a local AI2Apps instance. The current AI2Apps environment is not deployed locally, or the backend is not running properly. If you continue to create the project, you can view/edit the project content but cannot run it. Do you still want to create the project?",
+//							"localize": {
+//								"EN": "This project is running on the backend and requires deployment on a local AI2Apps instance. The current AI2Apps environment is not deployed locally, or the backend is not running properly. If you continue to create the project, you can view/edit the project content but cannot run it. Do you still want to create the project?",
+//								"CN": "当前项目运行在后端，需要部署在本地的AI2Apps实例。当前AI2Apps环境不是本地部署的，或者后端没有正常运行。如果继续创建工程，你可以查看/编辑工程内容，但是无法运行。是否仍然创建项目？"
+//							},
+//							"localizable": true
+//						},
+//						"multi": "false",
+//						"withChat": "false",
+//						"outlet": {
+//							"jaxId": "1ILCQSBT14",
+//							"attrs": {
+//								"id": "ChatInput",
+//								"desc": "输出节点。",
+//								"codes": "false"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1ILCQJ5H80",
+//									"attrs": {
+//										"id": "GiveUp",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Cancel creating project",
+//											"localize": {
+//												"EN": "Cancel creating project",
+//												"CN": "放弃创建工程"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1ILCQSBT98",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1ILCQSBT99",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1ILCQR3M10"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1ILCQJ5H81",
+//									"attrs": {
+//										"id": "Create",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Continue Creating Project",
+//											"localize": {
+//												"EN": "Continue Creating Project",
+//												"CN": "仍然创建工程"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1ILCQSBT910",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1ILCQSBT911",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1ILCQROTK0"
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "menu.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1ILCQR3M10",
+//					"attrs": {
+//						"id": "TipEnd",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1065",
+//						"y": "110",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILCQSBT912",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILCQSBT913",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILCQSBT15",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1ILCQROTK0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "985",
+//						"y": "240",
+//						"outlet": {
+//							"jaxId": "1ILCQSBT914",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILCTBJ880"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1ILCQRTHD0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "570",
+//						"y": "240",
+//						"outlet": {
+//							"jaxId": "1ILCQSBT915",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IK2RBN550"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1ILCTBJ880",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "715",
+//						"y": "240",
+//						"outlet": {
+//							"jaxId": "1ILCTBQDR0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILCQRTHD0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

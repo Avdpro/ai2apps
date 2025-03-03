@@ -249,7 +249,7 @@ async def DrawSD(session):
 		nonlocal pipeline,waitTaskBlk,device
 		pms=asyncio.Future()
 		task=curTask
-		curTask=pms;
+		curTask=pms
 		if task:
 			await task;
 			#TODO: Show wait block:
@@ -258,7 +258,7 @@ async def DrawSD(session):
 			await execTaskBlk(waitTaskBlk)
 			waitTaskBlk=None
 		curDrawSession=session
-		curDrawWait=await session.showWait("Drawing...");
+		curDrawWait=await session.showWait("Drawing...")
 		curDrawSteps=30
 		
 		drawInThread(pipeline,input,device,False,pms)
@@ -272,7 +272,7 @@ async def DrawSD(session):
 			await asyncio.sleep(0.05)
 		image=drawResult
 		result=image2DataURL(image)
-		await session.removeWait(curDrawWait);
+		await session.removeWait(curDrawWait)
 		curDrawWait=None
 		curDrawSession=None
 		curTask=None
