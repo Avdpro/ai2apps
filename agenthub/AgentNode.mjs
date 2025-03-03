@@ -1,7 +1,9 @@
 import pathLib from 'path';
 import { promises as fsp } from 'fs';
+import { createServer } from 'http';
 import WebSocket, { WebSocketServer }from 'ws';
 import ChatSession from './ChatSession.mjs';
+import net from 'net';
 
 const currentPath = pathLib.dirname(new URL(import.meta.url).pathname);
 
@@ -11,6 +13,22 @@ function getErrorLocation(e) {
 		return stack[stack.length - 1];
 	}
 	return "NA";
+}
+
+async function isPortInUse(port, host = '127.0.0.1') {
+	return new Promise((resolve) => {
+		const server = net.createServer();
+		
+		server.once('error', (err) => {
+			resolve(err.code === 'EADDRINUSE');
+		});
+		
+		server.once('listening', () => {
+			server.close(() => resolve(false));
+		});
+		
+		server.listen(port, host);
+	});
 }
 
 async function readJSON(filePath) {
@@ -216,6 +234,21 @@ let AgentNode,agentNode;
 	};
 	
 	//-----------------------------------------------------------------------
+	agentNode.endSession=async function(session){
+		const sessionId=session.sessionId;
+		this.sessionMap.delete(sessionId);
+		this.websocket.send(JSON.stringify({ msg: "EndSession", session: sessionId }));
+		
+		//Release resources alloced by session:
+		session.closeTerminals();
+		let term=this.termMap.get(sessionId);
+		if(term){
+			this.termMap.delete(sessionId);
+			//TODO: Code this:
+		}
+	};
+	
+	//-----------------------------------------------------------------------
 	agentNode.execAgentMessage = async function (message) {
 		const sessionId = message.sessionId;
 		const agentPath = message.agent;
@@ -231,7 +264,6 @@ let AgentNode,agentNode;
 			console.log(`ExecAgent error: ${e.message}. At: ${getErrorLocation(e)}`);
 			console.error(e);
 			this.websocket.send(JSON.stringify({ msg: "EndExecAgent", session: sessionId, error: `Error: ${e}. At: ${getErrorLocation(e)}` }));
-			return;
 		}
 	};
 	
@@ -240,8 +272,6 @@ let AgentNode,agentNode;
 		const ssn = this.sessionMap.get(sessionId); // 使用 Map 的 get 方法
 		if (!ssn) return false;
 		const result = await ssn.execAgent(path, prompt);
-		this.sessionMap.delete(sessionId); // 使用 Map 的 delete 方法
-		this.websocket.send(JSON.stringify({ msg: "EndSession", session: sessionId }));
 		return result;
 	};
 	
@@ -366,13 +396,25 @@ let AgentNode,agentNode;
 		this.callMap.delete(callId);
 	};
 	
+	
+	//-----------------------------------------------------------------------
+	async function startWSServer(port){
+		return new Promise((resolve,reject)=>{
+			let server=createServer();
+			let wss=new WebSocketServer({server:server,maxPayload: 1024 * 1024 * 10 });
+			wss.on('error', (err) => {
+				resolve(null);
+				console.log(`Debug port ${port} is in use.`);
+			});
+			server.listen(port,()=>{
+				console.log(`Debug port ${port} is listening.`);
+				resolve(wss);
+			});
+		});
+	}
+	
 	//-----------------------------------------------------------------------
 	agentNode.startDebug=async function() {
-		const shutdown = async (server) => {
-			server.close();
-			console.log('Debug Server closed.');
-		};
-		
 		const handler = async (ws, req) => {
 			console.log('Debug client connected');
 			
@@ -442,20 +484,19 @@ let AgentNode,agentNode;
 		
 		let port = this.nodeJSON.debugPort || 5001;
 		let portError=false;
+		let debugServer=null;
 		do {
-			try {
-				this.debugServer = new WebSocketServer({ port, maxPayload: 1024 * 1024 * 10 });
-				this.debugServer.on('connection', handler);
-				console.log(`Debug WebSocket server started at port: ${port}`);
-				this.debugPort=port;
-			} catch (err) {
-				if(err.code==='EADDRINUSE'){
-					portError=true;
-					port+=1;
-				}
-				console.warn(`Agent ${this.name} start debug error: ${err}`);
+			debugServer=await startWSServer(port);
+			if(debugServer){
+				break;
 			}
-		}while(portError);
+			console.log(`Port ${port} is used.`);
+			port+=1;
+		}while(true);
+		this.debugPort=port;
+		this.debugServer = debugServer;//new WebSocketServer({ port, maxPayload: 1024 * 1024 * 10 });
+		this.debugServer.on('connection', handler);
+		console.log(`Debug WebSocket server started at port: ${port}`);
 		this.debugServer.on('error', (err) => {
 			console.log(`Agent ${this.name} start debug error: ${err}`);
 		});

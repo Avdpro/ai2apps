@@ -670,13 +670,25 @@ let PrjSetupBySteps=async function(session){
 /*}#1IJ2K5IBR0ExCodes*/
 
 //#CodyExport>>>
+let ChatAPI=[{
+	def:{
+		name: "PrjSetupBySteps",
+		description: "这是一个AI智能体。",
+		parameters:{
+			type: "object",
+			properties:{
+				prjPath:{type:"string",description:"要安装配置的工程的路径"}
+			}
+		}
+	}
+}];
 //#CodyExport<<<
 /*#{1IJ2K5IBR0PostDoc*/
 /*}#1IJ2K5IBR0PostDoc*/
 
 
 export default PrjSetupBySteps;
-export{PrjSetupBySteps};
+export{PrjSetupBySteps,ChatAPI};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -2665,7 +2677,7 @@ export{PrjSetupBySteps};
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
-//		"exportAPI": "false",
+//		"exportAPI": "true",
 //		"exportAddOn": "false",
 //		"addOnOpts": ""
 //	}

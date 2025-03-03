@@ -150,7 +150,7 @@ let SysInitWorkEnv=async function(session){
 		let result=input
 		/*#{1IG32KVO90Code*/
 		let config=session.agentNode.nodeJSON;
-		env.rootPath=config.rootPath;
+		env.rootPath=config.rootPath||"";
 		if(env.rootPath[0]!=="/"){
 			env.rootPath=pathLib.join(session.agentNode.path,env.rootPath);
 			if(env.conda && config.conda){
@@ -182,6 +182,7 @@ let SysInitWorkEnv=async function(session){
 	
 	segs["ShowEnv"]=ShowEnv=async function(input){//:1IG3GT0LF0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=`
 Environment:
@@ -189,7 +190,7 @@ Environment:
 ${JSON.stringify(env,null,"\t")}
 \`\`\`
 `;
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {result:result};
 	};
 	ShowEnv.jaxId="1IG3GT0LF0"

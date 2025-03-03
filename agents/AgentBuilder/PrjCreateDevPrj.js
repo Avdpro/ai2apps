@@ -5,7 +5,7 @@ import inherits from "/@inherits";
 import Base64 from "/@tabos/utils/base64.js";
 import {trimJSON} from "/@aichat/utils.js";
 /*#{1IK2OCGG60MoreImports*/
-import {tabNT} from "/@tabos";
+import {tabNT,tabFS} from "/@tabos";
 import {getCloudDiskInfo,checkOutDisk,getDiskChanges,commitDisk,updateDisk,checkInDisk,genSandBoxData,restoreSandbox} from "/@disk/utils.js";
 import {installPkg,uninstallPkg,redirectPkgTag,installPkgOnDisk,setupDiskPkgs} from "/@pkg/pkgUtil.js";
 import {filterJSONPath} from "../filterjson.js";
@@ -24,6 +24,12 @@ const argsTemplate={
 			"name":"diskName","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"editCfg":{
+			"name":"editCfg","type":"auto",
+			"required":false,
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1IK2OCGG60ArgsView*/
@@ -34,11 +40,11 @@ const argsTemplate={
 /*}#1IK2OCGG60StartDoc*/
 //----------------------------------------------------------------------------
 let PrjCreateDevPrj=async function(session){
-	let diskId,diskName;
+	let diskId,diskName,editCfg;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,CreateTTY,TipCheckOut,CheckOutDisk,TipFilterJSON,FilterJSON,CheckSetupScript,SetupScript,TipError,AskOpenPrj,OpenIDE,Exit;
+	let Start,CreateTTY,TipCheckOut,CheckOutDisk,TipFilterJSON,FilterJSON,CheckSetupScript,SetupScript,TipError,SaveEditCfg,AskOpenPrj,OpenIDE,Exit;
 	let tty=null;
 	
 	/*#{1IK2OCGG60LocalVals*/
@@ -48,9 +54,11 @@ let PrjCreateDevPrj=async function(session){
 		if(typeof(input)=='object'){
 			diskId=input.diskId;
 			diskName=input.diskName;
+			editCfg=input.editCfg;
 		}else{
 			diskId=undefined;
 			diskName=undefined;
+			editCfg=undefined;
 		}
 		/*#{1IK2OCGG60ParseArgs*/
 		/*}#1IK2OCGG60ParseArgs*/
@@ -153,7 +161,7 @@ let PrjCreateDevPrj=async function(session){
 		}
 		/*#{1IK2RJ3LR0Post*/
 		/*}#1IK2RJ3LR0Post*/
-		return {seg:AskOpenPrj,result:(result),preSeg:"1IK2RJ3LR0",outlet:"1IK2RJOOU5"};
+		return {seg:SaveEditCfg,result:(result),preSeg:"1IK2RJ3LR0",outlet:"1IK2RJOOU5"};
 	};
 	CheckSetupScript.jaxId="1IK2RJ3LR0"
 	CheckSetupScript.url="CheckSetupScript@"+agentURL
@@ -163,7 +171,7 @@ let PrjCreateDevPrj=async function(session){
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./PrjTabOSPrjSetup.js");
 		let arg={"dirPath":"/"+diskName,"setupType":"setupPrj"};
 		result= await session.pipeChat(sourcePath,arg,false);
-		return {seg:AskOpenPrj,result:(result),preSeg:"1IK2RKCBN0",outlet:"1IK2RUJD70"};
+		return {seg:SaveEditCfg,result:(result),preSeg:"1IK2RKCBN0",outlet:"1IK2RUJD70"};
 	};
 	SetupScript.jaxId="1IK2RKCBN0"
 	SetupScript.url="SetupScript@"+agentURL
@@ -179,6 +187,19 @@ let PrjCreateDevPrj=async function(session){
 	TipError.jaxId="1IK2RVNMD0"
 	TipError.url="TipError@"+agentURL
 	
+	segs["SaveEditCfg"]=SaveEditCfg=async function(input){//:1IKRDIMN40
+		let result=input
+		/*#{1IKRDIMN40Code*/
+		//Pre-define active files when open the project in CCEdit:
+		if(editCfg){
+			await tabFS.writeFile(`/doc/tabstudio/_${diskName}.json`,JSON.stringify(editCfg,null,"\t"),"utf8");
+		}
+		/*}#1IKRDIMN40Code*/
+		return {seg:AskOpenPrj,result:(result),preSeg:"1IKRDIMN40",outlet:"1IKRDKAK70"};
+	};
+	SaveEditCfg.jaxId="1IKRDIMN40"
+	SaveEditCfg.url="SaveEditCfg@"+agentURL
+	
 	segs["AskOpenPrj"]=AskOpenPrj=async function(input){//:1IK2S4UGP0
 		let prompt=((($ln==="CN")?("开发项目工程已创建，是否在IDE里打开工程？"):("Development project has been created, do you want to open it in the IDE?")))||input;
 		let countdown=undefined;
@@ -192,11 +213,15 @@ let PrjCreateDevPrj=async function(session){
 		let result="";
 		let item=null;
 		
+		/*#{1IK2S4UGP0PreCodes*/
+		/*}#1IK2S4UGP0PreCodes*/
 		if(silent){
 			result="";
 			return {seg:OpenIDE,result:(result),preSeg:"1IK2S4UGP0",outlet:"1IK2S4UGC0"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		/*#{1IK2S4UGP0PostCodes*/
+		/*}#1IK2S4UGP0PostCodes*/
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -205,6 +230,8 @@ let PrjCreateDevPrj=async function(session){
 		}else if(item.code===1){
 			return {seg:Exit,result:(result),preSeg:"1IK2S4UGP0",outlet:"1IK2S4UGC2"};
 		}
+		/*#{1IK2S4UGP0FinCodes*/
+		/*}#1IK2S4UGP0FinCodes*/
 		return {result:result};
 	};
 	AskOpenPrj.jaxId="1IK2S4UGP0"
@@ -246,7 +273,7 @@ let PrjCreateDevPrj=async function(session){
 		jaxId:"1IK2OCGG60",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{diskId,diskName}*/){
+		execChat:async function(input/*{diskId,diskName,editCfg}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IK2OCGG60PreEntry*/
@@ -339,6 +366,17 @@ export{PrjCreateDevPrj};
 //						"type": "Auto",
 //						"mockup": "\"\"",
 //						"desc": ""
+//					}
+//				},
+//				"editCfg": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1IKRDI1NG0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": "",
+//						"required": "false"
 //					}
 //				}
 //			}
@@ -645,7 +683,7 @@ export{PrjCreateDevPrj};
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1IK2S4UGP0"
+//							"linkedSeg": "1IKRDIMN40"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -715,7 +753,7 @@ export{PrjCreateDevPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IK2S4UGP0"
+//							"linkedSeg": "1IKRDIMN40"
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -760,16 +798,53 @@ export{PrjCreateDevPrj};
 //				},
 //				{
 //					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1IKRDIMN40",
+//					"attrs": {
+//						"id": "SaveEditCfg",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2010",
+//						"y": "315",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IKRDKAKA0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IKRDKAKA1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IKRDKAK70",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IK2S4UGP0"
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
 //					"def": "askMenu",
 //					"jaxId": "1IK2S4UGP0",
 //					"attrs": {
 //						"id": "AskOpenPrj",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2005",
+//						"x": "2265",
 //						"y": "315",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"prompt": {
@@ -874,7 +949,7 @@ export{PrjCreateDevPrj};
 //						"id": "OpenIDE",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2275",
+//						"x": "2535",
 //						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -910,7 +985,7 @@ export{PrjCreateDevPrj};
 //						"id": "Exit",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2275",
+//						"x": "2535",
 //						"y": "345",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",

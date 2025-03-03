@@ -24,6 +24,27 @@ const checkCondaInstallation = async () => {
 	}
 };
 
+async function getSubDirs(dirPath) {
+	try {
+		const files = await fs.readdir(dirPath);
+		const subDirs = [];
+		
+		for (const file of files) {
+			const filePath = pathLib.join(dirPath, file);
+			const stats = await fs.stat(filePath);
+			if (stats.isDirectory()) {
+				subDirs.push(file);
+			}
+		}
+		
+		return subDirs;
+	} catch (err) {
+		console.error(`Error reading directory:${dirPath}`, err);
+		return [];
+	}
+}
+
+
 //***************************************************************************
 //AhSystem
 //***************************************************************************
@@ -53,6 +74,34 @@ let AhSystem,ahSystem;
 	ahSystem=AhSystem.prototype={};
 	
 	//-----------------------------------------------------------------------
+	ahSystem.scanAgents=async function(autoStart){
+		let dirs,dir,path,nodeJSON,staticNodes,staticMap;
+		staticNodes=this.staticNodes;
+		staticMap=this.staticNodeMap;
+		dirs=await getSubDirs(this.agentDir);
+		for(dir of dirs){
+			path=pathLib.join(this.agentDir,dir,"agent.json");
+			try{
+				nodeJSON=await fs.readFile(path,"utf8");
+				nodeJSON=JSON.parse(nodeJSON);
+				if(nodeJSON.entry && nodeJSON.expose){
+					nodeJSON.name=dir;
+					if(!staticMap.get(dir)){
+						staticNodes.push(nodeJSON);
+						staticMap.set(dir,nodeJSON);
+					}
+					if(autoStart && nodeJSON.autoStart){
+						await this.startAgentNode(dir,pathLib.join(this.agentDir,dir),{checkUpdate:nodeJSON.checkUpdate});
+						console.log(`Static node ${dir} started.`);
+					}
+				}
+			}catch(err){
+				//Do nothing, check next dir.
+			}
+		}
+	};
+	
+	//-----------------------------------------------------------------------
 	ahSystem.startHub=async function(){
 		let hubJSON,nodes,nodeName,nodePath,nodeJSON;
 		
@@ -79,6 +128,8 @@ let AhSystem,ahSystem;
 		}
 		this.configJSON=hubJSON;
 		this.description=hubJSON.description||this.description;
+		await this.scanAgents(true);
+		/*
 		nodes=hubJSON.nodes;
 		for(nodeName in nodes){
 			nodePath=nodes[nodeName];
@@ -100,7 +151,7 @@ let AhSystem,ahSystem;
 				await this.startAgentNode(nodeName,nodePath,{checkUpdate:nodeJSON.checkUpdate});
 				console.log(`Static node ${nodeName} started.`);
 			}
-		}
+		}*/
 	};
 	
 	//-----------------------------------------------------------------------
@@ -325,6 +376,7 @@ let AhSystem,ahSystem;
 			let reqVO,userId,token,nodeMap,nodeVO,node,staticVO;
 			let list;
 			reqVO = req.body.vo;
+			await self.scanAgents(false);
 			nodeMap=new Map();
 			list=self.staticNodes;
 			for(nodeVO of list){

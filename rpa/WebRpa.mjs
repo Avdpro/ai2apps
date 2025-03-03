@@ -198,8 +198,6 @@ async function openBrowser(alias,opts,keepAlive){
 		}, killBrowserTime);
 	}
 	
-	
-	
 	browser.aaePc=browser.process();
 	
 	browser.on("disconnected", () => {
@@ -1286,5 +1284,5 @@ webRpa.readInnerHTML=async function(pageFrame,baseNode,options){
 webRpa.startTrace=async function(){
 	//TODO: Code this:
 	return null;
-}
+};
 export {WebRpa,ensureCodeLib,sleep};

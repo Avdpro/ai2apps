@@ -9794,6 +9794,17 @@ function setupImage(typeDef,pathFix){
 		}
 		
 		//--------------------------------------------------------------------
+		//ppt imageObj
+		{
+			let _set=function(valMap,val){
+			};
+			let _get=function(valMap){
+				return valMap[pptImageObjIdx];
+			};
+			typeDef.definePpt("imageObj",_get,_set,true);
+		}
+
+		//--------------------------------------------------------------------
 		//ppt imageW,imageH
 		{
 			let getImageW=function(valMap){
@@ -11101,7 +11112,6 @@ VFACTObj.setupDocker=setupDocker;
 			document.body.removeEventListener("touchend",up,true);
 			document.body.removeEventListener("touchcancel",up,true);
 		}
-
 		function down(evt){
 			if(dragging){
 				up(evt);
@@ -11122,7 +11132,6 @@ VFACTObj.setupDocker=setupDocker;
 			document.body.addEventListener("touchend",up,true);
 			document.body.addEventListener("touchcancel",up,true);
 		}
-
 
 		valMap=pxy.$_pptMap;
 		webObj=valMap[pptWebObjIdx];
@@ -15080,7 +15089,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 254,
+		"versionIdx": 257,
 		"zip": "coke.zip"
 	},
 	{
@@ -15090,7 +15099,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 198,
+		"versionIdx": 199,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15105,12 +15114,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 114,
+		"versionIdx": 116,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 198,
+		"versionIdx": 200,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15140,7 +15149,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 14,
+		"versionIdx": 15,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15153,7 +15162,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 254,
+		"versionIdx": 257,
 		"zip": "coke.zip"
 	},
 	{
@@ -15163,7 +15172,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 198,
+		"versionIdx": 199,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15201,7 +15210,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 254,
+		"versionIdx": 257,
 		"zip": "coke.zip"
 	},
 	{
@@ -15211,7 +15220,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 198,
+		"versionIdx": 199,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15231,7 +15240,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 14,
+		"versionIdx": 15,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15244,7 +15253,7 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 254,
+		"versionIdx": 257,
 		"zip": "coke.zip"
 	},
 	{
@@ -15254,7 +15263,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 198,
+		"versionIdx": 199,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15269,7 +15278,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 14,
+		"versionIdx": 15,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15279,7 +15288,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 254,
+		"versionIdx": 257,
 		"zip": "coke.zip"
 	},
 	{
@@ -15289,7 +15298,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 198,
+		"versionIdx": 199,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15304,12 +15313,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 114,
+		"versionIdx": 116,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 198,
+		"versionIdx": 200,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15339,7 +15348,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 14,
+		"versionIdx": 15,
 		"zip": "AgentBuilder.zip"
 	},
 	{

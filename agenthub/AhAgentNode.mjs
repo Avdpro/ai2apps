@@ -324,22 +324,23 @@ let AhAgentNode,ahAgentNode;
 			case ".mjs":
 			case ".js":{
 				this.type=Type_Node;
-				let process;
-				process=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+				let chdProcess;
+				chdProcess=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
 					{
 						cwd:this.path,
+						stdio: ["pipe", "pipe", "pipe"],
 						//stdio: 'inherit'
 					});
-				process.stdout.on('data', (data) => {
-					console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
+				chdProcess.stdout.on('data', (data) => {
+					console.log(`AgentNode<${this.name}>: ${data.toString()}`);
 				});
-				process.stderr.on('data', (data) => {
+				chdProcess.stderr.on('data', (data) => {
 					if(this.connectCallErr) {
 						errList.push(data.toString());
 					}
-					console.error(`AgentNode<${this.name}> ERROR: ${data.toString()}`);
+					console.error(`AgentNode<${this.name}>: ${data.toString()}`);
 				});
-				process.on('close', (code) => {
+				chdProcess.on('close', (code) => {
 					let callErr=this.connectCallErr;
 					if(callErr){
 						let info;
@@ -355,23 +356,23 @@ let AhAgentNode,ahAgentNode;
 				this.type=Type_Python;
 				conda=options.conda||nodeJSON.conda||this.system.condaEnv;
 				if(conda){
-					let process;
+					let chdProcess;
 					let condaPath=this.system.condaPath;
-					process=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+					chdProcess=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
 						{
 							cwd:this.path,
 							//stdio: 'inherit'
 						});
-					process.stdout.on('data', (data) => {
+					chdProcess.stdout.on('data', (data) => {
 						console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 					});
-					process.stderr.on('data', (data) => {
+					chdProcess.stderr.on('data', (data) => {
 						if(this.connectCallErr) {
 							errList.push(data.toString());
 						}
 						console.log(`AgentNode<${this.name}>: ${data.toString()}`);
 					});
-					process.on('close', (code) => {
+					chdProcess.on('close', (code) => {
 						let callErr=this.connectCallErr;
 						if(callErr){
 							let info;
@@ -386,22 +387,22 @@ let AhAgentNode,ahAgentNode;
 					});
 					console.log(`process started: ${process}`);
 				}else{
-					let process;
-					process=this.process = spawn('bash', ['-i', '-c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+					let chdProcess;
+					chdProcess=this.process = spawn('bash', ['-i', '-c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
 						{
 							cwd:this.path,
 							//stdio: 'inherit'
 						});
-					process.stdout.on('data', (data) => {
+					chdProcess.stdout.on('data', (data) => {
 						console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 					});
-					process.stderr.on('data', (data) => {
+					chdProcess.stderr.on('data', (data) => {
 						if(this.connectCallErr) {
 							errList.push(data.toString());
 						}
 						console.error(`AgentNode<${this.name}> ERROR: ${data.toString()}`);
 					});
-					process.on('close', (code) => {
+					chdProcess.on('close', (code) => {
 						let callErr=this.connectCallErr;
 						if(callErr){
 							let info;

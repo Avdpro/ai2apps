@@ -263,7 +263,7 @@ class ChatSession {
 				this.curAISeg=oldSeg;
 				await this.logSegEnd(agent, segAct, result);
 				
-				if ("result" in result) {
+				if (typeof(result)==="object" && "result" in result) {
 					input = result.result;
 				}
 				
@@ -1099,6 +1099,15 @@ class ChatSession {
 	regTerminal(term){
 		this.termMap.set(term.sessionId,term);
 		this.agentNode.regTerminal(term);
+	}
+	
+	//-----------------------------------------------------------------------
+	async closeTerminals(){
+		let terms=this.termMap.values();
+		for(let term of terms){
+			await term.close();
+		}
+		this.termMap.clear();
 	}
 }
 

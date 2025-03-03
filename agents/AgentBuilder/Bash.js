@@ -120,13 +120,16 @@ let Bash=async function(session){
 		let result=input
 		/*#{1IG0L7VK60Code*/
 		let bash;
-		bash=new AgentNodeTerminal(session);
-		options=options||{};
-		options.initConda=true;
-		await bash.start(options,commands);
-		bashMap.set(bash.id,bash);
-		//TODO: set timeout?
-		result=bash.id;
+		if(!globalContext.bash){
+			bash=new AgentNodeTerminal(session);
+			options=options||{};
+			options.initConda=true;
+			await bash.start(options,commands);
+			bashMap.set(bash.id,bash);
+			result=bash.id;
+		}else{
+			result=globalContext.bash;
+		}
 		/*}#1IG0L7VK60Code*/
 		return {result:result};
 	};
