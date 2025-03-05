@@ -48,7 +48,7 @@ let ToolBrew=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,SwitchAction,Install,Uninstall,Check,CheckBrew,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck;
+	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew;
 	/*#{1IJ40NO870LocalVals*/
 	/*}#1IJ40NO870LocalVals*/
 	
@@ -148,19 +148,11 @@ let ToolBrew=async function(session){
 	Check.jaxId="1IJ4156ER0"
 	Check.url="Check@"+agentURL
 	
-	segs["CheckBrew"]=CheckBrew=async function(input){//:1IJ41DNGF0
-		let result=true
-		/*#{1IJ41DNGF0Code*/
-		/*}#1IJ41DNGF0Code*/
-		return {seg:SwitchBrew,result:(result),preSeg:"1IJ41DNGF0",outlet:"1IJ41MM8M0"};
-	};
-	CheckBrew.jaxId="1IJ41DNGF0"
-	CheckBrew.url="CheckBrew@"+agentURL
-	
 	segs["AskInstallBrew"]=AskInstallBrew=async function(input){//:1IJ41EDJ00
 		let prompt=("当前没有Brew环境，是否安装Brew?")||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"Item 1",code:0},
@@ -173,7 +165,7 @@ let ToolBrew=async function(session){
 			result="";
 			return {seg:InstallBrew,result:(result),preSeg:"1IJ41EDJ00",outlet:"1IJ41EDIE0"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -189,7 +181,7 @@ let ToolBrew=async function(session){
 	
 	segs["SwitchBrew"]=SwitchBrew=async function(input){//:1IJ41EPKU0
 		let result=input;
-		if(!!input){
+		if(!input.includes("not found")){
 			return {seg:SwitchAction,result:(input),preSeg:"1IJ41EPKU0",outlet:"1IJ41MM8M2"};
 		}
 		return {seg:AskInstallBrew,result:(result),preSeg:"1IJ41EPKU0",outlet:"1IJ41MM8M3"};
@@ -201,7 +193,7 @@ let ToolBrew=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"";
+		args['commands']=[`/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`,`echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.bash_profile`,`source ~/.bash_profile`,`echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.zshrc`,`source ~/.zshrc`];
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:SwitchAction,result:(result),preSeg:"1IJ41M3D80",outlet:"1IJ41MM8M4"};
@@ -263,6 +255,18 @@ let ToolBrew=async function(session){
 	};
 	FinCheck.jaxId="1IJ42EMUJ0"
 	FinCheck.url="FinCheck@"+agentURL
+	
+	segs["CheckBrew"]=CheckBrew=async function(input){//:1IL0IJ4I00
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']="brew";
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:SwitchBrew,result:(result),preSeg:"1IL0IJ4I00",outlet:"1IL0IJUFL0"};
+	};
+	CheckBrew.jaxId="1IL0IJ4I00"
+	CheckBrew.url="CheckBrew@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -346,7 +350,7 @@ if(DocAIAgentExporter){
 			coder.packText("args['action']=");this.genAttrStatement(seg.getAttr("action"));coder.packText(";");coder.newLine();
 			coder.packText("args['pkgName']=");this.genAttrStatement(seg.getAttr("pkgName"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/ToolBrew.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder/ai/ToolBrew.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packResult(coder,seg,seg.outlet);
 		}
@@ -487,7 +491,7 @@ export{ToolBrew,ChatAPI};
 //								"id": "Next",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IJ41DNGF0"
+//							"linkedSeg": "1IL0IJ4I00"
 //						}
 //					},
 //					"icon": "args.svg"
@@ -734,43 +738,6 @@ export{ToolBrew,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1IJ41DNGF0",
-//					"attrs": {
-//						"id": "CheckBrew",
-//						"viewName": "",
-//						"label": "",
-//						"x": "305",
-//						"y": "255",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
-//						"context": {
-//							"jaxId": "1IJ41MM8R0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ41MM8R1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1IJ41MM8M0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ41EPKU0"
-//						},
-//						"result": "#true"
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "askMenu",
 //					"jaxId": "1IJ41EDJ00",
 //					"attrs": {
@@ -911,7 +878,7 @@ export{ToolBrew,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#!!input"
+//										"condition": "#!input.includes(\"not found\")"
 //									},
 //									"linkedSeg": "1IJ41329S0"
 //								}
@@ -949,7 +916,7 @@ export{ToolBrew,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"",
+//						"commands": "#[`/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"`,`echo 'export PATH=\"/opt/homebrew/bin:$PATH\"' >> ~/.bash_profile`,`source ~/.bash_profile`,`echo 'export PATH=\"/opt/homebrew/bin:$PATH\"' >> ~/.zshrc`,`source ~/.zshrc`]",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IJ41MM8M4",
@@ -1149,6 +1116,47 @@ export{ToolBrew,ChatAPI};
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1IL0IJ4I00",
+//					"attrs": {
+//						"id": "CheckBrew",
+//						"viewName": "",
+//						"label": "",
+//						"x": "310",
+//						"y": "255",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IL0IKE780",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IL0IKE781",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "brew",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1IL0IJUFL0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IJ41EPKU0"
+//						}
+//					},
+//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

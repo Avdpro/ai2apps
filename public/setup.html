@@ -10086,7 +10086,12 @@ function setupButton(typeDef){
 			div.innerHTML=def.labelHtml;
 			labelTgt=div.firstChild;
 			if(labelTgt){
-				labelTgt.onchange=def.OnLabelAction||def.OnLableAction;
+				labelTgt.onchange=function(){
+					let callback=def.OnLabelAction||def.OnLableAction;
+					if(callback){
+						callback.call(this,pxy);
+					}
+				};
 				valMap[pptLabelTgtIdx]=labelTgt;
 			}
 			webObj.appendChild(div);
@@ -15089,17 +15094,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 258,
+		"versionIdx": 260,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 150,
+		"versionIdx": 151,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 200,
+		"versionIdx": 201,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15114,7 +15119,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 116,
+		"versionIdx": 117,
 		"zip": "tabedit.zip"
 	},
 	{
@@ -15129,17 +15134,17 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 120,
+		"versionIdx": 121,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 155,
+		"versionIdx": 157,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 376,
+		"versionIdx": 377,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15149,12 +15154,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 16,
+		"versionIdx": 19,
 		"zip": "AgentBuilder.zip"
 	},
 	{
 		"name": "-user",
-		"versionIdx": 24,
+		"versionIdx": 25,
 		"zip": "user.zip"
 	}
 ];
@@ -15162,17 +15167,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 258,
+		"versionIdx": 260,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 150,
+		"versionIdx": 151,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 200,
+		"versionIdx": 201,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15192,12 +15197,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 120,
+		"versionIdx": 121,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 376,
+		"versionIdx": 377,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15210,27 +15215,27 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 258,
+		"versionIdx": 260,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 150,
+		"versionIdx": 151,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 200,
+		"versionIdx": 201,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 120,
+		"versionIdx": 121,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 376,
+		"versionIdx": 377,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15240,12 +15245,12 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 16,
+		"versionIdx": 19,
 		"zip": "AgentBuilder.zip"
 	},
 	{
 		"name": "-user",
-		"versionIdx": 24,
+		"versionIdx": 25,
 		"zip": "user.zip"
 	}
 ];
@@ -15253,52 +15258,52 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 258,
+		"versionIdx": 260,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 150,
+		"versionIdx": 151,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 200,
+		"versionIdx": 201,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 120,
+		"versionIdx": 121,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 376,
+		"versionIdx": 377,
 		"zip": "StdUI.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 16,
+		"versionIdx": 19,
 		"zip": "AgentBuilder.zip"
 	},
 	{
 		"name": "-user",
-		"versionIdx": 24,
+		"versionIdx": 25,
 		"zip": "user.zip"
 	},
 	{
 		"name": "coke",
-		"versionIdx": 258,
+		"versionIdx": 260,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 150,
+		"versionIdx": 151,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 200,
+		"versionIdx": 201,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15313,7 +15318,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 116,
+		"versionIdx": 117,
 		"zip": "tabedit.zip"
 	},
 	{
@@ -15328,12 +15333,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 120,
+		"versionIdx": 121,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 376,
+		"versionIdx": 377,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15343,17 +15348,17 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 155,
+		"versionIdx": 157,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 16,
+		"versionIdx": 19,
 		"zip": "AgentBuilder.zip"
 	},
 	{
 		"name": "-user",
-		"versionIdx": 24,
+		"versionIdx": 25,
 		"zip": "user.zip"
 	}
 ];

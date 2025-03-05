@@ -29,7 +29,7 @@ let PrjSetupBySteps=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,InitEnv,InitPrj,LoadSteps,HasSteps,LoadGuide,LoopSteps,SwitchAction,RunBash,RunBrew,RunConda,RunTaskBot,CheckStepReuslt,TipHideFinish,AskActive,SaveConda,ExposeAgent,HideAgent,ShowError,AskRetry,AbortStep,SetupByGuide,CheckGuide,TipNoGuide,TipStep,HfDownLoad,AddNote,LoadRagGudie,CheckRagGude,CfmGuide,ShowGude,AbortGuide,TipPubFinish;
+	let Start,InitEnv,InitPrj,LoadSteps,HasSteps,LoadGuide,LoopSteps,SwitchAction,RunBash,RunBrew,RunConda,RunTaskBot,CheckStepReuslt,TipHideFinish,AskActive,SaveConda,ExposeAgent,HideAgent,ShowError,AskRetry,AbortStep,CheckGuide,TipNoGuide,TipStep,HfDownLoad,AddNote,LoadRagGudie,CheckRagGude,CfmGuide,ShowGude,AbortGuide,TipPubFinish,GenGuideJs,output,Export,goto;
 	let env=null;
 	let project=null;
 	let steps=null;
@@ -463,23 +463,17 @@ let PrjSetupBySteps=async function(session){
 	AbortStep.jaxId="1IJ2L9VS90"
 	AbortStep.url="AbortStep@"+agentURL
 	
-	segs["SetupByGuide"]=SetupByGuide=async function(input){//:1IJ2OV1KT0
-		let result;
-		let sourcePath=pathLib.join(basePath,"./SysHandleTask.js");
-		let arg={"task":null,"roleTask":"你是一个根据指南安装配置程序项目的AI智能体，请根据指南一步一步的安装/配置项目，分析并解决问题，直到项目安装完成。","prjDesc":"","guide":setupGuide,"tools":"guideSetup","handleIssue":true};
-		result= await session.pipeChat(sourcePath,arg,false);
-		return {seg:SaveConda,result:(result),preSeg:"1IJ2OV1KT0",outlet:"1IJ2PM4NQ2"};
-	};
-	SetupByGuide.jaxId="1IJ2OV1KT0"
-	SetupByGuide.url="SetupByGuide@"+agentURL
-	
 	segs["CheckGuide"]=CheckGuide=async function(input){//:1IJ2ST21N0
 		let result=input;
+		/*#{1IJ2ST21N0Start*/
+		/*}#1IJ2ST21N0Start*/
 		if(setupGuide==="a"){
 			/*#{1IJ2STPIS1Codes*/
 			/*}#1IJ2STPIS1Codes*/
 			return {seg:ShowGude,result:(input),preSeg:"1IJ2ST21N0",outlet:"1IJ2STPIS1"};
 		}
+		/*#{1IJ2ST21N0Post*/
+		/*}#1IJ2ST21N0Post*/
 		return {seg:LoadRagGudie,result:(result),preSeg:"1IJ2ST21N0",outlet:"1IJ2STPIS2"};
 	};
 	CheckGuide.jaxId="1IJ2ST21N0"
@@ -514,7 +508,7 @@ let PrjSetupBySteps=async function(session){
 	segs["HfDownLoad"]=HfDownLoad=async function(input){//:1IJ44IVQS0
 		let result;
 		let sourcePath=pathLib.join(basePath,"./ToolHfModel.js");
-		let arg={"model":input.model,"localPath":input.localPath||input.localDir};
+		let arg={"model":input.model,"localPath":input.localPath||input.localDir,"token":false};
 		result= await session.pipeChat(sourcePath,arg,false);
 		return {result:result};
 	};
@@ -592,14 +586,14 @@ let PrjSetupBySteps=async function(session){
 		
 		if(silent){
 			result="";
-			return {seg:SetupByGuide,result:(result),preSeg:"1IJL3N37R0",outlet:"1IJL3N37A0"};
+			return {seg:GenGuideJs,result:(result),preSeg:"1IJL3N37R0",outlet:"1IJL3N37A0"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
-			return {seg:SetupByGuide,result:(result),preSeg:"1IJL3N37R0",outlet:"1IJL3N37A0"};
+			return {seg:GenGuideJs,result:(result),preSeg:"1IJL3N37R0",outlet:"1IJL3N37A0"};
 		}else if(item.code===1){
 			return {seg:AbortGuide,result:(result),preSeg:"1IJL3N37R0",outlet:"1IJL3N37A1"};
 		}
@@ -613,7 +607,12 @@ let PrjSetupBySteps=async function(session){
 		let opts={};
 		let role="assistant";
 		let content=`### 找到安装指南：\n----\n${setupGuide}`;
+		/*#{1IJL3NK8N0PreCodes*/
+		globalContext.guide = setupGuide;
+		/*}#1IJL3NK8N0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1IJL3NK8N0PostCodes*/
+		/*}#1IJL3NK8N0PostCodes*/
 		return {seg:AddNote,result:(result),preSeg:"1IJL3NK8N0",outlet:"1IJL3VU321"};
 	};
 	ShowGude.jaxId="1IJL3NK8N0"
@@ -639,6 +638,278 @@ let PrjSetupBySteps=async function(session){
 	};
 	TipPubFinish.jaxId="1IK7U888P0"
 	TipPubFinish.url="TipPubFinish@"+agentURL
+	
+	segs["GenGuideJs"]=GenGuideJs=async function(input){//:1ILI9VIEO0
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4o",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=GenGuideJs.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:`You are using a terminal on a MacOS/Linux or Windows device to help setup a project. 
+The detailed environment is:
+${JSON.stringify(globalContext.env,null,"\t")}.
+You are able to execute commands in the terminal based on the given task.  
+You can only interact with the terminal (no GUI access).
+
+Your task is to provide **all subsequent actions** at once to complete the given task.  
+You should carefully consider the task and provide a list of actions in the correct order.
+
+Your available "Actions" include:
+- \`bash\`: Execute a series of bash commands.
+- \`brew\`: Install a package using Homebrew.
+- \`conda\`: Set up or activate a conda environment.
+- \`hf-model\`: Download a model from Hugging Face.
+
+Based on the task, please determine all the actions required to complete the task, including the commands, parameters, and additional details for each action.
+
+Output format:
+\`\`\`json
+{
+    "Reasoning": str, // Describe the task and your step-by-step plan to achieve it.
+    "Actions": [
+        {
+            "action": "action_type", // One of: "bash", "brew", "conda", "hf-model".
+            "tip": str, // A short description of the action (optional).
+            "commands": [str], // Array of commands to execute (only for "bash" action).
+            "install": str, // Package to install (only for "brew" action).
+            "conda": str, // Conda environment name (only for "conda" action).
+            "pythonVersion": str, // Python version for conda environment (only for "conda" action).
+            "model": str, // Model to download (only for "hf-model" action).
+            "localPath": str // Local path to save the model (only for "hf-model" action).
+        },
+        // Additional actions...
+    ]
+}
+\`\`\`
+
+### Examples
+
+#### Example 1: Install FishSpeech Project
+\`\`\`json
+{
+    "Reasoning": "The task is to install the FishSpeech project. This involves creating a directory, cloning the repository, installing dependencies, setting up a conda environment, and downloading the model.",
+    "Actions": [
+        {
+            "action": "bash",
+            "tip": "Download project from GitHub",
+            "commands": [
+                "mkdir -p prj",
+                "cd prj",
+                "git clone https://github.com/fishaudio/fish-speech ."
+            ]
+        },
+        {
+            "action": "brew",
+            "tip": "Install ffmpeg",
+            "install": "ffmpeg"
+        },
+        {
+            "action": "brew",
+            "tip": "Install portaudio",
+            "install": "portaudio"
+        },
+        {
+            "action": "conda",
+            "tip": "Set up conda environment",
+            "conda": "fish-speech",
+            "pythonVersion": "3.10"
+        },
+        {
+            "action": "bash",
+            "tip": "Install dependencies",
+            "commands": [
+                "pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1",
+                "pip install websockets",
+                "pip install huggingface-hub",
+                "pip install openai",
+                "pip install nest_asyncio",
+                "pip install -e ."
+            ]
+        },
+        {
+            "action": "hf-model",
+            "tip": "Download model",
+            "model": "fishaudio/fish-speech-1.5",
+            "localPath": "checkpoints/fish-speech-1.5"
+        }
+    ]
+}
+\`\`\`
+
+#### Example 2: Set Up a Python Project
+\`\`\`json
+{
+    "Reasoning": "The task is to set up a Python project. This involves creating a virtual environment, installing dependencies, and running a setup script.",
+    "Actions": [
+        {
+            "action": "bash",
+            "tip": "Create virtual environment",
+            "commands": [
+                "python -m venv venv",
+                "source venv/bin/activate"
+            ]
+        },
+        {
+            "action": "bash",
+            "tip": "Install dependencies",
+            "commands": [
+                "pip install numpy",
+                "pip install pandas",
+                "pip install scikit-learn"
+            ]
+        },
+        {
+            "action": "bash",
+            "tip": "Run setup script",
+            "commands": [
+                "python setup.py install"
+            ]
+        }
+    ]
+}
+\`\`\`
+
+#### Example 3: Download and Set Up a Machine Learning Model
+\`\`\`json
+{
+    "Reasoning": "The task is to download a machine learning model and set up the environment. This involves installing dependencies, setting up a conda environment, and downloading the model.",
+    "Actions": [
+        {
+            "action": "conda",
+            "tip": "Set up conda environment",
+            "conda": "ml-env",
+            "pythonVersion": "3.9"
+        },
+        {
+            "action": "bash",
+            "tip": "Install dependencies",
+            "commands": [
+                "pip install torch==1.10.0",
+                "pip install transformers",
+                "pip install datasets"
+            ]
+        },
+        {
+            "action": "hf-model",
+            "tip": "Download model",
+            "model": "bert-base-uncased",
+            "localPath": "models/bert-base-uncased"
+        }
+    ]
+}
+\`\`\`
+
+---
+
+### Important Notes:
+1. Provide all actions at once in the correct order.
+2. Ensure the commands are valid for the target operating system (MacOS/Linux or Windows).
+3. Include all necessary parameters for each action.`},
+		];
+		prompt=globalContext.guide;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			messages.push({role:"user",content:prompt});
+		}
+		result=await session.callSegLLM("GenGuideJs@"+agentURL,opts,messages,true);
+		return {seg:output,result:(result),preSeg:"1ILI9VIEO0",outlet:"1ILIA093U0"};
+	};
+	GenGuideJs.jaxId="1ILI9VIEO0"
+	GenGuideJs.url="GenGuideJs@"+agentURL
+	
+	segs["output"]=output=async function(input){//:1ILIAT0E90
+		let result=input;
+		let opts={};
+		let role="assistant";
+		let content=input;
+		session.addChatText(role,content,opts);
+		return {seg:Export,result:(result),preSeg:"1ILIAT0E90",outlet:"1ILIAT4CM0"};
+	};
+	output.jaxId="1ILIAT0E90"
+	output.url="output@"+agentURL
+	
+	segs["Export"]=Export=async function(input){//:1ILIBLIQU0
+		let result=input
+		/*#{1ILIBLIQU0Code*/
+		result = result.replace("json", '').replaceAll("```","");
+		let actions = JSON.parse(result).Actions;
+		actions.unshift({
+			action: "bash",
+			commands: [
+				`cd ${project.dirPath}`,
+			]
+		});
+		let code = `import pathLib from "path";
+		
+		//----------------------------------------------------------------------------
+		function install(env,project){
+		let $ln=env.$ln||"EN";
+		let steps=null;
+		let dirPath,gitPath,gitURL;
+		dirPath=project.dirPath;
+		gitPath=pathLib.join(dirPath,"prj");
+		gitURL=project.gitURL;
+		if(env.platform==="darwin" && env.arch==="arm64"){
+		steps=${JSON.stringify(actions)};
+		}
+		return steps;
+		}
+		
+		//----------------------------------------------------------------------------
+		function uninstall(env,project){
+		let $ln=env.$ln||"EN";
+		let steps;
+		let dirPath,gitPath,gitURL;
+		dirPath=project.dirPath;
+		gitPath=pathLib.join(dirPath,"prj");
+		gitURL=project.gitURL;
+		if(env.platform==="darwin" && env.arch==="arm64"){
+		steps=[
+			{
+				action:"bash",
+				tip:(($ln==="CN")?("删除GitHub项目内容。"):/*EN*/("Delete GitHub project.")),
+				commands:[
+					\`cd \${dirPath}\`,
+					\`rm -r prj\`,
+				]
+			},
+		];
+		}
+		return steps;
+		};
+		
+		export default install;
+		export {install}`;
+		const filePath = pathLib.join(prjPath, 'setup_agent.js');
+		await fsp.writeFile(filePath, code);
+		/*}#1ILIBLIQU0Code*/
+		return {seg:goto,result:(result),preSeg:"1ILIBLIQU0",outlet:"1ILIBMA7E0"};
+	};
+	Export.jaxId="1ILIBLIQU0"
+	Export.url="Export@"+agentURL
+	
+	segs["goto"]=goto=async function(input){//:1ILIIHJ2K0
+		let result=input;
+		return {seg:LoadSteps,result:result,preSeg:"1ILIIHJ2K0",outlet:"1ILIII45L0"};
+	
+	};
+	goto.jaxId="1ILIIHJ2K0"
+	goto.url="goto@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -670,25 +941,13 @@ let PrjSetupBySteps=async function(session){
 /*}#1IJ2K5IBR0ExCodes*/
 
 //#CodyExport>>>
-let ChatAPI=[{
-	def:{
-		name: "PrjSetupBySteps",
-		description: "这是一个AI智能体。",
-		parameters:{
-			type: "object",
-			properties:{
-				prjPath:{type:"string",description:"要安装配置的工程的路径"}
-			}
-		}
-	}
-}];
 //#CodyExport<<<
 /*#{1IJ2K5IBR0PostDoc*/
 /*}#1IJ2K5IBR0PostDoc*/
 
 
 export default PrjSetupBySteps;
-export{PrjSetupBySteps,ChatAPI};
+export{PrjSetupBySteps};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -2014,46 +2273,6 @@ export{PrjSetupBySteps,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1IJ2OV1KT0",
-//					"attrs": {
-//						"id": "SetupByGuide",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2405",
-//						"y": "420",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IJ2PM4NU6",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ2PM4NU7",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "ai/SysHandleTask.js",
-//						"argument": "{\"task\":\"#null\",\"roleTask\":\"你是一个根据指南安装配置程序项目的AI智能体，请根据指南一步一步的安装/配置项目，分析并解决问题，直到项目安装完成。\",\"prjDesc\":\"\",\"guide\":\"#setupGuide\",\"tools\":\"guideSetup\",\"handleIssue\":\"#true\"}",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1IJ2PM4NQ2",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IK7UOOCJ0"
-//						}
-//					},
-//					"icon": "agent.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "brunch",
 //					"jaxId": "1IJ2ST21N0",
 //					"attrs": {
@@ -2063,7 +2282,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"x": "1420",
 //						"y": "515",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2205,7 +2424,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "HfDownLoad",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
+//						"x": "1910",
 //						"y": "-75",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
@@ -2224,7 +2443,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"source": "ai/ToolHfModel.js",
-//						"argument": "{\"model\":\"#input.model\",\"localPath\":\"#input.localPath||input.localDir\"}",
+//						"argument": "{\"model\":\"#input.model\",\"localPath\":\"#input.localPath||input.localDir\",\"token\":false}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1IJ44KI9F1",
@@ -2431,7 +2650,7 @@ export{PrjSetupBySteps,ChatAPI};
 //											}
 //										}
 //									},
-//									"linkedSeg": "1IJ2OV1KT0"
+//									"linkedSeg": "1ILI9VIEO0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -2476,7 +2695,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"x": "1680",
 //						"y": "450",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2632,52 +2851,173 @@ export{PrjSetupBySteps,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IK7UOOCJ0",
+//					"def": "callLLM",
+//					"jaxId": "1ILI9VIEO0",
 //					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "2570",
-//						"y": "335",
-//						"outlet": {
-//							"jaxId": "1IK7UPF3L0",
+//						"id": "GenGuideJs",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2410",
+//						"y": "420",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILIA7HN10",
 //							"attrs": {
-//								"id": "Outlet",
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILIA7HN11",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4o",
+//						"system": "#`You are using a terminal on a MacOS/Linux or Windows device to help setup a project. \nThe detailed environment is:\n${JSON.stringify(globalContext.env,null,\"\\t\")}.\nYou are able to execute commands in the terminal based on the given task.  \nYou can only interact with the terminal (no GUI access).\n\nYour task is to provide **all subsequent actions** at once to complete the given task.  \nYou should carefully consider the task and provide a list of actions in the correct order.\n\nYour available \"Actions\" include:\n- \\`bash\\`: Execute a series of bash commands.\n- \\`brew\\`: Install a package using Homebrew.\n- \\`conda\\`: Set up or activate a conda environment.\n- \\`hf-model\\`: Download a model from Hugging Face.\n\nBased on the task, please determine all the actions required to complete the task, including the commands, parameters, and additional details for each action.\n\nOutput format:\n\\`\\`\\`json\n{\n    \"Reasoning\": str, // Describe the task and your step-by-step plan to achieve it.\n    \"Actions\": [\n        {\n            \"action\": \"action_type\", // One of: \"bash\", \"brew\", \"conda\", \"hf-model\".\n            \"tip\": str, // A short description of the action (optional).\n            \"commands\": [str], // Array of commands to execute (only for \"bash\" action).\n            \"install\": str, // Package to install (only for \"brew\" action).\n            \"conda\": str, // Conda environment name (only for \"conda\" action).\n            \"pythonVersion\": str, // Python version for conda environment (only for \"conda\" action).\n            \"model\": str, // Model to download (only for \"hf-model\" action).\n            \"localPath\": str // Local path to save the model (only for \"hf-model\" action).\n        },\n        // Additional actions...\n    ]\n}\n\\`\\`\\`\n\n### Examples\n\n#### Example 1: Install FishSpeech Project\n\\`\\`\\`json\n{\n    \"Reasoning\": \"The task is to install the FishSpeech project. This involves creating a directory, cloning the repository, installing dependencies, setting up a conda environment, and downloading the model.\",\n    \"Actions\": [\n        {\n            \"action\": \"bash\",\n            \"tip\": \"Download project from GitHub\",\n            \"commands\": [\n                \"mkdir -p prj\",\n                \"cd prj\",\n                \"git clone https://github.com/fishaudio/fish-speech .\"\n            ]\n        },\n        {\n            \"action\": \"brew\",\n            \"tip\": \"Install ffmpeg\",\n            \"install\": \"ffmpeg\"\n        },\n        {\n            \"action\": \"brew\",\n            \"tip\": \"Install portaudio\",\n            \"install\": \"portaudio\"\n        },\n        {\n            \"action\": \"conda\",\n            \"tip\": \"Set up conda environment\",\n            \"conda\": \"fish-speech\",\n            \"pythonVersion\": \"3.10\"\n        },\n        {\n            \"action\": \"bash\",\n            \"tip\": \"Install dependencies\",\n            \"commands\": [\n                \"pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1\",\n                \"pip install websockets\",\n                \"pip install huggingface-hub\",\n                \"pip install openai\",\n                \"pip install nest_asyncio\",\n                \"pip install -e .\"\n            ]\n        },\n        {\n            \"action\": \"hf-model\",\n            \"tip\": \"Download model\",\n            \"model\": \"fishaudio/fish-speech-1.5\",\n            \"localPath\": \"checkpoints/fish-speech-1.5\"\n        }\n    ]\n}\n\\`\\`\\`\n\n#### Example 2: Set Up a Python Project\n\\`\\`\\`json\n{\n    \"Reasoning\": \"The task is to set up a Python project. This involves creating a virtual environment, installing dependencies, and running a setup script.\",\n    \"Actions\": [\n        {\n            \"action\": \"bash\",\n            \"tip\": \"Create virtual environment\",\n            \"commands\": [\n                \"python -m venv venv\",\n                \"source venv/bin/activate\"\n            ]\n        },\n        {\n            \"action\": \"bash\",\n            \"tip\": \"Install dependencies\",\n            \"commands\": [\n                \"pip install numpy\",\n                \"pip install pandas\",\n                \"pip install scikit-learn\"\n            ]\n        },\n        {\n            \"action\": \"bash\",\n            \"tip\": \"Run setup script\",\n            \"commands\": [\n                \"python setup.py install\"\n            ]\n        }\n    ]\n}\n\\`\\`\\`\n\n#### Example 3: Download and Set Up a Machine Learning Model\n\\`\\`\\`json\n{\n    \"Reasoning\": \"The task is to download a machine learning model and set up the environment. This involves installing dependencies, setting up a conda environment, and downloading the model.\",\n    \"Actions\": [\n        {\n            \"action\": \"conda\",\n            \"tip\": \"Set up conda environment\",\n            \"conda\": \"ml-env\",\n            \"pythonVersion\": \"3.9\"\n        },\n        {\n            \"action\": \"bash\",\n            \"tip\": \"Install dependencies\",\n            \"commands\": [\n                \"pip install torch==1.10.0\",\n                \"pip install transformers\",\n                \"pip install datasets\"\n            ]\n        },\n        {\n            \"action\": \"hf-model\",\n            \"tip\": \"Download model\",\n            \"model\": \"bert-base-uncased\",\n            \"localPath\": \"models/bert-base-uncased\"\n        }\n    ]\n}\n\\`\\`\\`\n\n---\n\n### Important Notes:\n1. Provide all actions at once in the correct order.\n2. Ensure the commands are valid for the target operating system (MacOS/Linux or Windows).\n3. Include all necessary parameters for each action.`",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#globalContext.guide",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1ILIA093U0",
+//							"attrs": {
+//								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IK7UOV2R0"
+//							"linkedSeg": "1ILIAT0E90"
 //						},
-//						"dir": "R2L"
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
 //					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
+//					"icon": "llm.svg"
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IK7UOV2R0",
+//					"def": "output",
+//					"jaxId": "1ILIAT0E90",
 //					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1445",
-//						"y": "335",
-//						"outlet": {
-//							"jaxId": "1IK7UPF3L1",
+//						"id": "output",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2690",
+//						"y": "420",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILIAT4CR0",
 //							"attrs": {
-//								"id": "Outlet",
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILIAT4CR1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1ILIAT4CM0",
+//							"attrs": {
+//								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IJEP433U0"
-//						},
-//						"dir": "R2L"
+//							"linkedSeg": "1ILIBLIQU0"
+//						}
 //					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1ILIBLIQU0",
+//					"attrs": {
+//						"id": "Export",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2900",
+//						"y": "420",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILIDJ3NP0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILIDJ3NP1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILIBMA7E0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILIIHJ2K0"
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1ILIIHJ2K0",
+//					"attrs": {
+//						"id": "goto",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3100",
+//						"y": "420",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "LoadSteps",
+//						"outlet": {
+//							"jaxId": "1ILIII45L0",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
 //				}
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
-//		"exportAPI": "true",
+//		"exportAPI": "false",
 //		"exportAddOn": "false",
 //		"addOnOpts": ""
 //	}

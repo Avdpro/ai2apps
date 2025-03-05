@@ -190,7 +190,12 @@ Environment:
 ${JSON.stringify(env,null,"\t")}
 \`\`\`
 `;
+		/*#{1IG3GT0LF0PreCodes*/
+		/*}#1IG3GT0LF0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1IG3GT0LF0PostCodes*/
+		result = content;
+		/*}#1IG3GT0LF0PostCodes*/
 		return {result:result};
 	};
 	ShowEnv.jaxId="1IG3GT0LF0"
@@ -437,7 +442,7 @@ export{SysInitWorkEnv,ChatAPI};
 //						"x": "765",
 //						"y": "110",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
