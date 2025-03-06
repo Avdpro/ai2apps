@@ -128,8 +128,16 @@ let SysTabOSChat=async function(session){
 		let result=input;
 		let opts={};
 		let role="user";
-		let content=input;
+		let content=input.prompt||input;
+		/*#{1IKCVAMJC0PreCodes*/
+		if(input.assets){
+			content+=(($ln==="CN")?("\n附件: \n"):/*EN*/("\nAttachment: \n"));
+			content+=input.assets.join("\n");
+		}
+		/*}#1IKCVAMJC0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1IKCVAMJC0PostCodes*/
+		/*}#1IKCVAMJC0PostCodes*/
 		return {seg:CheckCmd,result:(result),preSeg:"1IKCVAMJC0",outlet:"1IKCVDSRP0"};
 	};
 	StartTip.jaxId="1IKCVAMJC0"
@@ -168,7 +176,9 @@ let SysTabOSChat=async function(session){
 	
 	segs["GenAction"]=GenAction=async function(input){//:1IKCVDIJ50
 		let prompt;
-		let result;
+		let result=null;
+		/*#{1IKCVDIJ50Input*/
+		/*}#1IKCVDIJ50Input*/
 		
 		let opts={
 			platform:"OpenAI",
@@ -254,20 +264,90 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 `},
 		];
 		messages.push(...chatMem);
+		/*#{1IKCVDIJ50PrePrompt*/
+		let assets,images,docs,audios;
+		if(input.prompt){
+			let list,url,ext;
+			assets=list=input.assets;
+			if(list){
+				docs=[];
+				images=[];
+				for(url of list){
+					if(url.startsWith("hub://")){
+						ext=pathLib.extname(url).toLowerCase();
+						if(ext===".jpeg" || ext===".png" || ext===".jpg"){
+							images.push(await session.normURL(url));
+						}else if(ext===".md" || ext===".htm" || ext===".html"|| ext===".txt"
+								|| ext===".js" || ext===".py" || ext===".mjs" || ext===".css" 
+								|| ext===".c" || ext===".cpp" || ext===".sh"  || ext===".java"){
+							let buf,docText;
+							buf=await session.loadHubFile(url);
+							buf=Base64.decodeBytes(buf);
+							docText=new TextDecoder().decode(buf);
+							docs.push(`\n---\n## Asset "${url}" text conent:\n\n ${docText}\n\n## Asset ${url} end.\n\n---\n`);
+						}
+					}
+				}
+				images=images.length?images:null;
+				docs=docs.length?docs:null;
+			}else{
+				input=input.prompt;
+			}
+		}
+		/*}#1IKCVDIJ50PrePrompt*/
 		prompt=input;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};
+			/*#{1IKCVDIJ50FilterMessage*/
+			if(assets){
+				let url
+				prompt=input.prompt;
+				prompt+=`\n---\n\nAssets URLs: [`
+				for(url of docs){
+					prompt+=`${url}, `
+				}
+				prompt+=`]\n---\n\n`
+				if(docs){
+					let chatText,docText;
+					chatText=prompt+"---\n\n# Assets:\n\n";
+					for(docText of docs){
+						chatText+=docText;
+					}
+					prompt=chatText;
+				}
+				if(images){
+					let content=[{type:"text",text:prompt}];
+					for(let url of images){
+						content.push({type:"image_url","image_url":{"url":url}});
+					}
+					msg={role:"user",content:content};
+					prompt=msg.content;
+				}else{
+					msg={role:"user",content:prompt};
+					prompt=msg.content;
+				}
+			}
+			/*}#1IKCVDIJ50FilterMessage*/
+			messages.push(msg);
 		}
-		result=await session.callSegLLM("GenAction@"+agentURL,opts,messages,true);
+		/*#{1IKCVDIJ50PreCall*/
+		/*}#1IKCVDIJ50PreCall*/
+		result=(result===null)?(await session.callSegLLM("GenAction@"+agentURL,opts,messages,true)):result;
+		/*#{1IKCVDIJ50PostLLM*/
+		/*}#1IKCVDIJ50PostLLM*/
 		chatMem.push({role:"user",content:prompt});
 		chatMem.push({role:"assistant",content:result});
 		if(chatMem.length>50){
 			let removedMsgs=chatMem.splice(0,2);
+			/*#{1IKCVDIJ50PostClear*/
+			/*}#1IKCVDIJ50PostClear*/
 		}
 		result=trimJSON(result);
+		/*#{1IKCVDIJ50PostCall*/
+		/*}#1IKCVDIJ50PostCall*/
 		return {seg:CaseAction,result:(result),preSeg:"1IKCVDIJ50",outlet:"1IKCVDSRP4"};
 	};
 	GenAction.jaxId="1IKCVDIJ50"
@@ -426,18 +506,18 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["NodeError"]=NodeError=async function(input){//:1IKD005D30
 		let result=input;
-		return {seg:LogError,result:result,preSeg:"1IKD005D30",outlet:"1IKD025ML1"};
+		return {seg:LogError,result:result,preSeg:"1IKCVU57C0",outlet:"1IKD025ML1"};
 	
 	};
-	NodeError.jaxId="1IKD005D30"
+	NodeError.jaxId="1IKCVU57C0"
 	NodeError.url="NodeError@"+agentURL
 	
 	segs["ToolError"]=ToolError=async function(input){//:1IKD00IP70
 		let result=input;
-		return {seg:LogError,result:result,preSeg:"1IKD00IP70",outlet:"1IKD025ML2"};
+		return {seg:LogError,result:result,preSeg:"1IKCVU57C0",outlet:"1IKD025ML2"};
 	
 	};
-	ToolError.jaxId="1IKD00IP70"
+	ToolError.jaxId="1IKCVU57C0"
 	ToolError.url="ToolError@"+agentURL
 	
 	segs["ShowNode"]=ShowNode=async function(input){//:1IKD03BL10
@@ -543,10 +623,10 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["NextAction"]=NextAction=async function(input){//:1IKD09MJ10
 		let result=input;
-		return {seg:NextStep,result:result,preSeg:"1IKD09MJ10",outlet:"1IKD0BI2O4"};
+		return {seg:NextStep,result:result,preSeg:"1IKD0ABJJ0",outlet:"1IKD0BI2O4"};
 	
 	};
-	NextAction.jaxId="1IKD09MJ10"
+	NextAction.jaxId="1IKD0ABJJ0"
 	NextAction.url="NextAction@"+agentURL
 	
 	segs["NextStep"]=NextStep=async function(input){//:1IKD0ABJJ0
@@ -904,7 +984,7 @@ export{SysTabOSChat};
 //						"x": "935",
 //						"y": "445",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -920,7 +1000,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "User",
-//						"text": "#input",
+//						"text": "#input.prompt||input",
 //						"outlet": {
 //							"jaxId": "1IKCVDSRP0",
 //							"attrs": {
@@ -1054,7 +1134,7 @@ export{SysTabOSChat};
 //						"x": "1450",
 //						"y": "465",
 //						"desc": "执行一次LLM调用。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {

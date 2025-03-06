@@ -22,7 +22,7 @@ async def agent(session):
 	context, globalContext = None, None
 	self = None
 	__Ln = session.language or "CN"
-	OnStart, OnLogin, OnMessage, OnLogout, OnQRCode, CheckGroup, HandleGroup, CheckFrom, IgnoreSelf, HandleMaster, Echo = None, None, None, None, None, None, None, None, None, None, None
+	OnStart, OnLogin, OnMessage, OnLogout, OnQRCode, CheckGroup, HandleGroup, CheckFrom, IgnoreSelf, HandleMaster, Echo, HandleOthers = None, None, None, None, None, None, None, None, None, None, None, None
 	config = None
 	bot = None
 	chatChannel = None
@@ -155,7 +155,7 @@ async def agent(session):
 			output=input
 			return {"seg":HandleMaster,"result":(output),"preSeg":"1IEGUO61N0","outlet":"1IEGV0HDH0"}
 		#default/else:
-		return {"result":input}
+		return {"seg":HandleOthers,"result":(input),"preSeg":"1IEGUO61N0","outlet":"1IEGUOM523"}
 	segs["CheckFrom"]=CheckFrom={
 		"exec":CheckFrom_exec,
 		"name":"CheckFrom",
@@ -184,6 +184,7 @@ async def agent(session):
 			config["masterId"]=masterId
 			await bot.saveConfig()
 		result={"agent":"master.py","input":input}
+		result={"agent":"others.py","input":input}
 		##}1IEGV43DU0Code#
 		return {"result":result}
 	segs["HandleMaster"]=HandleMaster={
@@ -204,6 +205,19 @@ async def agent(session):
 		"name":"Echo",
 		"jaxId":"1IEH4S48Q0",
 		"url":"Echo@"+agentURL
+	}
+	
+	async def HandleOthers_exec(input):#//:1IFGSMIR90
+		result=input
+		##{1IFGSMIR90Code#
+		result={"agent":"others.py","input":input}
+		##}1IFGSMIR90Code#
+		return {"result":result}
+	segs["HandleOthers"]=HandleOthers={
+		"exec":HandleOthers_exec,
+		"name":"HandleOthers",
+		"jaxId":"1IFGSMIR90",
+		"url":"HandleOthers@"+agentURL
 	}
 	
 	async def execAgent(input):
@@ -638,7 +652,8 @@ return {api:ChatAPI,export:Exports};
 #								"id": "Default",
 #								"desc": "输出节点。",
 #								"output": ""
-#							}
+#							},
+#							"linkedSeg": "1IFGSMIR90"
 #						},
 #						"outlets": {
 #							"attrs": [
@@ -801,6 +816,41 @@ return {api:ChatAPI,export:Exports};
 #								"desc": "输出节点。"
 #							}
 #						}
+#					}
+#				},
+#				{
+#					"type": "aiseg",
+#					"def": "code",
+#					"jaxId": "1IFGSMIR90",
+#					"attrs": {
+#						"id": "HandleOthers",
+#						"viewName": "",
+#						"label": "",
+#						"x": "840",
+#						"y": "630",
+#						"desc": "这是一个AISeg。",
+#						"mkpInput": "$$input$$",
+#						"segMark": "None",
+#						"context": {
+#							"jaxId": "1IFGSO3360",
+#							"attrs": {
+#								"cast": ""
+#							}
+#						},
+#						"global": {
+#							"jaxId": "1IFGSO3361",
+#							"attrs": {
+#								"cast": ""
+#							}
+#						},
+#						"outlet": {
+#							"jaxId": "1IFGSO3330",
+#							"attrs": {
+#								"id": "Result",
+#								"desc": "输出节点。"
+#							}
+#						},
+#						"result": "#input"
 #					}
 #				}
 #			]
