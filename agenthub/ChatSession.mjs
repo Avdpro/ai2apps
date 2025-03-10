@@ -1109,6 +1109,37 @@ class ChatSession {
 		}
 		this.termMap.clear();
 	}
+
+	//-----------------------------------------------------------------------
+	arrayBufferToDataURL(fileName,buf){
+		let ext,result;
+		if(fileName){
+			ext=pathLib.extname(fileName);
+		}
+		result=buf.toString("base64");
+		//result=Base64.encode(buf);
+		switch(ext){
+			case ".jpg":
+				result="data:image/jpeg;base64,"+result;
+				break;
+			case ".png":
+				result="data:image/png;base64,"+result;
+				break;
+			case ".txt":
+				result="data:text/plain;base64,"+result;
+				break;
+			case ".json":
+				result="data:text/json;base64,"+result;
+				break;
+			case '.pdf':
+				result="data:application/pdf;base64,"+result;
+				break;
+			default:
+				result="data:application/octet-stream;base64,"+result;
+				break;
+		}
+		return result;
+	}
 }
 
 export default ChatSession;
