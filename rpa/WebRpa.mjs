@@ -6,6 +6,7 @@ import { promises as fs, promises as fsp } from 'fs'
 import { Buffer } from 'buffer'
 import setupReadability from '../aaee/AAEReadability.mjs';
 import {AIQuery} from "./aiquery.mjs";
+import html2md from 'html-to-md';
 
 const WebRpa_Version="0.0.1";
 const WebRpa_Executable=process.env.WEBRPA_EXECUATABLE||process.env.AAF_EXECUATABLE;
@@ -999,16 +1000,6 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(pageFrame){
 };
 
 //---------------------------------------------------------------------------
-webRpa.readArticle=async function(pageFrame){
-	let codeTag;
-	codeTag=await ensureCodeLib(pageFrame);
-	return await pageFrame.evaluate((codeTag)=>{
-		let codeLib=window[codeTag];
-		return codeLib.readPageArticle();
-	},codeTag);
-};
-
-//---------------------------------------------------------------------------
 webRpa.getNodeAttribute=webRpa.getNodeAttr=async function(pageFrame,aaeId,key){
 	let codeTag;
 	codeTag=await ensureCodeLib(pageFrame);
@@ -1278,6 +1269,24 @@ webRpa.readInnerHTML=async function(pageFrame,baseNode,options){
 		return codeLib.snapNodeHTML(aaeId, opts);
 	}, codeTag, baseNode, options);
 	return text;
+};
+
+//---------------------------------------------------------------------------
+webRpa._readArticle=async function(pageFrame){
+	let codeTag;
+	codeTag=await ensureCodeLib(pageFrame);
+	return await pageFrame.evaluate((codeTag)=>{
+		let codeLib=window[codeTag];
+		return codeLib.readPageArticle();
+	},codeTag);
+};
+
+//---------------------------------------------------------------------------
+webRpa.readArticle=async function(pageFrame,baseNode,options){
+	let html,md;
+	html=await this.readInnerHTML(pageFrame,baseNode,options);
+	md=html2md(html);
+	return md;
 };
 
 //---------------------------------------------------------------------------

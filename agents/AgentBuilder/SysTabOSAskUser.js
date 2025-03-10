@@ -105,7 +105,7 @@ let SysTabOSAskUser=async function(session){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		result=await session.callSegLLM("FilterChat@"+agentURL,opts,messages,true);
 		result=trimJSON(result);
@@ -155,7 +155,7 @@ let SysTabOSAskUser=async function(session){
 	Menu.url="Menu@"+agentURL
 	
 	segs["Chat"]=Chat=async function(input){//:1IKDOFINU0
-		let tip=("");
+		let tip=(execInput);
 		let tipRole=("assistant");
 		let placeholder=("");
 		let text=("");
@@ -468,7 +468,7 @@ export{SysTabOSAskUser};
 //								"cast": ""
 //							}
 //						},
-//						"tip": "",
+//						"tip": "#execInput",
 //						"tipRole": "Assistant",
 //						"placeholder": "",
 //						"text": "",

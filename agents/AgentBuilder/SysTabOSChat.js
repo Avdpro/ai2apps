@@ -306,7 +306,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 				let url
 				prompt=input.prompt;
 				prompt+=`\n---\n\nAssets URLs: [`
-				for(url of docs){
+				for(url of assets){
 					prompt+=`${url}, `
 				}
 				prompt+=`]\n---\n\n`

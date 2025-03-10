@@ -3,6 +3,7 @@ import pathLib from "path";
 import Base64 from "../../agenthub/base64.mjs";
 import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
+import {WebRpa,sleep} from "../../rpa/WebRpa.mjs";
 /*#{1IHCKTECK0MoreImports*/
 /*}#1IHCKTECK0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
@@ -12,14 +13,21 @@ const argsTemplate={
 	properties:{
 		"url":{
 			"name":"url","type":"string",
+			"required":true,
 			"defaultValue":"",
 			"desc":"要读取的页面URL",
 		},
-		"info":{
-			"name":"info","type":"string",
+		"query":{
+			"name":"query","type":"string",
 			"required":false,
 			"defaultValue":"",
 			"desc":"要从页面中获得的信息",
+		},
+		"format":{
+			"name":"format","type":"string",
+			"required":false,
+			"defaultValue":"",
+			"desc":"如果没有query，要提取内容的方式，可以选择: "html", "markdown"，默认提取html。",
 		}
 	},
 	/*#{1IHCKTECK0ArgsView*/
@@ -30,21 +38,25 @@ const argsTemplate={
 /*}#1IHCKTECK0StartDoc*/
 //----------------------------------------------------------------------------
 let RpaReadPage=async function(session){
-	let url,info;
+	let url,query,format;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,InitEnv,AskUser,EndRead;
+	let FixArgs,StartRpa,RpaError,OpenBrowser,OpenPage,ReadContent,TryCatch,Error,CheckQuery,PlainResult,CallLlm,QueryResult;
+	let pageContent="";
+	
 	/*#{1IHCKTECK0LocalVals*/
 	/*}#1IHCKTECK0LocalVals*/
 	
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			url=input.url;
-			info=input.info;
+			query=input.query;
+			format=input.format;
 		}else{
 			url=undefined;
-			info=undefined;
+			query=undefined;
+			format=undefined;
 		}
 		/*#{1IHCKTECK0ParseArgs*/
 		/*}#1IHCKTECK0ParseArgs*/
@@ -64,44 +76,173 @@ let RpaReadPage=async function(session){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input},false);
 			parseAgentArgs(result);
 		}
-		return {seg:InitEnv,result:(result),preSeg:"1IHG4F0UN0",outlet:"1IHG4F0UN1"};
+		return {seg:StartRpa,result:(result),preSeg:"1IHG4F0UN0",outlet:"1IHG4F0UN1"};
 	};
 	FixArgs.jaxId="1IHG4F0UN0"
 	FixArgs.url="FixArgs@"+agentURL
 	
-	segs["InitEnv"]=InitEnv=async function(input){//:1IHG4F75V0
-		let result=input
-		/*#{1IHG4F75V0Code*/
-		/*}#1IHG4F75V0Code*/
-		return {seg:AskUser,result:(result),preSeg:"1IHG4F75V0",outlet:"1IHG4F7602"};
-	};
-	InitEnv.jaxId="1IHG4F75V0"
-	InitEnv.url="InitEnv@"+agentURL
-	
-	segs["AskUser"]=AskUser=async function(input){//:1IHG4FH5K0
-		let tip=(`请访问：${url}，${info?`找到与：${info}相关的信息`:"总结页面内容"}。`);
-		let tipRole=("assistant");
-		let placeholder=("");
-		let text=("");
-		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+	segs["StartRpa"]=StartRpa=async function(input){//:1ILSLB8D20
+		let result=true;
+		let aiQuery=true;
+		try{
+			context.webRpa=new WebRpa(session);
+			aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1ILSLB8D20"));
+		}catch(err){
+			return {seg:RpaError,result:(err),preSeg:"1ILSLB8D20",outlet:"1ILSLGPJ90",catchSeg:RpaError,catchlet:"1ILSLGPJ90"};
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
-		return {seg:EndRead,result:(result),preSeg:"1IHG4FH5K0",outlet:"1IHG4FH5K3"};
+		return {seg:TryCatch,result:(result),preSeg:"1ILSLB8D20",outlet:"1ILSLGPJ91"};
 	};
-	AskUser.jaxId="1IHG4FH5K0"
-	AskUser.url="AskUser@"+agentURL
+	StartRpa.jaxId="1ILSLB8D20"
+	StartRpa.url="StartRpa@"+agentURL
 	
-	segs["EndRead"]=EndRead=async function(input){//:1IHG4FS8N0
+	segs["RpaError"]=RpaError=async function(input){//:1ILSLCH6O0
 		let result=input
-		/*#{1IHG4FS8N0Code*/
-		/*}#1IHG4FS8N0Code*/
+		/*#{1ILSLCH6O0Code*/
+		result={result:"Failed",content:"Current AI2Apps evironment missing Web-RPA feature."};
+		/*}#1ILSLCH6O0Code*/
 		return {result:result};
 	};
-	EndRead.jaxId="1IHG4FS8N0"
-	EndRead.url="EndRead@"+agentURL
+	RpaError.jaxId="1ILSLCH6O0"
+	RpaError.url="RpaError@"+agentURL
+	
+	segs["OpenBrowser"]=OpenBrowser=async function(input){//:1ILSLD60H0
+		let result=true;
+		let browser=null;
+		let headless=false;
+		let devtools=false;
+		let dataDir=true;
+		let alias="RPAHOME";
+		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,{headless,devtools,autoDataDir:dataDir});
+		context.rpaHostPage=browser.hostPage;
+		return {seg:OpenPage,result:(result),preSeg:"1ILSLD60H0",outlet:"1ILSLGPJ93"};
+	};
+	OpenBrowser.jaxId="1ILSLD60H0"
+	OpenBrowser.url="OpenBrowser@"+agentURL
+	
+	segs["OpenPage"]=OpenPage=async function(input){//:1ILSLDR8V0
+		let pageVal="aaPage";
+		let $url=url;
+		let $waitBefore=0;
+		let $waitAfter=0;
+		let $width=800;
+		let $height=600;
+		let $userAgent="";
+		let page=null;
+		$waitBefore && (await sleep($waitBefore));
+		context[pageVal]=page=await context.rpaBrowser.newPage();
+		($width && $height) && (await page.setViewport({width:$width,height:$height}));
+		$userAgent && (await page.setUserAgent($userAgent));
+		await page.goto($url);
+		$waitAfter && (await sleep($waitAfter));
+		return {seg:ReadContent,result:(page),preSeg:"1ILSLDR8V0",outlet:"1ILSLGPJ94"};
+	};
+	OpenPage.jaxId="1ILSLDR8V0"
+	OpenPage.url="OpenPage@"+agentURL
+	
+	segs["ReadContent"]=ReadContent=async function(input){//:1ILSLEUOT0
+		let result=null;
+		let pageVal="aaPage";
+		let $node=null;
+		let $options=undefined;
+		let $waitBefore=0;
+		let $waitAfter=0;
+		let page=context[pageVal];
+		$waitBefore && (await sleep($waitBefore));
+		/*#{1ILSLEUOT0PreCodes*/
+		/*}#1ILSLEUOT0PreCodes*/
+		result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+		$waitAfter && (await sleep($waitAfter))
+		/*#{1ILSLEUOT0PostCodes*/
+		pageContent=result;
+		/*}#1ILSLEUOT0PostCodes*/
+		return {seg:CheckQuery,result:(result),preSeg:"1ILSLEUOT0",outlet:"1ILSLGPJ95"};
+	};
+	ReadContent.jaxId="1ILSLEUOT0"
+	ReadContent.url="ReadContent@"+agentURL
+	
+	segs["TryCatch"]=TryCatch=async function(input){//:1ILSLHPFN0
+		let result=input;
+		/*#{1ILSLHPFN0Code*/
+		false
+		/*}#1ILSLHPFN0Code*/
+		return {seg:OpenBrowser,result:(result),preSeg:"1ILSLHPFN0",outlet:"1ILSM3Q480",catchSeg:Error,catchlet:"1ILSM3Q481"};
+	};
+	TryCatch.jaxId="1ILSLHPFN0"
+	TryCatch.url="TryCatch@"+agentURL
+	
+	segs["Error"]=Error=async function(input){//:1ILSLIQ680
+		let result=input
+		/*#{1ILSLIQ680Code*/
+		result={result:"Failed",content:`读取网页内容失败：${input}`};
+		/*}#1ILSLIQ680Code*/
+		return {result:result};
+	};
+	Error.jaxId="1ILSLIQ680"
+	Error.url="Error@"+agentURL
+	
+	segs["CheckQuery"]=CheckQuery=async function(input){//:1ILSLJSP30
+		let result=input;
+		if(!!query){
+			return {seg:CallLlm,result:(input),preSeg:"1ILSLJSP30",outlet:"1ILSM3Q483"};
+		}
+		return {seg:PlainResult,result:(result),preSeg:"1ILSLJSP30",outlet:"1ILSM3Q484"};
+	};
+	CheckQuery.jaxId="1ILSLJSP30"
+	CheckQuery.url="CheckQuery@"+agentURL
+	
+	segs["PlainResult"]=PlainResult=async function(input){//:1ILSLKFP00
+		let result=input
+		/*#{1ILSLKFP00Code*/
+		result={result:"Finish",content:pageContent};
+		/*}#1ILSLKFP00Code*/
+		return {result:result};
+	};
+	PlainResult.jaxId="1ILSLKFP00"
+	PlainResult.url="PlainResult@"+agentURL
+	
+	segs["CallLlm"]=CallLlm=async function(input){//:1ILSLLRI70
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4o-mini",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=CallLlm.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"`### 角色\n你是一个读取网页内容，回答用户问题的AI\n\n---\n### 网页网址：\n${url}\n\n---\n### 读取到的网页内容是：  \n${pageContent}\n\n---\n### 要从网页中提取的信息或回答的问题：\n${query}\n\n`"},
+		];
+		prompt="请分析网页内容做出回复";
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};messages.push(msg);
+		}
+		result=await session.callSegLLM("CallLlm@"+agentURL,opts,messages,true);
+		return {seg:QueryResult,result:(result),preSeg:"1ILSLLRI70",outlet:"1ILSM3Q486"};
+	};
+	CallLlm.jaxId="1ILSLLRI70"
+	CallLlm.url="CallLlm@"+agentURL
+	
+	segs["QueryResult"]=QueryResult=async function(input){//:1ILSLMEMO0
+		let result=input
+		/*#{1ILSLMEMO0Code*/
+		result={result:"Finish",content:input}
+		/*}#1ILSLMEMO0Code*/
+		return {result:result};
+	};
+	QueryResult.jaxId="1ILSLMEMO0"
+	QueryResult.url="QueryResult@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -112,7 +253,7 @@ let RpaReadPage=async function(session){
 		jaxId:"1IHCKTECK0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{url,info}*/){
+		execChat:async function(input/*{url,query,format}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IHCKTECK0PreEntry*/
@@ -141,11 +282,66 @@ let ChatAPI=[{
 			type: "object",
 			properties:{
 				url:{type:"string",description:"要读取的页面URL"},
-				info:{type:"string",description:"要从页面中获得的信息"}
+				query:{type:"string",description:"要从页面中获得的信息"},
+				format:{type:"string",description:"如果没有query，要提取内容的方式，可以选择: \"html\", \"markdown\"，默认提取html。",enum:["html","markdown"]}
 			}
 		}
 	}
 }];
+
+//:Export Edit-AddOn:
+const DocAIAgentExporter=VFACT?VFACT.classRegs.DocAIAgentExporter:null;
+if(DocAIAgentExporter){
+	const EditAttr=VFACT.classRegs.EditAttr;
+	const EditAISeg=VFACT.classRegs.EditAISeg;
+	const EditAISegOutlet=VFACT.classRegs.EditAISegOutlet;
+	const SegObjShellAttr=EditAISeg.SegObjShellAttr;
+	const SegOutletDef=EditAISegOutlet.SegOutletDef;
+	const docAIAgentExporter=DocAIAgentExporter.prototype;
+	const packExtraCodes=docAIAgentExporter.packExtraCodes;
+	const packResult=docAIAgentExporter.packResult;
+	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+	
+	EditAISeg.regDef({
+		name:"RpaReadPage",showName:"RpaReadPage",icon:"agent.svg",catalog:["AI Call"],
+		attrs:{
+			...SegObjShellAttr,
+			"url":{name:"url",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
+			"query":{name:"query",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
+			"format":{name:"format",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
+			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
+		},
+		listHint:["id","url","query","format","codes","desc"],
+		desc:"这是一个读取Web页面内容的工具/AI智能体。给出一个页面URL和想要提取的信息（例如：获取页面的InnerHTML，页面文章详细内容，针对页面内容的问题等），本工具会读取页面内容并回答。\n仅用于读取互联网上页面内容，请不要使用本工具读取本地磁盘上的文件内容。"
+	});
+	
+	DocAIAgentExporter.segTypeExporters["RpaReadPage"]=
+	function(seg){
+		let coder=this.coder;
+		let segName=seg.idVal.val;
+		let exportDebug=this.isExportDebug();
+		segName=(segName &&varNameRegex.test(segName))?segName:("SEG"+seg.jaxId);
+		coder.packText(`segs["${segName}"]=${segName}=async function(input){//:${seg.jaxId}`);
+		coder.indentMore();coder.newLine();
+		{
+			coder.packText(`let result,args={};`);coder.newLine();
+			coder.packText("args['url']=");this.genAttrStatement(seg.getAttr("url"));coder.packText(";");coder.newLine();
+			coder.packText("args['query']=");this.genAttrStatement(seg.getAttr("query"));coder.packText(";");coder.newLine();
+			coder.packText("args['format']=");this.genAttrStatement(seg.getAttr("format"));coder.packText(";");coder.newLine();
+			this.packExtraCodes(coder,seg,"PreCodes");
+			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/RpaReadPage.js",args,false);`);coder.newLine();
+			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packResult(coder,seg,seg.outlet);
+		}
+		coder.indentLess();coder.maybeNewLine();
+		coder.packText(`};`);coder.newLine();
+		if(exportDebug){
+			coder.packText(`${segName}.jaxId="${seg.jaxId}"`);coder.newLine();
+		}
+		coder.packText(`${segName}.url="${segName}@"+agentURL`);coder.newLine();
+		coder.newLine();
+	};
+}
 //#CodyExport<<<
 /*#{1IHCKTECK0PostDoc*/
 /*}#1IHCKTECK0PostDoc*/
@@ -207,10 +403,11 @@ export{RpaReadPage,ChatAPI};
 //					"attrs": {
 //						"type": "String",
 //						"mockup": "\"\"",
-//						"desc": "要读取的页面URL"
+//						"desc": "要读取的页面URL",
+//						"required": "true"
 //					}
 //				},
-//				"info": {
+//				"query": {
 //					"type": "object",
 //					"def": "AgentCallArgument",
 //					"jaxId": "1IHG4ELHJ0",
@@ -220,12 +417,40 @@ export{RpaReadPage,ChatAPI};
 //						"desc": "要从页面中获得的信息",
 //						"required": "false"
 //					}
+//				},
+//				"format": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1ILSLAQ0P0",
+//					"attrs": {
+//						"type": "String",
+//						"mockup": "\"\"",
+//						"desc": "如果没有query，要提取内容的方式，可以选择: \"html\", \"markdown\"，默认提取html。",
+//						"required": "false",
+//						"enum": {
+//							"type": "array",
+//							"def": "Array",
+//							"attrs": [
+//								{
+//									"valText": "html"
+//								},
+//								{
+//									"valText": "markdown"
+//								}
+//							]
+//						}
+//					}
 //				}
 //			}
 //		},
 //		"localVars": {
 //			"jaxId": "1IHCKTECK4",
-//			"attrs": {}
+//			"attrs": {
+//				"pageContent": {
+//					"type": "string",
+//					"valText": ""
+//				}
+//			}
 //		},
 //		"context": {
 //			"jaxId": "1IHCKTECL0",
@@ -245,8 +470,8 @@ export{RpaReadPage,ChatAPI};
 //						"id": "FixArgs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "60",
-//						"y": "270",
+//						"x": "55",
+//						"y": "370",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -257,43 +482,102 @@ export{RpaReadPage,ChatAPI};
 //								"id": "Next",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IHG4F75V0"
+//							"linkedSeg": "1ILSLB8D20"
 //						}
 //					},
 //					"icon": "args.svg"
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1IHG4F75V0",
+//					"def": "WebRpaStart",
+//					"jaxId": "1ILSLB8D20",
 //					"attrs": {
-//						"id": "InitEnv",
+//						"id": "StartRpa",
 //						"viewName": "",
 //						"label": "",
-//						"x": "265",
-//						"y": "270",
+//						"x": "250",
+//						"y": "370",
 //						"desc": "这是一个AISeg。",
+//						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1IHG4F7600",
+//							"jaxId": "1ILSLGPJB0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1IHG4F7601",
+//							"jaxId": "1ILSLGPJB1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"outlet": {
-//							"jaxId": "1IHG4F7602",
+//							"jaxId": "1ILSLGPJ91",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IHG4FH5K0"
+//							"linkedSeg": "1ILSLHPFN0"
+//						},
+//						"catchlet": {
+//							"jaxId": "1ILSLGPJ90",
+//							"attrs": {
+//								"id": "NoAAE",
+//								"desc": "输出节点。",
+//								"output": "",
+//								"codes": "false",
+//								"context": {
+//									"jaxId": "1ILSLGPJB2",
+//									"attrs": {
+//										"cast": ""
+//									}
+//								},
+//								"global": {
+//									"jaxId": "1ILSLGPJB3",
+//									"attrs": {
+//										"cast": ""
+//									}
+//								}
+//							},
+//							"linkedSeg": "1ILSLCH6O0"
+//						},
+//						"aiQuery": "true"
+//					},
+//					"icon": "start.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1ILSLCH6O0",
+//					"attrs": {
+//						"id": "RpaError",
+//						"viewName": "",
+//						"label": "",
+//						"x": "475",
+//						"y": "460",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1ILSLGPJB4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSLGPJB5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILSLGPJ92",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
 //						},
 //						"result": "#input"
 //					},
@@ -301,74 +585,411 @@ export{RpaReadPage,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "askChat",
-//					"jaxId": "1IHG4FH5K0",
+//					"def": "WebRpaOpenBrowser",
+//					"jaxId": "1ILSLD60H0",
 //					"attrs": {
-//						"id": "AskUser",
+//						"id": "OpenBrowser",
 //						"viewName": "",
 //						"label": "",
-//						"x": "480",
-//						"y": "270",
+//						"x": "680",
+//						"y": "305",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1IHG4FH5K1",
+//							"jaxId": "1ILSLGPJB6",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1IHG4FH5K2",
+//							"jaxId": "1ILSLGPJB7",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
-//						"tip": "#`请访问：${url}，${info?`找到与：${info}相关的信息`:\"总结页面内容\"}。`",
-//						"tipRole": "Assistant",
-//						"placeholder": "",
-//						"text": "",
-//						"file": "false",
-//						"showText": "true",
+//						"alias": "RPAHOME",
+//						"headless": "false",
+//						"devtools": "false",
+//						"dataDir": "true",
 //						"outlet": {
-//							"jaxId": "1IHG4FH5K3",
+//							"jaxId": "1ILSLGPJ93",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IHG4FS8N0"
-//						}
+//							"linkedSeg": "1ILSLDR8V0"
+//						},
+//						"run": ""
 //					},
-//					"icon": "chat.svg"
+//					"icon": "web.svg"
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1IHG4FS8N0",
+//					"def": "WebRpaOpenPage",
+//					"jaxId": "1ILSLDR8V0",
 //					"attrs": {
-//						"id": "EndRead",
+//						"id": "OpenPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "690",
-//						"y": "270",
+//						"x": "920",
+//						"y": "305",
 //						"desc": "这是一个AISeg。",
+//						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1IHG4FS8N1",
+//							"jaxId": "1ILSLGPJB8",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1IHG4FS8N2",
+//							"jaxId": "1ILSLGPJB9",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"valName": "aaPage",
+//						"url": "#url",
+//						"vpWidth": "800",
+//						"vpHeight": "600",
+//						"userAgent": "",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1ILSLGPJ94",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILSLEUOT0"
+//						},
+//						"run": ""
+//					},
+//					"icon": "/@aae/assets/tab_add.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaReadPage",
+//					"jaxId": "1ILSLEUOT0",
+//					"attrs": {
+//						"id": "ReadContent",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1140",
+//						"y": "305",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILSLGPJB10",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSLGPJB11",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "aaPage",
+//						"target": "#format===\"markdown\"?\"article\":\"cleanHTML\"",
+//						"node": "null",
+//						"options": "",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1ILSLGPJ95",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILSLJSP30"
+//						},
+//						"run": ""
+//					},
+//					"icon": "read.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "tryCatch",
+//					"jaxId": "1ILSLHPFN0",
+//					"attrs": {
+//						"id": "TryCatch",
+//						"viewName": "",
+//						"label": "",
+//						"x": "475",
+//						"y": "355",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILSM3Q4A0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSM3Q4A1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"outlet": {
-//							"jaxId": "1IHG4FS8N3",
+//							"jaxId": "1ILSM3Q480",
+//							"attrs": {
+//								"id": "Try",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILSLD60H0"
+//						},
+//						"catchlet": {
+//							"jaxId": "1ILSM3Q481",
+//							"attrs": {
+//								"id": "Catch",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILSLIQ680"
+//						}
+//					},
+//					"icon": "trycatch.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1ILSLIQ680",
+//					"attrs": {
+//						"id": "Error",
+//						"viewName": "",
+//						"label": "",
+//						"x": "685",
+//						"y": "415",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1ILSM3Q4A2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSM3Q4A3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILSM3Q482",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1ILSLJSP30",
+//					"attrs": {
+//						"id": "CheckQuery",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1375",
+//						"y": "305",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILSM3Q4A4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSM3Q4A5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILSM3Q484",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1ILSLKFP00"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1ILSM3Q483",
+//									"attrs": {
+//										"id": "Query",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1ILSM3Q4A6",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1ILSM3Q4A7",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#!!query"
+//									},
+//									"linkedSeg": "1ILSLLRI70"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1ILSLKFP00",
+//					"attrs": {
+//						"id": "PlainResult",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1605",
+//						"y": "355",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1ILSM3Q4A8",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSM3Q4A9",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILSM3Q485",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1ILSLLRI70",
+//					"attrs": {
+//						"id": "CallLlm",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1605",
+//						"y": "255",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1ILSM3Q4A10",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSM3Q4A11",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4o-mini",
+//						"system": "`### 角色\n你是一个读取网页内容，回答用户问题的AI\n\n---\n### 网页网址：\n${url}\n\n---\n### 读取到的网页内容是：  \n${pageContent}\n\n---\n### 要从网页中提取的信息或回答的问题：\n${query}\n\n`",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "请分析网页内容做出回复",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1ILSM3Q486",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILSLMEMO0"
+//						},
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1ILSLMEMO0",
+//					"attrs": {
+//						"id": "QueryResult",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1810",
+//						"y": "255",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1ILSM3Q4A12",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1ILSM3Q4A13",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1ILSM3Q487",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
@@ -382,7 +1003,7 @@ export{RpaReadPage,ChatAPI};
 //		},
 //		"desc": "这是一个读取Web页面内容的工具/AI智能体。给出一个页面URL和想要提取的信息（例如：获取页面的InnerHTML，页面文章详细内容，针对页面内容的问题等），本工具会读取页面内容并回答。\n仅用于读取互联网上页面内容，请不要使用本工具读取本地磁盘上的文件内容。",
 //		"exportAPI": "true",
-//		"exportAddOn": "false",
+//		"exportAddOn": "true",
 //		"addOnOpts": ""
 //	}
 //}

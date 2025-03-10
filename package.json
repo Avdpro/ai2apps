@@ -20,6 +20,7 @@
     "follow-redirects": "^1.15.4",
     "gpt-3-encoder": "^1.1.4",
     "gpu-info": "^0.0.1",
+    "html-to-md": "^0.8.6",
     "http-errors": "~1.6.3",
     "lockfile": "^1.0.4",
     "mongodb": "^3.6.11",

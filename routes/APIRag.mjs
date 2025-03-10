@@ -1,7 +1,9 @@
 import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
 import pathLib from "path";
 import { checkAITokenCall } from '../util/TokenUtils.mjs'
+import { proxyCall } from '../util/ProxyCall.js'
 
+const APIRoot=process.env.APIROOT;
 const RagServerAddr=process.env.RAG_API
 const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
 
@@ -11,6 +13,7 @@ export default async function(app,router,apiMap) {
 		let reqVO, userInfo, resVO,isMaster;
 		let userId, token,apiAddress;
 		let indexMeta;
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
@@ -62,6 +65,12 @@ export default async function(app,router,apiMap) {
 		token = reqVO.token;
 		queryMeta=reqVO.query;
 		apiAddress=reqVO.apiURL;
+		if(!RagServerAddr && !apiAddress){
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+		}
 		if(!apiAddress) {
 			if (!userId) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
@@ -88,6 +97,10 @@ export default async function(app,router,apiMap) {
 				body: JSON.stringify(queryMeta),
 			});
 			if (response.status !== 200) {
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
 				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
 				return;
 			}
@@ -95,9 +108,17 @@ export default async function(app,router,apiMap) {
 			if (result && result.code===200) {
 				res.json({ code: 200, guide: result.data.guide.procedure});
 			} else {
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
 				res.json({ code: 500, info: `result code error: ${result.code}` });
 			}
 		} catch (error) {
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
 			res.json({ code: 500, info: `RAG-Query internal error: ${error}` });
 		}
 	};
