@@ -72,6 +72,11 @@ let AhFileLib,ahFileLib;
 	};
 	
 	//----------------------------------------------------------------------
+	ahFileLib.getFilePath=async function(fileName){
+		return pathLib.join(this.fileDir,fileName);
+	};
+	
+	//----------------------------------------------------------------------
 	ahFileLib.readFile=async function(fileName){
 		let buf,path,data;
 		path=pathLib.join(this.fileDir,fileName);
@@ -107,6 +112,16 @@ let AhFileLib,ahFileLib;
 			fileData=await appFileLib.readFile(fileName);
 			res.json({ code: 200,fileName:fileName,data:fileData});
 		};
+		
+		//-----------------------------------------------------------------------
+		apiMap['AhFilePath']=async function(req,res,next){
+			let reqVO,fileName,filePath;
+			reqVO=req.body.vo;
+			fileName=reqVO.fileName;
+			filePath=await appFileLib.getFilePath(fileName);
+			res.json({ code: 200,fileName:fileName,path:filePath});
+		};
+		
 		return appFileLib;
 	};
 }

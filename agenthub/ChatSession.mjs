@@ -657,6 +657,16 @@ class ChatSession {
 	}
 	
 	//-----------------------------------------------------------------------
+	async getHubPath(fileName){
+		const res = await this.callHub("AhFilePath", { fileName });
+		if (!res || res.code !== 200) {
+			const errorInfo = res ? `${res.code}: ${res.info}` : "Unknown error";
+			throw new Error(`Load hub file ${fileName} failed: ${errorInfo}`);
+		}
+		return res.path;
+	}
+	
+	//-----------------------------------------------------------------------
 	async normURL(url) {
 		if (url.startsWith("hub://")) {
 			const fileName = url.slice("hub://".length);
