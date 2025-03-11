@@ -658,6 +658,9 @@ class ChatSession {
 	
 	//-----------------------------------------------------------------------
 	async getHubPath(fileName){
+		if(fileName.startsWith("hub://")){
+			fileName=fileName.substring("hub://".length);
+		}
 		const res = await this.callHub("AhFilePath", { fileName });
 		if (!res || res.code !== 200) {
 			const errorInfo = res ? `${res.code}: ${res.info}` : "Unknown error";
