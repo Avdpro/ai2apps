@@ -60,7 +60,7 @@ let RpaWebSearch=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,TryCatch,StartRPA,HandleError,NoRPA,OpenBrowser,OpenPage,ClickInput,TypeSearch,FlagNavi,PressEnter,WaitNavi,ReadSearch,SearchError,FindUrls,LoopUrls,OpenUrl,ReadPage,CheckResult,CheckContent,SaveContent,IgnorePage2,Summary,CheckUrls,AskCheck,TryAgain,UserAbort,TryPage,NextPage,CloseSearch,CheckPage,CloseSubPage,CloseLoopPage,CheckApiKey,TryApi,CallSearchApi,TipUseRpa,TipNoApiKey,OpenBrowser2,TipPage,TipStart,CheckPageContent,IgnorePage,CheckLinkOnly,ReturnLinks;
+	let FixArgs,TryCatch,StartRPA,HandleError,NoRPA,OpenBrowser,OpenPage,ClickInput,TypeSearch,FlagNavi,PressEnter,WaitNavi,ReadSearch,SearchError,FindUrls,LoopUrls,OpenUrl,ReadPage,CheckResult,CheckContent,SaveContent,IgnorePage2,Summary,CheckUrls,AskCheck,TryAgain,UserAbort,TryPage,NextPage,CloseSearch,CheckPage,CloseSubPage,CloseLoopPage,CheckApiKey,TryApi,CallSearchApi,TipUseRpa,TipNoApiKey,OpenBrowser2,TipPage,TipStart,CheckPageContent,IgnorePage,CheckLinkOnly,ReturnLinks,CheckLinkOnly2,ReturnLinks2,CloseBrowser,CloseBrowser2,JumpClose,JumpClose2;
 	let searchApiKey="";
 	let searchUrls=null;
 	let searchResults=[];
@@ -153,8 +153,31 @@ let RpaWebSearch=async function(session){
 		let devtools=false;
 		let dataDir=true;
 		let alias="RPAHOME";
-		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,{headless,devtools,autoDataDir:dataDir});
+		let options={headless,devtools,autoDataDir:dataDir};
+		/*#{1ILPRGHL00PreCodes*/
+		let pptRect;
+		try{
+			//pptRect=await session.callClient("GetClientRect",{});
+			pptRect=await session.callClient("GetToolDockRect",{});
+		}catch{
+			pptRect=null;
+		}
+		if(pptRect){
+			let args;
+			args=options.args;
+			if(!args){
+				options.args=args=[];
+			}
+			if((pptRect.left>=0||pptRect.x>=0) && (pptRect.top>=0||pptRect.y>=0)){
+				args.push(`--window-position=${pptRect.left||pptRect.x},${pptRect.top||pptRect.y}`);
+			}
+			args.push(`--window-size=${pptRect.width||pptRect.w||1200},${pptRect.height||pptRect.h||800}`);
+		}
+		/*}#1ILPRGHL00PreCodes*/
+		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
 		context.rpaHostPage=browser.hostPage;
+		/*#{1ILPRGHL00PostCodes*/
+		/*}#1ILPRGHL00PostCodes*/
 		return {seg:OpenPage,result:(result),preSeg:"1ILPRGHL00",outlet:"1ILPRI2NU0"};
 	};
 	OpenBrowser.jaxId="1ILPRGHL00"
@@ -311,7 +334,7 @@ let RpaWebSearch=async function(session){
 		/*#{1ILPRQRUV0Code*/
 		result={result:"Failed",content:`Web search error: ${input}`};
 		/*}#1ILPRQRUV0Code*/
-		return {result:result};
+		return {seg:JumpClose2,result:(result),preSeg:"1ILPRQRUV0",outlet:"1ILPS33ST3"};
 	};
 	SearchError.jaxId="1ILPRQRUV0"
 	SearchError.url="SearchError@"+agentURL
@@ -552,7 +575,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 		/*#{1ILPS8MPC0PostCall*/
 		result={result:"Finish",content:result};
 		/*}#1ILPS8MPC0PostCall*/
-		return {result:result};
+		return {seg:CloseBrowser2,result:(result),preSeg:"1ILPS8MPC0",outlet:"1ILPSH2CS4"};
 	};
 	Summary.jaxId="1ILPS8MPC0"
 	Summary.url="Summary@"+agentURL
@@ -612,7 +635,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 		/*#{1ILQ62B570Code*/
 		result={result:"Abort",content:`Can't get search result, user aborted.`};
 		/*}#1ILQ62B570Code*/
-		return {result:result};
+		return {seg:JumpClose,result:(result),preSeg:"1ILQ62B570",outlet:"1ILQ63DP20"};
 	};
 	UserAbort.jaxId="1ILQ62B570"
 	UserAbort.url="UserAbort@"+agentURL
@@ -735,7 +758,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 		}
 		result=links;
 		/*}#1ILQJTSGU0Code*/
-		return {seg:OpenBrowser2,result:(result),preSeg:"1ILQJTSGU0",outlet:"1ILQK3OCK4"};
+		return {seg:CheckLinkOnly2,result:(result),preSeg:"1ILQJTSGU0",outlet:"1ILQK3OCK4"};
 	};
 	CallSearchApi.jaxId="1ILQJTSGU0"
 	CallSearchApi.url="CallSearchApi@"+agentURL
@@ -769,9 +792,28 @@ ${JSON.stringify(searchResults,null,"\t")}
 		let devtools=false;
 		let dataDir=true;
 		let alias="RPAHOME";
+		let options={headless,devtools,autoDataDir:dataDir};
 		/*#{1ILQTBDM90PreCodes*/
+		let pptRect;
+		try{
+			//pptRect=await session.callClient("GetClientRect",{});
+			pptRect=await session.callClient("GetToolDockRect",{});
+		}catch{
+			pptRect=null;
+		}
+		if(pptRect){
+			let args;
+			args=options.args;
+			if(!args){
+				options.args=args=[];
+			}
+			if((pptRect.left>=0||pptRect.x>=0) && (pptRect.top>=0||pptRect.y>=0)){
+				args.push(`--window-position=${pptRect.left||pptRect.x},${pptRect.top||pptRect.y}`);
+			}
+			args.push(`--window-size=${pptRect.width||pptRect.w||1200},${pptRect.height||pptRect.h||800}`);
+		}
 		/*}#1ILQTBDM90PreCodes*/
-		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,{headless,devtools,autoDataDir:dataDir});
+		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
 		context.rpaHostPage=browser.hostPage;
 		/*#{1ILQTBDM90PostCodes*/
 		result=input;
@@ -840,10 +882,74 @@ ${JSON.stringify(searchResults,null,"\t")}
 		/*#{1ILSN672K0Code*/
 		result={result:"Finish",content:input};
 		/*}#1ILSN672K0Code*/
-		return {result:result};
+		return {seg:CloseBrowser,result:(result),preSeg:"1ILSN672K0",outlet:"1ILSN6TI42"};
 	};
 	ReturnLinks.jaxId="1ILSN672K0"
 	ReturnLinks.url="ReturnLinks@"+agentURL
+	
+	segs["CheckLinkOnly2"]=CheckLinkOnly2=async function(input){//:1IM98KOBT0
+		let result=input;
+		if(linkOnly){
+			let output=input;
+			return {seg:ReturnLinks2,result:(output),preSeg:"1IM98KOBT0",outlet:"1IM98KOBU3"};
+		}
+		result=input;
+		return {seg:OpenBrowser2,result:(result),preSeg:"1IM98KOBT0",outlet:"1IM98KOBU2"};
+	};
+	CheckLinkOnly2.jaxId="1IM98KOBT0"
+	CheckLinkOnly2.url="CheckLinkOnly2@"+agentURL
+	
+	segs["ReturnLinks2"]=ReturnLinks2=async function(input){//:1IM98LRN90
+		let result=input
+		/*#{1IM98LRN90Code*/
+		result={result:"Finish",content:input};
+		/*}#1IM98LRN90Code*/
+		return {result:result};
+	};
+	ReturnLinks2.jaxId="1IM98LRN90"
+	ReturnLinks2.url="ReturnLinks2@"+agentURL
+	
+	segs["CloseBrowser"]=CloseBrowser=async function(input){//:1IM98O14D0
+		let result=input;
+		let browser=context.rpaBrowser;
+		if(browser){
+			await context.webRpa.closeBrowser(browser);
+		}
+		context.rpaBrowser=null;
+		context.rpaHostPage=null;
+		return {result:result};
+	};
+	CloseBrowser.jaxId="1IM98O14D0"
+	CloseBrowser.url="CloseBrowser@"+agentURL
+	
+	segs["CloseBrowser2"]=CloseBrowser2=async function(input){//:1IM98OJJK0
+		let result=input;
+		let browser=context.rpaBrowser;
+		if(browser){
+			await context.webRpa.closeBrowser(browser);
+		}
+		context.rpaBrowser=null;
+		context.rpaHostPage=null;
+		return {result:result};
+	};
+	CloseBrowser2.jaxId="1IM98OJJK0"
+	CloseBrowser2.url="CloseBrowser2@"+agentURL
+	
+	segs["JumpClose"]=JumpClose=async function(input){//:1IM98ROVI0
+		let result=input;
+		return {seg:CloseBrowser2,result:result,preSeg:"1IM98OJJK0",outlet:"1IM98S99B0"};
+	
+	};
+	JumpClose.jaxId="1IM98OJJK0"
+	JumpClose.url="JumpClose@"+agentURL
+	
+	segs["JumpClose2"]=JumpClose2=async function(input){//:1IM98TTCN0
+		let result=input;
+		return {seg:CloseBrowser2,result:result,preSeg:"1IM98OJJK0",outlet:"1IM98VLT00"};
+	
+	};
+	JumpClose2.jaxId="1IM98OJJK0"
+	JumpClose2.url="JumpClose2@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -887,7 +993,9 @@ let ChatAPI=[{
 				linkOnly:{type:"bool",description:"是否只需要搜索到的网页链接列表，而不需要读取搜索到的页面内的内容。"}
 			}
 		}
-	}
+	},
+	agentNode: "AgentBuilder",
+	agentName: "RpaWebSearch.js"
 }];
 
 //:Export Edit-AddOn:
@@ -1276,7 +1384,7 @@ export{RpaWebSearch,ChatAPI};
 //						"x": "1475",
 //						"y": "270",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1658,7 +1766,8 @@ export{RpaWebSearch,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1IM98TTCN0"
 //						},
 //						"result": "#input"
 //					},
@@ -2057,12 +2166,12 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "Summary",
 //						"viewName": "",
 //						"label": "",
-//						"x": "4480",
-//						"y": "210",
+//						"x": "4475",
+//						"y": "310",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
-//						"segMark": "flag.svg",
+//						"segMark": "",
 //						"context": {
 //							"jaxId": "1ILPSH2D28",
 //							"attrs": {
@@ -2093,7 +2202,8 @@ export{RpaWebSearch,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1IM98OJJK0"
 //						},
 //						"secret": "false",
 //						"allowCheat": "false",
@@ -2327,7 +2437,8 @@ export{RpaWebSearch,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1IM98ROVI0"
 //						},
 //						"result": "#input"
 //					},
@@ -2748,7 +2859,7 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1ILQTBDM90"
+//							"linkedSeg": "1IM98KOBT0"
 //						},
 //						"result": "#input"
 //					},
@@ -2823,7 +2934,7 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "3870",
-//						"y": "30",
+//						"y": "45",
 //						"outlet": {
 //							"jaxId": "1ILQK3OCS11",
 //							"attrs": {
@@ -2892,8 +3003,8 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "OpenBrowser2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1660",
-//						"y": "30",
+//						"x": "1960",
+//						"y": "45",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -3206,17 +3317,244 @@ export{RpaWebSearch,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IM98O14D0"
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1IM98KOBT0",
+//					"attrs": {
+//						"id": "CheckLinkOnly2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1685",
+//						"y": "30",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IM98KOBU0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IM98KOBU1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IM98KOBU2",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": "#input"
+//							},
+//							"linkedSeg": "1ILQTBDM90"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IM98KOBU3",
+//									"attrs": {
+//										"id": "Link",
+//										"desc": "输出节点。",
+//										"output": "#input",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IM98KOBU4",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IM98KOBU5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#linkOnly"
+//									},
+//									"linkedSeg": "1IM98LRN90"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1IM98LRN90",
+//					"attrs": {
+//						"id": "ReturnLinks2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1955",
+//						"y": "-35",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1IM98LRN91",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IM98LRN92",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IM98LRN93",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
 //							}
 //						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaCloseBrowser",
+//					"jaxId": "1IM98O14D0",
+//					"attrs": {
+//						"id": "CloseBrowser",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4500",
+//						"y": "-35",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1IM98P2410",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IM98P2411",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IM98P23R0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "close.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaCloseBrowser",
+//					"jaxId": "1IM98OJJK0",
+//					"attrs": {
+//						"id": "CloseBrowser2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4695",
+//						"y": "310",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1IM98P2412",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IM98P2413",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IM98P23R1",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "close.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1IM98ROVI0",
+//					"attrs": {
+//						"id": "JumpClose",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4215",
+//						"y": "385",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "1IM98OJJK0",
+//						"outlet": {
+//							"jaxId": "1IM98S99B0",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1IM98TTCN0",
+//					"attrs": {
+//						"id": "JumpClose2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3295",
+//						"y": "330",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "1IM98OJJK0",
+//						"outlet": {
+//							"jaxId": "1IM98VLT00",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
 //				}
 //			]
 //		},
 //		"desc": "使用Google进行网页搜索并返回总结后的搜索结果。",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
-//		"addOnOpts": ""
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\"}"
 //	}
 //}

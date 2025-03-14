@@ -919,7 +919,27 @@ webRpa.listBrowserAndPages=async function(){
 
 //---------------------------------------------------------------------------
 webRpa.openBrowser=async function(alias,opts){
-	return await openBrowser(alias,opts);
+	let browser=await openBrowser(alias,opts);
+	if(browser){
+		browser.aaeRefcount=browser.aaeRefcount?browser.aaeRefcount+1:1;
+	}
+	return browser;
+};
+
+//---------------------------------------------------------------------------
+webRpa.closeBrowser=async function(browser){
+	let browserId;
+	browserId=browser.aaeBrowserId;
+	if(browser && browser.aaeRefcount>0){
+		browser.aaeRefcount-=1;
+		if(!browser.aaeRefcount){
+			await browser.close();
+			browserMap.delete(browserId);
+		}
+	}else {
+		await browser.close();
+		browserMap.delete(browserId);
+	}
 };
 
 //---------------------------------------------------------------------------
@@ -962,14 +982,6 @@ webRpa.openPage=async function(browser){
 //---------------------------------------------------------------------------
 webRpa.closePage=async function(page){
 	await page.close();
-};
-
-//---------------------------------------------------------------------------
-webRpa.closeBrowser=async function(browser){
-	let browserId;
-	browserId=browser.aaeBrowserId;
-	await browser.close();
-	browserMap.delete(browserId);
 };
 
 //---------------------------------------------------------------------------
