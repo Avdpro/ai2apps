@@ -728,10 +728,11 @@ class ChatSession {
 	//-----------------------------------------------------------------------
 	async askChatInput(vo) {
 		const askVO = {
+			...vo,
 			role: vo.role || "assistant",
 			prompt: vo.prompt || "Please input",
 			initText: vo.initText || "",
-			placeholder:vo.placeholder||""
+			placeholder:vo.placeholder||"",
 		};
 		return await this.callClient("AskChatInput", askVO);
 	}
