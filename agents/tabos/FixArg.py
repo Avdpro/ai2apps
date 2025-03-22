@@ -144,7 +144,7 @@ async def FixArg(session):
 		prompt=f"""
 函数参数JSON：
 {json.dumps(argTemplate.get("properties",{}),indent=4)}
-自然语言指令：{command}
+{("自然语言指令："+command) if isinstance(command, str) else ("指令JSON表达："+json.dumps(command))}
 """
 		if(prompt):
 			if not isinstance(prompt,str):
@@ -568,7 +568,7 @@ return {api:ChatAPI,export:Exports};
 #						"messages": {
 #							"attrs": []
 #						},
-#						"prompt": "#f\"\"\"\n函数参数JSON：\n{json.dumps(argTemplate.get(\"properties\",{}),indent=4)}\n自然语言指令：{command}\n\"\"\"",
+#						"prompt": "#f\"\"\"\n函数参数JSON：\n{json.dumps(argTemplate.get(\"properties\",{}),indent=4)}\n{(\"自然语言指令：\"+command) if isinstance(command, str) else (\"指令JSON表达：\"+json.dumps(command))}\n\"\"\"",
 #						"seed": "",
 #						"outlet": {
 #							"jaxId": "1ID42N3FF0",

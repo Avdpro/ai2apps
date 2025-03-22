@@ -126,13 +126,16 @@ let HubFixArgs=async function(session){
 		prompt=`
 函数参数JSON：
 ${JSON.stringify(argsTemplate.properties,null,"\t")}
-自然语言指令：${command}
+自然语言指令：${typeof(command)==="string"?command:JSON.stringify(command)}
 `;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};
+			/*#{1IH73EH360FilterMessage*/
+			/*}#1IH73EH360FilterMessage*/
+			messages.push(msg);
 		}
 		/*#{1IH73EH360PreCall*/
 		/*}#1IH73EH360PreCall*/
@@ -399,7 +402,9 @@ export{HubFixArgs};
 //								}
 //							]
 //						}
-//					}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -438,7 +443,7 @@ export{HubFixArgs};
 //						"messages": {
 //							"attrs": []
 //						},
-//						"prompt": "#`\n函数参数JSON：\n${JSON.stringify(argsTemplate.properties,null,\"\\t\")}\n自然语言指令：${command}\n`",
+//						"prompt": "#`\n函数参数JSON：\n${JSON.stringify(argsTemplate.properties,null,\"\\t\")}\n自然语言指令：${typeof(command)===\"string\"?command:JSON.stringify(command)}\n`",
 //						"seed": "",
 //						"outlet": {
 //							"jaxId": "1IH73EH363",
@@ -462,7 +467,8 @@ export{HubFixArgs};
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
 //						"formatDef": "\"\""
-//					}
+//					},
+//					"icon": "llm.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -528,7 +534,9 @@ export{HubFixArgs};
 //								}
 //							]
 //						}
-//					}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -576,7 +584,8 @@ export{HubFixArgs};
 //								"desc": "输出节点。"
 //							}
 //						}
-//					}
+//					},
+//					"icon": "rename.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -611,7 +620,8 @@ export{HubFixArgs};
 //							}
 //						},
 //						"result": "#input"
-//					}
+//					},
+//					"icon": "tab_css.svg"
 //				}
 //			]
 //		},
