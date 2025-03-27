@@ -19,7 +19,7 @@ let SysTabOSChat=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode;
+	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode;
 	let orgInput=null;
 	let cokeEnv=null;
 	let cokeTty=null;
@@ -151,6 +151,10 @@ let SysTabOSChat=async function(session){
 		if(!orgInput){
 			return {seg:AskInput,result:(input),preSeg:"1IKCVBKKB0",outlet:"1IKCVDSRP1"};
 		}
+		if(orgInput.tool){
+			let output=orgInput;
+			return {seg:JumpTool,result:(output),preSeg:"1IKCVBKKB0",outlet:"1IMRPT4F10"};
+		}
 		/*#{1IKCVBKKB0Post*/
 		/*}#1IKCVBKKB0Post*/
 		return {seg:StartTip,result:(result),preSeg:"1IKCVBKKB0",outlet:"1IKCVDSRP2"};
@@ -158,17 +162,72 @@ let SysTabOSChat=async function(session){
 	CheckArg.jaxId="1IKCVBKKB0"
 	CheckArg.url="CheckArg@"+agentURL
 	
+	segs["JumpTool"]=JumpTool=async function(input){//:1IMRL8FIK0
+		let result=input;
+		/*#{1IMRL8FIK0PreCodes*/
+		let chatMem;
+		let assets,list,url,ext,toolPath,tools,i,n,tool,toolId;
+		let content,opts;
+		toolPath=input.tool;//.filePath;
+		tools=context.aaTools.getTools();
+		n=tools.length;
+		FindTool:{
+			for(i=0;i<n;i++){
+				tool=tools[i];
+				if(tool.filePath===toolPath){
+					toolId="Tool-"+i;
+					context.curTool=tool;
+					break;
+				}
+			}
+			toolId="Tool-??";
+		}
+		assets=list=input.assets;
+		let prompt=input.prompt;
+		if(assets){
+			prompt=input.prompt;
+			prompt+=`\n- - -\n\n# Assets URLs: \n\n[\n\n`
+			for(url of assets){
+				prompt+=`\t${url}, \n\n`
+			}
+			prompt+=`]\n- - -\n\n`
+		}
+		chatMem=GenAction.messages;
+		chatMem.push({role:"user",content:prompt});
+		result={
+			action:"tool",
+			tool:toolId,
+			prompt:prompt
+		};
+		chatMem.push({role:"assistant",content:JSON.stringify(result)});
+		content=(($ln==="CN")?(`### 调用智能体: \n- 智能体：${context.curTool.getNameText()} \n- 调用提示：${input.prompt}`):/*EN*/(`### Call agent: \n- Agent: ${context.curTool.getNameText()} \n- Prompt: ${input.prompt}`))
+		opts={icon:"/~/-tabos/shared/assets/gas_e.svg"};
+		session.addChatText("assistant",content,opts);
+		/*}#1IMRL8FIK0PreCodes*/
+		return {seg:CallTool,result:result,preSeg:"1IKD04LRQ0",outlet:"1IMRPT4F20"};
+	
+	};
+	JumpTool.jaxId="1IKD04LRQ0"
+	JumpTool.url="JumpTool@"+agentURL
+	
 	segs["AskInput"]=AskInput=async function(input){//:1IKCVCHC90
 		let tip=("");
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(true)||false;
 		let text=("");
 		let result="";
 		if(tip){
 			session.addChatText(tipRole,tip);
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		return {seg:CheckCmd,result:(result),preSeg:"1IKCVCHC90",outlet:"1IKCVDSRP3"};
 	};
 	AskInput.jaxId="1IKCVCHC90"
@@ -204,7 +263,7 @@ ${JSON.stringify(context.toolIndex,null,"\t")}
 当前的Nodes（外部智能体节点）有:
 ${JSON.stringify(context.agentNodes,null,"\t")}
 
----
+- - -
 
 - 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。
 
@@ -215,6 +274,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	"tool":"Tool-3",
     "prompt":"Search for: Who is the winner of 2024 F1?"
 }
+注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。
 
 - 如果需要执行一个Node，设置回复JSON中的"action"属性为"node"；回复JSON中的"node"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：
 {
@@ -302,23 +362,24 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 			}
 			let msg={role:"user",content:prompt};
 			/*#{1IKCVDIJ50FilterMessage*/
+			let embedAssets=false;
 			if(assets){
 				let url
 				prompt=input.prompt;
-				prompt+=`\n---\n\nAssets URLs: [`
+				prompt+=`\n- - -\n\n# Assets URLs:\n\n[\n\n`
 				for(url of assets){
-					prompt+=`${url}, `
+					prompt+=`\t${url}, \n\n`
 				}
-				prompt+=`]\n---\n\n`
-				if(docs){
+				prompt+=`]\n- - -\n\n`
+				if(embedAssets && docs){
 					let chatText,docText;
-					chatText=prompt+"---\n\n# Assets:\n\n";
+					chatText=prompt+"- - -\n\n# Text Asset file contents:\n\n";
 					for(docText of docs){
 						chatText+=docText;
 					}
 					prompt=chatText;
 				}
-				if(images){
+				if(embedAssets && images){
 					let content=[{type:"text",text:prompt}];
 					for(let url of images){
 						content.push({type:"image_url","image_url":{"url":url}});
@@ -464,8 +525,8 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["DoChat"]=DoChat=async function(input){//:1IKCVNLLO0
 		let result;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
 		let arg=input.content;
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
 		result= await session.pipeChat(sourcePath,arg,false);
 		return {seg:AddChat,result:(result),preSeg:"1IKCVNLLO0",outlet:"1IKCVQU3L2"};
 	};
@@ -608,8 +669,8 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		let role="assistant";
 		let content=input;
 		/*#{1IKD0580Q0PreCodes*/
-		content=content.content||content;
-		opts.txtHeader=context.curTool.name+(($ln==="CN")?(" 返回:"):/*EN*/(" result:"));
+		content=content?(content.content||content):{result:"Unkonwn",content:"无执行结果"};
+		opts.txtHeader=context.curTool.getNameText()+(($ln==="CN")?(" 返回:"):/*EN*/(" result:"));
 		opts.icon="/~/-tabos/shared/assets/arrowleft.svg";
 		/*}#1IKD0580Q0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -651,13 +712,20 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		let tip=("");
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(true)||false;
 		let text=("");
 		let result="";
 		if(tip){
 			session.addChatText(tipRole,tip);
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		return {seg:CheckCmd,result:(result),preSeg:"1IKE77PS40",outlet:"1IKE789LQ0"};
 	};
 	AskNext.jaxId="1IKE77PS40"
@@ -982,7 +1050,7 @@ export{SysTabOSChat};
 //						"viewName": "",
 //						"label": "",
 //						"x": "935",
-//						"y": "445",
+//						"y": "475",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1073,12 +1141,62 @@ export{SysTabOSChat};
 //										"condition": "#!orgInput"
 //									},
 //									"linkedSeg": "1IKCVCHC90"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IMRPT4F10",
+//									"attrs": {
+//										"id": "EntryTool",
+//										"desc": "输出节点。",
+//										"output": "#orgInput",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IMRQJ5O40",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IMRQJ5O41",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#orgInput.tool"
+//									},
+//									"linkedSeg": "1IMRL8FIK0"
 //								}
 //							]
 //						}
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1IMRL8FIK0",
+//					"attrs": {
+//						"id": "JumpTool",
+//						"viewName": "",
+//						"label": "",
+//						"x": "935",
+//						"y": "400",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "1IKD04LRQ0",
+//						"outlet": {
+//							"jaxId": "1IMRPT4F20",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1089,7 +1207,7 @@ export{SysTabOSChat};
 //						"viewName": "",
 //						"label": "",
 //						"x": "935",
-//						"y": "360",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1110,7 +1228,7 @@ export{SysTabOSChat};
 //						"tipRole": "Assistant",
 //						"placeholder": "",
 //						"text": "",
-//						"file": "false",
+//						"file": "true",
 //						"showText": "true",
 //						"outlet": {
 //							"jaxId": "1IKCVDSRP3",
@@ -1151,7 +1269,7 @@ export{SysTabOSChat};
 //						},
 //						"platform": "\"OpenAI\"",
 //						"mode": "gpt-4o",
-//						"system": "#`\n你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。\n\n当前的Tools（本地智能体工具）有:\n${JSON.stringify(context.toolIndex,null,\"\\t\")}\n\n当前的Nodes（外部智能体节点）有:\n${JSON.stringify(context.agentNodes,null,\"\\t\")}\n\n---\n\n- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。\n\n- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。\n- 如果需要执行一个Tool，设置回复JSON中的\"action\"属性为\"tool\"；设置\"tool\"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"tool\",\n\t\"tool\":\"Tool-3\",\n    \"prompt\":\"Search for: Who is the winner of 2024 F1?\"\n}\n\n- 如果需要执行一个Node，设置回复JSON中的\"action\"属性为\"node\"；回复JSON中的\"node\"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"node\",\n\t\"node\":\"DrawNode\",\n    \"prompt\":\"Draw picture of a cute fat cat.\"\n}\n\n- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。\n\n- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。\n\n- 如果回答用户的输入不需要使用任何tool，回复将JSON中的\"action\"属性设置为\"finish\"，用回复JSON中的\"content\"属性回答用户。例如：当用户询问：\"西瓜是一种水果么？\"，你的回复：\n{\n\t\"action\":\"finish\",\n\t\"content\":\"是的，西瓜是一种水果。\"\n}\n\n- 如果成功的完成了用户提出的任务，回复将JSON中的\"action\"属性设置为\"finish\"，并通过\"content\"属性总结汇报执行情况。例如\n{\n\t\"action\":\"finish\",\n    \"content\":\"论坛帖子已经成功发布。\"\n}\n\n- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool\n\n- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的\"action\"属性为\"abort\"，并在\"content\"属性中说明原因。例如:\n{\n\t\"action\":\"abort\",\n    \"content\":\"没有登录脸书账号，无法发布新的内容。\"\n}\n\n- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的\"action\"属性为\"missingTool\"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用\"missingTools\"数组属性里描述缺失的Tool。例如：\n{\n\t\"action\":\"missingTool\",\n\t\"missingTools\":[\n    \t\"检查脸书账号登录状态\",\n        \"发布脸书动态\"\n    ]\n}\n\n- 如果执行任务需要用户提供更多的信息，设置回复JSON中的\"action\"属性为\"chat\"，要询问用户的内容放在\"content\"属性里。例如，需要用户提供邮箱地址：\n{\n\t\"action\":\"chat\",\n\t\"content\":\"请告诉我你的电子邮箱地址\"\n}\n`",
+//						"system": "#`\n你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。\n\n当前的Tools（本地智能体工具）有:\n${JSON.stringify(context.toolIndex,null,\"\\t\")}\n\n当前的Nodes（外部智能体节点）有:\n${JSON.stringify(context.agentNodes,null,\"\\t\")}\n\n- - -\n\n- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。\n\n- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。\n- 如果需要执行一个Tool，设置回复JSON中的\"action\"属性为\"tool\"；设置\"tool\"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"tool\",\n\t\"tool\":\"Tool-3\",\n    \"prompt\":\"Search for: Who is the winner of 2024 F1?\"\n}\n注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。\n\n- 如果需要执行一个Node，设置回复JSON中的\"action\"属性为\"node\"；回复JSON中的\"node\"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"node\",\n\t\"node\":\"DrawNode\",\n    \"prompt\":\"Draw picture of a cute fat cat.\"\n}\n\n- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。\n\n- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。\n\n- 如果回答用户的输入不需要使用任何tool，回复将JSON中的\"action\"属性设置为\"finish\"，用回复JSON中的\"content\"属性回答用户。例如：当用户询问：\"西瓜是一种水果么？\"，你的回复：\n{\n\t\"action\":\"finish\",\n\t\"content\":\"是的，西瓜是一种水果。\"\n}\n\n- 如果成功的完成了用户提出的任务，回复将JSON中的\"action\"属性设置为\"finish\"，并通过\"content\"属性总结汇报执行情况。例如\n{\n\t\"action\":\"finish\",\n    \"content\":\"论坛帖子已经成功发布。\"\n}\n\n- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool\n\n- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的\"action\"属性为\"abort\"，并在\"content\"属性中说明原因。例如:\n{\n\t\"action\":\"abort\",\n    \"content\":\"没有登录脸书账号，无法发布新的内容。\"\n}\n\n- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的\"action\"属性为\"missingTool\"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用\"missingTools\"数组属性里描述缺失的Tool。例如：\n{\n\t\"action\":\"missingTool\",\n\t\"missingTools\":[\n    \t\"检查脸书账号登录状态\",\n        \"发布脸书动态\"\n    ]\n}\n\n- 如果执行任务需要用户提供更多的信息，设置回复JSON中的\"action\"属性为\"chat\"，要询问用户的内容放在\"content\"属性里。例如，需要用户提供邮箱地址：\n{\n\t\"action\":\"chat\",\n\t\"content\":\"请告诉我你的电子邮箱地址\"\n}\n`",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -2225,7 +2343,7 @@ export{SysTabOSChat};
 //						"tipRole": "Assistant",
 //						"placeholder": "",
 //						"text": "",
-//						"file": "false",
+//						"file": "true",
 //						"showText": "true",
 //						"outlet": {
 //							"jaxId": "1IKE789LQ0",

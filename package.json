@@ -10,6 +10,7 @@
     "@google/generative-ai": "^0.2.1",
     "@xterm/xterm": "^5.5.0",
     "adm-zip": "^0.5.16",
+    "axios": "^1.8.4",
     "clipboardy": "^4.0.0",
     "cookie-parser": "~1.4.4",
     "cors": "^2.8.5",

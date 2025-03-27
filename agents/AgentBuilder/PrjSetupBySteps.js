@@ -193,11 +193,14 @@ let PrjSetupBySteps=async function(session){
 	segs["LoopSteps"]=LoopSteps=async function(input){//:1IJ2KJ0UK0
 		let result=input;
 		let list=steps;
-		let i,n,item;
+		let i,n,item,loopR;
 		n=list.length;
 		for(i=0;i<n;i++){
 			item=list[i];
-			await session.runAISeg(agent,TipStep,item,"1IJ2KJ0UK0","1IJ2L5O0R0")
+			loopR=await session.runAISeg(agent,TipStep,item,"1IJ2KJ0UK0","1IJ2L5O0R0")
+			if(loopR==="break"){
+				break;
+			}
 		}
 		return {seg:SaveConda,result:(result),preSeg:"1IJ2KJ0UK0",outlet:"1IJ2L5O0R1"};
 	};
@@ -824,7 +827,7 @@ Output format:
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		result=await session.callSegLLM("GenGuideJs@"+agentURL,opts,messages,true);
 		return {seg:output,result:(result),preSeg:"1ILI9VIEO0",outlet:"1ILIA093U0"};
@@ -897,6 +900,7 @@ Output format:
 		export {install}`;
 		const filePath = pathLib.join(prjPath, 'setup_agent.js');
 		await fsp.writeFile(filePath, code);
+		steps=actions;
 		/*}#1ILIBLIQU0Code*/
 		return {seg:goto,result:(result),preSeg:"1ILIBLIQU0",outlet:"1ILIBMA7E0"};
 	};
@@ -905,10 +909,10 @@ Output format:
 	
 	segs["goto"]=goto=async function(input){//:1ILIIHJ2K0
 		let result=input;
-		return {seg:LoadSteps,result:result,preSeg:"1ILIIHJ2K0",outlet:"1ILIII45L0"};
+		return {seg:LoopSteps,result:result,preSeg:"1IJ2KJ0UK0",outlet:"1ILIII45L0"};
 	
 	};
-	goto.jaxId="1ILIIHJ2K0"
+	goto.jaxId="1IJ2KJ0UK0"
 	goto.url="goto@"+agentURL
 	
 	agent={
@@ -3003,7 +3007,7 @@ export{PrjSetupBySteps};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"seg": "LoadSteps",
+//						"seg": "1IJ2KJ0UK0",
 //						"outlet": {
 //							"jaxId": "1ILIII45L0",
 //							"attrs": {

@@ -5,6 +5,7 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 import {WebRpa,sleep} from "../../rpa/WebRpa.mjs";
 /*#{1IHCHS17T0MoreImports*/
+import axios from 'axios';
 /*}#1IHCHS17T0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
 const basePath=pathLib.dirname(agentURL);
@@ -35,13 +36,25 @@ const argsTemplate={
 };
 
 /*#{1IHCHS17T0StartDoc*/
-async function googleSearch(query,apiKey,cx) {
+
+async function googleSearch(query,apiKey,cx,proxies) {
 	const API_KEY = apiKey;
 	const CX = cx;
-	const url = `https://www.googleapis.com/customsearch/v1?key=${API_KEY}&cx=${CX}&q=${encodeURIComponent(query)}`;
+	const url = `https://www.googleapis.com/customsearch/v1?key=${API_KEY}&cx=${CX}&q=${query}`;
 	try {
-		const response = await fetch(url);
-		const data = await response.json();
+		let response;
+		if(proxies && proxies.ip && proxies.port){
+			response = await axios.get(url,{
+			proxy: {
+				protocol: "http",
+				host: proxies.ip,
+				port: proxies.port
+			}
+			});
+		}else{
+			response = await axios.get(url);
+		}
+		const data = await response.data;
 		if (data.items) {
 			return data.items.map((item)=>{
 				return item.link;
@@ -741,7 +754,6 @@ ${JSON.stringify(searchResults,null,"\t")}
 	segs["TryApi"]=TryApi=async function(input){//:1ILQJT0JN0
 		let result=input;
 		/*#{1ILQJT0JN0Code*/
-		false
 		/*}#1ILQJT0JN0Code*/
 		return {seg:CallSearchApi,result:(result),preSeg:"1ILQJT0JN0",outlet:"1ILQK3OCK2",catchSeg:TipUseRpa,catchlet:"1ILQK3OCK3"};
 	};
@@ -752,7 +764,9 @@ ${JSON.stringify(searchResults,null,"\t")}
 		let result=input
 		/*#{1ILQJTSGU0Code*/
 		let links;
-		links=await googleSearch(search,searchApiKey.key,searchApiKey.cx);
+		let hubJSON;
+		hubJSON=session.agentNode.hubJSON;
+		links=await googleSearch(search,searchApiKey.key,searchApiKey.cx,hubJSON.proxies);
 		if(!links ||!links.length){
 			throw "No links found.";
 		}
@@ -767,7 +781,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 		let result=input;
 		let opts={};
 		let role="assistant";
-		let content=`调用Google search API时发生错误:  ${input}。转用Web-RPA模式进行搜索。`;
+		let content=`调用Google Search API时发生错误:  ${input}。转用Web-RPA模式进行搜索。`;
 		session.addChatText(role,content,opts);
 		return {seg:OpenBrowser,result:(result),preSeg:"1ILQJU6R50",outlet:"1ILQK3OCK5"};
 	};
@@ -778,7 +792,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 		let result=input;
 		let opts={};
 		let role="assistant";
-		let content=(($ln==="CN")?("没有找到Google search的API-Key，采用Web-RPA方式进行搜索。"):("No Google search API key found, using Web-RPA method for search."));
+		let content=(($ln==="CN")?("没有找到Google search的API-Key，采用Web-RPA方式进行搜索。"):("No Google Search API key found, using Web-RPA method for Search."));
 		session.addChatText(role,content,opts);
 		return {seg:OpenBrowser,result:(result),preSeg:"1ILQK304N0",outlet:"1ILQK3OCK6"};
 	};
@@ -995,7 +1009,11 @@ let ChatAPI=[{
 		}
 	},
 	agentNode: "AgentBuilder",
-	agentName: "RpaWebSearch.js"
+	agentName: "RpaWebSearch.js",
+	label: "{\"EN\":\"Web Search\",\"CN\":\"网络搜索\"}",
+	isRPA: true,
+	chatEntry: "Root",
+	icon: "/~/-tabos/shared/assets/browser.svg"
 }];
 
 //:Export Edit-AddOn:
@@ -1012,7 +1030,7 @@ if(DocAIAgentExporter){
 	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
 	
 	EditAISeg.regDef({
-		name:"RpaWebSearch",showName:"RpaWebSearch",icon:"agent.svg",catalog:["AI Call"],
+		name:"RpaWebSearch",showName:"{\"EN\":\"Web Search\",\"CN\":\"网络搜索\"}",icon:"/~/-tabos/shared/assets/browser.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
 			"search":{name:"search",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
@@ -2892,7 +2910,7 @@ export{RpaWebSearch,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
-//						"text": "#`调用Google search API时发生错误:  ${input}。转用Web-RPA模式进行搜索。`",
+//						"text": "#`调用Google Search API时发生错误:  ${input}。转用Web-RPA模式进行搜索。`",
 //						"outlet": {
 //							"jaxId": "1ILQK3OCK5",
 //							"attrs": {
@@ -2977,9 +2995,9 @@ export{RpaWebSearch,ChatAPI};
 //						"role": "Assistant",
 //						"text": {
 //							"type": "string",
-//							"valText": "No Google search API key found, using Web-RPA method for search.",
+//							"valText": "No Google Search API key found, using Web-RPA method for Search.",
 //							"localize": {
-//								"EN": "No Google search API key found, using Web-RPA method for search.",
+//								"EN": "No Google Search API key found, using Web-RPA method for Search.",
 //								"CN": "没有找到Google search的API-Key，采用Web-RPA方式进行搜索。"
 //							},
 //							"localizable": true
@@ -3555,6 +3573,6 @@ export{RpaWebSearch,ChatAPI};
 //		"desc": "使用Google进行网页搜索并返回总结后的搜索结果。",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
-//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\"}"
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"{\\\"EN\\\":\\\"Web Search\\\",\\\"CN\\\":\\\"网络搜索\\\"}\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"chatEntry\":\"Root\",\"isRPA\":1,\"rpaHost\":\"\",\"segIcon\":\"/~/-tabos/shared/assets/browser.svg\",\"catalog\":\"AI Call\"}"
 //	}
 //}

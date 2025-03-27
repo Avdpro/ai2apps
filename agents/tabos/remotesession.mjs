@@ -27,8 +27,7 @@ RemoteSession.exec=async function(session,nodeName,agent,input,options){
 			throw Error(`Start AgentNode error`);
 		}
 	}
-	//res=await tabNT.makeCall("AhCreateSession",{node:nodeName});
-	res=await session.callHub("AhCreateSession",{node:nodeName});
+	res=await session.callHub("AhCreateSession",{node:nodeName,language:session.language});
 	if(!res || res.code!==200){
 		if(res){
 			throw Error(`Start AgentNode error: ${res.info}`);

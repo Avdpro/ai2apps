@@ -205,10 +205,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[
-	`cd ${dirPath}`,
-	"conda install --file ./requirements.txt --dry-run"
-];
+		args['commands']=[	`cd ${dirPath}`,	"conda install --file ./requirements.txt --dry-run"];
 		args['options']={clear:true};
 		/*#{1IGB23HH50PreCodes*/
 		let missing,conflict;
@@ -269,6 +266,7 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["TipIssue"]=TipIssue=async function(input){//:1IGB4O4R30
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=input;
 		/*#{1IGB4O4R30PreCodes*/
@@ -282,7 +280,7 @@ let PrjCheckCondaEnv=async function(session){
 			content=`当前环境 "${env.conda.default}" 满足项目部署需求，你也可以创建一个新的conda环境部署项目。`;
 		}
 		/*}#1IGB4O4R30PreCodes*/
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		/*#{1IGB4O4R30PostCodes*/
 		/*}#1IGB4O4R30PostCodes*/
 		return {seg:AskEnv,result:(result),preSeg:"1IGB4O4R30",outlet:"1IGB5QNSJ0"};
@@ -334,6 +332,7 @@ let PrjCheckCondaEnv=async function(session){
 		let prompt=(pyversion?(($ln==="CN")?(`系统推荐的Python版本是: ${pyversion}，你也可以选择一个`):/*EN*/(`The recommended Python version is: ${pyversion}, you can also choose one`)):(($ln==="CN")?("请选择新环境的Python版本"):/*EN*/("Please select the Python version for the new environment")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"3.9",code:0},
@@ -349,7 +348,7 @@ let PrjCheckCondaEnv=async function(session){
 			/*}#1IGG3ILAR0Silent*/
 			return {seg:NewEnv,result:(result),preSeg:"1IGG3ILB70",outlet:"1IGG3ILAR0"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -408,9 +407,10 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["TipNoReq"]=TipNoReq=async function(input){//:1IGB5BJNK0
 		let result=input;
+		let opts={};
 		let role="assistant";
 		let content=input;
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:AskEnv,result:(result),preSeg:"1IGB5BJNK0",outlet:"1IGB5QNSJ3"};
 	};
 	TipNoReq.jaxId="1IGB5BJNK0"
@@ -420,6 +420,7 @@ let PrjCheckCondaEnv=async function(session){
 		let prompt=("请选择一个当前系统内的Conda环境")||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let items=[
 		];
 		let result="";
@@ -429,7 +430,7 @@ let PrjCheckCondaEnv=async function(session){
 		condaEnvs=await getCondaEnvList();
 		items=condaEnvs.map((name)=>{return {icon:"/~/-tabos/shared/assets/hudbox.svg",text:name}});
 		/*}#1IGB5D9570PreCodes*/
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		/*#{1IGB5D9570PostCodes*/
 		if(item && item.text){
 			item=item.text;
@@ -575,6 +576,7 @@ let PrjCheckCondaEnv=async function(session){
 		let prompt=("是否为项目创建专有source环境？")||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"创建虚拟环境",code:0},
@@ -589,7 +591,7 @@ let PrjCheckCondaEnv=async function(session){
 			/*}#1IHC8O6C00Silent*/
 			return {seg:NewSourceEnv,result:(result),preSeg:"1IHC8O6CQ0",outlet:"1IHC8O6C00"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -1131,7 +1133,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[\n\t`cd ${dirPath}`,\n\t\"conda install --file ./requirements.txt --dry-run\"\n]",
+//						"commands": "#[\t`cd ${dirPath}`,\t\"conda install --file ./requirements.txt --dry-run\"]",
 //						"options": "#{clear:true}",
 //						"outlet": {
 //							"jaxId": "1IGB281MF0",

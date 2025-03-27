@@ -162,7 +162,7 @@ let Bash=async function(session){
 	segs["LoopCmd"]=LoopCmd=async function(input){//:1IIF4OKS70
 		let result=input;
 		let list=commands;
-		let i,n,item;
+		let i,n,item,loopR;
 		/*#{1IIF4OKS70PreLoop*/
 		/*}#1IIF4OKS70PreLoop*/
 		n=list.length;
@@ -170,7 +170,10 @@ let Bash=async function(session){
 			item=list[i];
 			/*#{1IIF4OKS70InLoopPre*/
 			/*}#1IIF4OKS70InLoopPre*/
-			await session.runAISeg(agent,RunOneCmd,item,"1IIF4OKS70","1IIF4PTNV2")
+			loopR=await session.runAISeg(agent,RunOneCmd,item,"1IIF4OKS70","1IIF4PTNV2")
+			if(loopR==="break"){
+				break;
+			}
 			/*#{1IIF4OKS70InLoopPost*/
 			/*}#1IIF4OKS70InLoopPost*/
 		}
@@ -355,7 +358,7 @@ let Bash=async function(session){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		result=await session.callSegLLM("GetReact@"+agentURL,opts,messages,true);
 		result=trimJSON(result);
@@ -452,6 +455,7 @@ let Bash=async function(session){
 		while(!changes){
 			console.log("Wait bash idle...");
 			await cmdBash.waitIdle(true);
+			await cmdBash.runCommands(" ");
 			changes=await cmdBash.getContent();
 			changes=changes.substring(contentLen);
 			console.log("Bash idle end: "+changes);

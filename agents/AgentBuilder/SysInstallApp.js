@@ -30,7 +30,7 @@ let SysInstallApp=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,CreateTTY,TipInstallPkg,InstallPkg,CheckInstall,CheckAgent,CheckEnv,TipNoEnv,ConfirmFin,ConfirmFailed,Finish,Failed,ConfirmError,Error;
+	let Start,CreateTTY,TipInstallPkg,InstallPkg,CheckInstall,CheckAgent,CheckEnv,ConfirmFin,ConfirmFailed,Finish,Failed,ConfirmError,Error,AskNoEnv,Abort;
 	let tty=null;
 	
 	/*#{1IK3H9P1H0LocalVals*/
@@ -89,7 +89,7 @@ let SysInstallApp=async function(session){
 		/*#{1IK3HHJOI0Code*/
 		let workFunc;
 		workFunc=(await import("/@pkg/pkgUtil.js")).installPkg;
-		result=await workFunc(null,appStub.appId||appStub._id,{tty:tty});
+		result=await workFunc(null,appStub.appId||appStub._id,{tty:tty,setupType:"setupAgent"});
 		/*}#1IK3HHJOI0Code*/
 		return {seg:CheckInstall,result:(result),preSeg:"1IK3HHJOI0",outlet:"1IK3HJMPJ2"};
 	};
@@ -126,7 +126,7 @@ let SysInstallApp=async function(session){
 		}
 		/*}#1IK3I98I00Start*/
 		if(!envOK){
-			return {seg:TipNoEnv,result:(input),preSeg:"1IK3I98I00",outlet:"1IK3IAKNR2"};
+			return {seg:AskNoEnv,result:(input),preSeg:"1IK3I98I00",outlet:"1IK3IAKNR2"};
 		}
 		/*#{1IK3I98I00Post*/
 		/*}#1IK3I98I00Post*/
@@ -134,22 +134,6 @@ let SysInstallApp=async function(session){
 	};
 	CheckEnv.jaxId="1IK3I98I00"
 	CheckEnv.url="CheckEnv@"+agentURL
-	
-	segs["TipNoEnv"]=TipNoEnv=async function(input){//:1IK3IA5KM0
-		let result=input;
-		let opts={};
-		let role="assistant";
-		let content=(($ln==="CN")?("当前的AI2Apps环境不支持安装AgentNode。要安装AgentNode，请部署本地版本的AI2Apps。"):("The current AI2Apps environment does not support installing AgentNode. To install AgentNode, deploy the local version of AI2Apps."));
-		/*#{1IK3IA5KM0PreCodes*/
-		/*}#1IK3IA5KM0PreCodes*/
-		session.addChatText(role,content,opts);
-		/*#{1IK3IA5KM0PostCodes*/
-		result={result:"Failed",content:"The current AI2Apps environment does not support installing AgentNode. To install AgentNode, deploy the local version of AI2Apps."};
-		/*}#1IK3IA5KM0PostCodes*/
-		return {result:result};
-	};
-	TipNoEnv.jaxId="1IK3IA5KM0"
-	TipNoEnv.url="TipNoEnv@"+agentURL
 	
 	segs["ConfirmFin"]=ConfirmFin=async function(input){//:1IK3JR4SO0
 		let prompt=((($ln==="CN")?("安装已完成"):("Installation completed")))||input;
@@ -264,6 +248,47 @@ let SysInstallApp=async function(session){
 	};
 	Error.jaxId="1IK3KT2VB0"
 	Error.url="Error@"+agentURL
+	
+	segs["AskNoEnv"]=AskNoEnv=async function(input){//:1IMEAEU160
+		let prompt=((($ln==="CN")?("这个项目需要安装AgentNode，当前的AI2Apps不是本地部署的，不支持AgentNode。要安装AgentNode，请部署本地版本的AI2Apps。"):("This project requires installing AgentNode, the current AI2Apps is not locally deployed and does not support AgentNode. To install AgentNode, please deploy the local version of AI2Apps.")))||input;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let withChat=false;
+		let silent=false;
+		let items=[
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("放弃安装"):("Abort installation")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("知道了，仍然安装"):("Got it, proceed with installation")),code:1},
+		];
+		let result="";
+		let item=null;
+		
+		if(silent){
+			result="";
+			return {seg:Abort,result:(result),preSeg:"1IMEAEU160",outlet:"1IMEAEU0I0"};
+		}
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		if(typeof(item)==='string'){
+			result=item;
+			return {result:result};
+		}else if(item.code===0){
+			return {seg:Abort,result:(result),preSeg:"1IMEAEU160",outlet:"1IMEAEU0I0"};
+		}else if(item.code===1){
+			return {seg:InstallPkg,result:(result),preSeg:"1IMEAEU160",outlet:"1IMEAEU0J0"};
+		}
+		return {result:result};
+	};
+	AskNoEnv.jaxId="1IMEAEU160"
+	AskNoEnv.url="AskNoEnv@"+agentURL
+	
+	segs["Abort"]=Abort=async function(input){//:1IMEAMTAL0
+		let result=input
+		/*#{1IMEAMTAL0Code*/
+		result={result:"Failed",content:"The current AI2Apps environment does not support installing AgentNode. To install AgentNode, deploy the local version of AI2Apps."};
+		/*}#1IMEAMTAL0Code*/
+		return {result:result};
+	};
+	Abort.jaxId="1IMEAMTAL0"
+	Abort.url="Abort@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -747,59 +772,13 @@ export{SysInstallApp};
 //										},
 //										"condition": "#!envOK"
 //									},
-//									"linkedSeg": "1IK3IA5KM0"
+//									"linkedSeg": "1IMEAEU160"
 //								}
 //							]
 //						}
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1IK3IA5KM0",
-//					"attrs": {
-//						"id": "TipNoEnv",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1260",
-//						"y": "60",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "flag.svg",
-//						"context": {
-//							"jaxId": "1IK3IARSA8",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IK3IARSA9",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"text": {
-//							"type": "string",
-//							"valText": "The current AI2Apps environment does not support installing AgentNode. To install AgentNode, deploy the local version of AI2Apps.",
-//							"localize": {
-//								"EN": "The current AI2Apps environment does not support installing AgentNode. To install AgentNode, deploy the local version of AI2Apps.",
-//								"CN": "当前的AI2Apps环境不支持安装AgentNode。要安装AgentNode，请部署本地版本的AI2Apps。"
-//							},
-//							"localizable": true
-//						},
-//						"outlet": {
-//							"jaxId": "1IK3IAKNR4",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "hudtxt.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1117,6 +1096,172 @@ export{SysInstallApp};
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askMenu",
+//					"jaxId": "1IMEAEU160",
+//					"attrs": {
+//						"id": "AskNoEnv",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1260",
+//						"y": "30",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "This project requires installing AgentNode, the current AI2Apps is not locally deployed and does not support AgentNode. To install AgentNode, please deploy the local version of AI2Apps.",
+//							"localize": {
+//								"EN": "This project requires installing AgentNode, the current AI2Apps is not locally deployed and does not support AgentNode. To install AgentNode, please deploy the local version of AI2Apps.",
+//								"CN": "这个项目需要安装AgentNode，当前的AI2Apps不是本地部署的，不支持AgentNode。要安装AgentNode，请部署本地版本的AI2Apps。"
+//							},
+//							"localizable": true
+//						},
+//						"multi": "false",
+//						"withChat": "false",
+//						"outlet": {
+//							"jaxId": "1IMEAN4HB0",
+//							"attrs": {
+//								"id": "ChatInput",
+//								"desc": "输出节点。",
+//								"codes": "false"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1IMEAEU0I0",
+//									"attrs": {
+//										"id": "GiveUp",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Abort installation",
+//											"localize": {
+//												"EN": "Abort installation",
+//												"CN": "放弃安装"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IMEAQ90L0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IMEAQ90L1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IMEAMTAL0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1IMEAEU0J0",
+//									"attrs": {
+//										"id": "Install",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Got it, proceed with installation",
+//											"localize": {
+//												"EN": "Got it, proceed with installation",
+//												"CN": "知道了，仍然安装"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IMEAQ90L2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IMEAQ90L3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IMEAQP1N0"
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "menu.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1IMEAMTAL0",
+//					"attrs": {
+//						"id": "Abort",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1495",
+//						"y": "0",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1IMEAQ90L4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IMEAQ90L5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IMEAN4HB1",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1IMEAQP1N0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1380",
+//						"y": "120",
+//						"outlet": {
+//							"jaxId": "1IMEB85B10",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IK3HHJOI0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

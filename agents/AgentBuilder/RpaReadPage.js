@@ -27,7 +27,7 @@ const argsTemplate={
 			"name":"format","type":"string",
 			"required":false,
 			"defaultValue":"",
-			"desc":"如果没有query，要提取内容的方式，可以选择: "html", "markdown"，默认提取html。",
+			"desc":"如果没有query，要提取内容的方式，可以选择: \"html\", \"markdown\"，默认提取html。",
 		}
 	},
 	/*#{1IHCKTECK0ArgsView*/
@@ -42,7 +42,7 @@ let RpaReadPage=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,StartRpa,RpaError,OpenBrowser,OpenPage,ReadContent,TryCatch,Error,CheckQuery,PlainResult,CallLlm,QueryResult;
+	let FixArgs,StartRpa,RpaError,OpenBrowser,OpenPage,ReadContent,TryCatch,Error,CheckQuery,PlainResult,CallLlm,QueryResult,ClosePage,CloseBrowser;
 	let pageContent="";
 	
 	/*#{1IHCKTECK0LocalVals*/
@@ -112,7 +112,8 @@ let RpaReadPage=async function(session){
 		let devtools=false;
 		let dataDir=true;
 		let alias="RPAHOME";
-		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,{headless,devtools,autoDataDir:dataDir});
+		let options={headless,devtools,autoDataDir:dataDir};
+		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
 		context.rpaHostPage=browser.hostPage;
 		return {seg:OpenPage,result:(result),preSeg:"1ILSLD60H0",outlet:"1ILSLGPJ93"};
 	};
@@ -147,15 +148,37 @@ let RpaReadPage=async function(session){
 		let $waitBefore=0;
 		let $waitAfter=0;
 		let page=context[pageVal];
+		let $target=format==="markdown"?"article":"cleanHTML";
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1ILSLEUOT0PreCodes*/
 		/*}#1ILSLEUOT0PreCodes*/
-		result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+		switch($target){
+			case "cleanHTML":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+				break;
+			}
+			case "html":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "view":{
+				result=await context.webRpa.readNodeView(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "text":{
+				result=await context.webRpa.readNodeText(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "article":{
+				result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+		}
 		$waitAfter && (await sleep($waitAfter))
 		/*#{1ILSLEUOT0PostCodes*/
 		pageContent=result;
 		/*}#1ILSLEUOT0PostCodes*/
-		return {seg:CheckQuery,result:(result),preSeg:"1ILSLEUOT0",outlet:"1ILSLGPJ95"};
+		return {seg:ClosePage,result:(result),preSeg:"1ILSLEUOT0",outlet:"1ILSLGPJ95"};
 	};
 	ReadContent.jaxId="1ILSLEUOT0"
 	ReadContent.url="ReadContent@"+agentURL
@@ -244,6 +267,34 @@ let RpaReadPage=async function(session){
 	QueryResult.jaxId="1ILSLMEMO0"
 	QueryResult.url="QueryResult@"+agentURL
 	
+	segs["ClosePage"]=ClosePage=async function(input){//:1IN5QV0PN0
+		let result=input;
+		let pageVal="aaPage";
+		let waitBefore=0;
+		let waitAfter=0;
+		let page=context[pageVal];
+		waitBefore && (await sleep(waitBefore));
+		await page.close();
+		context[pageVal]=null;
+		waitAfter && (await sleep(waitAfter))
+		return {seg:CloseBrowser,result:(result),preSeg:"1IN5QV0PN0",outlet:"1IN5QVQEL1"};
+	};
+	ClosePage.jaxId="1IN5QV0PN0"
+	ClosePage.url="ClosePage@"+agentURL
+	
+	segs["CloseBrowser"]=CloseBrowser=async function(input){//:1IN5QTUK80
+		let result=input;
+		let browser=context.rpaBrowser;
+		if(browser){
+			await context.webRpa.closeBrowser(browser);
+		}
+		context.rpaBrowser=null;
+		context.rpaHostPage=null;
+		return {seg:CheckQuery,result:(result),preSeg:"1IN5QTUK80",outlet:"1IN5QVQEL0"};
+	};
+	CloseBrowser.jaxId="1IN5QTUK80"
+	CloseBrowser.url="CloseBrowser@"+agentURL
+	
 	agent={
 		isAIAgent:true,
 		session:session,
@@ -283,7 +334,7 @@ let ChatAPI=[{
 			properties:{
 				url:{type:"string",description:"要读取的页面URL"},
 				query:{type:"string",description:"要从页面中获得的信息"},
-				format:{type:"string",description:"如果没有query，要提取内容的方式，可以选择: \"html\", \"markdown\"，默认提取html。",enum:["html","markdown"]}
+				format:{type:"string",description:"如果没有query，要提取内容的方式，可以选择: \\\"html\\\", \\\"markdown\\\"，默认提取html。",enum:["html","markdown"]}
 			}
 		}
 	}
@@ -331,6 +382,8 @@ if(DocAIAgentExporter){
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/RpaReadPage.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
 			this.packResult(coder,seg,seg.outlet);
 		}
 		coder.indentLess();coder.maybeNewLine();
@@ -425,16 +478,18 @@ export{RpaReadPage,ChatAPI};
 //					"attrs": {
 //						"type": "String",
 //						"mockup": "\"\"",
-//						"desc": "如果没有query，要提取内容的方式，可以选择: \"html\", \"markdown\"，默认提取html。",
+//						"desc": "如果没有query，要提取内容的方式，可以选择: \\\"html\\\", \\\"markdown\\\"，默认提取html。",
 //						"required": "false",
 //						"enum": {
 //							"type": "array",
 //							"def": "Array",
 //							"attrs": [
 //								{
+//									"type": "auto",
 //									"valText": "html"
 //								},
 //								{
+//									"type": "auto",
 //									"valText": "markdown"
 //								}
 //							]
@@ -708,7 +763,7 @@ export{RpaReadPage,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1ILSLJSP30"
+//							"linkedSeg": "1IN5QV0PN0"
 //						},
 //						"run": ""
 //					},
@@ -803,7 +858,7 @@ export{RpaReadPage,ChatAPI};
 //						"id": "CheckQuery",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1375",
+//						"x": "1905",
 //						"y": "305",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -871,7 +926,7 @@ export{RpaReadPage,ChatAPI};
 //						"id": "PlainResult",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1605",
+//						"x": "2135",
 //						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -907,7 +962,7 @@ export{RpaReadPage,ChatAPI};
 //						"id": "CallLlm",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1605",
+//						"x": "2135",
 //						"y": "255",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
@@ -971,7 +1026,7 @@ export{RpaReadPage,ChatAPI};
 //						"id": "QueryResult",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1810",
+//						"x": "2340",
 //						"y": "255",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -998,6 +1053,84 @@ export{RpaReadPage,ChatAPI};
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaClosePage",
+//					"jaxId": "1IN5QV0PN0",
+//					"attrs": {
+//						"id": "ClosePage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1400",
+//						"y": "305",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IN5QVQER2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IN5QVQER3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "aaPage",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1IN5QVQEL1",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IN5QTUK80"
+//						},
+//						"run": ""
+//					},
+//					"icon": "/@aae/assets/tab_close.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaCloseBrowser",
+//					"jaxId": "1IN5QTUK80",
+//					"attrs": {
+//						"id": "CloseBrowser",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1640",
+//						"y": "305",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IN5QVQER0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IN5QVQER1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IN5QVQEL0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1ILSLJSP30"
+//						}
+//					},
+//					"icon": "close.svg"
 //				}
 //			]
 //		},

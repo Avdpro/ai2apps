@@ -434,7 +434,7 @@ let PrjTabOSPrjSetup=async function(session){
 			let output=input;
 			return {seg:DoSyncPrj,result:(output),preSeg:"1IJP4N4J20",outlet:"1IJP4Q0PA0"};
 		}
-		if(input.action==="Package"||input.action==="package"||input.action==="Packages"||input.action==="packages"){
+		if(input.action==="Package"||input.action==="package"||input.action==="Packages"||input.action==="packages"||input.action==="Pkg"||input.action==="pkg"||input.action==="Pkgs"||input.action==="pkgs"){
 			let output=input;
 			return {seg:DoPackage,result:(output),preSeg:"1IJP4N4J20",outlet:"1IJP4QAD70"};
 		}
@@ -469,7 +469,7 @@ let PrjTabOSPrjSetup=async function(session){
 		let result=input;
 		let opts={};
 		let role="assistant";
-		let content=input;
+		let content=`Wrong setup step-vo: ${JSON.stringify(input)}`;
 		session.addChatText(role,content,opts);
 		return {result:result};
 	};
@@ -585,8 +585,9 @@ let PrjTabOSPrjSetup=async function(session){
 	
 	segs["CallAgent"]=CallAgent=async function(input){//:1IJP7OKKE0
 		let result;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"undefined");
 		let arg=input.args;
+		let sourcePath=(input.agent)||"";
+		sourcePath=sourcePath[0]==="/"?sourcePath:pathLib.joinTabOSURL(basePath,"../"+sourcePath);
 		/*#{1IJP7OKKE0Input*/
 		/*}#1IJP7OKKE0Input*/
 		result= await session.pipeChat(sourcePath,arg,false);
@@ -690,8 +691,8 @@ let PrjTabOSPrjSetup=async function(session){
 	
 	segs["DoSyncPrj"]=DoSyncPrj=async function(input){//:1IJRTGNQ30
 		let result;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"./ToolSetupPrjSyncDir.js");
 		let arg={"dirPath":dirPath};
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./ToolSetupPrjSyncDir.js");
 		result= await session.pipeChat(sourcePath,arg,false);
 		return {seg:GetNext,result:(result),preSeg:"1IJRTGNQ30",outlet:"1IJRTHCN60"};
 	};
@@ -1235,7 +1236,7 @@ export{PrjTabOSPrjSetup};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#input.action===\"Package\"||input.action===\"package\"||input.action===\"Packages\"||input.action===\"packages\""
+//										"condition": "#input.action===\"Package\"||input.action===\"package\"||input.action===\"Packages\"||input.action===\"packages\"||input.action===\"Pkg\"||input.action===\"pkg\"||input.action===\"Pkgs\"||input.action===\"pkgs\""
 //									},
 //									"linkedSeg": "1IJP6F0T40"
 //								},
@@ -1397,7 +1398,7 @@ export{PrjTabOSPrjSetup};
 //							}
 //						},
 //						"role": "Assistant",
-//						"text": "#input",
+//						"text": "#`Wrong setup step-vo: ${JSON.stringify(input)}`",
 //						"outlet": {
 //							"jaxId": "1IJP6MK911",
 //							"attrs": {

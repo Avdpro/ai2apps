@@ -130,7 +130,7 @@ async function routeCall(evt){
 	request=evt.request;
 	url=new URL(request.url);
 	pathName=url.pathname;
-	pos=pathName.indexOf("/",2);//url should starts with: /+
+	pos=pathName.indexOf("/",2);//url should start with: /+
 	if(pos>0){
 		routeLead=pathName.substring(0,pos);
 	}else{

@@ -5,9 +5,433 @@ import { proxyCall } from '../util/ProxyCall.js'
 
 const APIRoot=process.env.APIROOT;
 const RagServerAddr=process.env.RAG_API
-const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
+const USERINFO_PROJECTION={email:1,rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
+let masterEmails=process.env.RAGMasters;
+if(masterEmails){
+	try{
+		masterEmails=JSON.parse(masterEmails);
+		if(!Array.isArray(masterEmails)){
+			masterEmails=null;
+		}
+	}catch (err){
+		masterEmails=null;
+	}
+}else{
+	masterEmails=null;
+}
 
 export default async function(app,router,apiMap) {
+	
+	//-----------------------------------------------------------------------
+	apiMap['RagIndexPrjSetup'] = async function (req, res, next) {
+		let reqVO, userInfo, resVO,isMaster;
+		let userId, token,apiAddress,userEmail;
+		let indexMeta,postToRoot,ragBase;
+		
+		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
+		
+		indexMeta=reqVO.index;
+		apiAddress=reqVO.apiURL;
+		postToRoot=reqVO.postToRoot;
+		
+		if(postToRoot && APIRoot){
+			await proxyCall(req,res,next);
+			return;
+		}
+		
+		if (!userId) {
+			res.json({ code: 403, info: "UserId/Token invalid." });
+			return;
+		}
+		userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+		if (!userInfo) {
+			res.json({ code: 403, info: "UserId/Token invalid." });
+			return;
+		}
+		userEmail=userInfo.email;
+		if(masterEmails){
+			isMaster = masterEmails.indexOf(userEmail) >= 0;
+		}else {
+			isMaster = (userInfo.rank === "MASTER") || (userInfo.rank === "LORD");
+		}
+		if (!isMaster) {
+			res.json({ code: 403, info: "User rank invalid." });
+			return;
+		}
+		
+		if(!apiAddress) {
+			apiAddress=RagServerAddr;
+		}
+
+		if(!apiAddress) {
+			res.json({ code: 500, info: "No RAG service." });
+			return;
+		}
+		
+		try{
+			const response = await fetch(apiAddress+"/solution/index", {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(indexMeta),
+			});
+			if (response.status !== 200 && response.status !== 201) {
+				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
+				return;
+			}
+		} catch (error) {
+			res.json({ code: 500, info: `RAG-Index internal error: ${error}` });
+			return;
+		}
+		res.json({ code: 200, info: "Index done." });
+	};
+	
+	//-----------------------------------------------------------------------
+	apiMap['RagQueryPrjSetup'] = async function (req, res, next) {
+		let reqVO, userInfo, resVO,isMaster;
+		let userId, token,apiAddress;
+		let queryMeta;
+		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
+		queryMeta=reqVO.query;
+		apiAddress=reqVO.apiURL;
+		
+		if(!RagServerAddr && !apiAddress){
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+		}
+		if(!apiAddress) {
+			if (!userId) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+			if (!userInfo) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			apiAddress=RagServerAddr;
+		}
+		try{
+			const response = await fetch(apiAddress+"/solution/retrieve", {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(queryMeta),
+			});
+			if (response.status !== 200) {
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
+				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
+				return;
+			}
+			const result = await response.json();
+			if (result && result.code===200 && result.data && result.data[0]) {
+				res.json({ code: 200, guide: result.data[0].page_content});
+			} else {
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
+				res.json({ code: 500, info: `result code error: ${result.code}` });
+			}
+		} catch (error) {
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+			res.json({ code: 500, info: `RAG-Query internal error: ${error}` });
+		}
+	};
+	
+	//-----------------------------------------------------------------------
+	apiMap['RagIndexIssue'] = async function (req, res, next) {
+		let reqVO, userInfo, resVO,isMaster;
+		let userId, token,apiAddress;
+		let indexMeta,postToRoot,ragBase;
+		
+		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
+		
+		indexMeta=reqVO.index;
+		apiAddress=reqVO.apiURL;
+		postToRoot=reqVO.postToRoot;
+		
+		if(postToRoot && APIRoot){
+			await proxyCall(req,res,next);
+			return;
+		}
+		
+		if (!userId) {
+			res.json({ code: 403, info: "UserId/Token invalid." });
+			return;
+		}
+		userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+		if (!userInfo) {
+			res.json({ code: 403, info: "UserId/Token invalid." });
+			return;
+		}
+		let userEmail=userInfo.email;
+		if(masterEmails){
+			isMaster = masterEmails.indexOf(userEmail) >= 0;
+		}else {
+			isMaster = (userInfo.rank === "MASTER") || (userInfo.rank === "LORD");
+		}
+		if (!isMaster) {
+			res.json({ code: 403, info: "User rank invalid." });
+			return;
+		}
+		
+		if(!apiAddress) {
+			apiAddress=RagServerAddr;
+		}
+		
+		if(!apiAddress) {
+			res.json({ code: 500, info: "No RAG service." });
+			return;
+		}
+		
+		try{
+			let postJSON=JSON.stringify(indexMeta);
+			console.log(postJSON);
+			const response = await fetch(apiAddress+"/qa/index", {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: postJSON,
+			});
+			if (response.status !== 200 && response.status !== 201) {
+				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
+				return;
+			}
+		} catch (error) {
+			res.json({ code: 500, info: `RAG-Index internal error: ${error}` });
+			return;
+		}
+		res.json({ code: 200, info: "Index done." });
+	};
+	
+	//-----------------------------------------------------------------------
+	apiMap['RagQueryIssue'] = async function (req, res, next) {
+		let reqVO, userInfo, resVO,isMaster;
+		let userId, token,apiAddress;
+		let queryMeta;
+		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
+		queryMeta=reqVO.query;
+		apiAddress=reqVO.apiURL;
+		
+		if(!RagServerAddr && !apiAddress){
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+		}
+		if(!apiAddress) {
+			if (!userId) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+			if (!userInfo) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			apiAddress=RagServerAddr;
+		}
+		try{
+			let postJSON=JSON.stringify(queryMeta);
+			//postJSON=`{"error_desc":"代理错误","tags":["MacOS"]}`;
+			console.log(postJSON);
+			const response = await fetch(apiAddress+"/qa/retrieve", {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: postJSON,
+			});
+			if (response.status !== 200) {
+				if(response.status===422){
+					let err422=await response.json();
+					console.log(err422);
+				}
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
+				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
+				return;
+			}
+			const resultText=await response.text();
+			const result = JSON.parse(resultText);//await response.json();
+			if (result && result.code===200) {
+				res.json({ code: 200, docs: result.data});
+			} else {
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
+				res.json({ code: 500, info: `result code error: ${result.code}` });
+			}
+		} catch (error) {
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+			res.json({ code: 500, info: `RAG-Query internal error: ${error}` });
+		}
+	};
+	
+	//-----------------------------------------------------------------------
+	apiMap['RagIndexMetaDoc'] = async function (req, res, next) {
+		let reqVO, userInfo, resVO,isMaster;
+		let userId, token,apiAddress;
+		let indexMeta,postToRoot,ragBase;
+		
+		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
+		
+		indexMeta=reqVO.index;
+		apiAddress=reqVO.apiURL;
+		postToRoot=reqVO.postToRoot;
+		
+		if(postToRoot && APIRoot){
+			await proxyCall(req,res,next);
+			return;
+		}
+		
+		if (!userId) {
+			res.json({ code: 403, info: "UserId/Token invalid." });
+			return;
+		}
+		userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+		if (!userInfo) {
+			res.json({ code: 403, info: "UserId/Token invalid." });
+			return;
+		}
+		let userEmail=userInfo.email;
+		if(masterEmails){
+			isMaster = masterEmails.indexOf(userEmail) >= 0;
+		}else {
+			isMaster = (userInfo.rank === "MASTER") || (userInfo.rank === "LORD");
+		}
+		if (!isMaster) {
+			res.json({ code: 403, info: "User rank invalid." });
+			return;
+		}
+		
+		if(!apiAddress) {
+			apiAddress=RagServerAddr;
+		}
+		
+		if(!apiAddress) {
+			res.json({ code: 500, info: "No RAG service." });
+			return;
+		}
+		
+		try{
+			const response = await fetch(apiAddress+"/index/chunk", {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(indexMeta),
+			});
+			if (response.status !== 200 && response.status !== 201) {
+				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
+				return;
+			}
+		} catch (error) {
+			res.json({ code: 500, info: `RAG-Index internal error: ${error}` });
+			return;
+		}
+		res.json({ code: 200, info: "Index done." });
+	};
+	
+	//-----------------------------------------------------------------------
+	apiMap['RagQueryMetaDoc'] = async function (req, res, next) {
+		let reqVO, userInfo, resVO,isMaster;
+		let userId, token,apiAddress;
+		let queryMeta;
+		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
+		queryMeta=reqVO.query;
+		apiAddress=reqVO.apiURL;
+		
+		if(!RagServerAddr && !apiAddress){
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+		}
+		if(!apiAddress) {
+			if (!userId) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+			if (!userInfo) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			apiAddress=RagServerAddr;
+		}
+		try{
+			let postJSON=JSON.stringify(queryMeta);
+			//postJSON=`{"error_desc":"代理错误","tags":["MacOS"]}`;
+			console.log(postJSON);
+			const response = await fetch(apiAddress+"/retrieve/chunk", {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: postJSON,
+			});
+			if (response.status !== 200) {
+				if(response.status===422){
+					let err422=await response.json();
+					console.log(err422);
+				}
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
+				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
+				return;
+			}
+			const result = await response.json();
+			if (result && result.code===200) {
+				res.json({ code: 200, docs: result.data});
+			} else {
+				if(APIRoot){
+					await proxyCall(req,res,next);
+					return;
+				}
+				res.json({ code: 500, info: `result code error: ${result.code}` });
+			}
+		} catch (error) {
+			if(APIRoot){
+				await proxyCall(req,res,next);
+				return;
+			}
+			res.json({ code: 500, info: `RAG-Query internal error: ${error}` });
+		}
+	};
+
 	//-----------------------------------------------------------------------
 	apiMap['RAGIndex'] = async function (req, res, next) {
 		let reqVO, userInfo, resVO,isMaster;
@@ -44,7 +468,7 @@ export default async function(app,router,apiMap) {
 				},
 				body: JSON.stringify(indexMeta),
 			});
-			if (response.status !== 200) {
+			if (response.status !== 200 && response.status !== 201) {
 				res.json({ code: response.status, info: `HTTP error! Status: ${response.status}` });
 				return;
 			}

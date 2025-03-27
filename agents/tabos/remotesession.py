@@ -28,7 +28,7 @@ class RemoteSession:
 		if not res or res["code"] != 200:
 			raise Exception(f"Start AgentNode error: {res.get('info', 'Unknown error')}")
 
-		res= await session.callHub("AhCreateSession",{"node": node_name})
+		res= await session.callHub("AhCreateSession",{"node": node_name,"language":session.language})
 		if not res or res["code"] != 200:
 			raise Exception(f"Create Session error: {res.get('info', 'Unknown error')}")
 
