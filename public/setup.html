@@ -1534,6 +1534,7 @@ cokeNT.makeCall=async function(msg,vo,timeout=0){
 };
 
 let theCokeNT=new CokeNT(null);
+let tabNT=theCokeNT;
 
 //****************************************************************************
 //TabNTDisk
@@ -15102,17 +15103,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 279,
+		"versionIdx": 280,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 173,
+		"versionIdx": 175,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 204,
+		"versionIdx": 205,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15132,7 +15133,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 215,
+		"versionIdx": 216,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15147,12 +15148,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 166,
+		"versionIdx": 167,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 380,
+		"versionIdx": 381,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15162,7 +15163,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 32,
+		"versionIdx": 34,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15175,17 +15176,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 279,
+		"versionIdx": 280,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 173,
+		"versionIdx": 175,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 204,
+		"versionIdx": 205,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15210,7 +15211,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 380,
+		"versionIdx": 381,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15223,17 +15224,17 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 279,
+		"versionIdx": 280,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 173,
+		"versionIdx": 175,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 204,
+		"versionIdx": 205,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15243,7 +15244,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 380,
+		"versionIdx": 381,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15253,7 +15254,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 32,
+		"versionIdx": 34,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15266,17 +15267,17 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 279,
+		"versionIdx": 280,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 173,
+		"versionIdx": 175,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 204,
+		"versionIdx": 205,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15286,12 +15287,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 380,
+		"versionIdx": 381,
 		"zip": "StdUI.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 32,
+		"versionIdx": 34,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15301,17 +15302,17 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 279,
+		"versionIdx": 280,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 173,
+		"versionIdx": 175,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 204,
+		"versionIdx": 205,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15331,7 +15332,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 215,
+		"versionIdx": 216,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15346,7 +15347,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-StdUI",
-		"versionIdx": 380,
+		"versionIdx": 381,
 		"zip": "StdUI.zip"
 	},
 	{
@@ -15356,12 +15357,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 166,
+		"versionIdx": 167,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 32,
+		"versionIdx": 34,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -17378,7 +17379,7 @@ var checkOutDisk;
 		}:function(){};
 	
 		try{
-			resDiskVO=await theCokeNT.makeCall("diskCheckOut",{"diskId":diskId,"versionIdx":versionIdx});
+			resDiskVO=await tabNT.makeCall("diskCheckOut",{"diskId":diskId,"versionIdx":versionIdx});
 		}catch(err){
 			logger.log("API call error: "+err);
 			throw(err);

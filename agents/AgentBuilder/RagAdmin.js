@@ -19,7 +19,7 @@ let RagAdmin=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let AskAction,AskSubmitType,AskQueryType,InputEnvPrj,AskGuideMD,SubmitSetupDoc,ShowPushResult,QueryEnvPrj,QuerySetupDoc,ShowSetupDoc,QueryInfo,ShowInfoDoc,AskQuery,QueryDocInfo,ShowInfo,AskSolutionFile,SubmitIssueDoc,InputURL,AskDocType,AskDocFile,SEG1IN5V9DEV0,PushToHub,SubmitDoc,InputIssue,AskIssue,AskDocKB,AskKb,_1,_2,ReadPage,ShowHTML,AskSubmit,SEG1IN618KT20;
+	let AskAction,AskSubmitType,AskQueryType,InputEnvPrj,AskGuideMD,SubmitSetupDoc,ShowPushResult,QueryEnvPrj,QuerySetupDoc,ShowSetupDoc,QueryInfo,ShowInfoDoc,AskQuery,QueryDocInfo,ShowInfo,AskSolutionFile,SubmitIssueDoc,InputURL,AskDocType,AskDocFile,SEG1IN5V9DEV0,PushToHub,SubmitDoc,InputIssue,AskIssue,AskDocKB,AskKb,_1,_2,ReadPage,ShowHTML,AskSubmit,TipWork;
 	/*#{1IMU8PCBA1LocalVals*/
 	/*}#1IMU8PCBA1LocalVals*/
 	
@@ -80,7 +80,7 @@ let RagAdmin=async function(session){
 		}else if(item.code===1){
 			return {seg:AskQueryType,result:(result),preSeg:"1IMU8U52S0",outlet:"1IMU8U52C1"};
 		}else if(item.code===2){
-			return {seg:SEG1IN618KT20,result:(result),preSeg:"1IMU8U52S0",outlet:"1IN6183KL0"};
+			return {seg:TipWork,result:(result),preSeg:"1IMU8U52S0",outlet:"1IN6183KL0"};
 		}
 		return {result:result};
 	};
@@ -211,7 +211,8 @@ let RagAdmin=async function(session){
 					name:indexVo.project
 				},
 				procedure:context.prjSetupContent
-			}
+			},
+			postToRoot:indexVo.postToRoot
 		};
 		await tabNT.checkLogin();
 		res=await tabNT.makeCall("RagIndexPrjSetup",callVo);
@@ -443,7 +444,8 @@ let RagAdmin=async function(session){
 				error_desc:indexVo.issue,
 				error_solution:context.issueContent,
 				tags:tags
-			}
+			},
+			postToRoot:indexVo.postToRoot
 		};
 		await tabNT.checkLogin();
 		res=await tabNT.makeCall("RagIndexIssue",callVo);
@@ -599,7 +601,8 @@ let RagAdmin=async function(session){
 				file_path:context.metaDocPath,
 				knowledge_name:indexVo.kbName||"public",
 				identifier:indexVo.identifier||""
-			}
+			},
+			postToRoot:indexVo.postToRoot
 		};
 		if(context.htmlUrl){
 			callVo.index.metadata={url:context.htmlUrl};
@@ -752,15 +755,16 @@ let RagAdmin=async function(session){
 	AskSubmit.jaxId="1IN4NKS5N0"
 	AskSubmit.url="AskSubmit@"+agentURL
 	
-	segs["SEG1IN618KT20"]=SEG1IN618KT20=async function(input){//:1IN618KT20
-		let result;
-		let arg=input;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"");
-		result= await session.pipeChat(sourcePath,arg,false);
-		return {result:result};
+	segs["TipWork"]=TipWork=async function(input){//:1IN73QP1T0
+		let result=input;
+		let opts={};
+		let role="assistant";
+		let content="抱歉，此功能暂未实现";
+		session.addChatText(role,content,opts);
+		return {seg:AskAction,result:(result),preSeg:"1IN73QP1T0",outlet:"1IN73SONF0"};
 	};
-	SEG1IN618KT20.jaxId="1IN618KT20"
-	SEG1IN618KT20.url="SEG1IN618KT20@"+agentURL
+	TipWork.jaxId="1IN73QP1T0"
+	TipWork.url="TipWork@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -1170,7 +1174,7 @@ export{RagAdmin};
 //										},
 //										"icon": "/~/-tabos/shared/assets/help.svg"
 //									},
-//									"linkedSeg": "1IN618KT20"
+//									"linkedSeg": "1IN73QP1T0"
 //								}
 //							]
 //						},
@@ -2049,7 +2053,7 @@ export{RagAdmin};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1740",
+//						"x": "1730",
 //						"y": "800",
 //						"outlet": {
 //							"jaxId": "1IMUBSUDI15",
@@ -2833,42 +2837,64 @@ export{RagAdmin};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1IN618KT20",
+//					"def": "output",
+//					"jaxId": "1IN73QP1T0",
 //					"attrs": {
-//						"id": "",
+//						"id": "TipWork",
 //						"viewName": "",
 //						"label": "",
-//						"x": "410",
-//						"y": "740",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"x": "405",
+//						"y": "720",
+//						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1IN61DNKJ2",
+//							"jaxId": "1IN73SONN0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1IN61DNKJ3",
+//							"jaxId": "1IN73SONN1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
-//						"source": "",
-//						"argument": "#{}#>input",
-//						"secret": "false",
+//						"role": "Assistant",
+//						"text": "抱歉，此功能暂未实现",
 //						"outlet": {
-//							"jaxId": "1IN61DNKF0",
+//							"jaxId": "1IN73SONF0",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1IN73SBBK0"
 //						}
 //					},
-//					"icon": "agent.svg"
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1IN73SBBK0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1595",
+//						"y": "720",
+//						"outlet": {
+//							"jaxId": "1IN73SONN2",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IMUBRCV50"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

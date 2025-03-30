@@ -53,9 +53,15 @@ let AhFileLib,ahFileLib;
 	};
 	
 	//-----------------------------------------------------------------------
+	const checkNameRegex = /[%$#^&*!@\/<>:"'`\\\u4e00-\u9fa5\s]/;
 	ahFileLib.genFileName=async function(orgName){
 		let basename,fileId;
 		basename=pathLib.basename(orgName);
+		if(checkNameRegex.test(basename)){
+			let ext;
+			ext=pathLib.extname(basename);
+			basename="File"+ext;
+		}
 		fileId=""+(this.nextFileId++);
 		fileId=fileId.padStart(6,"0");
 		await asyncFS.writeFile(pathLib.join(this.fileDir,"_file_id.txt"),""+this.nextFileId);

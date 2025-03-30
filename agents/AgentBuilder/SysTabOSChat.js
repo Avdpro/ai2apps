@@ -241,7 +241,7 @@ let SysTabOSChat=async function(session){
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o",
+			mode:"$expert",
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -447,8 +447,9 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		let result=input;
 		/*#{1IKCVIQND0Start*/
 		let isCommand=false;
-		if(typeof(input)==="string"){
+		if(typeof(input)==="string" && input[0]==="/"){
 			let cmd;
+			input=input.substring(1);
 			cmd=input.split(" ")[0];
 			if(cmd){
 				cmd=await cokeEnv.getCmdFunc(cmd,input);
@@ -1268,7 +1269,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o",
+//						"mode": "$expert",
 //						"system": "#`\n你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。\n\n当前的Tools（本地智能体工具）有:\n${JSON.stringify(context.toolIndex,null,\"\\t\")}\n\n当前的Nodes（外部智能体节点）有:\n${JSON.stringify(context.agentNodes,null,\"\\t\")}\n\n- - -\n\n- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。\n\n- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。\n- 如果需要执行一个Tool，设置回复JSON中的\"action\"属性为\"tool\"；设置\"tool\"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"tool\",\n\t\"tool\":\"Tool-3\",\n    \"prompt\":\"Search for: Who is the winner of 2024 F1?\"\n}\n注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。\n\n- 如果需要执行一个Node，设置回复JSON中的\"action\"属性为\"node\"；回复JSON中的\"node\"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"node\",\n\t\"node\":\"DrawNode\",\n    \"prompt\":\"Draw picture of a cute fat cat.\"\n}\n\n- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。\n\n- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。\n\n- 如果回答用户的输入不需要使用任何tool，回复将JSON中的\"action\"属性设置为\"finish\"，用回复JSON中的\"content\"属性回答用户。例如：当用户询问：\"西瓜是一种水果么？\"，你的回复：\n{\n\t\"action\":\"finish\",\n\t\"content\":\"是的，西瓜是一种水果。\"\n}\n\n- 如果成功的完成了用户提出的任务，回复将JSON中的\"action\"属性设置为\"finish\"，并通过\"content\"属性总结汇报执行情况。例如\n{\n\t\"action\":\"finish\",\n    \"content\":\"论坛帖子已经成功发布。\"\n}\n\n- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool\n\n- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的\"action\"属性为\"abort\"，并在\"content\"属性中说明原因。例如:\n{\n\t\"action\":\"abort\",\n    \"content\":\"没有登录脸书账号，无法发布新的内容。\"\n}\n\n- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的\"action\"属性为\"missingTool\"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用\"missingTools\"数组属性里描述缺失的Tool。例如：\n{\n\t\"action\":\"missingTool\",\n\t\"missingTools\":[\n    \t\"检查脸书账号登录状态\",\n        \"发布脸书动态\"\n    ]\n}\n\n- 如果执行任务需要用户提供更多的信息，设置回复JSON中的\"action\"属性为\"chat\"，要询问用户的内容放在\"content\"属性里。例如，需要用户提供邮箱地址：\n{\n\t\"action\":\"chat\",\n\t\"content\":\"请告诉我你的电子邮箱地址\"\n}\n`",
 //						"temperature": "0",
 //						"maxToken": "2000",

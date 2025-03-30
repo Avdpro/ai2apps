@@ -334,8 +334,30 @@ let RpaWebSearch=async function(session){
 		let $waitBefore=0;
 		let $waitAfter=0;
 		let page=context[pageVal];
+		let $target="cleanHTML";
 		$waitBefore && (await sleep($waitBefore));
-		result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+		switch($target){
+			case "cleanHTML":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+				break;
+			}
+			case "html":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "view":{
+				result=await context.webRpa.readNodeView(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "text":{
+				result=await context.webRpa.readNodeText(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "article":{
+				result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+		}
 		$waitAfter && (await sleep($waitAfter))
 		return {seg:FindUrls,result:(result),preSeg:"1ILPRQC4P0",outlet:"1ILPS33ST2"};
 	};
@@ -433,8 +455,30 @@ let RpaWebSearch=async function(session){
 		let $waitBefore=0;
 		let $waitAfter=0;
 		let page=context[pageVal];
+		let $target="article";
 		$waitBefore && (await sleep($waitBefore));
-		result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
+		switch($target){
+			case "cleanHTML":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+				break;
+			}
+			case "html":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "view":{
+				result=await context.webRpa.readNodeView(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "text":{
+				result=await context.webRpa.readNodeText(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "article":{
+				result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+		}
 		$waitAfter && (await sleep($waitAfter))
 		return {seg:CloseLoopPage,result:(result),preSeg:"1ILPS2MVR0",outlet:"1ILPS33ST8"};
 	};
@@ -1012,7 +1056,7 @@ let ChatAPI=[{
 	agentName: "RpaWebSearch.js",
 	label: "{\"EN\":\"Web Search\",\"CN\":\"网络搜索\"}",
 	isRPA: true,
-	chatEntry: "Root",
+	chatEntry: "Tool",
 	icon: "/~/-tabos/shared/assets/browser.svg"
 }];
 
@@ -1058,6 +1102,8 @@ if(DocAIAgentExporter){
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/RpaWebSearch.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
 			this.packResult(coder,seg,seg.outlet);
 		}
 		coder.indentLess();coder.maybeNewLine();
@@ -3573,6 +3619,6 @@ export{RpaWebSearch,ChatAPI};
 //		"desc": "使用Google进行网页搜索并返回总结后的搜索结果。",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
-//		"addOnOpts": "{\"name\":\"\",\"label\":\"{\\\"EN\\\":\\\"Web Search\\\",\\\"CN\\\":\\\"网络搜索\\\"}\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"chatEntry\":\"Root\",\"isRPA\":1,\"rpaHost\":\"\",\"segIcon\":\"/~/-tabos/shared/assets/browser.svg\",\"catalog\":\"AI Call\"}"
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"{\\\"EN\\\":\\\"Web Search\\\",\\\"CN\\\":\\\"网络搜索\\\"}\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"chatEntry\":\"Tool\",\"isRPA\":true,\"rpaHost\":\"\",\"segIcon\":\"/~/-tabos/shared/assets/browser.svg\",\"catalog\":\"AI Call\"}"
 //	}
 //}

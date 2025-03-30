@@ -6,8 +6,10 @@ import ollama from "ollama";
 import followRedirects from "follow-redirects";
 import {Readable} from "stream";
 
-import {proxyCall} from "../util/ProxyCall.js";
 import {setupTokenUtils,tokenForMessages,charForMessages,checkAITokenCall,useAITokens,chargePointsByChat,chargePointsByUsage} from "../util/TokenUtils.mjs";
+import ProxyCall from '../util/ProxyCall.js'
+const { callProxy,proxyCall }=ProxyCall;
+
 const getUserInfo=null,getPVUserInfo=null;
 
 

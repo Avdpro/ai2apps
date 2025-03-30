@@ -1,10 +1,11 @@
 import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
 import pathLib from "path";
 import { checkAITokenCall } from '../util/TokenUtils.mjs'
-import { proxyCall } from '../util/ProxyCall.js'
-
+import ProxyCall from '../util/ProxyCall.js'
+const { callProxy,proxyCall }=ProxyCall;
 const APIRoot=process.env.APIROOT;
-const RagServerAddr=process.env.RAG_API
+const RagServerAddr=process.env.RAG_API;
+const IsRagRoot=process.env.RAG_Root==="TRUE";
 const USERINFO_PROJECTION={email:1,rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
 let masterEmails=process.env.RAGMasters;
 if(masterEmails){
@@ -28,6 +29,11 @@ export default async function(app,router,apiMap) {
 		let userId, token,apiAddress,userEmail;
 		let indexMeta,postToRoot,ragBase;
 		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
@@ -40,15 +46,25 @@ export default async function(app,router,apiMap) {
 			await proxyCall(req,res,next);
 			return;
 		}
-		
-		if (!userId) {
-			res.json({ code: 403, info: "UserId/Token invalid." });
-			return;
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
+			if (!userId) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+			if (!userInfo) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
 		}
-		userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
-		if (!userInfo) {
-			res.json({ code: 403, info: "UserId/Token invalid." });
-			return;
+		if(!apiAddress) {
+			apiAddress=RagServerAddr;
 		}
 		userEmail=userInfo.email;
 		if(masterEmails){
@@ -61,9 +77,6 @@ export default async function(app,router,apiMap) {
 			return;
 		}
 		
-		if(!apiAddress) {
-			apiAddress=RagServerAddr;
-		}
 
 		if(!apiAddress) {
 			res.json({ code: 500, info: "No RAG service." });
@@ -94,6 +107,12 @@ export default async function(app,router,apiMap) {
 		let reqVO, userInfo, resVO,isMaster;
 		let userId, token,apiAddress;
 		let queryMeta;
+		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
@@ -106,7 +125,13 @@ export default async function(app,router,apiMap) {
 				return;
 			}
 		}
-		if(!apiAddress) {
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
 			if (!userId) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
@@ -116,6 +141,8 @@ export default async function(app,router,apiMap) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
 			}
+		}
+		if(!apiAddress) {
 			apiAddress=RagServerAddr;
 		}
 		try{
@@ -159,6 +186,12 @@ export default async function(app,router,apiMap) {
 		let userId, token,apiAddress;
 		let indexMeta,postToRoot,ragBase;
 		
+		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
@@ -172,14 +205,25 @@ export default async function(app,router,apiMap) {
 			return;
 		}
 		
-		if (!userId) {
-			res.json({ code: 403, info: "UserId/Token invalid." });
-			return;
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
+			if (!userId) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+			if (!userInfo) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
 		}
-		userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
-		if (!userInfo) {
-			res.json({ code: 403, info: "UserId/Token invalid." });
-			return;
+		if(!apiAddress) {
+			apiAddress=RagServerAddr;
 		}
 		let userEmail=userInfo.email;
 		if(masterEmails){
@@ -190,10 +234,6 @@ export default async function(app,router,apiMap) {
 		if (!isMaster) {
 			res.json({ code: 403, info: "User rank invalid." });
 			return;
-		}
-		
-		if(!apiAddress) {
-			apiAddress=RagServerAddr;
 		}
 		
 		if(!apiAddress) {
@@ -227,6 +267,12 @@ export default async function(app,router,apiMap) {
 		let reqVO, userInfo, resVO,isMaster;
 		let userId, token,apiAddress;
 		let queryMeta;
+		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
@@ -239,7 +285,13 @@ export default async function(app,router,apiMap) {
 				return;
 			}
 		}
-		if(!apiAddress) {
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token,time:Date.now()});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
 			if (!userId) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
@@ -249,6 +301,8 @@ export default async function(app,router,apiMap) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
 			}
+		}
+		if(!apiAddress) {
 			apiAddress=RagServerAddr;
 		}
 		try{
@@ -298,7 +352,12 @@ export default async function(app,router,apiMap) {
 	apiMap['RagIndexMetaDoc'] = async function (req, res, next) {
 		let reqVO, userInfo, resVO,isMaster;
 		let userId, token,apiAddress;
-		let indexMeta,postToRoot,ragBase;
+		let indexMeta,postToRoot,ragBase,kbId;
+		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
 		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
@@ -307,20 +366,32 @@ export default async function(app,router,apiMap) {
 		indexMeta=reqVO.index;
 		apiAddress=reqVO.apiURL;
 		postToRoot=reqVO.postToRoot;
+		kbId=indexMeta.identifier;
 		
 		if(postToRoot && APIRoot){
 			await proxyCall(req,res,next);
 			return;
 		}
 		
-		if (!userId) {
-			res.json({ code: 403, info: "UserId/Token invalid." });
-			return;
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token,time:Date.now()});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
+			if (!userId) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+			userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
+			if (!userInfo) {
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
 		}
-		userInfo = await getUserInfo(req, userId, token, USERINFO_PROJECTION);
-		if (!userInfo) {
-			res.json({ code: 403, info: "UserId/Token invalid." });
-			return;
+		if(!apiAddress) {
+			apiAddress=RagServerAddr;
 		}
 		let userEmail=userInfo.email;
 		if(masterEmails){
@@ -332,16 +403,15 @@ export default async function(app,router,apiMap) {
 			res.json({ code: 403, info: "User rank invalid." });
 			return;
 		}
-		
-		if(!apiAddress) {
-			apiAddress=RagServerAddr;
-		}
-		
 		if(!apiAddress) {
 			res.json({ code: 500, info: "No RAG service." });
 			return;
 		}
-		
+		if(!kbId || kbId==="personal"){
+			kbId=userEmail;
+		}
+		//TODO: More kbId cases via user ranks
+		indexMeta.identifier=kbId;
 		try{
 			const response = await fetch(apiAddress+"/index/chunk", {
 				method: 'POST',
@@ -363,22 +433,34 @@ export default async function(app,router,apiMap) {
 	
 	//-----------------------------------------------------------------------
 	apiMap['RagQueryMetaDoc'] = async function (req, res, next) {
-		let reqVO, userInfo, resVO,isMaster;
+		let reqVO, userInfo, resVO,isMaster,kbId;
 		let userId, token,apiAddress;
-		let queryMeta;
+		let queryMeta,userEmail;
+		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
 		queryMeta=reqVO.query;
 		apiAddress=reqVO.apiURL;
-		
+		kbId=queryMeta.identifier;
 		if(!RagServerAddr && !apiAddress){
 			if(APIRoot){
 				await proxyCall(req,res,next);
 				return;
 			}
 		}
-		if(!apiAddress) {
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token,time:Date.now()});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
 			if (!userId) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
@@ -388,8 +470,16 @@ export default async function(app,router,apiMap) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
 			}
+		}
+		if(!apiAddress) {
 			apiAddress=RagServerAddr;
 		}
+		userEmail=userInfo.email;
+		if(!kbId || kbId==="personal"){
+			kbId=userEmail;
+		}
+		//TODO: More kbId cases via user ranks
+		queryMeta.identifier=kbId;
 		try{
 			let postJSON=JSON.stringify(queryMeta);
 			//postJSON=`{"error_desc":"代理错误","tags":["MacOS"]}`;
@@ -438,12 +528,23 @@ export default async function(app,router,apiMap) {
 		let userId, token,apiAddress;
 		let indexMeta;
 		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
 		indexMeta=reqVO.index;
 		apiAddress=reqVO.apiURL;
-		if(!apiAddress) {
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token,time:Date.now()});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
 			if (!userId) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
@@ -453,11 +554,8 @@ export default async function(app,router,apiMap) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
 			}
-			isMaster = userInfo.rank === "MASTER" || userInfo.rank === "LORD";
-			if (!isMaster) {
-				res.json({ code: 403, info: "User rank invalid." });
-				return;
-			}
+		}
+		if(!apiAddress) {
 			apiAddress=RagServerAddr;
 		}
 		try{
@@ -484,6 +582,12 @@ export default async function(app,router,apiMap) {
 		let reqVO, userInfo, resVO,isMaster;
 		let userId, token,apiAddress;
 		let queryMeta;
+		
+		if(!RagServerAddr){//Use proxy-call for upper API
+			await proxyCall(req,res,next);
+			return;
+		}
+		
 		reqVO = req.body.vo;
 		userId = reqVO.userId;
 		token = reqVO.token;
@@ -495,7 +599,13 @@ export default async function(app,router,apiMap) {
 				return;
 			}
 		}
-		if(!apiAddress) {
+		if(!IsRagRoot){
+			userInfo=await callProxy("userLogin",{userId:userId,token:token,time:Date.now()});
+			if(userInfo.code!==200){
+				res.json({ code: 403, info: "UserId/Token invalid." });
+				return;
+			}
+		}else {
 			if (!userId) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
@@ -505,11 +615,8 @@ export default async function(app,router,apiMap) {
 				res.json({ code: 403, info: "UserId/Token invalid." });
 				return;
 			}
-			isMaster = userInfo.rank === "MASTER" || userInfo.rank === "LORD";
-			if (!isMaster) {
-				res.json({ code: 403, info: "User rank invalid." });
-				return;
-			}
+		}
+		if(!apiAddress) {
 			apiAddress=RagServerAddr;
 		}
 		try{

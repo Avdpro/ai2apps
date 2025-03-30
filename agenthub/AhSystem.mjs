@@ -1,10 +1,11 @@
 import pathLib from "path";
 import {AhAgentNode} from "./AhAgentNode.mjs";
-import {proxyCall} from "../util/ProxyCall.js";
 import { promises as fs } from 'fs';
 import AhFileLib from "./AhFileLib.mjs"
 import { exec } from 'child_process';
 import util from "util";
+import ProxyCall from '../util/ProxyCall.js'
+const { callProxy,proxyCall }=ProxyCall;
 
 const execPromise = util.promisify(exec);
 const checkCondaInstallation = async () => {
