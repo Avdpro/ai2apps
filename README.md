@@ -4,9 +4,9 @@
 
 <h1>AI2Apps</h1>
 
-Developing, Serving, Sharing: An Open-Source Distributed PC-Side AI Agent Infrastructure
+<div>Developing, Serving, Sharing: An Open-Source Distributed PC-Side AI Agent Infrastructure</div>
 
-[English](./README.md) · 中文
+English · [中文](./README_ZH.md)
 
 </div>
 
@@ -16,14 +16,14 @@ Developing, Serving, Sharing: An Open-Source Distributed PC-Side AI Agent Infras
   <img src="assets/overview1.jpg">
 </div>
 
-> This project is the first fully open-source PC-side AI Agent application infrastructure, dedicated to solving the "AI capability silo" problem. By unifying the architecture, it connects fragmented AI capabilities into AI Agent applications, enabling users to access and flexibly combine the latest AI technologies at any time. 
+> This project is the first fully open-source PC-side AI Agent application infrastructure, dedicated to solving the "AI capability silo" problem. 
 
-> It covers the entire lifecycle from development, service, to sharing, supporting end-to-end autonomous encapsulation of user-specific AI capabilities through the browser. Whether for enterprise-level production needs or personal daily scenarios, customized AI applications can be rapidly implemented.
+> It covers the entire lifecycle from development, service, to sharing, supporting end-to-end autonomous encapsulation of user-specific AI capabilities through the browser.
 
-> Through this architecture, developers can seamlessly integrate AI capabilities from different sources without relying on closed cloud services or complex technology stacks, breaking down technical barriers. Meanwhile, community users can freely share and reuse AI capabilities across devices, promoting the democratization of AI technology.
+> Community users can freely share and reuse AI capabilities across devices, promoting the democratization of AI technology.
 
 <div align="center">
-  <img src="assets/overview1.jpg">
+  <img src="assets/overview2-zh.jpg">
 </div>
 
 #### Developing
@@ -36,17 +36,19 @@ Developing, Serving, Sharing: An Open-Source Distributed PC-Side AI Agent Infras
 
 #### Serving
 
-<div align="center">
-
-#### Spark TTS
-[![spark-tts](https://img.youtube.com/vi/b3Ym69arLGw/0.jpg)](https://youtu.be/b3Ym69arLGw)
-
-#### 3D
-[![3d](https://img.youtube.com/vi/DhERLlXPK6I/0.jpg)](https://youtu.be/DhERLlXPK6I)
-
-### JiMengAI
-[![jimeng](https://img.youtube.com/vi/p4cl-FNlW8I/0.jpg)](https://youtu.be/p4cl-FNlW8I)
-
+<div style="display: flex; justify-content: space-around;">
+    <a href="https://youtu.be/b3Ym69arLGw" target="_blank">
+        <img src="https://img.youtube.com/vi/b3Ym69arLGw/0.jpg" alt="spark-tts" style="width: 300px; height: 200px;">
+        <div style="text-align:center">Spark TTS</div>
+    </a>
+    <a href="https://youtu.be/DhERLlXPK6I" target="_blank">
+        <img src="https://img.youtube.com/vi/DhERLlXPK6I/0.jpg" alt="3d" style="width: 300px; height: 200px;">
+        <div style="text-align:center">3D</div>
+    </a>
+    <a href="https://youtu.be/p4cl-FNlW8I" target="_blank">
+        <img src="https://img.youtube.com/vi/p4cl-FNlW8I/0.jpg" alt="jimeng" style="width: 300px; height: 200px;">
+        <div style="text-align:center">JiMengAI</div>
+    </a>
 </div>
 
 #### Sharing
@@ -59,7 +61,8 @@ Developing, Serving, Sharing: An Open-Source Distributed PC-Side AI Agent Infras
 
 ## 🖥 Environment Support
 
-| Mac | Windows(Partial support) | Linux |
+- Recommended environment: Mac
+- Compatible environment: Linux and Windows
 
 ## 📦 Installation
 
@@ -69,12 +72,7 @@ For details about the installation, please see [user manual](https://github.com/
 
 If you encounter problems, you can seek help in the following ways.
 
-1. [Feishu](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=01ao0c08-31dd-4dcf-9947-d645796e2dae)
-<div align="center">
-  <img src="assets/feishu_pic.jpg" width="200" height="200">
-</div>
-
-2. [Discord](https://discord.gg/qgqeaWk62e)
+1. [Discord](https://discord.gg/qgqeaWk62e)
 
 ## 📝 Citation
 
