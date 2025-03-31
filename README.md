@@ -36,20 +36,9 @@ English · [中文](./README_ZH.md)
 
 #### Serving
 
-<div style="display: flex; justify-content: space-around;">
-    <a href="https://youtu.be/b3Ym69arLGw" target="_blank">
-        <img src="https://img.youtube.com/vi/b3Ym69arLGw/0.jpg" alt="spark-tts" style="width: 300px; height: 200px;">
-        <div style="text-align:center">Spark TTS</div>
-    </a>
-    <a href="https://youtu.be/DhERLlXPK6I" target="_blank">
-        <img src="https://img.youtube.com/vi/DhERLlXPK6I/0.jpg" alt="3d" style="width: 300px; height: 200px;">
-        <div style="text-align:center">3D</div>
-    </a>
-    <a href="https://youtu.be/p4cl-FNlW8I" target="_blank">
-        <img src="https://img.youtube.com/vi/p4cl-FNlW8I/0.jpg" alt="jimeng" style="width: 300px; height: 200px;">
-        <div style="text-align:center">JiMengAI</div>
-    </a>
-</div>
+| [Spark TTS](https://youtu.be/b3Ym69arLGw) | [3D](https://youtu.be/DhERLlXPK6I) | [JiMengAI](https://youtu.be/p4cl-FNlW8I) |
+|---|---|---|
+| [![spark-tts](https://img.youtube.com/vi/b3Ym69arLGw/0.jpg)](https://youtu.be/b3Ym69arLGw) | [![3d](https://img.youtube.com/vi/DhERLlXPK6I/0.jpg)](https://youtu.be/DhERLlXPK6I) | [![jimeng](https://img.youtube.com/vi/p4cl-FNlW8I/0.jpg)](https://youtu.be/p4cl-FNlW8I) |
 
 #### Sharing
 
