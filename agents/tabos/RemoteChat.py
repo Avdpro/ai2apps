@@ -4,6 +4,7 @@ import json
 import base64
 import urllib.parse
 import importlib
+from session import trimJSON
 ##{1ID3S33F20MoreImports#
 from remotesession import RemoteSession
 ##}1ID3S33F20MoreImports#
@@ -40,6 +41,11 @@ argsTemplate={
 			"label":"Check Update",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"options":{
+			"name":"options","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	##{1ID3S33F20ArgsView#
@@ -54,6 +60,7 @@ async def RemoteChat(session):
 	callAgent=None
 	callArg=None
 	checkUpdate=None
+	options=None
 	
 	context, globalContext = None, None
 	self = None
@@ -64,17 +71,19 @@ async def RemoteChat(session):
 	
 	
 	def parseAgentArgs(input):
-		nonlocal nodeName,callAgent,callArg,checkUpdate
+		nonlocal nodeName,callAgent,callArg,checkUpdate,options
 		if isinstance(input, dict):
 			nodeName=input.get("nodeName")
 			callAgent=input.get("callAgent")
 			callArg=input.get("callArg")
 			checkUpdate=input.get("checkUpdate")
+			options=input.get("options")
 		else:
 			nodeName=None
 			callAgent=None
 			callArg=None
 			checkUpdate=None
+			options=None
 		##{1ID3S33F20ParseArgs#
 		##}1ID3S33F20ParseArgs#
 	
@@ -89,7 +98,8 @@ async def RemoteChat(session):
 	async def Exec_exec(input):#//:1ID3S3D7Q0
 		result=input
 		##{1ID3S3D7Q0Code#
-		result=await RemoteSession.exec(session,nodeName,callAgent,callArg,{"checkUpdate":checkUpdate});
+		options=options or {}
+		result=await RemoteSession.exec(session,nodeName,callAgent,callArg,{**options,"checkUpdate":checkUpdate});
 		##}1ID3S3D7Q0Code#
 		return {"result":result}
 	segs["Exec"]=Exec={
@@ -138,7 +148,8 @@ ChatAPI=[{
 				"nodeName":{"type":"string","description":""},
 				"callAgent":{"type":"string","description":""},
 				"callArg":{"type":"auto","description":""},
-				"checkUpdate":{"type":"bool","description":""}
+				"checkUpdate":{"type":"bool","description":""},
+				"options":{"type":"auto","description":""}
 			}
 		}
 	},
@@ -161,7 +172,8 @@ ChatAPI=[{
 				nodeName:{type:"string",description:""},
 				callAgent:{type:"string",description:""},
 				callArg:{type:"auto",description:""},
-				checkUpdate:{type:"bool",description:""}
+				checkUpdate:{type:"bool",description:""},
+				options:{type:"auto",description:""}
 			}
 		}
 	},
@@ -192,9 +204,10 @@ if(DocPyAgentExporter){
 			"callAgent":{name:"callAgent",showName:(($ln==="CN")?("代理"):("Agent")),type:"string",key:1,fixed:1,initVal:""},
 			"callArg":{name:"callArg",showName:(($ln==="CN")?("调用参数"):("Call argument(s)")),type:"auto",key:1,fixed:1,initVal:""},
 			"checkUpdate":{name:"checkUpdate",showName:(($ln==="CN")?("检查更新"):("Check Update")),type:"bool",key:1,fixed:1,initVal:""},
+			"options":{name:"options",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
-		listHint:["id","nodeName","callAgent","callArg","checkUpdate","codes","desc"],
+		listHint:["id","nodeName","callAgent","callArg","checkUpdate","options","codes","desc"],
 		desc:"This is an AI agent."
 	});
 	
@@ -213,6 +226,7 @@ if(DocPyAgentExporter){
 			coder.packText("args['callAgent']=");this.genAttrStatement(seg.getAttr("callAgent"));coder.newLine();
 			coder.packText("args['callArg']=");this.genAttrStatement(seg.getAttr("callArg"));coder.newLine();
 			coder.packText("args['checkUpdate']=");this.genAttrStatement(seg.getAttr("checkUpdate"));coder.newLine();
+			coder.packText("args['options']=");this.genAttrStatement(seg.getAttr("options"));coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/@tabos/RemoteChat.py",args,false)`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
@@ -261,7 +275,8 @@ return {api:ChatAPI,export:Exports};
 #							"attrs": {}
 #						},
 #						"mockupOnly": "false",
-#						"nullMockup": "false"
+#						"nullMockup": "false",
+#						"exportClass": "false"
 #					},
 #					"mockups": {}
 #				}
@@ -273,6 +288,7 @@ return {api:ChatAPI,export:Exports};
 #		},
 #		"entry": "",
 #		"autoStart": "true",
+#		"inBrowser": "true",
 #		"debug": "true",
 #		"apiArgs": {
 #			"jaxId": "1ID3S33F23",
@@ -352,6 +368,16 @@ return {api:ChatAPI,export:Exports};
 #							"localizable": true
 #						}
 #					}
+#				},
+#				"options": {
+#					"type": "object",
+#					"def": "AgentCallArgument",
+#					"jaxId": "1INU07M7Q0",
+#					"attrs": {
+#						"type": "Auto",
+#						"mockup": "\"\"",
+#						"desc": ""
+#					}
 #				}
 #			}
 #		},
@@ -402,7 +428,8 @@ return {api:ChatAPI,export:Exports};
 #							}
 #						},
 #						"result": "#input"
-#					}
+#					},
+#					"icon": "tab_css.svg"
 #				}
 #			]
 #		},

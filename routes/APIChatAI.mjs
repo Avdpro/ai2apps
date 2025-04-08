@@ -11,6 +11,7 @@ import ProxyCall from '../util/ProxyCall.js'
 const { callProxy,proxyCall }=ProxyCall;
 
 const getUserInfo=null,getPVUserInfo=null;
+import ApiProxy from "../apiproxy/FetchProxy.mjs";
 
 
 const AIPlatforms={
@@ -1293,6 +1294,13 @@ export default function(app,router,apiMap) {
 					}
 				}
 				*/
+			}
+			{
+				let result;
+				result=await ApiProxy.proxy(req, res);
+				if (result) {
+					return;
+				}
 			}
 			{
 				let body;

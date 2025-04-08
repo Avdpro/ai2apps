@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import traceback
 import inspect
 import sys
+from remotesession import RemoteSession
 
 pathLib = os.path
 openAI = None
@@ -154,6 +155,7 @@ class AISession:
 		self.snsChatUserId = None
 		self.debugStarted=False
 		self.debugConnected=False
+		self.callHandlers={}
 
 		nodeJSON=node.hubJSON
 		if nodeJSON:
@@ -168,6 +170,8 @@ class AISession:
 		nodeGlobal=self.options.get("globalContext")
 		if nodeGlobal:
 			self.globalContext.update(nodeGlobal)
+		self.callClientFromAgent=None
+		self.callClientAskSeg=None
 
 		
 
@@ -319,6 +323,33 @@ class AISession:
 			raise e
 
 	# -------------------------------------------------------------------------
+	# Call an agent, client, node, or local
+	# -------------------------------------------------------------------------
+	async def callAgent(self, agentNode,agentPath,input,opts):
+		opts=opts or {}
+		if agentNode:
+			if agentNode=="$client":
+				result=None
+				oldFromAgent=self.callClientFromAgent
+				oldAskSeg=self.callClientAskSeg
+				self.callClientFromAgent=opts.get("fromAgent",None)
+				self.callClientAskSeg=opts.get("askUpwardSeg",None)
+				try:
+					result=await self.callClient("CallAgent",{"agent":agentPath,"arg":input})
+				finally:
+					self.callClientFromAgent=oldFromAgent
+					self.callClientAskSeg=oldAskSeg
+				return result
+			return await RemoteSession.exec(self,agentNode,agentPath,input,opts);
+		else:
+			result=self.execAgent(agentPath, input,opts)
+		return result
+
+	# -------------------------------------------------------------------------
+	async def pipeChat(self, path, input, hideInter=False):
+		return await self.execAgent(path, input)
+
+	# -------------------------------------------------------------------------
 	async def runSeg(self, agent, segVO):
 		result = None
 		catchSeg = None
@@ -374,9 +405,10 @@ class AISession:
 
 	# -------------------------------------------------------------------------
 	# Execute an agent:
-	async def execAgent(self,agentPath, input):
+	async def execAgent(self,agentPath, input, opts=None):
 		global frameSeqId
 		fromAgent=self.curAgent
+		opts=opts or {}
 
 		if callable(agentPath):
 			agent = agentPath
@@ -388,6 +420,9 @@ class AISession:
 			# sourceDef = agent.get("sourceDef")
 			agent["sourceDef"] = sourceDef
 			agent["agentFrameId"] = frameSeqId
+			agent["upperAgent"]=opts.get("fromAgent",None)
+			agent["askUpwardSeg"]=opts.get("askUpwardSeg",None)
+
 			frameSeqId += 1
 
 			if not self.debugStarted:
@@ -409,8 +444,28 @@ class AISession:
 		return await self.runSeg(agent,execVO)
 
 	# -------------------------------------------------------------------------
-	async def pipeChat(self, path, input, hideInter=False):
-		return await self.execAgent(path, input)
+	# Ask upward:
+	# -------------------------------------------------------------------------
+	async def askUpward(self,agent,prompt):
+		result=None
+		askUpwardSeg=None
+		askAgent=agent
+		while askAgent :
+			askUpwardSeg=askAgent.get("askUpwardSeg",None)
+			askAgent=askAgent.get("upperAgent",None)
+			if askAgent and askUpwardSeg:
+				break
+		if askUpwardSeg and askAgent:
+			if askAgent=="$client":
+				result=await self.callClient("AskUpward",{"prompt":prompt});
+			elif askAgent=="$remote":
+				remoteSession = askUpwardSeg
+				result=await remoteSession.callRemote("AskUpward",{prompt:prompt});
+			else:
+				result=await self.execAISeg(askAgent,askUpwardSeg,prompt)
+		if not isinstance(result, str):
+			result = json.dumps(result)
+		return result
 
 	# -------------------------------------------------------------------------
 	# Make logs
@@ -1213,6 +1268,18 @@ class AISession:
 			#TODO: Code this?
 			return
 		await self.sendToClient("RemoveWaitBlock", {"block": waitBlk})
+
+	# -------------------------------------------------------------------------
+	async def handleCall(self,msg,vo):
+		if msg=="AskUpward":
+			fromAgent = self.callClientFromAgent
+			askSeg = self.callClientAskSeg
+			fakeAgent = {"upperAgent": fromAgent,"askUpwardSeg": askSeg}
+			return await self.askUpward(fakeAgent, vo.prompt)
+		handler=self.callHandlers.get(msg)
+		if not handler:
+			raise Exception(f"No call handler for '{msg}'.")
+		return await handler(self,msg,vo)
 
 # Exports:
 __all__ = ["AISession","trimJSON"]

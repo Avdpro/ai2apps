@@ -15,15 +15,23 @@ class RemoteSession:
 		self.wsTask=None
 		self.msgTask=None
 		self.messages=[]
+		self.upperAgent = None
+		self.askUpwardSeg = None
+		self.fromAgent = None
 
 	@staticmethod
 	async def exec(session, node_name, agent, input_data, options=None):
-		if options is None:
-			options = {}
+		if options:
+			startNodeOpts={"checkUpdate":options.get("checkUpdate",True)}
+			callAgentOpts = {"fromAgent": options.get("fromAgent",None), "askUpwardSeg":options.get("askUpwardSeg",None)}
+		else:
+			startNodeOpts = {"checkUpdate": True}
+			callAgentOpts = {}
+
 		res = await session.callHub("StartAgentNode",{
 			"name": node_name,
 			"path": options.get("nodeEntry"),
-			"options": options
+			"options": startNodeOpts
 		})
 		if not res or res["code"] != 200:
 			raise Exception(f"Start AgentNode error: {res.get('info', 'Unknown error')}")
@@ -36,7 +44,7 @@ class RemoteSession:
 		remote_session = RemoteSession(session, sessionId)
 		await remote_session.connect()
 		await remote_session.start()
-		return await remote_session.exec_agent(agent, input_data)
+		return await remote_session.exec_agent(agent, input_data, callAgentOpts)
 
 	# -----------------------------------------------------------------------
 	async def connect(self):
@@ -125,9 +133,12 @@ class RemoteSession:
 		self.msgTask=None
 		return result
 
-	async def exec_agent(self, agent, prompt):
+	async def exec_agent(self, agent, prompt, opts):
+		opts=opts or {}
 		if not self.ws:
 			raise Exception("RemoteSession missing websocket to execAgent")
+		self.upperAgent = self.fromAgent = opts.get("fromAgent",None)
+		self.askUpwardSeg = opts.get("askUpwardSeg",None)
 
 		self.execPms = asyncio.Future()
 
@@ -170,6 +181,9 @@ class RemoteSession:
 		try:
 			if msg_code=="AskChatInput":
 				result=await session.askChatInput(msg_vo)
+			elif msg_code=="AskUpward":
+				fakeAgent = {"upperAgent": self.fromAgent, "askUpwardSeg": self.askUpwardSeg}
+				result = await session.askUpward(fakeAgent, msg_vo.get("prompt",None))
 			elif msg_code=="AddWaitBlock":
 				result=await session.showWait(msg_vo.get("text"))
 			else:

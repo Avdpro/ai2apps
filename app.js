@@ -14,6 +14,10 @@ var swrootRouter= require('./routes/swroot');
 var wsRouter=require('./routes/ws');
 
 var app = express();
+let AgentHub_FileLibPath=process.env.AGENT_HUB_FileLibDir||process.env.AABOTS_FileLibPath||"filelib";
+if(!path.isAbsolute(AgentHub_FileLibPath)){
+	AgentHub_FileLibPath=path.join(__dirname,AgentHub_FileLibPath);
+}
 //app.use(cors());
 app.initCokeCodesApp=async function(){
 	let mongoDB,mongoURL;
@@ -32,6 +36,7 @@ app.initCokeCodesApp=async function(){
 	app.use(express.urlencoded({limit: '50mb', extended: false }));
 	app.use(cookieParser());
 	app.use(express.static(path.join(__dirname, 'public')));
+	app.use("/-+hubfile",express.static(AgentHub_FileLibPath));
 
 	mongoDB=null;
 	app.set('WebSocketSelectorMap',new Map());

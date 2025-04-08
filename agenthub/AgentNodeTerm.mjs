@@ -29,6 +29,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.agentNode=session.agentNode;
 		this.id=""+(nextShellId++);
 		this.sessionId=null;
+
 		this.clientReady=null;
 		this.terminal=null;
 		this.shell=null;
@@ -117,7 +118,9 @@ let AgentNodeTerminal,agentNodeTerminal;
 					throw Error(`Hub create terminal error${res.info?" "+res.info:"."}`);
 				}
 				this.sessionId=sessionId=res.session||res.sessionId;
-				this.session.regTerminal(this);
+				if(opts.ownBySession!==false) {
+					this.session.regTerminal(this);
+				}
 				res=await this.session.callClient("CreateXTerm",{session:sessionId});
 				if(res===false){
 					this.sessionId=null;

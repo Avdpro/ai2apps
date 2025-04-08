@@ -112,7 +112,13 @@ let AhSystem,ahSystem;
 			this.condaPath=await checkCondaInstallation();
 			if(this.condaPath){
 				console.log(`Found conda: ${this.condaPath}`);
-				this.condaPath+="/etc/profile.d/conda.sh";
+
+				if (process.platform === "win32"){
+					this.condaPath  = pathLib.join(this.condaPath, 'Scripts', 'conda.exe');
+				}
+				else{
+					this.condaPath+="/etc/profile.d/conda.sh";
+				}
 			}else{
 				console.log("Warning: conda not found in the system. You may encounter issues when running python agents.");
 			}
@@ -217,7 +223,11 @@ let AhSystem,ahSystem;
 	ahSystem.createSession=async function(nodeName,options){
 		let agentNode,session;
 		agentNode=await this.getAgentNode(nodeName);
-		session=await agentNode.newSession(options);
+		if(agentNode) {
+			session = await agentNode.newSession(options);
+		}else{
+			session=null;
+		}
 		return session;
 	};
 	

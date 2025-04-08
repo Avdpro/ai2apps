@@ -1145,6 +1145,7 @@ var Base64 = {encode,decode,decodeBytes};
 
 let basePath="/ws/";
 let callSeq=0;
+const orgFetch=window.fetch;
 
 //----------------------------------------------------------------------------
 //JAX用来进行WebAPI调用的类:
@@ -1167,7 +1168,7 @@ WebAPI.makeCall=function(msg,vo,timeOut=0){
 				canceled=1;
 				errFunc({code:503,info:"Web API call time out."});
 			},timeOut);
-			fetch(self.path||basePath,{
+			orgFetch(self.path||basePath,{
 				method: 'POST',
 				cache: 'no-cache',
 				headers: {
@@ -1185,7 +1186,7 @@ WebAPI.makeCall=function(msg,vo,timeOut=0){
 			});
 		});
 	}
-	return fetch(self.path||basePath,{
+	return orgFetch(self.path||basePath,{
 		method: 'POST',
 		cache: 'no-cache',
 		headers: {
@@ -1248,7 +1249,7 @@ WebAPI.fetch=async function(url,options){
 		callVO.body=body;
 	}
 	text=JSON.stringify(msgVO);
-	return fetch(self.path||basePath,{
+	return orgFetch(self.path||basePath,{
 		method: 'POST',
 		cache: 'no-cache',
 		headers: {
@@ -14530,8 +14531,13 @@ let initApp=async function(appObj,uiDef,opts={}){
 			let idx,dlg;
 			idx=dlgList.length-1;
 			dlg=dlgList[idx];
-			if(dlg && dlg.OnBGClick){
-				dlg.OnBGClick();
+			if(dlg){
+				if(dlg.OnBGClick){
+					dlg.OnBGClick();
+				}
+			}else {
+				dlgLayer.display=0;
+				isShowDlg=0;
 			}
 		};
 		
@@ -15103,17 +15109,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 281,
+		"versionIdx": 283,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 175,
+		"versionIdx": 176,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 205,
+		"versionIdx": 206,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15133,7 +15139,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 216,
+		"versionIdx": 217,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15143,12 +15149,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 167,
+		"versionIdx": 168,
 		"zip": "aae.zip"
 	},
 	{
@@ -15163,7 +15169,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 35,
+		"versionIdx": 36,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15176,17 +15182,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 281,
+		"versionIdx": 283,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 175,
+		"versionIdx": 176,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 205,
+		"versionIdx": 206,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15206,7 +15212,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15224,22 +15230,22 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 281,
+		"versionIdx": 283,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 175,
+		"versionIdx": 176,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 205,
+		"versionIdx": 206,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15254,7 +15260,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 35,
+		"versionIdx": 36,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15267,22 +15273,22 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 281,
+		"versionIdx": 283,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 175,
+		"versionIdx": 176,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 205,
+		"versionIdx": 206,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15292,7 +15298,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 35,
+		"versionIdx": 36,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15302,17 +15308,17 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 281,
+		"versionIdx": 283,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 175,
+		"versionIdx": 176,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 205,
+		"versionIdx": 206,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15332,7 +15338,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 216,
+		"versionIdx": 217,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15342,7 +15348,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15357,12 +15363,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 167,
+		"versionIdx": 168,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 35,
+		"versionIdx": 36,
 		"zip": "AgentBuilder.zip"
 	},
 	{

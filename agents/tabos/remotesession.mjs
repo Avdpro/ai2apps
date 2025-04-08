@@ -15,11 +15,17 @@ remoteSession=RemoteSession.prototype={};
 
 //----------------------------------------------------------------------------
 RemoteSession.exec=async function(session,nodeName,agent,input,options){
-	let res;
+	let res,startNodeOpts,callAgentOpts;
 	options=options||{};
-	//await tabNT.checkLogin();
-	//res=await tabNT.makeCall("StartAgentNode",{name:nodeName,path:options.nodeEntry,options:options,language:session.langauge});
-	res=await session.callHub("StartAgentNode",{name:nodeName,path:options.nodeEntry,options:options,language:session.langauge});
+	if(options){
+		startNodeOpts={checkUpdate:options.checkUpdate??false};
+		callAgentOpts={fromAgent:options.fromAgent??null,askUpwardSeg:options.askUpwardSeg??null};
+	}else{
+		startNodeOpts={checkUpdate:true};
+		callAgentOpts={};
+	}
+
+	res=await session.callHub("StartAgentNode",{name:nodeName,path:options.nodeEntry,options:startNodeOpts,language:session.langauge});
 	if(!res || res.code!==200){
 		if(res){
 			throw Error(`Start AgentNode error: ${res.info}`);
@@ -38,7 +44,7 @@ RemoteSession.exec=async function(session,nodeName,agent,input,options){
 	let sessionId=res.sessionId;
 	let remoteSsn=new RemoteSession(session,sessionId);
 	await remoteSsn.start();
-	return await remoteSsn.execAgent(agent,input);
+	return await remoteSsn.execAgent(agent,input,callAgentOpts);
 };
 
 //----------------------------------------------------------------------------
@@ -132,8 +138,9 @@ remoteSession.start=async function(){
 };
 
 //----------------------------------------------------------------------------
-remoteSession.execAgent=async function(agent,prompt){
+remoteSession.execAgent=async function(agent,prompt,opts){
 	let ws,pms,callback,callerror,result;
+	opts=opts||{};
 	ws=this.ws;
 	if(!ws){
 		throw Error("RemoteSession missing websocket to execAgent");
@@ -142,6 +149,8 @@ remoteSession.execAgent=async function(agent,prompt){
 		this.execCallback=resolve;
 		this.execErrorCallback=reject;
 	});
+	this.upperAgent=this.fromAgent=opts.fromAgent;
+	this.askUpwardSeg=opts.askUpwardSeg;
 
 	//Execute agent:
 	ws.send(JSON.stringify({msg:"ExecAgent",sessionId:this.sessionId,agent:agent,prompt:prompt}));
@@ -172,7 +181,16 @@ remoteSession.WSMSG_Call=async function(msg){
 	msgVO=callVO.vo;
 	session=this.session;
 	try{
-		result =await session.callClient(msgCode,msgVO);
+		switch(msgCode){
+			case "AskUpward": {
+				result=await session.askUpward(this,msgVO.prompt);
+				break;
+			}
+			default:{
+				result =await session.callClient(msgCode,msgVO);
+				break;
+			}
+		}
 		this.ws.send(JSON.stringify({msg:"CallResult",sessionId:this.sessionId,callId:callId,result:result}));
 		return result;
 	}catch(err){

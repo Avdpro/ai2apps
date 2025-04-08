@@ -57,8 +57,10 @@ let AgentNode,agentNode;
 	const AH_AgentDir=process.env.AGENT_HUB_AGENTDIR||"agents";
 	AgentNode=function(path,host,name){
 		let jsonPath
-		path = path.startsWith('/') ? path : pathLib.join(hubPath, path);
-		if(path[0]!=="/"){
+		//path = path.startsWith('/') ? path : pathLib.join(hubPath, path);
+		path = pathLib.isAbsolute(path) ? path : pathLib.join(hubPath, path);
+		// if(path[0]!=="/"){
+		if(!pathLib.isAbsolute(path)){
 			path=pathLib.join(currentPath,"../",path);
 		}
 		path=pathLib.normalize(path);
@@ -271,7 +273,7 @@ let AgentNode,agentNode;
 	agentNode.execAgent = async function (sessionId, path, prompt) {
 		const ssn = this.sessionMap.get(sessionId); // 使用 Map 的 get 方法
 		if (!ssn) return false;
-		const result = await ssn.execAgent(path, prompt);
+		const result = await ssn.execAgent(path, prompt,{fromAgent:"$client",askUpwardSeg:true});
 		return result;
 	};
 	

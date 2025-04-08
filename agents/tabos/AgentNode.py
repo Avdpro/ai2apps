@@ -200,12 +200,10 @@ class AgentNode:
 				callData=message.get("message")
 				callId=message.get("callId")
 				if callData and callId:
-					callMsg=callData.get("msg")
-					callVO=callData.get("vo")
 					callError=None
 					callResult=None
 					try:
-						callResult=await self.handleCall(callMsg,callVO)
+						callResult=await self.handleCall(message)
 					except Exception as e:
 						callError=f"Error: {e}"
 					res={
@@ -282,13 +280,24 @@ class AgentNode:
 		ssn = self.sessionMap.get(sessionId, None)
 		if not ssn:
 			return False
-		result = await ssn.execAgent(path, prompt)
+		result = await ssn.execAgent(path, prompt,{"fromAgent":"$client","askUpwardSeg":True})
 		self.sessionMap.pop(sessionId, None)
 		await self.websocket.send(json.dumps({"msg": "EndSession", "session": sessionId}))
 		return result
 
 	# -------------------------------------------------------------------------
-	async def handleCall(self,callMsg,callVO):
+	async def handleCall(self,message):
+		sessionId = message.get("session",None) or message.get("sessionId",None)
+		callData = message.get("message")
+		callMsg = callData.get("msg")
+		callVO = callData.get("vo")
+
+		if sessionId:
+			session=self.sessionMap.get(sessionId,None)
+			if not session:
+				raise Exception(f"Session {sessionId} not found.")
+			return await session.handleCall(callMsg,callVO)
+
 		if callMsg=="State":
 			return {"workload": self.workload}
 		if hasattr(self, f"HandleCall_{callMsg}"):

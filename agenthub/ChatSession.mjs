@@ -2,7 +2,9 @@ import { promises as fsp } from 'fs';
 import pathLib from "path";
 import sharp from "sharp";
 import OpenAI from "openai";
-
+import {pathToFileURL} from 'url';
+import RemoteSession from '../agents/tabos/remotesession.mjs';
+import * as Os from 'os'
 async function sleep(time){
 	let func,pms;
 	pms=new Promise((resolve,reject)=>{
@@ -50,6 +52,11 @@ function trimJSON(inputString) {
 
 // *****************************************************************************
 async function importModuleFromFile(filePath) {
+	if (process.platform=== "win32" && pathLib.isAbsolute(filePath)){
+		filePath = pathToFileURL(filePath).href;
+		const module = await import(filePath);
+		return module;
+	}
 	const module = await import(pathLib.resolve(filePath));
 	return module;
 }
@@ -100,6 +107,9 @@ class ChatSession {
 		
 		this.debugStarted=false;
 		this.debugConnected=false;
+		
+		this.callClientFromAgent=null;
+		this.callClientAskSeg=null;
 	}
 	
 	// -------------------------------------------------------------------------
@@ -179,6 +189,18 @@ class ChatSession {
 	async handleCall(msg,vo){
 		let handler;
 		handler=this["WSCall_"+msg];
+		switch(msg) {
+			case "AskUpward": {
+				let fromAgent, askSeg, fakeAgent;
+				fromAgent = this.callClientFromAgent;
+				askSeg = this.callClientAskSeg;
+				fakeAgent = {
+					upperAgent: fromAgent,
+					askUpwardSeg: askSeg
+				};
+				return await this.askUpward(fakeAgent,vo.prompt);
+			}
+		}
 		if(!handler){
 			throw Error(`Session call handler for "${msg}" not found.`);
 		}
@@ -189,7 +211,8 @@ class ChatSession {
 	async loadAgent(fromAgent, path) {
 		let agent = null;
 		const agentDict=ChatSession.agentDict;
-		if (!path.startsWith("/")) {
+		//if (!path.startsWith("/")) {
+		if (!pathLib.isAbsolute(path)) {
 			if (!fromAgent) {
 				path = pathLib.join(this.basePath, path);
 			} else {
@@ -206,7 +229,8 @@ class ChatSession {
 		if (entryPath.startsWith("/@")) {
 			entryPath = "../" + entryPath.slice(2);
 		}
-		if(entryPath[0]!=="/") {
+		// if(entryPath[0]!=="/") {
+		if(!pathLib.isAbsolute(entryPath)) {
 			if (!fromAgent) {
 				entryPath = pathLib.join(this.basePath, entryPath);
 			} else {
@@ -297,8 +321,9 @@ class ChatSession {
 	}
 	
 	//-----------------------------------------------------------------------
-	async execAgent(agentPath, input) {
+	async execAgent(agentPath, input, opts) {
 		const fromAgent = this.curAgent;
+		opts=opts||{};
 		let agent,sourceDef;
 		if (typeof agentPath === "function") {
 			agent = agentPath;
@@ -309,6 +334,9 @@ class ChatSession {
 		agent = await agent(this);
 		agent.sourceDef=sourceDef;
 		agent.agentFrameId=frameSeqId++;
+		agent.upperAgent=opts.fromAgent||fromAgent;
+		agent.askUpwardSeg=opts.askUpwardSeg||null;
+		
 		this.curAgent=agent;
 		
 		if(!this.debugStarted){
@@ -347,6 +375,38 @@ class ChatSession {
 			outlet:fromOutlet
 		};
 		return await this.runSeg(agent, execVO);
+	}
+	
+	//-----------------------------------------------------------------------
+	async askUpward(agent,prompt){
+		let askAgent,askUpwardSeg,result;
+		askAgent=agent;
+		while(askAgent){
+			askUpwardSeg=askAgent.askUpwardSeg;
+			askAgent=askAgent.upperAgent;
+			if(askAgent && askUpwardSeg){
+				break;
+			}
+		}
+		if(askAgent && askUpwardSeg){
+			if(askAgent==="$client"){
+				//Call client to ask upward...
+				result=await this.callClient("AskUpward",{prompt:prompt});
+			}else if(askAgent.agentNode){
+				//TODO: UpperAgent is on other backend, deal with it.
+			}else{
+				//Call response upper agent
+				result=await this.runAISeg(askAgent,askUpwardSeg,prompt);
+			}
+		}else{
+			//Can't find responsalbe upper agent,
+			await this.addChatText("assistant",prompt);
+			result=await this.askChatInput({type:"input",text:"",allowFile:true});
+		}
+		if(typeof(result)!=="string"){
+			result=JSON.stringify(result);
+		}
+		return result;
 	}
 	
 	//-----------------------------------------------------------------------
@@ -1034,6 +1094,31 @@ class ChatSession {
 			if (this.agentNode) {
 				await this.sendToClient("RemoveWaitBlock", { block: waitBlk });
 			}
+		}
+	}
+	
+	
+	//-----------------------------------------------------------------------
+	async callAgent(agentNode,path,input,opts){
+		if(agentNode) {//This is a remote chat
+			if(agentNode==="$client"){
+				let oldFromAgent,oldAskSeg,result;
+				oldFromAgent=this.callClientFromAgent;
+				oldAskSeg=this.callClientAskSeg;
+				this.callClientFromAgent=opts.fromAgent;
+				this.callClientAskSeg=opts.askUpwardSeg;
+				try{
+					result=await this.callClient("CallAgent",{agent:path,arg:input});
+				}finally {
+					this.callClientFromAgent=oldFromAgent;
+					this.callClientAskSeg=oldAskSeg;
+				}
+				return result;
+			}else{
+				return await RemoteSession.exec(this,agentNode,path,input,opts);
+			}
+		}else{
+			return await this.execAgent(path, input,opts);
 		}
 	}
 	

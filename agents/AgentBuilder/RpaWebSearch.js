@@ -73,11 +73,14 @@ let RpaWebSearch=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,TryCatch,StartRPA,HandleError,NoRPA,OpenBrowser,OpenPage,ClickInput,TypeSearch,FlagNavi,PressEnter,WaitNavi,ReadSearch,SearchError,FindUrls,LoopUrls,OpenUrl,ReadPage,CheckResult,CheckContent,SaveContent,IgnorePage2,Summary,CheckUrls,AskCheck,TryAgain,UserAbort,TryPage,NextPage,CloseSearch,CheckPage,CloseSubPage,CloseLoopPage,CheckApiKey,TryApi,CallSearchApi,TipUseRpa,TipNoApiKey,OpenBrowser2,TipPage,TipStart,CheckPageContent,IgnorePage,CheckLinkOnly,ReturnLinks,CheckLinkOnly2,ReturnLinks2,CloseBrowser,CloseBrowser2,JumpClose,JumpClose2;
+	let FixArgs,TryCatch,StartRPA,HandleError,NoRPA,OpenBrowser,OpenPage,ClickInput,TypeSearch,FlagNavi,PressEnter,WaitNavi,ReadSearch,SearchError,FindUrls,LoopUrls,OpenUrl,ReadPage,CheckResult,CheckContent,SaveContent,IgnorePage2,Summary,CheckUrls,AskCheck,TryAgain,UserAbort,TryPage,NextPage,CloseSearch,CheckPage,CloseErrorPage,CloseLoopPage,CheckApiKey,TryApi,CallSearchApi,TipUseRpa,TipNoApiKey,OpenBrowser2,TipPage,TipStart,CheckPageContent,IgnorePage,CheckLinkOnly,ReturnLinks,CheckLinkOnly2,ReturnLinks2,CloseBrowser,CloseBrowser2,JumpClose,JumpClose2,AsyncLoop,AsyncTryPage,AsyncTipPage,AsyncCheckPage,AsyncCloseErrorPage,AsyncNextPage,AsyncOpenUrl,AsyncReadPage,AsyncCloseLoopPage,LoopContents,AsyncCheckPageContent,AsyncReadContent,AsyncCheckContent,AsyncCheckFinish,AsyncSummary,AsyncCloseBrowser;
 	let searchApiKey="";
 	let searchUrls=null;
 	let searchResults=[];
 	let readingUrl="";
+	let pageContents={};
+	let usefulPages=0;
+	let searchSummary="";
 	
 	/*#{1IHCHS17T0LocalVals*/
 	/*}#1IHCHS17T0LocalVals*/
@@ -204,12 +207,14 @@ let RpaWebSearch=async function(session){
 		let $width=800;
 		let $height=600;
 		let $userAgent="";
+		let $timeout=(undefined)||0;
 		let page=null;
+		let $openOpts={timeout:$timeout};
 		$waitBefore && (await sleep($waitBefore));
 		context[pageVal]=page=await context.rpaBrowser.newPage();
 		($width && $height) && (await page.setViewport({width:$width,height:$height}));
 		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url);
+		await page.goto($url,$openOpts);
 		$waitAfter && (await sleep($waitAfter));
 		return {seg:ClickInput,result:(page),preSeg:"1ILPRH9P30",outlet:"1ILPRI2NU1"};
 	};
@@ -435,12 +440,14 @@ let RpaWebSearch=async function(session){
 		let $width=800;
 		let $height=600;
 		let $userAgent="";
+		let $timeout=(undefined)||0;
 		let page=null;
+		let $openOpts={timeout:$timeout};
 		$waitBefore && (await sleep($waitBefore));
 		context[pageVal]=page=await context.rpaBrowser.newPage();
 		($width && $height) && (await page.setViewport({width:$width,height:$height}));
 		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url);
+		await page.goto($url,$openOpts);
 		$waitAfter && (await sleep($waitAfter));
 		return {seg:ReadPage,result:(page),preSeg:"1ILPS1SK70",outlet:"1ILPS33ST7"};
 	};
@@ -734,14 +741,14 @@ ${JSON.stringify(searchResults,null,"\t")}
 	segs["CheckPage"]=CheckPage=async function(input){//:1ILQ9SL9V0
 		let result=input;
 		if(!!context.aaPage){
-			return {seg:CloseSubPage,result:(input),preSeg:"1ILQ9SL9V0",outlet:"1ILQ9ULAR0"};
+			return {seg:CloseErrorPage,result:(input),preSeg:"1ILQ9SL9V0",outlet:"1ILQ9ULAR0"};
 		}
 		return {seg:NextPage,result:(result),preSeg:"1ILQ9SL9V0",outlet:"1ILQ9ULAR1"};
 	};
 	CheckPage.jaxId="1ILQ9SL9V0"
 	CheckPage.url="CheckPage@"+agentURL
 	
-	segs["CloseSubPage"]=CloseSubPage=async function(input){//:1ILQ9TPKF0
+	segs["CloseErrorPage"]=CloseErrorPage=async function(input){//:1ILQ9TPKF0
 		let result=input;
 		let pageVal="aaPage";
 		let waitBefore=0;
@@ -753,8 +760,8 @@ ${JSON.stringify(searchResults,null,"\t")}
 		waitAfter && (await sleep(waitAfter))
 		return {result:result};
 	};
-	CloseSubPage.jaxId="1ILQ9TPKF0"
-	CloseSubPage.url="CloseSubPage@"+agentURL
+	CloseErrorPage.jaxId="1ILQ9TPKF0"
+	CloseErrorPage.url="CloseErrorPage@"+agentURL
 	
 	segs["CloseLoopPage"]=CloseLoopPage=async function(input){//:1ILQA032A0
 		let result=input;
@@ -930,7 +937,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 			return {seg:ReturnLinks,result:(output),preSeg:"1ILSN40IP0",outlet:"1ILSN6TI40"};
 		}
 		result=input;
-		return {seg:LoopUrls,result:(result),preSeg:"1ILSN40IP0",outlet:"1ILSN6TI41"};
+		return {seg:AsyncLoop,result:(result),preSeg:"1ILSN40IP0",outlet:"1ILSN6TI41"};
 	};
 	CheckLinkOnly.jaxId="1ILSN40IP0"
 	CheckLinkOnly.url="CheckLinkOnly@"+agentURL
@@ -1008,6 +1015,386 @@ ${JSON.stringify(searchResults,null,"\t")}
 	};
 	JumpClose2.jaxId="1IM98OJJK0"
 	JumpClose2.url="JumpClose2@"+agentURL
+	
+	segs["AsyncLoop"]=AsyncLoop=async function(input){//:1INRKIURH0
+		let result;
+		let tasks=[];
+		let list=input;
+		let i,n,item,loopR;
+		/*#{1INRKIURH0PreLoop*/
+		input=[input[0]];
+		/*}#1INRKIURH0PreLoop*/
+		n=list.length;
+		for(i=0;i<n;i++){
+			item=list[i];
+			/*#{1INRKIURH0InLoopPre*/
+			/*}#1INRKIURH0InLoopPre*/
+			tasks.push(session.runAISeg(agent,AsyncTryPage,item,"1INRKIURH0","1INRKJDT52"));
+			/*#{1INRKIURH0InLoopPost*/
+			/*}#1INRKIURH0InLoopPost*/
+		}
+		result=await Promise.all(tasks);
+		/*#{1INRKIURH0PostCodes*/
+		/*}#1INRKIURH0PostCodes*/
+		return {seg:AsyncCloseBrowser,result:(result),preSeg:"1INRKIURH0",outlet:"1INRKJDT00"};
+	};
+	AsyncLoop.jaxId="1INRKIURH0"
+	AsyncLoop.url="AsyncLoop@"+agentURL
+	
+	segs["AsyncTryPage"]=AsyncTryPage=async function(input){//:1INRKM9HN0
+		let result=input;
+		/*#{1INRKM9HN0Code*/
+		true
+		/*}#1INRKM9HN0Code*/
+		return {seg:AsyncTipPage,result:(result),preSeg:"1INRKM9HN0",outlet:"1INRKMKDK0",catchSeg:AsyncCheckPage,catchlet:"1INRKMKDQ2"};
+	};
+	AsyncTryPage.jaxId="1INRKM9HN0"
+	AsyncTryPage.url="AsyncTryPage@"+agentURL
+	
+	segs["AsyncTipPage"]=AsyncTipPage=async function(input){//:1INRKNSM30
+		let result=input;
+		let opts={};
+		let role="log";
+		let content=(($ln==="CN")?(`正在查看: ${input}`):/*EN*/(`Viewing: ${input}`));
+		session.addChatText(role,content,opts);
+		return {seg:AsyncOpenUrl,result:(result),preSeg:"1INRKNSM30",outlet:"1INRKNSM42"};
+	};
+	AsyncTipPage.jaxId="1INRKNSM30"
+	AsyncTipPage.url="AsyncTipPage@"+agentURL
+	
+	segs["AsyncCheckPage"]=AsyncCheckPage=async function(input){//:1INRKPKVI0
+		let result=input;
+		if(context["Page_"+input]){
+			let output=input;
+			return {seg:AsyncCloseErrorPage,result:(output),preSeg:"1INRKPKVI0",outlet:"1INRL2ESR0"};
+		}
+		return {seg:AsyncNextPage,result:(result),preSeg:"1INRKPKVI0",outlet:"1INRL2ESR1"};
+	};
+	AsyncCheckPage.jaxId="1INRKPKVI0"
+	AsyncCheckPage.url="AsyncCheckPage@"+agentURL
+	
+	segs["AsyncCloseErrorPage"]=AsyncCloseErrorPage=async function(input){//:1INRKRLU40
+		let result=input;
+		let pageVal="Page_"+input;
+		let waitBefore=0;
+		let waitAfter=0;
+		let page=context[pageVal];
+		waitBefore && (await sleep(waitBefore));
+		/*#{1INRKRLU40PreCodes*/
+		/*}#1INRKRLU40PreCodes*/
+		await page.close();
+		context[pageVal]=null;
+		waitAfter && (await sleep(waitAfter))
+		/*#{1INRKRLU40PostCodes*/
+		/*}#1INRKRLU40PostCodes*/
+		return {result:result};
+	};
+	AsyncCloseErrorPage.jaxId="1INRKRLU40"
+	AsyncCloseErrorPage.url="AsyncCloseErrorPage@"+agentURL
+	
+	segs["AsyncNextPage"]=AsyncNextPage=async function(input){//:1INRKTGQ70
+		let result=input
+		/*#{1INRKTGQ70Code*/
+		/*}#1INRKTGQ70Code*/
+		return {result:result};
+	};
+	AsyncNextPage.jaxId="1INRKTGQ70"
+	AsyncNextPage.url="AsyncNextPage@"+agentURL
+	
+	segs["AsyncOpenUrl"]=AsyncOpenUrl=async function(input){//:1INRL10TH0
+		let pageVal="Page_"+input;
+		let $url=input;
+		let $waitBefore=0;
+		let $waitAfter=0;
+		let $width=800;
+		let $height=600;
+		let $userAgent="";
+		let $timeout=(5000)||0;
+		let page=null;
+		let $openOpts={timeout:$timeout};
+		$waitBefore && (await sleep($waitBefore));
+		/*#{1INRL10TH0PreCodes*/
+		/*}#1INRL10TH0PreCodes*/
+		context[pageVal]=page=await context.rpaBrowser.newPage();
+		($width && $height) && (await page.setViewport({width:$width,height:$height}));
+		$userAgent && (await page.setUserAgent($userAgent));
+		await page.goto($url,$openOpts);
+		$waitAfter && (await sleep($waitAfter));
+		/*#{1INRL10TH0PostCodes*/
+		page=input;
+		/*}#1INRL10TH0PostCodes*/
+		return {seg:AsyncReadPage,result:(page),preSeg:"1INRL10TH0",outlet:"1INRL10TH3"};
+	};
+	AsyncOpenUrl.jaxId="1INRL10TH0"
+	AsyncOpenUrl.url="AsyncOpenUrl@"+agentURL
+	
+	segs["AsyncReadPage"]=AsyncReadPage=async function(input){//:1INRL50LD0
+		let result=null;
+		let pageVal="Page_"+input;
+		let $node=null;
+		let $options=undefined;
+		let $waitBefore=0;
+		let $waitAfter=0;
+		let page=context[pageVal];
+		let $target="article";
+		$waitBefore && (await sleep($waitBefore));
+		/*#{1INRL50LD0PreCodes*/
+		/*}#1INRL50LD0PreCodes*/
+		switch($target){
+			case "cleanHTML":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+				break;
+			}
+			case "html":{
+				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "view":{
+				result=await context.webRpa.readNodeView(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "text":{
+				result=await context.webRpa.readNodeText(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+			case "article":{
+				result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
+				break;
+			}
+		}
+		$waitAfter && (await sleep($waitAfter))
+		/*#{1INRL50LD0PostCodes*/
+		//Make sure next seg get url
+		pageContents[input]=result;
+		result=input;
+		/*}#1INRL50LD0PostCodes*/
+		return {seg:AsyncCloseLoopPage,result:(result),preSeg:"1INRL50LD0",outlet:"1INRL50LD3"};
+	};
+	AsyncReadPage.jaxId="1INRL50LD0"
+	AsyncReadPage.url="AsyncReadPage@"+agentURL
+	
+	segs["AsyncCloseLoopPage"]=AsyncCloseLoopPage=async function(input){//:1INRL97SR0
+		let result=input;
+		let pageVal="Page_"+input;
+		let waitBefore=0;
+		let waitAfter=0;
+		let page=context[pageVal];
+		waitBefore && (await sleep(waitBefore));
+		/*#{1INRL97SR0PreCodes*/
+		/*}#1INRL97SR0PreCodes*/
+		await page.close();
+		context[pageVal]=null;
+		waitAfter && (await sleep(waitAfter))
+		/*#{1INRL97SR0PostCodes*/
+		/*}#1INRL97SR0PostCodes*/
+		return {result:result};
+	};
+	AsyncCloseLoopPage.jaxId="1INRL97SR0"
+	AsyncCloseLoopPage.url="AsyncCloseLoopPage@"+agentURL
+	
+	segs["LoopContents"]=LoopContents=async function(input){//:1INRLDQ370
+		let result=input;
+		let list=input;
+		let i,n,item,loopR;
+		/*#{1INRLDQ370PreLoop*/
+		usefulPages=0;
+		searchResults=[];
+		/*}#1INRLDQ370PreLoop*/
+		n=list.length;
+		for(i=0;i<n;i++){
+			item=list[i];
+			/*#{1INRLDQ370InLoopPre*/
+			readingUrl=item;
+			/*}#1INRLDQ370InLoopPre*/
+			loopR=await session.runAISeg(agent,AsyncCheckPageContent,item,"1INRLDQ370","1INRLR9410")
+			if(loopR==="break"){
+				break;
+			}
+			/*#{1INRLDQ370InLoopPost*/
+			/*}#1INRLDQ370InLoopPost*/
+		}
+		/*#{1INRLDQ370PostCodes*/
+		/*}#1INRLDQ370PostCodes*/
+		return {seg:AsyncSummary,result:(result),preSeg:"1INRLDQ370",outlet:"1INRLR9411"};
+	};
+	LoopContents.jaxId="1INRLDQ370"
+	LoopContents.url="LoopContents@"+agentURL
+	
+	segs["AsyncCheckPageContent"]=AsyncCheckPageContent=async function(input){//:1INRLESDV0
+		let result=input;
+		if(!!pageContents[input]){
+			let output=`
+From link: ${input}
+- - -
+${pageContents[input]}
+`;
+			return {seg:AsyncReadContent,result:(output),preSeg:"1INRLESDV0",outlet:"1INRLESDV4"};
+		}
+		return {result:result};
+	};
+	AsyncCheckPageContent.jaxId="1INRLESDV0"
+	AsyncCheckPageContent.url="AsyncCheckPageContent@"+agentURL
+	
+	segs["AsyncReadContent"]=AsyncReadContent=async function(input){//:1INRLG50O0
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4o-mini",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"json_object"
+		};
+		let chatMem=AsyncReadContent.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:`
+### 角色
+你是一个判断输入的搜索的网页结果内容是否与搜索目标相关的AI
+
+### 搜索目标
+当前的搜索目标是：
+${search}
+
+### 对话
+- 每轮对话时用户会输入搜索到的网页内容，可能是纯文本、HTML文本或者Markdown格式。
+- 你根据用户的输入，判断用户输入的网页内容是否与回答当前的搜索目标相关，并用JSON返回，例如：
+\`\`\`
+//找到了相关内容：
+{
+    "useful":true,
+}
+//没有找到相关内容：
+{
+    "useful":false,
+}
+\`\`\`
+
+### 返回JSON属性说明
+"useful" {bool}: 本回合对话用户输入的内容是否对搜索目标有帮助
+`},
+		];
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};messages.push(msg);
+		}
+		result=await session.callSegLLM("AsyncReadContent@"+agentURL,opts,messages,true);
+		result=trimJSON(result);
+		return {seg:AsyncCheckContent,result:(result),preSeg:"1INRLG50O0",outlet:"1INRLG50O3"};
+	};
+	AsyncReadContent.jaxId="1INRLG50O0"
+	AsyncReadContent.url="AsyncReadContent@"+agentURL
+	
+	segs["AsyncCheckContent"]=AsyncCheckContent=async function(input){//:1INRLH17U0
+		let result=input;
+		if(input.useful){
+			let output=input.content;
+			return {seg:AsyncCheckFinish,result:(output),preSeg:"1INRLH17U0",outlet:"1INRLH17U4"};
+		}
+		return {result:result};
+	};
+	AsyncCheckContent.jaxId="1INRLH17U0"
+	AsyncCheckContent.url="AsyncCheckContent@"+agentURL
+	
+	segs["AsyncCheckFinish"]=AsyncCheckFinish=async function(input){//:1INRLKIME0
+		let result=input
+		/*#{1INRLKIME0Code*/
+		usefulPages+=1;
+		if(usefulPages>=top_k){
+			searchResults.push({url:readingUrl,content:pageContents[readingUrl]});
+			result="break";
+		}
+		/*}#1INRLKIME0Code*/
+		return {result:result};
+	};
+	AsyncCheckFinish.jaxId="1INRLKIME0"
+	AsyncCheckFinish.url="AsyncCheckFinish@"+agentURL
+	
+	segs["AsyncSummary"]=AsyncSummary=async function(input){//:1INRLLTLI0
+		let prompt;
+		let result=null;
+		/*#{1INRLLTLI0Input*/
+		/*}#1INRLLTLI0Input*/
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4o",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=AsyncSummary.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:`
+### 角色
+你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI
+
+### 搜索目标
+当前的搜索目标是：
+${search}
+
+### 搜索结果
+当前的搜索网页并初步总结的结果，用JSON格式表达为：
+
+${JSON.stringify(searchResults,null,"\t")}
+
+
+`},
+		];
+		/*#{1INRLLTLI0PrePrompt*/
+		/*}#1INRLLTLI0PrePrompt*/
+		prompt="请根据搜索结果，回答搜索问题";
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1INRLLTLI0FilterMessage*/
+			/*}#1INRLLTLI0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1INRLLTLI0PreCall*/
+		/*}#1INRLLTLI0PreCall*/
+		result=(result===null)?(await session.callSegLLM("AsyncSummary@"+agentURL,opts,messages,true)):result;
+		/*#{1INRLLTLI0PostCall*/
+		result={result:"Finish",content:result};
+		/*}#1INRLLTLI0PostCall*/
+		return {result:result};
+	};
+	AsyncSummary.jaxId="1INRLLTLI0"
+	AsyncSummary.url="AsyncSummary@"+agentURL
+	
+	segs["AsyncCloseBrowser"]=AsyncCloseBrowser=async function(input){//:1INRLOS0A0
+		let result=input;
+		let browser=context.rpaBrowser;
+		/*#{1INRLOS0A0PreCodes*/
+		/*}#1INRLOS0A0PreCodes*/
+		if(browser){
+			await context.webRpa.closeBrowser(browser);
+		}
+		context.rpaBrowser=null;
+		context.rpaHostPage=null;
+		/*#{1INRLOS0A0PostCodes*/
+		/*}#1INRLOS0A0PostCodes*/
+		return {seg:LoopContents,result:(result),preSeg:"1INRLOS0A0",outlet:"1INRLOS0A3"};
+	};
+	AsyncCloseBrowser.jaxId="1INRLOS0A0"
+	AsyncCloseBrowser.url="AsyncCloseBrowser@"+agentURL
 	
 	agent={
 		isAIAgent:true,
@@ -1222,6 +1609,18 @@ export{RpaWebSearch,ChatAPI};
 //				"readingUrl": {
 //					"type": "string",
 //					"valText": "#\"\""
+//				},
+//				"pageContents": {
+//					"type": "auto",
+//					"valText": "{}"
+//				},
+//				"usefulPages": {
+//					"type": "int",
+//					"valText": "0"
+//				},
+//				"searchSummary": {
+//					"type": "string",
+//					"valText": ""
 //				}
 //			}
 //		},
@@ -2672,7 +3071,7 @@ export{RpaWebSearch,ChatAPI};
 //									"def": "AIConditionOutlet",
 //									"jaxId": "1ILQ9ULAR0",
 //									"attrs": {
-//										"id": "Result",
+//										"id": "HasPage",
 //										"desc": "输出节点。",
 //										"output": "",
 //										"codes": "false",
@@ -2703,7 +3102,7 @@ export{RpaWebSearch,ChatAPI};
 //					"def": "WebRpaClosePage",
 //					"jaxId": "1ILQ9TPKF0",
 //					"attrs": {
-//						"id": "CloseSubPage",
+//						"id": "CloseErrorPage",
 //						"viewName": "",
 //						"label": "",
 //						"x": "4915",
@@ -3316,7 +3715,7 @@ export{RpaWebSearch,ChatAPI};
 //								"desc": "输出节点。",
 //								"output": "#input"
 //							},
-//							"linkedSeg": "1ILPS02BB0"
+//							"linkedSeg": "1INSVEQP10"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -3613,6 +4012,814 @@ export{RpaWebSearch,ChatAPI};
 //						}
 //					},
 //					"icon": "arrowupright.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "loopArray",
+//					"jaxId": "1INRKIURH0",
+//					"attrs": {
+//						"id": "AsyncLoop",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4440",
+//						"y": "560",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRKJDT50",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRKJDT51",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"loopArray": "#input",
+//						"method": "asyncForEach",
+//						"outlet": {
+//							"jaxId": "1INRKJDT52",
+//							"attrs": {
+//								"id": "Looper",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRKM9HN0"
+//						},
+//						"catchlet": {
+//							"jaxId": "1INRKJDT00",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRLOS0A0"
+//						}
+//					},
+//					"icon": "loop_array.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "tryCatch",
+//					"jaxId": "1INRKM9HN0",
+//					"attrs": {
+//						"id": "AsyncTryPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4670",
+//						"y": "485",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRKMKDQ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRKMKDQ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRKMKDK0",
+//							"attrs": {
+//								"id": "Try",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRKNSM30"
+//						},
+//						"catchlet": {
+//							"jaxId": "1INRKMKDQ2",
+//							"attrs": {
+//								"id": "Catch",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRKPKVI0"
+//						}
+//					},
+//					"icon": "trycatch.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1INRKNSM30",
+//					"attrs": {
+//						"id": "AsyncTipPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4915",
+//						"y": "470",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRKNSM40",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRKNSM41",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "log",
+//						"text": "#(($ln===\"CN\")?(`正在查看: ${input}`):/*EN*/(`Viewing: ${input}`))",
+//						"outlet": {
+//							"jaxId": "1INRKNSM42",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRL10TH0"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1INRKPKVI0",
+//					"attrs": {
+//						"id": "AsyncCheckPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4915",
+//						"y": "615",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRL2KGJ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRL2KGJ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRL2ESR1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1INRKTGQ70"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1INRL2ESR0",
+//									"attrs": {
+//										"id": "HasPage",
+//										"desc": "输出节点。",
+//										"output": "#input",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1INRL2KGJ2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1INRL2KGJ3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#context[\"Page_\"+input]"
+//									},
+//									"linkedSeg": "1INRKRLU40"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaClosePage",
+//					"jaxId": "1INRKRLU40",
+//					"attrs": {
+//						"id": "AsyncCloseErrorPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5205",
+//						"y": "600",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRKRLU41",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRKRLU42",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "#\"Page_\"+input",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1INRKRLU43",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"run": ""
+//					},
+//					"icon": "/@aae/assets/tab_close.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1INRKTGQ70",
+//					"attrs": {
+//						"id": "AsyncNextPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5205",
+//						"y": "700",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRL2KGJ4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRL2KGJ5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRL2ESR2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaOpenPage",
+//					"jaxId": "1INRL10TH0",
+//					"attrs": {
+//						"id": "AsyncOpenUrl",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5205",
+//						"y": "470",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRL10TH1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRL10TH2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"valName": "#\"Page_\"+input",
+//						"url": "#input",
+//						"vpWidth": "800",
+//						"vpHeight": "600",
+//						"userAgent": "",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1INRL10TH3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRL50LD0"
+//						},
+//						"run": "",
+//						"timeout": "5000"
+//					},
+//					"icon": "/@aae/assets/tab_add.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaReadPage",
+//					"jaxId": "1INRL50LD0",
+//					"attrs": {
+//						"id": "AsyncReadPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5475",
+//						"y": "470",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRL50LD1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRL50LD2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "#\"Page_\"+input",
+//						"target": "Article",
+//						"node": "null",
+//						"options": "",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1INRL50LD3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRL97SR0"
+//						},
+//						"run": ""
+//					},
+//					"icon": "read.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaClosePage",
+//					"jaxId": "1INRL97SR0",
+//					"attrs": {
+//						"id": "AsyncCloseLoopPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5745",
+//						"y": "470",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRL97SR1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRL97SR2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "#\"Page_\"+input",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1INRL97SR3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"run": ""
+//					},
+//					"icon": "/@aae/assets/tab_close.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "loopArray",
+//					"jaxId": "1INRLDQ370",
+//					"attrs": {
+//						"id": "LoopContents",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4945",
+//						"y": "835",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRLR9480",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLR9481",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"loopArray": "#input",
+//						"method": "forEach",
+//						"outlet": {
+//							"jaxId": "1INRLR9410",
+//							"attrs": {
+//								"id": "Looper",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRLESDV0"
+//						},
+//						"catchlet": {
+//							"jaxId": "1INRLR9411",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRLLTLI0"
+//						}
+//					},
+//					"icon": "loop_array.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1INRLESDV0",
+//					"attrs": {
+//						"id": "AsyncCheckPageContent",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5190",
+//						"y": "820",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRLESDV1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLESDV2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRLESDV3",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1INRLESDV4",
+//									"attrs": {
+//										"id": "Content",
+//										"desc": "输出节点。",
+//										"output": "#`\nFrom link: ${input}\n- - -\n${pageContents[input]}\n`",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1INRLESE00",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1INRLESE01",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#!!pageContents[input]"
+//									},
+//									"linkedSeg": "1INRLG50O0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1INRLG50O0",
+//					"attrs": {
+//						"id": "AsyncReadContent",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5480",
+//						"y": "805",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRLG50O1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLG50O2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4o-mini",
+//						"system": "#`\n### 角色\n你是一个判断输入的搜索的网页结果内容是否与搜索目标相关的AI\n\n### 搜索目标\n当前的搜索目标是：\n${search}\n\n### 对话\n- 每轮对话时用户会输入搜索到的网页内容，可能是纯文本、HTML文本或者Markdown格式。\n- 你根据用户的输入，判断用户输入的网页内容是否与回答当前的搜索目标相关，并用JSON返回，例如：\n\\`\\`\\`\n//找到了相关内容：\n{\n    \"useful\":true,\n}\n//没有找到相关内容：\n{\n    \"useful\":false,\n}\n\\`\\`\\`\n\n### 返回JSON属性说明\n\"useful\" {bool}: 本回合对话用户输入的内容是否对搜索目标有帮助\n`",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1INRLG50O3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRLH17U0"
+//						},
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "json_object",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1INRLH17U0",
+//					"attrs": {
+//						"id": "AsyncCheckContent",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5750",
+//						"y": "805",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRLH17U1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLH17U2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRLH17U3",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1INRLH17U4",
+//									"attrs": {
+//										"id": "Useful",
+//										"desc": "输出节点。",
+//										"output": "#input.content",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1INRLH17U5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1INRLH17U6",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.useful"
+//									},
+//									"linkedSeg": "1INRLKIME0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1INRLKIME0",
+//					"attrs": {
+//						"id": "AsyncCheckFinish",
+//						"viewName": "",
+//						"label": "",
+//						"x": "6020",
+//						"y": "790",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INRLKIMF0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLKIMF1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRLKIMF2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1INRLLTLI0",
+//					"attrs": {
+//						"id": "AsyncSummary",
+//						"viewName": "",
+//						"label": "",
+//						"x": "5190",
+//						"y": "1055",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "",
+//						"context": {
+//							"jaxId": "1INRLLTLI1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLLTLI2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4o",
+//						"system": "#`\n### 角色\n你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI\n\n### 搜索目标\n当前的搜索目标是：\n${search}\n\n### 搜索结果\n当前的搜索网页并初步总结的结果，用JSON格式表达为：\n\n${JSON.stringify(searchResults,null,\"\\t\")}\n\n\n`",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "请根据搜索结果，回答搜索问题",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1INRLLTLI3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaCloseBrowser",
+//					"jaxId": "1INRLOS0A0",
+//					"attrs": {
+//						"id": "AsyncCloseBrowser",
+//						"viewName": "",
+//						"label": "",
+//						"x": "4670",
+//						"y": "835",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "flag.svg",
+//						"context": {
+//							"jaxId": "1INRLOS0A1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INRLOS0A2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INRLOS0A3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRLDQ370"
+//						}
+//					},
+//					"icon": "close.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1INSVEQP10",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "4335",
+//						"y": "280",
+//						"outlet": {
+//							"jaxId": "1INT03PO30",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INRKIURH0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

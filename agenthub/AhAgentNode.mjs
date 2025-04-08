@@ -306,7 +306,7 @@ let AhAgentNode,ahAgentNode;
 
 		//Check exist process, restart if needed:
 		this.starting=true;
-		this.entryPath=entryPath;
+		this.entryPath = entryPath;
 		this.entryDate=pathTime;
 
 		//Start listen for agentNode websocket connection:
@@ -325,7 +325,13 @@ let AhAgentNode,ahAgentNode;
 			case ".js":{
 				this.type=Type_Node;
 				let chdProcess;
-				chdProcess=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+				// chdProcess=this.process = spawn('bash', ['-i', '-c', `node ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+				// 	{
+				// 		cwd:this.path,
+				// 		stdio: ["pipe", "pipe", "pipe"],
+				// 		//stdio: 'inherit'
+				// 	});
+				chdProcess=this.process = spawn('node', [entryPath, this.path, hostAddress, this.name],
 					{
 						cwd:this.path,
 						stdio: ["pipe", "pipe", "pipe"],
@@ -358,11 +364,25 @@ let AhAgentNode,ahAgentNode;
 				if(conda){
 					let chdProcess;
 					let condaPath=this.system.condaPath;
-					chdProcess=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
-						{
-							cwd:this.path,
-							//stdio: 'inherit'
-						});
+
+					if (process.platform === 'win32') {
+						chdProcess = this.process = spawn('cmd.exe', ['/c', `${condaPath} init && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+							{
+								cwd:this.path,
+								shell:true,
+								windowsVerbatimArguments: true
+							});
+					}
+
+					else{
+						chdProcess=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+							{
+								cwd:this.path,
+								//stdio: 'inherit'
+							});
+
+					}
+
 					chdProcess.stdout.on('data', (data) => {
 						console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 					});
@@ -388,11 +408,26 @@ let AhAgentNode,ahAgentNode;
 					console.log(`process started: ${process}`);
 				}else{
 					let chdProcess;
-					chdProcess=this.process = spawn('bash', ['-i', '-c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
-						{
-							cwd:this.path,
-							//stdio: 'inherit'
-						});
+
+					if (process.platform === 'win32') {
+						chdProcess = this.process = spawn('cmd.exe', ['/c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+							{
+								cwd:this.path,
+								shell:true,
+								windowsVerbatimArguments: true
+							});
+					}
+					else{
+
+						chdProcess=this.process = spawn('bash', ['-i', '-c', `python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+							{
+								cwd:this.path,
+								//stdio: 'inherit'
+							});
+
+					}
+
+
 					chdProcess.stdout.on('data', (data) => {
 						console.log(`AgentNode<${this.name}> LOG: ${data.toString()}`);
 					});

@@ -84,7 +84,7 @@ let AhXTerm,ahXTerm;
 	//-----------------------------------------------------------------------
 	ahXTerm.close=async function(){
 		if(this.clientWS){
-			await this.clentWS.close();
+			await this.clientWS.close();
 		}
 		this.waitPms=null;
 	};
