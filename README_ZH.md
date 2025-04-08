@@ -12,7 +12,7 @@
 
 </div>
 
-## 概览
+## 🏠 概览
 
 <div align="center">
   <img src="assets/overview1-zh.jpg">
@@ -22,7 +22,7 @@
 
 > 它覆盖从开发、服务到共享的全链路，支持通过浏览器端到端自主封装用户所需的 AI 能力，无论是企业级生产需求还是个人日常场景，均可快速实现定制化 AI 应用。
 
-> 通过这一架构，开发者无需依赖封闭的云服务或复杂的技术栈，即可将不同来源的AI能力无缝集成，打破技术壁垒。同时，社区用户可在端侧之间自由共享和复用AI能力，推动AI技术的民主化。
+> 通过这一架构，开发者无需依赖封闭的云服务或复杂的技术栈，即可将不同来源的AI能力无缝集成，打破技术壁垒。同时，社区用户可在端侧之间自由共享和复用 AI 能力，推动 AI 技术的民主化。
 
 <div align="center">
   <img src="assets/overview2-zh.jpg">
@@ -38,7 +38,7 @@
 
 #### 服务
 
-| [Spark TTS](https://youtu.be/b3Ym69arLGw) | [3D](https://youtu.be/DhERLlXPK6I) | [JiMengAI](https://youtu.be/p4cl-FNlW8I) |
+| [Spark TTS](https://youtu.be/b3Ym69arLGw) | [3D](https://youtu.be/DhERLlXPK6I) | [JiMengAI](https://youtu.be/e5OaLM8qfGc) |
 |---|---|---|
 | [![spark-tts](https://img.youtube.com/vi/b3Ym69arLGw/0.jpg)](https://youtu.be/b3Ym69arLGw) | [![3d](https://img.youtube.com/vi/DhERLlXPK6I/0.jpg)](https://youtu.be/DhERLlXPK6I) | [![jimeng](https://img.youtube.com/vi/e5OaLM8qfGc/0.jpg)](https://youtu.be/e5OaLM8qfGc) |
 
@@ -80,6 +80,13 @@
   year={2024}
 }
 ```
+
+## 🤝 贡献者
+
+<div align="center">
+  <img height="180" src="assets/contributors.png">
+</div>
+
 
 <p align="right" >
   <a href="#readme-top">

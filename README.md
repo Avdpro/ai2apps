@@ -10,13 +10,13 @@ English · [中文](./README_ZH.md)
 
 </div>
 
-## Overview
+## 🏠 Overview
 
 <div align="center">
   <img src="assets/overview1.jpg">
 </div>
 
-> This project is the first fully open-source PC-side AI Agent application infrastructure, dedicated to solving the "AI capability silo" problem. 
+> This project is the first fully open-source PC-side AI Agent application infrastructure, dedicated to solving the `AI capability silo` problem. 
 
 > It covers the entire lifecycle from development, service, to sharing, supporting end-to-end autonomous encapsulation of user-specific AI capabilities through the browser.
 
@@ -74,6 +74,13 @@ If you find our work useful for your research or application, please cite our pa
   year={2024}
 }
 ```
+
+## 🤝 Contributors
+
+<div align="center">
+  <img height="180" src="assets/contributors.png">
+</div>
+
 
 <p align="right" >
   <a href="#readme-top">
