@@ -78,27 +78,27 @@ If you find our work useful for your research or application, please cite our pa
 ## 🤝 Contributors
 
 <a href="https://github.com/Callione" target="_blank">
-  <img  src="assets/callione.png">
+  <img src="assets/ganlei.png">
 </a>
 <p></p>
 
 <a href="https://github.com/jarlor" target="_blank">
-  <img  src="assets/jarlor.png">
+  <img src="assets/jarlor.png">
 </a>
 <p></p>
 
 <a href="https://github.com/pilgrim00" target="_blank">
-  <img  src="assets/pilgrim00.png">
+  <img src="assets/pilgrim00.png">
 </a>
 <p></p>
 
 <a href="https://github.com/shi0712" target="_blank">
-  <img  src="assets/shi0712.png">
+  <img src="assets/shi0712.png">
 </a>
 <p></p>
 
 <a href="https://github.com/zdq93" target="_blank">
-  <img  src="assets/zdq93.png">
+  <img src="assets/zdq93.png">
 </a>
 <p></p>
 

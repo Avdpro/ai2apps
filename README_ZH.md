@@ -84,7 +84,7 @@
 ## 🤝 贡献者
 
 <a href="https://github.com/Callione" target="_blank">
-  <img  src="assets/callione.png">
+  <img  src="assets/ganlei.png">
 </a>
 <p></p>
 
