@@ -20,3 +20,5 @@ proxyYahooFinance.proxy=async function(req,res){
 	await proxyCall(req,res,null);
 	return true;
 };
+export default ProxyYahooFinance;
+export {ProxyYahooFinance};
