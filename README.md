@@ -30,13 +30,15 @@ English · [中文](./README_ZH.md)
 
 <div align="center">
 
-[![developing](https://img.youtube.com/vi/seRTYtwgLrk/0.jpg)](https://youtu.be/seRTYtwgLrk)
+| [Automatic Deployment Video](https://youtu.be/seRTYtwgLrk) | 
+|---|
+|[![developing](https://img.youtube.com/vi/seRTYtwgLrk/0.jpg)](https://youtu.be/seRTYtwgLrk)|
 
 </div>
 
 #### Serving
 
-| [Spark TTS](https://youtu.be/b3Ym69arLGw) | [3D](https://youtu.be/DhERLlXPK6I) | [JiMengAI](https://youtu.be/p4cl-FNlW8I) |
+| [Spark TTS Video](https://youtu.be/b3Ym69arLGw) | [3D Video](https://youtu.be/DhERLlXPK6I) | [JiMengAI Video](https://youtu.be/p4cl-FNlW8I) |
 |---|---|---|
 | [![spark-tts](https://img.youtube.com/vi/b3Ym69arLGw/0.jpg)](https://youtu.be/b3Ym69arLGw) | [![3d](https://img.youtube.com/vi/DhERLlXPK6I/0.jpg)](https://youtu.be/DhERLlXPK6I) | [![jimeng](https://img.youtube.com/vi/p4cl-FNlW8I/0.jpg)](https://youtu.be/p4cl-FNlW8I) |
 
@@ -44,7 +46,9 @@ English · [中文](./README_ZH.md)
 
 <div align="center">
 
-[![tool mart](https://img.youtube.com/vi/x-q4Jc4Zukc/0.jpg)](https://youtu.be/x-q4Jc4Zukc)
+| [Tool Mart Video](https://youtu.be/x-q4Jc4Zukc) | 
+|---|
+|[![tool mart](https://img.youtube.com/vi/x-q4Jc4Zukc/0.jpg)](https://youtu.be/x-q4Jc4Zukc)|
 
 </div>
 

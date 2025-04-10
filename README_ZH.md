@@ -32,13 +32,15 @@
 
 <div align="center">
 
-[![developing](https://img.youtube.com/vi/seRTYtwgLrk/0.jpg)](https://youtu.be/seRTYtwgLrk)
+| [Automatic Deployment Video](https://youtu.be/seRTYtwgLrk) | 
+|---|
+|[![developing](https://img.youtube.com/vi/seRTYtwgLrk/0.jpg)](https://youtu.be/seRTYtwgLrk)|
 
 </div>
 
 #### 服务
 
-| [Spark TTS](https://youtu.be/b3Ym69arLGw) | [3D](https://youtu.be/DhERLlXPK6I) | [JiMengAI](https://youtu.be/e5OaLM8qfGc) |
+| [Spark TTS Video](https://youtu.be/b3Ym69arLGw) | [3D Video](https://youtu.be/DhERLlXPK6I) | [JiMengAI Video](https://youtu.be/e5OaLM8qfGc) |
 |---|---|---|
 | [![spark-tts](https://img.youtube.com/vi/b3Ym69arLGw/0.jpg)](https://youtu.be/b3Ym69arLGw) | [![3d](https://img.youtube.com/vi/DhERLlXPK6I/0.jpg)](https://youtu.be/DhERLlXPK6I) | [![jimeng](https://img.youtube.com/vi/e5OaLM8qfGc/0.jpg)](https://youtu.be/e5OaLM8qfGc) |
 
@@ -46,7 +48,10 @@
 
 <div align="center">
 
-[![tool mart](https://img.youtube.com/vi/x-q4Jc4Zukc/0.jpg)](https://youtu.be/x-q4Jc4Zukc)
+| [Tool Mart Video](https://youtu.be/x-q4Jc4Zukc) | 
+|---|
+|[![tool mart](https://img.youtube.com/vi/x-q4Jc4Zukc/0.jpg)](https://youtu.be/x-q4Jc4Zukc)|
+
 
 </div>
 
