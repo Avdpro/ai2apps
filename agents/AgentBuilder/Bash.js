@@ -516,7 +516,8 @@ let ChatAPI=[{
 		}
 	},
 	path: "/@AgentBuilder/Bash.js",
-	label: "Bash Ops"
+	label: "Bash Ops",
+	icon: "terminal.svg"
 }];
 
 //:Export Edit-AddOn:
@@ -563,6 +564,8 @@ if(DocAIAgentExporter){
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
 			this.packResult(coder,seg,seg.outlet);
 		}
 		coder.indentLess();coder.maybeNewLine();

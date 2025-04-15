@@ -19,7 +19,7 @@ let SysTabOSChat=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode;
+	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode,JumpToolAsk,ToolAsk,ToolAskReuslt,ToolAskUser,ShowAskAiResult,ShowAskUserResult,CallToolAsk;
 	let orgInput=null;
 	let cokeEnv=null;
 	let cokeTty=null;
@@ -48,7 +48,7 @@ let SysTabOSChat=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1IKCV9VRJ0PostContext*/
 	/*}#1IKCV9VRJ0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["ShowLogo"]=ShowLogo=async function(input){//:1IKE6TS810
 		let result=input;
 		let role="assistant";
@@ -70,7 +70,7 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipStart"]=TipStart=async function(input){//:1IKE6V3JM0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
@@ -126,7 +126,7 @@ let SysTabOSChat=async function(session){
 	
 	segs["StartTip"]=StartTip=async function(input){//:1IKCVAMJC0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="user";
 		let content=input.prompt||input;
 		/*#{1IKCVAMJC0PreCodes*/
@@ -183,7 +183,7 @@ let SysTabOSChat=async function(session){
 			toolId="Tool-??";
 		}
 		assets=list=input.assets;
-		let prompt=input.prompt;
+		let prompt=input.prompt||input;
 		if(assets){
 			prompt=input.prompt;
 			prompt+=`\n- - -\n\n# Assets URLs: \n\n[\n\n`
@@ -215,12 +215,17 @@ let SysTabOSChat=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(true)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward(askUpward==="$up"?($agent.upperAgent||$agent):$agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
 		}else if(result.assets && result.prompt){
@@ -488,7 +493,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["ShowResult"]=ShowResult=async function(input){//:1IKCVK9ES0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKCVK9ES0PreCodes*/
@@ -517,7 +522,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	segs["TryTool"]=TryTool=async function(input){//:1IKCVNB7A0
 		let result=input;
 		/*#{1IKCVNB7A0Code*/
-		false
+		session.indentMore();
 		/*}#1IKCVNB7A0Code*/
 		return {seg:ShowTool,result:(result),preSeg:"1IKCVNB7A0",outlet:"1IKCVQU3L1",catchSeg:ToolError,catchlet:"1IKCVQU3O5"};
 	};
@@ -527,8 +532,10 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	segs["DoChat"]=DoChat=async function(input){//:1IKCVNLLO0
 		let result;
 		let arg=input.content;
+		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
-		result= await session.pipeChat(sourcePath,arg,false);
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:AddChat,result:(result),preSeg:"1IKCVNLLO0",outlet:"1IKCVQU3L2"};
 	};
 	DoChat.jaxId="1IKCVNLLO0"
@@ -536,7 +543,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["TipFinish"]=TipFinish=async function(input){//:1IKCVOA650
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -547,7 +554,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["TipAbort"]=TipAbort=async function(input){//:1IKCVOQ6C0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -576,6 +583,9 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["ToolError"]=ToolError=async function(input){//:1IKD00IP70
 		let result=input;
+		/*#{1IKD00IP70PreCodes*/
+		session.indentLess();
+		/*}#1IKD00IP70PreCodes*/
 		return {seg:LogError,result:result,preSeg:"1IKCVU57C0",outlet:"1IKD025ML2"};
 	
 	};
@@ -584,7 +594,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["ShowNode"]=ShowNode=async function(input){//:1IKD03BL10
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03BL10PreCodes*/
@@ -605,7 +615,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["ShowTool"]=ShowTool=async function(input){//:1IKD03VM90
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03VM90PreCodes*/
@@ -629,16 +639,21 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["CallTool"]=CallTool=async function(input){//:1IKD04LRQ0
 		let result=input
+		let outlets={
+			Ask: CallToolAsk
+		};
 		/*#{1IKD04LRQ0Code*/
 		let tools=context.aaTools;
 		let tool=context.curTool;
 		let toolPath=tool.filePath;
 		let prompt=input.prompt;
+		let opts;
 		if(typeof(prompt)!=="string"){
 			prompt=JSON.stringify(prompt);
 		}
 		session.debugLog({type:"CallTool",tool:toolPath,prompt:prompt});
-		result=await tools.execTool(VFACT.app,tool,prompt,session);
+		opts={secrect:false,upperAgent:$agent,askUpwardSeg:outlets.Ask};
+		result=await tools.execTool(VFACT.app,tool,prompt,session,opts);
 		session.debugLog({type:"ToolResult",tool:toolPath,result:result});
 		/*}#1IKD04LRQ0Code*/
 		return {seg:TipToolRes,result:(result),preSeg:"1IKD04LRQ0",outlet:"1IKD0BI2O1"};
@@ -648,7 +663,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["TipNodeRes"]=TipNodeRes=async function(input){//:1IKD04TDE0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD04TDE0PreCodes*/
@@ -666,7 +681,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	
 	segs["TipToolRes"]=TipToolRes=async function(input){//:1IKD0580Q0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD0580Q0PreCodes*/
@@ -676,6 +691,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		/*}#1IKD0580Q0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1IKD0580Q0PostCodes*/
+		session.indentLess();
 		result=`Call tool result: ${JSON.stringify(input)}`;
 		/*}#1IKD0580Q0PostCodes*/
 		return {seg:NextAction,result:(result),preSeg:"1IKD0580Q0",outlet:"1IKD0BI2O3"};
@@ -714,12 +730,17 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(true)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward(askUpward==="$up"?($agent.upperAgent||$agent):$agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
 		}else if(result.assets && result.prompt){
@@ -738,6 +759,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		args['callAgent']=context.curNode.entry;
 		args['callArg']=context.curNode.prompt;
 		args['checkUpdate']=true;
+		args['options']="";
 		/*#{1IKEN0POL0PreCodes*/
 		/*}#1IKEN0POL0PreCodes*/
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -748,10 +770,205 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 	CallNode.jaxId="1IKEN0POL0"
 	CallNode.url="CallNode@"+agentURL
 	
-	agent={
+	segs["JumpToolAsk"]=JumpToolAsk=async function(input){//:1IO2JIV900
+		let result=input;
+		return {seg:CallToolAsk,result:result,preSeg:"1IOGH2O1E0",outlet:"1IO2JPNBA0"};
+	
+	};
+	JumpToolAsk.jaxId="1IOGH2O1E0"
+	JumpToolAsk.url="JumpToolAsk@"+agentURL
+	
+	segs["ToolAsk"]=ToolAsk=async function(input){//:1IO2JK8RE0
+		let prompt;
+		let result=null;
+		/*#{1IO2JK8RE0Input*/
+		let mem;
+		mem=[];
+		{
+			let i,n,chatMem,chat,content,line,sub;
+			chatMem=GenAction.messages.slice(-9);
+			n=chatMem.length;
+			for(i=0;i<n-1;i++){
+				chat=chatMem[i];
+				content=chat.content;
+				if(Array.isArray(content)){
+					line=""+JSON.stringify(content);
+				}else{
+					line=""+JSON.stringify(content);
+				}
+				if(line.length>256){
+					line=line.substring(0,256)+"...";
+				}
+				mem.push({role:chat.role,content:line});
+			}
+			mem.push(chatMem[n-1]);//Don't compress the last round.
+		}
+		/*}#1IO2JK8RE0Input*/
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4o",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"json_object"
+		};
+		let chatMem=ToolAsk.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:`
+### 角色
+你负责帮助当前智能体，回答其调用的工具提出的问题
+
+### 当前智能体
+当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。
+
+### 当前智能体正在执行的用户任务:
+${orgInput.prompt||orgInput}
+
+### 当前智能体调用工具情况
+当前智能体的执行过程以及工具的调用情况，经过化简后如下：
+\`\`\`
+${JSON.stringify(mem,null,"\t")}
+\`\`\`
+
+### 对话
+用户的输入是正在执行的工具提出的问题，你根据当前智能体的信息，用JSON回复
+- 回复的时候请总结当前任务，当前工具执行目的，根据工具的提问以及当前智能体的对话过程，分析答案，并把思考过程写在回复JSON的"think"属性内。
+- 如果根据当前的信息，你可以回答问题，请把你的回答放在回复JSON的"reply"属性中。例如：
+	\`\`\`
+		{
+        	"think": "用户任务是查询股票信息并绘制图表。当前调用工具查询股票几个信息。工具询问文件输出格式，应该是为了下一步绘制收集数据。通常在智能体之间交换数据使用csv或者json多一些。这里虽然也可以使用json格式，但使用csv格式最为通用。"
+			"reply":"请用.csv格式输出数据。"
+		}
+	\`\`\`
+
+- 如果根据当前的信息，你无法做出明确回答，请把回复智能体的"reply"属性设置为null。例如：
+	\`\`\`
+		{
+        	"think": "用户任务是查询股票信息并绘制图表。当前调用工具查询股价信息。工具询问查询股价的API-Key。从当前智能体执行情况来看，我不知道可以有使用的API-Key，无法做出回答"
+			"reply":null
+		}
+	\`\`\`
+
+
+- 为了减少打扰用户，请尽量做出回答。
+
+### 回复JSON参数
+- "think" {string}: 你的思考过程
+- "reply" {string}: 你的回答，如果无法回答，设置为null
+`},
+		];
+		/*#{1IO2JK8RE0PrePrompt*/
+		/*}#1IO2JK8RE0PrePrompt*/
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1IO2JK8RE0FilterMessage*/
+			/*}#1IO2JK8RE0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1IO2JK8RE0PreCall*/
+		/*}#1IO2JK8RE0PreCall*/
+		result=(result===null)?(await session.callSegLLM("ToolAsk@"+agentURL,opts,messages,true)):result;
+		result=trimJSON(result);
+		/*#{1IO2JK8RE0PostCall*/
+		result.ask=input;
+		/*}#1IO2JK8RE0PostCall*/
+		return {seg:ToolAskReuslt,result:(result),preSeg:"1IO2JK8RE0",outlet:"1IO2JPNBA1"};
+	};
+	ToolAsk.jaxId="1IO2JK8RE0"
+	ToolAsk.url="ToolAsk@"+agentURL
+	
+	segs["ToolAskReuslt"]=ToolAskReuslt=async function(input){//:1IO2JLG770
+		let result=input;
+		/*#{1IO2JLG770Start*/
+		/*}#1IO2JLG770Start*/
+		if(input.reply){
+			let output=input.reply;
+			return {seg:ShowAskAiResult,result:(output),preSeg:"1IO2JLG770",outlet:"1IO2JPNBA2"};
+		}
+		/*#{1IO2JLG770Post*/
+		/*}#1IO2JLG770Post*/
+		return {seg:ToolAskUser,result:(result),preSeg:"1IO2JLG770",outlet:"1IO2JPNBB0"};
+	};
+	ToolAskReuslt.jaxId="1IO2JLG770"
+	ToolAskReuslt.url="ToolAskReuslt@"+agentURL
+	
+	segs["ToolAskUser"]=ToolAskUser=async function(input){//:1IO2JOC730
+		let result;
+		let arg=input.ask;
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:ShowAskUserResult,result:(result),preSeg:"1IO2JOC730",outlet:"1IO2JPNBB2"};
+	};
+	ToolAskUser.jaxId="1IO2JOC730"
+	ToolAskUser.url="ToolAskUser@"+agentURL
+	
+	segs["ShowAskAiResult"]=ShowAskAiResult=async function(input){//:1IO2JQFFQ0
+		let result=input;
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let role="assistant";
+		let content=input;
+		/*#{1IO2JQFFQ0PreCodes*/
+		opts.icon="/~/-tabos/shared/assets/arrowright.svg";
+		opts.txtHeader+=(($ln==="CN")?(" 答复:"):/*EN*/(" reply:"));
+		opts.iconSize=24;
+		opts.fontSize=12;
+		/*}#1IO2JQFFQ0PreCodes*/
+		session.addChatText(role,content,opts);
+		/*#{1IO2JQFFQ0PostCodes*/
+		/*}#1IO2JQFFQ0PostCodes*/
+		return {result:result};
+	};
+	ShowAskAiResult.jaxId="1IO2JQFFQ0"
+	ShowAskAiResult.url="ShowAskAiResult@"+agentURL
+	
+	segs["ShowAskUserResult"]=ShowAskUserResult=async function(input){//:1IODU6QTO0
+		let result=input;
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let role="assistant";
+		let content=input;
+		/*#{1IODU6QTO0PreCodes*/
+		opts.icon="/~/-tabos/shared/assets/arrowright.svg";
+		opts.txtHeader+=(($ln==="CN")?(" 答复:"):/*EN*/(" reply:"));
+		opts.iconSize=24;
+		opts.fontSize=12;
+		/*}#1IODU6QTO0PreCodes*/
+		session.addChatText(role,content,opts);
+		/*#{1IODU6QTO0PostCodes*/
+		/*}#1IODU6QTO0PostCodes*/
+		return {result:result};
+	};
+	ShowAskUserResult.jaxId="1IODU6QTO0"
+	ShowAskUserResult.url="ShowAskUserResult@"+agentURL
+	
+	segs["CallToolAsk"]=CallToolAsk=async function(input){//:1IOGH2O1E0
+		let result;
+		let arg={"agentDesc":"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。","orgInput":execInput,"agentMem":GenAction.messages,"toolAsk":input};
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSReplyTool.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {result:result};
+	};
+	CallToolAsk.jaxId="1IOGH2O1E0"
+	CallToolAsk.url="CallToolAsk@"+agentURL
+	
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"SysTabOSChat",
+		showName:(($ln==="CN")?("AI2Apps"):("AI2Apps")),
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1IKCV9VRJ0",
@@ -825,6 +1042,15 @@ export{SysTabOSChat};
 //		"agent": {
 //			"jaxId": "1IKCV9VRJ2",
 //			"attrs": {}
+//		},
+//		"showName": {
+//			"type": "string",
+//			"valText": "AI2Apps",
+//			"localize": {
+//				"EN": "AI2Apps",
+//				"CN": "AI2Apps"
+//			},
+//			"localizable": true
 //		},
 //		"entry": "ShowLogo",
 //		"autoStart": "true",
@@ -1038,6 +1264,9 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IKCVBKKB0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1231,6 +1460,7 @@ export{SysTabOSChat};
 //						"text": "",
 //						"file": "true",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IKCVDSRP3",
 //							"attrs": {
@@ -1574,6 +1804,9 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IKCVK9ES0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1717,7 +1950,7 @@ export{SysTabOSChat};
 //						"x": "1980",
 //						"y": "360",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1787,6 +2020,9 @@ export{SysTabOSChat};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IKDJNI2I0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1946,6 +2182,9 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IKCVDIJ50"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1986,7 +2225,7 @@ export{SysTabOSChat};
 //						"x": "2165",
 //						"y": "390",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"seg": "LogError",
@@ -2111,6 +2350,34 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IKD0580Q0"
 //						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "CodOutlet",
+//									"jaxId": "1IO2IGU820",
+//									"attrs": {
+//										"id": "Ask",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IO2IGU821",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IO2IGU822",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IOGH2O1E0"
+//								}
+//							]
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2163,7 +2430,7 @@ export{SysTabOSChat};
 //						"viewName": "",
 //						"label": "",
 //						"x": "2840",
-//						"y": "345",
+//						"y": "330",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2201,8 +2468,8 @@ export{SysTabOSChat};
 //						"id": "NextAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3080",
-//						"y": "345",
+//						"x": "3105",
+//						"y": "330",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2251,6 +2518,9 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IKCVDIJ50"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2287,6 +2557,9 @@ export{SysTabOSChat};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IKDJOVRA0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2346,6 +2619,7 @@ export{SysTabOSChat};
 //						"text": "",
 //						"file": "true",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IKE789LQ0",
 //							"attrs": {
@@ -2387,6 +2661,7 @@ export{SysTabOSChat};
 //						"callAgent": "#context.curNode.entry",
 //						"callArg": "#context.curNode.prompt",
 //						"checkUpdate": "true",
+//						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IKEN357K0",
 //							"attrs": {
@@ -2397,6 +2672,324 @@ export{SysTabOSChat};
 //						}
 //					},
 //					"icon": "cloudact.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1IO2JIV900",
+//					"attrs": {
+//						"id": "JumpToolAsk",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2600",
+//						"y": "565",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "1IOGH2O1E0",
+//						"outlet": {
+//							"jaxId": "1IO2JPNBA0",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1IO2JK8RE0",
+//					"attrs": {
+//						"id": "ToolAsk",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2600",
+//						"y": "630",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "faces.svg",
+//						"context": {
+//							"jaxId": "1IO2JPNBK0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IO2JPNBK1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4o",
+//						"system": "#`\n### 角色\n你负责帮助当前智能体，回答其调用的工具提出的问题\n\n### 当前智能体\n当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。\n\n### 当前智能体正在执行的用户任务:\n${orgInput.prompt||orgInput}\n\n### 当前智能体调用工具情况\n当前智能体的执行过程以及工具的调用情况，经过化简后如下：\n\\`\\`\\`\n${JSON.stringify(mem,null,\"\\t\")}\n\\`\\`\\`\n\n### 对话\n用户的输入是正在执行的工具提出的问题，你根据当前智能体的信息，用JSON回复\n- 回复的时候请总结当前任务，当前工具执行目的，根据工具的提问以及当前智能体的对话过程，分析答案，并把思考过程写在回复JSON的\"think\"属性内。\n- 如果根据当前的信息，你可以回答问题，请把你的回答放在回复JSON的\"reply\"属性中。例如：\n\t\\`\\`\\`\n\t\t{\n        \t\"think\": \"用户任务是查询股票信息并绘制图表。当前调用工具查询股票几个信息。工具询问文件输出格式，应该是为了下一步绘制收集数据。通常在智能体之间交换数据使用csv或者json多一些。这里虽然也可以使用json格式，但使用csv格式最为通用。\"\n\t\t\t\"reply\":\"请用.csv格式输出数据。\"\n\t\t}\n\t\\`\\`\\`\n\n- 如果根据当前的信息，你无法做出明确回答，请把回复智能体的\"reply\"属性设置为null。例如：\n\t\\`\\`\\`\n\t\t{\n        \t\"think\": \"用户任务是查询股票信息并绘制图表。当前调用工具查询股价信息。工具询问查询股价的API-Key。从当前智能体执行情况来看，我不知道可以有使用的API-Key，无法做出回答\"\n\t\t\t\"reply\":null\n\t\t}\n\t\\`\\`\\`\n\n\n- 为了减少打扰用户，请尽量做出回答。\n\n### 回复JSON参数\n- \"think\" {string}: 你的思考过程\n- \"reply\" {string}: 你的回答，如果无法回答，设置为null\n`",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1IO2JPNBA1",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IO2JLG770"
+//						},
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "json_object",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1IO2JLG770",
+//					"attrs": {
+//						"id": "ToolAskReuslt",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2840",
+//						"y": "630",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IO2JPNBK2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IO2JPNBK3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IO2JPNBB0",
+//							"attrs": {
+//								"id": "AskUser",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1IO2JOC730"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IO2JPNBA2",
+//									"attrs": {
+//										"id": "Reply",
+//										"desc": "输出节点。",
+//										"output": "#input.reply",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IO2JPNBK4",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IO2JPNBK5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.reply"
+//									},
+//									"linkedSeg": "1IO2JQFFQ0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1IO2JOC730",
+//					"attrs": {
+//						"id": "ToolAskUser",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3105",
+//						"y": "675",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IO2JPNBK8",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IO2JPNBK9",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/SysTabOSAskUser.js",
+//						"argument": "#{}#>input.ask",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1IO2JPNBB2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IODU6QTO0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1IO2JQFFQ0",
+//					"attrs": {
+//						"id": "ShowAskAiResult",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3105",
+//						"y": "590",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IO2JVR8D0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IO2JVR8D1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1IO2JVR850",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1IODU6QTO0",
+//					"attrs": {
+//						"id": "ShowAskUserResult",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3365",
+//						"y": "675",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IODUBME50",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IODUBME51",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1IODUBME00",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1IOGH2O1E0",
+//					"attrs": {
+//						"id": "CallToolAsk",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2840",
+//						"y": "390",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IOGH44CM0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IOGH44CM1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/SysTabOSReplyTool.js",
+//						"argument": "{\"agentDesc\":\"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。\",\"orgInput\":\"#execInput\",\"agentMem\":\"#GenAction.messages\",\"toolAsk\":\"#input\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1IOGH44CF0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
 //				}
 //			]
 //		},

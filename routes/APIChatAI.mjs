@@ -16,8 +16,11 @@ import ApiProxy from "../apiproxy/FetchProxy.mjs";
 
 const AIPlatforms={
 	"OpenAI":{
+		"gpt-4.1":{model:"gpt-4.1",label:"GPT-4.1"},
 		"gpt-4o":{model:"gpt-4o",label:"GPT-4O"},
+		"gpt-4.1-mini":{model:"gpt-4.1-mini",label:"GPT-4.1 Mini"},
 		"gpt-4o-mini":{model:"gpt-4o-mini",label:"GPT-4O-mini"},
+		"gpt-4.1-nano":{model:"gpt-4.1-nano",label:"GPT-4.1 Nano"},
 		"gpt-3.5-turbo":{model:"gpt-3.5-turbo",label:"GPT-3.5"},
 		"gpt-3.5-turbo-16k":{model:"gpt-3.5-turbo-16k",label:"GPT-3.5-16K"},
 		"gpt-4":{model:"gpt-4",label:"GPT-4"},
@@ -27,10 +30,11 @@ const AIPlatforms={
 		"gemini-pro":{model:"gemini-pro",label:"Gemini Pro"}
 	},
 	"Claude":{
+		"claude-3-7-sonnet-latest":{model:"claude-3-7-sonnet-latest",label:"Claude 3.7 Sonnet"},
 		"claude-3-5-sonnet-latest":{model:"claude-3-5-sonnet-latest",label:"Claude 3.5 Sonnet"},
 		"claude-3-5-sonnet-20240620":{model:"claude-3-5-sonnet-20240620",label:"Claude 3.5 Sonnet 240620"},
 		"claude-3-sonnet-20240229":{model:"claude-3-sonnet-20240229",label:"Claude 3 Sonnet"},
-		"claude-3-opus-20240229":{model:"claude-3-opus-20240229",label:"Claude 3 Opus"}
+		"claude-3-opus-20240229":{model:"claude-3-opus-20240229",label:"Claude 3 Opus"},
 	},
 	"Ollama":{
 		"llama3":{model:"llama3",label:"LLAMA3 8b"},
@@ -371,6 +375,7 @@ export default function(app,router,apiMap) {
 						}
 					}
 					try {
+						let line;
 						streamId = getStreamId();
 						streamVO = {
 							streamId,
@@ -386,6 +391,28 @@ export default function(app,router,apiMap) {
 						if(messages[0].role==="system"){
 							callVO.system=messages[0].content;
 							messages.shift();
+						}
+						//Fix image messages:
+						for(line of messages){
+							let cnt,pt;
+							cnt=line.content;
+							if(Array.isArray(cnt)){
+								for(pt of cnt){
+									if(pt.type==="image_url"){
+										let url,pos,data;
+										pt.type="image";
+										url=pt.image_url.url;
+										pos=url.indexOf(",");
+										data=url.substring(pos+1);
+										pt.source={
+											type:"base64",
+											media_type:url.startsWith("data:image/jpeg")?"image/jpeg":"image/png",
+											data:data
+										};
+										delete pt.image_url;
+									}
+								}
+							}
 						}
 						callVO.messages=messages;
 						stream = anthropic.messages

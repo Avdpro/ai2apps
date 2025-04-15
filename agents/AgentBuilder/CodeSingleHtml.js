@@ -19,7 +19,7 @@ const argsTemplate={
 		},
 		"autoFix":{
 			"name":"autoFix","type":"bool",
-			"required":false,
+			"required":true,
 			"defaultValue":true,
 			"desc":"如果出现错误，是否自动修正重新编写代码",
 		},
@@ -90,15 +90,17 @@ let CodeSingleHtml=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1IN8IJT7O0PostContext*/
 	/*}#1IN8IJT7O0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IN8IO9UM0
 		let result=input;
 		let missing=false;
+		let smartAsk=true;
 		/*#{1IN8IO9UM0PreCodes*/
 		/*}#1IN8IO9UM0PreCodes*/
 		if(userPrompt===undefined || userPrompt==="") missing=true;
+		if(autoFix===undefined || autoFix==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		/*#{1IN8IO9UM0PostCodes*/
@@ -334,12 +336,17 @@ let CodeSingleHtml=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let askUpward=(false)||false;
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
 		}else if(result.assets && result.prompt){
@@ -419,14 +426,19 @@ let CodeSingleHtml=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let askUpward=(false)||false;
 		let text=("");
 		let result="";
 		/*#{1INAMHF8T0PreCodes*/
 		/*}#1INAMHF8T0PreCodes*/
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
 		}else if(result.assets && result.prompt){
@@ -494,7 +506,7 @@ ${input.html}
 	ShowCode.jaxId="1INCMVE120"
 	ShowCode.url="ShowCode@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"CodeSingleHtml",
@@ -676,7 +688,7 @@ export{CodeSingleHtml};
 //						"type": "Boolean",
 //						"mockup": "true",
 //						"desc": "如果出现错误，是否自动修正重新编写代码",
-//						"required": "false"
+//						"required": "true"
 //					}
 //				},
 //				"userCheck": {
@@ -771,6 +783,7 @@ export{CodeSingleHtml};
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "true",
 //						"outlet": {
 //							"jaxId": "1IN8IPUBH0",
 //							"attrs": {
@@ -879,6 +892,9 @@ export{CodeSingleHtml};
 //							},
 //							"linkedSeg": "1IN8ISD9N0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -982,6 +998,9 @@ export{CodeSingleHtml};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1108,6 +1127,9 @@ export{CodeSingleHtml};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1238,6 +1260,7 @@ export{CodeSingleHtml};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IN8M0H2K1",
 //							"attrs": {
@@ -1342,6 +1365,9 @@ export{CodeSingleHtml};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IN8P01NS0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1601,6 +1627,7 @@ export{CodeSingleHtml};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1INAMJOSQ0",
 //							"attrs": {
@@ -1781,6 +1808,9 @@ export{CodeSingleHtml};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1INB7QH6E0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},

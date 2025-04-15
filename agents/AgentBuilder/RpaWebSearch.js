@@ -104,13 +104,14 @@ let RpaWebSearch=async function(session){
 	context={};
 	/*#{1IHCHS17T0PostContext*/
 	/*}#1IHCHS17T0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IHCKI9BO0
 		let result=input;
 		let missing=false;
+		let smartAsk=false;
 		if(search===undefined || search==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		return {seg:TipStart,result:(result),preSeg:"1IHCKI9BO0",outlet:"1IHCKJ60E0"};
@@ -1396,7 +1397,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 	AsyncCloseBrowser.jaxId="1INRLOS0A0"
 	AsyncCloseBrowser.url="AsyncCloseBrowser@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"RpaWebSearch",
@@ -1648,6 +1649,7 @@ export{RpaWebSearch,ChatAPI};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IHCKJ60E0",
 //							"attrs": {
@@ -1796,6 +1798,9 @@ export{RpaWebSearch,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1831,6 +1836,9 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2232,6 +2240,9 @@ export{RpaWebSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1IM98TTCN0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2581,6 +2592,9 @@ export{RpaWebSearch,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2616,6 +2630,9 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2903,6 +2920,9 @@ export{RpaWebSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1IM98ROVI0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2983,6 +3003,9 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -3323,6 +3346,9 @@ export{RpaWebSearch,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IM98KOBT0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -3678,6 +3704,9 @@ export{RpaWebSearch,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -3783,6 +3812,9 @@ export{RpaWebSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1IM98O14D0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -3886,6 +3918,9 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -4283,6 +4318,9 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -4694,6 +4732,9 @@ export{RpaWebSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},

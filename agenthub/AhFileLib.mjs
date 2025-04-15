@@ -40,7 +40,8 @@ let AhFileLib,ahFileLib;
 	ahFileLib.start=async function(){
 		let dirPath;
 		dirPath=AgentHub_FileLibPath;
-		if(dirPath[0]!=="/"){
+		//if(dirPath[0]!=="/"){
+		if(!pathLib.isAbsolute(dirPath)){
 			dirPath=pathLib.join(this.app.get("AppHomePath"),dirPath);
 		}
 		this.fileDir=dirPath;

@@ -181,6 +181,14 @@ class AISession:
 		print("AIChatSession 0.02")
 
 	# -------------------------------------------------------------------------
+	async def indentMore(self):
+		await self.callClient("IdentMore",{})
+
+	# -------------------------------------------------------------------------
+	async def indentLess(self):
+		await self.callClient("IdentLess",{})
+
+	# -------------------------------------------------------------------------
 	# Network APIs:
 	# -------------------------------------------------------------------------
 	async def startDebug(self,agentURL,entryDef):
@@ -332,7 +340,7 @@ class AISession:
 				result=None
 				oldFromAgent=self.callClientFromAgent
 				oldAskSeg=self.callClientAskSeg
-				self.callClientFromAgent=opts.get("fromAgent",None)
+				self.callClientFromAgent=opts.get("fromAgent",None) or opts.get("upperAgent",None)
 				self.callClientAskSeg=opts.get("askUpwardSeg",None)
 				try:
 					result=await self.callClient("CallAgent",{"agent":agentPath,"arg":input})
@@ -447,9 +455,13 @@ class AISession:
 	# Ask upward:
 	# -------------------------------------------------------------------------
 	async def askUpward(self,agent,prompt):
-		result=None
 		askUpwardSeg=None
 		askAgent=agent
+		agentName=agent.get("name",None)
+		if agentName:
+			showOpts={"txtHeader":agent.get("showName",None) or agent.get("name",None),"icon":"/~/-tabos/shared/assets/ask.svg","iconSize":24,"fontSize":12}
+			await self.addChatText("assistant",prompt,showOpts)
+
 		while askAgent :
 			askUpwardSeg=askAgent.get("askUpwardSeg",None)
 			askAgent=askAgent.get("upperAgent",None)
@@ -457,12 +469,20 @@ class AISession:
 				break
 		if askUpwardSeg and askAgent:
 			if askAgent=="$client":
-				result=await self.callClient("AskUpward",{"prompt":prompt});
+				result=await self.callClient("AskUpward",{"prompt":prompt})
 			elif askAgent=="$remote":
 				remoteSession = askUpwardSeg
-				result=await remoteSession.callRemote("AskUpward",{prompt:prompt});
+				result=await remoteSession.callRemote("AskUpward",{"prompt":prompt})
 			else:
 				result=await self.execAISeg(askAgent,askUpwardSeg,prompt)
+		else:
+			result=await self.askChatInput({"type":"input","text":"","allowFile":True})
+			if isinstance (result,str):
+				await self.addChatText("user",result)
+			elif result.get("assets",None) and  result.get("prompt",None):
+				await self.addChatText("user",f"{result.get('prompt')}{chr(10)}- - -{chr(10)}{(chr(10)+'- - -'+chr(10)).join(result.get('assets',None))}",{"render":True})
+			else:
+				await self.addChatText("user",result.get("text",None) or result.get("prompt",None) or result)
 		if not isinstance(result, str):
 			result = json.dumps(result)
 		return result

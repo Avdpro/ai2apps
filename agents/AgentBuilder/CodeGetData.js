@@ -63,13 +63,14 @@ let CodeGetData=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1INLFJ4NJ0PostContext*/
 	/*}#1INLFJ4NJ0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1INLFLHLM0
 		let result=input;
 		let missing=false;
+		let smartAsk=false;
 		if(userPrompt===undefined || userPrompt==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		return {seg:WriteCode,result:(result),preSeg:"1INLFLHLM0",outlet:"1INLFO27Q0"};
@@ -201,12 +202,17 @@ let CodeGetData=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward(askUpward==="$up"?($agent.upperAgent||$agent):$agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
 		}else if(result.assets && result.prompt){
@@ -221,7 +227,7 @@ let CodeGetData=async function(session){
 	
 	segs["ShowCode"]=ShowCode=async function(input){//:1INLFPQQS0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`
 \`\`\`
@@ -300,7 +306,7 @@ ${input.code}
 	
 	segs["ShowError"]=ShowError=async function(input){//:1INLFTDIP0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`发现页面错误：${input.error}`;
 		session.addChatText(role,content,opts);
@@ -490,7 +496,7 @@ ${JSON.stringify(briefResult)}
 	
 	segs["ShowResult"]=ShowResult=async function(input){//:1INNK4NUE0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`
 \`\`\`
@@ -505,7 +511,7 @@ ${JSON.stringify(briefResult)}
 	
 	segs["ShowFix"]=ShowFix=async function(input){//:1INP9SILV0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -524,7 +530,7 @@ ${JSON.stringify(briefResult)}
 	CheckRound.jaxId="1INPBFE3R0"
 	CheckRound.url="CheckRound@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"CodeGetData",
@@ -557,7 +563,7 @@ ${JSON.stringify(briefResult)}
 export const ChatAPI=[{
 	def:{
 		name: "CodeGetData",
-		description: "这是一个AI智能体。",
+		description: "这是根据需求，编写从网络获取数据，并保存到文件的智能体",
 		parameters:{
 			type: "object",
 			properties:{
@@ -593,7 +599,7 @@ if(DocAIAgentExporter){
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
 		listHint:["id","userPrompt","autoFix","codes","desc"],
-		desc:"这是一个AI智能体。"
+		desc:"这是根据需求，编写从网络获取数据，并保存到文件的智能体"
 	});
 	
 	DocAIAgentExporter.segTypeExporters["CodeGetData"]=
@@ -671,6 +677,7 @@ export{CodeGetData};
 //			"jaxId": "1INLFJ4NJ2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "FixArgs",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -750,6 +757,7 @@ export{CodeGetData};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1INLFO27Q0",
 //							"attrs": {
@@ -960,6 +968,7 @@ export{CodeGetData};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "No",
 //						"outlet": {
 //							"jaxId": "1INLFOOT30",
 //							"attrs": {
@@ -1086,6 +1095,9 @@ export{CodeGetData};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1INNK4NUE0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1298,6 +1310,9 @@ export{CodeGetData};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1359,6 +1374,9 @@ export{CodeGetData};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1INLFVU9B0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1439,6 +1457,9 @@ export{CodeGetData};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1608,6 +1629,9 @@ export{CodeGetData};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1INP9SILV0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1805,7 +1829,7 @@ export{CodeGetData};
 //				}
 //			]
 //		},
-//		"desc": "这是一个AI智能体。",
+//		"desc": "这是根据需求，编写从网络获取数据，并保存到文件的智能体",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
 //		"addOnOpts": "{\"name\":\"\",\"label\":\"Get Data\",\"path\":\"\",\"pathInHub\":\"\",\"chatEntry\":\"Tool\",\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\"}"

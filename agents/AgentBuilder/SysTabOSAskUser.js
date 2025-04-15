@@ -17,7 +17,9 @@ let SysTabOSAskUser=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FilterChat,IsMenu,Menu,Chat;
+	let FilterChat,IsMenu,Menu,Chat,ShowAsk;
+	let orgInput="";
+	
 	/*#{1IKDODVUT0LocalVals*/
 	/*}#1IKDODVUT0LocalVals*/
 	
@@ -33,10 +35,16 @@ let SysTabOSAskUser=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1IKDODVUT0PostContext*/
 	/*}#1IKDODVUT0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FilterChat"]=FilterChat=async function(input){//:1IKDOEJIG0
 		let prompt;
-		let result;
+		let result=null;
+		/*#{1IKDOEJIG0Input*/
+		let ua=$agent.upperAgent;
+		if(ua){
+			$agent.showName=ua.showName||ua.name;
+		}
+		/*}#1IKDOEJIG0Input*/
 		
 		let opts={
 			platform:"OpenAI",
@@ -100,15 +108,24 @@ let SysTabOSAskUser=async function(session){
 		let messages=[
 			{role:"system",content:"你是一个把输入的对话文本转化为更方便的用户交互方式的AI\n\n---\n### 输入\n对话的输入是一段与用户交互，需要用户输入的文本提示\n\n---\n### 转化\n请根据对话的内容判断，对话是否可以转化为菜单形式的对话。例如询问用户是否确定，让用户在多个选项中选择，都是可以转化为菜单形式的。\n\n---\n### 输出\n请用JSON格式返回，例如：\n{\n\t\"items\":[\n    \t{\n        \t\"emoji\":\"▶️\",\n            \"text\":\"Start\",\n        },\n    \t{\n        \t\"emoji\":\"🛑\",\n            \"text\":\"Stop\",\n        },\n   ]\n}\n\n返回JSON参数说明：\n- \"items\" {array<object>}: 如果不能用菜单交互，为null，可以用菜单交互，菜单的选项列表，每一个选项对象包含两个属性：\n\t- \"emoji\" {string}: 一个可以代表当前选项的Emoji符号，注意尽量用单一的符号\n    - \"text\" {string}: 菜单项的文本内容\n"},
 		];
+		/*#{1IKDOEJIG0PrePrompt*/
+		/*}#1IKDOEJIG0PrePrompt*/
 		prompt=input;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			let msg={role:"user",content:prompt};messages.push(msg);
+			let msg={role:"user",content:prompt};
+			/*#{1IKDOEJIG0FilterMessage*/
+			/*}#1IKDOEJIG0FilterMessage*/
+			messages.push(msg);
 		}
-		result=await session.callSegLLM("FilterChat@"+agentURL,opts,messages,true);
+		/*#{1IKDOEJIG0PreCall*/
+		/*}#1IKDOEJIG0PreCall*/
+		result=(result===null)?(await session.callSegLLM("FilterChat@"+agentURL,opts,messages,true)):result;
 		result=trimJSON(result);
+		/*#{1IKDOEJIG0PostCall*/
+		/*}#1IKDOEJIG0PostCall*/
 		return {seg:IsMenu,result:(result),preSeg:"1IKDOEJIG0",outlet:"1IKDOEJIH0"};
 	};
 	FilterChat.jaxId="1IKDOEJIG0"
@@ -118,7 +135,7 @@ let SysTabOSAskUser=async function(session){
 		let result=input;
 		if(input.items && input.items.length){
 			let output=input;
-			return {seg:Menu,result:(output),preSeg:"1IKDOESHL0",outlet:"1IKDOESHM3"};
+			return {seg:ShowAsk,result:(output),preSeg:"1IKDOESHL0",outlet:"1IKDOESHM3"};
 		}
 		return {seg:Chat,result:(result),preSeg:"1IKDOESHL0",outlet:"1IKDOESHM2"};
 	};
@@ -158,19 +175,46 @@ let SysTabOSAskUser=async function(session){
 		let tip=(execInput);
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		/*#{1IKDOFINU0PreCodes*/
+		/*}#1IKDOFINU0PreCodes*/
+		if(askUpward && tip){
+			result=await session.askUpward(askUpward==="$up"?($agent.upperAgent||$agent):$agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
+		/*#{1IKDOFINU0PostCodes*/
+		/*}#1IKDOFINU0PostCodes*/
 		return {result:result};
 	};
 	Chat.jaxId="1IKDOFINU0"
 	Chat.url="Chat@"+agentURL
 	
-	agent={
+	segs["ShowAsk"]=ShowAsk=async function(input){//:1IOEUVS350
+		let result=input;
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let role="assistant";
+		let content=execInput;
+		session.addChatText(role,content,opts);
+		return {seg:Menu,result:(result),preSeg:"1IOEUVS350",outlet:"1IOEV0OCS0"};
+	};
+	ShowAsk.jaxId="1IOEUVS350"
+	ShowAsk.url="ShowAsk@"+agentURL
+	
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"SysTabOSAskUser",
@@ -247,6 +291,7 @@ export{SysTabOSAskUser};
 //			"jaxId": "1IKDODVUT2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -257,7 +302,12 @@ export{SysTabOSAskUser};
 //		},
 //		"localVars": {
 //			"jaxId": "1IKDODVUT4",
-//			"attrs": {}
+//			"attrs": {
+//				"orgInput": {
+//					"type": "string",
+//					"valText": ""
+//				}
+//			}
 //		},
 //		"context": {
 //			"jaxId": "1IKDODVUT5",
@@ -280,7 +330,7 @@ export{SysTabOSAskUser};
 //						"x": "135",
 //						"y": "240",
 //						"desc": "执行一次LLM调用。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -393,7 +443,7 @@ export{SysTabOSAskUser};
 //										},
 //										"condition": "#input.items && input.items.length"
 //									},
-//									"linkedSeg": "1IKDOFA6I3"
+//									"linkedSeg": "1IOEUVS350"
 //								}
 //							]
 //						}
@@ -409,8 +459,8 @@ export{SysTabOSAskUser};
 //						"id": "Menu",
 //						"viewName": "",
 //						"label": "",
-//						"x": "575",
-//						"y": "190",
+//						"x": "795",
+//						"y": "185",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -453,7 +503,7 @@ export{SysTabOSAskUser};
 //						"x": "575",
 //						"y": "290",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -474,6 +524,7 @@ export{SysTabOSAskUser};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IKDOFINU3",
 //							"attrs": {
@@ -483,6 +534,45 @@ export{SysTabOSAskUser};
 //						}
 //					},
 //					"icon": "chat.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1IOEUVS350",
+//					"attrs": {
+//						"id": "ShowAsk",
+//						"viewName": "",
+//						"label": "",
+//						"x": "575",
+//						"y": "185",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IOEV1PDJ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IOEV1PDJ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"text": "#execInput",
+//						"outlet": {
+//							"jaxId": "1IOEV0OCS0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IKDOFA6I3"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
 //				}
 //			]
 //		},

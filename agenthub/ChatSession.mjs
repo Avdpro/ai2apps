@@ -142,7 +142,7 @@ class ChatSession {
 		await this.agentNode.websocket.send(message);
 	}
 	
-	// -------------------------------------------------------------------------
+	// ----------------------------------------------------------------------
 	async callClient(msg, vo) {
 		const callId = String(this.nextCallId++);
 		const pms = new Promise((resolve, reject) => {
@@ -159,7 +159,7 @@ class ChatSession {
 		return pms;
 	}
 	
-	// -------------------------------------------------------------------------
+	// ----------------------------------------------------------------------
 	async clientCallResult(callId, result) {
 		const stub = this.callMap.get(callId);
 		if (!stub) return;
@@ -167,7 +167,7 @@ class ChatSession {
 		stub.resolve(result);
 	}
 	
-	// -------------------------------------------------------------------------
+	// ----------------------------------------------------------------------
 	async clientCallError(callId, error) {
 		const stub = this.callMap.get(callId);
 		if (!stub) return;
@@ -183,6 +183,16 @@ class ChatSession {
 			throw Error(`Session message handler for "${msg}" not found.`);
 		}
 		return await handler(vo);
+	}
+	
+	//-----------------------------------------------------------------------
+	async indentMore(){
+		await this.callClient("IndentMore",{});
+	}
+	
+	//-----------------------------------------------------------------------
+	async indentLess(){
+		await this.callClient("IndentLess",{});
 	}
 	
 	//-----------------------------------------------------------------------
@@ -334,7 +344,7 @@ class ChatSession {
 		agent = await agent(this);
 		agent.sourceDef=sourceDef;
 		agent.agentFrameId=frameSeqId++;
-		agent.upperAgent=opts.fromAgent||fromAgent;
+		agent.upperAgent=opts.fromAgent||opts.upperAgent||fromAgent;
 		agent.askUpwardSeg=opts.askUpwardSeg||null;
 		
 		this.curAgent=agent;
@@ -381,6 +391,11 @@ class ChatSession {
 	async askUpward(agent,prompt){
 		let askAgent,askUpwardSeg,result;
 		askAgent=agent;
+		if(agent.name){
+			let opts;
+			opts={txtHeader:agent.showName||agent.name,icon:"/~/-tabos/shared/assets/ask.svg",iconSize:24,fontSize:12};
+			await this.addChatText("assistant",prompt,opts);
+		}
 		while(askAgent){
 			askUpwardSeg=askAgent.askUpwardSeg;
 			askAgent=askAgent.upperAgent;
@@ -392,16 +407,20 @@ class ChatSession {
 			if(askAgent==="$client"){
 				//Call client to ask upward...
 				result=await this.callClient("AskUpward",{prompt:prompt});
-			}else if(askAgent.agentNode){
-				//TODO: UpperAgent is on other backend, deal with it.
 			}else{
 				//Call response upper agent
 				result=await this.runAISeg(askAgent,askUpwardSeg,prompt);
 			}
 		}else{
 			//Can't find responsalbe upper agent,
-			await this.addChatText("assistant",prompt);
 			result=await this.askChatInput({type:"input",text:"",allowFile:true});
+			if(typeof(result)==="string"){
+				await this.addChatText("user",result);
+			}else if(result.assets && result.prompt){
+				await this.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+			}else{
+				await this.addChatText("user",result.text||result.prompt||result);
+			}
 		}
 		if(typeof(result)!=="string"){
 			result=JSON.stringify(result);
