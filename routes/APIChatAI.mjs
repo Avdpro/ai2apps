@@ -13,7 +13,6 @@ const { callProxy,proxyCall }=ProxyCall;
 const getUserInfo=null,getPVUserInfo=null;
 import ApiProxy from "../apiproxy/FetchProxy.mjs";
 
-
 const AIPlatforms={
 	"OpenAI":{
 		"gpt-4.1":{model:"gpt-4.1",label:"GPT-4.1"},
