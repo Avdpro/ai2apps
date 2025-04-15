@@ -76,7 +76,10 @@
 2. [Discord](https://discord.gg/qgqeaWk62e)
 
 ## 📝 引用
-如果您觉得我们的工作对您的研究或应用有帮助，请引用我们的论文 [AI2Apps](https://arxiv.org/abs/2404.04902)
+如果您觉得我们的工作对您的研究或应用有帮助，请引用我们的论文： 
+1. [AI2Apps](https://arxiv.org/abs/2404.04902?context=cs.SE)
+2. [AI2Agent](https://arxiv.org/abs/2503.23948)
+
 ```
 @article{pang2024ai2apps,
   title={AI2Apps: A Visual IDE for Building LLM-based AI Agent Applications},

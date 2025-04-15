@@ -69,7 +69,10 @@ If you encounter problems, you can seek help in the following ways.
 
 ## 📝 Citation
 
-If you find our work useful for your research or application, please cite our paper [AI2Apps](https://arxiv.org/abs/2404.04902)
+If you find our work useful for your research or application, please cite our paper:
+1. [AI2Apps](https://arxiv.org/abs/2404.04902?context=cs.SE)
+2. [AI2Agent](https://arxiv.org/abs/2503.23948)
+
 ```
 @article{pang2024ai2apps,
   title={AI2Apps: A Visual IDE for Building LLM-based AI Agent Applications},
