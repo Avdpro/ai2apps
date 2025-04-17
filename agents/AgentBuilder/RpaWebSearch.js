@@ -831,7 +831,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 	
 	segs["TipUseRpa"]=TipUseRpa=async function(input){//:1ILQJU6R50
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`调用Google Search API时发生错误:  ${input}。转用Web-RPA模式进行搜索。`;
 		session.addChatText(role,content,opts);
@@ -842,7 +842,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 	
 	segs["TipNoApiKey"]=TipNoApiKey=async function(input){//:1ILQK304N0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("没有找到Google search的API-Key，采用Web-RPA方式进行搜索。"):("No Google Search API key found, using Web-RPA method for Search."));
 		session.addChatText(role,content,opts);
@@ -891,7 +891,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 	
 	segs["TipPage"]=TipPage=async function(input){//:1ILQU5D560
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="log";
 		let content=(($ln==="CN")?(`正在查看: ${input}`):/*EN*/(`Viewing: ${input}`));
 		session.addChatText(role,content,opts);
@@ -902,7 +902,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 	
 	segs["TipStart"]=TipStart=async function(input){//:1ILR0ACES0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?(`开始搜索：${search}`):/*EN*/(`Start searching: ${search}`));
 		session.addChatText(role,content,opts);
@@ -1054,7 +1054,7 @@ ${JSON.stringify(searchResults,null,"\t")}
 	
 	segs["AsyncTipPage"]=AsyncTipPage=async function(input){//:1INRKNSM30
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="log";
 		let content=(($ln==="CN")?(`正在查看: ${input}`):/*EN*/(`Viewing: ${input}`));
 		session.addChatText(role,content,opts);
@@ -1310,8 +1310,8 @@ ${search}
 		let result=input
 		/*#{1INRLKIME0Code*/
 		usefulPages+=1;
+		searchResults.push({url:readingUrl,content:pageContents[readingUrl]});
 		if(usefulPages>=top_k){
-			searchResults.push({url:readingUrl,content:pageContents[readingUrl]});
 			result="break";
 		}
 		/*}#1INRLKIME0Code*/
@@ -1550,6 +1550,7 @@ export{RpaWebSearch,ChatAPI};
 //			"jaxId": "1IHCHS17T2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "FixArgs",
 //		"autoStart": "true",
 //		"inBrowser": "false",

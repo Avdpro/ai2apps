@@ -219,7 +219,7 @@ let SysTabOSChat=async function(session){
 		let text=("");
 		let result="";
 		if(askUpward && tip){
-			result=await session.askUpward(askUpward==="$up"?($agent.upperAgent||$agent):$agent,tip);
+			result=await session.askUpward($agent,tip);
 		}else{
 			if(tip){
 				session.addChatText(tipRole,tip);
@@ -734,7 +734,7 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		let text=("");
 		let result="";
 		if(askUpward && tip){
-			result=await session.askUpward(askUpward==="$up"?($agent.upperAgent||$agent):$agent,tip);
+			result=await session.askUpward($agent,tip);
 		}else{
 			if(tip){
 				session.addChatText(tipRole,tip);
@@ -1138,7 +1138,12 @@ export{SysTabOSChat};
 //		},
 //		"globalMockup": {
 //			"jaxId": "1IKCV9VRJ6",
-//			"attrs": {}
+//			"attrs": {
+//				"bash": {
+//					"type": "string",
+//					"valText": ""
+//				}
+//			}
 //		},
 //		"segs": {
 //			"attrs": [

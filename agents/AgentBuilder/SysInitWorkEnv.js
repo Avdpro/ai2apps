@@ -66,7 +66,7 @@ let SysInitWorkEnv=async function(session){
 	context={};
 	/*#{1IG32J23V0PostContext*/
 	/*}#1IG32J23V0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["InitEnv"]=InitEnv=async function(input){//:1IG32J8B00
 		let result=input
 		/*#{1IG32J8B00Code*/
@@ -182,7 +182,7 @@ let SysInitWorkEnv=async function(session){
 	
 	segs["ShowEnv"]=ShowEnv=async function(input){//:1IG3GT0LF0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`
 Environment:
@@ -201,7 +201,7 @@ ${JSON.stringify(env,null,"\t")}
 	ShowEnv.jaxId="1IG3GT0LF0"
 	ShowEnv.url="ShowEnv@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"SysInitWorkEnv",
@@ -289,6 +289,7 @@ export{SysInitWorkEnv,ChatAPI};
 //			"jaxId": "1IG32J23V2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -349,6 +350,9 @@ export{SysInitWorkEnv,ChatAPI};
 //							},
 //							"linkedSeg": "1IG32KVO90"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -385,6 +389,9 @@ export{SysInitWorkEnv,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IG3G17U20"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
