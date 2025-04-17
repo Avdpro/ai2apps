@@ -1214,8 +1214,10 @@ class ChatSession {
 	}	// Additional methods would follow the same pattern
 	
 	//-----------------------------------------------------------------------
-	regTerminal(term){
-		this.termMap.set(term.sessionId,term);
+	regTerminal(term,ownBySession){
+		if(ownBySession!==false) {
+			this.termMap.set(term.sessionId, term);
+		}
 		this.agentNode.regTerminal(term);
 	}
 	

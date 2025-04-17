@@ -118,9 +118,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 					throw Error(`Hub create terminal error${res.info?" "+res.info:"."}`);
 				}
 				this.sessionId=sessionId=res.session||res.sessionId;
-				if(opts.ownBySession!==false) {
-					this.session.regTerminal(this);
-				}
+				this.session.regTerminal(this,opts.ownBySession);
 				res=await this.session.callClient("CreateXTerm",{session:sessionId});
 				if(res===false){
 					this.sessionId=null;
