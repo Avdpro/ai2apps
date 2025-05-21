@@ -102,7 +102,7 @@ let UxEntry=async function(session){
 		};
 	}
 	/*}#1IHTBN3H00PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["ShowLogo"]=ShowLogo=async function(input){//:1IHTBNCK20
 		let result=input;
 		let role="assistant";
@@ -128,6 +128,7 @@ let UxEntry=async function(session){
 		let prompt=((($ln==="CN")?("你想创建什么样的项目工程？选择一个选项或者输入你对新项目需求描述。"):("What kind of project do you want to create? Choose an option or describe your new project requirements.")))||input;
 		let countdown=false;
 		let placeholder=((($ln==="CN")?("描述你的项目需求"):("Describe your project requirements")))||null;
+		let withChat=true;
 		let silent=false;
 		let items=[
 			{icon:"/~/tabos/shared/assets/cloudact.svg"||"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("从GitHub项目创建项目工程"):("Create project from GitHub")),code:0},
@@ -143,7 +144,7 @@ let UxEntry=async function(session){
 			result=input;
 			return {seg:AskGitAddr,result:(result),preSeg:"1IHTCTUTI0",outlet:"1IHTCTUT00"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:true,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {seg:ShowTodo,result:(result),preSeg:"1IHTCTUTI0",outlet:"1IHTD7M4U0"};
@@ -168,13 +169,25 @@ let UxEntry=async function(session){
 		let tip=((($ln==="CN")?("请输入GitHub项目的地址，例如：github.com/Avdpro/ai2apps"):("Please enter the GitHub project address, for example: github.com/Avdpro/ai2apps")));
 		let tipRole=("assistant");
 		let placeholder=("GitHub project address");
+		let allowFile=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		return {seg:GitHubSetup,result:(result),preSeg:"1IHTE365K0",outlet:"1IHTE559S0"};
 	};
 	AskGitAddr.jaxId="1IHTE365K0"
@@ -186,6 +199,7 @@ let UxEntry=async function(session){
 		args['callAgent']="PrjSetupPrj.js";
 		args['callArg']={prjURL:input};
 		args['checkUpdate']=true;
+		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
 		return {result:result};
 	};
@@ -194,9 +208,10 @@ let UxEntry=async function(session){
 	
 	segs["ShowTodo"]=ShowTodo=async function(input){//:1II12JPBJ0
 		let result=input;
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("抱歉，当前演示版本只支持通过GitHub创建工程"):("Sorry, the current demo version only supports creating projects through GitHub"));
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		return {seg:GreetingMenu,result:(result),preSeg:"1II12JPBJ0",outlet:"1II12MRH70"};
 	};
 	ShowTodo.jaxId="1II12JPBJ0"
@@ -206,13 +221,25 @@ let UxEntry=async function(session){
 		let tip=("请输入要安装的AgentNode项目路径");
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(false)||false;
+		let askUpward=(false);
 		let text=("/Users/avdpropang/sdk/cchome/home/agents/FishSpeech");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		return {seg:SetupAgentNode,result:(result),preSeg:"1IJ46ENDS0",outlet:"1IJ46HTS40"};
 	};
 	AskPrjPath.jaxId="1IJ46ENDS0"
@@ -224,13 +251,14 @@ let UxEntry=async function(session){
 		args['callAgent']="PrjSetupBySteps.js";
 		args['callArg']={prjPath:input};
 		args['checkUpdate']=true;
+		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
 		return {result:result};
 	};
 	SetupAgentNode.jaxId="1IJ46G28U0"
 	SetupAgentNode.url="SetupAgentNode@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"UxEntry",
@@ -307,6 +335,7 @@ export{UxEntry};
 //			"jaxId": "1IHTBN3H02",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -626,6 +655,7 @@ export{UxEntry};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IHTE559S0",
 //							"attrs": {
@@ -667,6 +697,7 @@ export{UxEntry};
 //						"callAgent": "PrjSetupPrj.js",
 //						"callArg": "#{prjURL:input}",
 //						"checkUpdate": "true",
+//						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IHTE90CT0",
 //							"attrs": {
@@ -800,6 +831,7 @@ export{UxEntry};
 //						"text": "/Users/avdpropang/sdk/cchome/home/agents/FishSpeech",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IJ46HTS40",
 //							"attrs": {
@@ -841,6 +873,7 @@ export{UxEntry};
 //						"callAgent": "PrjSetupBySteps.js",
 //						"callArg": "#{prjPath:input}",
 //						"checkUpdate": "true",
+//						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IJ46HTS41",
 //							"attrs": {

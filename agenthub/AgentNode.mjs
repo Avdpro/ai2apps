@@ -403,7 +403,7 @@ let AgentNode,agentNode;
 	async function startWSServer(port){
 		return new Promise((resolve,reject)=>{
 			let server=createServer();
-			let wss=new WebSocketServer({server:server,maxPayload: 1024 * 1024 * 10 });
+			let wss=new WebSocketServer({server:server,maxPayload: 1024 * 1024 * 100 });
 			wss.on('error', (err) => {
 				resolve(null);
 				console.log(`Debug port ${port} is in use.`);

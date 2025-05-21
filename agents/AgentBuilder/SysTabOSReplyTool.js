@@ -30,6 +30,11 @@ const argsTemplate={
 			"name":"toolAsk","type":"auto",
 			"defaultValue":"",
 			"desc":"工具提出的问题",
+		},
+		"replyTools":{
+			"name":"replyTools","type":"auto",
+			"defaultValue":"",
+			"desc":"在回答问题的时候，可以调用的工具集",
 		}
 	},
 	/*#{1IOGGDE4T1ArgsView*/
@@ -40,11 +45,11 @@ const argsTemplate={
 /*}#1IOGGDE4T1StartDoc*/
 //----------------------------------------------------------------------------
 let SysTabOSReplyTool=async function(session){
-	let agentDesc,orgInput,agentMem,toolAsk;
+	let agentDesc,orgInput,agentMem,toolAsk,replyTools;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let ToolAsk,ToolAskReuslt,ShowAskAiResult,ToolAskUser,ShowAskUserResult;
+	let ToolAsk,ToolAskReuslt,ShowAskAiResult,AskUser,ShowAskUserResult,TryTool,CallTool,ToolError,ReplyTool;
 	/*#{1IOGGDE4T1LocalVals*/
 	/*}#1IOGGDE4T1LocalVals*/
 	
@@ -54,11 +59,13 @@ let SysTabOSReplyTool=async function(session){
 			orgInput=input.orgInput;
 			agentMem=input.agentMem;
 			toolAsk=input.toolAsk;
+			replyTools=input.replyTools;
 		}else{
 			agentDesc=undefined;
 			orgInput=undefined;
 			agentMem=undefined;
 			toolAsk=undefined;
+			replyTools=undefined;
 		}
 		/*#{1IOGGDE4T1ParseArgs*/
 		/*}#1IOGGDE4T1ParseArgs*/
@@ -188,13 +195,16 @@ ${JSON.stringify(mem,null,"\t")}
 		let result=input;
 		/*#{1IOGGE5V00Start*/
 		/*}#1IOGGE5V00Start*/
+		if(input.tool){
+			return {result:input};
+		}
 		if(input.reply){
 			let output=input.reply;
 			return {seg:ShowAskAiResult,result:(output),preSeg:"1IOGGE5V00",outlet:"1IOGGE5V04"};
 		}
 		/*#{1IOGGE5V00Post*/
 		/*}#1IOGGE5V00Post*/
-		return {seg:ToolAskUser,result:(result),preSeg:"1IOGGE5V00",outlet:"1IOGGE5V03"};
+		return {seg:AskUser,result:(result),preSeg:"1IOGGE5V00",outlet:"1IOGGE5V03"};
 	};
 	ToolAskReuslt.jaxId="1IOGGE5V00"
 	ToolAskReuslt.url="ToolAskReuslt@"+agentURL
@@ -218,7 +228,7 @@ ${JSON.stringify(mem,null,"\t")}
 	ShowAskAiResult.jaxId="1IOGGEDD20"
 	ShowAskAiResult.url="ShowAskAiResult@"+agentURL
 	
-	segs["ToolAskUser"]=ToolAskUser=async function(input){//:1IOGGEM2D0
+	segs["AskUser"]=AskUser=async function(input){//:1IOGGEM2D0
 		let result;
 		let arg=input.ask;
 		let agentNode=(undefined)||null;
@@ -227,8 +237,8 @@ ${JSON.stringify(mem,null,"\t")}
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:ShowAskUserResult,result:(result),preSeg:"1IOGGEM2D0",outlet:"1IOGGEM2E0"};
 	};
-	ToolAskUser.jaxId="1IOGGEM2D0"
-	ToolAskUser.url="ToolAskUser@"+agentURL
+	AskUser.jaxId="1IOGGEM2D0"
+	AskUser.url="AskUser@"+agentURL
 	
 	segs["ShowAskUserResult"]=ShowAskUserResult=async function(input){//:1IOGGF7O00
 		let result=input;
@@ -249,6 +259,50 @@ ${JSON.stringify(mem,null,"\t")}
 	ShowAskUserResult.jaxId="1IOGGF7O00"
 	ShowAskUserResult.url="ShowAskUserResult@"+agentURL
 	
+	segs["TryTool"]=TryTool=async function(input){//:1IQ1L2H7R0
+		let result=input;
+		/*#{1IQ1L2H7R0Code*/
+		false
+		/*}#1IQ1L2H7R0Code*/
+		return {seg:CallTool,result:(result),preSeg:"1IQ1L2H7R0",outlet:"1IQ1M8SJL1",catchSeg:ToolError,catchlet:"1IQ1M8SJL2"};
+	};
+	TryTool.jaxId="1IQ1L2H7R0"
+	TryTool.url="TryTool@"+agentURL
+	
+	segs["CallTool"]=CallTool=async function(input){//:1IQ1L30VS0
+		let result=input
+		let outlets={
+			Ask: ReplyTool
+		};
+		/*#{1IQ1L30VS0Code*/
+		/*}#1IQ1L30VS0Code*/
+		return {seg:ToolAsk,result:(result),preSeg:"1IQ1L30VS0",outlet:"1IQ1M8SJL3"};
+	};
+	CallTool.jaxId="1IQ1L30VS0"
+	CallTool.url="CallTool@"+agentURL
+	
+	segs["ToolError"]=ToolError=async function(input){//:1IQ1L4S510
+		let result=input
+		/*#{1IQ1L4S510Code*/
+		result=`执行工具出错：`+input;
+		/*}#1IQ1L4S510Code*/
+		return {seg:ToolAsk,result:(result),preSeg:"1IQ1L4S510",outlet:"1IQ1M8SJM0"};
+	};
+	ToolError.jaxId="1IQ1L4S510"
+	ToolError.url="ToolError@"+agentURL
+	
+	segs["ReplyTool"]=ReplyTool=async function(input){//:1IQ1NB6PV0
+		let result;
+		let arg={"agentDesc":agentDesc,"orgInput":orgInput,"agentMem":agentMem,"toolAsk":input,"replyTools":replyTools};
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSReplyTool.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {result:result};
+	};
+	ReplyTool.jaxId="1IQ1NB6PV0"
+	ReplyTool.url="ReplyTool@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -258,7 +312,7 @@ ${JSON.stringify(mem,null,"\t")}
 		jaxId:"1IOGGDE4T1",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{agentDesc,orgInput,agentMem,toolAsk}*/){
+		execChat:async function(input/*{agentDesc,orgInput,agentMem,toolAsk,replyTools}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IOGGDE4T1PreEntry*/
@@ -289,7 +343,8 @@ export const ChatAPI=[{
 				agentDesc:{type:"auto",description:"智能体功能描述"},
 				orgInput:{type:"auto",description:"智能体要完成的用户任务"},
 				agentMem:{type:"auto",description:"对话消息记录"},
-				toolAsk:{type:"auto",description:"工具提出的问题"}
+				toolAsk:{type:"auto",description:"工具提出的问题"},
+				replyTools:{type:"auto",description:"在回答问题的时候，可以调用的工具集"}
 			}
 		}
 	},
@@ -389,6 +444,16 @@ export{SysTabOSReplyTool};
 //						"mockup": "\"\"",
 //						"desc": "工具提出的问题"
 //					}
+//				},
+//				"replyTools": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1IQ1KU0RT0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": "在回答问题的时候，可以调用的工具集"
+//					}
 //				}
 //			}
 //		},
@@ -414,8 +479,8 @@ export{SysTabOSReplyTool};
 //						"id": "ToolAsk",
 //						"viewName": "",
 //						"label": "",
-//						"x": "115",
-//						"y": "185",
+//						"x": "100",
+//						"y": "325",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -478,8 +543,8 @@ export{SysTabOSReplyTool};
 //						"id": "ToolAskReuslt",
 //						"viewName": "",
 //						"label": "",
-//						"x": "320",
-//						"y": "185",
+//						"x": "305",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -507,6 +572,30 @@ export{SysTabOSReplyTool};
 //						},
 //						"outlets": {
 //							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IQ1M8SJL0",
+//									"attrs": {
+//										"id": "Tool",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IQ1M8SJO0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IQ1M8SJO1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.tool"
+//									}
+//								},
 //								{
 //									"type": "aioutlet",
 //									"def": "AIConditionOutlet",
@@ -546,8 +635,8 @@ export{SysTabOSReplyTool};
 //						"id": "ShowAskAiResult",
 //						"viewName": "",
 //						"label": "",
-//						"x": "585",
-//						"y": "130",
+//						"x": "580",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -581,11 +670,11 @@ export{SysTabOSReplyTool};
 //					"def": "aiBot",
 //					"jaxId": "1IOGGEM2D0",
 //					"attrs": {
-//						"id": "ToolAskUser",
+//						"id": "AskUser",
 //						"viewName": "",
 //						"label": "",
-//						"x": "590",
-//						"y": "235",
+//						"x": "580",
+//						"y": "400",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -627,8 +716,8 @@ export{SysTabOSReplyTool};
 //						"id": "ShowAskUserResult",
 //						"viewName": "",
 //						"label": "",
-//						"x": "825",
-//						"y": "235",
+//						"x": "835",
+//						"y": "400",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -656,6 +745,286 @@ export{SysTabOSReplyTool};
 //						}
 //					},
 //					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "tryCatch",
+//					"jaxId": "1IQ1L2H7R0",
+//					"attrs": {
+//						"id": "TryTool",
+//						"viewName": "",
+//						"label": "",
+//						"x": "580",
+//						"y": "170",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1IQ1M8SJO2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IQ1M8SJO3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IQ1M8SJL1",
+//							"attrs": {
+//								"id": "Try",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1L30VS0"
+//						},
+//						"catchlet": {
+//							"jaxId": "1IQ1M8SJL2",
+//							"attrs": {
+//								"id": "Catch",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1L4S510"
+//						}
+//					},
+//					"icon": "trycatch.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1IQ1L30VS0",
+//					"attrs": {
+//						"id": "CallTool",
+//						"viewName": "",
+//						"label": "",
+//						"x": "835",
+//						"y": "155",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1IQ1M8SJO4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IQ1M8SJO5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IQ1M8SJL3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1NBOFD0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "CodOutlet",
+//									"jaxId": "1IQ1M8SJO6",
+//									"attrs": {
+//										"id": "Ask",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1IQ1M8SJO7",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IQ1M8SJO8",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IQ1NB6PV0"
+//								}
+//							]
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1IQ1L4S510",
+//					"attrs": {
+//						"id": "ToolError",
+//						"viewName": "",
+//						"label": "",
+//						"x": "835",
+//						"y": "250",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1IQ1M8SJO9",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IQ1M8SJO10",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IQ1M8SJM0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1LKNIR0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1IQ1LJCDF0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1235",
+//						"y": "40",
+//						"outlet": {
+//							"jaxId": "1IQ1M8SJO11",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1NBOFD0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1IQ1LJKGQ0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "125",
+//						"y": "40",
+//						"outlet": {
+//							"jaxId": "1IQ1M8SJO12",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IOGGDVMN0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1IQ1LKNIR0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1200",
+//						"y": "250",
+//						"outlet": {
+//							"jaxId": "1IQ1M8SJO13",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1LJCDF0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1IQ1NB6PV0",
+//					"attrs": {
+//						"id": "ReplyTool",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1040",
+//						"y": "170",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1IQ1NC4A40",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IQ1NC4A41",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/SysTabOSReplyTool.js",
+//						"argument": "{\"agentDesc\":\"#agentDesc\",\"orgInput\":\"#orgInput\",\"agentMem\":\"#agentMem\",\"toolAsk\":\"#input\",\"replyTools\":\"#replyTools\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1IQ1NC49U0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1IQ1NBOFD0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "965",
+//						"y": "40",
+//						"outlet": {
+//							"jaxId": "1IQ1NC4A42",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IQ1LJKGQ0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

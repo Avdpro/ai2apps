@@ -2,8 +2,10 @@
   "name": "home",
   "version": "0.0.0",
   "private": true,
+  "main": "main.mjs",
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "electron .",
+    "rebuild": "electron-rebuild"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",
@@ -31,7 +33,7 @@
     "node-gyp": "11.0.0",
     "node-pty": "*",
     "ollama": "^0.5.1",
-    "openai": "^4.0.0",
+    "openai": "^4.100.0",
     "pug": "2.0.0-beta11",
     "puppeteer": "^22.3.0",
     "puppeteer-extra": "^3.3.6",
@@ -44,6 +46,9 @@
   },
   "devDependencies": {
     "@rollup/plugin-alias": "^3.1.5",
+    "electron": "^36.2.0",
+    "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
     "rollup-plugin-terser": "^7.0.2"
   }
 }

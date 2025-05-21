@@ -2420,7 +2420,7 @@ export default async function(app,router,apiMap) {
 		//Executable path:
 		exePath=AAFarm_Executable;
 		if(exePath){
-			if (exePath[0] !== "/") {
+			if (!pathLib.isAbsolute(exePath)) {
 				exePath = pathLib.join(app.get("AppHomePath"), exePath);
 			}
 			opts.executablePath=exePath;
@@ -2429,7 +2429,7 @@ export default async function(app,router,apiMap) {
 		//UserData path:
 		dataDir=AAFarm_DataDirRoot;
 		if(dataDir) {
-			if (dataDir[0] !== "/") {
+			if (!pathLib.isAbsolute(dataDir)) {
 				dataDir = pathLib.join(app.get("AppHomePath"), dataDir);
 			}
 			opts.userDataDir=pathLib.join(dataDir,"AAHOME");

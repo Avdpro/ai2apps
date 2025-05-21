@@ -10,12 +10,34 @@ import {tabNT} from "/@tabos";
 const agentURL=(new URL(import.meta.url)).pathname;
 const basePath=pathLib.dirname(agentURL);
 const $ln=VFACT.lanCode||"EN";
+const argsTemplate={
+	properties:{
+		"taskPrompt":{
+			"name":"taskPrompt","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"taskTools":{
+			"name":"taskTools","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"replyTools":{
+			"name":"replyTools","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		}
+	},
+	/*#{1IKCV9VRJ0ArgsView*/
+	/*}#1IKCV9VRJ0ArgsView*/
+};
+
 /*#{1IKCV9VRJ0StartDoc*/
-import {AATools} from "/@tabos/AATools.js";
+import {AATools,AAToolSet} from "/@tabos/AATools.js";
 /*}#1IKCV9VRJ0StartDoc*/
 //----------------------------------------------------------------------------
 let SysTabOSChat=async function(session){
-	let execInput;
+	let taskPrompt,taskTools,replyTools;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -29,8 +51,20 @@ let SysTabOSChat=async function(session){
 	/*}#1IKCV9VRJ0LocalVals*/
 	
 	function parseAgentArgs(input){
-		execInput=input;
+		if(typeof(input)=='object'){
+			taskPrompt=input.taskPrompt;
+			taskTools=input.taskTools;
+			replyTools=input.replyTools;
+		}else{
+			taskPrompt=undefined;
+			taskTools=undefined;
+			replyTools=undefined;
+		}
 		/*#{1IKCV9VRJ0ParseArgs*/
+		taskPrompt=input
+		if(!taskPrompt && input && typeof(input)==="string"){
+			taskPrompt=input;
+		}
 		/*}#1IKCV9VRJ0ParseArgs*/
 	}
 	
@@ -83,14 +117,27 @@ let SysTabOSChat=async function(session){
 		let result=input
 		/*#{1IKCVA57O0Code*/
 		let tools;
-		tools=context.aaTools=new AATools();
-		await tools.load();
-		context.toolIndex=tools.getToolDescIndex();
-		session.debugLog("Tools index:");
-		session.debugLog(context.toolIndex);
-		console.log("Tools index:");
-		console.log(context.toolIndex);
-		
+		if(taskTools){
+			if(taskTools.getToolScope){
+				tools=context.aaTools=taskTools;
+			}else if(Array.isArray(taskTools)){
+				tools=context.aaTools=await AAToolSet.load(taskTools);
+			}
+		}else{
+			if(taskTools===null){
+				tools=context.aaTools=null;
+			}else{
+				tools=context.aaTools=new AATools();
+				await tools.load();
+			}
+		}
+		if(tools){
+			context.toolIndex=tools.getToolScope();
+			session.debugLog("Tools index:");
+			session.debugLog(context.toolIndex);
+			console.log("Tools index:");
+			console.log(context.toolIndex);
+		}
 		//Build agentNodes info:
 		{
 			let res,nodes;
@@ -106,7 +153,7 @@ let SysTabOSChat=async function(session){
 							"entry":node.chatEntry,
 							"workload":node.workload
 						}
-				}
+					}
 				}
 			}
 			session.debugLog("Nodes index:");
@@ -114,7 +161,6 @@ let SysTabOSChat=async function(session){
 			console.log("Nodes index:");
 			console.log(nodes);
 		}
-		
 		//Init cokeEnv&tty
 		cokeEnv=await session.WSCall_CreateCokeEnv();
 		cokeTty=cokeEnv.tty;
@@ -263,10 +309,10 @@ let SysTabOSChat=async function(session){
 你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。
 
 当前的Tools（本地智能体工具）有:
-${JSON.stringify(context.toolIndex,null,"\t")}
+${context.toolIndex?JSON.stringify(context.toolIndex,null,"\t"):"暂无"}
 
 当前的Nodes（外部智能体节点）有:
-${JSON.stringify(context.agentNodes,null,"\t")}
+${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 
 - - -
 
@@ -619,9 +665,10 @@ ${JSON.stringify(context.agentNodes,null,"\t")}
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03VM90PreCodes*/
-		let toolId=input.tool;
-		toolId=parseInt(toolId.substring("Tool-".length));
-		let tool=context.aaTools.getTools()[toolId];
+		let toolId,tool;
+		toolId=input.tool;
+		//toolId=parseInt(toolId.substring("Tool-".length));
+		tool=context.aaTools.getTool(toolId);
 		if(!tool){
 			throw `Tool "${input.tool}" not found. Are you confusing Node and Tool? Choose tool or agent node.`;
 		}
@@ -954,11 +1001,15 @@ ${JSON.stringify(mem,null,"\t")}
 	
 	segs["CallToolAsk"]=CallToolAsk=async function(input){//:1IOGH2O1E0
 		let result;
-		let arg={"agentDesc":"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。","orgInput":execInput,"agentMem":GenAction.messages,"toolAsk":input};
+		let arg={"agentDesc":"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。","orgInput":orgInput.taskPrompt||orgInput.prompt||orgInput,"agentMem":GenAction.messages,"toolAsk":input};
 		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSReplyTool.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		/*#{1IOGH2O1E0Input*/
+		/*}#1IOGH2O1E0Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		/*#{1IOGH2O1E0Output*/
+		/*}#1IOGH2O1E0Output*/
 		return {result:result};
 	};
 	CallToolAsk.jaxId="1IOGH2O1E0"
@@ -974,7 +1025,7 @@ ${JSON.stringify(mem,null,"\t")}
 		jaxId:"1IKCV9VRJ0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input){
+		execChat:async function(input/*{taskPrompt,taskTools,replyTools}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IKCV9VRJ0PreEntry*/
@@ -996,6 +1047,77 @@ ${JSON.stringify(mem,null,"\t")}
 /*}#1IKCV9VRJ0ExCodes*/
 
 //#CodyExport>>>
+export const ChatAPI=[{
+	def:{
+		name: "SysTabOSChat",
+		description: "这是一个AI智能体。",
+		parameters:{
+			type: "object",
+			properties:{
+				taskPrompt:{type:"auto",description:""},
+				taskTools:{type:"auto",description:""},
+				replyTools:{type:"auto",description:""}
+			}
+		}
+	},
+	agent: SysTabOSChat
+}];
+
+//:Export Edit-AddOn:
+const DocAIAgentExporter=VFACT?VFACT.classRegs.DocAIAgentExporter:null;
+if(DocAIAgentExporter){
+	const EditAttr=VFACT.classRegs.EditAttr;
+	const EditAISeg=VFACT.classRegs.EditAISeg;
+	const EditAISegOutlet=VFACT.classRegs.EditAISegOutlet;
+	const SegObjShellAttr=EditAISeg.SegObjShellAttr;
+	const SegOutletDef=EditAISegOutlet.SegOutletDef;
+	const docAIAgentExporter=DocAIAgentExporter.prototype;
+	const packExtraCodes=docAIAgentExporter.packExtraCodes;
+	const packResult=docAIAgentExporter.packResult;
+	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+	
+	EditAISeg.regDef({
+		name:"SysTabOSChat",showName:"SysTabOSChat",icon:"agent.svg",catalog:["AI Call"],
+		attrs:{
+			...SegObjShellAttr,
+			"taskPrompt":{name:"taskPrompt",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
+			"taskTools":{name:"taskTools",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
+			"replyTools":{name:"replyTools",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
+			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
+		},
+		listHint:["id","taskPrompt","taskTools","replyTools","codes","desc"],
+		desc:"这是一个AI智能体。"
+	});
+	
+	DocAIAgentExporter.segTypeExporters["SysTabOSChat"]=
+	function(seg){
+		let coder=this.coder;
+		let segName=seg.idVal.val;
+		let exportDebug=this.isExportDebug();
+		segName=(segName &&varNameRegex.test(segName))?segName:("SEG"+seg.jaxId);
+		coder.packText(`segs["${segName}"]=${segName}=async function(input){//:${seg.jaxId}`);
+		coder.indentMore();coder.newLine();
+		{
+			coder.packText(`let result,args={};`);coder.newLine();
+			coder.packText("args['taskPrompt']=");this.genAttrStatement(seg.getAttr("taskPrompt"));coder.packText(";");coder.newLine();
+			coder.packText("args['taskTools']=");this.genAttrStatement(seg.getAttr("taskTools"));coder.packText(";");coder.newLine();
+			coder.packText("args['replyTools']=");this.genAttrStatement(seg.getAttr("replyTools"));coder.packText(";");coder.newLine();
+			this.packExtraCodes(coder,seg,"PreCodes");
+			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/SysTabOSChat.js",args,false);`);coder.newLine();
+			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
+			this.packResult(coder,seg,seg.outlet);
+		}
+		coder.indentLess();coder.maybeNewLine();
+		coder.packText(`};`);coder.newLine();
+		if(exportDebug){
+			coder.packText(`${segName}.jaxId="${seg.jaxId}"`);coder.newLine();
+		}
+		coder.packText(`${segName}.url="${segName}@"+agentURL`);coder.newLine();
+		coder.newLine();
+	};
+}
 //#CodyExport<<<
 /*#{1IKCV9VRJ0PostDoc*/
 /*}#1IKCV9VRJ0PostDoc*/
@@ -1058,7 +1180,38 @@ export{SysTabOSChat};
 //		"debug": "true",
 //		"apiArgs": {
 //			"jaxId": "1IKCV9VRJ3",
-//			"attrs": {}
+//			"attrs": {
+//				"taskPrompt": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1IQ1EA26S0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"taskTools": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1IQ1EA26S1",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"replyTools": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1IQ1EA26S2",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				}
+//			}
 //		},
 //		"localVars": {
 //			"jaxId": "1IKCV9VRJ4",
@@ -1505,7 +1658,7 @@ export{SysTabOSChat};
 //						},
 //						"platform": "\"OpenAI\"",
 //						"mode": "$expert",
-//						"system": "#`\n你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。\n\n当前的Tools（本地智能体工具）有:\n${JSON.stringify(context.toolIndex,null,\"\\t\")}\n\n当前的Nodes（外部智能体节点）有:\n${JSON.stringify(context.agentNodes,null,\"\\t\")}\n\n- - -\n\n- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。\n\n- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。\n- 如果需要执行一个Tool，设置回复JSON中的\"action\"属性为\"tool\"；设置\"tool\"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"tool\",\n\t\"tool\":\"Tool-3\",\n    \"prompt\":\"Search for: Who is the winner of 2024 F1?\"\n}\n注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。\n\n- 如果需要执行一个Node，设置回复JSON中的\"action\"属性为\"node\"；回复JSON中的\"node\"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"node\",\n\t\"node\":\"DrawNode\",\n    \"prompt\":\"Draw picture of a cute fat cat.\"\n}\n\n- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。\n\n- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。\n\n- 如果回答用户的输入不需要使用任何tool，回复将JSON中的\"action\"属性设置为\"finish\"，用回复JSON中的\"content\"属性回答用户。例如：当用户询问：\"西瓜是一种水果么？\"，你的回复：\n{\n\t\"action\":\"finish\",\n\t\"content\":\"是的，西瓜是一种水果。\"\n}\n\n- 如果成功的完成了用户提出的任务，回复将JSON中的\"action\"属性设置为\"finish\"，并通过\"content\"属性总结汇报执行情况。例如\n{\n\t\"action\":\"finish\",\n    \"content\":\"论坛帖子已经成功发布。\"\n}\n\n- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool\n\n- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的\"action\"属性为\"abort\"，并在\"content\"属性中说明原因。例如:\n{\n\t\"action\":\"abort\",\n    \"content\":\"没有登录脸书账号，无法发布新的内容。\"\n}\n\n- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的\"action\"属性为\"missingTool\"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用\"missingTools\"数组属性里描述缺失的Tool。例如：\n{\n\t\"action\":\"missingTool\",\n\t\"missingTools\":[\n    \t\"检查脸书账号登录状态\",\n        \"发布脸书动态\"\n    ]\n}\n\n- 如果执行任务需要用户提供更多的信息，设置回复JSON中的\"action\"属性为\"chat\"，要询问用户的内容放在\"content\"属性里。例如，需要用户提供邮箱地址：\n{\n\t\"action\":\"chat\",\n\t\"content\":\"请告诉我你的电子邮箱地址\"\n}\n`",
+//						"system": "#`\n你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。\n\n当前的Tools（本地智能体工具）有:\n${context.toolIndex?JSON.stringify(context.toolIndex,null,\"\\t\"):\"暂无\"}\n\n当前的Nodes（外部智能体节点）有:\n${context.agentNodes?JSON.stringify(context.agentNodes,null,\"\\t\"):\"暂无\"}\n\n- - -\n\n- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。\n\n- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。\n- 如果需要执行一个Tool，设置回复JSON中的\"action\"属性为\"tool\"；设置\"tool\"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"tool\",\n\t\"tool\":\"Tool-3\",\n    \"prompt\":\"Search for: Who is the winner of 2024 F1?\"\n}\n注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。\n\n- 如果需要执行一个Node，设置回复JSON中的\"action\"属性为\"node\"；回复JSON中的\"node\"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"node\",\n\t\"node\":\"DrawNode\",\n    \"prompt\":\"Draw picture of a cute fat cat.\"\n}\n\n- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。\n\n- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。\n\n- 如果回答用户的输入不需要使用任何tool，回复将JSON中的\"action\"属性设置为\"finish\"，用回复JSON中的\"content\"属性回答用户。例如：当用户询问：\"西瓜是一种水果么？\"，你的回复：\n{\n\t\"action\":\"finish\",\n\t\"content\":\"是的，西瓜是一种水果。\"\n}\n\n- 如果成功的完成了用户提出的任务，回复将JSON中的\"action\"属性设置为\"finish\"，并通过\"content\"属性总结汇报执行情况。例如\n{\n\t\"action\":\"finish\",\n    \"content\":\"论坛帖子已经成功发布。\"\n}\n\n- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool\n\n- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的\"action\"属性为\"abort\"，并在\"content\"属性中说明原因。例如:\n{\n\t\"action\":\"abort\",\n    \"content\":\"没有登录脸书账号，无法发布新的内容。\"\n}\n\n- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的\"action\"属性为\"missingTool\"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用\"missingTools\"数组属性里描述缺失的Tool。例如：\n{\n\t\"action\":\"missingTool\",\n\t\"missingTools\":[\n    \t\"检查脸书账号登录状态\",\n        \"发布脸书动态\"\n    ]\n}\n\n- 如果执行任务需要用户提供更多的信息，设置回复JSON中的\"action\"属性为\"chat\"，要询问用户的内容放在\"content\"属性里。例如，需要用户提供邮箱地址：\n{\n\t\"action\":\"chat\",\n\t\"content\":\"请告诉我你的电子邮箱地址\"\n}\n`",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -2965,7 +3118,7 @@ export{SysTabOSChat};
 //						"x": "2840",
 //						"y": "390",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2981,7 +3134,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"source": "ai/SysTabOSReplyTool.js",
-//						"argument": "{\"agentDesc\":\"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。\",\"orgInput\":\"#execInput\",\"agentMem\":\"#GenAction.messages\",\"toolAsk\":\"#input\"}",
+//						"argument": "{\"agentDesc\":\"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。\",\"orgInput\":\"#orgInput.taskPrompt||orgInput.prompt||orgInput\",\"agentMem\":\"#GenAction.messages\",\"toolAsk\":\"#input\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1IOGH44CF0",
@@ -2999,8 +3152,8 @@ export{SysTabOSChat};
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
-//		"exportAPI": "false",
-//		"exportAddOn": "false",
+//		"exportAPI": "true",
+//		"exportAddOn": "true",
 //		"addOnOpts": ""
 //	}
 //}

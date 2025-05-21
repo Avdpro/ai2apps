@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI,{toFile} from "openai";
 import Anthropic from '@anthropic-ai/sdk';
 import {GoogleGenerativeAI} from "@google/generative-ai";
 import ollama from "ollama";
@@ -872,11 +872,21 @@ export default function(app,router,apiMap) {
 	//Image related:
 	//***********************************************************************
 	if(openAI){
+		let dataURLtoBuffer=function (dataUrl) {
+			const matches = dataUrl.match(/^data:(.*?);base64,(.*)$/);
+			if (!matches) return null;
+			
+			const [, mimeType, base64Data] = matches;
+			const buffer = Buffer.from(base64Data, "base64");
+			return { buffer, mimeType };
+		}
+		
 		//-------------------------------------------------------------------
 		apiMap['AIDraw']=async function (req,res,next){
 			let reqVO,userInfo=null;
 			let platform;
 			let callVO, resVO;
+			let orgImages;
 			let prompt,model,img,size;
 			reqVO = req.body.vo;
 			
@@ -893,7 +903,7 @@ export default function(app,router,apiMap) {
 				}
 			}
 			platform = reqVO.platform;
-			model=reqVO.model||"dall-e-3";
+			model=reqVO.model||"gpt-image-1";
 			prompt= reqVO.prompt;
 			size=reqVO.size||"1024x1024";
 
@@ -903,6 +913,9 @@ export default function(app,router,apiMap) {
 						platform="OpenAI";
 						break;
 					case "dall-e-2":
+						platform="OpenAI";
+						break;
+					case "gpt-image-1":
 						platform="OpenAI";
 						break;
 					default:
@@ -924,10 +937,36 @@ export default function(app,router,apiMap) {
 					callVO={
 						model: model,
 						prompt: prompt,
-						n: 1,
+						n: reqVO.n||1,
 						size: size,
-						response_format:"b64_json"
+						//response_format:"b64_json"
 					};
+					orgImages=reqVO.images||reqVO.image;
+					if(orgImages){
+						let i,n,images,stub;
+						images=[];
+						if(!Array.isArray(orgImages)){
+							orgImages=[orgImages];
+						}
+						n=orgImages.length;
+						for(i=0;i<n;i++){
+							stub=dataURLtoBuffer(orgImages[i]);
+							if(stub){
+								if(stub.mimeType==="image/png"){
+									images.push(await toFile(stub.buffer, `image${i}.png`, { type: stub.mimeType }))
+								}else if(stub.mimeType==="image/jpeg" || stub.mimeType==="image/jpg"){
+									images.push(await toFile(stub.buffer, `image${i}.jpg`, { type: stub.mimeType }))
+								}
+							}
+						}
+						if(images.length===1){
+							orgImages=images[0];
+						}else if(images.length>1){
+							orgImages=images;
+						}else{
+							orgImages=null;
+						}
+					}
 					if(reqVO.seed!==undefined){
 						let seed=parseInt(reqVO.seed);
 						if(seed>=0) {
@@ -935,8 +974,25 @@ export default function(app,router,apiMap) {
 						}
 					}
 					try {
-						const response = await openAI.images.generate(callVO);
-						img = response.data[0].b64_json;
+						if(orgImages){
+							let mask;
+							callVO.image = orgImages;
+							mask=reqVO.mask;
+							if(mask){
+								let stub=dataURLtoBuffer(mask);
+								if(stub){
+									if(stub.mimeType==="image/png"){
+										mask=await toFile(stub.buffer, `mask.png`, { type: stub.mimeType });
+										callVO.mask=mask;
+									}
+								}
+							}
+							const response = await openAI.images.edit(callVO);
+							img = response.data[0].b64_json;
+						}else {
+							const response = await openAI.images.generate(callVO);
+							img = response.data[0].b64_json;
+						}
 						resVO = { code: 200, img: img};
 						res.json(resVO);
 					}catch(error){
