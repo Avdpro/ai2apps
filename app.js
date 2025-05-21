@@ -32,11 +32,12 @@ app.initCokeCodesApp=async function(){
 
 	app.use(logger('dev'));
 	
-	app.use(express.json({limit: '50mb'}));
-	app.use(express.urlencoded({limit: '50mb', extended: false }));
+	app.use(express.json({limit: '200mb'}));
+	app.use(express.urlencoded({limit: '200mb', extended: false }));
 	app.use(cookieParser());
 	app.use(express.static(path.join(__dirname, 'public')));
-	app.use("/-+hubfile",express.static(AgentHub_FileLibPath));
+	app.use("/-hub",express.static(AgentHub_FileLibPath));
+	//app.use("/-+hubfile",express.static(AgentHub_FileLibPath));
 
 	mongoDB=null;
 	app.set('WebSocketSelectorMap',new Map());
@@ -66,7 +67,7 @@ app.initCokeCodesApp=async function(){
 app.setupWebSocket=async function(server){
 	let wss,selectorMap;
 	selectorMap=app.get("WebSocketSelectorMap");
-	wss=app.wss=new WebSocket.Server({ server:server,maxPayload:10*1024*1024 });
+	wss=app.wss=new WebSocket.Server({ server:server,maxPayload:100*1024*1024 });
 	wss.on('connection',(ws)=>{
 		function handleMessage(message){
 			let msgJSON,selector;

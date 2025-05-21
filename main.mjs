@@ -1,4 +1,4 @@
-import{ app, BrowserWindow,nativeImage,Tray,screen } from "electron";
+import{ app, BrowserWindow,nativeImage,Tray,screen,Menu } from "electron";
 import { spawn } from 'child_process';
 import { fileURLToPath } from "url";
 import pathLib from "path";
@@ -17,9 +17,78 @@ const trayIconPath = pathLib.join(__dirname, 'icon/iconTemplate@4x.png'); // 支
 const image = nativeImage.createFromPath(iconPath);
 const trayImage = nativeImage.createFromPath(trayIconPath);
 
+const homepageUrl="http://localhost:3015";
+//const homepageUrl="http://localhost:3301";
+
 let tray=null;
 
+app.name = 'AI2Apps';
 
+const template = [
+	{
+		label: 'File',
+		submenu: [
+			{
+				label: 'New Window',
+				accelerator: 'CommandOrControl+N',
+				click: () => {
+					createWindow(); // 创建新窗口
+				}
+			},
+			{ type: 'separator' },
+			{
+				role:"quit"
+			},
+		]
+	},
+	{
+		label: 'Edit',
+		submenu: [
+			{ role: 'undo' },
+			{ role: 'redo' },
+			{ type: 'separator' },
+			{ role: 'cut' },
+			{ role: 'copy' },
+			{ role: 'paste' },
+			...(process.platform === 'darwin'
+				? [
+					{ role: 'pasteAndMatchStyle' },
+					{ role: 'delete' },
+					{ role: 'selectAll' },
+					{ type: 'separator' },
+					{
+						label: 'Speech',
+						submenu: [
+							{ role: 'startSpeaking' },
+							{ role: 'stopSpeaking' }
+						]
+					}
+				]
+				: [
+					{ role: 'delete' },
+					{ type: 'separator' },
+					{ role: 'selectAll' }
+				])
+		]
+	},
+	{
+		label: 'View',
+		submenu: [
+			{ role: 'reload' },          // ⌘R or Ctrl+R
+			{ role: 'forceReload' },     // Shift+⌘R
+			{ role: 'toggleDevTools' },  // ⌥⌘I or Ctrl+Shift+I
+			{ type: 'separator' },
+			{ role: 'resetZoom' },
+			{ role: 'zoomIn' },
+			{ role: 'zoomOut' },
+			{ type: 'separator' },
+			{ role: 'togglefullscreen' }
+		]
+	}
+];
+
+const menu = Menu.buildFromTemplate(template);
+Menu.setApplicationMenu(menu);
 function setupWindow(win) {
 	win.webContents.setWindowOpenHandler(({ url, features }) => {
 		const { width:screenWidth, height:screenHeight } = screen.getPrimaryDisplay().workAreaSize;
@@ -34,6 +103,8 @@ function setupWindow(win) {
 			overrideBrowserWindowOptions: {
 				width,
 				height,
+				minWidth: 1000,
+				minHeight: 800,
 				webPreferences: {
 					preload: __dirname + '/preload.js',
 				}
@@ -50,6 +121,8 @@ function createWindow() {
 	mainWindow = new BrowserWindow({
 		width: 1200,
 		height: 800,
+		minWidth: 1000,
+		minHeight: 800,
 		//titleBarStyle: 'hidden',
 		webPreferences: {
 			nodeIntegration: true, // 允许在渲染进程中使用 Node.js
@@ -57,7 +130,7 @@ function createWindow() {
 		}
 	});
 	//mainWindow.loadURL("file://" + __dirname + "/index.html"); // 载入 UI
-	mainWindow.loadURL("http://localhost:3015"); // 载入 UI
+	mainWindow.loadURL(homepageUrl); // 载入 UI
 
 	// 控制所有 window.open() 创建的新窗口
 	setupWindow(mainWindow);
