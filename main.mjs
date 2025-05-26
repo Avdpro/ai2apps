@@ -2,6 +2,7 @@ import{ app, BrowserWindow,nativeImage,Tray,screen,Menu } from "electron";
 import { spawn } from 'child_process';
 import { fileURLToPath } from "url";
 import pathLib from "path";
+import {EBrowserWindow} from "./ebrowser/ebrowser.mjs";
 
 let mainWindow=null;
 const __filename = fileURLToPath(import.meta.url);
@@ -17,8 +18,8 @@ const trayIconPath = pathLib.join(__dirname, 'icon/iconTemplate@4x.png'); // 支
 const image = nativeImage.createFromPath(iconPath);
 const trayImage = nativeImage.createFromPath(trayIconPath);
 
-const homepageUrl="http://localhost:3015";
-//const homepageUrl="http://localhost:3301";
+//const homepageUrl="http://localhost:3015";
+const homepageUrl="http://localhost:3301";
 
 let tray=null;
 
@@ -74,13 +75,39 @@ const template = [
 	{
 		label: 'View',
 		submenu: [
-			{ role: 'reload' },          // ⌘R or Ctrl+R
+			{
+				label: 'New tab',
+				accelerator: 'CmdOrCtrl+T',
+				click: (menuItem, browserWindow) => {
+					if (browserWindow && browserWindow.eBrowser) {
+						browserWindow.eBrowser.newTab();
+					}
+				}
+			},
+			{
+				label: 'Reload tab page',
+				accelerator: 'CmdOrCtrl+R',
+				click: (menuItem, browserWindow) => {
+					if (browserWindow && browserWindow.eBrowser) {
+						browserWindow.eBrowser.reloadCurrentPage();
+					}
+				}
+			},
 			{ role: 'forceReload' },     // Shift+⌘R
+			{
+				label: 'Close tab',
+				accelerator: 'CmdOrCtrl+W',
+				click: (menuItem, browserWindow) => {
+					if (browserWindow && browserWindow.eBrowser) {
+						browserWindow.eBrowser.closeTab(-1);
+					}
+				}
+			},
 			{ role: 'toggleDevTools' },  // ⌥⌘I or Ctrl+Shift+I
 			{ type: 'separator' },
-			{ role: 'resetZoom' },
+			/*{ role: 'resetZoom' },
 			{ role: 'zoomIn' },
-			{ role: 'zoomOut' },
+			{ role: 'zoomOut' },*/
 			{ type: 'separator' },
 			{ role: 'togglefullscreen' }
 		]
@@ -92,7 +119,6 @@ Menu.setApplicationMenu(menu);
 function setupWindow(win) {
 	win.webContents.setWindowOpenHandler(({ url, features }) => {
 		const { width:screenWidth, height:screenHeight } = screen.getPrimaryDisplay().workAreaSize;
-		
 		const widthMatch = features.match(/width=(\d+)/);
 		const heightMatch = features.match(/height=(\d+)/);
 		const width = widthMatch ? parseInt(widthMatch[1]) : parseInt(screenWidth*0.8);//1200;
@@ -118,6 +144,8 @@ function setupWindow(win) {
 	});
 }
 function createWindow() {
+	new EBrowserWindow(homepageUrl);
+	return;
 	mainWindow = new BrowserWindow({
 		width: 1200,
 		height: 800,
@@ -134,6 +162,7 @@ function createWindow() {
 
 	// 控制所有 window.open() 创建的新窗口
 	setupWindow(mainWindow);
+	
 }
 
 function startServerAndThenWindow() {
