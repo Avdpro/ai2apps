@@ -5,6 +5,7 @@ import pathLib from "path";
 import {EBrowserWindow} from "./ebrowser/ebrowser.mjs";
 
 let mainWindow=null;
+let aaWindows=[];
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathLib.dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -144,7 +145,8 @@ function setupWindow(win) {
 	});
 }
 function createWindow() {
-	new EBrowserWindow(homepageUrl);
+	let win=new EBrowserWindow(homepageUrl);
+	aaWindows.push(win);
 	return;
 	mainWindow = new BrowserWindow({
 		width: 1200,
@@ -174,6 +176,7 @@ function startServerAndThenWindow() {
 		
 		tray.setToolTip('AI2Apps');
 		tray.on('click', () => {
+			let mainWindow=aaWindows[0].window;
 			if (mainWindow.isVisible()) {
 				mainWindow.focus();
 			} else {

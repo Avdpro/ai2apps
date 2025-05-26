@@ -36,7 +36,7 @@ let closedBugTag=null;
 				preload: pathLib.join(__dirname, 'preload.js'),
 			}
 		});
-		win.webContents.openDevTools({ mode: 'detach' });
+		//win.webContents.openDevTools({ mode: 'detach' });
 		win.loadFile('ebrowser/ebrowser.html');
 		win.eBrowser=this;
 		this.window=win;
