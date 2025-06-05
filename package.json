@@ -4,8 +4,6 @@
   "private": true,
   "main": "main.mjs",
   "scripts": {
-    "start": "electron .",
-    "rebuild": "electron-rebuild"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",
@@ -26,6 +24,7 @@
     "html-to-md": "^0.8.6",
     "http-errors": "~1.6.3",
     "lockfile": "^1.0.4",
+    "mammoth": "^1.9.1",
     "mongodb": "^3.6.11",
     "mongoose": "^5.13.7",
     "morgan": "~1.9.1",
@@ -34,6 +33,7 @@
     "node-pty": "*",
     "ollama": "^0.5.1",
     "openai": "^4.100.0",
+    "pdf-parse": "^1.1.1",
     "pug": "2.0.0-beta11",
     "puppeteer": "^22.3.0",
     "puppeteer-extra": "^3.3.6",
@@ -42,13 +42,11 @@
     "term.js": "^0.0.7",
     "unzipper": "^0.10.14",
     "ws": "^8.18.0",
+    "xlsx": "^0.18.5",
     "yahoo-finance2": "^2.13.3"
   },
   "devDependencies": {
     "@rollup/plugin-alias": "^3.1.5",
-    "electron": "^36.2.0",
-    "electron-builder": "^26.0.12",
-    "electron-rebuild": "^3.2.9",
     "rollup-plugin-terser": "^7.0.2"
   }
 }

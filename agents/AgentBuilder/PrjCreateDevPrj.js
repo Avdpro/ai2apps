@@ -35,6 +35,11 @@ const argsTemplate={
 			"name":"prjMeta","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"inIde":{
+			"name":"inIde","type":"bool",
+			"defaultValue":false,
+			"desc":"",
 		}
 	},
 	/*#{1IK2OCGG60ArgsView*/
@@ -45,11 +50,11 @@ const argsTemplate={
 /*}#1IK2OCGG60StartDoc*/
 //----------------------------------------------------------------------------
 let PrjCreateDevPrj=async function(session){
-	let diskId,diskName,editCfg,prjMeta;
+	let diskId,diskName,editCfg,prjMeta,inIde;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,CreateTTY,TipCheckOut,CheckOutDisk,TipFilterJSON,FilterJSON,CheckSetupScript,SetupScript,TipError,SaveEditCfg,AskOpenPrj,OpenIDE,Exit,IsBackend,HasBackend,TipNoBackend,TipEnd;
+	let Start,CreateTTY,TipCheckOut,CheckOutDisk,TipFilterJSON,FilterJSON,CheckSetupScript,SetupScript,TipError,SaveEditCfg,AskOpenPrj,OpenIDE,Exit,IsBackend,HasBackend,TipNoBackend,TipEnd,IsInIDE,OpenPrj;
 	let tty=null;
 	
 	/*#{1IK2OCGG60LocalVals*/
@@ -61,11 +66,13 @@ let PrjCreateDevPrj=async function(session){
 			diskName=input.diskName;
 			editCfg=input.editCfg;
 			prjMeta=input.prjMeta;
+			inIde=input.inIde;
 		}else{
 			diskId=undefined;
 			diskName=undefined;
 			editCfg=undefined;
 			prjMeta=undefined;
+			inIde=undefined;
 		}
 		/*#{1IK2OCGG60ParseArgs*/
 		/*}#1IK2OCGG60ParseArgs*/
@@ -77,7 +84,7 @@ let PrjCreateDevPrj=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1IK2OCGG60PostContext*/
 	/*}#1IK2OCGG60PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["Start"]=Start=async function(input){//:1IK2RV2SP0
 		let result=input;
 		/*#{1IK2RV2SP0Code*/
@@ -100,7 +107,7 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["TipCheckOut"]=TipCheckOut=async function(input){//:1IK2RF0FP0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("下载项目内容……"):("Downloading project content..."));
 		session.addChatText(role,content,opts);
@@ -122,7 +129,7 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["TipFilterJSON"]=TipFilterJSON=async function(input){//:1IK2RFIAF0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("更新配置文件……"):("Updating configuration file..."));
 		session.addChatText(role,content,opts);
@@ -175,9 +182,11 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["SetupScript"]=SetupScript=async function(input){//:1IK2RKCBN0
 		let result;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"./PrjTabOSPrjSetup.js");
 		let arg={"dirPath":"/"+diskName,"setupType":"setupPrj"};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./PrjTabOSPrjSetup.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:SaveEditCfg,result:(result),preSeg:"1IK2RKCBN0",outlet:"1IK2RUJD70"};
 	};
 	SetupScript.jaxId="1IK2RKCBN0"
@@ -185,7 +194,7 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["TipError"]=TipError=async function(input){//:1IK2RVNMD0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -202,7 +211,7 @@ let PrjCreateDevPrj=async function(session){
 			await tabFS.writeFile(`/doc/tabstudio/_${diskName}.json`,JSON.stringify(editCfg,null,"\t"),"utf8");
 		}
 		/*}#1IKRDIMN40Code*/
-		return {seg:AskOpenPrj,result:(result),preSeg:"1IKRDIMN40",outlet:"1IKRDKAK70"};
+		return {seg:IsInIDE,result:(result),preSeg:"1IKRDIMN40",outlet:"1IKRDKAK70"};
 	};
 	SaveEditCfg.jaxId="1IKRDIMN40"
 	SaveEditCfg.url="SaveEditCfg@"+agentURL
@@ -341,7 +350,28 @@ let PrjCreateDevPrj=async function(session){
 	TipEnd.jaxId="1ILCQR3M10"
 	TipEnd.url="TipEnd@"+agentURL
 	
-	agent={
+	segs["IsInIDE"]=IsInIDE=async function(input){//:1IRONKI1T0
+		let result=input;
+		if(inIde){
+			return {seg:OpenPrj,result:(input),preSeg:"1IRONKI1T0",outlet:"1IRONML3A0"};
+		}
+		return {seg:AskOpenPrj,result:(result),preSeg:"1IRONKI1T0",outlet:"1IRONML3A1"};
+	};
+	IsInIDE.jaxId="1IRONKI1T0"
+	IsInIDE.url="IsInIDE@"+agentURL
+	
+	segs["OpenPrj"]=OpenPrj=async function(input){//:1IRONLH600
+		let result=input
+		/*#{1IRONLH600Code*/
+		let startURL=`${document.location.origin}/@tabedit?path=${encodeURIComponent(diskName)}`;
+		window.top.location.href=startURL;
+		/*}#1IRONLH600Code*/
+		return {result:result};
+	};
+	OpenPrj.jaxId="1IRONLH600"
+	OpenPrj.url="OpenPrj@"+agentURL
+	
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjCreateDevPrj",
@@ -350,7 +380,7 @@ let PrjCreateDevPrj=async function(session){
 		jaxId:"1IK2OCGG60",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{diskId,diskName,editCfg,prjMeta}*/){
+		execChat:async function(input/*{diskId,diskName,editCfg,prjMeta,inIde}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IK2OCGG60PreEntry*/
@@ -418,6 +448,7 @@ export{PrjCreateDevPrj};
 //			"jaxId": "1IK2OCGG62",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "Start",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -463,6 +494,16 @@ export{PrjCreateDevPrj};
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"inIde": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1IRONJ37N0",
+//					"attrs": {
+//						"type": "Boolean",
+//						"mockup": "false",
 //						"desc": ""
 //					}
 //				}
@@ -565,6 +606,9 @@ export{PrjCreateDevPrj};
 //							},
 //							"linkedSeg": "1IK2RF0FP0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -649,6 +693,9 @@ export{PrjCreateDevPrj};
 //							},
 //							"linkedSeg": "1IK2RFIAF0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -732,6 +779,9 @@ export{PrjCreateDevPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IK2RJ3LR0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -841,6 +891,9 @@ export{PrjCreateDevPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IKRDIMN40"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -914,7 +967,10 @@ export{PrjCreateDevPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IK2S4UGP0"
+//							"linkedSeg": "1IRONKI1T0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -928,8 +984,8 @@ export{PrjCreateDevPrj};
 //						"id": "AskOpenPrj",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2545",
-//						"y": "340",
+//						"x": "2770",
+//						"y": "440",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1036,8 +1092,8 @@ export{PrjCreateDevPrj};
 //						"id": "OpenIDE",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2815",
-//						"y": "265",
+//						"x": "3040",
+//						"y": "365",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -1060,6 +1116,9 @@ export{PrjCreateDevPrj};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1072,8 +1131,8 @@ export{PrjCreateDevPrj};
 //						"id": "Exit",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2815",
-//						"y": "370",
+//						"x": "3040",
+//						"y": "470",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -1095,6 +1154,9 @@ export{PrjCreateDevPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1376,6 +1438,9 @@ export{PrjCreateDevPrj};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1445,6 +1510,113 @@ export{PrjCreateDevPrj};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1IRONKI1T0",
+//					"attrs": {
+//						"id": "IsInIDE",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2545",
+//						"y": "340",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IRONML3G0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IRONML3G1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IRONML3A1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1IK2S4UGP0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IRONML3A0",
+//									"attrs": {
+//										"id": "InIDE",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IRONML3G2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IRONML3G3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#inIde"
+//									},
+//									"linkedSeg": "1IRONLH600"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1IRONLH600",
+//					"attrs": {
+//						"id": "OpenPrj",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2770",
+//						"y": "230",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IRONML3G4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IRONML3G5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IRONML3A2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
 //				}
 //			]
 //		},

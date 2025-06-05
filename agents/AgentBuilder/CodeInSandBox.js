@@ -739,7 +739,7 @@ ${input.imports?JSON.stringify(input.imports,null,"\t"):"无"}
 			fqcP:0,
 			prcP:0,
 			secret:false,
-			responseFormat:"text"
+			responseFormat:"json_object"
 		};
 		let chatMem=Review.messages
 		let seed="";
@@ -800,6 +800,7 @@ ${JSON.stringify(logs,null,"\t")}
 		/*#{1IOK3BRBV0PreCall*/
 		/*}#1IOK3BRBV0PreCall*/
 		result=(result===null)?(await session.callSegLLM("Review@"+agentURL,opts,messages,true)):result;
+		result=trimJSON(result);
 		/*#{1IOK3BRBV0PostCall*/
 		/*}#1IOK3BRBV0PostCall*/
 		return {seg:ReviewResult,result:(result),preSeg:"1IOK3BRBV0",outlet:"1IOK3P3NC0"};
@@ -2573,7 +2574,7 @@ export{CodeInSandBox};
 //							"attrs": []
 //						},
 //						"parallelFunction": "false",
-//						"responseFormat": "text",
+//						"responseFormat": "json_object",
 //						"formatDef": "\"\""
 //					},
 //					"icon": "llm.svg"
