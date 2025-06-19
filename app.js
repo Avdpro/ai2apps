@@ -46,6 +46,30 @@ app.initCokeCodesApp=async function(){
 	app.use('//', swrootRouter);
 	app.use('/ws', wsRouter(app));
 	
+	//Payments:
+	{
+		if(process.env.PAYMENT==="TRUE") {
+			const paymentsRouter = express.Router();
+			//Paypal handlers::
+			await (async () => {
+				const esmModule = await import('./payments/paypal.mjs');
+				esmModule.default(app, paymentsRouter);
+			})();
+			
+			//Stripe-WX handlers:
+			/*await (async () => {
+				const esmModule = await import('./payments//stripe_ap.mjs');
+				esmModule.default(app, paymentsRouter);
+			})();*/
+			app.use('/payments', paymentsRouter);
+		}else{
+			//Forward all calls to root:
+			await (async () => {
+				const esmModule = await import('./payments/local.mjs');
+				esmModule.default(app);
+			})();
+		}
+	}
 	// catch 404 and forward to error handler
 	app.use(function(req, res, next) {
 		next(createError(404));

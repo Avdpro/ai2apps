@@ -7,11 +7,12 @@ import followRedirects from "follow-redirects";
 import {Readable} from "stream";
 
 import {setupTokenUtils,tokenForMessages,charForMessages,checkAITokenCall,useAITokens,chargePointsByChat,chargePointsByUsage} from "../util/TokenUtils.mjs";
-import ProxyCall from '../util/ProxyCall.js'
+import ProxyCall from '../util/ProxyCall.js';
 const { callProxy,proxyCall }=ProxyCall;
-
+//import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
 const getUserInfo=null,getPVUserInfo=null;
 import ApiProxy from "../apiproxy/FetchProxy.mjs";
+import invokeApi from '../util/InvokeApi.mjs'
 
 const AIPlatforms={
 	"OpenAI":{
@@ -119,7 +120,7 @@ export default function(app,router,apiMap) {
 	//***********************************************************************
 	//Basic AI Calls:
 	//***********************************************************************
-	if(openAI){
+	{
 		//-------------------------------------------------------------------
 		apiMap['checkAICallStatus']=async function(req,res,next){
 			let reqVO, userInfo, resVO;
@@ -160,7 +161,7 @@ export default function(app,router,apiMap) {
 			}
 			streamVO = streamMap.get(streamId);
 			if (!streamVO) {
-				res.json({ code: -101, info: "Missing stream obj." });
+				await proxyCall(req,res,next);
 				return;
 			}
 			functionCall=streamVO.functionCall;
@@ -201,7 +202,31 @@ export default function(app,router,apiMap) {
 		};
 		
 		//-------------------------------------------------------------------
-		let AICall = async function (callAIObj, req, res) {
+		let fixHostPrompt=async function(messages,userId,token,userInfo){
+			let systemPmt,res;
+			systemPmt=messages[0];
+			if(systemPmt.prompt && systemPmt.args){
+				if(!getUserInfo){
+					return false;//We can't process this call here, must call AI at www.ai2apps.com
+				}
+				res=await invokeApi("HostPromptExec",{userId:userId,token:token,prompt:systemPmt.prompt,args:systemPmt.args},userInfo);
+				if(res){
+					if(res==="API-NOT-FOUND"){
+						return false;////We can't process this call here, must call AI at www.ai2apps.com
+					}else if(res.code!==200){
+						throw Error(`Call host prompt error ${res?res.code:""}: ${(res.info||"unknown")}`);
+					}
+				}else {
+					throw Error(`Call host prompt error.`);
+				}
+				messages[0]=res.result;
+				return true;//OK to go:
+			}
+			return true;//OK to go
+		};
+		
+		//-------------------------------------------------------------------
+		let AICall = async function (callAIObj, req, res, next) {
 			let reqVO,userInfo=null;
 			let platform;
 			let callVO, rawResVO, resVO;
@@ -221,10 +246,19 @@ export default function(app,router,apiMap) {
 				}
 			}
 			
+			if(await fixHostPrompt(reqVO.messages,reqVO.userId,reqVO.token,userInfo)===false){
+				await proxyCall(req,res,next);
+				return;
+			}
+			
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
 			switch (platform) {
 				case "OpenAI": {
+					if(!openAI){
+						await proxyCall(req,res,next);
+						return;
+					}
 					callVO = callAIObj.buildCallVO(reqVO);
 					console.log(callVO);
 					//Check gas
@@ -265,6 +299,7 @@ export default function(app,router,apiMap) {
 					}
 					return;
 				}
+				//TODO: Code more:
 				default: {
 					res.json({ code: 405, info: `Platform ${platform} is not supported.` });
 					return;
@@ -273,7 +308,7 @@ export default function(app,router,apiMap) {
 		};
 		
 		//-------------------------------------------------------------------
-		let AIStreamCall = async function (callAIObj, req, res) {
+		let AIStreamCall = async function (callAIObj, req, res,next) {
 			let reqVO,userInfo=null;
 			let platform, callVO, resVO;
 			
@@ -292,8 +327,14 @@ export default function(app,router,apiMap) {
 					}
 				}
 			}
+
+			if(await fixHostPrompt(reqVO.messages,reqVO.userId,reqVO.token,userInfo)===false){
+				await proxyCall(req,res,next);
+				return;
+			}
 			
 			platform = reqVO.platform || "OpenAI";
+			
 			//Make AI-Call:
 			switch (platform) {
 				case "Ollama":{
@@ -364,6 +405,10 @@ export default function(app,router,apiMap) {
 				}
 				case "Claude":{
 					let streamId,streamVO,stream,func,messages;
+					if(!anthropic){
+						await proxyCall(req,res,next);
+						return;
+					}
 					callVO = callAIObj.buildCallVO(reqVO,platform);
 					//Check gas
 					{
@@ -456,6 +501,10 @@ export default function(app,router,apiMap) {
 					break;
 				}
 				case "OpenAI": {
+					if(!openAI){
+						await proxyCall(req,res,next);
+						return;
+					}
 					callVO = callAIObj.buildCallVO(reqVO,platform);
 					{
 						resVO = await checkAITokenCall(userInfo, platform, callVO.model);
@@ -629,6 +678,10 @@ export default function(app,router,apiMap) {
 				case "Google":{
 					let streamId,streamVO,stream,func;
 					let tokenUsage,inputTokens,outputTokens;
+					if(!googleAI){
+						await proxyCall(req,res,next);
+						return;
+					}
 					callVO = callAIObj.buildCallVO(reqVO,platform);
 					try {
 						let modelName,model,chat,messages,history,result,prompt;
@@ -808,12 +861,12 @@ export default function(app,router,apiMap) {
 		
 		//-------------------------------------------------------------------
 		apiMap['AICall'] = async function (req, res, next) {
-			return await AICall(plainCall, req, res);
+			return await AICall(plainCall, req, res, next);
 		};
 
 		//-------------------------------------------------------------------
 		apiMap['AICallStream'] = async function (req, res, next) {
-			return await AIStreamCall(plainCall, req, res);
+			return await AIStreamCall(plainCall, req, res, next);
 		};
 		
 		//-------------------------------------------------------------------
@@ -1448,7 +1501,7 @@ export default function(app,router,apiMap) {
 					}
 				});
 				if(body) {
-					httpReq.send(body);
+					httpReq.write(body);
 				}
 				httpReq.end();
 			}
