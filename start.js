@@ -26,7 +26,6 @@ app.initCokeCodesApp().then(()=>{
 	if(app.setupWebSocket){
 		app.setupWebSocket(server);
 	}
-
 });
 
 /**
@@ -87,5 +86,6 @@ function onListening() {
 		? 'pipe ' + addr
 		: 'port ' + addr.port;
 	debug('Listening on ' + bind);
+	console.log(`Node version: ${console.log(process.version)}`);
 	console.log(`READY: Server running at http://localhost:${addr.port}`);
 }

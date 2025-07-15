@@ -22,11 +22,33 @@ const runMeta={
 	}
 };
 
-async function runAgent({agent,agentNode=null,args=null,title="Run Agent",callback=null,callerror=null,embed=null}){
+const threadMeta={
+	type:"app",
+	name:"Chat Thread",
+	caption:"Chat Thread",
+	main:"/@AgentBuilder/thread.html",
+	package:"dev",
+	catalog:["System"],
+	icon:"/@tabos/shared/assets/aichat.svg",
+	iconApp:null,
+	appFrame:{
+		main:"/@AgentBuilder/thread.html",
+		group:"/@AgentBuilder/thread.js",
+		title:"Chat Thread",
+		caption:"Chat Thread",
+		icon:"/@tabos/shared/assets/aichat.svg",
+		multiFrame:true,
+		width:1200,height:800,
+		maxable:false,
+	}
+};
+
+async function runAgent({chatClient=null,chatThread=null,agent,agentNode=null,args=null,title="Run Agent",callback=null,callerror=null,embed=null}){
 	let app;
 	let params={
 		title:title||"Run Agent",
-		file:agent,agentNode:agentNode,argument:args,callback:callback,callerror:callerror
+		file:agent,agentNode:agentNode,argument:args,callback:callback,callerror:callerror,
+		chatClient:chatClient,chatThread:chatThread,
 	};
 	app=VFACT.app;
 	if(!app){
@@ -72,5 +94,33 @@ async function callAgent({agent,agentNode=null,args=null,title="Run Agent",embed
 	}
 }
 
+async function showChatThread({chatThread,embed}){
+	let app;
+	let params={
+		title:chatThread.title||"Chat Thread",
+		chatClient:chatThread.client,chatThread:chatThread,
+	};
+	app=VFACT.app;
+	if(!app){
+		let curWin=window;
+		while(!app && curWin.parent!==curWin){
+			curWin=curWin.parent;
+			app=curWin.VFACT.app;
+		}
+		if(!app){
+			return;
+		}
+	}
+	if(embed && embed.appendNewChild){
+		return embed.appendNewChild({
+			type:AppFrame(app,threadMeta,params,{embed:true}),x:0,y:0
+		});
+	}else{
+		if(app && app.newFrameApp){
+			return app.newFrameApp(threadMeta,params);
+		}
+	}
+}
+
 export default runAgent;
-export {runAgent,callAgent};
+export {runAgent,callAgent,showChatThread};

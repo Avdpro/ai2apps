@@ -54,7 +54,7 @@ let PrjSetupBySteps=async function(session){
 	context={};
 	/*#{1IJ2K5IBR0PostContext*/
 	/*}#1IJ2K5IBR0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["Start"]=Start=async function(input){//:1IJ2L44GS0
 		let result=input;
 		/*#{1IJ2L44GS0Code*/
@@ -67,11 +67,13 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["InitEnv"]=InitEnv=async function(input){//:1IJ2KABA10
 		let result;
-		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
 		let arg=input;
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJ2KABA10Input*/
 		/*}#1IJ2KABA10Input*/
-		result= await session.pipeChat(sourcePath,arg,false);
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1IJ2KABA10Output*/
 		env=globalContext.env;
 		/*}#1IJ2KABA10Output*/
@@ -248,9 +250,11 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["RunBrew"]=RunBrew=async function(input){//:1IJ2KN5JJ0
 		let result;
-		let sourcePath=pathLib.join(basePath,"./ToolBrew.js");
 		let arg={"action":"install","pkgName":input.install};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./ToolBrew.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
 	};
 	RunBrew.jaxId="1IJ2KN5JJ0"
@@ -258,9 +262,11 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["RunConda"]=RunConda=async function(input){//:1IJ2KNFK40
 		let result;
-		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
 		let arg={"refName":input.conda||input.name,"pyversion":input.pythonVersion,"installReq":input.installReq||input.installPkg||input.installDep};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:CheckStepReuslt,result:(result),preSeg:"1IJ2KNFK40",outlet:"1IJ2L5O0R6"};
 	};
 	RunConda.jaxId="1IJ2KNFK40"
@@ -268,9 +274,11 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["RunTaskBot"]=RunTaskBot=async function(input){//:1IJ2KOMUM0
 		let result;
-		let sourcePath=pathLib.join(basePath,"");
 		let arg=input;
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:CheckStepReuslt,result:(result),preSeg:"1IJ2KOMUM0",outlet:"1IJ2L5O0R7"};
 	};
 	RunTaskBot.jaxId="1IJ2KOMUM0"
@@ -300,7 +308,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipHideFinish"]=TipHideFinish=async function(input){//:1IJ2KTD7V0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("AgentNode 安装完毕，没有设置为公开。"):("AgentNode installed but not set to public."));
 		session.addChatText(role,content,opts);
@@ -412,7 +420,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowError"]=ShowError=async function(input){//:1IJ2L4VCN0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`执行安装时发生错误：${input}`;
 		/*#{1IJ2L4VCN0PreCodes*/
@@ -484,7 +492,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipNoGuide"]=TipNoGuide=async function(input){//:1IJ2PL6OI0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="没有找到进一步安装配置本项目的指南。";
 		/*#{1IJ2PL6OI0PreCodes*/
@@ -499,7 +507,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipStep"]=TipStep=async function(input){//:1IJ44HLQB0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input.tip;
 		session.addChatText(role,content,opts);
@@ -510,9 +518,11 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["HfDownLoad"]=HfDownLoad=async function(input){//:1IJ44IVQS0
 		let result;
-		let sourcePath=pathLib.join(basePath,"./ToolHfModel.js");
 		let arg={"model":input.model,"localPath":input.localPath||input.localDir,"token":false};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./ToolHfModel.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
 	};
 	HfDownLoad.jaxId="1IJ44IVQS0"
@@ -549,11 +559,13 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["LoadRagGudie"]=LoadRagGudie=async function(input){//:1IJL38S9B0
 		let result;
-		let sourcePath=pathLib.join(basePath,"./RagQuery.js");
 		let arg={"address":ragAddress,"query":"","tags":""};
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./RagQuery.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJL38S9B0Input*/
 		/*}#1IJL38S9B0Input*/
-		result= await session.pipeChat(sourcePath,arg,false);
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1IJL38S9B0Output*/
 		if(result){
 			setupGuide=result;
@@ -607,7 +619,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowGude"]=ShowGude=async function(input){//:1IJL3NK8N0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`### 找到安装指南：\n----\n${setupGuide}`;
 		/*#{1IJL3NK8N0PreCodes*/
@@ -633,7 +645,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipPubFinish"]=TipPubFinish=async function(input){//:1IK7U888P0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("AgentNode 安装完毕，并设置为公开。"):("AgentNode installed and set to public."));
 		session.addChatText(role,content,opts);
@@ -837,7 +849,7 @@ Output format:
 	
 	segs["output"]=output=async function(input){//:1ILIAT0E90
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -915,7 +927,7 @@ Output format:
 	goto.jaxId="1IJ2KJ0UK0"
 	goto.url="goto@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjSetupBySteps",
@@ -945,13 +957,27 @@ Output format:
 /*}#1IJ2K5IBR0ExCodes*/
 
 //#CodyExport>>>
+let ChatAPI=[{
+	def:{
+		name: "PrjSetupBySteps",
+		description: "这是一个AI智能体。",
+		parameters:{
+			type: "object",
+			properties:{
+				prjPath:{type:"string",description:"要安装配置的工程的路径"}
+			}
+		}
+	},
+	agentNode: "AgentBuilder",
+	agentName: "PrjSetupBySteps.js"
+}];
 //#CodyExport<<<
 /*#{1IJ2K5IBR0PostDoc*/
 /*}#1IJ2K5IBR0PostDoc*/
 
 
 export default PrjSetupBySteps;
-export{PrjSetupBySteps};
+export{PrjSetupBySteps,ChatAPI};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -992,6 +1018,7 @@ export{PrjSetupBySteps};
 //			"jaxId": "1IJ2K5IBR2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -1127,6 +1154,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ2K9A670"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1164,6 +1194,9 @@ export{PrjSetupBySteps};
 //							},
 //							"linkedSeg": "1IJ2KGOHG0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1200,6 +1233,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ2OT4DU0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1305,6 +1341,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ2ST21N0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1599,6 +1638,9 @@ export{PrjSetupBySteps};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1639,6 +1681,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ2KQHJP0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1679,6 +1724,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ2KQHJP0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1984,6 +2032,9 @@ export{PrjSetupBySteps};
 //							},
 //							"linkedSeg": "1IJ2KUBNM0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2021,6 +2072,9 @@ export{PrjSetupBySteps};
 //							},
 //							"linkedSeg": "1IK7U888P0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2057,6 +2111,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ2KTD7V0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2271,6 +2328,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2455,6 +2515,9 @@ export{PrjSetupBySteps};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -2491,6 +2554,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJL3N37R0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2532,6 +2598,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJL3C2S10"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -2803,6 +2872,9 @@ export{PrjSetupBySteps};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2989,6 +3061,9 @@ export{PrjSetupBySteps};
 //							},
 //							"linkedSeg": "1ILIIHJ2K0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -3021,8 +3096,8 @@ export{PrjSetupBySteps};
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
-//		"exportAPI": "false",
+//		"exportAPI": "true",
 //		"exportAddOn": "false",
-//		"addOnOpts": ""
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"chatEntry\":false,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\"}"
 //	}
 //}

@@ -41,7 +41,7 @@ let SysTabOSChat=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode,JumpToolAsk,ToolAsk,ToolAskReuslt,ToolAskUser,ShowAskAiResult,ShowAskUserResult,CallToolAsk;
+	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode,JumpToolAsk,ToolAsk,ToolAskReuslt,ToolAskUser,ShowAskAiResult,ShowAskUserResult,CallToolAsk,FakeInput;
 	let orgInput=null;
 	let cokeEnv=null;
 	let cokeTty=null;
@@ -108,7 +108,7 @@ let SysTabOSChat=async function(session){
 		let role="assistant";
 		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
-		return {seg:InitTools,result:(result),preSeg:"1IKE6V3JM0",outlet:"1IKE74LT70"};
+		return {seg:FakeInput,result:(result),preSeg:"1IKE6V3JM0",outlet:"1IKE74LT70"};
 	};
 	TipStart.jaxId="1IKE6V3JM0"
 	TipStart.url="TipStart@"+agentURL
@@ -133,6 +133,7 @@ let SysTabOSChat=async function(session){
 		}
 		if(tools){
 			context.toolIndex=tools.getToolScope();
+			context.toolIndex = Object.entries(context.toolIndex).slice(6);
 			session.debugLog("Tools index:");
 			session.debugLog(context.toolIndex);
 			console.log("Tools index:");
@@ -1015,6 +1016,34 @@ ${JSON.stringify(mem,null,"\t")}
 	CallToolAsk.jaxId="1IOGH2O1E0"
 	CallToolAsk.url="CallToolAsk@"+agentURL
 	
+	segs["FakeInput"]=FakeInput=async function(input){//:1IV6EAMTH0
+		let tip=("");
+		let tipRole=("assistant");
+		let placeholder=("");
+		let allowFile=(false)||false;
+		let askUpward=(false);
+		let text=("");
+		let result="";
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+		}
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
+		return {seg:TipStart,result:(result),preSeg:"1IV6EAMTH0",outlet:"1IV6EBB510"};
+	};
+	FakeInput.jaxId="1IV6EAMTH0"
+	FakeInput.url="FakeInput@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -1384,7 +1413,7 @@ export{SysTabOSChat};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IKCVA57O0"
+//							"linkedSeg": "1IV6EAMTH0"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -3148,6 +3177,94 @@ export{SysTabOSChat};
 //						}
 //					},
 //					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askChat",
+//					"jaxId": "1IV6EAMTH0",
+//					"attrs": {
+//						"id": "FakeInput",
+//						"viewName": "",
+//						"label": "",
+//						"x": "465",
+//						"y": "525",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IV6EBB570",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IV6EBB580",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"tip": "",
+//						"tipRole": "Assistant",
+//						"placeholder": "",
+//						"text": "",
+//						"file": "false",
+//						"showText": "true",
+//						"askUpward": "false",
+//						"outlet": {
+//							"jaxId": "1IV6EBB510",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IV6EB3AL0"
+//						}
+//					},
+//					"icon": "chat.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1IV6EB3AL0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "595",
+//						"y": "615",
+//						"outlet": {
+//							"jaxId": "1IV6EBB581",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IV6EB7A50"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1IV6EB7A50",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "290",
+//						"y": "615",
+//						"outlet": {
+//							"jaxId": "1IV6EBB582",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IKE6V3JM0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

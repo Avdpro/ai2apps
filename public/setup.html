@@ -1414,6 +1414,9 @@ cokeNT.checkLogin=async function(readInfo=false,checkNT=false){
 		let res;
 		try{
 			res=await this.makeCall("userCurrency",{});
+			if(res && res.code===403){
+				localStorage.removeItem("LoginVO");
+			}
 			if(!res || res.code!==200){
 				throw "Offline";
 			}
@@ -1425,7 +1428,6 @@ cokeNT.checkLogin=async function(readInfo=false,checkNT=false){
 			if(tabOS){
 				tabOS.emitGlobalNotify("Offline");
 			}
-			localStorage.removeItem("LoginVO");
 			return false;
 		}
 	}
@@ -1531,8 +1533,11 @@ cokeNT.makeCall=async function(msg,vo,timeout=0){
 	try{
 		return await WebAPI.makeCall(msg,vo,timeout);
 	}catch(e){
-		if(e.code===503);
-		throw e;
+		return {code:0,info:""+e};
+		/*if(e.code===503){
+			//TODO: Network error.
+		}
+		throw e;*/
 	}
 };
 
@@ -9903,9 +9908,11 @@ function setupButton(typeDef){
 	let setState;
 	
 	let _OnMouseDown,_OnMouseEnter,_OnMouseLeave,_OnMouseUp,_OnMouseUpOut,_OnContextMenu;
+	let _OnTouchDown,_OnTouchMove,_OnTouchUp;
 	typeDef.allocPptIdx("OnMouseDown");
 	let lastDownX,lastDownY;
 	const MOVE_GAP=70;
+	const TOUCH_GAP=30;
 	
 	_OnMouseDown=function(valMap,evt){
 		if(!valMap[pptEnableIdx]){
@@ -10004,6 +10011,7 @@ function setupButton(typeDef){
 		dx=dx<0?-dx:dx;
 		dy=dy<0?-dy:dy;
 		if(dx+dy>MOVE_GAP){
+			setState(valMap,STATE_UP);
 			return;
 		}
 		/*if(evt.target!==valMap[pptWebObjIdx]){
@@ -10081,6 +10089,88 @@ function setupButton(typeDef){
 		}
 	};
 	
+	_OnTouchDown=function(valMap,evt){
+		if(!valMap[pptEnableIdx]){
+			return;
+		}
+		let overcall;
+		const touch = evt.touches[0];
+		lastDownX=touch.clientX;
+		lastDownY=touch.clientY;
+		overcall=valMap[pptOnButtonDownIdx];
+		if(overcall && overcall(1,evt)){
+			return;
+		}
+		valMap[pptIsPenDownIdx]=1;
+		setState(valMap,STATE_DOWN);
+		sysAddOnMouseUp(valMap[pptOnMouseUpOutIdx]);
+		evt.stopPropagation();
+	};
+	
+	_OnTouchMove=function(valMap,evt){
+		const touch = evt.touches[0];
+		if(!valMap[pptEnableIdx]){
+			return;
+		}
+		let dx=touch.clientX-lastDownX;
+		let dy=touch.clientY-lastDownY;
+		dx=dx<0?-dx:dx;
+		dy=dy<0?-dy:dy;
+		if(dx+dy>TOUCH_GAP){
+			valMap[pptIsPenDownIdx]=0;
+			setState(valMap,STATE_UP);
+			return;
+		}
+	};
+	
+	_OnTouchUp=function(valMap,evt){
+		if(!valMap[pptEnableIdx]){
+			return;
+		}
+		if(!valMap[pptIsPenDownIdx]){
+			return;
+		}
+		evt.stopPropagation();
+		evt.preventDefault();
+		sysRemoveOnMouseUp(valMap[pptOnMouseUpOutIdx]);
+		valMap[pptIsPenDownIdx]=0;
+		let call,labelTgt;
+		labelTgt=valMap[pptLabelTgtIdx];
+		if(labelTgt){
+			var newEvt;
+			newEvt=new MouseEvent("click", {
+				bubbles: true,cancelable: true,view: window
+			});
+			labelTgt.dispatchEvent(newEvt);
+			return;
+		}
+		call=valMap[pptOnButtonUpIdx];
+		if(call){
+			if(call(1,evt)){
+				setState(valMap,STATE_UP);
+				return;
+			}
+		}
+		call=valMap[pptOnClickIdx];
+		if(call){
+			let rst;
+			vmcAddRefcount.call(valMap);
+			rst=call(evt);
+			if(valMap[pptEnableIdx]){
+				if(rst===false){
+					setState(valMap,STATE_OVER);
+				}else {
+					setState(valMap,STATE_UP);
+					valMap[pptIsPenInIdx]=0;
+				}
+			}
+			vmcRelease.call(valMap);
+		}else {
+			setState(valMap,STATE_UP);
+			valMap[pptIsPenInIdx]=0;
+		}
+	};
+	
 	let oldPrefix=typeDef.prefix;
 	typeDef.prefix=function(pxy,def,webObj,styleObj,valMap){
 		if(oldPrefix){
@@ -10115,8 +10205,9 @@ function setupButton(typeDef){
 		webObj.addEventListener("mouseenter",(evt)=>{_OnMouseEnter(valMap,evt);},false);
 		webObj.addEventListener("mouseleave",(evt)=>{_OnMouseLeave(valMap,evt);},false);
 		webObj.addEventListener("mouseup",(evt)=>{_OnMouseUp(valMap,evt);},true);
-		webObj.addEventListener("touchstart",(evt)=>{_OnMouseDown(valMap,evt);},false);
-		webObj.addEventListener("touchend",(evt)=>{_OnMouseUp(valMap,evt);},true);
+		webObj.addEventListener("touchstart",(evt)=>{_OnTouchDown(valMap,evt);},false);
+		webObj.addEventListener("touchmove",(evt)=>{_OnTouchMove(valMap,evt);},false);
+		webObj.addEventListener("touchend",(evt)=>{_OnTouchUp(valMap,evt);},true);
 		valMap[pptOnMouseUpOutIdx]=(evt)=>{_OnMouseUpOut(valMap,evt);};
 		return def;
 	};
@@ -14296,7 +14387,7 @@ function fixColor(v){
 let createApp=async function(){
 	let body,appObj,appDef,path,pos;
 	appDef={
-		type:"obj",id:"FACTAppFrame",x:0,y:0,w:"100%",h:"100%",nameHost:1,traceSize:1,
+		type:"obj",id:"FACTAppFrame",x:0,y:0,w:"100%",h:"100%",nameHost:1,traceSize:1,overflow:1
 	};
 	body=document.body;
 	appObj=VFACT.createObj(appDef,body);
@@ -15111,17 +15202,17 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 299,
+		"versionIdx": 308,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 182,
+		"versionIdx": 195,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 213,
+		"versionIdx": 216,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15136,12 +15227,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 224,
+		"versionIdx": 226,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15151,12 +15242,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 134,
+		"versionIdx": 137,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 177,
+		"versionIdx": 183,
 		"zip": "aae.zip"
 	},
 	{
@@ -15171,7 +15262,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 44,
+		"versionIdx": 48,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15184,17 +15275,17 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 299,
+		"versionIdx": 308,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 182,
+		"versionIdx": 195,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 213,
+		"versionIdx": 216,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15214,7 +15305,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 134,
+		"versionIdx": 137,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15232,22 +15323,22 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 299,
+		"versionIdx": 308,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 182,
+		"versionIdx": 195,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 213,
+		"versionIdx": 216,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 134,
+		"versionIdx": 137,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15262,7 +15353,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 44,
+		"versionIdx": 48,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15275,22 +15366,22 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 299,
+		"versionIdx": 308,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 182,
+		"versionIdx": 195,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 213,
+		"versionIdx": 216,
 		"zip": "homekit.zip"
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 134,
+		"versionIdx": 137,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15300,7 +15391,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 44,
+		"versionIdx": 48,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15310,17 +15401,17 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 299,
+		"versionIdx": 308,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 182,
+		"versionIdx": 195,
 		"zip": "tabos.zip"
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 213,
+		"versionIdx": 216,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15335,12 +15426,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-tabedit",
-		"versionIdx": 126,
+		"versionIdx": 127,
 		"zip": "tabedit.zip"
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 224,
+		"versionIdx": 226,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15350,7 +15441,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 134,
+		"versionIdx": 137,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15365,12 +15456,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 177,
+		"versionIdx": 183,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 44,
+		"versionIdx": 48,
 		"zip": "AgentBuilder.zip"
 	},
 	{

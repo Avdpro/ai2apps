@@ -52,7 +52,7 @@ let SysInstallApp=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1IK3H9P1H0PostContext*/
 	/*}#1IK3H9P1H0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["Start"]=Start=async function(input){//:1IK3H9U510
 		let result=input;
 		/*#{1IK3H9U510Code*/
@@ -75,7 +75,7 @@ let SysInstallApp=async function(session){
 	
 	segs["TipInstallPkg"]=TipInstallPkg=async function(input){//:1IK3HH7J80
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?(`安装应用程序：${appStub.name}`):/*EN*/(`Installing app: ${appStub.name}`));
 		session.addChatText(role,content,opts);
@@ -290,7 +290,7 @@ let SysInstallApp=async function(session){
 	Abort.jaxId="1IMEAMTAL0"
 	Abort.url="Abort@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"SysInstallApp",
@@ -380,6 +380,7 @@ export{SysInstallApp};
 //			"jaxId": "1IK3H9P1H2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "Start",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -496,6 +497,9 @@ export{SysInstallApp};
 //							},
 //							"linkedSeg": "1IK3HH7J80"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -571,6 +575,9 @@ export{SysInstallApp};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IK3HJ6R20"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -954,6 +961,9 @@ export{SysInstallApp};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -989,6 +999,9 @@ export{SysInstallApp};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1092,6 +1105,9 @@ export{SysInstallApp};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1236,6 +1252,9 @@ export{SysInstallApp};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},

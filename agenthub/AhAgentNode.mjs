@@ -141,7 +141,7 @@ let AhAgentNode,ahAgentNode;
 						if(stub){
 							callMap.delete(callId);
 							if(message.error){
-								stub.error(message.result);
+								stub.error(message.error);
 							}else {
 								stub.callback(message.result);
 							}

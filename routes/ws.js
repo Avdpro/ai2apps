@@ -4,6 +4,7 @@ var router = express.Router();
 var proxyCall=require('../util/ProxyCall.js').proxyCall;
 const USE_AAEE=process.env.AAEE;
 const USE_AGENTHUB=process.env.AGENT_HUB==="TRUE";
+const USE_CHATSERVER=process.env.CHAT_SERVER==="TRUE";
 
 module.exports =function(app) {
 	var apiMap={};
@@ -42,6 +43,13 @@ module.exports =function(app) {
 		import("../agenthub/AhSystem.mjs").then((mode)=>{
 			ahAPI=mode.default;
 			ahAPI(app,router,apiMap);
+		});
+	}
+	if(USE_CHATSERVER){
+		let chatAPI;
+		import("../chats/AaChatServer.mjs").then((mode)=>{
+			chatAPI=mode.default;
+			chatAPI(app,router,apiMap);
 		});
 	}
 	/* GET users listing. */

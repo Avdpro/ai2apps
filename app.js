@@ -46,6 +46,18 @@ app.initCokeCodesApp=async function(){
 	app.use('//', swrootRouter);
 	app.use('/ws', wsRouter(app));
 	
+	//Shadow chat:
+	{
+		if (process.env.SHADOW_CHAT === "TRUE") {
+			const shadowRouter = express.Router();
+			await (async () => {
+				const esmModule = await import('./handlers/APIShadowChat.mjs');
+				esmModule.default(app, shadowRouter);
+			})();
+			app.use('/shadow', shadowRouter);
+		}
+	}
+	
 	//Payments:
 	{
 		if(process.env.PAYMENT==="TRUE") {
