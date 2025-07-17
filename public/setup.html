@@ -15202,7 +15202,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 309,
+		"versionIdx": 315,
 		"zip": "coke.zip"
 	},
 	{
@@ -15242,7 +15242,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 138,
+		"versionIdx": 140,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15262,7 +15262,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 48,
+		"versionIdx": 49,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15275,7 +15275,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 309,
+		"versionIdx": 315,
 		"zip": "coke.zip"
 	},
 	{
@@ -15305,7 +15305,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 138,
+		"versionIdx": 140,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15317,13 +15317,28 @@ var mobileDiskInfo = [
 		"name": "-MobileHome",
 		"versionIdx": 7,
 		"zip": "MobileHome.zip"
+	},
+	{
+		"name": "-aae",
+		"versionIdx": 183,
+		"zip": "aae.zip"
+	},
+	{
+		"name": "-AgentBuilder",
+		"versionIdx": 49,
+		"zip": "AgentBuilder.zip"
+	},
+	{
+		"name": "-user",
+		"versionIdx": 30,
+		"zip": "user.zip"
 	}
 ];
 
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 309,
+		"versionIdx": 315,
 		"zip": "coke.zip"
 	},
 	{
@@ -15338,7 +15353,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 138,
+		"versionIdx": 140,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15353,7 +15368,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 48,
+		"versionIdx": 49,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15366,7 +15381,7 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 309,
+		"versionIdx": 315,
 		"zip": "coke.zip"
 	},
 	{
@@ -15381,7 +15396,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 138,
+		"versionIdx": 140,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15391,7 +15406,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 48,
+		"versionIdx": 49,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15401,7 +15416,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 309,
+		"versionIdx": 315,
 		"zip": "coke.zip"
 	},
 	{
@@ -15441,7 +15456,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 138,
+		"versionIdx": 140,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15461,7 +15476,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 48,
+		"versionIdx": 49,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -17784,7 +17799,7 @@ let MainUI=function(app){
 		}else if(location.host.startsWith("pv.")){
 			document.location.href = document.location.origin + `/~/-PVHome/app.html`;
 		}else if(appParams.botnode){
-				document.location.href = document.location.origin + "/@aae/dashboard.html";
+			document.location.href = document.location.origin + "/@aae/dashboard.html";
 		}else {
 			if(appParams.app){
 				document.location.href = document.location.origin + `/@homekit?app=${appParams.app}`;
@@ -17899,7 +17914,27 @@ let MainUI=function(app){
 		};
 	}
 	/*}#1GFLQJK0D1PostCSSVO*/
+	cssVO.constructor=MainUI;
 	return cssVO;
+};
+/*#{1GFLQJK0D1ExCodes*/
+/*}#1GFLQJK0D1ExCodes*/
+
+//----------------------------------------------------------------------------
+MainUI.exposeAI=async function(hud,appAIVO,opts){
+	let exposeVO;
+	/*#{1GFLQJK0D1PreAISpot*/
+	/*}#1GFLQJK0D1PreAISpot*/
+	exposeVO=await VFACT.exposeHudAIBaisc(hud,appAIVO,opts);
+	exposeVO.type="";
+	exposeVO.typeDescription="";
+	if(!opts.recursive){
+		let subList=await VFACT.genSubHudAIExpose(hud,appAIVO,opts);
+		if(subList && subList.length){exposeVO.children=subList;}
+	}
+	/*#{1GFLQJK0D1PostAISpot*/
+	/*}#1GFLQJK0D1PostAISpot*/
+	return exposeVO;
 };
 /*Cody Project Doc*/
 //{
@@ -18009,6 +18044,9 @@ let MainUI=function(app){
 //			"jaxId": "1HGTK4CSE1",
 //			"attrs": {}
 //		},
+//		"exposeToAI": "true",
+//		"descAI": "",
+//		"exposeTree2AI": "true",
 //		"hud": {
 //			"type": "hudobj",
 //			"def": "view",
@@ -19514,6 +19552,8 @@ let MainUI=function(app){
 //				"maxW": "false",
 //				"maxH": "false",
 //				"styleClass": "false",
+//				"exposeToAI": "false",
+//				"descAI": "false",
 //				"innerLayout": {
 //					"valText": "false"
 //				},

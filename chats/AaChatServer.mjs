@@ -363,6 +363,11 @@ let AaChatClient,aaChatClient;
 		};
 		
 		//-----------------------------------------------------------------------
+		aaChatClient.onWs_Ping=async function(vo){
+			//Do nothing...
+		};
+		
+		//-----------------------------------------------------------------------
 		aaChatClient.onWs_GetThread=async function(vo){
 			let threadId,thread,withMessages;
 			threadId=vo.thread||vo.treadId||vo.id;

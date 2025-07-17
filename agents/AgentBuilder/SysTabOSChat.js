@@ -108,7 +108,7 @@ let SysTabOSChat=async function(session){
 		let role="assistant";
 		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
-		return {seg:FakeInput,result:(result),preSeg:"1IKE6V3JM0",outlet:"1IKE74LT70"};
+		return {seg:InitTools,result:(result),preSeg:"1IKE6V3JM0",outlet:"1IKE74LT70"};
 	};
 	TipStart.jaxId="1IKE6V3JM0"
 	TipStart.url="TipStart@"+agentURL
@@ -1413,7 +1413,7 @@ export{SysTabOSChat};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IV6EAMTH0"
+//							"linkedSeg": "1IKCVA57O0"
 //						}
 //					},
 //					"icon": "hudtxt.svg"

@@ -63,7 +63,7 @@ let PrjCheckCondaEnv=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,ReadReq,CheckReq,Result,GetReqType,CheckReqType,TryConda,TryPip,TipIssue,NoType,AskEnv,AskPythonVersion,NewEnv,End2,TipNoReq,ChooseEnv,GenEnvName,ConfirmName,AskEnvName,CheckEnvName,SelectEnv,UseEnv,AskNewName,AskPrjEnv,NewSourceEnv;
+	let FixArgs,ReadReq,CheckReq,Result,GetReqType,CheckReqType,TryConda,TryPip,TipIssue,NoType,AskEnv,AskPythonVersion,NewEnv,End2,ChooseEnv,GenEnvName,ConfirmName,AskEnvName,CheckEnvName,SelectEnv,UseEnv,AskNewName,AskPrjEnv,NewSourceEnv;
 	let env=globalContext.env;
 	let project=globalContext.project;
 	let dirPath=project.dirPath;
@@ -108,12 +108,13 @@ let PrjCheckCondaEnv=async function(session){
 		}
 	}
 	/*}#1IGAU4QB50PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IJ40H5E60
 		let result=input;
 		let missing=false;
+		let smartAsk=false;
 		if(missing){
-			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		return {seg:ReadReq,result:(result),preSeg:"1IJ40H5E60",outlet:"1IJ40I84H0"};
@@ -153,7 +154,7 @@ let PrjCheckCondaEnv=async function(session){
 		/*#{1IGAU8E150Code*/
 		result={"missing":false,"conflict":false};
 		/*}#1IGAU8E150Code*/
-		return {seg:TipNoReq,result:(result),preSeg:"1IGAU8E150",outlet:"1IGAUQE2K3"};
+		return {seg:AskEnv,result:(result),preSeg:"1IGAU8E150",outlet:"1IGAUQE2K3"};
 	};
 	Result.jaxId="1IGAU8E150"
 	Result.url="Result@"+agentURL
@@ -205,7 +206,10 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[	`cd ${dirPath}`,	"conda install --file ./requirements.txt --dry-run"];
+		args['commands']=[
+	`cd ${dirPath}`,
+	"conda install --file ./requirements.txt --dry-run"
+];
 		args['options']={clear:true};
 		/*#{1IGB23HH50PreCodes*/
 		let missing,conflict;
@@ -266,7 +270,7 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["TipIssue"]=TipIssue=async function(input){//:1IGB4O4R30
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IGB4O4R30PreCodes*/
@@ -293,7 +297,7 @@ let PrjCheckCondaEnv=async function(session){
 		/*#{1IGB15TE40Code*/
 		result={"missing":false,"conflict":false};
 		/*}#1IGB15TE40Code*/
-		return {seg:TipNoReq,result:(result),preSeg:"1IGB15TE40",outlet:"1IGB16AQT0"};
+		return {seg:AskEnv,result:(result),preSeg:"1IGB15TE40",outlet:"1IGB16AQT0"};
 	};
 	NoType.jaxId="1IGB15TE40"
 	NoType.url="NoType@"+agentURL
@@ -338,6 +342,8 @@ let PrjCheckCondaEnv=async function(session){
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"3.9",code:0},
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"3.10",code:1},
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"3.11",code:2},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:"3.12",code:3},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:"Default",code:4},
 		];
 		let result="";
 		let item=null;
@@ -367,6 +373,16 @@ let PrjCheckCondaEnv=async function(session){
 			pythonVersion="3.11";
 			/*}#1IGG3ILAR2*/
 			return {seg:NewEnv,result:(result),preSeg:"1IGG3ILB70",outlet:"1IGG3ILAR2"};
+		}else if(item.code===3){
+			/*#{1J0B3D2LI0*/
+			pythonVersion="3.12";
+			/*}#1J0B3D2LI0*/
+			return {seg:NewEnv,result:(result),preSeg:"1IGG3ILB70",outlet:"1J0B3D2LI0"};
+		}else if(item.code===4){
+			/*#{1J0B3ECO40*/
+			pythonVersion=pyversion;
+			/*}#1J0B3ECO40*/
+			return {seg:NewEnv,result:(result),preSeg:"1IGG3ILB70",outlet:"1J0B3ECO40"};
 		}
 		return {result:result};
 	};
@@ -404,17 +420,6 @@ let PrjCheckCondaEnv=async function(session){
 	};
 	End2.jaxId="1IGB50VR80"
 	End2.url="End2@"+agentURL
-	
-	segs["TipNoReq"]=TipNoReq=async function(input){//:1IGB5BJNK0
-		let result=input;
-		let opts={};
-		let role="assistant";
-		let content=input;
-		session.addChatText(role,content,opts);
-		return {seg:AskEnv,result:(result),preSeg:"1IGB5BJNK0",outlet:"1IGB5QNSJ3"};
-	};
-	TipNoReq.jaxId="1IGB5BJNK0"
-	TipNoReq.url="TipNoReq@"+agentURL
 	
 	segs["ChooseEnv"]=ChooseEnv=async function(input){//:1IGB5D9570
 		let prompt=("请选择一个当前系统内的Conda环境")||input;
@@ -494,13 +499,25 @@ let PrjCheckCondaEnv=async function(session){
 		let tip=("请输入环境名");
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		return {seg:CheckEnvName,result:(result),preSeg:"1IGB5FMAJ0",outlet:"1IGB5QNSK2"};
 	};
 	AskEnvName.jaxId="1IGB5FMAJ0"
@@ -560,13 +577,25 @@ let PrjCheckCondaEnv=async function(session){
 		let tip=("`环境名\"${input}\"以被使用，请选择另一个名字。`");
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		return {seg:CheckEnvName,result:(result),preSeg:"1IGB5JNC20",outlet:"1IGB5QNSL0"};
 	};
 	AskNewName.jaxId="1IGB5JNC20"
@@ -628,7 +657,7 @@ let PrjCheckCondaEnv=async function(session){
 	NewSourceEnv.jaxId="1IHC8T4DO0"
 	NewSourceEnv.url="NewSourceEnv@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjCheckCondaEnv",
@@ -719,6 +748,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //			"jaxId": "1IGAU4QB52",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "FixArgs",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -822,6 +852,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IJ40I84H0",
 //							"attrs": {
@@ -865,6 +896,9 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IGAU7N830"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -971,6 +1005,9 @@ export{PrjCheckCondaEnv,ChatAPI};
 //							},
 //							"linkedSeg": "1IGB4P45I0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1007,6 +1044,9 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IGAU98UF0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1133,7 +1173,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[\t`cd ${dirPath}`,\t\"conda install --file ./requirements.txt --dry-run\"]",
+//						"commands": "#[\n\t`cd ${dirPath}`,\n\t\"conda install --file ./requirements.txt --dry-run\"\n]",
 //						"options": "#{clear:true}",
 //						"outlet": {
 //							"jaxId": "1IGB281MF0",
@@ -1257,7 +1297,10 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IGB5BJNK0"
+//							"linkedSeg": "1IGB4NMLD0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1376,7 +1419,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"id": "Outlet",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IGB5BJNK0"
+//							"linkedSeg": "1IGB4NMLD0"
 //						},
 //						"dir": "L2R"
 //					},
@@ -1484,6 +1527,56 @@ export{PrjCheckCondaEnv,ChatAPI};
 //										}
 //									},
 //									"linkedSeg": "1IGB4V6D30"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J0B3D2LI0",
+//									"attrs": {
+//										"id": "312",
+//										"desc": "输出节点。",
+//										"text": "3.12",
+//										"result": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1J0B3D2LP0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J0B3D2LP1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IGB4V6D30"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J0B3ECO40",
+//									"attrs": {
+//										"id": "Default",
+//										"desc": "输出节点。",
+//										"text": "Default",
+//										"result": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1J0B3FQV30",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J0B3FQV31",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IGB4V6D30"
 //								}
 //							]
 //						},
@@ -1564,48 +1657,12 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1IGB5BJNK0",
-//					"attrs": {
-//						"id": "TipNoReq",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1475",
-//						"y": "470",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IGB5QNSR13",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IGB5QNSR14",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"text": "#input",
-//						"outlet": {
-//							"jaxId": "1IGB5QNSJ3",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IGB4NMLD0"
-//						}
-//					},
-//					"icon": "hudtxt.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1673,6 +1730,9 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IGB5EMM00"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1783,6 +1843,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSK2",
 //							"attrs": {
@@ -1939,6 +2000,9 @@ export{PrjCheckCondaEnv,ChatAPI};
 //							},
 //							"linkedSeg": "1IGO1NK0L0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -2015,6 +2079,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSL0",
 //							"attrs": {

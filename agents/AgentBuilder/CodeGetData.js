@@ -35,7 +35,7 @@ let CodeGetData=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,WriteCode,CheckChat,AskChat,ShowCode,RunCodeInPage,CheckError,ShowError,CheckFix,Failed,JumpFix,AIRetry,SaveResults,CheckFiles,CheckResult,FixCode,ShowResult,ShowFix,CheckRound,TestCall;
+	let FixArgs,WriteCode,CheckChat,AskChat,ShowCode,RunCodeInPage,CheckError,ShowError,CheckFix,Failed,JumpFix,AIRetry,SaveResults,CheckFiles,CheckResult,FixCode,ShowResult,ShowFix,CheckRound;
 	let curCode="";
 	let fixRound=0;
 	let codeResult=undefined;
@@ -530,18 +530,6 @@ ${JSON.stringify(briefResult)}
 	CheckRound.jaxId="1INPBFE3R0"
 	CheckRound.url="CheckRound@"+agentURL
 	
-	segs["TestCall"]=TestCall=async function(input){//:1IVPGCQLN0
-		let result;
-		let arg={"prjPath":"aaa"};
-		let agentNode=("AgentBuilder")||null;
-		let sourcePath="PrjSetupBySteps.js";
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {result:result};
-	};
-	TestCall.jaxId="1IVPGCQLN0"
-	TestCall.url="TestCall@"+agentURL
-	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -556,7 +544,7 @@ ${JSON.stringify(briefResult)}
 			parseAgentArgs(input);
 			/*#{1INLFJ4NJ0PreEntry*/
 			/*}#1INLFJ4NJ0PreEntry*/
-			result={seg:TestCall,"input":input};
+			result={seg:FixArgs,"input":input};
 			/*#{1INLFJ4NJ0PostEntry*/
 			/*}#1INLFJ4NJ0PostEntry*/
 			return result;
@@ -1838,49 +1826,6 @@ export{CodeGetData};
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1IVPGCQLN0",
-//					"attrs": {
-//						"id": "TestCall",
-//						"viewName": "",
-//						"label": "",
-//						"x": "345",
-//						"y": "620",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IVPGDE5A0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IVPGDE5A1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "PrjSetupBySteps.js",
-//						"argument": "{\"prjPath\":\"aaa\"}",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1IVPGDC7A0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"agentNode": "AgentBuilder"
-//					},
-//					"icon": "agent.svg"
 //				}
 //			]
 //		},

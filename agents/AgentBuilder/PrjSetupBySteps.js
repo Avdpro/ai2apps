@@ -149,7 +149,7 @@ let PrjSetupBySteps=async function(session){
 		let result=input
 		/*#{1IJ2KGOHG0Code*/
 		try{
-			let modual=await import(pathLib.join(prjPath,"setup_agent.js"));
+			let modual=await import(pathLib.join(prjPath,`setup_agent.js?time=${Date.now()}`));
 			if(modual){
 				try{
 					steps=await modual.default(env,project);

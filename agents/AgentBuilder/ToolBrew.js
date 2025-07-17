@@ -48,7 +48,7 @@ let ToolBrew=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew;
+	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew,Verify,CheckInstall;
 	/*#{1IJ40NO870LocalVals*/
 	/*}#1IJ40NO870LocalVals*/
 	
@@ -69,14 +69,15 @@ let ToolBrew=async function(session){
 	context={};
 	/*#{1IJ40NO870PostContext*/
 	/*}#1IJ40NO870PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IJ40NV0F0
 		let result=input;
 		let missing=false;
+		let smartAsk=false;
 		if(action===undefined || action==="") missing=true;
 		if(pkgName===undefined || pkgName==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		return {seg:CheckBrew,result:(result),preSeg:"1IJ40NV0F0",outlet:"1IJ411OA50"};
@@ -87,7 +88,7 @@ let ToolBrew=async function(session){
 	segs["SwitchAction"]=SwitchAction=async function(input){//:1IJ41329S0
 		let result=input;
 		if(action.toLowerCase()==="install"){
-			return {seg:Install,result:(input),preSeg:"1IJ41329S0",outlet:"1IJ415BPN0"};
+			return {seg:Verify,result:(input),preSeg:"1IJ41329S0",outlet:"1IJ415BPN0"};
 		}
 		if(action.toLowerCase()==="uninstall"){
 			return {seg:Uninstall,result:(input),preSeg:"1IJ41329S0",outlet:"1IJ413I2I0"};
@@ -155,7 +156,7 @@ let ToolBrew=async function(session){
 		let withChat=false;
 		let silent=false;
 		let items=[
-			{icon:"/~/-tabos/shared/assets/dot.svg",text:"Item 1",code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:"安装",code:0},
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"放弃安装",code:1},
 		];
 		let result="";
@@ -268,7 +269,29 @@ let ToolBrew=async function(session){
 	CheckBrew.jaxId="1IL0IJ4I00"
 	CheckBrew.url="CheckBrew@"+agentURL
 	
-	agent={
+	segs["Verify"]=Verify=async function(input){//:1IVRNAS4R0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=`brew list --versions ${pkgName}`;
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:CheckInstall,result:(result),preSeg:"1IVRNAS4R0",outlet:"1IVRNC0TA0"};
+	};
+	Verify.jaxId="1IVRNAS4R0"
+	Verify.url="Verify@"+agentURL
+	
+	segs["CheckInstall"]=CheckInstall=async function(input){//:1IVRNCEQR0
+		let result=input;
+		if(input.split(pkgName).length - 1 === 2){
+			return {result:input};
+		}
+		return {seg:Install,result:(result),preSeg:"1IVRNCEQR0",outlet:"1IVRNF36F1"};
+	};
+	CheckInstall.jaxId="1IVRNCEQR0"
+	CheckInstall.url="CheckInstall@"+agentURL
+	
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"ToolBrew",
@@ -350,8 +373,10 @@ if(DocAIAgentExporter){
 			coder.packText("args['action']=");this.genAttrStatement(seg.getAttr("action"));coder.packText(";");coder.newLine();
 			coder.packText("args['pkgName']=");this.genAttrStatement(seg.getAttr("pkgName"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/builder/ai/ToolBrew.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolBrew.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
 			this.packResult(coder,seg,seg.outlet);
 		}
 		coder.indentLess();coder.maybeNewLine();
@@ -410,6 +435,7 @@ export{ToolBrew,ChatAPI};
 //			"jaxId": "1IJ40NO872",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -485,6 +511,7 @@ export{ToolBrew,ChatAPI};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IJ411OA50",
 //							"attrs": {
@@ -555,7 +582,7 @@ export{ToolBrew,ChatAPI};
 //										},
 //										"condition": "#action.toLowerCase()===\"install\""
 //									},
-//									"linkedSeg": "1IJ414D9E0"
+//									"linkedSeg": "1IVRNAS4R0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -621,8 +648,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "Install",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1095",
-//						"y": "85",
+//						"x": "1615",
+//						"y": "60",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -770,7 +797,7 @@ export{ToolBrew,ChatAPI};
 //									"attrs": {
 //										"id": "Install",
 //										"desc": "输出节点。",
-//										"text": "Item 1",
+//										"text": "安装",
 //										"result": "",
 //										"codes": "false",
 //										"context": {
@@ -961,6 +988,9 @@ export{ToolBrew,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1017,8 +1047,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "FinInstall",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1295",
-//						"y": "85",
+//						"x": "1815",
+//						"y": "60",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "",
@@ -1040,6 +1070,9 @@ export{ToolBrew,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1077,6 +1110,9 @@ export{ToolBrew,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1112,6 +1148,9 @@ export{ToolBrew,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1157,6 +1196,114 @@ export{ToolBrew,ChatAPI};
 //						}
 //					},
 //					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1IVRNAS4R0",
+//					"attrs": {
+//						"id": "Verify",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1095",
+//						"y": "45",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IVRNC0TG0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IVRNC0TG1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#`brew list --versions ${pkgName}`",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1IVRNC0TA0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IVRNCEQR0"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1IVRNCEQR0",
+//					"attrs": {
+//						"id": "CheckInstall",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1310",
+//						"y": "45",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IVRNF36I0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IVRNF36I1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1IVRNF36F1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1IJ414D9E0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IVRNF36F0",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IVRNF36I2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IVRNF36I3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.split(pkgName).length - 1 === 2"
+//									}
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
 //				}
 //			]
 //		},
