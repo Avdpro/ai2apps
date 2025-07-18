@@ -14556,7 +14556,17 @@ let initApp=async function(appObj,uiDef,opts={}){
 					dlgFunc.sharedDlgs[shared]= dlgHud;
 					dlgHud.hold();
 				}else {
-					dlgLayer.appendChild(dlgHud);
+					FindDlg:{
+						let hud;
+						for(hud of dlgList){
+							if(hud===dlgHud){
+								dlgCSS = dlgFunc(appObj);
+								dlgHud = dlgLayer.appendNewChild(dlgCSS);
+								break FindDlg;
+							}
+						}
+						dlgLayer.appendChild(dlgHud);
+					}
 				}
 			}else {
 				dlgCSS = dlgFunc(appObj);
@@ -15202,7 +15212,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 315,
+		"versionIdx": 317,
 		"zip": "coke.zip"
 	},
 	{
@@ -15232,7 +15242,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 226,
+		"versionIdx": 228,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15242,12 +15252,12 @@ var diskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "aichat.zip"
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 183,
+		"versionIdx": 185,
 		"zip": "aae.zip"
 	},
 	{
@@ -15262,7 +15272,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 49,
+		"versionIdx": 50,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15275,7 +15285,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 315,
+		"versionIdx": 317,
 		"zip": "coke.zip"
 	},
 	{
@@ -15305,7 +15315,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15320,12 +15330,12 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 183,
+		"versionIdx": 185,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 49,
+		"versionIdx": 50,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15338,7 +15348,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 315,
+		"versionIdx": 317,
 		"zip": "coke.zip"
 	},
 	{
@@ -15353,7 +15363,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15368,7 +15378,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 49,
+		"versionIdx": 50,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15381,7 +15391,7 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 315,
+		"versionIdx": 317,
 		"zip": "coke.zip"
 	},
 	{
@@ -15396,7 +15406,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15406,7 +15416,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 49,
+		"versionIdx": 50,
 		"zip": "AgentBuilder.zip"
 	},
 	{
@@ -15416,7 +15426,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 315,
+		"versionIdx": 317,
 		"zip": "coke.zip"
 	},
 	{
@@ -15446,7 +15456,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 226,
+		"versionIdx": 228,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15456,7 +15466,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aichat",
-		"versionIdx": 140,
+		"versionIdx": 141,
 		"zip": "aichat.zip"
 	},
 	{
@@ -15471,12 +15481,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 183,
+		"versionIdx": 185,
 		"zip": "aae.zip"
 	},
 	{
 		"name": "-AgentBuilder",
-		"versionIdx": 49,
+		"versionIdx": 50,
 		"zip": "AgentBuilder.zip"
 	},
 	{
