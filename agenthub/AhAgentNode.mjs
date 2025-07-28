@@ -366,16 +366,14 @@ let AhAgentNode,ahAgentNode;
 					let condaPath=this.system.condaPath;
 
 					if (process.platform === 'win32') {
-						chdProcess = this.process = spawn('cmd.exe', ['/c', `${condaPath} init && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+						chdProcess = this.process = spawn('cmd.exe', ['/c', `${condaPath} init && conda activate ${conda} && python "${entryPath}" "${this.path}" ${hostAddress} ${this.name}`],
 							{
 								cwd:this.path,
 								shell:true,
 								windowsVerbatimArguments: true
 							});
-					}
-
-					else{
-						chdProcess=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python ${entryPath} ${this.path} ${hostAddress} ${this.name}`],
+					}else{
+						chdProcess=this.process = spawn('bash', ['-i', '-c', `source ${condaPath} && conda activate ${conda} && python "${entryPath}" "${this.path}" ${hostAddress} ${this.name}`],
 							{
 								cwd:this.path,
 								//stdio: 'inherit'

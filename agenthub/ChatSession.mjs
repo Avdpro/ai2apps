@@ -1199,6 +1199,11 @@ class ChatSession {
 	}
 	
 	//-----------------------------------------------------------------------
+	async askUserView(vo) {
+		return await this.callClient("AskUserView", vo);
+	}
+
+	//-----------------------------------------------------------------------
 	async showWait(text) {
 		return await this.callClient("AddWaitBlock", { text: text || "..." });
 	}

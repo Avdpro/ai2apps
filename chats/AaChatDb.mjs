@@ -159,15 +159,21 @@ let AaChatDb,aaChatDb;
 	
 	//-----------------------------------------------------------------------
 	aaChatDb.newThread=async function(thread){
-		await this.db.put({
-			_id: thread.id,
-			type_: 'thread',
-			title: thread.title,
-			userId: thread.userId,
-			timeStamp:thread.timeStamp,
-			star:!!thread.star,
-			status: thread.status
-		});
+		try {
+			await this.db.put({
+				_id: thread.id,
+				type_: 'thread',
+				title: thread.title,
+				userId: thread.userId,
+				timeStamp: thread.timeStamp,
+				star: !!thread.star,
+				status: thread.status
+			});
+		}catch(err){
+			console.log("NewThread DB Error:");
+			console.error(err);
+			throw err;
+		}
 	};
 	
 	//-----------------------------------------------------------------------
@@ -205,7 +211,13 @@ let AaChatDb,aaChatDb;
 		const threadDoc = await this.db.get(threadId);
 		threadDoc.timeStamp = thread.timeStamp;
 
-		await this.db.bulkDocs([msgVO, threadDoc]);
+		try {
+			await this.db.bulkDocs([msgVO, threadDoc]);
+		}catch(err){
+			console.log("NewThreadMessage DB Error:");
+			console.error(err);
+			throw err;
+		}
 	};
 	
 	//-----------------------------------------------------------------------
@@ -231,7 +243,13 @@ let AaChatDb,aaChatDb;
 		});
 		const deletions = msgs.docs.map(doc => ({ _id: doc._id, _rev: doc._rev, _deleted: true }));
 		deletions.push({ _id: threadDoc._id, _rev: threadDoc._rev, _deleted: true });
-		await this.db.bulkDocs(deletions);
+		try {
+			await this.db.bulkDocs(deletions);
+		}catch(err){
+			console.log("DeleteThread DB Error:");
+			console.error(err);
+			throw err;
+		}
 	};
 	
 	//-----------------------------------------------------------------------
@@ -239,7 +257,13 @@ let AaChatDb,aaChatDb;
 		const threadId=thread.id;
 		const threadDoc = await this.db.get(threadId);
 		thread.stared = !!star;
-		await this.db.put(threadDoc);
+		try {
+			await this.db.put(threadDoc);
+		}catch(err){
+			console.log("setThreadStar DB Error:");
+			console.error(err);
+			throw err;
+		}
 	};
 	
 	//-----------------------------------------------------------------------
@@ -257,7 +281,13 @@ let AaChatDb,aaChatDb;
 		const threadId=thread.id;
 		const threadDoc = await this.db.get(threadId);
 		threadDoc.status = 'archived';
-		await this.db.put(threadDoc);
+		try{
+			await this.db.put(threadDoc);
+		}catch(err){
+			console.log("archiveThread DB Error:");
+			console.error(err);
+			throw err;
+		}
 	};
 	
 	//-----------------------------------------------------------------------
@@ -265,7 +295,14 @@ let AaChatDb,aaChatDb;
 		const threadId=thread.id;
 		const threadDoc = await this.db.get(threadId);
 		thread.status = 'live';
-		await this.db.put(threadDoc);
+		try{
+			await this.db.put(threadDoc);
+		}catch(err){
+			console.log("callbackArchivedThread DB Error:");
+			console.error(err);
+			throw err;
+		}
+		//TODO: Code this:
 	};
 	
 	//-----------------------------------------------------------------------
