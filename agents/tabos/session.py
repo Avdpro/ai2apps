@@ -793,6 +793,8 @@ class AISession:
 			blockVO = {
 				"role": role,
 				"text": content,
+				"txtHeader":opts.get("txtHeader",None),
+				"channel":opts.get("channel",None),
 			}
 			if role!="user" and role!="log":
 				blockVO["txtHeader"]=self.agentNode.name
