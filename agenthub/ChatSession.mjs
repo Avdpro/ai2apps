@@ -763,9 +763,13 @@ class ChatSession {
 			const blockVO = {
 				role,
 				text: content,
+				txtHeader:opts?.txtHeader,
+				channel:opts?.channel,
 			};
-			if (role !== "user" && role !== "log") {
-				blockVO.txtHeader = this.agentNode.name;
+			if(!blockVO.txtHeader) {
+				if (role !== "user" && role !== "log") {
+					blockVO.txtHeader = this.agentNode.name;
+				}
 			}
 			if (opts.image) blockVO.image = opts.image;
 			if (opts.audio) blockVO.audio = opts.audio;
