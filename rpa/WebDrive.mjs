@@ -2,6 +2,12 @@ import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { spawn } from "child_process";
 import {AaWebDriveContext} from "./WebDriveContext.mjs";
+import { URL } from 'url'
+import pathLib from 'path'
+
+const codeURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const codeDirURL=pathLib.dirname(codeURL);
+const codeDirPath=codeDirURL.startsWith("file://")?pathLib.fileURLToPath(codeDirURL):codeDirURL;
 
 let AaWebDrive,aaWebDrive;
 //-----------------------------------------------------------------------
@@ -55,6 +61,9 @@ aaWebDrive.constructor = AaWebDrive;
 		}
 		if (!pathToFireFox) {
 			throw Error("Missing Firefox app path.");
+		}
+		if(pathToFireFox[0]==="."){
+			pathToFireFox=pathLib.join(codeDirPath,pathToFireFox);
 		}
 		this.port = port;
 		pms = this.waitStart = new Promise((resolve, reject) => {

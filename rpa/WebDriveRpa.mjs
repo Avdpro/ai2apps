@@ -5,6 +5,11 @@ import pathLib from 'path'
 import { promises as fsp, promises as fs } from 'fs'
 import startPPT from './pptstart.mjs';
 import {ensureCodeLib} from "./CodeLib.mjs";
+import { URL } from 'url'
+
+const codeURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const codeDirURL=pathLib.dirname(codeURL);
+const codeDirPath=codeDirURL.startsWith("file://")?pathLib.fileURLToPath(codeDirURL):codeDirURL;
 
 const WebRpa_DataDirRoot=process.env.WEBRPA_DATADIR||process.env.AAF_DATADIR;
 
@@ -59,7 +64,7 @@ async function cleanTmpDirs(prefix, baseDir = '/tmp') {
 		);
 		
 		for (const dir of targets) {
-			const fullPath = path.join(baseDir, dir.name);
+			const fullPath = pathLib.join(baseDir, dir.name);
 			try {
 				await fs.rm(fullPath, { recursive: true, force: true });
 				console.log(`✅ 已删除: ${fullPath}`);
@@ -117,7 +122,7 @@ async function openBrowser(alias,opts,keepAlive){
 		if(!alias) {
 			alias = "TMP_" + (nextTempBrowserId++);
 		}
-		dirPath = await fsp.mkdtemp(path.join(/tmp/, "AaWebDrive-"));
+		dirPath = await fsp.mkdtemp(pathLib.join("/tmp/", "AaWebDrive-"));
 	}
 	
 	browserId = "" + (nextBrowserId++);
