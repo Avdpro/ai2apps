@@ -97,6 +97,14 @@ app.initCokeCodesApp=async function(){
 		res.status(err.status || 500);
 		res.render('error');
 	});
+	
+	//Test WebDrive
+	if(false){
+		await (async () => {
+			const esmModule = await import('./rpa/test.mjs');
+			esmModule.default();
+		})();
+	}
 };
 
 //---------------------------------------------------------------------------

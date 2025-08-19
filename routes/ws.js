@@ -8,7 +8,8 @@ const USE_CHATSERVER=process.env.CHAT_SERVER==="TRUE";
 
 module.exports =function(app) {
 	var apiMap={};
-	//Register chatAI:
+	
+  //Register chatAI:
 	import("./APIChatAI.mjs").then((mode)=>{
 		chatAI=mode.default;
 		chatAI(app,router,apiMap);
