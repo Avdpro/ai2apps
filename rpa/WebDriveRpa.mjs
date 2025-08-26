@@ -362,15 +362,16 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 
 	//-----------------------------------------------------------------------
-	webRpa.readNodeHTML=async function(pageFrame,node,opts){
+	webRpa.readNodeHTML=webRpa.readInnerHTML=async function(pageFrame,node,opts){
 		let codeTag;
 		opts=opts||{mark:true,clean:true};
 		codeTag=await ensureCodeLib(pageFrame);
-		return await pageFrame.callFunction((codeTag) => {
+		return await pageFrame.callFunction((codeTag,node,opts) => {
 			let codeLib = globalThis[codeTag];
-			let mark=opts?.mark;
-			let clean=opts?.clean;
-			return codeLib.readMarkedHTML(node, mark,clean);
+			//let mark=opts?.mark;
+			//let clean=opts?.clean;
+			//return codeLib.readMarkedHTML(node, mark,clean);
+			return codeLib.snapNodeHTML(node, opts);
 		}, [codeTag,node,opts]);
 	};
 }

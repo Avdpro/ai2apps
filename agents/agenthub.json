@@ -18,6 +18,10 @@
                 "platform": "OpenAI",
                 "model": "gpt-4o"
             },
+            "fast": {
+                "platform": "OpenAI",
+                "model": "gpt-4o-mini"
+            },
             "lite": {
                 "platform": "OpenAI",
                 "model": "gpt-4o-mini"

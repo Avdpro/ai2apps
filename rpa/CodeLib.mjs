@@ -184,7 +184,13 @@ const codeLib=(codeTag)=>{
 		"readMarkedHTML":function(aaeId,mark=true,clean=true){
 			let node,html;
 			if(aaeId){
-				node=document.querySelector(`[aaeid="${aaeId}"]`);
+				if(typeof(aaeId)==="string") {
+					node = document.querySelector(`[aaeid="${aaeId}"]`);
+				}else if (aaeId instanceof HTMLElement){
+					node=aaeId;
+				}else{
+					node=document.body;
+				}
 			}else{
 				node=document.body;
 			}
@@ -289,6 +295,9 @@ const codeLib=(codeTag)=>{
 		"snapNode":function(orgNode,opts,parentNode){
 			let snappedNode,nodeType,excludeNodeTags,excludeTags,aaeId;
 			let cmpStyle,nodeTag,clientRect,nullSized;
+			if(typeof(orgNode)==="string"){
+				orgNode = document.querySelector(`[aaeid="${orgNode}"]`);
+			}
 			orgNode=orgNode||document.body;
 			nodeType=orgNode.nodeType;
 			excludeTags=(opts.excludeTags===undefined)?stdExcludes:(opts.excludeTags||null);
@@ -652,7 +661,7 @@ const codeLib=(codeTag)=>{
 //---------------------------------------------------------------------------
 async function ensureCodeLib(page,codeTag){
 	codeTag=codeTag||"$codeLib";
-	if(await page.evaluate(`!!globalThis[${codeTag}]`)){
+	if(await page.evaluate(`!!globalThis["${codeTag}"]`)){
 		return codeTag;
 	}
 	await page.callFunction(codeLib,[codeTag],{sandbox:"AASandBox"});

@@ -14,7 +14,7 @@ async function sleep(time){
 }
 
 function wrapArgumentForBiDi(value) {
-	if(value.type){
+	if(value && value.type){
 		return value;
 	}
 	if (value === null) return { type: 'null' };
@@ -34,9 +34,10 @@ function wrapArgumentForBiDi(value) {
 	}
 	
 	if (typeof value === 'object') {
-		const obj = {};
+		const obj = [];//{}
 		for (const key of Object.keys(value)) {
-			obj[key] = wrapArgumentForBiDi(value[key]);
+			obj.push([key,wrapArgumentForBiDi(value[key])]);
+			//obj[key] = wrapArgumentForBiDi(value[key]);
 		}
 		return { type: 'object', value: obj };
 	}
@@ -220,6 +221,7 @@ AaWebDriveContext=function(webDrive,contextId){
 	
 	//Inbuilt objects:
 	this.mouse=new AaWebDriveMouse(this);
+	this.keyboard=new AaWebDriveKeyboard(this);
 };
 aaWebDriveContext=AaWebDriveContext.prototype=Object.create(EventEmitter.prototype);
 aaWebDriveContext.constructor = AaWebDriveContext;
@@ -1338,11 +1340,15 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			const result = await this.sendCommand('script.evaluate', {
 				expression: `
 					(function() {
-						const selector = ${JSON.stringify(selector)};
+						let selector = ${JSON.stringify(selector)};
 						let element;
-						
 						try {
-							if (selector.startsWith('(')) {
+							if (selector.startsWith('::-p-xpath')) {
+								// XPath:
+								selector=selector.substring('::-p-xpath'.length);
+								const xpathResult = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+								element = xpathResult.singleNodeValue;
+							}else if (selector.startsWith('(')) {
 								// Selector starts with "(", treat as XPath
 								const xpathResult = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 								element = xpathResult.singleNodeValue;
@@ -1391,11 +1397,18 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			let result = await this.sendCommand('script.evaluate', {
 				expression: `
 			(function() {
-				const selector = ${JSON.stringify(selector)};
+				let selector = ${JSON.stringify(selector)};
 				let elements = [];
 				
 				try {
-					if (selector.startsWith('(')) {
+					if (selector.startsWith('::-p-xpath')) {
+						// XPath:
+						selector=selector.substring('::-p-xpath'.length);
+						const xpathResult = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+						for (let i = 0; i < xpathResult.snapshotLength; i++) {
+							elements.push(xpathResult.snapshotItem(i));
+						}
+					}else if (selector.startsWith('(')) {
 						// Selector starts with "(", treat as XPath
 						const xpathResult = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 						for (let i = 0; i < xpathResult.snapshotLength; i++) {
@@ -1420,7 +1433,6 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 				} catch (error) {
 					elements = [];
 				}
-				
 				return elements;
 			})()
 		`,
@@ -1875,6 +1887,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 				if(!handle){
 					return;
 				}
+				await this.focus(handle);
 				await this.disown(handle);
 			}
 		}
