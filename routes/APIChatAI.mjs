@@ -291,7 +291,7 @@ export default function(app,router,apiMap) {
 							return;
 						}
 						content=rawResVO.choices[0].message;
-						resVO = { code: 200,message:content};
+						resVO = { code: 200,message:content.content||content};
 						res.json(resVO);
 						
 						//Charge user token:

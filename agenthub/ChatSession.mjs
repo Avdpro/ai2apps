@@ -826,6 +826,54 @@ class ChatSession {
 	}
 	
 	//-----------------------------------------------------------------------
+	async callHubAI(opts, messages, waitBlk) {
+		let res;
+		const callVO = {
+			platform: opts.platform || "OpenAI",
+			model: opts.model||opts.mode || "gpt-4o-mini",
+			temperature: opts.temperature || 0,
+			max_tokens: opts.maxToken || 4096,
+			messages,
+			top_p: opts.topP || 1,
+			presence_penalty: opts.prcP || 0,
+			frequency_penalty: opts.fqcP || 0,
+			response_format: opts.responseFormat || "text",
+		};
+		{
+			let models=this.globalContext.models||{};
+			let name=callVO.model;
+			if(name[0]==="$"){
+				name=name.substring(1);
+				let vo=models[name];
+				if(!vo){
+					throw Error(`Can't find platform shortcut: ${name}`);
+				}
+				callVO.platform=vo.platform;
+				callVO.model=vo.model;
+			}
+		}
+		const seed = opts.seed;
+		if (seed) {
+			callVO.seed = seed;
+		}
+		
+		const apis = opts.apis;
+		if (apis) {
+			callVO.functions = apis.functions;
+			if (opts.parallelFunction) {
+				callVO.parallelFunction = true;
+			}
+		}
+		console.log(`Call AI: ${JSON.stringify(callVO)}`);
+		console.log(callVO);
+		res = await this.callHub("AICall", callVO);
+		if (res.code !== 200) {
+			throw new Error(`AIStreamCall failed: ${res.code}:${res.info}`);
+		}
+		return res.message;
+	}
+
+	//-----------------------------------------------------------------------
 	async callHubLLM(opts, messages, waitBlk) {
 		let res;
 		const callVO = {
@@ -957,6 +1005,40 @@ class ChatSession {
 			return await this.callHubLLM(opts, messages);
 		}
 		return content;
+	}
+	
+	//-----------------------------------------------------------------------
+	async makeAICall(codeURL,opts,messages,fromSeg=false){
+		const model2Platform = {
+			"gpt-4o": "OpenAI",
+			"gpt-4o-mini": "OpenAI",
+			"gpt-3.5-turbo": "OpenAI",
+			"gpt-3.5-turbo-16k": "OpenAI",
+			"gpt-3.5-turbo-1106": "OpenAI",
+			"gpt-4": "OpenAI",
+			"gpt-4-32k": "OpenAI",
+			"gpt-4-1106-preview": "OpenAI",
+		};
+		let model = opts.model || opts.mode || "gpt-4o-mini";
+		let platform;
+		{
+			let models=this.globalContext.models||{};
+			if(model[0]==="$"){
+				model=model.substring(1);
+				let vo=models[model];
+				if(!vo){
+					throw Error(`Can't find platform shortcut: ${name}`);
+				}
+				platform=vo.platform;
+				model=vo.model;
+			}else{
+				platform= model2Platform[model] || opts.platform;
+			}
+		}
+		await this.logLlmCall(codeURL,opts,messages,fromSeg,this.curAgent,this.curAISeg);
+		let result=await this.callHubAI(opts, messages);
+		await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
+		return result;
 	}
 	
 	//-----------------------------------------------------------------------

@@ -930,8 +930,48 @@ class AISession:
 						path = pathLib.abspath(path)
 					return [inputPath, path]
 
+
 	# -----------------------------------------------------------------------
-	# Call LLM and other AI features:
+	# Call AI without stream:
+	# -----------------------------------------------------------------------
+	async def callHubAI(self,opts,messages,waitBlk):
+		callVO={
+			"platform":opts.get("platform","OpenAI"),
+			"model":opts.get("mode","gpt-4o"),
+			"temperature":opts.get("temperature",0),
+			"max_tokens":opts.get("maxToken",4096),
+			"messages":messages,
+			"top_p":opts.get("topP",1),
+			"presence_penalty":opts.get("prcP",0),
+			"frequency_penalty":opts.get("fqcP",0),
+			"response_format":opts.get("responseFormat","text")
+		}
+		models=self.globalContext.get("models") or {}
+		name=callVO.get("model")
+		if name[:1]=="$":
+			name=name[1:]
+			vo=models.get(name)
+			if not vo:
+				raise Exception(f"Can't find platform shortcut: {name}")
+			callVO["platform"]=vo["platform"]
+			callVO["model"]=vo["model"]
+		seed=opts.get("seed",None)
+		if seed:
+			callVO.seed=seed
+
+		apis=opts.get("apis",None)
+		if apis:
+			callVO["functions"]=apis.get("functions")
+			if opts.get("parallelFunction"):
+				callVO.parallelFunction=True
+		res = await self.callHub("AICall", callVO)
+		if res.get("code") !=200:
+			raise Exception(f"AIStreamCall failed:{res.get('code')}:{res.get('info')}")
+		result = res.get("message")
+		return result
+
+	# -----------------------------------------------------------------------
+	# Call LLM and other AI features with stream:
 	# -----------------------------------------------------------------------
 	async def callHubLLM(self,opts,messages,waitBlk):
 		callVO={
@@ -1029,6 +1069,34 @@ class AISession:
 			result = await self.callHubLLM(opts, messages)
 		else:
 			result = content
+		return result
+
+	# -----------------------------------------------------------------------
+	async def makeAICall(self,codeURL,opts,messages,fromSeg):
+		platform, model, completion = None, None, None
+		await self.logLlmCall(codeURL,opts, messages)
+		waitBlk=None
+		apiHash = None
+		model2Platform = {
+			"gpt-4o": "OpenAI",
+			"gpt-4o-mini": "OpenAI",
+			"gpt-3.5-turbo": "OpenAI",
+			"gpt-3.5-turbo-16k": "OpenAI",
+			"gpt-3.5-turbo-1106": "OpenAI",
+			"gpt-4": "OpenAI",
+			"gpt-4-32k": "OpenAI",
+			"gpt-4-1106-preview": "OpenAI",
+		}
+		if "model" in opts:
+			model = opts["model"]
+		elif "mode" in opts:
+			model = opts["mode"]
+		else:
+			model = "gpt-4o-minio"
+		platform = model2Platform.get(model) or opts.get("platform")
+
+		result=await self.callHubAI(opts, messages, waitBlk)
+		await self.logLlmResult(codeURL, opts, messages, result)
 		return result
 
 	# -----------------------------------------------------------------------
