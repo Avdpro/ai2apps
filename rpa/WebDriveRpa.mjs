@@ -20,7 +20,6 @@ const browserAliasMap=new Map();
 const browserMap=new Map();
 let nextBrowserId=0;
 let nextTempBrowserId=0;
-
 let nextBrowserPort=9222;
 
 async function sleep(time){
@@ -79,13 +78,10 @@ async function cleanTmpDirs(prefix, baseDir = '/tmp') {
 	}
 }
 
-async function openBrowser(alias,opts,keepAlive){
-	let browserId, browser, dirPath;
-	if(!WebDriveRpaStarted){
-		await cleanTmpDirs("AaWebDrive-");
-		WebDriveRpaStarted=true;
-	}
+async function openBrowser(session,alias,opts){
+	let agentNode, browser, browserId,dirPath,sysId,res;
 	
+	agentNode=session.agentNode;
 	if(alias){
 		if((!aliasPattern.test(alias)) || alias.startsWith("TMP_")){
 			throw Error("Browser alias is invalid.");
@@ -93,56 +89,20 @@ async function openBrowser(alias,opts,keepAlive){
 		browserId=browserAliasMap.get(alias);
 		if(browserId){
 			browser=browserMap.get(browserId);
+			if(!browser.connected){
+				browserMap.delete(browserId);
+				browser=null;
+			}
 			if(browser){
 				return browser;
 			}
 		}
 	}
-	dirPath=null;
-	//Check auto data dir
-	if(alias && WebRpa_DataDirRoot){
-		dirPath = WebRpa_DataDirRoot;
-		if (dirPath[0] !== "/") {
-			throw Error("");
-			//TODO: make it full path
-		}
-		dirPath = pathLib.join(dirPath, alias);
-		try{
-			await fs.access(dirPath);
-			opts.userDataDir = dirPath;
-		}catch(err){
-			try {
-				await fs.mkdir(dirPath, { recursive: true });
-				opts.userDataDir = dirPath;
-			}catch(err){
-				//Do not use data-dir.
-			}
-		}
-	}else{
-		if(!alias) {
-			alias = "TMP_" + (nextTempBrowserId++);
-		}
-		dirPath = await fsp.mkdtemp(pathLib.join("/tmp/", "AaWebDrive-"));
-	}
-	
+
 	browserId = "" + (nextBrowserId++);
 	browser = new WebDrive();
 	browser.aaeBrowserId=browserId;
 	browserMap.set(browserId, browser);
-	if(opts.userDataDir){
-		let zonePath=pathLib.join(opts.userDataDir,"AAEZone");
-		try{
-			await fs.access(zonePath);
-			browser.aaeZonePath=zonePath;
-		}catch(err){
-			try {
-				await fs.mkdir(zonePath, { recursive: true });
-				browser.aaeZonePath=zonePath;
-			}catch(err){
-				//Do not use data-dir.
-			}
-		}
-	}
 	
 	if(alias){
 		browserAliasMap.set(alias,browserId);
@@ -153,14 +113,17 @@ async function openBrowser(alias,opts,keepAlive){
 		browser.aaeeAlias=alias;
 	}
 	
-	browser.on("disconnected", () => {
+	browser.on("browser.exit",()=>{
+		browserAliasMap.delete(alias);
 		browserMap.delete(browserId);
-		if(alias) {
-			browserAliasMap.delete(alias);
-		}
-		//Do something about the process:
 	});
-	await browser.start(null,dirPath,nextBrowserPort++,alias)
+	browser.on("browser.willExit",()=>{
+		browserAliasMap.delete(alias);
+		browserMap.delete(browserId);
+	});
+	
+	sysId=await session.callHub("WebDriveOpenBrowser",{alias:alias,options:opts});
+	await browser.start(sysId,alias,agentNode);
 	return browser;
 }
 
@@ -170,8 +133,41 @@ async function openBrowser(alias,opts,keepAlive){
 let WebRpa,webRpa;
 WebRpa=function(session){
 	this.session=session;
+	this.agentNode=session.agentNode;
 	this.version=WebRpa_Version;
 	this.aiQuery=null;
+	
+	//We only need set this once:
+	if(!this.agentNode.WSMsg_WebDriveBrowserClosed){
+		//-------------------------------------------------------------------
+		this.agentNode.WSMsg_WebDriveBrowserClosed=async function(msgVO){
+			let alias,browserId,browser;
+			alias=msgVO.alias;
+			browserId=browserAliasMap.get(alias);
+			if(browserId) {
+				browser = browserMap.get(browserId);
+				if(browser){
+					browser.emit("browser.exit");
+				}
+			}
+		};
+		//-------------------------------------------------------------------
+		this.agentNode.WSMsg_WebDriveEvent=async function(msgVO){
+			let alias,browserId,browser,event;
+			alias=msgVO.alias;
+			event=msgVO.event;
+			browserId=browserAliasMap.get(alias);
+			if(browserId && event) {
+				browser = browserMap.get(browserId);
+				if(browser){
+					try {
+						browser.handleEvent(event);
+					}catch(_){
+					}
+				}
+			}
+		};
+	}
 }
 webRpa=WebRpa.prototype={};
 WebRpa.version=WebRpa_Version;
@@ -206,35 +202,17 @@ webRpa.listBrowserAndPages=async function(){
 
 //---------------------------------------------------------------------------
 webRpa.openBrowser=async function(alias,opts){
-	let browser=await openBrowser(alias,opts);
+	let browser=await openBrowser(this.session,alias,opts);
 	if(browser){
 		browser.aaeRefcount=browser.aaeRefcount?browser.aaeRefcount+1:1;
 	}
-	let browserId=browser.aaeBrowserId;
-	browser.on("browser.exit",()=>{
-		browserMap.delete(browserId);
-	});
-	browser.on("browser.willExit",()=>{
-		browserMap.delete(browserId);
-	});
 	return browser;
 };
 
 //---------------------------------------------------------------------------
 webRpa.closeBrowser=async function(browser){
-	let browserId;
-	browserId=browser.aaeBrowserId;
-	if(browser && browser.aaeRefcount>0){
-		browser.aaeRefcount-=1;
-		if(!browser.aaeRefcount){
-			browserMap.delete(browserId);
-			await browser.close();
-		}
-	}else {
-		browserMap.delete(browserId);
-		await browser.close();
-	}
-};
+	await this.agentNode.callHub("WebDriveCloseBrowser",{alias:browser.alias});
+}
 
 //---------------------------------------------------------------------------
 webRpa.getPageByTitle=async function(browser,title){

@@ -12,31 +12,21 @@ const codeDirPath=codeDirURL.startsWith("file://")?pathLib.fileURLToPath(codeDir
 let AaWebDrive,aaWebDrive;
 //-----------------------------------------------------------------------
 AaWebDrive=function(){
-	this.firefox=null;
-	this.ws=null;
-	this.url=null;
-	this.port=9222;
+	this.sysId=null;
 	
 	this.options={
 		timeout:30000
 	};
-	
-	this.waitStart=null;
-	this.startCallback=null;
-	this.startCallerror=null;
 	
 	this.messageId = 0;
 	this.pendingCommands = new Map();
 	
 	this.sessionId = null;
 	this.connected = false;
-	this.reconnectAttempts = 0;
+	
 	this.subscribedEvents = new Set();
 	
-	// 绑定方法以保持this上下文
-	this.handleMessage = this.handleMessage.bind(this);
-	this.handleClose = this.handleClose.bind(this);
-	this.handleError = this.handleError.bind(this);
+	this.agentNode=null;
 	
 	this.actionPms=null;
 	this.curAction=null;
@@ -51,201 +41,24 @@ aaWebDrive.constructor = AaWebDrive;
 //***************************************************************************
 {
 	//-----------------------------------------------------------------------
-	aaWebDrive.start = async function (pathToFireFox, pathToData, port = 9222,alias=null) {
-		let firefox, pms, waitApp, args;
-		if (this.waitStart) {
-			return await this.waitStart;
+	aaWebDrive.start = async function (sysId,alias,agentNode) {
+		if (this.sysId) {
+			return;
 		}
-		if (!pathToFireFox) {
-			pathToFireFox = process.env.WEBDRIVE_APP;
-		}
-		if (!pathToFireFox) {
-			throw Error("Missing Firefox app path.");
-		}
-		if(pathToFireFox[0]==="."){
-			pathToFireFox=pathLib.join(codeDirPath,pathToFireFox);
-		}
-		this.port = port;
-		pms = this.waitStart = new Promise((resolve, reject) => {
-			this.startCallback = resolve;
-			this.startCallerror = reject;
-		});
-		this.waitToStart = pms;
-		
-		waitApp = true;
-		if (pathToData) {
-			args = ['-no-remote', `--remote-debugging-port=${port}`, `--profile`, pathToData, `about:blank`];//TODO: Code this;
-		} else {
-			args = [`--remote-debugging-port=${port}`, `about:blank`];
-		}
-		
-		//这里是在本地启动的，所以URL是在localhost里：
-		this.url = `ws://localhost:${port}/session`;
-		
-		firefox = this.firefox = spawn(
-			`${pathToFireFox}/Contents/MacOS/firefox`,
-			args,
-			{ stdio: ['ignore', 'pipe', 'pipe'] }
-		);
-		
-		let buffer = '';
-		
-		firefox.stdout.on('data', data => {
-			console.log('[firefox]', data.toString());
-			if (!waitApp)
-				return;
-		});
-		
-		firefox.stderr.on('data', data => {
-			console.error('[firefox:stderr]', data.toString());
-			if (!waitApp) {
-				return;
-			}
-			buffer += data.toString();
-			// 检测启动成功标志
-			if (buffer.includes('WebDriver BiDi listening on')) {
-				console.log('✅ Firefox WebDriver BiDi 已启动');
-				waitApp = false;
-				// 调用连接 BiDi 的方法
-				this.connect().then(() => {
-					let callback;
-					callback = this.startCallback;
-					if (callback) {
-						this.startCallback = null;
-						this.startCallerror = null;
-					}
-					callback();
-				}).catch((err) => {
-					let callback;
-					callback = this.startCallerror;
-					if (callback) {
-						this.startCallback = null;
-						this.startCallerror = null;
-					}
-					callback(err);
-				});
-			}
-		});
-		
-		firefox.on('exit', code => {
-			console.log(`Firefox exited with code ${code}`);
-			this.emit("browser.exit");
-		});
-		//Alias for AAEE-Driver
+		this.sysId=sysId;
+		this.agentNode=agentNode;
 		this.aaeeAlias=alias;
-		return await pms;
+		this.alias=alias;
+		this.connected=true;
 	};
 	
 	//-----------------------------------------------------------------------
 	aaWebDrive.close=async function(){
-		let timer;
 		return new Promise((resolve,reject)=>{
-			this.emit("browser.willExit");
-			if(!this.firefox){
-				reject(new Error("Browser is not alive."));
-			}
-			this.firefox.on('exit',()=>{
-				this.firefox=null;
-				if(timer){
-					clearTimeout(timer);
-				}
-				resolve();
-			});
-			this.firefox.kill('SIGTERM');
-			timer=setTimeout(()=>{
-				if(this.firefox){
-					this.firefox.kill('SIGKILL');
-				}
-			},5000);//Wait 5 sec. to force kill.
+			//TODO: Call agentNode to close it.
 		});
 	};
 	
-	//-----------------------------------------------------------------------
-	aaWebDrive.connect = async function () {
-		return new Promise(async (resolve, reject) => {
-			try {
-				this.ws = new WebSocket(this.url);
-				
-				this.ws.on('open', async () => {
-					console.log('🔗 Connected to WebDriver BiDi');
-					this.connected = true;
-					this.reconnectAttempts = 0;
-					await this.createSession();
-					await this.subscribe([
-						"browsingContext.navigationStarted",
-						"browsingContext.domContentLoaded",
-						"browsingContext.fragmentNavigated",
-						"browsingContext.navigationCommitted",
-						"browsingContext.historyUpdated",
-						"browsingContext.load",
-						"browsingContext.contextDestroyed",
-						"browsingContext.userPromptOpened",
-						//"browsingContext.downloadWillBegin",
-						//"browsingContext.downloadEnd",
-					]);
-					this.on("browsingContext.contextDestroyed",(message)=>{
-						const context=message.context;
-						this.pageMap.delete(context);
-					});
-					this.emit('connected');
-					resolve();
-				});
-				
-				this.ws.on('message', this.handleMessage);
-				this.ws.on('close', this.handleClose);
-				this.ws.on('error', this.handleError);
-				
-				// 连接超时
-				setTimeout(() => {
-					if (!this.connected) {
-						reject(new Error('Connection timeout'));
-					}
-				}, this.options.timeout);
-				
-			} catch (error) {
-				reject(error);
-			}
-		});
-	};
-
-	//---------------------------------------------------------------------------
-	aaWebDrive.handleMessage = async function (data) {
-		try {
-			const message = JSON.parse(data.toString());
-			//console.log(`Got WebDriver message: `,message);
-			
-			if (message.type === 'success' || message.type === 'error'|| message.type === 'exception') {
-				// 处理命令响应
-				await this.handleCommandResponse(message);
-			} else if (message.type === 'event') {
-				// 处理事件通知
-				await this.handleEvent(message);
-			} else {
-				console.warn('Unknown message type:', message);
-			}
-		} catch (error) {
-			console.error('Error parsing message:', error);
-		}
-	};
-
-	//---------------------------------------------------------------------------
-	aaWebDrive.handleCommandResponse = async function (message) {
-		const pending = this.pendingCommands.get(message.id);
-		if (pending) {
-			clearTimeout(pending.timeout);
-			this.pendingCommands.delete(message.id);
-			
-			if (message.type === 'success') {
-				pending.resolve(message.result);
-			} else {
-				const error = new Error(`${message.error}: ${message.message}`);
-				error.code = message.error;
-				error.stacktrace = message.stacktrace;
-				pending.reject(error);
-			}
-		}
-	};
-
 	//---------------------------------------------------------------------------
 	aaWebDrive.handleEvent = async function (message) {
 		const { method, params } = message;
@@ -260,111 +73,21 @@ aaWebDrive.constructor = AaWebDrive;
 	};
 
 	//---------------------------------------------------------------------------
-	aaWebDrive.handleClose = async function (code, reason) {
-		console.log(`🔌 Connection closed: ${code} - ${reason}`);
-		this.connected = false;
-		this.emit('disconnected', { code, reason });
-		
-		// 清理待处理的命令
-		this.pendingCommands.forEach(({ reject, timeout }) => {
-			clearTimeout(timeout);
-			reject(new Error('Connection closed'));
-		});
-		this.pendingCommands.clear();
-		
-		// 尝试重连
-		if (this.reconnectAttempts < this.options.maxReconnectAttempts) {
-			this.attemptReconnect().then(() => {});
-		}
-	};
-
-	//---------------------------------------------------------------------------
-	aaWebDrive.handleError = function (error) {
-		console.error('❌ WebSocket error:', error);
-		this.emit('error', error);
-	};
-
-	//---------------------------------------------------------------------------
-	aaWebDrive.attemptReconnect = async function () {
-		this.reconnectAttempts++;
-		console.log(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.options.maxReconnectAttempts})...`);
-		
-		setTimeout(async () => {
-			try {
-				await this.connect();
-				
-				// 重新创建会话和订阅事件
-				if (this.sessionId) {
-					await this.createSession();
-					if (this.subscribedEvents.size > 0) {
-						await this.subscribe([...this.subscribedEvents]);
-					}
-				}
-			} catch (error) {
-				console.error('Reconnection failed:', error);
-			}
-		}, this.options.reconnectInterval);
-	};
-
-	//---------------------------------------------------------------------------
 	aaWebDrive.sendCommand = async function (method, params = {},timeout=0) {
 		if (!this.connected) {
-			throw new Error('Not connected to WebDriver BiDi');
+			throw new Error('Not connected to System WebDriver BiDi');
 		}
-		
-		const id = ++this.messageId;
-		
-		return new Promise((resolve, reject) => {
-			let timer;
-			// 设置超时
-			if(timeout>0) {
-				timer = setTimeout(() => {
-					this.pendingCommands.delete(id);
-					reject(new Error(`Command timeout: ${method}`));
-				}, timeout||this.options.timeout);
-			}
-			
-			this.pendingCommands.set(id, { resolve, reject, timeout:timer });
-			
-			const message = JSON.stringify({ id, method, params });
-			this.ws.send(message);
-			
-			// 调试日志
-			if (this.options.debug) {
-				console.log('📤 Sent:', { id, method, params });
-			}
-		});
+		return await this.agentNode.callHub("WebDriveCommand",{browser:this.sysId,method,params,timeout});
 	};
 }
 
 //***************************************************************************
-// ===== 会话管理 =====
+// ===== 会话状态 =====
 //***************************************************************************
 {
 	//----------------------------------------------------------------------
-	aaWebDrive.createSession = async function (capabilities = {}) {
-		const result = await this.sendCommand('session.new', {
-			capabilities: {
-				alwaysMatch: { browserName: 'firefox', ...capabilities }
-			}
-		});
-		
-		this.sessionId = result.sessionId;
-		console.log('📱 Session created:', this.sessionId);
-		return result;
-	};
-	
-	//----------------------------------------------------------------------
 	aaWebDrive.getStatus=async function(){
 		return this.sendCommand('session.status');
-	};
-	
-	//----------------------------------------------------------------------
-	aaWebDrive.endSession=async function(){
-		if (this.sessionId) {
-			await this.sendCommand('session.end');
-			this.sessionId = null;
-		}
 	};
 }
 

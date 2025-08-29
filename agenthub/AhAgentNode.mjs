@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import pathLib from "path";
 import {AhSession} from "./AhSession.mjs";
 import AhXTerm from './AhXTerm.mjs'
+import WebDriveSys from "../rpa/WebDriveSys.mjs";
 
 //---------------------------------------------------------------------------
 async function getLatestModifiedTime(dirPath,deep=0) {
@@ -63,14 +64,16 @@ let AhAgentNode,ahAgentNode;
 		
 		this.sessionMap=new Map();
 		this.callMap=new Map();
-		this.handlerMap=new Map();
+		this.handlerMap=ahAgentNode.handlerMap;
 		this.termMap=new Map();
 		
 		this.workload=0;
 	};
 	ahAgentNode=AhAgentNode.prototype={};
+	const callHandlerMap=ahAgentNode.handlerMap=new Map();
 	const Type_Python="Python";
 	const Type_Node="Node";
+	WebDriveSys.init(callHandlerMap);
 	
 	//-----------------------------------------------------------------------
 	ahAgentNode.OnNodeConnect=async function(ws,connectMsg){
@@ -596,9 +599,12 @@ let AhAgentNode,ahAgentNode;
 	
 	//-----------------------------------------------------------------------
 	ahAgentNode.send=async function(msg,vo,sessionId){
-		let msgVO;
-		msgVO={msg:msg,vo:vo};
-		this.nodeWS.send(JSON.stringify({msg:"Message", session:sessionId,message:msgVO}));
+		let msgVO,ws;
+		ws=this.nodeWS;
+		if(ws) {
+			msgVO = { msg: msg, vo: vo };
+			this.nodeWS.send(JSON.stringify({ msg: "Message", session: sessionId, message: msgVO }));
+		}
 	};
 	
 	//-----------------------------------------------------------------------
@@ -632,7 +638,7 @@ let AhAgentNode,ahAgentNode;
 		}
 		handler=this.handlerMap.get(msg);
 		if(handler){
-			return await handler(msg,vo);
+			return await handler(msg,vo,this,session);
 		}
 		return this.system.handleCallHub(msg,vo,session,devKey);
 	};

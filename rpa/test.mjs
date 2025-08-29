@@ -31,6 +31,15 @@ async function TestWebDrive(){
 	await webDriveApp.start();
 	console.log("WebDiver connected");
 	
+	//Test read-article:
+	{
+		page=await webDriveApp.newPage();
+		await page.goto("https://news.sina.com.cn/w/2025-08-27/doc-infnkazv9556466.shtml");
+		let article=await page.readArticle();
+		console.log(article);
+	}
+	return;
+	
 	//Test navi-failed:
 	let gotoResult,gotoUrl;
 	page=await webDriveApp.newPage();

@@ -1325,6 +1325,20 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			throw new Error(`Failed to capture screenshot: ${error.message}`);
 		}
 	};//Tested, seg applied,
+	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.readArticle=async function(opts){
+		opts=opts||{};
+		try {
+			const readOptions = {
+				context:this.context,
+			};
+			return await this.webDrive.sendCommand('browsingContext.readArticle', readOptions);
+			
+		} catch (error) {
+			throw new Error(`Failed to read article: ${error.message}`);
+		}
+	};
 }
 
 //***************************************************************************

@@ -291,6 +291,26 @@ let AgentNode,agentNode;
 				throw `Session "sessionId" not found.`;
 			}
 			return await session.handleMessage(callMsg,callVO);
+		}else{
+			let handler = this.callHandlers.get(callMsg);
+			if(handler){
+				try {
+					handler(callVO, this);
+				}catch(err){
+					//Do nothing
+				}
+			}else{
+				handler=this["WSMsg_"+callMsg];
+				if(handler){
+					try {
+						handler.call(this,callVO);
+					}catch(err){
+						//Do nothing
+					}
+				}else {
+					console.warn(`AgentNode[${this.name}] can't find message handler for: "${callMsg}"`);
+				}
+			}
 		}
 	};
 	
