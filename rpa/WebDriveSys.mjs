@@ -3,7 +3,7 @@ import pathLib from 'path'
 import { promises as fs, promises as fsp } from 'fs'
 import { spawn } from 'child_process'
 import { EventEmitter } from 'events'
-import AaWebDrive from './WebDrive.mjs'
+import {AaWebDriveContext} from "./WebDriveContext.mjs";
 import WebSocket from 'ws'
 
 let WebDriveSys,WebDriveApp;
@@ -115,6 +115,7 @@ async function cleanTmpDirs(prefix, baseDir = '/tmp') {
 		this.handleClose = this.handleClose.bind(this);
 		this.handleError = this.handleError.bind(this);
 		
+		this.pageMap=new Map();
 	};
 	webDriveApp=WebDriveApp.prototype=Object.create(EventEmitter.prototype);
 	webDriveApp.constructor = WebDriveApp;
@@ -467,6 +468,193 @@ async function cleanTmpDirs(prefix, baseDir = '/tmp') {
 			return this.sendCommand('session.unsubscribe', { events });
 		};
 	}
+
+	//***************************************************************************
+	// ===== 浏览上下文（页面/iFrame）操作 =====
+	//***************************************************************************
+	{
+		//-----------------------------------------------------------------------
+		webDriveApp.createBrowsingContext= async function(type = 'tab', referenceContext = null) {
+			const params = { type };
+			if (referenceContext) {
+				params.referenceContext = referenceContext;
+			}
+			return this.sendCommand('browsingContext.create', params);
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.newPage=async function(url){
+			let result,page;
+			result=await this.createBrowsingContext();
+			page=new AaWebDriveContext(this,result.context);
+			this.pageMap.set(result.context,page);
+			if(url){
+				await page.goto(url);
+			}
+			return page;
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.closeBrowsingContext=async function(context,opts) {
+			let promptBeforeUnload = opts?.promptBeforeUnload || false;
+			return this.sendCommand('browsingContext.close', { context ,promptBeforeUnload});
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.getBrowsingContextTree=async function(maxDepth = null, root = null) {
+			const params = {};
+			if (maxDepth !== null) params.maxDepth = maxDepth;
+			if (root !== null) params.root = root;
+			return this.sendCommand('browsingContext.getTree', params);
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.getPages=async function(){
+			let result,contexts,pages,context,page;
+			pages=[];
+			result=await this.getBrowsingContextTree(1,null);
+			contexts=result.contexts;
+			for(context of contexts){
+				page=this.pageMap.get(context);
+				if(!page){
+					page=new AaWebDriveContext(this,context);
+					this.pageMap.set(context,page);
+				}
+				pages.push(page);
+			}
+			return pages;
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.navigate=webDriveApp.goto=async function(context, url, wait = 'complete',timeout=0) {
+			return this.sendCommand('browsingContext.navigate', { context, url, wait },timeout);
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.reload=async function(context, ignoreCache = false, wait = 'complete') {
+			return this.sendCommand('browsingContext.reload', { context, wait });
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.goBack=async function(context, wait = 'complete') {
+			return this.sendCommand('browsingContext.traverseHistory', { context, delta: -1, wait });
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.goForward=async function(context, wait = 'complete') {
+			return this.sendCommand('browsingContext.traverseHistory', { context, delta: 1, wait });
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.captureScreenshot=async function(context, options = {}) {
+			return this.sendCommand('browsingContext.captureScreenshot', { context, ...options });
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.print=async function(context, options = {}) {
+			return this.sendCommand('browsingContext.print', { context, ...options });
+		};
+	}
+	
+	//***************************************************************************
+	// ===== 脚本执行 =====
+	//***************************************************************************
+	{
+		//-----------------------------------------------------------------------
+		webDriveApp.evaluateScript = async function (expression, target, opts=null) {
+			return this.sendCommand('script.evaluate', {
+				expression,
+				target,
+				...opts
+			});
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.callFunction = async function (functionDeclaration, target, arguments_ = [], opts=null) {
+			return this.sendCommand('script.callFunction', {
+				functionDeclaration,
+				target,
+				arguments: arguments_,
+				...opts
+			});
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.disownScript = async function(handles) {
+			return this.sendCommand('script.disown', { handles });
+		};
+	}
+
+	//***************************************************************************
+	// ===== 输入操作 =====
+	//***************************************************************************
+	{
+		//-----------------------------------------------------------------------
+		webDriveApp.startUserAction=async function(context,timeout){
+			let call,callback,callerror,timer,action;
+			if(this.actionPms){
+				await this.actionPms;
+			}
+			timeout=timeout||60000;
+			await this.releaseActions(context);
+			this.actionPms=new Promise((resolve, reject)=>{
+				callback=resolve;
+				callerror=reject;
+			});
+			setTimeout(()=>{
+				call=callback;
+				if(call){
+					action.live=false;
+					callback=null;
+					callerror=null;
+					this.curAction=null;
+					call();
+				}
+			},timeout);
+			action={
+				context:context,
+				live:true,
+				end:()=>{
+					call=callback;
+					action.live=false;
+					clearTimeout(timer);
+					if(call){
+						callback=null;
+						callerror=null;
+						this.curAction=null;
+						call();
+					}
+				},
+				reject:()=>{
+					call=callback;
+					clearTimeout(timer);
+					action.live=false;
+					if(call){
+						callback=null;
+						callerror=null;
+						this.curAction=null;
+						call();
+					}
+				}
+			};
+			this.curAction=action;
+			return action;
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.performActions=async function(action, actions) {
+			let context;
+			if(action!==this.curAction){
+				return;
+			}
+			return this.sendCommand('input.performActions', { context:action.context, actions });
+		};
+		
+		//-----------------------------------------------------------------------
+		webDriveApp.releaseActions=async function(context) {
+			return this.sendCommand('input.releaseActions', { context });
+		};
+	}
 }
 
 //---------------------------------------------------------------------------
@@ -609,4 +797,4 @@ WebDriveSys = {
 };
 
 export default WebDriveSys;
-export {WebDriveSys};
+export {WebDriveSys,WebDriveApp};

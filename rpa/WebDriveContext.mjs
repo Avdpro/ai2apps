@@ -1,9 +1,10 @@
 import { EventEmitter } from 'events';
-import AaWebDrive from './WebDrive.mjs'
 import fsp from "fs/promises";
 import pathLib from "path";
 import KeyCodes from "./KeyCodes.mjs";
 import clipboardy from 'clipboardy'
+import { ensureCodeLib } from './CodeLib.mjs'
+import html2md from 'html-to-md';
 
 async function sleep(time){
 	let func,pms;
@@ -1328,16 +1329,23 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.readArticle=async function(opts){
-		opts=opts||{};
-		try {
-			const readOptions = {
-				context:this.context,
-			};
-			return await this.webDrive.sendCommand('browsingContext.readArticle', readOptions);
-			
-		} catch (error) {
-			throw new Error(`Failed to read article: ${error.message}`);
+		let readPageArticle,article,html;
+		readPageArticle=(await import("./CodeReadability.mjs")).default;
+		article=await readPageArticle(this);
+		article=null;
+		if(!article || !article.content){
+			let codeTag;
+			opts={mark:false,clean:true};
+			codeTag=await ensureCodeLib(this);
+			html= await this.callFunction((codeTag,node,opts) => {
+				let codeLib = globalThis[codeTag];
+				return codeLib.snapNodeHTML(node, opts);
+			}, [codeTag,null,opts]);
+		}else {
+			html= `<div><a>${article.siteName}</a></div>\n<h1>${article.title}</h1>\n${article.content}`;
 		}
+		article=html2md(html);
+		return article;
 	};
 }
 

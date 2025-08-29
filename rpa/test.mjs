@@ -1,4 +1,4 @@
-import {AaWebDrive} from "./WebDrive.mjs";
+import {WebDriveApp} from "./WebDriveSys.mjs";
 import KeyCodes from "./KeyCodes.mjs";
 
 async function sleep(time){
@@ -27,14 +27,16 @@ let webDriveApp=null;
 async function TestWebDrive(){
 	let page, page2;
 	//Test: Open FireFox:
-	webDriveApp=new AaWebDrive();
+	webDriveApp=new WebDriveApp();
 	await webDriveApp.start();
 	console.log("WebDiver connected");
 	
 	//Test read-article:
 	{
 		page=await webDriveApp.newPage();
-		await page.goto("https://news.sina.com.cn/w/2025-08-27/doc-infnkazv9556466.shtml");
+		//await page.goto("https://news.sina.com.cn/w/2025-08-27/doc-infnkazv9556466.shtml");
+		await page.goto("https://www.fratellowatches.com/exploring-new-territory-with-the-zenith-chronomaster-sport-meteorite/");
+		await sleep(3000);
 		let article=await page.readArticle();
 		console.log(article);
 	}
