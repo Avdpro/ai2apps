@@ -1332,7 +1332,6 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		let readPageArticle,article,html;
 		readPageArticle=(await import("./CodeReadability.mjs")).default;
 		article=await readPageArticle(this);
-		article=null;
 		if(!article || !article.content){
 			let codeTag;
 			opts={mark:false,clean:true};
