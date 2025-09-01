@@ -1328,13 +1328,13 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	};//Tested, seg applied,
 	
 	//-----------------------------------------------------------------------
-	aaWebDriveContext.readArticle=async function(opts){
+	aaWebDriveContext.readArticle=async function(){
 		let readPageArticle,article,html;
 		readPageArticle=(await import("./CodeReadability.mjs")).default;
 		article=await readPageArticle(this);
 		if(!article || !article.content){
 			let codeTag;
-			opts={mark:false,clean:true};
+			let opts={mark:false,clean:true};
 			codeTag=await ensureCodeLib(this);
 			html= await this.callFunction((codeTag,node,opts) => {
 				let codeLib = globalThis[codeTag];

@@ -6,6 +6,7 @@ import { promises as fsp, promises as fs } from 'fs'
 import startPPT from './pptstart.mjs';
 import {ensureCodeLib} from "./CodeLib.mjs";
 import { URL } from 'url'
+import html2md from 'html-to-md'
 
 const codeURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const codeDirURL=pathLib.dirname(codeURL);
@@ -351,6 +352,17 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 			//return codeLib.readMarkedHTML(node, mark,clean);
 			return codeLib.snapNodeHTML(node, opts);
 		}, [codeTag,node,opts]);
+	};
+	
+	//-----------------------------------------------------------------------
+	webRpa.readArticle=async function(pageFrame,baseNode,options){
+		let html,md;
+		if(baseNode) {
+			html = await this.readInnerHTML(pageFrame, baseNode, options);
+			md = html2md(html);
+			return md;
+		}
+		return pageFrame.readArticle();
 	};
 }
 
