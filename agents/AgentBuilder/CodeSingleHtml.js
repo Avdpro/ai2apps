@@ -19,7 +19,7 @@ const argsTemplate={
 		},
 		"autoFix":{
 			"name":"autoFix","type":"bool",
-			"required":true,
+			"required":false,
 			"defaultValue":true,
 			"desc":"如果出现错误，是否自动修正重新编写代码",
 		},
@@ -94,11 +94,10 @@ let CodeSingleHtml=async function(session){
 	segs["FixArgs"]=FixArgs=async function(input){//:1IN8IO9UM0
 		let result=input;
 		let missing=false;
-		let smartAsk=true;
+		let smartAsk=false;
 		/*#{1IN8IO9UM0PreCodes*/
 		/*}#1IN8IO9UM0PreCodes*/
 		if(userPrompt===undefined || userPrompt==="") missing=true;
-		if(autoFix===undefined || autoFix==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -145,7 +144,7 @@ let CodeSingleHtml=async function(session){
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o",
+			mode:"gpt-4.1",
 			maxToken:16000,
 			temperature:0,
 			topP:1,
@@ -336,7 +335,7 @@ let CodeSingleHtml=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
-		let askUpward=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
 		if(askUpward && tip){
@@ -361,7 +360,7 @@ let CodeSingleHtml=async function(session){
 	
 	segs["ShowError"]=ShowError=async function(input){//:1IN8O2EUH0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`发现页面错误：${input.error}`;
 		session.addChatText(role,content,opts);
@@ -426,7 +425,7 @@ let CodeSingleHtml=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
-		let askUpward=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
 		/*#{1INAMHF8T0PreCodes*/
@@ -493,7 +492,7 @@ let CodeSingleHtml=async function(session){
 	
 	segs["ShowCode"]=ShowCode=async function(input){//:1INCMVE120
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=`
 \`\`\`
@@ -539,7 +538,7 @@ ${input.html}
 export const ChatAPI=[{
 	def:{
 		name: "CodeSingleHtml",
-		description: "这是根据用户需求，编写一个简单的HTML页面，通过沙箱展示给用户的智能体。",
+		description: "这是根据用户需求，编写一个简单的HTML页面，通过沙箱展示给用户的智能体。请提供需求以及可用资源。\n",
 		parameters:{
 			type: "object",
 			properties:{
@@ -582,7 +581,7 @@ if(DocAIAgentExporter){
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
 		listHint:["id","userPrompt","autoFix","userCheck","blueprintImage","baseHtmlUrl","codes","desc"],
-		desc:"这是根据用户需求，编写一个简单的HTML页面，通过沙箱展示给用户的智能体。"
+		desc:"这是根据用户需求，编写一个简单的HTML页面，通过沙箱展示给用户的智能体。请提供需求以及可用资源。\n"
 	});
 	
 	DocAIAgentExporter.segTypeExporters["CodeSingleHtml"]=
@@ -601,7 +600,7 @@ if(DocAIAgentExporter){
 			coder.packText("args['blueprintImage']=");this.genAttrStatement(seg.getAttr("blueprintImage"));coder.packText(";");coder.newLine();
 			coder.packText("args['baseHtmlUrl']=");this.genAttrStatement(seg.getAttr("baseHtmlUrl"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/CodeSingleHtml.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/CodeSingleHtml.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -663,6 +662,7 @@ export{CodeSingleHtml};
 //			"jaxId": "1IN8IJT7O2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -688,7 +688,7 @@ export{CodeSingleHtml};
 //						"type": "Boolean",
 //						"mockup": "true",
 //						"desc": "如果出现错误，是否自动修正重新编写代码",
-//						"required": "true"
+//						"required": "false"
 //					}
 //				},
 //				"userCheck": {
@@ -783,7 +783,7 @@ export{CodeSingleHtml};
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"smartAsk": "true",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IN8IPUBH0",
 //							"attrs": {
@@ -822,7 +822,7 @@ export{CodeSingleHtml};
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o",
+//						"mode": "gpt-4.1",
 //						"system": "#`\n- - -\n## 角色\n你是一个根据用户需求，编写（包括调试/修正）简单的HTML页面的AI智能体。\n- - -\n## 对话\n- 第一轮对话，用户会给出当前的HTML代码；你要编写的HTML文件的需求描述，可能还会包含页面设计的参考图。\n- 之后的对话，用户会给出当前的HTML代码；当前的HTML代码的执行情况；还可能给出修改建议；或者回答你提出的问题。\n- 你根据当前对话过程，用JSON回复用户\n    - 如果你可以根据当前掌握信息可以输出HTML，请在JSON中的\"html\"属性中提供完整的HTML页面代码（包括必须的CSS/JS以及引用的外部脚本等）。例如：\n    \\`\\`\\`\n    {\n    \t\"html\":\"<html>...</html>\"\n    }\n    \\`\\`\\`\n    \n    - 如果你缺少必要的信息来生成HTML，请在JSON的\"chat\"属性中向用户提出问题或与用户对话完善编写网页所需的信息。例如：\n    \\`\\`\\`\n    {\n    \t\"chat\":\"请提供调用天气API的Key。\"\n    }\n    \\`\\`\\`\n## 回复JSON对象属性\n- \"html\" {string}: 你生成的HTML页面代码，注意一定是完整的HTML页面代码（包括必须的CSS/JS以及引用的外部脚本等）。\n- \"chat\" {string}: 为了完善必要的信息或回答用户的疑问，与用户的对话信息。\n`",
 //						"temperature": "0",
 //						"maxToken": "16000",
@@ -1901,7 +1901,7 @@ export{CodeSingleHtml};
 //				}
 //			]
 //		},
-//		"desc": "这是根据用户需求，编写一个简单的HTML页面，通过沙箱展示给用户的智能体。",
+//		"desc": "这是根据用户需求，编写一个简单的HTML页面，通过沙箱展示给用户的智能体。请提供需求以及可用资源。\n",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
 //		"addOnOpts": "{\"name\":\"\",\"label\":\"{\\\"CN\\\":\\\"编写简单网页\\\",\\\"EN\\\":\\\"Create simple web page\\\"}\",\"path\":\"\",\"pathInHub\":\"\",\"chatEntry\":\"Tool\",\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"edlit.svg\",\"catalog\":\"AI Call\"}"

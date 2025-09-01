@@ -43,12 +43,12 @@ const threadMeta={
 	}
 };
 
-async function runAgent({chatClient=null,chatThread=null,agent,agentNode=null,args=null,title="Run Agent",callback=null,callerror=null,embed=null}){
+async function runAgent({chatClient=null,chatThread=null,agent,agentNode=null,args=null,title="Run Agent",callback=null,callerror=null,embed=null,wideChat=true}){
 	let app;
 	let params={
 		title:title||"Run Agent",
 		file:agent,agentNode:agentNode,argument:args,callback:callback,callerror:callerror,
-		chatClient:chatClient,chatThread:chatThread,
+		chatClient:chatClient,chatThread:chatThread,wideChat:wideChat
 	};
 	app=VFACT.app;
 	if(!app){
@@ -122,5 +122,35 @@ async function showChatThread({chatThread,embed}){
 	}
 }
 
+async function runAppAsAgent({appMeta,args=null,embed}){
+	let app;
+	let params;
+	params={...args};
+	app=VFACT.app;
+	if(!app){
+		let curWin=window;
+		while(!app && curWin.parent!==curWin){
+			curWin=curWin.parent;
+			app=curWin.VFACT.app;
+		}
+		if(!app){
+			return;
+		}
+	}
+	if(embed && embed.appendNewChild){
+		return embed.appendNewChild({
+			type:AppFrame(app,appMeta,params,{embed:true}),x:0,y:0
+		});
+	}else if(app && app.newFrameApp){
+		if(!app.newFrameApp){
+			if(!app.appFrame){
+				return;
+			}
+			app=app.appFrame.app;
+		}
+		return app.newFrameApp(runMeta,params);
+	}
+}
+
 export default runAgent;
-export {runAgent,callAgent,showChatThread};
+export {runAgent,callAgent,showChatThread,runAppAsAgent};

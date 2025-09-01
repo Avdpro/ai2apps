@@ -9,7 +9,8 @@ import { promisify } from 'util';
 import child_process from "child_process";
 /*}#1IGAU4QB50MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.pathToFileURL(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -270,7 +271,8 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["TipIssue"]=TipIssue=async function(input){//:1IGB4O4R30
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IGB4O4R30PreCodes*/
@@ -393,7 +395,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda create -n ${envName} python=${pythonVersion}`,`conda activate ${envName}`];
+		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName}`];
 		args['options']={clear:true};
 		/*#{1IGB4V6D30PreCodes*/
 		/*}#1IGB4V6D30PreCodes*/
@@ -1254,6 +1256,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSJ0",
@@ -1613,7 +1616,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda create -n ${envName} python=${pythonVersion}`,`conda activate ${envName}`]",
+//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName}`]",
 //						"options": "#{clear:true}",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSJ1",

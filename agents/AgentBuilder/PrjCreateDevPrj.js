@@ -11,7 +11,8 @@ import {installPkg,uninstallPkg,redirectPkgTag,installPkgOnDisk,setupDiskPkgs} f
 import {filterJSONPath} from "../filterjson.js";
 /*}#1IK2OCGG60MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
 const $ln=VFACT.lanCode||"EN";
 const argsTemplate={
 	properties:{
@@ -107,7 +108,8 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["TipCheckOut"]=TipCheckOut=async function(input){//:1IK2RF0FP0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("下载项目内容……"):("Downloading project content..."));
 		session.addChatText(role,content,opts);
@@ -129,7 +131,8 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["TipFilterJSON"]=TipFilterJSON=async function(input){//:1IK2RFIAF0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("更新配置文件……"):("Updating configuration file..."));
 		session.addChatText(role,content,opts);
@@ -194,7 +197,8 @@ let PrjCreateDevPrj=async function(session){
 	
 	segs["TipError"]=TipError=async function(input){//:1IK2RVNMD0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -640,6 +644,7 @@ export{PrjCreateDevPrj};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Downloading project content...",
@@ -727,6 +732,7 @@ export{PrjCreateDevPrj};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Updating configuration file...",
@@ -925,6 +931,7 @@ export{PrjCreateDevPrj};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IK2S287H2",

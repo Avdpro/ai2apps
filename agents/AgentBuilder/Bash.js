@@ -6,8 +6,9 @@ import {URL} from "url";
 /*#{1IG0KVFDB0MoreImports*/
 import {AgentNodeTerminal} from "../../agenthub/AgentNodeTerm.mjs";
 /*}#1IG0KVFDB0MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -54,7 +55,7 @@ let Bash=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let SwitchAction,CreateBash,RunCommand,LoopCmd,RunOneCmd,IsDone,CloseBash,GetContent,Clear,Wait,GetReact,GenResult,NextCmd,CheckReact,DoInput,NotifyUser,WaitIdle;
+	let SwitchAction,CreateBash,RunCommand,LoopCmd,RunOneCmd,IsDone,CloseBash,GetContent,Clear,Wait,GetReact,GenResult,NextCmd,CheckReact,DoInput,NotifyUser,WaitIdle,AskUser;
 	let cmdBash=null;
 	let orgContent="";
 	let orgCmdContent="";
@@ -90,7 +91,7 @@ let Bash=async function(session){
 	context={};
 	/*#{1IG0KVFDB0PostContext*/
 	/*}#1IG0KVFDB0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["SwitchAction"]=SwitchAction=async function(input){//:1IG0L3R920
 		let result=input;
 		if(action==="Create"){
@@ -344,9 +345,8 @@ let Bash=async function(session){
 	- "Wait": 当前Termnial还在执行任务，不需要干预
     - "Input": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。
     - "AskUser": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等
-    - "Finish": 当前Terminal已经完成了指令执行，正在等待新的指令
 
-- "input" {string}: 当"action"属性为"Input"时，需要向terminal里输入的内容。例如, 当询问是否继续时: "y"等。
+- "input" {string}: 当"action"属性为"Input"时，需要向terminal里输入的内容。例如, 当询问是否继续时: "y"等。当"action"属性为"AskUser"时，需要询问用户的内容。
 
 ### 确保流程进行
 - 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用"Input"的action来自动回复，保证流程不受中断。
@@ -390,7 +390,7 @@ let Bash=async function(session){
 	segs["CheckReact"]=CheckReact=async function(input){//:1IIF4UL9V0
 		let result=input;
 		if(input.action==="AskUser"){
-			return {seg:NotifyUser,result:(input),preSeg:"1IIF4UL9V0",outlet:"1IIF5056O0"};
+			return {seg:AskUser,result:(input),preSeg:"1IIF4UL9V0",outlet:"1IIF5056O0"};
 		}
 		if(input.action==="Input"){
 			let output=input.input;
@@ -398,9 +398,6 @@ let Bash=async function(session){
 		}
 		if(input.action==="Wait"){
 			return {seg:WaitIdle,result:(input),preSeg:"1IIF4UL9V0",outlet:"1IIF50B2J0"};
-		}
-		if(input==="Finish"){
-			return {seg:NextCmd,result:(input),preSeg:"1IIF4UL9V0",outlet:"1IIF7N1B00"};
 		}
 		return {result:result};
 	};
@@ -441,7 +438,7 @@ let Bash=async function(session){
 			//missing BashNotify? Do nothing...
 		}
 		/*}#1IIF53A7Q0Code*/
-		return {seg:WaitIdle,result:(result),preSeg:"1IIF53A7Q0",outlet:"1IIF5P1F32"};
+		return {result:result};
 	};
 	NotifyUser.jaxId="1IIF53A7Q0"
 	NotifyUser.url="NotifyUser@"+agentURL
@@ -455,7 +452,6 @@ let Bash=async function(session){
 		while(!changes){
 			console.log("Wait bash idle...");
 			await cmdBash.waitIdle(true);
-			await cmdBash.runCommands(" ");
 			changes=await cmdBash.getContent();
 			changes=changes.substring(contentLen);
 			console.log("Bash idle end: "+changes);
@@ -468,7 +464,35 @@ let Bash=async function(session){
 	WaitIdle.jaxId="1IIF89Q1I0"
 	WaitIdle.url="WaitIdle@"+agentURL
 	
-	agent={
+	segs["AskUser"]=AskUser=async function(input){//:1J1V9GOIF0
+		let tip=(input.input);
+		let tipRole=("assistant");
+		let placeholder=("");
+		let allowFile=(false)||false;
+		let askUpward=(false);
+		let text=("");
+		let result="";
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+		}
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
+		return {seg:DoInput,result:(result),preSeg:"1J1V9GOIF0",outlet:"1J1V9HK8H0"};
+	};
+	AskUser.jaxId="1J1V9GOIF0"
+	AskUser.url="AskUser@"+agentURL
+	
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"Bash",
@@ -517,6 +541,7 @@ let ChatAPI=[{
 	},
 	path: "/@AgentBuilder/Bash.js",
 	label: "Bash Ops",
+	isChatApi: true,
 	icon: "terminal.svg"
 }];
 
@@ -624,6 +649,7 @@ export{Bash,ChatAPI};
 //			"jaxId": "1IG0KVFDB2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -928,6 +954,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -964,6 +993,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IIF4OKS70"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1048,6 +1080,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IIF4R4RO0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1153,6 +1188,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1188,6 +1226,9 @@ export{Bash,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1225,6 +1266,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1261,6 +1305,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1293,7 +1340,7 @@ export{Bash,ChatAPI};
 //						},
 //						"platform": "\"OpenAI\"",
 //						"mode": "gpt-4o",
-//						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\", \"Finish\"和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n    - \"Finish\": 当前Terminal已经完成了指令执行，正在等待新的指令\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`\n",
+//						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\", \"Finish\"和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`\n",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -1312,6 +1359,7 @@ export{Bash,ChatAPI};
 //							},
 //							"linkedSeg": "1IIF4UL9V0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -1361,6 +1409,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1396,6 +1447,9 @@ export{Bash,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1460,7 +1514,7 @@ export{Bash,ChatAPI};
 //										},
 //										"condition": "#input.action===\"AskUser\""
 //									},
-//									"linkedSeg": "1IIF53A7Q0"
+//									"linkedSeg": "1J1V9GOIF0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -1511,31 +1565,6 @@ export{Bash,ChatAPI};
 //										"condition": "#input.action===\"Wait\""
 //									},
 //									"linkedSeg": "1IIF8FDCS0"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1IIF7N1B00",
-//									"attrs": {
-//										"id": "Finish",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1IIF7QOVU0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1IIF7QOVU1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": ""
-//									},
-//									"linkedSeg": "1IIF4SPFB0"
 //								}
 //							]
 //						}
@@ -1576,6 +1605,9 @@ export{Bash,ChatAPI};
 //							},
 //							"linkedSeg": "1IIF89Q1I0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1588,8 +1620,8 @@ export{Bash,ChatAPI};
 //						"id": "NotifyUser",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1790",
-//						"y": "-10",
+//						"x": "1770",
+//						"y": "-160",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1610,8 +1642,10 @@ export{Bash,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IIF89Q1I0"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1649,6 +1683,9 @@ export{Bash,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IIF54S290"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1763,6 +1800,50 @@ export{Bash,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askChat",
+//					"jaxId": "1J1V9GOIF0",
+//					"attrs": {
+//						"id": "AskUser",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1790",
+//						"y": "-10",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J1V9HK8O0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J1V9HK8O1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"tip": "#input.input",
+//						"tipRole": "Assistant",
+//						"placeholder": "",
+//						"text": "",
+//						"file": "false",
+//						"showText": "true",
+//						"askUpward": "false",
+//						"outlet": {
+//							"jaxId": "1J1V9HK8H0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IIF512K60"
+//						}
+//					},
+//					"icon": "chat.svg"
 //				}
 //			]
 //		},

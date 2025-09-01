@@ -8,7 +8,8 @@ import {trimJSON} from "/@aichat/utils.js";
 import {tabNT} from "/@tabos";
 /*}#1IKCV9VRJ0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
 const $ln=VFACT.lanCode||"EN";
 const argsTemplate={
 	properties:{
@@ -104,7 +105,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipStart"]=TipStart=async function(input){//:1IKE6V3JM0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
@@ -173,7 +175,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["StartTip"]=StartTip=async function(input){//:1IKCVAMJC0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="user";
 		let content=input.prompt||input;
 		/*#{1IKCVAMJC0PreCodes*/
@@ -540,7 +543,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ShowResult"]=ShowResult=async function(input){//:1IKCVK9ES0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKCVK9ES0PreCodes*/
@@ -569,7 +573,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	segs["TryTool"]=TryTool=async function(input){//:1IKCVNB7A0
 		let result=input;
 		/*#{1IKCVNB7A0Code*/
-		session.indentMore();
+		//session.indentMore();
 		/*}#1IKCVNB7A0Code*/
 		return {seg:ShowTool,result:(result),preSeg:"1IKCVNB7A0",outlet:"1IKCVQU3L1",catchSeg:ToolError,catchlet:"1IKCVQU3O5"};
 	};
@@ -590,7 +594,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipFinish"]=TipFinish=async function(input){//:1IKCVOA650
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -601,7 +606,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipAbort"]=TipAbort=async function(input){//:1IKCVOQ6C0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -631,7 +637,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	segs["ToolError"]=ToolError=async function(input){//:1IKD00IP70
 		let result=input;
 		/*#{1IKD00IP70PreCodes*/
-		session.indentLess();
+		//session.indentLess();
 		/*}#1IKD00IP70PreCodes*/
 		return {seg:LogError,result:result,preSeg:"1IKCVU57C0",outlet:"1IKD025ML2"};
 	
@@ -641,7 +647,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ShowNode"]=ShowNode=async function(input){//:1IKD03BL10
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03BL10PreCodes*/
@@ -662,7 +669,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ShowTool"]=ShowTool=async function(input){//:1IKD03VM90
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Process";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03VM90PreCodes*/
@@ -711,7 +719,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipNodeRes"]=TipNodeRes=async function(input){//:1IKD04TDE0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD04TDE0PreCodes*/
@@ -729,7 +738,8 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipToolRes"]=TipToolRes=async function(input){//:1IKD0580Q0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Process";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD0580Q0PreCodes*/
@@ -739,7 +749,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 		/*}#1IKD0580Q0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1IKD0580Q0PostCodes*/
-		session.indentLess();
+		//session.indentLess();
 		result=`Call tool result: ${JSON.stringify(input)}`;
 		/*}#1IKD0580Q0PostCodes*/
 		return {seg:NextAction,result:(result),preSeg:"1IKD0580Q0",outlet:"1IKD0BI2O3"};
@@ -964,7 +974,8 @@ ${JSON.stringify(mem,null,"\t")}
 	
 	segs["ShowAskAiResult"]=ShowAskAiResult=async function(input){//:1IO2JQFFQ0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IO2JQFFQ0PreCodes*/
@@ -983,7 +994,8 @@ ${JSON.stringify(mem,null,"\t")}
 	
 	segs["ShowAskUserResult"]=ShowAskUserResult=async function(input){//:1IODU6QTO0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IODU6QTO0PreCodes*/
@@ -1398,6 +1410,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Welcome to the AI2Apps System Chat.",
@@ -1485,6 +1498,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "User",
+//						"channel": "Chat",
 //						"text": "#input.prompt||input",
 //						"outlet": {
 //							"jaxId": "1IKCVDSRP0",
@@ -2025,6 +2039,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKCVL5PA0",
@@ -2241,6 +2256,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input.content",
 //						"outlet": {
 //							"jaxId": "1IKCVQU3L3",
@@ -2280,6 +2296,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input.content",
 //						"outlet": {
 //							"jaxId": "1IKCVQU3L4",
@@ -2453,6 +2470,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD046QG0",
@@ -2492,6 +2510,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Process",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD046QG1",
@@ -2596,6 +2615,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD0BI2O2",
@@ -2635,6 +2655,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Process",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD0BI2O3",
@@ -3087,6 +3108,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IO2JVR850",
@@ -3125,6 +3147,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IODUBME00",
