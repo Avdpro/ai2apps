@@ -6,8 +6,9 @@ import {URL} from "url";
 /*#{1IG38I67R1MoreImports*/
 import fsp from 'fs/promises';
 /*}#1IG38I67R1MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -106,13 +107,14 @@ let PrjSetupPrj=async function(session){
 	/*#{1IG38I67R1PostContext*/
 	//await session.callClient("ConnectAgentDebug",{port:9115,entryURL:agentURL,entryAgent:PrjSetupPrj.sourceDef});//TODO: Get port from session/AgentNode
 	/*}#1IG38I67R1PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IH71L8DF0
 		let result=input;
 		let missing=false;
+		let smartAsk=false;
 		if(prjURL===undefined || prjURL==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		return {seg:InitPrj,result:(result),preSeg:"1IH71L8DF0",outlet:"1IH71LMKO0"};
@@ -166,11 +168,13 @@ let PrjSetupPrj=async function(session){
 	
 	segs["InitEnv"]=InitEnv=async function(input){//:1IG38J1M10
 		let result;
-		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
 		let arg={};
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IG38J1M10Input*/
 		/*}#1IG38J1M10Input*/
-		result= await session.pipeChat(sourcePath,arg,false);
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1IG38J1M10Output*/
 		session.callClient("RegEnvProjectInfo",{env:globalContext.env,project:globalContext.project});
 		/*}#1IG38J1M10Output*/
@@ -207,9 +211,11 @@ let PrjSetupPrj=async function(session){
 	
 	segs["SetupDir"]=SetupDir=async function(input){//:1IG38V9R90
 		let result;
-		let sourcePath=pathLib.join(basePath,"./PrjSetupPrjDir.js");
 		let arg={};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./PrjSetupPrjDir.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:DirResult,result:(result),preSeg:"1IG38V9R90",outlet:"1IG392PPF4"};
 	};
 	SetupDir.jaxId="1IG38V9R90"
@@ -217,9 +223,11 @@ let PrjSetupPrj=async function(session){
 	
 	segs["SetupPrj"]=SetupPrj=async function(input){//:1IG396KMU0
 		let result;
-		let sourcePath=pathLib.join(basePath,"./PrjDoSetupPrj.js");
 		let arg={};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./PrjDoSetupPrj.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:CheckSetup,result:(result),preSeg:"1IG396KMU0",outlet:"1IG39IF140"};
 	};
 	SetupPrj.jaxId="1IG396KMU0"
@@ -227,9 +235,11 @@ let PrjSetupPrj=async function(session){
 	
 	segs["TestPrj"]=TestPrj=async function(input){//:1IG399DKK0
 		let result;
-		let sourcePath=pathLib.join(basePath,"./PrjTestPrj.js");
 		let arg={};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./PrjTestPrj.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:TestResult,result:(result),preSeg:"1IG399DKK0",outlet:"1IG39IF142"};
 	};
 	TestPrj.jaxId="1IG399DKK0"
@@ -246,11 +256,13 @@ let PrjSetupPrj=async function(session){
 	
 	segs["AbortSetup"]=AbortSetup=async function(input){//:1IG63NL6J0
 		let result=input;
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("项目部署已取消."):("Project deployment has been cancelled."));
 		/*#{1IG63NL6J0PreCodes*/
 		/*}#1IG63NL6J0PreCodes*/
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		/*#{1IG63NL6J0PostCodes*/
 		/*}#1IG63NL6J0PostCodes*/
 		return {seg:JumpUninstall,result:(result),preSeg:"1IG63NL6J0",outlet:"1IG646O8P1"};
@@ -270,11 +282,13 @@ let PrjSetupPrj=async function(session){
 	
 	segs["SetupFailed"]=SetupFailed=async function(input){//:1IHB0T72F0
 		let result=input;
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content="项目安装完毕";
 		/*#{1IHB0T72F0PreCodes*/
 		/*}#1IHB0T72F0PreCodes*/
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		/*#{1IHB0T72F0PostCodes*/
 		/*}#1IHB0T72F0PostCodes*/
 		return {seg:AskUninstall,result:(result),preSeg:"1IHB0T72F0",outlet:"1IHB0V0BB0"};
@@ -331,6 +345,7 @@ let PrjSetupPrj=async function(session){
 		let prompt=((($ln==="CN")?("安装配置未成功，是否移除项目?"):("Install / setup was not successful, do you want to remove the project?")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("Uninstall project"):("卸载项目")),code:0},
@@ -343,7 +358,7 @@ let PrjSetupPrj=async function(session){
 			result="";
 			return {seg:Uninstall,result:(result),preSeg:"1IJ0QT40H0",outlet:"1IJ0QT4000"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -359,9 +374,11 @@ let PrjSetupPrj=async function(session){
 	
 	segs["Uninstall"]=Uninstall=async function(input){//:1IJ0R34FO0
 		let result;
-		let sourcePath=pathLib.join(basePath,"");
 		let arg=input;
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
 	};
 	Uninstall.jaxId="1IJ0R34FO0"
@@ -378,16 +395,17 @@ let PrjSetupPrj=async function(session){
 	
 	segs["JumpUninstall"]=JumpUninstall=async function(input){//:1IJ0R4SJ50
 		let result=input;
-		return {seg:AskUninstall,result:result,preSeg:"1IJ0R4SJ50",outlet:"1IJ0R5IGR3"};
+		return {seg:AskUninstall,result:result,preSeg:"1IJ0QT40H0",outlet:"1IJ0R5IGR3"};
 	
 	};
-	JumpUninstall.jaxId="1IJ0R4SJ50"
+	JumpUninstall.jaxId="1IJ0QT40H0"
 	JumpUninstall.url="JumpUninstall@"+agentURL
 	
 	segs["AskUninstall2"]=AskUninstall2=async function(input){//:1IJ0R8JA10
 		let prompt=("Please confirm")||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
+		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:"Item 1",code:0},
@@ -400,7 +418,7 @@ let PrjSetupPrj=async function(session){
 			result="";
 			return {seg:Uninstall2,result:(result),preSeg:"1IJ0R8JA10",outlet:"1IJ0R8J9B0"};
 		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -416,9 +434,11 @@ let PrjSetupPrj=async function(session){
 	
 	segs["Uninstall2"]=Uninstall2=async function(input){//:1IJ0RA5FC0
 		let result;
-		let sourcePath=pathLib.join(basePath,"");
 		let arg=input;
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
 	};
 	Uninstall2.jaxId="1IJ0RA5FC0"
@@ -436,13 +456,13 @@ let PrjSetupPrj=async function(session){
 	
 	segs["DirFailed"]=DirFailed=async function(input){//:1IJ0T04Q20
 		let result=input;
-		return {seg:AskUninstall,result:result,preSeg:"1IJ0T04Q20",outlet:"1IJ0T0VDE0"};
+		return {seg:AskUninstall,result:result,preSeg:"1IJ0QT40H0",outlet:"1IJ0T0VDE0"};
 	
 	};
-	DirFailed.jaxId="1IJ0T04Q20"
+	DirFailed.jaxId="1IJ0QT40H0"
 	DirFailed.url="DirFailed@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjSetupPrj",
@@ -472,13 +492,30 @@ let PrjSetupPrj=async function(session){
 /*}#1IG38I67R1ExCodes*/
 
 //#CodyExport>>>
+let ChatAPI=[{
+	def:{
+		name: "PrjSetupPrj",
+		description: "这是一个AI智能体。",
+		parameters:{
+			type: "object",
+			properties:{
+				prjURL:{type:"auto",description:"项目的GitHub地址"},
+				dirPath:{type:"string",description:"当前项目工程所在的本地目录路径"}
+			}
+		}
+	},
+	agentNode: "AgentBuilder",
+	agentName: "PrjSetupPrj.js",
+	isChatApi: false,
+	capabilities: []
+}];
 //#CodyExport<<<
 /*#{1IG38I67R1PostDoc*/
 /*}#1IG38I67R1PostDoc*/
 
 
 export default PrjSetupPrj;
-export{PrjSetupPrj};
+export{PrjSetupPrj,ChatAPI};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -519,6 +556,7 @@ export{PrjSetupPrj};
 //			"jaxId": "1IG38I67R2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "FixArgs",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -582,6 +620,7 @@ export{PrjSetupPrj};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IH71LMKO0",
 //							"attrs": {
@@ -626,6 +665,9 @@ export{PrjSetupPrj};
 //							},
 //							"linkedSeg": "1IG38J1M10"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -666,6 +708,9 @@ export{PrjSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IHDMMD880"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -790,6 +835,9 @@ export{PrjSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJ0SSL2O0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -830,6 +878,9 @@ export{PrjSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IHB0N6CM0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -870,6 +921,9 @@ export{PrjSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IHDDABOS0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -906,6 +960,9 @@ export{PrjSetupPrj};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -937,6 +994,7 @@ export{PrjSetupPrj};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Project deployment has been cancelled.",
@@ -1052,6 +1110,7 @@ export{PrjSetupPrj};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "项目安装完毕",
 //						"outlet": {
 //							"jaxId": "1IHB0V0BB0",
@@ -1255,6 +1314,9 @@ export{PrjSetupPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1513,6 +1575,9 @@ export{PrjSetupPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1548,6 +1613,9 @@ export{PrjSetupPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1697,6 +1765,9 @@ export{PrjSetupPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1819,8 +1890,8 @@ export{PrjSetupPrj};
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
-//		"exportAPI": "false",
+//		"exportAPI": "true",
 //		"exportAddOn": "false",
-//		"addOnOpts": ""
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"AgentBuilder\",\"chatEntry\":false,\"isChatApi\":false,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\",\"capabilities\":[],\"meta\":\"\"}"
 //	}
 //}
