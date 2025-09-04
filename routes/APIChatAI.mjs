@@ -256,6 +256,70 @@ export default function(app,router,apiMap) {
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
 			switch (platform) {
+				case "Claude":{
+					if(!anthropic){
+						await proxyCall(req,res,next);
+						return;
+					}
+					callVO = callAIObj.buildCallVO(reqVO,platform);
+					//Check gas
+					{
+						resVO = await checkAITokenCall(userInfo, platform, callVO.model);
+						if (resVO.code !== 200) {
+							res.json(resVO);
+							return;
+						}
+					}
+					
+					try {
+						let content="";
+						let messages=reqVO.messages;
+						if(messages[0].role==="system"){
+							callVO.system=messages[0].content;
+							messages.shift();
+						}
+						//Fix image messages:
+						for(let line of messages){
+							let cnt,pt;
+							cnt=line.content;
+							if(Array.isArray(cnt)){
+								for(pt of cnt){
+									if(pt.type==="image_url"){
+										let url,pos,data;
+										pt.type="image";
+										url=pt.image_url.url;
+										pos=url.indexOf(",");
+										data=url.substring(pos+1);
+										pt.source={
+											type:"base64",
+											media_type:url.startsWith("data:image/jpeg")?"image/jpeg":"image/png",
+											data:data
+										};
+										delete pt.image_url;
+									}
+								}
+							}
+						}
+						callVO.messages=messages;
+						
+						try {
+							rawResVO = await anthropic.messages.create(callVO);
+						}catch(error){
+							console.error(error);
+							res.json({code: 500,info:`Anthropic messages.create error: ${""+error}`});
+							return;
+						}
+						content=rawResVO.content[0];
+						resVO = { code: 200,message:content.text||content};
+						res.json(resVO);
+						
+						//Charge user token:
+						chargePointsByUsage(userInfo,rawResVO.usage.input_tokens,rawResVO.usage.output_tokens,platform,callVO.model);
+					} catch (err) {
+						console.log(err);
+					}
+					return;
+				}
 				case "OpenAI": {
 					if(!openAI){
 						await proxyCall(req,res,next);
