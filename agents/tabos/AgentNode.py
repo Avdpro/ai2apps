@@ -429,6 +429,43 @@ class AgentNode:
 		return url
 
 	# -------------------------------------------------------------------------
+	async def callHubAI(self,opts,messages,models):
+		callVO={
+			"platform":opts.get("platform","OpenAI"),
+			"model":opts.get("mode","gpt-4o"),
+			"temperature":opts.get("temperature",0),
+			"max_tokens":opts.get("maxToken",4096),
+			"messages":messages,
+			"top_p":opts.get("topP",1),
+			"presence_penalty":opts.get("prcP",0),
+			"frequency_penalty":opts.get("fqcP",0),
+			"response_format":opts.get("responseFormat","text")
+		}
+		models=models or {}
+		name=callVO.get("model")
+		if name[:1]=="$":
+			name=name[1:]
+			vo=models.get(name)
+			if not vo:
+				raise Exception(f"Can't find platform shortcut: {name}")
+			callVO["platform"]=vo["platform"]
+			callVO["model"]=vo["model"]
+		seed=opts.get("seed",None)
+		if seed:
+			callVO.seed=seed
+
+		apis=opts.get("apis",None)
+		if apis:
+			callVO["functions"]=apis.get("functions")
+			if opts.get("parallelFunction"):
+				callVO.parallelFunction=True
+		res = await self.callHub("AICall", callVO)
+		if res.get("code") !=200:
+			raise Exception(f"AIStreamCall failed:{res.get('code')}:{res.get('info')}")
+		result = res.get("message")
+		return result
+
+	# -------------------------------------------------------------------------
 	async def startDebug(self):
 		self.debugStepRun=False
 		async def shutdown(server):
