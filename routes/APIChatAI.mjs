@@ -233,7 +233,12 @@ export default function(app,router,apiMap) {
 			let platform;
 			let callVO, rawResVO, resVO;
 			reqVO = req.body.vo;
-			
+			if(!reqVO.userId) {
+				reqVO.userId = process.env.localUserId;
+			}
+			if(!reqVO.token){
+				reqVO.token = process.env.localUserToken;
+			}
 			if(getUserInfo) {
 				let userId, token;
 				userId = reqVO.userId;

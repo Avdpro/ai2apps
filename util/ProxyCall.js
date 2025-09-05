@@ -105,6 +105,12 @@ module.exports = {
 					let text = buffer.toString();
 					let json = JSON.parse(text);
 					callDone=true;
+					if(json.code===200){
+						if(req.body.vo.userId && req.body.vo.token){
+							process.env.localUserId=req.body.vo.userId;
+							process.env.localUserToken=req.body.vo.token;
+						}
+					}
 					res.json(json);
 				} catch (err) {
 					callDone=true;
