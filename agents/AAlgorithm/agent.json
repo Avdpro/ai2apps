@@ -1,0 +1,13 @@
+{
+	"name": "AAlgorithm",
+	"label": "AAlgorithm",
+	"expose": false,
+	"description": "Agent node descriptions.",
+	"conda": "base",
+	"globalContext": {},
+	"agents": [
+		"agent.py"
+	],
+	"chatEntry": "agent.py",
+	"tools": []
+}

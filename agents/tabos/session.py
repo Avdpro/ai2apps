@@ -1093,7 +1093,7 @@ class AISession:
 			model = opts["mode"]
 		else:
 			model = "gpt-4o-minio"
-		platform = model2Platform.get(model) or opts.get("platform")
+		platform = opts.get("platform") or model2Platform.get(model)
 
 		result=await self.callHubAI(opts, messages, waitBlk)
 		await self.logLlmResult(codeURL, opts, messages, result)

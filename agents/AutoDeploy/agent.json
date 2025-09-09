@@ -1,0 +1,53 @@
+{
+	"name": "AutoDeploy",
+	"label": "AutoDeploy",
+	"expose": true,
+	"description": "Empty node.js backend AI Agent.",
+	"globalContext": {
+		"models": {
+			"fast": {
+				"platform": "OpenAI",
+				"model": "gpt-4o-mini"
+			},
+			"low": {
+				"platform": "OpenAI",
+				"model": "gpt-4o-mini"
+			},
+			"mid": {
+				"platform": "OpenAI",
+				"model": "gpt-4o-mini"
+			},
+			"standard": {
+				"platform": "OpenAI",
+				"model": "gpt-4o-mini"
+			},
+			"high": {
+				"platform": "OpenAI",
+				"model": "gpt-4o"
+			},
+			"accurate": {
+				"platform": "OpenAI",
+				"model": "gpt-4o"
+			},
+			"plan": {
+				"platform": "OpenAI",
+				"model": "gpt-4o"
+			},
+			"code": {
+				"platform": "OpenAI",
+				"model": "gpt-4o"
+			},
+			"chat": {
+				"platform": "OpenAI",
+				"model": "gpt-4o-mini"
+			}
+		}
+	},
+	"entry": "../../AgentNodeMain.mjs",
+	"chatEntry": null,
+	"agents": [
+		"agent.js"
+	],
+	"debugPort": 5001,
+	"conda": "bsrgan-env"
+}

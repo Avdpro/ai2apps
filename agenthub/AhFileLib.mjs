@@ -50,6 +50,7 @@ let AhFileLib,ahFileLib;
 			this.nextFileId=parseInt(fileMsgId);
 		}catch (err){
 			this.nextFileId=1;
+			await asyncFS.writeFile(pathLib.join(dirPath,"_file_id.txt"),""+this.nextFileId);
 		}
 	};
 	
