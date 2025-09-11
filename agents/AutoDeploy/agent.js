@@ -46,10 +46,10 @@ let agent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let InitBash,Get,Clone,GetPath,FindGuide,CheckGuide,NoReadme,WriteSetupGuide,SetupProject,FixArgs,Tip1,LLMCheckClone,CheckClone,Failure,Retry,goto,Navigate,Test,Find,CheckDeploy,OutputFail,OutputSuccess,RegisterProject,Start,RegisterFail,TestAPI,Process,CheckInput,InputText,CheckRegister,InputFile,Again,Fetch,CheckStart,RegisterSuccess;
+	let InitBash,Get,Clone,GetPath,FindGuide,CheckGuide,NoReadme,WriteSetupGuide,SetupProject,FixArgs,Tip1,LLMCheckClone,CheckClone,Failure,Retry,goto,Navigate,Test,CheckDeploy,OutputFail,OutputSuccess,RegisterProject,Start,RegisterFail,TestAPI,Process,CheckInput,InputText,CheckRegister,InputFile,Again,Fetch,CheckStart,RegisterSuccess,FakeSetup,ExtracUsage,Summary,Output;
 	/*#{1HDBOSUN90LocalVals*/
 	let repo, folder;
-	let input_type, output_type, api, usage_md, output_suffix, output_path, conda_name, server_start=false;
+	let input_type, output_type, api, usage_md, output_suffix, output_path, conda_name, server_start=false, all_files, guide_md;
 	
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -188,7 +188,12 @@ let agent=async function(session){
 		args['action']="Command";
 		args['commands']='find "$(pwd)" -type f -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -path "*/.pytest_cache/*" -not -path "*/.tox/*" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/env/*" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/*.egg-info/*" -not -path "*/.mypy_cache/*" -not -path "*/.coverage/*"';
 		args['options']="";
+		/*#{1IVIR603S0PreCodes*/
+		/*}#1IVIR603S0PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1IVIR603S0PostCodes*/
+		all_files = extract(result);
+		/*}#1IVIR603S0PostCodes*/
 		return {seg:FindGuide,result:(result),preSeg:"1IVIR603S0",outlet:"1IVIRB74M1"};
 	};
 	GetPath.jaxId="1IVIR603S0"
@@ -433,6 +438,7 @@ let agent=async function(session){
 		
 		combinedContent += `\n*Generated on: ${new Date().toISOString()}*\n`;
 		
+		guide_md = combinedContent;
 		// Write the combined content to setup_guide.md
 		const filePath = pathLib.join(decodeURIComponent(basePath), 'setup_guide.md');
 		await fsp.writeFile(filePath, combinedContent);
@@ -639,7 +645,7 @@ let agent=async function(session){
 		/*}#1J3I4OI7M0PreCodes*/
 		if(silent){
 			result="";
-			return {seg:Find,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
+			return {seg:ExtracUsage,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		/*#{1J3I4OI7M0PostCodes*/
@@ -648,7 +654,7 @@ let agent=async function(session){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
-			return {seg:Find,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
+			return {seg:ExtracUsage,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
 		}else if(item.code===1){
 			return {result:result};
 		}
@@ -658,26 +664,6 @@ let agent=async function(session){
 	};
 	Test.jaxId="1J3I4OI7M0"
 	Test.url="Test@"+agentURL
-	
-	segs["Find"]=Find=async function(input){//:1J3I4S3P30
-		let result;
-		let arg={dir:decodeURIComponent(pathLib.join(basePath, "projects", folder)),conda:conda_name};
-		let agentNode=("")||null;
-		let sourcePath=pathLib.join(basePath,"../AutoDeploy/FindFunction.js");
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		/*#{1J3I4S3P30Input*/
-		/*}#1J3I4S3P30Input*/
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		/*#{1J3I4S3P30Output*/
-		usage_md=result.guide;
-		output_suffix=result.output_suffix;
-		const str = Math.random().toString().slice(2);
-		output_path = `/tmp/${str}.${output_suffix}`;
-		/*}#1J3I4S3P30Output*/
-		return {seg:Fetch,result:(result),preSeg:"1J3I4S3P30",outlet:"1J3I4T3IO0"};
-	};
-	Find.jaxId="1J3I4S3P30"
-	Find.url="Find@"+agentURL
 	
 	segs["CheckDeploy"]=CheckDeploy=async function(input){//:1J3NPAI790
 		let result=input;
@@ -711,7 +697,6 @@ let agent=async function(session){
 		/*}#1J3NPP7BT0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1J3NPP7BT0PostCodes*/
-		conda_name=result;
 		/*}#1J3NPP7BT0PostCodes*/
 		return {seg:Test,result:(result),preSeg:"1J3NPP7BT0",outlet:"1J3NPQ9AU0"};
 	};
@@ -727,9 +712,10 @@ let agent=async function(session){
 			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
 		}
 		/*#{1J3NQE9OT0Code*/
-		input_type=input.input_type;
-		output_type=input.output_type;
+		// input_type=input.input_type;
+		// output_type=input.output_type;
 		let arg={project_path:decodeURIComponent(pathLib.join(basePath,"projects",folder)),usage_md:usage_md,project_name:folder};
+		session.addChatText("assistant", `### Arguments\n\`\`\`json\n${JSON.stringify(arg, null, 2)}\n\`\`\``);
 		result = await fetch('http://127.0.0.1:8082/projects', {
 		method: 'POST',
 		headers: {
@@ -964,6 +950,134 @@ let agent=async function(session){
 	};
 	RegisterSuccess.jaxId="1J4EB0N190"
 	RegisterSuccess.url="RegisterSuccess@"+agentURL
+	
+	segs["FakeSetup"]=FakeSetup=async function(input){//:1J4KBBMRK0
+		let result=input
+		/*#{1J4KBBMRK0Code*/
+		conda_name = "coqui-tts";
+		/*}#1J4KBBMRK0Code*/
+		return {result:result};
+	};
+	FakeSetup.jaxId="1J4KBBMRK0"
+	FakeSetup.url="FakeSetup@"+agentURL
+	
+	segs["ExtracUsage"]=ExtracUsage=async function(input){//:1J4KMNBDP0
+		let prompt;
+		let result=null;
+		/*#{1J4KMNBDP0Input*/
+		/*}#1J4KMNBDP0Input*/
+		
+		let opts={
+			platform:"Claude",
+			mode:"claude-3-7-sonnet-latest",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=ExtracUsage.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"请你作为用户助手，根据已部署的项目文档中 **Quick Start**、**Usage**、**Examples**、**Command Line Tools** 等使用说明部分，面向普通用户提取并整理以下信息：\n\n1. 基本使用示例\n2. 命令行使用方式\n3. 主要功能列表\n\n重点关注项目提供的1个核心功能（如 OCR、TTS 等），并对该功能尝试识别：\n**功能名称**\n**功能描述**\n**使用方法**（命令行示例）\n\n注意你所选择的功能在命令行使用中必须存在输入参数，且参数必须为text或filePath，其余参数均应该有默认且可以直接使用的参数，不需要用户自己填写或修改，即在命令行示例中只能有输入文本/输入文件路径/输出文件路径，其余参数均应选择最合适的值，并和功能描述相对应。\n如果输出的filePath是一个文件夹/目录的路径，请在output_description中指明需要压缩为zip文件，输出的格式是zip的路径，内容是A zip file containing ...。\n请严格按照以下 JSON 格式输出：\n\n{\n  \"features\": [\n    {\n      \"name\": \"功能名称（简洁明了）\",\n      \"description\": \"功能详细描述（说明具体作用和适用场景）\",\n      \"input_type\": \"text/filePath\",\n      \"input_description\": \"输入参数的具体描述\",\n      \"output_type\": \"text/filePath\",\n      \"output_is_directory_path\": true/false,\n      \"need_zip\": true/false,\n      \"output_suffix\":\"输出结果的文件后缀名，如zip, png, md, txt 等等\"\n      \"output_description\": \"输出结果的详细描述（文件格式、内容说明）\",\n      \"command\": \"完整的命令行执行示例（可以直接复制粘贴运行）\",\n    }\n  ]\n}\n\n"},
+		];
+		/*#{1J4KMNBDP0PrePrompt*/
+		/*}#1J4KMNBDP0PrePrompt*/
+		prompt=`项目内包含的文件有：
+${all_files}
+参考资料：
+${guide_md}`;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1J4KMNBDP0FilterMessage*/
+			/*}#1J4KMNBDP0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1J4KMNBDP0PreCall*/
+		/*}#1J4KMNBDP0PreCall*/
+		result=(result===null)?(await session.callSegLLM("ExtracUsage@"+agentURL,opts,messages,true)):result;
+		/*#{1J4KMNBDP0PostCall*/
+		result = trimJSON(result);
+		result = result.features[0];
+		input_type = result.input_type;
+		output_type = result.output_type;
+		output_suffix = result.output_suffix;
+		const str = Math.random().toString().slice(2);
+		output_path = `/tmp/${str}.${output_suffix}`;
+		/*}#1J4KMNBDP0PostCall*/
+		return {seg:Summary,result:(result),preSeg:"1J4KMNBDP0",outlet:"1J4KMNUEQ0"};
+	};
+	ExtracUsage.jaxId="1J4KMNBDP0"
+	ExtracUsage.url="ExtracUsage@"+agentURL
+	
+	segs["Summary"]=Summary=async function(input){//:1J4KN30G00
+		let prompt;
+		let result=null;
+		/*#{1J4KN30G00Input*/
+		/*}#1J4KN30G00Input*/
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4.1",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=Summary.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:`请把输入总结成使用指南，严格按照输入给出的input_type和output_type，输出markdown格式的文本。在指南中加上这句话：已经在本机的 conda 环境 ${conda_name} 安装相关依赖，运行相关 cli 需要先激活虚拟环境。`},
+		];
+		/*#{1J4KN30G00PrePrompt*/
+		/*}#1J4KN30G00PrePrompt*/
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1J4KN30G00FilterMessage*/
+			/*}#1J4KN30G00FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1J4KN30G00PreCall*/
+		/*}#1J4KN30G00PreCall*/
+		result=(result===null)?(await session.callSegLLM("Summary@"+agentURL,opts,messages,true)):result;
+		/*#{1J4KN30G00PostCall*/
+		usage_md = result;
+		/*}#1J4KN30G00PostCall*/
+		return {seg:Output,result:(result),preSeg:"1J4KN30G00",outlet:"1J4KN4BRT0"};
+	};
+	Summary.jaxId="1J4KN30G00"
+	Summary.url="Summary@"+agentURL
+	
+	segs["Output"]=Output=async function(input){//:1J4KNAFFS0
+		let result=input;
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let role="assistant";
+		let content=input;
+		/*#{1J4KNAFFS0PreCodes*/
+		/*}#1J4KNAFFS0PreCodes*/
+		session.addChatText(role,content,opts);
+		/*#{1J4KNAFFS0PostCodes*/
+		result = {guide:input,input_type:input_type,output_type:output_type,output_suffix:output_suffix};
+		/*}#1J4KNAFFS0PostCodes*/
+		return {seg:Fetch,result:(result),preSeg:"1J4KNAFFS0",outlet:"1J4KNAOVI0"};
+	};
+	Output.jaxId="1J4KNAFFS0"
+	Output.url="Output@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1302,7 +1416,7 @@ export{agent,ChatAPI};
 //						"x": "360",
 //						"y": "370",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2082,8 +2196,8 @@ export{agent,ChatAPI};
 //						"id": "Test",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2055",
-//						"y": "345",
+//						"x": "125",
+//						"y": "930",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2132,7 +2246,7 @@ export{agent,ChatAPI};
 //											}
 //										}
 //									},
-//									"linkedSeg": "1J3I4S3P30"
+//									"linkedSeg": "1J4KMNBDP0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -2172,50 +2286,6 @@ export{agent,ChatAPI};
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1J3I4S3P30",
-//					"attrs": {
-//						"id": "Find",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2300",
-//						"y": "315",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J3I4T3IR0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J3I4T3IR1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "AutoDeploy/FindFunction.js",
-//						"argument": "#{dir:decodeURIComponent(pathLib.join(basePath, \"projects\", folder)),conda:conda_name}",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1J3I4T3IO0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1J4CFJC4C0"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"agentNode": ""
-//					},
-//					"icon": "agent.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -2375,7 +2445,7 @@ export{agent,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J3I4OI7M0"
+//							"linkedSeg": "1J4M7RC9C0"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -2388,8 +2458,8 @@ export{agent,ChatAPI};
 //						"id": "RegisterProject",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3140",
-//						"y": "315",
+//						"x": "1045",
+//						"y": "900",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2439,8 +2509,8 @@ export{agent,ChatAPI};
 //						"id": "Start",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2910",
-//						"y": "300",
+//						"x": "815",
+//						"y": "885",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2483,8 +2553,8 @@ export{agent,ChatAPI};
 //						"id": "RegisterFail",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3680",
-//						"y": "405",
+//						"x": "1585",
+//						"y": "990",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2530,8 +2600,8 @@ export{agent,ChatAPI};
 //						"id": "TestAPI",
 //						"viewName": "",
 //						"label": "",
-//						"x": "4655",
-//						"y": "315",
+//						"x": "2560",
+//						"y": "900",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2584,8 +2654,8 @@ export{agent,ChatAPI};
 //						"id": "Process",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3975",
-//						"y": "300",
+//						"x": "1850",
+//						"y": "885",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2624,8 +2694,8 @@ export{agent,ChatAPI};
 //						"id": "CheckInput",
 //						"viewName": "",
 //						"label": "",
-//						"x": "4165",
-//						"y": "300",
+//						"x": "2070",
+//						"y": "885",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2692,8 +2762,8 @@ export{agent,ChatAPI};
 //						"id": "InputText",
 //						"viewName": "",
 //						"label": "",
-//						"x": "4385",
-//						"y": "245",
+//						"x": "2290",
+//						"y": "830",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2745,8 +2815,8 @@ export{agent,ChatAPI};
 //						"id": "CheckRegister",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3425",
-//						"y": "315",
+//						"x": "1330",
+//						"y": "900",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2813,8 +2883,8 @@ export{agent,ChatAPI};
 //						"id": "InputFile",
 //						"viewName": "",
 //						"label": "",
-//						"x": "4385",
-//						"y": "315",
+//						"x": "2290",
+//						"y": "900",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2866,8 +2936,8 @@ export{agent,ChatAPI};
 //						"id": "Again",
 //						"viewName": "",
 //						"label": "",
-//						"x": "4870",
-//						"y": "315",
+//						"x": "2775",
+//						"y": "900",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2972,8 +3042,8 @@ export{agent,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "4985",
-//						"y": "105",
+//						"x": "2890",
+//						"y": "690",
 //						"outlet": {
 //							"jaxId": "1J4CAL9DD0",
 //							"attrs": {
@@ -2994,8 +3064,8 @@ export{agent,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "4195",
-//						"y": "100",
+//						"x": "2100",
+//						"y": "685",
 //						"outlet": {
 //							"jaxId": "1J4CAL9DD1",
 //							"attrs": {
@@ -3017,8 +3087,8 @@ export{agent,ChatAPI};
 //						"id": "Fetch",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2490",
-//						"y": "315",
+//						"x": "370",
+//						"y": "900",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -3057,8 +3127,8 @@ export{agent,ChatAPI};
 //						"id": "CheckStart",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2675",
-//						"y": "315",
+//						"x": "580",
+//						"y": "900",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3124,8 +3194,8 @@ export{agent,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2940",
-//						"y": "385",
+//						"x": "845",
+//						"y": "970",
 //						"outlet": {
 //							"jaxId": "1J4CFSOS94",
 //							"attrs": {
@@ -3147,8 +3217,8 @@ export{agent,ChatAPI};
 //						"id": "RegisterSuccess",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3735",
-//						"y": "300",
+//						"x": "1585",
+//						"y": "885",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3186,6 +3256,259 @@ export{agent,ChatAPI};
 //						}
 //					},
 //					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1J4KBBMRK0",
+//					"attrs": {
+//						"id": "FakeSetup",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1290",
+//						"y": "370",
+//						"desc": "This is an AISeg.",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J4KBE0500",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J4KBE0501",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1J4KBC9ST0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1J4KMNBDP0",
+//					"attrs": {
+//						"id": "ExtracUsage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "235",
+//						"y": "690",
+//						"desc": "Excute a LLM call.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J4KNCR3K0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J4KNCR3K1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "Claude",
+//						"mode": "claude-3-7-sonnet-latest",
+//						"system": "请你作为用户助手，根据已部署的项目文档中 **Quick Start**、**Usage**、**Examples**、**Command Line Tools** 等使用说明部分，面向普通用户提取并整理以下信息：\n\n1. 基本使用示例\n2. 命令行使用方式\n3. 主要功能列表\n\n重点关注项目提供的1个核心功能（如 OCR、TTS 等），并对该功能尝试识别：\n**功能名称**\n**功能描述**\n**使用方法**（命令行示例）\n\n注意你所选择的功能在命令行使用中必须存在输入参数，且参数必须为text或filePath，其余参数均应该有默认且可以直接使用的参数，不需要用户自己填写或修改，即在命令行示例中只能有输入文本/输入文件路径/输出文件路径，其余参数均应选择最合适的值，并和功能描述相对应。\n如果输出的filePath是一个文件夹/目录的路径，请在output_description中指明需要压缩为zip文件，输出的格式是zip的路径，内容是A zip file containing ...。\n请严格按照以下 JSON 格式输出：\n\n{\n  \"features\": [\n    {\n      \"name\": \"功能名称（简洁明了）\",\n      \"description\": \"功能详细描述（说明具体作用和适用场景）\",\n      \"input_type\": \"text/filePath\",\n      \"input_description\": \"输入参数的具体描述\",\n      \"output_type\": \"text/filePath\",\n      \"output_is_directory_path\": true/false,\n      \"need_zip\": true/false,\n      \"output_suffix\":\"输出结果的文件后缀名，如zip, png, md, txt 等等\"\n      \"output_description\": \"输出结果的详细描述（文件格式、内容说明）\",\n      \"command\": \"完整的命令行执行示例（可以直接复制粘贴运行）\",\n    }\n  ]\n}\n\n",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#`项目内包含的文件有：\n${all_files}\n参考资料：\n${guide_md}`",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1J4KMNUEQ0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J4KN30G00"
+//						},
+//						"stream": "true",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1J4KN30G00",
+//					"attrs": {
+//						"id": "Summary",
+//						"viewName": "",
+//						"label": "",
+//						"x": "505",
+//						"y": "690",
+//						"desc": "Excute a LLM call.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J4KNCR3K2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J4KNCR3K3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4.1",
+//						"system": "#`请把输入总结成使用指南，严格按照输入给出的input_type和output_type，输出markdown格式的文本。在指南中加上这句话：已经在本机的 conda 环境 ${conda_name} 安装相关依赖，运行相关 cli 需要先激活虚拟环境。`",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1J4KN4BRT0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J4KNAFFS0"
+//						},
+//						"stream": "true",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1J4KNAFFS0",
+//					"attrs": {
+//						"id": "Output",
+//						"viewName": "",
+//						"label": "",
+//						"x": "730",
+//						"y": "690",
+//						"desc": "This is an AISeg.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J4KNCR3K4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J4KNCR3K5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"channel": "Chat",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1J4KNAOVI0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J4CFJC4C0"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J4M7RC9C0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1950",
+//						"y": "570",
+//						"outlet": {
+//							"jaxId": "1J4M7ST6L0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J4M7RKJG0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J4M7RKJG0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "150",
+//						"y": "570",
+//						"outlet": {
+//							"jaxId": "1J4M7ST6L1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J3I4OI7M0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

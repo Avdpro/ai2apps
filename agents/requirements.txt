@@ -2,6 +2,7 @@ aiofiles==24.1.0
 diffusers==0.29.0
 HTMLParser==0.0.2
 httpx==0.28.1
+httpx[socks]
 nest_asyncio==1.6.0
 openai==1.57.4
 Pillow==11.0.0
