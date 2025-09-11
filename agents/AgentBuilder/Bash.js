@@ -448,16 +448,26 @@ let Bash=async function(session){
 		/*#{1IIF89Q1I0Code*/
 		let changes="";
 		let contentLen;
+		let flag = false;
 		contentLen=(await cmdBash.getContent()).length;
 		while(!changes){
 			console.log("Wait bash idle...");
 			await cmdBash.waitIdle(true);
 			changes=await cmdBash.getContent();
+			if(changes.endsWith(IDLEMaker)){
+				flag = true;
+				break;
+			}
 			changes=changes.substring(contentLen);
 			console.log("Bash idle end: "+changes);
 		}
-		result=await cmdBash.getContent();
-		result=result.substring(orgCmdContent);
+		if(flag){
+			result=changes;
+		}
+		else{
+			result=await cmdBash.getContent();
+			result=result.substring(orgCmdContent);
+		}
 		/*}#1IIF89Q1I0Code*/
 		return {seg:IsDone,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
 	};
@@ -469,6 +479,7 @@ let Bash=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -478,7 +489,7 @@ let Bash=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -1832,6 +1843,7 @@ export{Bash,ChatAPI};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {
