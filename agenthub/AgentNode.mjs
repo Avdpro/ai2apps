@@ -1,11 +1,12 @@
 import pathLib from 'path';
+import { fileURLToPath } from "node:url";
 import { promises as fsp } from 'fs';
 import { createServer } from 'http';
 import WebSocket, { WebSocketServer }from 'ws';
 import ChatSession from './ChatSession.mjs';
 import net from 'net';
 
-const currentPath = pathLib.dirname(new URL(import.meta.url).pathname);
+const currentPath = pathLib.dirname(fileURLToPath(import.meta.url));
 
 function getErrorLocation(e) {
 	if(e && e.stack) {

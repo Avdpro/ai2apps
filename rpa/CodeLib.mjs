@@ -636,7 +636,7 @@ const codeLib=(codeTag)=>{
 								}
 							}
 						}
-						wraped.push(wNode);
+						wraped.push(node);
 					}
 				}
 			}catch(err){

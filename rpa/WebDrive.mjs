@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
-import { spawn } from "child_process";
+import { spawn,execFile } from "child_process";
 import {AaWebDriveContext} from "./WebDriveContext.mjs";
 import { URL } from 'url'
 import pathLib from 'path'
@@ -395,6 +395,16 @@ aaWebDrive.constructor = AaWebDrive;
 	//-----------------------------------------------------------------------
 	aaWebDrive.getSubscribedEvents=function() {
 		return [...this.subscribedEvents];
+	};
+	
+	//-----------------------------------------------------------------------
+	aaWebDrive.activate=async function(){
+		return await this.agentNode.callHub("WebDriveActiveBrowser",{browser:this.sysId});
+	};
+	
+	//-----------------------------------------------------------------------
+	aaWebDrive.backToApp=async function(){
+		return await this.agentNode.callHub("WebDriveBackToApp",{browser:this.sysId});
 	};
 }
 

@@ -1,7 +1,7 @@
 import { URL } from 'url'
 import pathLib from 'path'
 import { promises as fs, promises as fsp } from 'fs'
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { EventEmitter } from 'events'
 import {AaWebDriveContext} from "./WebDriveContext.mjs";
 import WebSocket from 'ws'
@@ -78,6 +78,66 @@ async function cleanTmpDirs(prefix, baseDir = '/tmp') {
 		console.error('读取目录失败：', err.message);
 	}
 }
+
+export async function getFrontmostPid() {
+	const jxa = `
+    function run() {
+      ObjC.import('AppKit');
+      const app = $.NSWorkspace.sharedWorkspace.frontmostApplication;
+      return app ? String(app.processIdentifier) : "";
+    }
+  `;
+	return new Promise((resolve, reject) => {
+		execFile("/usr/bin/osascript", ["-l","JavaScript","-e", jxa], (err, stdout) =>
+			err ? reject(err) : resolve(Number(String(stdout).trim() || 0))
+		);
+	});
+}
+
+function activateByPid(pid) {
+	const jxa = `
+    function run(argv) {
+      ObjC.import('AppKit');
+      const pid = parseInt(argv[0], 10);
+      if (!(pid > 0)) throw new Error("Invalid PID");
+
+      const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
+      if (!app) throw new Error("No NSRunningApplication for PID " + pid);
+
+      // 1 << 1 = NSApplicationActivateIgnoringOtherApps
+      const ok = app.activateWithOptions($.NSApplicationActivateIgnoringOtherApps);
+      return ok ? "OK" : "FAIL";
+    }
+  `;
+	return new Promise((resolve, reject) => {
+		execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", jxa, String(pid)], (err, stdout, stderr) => {
+			if (err) {
+				reject(Object.assign(err, { stdout: String(stdout), stderr: String(stderr) }));
+			} else {
+				resolve(String(stdout).trim());
+			}
+		});
+	});
+}
+
+function hideAppByPid(pid) {
+	const jxa = `
+    function run(argv) {
+      ObjC.import('AppKit');
+      const pid = parseInt(argv[0], 10);
+      const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
+      if (!app) throw new Error("No app for pid " + pid);
+
+      app.hide(); // 把它隐藏，焦点就会回到上一个 App
+      return "OK";
+    }
+  `;
+	return new Promise((resolve, reject) => {
+		execFile("/usr/bin/osascript", ["-l","JavaScript","-e", jxa, String(pid)],
+			(err, stdout, stderr) => err ? reject(err) : resolve(String(stdout).trim()));
+	});
+}
+
 
 //***************************************************************************
 //WebDriveApp
@@ -418,6 +478,11 @@ async function cleanTmpDirs(prefix, baseDir = '/tmp') {
 				}
 			});
 		};
+		
+		//---------------------------------------------------------------------------
+		webDriveApp.activate=async function(){
+			await activateByPid(this.firefox.pid);
+		};
 	}
 
 	//***************************************************************************
@@ -748,6 +813,7 @@ async function openBrowser(alias,opts,agentNode){
 //***************************************************************************
 //WebDriveSys
 //***************************************************************************
+let lastTopMostApp=null;
 WebDriveSys = {
 	init:(handlerMap) => {
 		//-------------------------------------------------------------------
@@ -760,6 +826,34 @@ WebDriveSys = {
 				return browser.browserId;
 			}
 			return null;
+		});
+		
+		//-------------------------------------------------------------------
+		handlerMap.set("WebDriveActiveBrowser",async function (msg,msgVO,agentNode,session) {
+			let browserId,browser;
+			browserId= msgVO.browserId||msgVO.browser;
+			lastTopMostApp=await getFrontmostPid();
+			if(browserId){
+				browser=browserMap.get(browserId);
+				if(browser){
+					browser.activate();
+				}
+			}
+		});
+		
+		//-------------------------------------------------------------------
+		handlerMap.set("WebDriveBackToApp",async function (msg,msgVO,agentNode,session) {
+			let browserId,browser;
+			browserId= msgVO.browserId||msgVO.browser;
+			if(browserId){
+				browser=browserMap.get(browserId);
+				if(browser && browser.firefox) {
+					if(lastTopMostApp){
+						await activateByPid(lastTopMostApp);
+					}
+					//await hideAppByPid(browser.firefox.pid);
+				}
+			}
 		});
 
 		//-------------------------------------------------------------------

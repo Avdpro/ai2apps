@@ -952,11 +952,14 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	};//TODO: Test this:
 	
 	//-----------------------------------------------------------------------
-	aaWebDriveContext.bringToFront = async function() {
-		//TODO: use sendCommand with WebDrive command
+	aaWebDriveContext.bringToFront = async function(opts) {
+		//Use sendCommand with WebDrive command
 		try {
 			// Use browsingContext.activate to bring the context to front
 			await this.webDrive.sendCommand('browsingContext.activate', {context:this.context});
+			if(opts?.focusBrowser){
+				await this.webDrive.activate();
+			}
 			return true;
 		} catch (error) {
 			// If activate command is not supported, try alternative approach
@@ -1941,6 +1944,14 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 				const pause = delay + (Math.random() - 0.5) * 0.2;
 				actions.push({ type: "pause", duration: Math.max(10, Math.round(pause)) });
 			}
+		}
+		if(opts.postEnter){
+			if(delay) {
+				const pause = delay + (Math.random() - 0.5) * 0.2;
+				actions.push({ type: "pause", duration: Math.max(10, Math.round(pause)) });
+			}
+			actions.push({ type: "keyDown", value: KeyCodes.Enter });
+			actions.push({ type: "keyUp", value: KeyCodes.Enter });
 		}
 		await this.webDrive.performActions(this.action,[
 			{
