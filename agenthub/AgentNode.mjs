@@ -47,6 +47,38 @@ async function readJSON(filePath) {
 		return {};
 	}
 }
+function safeJSON(obj,deep=0,maxDeep=3){
+	let text,id;
+	try{
+		text=JSON.stringify(obj);
+	}catch (err){
+		let val,tmp,replaced;
+		replaced={};
+		for(id in obj){
+			val=obj[id];
+			if(typeof(val)==="object") {
+				try {
+					tmp = JSON.stringify(val);
+				} catch (err) {
+					replaced[id]=val;
+					if(deep>=maxDeep){
+						obj[id]="[Object]";
+					}else{
+						tmp=safeJSON(obj,deep+1,maxDeep);
+						obj[id]=JSON.parse(tmp);
+					}
+				}
+			}
+		}
+		try{
+			text=JSON.stringify(obj);
+			Object.assign(obj,replaced);
+		}catch (err){
+			text='{}';
+		}
+	}
+	return text;
+}
 
 let hubPath;
 let hubConfig;
@@ -262,7 +294,7 @@ let AgentNode,agentNode;
 		
 		try {
 			const result = await this.execAgent(sessionId, agentPath, message.prompt || "");
-			this.websocket.send(JSON.stringify({ msg: "EndExecAgent", session: sessionId, result }));
+			this.websocket.send(safeJSON({ msg: "EndExecAgent", session: sessionId, result }));
 		} catch (e) {
 			console.log(`ExecAgent error: ${e.message}. At: ${getErrorLocation(e)}`);
 			console.error(e);
@@ -529,7 +561,7 @@ let AgentNode,agentNode;
 	agentNode.sendDebugLog=async function(log) {
 		try {
 			const logType = log.type;
-			const serializedLog = JSON.stringify(log);
+			const serializedLog = safeJSON(log);
 			for(let ws of this.debugClients) {
 				await ws.send(serializedLog);
 				if (logType === 'StartSeg' && ws.debugStepRun) {

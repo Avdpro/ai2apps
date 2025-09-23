@@ -9,8 +9,9 @@ import os from "os";
 import gpuInfo from "gpu-info";
 import diskUsage from "diskusage";
 /*}#1IG32J23V0MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 /*#{1IG32J23V0StartDoc*/
 function getCondaEnvName() {
@@ -182,7 +183,8 @@ let SysInitWorkEnv=async function(session){
 	
 	segs["ShowEnv"]=ShowEnv=async function(input){//:1IG3GT0LF0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=`
 Environment:
@@ -240,7 +242,8 @@ let ChatAPI=[{
 			properties:{
 			}
 		}
-	}
+	},
+	isChatApi: true
 }];
 //#CodyExport<<<
 /*#{1IG32J23V0PostDoc*/
@@ -365,7 +368,7 @@ export{SysInitWorkEnv,ChatAPI};
 //						"id": "ReadConifg",
 //						"viewName": "",
 //						"label": "",
-//						"x": "315",
+//						"x": "380",
 //						"y": "110",
 //						"desc": "读取config.json",
 //						"mkpInput": "$$input$$",
@@ -405,7 +408,7 @@ export{SysInitWorkEnv,ChatAPI};
 //						"id": "InitBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "550",
+//						"x": "615",
 //						"y": "110",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -446,7 +449,7 @@ export{SysInitWorkEnv,ChatAPI};
 //						"id": "ShowEnv",
 //						"viewName": "",
 //						"label": "",
-//						"x": "765",
+//						"x": "875",
 //						"y": "110",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -465,6 +468,7 @@ export{SysInitWorkEnv,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#`\nEnvironment:\n\\`\\`\\`javascript\n${JSON.stringify(env,null,\"\\t\")}\n\\`\\`\\`\n`",
 //						"outlet": {
 //							"jaxId": "1IG3GUT1G0",

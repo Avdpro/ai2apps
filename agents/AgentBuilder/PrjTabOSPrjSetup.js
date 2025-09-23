@@ -331,14 +331,13 @@ let PrjTabOSPrjSetup=async function(session){
 	}
 	
 	/*}#1IJP4B4TO0PostContext*/
-	let $agent,agent,segs={};
+	let agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IJP4BEIG0
 		let result=input;
 		let missing=false;
-		let smartAsk=false;
 		if(dirPath===undefined || dirPath==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
+			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input},false);
 			parseAgentArgs(result);
 		}
 		return {seg:StartSetup,result:(result),preSeg:"1IJP4BEIG0",outlet:"1IJP4DHGJ0"};
@@ -387,9 +386,9 @@ let PrjTabOSPrjSetup=async function(session){
 	
 	segs["TipNoSetup"]=TipNoSetup=async function(input){//:1IJP63GLR0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let opts={};
 		let role="assistant";
-		let content=(($ln==="CN")?("没有找到进一步的安装信息，安装完成。"):("No further installation information found, installation completed."));
+		let content=(($ln==="CN")?("没有找到安装信息"):("Setup information not found"));
 		/*#{1IJP63GLR0PreCodes*/
 		/*}#1IJP63GLR0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -468,7 +467,7 @@ let PrjTabOSPrjSetup=async function(session){
 	
 	segs["TipActionError"]=TipActionError=async function(input){//:1IJP6CN5H0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let opts={};
 		let role="assistant";
 		let content=`Wrong setup step-vo: ${JSON.stringify(input)}`;
 		session.addChatText(role,content,opts);
@@ -554,7 +553,7 @@ let PrjTabOSPrjSetup=async function(session){
 	
 	segs["TipEnd"]=TipEnd=async function(input){//:1IJP6KMNR0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let opts={};
 		let role="assistant";
 		let content=(($ln==="CN")?("安装完毕。"):("Setup completed."));
 		/*#{1IJP6KMNR0PreCodes*/
@@ -570,7 +569,7 @@ let PrjTabOSPrjSetup=async function(session){
 	
 	segs["TipError"]=TipError=async function(input){//:1IJP6MAPQ0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let opts={};
 		let role="assistant";
 		let content=input;
 		/*#{1IJP6MAPQ0PreCodes*/
@@ -587,13 +586,11 @@ let PrjTabOSPrjSetup=async function(session){
 	segs["CallAgent"]=CallAgent=async function(input){//:1IJP7OKKE0
 		let result;
 		let arg=input.args;
-		let agentNode=(undefined)||null;
 		let sourcePath=(input.agent)||"";
 		sourcePath=sourcePath[0]==="/"?sourcePath:pathLib.joinTabOSURL(basePath,"../"+sourcePath);
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJP7OKKE0Input*/
 		/*}#1IJP7OKKE0Input*/
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		result= await session.pipeChat(sourcePath,arg,false);
 		/*#{1IJP7OKKE0Output*/
 		/*}#1IJP7OKKE0Output*/
 		return {seg:GetNext,result:(result),preSeg:"1IJP7OKKE0",outlet:"1IJP7SO6F0"};
@@ -607,7 +604,6 @@ let PrjTabOSPrjSetup=async function(session){
 		args['callAgent']=input.agent;
 		args['callArg']=input.args;
 		args['checkUpdate']=true;
-		args['options']="";
 		/*#{1IJP7PJP70PreCodes*/
 		/*}#1IJP7PJP70PreCodes*/
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -622,27 +618,15 @@ let PrjTabOSPrjSetup=async function(session){
 		let tip=(input.prompt);
 		let tipRole=("assistant");
 		let placeholder=(input.placeholder||"");
-		let allowFile=(false)||false;
-		let askUpward=(false);
 		let text=("");
 		let result="";
 		/*#{1IJP7R6NB0PreCodes*/
 		/*}#1IJP7R6NB0PreCodes*/
-		if(askUpward && tip){
-			result=await session.askUpward($agent,tip);
-		}else{
-			if(tip){
-				session.addChatText(tipRole,tip);
-			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+		if(tip){
+			session.addChatText(tipRole,tip);
 		}
-		if(typeof(result)==="string"){
-			session.addChatText("user",result);
-		}else if(result.assets && result.prompt){
-			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
-		}else{
-			session.addChatText("user",result.text||result.prompt||result);
-		}
+		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
+		session.addChatText("user",result);
 		/*#{1IJP7R6NB0PostCodes*/
 		/*}#1IJP7R6NB0PostCodes*/
 		return {seg:GetNext,result:(result),preSeg:"1IJP7R6NB0",outlet:"1IJP7SO6F2"};
@@ -708,16 +692,14 @@ let PrjTabOSPrjSetup=async function(session){
 	segs["DoSyncPrj"]=DoSyncPrj=async function(input){//:1IJRTGNQ30
 		let result;
 		let arg={"dirPath":dirPath};
-		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ToolSetupPrjSyncDir.js");
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		result= await session.pipeChat(sourcePath,arg,false);
 		return {seg:GetNext,result:(result),preSeg:"1IJRTGNQ30",outlet:"1IJRTHCN60"};
 	};
 	DoSyncPrj.jaxId="1IJRTGNQ30"
 	DoSyncPrj.url="DoSyncPrj@"+agentURL
 	
-	agent=$agent={
+	agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjTabOSPrjSetup",
@@ -808,7 +790,6 @@ export{PrjTabOSPrjSetup};
 //			"jaxId": "1IJP4B4TO2",
 //			"attrs": {}
 //		},
-//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -877,7 +858,6 @@ export{PrjTabOSPrjSetup};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IJP4DHGJ0",
 //							"attrs": {
@@ -1031,10 +1011,10 @@ export{PrjTabOSPrjSetup};
 //						"role": "Assistant",
 //						"text": {
 //							"type": "string",
-//							"valText": "No further installation information found, installation completed.",
+//							"valText": "Setup information not found",
 //							"localize": {
-//								"EN": "No further installation information found, installation completed.",
-//								"CN": "没有找到进一步的安装信息，安装完成。"
+//								"EN": "Setup information not found",
+//								"CN": "没有找到安装信息"
 //							},
 //							"localizable": true
 //						},
@@ -1462,9 +1442,6 @@ export{PrjTabOSPrjSetup};
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
 //						},
-//						"outlets": {
-//							"attrs": []
-//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1501,9 +1478,6 @@ export{PrjTabOSPrjSetup};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
-//						},
-//						"outlets": {
-//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1542,9 +1516,6 @@ export{PrjTabOSPrjSetup};
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
 //						},
-//						"outlets": {
-//							"attrs": []
-//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1581,9 +1552,6 @@ export{PrjTabOSPrjSetup};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
-//						},
-//						"outlets": {
-//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1622,9 +1590,6 @@ export{PrjTabOSPrjSetup};
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
 //						},
-//						"outlets": {
-//							"attrs": []
-//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1661,9 +1626,6 @@ export{PrjTabOSPrjSetup};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
-//						},
-//						"outlets": {
-//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1833,9 +1795,6 @@ export{PrjTabOSPrjSetup};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
-//						},
-//						"outlets": {
-//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1870,7 +1829,6 @@ export{PrjTabOSPrjSetup};
 //						"callAgent": "#input.agent",
 //						"callArg": "#input.args",
 //						"checkUpdate": "true",
-//						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IJP7SO6F1",
 //							"attrs": {
@@ -1914,7 +1872,6 @@ export{PrjTabOSPrjSetup};
 //						"text": "",
 //						"file": "false",
 //						"showText": "true",
-//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IJP7SO6F2",
 //							"attrs": {
@@ -1992,9 +1949,6 @@ export{PrjTabOSPrjSetup};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJP6JC8F0"
-//						},
-//						"outlets": {
-//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2104,9 +2058,6 @@ export{PrjTabOSPrjSetup};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IJP6HNHD0"
-//						},
-//						"outlets": {
-//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"

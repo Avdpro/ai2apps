@@ -6,8 +6,9 @@ import {URL} from "url";
 /*#{1IJ2K5IBR0MoreImports*/
 import fsp from 'fs/promises';
 /*}#1IJ2K5IBR0MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -29,7 +30,7 @@ let PrjSetupBySteps=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,InitEnv,InitPrj,LoadSteps,HasSteps,LoadGuide,LoopSteps,SwitchAction,RunBash,RunBrew,RunConda,RunTaskBot,CheckStepReuslt,TipHideFinish,AskActive,SaveConda,ExposeAgent,HideAgent,ShowError,AskRetry,AbortStep,CheckGuide,TipNoGuide,TipStep,HfDownLoad,AddNote,LoadRagGudie,CheckRagGude,CfmGuide,ShowGude,AbortGuide,TipPubFinish,GenGuideJs,output,Export,goto;
+	let Start,InitEnv,InitPrj,LoadSteps,HasSteps,LoadGuide,LoopSteps,SwitchAction,RunBash,RunBrew,RunConda,RunTaskBot,CheckStepReuslt,TipHideFinish,AskActive,SaveConda,ExposeAgent,HideAgent,ShowError,AskRetry,AbortStep,CheckGuide,TipNoGuide,TipStep,HfDownLoad,AddNote,LoadRagGudie,CheckRagGude,CfmGuide,ShowGude,AbortGuide,TipPubFinish,GenGuideJs,output,Export,goto,CheckBash,CheckNetwork,Retry;
 	let env=null;
 	let project=null;
 	let steps=null;
@@ -37,6 +38,7 @@ let PrjSetupBySteps=async function(session){
 	let ragAddress=globalContext.rag?.solution||"http://localhost:222/solution/";
 	
 	/*#{1IJ2K5IBR0LocalVals*/
+	let current_command="";
 	/*}#1IJ2K5IBR0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -242,8 +244,13 @@ let PrjSetupBySteps=async function(session){
 		args['action']="Command";
 		args['commands']=input.commands||input.command;
 		args['options']="";
+		/*#{1IJ2KMQM70PreCodes*/
+		current_command=args['commands'];
+		/*}#1IJ2KMQM70PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {result:result};
+		/*#{1IJ2KMQM70PostCodes*/
+		/*}#1IJ2KMQM70PostCodes*/
+		return {seg:CheckBash,result:(result),preSeg:"1IJ2KMQM70",outlet:"1IJ2L5O0R4"};
 	};
 	RunBash.jaxId="1IJ2KMQM70"
 	RunBash.url="RunBash@"+agentURL
@@ -308,7 +315,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipHideFinish"]=TipHideFinish=async function(input){//:1IJ2KTD7V0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("AgentNode 安装完毕，没有设置为公开。"):("AgentNode installed but not set to public."));
 		session.addChatText(role,content,opts);
@@ -420,7 +428,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowError"]=ShowError=async function(input){//:1IJ2L4VCN0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=`执行安装时发生错误：${input}`;
 		/*#{1IJ2L4VCN0PreCodes*/
@@ -492,7 +501,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipNoGuide"]=TipNoGuide=async function(input){//:1IJ2PL6OI0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content="没有找到进一步安装配置本项目的指南。";
 		/*#{1IJ2PL6OI0PreCodes*/
@@ -507,7 +517,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipStep"]=TipStep=async function(input){//:1IJ44HLQB0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input.tip;
 		session.addChatText(role,content,opts);
@@ -619,7 +630,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowGude"]=ShowGude=async function(input){//:1IJL3NK8N0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=`### 找到安装指南：\n----\n${setupGuide}`;
 		/*#{1IJL3NK8N0PreCodes*/
@@ -645,7 +657,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipPubFinish"]=TipPubFinish=async function(input){//:1IK7U888P0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("AgentNode 安装完毕，并设置为公开。"):("AgentNode installed and set to public."));
 		session.addChatText(role,content,opts);
@@ -849,7 +862,8 @@ Output format:
 	
 	segs["output"]=output=async function(input){//:1ILIAT0E90
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -927,6 +941,89 @@ Output format:
 	goto.jaxId="1IJ2KJ0UK0"
 	goto.url="goto@"+agentURL
 	
+	segs["CheckBash"]=CheckBash=async function(input){//:1J58SM22D0
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4.1-mini",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"json_object"
+		};
+		let chatMem=CheckBash.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"你需要根据输入的终端命令输出，判断是否是由于网络问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}"},
+		];
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};messages.push(msg);
+		}
+		result=await session.callSegLLM("CheckBash@"+agentURL,opts,messages,true);
+		result=trimJSON(result);
+		return {seg:CheckNetwork,result:(result),preSeg:"1J58SM22D0",outlet:"1J58SM7TK0"};
+	};
+	CheckBash.jaxId="1J58SM22D0"
+	CheckBash.url="CheckBash@"+agentURL
+	
+	segs["CheckNetwork"]=CheckNetwork=async function(input){//:1J5DAI4RE0
+		let result=input;
+		if(input.is_network_issue){
+			return {seg:Retry,result:(input),preSeg:"1J5DAI4RE0",outlet:"1J5DAMHU40"};
+		}
+		return {result:result};
+	};
+	CheckNetwork.jaxId="1J5DAI4RE0"
+	CheckNetwork.url="CheckNetwork@"+agentURL
+	
+	segs["Retry"]=Retry=async function(input){//:1J5DAJI1R0
+		let prompt=((($ln==="CN")?("网络错误。请检查你的网络连接后重试"):("Network Error. Please check your network connection and retry.")))||input;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let withChat=false;
+		let silent=false;
+		let items=[
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("重试"):("Retry")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("终止"):("Abort")),code:1},
+		];
+		let result="";
+		let item=null;
+		
+		/*#{1J5DAJI1R0PreCodes*/
+		/*}#1J5DAJI1R0PreCodes*/
+		if(silent){
+			result={command:current_command};
+			return {seg:RunBash,result:(result),preSeg:"1J5DAJI1R0",outlet:"1J5DAJI170"};
+		}
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		/*#{1J5DAJI1R0PostCodes*/
+		/*}#1J5DAJI1R0PostCodes*/
+		if(typeof(item)==='string'){
+			result=item;
+			return {result:result};
+		}else if(item.code===0){
+			result=({command:current_command});
+			return {seg:RunBash,result:(result),preSeg:"1J5DAJI1R0",outlet:"1J5DAJI170"};
+		}else if(item.code===1){
+			return {result:result};
+		}
+		/*#{1J5DAJI1R0FinCodes*/
+		/*}#1J5DAJI1R0FinCodes*/
+		return {result:result};
+	};
+	Retry.jaxId="1J5DAJI1R0"
+	Retry.url="Retry@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -969,7 +1066,8 @@ let ChatAPI=[{
 		}
 	},
 	agentNode: "AgentBuilder",
-	agentName: "PrjSetupBySteps.js"
+	agentName: "PrjSetupBySteps.js",
+	isChatApi: true
 }];
 //#CodyExport<<<
 /*#{1IJ2K5IBR0PostDoc*/
@@ -1574,7 +1672,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"x": "1905",
 //						"y": "-210",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1598,7 +1696,8 @@ export{PrjSetupBySteps,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1J58SM22D0"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -1872,6 +1971,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "AgentNode installed but not set to public.",
@@ -2146,6 +2246,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#`执行安装时发生错误：${input}`",
 //						"outlet": {
 //							"jaxId": "1IJ2L5O0S1",
@@ -2430,6 +2531,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "没有找到进一步安装配置本项目的指南。",
 //						"outlet": {
 //							"jaxId": "1IJ2PM4NQ3",
@@ -2468,6 +2570,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input.tip",
 //						"outlet": {
 //							"jaxId": "1IJ44KI9F0",
@@ -2784,6 +2887,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#`### 找到安装指南：\\n----\\n${setupGuide}`",
 //						"outlet": {
 //							"jaxId": "1IJL3VU321",
@@ -2906,6 +3010,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "AgentNode installed and set to public.",
@@ -2972,6 +3077,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							},
 //							"linkedSeg": "1ILIAT0E90"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -3016,6 +3122,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1ILIAT4CM0",
@@ -3092,6 +3199,289 @@ export{PrjSetupBySteps,ChatAPI};
 //						}
 //					},
 //					"icon": "arrowupright.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1J58SM22D0",
+//					"attrs": {
+//						"id": "CheckBash",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2165",
+//						"y": "-210",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J58SM7TQ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J58SM7TQ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4.1-mini",
+//						"system": "你需要根据输入的终端命令输出，判断是否是由于网络问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1J58SM7TK0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J5DAI4RE0"
+//						},
+//						"stream": "true",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "json_object",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1J5DAI4RE0",
+//					"attrs": {
+//						"id": "CheckNetwork",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2395",
+//						"y": "-210",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J5DAMHUK0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J5DAMHUK1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1J5DAMHU41",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1J5DAMHU40",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J5DAMHUK2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J5DAMHUK3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.is_network_issue"
+//									},
+//									"linkedSeg": "1J5DAJI1R0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askMenu",
+//					"jaxId": "1J5DAJI1R0",
+//					"attrs": {
+//						"id": "Retry",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2640",
+//						"y": "-225",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Network Error. Please check your network connection and retry.",
+//							"localize": {
+//								"EN": "Network Error. Please check your network connection and retry.",
+//								"CN": "网络错误。请检查你的网络连接后重试"
+//							},
+//							"localizable": true
+//						},
+//						"multi": "false",
+//						"withChat": "false",
+//						"outlet": {
+//							"jaxId": "1J5DAMHU50",
+//							"attrs": {
+//								"id": "ChatInput",
+//								"desc": "输出节点。",
+//								"codes": "false"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J5DAJI170",
+//									"attrs": {
+//										"id": "Retry",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Retry",
+//											"localize": {
+//												"EN": "Retry",
+//												"CN": "重试"
+//											},
+//											"localizable": true
+//										},
+//										"result": "#{command:current_command}",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J5DAMHUK4",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J5DAMHUK5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1J5DATULS0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J5DAJI171",
+//									"attrs": {
+//										"id": "Abort",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Abort",
+//											"localize": {
+//												"EN": "Abort",
+//												"CN": "终止"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J5DAMHUK6",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J5DAMHUK7",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									}
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "menu.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J5DATULS0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2760",
+//						"y": "-390",
+//						"outlet": {
+//							"jaxId": "1J5DAU7GB0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J5DAU3GC0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J5DAU3GC0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1935",
+//						"y": "-390",
+//						"outlet": {
+//							"jaxId": "1J5DAU7GB1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IJ2KMQM70"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

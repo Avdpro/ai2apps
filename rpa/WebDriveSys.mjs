@@ -322,6 +322,7 @@ function hideAppByPid(pid) {
 							"browsingContext.load",
 							"browsingContext.contextDestroyed",
 							"browsingContext.userPromptOpened",
+							"browsingContext.contextCreated",
 							//"browsingContext.downloadWillBegin",
 							//"browsingContext.downloadEnd",
 						]);
@@ -582,8 +583,8 @@ function hideAppByPid(pid) {
 			for(context of contexts){
 				page=this.pageMap.get(context);
 				if(!page){
-					page=new AaWebDriveContext(this,context);
-					this.pageMap.set(context,page);
+					page=new AaWebDriveContext(this,context.context);
+					this.pageMap.set(context.context,page);
 				}
 				pages.push(page);
 			}
@@ -810,6 +811,14 @@ async function openBrowser(alias,opts,agentNode){
 	return browser;
 }
 
+async function getBrowsers(){
+	return Array.from(browserMap.values());
+}
+
+async function getAllBrowsersAlias(){
+	return Array.from(browserAliasMap.keys());
+}
+
 //***************************************************************************
 //WebDriveSys
 //***************************************************************************
@@ -832,7 +841,9 @@ WebDriveSys = {
 		handlerMap.set("WebDriveActiveBrowser",async function (msg,msgVO,agentNode,session) {
 			let browserId,browser;
 			browserId= msgVO.browserId||msgVO.browser;
-			lastTopMostApp=await getFrontmostPid();
+			if(!lastTopMostApp) {
+				lastTopMostApp = await getFrontmostPid();
+			}
 			if(browserId){
 				browser=browserMap.get(browserId);
 				if(browser){
@@ -874,7 +885,7 @@ WebDriveSys = {
 		});
 		
 		//-------------------------------------------------------------------
-			handlerMap.set("WebDriveCommand",async function (msg,msgVO,agentNode,session) {
+		handlerMap.set("WebDriveCommand",async function (msg,msgVO,agentNode,session) {
 			let browserId,browser,method,params,timeout;
 			browserId= msgVO.browserId||msgVO.browser;
 			method=msgVO.method;
@@ -887,7 +898,32 @@ WebDriveSys = {
 				}
 			}
 		});
-	}
+	},
+	openBrowser:openBrowser,
+	closeBrowser:async function(browser){
+		return await browser.close();
+	},
+	getBrowsers:getBrowsers,
+	getBrowser:function(browserId){
+		let browser=browserMap.get(browserId);
+		if(browser){
+			return browser;
+		}
+		return null;
+	},
+	getAllBrowsersAlias:getAllBrowsersAlias,
+	getBrowserByAlias:function(alias){
+		let browserId,browser;
+		browserId=browserAliasMap.get(alias);
+		if(browserId){
+			browser=browserMap.get(browserId);
+			if(browser){
+				return browser;
+			}
+		}
+		return null;
+	},
+	getBrowserId:getBrowserId,
 };
 
 export default WebDriveSys;

@@ -443,10 +443,6 @@ const codeLib=(codeTag)=>{
 		"snapNodeHTML":function(orgNode,opts){
 			let snappedNode;
 			console.log(`Will read HTML.`);
-			try{
-				throw "Break";
-			}catch(err){
-			}
 			snappedNode=this.snapNode(orgNode,opts,null);
 			if(!snappedNode){
 				return ""
@@ -487,6 +483,19 @@ const codeLib=(codeTag)=>{
 		
 		//---------------------------------------------------------------
 		"readNodeHTML":function(aaeId){
+			let node;
+			if(aaeId){
+				node=document.querySelector(`[aaeid="${aaeId}"]`);
+			}else{
+				node=document.body;
+			}
+			if(node){
+				return node.innerHTML;
+			}
+			return null;
+		},
+		//---------------------------------------------------------------
+		"getInnerHTML":function(aaeId){
 			let node;
 			if(aaeId){
 				node=document.querySelector(`[aaeid="${aaeId}"]`);

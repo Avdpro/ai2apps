@@ -54,10 +54,10 @@ let PrjTestSetupPrj=async function(session){
 	context={};
 	/*#{1HDBOSUN91PostContext*/
 	/*}#1HDBOSUN91PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["StartTip"]=StartTip=async function(input){//:1IKSL2QSV0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="开始测试项目部署步骤，首先删除旧的项目目录";
 		/*#{1IKSL2QSV0PreCodes*/
@@ -90,11 +90,13 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["InitEnv"]=InitEnv=async function(input){//:1IKT1O7920
 		let result;
-		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
 		let arg=input;
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IKT1O7920Input*/
 		/*}#1IKT1O7920Input*/
-		result= await session.pipeChat(sourcePath,arg,false);
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1IKT1O7920Output*/
 		env=globalContext.env;
 		/*}#1IKT1O7920Output*/
@@ -163,7 +165,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipCheckSteps"]=TipCheckSteps=async function(input){//:1IKSL5QL40
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="prj目录已删除，检查是否存在安装步骤（setup_agent.js）或者安装指南（setup_guide.md）。";
 		session.addChatText(role,content,opts);
@@ -174,7 +176,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipCallSteps"]=TipCallSteps=async function(input){//:1IKSL4LDB0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="获得了部署步骤，下面按照步骤尝试部署";
 		session.addChatText(role,content,opts);
@@ -206,7 +208,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipFindStepsFile"]=TipFindStepsFile=async function(input){//:1IKSLKJM40
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="找到了setup_agent.js，尝试读取部署步骤。";
 		session.addChatText(role,content,opts);
@@ -245,7 +247,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipCheckGudes"]=TipCheckGudes=async function(input){//:1IKSLN9QR0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="没有找到\"setup_agent.js\"文件，检查是否有安装指南\"setup_guide.md\"文件";
 		/*#{1IKSLN9QR0PreCodes*/
@@ -285,7 +287,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipCallGuides"]=TipCallGuides=async function(input){//:1IKSLP3PA0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="找到了部署指南（setup_guide.md），按照指南进行部署";
 		session.addChatText(role,content,opts);
@@ -296,9 +298,11 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["CallSetup"]=CallSetup=async function(input){//:1IKRER38C0
 		let result;
-		let sourcePath=pathLib.join(basePath,"./PrjSetupBySteps.js");
 		let arg={"prjPath":dirPath};
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./PrjSetupBySteps.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:Fin,result:(result),preSeg:"1IKRER38C0",outlet:"1IKSERVH71"};
 	};
 	CallSetup.jaxId="1IKRER38C0"
@@ -349,7 +353,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipTryAgain"]=TipTryAgain=async function(input){//:1IKSMC00M0
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="有些项目部署可能非常困难，请分析问题，请调整部署方案后再次尝试。";
 		session.addChatText(role,content,opts);
@@ -425,9 +429,11 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["GenAgent"]=GenAgent=async function(input){//:1IKSOEKOJ0
 		let result;
-		let sourcePath=pathLib.join(basePath,"");
 		let arg=input;
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
 	};
 	GenAgent.jaxId="1IKSOEKOJ0"
@@ -435,9 +441,11 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["GenSteps"]=GenSteps=async function(input){//:1IKSOHALC0
 		let result;
-		let sourcePath=pathLib.join(basePath,"");
 		let arg=input;
-		result= await session.pipeChat(sourcePath,arg,false);
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
 	};
 	GenSteps.jaxId="1IKSOHALC0"
@@ -445,7 +453,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipFinish"]=TipFinish=async function(input){//:1IKSOIOO80
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="会话结束。";
 		session.addChatText(role,content,opts);
@@ -520,7 +528,7 @@ let PrjTestSetupPrj=async function(session){
 	
 	segs["TipNoSteps"]=TipNoSteps=async function(input){//:1IKSV9JF10
 		let result=input;
-		let opts={};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content="部署步骤脚本（setup_agent.js）没有返回针对当前环境的具体步骤。";
 		session.addChatText(role,content,opts);
@@ -537,7 +545,7 @@ let PrjTestSetupPrj=async function(session){
 	JumpToGuides.jaxId="1IKSLN9QR0"
 	JumpToGuides.url="JumpToGuides@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjTestSetupPrj",
@@ -614,6 +622,7 @@ export{PrjTestSetupPrj};
 //			"jaxId": "1HDBOSUNA1",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "StartTip",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -737,6 +746,9 @@ export{PrjTestSetupPrj};
 //							},
 //							"linkedSeg": "1IKT1O7920"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -777,6 +789,9 @@ export{PrjTestSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IKT1NPOJ0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -813,6 +828,9 @@ export{PrjTestSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IKSL5QL40"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1011,7 +1029,7 @@ export{PrjTestSetupPrj};
 //						"id": "CheckSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1690",
+//						"x": "1675",
 //						"y": "105",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1278,6 +1296,9 @@ export{PrjTestSetupPrj};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IKSM2DSS0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1700,6 +1721,9 @@ export{PrjTestSetupPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1739,6 +1763,9 @@ export{PrjTestSetupPrj};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"

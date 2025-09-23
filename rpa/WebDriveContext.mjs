@@ -5,6 +5,7 @@ import KeyCodes from "./KeyCodes.mjs";
 import clipboardy from 'clipboardy'
 import { ensureCodeLib } from './CodeLib.mjs'
 import html2md from 'html-to-md';
+import AhFileLib from "../agenthub/AhFileLib.mjs";
 
 async function sleep(time){
 	let func,pms;
@@ -130,7 +131,7 @@ let AaWebDriveMouse,aaWebDriveMouse;
 	
 	//----------------------------------------------------------------------
 	aaWebDriveMouse.wheel=async function(opts){
-		return await this.context.wheel(this.context.pageMouseX,this.pageMouseY,opts?.deltaX||0,opts?.deltaY||0,{smooth:opts?.smooth||false,duration:opts?.duration||opts?.time||undefined});
+		return await this.context.wheel(null,{x:this.context.pageMouseX,y:this.pageMouseY,deltaX:opts?.deltaX||0,deltaY:opts?.deltaY||0,smooth:opts?.smooth!==false,steps:opts?.steps||1});
 	};
 	
 	//----------------------------------------------------------------------
@@ -170,28 +171,23 @@ let AaWebDriveKeyboard,aaWebDriveKeyboard;
 	
 	//----------------------------------------------------------------------
 	aaWebDriveKeyboard.down=async function(key,opts){
-		let code;
-		code=KeyCodes[key]||key;
-		await this.context.keyDown(code);
+		await this.context.keyDown(key);
 	};
 	
 	//----------------------------------------------------------------------
 	aaWebDriveKeyboard.up=async function(key,opts){
-		let code;
-		code=KeyCodes[key]||key;
-		await this.context.keyUp(code);
+		await this.context.keyUp(key);
 	};
 	
 	//----------------------------------------------------------------------
 	aaWebDriveKeyboard.press=async function(key,opts){
-		let code,count,delay,i;
-		code=KeyCodes[key]||key;
+		let count,delay,i;
 		count=opts?.count||1;
 		delay=opts?.delay||0;
 		for(i=0;i<count;i++) {
-			await this.context.keyDown(code);
+			await this.context.keyDown(key);
 			delay && (await sleep(delay));
-			await this.context.keyUp(code);
+			await this.context.keyUp(key);
 		}
 	};
 	
@@ -219,6 +215,8 @@ AaWebDriveContext=function(webDrive,contextId){
 	this.pageMouseY=Math.floor(Math.random()*30)+10;
 	
 	this.action=null;
+	
+	this.frameMap=new Map();
 	
 	//Inbuilt objects:
 	this.mouse=new AaWebDriveMouse(this);
@@ -292,7 +290,6 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.content = async function () {
-		//TODO: use sendCommand with WebDrive command
 		return await this.sendCommand('script.evaluate', {
 			expression: 'document.documentElement.outerHTML',
 			awaitPromise: false,
@@ -341,7 +338,14 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 				if(infoOnly){
 					return context.children;
 				}
-				return context.children.map(child => new AaWebDriveContext(this.webDrive, child.context));
+				return context.children.map((child) => {
+					let frame=this.frameMap.get(child.context);
+					if(!frame) {
+						frame = new AaWebDriveContext(this.webDrive, child.context);
+						this.frameMap.set(child.context, frame);
+					}
+					return frame;
+				});
 			}
 			return [];
 		});
@@ -863,6 +867,11 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	aaWebDriveContext.removeExposedFunction=async function(name,sandbox){
 		//TODO: Code this:
 	};//TODO: Code this later:
+	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.ensureCodeLib=async function() {
+		return await ensureCodeLib(this);
+	};
 }
 
 //***************************************************************************
@@ -886,7 +895,6 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.getViewport=aaWebDriveContext.viewport=async function(){
-		//TODO: use sendCommand with WebDrive command
 		try {
 			const result = await this.sendCommand('browsingContext.getTree', {
 				maxDepth: 0
@@ -1545,23 +1553,27 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			moveDis=Math.sqrt(dx*dx+dy*dy);
 			moveTime=Math.floor(moveDis/1500*1000);
 			steps=Math.floor(moveTime/timeGap);
-			for(i=0;i<=steps;i++){
-				const t = i / steps;
-				const easeT = 0.5 * (1 - Math.cos(Math.PI * t));
-				let x = orgX + (objX - orgX) * easeT;
-				let y = orgY + (objY - orgY) * easeT;
-				actions.push({
-					type: "pointerMove",
-					x: Math.round(x),
-					y: Math.round(y),
-					duration: Math.floor(timeGap*(Math.random()*0.3+0.85))
-				});
-				if(Math.random()>0.8){
+			if(steps>0) {
+				for (i = 0; i <= steps; i++) {
+					const t = i / steps;
+					const easeT = 0.5 * (1 - Math.cos(Math.PI * t));
+					let x = orgX + (objX - orgX) * easeT;
+					let y = orgY + (objY - orgY) * easeT;
 					actions.push({
-						type: "pause",
-						duration: Math.floor(timeGap*(Math.random()*0.3+0.85)*3)
+						type: "pointerMove",
+						x: Math.round(x),
+						y: Math.round(y),
+						duration: Math.floor(timeGap * (Math.random() * 0.3 + 0.85))
 					});
+					if (Math.random() > 0.8) {
+						actions.push({
+							type: "pause",
+							duration: Math.floor(timeGap * (Math.random() * 0.3 + 0.85) * 3)
+						});
+					}
 				}
+			}else{
+				actions.push({ type: "pointerMove", x: objX, y: objY, duration: 0 });
 			}
 		}else{
 			actions=[
@@ -1724,23 +1736,27 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			moveDis=Math.sqrt(dx*dx+dy*dy);
 			moveTime=Math.floor(moveDis/1500*1000);
 			steps=Math.floor(moveTime/timeGap);
-			for(i=0;i<=steps;i++){
-				const t = i / steps;
-				const easeT = 0.5 * (1 - Math.cos(Math.PI * t));
-				let x = orgX + (objX - orgX) * easeT;
-				let y = orgY + (objY - orgY) * easeT;
-				actions.push({
-					type: "pointerMove",
-					x: Math.round(x),
-					y: Math.round(y),
-					duration: Math.floor(timeGap*(Math.random()*0.3+0.85))
-				});
-				if(Math.random()>0.8){
+			if(steps>0) {
+				for (i = 0; i <= steps; i++) {
+					const t = i / steps;
+					const easeT = 0.5 * (1 - Math.cos(Math.PI * t));
+					let x = orgX + (objX - orgX) * easeT;
+					let y = orgY + (objY - orgY) * easeT;
 					actions.push({
-						type: "pause",
-						duration: Math.floor(timeGap*(Math.random()*0.3+0.85)*3)
+						type: "pointerMove",
+						x: Math.round(x),
+						y: Math.round(y),
+						duration: Math.floor(timeGap * (Math.random() * 0.3 + 0.85))
 					});
+					if (Math.random() > 0.8) {
+						actions.push({
+							type: "pause",
+							duration: Math.floor(timeGap * (Math.random() * 0.3 + 0.85) * 3)
+						});
+					}
 				}
+			}else{
+				actions.push({ type: "pointerMove", x: objX, y: objY, duration: 0 });
 			}
 			actions.push(...[
 				{ type: "pointerDown", button: 0 },
@@ -1822,23 +1838,27 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			moveDis=Math.sqrt(dx*dx+dy*dy);
 			moveTime=Math.floor(moveDis/1500*1000);
 			steps=Math.floor(moveTime/timeGap);
-			for(i=0;i<=steps;i++){
-				const t = i / steps;
-				const easeT = 0.5 * (1 - Math.cos(Math.PI * t));
-				let x = orgX + (objX - orgX) * easeT;
-				let y = orgY + (objY - orgY) * easeT;
-				actions.push({
-					type: "pointerMove",
-					x: Math.round(x),
-					y: Math.round(y),
-					duration: Math.floor(timeGap*(Math.random()*0.3+0.85))
-				});
-				if(Math.random()>0.8){
+			if(steps>0) {
+				for (i = 0; i <= steps; i++) {
+					const t = i / steps;
+					const easeT = 0.5 * (1 - Math.cos(Math.PI * t));
+					let x = orgX + (objX - orgX) * easeT;
+					let y = orgY + (objY - orgY) * easeT;
 					actions.push({
-						type: "pause",
-						duration: Math.floor(timeGap*(Math.random()*0.3+0.85)*3)
+						type: "pointerMove",
+						x: Math.round(x),
+						y: Math.round(y),
+						duration: Math.floor(timeGap * (Math.random() * 0.3 + 0.85))
 					});
+					if (Math.random() > 0.8) {
+						actions.push({
+							type: "pause",
+							duration: Math.floor(timeGap * (Math.random() * 0.3 + 0.85) * 3)
+						});
+					}
 				}
+			}else{
+				actions.push({ type: "pointerMove", x: objX, y: objY, duration: 0 });
 			}
 		}else{
 			actions=[
@@ -1865,24 +1885,69 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	};//TODO: Test this later
 	
 	//-----------------------------------------------------------------------
-	aaWebDriveContext.mouseWheel=async function(x,y,deltaX,deltaY,opts){
+	aaWebDriveContext.mouseWheel=async function(selector,opts){
 		let delay,action,actions;
+		let handle,x,y,deltaX,deltaY,steps;
 		action=this.action;
 		if(!action){
 			await this.startAction();
 		}
-		await this.moveMouse(x,y,{smooth:opts?.smooth||false});
-		actions = [
-			{
-				type: "scroll",
-				x,y,deltaX,deltaY,duration:opts?.duration
-			},
-		];
-		
+		x=opts?.x||0;
+		y=opts?.y||0;
+		deltaX=opts?.deltaX||0;
+		deltaY=opts?.deltaY||100;
+		if(selector){
+			if(selector.handle){
+				handle=selector;
+			}else {
+				handle = await this.$(selector);
+			}
+			
+		}
+		if(handle){
+			const rect=await this.callFunction(function(item){
+				const rect=item.getBoundingClientRect();
+				if(!rect){
+					return null;
+				}
+				return {
+					x:rect.x, y:rect.y, width:rect.width, height: rect.height
+				};
+			},[handle]);
+			x+=rect.x+rect.width*0.5;
+			y+=rect.y+rect.height*0.5;
+			await this.disown(handle);
+		}else{
+			const ss=await this.callFunction(function(){
+				return {w:window.innerWidth,h:window.innerHeight}
+			},[]);
+			x+=ss.w*0.5;
+			y+=ss.h*0.5;
+		}
+		x=Math.floor(x);
+		y=Math.floor(y);
+		await this.moveMouse(x,y,{smooth:opts?.smooth!==false});
+		steps=opts?.steps;
+		if(steps>1){
+			let i;
+			actions=[];
+			for(i=0;i<steps;i++) {
+				actions.push({
+					type: "scroll",	x, y, deltaX:Math.floor(deltaX/steps), deltaY:Math.floor(deltaY/steps)
+				},{ "type": "pause", "duration": 100 });
+			}
+		}else{
+			actions = [
+				{
+					type: "scroll",
+					x,y,deltaX,deltaY,duration:opts?.duration
+				},
+			];
+		}
 		await this.webDrive.performActions(this.action,[
 			{
 				type: "wheel",
-				id: "mouse1",
+				id: "wheel1",
 				actions: actions
 			}
 		]);
@@ -1969,6 +2034,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.keyDown=async function(key,opts){
 		let handle,action,actions,delay;
+		key=KeyCodes[key]||key;
 		action=this.action;
 		if(!action){
 			await this.startAction();
@@ -1991,6 +2057,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.keyUp=async function(key,opts){
 		let handle,action,actions,delay;
+		key=KeyCodes[key]||key;
 		action=this.action;
 		if(!action){
 			await this.startAction();
@@ -2023,6 +2090,48 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			this.action=null;
 		}
 	};//Tested
+	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.pressShortcut=async function(keys,opts){
+		let key,i,n,action,actions;
+		action=this.action;
+		if(!action){
+			await this.startAction();
+		}
+		
+		if(typeof(keys)==="string"){
+			keys=keys.split(">");
+		}
+		if(!Array.isArray(keys)){
+			return false;
+		}
+		actions=[];
+		n=keys.length;
+		for(i=0;i<n;i++){
+			key=keys[i];
+			key=KeyCodes[key]||key;
+			actions.push({ type: "keyDown", value: key });
+			actions.push({ type: "pause", duration: Math.max(10, Math.round(30)) });
+		}
+		for(i=n-1;i>=0;i--){
+			key=keys[i];
+			key=KeyCodes[key]||key;
+			actions.push({ type: "keyUp", value: key });
+			actions.push({ type: "pause", duration: Math.max(10, Math.round(30)) });
+		}
+		await this.webDrive.performActions(this.action,[
+			{
+				type: "key",
+				id: "keyboard1",
+				actions: actions
+			}
+		]);
+		if(!action && this.action){
+			this.action.end();
+			this.action=null;
+		}
+		return true;
+	};
 	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.pasteText=async function(text,opts){
@@ -2245,6 +2354,53 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	};//Tested, seg applied
 	
 	//-----------------------------------------------------------------------
+	aaWebDriveContext.waitForNewPage=async function(opts){
+		let webDrive,callback,callerror,timer,waitNavi,anyPage;
+		let waitFunc=async (message)=>{
+			let pages,context,call,page;
+			context=message.context;
+			if(anyPage || message.parent===this.context || message.originalOpener===this.context) {
+				pages = await webDrive.getPages();
+				page = pages.find((page) => {return page.context === context});
+				if (page) {
+					call = callback;
+					if (call) {
+						webDrive.off("browsingContext.contextCreated", waitFunc);
+						callback = callerror = null;
+						if(waitNavi) {
+							await page.waitForNavigation();
+						}
+						call(page);
+					}
+				}
+			}
+		}
+		anyPage=opts?.anyPage;
+		waitNavi=opts?.waitNavi!==false;
+		webDrive=this.webDrive;
+		return new Promise((resolve,reject)=>{
+			let timeout;
+			callback=resolve;
+			callerror=reject;
+			timeout=opts?.timeout;
+			webDrive.on("browsingContext.contextCreated",waitFunc);
+			if(timeout>0){
+				timer=setTimeout(()=>{
+					let call;
+					timer=null;
+					call=callback;
+					if(call){
+						webDrive.off("browsingContext.contextCreated",waitFunc);
+						callback=null;
+						callerror=null;
+						call(null);
+					}
+				})
+			}
+		});
+	};//TODO: Code this:
+	
+	//-----------------------------------------------------------------------
 	aaWebDriveContext.waitForNetworkIdle=async function(opts){
 		let timeout,idleTime,concurrency,func;
 		timeout=opts?.timeout||0;
@@ -2329,8 +2485,8 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 					if(call){
 						callback=null;
 						callerror=null;
+						call(null);
 					}
-					call(null);
 				})
 			}
 		});
@@ -2386,8 +2542,21 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 						message:"",
 						inputHandle: inputHandle,
 						accept: async (files) => {
+							let path,i,n,res;
 							if(!Array.isArray(files)){
 								files=[files];
+							}
+							n=files.length;
+							for(i=0;i<n;i++){
+								path=files[i];
+								if(path.startsWith("hub://")){
+									if(this.webDrive.agentNode){
+										res=await this.webDrive.agentNode.callHub("AhFilePath",{fileName:path.substring(6)});
+										if(res.code===200){
+											files[i]=res.path;
+										}
+									}
+								}
 							}
 							await this.webDrive.sendCommand("input.setFiles",{
 								context:this.context,
@@ -2445,8 +2614,8 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 					if(call){
 						callback=null;
 						callerror=null;
+						call(null);
 					}
-					call(null);
 				})
 			}
 		});
@@ -2489,8 +2658,8 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 					if(call){
 						callback=null;
 						callerror=null;
+						call(null);
 					}
-					call(null);
 				})
 			}
 		});
@@ -2544,9 +2713,10 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.waitForFunction=async function(pageFunction,opts,...args){
-		let pms,checker,timer,timeout,callback,callerror,call;
+		let pms,checker,timer,timeout,callback,callerror,call,interval;
 		
 		timeout=opts?.timeout||0;
+		interval=opts?.interval||200;
 		
 		pms=new Promise((resolve,reject)=>{
 			callback=resolve;
@@ -2579,7 +2749,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			}catch(err){
 				//Do thing, we just try keeping calling it
 			}
-		},100);
+		},interval);
 		if(timeout>0){
 			timer=setTimeout(()=>{
 				let call;
@@ -2592,7 +2762,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 				}
 			},timeout);
 		}
-		await pms;
+		return await pms;
 	};//Tested
 	
 	//-----------------------------------------------------------------------

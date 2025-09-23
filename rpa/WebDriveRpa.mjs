@@ -271,6 +271,7 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 //***************************************************************************
 {
 	//-----------------------------------------------------------------------
+	WebRpa.getNodeAttribute=WebRpa.getNodeAttr=
 	webRpa.getNodeAttribute = webRpa.getNodeAttr = async function (pageFrame, node, key) {
 		let codeTag;
 		codeTag = await ensureCodeLib(pageFrame);
@@ -281,6 +282,7 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 	
 	//-----------------------------------------------------------------------
+	WebRpa.setNodeAttribute=WebRpa.setNodeAttr=
 	webRpa.setNodeAttribute=webRpa.setNodeAttr=async function(pageFrame,node,key,value){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
@@ -291,26 +293,29 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 
 	//-----------------------------------------------------------------------
+	WebRpa.getNodeAttributes=WebRpa.getNodeAttrs=
 	webRpa.getNodeAttributes=webRpa.getNodeAttrs=async function(pageFrame,node){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
-		return await pageFrame.callFunction((codeTag)=>{
+		return await pageFrame.callFunction((codeTag,node)=>{
 			let codeLib=globalThis[codeTag];
 			return codeLib.getNodeAttributes(node);
 		},[codeTag,node]);
 	};
 
 	//-----------------------------------------------------------------------
+	WebRpa.getNodeParent=
 	webRpa.getNodeParent=async function(pageFrame,node){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
 		return await pageFrame.callFunction((codeTag,node)=>{
 			let codeLib=globalThis[codeTag];
 			return codeLib.getNodeParent(node);
-		},[codeTag,]);
+		},[codeTag,node]);
 	};
 
 	//-----------------------------------------------------------------------
+	WebRpa.getNodeChildren=
 	webRpa.getNodeChildren=async function(pageFrame,node){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
@@ -321,6 +326,7 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 
 	//-----------------------------------------------------------------------
+	WebRpa.readNodeView=
 	webRpa.readNodeView=async function(pageFrame,node,opts){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
@@ -331,6 +337,7 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 	
 	//-----------------------------------------------------------------------
+	WebRpa.readNodeText=
 	webRpa.readNodeText=async function(pageFrame,node,opts){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
@@ -341,20 +348,30 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 
 	//-----------------------------------------------------------------------
+	WebRpa.readNodeHTML=WebRpa.readInnerHTML=
 	webRpa.readNodeHTML=webRpa.readInnerHTML=async function(pageFrame,node,opts){
 		let codeTag;
 		opts=opts||{mark:true,clean:true};
 		codeTag=await ensureCodeLib(pageFrame);
 		return await pageFrame.callFunction((codeTag,node,opts) => {
 			let codeLib = globalThis[codeTag];
-			//let mark=opts?.mark;
-			//let clean=opts?.clean;
-			//return codeLib.readMarkedHTML(node, mark,clean);
 			return codeLib.snapNodeHTML(node, opts);
 		}, [codeTag,node,opts]);
 	};
 	
 	//-----------------------------------------------------------------------
+	WebRpa.getInnerHTML=
+	webRpa.getInnerHTML=async function(pageFrame,node){
+			let codeTag;
+			codeTag=await ensureCodeLib(pageFrame);
+			return await pageFrame.callFunction((codeTag,node) => {
+				let codeLib = globalThis[codeTag];
+				return codeLib.getInnerHTML(node);
+			}, [codeTag,node]);
+		};
+
+	//-----------------------------------------------------------------------
+	WebRpa.readArticle=
 	webRpa.readArticle=async function(pageFrame,baseNode,options){
 		let html,md;
 		if(baseNode) {
@@ -372,6 +389,7 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 {
 	//-----------------------------------------------------------------------
 	//TODO: Maybe use default $() to get node.
+	WebRpa.queryNode=
 	webRpa.queryNode=async function(pageFrame,node,selector,opts){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);
@@ -383,6 +401,7 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 
 	//-----------------------------------------------------------------------
 	//TODO: Maybe use default $$() to get node
+	WebRpa.queryNodes=
 	webRpa.queryNodes=async function(pageFrame,node,selector,opts){
 		let codeTag;
 		codeTag=await ensureCodeLib(pageFrame);

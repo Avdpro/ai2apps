@@ -155,6 +155,7 @@ aaWebDrive.constructor = AaWebDrive;
 		result=await this.getBrowsingContextTree(1,null);
 		contexts=result.contexts;
 		for(context of contexts){
+			context=context.context;
 			page=this.pageMap.get(context);
 			if(!page){
 				page=new AaWebDriveContext(this,context);

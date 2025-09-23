@@ -130,6 +130,13 @@ let AhFileLib,ahFileLib;
 			res.json({ code: 200,fileName:fileName,path:filePath});
 		};
 		
+		AhFileLib.toAbsolutePath=async function(url){
+			if(url.startsWith("hub://")){
+				url=url.substring(6);
+			}
+			return await appFileLib.getFilePath(url);
+		};
+		
 		return appFileLib;
 	};
 }

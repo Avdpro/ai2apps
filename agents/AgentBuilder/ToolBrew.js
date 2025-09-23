@@ -6,8 +6,9 @@ import {URL} from "url";
 /*#{1IJ40NO870MoreImports*/
 import child_process from "child_process";
 /*}#1IJ40NO870MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -48,7 +49,7 @@ let ToolBrew=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew,Verify,CheckInstall;
+	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew,Verify,CheckInstall,LLMcheck,Success,Failure,Retry;
 	/*#{1IJ40NO870LocalVals*/
 	/*}#1IJ40NO870LocalVals*/
 	
@@ -112,7 +113,7 @@ let ToolBrew=async function(session){
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		/*#{1IJ414D9E0PostCodes*/
 		/*}#1IJ414D9E0PostCodes*/
-		return {seg:FinInstall,result:(result),preSeg:"1IJ414D9E0",outlet:"1IJ415BPN2"};
+		return {seg:LLMcheck,result:(result),preSeg:"1IJ414D9E0",outlet:"1IJ415BPN2"};
 	};
 	Install.jaxId="1IJ414D9E0"
 	Install.url="Install@"+agentURL
@@ -291,6 +292,94 @@ let ToolBrew=async function(session){
 	CheckInstall.jaxId="1IVRNCEQR0"
 	CheckInstall.url="CheckInstall@"+agentURL
 	
+	segs["LLMcheck"]=LLMcheck=async function(input){//:1J58KVSNO0
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4.1-mini",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"json_object"
+		};
+		let chatMem=LLMcheck.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:(($ln==="CN")?(`用户的输入是终端的输出，你需要解析这个输出，判断安装是否成功。若成功，返回以下格式的JSON： { "status": "success" } 若失败，返回失败的原因以及相关的错误信息，格式如下： { "status": "failure", "failure_reason": "<原因>"}`):(`User input is the output of the terminal. You need to parse this output to determine if the installation was successful. If successful, return the following JSON format: { "status": "success" } If failed, return the reason for failure and relevant error information in the following format: { "status": "failure", "failure_reason": "<reason>"}`))},
+		];
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};messages.push(msg);
+		}
+		result=await session.callSegLLM("LLMcheck@"+agentURL,opts,messages,true);
+		result=trimJSON(result);
+		return {seg:Success,result:(result),preSeg:"1J58KVSNO0",outlet:"1J58L5AM60"};
+	};
+	LLMcheck.jaxId="1J58KVSNO0"
+	LLMcheck.url="LLMcheck@"+agentURL
+	
+	segs["Success"]=Success=async function(input){//:1J58L5O440
+		let result=input;
+		if(input.status==="success"){
+			return {seg:FinInstall,result:(input),preSeg:"1J58L5O440",outlet:"1J58LALL70"};
+		}
+		return {seg:Failure,result:(result),preSeg:"1J58L5O440",outlet:"1J58LALL71"};
+	};
+	Success.jaxId="1J58L5O440"
+	Success.url="Success@"+agentURL
+	
+	segs["Failure"]=Failure=async function(input){//:1J58L8IA10
+		let result=input;
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let role="assistant";
+		let content=(($ln==="CN")?(`${pkgName}安装失败，原因是${input.reason}`):(`${pkgName} installation failed due to ${input.reason}`));
+		session.addChatText(role,content,opts);
+		return {seg:Retry,result:(result),preSeg:"1J58L8IA10",outlet:"1J58LALL72"};
+	};
+	Failure.jaxId="1J58L8IA10"
+	Failure.url="Failure@"+agentURL
+	
+	segs["Retry"]=Retry=async function(input){//:1J58LFBGK0
+		let prompt=((($ln==="CN")?("是否重试"):("Whether to retry")))||input;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let withChat=false;
+		let silent=false;
+		let items=[
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("是的"):("Yes")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("否"):("No")),code:1},
+		];
+		let result="";
+		let item=null;
+		
+		if(silent){
+			result="";
+			return {seg:Install,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG80"};
+		}
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		if(typeof(item)==='string'){
+			result=item;
+			return {result:result};
+		}else if(item.code===0){
+			return {seg:Install,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG80"};
+		}else if(item.code===1){
+			return {result:result};
+		}
+		return {result:result};
+	};
+	Retry.jaxId="1J58LFBGK0"
+	Retry.url="Retry@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -332,7 +421,8 @@ let ChatAPI=[{
 				pkgName:{type:"string",description:"要操作的软件包名称"}
 			}
 		}
-	}
+	},
+	isChatApi: true
 }];
 
 //:Export Edit-AddOn:
@@ -373,7 +463,7 @@ if(DocAIAgentExporter){
 			coder.packText("args['action']=");this.genAttrStatement(seg.getAttr("action"));coder.packText(";");coder.newLine();
 			coder.packText("args['pkgName']=");this.genAttrStatement(seg.getAttr("pkgName"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolBrew.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder2/ai/ToolBrew.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -676,7 +766,7 @@ export{ToolBrew,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IJ42E4DL0"
+//							"linkedSeg": "1J58KVSNO0"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -1047,8 +1137,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "FinInstall",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1815",
-//						"y": "60",
+//						"x": "2275",
+//						"y": "45",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "",
@@ -1304,6 +1394,346 @@ export{ToolBrew,ChatAPI};
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1J58KVSNO0",
+//					"attrs": {
+//						"id": "LLMcheck",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1820",
+//						"y": "60",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J58L5AMC0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J58L5AMC1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4.1-mini",
+//						"system": {
+//							"type": "string",
+//							"valText": "#`User input is the output of the terminal. You need to parse this output to determine if the installation was successful. If successful, return the following JSON format: { \"status\": \"success\" } If failed, return the reason for failure and relevant error information in the following format: { \"status\": \"failure\", \"failure_reason\": \"<reason>\"}`",
+//							"localize": {
+//								"EN": "#`User input is the output of the terminal. You need to parse this output to determine if the installation was successful. If successful, return the following JSON format: { \"status\": \"success\" } If failed, return the reason for failure and relevant error information in the following format: { \"status\": \"failure\", \"failure_reason\": \"<reason>\"}`",
+//								"CN": "#`用户的输入是终端的输出，你需要解析这个输出，判断安装是否成功。若成功，返回以下格式的JSON： { \"status\": \"success\" } 若失败，返回失败的原因以及相关的错误信息，格式如下： { \"status\": \"failure\", \"failure_reason\": \"<原因>\"}`"
+//							},
+//							"localizable": true
+//						},
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1J58L5AM60",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J58L5O440"
+//						},
+//						"stream": "true",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "json_object",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1J58L5O440",
+//					"attrs": {
+//						"id": "Success",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2055",
+//						"y": "60",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J58LALLD0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J58LALLD1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1J58LALL71",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1J58L8IA10"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1J58LALL70",
+//									"attrs": {
+//										"id": "Success",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J58LALLD2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J58LALLD3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.status===\"success\""
+//									},
+//									"linkedSeg": "1IJ42E4DL0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1J58L8IA10",
+//					"attrs": {
+//						"id": "Failure",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2280",
+//						"y": "150",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J58LALLD4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J58LALLD5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"channel": "Chat",
+//						"text": {
+//							"type": "string",
+//							"valText": "#`${pkgName} installation failed due to ${input.reason}`",
+//							"localize": {
+//								"EN": "#`${pkgName} installation failed due to ${input.reason}`",
+//								"CN": "#`${pkgName}安装失败，原因是${input.reason}`"
+//							},
+//							"localizable": true
+//						},
+//						"outlet": {
+//							"jaxId": "1J58LALL72",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J58LFBGK0"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askMenu",
+//					"jaxId": "1J58LFBGK0",
+//					"attrs": {
+//						"id": "Retry",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2475",
+//						"y": "150",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Whether to retry",
+//							"localize": {
+//								"EN": "Whether to retry",
+//								"CN": "是否重试"
+//							},
+//							"localizable": true
+//						},
+//						"multi": "false",
+//						"withChat": "false",
+//						"outlet": {
+//							"jaxId": "1J58LGSMQ0",
+//							"attrs": {
+//								"id": "ChatInput",
+//								"desc": "输出节点。",
+//								"codes": "false"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J58LFBG80",
+//									"attrs": {
+//										"id": "Yes",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Yes",
+//											"localize": {
+//												"EN": "Yes",
+//												"CN": "是的"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J58LGSN60",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J58LGSN61",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1J58LH35E0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J58LFBG81",
+//									"attrs": {
+//										"id": "No",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "No",
+//											"localize": {
+//												"EN": "No",
+//												"CN": "否"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J58LGSN62",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J58LGSN63",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									}
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "menu.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J58LH35E0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2610",
+//						"y": "295",
+//						"outlet": {
+//							"jaxId": "1J58LHQIP0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J58LH8FL0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J58LH8FL0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1640",
+//						"y": "295",
+//						"outlet": {
+//							"jaxId": "1J58LHQIP1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IJ414D9E0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

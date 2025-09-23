@@ -6,8 +6,9 @@ import {URL} from "url";
 /*#{1IHHJHFN30MoreImports*/
 import fsp from 'fs/promises';
 /*}#1IHHJHFN30MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -34,7 +35,7 @@ let ToolModifyFile=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,LoadFile,CheckLoad,FailResult,AIModify,ShowDiff,AskConfirm,Finsh,Abort,EditCode;
+	let FixArgs,LoadFile,CheckLoad,FailResult,AIModify,ShowDiff,Finsh;
 	let orgContent="";
 	let newContent=undefined;
 	
@@ -58,14 +59,15 @@ let ToolModifyFile=async function(session){
 	context={};
 	/*#{1IHHJHFN30PostContext*/
 	/*}#1IHHJHFN30PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["FixArgs"]=FixArgs=async function(input){//:1IHHJSJTQ0
 		let result=input;
 		let missing=false;
+		let smartAsk=false;
 		if(filePath===undefined || filePath==="") missing=true;
 		if(guide===undefined || guide==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input},false);
+			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
 		return {seg:LoadFile,result:(result),preSeg:"1IHHJSJTQ0",outlet:"1IHHJVS0I0"};
@@ -119,9 +121,9 @@ let ToolModifyFile=async function(session){
 		/*}#1IHHJV0QQ0Input*/
 		
 		let opts={
-			platform:"",
-			mode:"$fast",
-			maxToken:2000,
+			platform:"OpenAI",
+			mode:"gpt-4.1",
+			maxToken:32768,
 			temperature:0,
 			topP:1,
 			fqcP:0,
@@ -166,7 +168,10 @@ ${newContent}
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};
+			/*#{1IHHJV0QQ0FilterMessage*/
+			/*}#1IHHJV0QQ0FilterMessage*/
+			messages.push(msg);
 		}
 		/*#{1IHHJV0QQ0PreCall*/
 		/*}#1IHHJV0QQ0PreCall*/
@@ -192,51 +197,21 @@ ${newContent}
 	
 	segs["ShowDiff"]=ShowDiff=async function(input){//:1IHHK1ANQ0
 		let result=input;
+		let channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IHHK1ANQ0PreCodes*/
 		newContent=input.content;
-		content=(($ln==="CN")?(`### 原文件: \n\`\`\`${orgContent}\`\`\`\n### 修改后的文件: \n\`\`\`${newContent}\`\`\`\n`):/*EN*/(`### Original file: \n\`\`\`${orgContent}\`\`\`\n### Modified file: \n\`\`\`${newContent}\`\`\`\n`));
+		content=(($ln==="CN")?(`### 原文件: \n\`\`\`${orgContent}\n\`\`\`\n### 修改后的文件: \n\`\`\`${newContent}\n\`\`\`\n`):/*EN*/(`### Original file: \n\`\`\`${orgContent}\n\`\`\`\n### Modified file: \n\`\`\`${newContent}\n\`\`\`\n`));
 		/*}#1IHHK1ANQ0PreCodes*/
-		session.addChatText(role,content);
+		session.addChatText(role,content,opts);
 		/*#{1IHHK1ANQ0PostCodes*/
 		/*}#1IHHK1ANQ0PostCodes*/
-		return {seg:AskConfirm,result:(result),preSeg:"1IHHK1ANQ0",outlet:"1IHHK8AH30"};
+		return {seg:Finsh,result:(result),preSeg:"1IHHK1ANQ0",outlet:"1IHHK8AH30"};
 	};
 	ShowDiff.jaxId="1IHHK1ANQ0"
 	ShowDiff.url="ShowDiff@"+agentURL
-	
-	segs["AskConfirm"]=AskConfirm=async function(input){//:1IHHK9L2R0
-		let prompt=("是否照此修改文件？你也可以提出进一步修改意见")||input;
-		let countdown=undefined;
-		let placeholder=(undefined)||null;
-		let silent=false;
-		let items=[
-			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("确认修改"):("Confirm changes")),code:0},
-			{icon:"/~/-tabos/shared/assets/dot.svg",text:("Abort changes"),code:1},
-			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("手动编辑"):("Manual edit")),code:2},
-		];
-		let result="";
-		let item=null;
-		
-		if(silent){
-			result="";
-			return {seg:Finsh,result:(result),preSeg:"1IHHK9L2R0",outlet:"1IHHK9L290"};
-		}
-		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:false,countdown:countdown,placeholder:placeholder});
-		if(typeof(item)==='string'){
-			result=item;
-			return {seg:AIModify,result:(result),preSeg:"1IHHK9L2R0",outlet:"1IHHKBJBP0"};
-		}else if(item.code===0){
-			return {seg:Finsh,result:(result),preSeg:"1IHHK9L2R0",outlet:"1IHHK9L290"};
-		}else if(item.code===1){
-			return {seg:Abort,result:(result),preSeg:"1IHHK9L2R0",outlet:"1IHHK9L291"};
-		}else if(item.code===2){
-			return {seg:EditCode,result:(result),preSeg:"1IHHK9L2R0",outlet:"1IICCLNFO0"};
-		}
-	};
-	AskConfirm.jaxId="1IHHK9L2R0"
-	AskConfirm.url="AskConfirm@"+agentURL
 	
 	segs["Finsh"]=Finsh=async function(input){//:1IHHKDEUC0
 		let result=input
@@ -253,36 +228,7 @@ ${newContent}
 	Finsh.jaxId="1IHHKDEUC0"
 	Finsh.url="Finsh@"+agentURL
 	
-	segs["Abort"]=Abort=async function(input){//:1IHHKDU150
-		let result=input
-		/*#{1IHHKDU150Code*/
-		result={result:"Abort",content:"用户取消文件修改。"};
-		/*}#1IHHKDU150Code*/
-		return {result:result};
-	};
-	Abort.jaxId="1IHHKDU150"
-	Abort.url="Abort@"+agentURL
-	
-	segs["EditCode"]=EditCode=async function(input){//:1IICCJPMR0
-		let result;
-		let role="assistant";
-		let tip="";
-		let showResult=false;
-		let dlgVO={title:"Edit text",text:newContent};
-		/*#{1IICCJPMR0Pre*/
-		/*}#1IICCJPMR0Pre*/
-		result= await session.askUserDlg({"dlgPath":"/@editkit/ui/DlgLongText.js","arg":dlgVO,"role":role,tip:tip,showResult:showResult});
-		/*#{1IICCJPMR0Codes*/
-		if(result){
-			newContent=result;
-		}
-		/*}#1IICCJPMR0Codes*/
-		return {seg:ShowDiff,result:(result),preSeg:"1IICCJPMR0",outlet:"1IICCLNFP0"};
-	};
-	EditCode.jaxId="1IICCJPMR0"
-	EditCode.url="EditCode@"+agentURL
-	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"ToolModifyFile",
@@ -315,7 +261,7 @@ ${newContent}
 let ChatAPI=[{
 	def:{
 		name: "ToolModifyFile",
-		description: "修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整路径，不要提供相对路径。\n本工具仅具备简单的编程能力。",
+		description: "修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整绝对路径和如何修改的说明。\n请提供{filePath:\"\",guide:\"\"}",
 		parameters:{
 			type: "object",
 			properties:{
@@ -372,6 +318,7 @@ export{ToolModifyFile,ChatAPI};
 //			"jaxId": "1IHHJHFN32",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "false",
@@ -438,6 +385,7 @@ export{ToolModifyFile,ChatAPI};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
+//						"smartAsk": "false",
 //						"outlet": {
 //							"jaxId": "1IHHJVS0I0",
 //							"attrs": {
@@ -481,6 +429,9 @@ export{ToolModifyFile,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IHHJTFSS0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -586,6 +537,9 @@ export{ToolModifyFile,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -616,11 +570,11 @@ export{ToolModifyFile,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "",
-//						"mode": "$fast",
+//						"platform": "OpenAI",
+//						"mode": "gpt-4.1",
 //						"system": "#`---\n### 角色\n你是一个根据指令修改文件内容的AI\n\n---\n### 原始文件内容:\n\\`\\`\\`\n${orgContent}\n\\`\\`\\`\n\n${newContent?`\n---\n### 当前修改后的文件内容:\n${newContent}\n`:\"\"}\n\n---\n### 对话\n在每次对话时根据用户指令修改当前文件内容，用JSON返回。\n请把修改后的完整文件内容放到返回JOSN的\"content\"属性里\n{\n\t\"content\":\"...修改后的内容...\"\n}\n`",
 //						"temperature": "0",
-//						"maxToken": "2000",
+//						"maxToken": "32768",
 //						"topP": "1",
 //						"fqcP": "0",
 //						"prcP": "0",
@@ -681,6 +635,7 @@ export{ToolModifyFile,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IHHK8AH30",
@@ -688,187 +643,10 @@ export{ToolModifyFile,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IHHK9L2R0"
+//							"linkedSeg": "1IHHKDEUC0"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "askMenu",
-//					"jaxId": "1IHHK9L2R0",
-//					"attrs": {
-//						"id": "AskConfirm",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1205",
-//						"y": "160",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"prompt": "是否照此修改文件？你也可以提出进一步修改意见",
-//						"multi": "false",
-//						"withChat": "false",
-//						"outlet": {
-//							"jaxId": "1IHHKBJBP0",
-//							"attrs": {
-//								"id": "ChatInput",
-//								"desc": "输出节点。",
-//								"codes": "false"
-//							},
-//							"linkedSeg": "1IHHKCG9P0"
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIButtonOutlet",
-//									"jaxId": "1IHHK9L290",
-//									"attrs": {
-//										"id": "Confirm",
-//										"desc": "输出节点。",
-//										"text": {
-//											"type": "string",
-//											"valText": "Confirm changes",
-//											"localize": {
-//												"EN": "Confirm changes",
-//												"CN": "确认修改"
-//											},
-//											"localizable": true
-//										},
-//										"result": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1IHHKBJBQ0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1IHHKBJBQ1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										}
-//									},
-//									"linkedSeg": "1IHHKDEUC0"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIButtonOutlet",
-//									"jaxId": "1IHHK9L291",
-//									"attrs": {
-//										"id": "Abort",
-//										"desc": "输出节点。",
-//										"text": {
-//											"type": "string",
-//											"valText": "Abort changes",
-//											"localize": {
-//												"EN": "Abort changes"
-//											},
-//											"localizable": true
-//										},
-//										"result": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1IHHKBJBQ2",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1IHHKBJBQ3",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										}
-//									},
-//									"linkedSeg": "1IHHKDU150"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIButtonOutlet",
-//									"jaxId": "1IICCLNFO0",
-//									"attrs": {
-//										"id": "Result",
-//										"desc": "输出节点。",
-//										"text": {
-//											"type": "string",
-//											"valText": "Manual edit",
-//											"localize": {
-//												"EN": "Manual edit",
-//												"CN": "手动编辑"
-//											},
-//											"localizable": true
-//										},
-//										"result": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1IICCLNFR0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1IICCLNFR1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										}
-//									},
-//									"linkedSeg": "1IICCJPMR0"
-//								}
-//							]
-//						},
-//						"silent": "false"
-//					},
-//					"icon": "menu.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IHHKCG9P0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1370",
-//						"y": "265",
-//						"outlet": {
-//							"jaxId": "1IHHKE9OT0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IHHKCLOI0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IHHKCLOI0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "780",
-//						"y": "265",
-//						"outlet": {
-//							"jaxId": "1IHHKE9OT1",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IHHJV0QQ0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -878,8 +656,8 @@ export{ToolModifyFile,ChatAPI};
 //						"id": "Finsh",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1455",
-//						"y": "45",
+//						"x": "1270",
+//						"y": "160",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -902,157 +680,16 @@ export{ToolModifyFile,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
-//						"result": "#input"
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1IHHKDU150",
-//					"attrs": {
-//						"id": "Abort",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1455",
-//						"y": "120",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "flag.svg",
-//						"context": {
-//							"jaxId": "1IHHKE9OT4",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IHHKE9OT5",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1IHHKE9OR1",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "askUIDlg",
-//					"jaxId": "1IICCJPMR0",
-//					"attrs": {
-//						"id": "EditCode",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1455",
-//						"y": "195",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IICCLNFR2",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IICCLNFR3",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "/@editkit/ui/DlgLongText.js",
-//						"callArg": "#{title:\"Edit text\",text:newContent}",
-//						"role": "Assistant",
-//						"tip": "",
-//						"showResult": "false",
-//						"outlet": {
-//							"jaxId": "1IICCLNFP0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IICCPEDN0"
-//						}
-//					},
-//					"icon": "idcard.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connectorL",
-//					"jaxId": "1IICCPEDN0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1675",
-//						"y": "195",
-//						"outlet": {
-//							"jaxId": "1IICCTCVK0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IICCPJ8J0"
-//						},
-//						"dir": "L2R"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IICCPJ8J0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1710",
-//						"y": "-30",
-//						"outlet": {
-//							"jaxId": "1IICCTCVK1",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IICCPR5U0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IICCPR5U0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1020",
-//						"y": "-30",
-//						"outlet": {
-//							"jaxId": "1IICCTCVK2",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IHHK1ANQ0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
 //				}
 //			]
 //		},
-//		"desc": "修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整路径，不要提供相对路径。\n本工具仅具备简单的编程能力。",
+//		"desc": "修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整绝对路径和如何修改的说明。\n请提供{filePath:\"\",guide:\"\"}",
 //		"exportAPI": "true",
 //		"exportAddOn": "false",
 //		"addOnOpts": ""
