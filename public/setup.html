@@ -9885,6 +9885,7 @@ function setupButton(typeDef){
 	const STATE_DOWN=1;
 	const STATE_OVER=2;
 	const STATE_GRAY=3;
+	const STATE_RESET=-1;
 	
 	let pptIsLabelIdx=typeDef.allocPptIdx("isLabel",false);
 	let pptLabelTgtIdx=typeDef.allocPptIdx("labelTgt",false);
@@ -10245,6 +10246,10 @@ function setupButton(typeDef){
 					break;
 				case STATE_GRAY:
 					faceCode="gray";
+					break;
+				case STATE_RESET:
+					faceCode="up";
+					valMap[pptIsPenDownIdx]=0;
 					break;
 			}
 			valMap[pptStateIdx]=val;
@@ -11189,6 +11194,9 @@ VFACTObj.setupDocker=setupDocker;
 				if(OnMove){
 					OnMove(evt,tgtPxy,dx,dy,pxy);
 				}else if(tgtPxy){
+					let curX,curY;
+					curX=tgtPxy.x;
+					curY=tgtPxy.y;
 					tgtPxy.x=orgX+dx;
 					tgtPxy.y=orgY+dy;
 					if(!capture){
@@ -11196,7 +11204,10 @@ VFACTObj.setupDocker=setupDocker;
 						evt.stopPropagation();
 					}
 					if(OnMoved){
-						OnMoved(evt,tgtPxy,pxy);
+						if(OnMoved(evt,tgtPxy,pxy)===false){
+							tgtPxy.x=curX;
+							tgtPxy.y=curY;
+						}
 					}
 				}
 			}else {
@@ -15212,7 +15223,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 359,
+		"versionIdx": 360,
 		"zip": "coke.zip"
 	},
 	{
@@ -15232,7 +15243,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-files",
-		"versionIdx": 77,
+		"versionIdx": 80,
 		"zip": "files.zip"
 	},
 	{
@@ -15242,7 +15253,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 243,
+		"versionIdx": 244,
 		"zip": "editkit.zip"
 	},
 	{
@@ -15290,7 +15301,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 359,
+		"versionIdx": 360,
 		"zip": "coke.zip"
 	},
 	{
@@ -15310,7 +15321,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-files",
-		"versionIdx": 77,
+		"versionIdx": 80,
 		"zip": "files.zip"
 	},
 	{
@@ -15358,7 +15369,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 359,
+		"versionIdx": 360,
 		"zip": "coke.zip"
 	},
 	{
@@ -15406,7 +15417,7 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 359,
+		"versionIdx": 360,
 		"zip": "coke.zip"
 	},
 	{
@@ -15446,7 +15457,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 359,
+		"versionIdx": 360,
 		"zip": "coke.zip"
 	},
 	{
@@ -15466,7 +15477,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-files",
-		"versionIdx": 77,
+		"versionIdx": 80,
 		"zip": "files.zip"
 	},
 	{
@@ -15476,7 +15487,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-editkit",
-		"versionIdx": 243,
+		"versionIdx": 244,
 		"zip": "editkit.zip"
 	},
 	{

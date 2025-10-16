@@ -1,4 +1,4 @@
-
+import {getUserInfo} from "../util/UserUtils.js";
 import followRedirects from "follow-redirects";
 const DAYTIME=24*3600*1000;
 
@@ -64,10 +64,16 @@ export default function(app,router,apiMap) {
 	//-------------------------------------------------------------------
 	//General API calls:
 	apiMap['getWeather'] = async function (req, res, next) {
-		let reqVO, weatherJSON,city;
+		let reqVO, userId, token, userInfo, weatherJSON,city;
 		
 		reqVO = req.body.vo;
+		userId = reqVO.userId;
+		token = reqVO.token;
 		city = reqVO.city||"Beijing";
+		userInfo=await getUserInfo(req,userId,token);
+		if(!userInfo){
+			res.json({code:-100,info:"UserId / token error."});
+		}
 		try{
 			weatherJSON=await makeHttpJSONCall(`http://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${WEATHERMAP_API_KEY}`,false);
 			res.json({code:200,...weatherJSON});

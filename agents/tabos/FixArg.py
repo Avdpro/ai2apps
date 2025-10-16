@@ -6,7 +6,7 @@ import urllib.parse
 import importlib
 from session import trimJSON
 ##{1ID42HC6Q0MoreImports#
-from session import trimJSON 
+from session import trimJSON
 ##}1ID42HC6Q0MoreImports#
 
 true=True
@@ -45,15 +45,15 @@ async def FixArg(session):
 	argTemplate=None
 	command=None
 	smartAsk=None
-	
+
 	context, globalContext = None, None
 	self = None
 	__Ln = session.language or "CN"
 	CheckCommand, CallGPT, HasMissing, Done, InputArgs, CheckSmart, SmartCheck, SmartMissing, AskUpward = None, None, None, None, None, None, None, None, None
 	##{1ID42HC6Q0LocalVals#
 	##}1ID42HC6Q0LocalVals#
-	
-	
+
+
 	def parseAgentArgs(input):
 		nonlocal argTemplate,command,smartAsk
 		if isinstance(input, dict):
@@ -68,7 +68,7 @@ async def FixArg(session):
 		if command is None and isinstance(input,str):
 			command=input
 		##}1ID42HC6Q0ParseArgs#
-	
+
 	##{1ID42HC6Q0PreContext#
 	##}1ID42HC6Q0PreContext#
 	globalContext = session.globalContext
@@ -78,7 +78,7 @@ async def FixArg(session):
 	##{1ID42HC6Q0PostContext#
 	##}1ID42HC6Q0PostContext#
 	_agent,agent,segs = None, None, {}
-	
+
 	async def CheckCommand_exec(input):#//:1ID42IJ6S0
 		result=input
 		if command and isinstance(command, str):
@@ -95,13 +95,13 @@ async def FixArg(session):
 		"jaxId":"1ID42IJ6S0",
 		"url":"CheckCommand@"+agentURL
 	}
-	
+
 	async def CallGPT_exec(input):#//:1ID42M5R60
 		prompt=None
 		result=None
 		##{1ID42M5R60Input#
 		##}1ID42M5R60Input#
-		
+
 		opts={
 			"mode":"gpt-4o",
 			"maxToken":3800,
@@ -173,16 +173,16 @@ async def FixArg(session):
 		"jaxId":"1ID42M5R60",
 		"url":"CallGPT@"+agentURL
 	}
-	
+
 	async def HasMissing_exec(input):#//:1ID42ODO30
 		result=input
 		##{1ID42ODO30Start#
 		hasMissing=False
 		pptDefs=argTemplate.get("properties",{})
-		
+
 		for key in list(input.keys()):
 			value=input[key]
-			if value=="$$MISSING":
+			if value=="$$MISSING" or value=="":
 				input.pop(key,None)
 				if pptDefs.get(key,{}).get("required")!=False:
 					hasMissing=True
@@ -199,7 +199,7 @@ async def FixArg(session):
 		"jaxId":"1ID42ODO30",
 		"url":"HasMissing@"+agentURL
 	}
-	
+
 	async def Done_exec(input):#//:1ID42PMCH0
 		nonlocal segs
 		result=input
@@ -212,7 +212,7 @@ async def FixArg(session):
 		"jaxId":"1ID42PMCH0",
 		"url":"Done@"+agentURL
 	}
-	
+
 	async def InputArgs_exec(input):#//:1ID42QILS0
 		role="assistant"
 		text=(("完善智能体调用参数:") if(__Ln=="CN") else ("Complete agent arguments:"))
@@ -230,7 +230,7 @@ async def FixArg(session):
 		"jaxId":"1ID42QILS0",
 		"url":"InputArgs@"+agentURL
 	}
-	
+
 	async def CheckSmart_exec(input):#//:1IOCH6LMU0
 		result=input
 		if smartAsk:
@@ -244,11 +244,11 @@ async def FixArg(session):
 		"jaxId":"1IOCH6LMU0",
 		"url":"CheckSmart@"+agentURL
 	}
-	
+
 	async def SmartCheck_exec(input):#//:1IOCH9TAD0
 		prompt=None
 		result=None
-		
+
 		opts={
 			"mode":"gpt-4o",
 			"maxToken":2000,
@@ -327,7 +327,7 @@ async def FixArg(session):
 		"messages":[],
 		"url":"SmartCheck@"+agentURL
 	}
-	
+
 	async def SmartMissing_exec(input):#//:1IOCHFH5K0
 		result=input
 		##{1IOCHFH5K0Start#
@@ -346,7 +346,7 @@ async def FixArg(session):
 		"jaxId":"1IOCHFH5K0",
 		"url":"SmartMissing@"+agentURL
 	}
-	
+
 	async def AskUpward_exec(input):#//:1IOCHHANI0
 		tip=input
 		tipRole="assistant"
@@ -376,7 +376,7 @@ async def FixArg(session):
 		"jaxId":"1IOCHHANI0",
 		"url":"AskUpward@"+agentURL
 	}
-	
+
 	async def execAgent(input):
 		result = None
 		parseAgentArgs(input)
@@ -459,7 +459,7 @@ if(DocPyAgentExporter){
 	const packExtraCodes=docPyAgentExporter.packExtraCodes;
 	const packResult=docPyAgentExporter.packResult;
 	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
-	
+
 	EditAISeg.regDef({
 		name:"fixArgs",showName:(($ln==="CN")?("修正参数"):/*EN*/("Fix arguments")),icon:"args.svg",catalog:["Code"],
 		attrs:{
@@ -472,7 +472,7 @@ if(DocPyAgentExporter){
 		listHint:["id","argTemplate","command","smartAsk","codes","desc"],
 		desc:"这是一个AI智能体。"
 	});
-	
+
 	DocPyAgentExporter.segTypeExporters["fixArgs"]=
 	function(seg){
 		let coder=this.coder;

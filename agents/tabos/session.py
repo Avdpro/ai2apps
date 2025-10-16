@@ -155,6 +155,7 @@ class AISession:
 		self.snsChatUserId = None
 		self.debugStarted=False
 		self.debugConnected=False
+		self.keepAlive=False;
 		self.callHandlers={}
 
 		nodeJSON=node.hubJSON
@@ -777,6 +778,7 @@ class AISession:
 				"prompt": vo.get("prompt") or "Please input",
 				"initText": vo.get("initText", "")
 			}
+			askvo.update(vo)
 			if self.snsBot:
 				return await self.snsBot.agentAskUserChat(askVO,self.snsChatUserId or None)
 			return await self.callClient("AskChatInput", askVO)
@@ -1093,7 +1095,7 @@ class AISession:
 			model = opts["mode"]
 		else:
 			model = "gpt-4o-minio"
-		platform = opts.get("platform") or model2Platform.get(model)
+		platform = model2Platform.get(model) or opts.get("platform")
 
 		result=await self.callHubAI(opts, messages, waitBlk)
 		await self.logLlmResult(codeURL, opts, messages, result)

@@ -2583,19 +2583,20 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		let pms,waitFunc,callback,callerror,timer;
 		waitFunc=(message)=>{
 			let call;
-			if(message.context!==this.context){
+			/*if(message.context!==this.context){
 				return;
-			}
+			}*/
 			if(timer){
 				clearTimeout(timer);
 			}
-			this.webDrive.off("browsingContext.downloadWillBegin",waitFunc);
+			this.webDrive.off("downloads.downloadStarted",waitFunc);
 			call=callback;
 			if(call){
 				callback=null;
 				callerror=null;
 				call({
 					suggestedFilename:message.suggestedFilename,
+					file:message.file,
 					url:message.url,
 				});
 			}
@@ -2605,7 +2606,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			callback=resolve;
 			callerror=reject;
 			timeout=opts?.timeout;
-			this.webDrive.on("browsingContext.downloadWillBegin",waitFunc);
+			this.webDrive.on("downloads.downloadStarted",waitFunc);
 			if(timeout>0){
 				timer=setTimeout(()=>{
 					let call;
@@ -2626,13 +2627,15 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		let pms,waitFunc,callback,callerror,timer;
 		waitFunc=(message)=>{
 			let call;
-			if(message.context!==this.context){
+			/*if(message.context!==this.context){
 				return;
-			}
+			}*/
 			if(timer){
 				clearTimeout(timer);
 			}
-			this.webDrive.off("browsingContext.downloadEnd",waitFunc);
+			
+			this.webDrive.off("downloads.downloadFinished",waitFunc);
+			//this.webDrive.off("browsingContext.downloadEnd",waitFunc);
 			call=callback;
 			if(call){
 				callback=null;
@@ -2649,7 +2652,8 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			callback=resolve;
 			callerror=reject;
 			timeout=opts?.timeout;
-			this.webDrive.on("browsingContext.downloadEnd",waitFunc);
+			this.webDrive.on("downloads.downloadFinished",waitFunc);
+			//this.webDrive.on("browsingContext.downloadEnd",waitFunc);
 			if(timeout>0){
 				timer=setTimeout(()=>{
 					let call;

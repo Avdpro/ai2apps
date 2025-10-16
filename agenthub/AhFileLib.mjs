@@ -97,6 +97,100 @@ let AhFileLib,ahFileLib;
 		}
 		return data;
 	};
+
+	//----------------------------------------------------------------------
+	// 分块文件上传管理
+	ahFileLib.pendingUploads = new Map(); // 存储正在上传的文件信息
+
+	ahFileLib.startChunkedUpload=async function(orgName, totalSize, chunkSize){
+		let uploadId, fileName, uploadInfo;
+		uploadId = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+		// 在开始时就生成最终文件名，避免重复调用genFileName
+		fileName = await this.genFileName(orgName);
+
+		uploadInfo = {
+			uploadId: uploadId,
+			fileName: fileName,
+			orgName: orgName,
+			totalSize: totalSize,
+			chunkSize: chunkSize,
+			chunks: [],
+			receivedSize: 0,
+			tempDir: pathLib.join(this.fileDir, "temp_" + uploadId)
+		};
+
+		// 创建临时目录
+		if (!fs.existsSync(uploadInfo.tempDir)) {
+			await asyncFS.mkdir(uploadInfo.tempDir, {recursive: true});
+		}
+
+		this.pendingUploads.set(uploadId, uploadInfo);
+		return {uploadId, fileName};
+	};
+
+	ahFileLib.uploadChunk=async function(uploadId, chunkIndex, base64Data){
+		let uploadInfo, chunkPath;
+		uploadInfo = this.pendingUploads.get(uploadId);
+		if (!uploadInfo) {
+			throw new Error("Upload session not found");
+		}
+
+		// 保存chunk到临时文件
+		chunkPath = pathLib.join(uploadInfo.tempDir, `chunk_${chunkIndex}`);
+		const buffer = Buffer.from(base64Data, 'base64');
+		await asyncFS.writeFile(chunkPath, buffer);
+
+		uploadInfo.chunks[chunkIndex] = true;
+		uploadInfo.receivedSize += buffer.length;
+
+		return {
+			uploadId: uploadId,
+			chunkIndex: chunkIndex,
+			receivedSize: uploadInfo.receivedSize,
+			totalSize: uploadInfo.totalSize
+		};
+	};
+
+	ahFileLib.finishChunkedUpload=async function(uploadId){
+		let uploadInfo, finalPath, chunkFiles, mergedBuffer;
+		uploadInfo = this.pendingUploads.get(uploadId);
+		if (!uploadInfo) {
+			throw new Error("Upload session not found");
+		}
+
+		// 合并所有chunk
+		chunkFiles = [];
+		for (let i = 0; i < uploadInfo.chunks.length; i++) {
+			if (uploadInfo.chunks[i]) {
+				let chunkPath = pathLib.join(uploadInfo.tempDir, `chunk_${i}`);
+				let chunkData = await asyncFS.readFile(chunkPath);
+				chunkFiles.push(chunkData);
+			}
+		}
+
+		// 合并buffer
+		mergedBuffer = Buffer.concat(chunkFiles);
+
+		// 写入最终文件
+		finalPath = pathLib.join(this.fileDir, uploadInfo.fileName);
+		await asyncFS.writeFile(finalPath, mergedBuffer);
+
+		// 清理临时文件和目录
+		try {
+			let files = await asyncFS.readdir(uploadInfo.tempDir);
+			for (let file of files) {
+				await asyncFS.unlink(pathLib.join(uploadInfo.tempDir, file));
+			}
+			await asyncFS.rmdir(uploadInfo.tempDir);
+		} catch (err) {
+			console.warn("Failed to clean up temp files:", err);
+		}
+
+		// 移除上传会话
+		this.pendingUploads.delete(uploadId);
+
+		return uploadInfo.fileName;
+	};
 	
 	AhFileLib.setup=async function(agentHub,app,router,apiMap){
 		let appFileLib;
@@ -128,6 +222,48 @@ let AhFileLib,ahFileLib;
 			fileName=reqVO.fileName;
 			filePath=await appFileLib.getFilePath(fileName);
 			res.json({ code: 200,fileName:fileName,path:filePath});
+		};
+
+		//-----------------------------------------------------------------------
+		// 分块上传API
+		apiMap['AhFileStartChunked']=async function(req,res,next){
+			try {
+				let reqVO = req.body.vo;
+				let result = await appFileLib.startChunkedUpload(
+					reqVO.fileName,
+					reqVO.totalSize,
+					reqVO.chunkSize || 1048576
+				);
+				res.json({ code: 200, ...result });
+			} catch (err) {
+				res.json({ code: 500, info: err.message });
+			}
+		};
+
+		//-----------------------------------------------------------------------
+		apiMap['AhFileUploadChunk']=async function(req,res,next){
+			try {
+				let reqVO = req.body.vo;
+				let result = await appFileLib.uploadChunk(
+					reqVO.uploadId,
+					reqVO.chunkIndex,
+					reqVO.data
+				);
+				res.json({ code: 200, ...result });
+			} catch (err) {
+				res.json({ code: 500, info: err.message });
+			}
+		};
+
+		//-----------------------------------------------------------------------
+		apiMap['AhFileFinishChunked']=async function(req,res,next){
+			try {
+				let reqVO = req.body.vo;
+				let fileName = await appFileLib.finishChunkedUpload(reqVO.uploadId);
+				res.json({ code: 200, fileName: fileName });
+			} catch (err) {
+				res.json({ code: 500, info: err.message });
+			}
 		};
 		
 		AhFileLib.toAbsolutePath=async function(url){

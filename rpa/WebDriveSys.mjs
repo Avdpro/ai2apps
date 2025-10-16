@@ -323,8 +323,16 @@ function hideAppByPid(pid) {
 							"browsingContext.contextDestroyed",
 							"browsingContext.userPromptOpened",
 							"browsingContext.contextCreated",
-							//"browsingContext.downloadWillBegin",
-							//"browsingContext.downloadEnd",
+
+							/*"browsingContext.downloadStarted",
+							"browsingContext.downloadUpdated",
+							"browsingContext.downloadFinished",
+							"browsingContext.downloadRemoved",*/
+							
+							"downloads.downloadStarted",
+							"downloads.downloadUpdated",
+							"downloads.downloadFinished",
+							"downloads.downloadRemoved",
 						]);
 						this.emit('connected');
 						resolve();

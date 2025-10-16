@@ -26,6 +26,9 @@ function getHost(req){
 async function getUserInfo(req,userId,token,projection){
 	let vo,devKey,userInfo,nowTime,nowDay;
 	let saveVO;
+	if(!dbUser){
+		return null;
+	}
 	if(!userId){
 		userId=req.body.vo.userId;
 	}
@@ -107,7 +110,9 @@ async function getUserInfo(req,userId,token,projection){
 //---------------------------------------------------------------------------
 async function getGitHubUserInfo(accessToken){
 	let apiURL,httpOpts,httpReq;
-	
+	if(!dbUser){
+		return null;
+	}
 	apiURL="https://api.github.com/user";
 	httpOpts={
 		method:"GET",
@@ -144,6 +149,9 @@ async function getGitHubUserInfo(accessToken){
 //---------------------------------------------------------------------------
 async function getPVUserInfo (req,projection) {
 	let reqVO,host, vo, userId,slot,key,userInfo,pvInfo,nowTime,pvTime;
+	if(!dbUser){
+		return null;
+	}
 	reqVO=req.body.vo;
 	userId=reqVO.pvUserId;
 	slot=reqVO.pvSlot;

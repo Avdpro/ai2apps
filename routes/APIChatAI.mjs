@@ -1,23 +1,23 @@
 import OpenAI,{toFile} from "openai";
 import Anthropic from '@anthropic-ai/sdk';
-import {GoogleGenerativeAI} from "@google/generative-ai";
+import {GoogleGenAI} from '@google/genai';
 import ollama from "ollama";
 
 import followRedirects from "follow-redirects";
 import {Readable} from "stream";
 
-import {setupTokenUtils,tokenForMessages,charForMessages,checkAITokenCall,useAITokens,chargePointsByChat,chargePointsByUsage} from "../util/TokenUtils.mjs";
 import ProxyCall from '../util/ProxyCall.js';
 const { callProxy,proxyCall }=ProxyCall;
-
-//import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
-const getUserInfo=null,getPVUserInfo=null;
-
+import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
 import ApiProxy from "../apiproxy/FetchProxy.mjs";
 import invokeApi from '../util/InvokeApi.mjs'
 
 const AIPlatforms={
 	"OpenAI":{
+		"gpt-5":{model:"gpt-5",label:"GPT-5"},
+		"gpt-5-mini":{model:"gpt-5-mini",label:"GPT-5-Mini"},
+		"gpt-5-nano":{model:"gpt-5-nano",label:"GPT-5-nano"},
+		"gpt-5-codex":{model:"gpt-5-codex",label:"GPT-5-codex"},
 		"gpt-4.1":{model:"gpt-4.1",label:"GPT-4.1"},
 		"gpt-4o":{model:"gpt-4o",label:"GPT-4O"},
 		"gpt-4.1-mini":{model:"gpt-4.1-mini",label:"GPT-4.1 Mini"},
@@ -29,6 +29,9 @@ const AIPlatforms={
 		"gpt-4-turbo":{model:"gpt-4-turbo",label:"GPT-4 Turbo"},
 	},
 	"Google":{
+		"gemini-2.5-pro":{model:"gemini-2.5-pro",label:"Gemini 2.5 Pro"},
+		"gemini-2.5-flash":{model:"gemini-2.5-flash",label:"Gemini 2.5 flash"},
+		"gemini-2.5-flash-lite":{model:"gemini-2.5-flash-lite",label:"Gemini 2.5 flash-lite"},
 		"gemini-pro":{model:"gemini-pro",label:"Gemini Pro"}
 	},
 	"Claude":{
@@ -76,9 +79,8 @@ if(CLAUDE_API_KEY) {
 const GOOGLEAI_API_KEY=process.env.GOOGLEAI_API_KEY;
 let googleAI=null;
 if(GOOGLEAI_API_KEY) {
-	googleAI = new GoogleGenerativeAI(GOOGLEAI_API_KEY);
+	googleAI = new GoogleGenAI({apiKey: GOOGLEAI_API_KEY});
 }
-let googleAIModels={};
 
 const DAYTIME=24*3600*1000;
 const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
@@ -113,11 +115,27 @@ let getStreamId,shutdownStream;
 
 //---------------------------------------------------------------------------
 //API for AI calls
-export default function(app,router,apiMap) {
+export default async function(app,router,apiMap) {
+	let setupTokenUtils,tokenForMessages,checkAITokenCall,chargePointsByChat,chargePointsByUsage;
 	const env = app.get("env");
 	const dbUser = app.get("DBUser");
 	const dbPreview= app.get("DBPreview");
-	setupTokenUtils(app);
+	
+	try{
+		const m=await import("../util/TokenUtils.mjs");
+		setupTokenUtils=m.setupTokenUtils;
+		tokenForMessages=m.tokenForMessages;
+		checkAITokenCall=m.checkAITokenCall;
+		chargePointsByChat=m.chargePointsByChat;
+		chargePointsByUsage=m.chargePointsByUsage;
+		setupTokenUtils(app);
+	}catch(err){
+		//do nothing
+		checkAITokenCall=function(){return {code:200};};
+		tokenForMessages=()=>{return 0;};
+		chargePointsByChat=function(){};
+		chargePointsByUsage=function(){};
+	}
 	
 	//***********************************************************************
 	//Basic AI Calls:
@@ -331,7 +349,6 @@ export default function(app,router,apiMap) {
 						return;
 					}
 					callVO = callAIObj.buildCallVO(reqVO);
-					console.log(callVO);
 					//Check gas
 					{
 						resVO = await checkAITokenCall(userInfo, platform, callVO.model);
@@ -367,6 +384,53 @@ export default function(app,router,apiMap) {
 						chargePointsByChat(userInfo, callVO.messages, content, platform, callVO.model);
 					} catch (err) {
 						console.log(err);
+					}
+					return;
+				}
+				case "Google":{
+					let chat,modelName,messages,history,prompt,result,usage;
+					if(!googleAI){
+						await proxyCall(req,res,next);
+						return;
+					}
+					modelName=reqVO.model || 'gemini-2.5-flash';
+					//Check gas
+					{
+						resVO = await checkAITokenCall(userInfo, platform, modelName);
+						if (resVO.code !== 200) {
+							res.json(resVO);
+							return;
+						}
+					}
+					callVO = callAIObj.buildCallVO(reqVO);
+					messages=reqVO.messages;
+					history=[];
+					for(let msg of messages){
+						let role;
+						role=msg.role;
+						if(role==="system"){
+							history.push({ role: "user", parts: [{text:"Chat background: "+msg.content }]});
+							history.push({ role: "model", parts: [{text:"OK, let's start!"}]});
+						}else {
+							role = role === "user" ? "user" : "model";
+							history.push({ role: role, parts: [{text:msg.content }]});
+						}
+					}
+					prompt=history.pop().parts;
+					chat = googleAI.chats.create({
+						model:modelName,
+						history:history,
+						config:callVO
+					});
+					
+					result=await chat.sendMessage({message:prompt});
+					resVO = { code: 200,message:result.text};
+					res.json(resVO);
+					let tokenUsage=result.usageMetadata;
+					if(tokenUsage){
+						let inputTokens=tokenUsage.promptTokenCount;
+						let outputTokens=(tokenUsage.candidatesTokenCount||0)+(tokenUsage.thoughtsTokenCount||0);
+						chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,modelName);
 					}
 					return;
 				}
@@ -755,34 +819,30 @@ export default function(app,router,apiMap) {
 					}
 					callVO = callAIObj.buildCallVO(reqVO,platform);
 					try {
-						let modelName,model,chat,messages,history,result,prompt;
-						modelName=reqVO.model || 'gemini-pro';
-						model=googleAIModels[modelName];
-						if(!model){
-							model=googleAI.getGenerativeModel({model:modelName});
-							googleAIModels[modelName]=model;
-						}
+						let modelName,chat,messages,history,result,prompt;
+						modelName=reqVO.model || 'gemini-2.5-flash';
 						messages=reqVO.messages;
 						history=[];
 						for(let msg of messages){
 							let role;
 							role=msg.role;
 							if(role==="system"){
-								history.push({ role: "user", parts: "Chat background: "+msg.content });
-								history.push({ role: "model", parts: "OK, let's start!"});
+								history.push({ role: "user", parts: [{text:"Chat background: "+msg.content }]});
+								history.push({ role: "model", parts: [{text:"OK, let's start!"}]});
 							}else {
 								role = role === "user" ? "user" : "model";
-								history.push({ role: role, parts: msg.content });
+								history.push({ role: role, parts: [{text:msg.content }]});
 							}
 						}
 						prompt=history.pop().parts;
-						chat=model.startChat({history:history,generationConfig:callVO});
-						result = await chat.sendMessageStream(prompt);
+						//chat=model.startChat({history:history,generationConfig:callVO});
+						chat=googleAI.chats.create({
+							model:modelName,
+							history:history,
+							config:callVO
+						});
+						result = await chat.sendMessageStream({message:prompt});
 
-						//Count input tokens:
-						tokenUsage=await model.countTokens({ contents:[...history,{role:"user",parts:[{text:prompt}]}]});
-						inputTokens=tokenUsage.totalTokens;
-						
 						streamId = getStreamId();
 						streamVO = {
 							streamId,
@@ -799,9 +859,9 @@ export default function(app,router,apiMap) {
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
 						res.json(resVO);
 						
-						for await (const chunk of result.stream) {
-							const chunkText = chunk.text();
-							console.log(chunkText);
+						for await (const chunk of result) {
+							const chunkText = chunk.text;
+							//console.log(chunk);
 							streamVO.content += chunkText;
 							if(streamVO.timer){
 								clearTimeout(streamVO.timer);
@@ -814,14 +874,17 @@ export default function(app,router,apiMap) {
 									func();
 								}
 							}
+							if(chunk.usageMetadata){
+								tokenUsage=chunk.usageMetadata;
+							}
 						}
 						streamVO.closed = true;
 
-						//Count output tokens:
-						tokenUsage=await model.countTokens({contents:[{role:"model",parts:[{role:"model",parts:[{text:streamVO.content}]}]}]});
-						outputTokens=tokenUsage.totalTokens;
-						
-						chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,callVO.model);
+						if(tokenUsage){
+							inputTokens=tokenUsage.promptTokenCount;
+							outputTokens=(tokenUsage.candidatesTokenCount||0)+(tokenUsage.thoughtsTokenCount||0);
+							chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,modelName);
+						}
 
 						func = streamVO.waitFunc;
 						if (func) {
@@ -846,12 +909,12 @@ export default function(app,router,apiMap) {
 					case "OpenAI":{
 						let callVO = {
 							model: reqVO.model || "gpt-3.5-turbo",
-							temperature: reqVO.temperature || 0.7,
-							max_tokens: reqVO.max_tokens || 3092,
-							top_p: reqVO.top_p || 1,
-							n: reqVO.best_of || reqVO.n || 1,
-							frequency_penalty: reqVO.frequency_penalty || 0,
-							presence_penalty: reqVO.presence_penalty || 0,
+							//temperature: reqVO.temperature || 0.7,
+							//max_tokens: reqVO.max_tokens || 3092,
+							//top_p: reqVO.top_p || 1,
+							//n: reqVO.best_of || reqVO.n || 1,
+							//frequency_penalty: reqVO.frequency_penalty || 0,
+							//presence_penalty: reqVO.presence_penalty || 0,
 							messages: reqVO.messages,
 						};
 						if(reqVO.response_format && reqVO.response_format!=="text"){
@@ -905,16 +968,18 @@ export default function(app,router,apiMap) {
 					case "Google":{
 						let callVO;
 						callVO={
-							maxOutputTokens: reqVO.max_tokens || 1024,
-							temperature: reqVO.temperature || 0.7,
+							//maxOutputTokens: reqVO.max_tokens || 1024,
+							//temperature: reqVO.temperature || 0.7,
 						};
-						if(reqVO.temperature>=0) {
+						/*if(reqVO.temperature>=0) {
 							callVO.temperature = reqVO.temperature;
 						}else if(reqVO.top_p>=0) {
 							callVO.topP = reqVO.top_p;
+						}*/
+						if(reqVO.thinking!==true){
+							callVO.thinkingConfig={thinkingBudget: 0};// Disables thinking
 						}
 						return callVO;
-						
 					}
 					case "Ollama":{
 						let callVO;

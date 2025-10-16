@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",
+    "@google/genai": "^1.21.0",
     "@google/generative-ai": "^0.2.1",
     "@xterm/xterm": "^5.5.0",
     "acorn": "^8.15.0",
@@ -35,7 +36,7 @@
     "node-gyp": "11.0.0",
     "node-pty": "*",
     "ollama": "^0.5.1",
-    "openai": "^4.100.0",
+    "openai": "^6.3.0",
     "pdf-parse": "^1.1.1",
     "pouchdb": "^9.0.0",
     "pouchdb-find": "^9.0.0",
