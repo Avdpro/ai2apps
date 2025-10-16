@@ -8,7 +8,6 @@ import {Readable} from "stream";
 
 import ProxyCall from '../util/ProxyCall.js';
 const { callProxy,proxyCall }=ProxyCall;
-import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
 import ApiProxy from "../apiproxy/FetchProxy.mjs";
 import invokeApi from '../util/InvokeApi.mjs'
 
@@ -117,6 +116,7 @@ let getStreamId,shutdownStream;
 //API for AI calls
 export default async function(app,router,apiMap) {
 	let setupTokenUtils,tokenForMessages,checkAITokenCall,chargePointsByChat,chargePointsByUsage;
+	let getUserInfo,getPVUserInfo;
 	const env = app.get("env");
 	const dbUser = app.get("DBUser");
 	const dbPreview= app.get("DBPreview");
@@ -135,6 +135,15 @@ export default async function(app,router,apiMap) {
 		tokenForMessages=()=>{return 0;};
 		chargePointsByChat=function(){};
 		chargePointsByUsage=function(){};
+	}
+
+	if(dbUser) {
+		const m=await import("../util/UserUtils.js");
+		getUserInfo=m.getUserInfo;
+		getPVUserInfo=m.getPVUserInfo;
+	}else{
+		getUserInfo=null;
+		getPVUserInfo=null;
 	}
 	
 	//***********************************************************************
