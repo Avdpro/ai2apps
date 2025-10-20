@@ -778,7 +778,7 @@ class AISession:
 				"prompt": vo.get("prompt") or "Please input",
 				"initText": vo.get("initText", "")
 			}
-			askvo.update(vo)
+			askVO.update(vo)
 			if self.snsBot:
 				return await self.snsBot.agentAskUserChat(askVO,self.snsChatUserId or None)
 			return await self.callClient("AskChatInput", askVO)

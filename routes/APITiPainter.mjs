@@ -3,7 +3,6 @@ import OpenAI from "openai";
 import { toFile } from "openai/uploads";
 import fsp from "fs/promises";
 import pathLib from "path";
-import {setupTokenUtils,tokenForMessages,charForMessages,checkAITokenCall,useAITokens,chargePointsByChat,chargePointsByUsage} from "../util/TokenUtils.mjs";
 import ProxyCall from '../util/ProxyCall.js';
 const { callProxy,proxyCall }=ProxyCall;
 import {getUserInfo,getPVUserInfo} from "../util/UserUtils.js";
@@ -51,20 +50,33 @@ let APITiPainter=async function(app,router,apiMap) {
 		let m=await import("../util/UserUtils.js");
 		getUserInfo=m.getUserInfo;
 	}catch(err){
-		getUserInfo=function(){return null};
+		getUserInfo=null;
 	}
 
 	const DBUsers = app.get("DBUser");
 	let admins = process.env.AF_ADMINS || "10000";
 	admins = new Set(admins.split(","));
 	
+	const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
+
 	//-----------------------------------------------------------------------
 	apiMap["TiDraw"] = async function (req, res,next) {
 		let reqVO=req.body.vo;
-		let userInfo;
+		let userId,token,userInfo;
 		let platform=reqVO.platform||"Google";
 		let model,resVO;
-		userInfo=await getUserInfo(req);
+
+		if(getUserInfo) {
+			userInfo = await getUserInfo(req, null, null, USERINFO_PROJECTION);
+			if (!userInfo) {
+				userInfo = await getPVUserInfo(req, USERINFO_PROJECTION);
+				if (!userInfo) {
+					res.json({ code: 403, info: "UserId/Token invalid." });
+					return;
+				}
+			}
+		}
+		
 		switch (platform){
 			case "OpenAI": {
 				// 若服务端未配置 OPENAI_API_KEY，则走你的代理兜底
@@ -75,7 +87,7 @@ let APITiPainter=async function(app,router,apiMap) {
 				model=reqVO.model||"gpt-image-1";
 
 				//Check gas
-				resVO = await checkAITokenCall(userInfo, reqVO.platform, reqVO.model);
+				resVO = await checkAITokenCall(userInfo, platform, model);
 				if (resVO.code !== 200) {
 					res.json({ code: 401, info: "Gas is not enough to make AICall." });
 					return;
@@ -152,7 +164,8 @@ let APITiPainter=async function(app,router,apiMap) {
 						if (b64) dataUrl = "data:image/png;base64," + b64;
 					}
 					
-					//TODO: use gas:
+					//Charge gas:
+					chargePointsByUsage(userInfo,0,0,platform,model);
 					
 					if (dataUrl) {
 						res.json({ code: 200, image: dataUrl, text: textOutput });
@@ -166,15 +179,16 @@ let APITiPainter=async function(app,router,apiMap) {
 				break;
 			}
 			case "Google": {
-				let images,imgData;
+				let images,imgData,aspect,callVo;
 				if(!GoogleAI){
 					await proxyCall(req,res,next);
 					return;
 				}
 				model=reqVO.model||"gemini-2.5-flash-image";
+				aspect=reqVO.aspect;
 				
-				//Check gas
-				resVO = await checkAITokenCall(userInfo, reqVO.platform, reqVO.model);
+				//Check gas:
+				resVO = await checkAITokenCall(userInfo, platform, model);
 				if (resVO.code !== 200) {
 					res.json({ code: 401, info: "Gas is not enough to make AICall." });
 					return;
@@ -194,10 +208,18 @@ let APITiPainter=async function(app,router,apiMap) {
 					}
 				}
 				prompt.push({ text: reqVO.prompt });
-				const response = await GoogleAI.models.generateContent({
+				callVo={
 					model: model,
 					contents: prompt,
-				});
+				};
+				if(aspect){
+					callVo.config={
+						imageConfig: {
+							aspectRatio: aspect,
+						}
+					};
+				}
+				const response = await GoogleAI.models.generateContent(callVo);
 				console.log("Google-draw result: ",response);
 				let textOutput=[];
 				let imageData,dataUrl;
@@ -210,6 +232,14 @@ let APITiPainter=async function(app,router,apiMap) {
 					}
 				}
 				textOutput=textOutput.join("\n");
+				let tokenUsage=response.usageMetadata;
+				if(tokenUsage){
+					let inputTokens=tokenUsage.promptTokenCount||0;
+					let outputTokens=(tokenUsage.candidatesTokenCount||0)+(tokenUsage.thoughtsTokenCount||0);
+					chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,model);
+				}else{
+					chargePointsByUsage(userInfo,0,0,platform,model);
+				}
 				if(dataUrl){
 					res.json({code:200,image:dataUrl,text:textOutput});
 					return;

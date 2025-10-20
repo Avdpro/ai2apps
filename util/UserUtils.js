@@ -27,7 +27,7 @@ async function getUserInfo(req,userId,token,projection){
 	let vo,devKey,userInfo,nowTime,nowDay;
 	let saveVO;
 	if(!dbUser){
-		return {};
+		return null;
 	}
 	if(!userId){
 		userId=req.body.vo.userId;
@@ -50,6 +50,8 @@ async function getUserInfo(req,userId,token,projection){
 		vo={
 			_id:userId,devKeys:devKey
 		};
+	}else{
+		return null;
 	}
 	if(projection==="all"){
 		userInfo=await dbUser.findOne(vo);
@@ -111,7 +113,7 @@ async function getUserInfo(req,userId,token,projection){
 async function getGitHubUserInfo(accessToken){
 	let apiURL,httpOpts,httpReq;
 	if(!dbUser){
-		return {};
+		return null;
 	}
 	apiURL="https://api.github.com/user";
 	httpOpts={
@@ -150,7 +152,7 @@ async function getGitHubUserInfo(accessToken){
 async function getPVUserInfo (req,projection) {
 	let reqVO,host, vo, userId,slot,key,userInfo,pvInfo,nowTime,pvTime;
 	if(!dbUser){
-		return {};
+		return null;
 	}
 	reqVO=req.body.vo;
 	userId=reqVO.pvUserId;
