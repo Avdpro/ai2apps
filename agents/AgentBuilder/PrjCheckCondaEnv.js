@@ -8,9 +8,9 @@ import fsp from 'fs/promises';
 import { promisify } from 'util';
 import child_process from "child_process";
 /*}#1IGAU4QB50MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
-const basePath=baseURL.startsWith("file://")?pathLib.pathToFileURL(baseURL):baseURL;
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -305,7 +305,7 @@ let PrjCheckCondaEnv=async function(session){
 	NoType.url="NoType@"+agentURL
 	
 	segs["AskEnv"]=AskEnv=async function(input){//:1IGB4NMLD0
-		let prompt=("选择项目的conda环境：创建新的，使用默认的，还是选择一个已有的环境：")||input;
+		let prompt=((($ln==="CN")?("选择项目的conda环境：创建新的，使用默认的，还是选择一个已有的环境："):("Select the conda environment for the project: create a new one, use the default one, or choose an existing environment:")))||input;
 		let silent=false;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
@@ -424,7 +424,7 @@ let PrjCheckCondaEnv=async function(session){
 	End2.url="End2@"+agentURL
 	
 	segs["ChooseEnv"]=ChooseEnv=async function(input){//:1IGB5D9570
-		let prompt=("请选择一个当前系统内的Conda环境")||input;
+		let prompt=((($ln==="CN")?("请选择一个当前系统内的Conda环境"):("Please select a Conda environment within the current system")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
 		let withChat=false;
@@ -472,7 +472,7 @@ let PrjCheckCondaEnv=async function(session){
 	GenEnvName.url="GenEnvName@"+agentURL
 	
 	segs["ConfirmName"]=ConfirmName=async function(input){//:1IGB5EMM00
-		let prompt=(`确认使用新环境名：${envName}？`)||input;
+		let prompt=((($ln==="CN")?(`确认使用新的环境名称：${envName}？`):(`Confirm using the new environment name: ${envName}?`)))||input;
 		let silent=false;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
@@ -498,10 +498,11 @@ let PrjCheckCondaEnv=async function(session){
 	ConfirmName.url="ConfirmName@"+agentURL
 	
 	segs["AskEnvName"]=AskEnvName=async function(input){//:1IGB5FMAJ0
-		let tip=("请输入环境名");
+		let tip=((($ln==="CN")?("请输入环境名"):("Please enter the environment name")));
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -511,7 +512,7 @@ let PrjCheckCondaEnv=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -576,10 +577,11 @@ let PrjCheckCondaEnv=async function(session){
 	UseEnv.url="UseEnv@"+agentURL
 	
 	segs["AskNewName"]=AskNewName=async function(input){//:1IGB5JNC20
-		let tip=("`环境名\"${input}\"以被使用，请选择另一个名字。`");
+		let tip=((($ln==="CN")?(`环境名'${input}'已被使用，请选择另一个名字。`):(`The environment name '${input}' is already in use, please choose another name.`)));
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -589,7 +591,7 @@ let PrjCheckCondaEnv=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -701,7 +703,8 @@ let ChatAPI=[{
 				installReq:{type:"bool",description:"是否安装依赖库，默认调用不必安装"}
 			}
 		}
-	}
+	},
+	isChatApi: true
 }];
 //#CodyExport<<<
 /*#{1IGAU4QB50PostDoc*/
@@ -1323,7 +1326,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"prompt": "选择项目的conda环境：创建新的，使用默认的，还是选择一个已有的环境：",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Select the conda environment for the project: create a new one, use the default one, or choose an existing environment:",
+//							"localize": {
+//								"EN": "Select the conda environment for the project: create a new one, use the default one, or choose an existing environment:",
+//								"CN": "选择项目的conda环境：创建新的，使用默认的，还是选择一个已有的环境："
+//							},
+//							"localizable": true
+//						},
 //						"outlets": {
 //							"attrs": [
 //								{
@@ -1681,7 +1692,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"prompt": "请选择一个当前系统内的Conda环境",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Please select a Conda environment within the current system",
+//							"localize": {
+//								"EN": "Please select a Conda environment within the current system",
+//								"CN": "请选择一个当前系统内的Conda环境"
+//							},
+//							"localizable": true
+//						},
 //						"multi": "false",
 //						"withChat": "false",
 //						"outlet": {
@@ -1755,7 +1774,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"prompt": "#`确认使用新环境名：${envName}？`",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "#`Confirm using the new environment name: ${envName}?`",
+//							"localize": {
+//								"EN": "#`Confirm using the new environment name: ${envName}?`",
+//								"CN": "#`确认使用新的环境名称：${envName}？`"
+//							},
+//							"localizable": true
+//						},
 //						"outlets": {
 //							"attrs": [
 //								{
@@ -1840,11 +1867,20 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"tip": "请输入环境名",
+//						"tip": {
+//							"type": "string",
+//							"valText": "Please enter the environment name",
+//							"localize": {
+//								"EN": "Please enter the environment name",
+//								"CN": "请输入环境名"
+//							},
+//							"localizable": true
+//						},
 //						"tipRole": "Assistant",
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {
@@ -2076,11 +2112,20 @@ export{PrjCheckCondaEnv,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"tip": "`环境名\"${input}\"以被使用，请选择另一个名字。`",
+//						"tip": {
+//							"type": "string",
+//							"valText": "#`The environment name '${input}' is already in use, please choose another name.`",
+//							"localize": {
+//								"EN": "#`The environment name '${input}' is already in use, please choose another name.`",
+//								"CN": "#`环境名'${input}'已被使用，请选择另一个名字。`"
+//							},
+//							"localizable": true
+//						},
 //						"tipRole": "Assistant",
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {

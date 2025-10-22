@@ -46,10 +46,10 @@ let agent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let InitBash,Get,Clone,GetPath,FindGuide,CheckGuide,NoReadme,WriteSetupGuide,SetupProject,FixArgs,Tip1,LLMCheckClone,CheckClone,Failure,Retry,goto,Navigate,Test,CheckDeploy,OutputFail,OutputSuccess,RegisterProject,Start,RegisterFail,TestAPI,Process,CheckInput,InputText,CheckRegister,InputFile,Again,Fetch,CheckStart,RegisterSuccess,FakeSetup,ExtracUsage,Summary,Output;
+	let InitBash,Get,Clone,GetPath,FindGuide,CheckGuide,NoReadme,WriteSetupGuide,SetupProject,FixArgs,Tip1,LLMCheckClone,CheckClone,Failure,Retry,goto,Navigate,Test,CheckDeploy,OutputFail,OutputSuccess,RegisterProject,Start,RegisterFail,TestAPI,Process,CheckInput,InputText,CheckRegister,InputFile,Again,Fetch,CheckStart,RegisterSuccess,FakeSetup,ExtracUsage,Summary,Output,ListFiles,GetPath2,InitBash2;
 	/*#{1HDBOSUN90LocalVals*/
 	let repo, folder;
-	let input_type, output_type, api, usage_md, output_suffix, output_path, conda_name, server_start=false, all_files, guide_md;
+	let input_type, output_type, api, usage_md, output_suffix, output_path, conda_name, server_start=false, all_files, guide_md, dir, deploy_md;
 	
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -192,7 +192,7 @@ let agent=async function(session){
 		/*}#1IVIR603S0PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		/*#{1IVIR603S0PostCodes*/
-		all_files = extract(result);
+		// all_files = extract(result);
 		/*}#1IVIR603S0PostCodes*/
 		return {seg:FindGuide,result:(result),preSeg:"1IVIR603S0",outlet:"1IVIRB74M1"};
 	};
@@ -203,7 +203,7 @@ let agent=async function(session){
 		let prompt;
 		let result;
 		{
-			const $text="Search for references related to deployment.";
+			const $text=(($ln==="CN")?("查找部署相关的参考资料。"):("Search for references related to deployment."));
 			const $role=(undefined)||"assistant";
 			const $roleText=("assistant")||undefined;
 			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
@@ -455,7 +455,7 @@ let agent=async function(session){
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/PrjSetupBySteps.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		{
-			const $text="Start deploying the project.";
+			const $text=(($ln==="CN")?("开始部署项目。"):("Start deploying the project."));
 			const $role=(undefined)||"assistant";
 			const $roleText=("assistant")||undefined;
 			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
@@ -464,7 +464,9 @@ let agent=async function(session){
 		/*}#1IVIS07O60Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1IVIS07O60Output*/
-		conda_name=result;
+		conda_name=result.conda;
+		deploy_md = result.guide;
+		dir = pathLib.join(basePath,"projects",folder);
 		/*}#1IVIS07O60Output*/
 		return {seg:CheckDeploy,result:(result),preSeg:"1IVIS07O60",outlet:"1IVIS0ONQ0"};
 	};
@@ -490,7 +492,7 @@ let agent=async function(session){
 		let channel="Process";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
-		let content="Start cloning project to local.";
+		let content=(($ln==="CN")?("开始克隆项目到本地。"):("Start cloning project to local."));
 		session.addChatText(role,content,opts);
 		return {seg:Get,result:(result),preSeg:"1J1FJS9EU0",outlet:"1J1FJT4EK0"};
 	};
@@ -499,7 +501,9 @@ let agent=async function(session){
 	
 	segs["LLMCheckClone"]=LLMCheckClone=async function(input){//:1J1FPDPRA0
 		let prompt;
-		let result;
+		let result=null;
+		/*#{1J1FPDPRA0Input*/
+		/*}#1J1FPDPRA0Input*/
 		
 		let opts={
 			platform:"OpenAI",
@@ -541,15 +545,24 @@ let agent=async function(session){
 
 },
 		];
+		/*#{1J1FPDPRA0PrePrompt*/
+		/*}#1J1FPDPRA0PrePrompt*/
 		prompt=input;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			let msg={role:"user",content:prompt};messages.push(msg);
+			let msg={role:"user",content:prompt};
+			/*#{1J1FPDPRA0FilterMessage*/
+			/*}#1J1FPDPRA0FilterMessage*/
+			messages.push(msg);
 		}
-		result=await session.callSegLLM("LLMCheckClone@"+agentURL,opts,messages,true);
+		/*#{1J1FPDPRA0PreCall*/
+		/*}#1J1FPDPRA0PreCall*/
+		result=(result===null)?(await session.callSegLLM("LLMCheckClone@"+agentURL,opts,messages,true)):result;
 		result=trimJSON(result);
+		/*#{1J1FPDPRA0PostCall*/
+		/*}#1J1FPDPRA0PostCall*/
 		return {seg:CheckClone,result:(result),preSeg:"1J1FPDPRA0",outlet:"1J1FPEO370"};
 	};
 	LLMCheckClone.jaxId="1J1FPDPRA0"
@@ -570,7 +583,7 @@ let agent=async function(session){
 		let channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
 		let role="assistant";
-		let content=`项目克隆失败，${input.reason}请参考以下解决方案尝试解决并重试解决方案：${input.solution}`;
+		let content=(($ln==="CN")?(`项目克隆失败，${input.reason}\n请参考以下解决方案尝试解决并重试解决方案：${input.solution}`):(`Project cloning failed, ${input.reason}. \nPlease refer to the following solutions to try and resolve it and retry the solution: ${input.solution}`));
 		session.addChatText(role,content,opts);
 		return {seg:Retry,result:(result),preSeg:"1J1FPNJ1A0",outlet:"1J1FPPRQ30"};
 	};
@@ -629,7 +642,7 @@ let agent=async function(session){
 	Navigate.url="Navigate@"+agentURL
 	
 	segs["Test"]=Test=async function(input){//:1J3I4OI7M0
-		let prompt=("是否需要体验项目功能")||input;
+		let prompt=((($ln==="CN")?("是否需要体验项目功能"):("Do you want to test the project feature")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
 		let withChat=false;
@@ -645,7 +658,7 @@ let agent=async function(session){
 		/*}#1J3I4OI7M0PreCodes*/
 		if(silent){
 			result="";
-			return {seg:ExtracUsage,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
+			return {seg:InitBash2,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		/*#{1J3I4OI7M0PostCodes*/
@@ -654,7 +667,7 @@ let agent=async function(session){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
-			return {seg:ExtracUsage,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
+			return {seg:InitBash2,result:(result),preSeg:"1J3I4OI7M0",outlet:"1J3I4OI710"};
 		}else if(item.code===1){
 			return {result:result};
 		}
@@ -706,7 +719,7 @@ let agent=async function(session){
 	segs["RegisterProject"]=RegisterProject=async function(input){//:1J3NQE9OT0
 		let result=input
 		{
-			const $text="正在将项目注册为API";
+			const $text=(($ln==="CN")?("正在将项目注册为API"):("Registering project as API"));
 			const $role=(undefined)||"assistant";
 			const $roleText=("assistant")||undefined;
 			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
@@ -715,7 +728,7 @@ let agent=async function(session){
 		// input_type=input.input_type;
 		// output_type=input.output_type;
 		let arg={project_path:decodeURIComponent(pathLib.join(basePath,"projects",folder)),usage_md:usage_md,project_name:folder};
-		session.addChatText("assistant", `### Arguments\n\`\`\`json\n${JSON.stringify(arg, null, 2)}\n\`\`\``);
+		// session.addChatText("assistant", `### Arguments\n\`\`\`json\n${JSON.stringify(arg, null, 2)}\n\`\`\``);
 		result = await fetch('http://127.0.0.1:8082/projects', {
 		method: 'POST',
 		headers: {
@@ -766,7 +779,7 @@ let agent=async function(session){
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/AutoAPI.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		{
-			const $text="正在调用API";
+			const $text=(($ln==="CN")?("正在调用API"):("Calling API"));
 			const $role=(undefined)||"assistant";
 			const $roleText=("assistant")||undefined;
 			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
@@ -954,7 +967,8 @@ let agent=async function(session){
 	segs["FakeSetup"]=FakeSetup=async function(input){//:1J4KBBMRK0
 		let result=input
 		/*#{1J4KBBMRK0Code*/
-		conda_name = "coqui-tts";
+		conda_name = "fastvlm";
+		dir = pathLib.join(basePath,"projects",folder);
 		/*}#1J4KBBMRK0Code*/
 		return {result:result};
 	};
@@ -982,14 +996,57 @@ let agent=async function(session){
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:"请你作为用户助手，根据已部署的项目文档中 **Quick Start**、**Usage**、**Examples**、**Command Line Tools** 等使用说明部分，面向普通用户提取并整理以下信息：\n\n1. 基本使用示例\n2. 命令行使用方式\n3. 主要功能列表\n\n重点关注项目提供的1个核心功能（如 OCR、TTS 等），并对该功能尝试识别：\n**功能名称**\n**功能描述**\n**使用方法**（命令行示例）\n\n注意你所选择的功能在命令行使用中必须存在输入参数，且参数必须为text或filePath，其余参数均应该有默认且可以直接使用的参数，不需要用户自己填写或修改，即在命令行示例中只能有输入文本/输入文件路径/输出文件路径，其余参数均应选择最合适的值，并和功能描述相对应。\n如果输出的filePath是一个文件夹/目录的路径，请在output_description中指明需要压缩为zip文件，输出的格式是zip的路径，内容是A zip file containing ...。\n请严格按照以下 JSON 格式输出：\n\n{\n  \"features\": [\n    {\n      \"name\": \"功能名称（简洁明了）\",\n      \"description\": \"功能详细描述（说明具体作用和适用场景）\",\n      \"input_type\": \"text/filePath\",\n      \"input_description\": \"输入参数的具体描述\",\n      \"output_type\": \"text/filePath\",\n      \"output_is_directory_path\": true/false,\n      \"need_zip\": true/false,\n      \"output_suffix\":\"输出结果的文件后缀名，如zip, png, md, txt 等等\"\n      \"output_description\": \"输出结果的详细描述（文件格式、内容说明）\",\n      \"command\": \"完整的命令行执行示例（可以直接复制粘贴运行）\",\n    }\n  ]\n}\n\n"},
+			{role:"system",content:`请你作为用户助手，根据已部署的项目文档中 **Quick Start**、**Usage**、**Examples**、**Command Line Tools** 等使用说明部分，以及部署成功时总结的部署指南，面向普通用户提取并整理以下信息：
+
+1. 基本使用示例
+2. 命令行使用方式
+3. 主要功能列表
+
+重点关注项目提供的1个核心功能（如 OCR、TTS 等），并对该功能尝试识别：
+**功能名称**
+**功能描述**
+**使用方法**（命令行示例）
+
+注意:
+1. 你所选择的功能在命令行使用中必须存在输入参数，且参数必须为text或filePath，其余参数均应该有默认且可以直接使用的参数，不需要用户自己填写或修改，即在命令行示例中只能有输入文本/输入文件路径/输出文件路径，其余参数均应选择最合适的值，并和功能描述相对应。
+2. 输入的文本/文件路径只能有一个。
+3. 如果输出的filePath是一个文件夹/目录的路径，请在output_description中指明需要压缩为zip文件，输出的格式是zip的路径，内容是A zip file containing ...。
+4. 如果命令行执行示例中包含文件路径，请使用绝对路径，例如：python /Users/agenthub/code/ai2apps/agents/AutoDeploy/projects/ml-fastvlm/predict.py ...。
+5. 请你仔细检查需要用到的文件都存在并且路径正确，尤其是模型权重的目录，确保其中包含正确的模型文件。
+6. 由于实际的部署方案与项目文档中可能有出入，生成命令后你需要仔细检查部署指南和本地文件，确保你的命令可以在本地直接复制粘贴运行。
+
+请严格按照以下 JSON 格式输出：
+
+{
+  "reason": "你的思考过程",
+  "features": [
+    {
+      "name": "功能名称（简洁明了）",
+      "description": "功能详细描述（说明具体作用和适用场景）",
+      "input_type": "text/filePath",
+      "input_description": "输入参数的具体描述",
+      "output_type": "text/filePath",
+      "output_is_directory_path": true/false,
+      "need_zip": true/false,
+      "output_suffix":"输出结果的文件后缀名，如zip, png, md, txt 等等"
+      "output_description": "输出结果的详细描述（文件格式、内容说明）",
+      "command": "完整的命令行执行示例（可以直接复制粘贴运行）",
+    }
+  ]
+}
+` + (($ln==="CN")?("用中文输出。"):("Output in English."))
+
+},
 		];
 		/*#{1J4KMNBDP0PrePrompt*/
 		/*}#1J4KMNBDP0PrePrompt*/
-		prompt=`项目内包含的文件有：
+		prompt=`部署指南：
+${deploy_md}
+项目文档：
+${guide_md}
+项目内包含的文件有：
 ${all_files}
-参考资料：
-${guide_md}`;
+`;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
@@ -1037,7 +1094,7 @@ ${guide_md}`;
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:`请把输入总结成使用指南，严格按照输入给出的input_type和output_type，输出markdown格式的文本。在指南中加上这句话：已经在本机的 conda 环境 ${conda_name} 安装相关依赖，运行相关 cli 需要先激活虚拟环境。`},
+			{role:"system",content:`请把输入总结成使用指南，严格按照输入给出的input_type和output_type，输出markdown格式的文本。在指南中加上这句话：已经在本机的 conda 环境 ${conda_name} 安装相关依赖，运行相关 cli 需要先激活虚拟环境。` + (($ln==="CN")?("用中文输出。"):("Output in English."))},
 		];
 		/*#{1J4KN30G00PrePrompt*/
 		/*}#1J4KN30G00PrePrompt*/
@@ -1078,6 +1135,52 @@ ${guide_md}`;
 	};
 	Output.jaxId="1J4KNAFFS0"
 	Output.url="Output@"+agentURL
+	
+	segs["ListFiles"]=ListFiles=async function(input){//:1J5NMNSHC0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']='find "$(pwd)" -type f -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -path "*/.pytest_cache/*" -not -path "*/.tox/*" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/env/*" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/*.egg-info/*" -not -path "*/.mypy_cache/*" -not -path "*/.coverage/*"';
+		args['options']="";
+		/*#{1J5NMNSHC0PreCodes*/
+		/*}#1J5NMNSHC0PreCodes*/
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1J5NMNSHC0PostCodes*/
+		all_files = extract(result);
+		/*}#1J5NMNSHC0PostCodes*/
+		return {seg:ExtracUsage,result:(result),preSeg:"1J5NMNSHC0",outlet:"1J5NMOVBL0"};
+	};
+	ListFiles.jaxId="1J5NMNSHC0"
+	ListFiles.url="ListFiles@"+agentURL
+	
+	segs["GetPath2"]=GetPath2=async function(input){//:1J5NMVNBD0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=[`cd ${dir}`];
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:ListFiles,result:(result),preSeg:"1J5NMVNBD0",outlet:"1J5NN19GV0"};
+	};
+	GetPath2.jaxId="1J5NMVNBD0"
+	GetPath2.url="GetPath2@"+agentURL
+	
+	segs["InitBash2"]=InitBash2=async function(input){//:1J5NNUJMV0
+		let result,args={};
+		args['bashId']="";
+		args['action']="Create";
+		args['commands']="";
+		args['options']={client: true};
+		/*#{1J5NNUJMV0PreCodes*/
+		/*}#1J5NNUJMV0PreCodes*/
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1J5NNUJMV0PostCodes*/
+		globalContext.bash=result;
+		/*}#1J5NNUJMV0PostCodes*/
+		return {seg:GetPath2,result:(result),preSeg:"1J5NNUJMV0",outlet:"1J5NNVFAV0"};
+	};
+	InitBash2.jaxId="1J5NNUJMV0"
+	InitBash2.url="InitBash2@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1513,7 +1616,15 @@ export{agent,ChatAPI};
 //							"def": "ProcessMsg",
 //							"jaxId": "1J1HO118T0",
 //							"attrs": {
-//								"text": "Search for references related to deployment.",
+//								"text": {
+//									"type": "string",
+//									"valText": "Search for references related to deployment.",
+//									"localize": {
+//										"EN": "Search for references related to deployment.",
+//										"CN": "查找部署相关的参考资料。"
+//									},
+//									"localizable": true
+//								},
 //								"role": "Assistant",
 //								"roleText": "",
 //								"codes": "false"
@@ -1723,7 +1834,15 @@ export{agent,ChatAPI};
 //							"def": "ProcessMsg",
 //							"jaxId": "1J1HO118T1",
 //							"attrs": {
-//								"text": "Start deploying the project.",
+//								"text": {
+//									"type": "string",
+//									"valText": "Start deploying the project.",
+//									"localize": {
+//										"EN": "Start deploying the project.",
+//										"CN": "开始部署项目。"
+//									},
+//									"localizable": true
+//								},
 //								"role": "Assistant",
 //								"roleText": "",
 //								"codes": "false"
@@ -1786,7 +1905,15 @@ export{agent,ChatAPI};
 //						},
 //						"role": "Assistant",
 //						"channel": "Process",
-//						"text": "Start cloning project to local.",
+//						"text": {
+//							"type": "string",
+//							"valText": "Start cloning project to local.",
+//							"localize": {
+//								"EN": "Start cloning project to local.",
+//								"CN": "开始克隆项目到本地。"
+//							},
+//							"localizable": true
+//						},
 //						"outlet": {
 //							"jaxId": "1J1FJT4EK0",
 //							"attrs": {
@@ -1809,7 +1936,7 @@ export{agent,ChatAPI};
 //						"x": "1320",
 //						"y": "135",
 //						"desc": "执行一次LLM调用。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2003,7 +2130,15 @@ export{agent,ChatAPI};
 //						},
 //						"role": "Assistant",
 //						"channel": "Chat",
-//						"text": "#`项目克隆失败，${input.reason}请参考以下解决方案尝试解决并重试解决方案：${input.solution}`",
+//						"text": {
+//							"type": "string",
+//							"valText": "#`Project cloning failed, ${input.reason}. \\nPlease refer to the following solutions to try and resolve it and retry the solution: ${input.solution}`",
+//							"localize": {
+//								"EN": "#`Project cloning failed, ${input.reason}. \\nPlease refer to the following solutions to try and resolve it and retry the solution: ${input.solution}`",
+//								"CN": "#`项目克隆失败，${input.reason}\\n请参考以下解决方案尝试解决并重试解决方案：${input.solution}`"
+//							},
+//							"localizable": true
+//						},
 //						"outlet": {
 //							"jaxId": "1J1FPPRQ30",
 //							"attrs": {
@@ -2197,12 +2332,20 @@ export{agent,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "125",
-//						"y": "930",
+//						"y": "710",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"prompt": "是否需要体验项目功能",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Do you want to test the project feature",
+//							"localize": {
+//								"EN": "Do you want to test the project feature",
+//								"CN": "是否需要体验项目功能"
+//							},
+//							"localizable": true
+//						},
 //						"multi": "false",
 //						"withChat": "false",
 //						"outlet": {
@@ -2246,7 +2389,7 @@ export{agent,ChatAPI};
 //											}
 //										}
 //									},
-//									"linkedSeg": "1J4KMNBDP0"
+//									"linkedSeg": "1J5NNUJMV0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -2492,7 +2635,15 @@ export{agent,ChatAPI};
 //							"def": "ProcessMsg",
 //							"jaxId": "1J4ENBH2O0",
 //							"attrs": {
-//								"text": "正在将项目注册为API",
+//								"text": {
+//									"type": "string",
+//									"valText": "Registering project as API",
+//									"localize": {
+//										"EN": "Registering project as API",
+//										"CN": "正在将项目注册为API"
+//									},
+//									"localizable": true
+//								},
 //								"role": "Assistant",
 //								"roleText": "",
 //								"codes": "false"
@@ -2637,7 +2788,15 @@ export{agent,ChatAPI};
 //							"def": "ProcessMsg",
 //							"jaxId": "1J4END1OQ0",
 //							"attrs": {
-//								"text": "正在调用API",
+//								"text": {
+//									"type": "string",
+//									"valText": "Calling API",
+//									"localize": {
+//										"EN": "Calling API",
+//										"CN": "正在调用API"
+//									},
+//									"localizable": true
+//								},
 //								"role": "Assistant",
 //								"roleText": "",
 //								"codes": "false"
@@ -3064,8 +3223,8 @@ export{agent,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2100",
-//						"y": "685",
+//						"x": "2095",
+//						"y": "690",
 //						"outlet": {
 //							"jaxId": "1J4CAL9DD1",
 //							"attrs": {
@@ -3304,8 +3463,8 @@ export{agent,ChatAPI};
 //						"id": "ExtracUsage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "235",
-//						"y": "690",
+//						"x": "1060",
+//						"y": "650",
 //						"desc": "Excute a LLM call.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -3324,7 +3483,7 @@ export{agent,ChatAPI};
 //						},
 //						"platform": "Claude",
 //						"mode": "claude-3-7-sonnet-latest",
-//						"system": "请你作为用户助手，根据已部署的项目文档中 **Quick Start**、**Usage**、**Examples**、**Command Line Tools** 等使用说明部分，面向普通用户提取并整理以下信息：\n\n1. 基本使用示例\n2. 命令行使用方式\n3. 主要功能列表\n\n重点关注项目提供的1个核心功能（如 OCR、TTS 等），并对该功能尝试识别：\n**功能名称**\n**功能描述**\n**使用方法**（命令行示例）\n\n注意你所选择的功能在命令行使用中必须存在输入参数，且参数必须为text或filePath，其余参数均应该有默认且可以直接使用的参数，不需要用户自己填写或修改，即在命令行示例中只能有输入文本/输入文件路径/输出文件路径，其余参数均应选择最合适的值，并和功能描述相对应。\n如果输出的filePath是一个文件夹/目录的路径，请在output_description中指明需要压缩为zip文件，输出的格式是zip的路径，内容是A zip file containing ...。\n请严格按照以下 JSON 格式输出：\n\n{\n  \"features\": [\n    {\n      \"name\": \"功能名称（简洁明了）\",\n      \"description\": \"功能详细描述（说明具体作用和适用场景）\",\n      \"input_type\": \"text/filePath\",\n      \"input_description\": \"输入参数的具体描述\",\n      \"output_type\": \"text/filePath\",\n      \"output_is_directory_path\": true/false,\n      \"need_zip\": true/false,\n      \"output_suffix\":\"输出结果的文件后缀名，如zip, png, md, txt 等等\"\n      \"output_description\": \"输出结果的详细描述（文件格式、内容说明）\",\n      \"command\": \"完整的命令行执行示例（可以直接复制粘贴运行）\",\n    }\n  ]\n}\n\n",
+//						"system": "#`请你作为用户助手，根据已部署的项目文档中 **Quick Start**、**Usage**、**Examples**、**Command Line Tools** 等使用说明部分，以及部署成功时总结的部署指南，面向普通用户提取并整理以下信息：\n\n1. 基本使用示例\n2. 命令行使用方式\n3. 主要功能列表\n\n重点关注项目提供的1个核心功能（如 OCR、TTS 等），并对该功能尝试识别：\n**功能名称**\n**功能描述**\n**使用方法**（命令行示例）\n\n注意:\n1. 你所选择的功能在命令行使用中必须存在输入参数，且参数必须为text或filePath，其余参数均应该有默认且可以直接使用的参数，不需要用户自己填写或修改，即在命令行示例中只能有输入文本/输入文件路径/输出文件路径，其余参数均应选择最合适的值，并和功能描述相对应。\n2. 输入的文本/文件路径只能有一个。\n3. 如果输出的filePath是一个文件夹/目录的路径，请在output_description中指明需要压缩为zip文件，输出的格式是zip的路径，内容是A zip file containing ...。\n4. 如果命令行执行示例中包含文件路径，请使用绝对路径，例如：python /Users/agenthub/code/ai2apps/agents/AutoDeploy/projects/ml-fastvlm/predict.py ...。\n5. 请你仔细检查需要用到的文件都存在并且路径正确，尤其是模型权重的目录，确保其中包含正确的模型文件。\n6. 由于实际的部署方案与项目文档中可能有出入，生成命令后你需要仔细检查部署指南和本地文件，确保你的命令可以在本地直接复制粘贴运行。\n\n请严格按照以下 JSON 格式输出：\n\n{\n  \"reason\": \"你的思考过程\",\n  \"features\": [\n    {\n      \"name\": \"功能名称（简洁明了）\",\n      \"description\": \"功能详细描述（说明具体作用和适用场景）\",\n      \"input_type\": \"text/filePath\",\n      \"input_description\": \"输入参数的具体描述\",\n      \"output_type\": \"text/filePath\",\n      \"output_is_directory_path\": true/false,\n      \"need_zip\": true/false,\n      \"output_suffix\":\"输出结果的文件后缀名，如zip, png, md, txt 等等\"\n      \"output_description\": \"输出结果的详细描述（文件格式、内容说明）\",\n      \"command\": \"完整的命令行执行示例（可以直接复制粘贴运行）\",\n    }\n  ]\n}\n` + (($ln===\"CN\")?(\"用中文输出。\"):(\"Output in English.\"))\n\n",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -3333,7 +3492,7 @@ export{agent,ChatAPI};
 //						"messages": {
 //							"attrs": []
 //						},
-//						"prompt": "#`项目内包含的文件有：\n${all_files}\n参考资料：\n${guide_md}`",
+//						"prompt": "#`部署指南：\n${deploy_md}\n项目文档：\n${guide_md}\n项目内包含的文件有：\n${all_files}\n`",
 //						"seed": "",
 //						"outlet": {
 //							"jaxId": "1J4KMNUEQ0",
@@ -3369,8 +3528,8 @@ export{agent,ChatAPI};
 //						"id": "Summary",
 //						"viewName": "",
 //						"label": "",
-//						"x": "505",
-//						"y": "690",
+//						"x": "1320",
+//						"y": "650",
 //						"desc": "Excute a LLM call.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -3389,7 +3548,7 @@ export{agent,ChatAPI};
 //						},
 //						"platform": "\"OpenAI\"",
 //						"mode": "gpt-4.1",
-//						"system": "#`请把输入总结成使用指南，严格按照输入给出的input_type和output_type，输出markdown格式的文本。在指南中加上这句话：已经在本机的 conda 环境 ${conda_name} 安装相关依赖，运行相关 cli 需要先激活虚拟环境。`",
+//						"system": "#`请把输入总结成使用指南，严格按照输入给出的input_type和output_type，输出markdown格式的文本。在指南中加上这句话：已经在本机的 conda 环境 ${conda_name} 安装相关依赖，运行相关 cli 需要先激活虚拟环境。` + (($ln===\"CN\")?(\"用中文输出。\"):(\"Output in English.\"))",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -3434,8 +3593,8 @@ export{agent,ChatAPI};
 //						"id": "Output",
 //						"viewName": "",
 //						"label": "",
-//						"x": "730",
-//						"y": "690",
+//						"x": "1570",
+//						"y": "650",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -3461,7 +3620,7 @@ export{agent,ChatAPI};
 //								"id": "Result",
 //								"desc": "Outlet."
 //							},
-//							"linkedSeg": "1J4CFJC4C0"
+//							"linkedSeg": "1J5NVTI6L0"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -3504,6 +3663,173 @@ export{agent,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1J3I4OI7M0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1J5NMNSHC0",
+//					"attrs": {
+//						"id": "ListFiles",
+//						"viewName": "",
+//						"label": "",
+//						"x": "830",
+//						"y": "650",
+//						"desc": "This is an AISeg.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J5NNNV2N0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J5NNNV2N1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#'find \"$(pwd)\" -type f -not -path \"*/.git/*\" -not -path \"*/__pycache__/*\" -not -path \"*/.pytest_cache/*\" -not -path \"*/.tox/*\" -not -path \"*/venv/*\" -not -path \"*/.venv/*\" -not -path \"*/env/*\" -not -path \"*/node_modules/*\" -not -path \"*/dist/*\" -not -path \"*/build/*\" -not -path \"*/*.egg-info/*\" -not -path \"*/.mypy_cache/*\" -not -path \"*/.coverage/*\"'",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1J5NMOVBL0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J4KMNBDP0"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1J5NMVNBD0",
+//					"attrs": {
+//						"id": "GetPath2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "595",
+//						"y": "650",
+//						"desc": "This is an AISeg.",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J5NNNV2N2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J5NNNV2N3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#[`cd ${dir}`]",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1J5NN19GV0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J5NMNSHC0"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1J5NNUJMV0",
+//					"attrs": {
+//						"id": "InitBash2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "360",
+//						"y": "650",
+//						"desc": "This is an AISeg.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1J5NO1GUH0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1J5NO1GUI0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "\"\"",
+//						"action": "Create",
+//						"commands": "\"\"",
+//						"options": "#{client: true}",
+//						"outlet": {
+//							"jaxId": "1J5NNVFAV0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J5NMVNBD0"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J5NVTI6L0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1695",
+//						"y": "780",
+//						"outlet": {
+//							"jaxId": "1J5O011E40",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J5NVTTCV0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J5NVTTCV0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "400",
+//						"y": "780",
+//						"outlet": {
+//							"jaxId": "1J5O011E41",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1J4CFJC4C0"
 //						},
 //						"dir": "R2L"
 //					},

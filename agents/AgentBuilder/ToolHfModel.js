@@ -5,9 +5,9 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 /*#{1IJ44VPHU0MoreImports*/
 /*}#1IJ44VPHU0MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
-const basePath=baseURL.startsWith("file://")?pathLib.pathToFileURL(baseURL):baseURL;
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 const argsTemplate={
 	properties:{
@@ -41,7 +41,7 @@ let ToolHfModel=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,Download,Check,Switch,Install,CheckDownload,tip1,tip2,tip3,SetMirror,InputToken,CheckToken,FormatError,TryAgain,AbortDownload,CheckAgain,tip4,asktoken,tip5,InputModel,CheckInstall,Success,Install2,CheckInstall2,Success2,LLMCheckDownload,CheckError,CheckModelDownload,output,errortoken,Retry,LocalPath,DownloadLocalPath;
+	let FixArgs,Download,Check,Switch,Install,CheckDownload,tip1,tip2,tip3,SetMirror,InputToken,CheckToken,FormatError,TryAgain,AbortDownload,CheckAgain,tip4,asktoken,tip5,InputModel,CheckInstall,Success,Install2,CheckInstall2,Success2,LLMCheckDownload,CheckError,CheckModelDownload,output,errortoken,Retry,LocalPath,DownloadLocalPath,AskRetry;
 	/*#{1IJ44VPHU0LocalVals*/
 	/*}#1IJ44VPHU0LocalVals*/
 	
@@ -223,6 +223,7 @@ let ToolHfModel=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -234,7 +235,7 @@ let ToolHfModel=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -393,6 +394,7 @@ let ToolHfModel=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -404,7 +406,7 @@ let ToolHfModel=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -541,7 +543,7 @@ let ToolHfModel=async function(session){
 			fqcP:0,
 			prcP:0,
 			secret:false,
-			responseFormat:"text"
+			responseFormat:"json_object"
 		};
 		let chatMem=LLMCheckDownload.messages
 		let seed="";
@@ -571,7 +573,8 @@ let ToolHfModel=async function(session){
 
 * 当 success 为 false 时，error_type 必须是上述四种之一，suggestion 为对应的具体操作提示。
 
-请严格按照上述流程和 JSON 模板输出，且不要额外输出其他内容。`
+请严格按照上述流程和 JSON 模板输出，且不要额外输出其他内容。
+` + (($ln==="CN")?("用中文输出。"):("Output in English."))
 
 },
 		];
@@ -583,6 +586,7 @@ let ToolHfModel=async function(session){
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		result=await session.callSegLLM("LLMCheckDownload@"+agentURL,opts,messages,true);
+		result=trimJSON(result);
 		return {seg:CheckModelDownload,result:(result),preSeg:"1J21KPET10",outlet:"1J21KQ0HG0"};
 	};
 	LLMCheckDownload.jaxId="1J21KPET10"
@@ -591,7 +595,7 @@ let ToolHfModel=async function(session){
 	segs["CheckError"]=CheckError=async function(input){//:1J21L9QU90
 		let result=input;
 		if(input.error_type==="network_interruption"){
-			return {seg:Download,result:(input),preSeg:"1J21L9QU90",outlet:"1J21LBGBI0"};
+			return {seg:AskRetry,result:(input),preSeg:"1J21L9QU90",outlet:"1J21LBGBI0"};
 		}
 		if(input.error_type==="requires_token"){
 			return {seg:asktoken,result:(input),preSeg:"1J21L9QU90",outlet:"1J21LCD6G0"};
@@ -688,6 +692,37 @@ let ToolHfModel=async function(session){
 	DownloadLocalPath.jaxId="1J21M45510"
 	DownloadLocalPath.url="DownloadLocalPath@"+agentURL
 	
+	segs["AskRetry"]=AskRetry=async function(input){//:1J5QL7MF00
+		let prompt=("Please confirm")||input;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let withChat=false;
+		let silent=false;
+		let items=[
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("是"):("Yes")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("否"):("No")),code:1},
+		];
+		let result="";
+		let item=null;
+		
+		if(silent){
+			result="";
+			return {seg:Download,result:(result),preSeg:"1J5QL7MF00",outlet:"1J5QL7ME90"};
+		}
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		if(typeof(item)==='string'){
+			result=item;
+			return {result:result};
+		}else if(item.code===0){
+			return {seg:Download,result:(result),preSeg:"1J5QL7MF00",outlet:"1J5QL7ME90"};
+		}else if(item.code===1){
+			return {result:result};
+		}
+		return {result:result};
+	};
+	AskRetry.jaxId="1J5QL7MF00"
+	AskRetry.url="AskRetry@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -730,7 +765,8 @@ let ChatAPI=[{
 				token:{type:"string",description:"如果模型下载需要授权，则需要token"}
 			}
 		}
-	}
+	},
+	isChatApi: true
 }];
 
 //:Export Edit-AddOn:
@@ -1510,6 +1546,7 @@ export{ToolHfModel,ChatAPI};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {
@@ -2047,6 +2084,7 @@ export{ToolHfModel,ChatAPI};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {
@@ -2129,6 +2167,7 @@ export{ToolHfModel,ChatAPI};
 //							},
 //							"linkedSeg": "1J216V91J0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -2302,6 +2341,7 @@ export{ToolHfModel,ChatAPI};
 //							},
 //							"linkedSeg": "1J2176SFI0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -2436,7 +2476,7 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"platform": "\"OpenAI\"",
 //						"mode": "gpt-4.1-mini",
-//						"system": "#`你是一个专门分析 Hugging Face CLI 下载模型终端输出的助手。收到用户提供的一段终端输出（纯文本），请你完成以下步骤：\n\n1. 判断本次下载是否成功。  \n\n2. 如果失败，请根据终端输出内容，匹配以下四种错误类型之一：  \n   - network_interruption：网络中断、连接超时、DNS 失败等，提示“重试下载”；  \n   - requires_token：模型私有，需要登录 token，但用户未设置任何 token；  \n   - invalid_token：检测到用户已设置 token，但 token 无效（返回 401/403 授权失败等）；  \n   - add_mirror：网络环境受限，需要添加 HF 镜像源（如国内环境）。\n   - no_model：Repository not found，模型不存在。\n\n3. 生成并返回一个 JSON 对象，格式如下：\n\n{\n  \"success\": true|false,\n  \"error_type\": null|\"network_interruption\"|\"requires_token\"|\"invalid_token\"|\"add_mirror\"|\"no_model\",\n  \"suggestion\": \"针对错误的操作建议文字\"\n}\n\n\n* 当 success 为 true 时，error_type 和 suggestion 均应为 null。\n\n* 当 success 为 false 时，error_type 必须是上述四种之一，suggestion 为对应的具体操作提示。\n\n请严格按照上述流程和 JSON 模板输出，且不要额外输出其他内容。`\n\n",
+//						"system": "#`你是一个专门分析 Hugging Face CLI 下载模型终端输出的助手。收到用户提供的一段终端输出（纯文本），请你完成以下步骤：\n\n1. 判断本次下载是否成功。  \n\n2. 如果失败，请根据终端输出内容，匹配以下四种错误类型之一：  \n   - network_interruption：网络中断、连接超时、DNS 失败等，提示“重试下载”；  \n   - requires_token：模型私有，需要登录 token，但用户未设置任何 token；  \n   - invalid_token：检测到用户已设置 token，但 token 无效（返回 401/403 授权失败等）；  \n   - add_mirror：网络环境受限，需要添加 HF 镜像源（如国内环境）。\n   - no_model：Repository not found，模型不存在。\n\n3. 生成并返回一个 JSON 对象，格式如下：\n\n{\n  \"success\": true|false,\n  \"error_type\": null|\"network_interruption\"|\"requires_token\"|\"invalid_token\"|\"add_mirror\"|\"no_model\",\n  \"suggestion\": \"针对错误的操作建议文字\"\n}\n\n\n* 当 success 为 true 时，error_type 和 suggestion 均应为 null。\n\n* 当 success 为 false 时，error_type 必须是上述四种之一，suggestion 为对应的具体操作提示。\n\n请严格按照上述流程和 JSON 模板输出，且不要额外输出其他内容。\n` + (($ln===\"CN\")?(\"用中文输出。\"):(\"Output in English.\"))\n\n",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -2455,6 +2495,7 @@ export{ToolHfModel,ChatAPI};
 //							},
 //							"linkedSeg": "1J21LHRVE0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -2467,7 +2508,7 @@ export{ToolHfModel,ChatAPI};
 //							"attrs": []
 //						},
 //						"parallelFunction": "false",
-//						"responseFormat": "text",
+//						"responseFormat": "json_object",
 //						"formatDef": "\"\""
 //					},
 //					"icon": "llm.svg"
@@ -2532,7 +2573,7 @@ export{ToolHfModel,ChatAPI};
 //										},
 //										"condition": "#input.error_type===\"network_interruption\""
 //									},
-//									"linkedSeg": "1J21LVVCF0"
+//									"linkedSeg": "1J5QL7MF00"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -2849,8 +2890,8 @@ export{ToolHfModel,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "540",
-//						"y": "-130",
+//						"x": "295",
+//						"y": "-135",
 //						"outlet": {
 //							"jaxId": "1J21M0NOU1",
 //							"attrs": {
@@ -2992,6 +3033,149 @@ export{ToolHfModel,ChatAPI};
 //						}
 //					},
 //					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askMenu",
+//					"jaxId": "1J5QL7MF00",
+//					"attrs": {
+//						"id": "AskRetry",
+//						"viewName": "",
+//						"label": "",
+//						"x": "715",
+//						"y": "-185",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": "Please confirm",
+//						"multi": "false",
+//						"withChat": "false",
+//						"outlet": {
+//							"jaxId": "1J5QLB4PD0",
+//							"attrs": {
+//								"id": "ChatInput",
+//								"desc": "输出节点。",
+//								"codes": "false"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J5QL7ME90",
+//									"attrs": {
+//										"id": "Item1",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Yes",
+//											"localize": {
+//												"EN": "Yes",
+//												"CN": "是"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J5QLB4PH0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J5QLB4PH1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1J5QLBOO20"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1J5QL7MEA0",
+//									"attrs": {
+//										"id": "Item2",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "No",
+//											"localize": {
+//												"EN": "No",
+//												"CN": "否"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1J5QLB4PH2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1J5QLB4PH3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									}
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "menu.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J5QLBOO20",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "860",
+//						"y": "-295",
+//						"outlet": {
+//							"jaxId": "1J5QLC2560",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J5QLBTA80"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1J5QLBTA80",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "395",
+//						"y": "-295",
+//						"outlet": {
+//							"jaxId": "1J5QLC2561",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J21LVVCF0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},
