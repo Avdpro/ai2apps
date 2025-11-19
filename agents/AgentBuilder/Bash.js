@@ -62,6 +62,7 @@ let Bash=async function(session){
 	let project=globalContext.project;
 	
 	/*#{1IG0KVFDB0LocalVals*/
+	let contentLen=-1;
 	/*}#1IG0KVFDB0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -418,13 +419,13 @@ let Bash=async function(session){
 		let result=input
 		/*#{1IIF89Q1I0Code*/
 		let changes="";
-		let contentLen;
-		contentLen=(await cmdBash.getContent()).length;
+		if(contentLen == -1) contentLen=orgCmdContent.length;
 		while(!changes){
 			console.log("Wait bash idle...");
 			await cmdBash.waitIdle(true);
 			changes=await cmdBash.getContent();
 			changes=changes.substring(contentLen);
+			contentLen += changes.length;
 			console.log("Bash idle end: "+changes);
 		}
 		result=await cmdBash.getContent();
@@ -440,6 +441,7 @@ let Bash=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -449,7 +451,7 @@ let Bash=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -599,7 +601,6 @@ export{Bash,ChatAPI};
 //							"jaxId": "1IG0KVFDC0",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IG0KVFDC1",
 //							"attrs": {}
@@ -610,7 +611,8 @@ export{Bash,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1339,6 +1341,7 @@ export{Bash,ChatAPI};
 //						"shareChatName": "",
 //						"keepChat": "No",
 //						"clearChat": "2",
+//						"compactContext": "200000",
 //						"apiFiles": {
 //							"attrs": []
 //						},
@@ -1803,6 +1806,7 @@ export{Bash,ChatAPI};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {

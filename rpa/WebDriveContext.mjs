@@ -503,7 +503,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			
 			// Handle different result types
 			if (result.type === 'success') {
-				return result.result.value;
+				return deserializeEvaluateResult(result.result);;
 			} else if (result.type === 'exception') {
 				throw new Error(result.exceptionDetails.text || 'Script evaluation failed');
 			}
@@ -550,7 +550,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			
 			// Handle different result types
 			if (result.type === 'success') {
-				return result.result;
+				return deserializeEvaluateResult(result.result);
 			} else if (result.type === 'exception') {
 				throw new Error(result.exceptionDetails.text || 'Script evaluation failed');
 			}
@@ -1700,13 +1700,35 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		if(!action){
 			await this.startAction();
 		}
-		rect=await this.callFunction(`(item)=>{
-			const rect=item.getBoundingClientRect();
-			if(!rect){
-				return null;
+		rect=await this.callFunction(`async (item) => {
+			if (!item) return null;
+			const inView = r =>
+				r.top >= 0 &&
+				r.left >= 0 &&
+				r.bottom < window.innerHeight &&
+				r.right < window.innerWidth;
+			
+			let rect = item.getBoundingClientRect();
+			if (!rect) return null;
+			
+			// 不在可视区域就滚动出来
+			if (!inView(rect)) {
+				item.scrollIntoView({
+					block: "center",
+					inline: "center",
+					behavior: "instant", // 或 "smooth"
+				});
+				//等一秒
+				await new Promise(resolve => setTimeout(resolve, 1000));
+				
+				rect = item.getBoundingClientRect();
 			}
+			
 			return {
-				x:rect.x, y:rect.y, width:rect.width, height: rect.height
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height,
 			};
 		}`,[handle]);
 		
@@ -1804,13 +1826,36 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		if(!action){
 			await this.startAction();
 		}
-		rect=await this.callFunction(`(item)=>{
-			const rect=item.getBoundingClientRect();
-			if(!rect){
-				return null;
+
+		rect=await this.callFunction(`async (item) => {
+			if (!item) return null;
+			const inView = r =>
+				r.top >= 0 &&
+				r.left >= 0 &&
+				r.bottom < window.innerHeight &&
+				r.right < window.innerWidth;
+			
+			let rect = item.getBoundingClientRect();
+			if (!rect) return null;
+			
+			// 不在可视区域就滚动出来
+			if (!inView(rect)) {
+				item.scrollIntoView({
+					block: "center",
+					inline: "center",
+					behavior: "instant", // 或 "smooth"
+				});
+				//等一秒
+				await new Promise(resolve => setTimeout(resolve, 1000));
+				
+				rect = item.getBoundingClientRect();
 			}
+			
 			return {
-				x:rect.x, y:rect.y, width:rect.width, height: rect.height
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height,
 			};
 		}`,[handle]);
 		
@@ -1956,7 +2001,57 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			this.action=null;
 		}
 	};//Tested
-
+	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.scrollIntoView=async function(selector,opts){
+		let handle,action,actions;
+		if(selector.handle){
+			handle=selector;
+		}else {
+			handle = await this.$(selector);
+		}
+		if(!handle){
+			return;
+		}
+		action=this.action;
+		if(!action){
+			await this.startAction();
+		}
+		await this.callFunction(`async (item) => {
+			if (!item) return null;
+			const inView = r =>
+				r.top >= 0 &&
+				r.left >= 0 &&
+				r.bottom < window.innerHeight &&
+				r.right < window.innerWidth;
+			
+			let rect = item.getBoundingClientRect();
+			if (!rect) return null;
+			
+			// 不在可视区域就滚动出来
+			if (!inView(rect)) {
+				item.scrollIntoView({
+					block: "center",
+					inline: "center",
+					behavior: "instant", // 或 "smooth"
+				});
+				//等一秒
+				await new Promise(resolve => setTimeout(resolve, 1000));
+				
+				rect = item.getBoundingClientRect();
+			}
+			
+			return {
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height,
+			};
+		}`,[handle]);
+		
+		await this.disown(handle);
+	};
+	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.tap=async function(selector,opts){
 		//TODO: Code this:

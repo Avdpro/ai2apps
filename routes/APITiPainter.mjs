@@ -116,7 +116,7 @@ let APITiPainter=async function(app,router,apiMap) {
 							const imageFile = await toFile(
 								Buffer.from(imageB64, "base64"),
 								"input.png",
-								{ contentType: "image/png" }
+								{ type: "image/png" }
 							);
 							editImages.push(imageFile);
 						}
@@ -127,7 +127,7 @@ let APITiPainter=async function(app,router,apiMap) {
 							maskFile = await toFile(
 								Buffer.from(maskB64, "base64"),
 								"mask.png",
-								{ contentType: "image/png" }
+								{ type: "image/png" }
 							);
 						}
 						let callVo={
