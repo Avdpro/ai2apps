@@ -39,6 +39,28 @@ function getTypeEmoji(type) {
 	};
 	return emojiMap[type] || '📄';
 }
+
+async function getUserLocation() {
+try {
+const response = await axios.get('https://ipinfo.io/json');
+const data = response.data;
+const country = data.country;
+
+if (country === 'CN') {
+console.log('用户来自中国');
+		return "China";
+} else {
+console.log('用户来自国外');
+		return "Foreign";
+}
+} catch (error) {
+console.error('无法获取地理位置:', error);
+	return "None";
+}
+}
+
+
+
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
 let agent=async function(session){
@@ -46,7 +68,7 @@ let agent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let InitBash,Get,Clone,GetPath,FindGuide,CheckGuide,NoReadme,WriteSetupGuide,SetupProject,FixArgs,Tip1,LLMCheckClone,CheckClone,Failure,Retry,goto,Navigate,Test,CheckDeploy,OutputFail,OutputSuccess,RegisterProject,Start,RegisterFail,TestAPI,Process,CheckInput,InputText,CheckRegister,InputFile,Again,Fetch,CheckStart,RegisterSuccess,FakeSetup,ExtracUsage,Summary,Output,ListFiles,GetPath2,InitBash2;
+	let InitBash,Get,Clone,GetPath,FindGuide,CheckGuide,NoReadme,WriteSetupGuide,SetupProject,FixArgs,Tip1,LLMCheckClone,CheckClone,Failure,Retry,goto,Navigate,Test,CheckDeploy,OutputFail,OutputSuccess,RegisterProject,Start,RegisterFail,TestAPI,Process,CheckInput,InputText,CheckRegister,InputFile,Again,Fetch,CheckStart,RegisterSuccess,FakeSetup,ExtracUsage,Summary,Output,ListFiles,GetPath2,InitBash2,GetLocation,Check,SetMirror;
 	/*#{1HDBOSUN90LocalVals*/
 	let repo, folder;
 	let input_type, output_type, api, usage_md, output_suffix, output_path, conda_name, server_start=false, all_files, guide_md, dir, deploy_md;
@@ -113,7 +135,7 @@ let agent=async function(session){
 		/*#{1IVIQJIRE0PostCodes*/
 		globalContext.bash=result;
 		/*}#1IVIQJIRE0PostCodes*/
-		return {seg:Navigate,result:(result),preSeg:"1IVIQJIRE0",outlet:"1IVIQK39F0"};
+		return {seg:GetLocation,result:(result),preSeg:"1IVIQJIRE0",outlet:"1IVIQK39F0"};
 	};
 	InitBash.jaxId="1IVIQJIRE0"
 	InitBash.url="InitBash@"+agentURL
@@ -161,6 +183,8 @@ let agent=async function(session){
 		folder=result.dir;
 		repo=result.repo;
 		/*}#1IVIQNTGJ0PostCall*/
+		/*#{1IVIQNTGJ0PreResult*/
+		/*}#1IVIQNTGJ0PreResult*/
 		return {seg:Clone,result:(result),preSeg:"1IVIQNTGJ0",outlet:"1IVIQUBK60"};
 	};
 	Get.jaxId="1IVIQNTGJ0"
@@ -330,8 +354,8 @@ let agent=async function(session){
 	
 	segs["NoReadme"]=NoReadme=async function(input){//:1IVIRNSHQ0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("未找到部署指南，部署终止"):("Deployment guide is not found, aborted."));
 		session.addChatText(role,content,opts);
@@ -451,7 +475,7 @@ let agent=async function(session){
 	segs["SetupProject"]=SetupProject=async function(input){//:1IVIS07O60
 		let result;
 		let arg={"prjPath":basePath,"folder":folder,"repo":repo};
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/PrjSetupBySteps.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		{
@@ -489,8 +513,8 @@ let agent=async function(session){
 	
 	segs["Tip1"]=Tip1=async function(input){//:1J1FJS9EU0
 		let result=input;
-		let channel="Process";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Process";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("开始克隆项目到本地。"):("Start cloning project to local."));
 		session.addChatText(role,content,opts);
@@ -563,6 +587,8 @@ let agent=async function(session){
 		result=trimJSON(result);
 		/*#{1J1FPDPRA0PostCall*/
 		/*}#1J1FPDPRA0PostCall*/
+		/*#{1J1FPDPRA0PreResult*/
+		/*}#1J1FPDPRA0PreResult*/
 		return {seg:CheckClone,result:(result),preSeg:"1J1FPDPRA0",outlet:"1J1FPEO370"};
 	};
 	LLMCheckClone.jaxId="1J1FPDPRA0"
@@ -580,8 +606,8 @@ let agent=async function(session){
 	
 	segs["Failure"]=Failure=async function(input){//:1J1FPNJ1A0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?(`项目克隆失败，${input.reason}\n请参考以下解决方案尝试解决并重试解决方案：${input.solution}`):(`Project cloning failed, ${input.reason}. \nPlease refer to the following solutions to try and resolve it and retry the solution: ${input.solution}`));
 		session.addChatText(role,content,opts);
@@ -690,8 +716,8 @@ let agent=async function(session){
 	
 	segs["OutputFail"]=OutputFail=async function(input){//:1J3NPC9JQ0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("部署失败"):("Deployment failed"));
 		session.addChatText(role,content,opts);
@@ -702,8 +728,8 @@ let agent=async function(session){
 	
 	segs["OutputSuccess"]=OutputSuccess=async function(input){//:1J3NPP7BT0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("部署成功"):("Deployment success"));
 		/*#{1J3NPP7BT0PreCodes*/
@@ -762,8 +788,8 @@ let agent=async function(session){
 	
 	segs["RegisterFail"]=RegisterFail=async function(input){//:1J4C75SK10
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("项目注册API失败"):("Project registration API failed"));
 		session.addChatText(role,content,opts);
@@ -837,7 +863,7 @@ let agent=async function(session){
 		}else if(result.assets && result.prompt){
 			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
 		}else{
-			session.addChatText("user",result.text||result.prompt||result);
+			session.addChatText("user",`${result.assets.join("\n- - -\n")}`);
 		}
 		return {seg:TestAPI,result:(result),preSeg:"1J4C8BP190",outlet:"1J4C8QQ9N1"};
 	};
@@ -882,7 +908,7 @@ let agent=async function(session){
 		}else if(result.assets && result.prompt){
 			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
 		}else{
-			session.addChatText("user",result.text||result.prompt||result);
+			session.addChatText("user",`${result.assets.join("\n- - -\n")}`);
 		}
 		/*#{1J4C964JH0PostCodes*/
 		if(result.assets){
@@ -954,8 +980,8 @@ let agent=async function(session){
 	
 	segs["RegisterSuccess"]=RegisterSuccess=async function(input){//:1J4EB0N190
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("项目注册API成功"):("Project registration API successful"));
 		session.addChatText(role,content,opts);
@@ -1068,6 +1094,8 @@ ${all_files}
 		const str = Math.random().toString().slice(2);
 		output_path = `/tmp/${str}.${output_suffix}`;
 		/*}#1J4KMNBDP0PostCall*/
+		/*#{1J4KMNBDP0PreResult*/
+		/*}#1J4KMNBDP0PreResult*/
 		return {seg:Summary,result:(result),preSeg:"1J4KMNBDP0",outlet:"1J4KMNUEQ0"};
 	};
 	ExtracUsage.jaxId="1J4KMNBDP0"
@@ -1114,6 +1142,8 @@ ${all_files}
 		/*#{1J4KN30G00PostCall*/
 		usage_md = result;
 		/*}#1J4KN30G00PostCall*/
+		/*#{1J4KN30G00PreResult*/
+		/*}#1J4KN30G00PreResult*/
 		return {seg:Output,result:(result),preSeg:"1J4KN30G00",outlet:"1J4KN4BRT0"};
 	};
 	Summary.jaxId="1J4KN30G00"
@@ -1121,8 +1151,8 @@ ${all_files}
 	
 	segs["Output"]=Output=async function(input){//:1J4KNAFFS0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1J4KNAFFS0PreCodes*/
@@ -1181,6 +1211,38 @@ ${all_files}
 	};
 	InitBash2.jaxId="1J5NNUJMV0"
 	InitBash2.url="InitBash2@"+agentURL
+	
+	segs["GetLocation"]=GetLocation=async function(input){//:1JAVB1E1Q0
+		let result=input
+		/*#{1JAVB1E1Q0Code*/
+		result=await getUserLocation();
+		/*}#1JAVB1E1Q0Code*/
+		return {seg:Check,result:(result),preSeg:"1JAVB1E1Q0",outlet:"1JAVB1N8S0"};
+	};
+	GetLocation.jaxId="1JAVB1E1Q0"
+	GetLocation.url="GetLocation@"+agentURL
+	
+	segs["Check"]=Check=async function(input){//:1JAVB47CP0
+		let result=input;
+		if(input==="China"){
+			return {seg:SetMirror,result:(input),preSeg:"1JAVB47CP0",outlet:"1JAVB50F20"};
+		}
+		return {seg:Navigate,result:(result),preSeg:"1JAVB47CP0",outlet:"1JAVB50F21"};
+	};
+	Check.jaxId="1JAVB47CP0"
+	Check.url="Check@"+agentURL
+	
+	segs["SetMirror"]=SetMirror=async function(input){//:1JAVB565S0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=["export HF_ENDPOINT=https://hf-mirror.com","export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple","export CONDA_CHANNELS=https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/","export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git","export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git","export HOMEBREW_INSTALL_FROM_API=1"];
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:Navigate,result:(result),preSeg:"1JAVB565S0",outlet:"1JAVBCFT30"};
+	};
+	SetMirror.jaxId="1JAVB565S0"
+	SetMirror.url="SetMirror@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1304,7 +1366,6 @@ export{agent,ChatAPI};
 //							"jaxId": "1HDBOSUNB0",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1HDBOSUNB1",
 //							"attrs": {}
@@ -1316,7 +1377,8 @@ export{agent,ChatAPI};
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
 //						"exportType": "UI Data Template",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1369,7 +1431,7 @@ export{agent,ChatAPI};
 //						"id": "InitBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "280",
+//						"x": "-60",
 //						"y": "135",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1397,7 +1459,7 @@ export{agent,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J1FTHV9E0"
+//							"linkedSeg": "1JAVB1E1Q0"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -1410,8 +1472,8 @@ export{agent,ChatAPI};
 //						"id": "Get",
 //						"viewName": "",
 //						"label": "",
-//						"x": "950",
-//						"y": "135",
+//						"x": "1135",
+//						"y": "150",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1463,9 +1525,13 @@ export{agent,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1475,8 +1541,8 @@ export{agent,ChatAPI};
 //						"id": "Clone",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1125",
-//						"y": "135",
+//						"x": "1330",
+//						"y": "150",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1611,6 +1677,9 @@ export{agent,ChatAPI};
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
 //						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"process": {
 //							"type": "object",
 //							"def": "ProcessMsg",
@@ -1626,12 +1695,13 @@ export{agent,ChatAPI};
 //									"localizable": true
 //								},
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1828,7 +1898,6 @@ export{agent,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"agentNode": "",
 //						"process": {
 //							"type": "object",
 //							"def": "ProcessMsg",
@@ -1844,8 +1913,8 @@ export{agent,ChatAPI};
 //									"localizable": true
 //								},
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
@@ -1859,7 +1928,7 @@ export{agent,ChatAPI};
 //						"id": "FixArgs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "65",
+//						"x": "-265",
 //						"y": "135",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -1885,8 +1954,8 @@ export{agent,ChatAPI};
 //						"id": "Tip1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "770",
-//						"y": "135",
+//						"x": "945",
+//						"y": "150",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1933,8 +2002,8 @@ export{agent,ChatAPI};
 //						"id": "LLMCheckClone",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1320",
-//						"y": "135",
+//						"x": "1525",
+//						"y": "150",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1986,9 +2055,13 @@ export{agent,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2065,7 +2138,7 @@ export{agent,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1490",
+//						"x": "1675",
 //						"y": "215",
 //						"outlet": {
 //							"jaxId": "1J1FPMUEP4",
@@ -2290,8 +2363,8 @@ export{agent,ChatAPI};
 //						"id": "Navigate",
 //						"viewName": "",
 //						"label": "",
-//						"x": "540",
-//						"y": "135",
+//						"x": "720",
+//						"y": "150",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2645,8 +2718,8 @@ export{agent,ChatAPI};
 //									"localizable": true
 //								},
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
@@ -2798,8 +2871,8 @@ export{agent,ChatAPI};
 //									"localizable": true
 //								},
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
@@ -3516,9 +3589,13 @@ export{agent,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "text",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -3581,9 +3658,13 @@ export{agent,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "text",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -3835,6 +3916,155 @@ export{agent,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JAVB1E1Q0",
+//					"attrs": {
+//						"id": "GetLocation",
+//						"viewName": "",
+//						"label": "",
+//						"x": "130",
+//						"y": "135",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JAVB1N980",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JAVB1N981",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JAVB1N8S0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JAVB47CP0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JAVB47CP0",
+//					"attrs": {
+//						"id": "Check",
+//						"viewName": "",
+//						"label": "",
+//						"x": "340",
+//						"y": "135",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JAVB50FB0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JAVB50FB1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JAVB50F21",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1J1FTHV9E0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JAVB50F20",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JAVB50FB2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JAVB50FB3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input===\"China\""
+//									},
+//									"linkedSeg": "1JAVB565S0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JAVB565S0",
+//					"attrs": {
+//						"id": "SetMirror",
+//						"viewName": "",
+//						"label": "",
+//						"x": "525",
+//						"y": "25",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JAVBCFTR0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JAVBCFTR1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#[\"export HF_ENDPOINT=https://hf-mirror.com\",\"export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple\",\"export CONDA_CHANNELS=https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/\",\"export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git\",\"export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git\",\"export HOMEBREW_INSTALL_FROM_API=1\"]",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JAVBCFT30",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1J1FTHV9E0"
+//						}
+//					},
+//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

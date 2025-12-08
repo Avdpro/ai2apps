@@ -8,64 +8,35 @@ import {trimJSON} from "/@aichat/utils.js";
 import {tabNT} from "/@tabos";
 /*}#1IKCV9VRJ0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
-const baseURL=pathLib.dirname(agentURL);
-const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
+const basePath=pathLib.dirname(agentURL);
 const $ln=VFACT.lanCode||"EN";
-const argsTemplate={
-	properties:{
-		"taskPrompt":{
-			"name":"taskPrompt","type":"auto",
-			"defaultValue":"",
-			"desc":"",
-		},
-		"taskTools":{
-			"name":"taskTools","type":"auto",
-			"defaultValue":"",
-			"desc":"",
-		},
-		"replyTools":{
-			"name":"replyTools","type":"auto",
-			"defaultValue":"",
-			"desc":"",
-		}
-	},
-	/*#{1IKCV9VRJ0ArgsView*/
-	/*}#1IKCV9VRJ0ArgsView*/
-};
-
 /*#{1IKCV9VRJ0StartDoc*/
-import {AATools,AAToolSet} from "/@tabos/AATools.js";
+import {AATools} from "/@tabos/AATools.js";
+
+
+
+
 /*}#1IKCV9VRJ0StartDoc*/
 //----------------------------------------------------------------------------
 let SysTabOSChat=async function(session){
-	let taskPrompt,taskTools,replyTools;
+	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,NextStep,AddChat,AskNext,CallNode,JumpToolAsk,ToolAsk,ToolAskReuslt,ToolAskUser,ShowAskAiResult,ShowAskUserResult,CallToolAsk,FakeInput;
+	let ShowLogo,TipStart,InitTools,StartTip,CheckArg,JumpTool,AskInput,GenAction,CaseAction,CheckCmd,RunCommand,ShowResult,TryNode,TryTool,DoChat,TipFinish,TipAbort,LogError,NodeError,ToolError,ShowNode,ShowTool,CallTool,TipNodeRes,TipToolRes,NextAction,AddChat,AskNext,CallNode,InitBash,Check,RunBash,Generate,LLM,output,ParseJson,NextStep;
 	let orgInput=null;
 	let cokeEnv=null;
 	let cokeTty=null;
 	let cmdText="";
 	
 	/*#{1IKCV9VRJ0LocalVals*/
+	let todo="";
+	let user_query="";
 	/*}#1IKCV9VRJ0LocalVals*/
 	
 	function parseAgentArgs(input){
-		if(typeof(input)=='object'){
-			taskPrompt=input.taskPrompt;
-			taskTools=input.taskTools;
-			replyTools=input.replyTools;
-		}else{
-			taskPrompt=undefined;
-			taskTools=undefined;
-			replyTools=undefined;
-		}
+		execInput=input;
 		/*#{1IKCV9VRJ0ParseArgs*/
-		taskPrompt=input
-		if(!taskPrompt && input && typeof(input)==="string"){
-			taskPrompt=input;
-		}
 		/*}#1IKCV9VRJ0ParseArgs*/
 	}
 	
@@ -105,8 +76,7 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipStart"]=TipStart=async function(input){//:1IKE6V3JM0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
@@ -119,28 +89,18 @@ let SysTabOSChat=async function(session){
 		let result=input
 		/*#{1IKCVA57O0Code*/
 		let tools;
-		if(taskTools){
-			if(taskTools.getToolScope){
-				tools=context.aaTools=taskTools;
-			}else if(Array.isArray(taskTools)){
-				tools=context.aaTools=await AAToolSet.load(taskTools);
-			}
-		}else{
-			if(taskTools===null){
-				tools=context.aaTools=null;
-			}else{
-				tools=context.aaTools=new AATools();
-				await tools.load();
-			}
-		}
-		if(tools){
-			context.toolIndex=tools.getToolScope();
-			context.toolIndex = Object.entries(context.toolIndex).slice(6);
-			session.debugLog("Tools index:");
-			session.debugLog(context.toolIndex);
-			console.log("Tools index:");
-			console.log(context.toolIndex);
-		}
+		tools=context.aaTools=new AATools();
+		await tools.load();
+		context.toolIndex=tools.getToolDescIndex();
+		context.toolIndex = Object.entries(context.toolIndex);
+		context.toolIndex.push(["Tool-Bash", "这是一个用于执行命令行命令的工具，可以用于执行允许的命令行命令，如解压缩，ls，cd，执行代码文件，git，wget，brew下载等等，请提供合法的可以直接在terminal执行的命令。"]);
+		//context.toolIndex.push(["Tool-Ask", "这是一个调用大语言模型问答或生成内容的工具，请提供需要询问的问题或者需要生成的内容。"]);
+		context.toolIndex = Object.fromEntries(context.toolIndex);
+		session.debugLog("Tools index:");
+		session.debugLog(context.toolIndex);
+		console.log("Tools index:");
+		console.log(context.toolIndex);
+		
 		//Build agentNodes info:
 		{
 			let res,nodes;
@@ -156,7 +116,7 @@ let SysTabOSChat=async function(session){
 							"entry":node.chatEntry,
 							"workload":node.workload
 						}
-					}
+				}
 				}
 			}
 			session.debugLog("Nodes index:");
@@ -164,29 +124,34 @@ let SysTabOSChat=async function(session){
 			console.log("Nodes index:");
 			console.log(nodes);
 		}
+		
 		//Init cokeEnv&tty
 		cokeEnv=await session.WSCall_CreateCokeEnv();
 		cokeTty=cokeEnv.tty;
 		/*}#1IKCVA57O0Code*/
-		return {seg:CheckArg,result:(result),preSeg:"1IKCVA57O0",outlet:"1IKCVADJI0"};
+		return {seg:InitBash,result:(result),preSeg:"1IKCVA57O0",outlet:"1IKCVADJI0"};
 	};
 	InitTools.jaxId="1IKCVA57O0"
 	InitTools.url="InitTools@"+agentURL
 	
 	segs["StartTip"]=StartTip=async function(input){//:1IKCVAMJC0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="user";
 		let content=input.prompt||input;
 		/*#{1IKCVAMJC0PreCodes*/
 		if(input.assets){
+			for (let i = 0; i < input.assets.length; i++) {
+			input.assets[i] = await session.getHubPath(input.assets[i]);
+			}
+		
 			content+=(($ln==="CN")?("\n附件: \n"):/*EN*/("\nAttachment: \n"));
 			content+=input.assets.join("\n");
 		}
 		/*}#1IKCVAMJC0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1IKCVAMJC0PostCodes*/
+		user_query=content;
 		/*}#1IKCVAMJC0PostCodes*/
 		return {seg:CheckCmd,result:(result),preSeg:"1IKCVAMJC0",outlet:"1IKCVDSRP0"};
 	};
@@ -233,7 +198,7 @@ let SysTabOSChat=async function(session){
 			toolId="Tool-??";
 		}
 		assets=list=input.assets;
-		let prompt=input.prompt||input;
+		let prompt=input.prompt;
 		if(assets){
 			prompt=input.prompt;
 			prompt+=`\n- - -\n\n# Assets URLs: \n\n[\n\n`
@@ -296,8 +261,8 @@ let SysTabOSChat=async function(session){
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"$expert",
-			maxToken:2000,
+			mode:"gpt-4.1",
+			maxToken:32768,
 			temperature:0,
 			topP:1,
 			fqcP:0,
@@ -309,105 +274,38 @@ let SysTabOSChat=async function(session){
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:`
-你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。
-
-当前的Tools（本地智能体工具）有:
-${context.toolIndex?JSON.stringify(context.toolIndex,null,"\t"):"暂无"}
-
-当前的Nodes（外部智能体节点）有:
-${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
-
-- - -
-
-- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。
-
-- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。
-- 如果需要执行一个Tool，设置回复JSON中的"action"属性为"tool"；设置"tool"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：
-{
-	"action":"tool",
-	"tool":"Tool-3",
-    "prompt":"Search for: Who is the winner of 2024 F1?"
-}
-注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。
-
-- 如果需要执行一个Node，设置回复JSON中的"action"属性为"node"；回复JSON中的"node"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：
-{
-	"action":"node",
-	"node":"DrawNode",
-    "prompt":"Draw picture of a cute fat cat."
-}
-
-- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。
-
-- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。
-
-- 如果回答用户的输入不需要使用任何tool，回复将JSON中的"action"属性设置为"finish"，用回复JSON中的"content"属性回答用户。例如：当用户询问："西瓜是一种水果么？"，你的回复：
-{
-	"action":"finish",
-	"content":"是的，西瓜是一种水果。"
-}
-
-- 如果成功的完成了用户提出的任务，回复将JSON中的"action"属性设置为"finish"，并通过"content"属性总结汇报执行情况。例如
-{
-	"action":"finish",
-    "content":"论坛帖子已经成功发布。"
-}
-
-- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool
-
-- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的"action"属性为"abort"，并在"content"属性中说明原因。例如:
-{
-	"action":"abort",
-    "content":"没有登录脸书账号，无法发布新的内容。"
-}
-
-- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的"action"属性为"missingTool"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用"missingTools"数组属性里描述缺失的Tool。例如：
-{
-	"action":"missingTool",
-	"missingTools":[
-    	"检查脸书账号登录状态",
-        "发布脸书动态"
-    ]
-}
-
-- 如果执行任务需要用户提供更多的信息，设置回复JSON中的"action"属性为"chat"，要询问用户的内容放在"content"属性里。例如，需要用户提供邮箱地址：
-{
-	"action":"chat",
-	"content":"请告诉我你的电子邮箱地址"
-}
-`},
+			{role:"system",content:(($ln==="CN")?(`当前的时间是${Date().toString()}。你是一个智能路由AI，负责分析用户请求和严格按照任务规划来动态选择最佳执行方式（本地工具/外部节点/直接响应），并严格遵守决策规则。 ﻿ ## 可用资源 ### 本地工具库 (Tools): ${JSON.stringify(context.toolIndex,null,2)} ﻿ ### 外部节点库 (Nodes): ${JSON.stringify(context.agentNodes,null,2)} ﻿ ## 任务规划 ${todo} ﻿ ## 决策规则 ﻿ ### 1. 请求分类处理 - **简单查询/对话**：直接响应（action=finish） - **需工具处理**：优先本地工具（action=tool） - **需外部能力**：调用节点（action=node） - **信息不足**：发起追问（action=chat） ﻿ ### 2. 响应规范 { "action": "执行类型", // 必选字段根据action类型变化： // tool/node -> 对应工具名+prompt // finish/abort/chat -> content // missingTool -> missingTools数组 "content": "自然语言响应", "tool/node": "具体工具名", "prompt": "工具调用指令", "reason": "使用工具的原因及目的", "missingTools": [{"name":"工具名", "desc":"功能描述"}] } ﻿ ﻿ ### 3. 执行优先级 1. 本地工具（更低延迟） 2. 外部节点（更广能力） 3. 组合调用（需要时链式执行） 4. 严格按照任务规划顺序调用工具 ﻿ ### 4. 特殊处理 - **文件和文件夹操作**： - 创建、写入、修改文件和文件夹必须使用绝对路径 - 未知路径时先调用pwd工具 - 写入文件前请确认文件路径是否存在 - 确保写入的内容完整、详细 - 禁止使用echo和python3 -c - **Python代码**： - 禁止使用echo和python3 -c - 必须先写入文件再执行 - 所有字符串中的换行符 \\n 必须转义为 \\\\n，因为这段代码将通过 Node.js 的 fs.writeFile 执行 保持代码逻辑不变，只对字符串中的特殊字符进行转义处理 最终输出应该是可以直接被 Node.js 执行的字符串形式 - 自动生成合理的文件名（如script_[timestamp].py） ﻿ - **附件处理**： - 所有附件必须显式包含在prompt中（如果以hub://开头必须保留） - 格式："[附件: 文件名.扩展名] 处理要求" ﻿ ### 5. 错误处理流程 1. 参数错误 → 修正后重试 2. 权限问题 → 中止并说明（action=abort） 3. 能力缺失 → 上报需开发的工具（action=missingTool） ﻿ ## 最佳实践示例 1. 文件处理： { "action": "tool", "tool": "FileWriter", "prompt": "保存到/tmp/data_20240408.json：[附件: data.json]", "reason": "我已经得到了数据，现在需要将数据写入文件中" } ﻿ 2. 工具缺失： { "action": "missingTool", "missingTools": [ {"name": "PDF签名工具", "desc": "支持数字签名和手写签名嵌入"}, {"name": "OCR识别引擎", "desc": "支持多语言图片文字提取"} ] } ` ﻿):(`The current time is ${Date(). toString()}. You are an intelligent routing AI responsible for analyzing user requests and dynamically selecting the best execution method (local tools/external nodes/direct response) strictly according to task planning, and strictly following decision rules. ##Available resources ###Local Tools Library: ${JSON.stringify(context.toolIndex,null,2)} ###External Node Library: ${JSON.stringify(context.agentNodes,null,2)} ##Task planning ${todo} ##Decision rules ### 1. Request classification processing -* * Simple Query/Dialogue * *: Direct Response (action=finish) -* * Tool processing required * *: Prioritize local tools (action=tool) -* * External capability required * *: Call node (action=node) -Insufficient information: Initiate follow-up (action=chat) ### 2. Response specifications { "action": Execution type ", //Required fields vary according to action type: //Tool/node ->corresponding tool name+prompt // finish/abort/chat -> content //MissingTools ->missingTools array "content": Natural language response, "tool/node": Specific tool name, "prompt": 'Tool call instruction', "reason": Reasons and purposes for using tools, MissingTools ": [{" name ":" tool name "," desc ":" feature description "}] } ### 3. execution priority 1. Local tools (lower latency) 2. External nodes (with broader capabilities) 3. Combination call (chain execution when needed) 4. Strictly call the tools in the order of task planning ### 4. Special treatment -* * File and folder operations * *: -Creating, writing, and modifying files and folders must use absolute paths -Call the pwd tool first when the path is unknown -Please confirm if the file path exists before writing to the file -Ensure that the written content is complete and detailed -Prohibit the use of echo and python3-c -* * Python code * *: -Prohibit the use of echo and python3-c -Must be written to a file before execution -All line breaks in strings must be escaped as \ \ \ \ n, as this code will be executed through Node.js' fs-writeFile Keep the code logic unchanged and only escape special characters in the string The final output should be in the form of a string that can be directly executed by Node.js -Automatically generate reasonable file names (such as script_ [timestamp]. py) -Attachment processing: -All attachments must be explicitly included in the prompt -Format: [Attachment: File Name. Extension] Processing Requirements ### 5. Error handling process 1. Parameter error ->Fix and retry 2. Permission issue ->Abort and explain (action=abort) 3. Lack of ability ->Report the tool that needs to be developed (action=missingTool) ##Best practice examples 1. File processing: { "action": "tool", "tool": "FileWriter", "prompt": Save to/tmp/data_20240408.json: [Attachment: data.json]", "reason": I have obtained the data, now I need to write it to a file } 2. Missing tools: { "action": "missingTool", "missingTools": [ {"name": "PDF Signature Tool", "desc": "Supports embedding digital and handwritten signatures"}, {"name": "OCR recognition engine", "desc": "Supports multilingual image and text extraction"} ] }  Please use English.`))},
 		];
 		messages.push(...chatMem);
 		/*#{1IKCVDIJ50PrePrompt*/
 		let assets,images,docs,audios;
 		if(input.prompt){
-			let list,url,ext;
-			assets=list=input.assets;
-			if(list){
-				docs=[];
-				images=[];
-				for(url of list){
-					if(url.startsWith("hub://")){
-						ext=pathLib.extname(url).toLowerCase();
-						if(ext===".jpeg" || ext===".png" || ext===".jpg"){
-							images.push(await session.normURL(url));
-						}else if(ext===".md" || ext===".htm" || ext===".html"|| ext===".txt"
-								|| ext===".js" || ext===".py" || ext===".mjs" || ext===".css" 
-								|| ext===".c" || ext===".cpp" || ext===".sh"  || ext===".java"){
-							let buf,docText;
-							buf=await session.loadHubFile(url);
-							buf=Base64.decodeBytes(buf);
-							docText=new TextDecoder().decode(buf);
-							docs.push(`\n---\n## Asset "${url}" text conent:\n\n ${docText}\n\n## Asset ${url} end.\n\n---\n`);
-						}
-					}
-				}
-				images=images.length?images:null;
-				docs=docs.length?docs:null;
-			}else{
-				input=input.prompt;
-			}
+		let list,url,ext;
+		assets=list=input.assets;
+		if(list){
+		docs=[];
+		images=[];
+		for(url of list){
+		if(url.startsWith("hub://")){
+		ext=pathLib.extname(url).toLowerCase();
+		if(ext===".jpeg" || ext===".png" || ext===".jpg"){
+		images.push(await session.normURL(url));
+		}else if(ext===".md" || ext===".htm" || ext===".html"|| ext===".txt"
+		|| ext===".js" || ext===".py" || ext===".mjs" || ext===".css" 
+		|| ext===".c" || ext===".cpp" || ext===".sh"  || ext===".java"){
+		let buf,docText;
+		buf=await session.loadHubFile(url);
+		buf=Base64.decodeBytes(buf);
+		docText=new TextDecoder().decode(buf);
+		docs.push(`\n---\n## Asset "${url}" text content:\n\n ${docText}\n\n## Asset ${url} end.\n\n---\n`);
+		}
+		}
+		}
+		images=images.length?images:null;
+		docs=docs.length?docs:null;
+		}else{
+		input=input.prompt;
+		}
 		}
 		/*}#1IKCVDIJ50PrePrompt*/
 		prompt=input;
@@ -419,32 +317,32 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 			/*#{1IKCVDIJ50FilterMessage*/
 			let embedAssets=false;
 			if(assets){
-				let url
-				prompt=input.prompt;
-				prompt+=`\n- - -\n\n# Assets URLs:\n\n[\n\n`
-				for(url of assets){
-					prompt+=`\t${url}, \n\n`
-				}
-				prompt+=`]\n- - -\n\n`
-				if(embedAssets && docs){
-					let chatText,docText;
-					chatText=prompt+"- - -\n\n# Text Asset file contents:\n\n";
-					for(docText of docs){
-						chatText+=docText;
-					}
-					prompt=chatText;
-				}
-				if(embedAssets && images){
-					let content=[{type:"text",text:prompt}];
-					for(let url of images){
-						content.push({type:"image_url","image_url":{"url":url}});
-					}
-					msg={role:"user",content:content};
-					prompt=msg.content;
-				}else{
-					msg={role:"user",content:prompt};
-					prompt=msg.content;
-				}
+			let url
+			prompt=input.prompt;
+			prompt+=`\n- - -\n\n# Assets URLs:\n\n[\n\n`
+			for(url of assets){
+			prompt+=`\t${url}, \n\n`
+			}
+			prompt+=`]\n- - -\n\n`
+			if(embedAssets && docs){
+			let chatText,docText;
+			chatText=prompt+"- - -\n\n# Text Asset file contents:\n\n";
+			for(docText of docs){
+			chatText+=docText;
+			}
+			prompt=chatText;
+			}
+			if(embedAssets && images){
+			let content=[{type:"text",text:prompt}];
+			for(let url of images){
+			content.push({type:"image_url","image_url":{"url":url}});
+			}
+			msg={role:"user",content:content};
+			prompt=msg.content;
+			}else{
+			msg={role:"user",content:prompt};
+			prompt=msg.content;
+			}
 			}
 			/*}#1IKCVDIJ50FilterMessage*/
 			messages.push(msg);
@@ -543,8 +441,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ShowResult"]=ShowResult=async function(input){//:1IKCVK9ES0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKCVK9ES0PreCodes*/
@@ -573,9 +470,9 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	segs["TryTool"]=TryTool=async function(input){//:1IKCVNB7A0
 		let result=input;
 		/*#{1IKCVNB7A0Code*/
-		//session.indentMore();
+		false
 		/*}#1IKCVNB7A0Code*/
-		return {seg:ShowTool,result:(result),preSeg:"1IKCVNB7A0",outlet:"1IKCVQU3L1",catchSeg:ToolError,catchlet:"1IKCVQU3O5"};
+		return {seg:Check,result:(result),preSeg:"1IKCVNB7A0",outlet:"1IKCVQU3L1",catchSeg:ToolError,catchlet:"1IKCVQU3O5"};
 	};
 	TryTool.jaxId="1IKCVNB7A0"
 	TryTool.url="TryTool@"+agentURL
@@ -583,7 +480,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	segs["DoChat"]=DoChat=async function(input){//:1IKCVNLLO0
 		let result;
 		let arg=input.content;
-		let agentNode=(undefined)||null;
+		let agentNode=("")||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -594,8 +491,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipFinish"]=TipFinish=async function(input){//:1IKCVOA650
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -606,8 +502,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipAbort"]=TipAbort=async function(input){//:1IKCVOQ6C0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -636,9 +531,6 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ToolError"]=ToolError=async function(input){//:1IKD00IP70
 		let result=input;
-		/*#{1IKD00IP70PreCodes*/
-		//session.indentLess();
-		/*}#1IKD00IP70PreCodes*/
 		return {seg:LogError,result:result,preSeg:"1IKCVU57C0",outlet:"1IKD025ML2"};
 	
 	};
@@ -647,8 +539,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ShowNode"]=ShowNode=async function(input){//:1IKD03BL10
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03BL10PreCodes*/
@@ -669,15 +560,13 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["ShowTool"]=ShowTool=async function(input){//:1IKD03VM90
 		let result=input;
-		let channel="Process";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03VM90PreCodes*/
-		let toolId,tool;
-		toolId=input.tool;
-		//toolId=parseInt(toolId.substring("Tool-".length));
-		tool=context.aaTools.getTool(toolId);
+		let toolId=input.tool;
+		toolId=parseInt(toolId.substring("Tool-".length));
+		let tool=context.aaTools.getTools()[toolId];
 		if(!tool){
 			throw `Tool "${input.tool}" not found. Are you confusing Node and Tool? Choose tool or agent node.`;
 		}
@@ -695,21 +584,21 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["CallTool"]=CallTool=async function(input){//:1IKD04LRQ0
 		let result=input
-		let outlets={
-			Ask: CallToolAsk
-		};
 		/*#{1IKD04LRQ0Code*/
 		let tools=context.aaTools;
 		let tool=context.curTool;
 		let toolPath=tool.filePath;
 		let prompt=input.prompt;
-		let opts;
-		if(typeof(prompt)!=="string"){
-			prompt=JSON.stringify(prompt);
+		if(typeof(prompt)==="string"){
+			try{
+				prompt=JSON.parse(prompt);
+			}catch (e){
+				prompt=prompt;
+			}
+			
 		}
 		session.debugLog({type:"CallTool",tool:toolPath,prompt:prompt});
-		opts={secrect:false,upperAgent:$agent,askUpwardSeg:outlets.Ask};
-		result=await tools.execTool(VFACT.app,tool,prompt,session,opts);
+		result=await tools.execTool(VFACT.app,tool,prompt,session);
 		session.debugLog({type:"ToolResult",tool:toolPath,result:result});
 		/*}#1IKD04LRQ0Code*/
 		return {seg:TipToolRes,result:(result),preSeg:"1IKD04LRQ0",outlet:"1IKD0BI2O1"};
@@ -719,8 +608,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipNodeRes"]=TipNodeRes=async function(input){//:1IKD04TDE0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD04TDE0PreCodes*/
@@ -738,8 +626,7 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["TipToolRes"]=TipToolRes=async function(input){//:1IKD0580Q0
 		let result=input;
-		let channel="Process";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD0580Q0PreCodes*/
@@ -749,7 +636,6 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 		/*}#1IKD0580Q0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1IKD0580Q0PostCodes*/
-		//session.indentLess();
 		result=`Call tool result: ${JSON.stringify(input)}`;
 		/*}#1IKD0580Q0PostCodes*/
 		return {seg:NextAction,result:(result),preSeg:"1IKD0580Q0",outlet:"1IKD0BI2O3"};
@@ -759,20 +645,11 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	
 	segs["NextAction"]=NextAction=async function(input){//:1IKD09MJ10
 		let result=input;
-		return {seg:NextStep,result:result,preSeg:"1IKD0ABJJ0",outlet:"1IKD0BI2O4"};
+		return {seg:NextStep,result:result,preSeg:"1IPEEMQF00",outlet:"1IKD0BI2O4"};
 	
 	};
-	NextAction.jaxId="1IKD0ABJJ0"
+	NextAction.jaxId="1IPEEMQF00"
 	NextAction.url="NextAction@"+agentURL
-	
-	segs["NextStep"]=NextStep=async function(input){//:1IKD0ABJJ0
-		let result=input
-		/*#{1IKD0ABJJ0Code*/
-		/*}#1IKD0ABJJ0Code*/
-		return {seg:GenAction,result:(result),preSeg:"1IKD0ABJJ0",outlet:"1IKD0BI2O5"};
-	};
-	NextStep.jaxId="1IKD0ABJJ0"
-	NextStep.url="NextStep@"+agentURL
 	
 	segs["AddChat"]=AddChat=async function(input){//:1IKDJNI2I0
 		let result=input
@@ -828,44 +705,162 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 	CallNode.jaxId="1IKEN0POL0"
 	CallNode.url="CallNode@"+agentURL
 	
-	segs["JumpToolAsk"]=JumpToolAsk=async function(input){//:1IO2JIV900
-		let result=input;
-		return {seg:CallToolAsk,result:result,preSeg:"1IOGH2O1E0",outlet:"1IO2JPNBA0"};
-	
+	segs["InitBash"]=InitBash=async function(input){//:1INT3PTSB0
+		let result,args={};
+		args['nodeName']="builder_new";
+		args['callAgent']="Bash.js";
+		args['callArg']={action:"Create",options:{client:true,ownBySession:false}};
+		args['checkUpdate']=true;
+		args['options']="";
+		/*#{1INT3PTSB0PreCodes*/
+		/*}#1INT3PTSB0PreCodes*/
+		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
+		/*#{1INT3PTSB0PostCodes*/
+		globalContext.bash = result;
+		result=input;
+		/*}#1INT3PTSB0PostCodes*/
+		return {seg:CheckArg,result:(result),preSeg:"1INT3PTSB0",outlet:"1INT3RMBL0"};
 	};
-	JumpToolAsk.jaxId="1IOGH2O1E0"
-	JumpToolAsk.url="JumpToolAsk@"+agentURL
+	InitBash.jaxId="1INT3PTSB0"
+	InitBash.url="InitBash@"+agentURL
 	
-	segs["ToolAsk"]=ToolAsk=async function(input){//:1IO2JK8RE0
+	segs["Check"]=Check=async function(input){//:1INT632680
+		let result=input;
+		if(input.tool === "Tool-Bash"){
+			return {seg:RunBash,result:(input),preSeg:"1INT632680",outlet:"1INT63NS20"};
+		}
+		if(input.tool === "Tool-Ask"){
+			return {seg:LLM,result:(input),preSeg:"1INT632680",outlet:"1IP1C7J7B0"};
+		}
+		return {seg:ShowTool,result:(result),preSeg:"1INT632680",outlet:"1INT63NS21"};
+	};
+	Check.jaxId="1INT632680"
+	Check.url="Check@"+agentURL
+	
+	segs["RunBash"]=RunBash=async function(input){//:1INT68OMK0
+		let result,args={};
+		args['nodeName']="builder_new";
+		args['callAgent']="Bash.js";
+		args['callArg']={bashId:globalContext.bash,action:"Command",commands:input.prompt};
+		args['checkUpdate']=true;
+		args['options']="";
+		/*#{1INT68OMK0PreCodes*/
+		if(input.prompt.includes("echo") || input.prompt.includes("python -c") || input.prompt.includes("python3 -c")){
+			result="Forbidden command";
+			return {seg:NextAction,result:(result),preSeg:"1INT68OMK0",outlet:"1INT6BP5C0"};
+		}
+		/*}#1INT68OMK0PreCodes*/
+		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
+		/*#{1INT68OMK0PostCodes*/
+		/*}#1INT68OMK0PostCodes*/
+		return {seg:NextAction,result:(result),preSeg:"1INT68OMK0",outlet:"1INT6BP5C0"};
+	};
+	RunBash.jaxId="1INT68OMK0"
+	RunBash.url="RunBash@"+agentURL
+	
+	segs["Generate"]=Generate=async function(input){//:1IP1BRS1S0
 		let prompt;
 		let result=null;
-		/*#{1IO2JK8RE0Input*/
-		let mem;
-		mem=[];
-		{
-			let i,n,chatMem,chat,content,line,sub;
-			chatMem=GenAction.messages.slice(-9);
-			n=chatMem.length;
-			for(i=0;i<n-1;i++){
-				chat=chatMem[i];
-				content=chat.content;
-				if(Array.isArray(content)){
-					line=""+JSON.stringify(content);
-				}else{
-					line=""+JSON.stringify(content);
-				}
-				if(line.length>256){
-					line=line.substring(0,256)+"...";
-				}
-				mem.push({role:chat.role,content:line});
-			}
-			mem.push(chatMem[n-1]);//Don't compress the last round.
-		}
-		/*}#1IO2JK8RE0Input*/
+		/*#{1IP1BRS1S0Input*/
+		/*}#1IP1BRS1S0Input*/
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o",
+			mode:"gpt-4.1",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=Generate.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:(($ln==="CN")?(`当前的时间是2025年。你是一个专业任务规划AI，擅长将复杂任务分解为可执行的步骤。请按照以下要求生成详细的任务清单： 你目前拥有的可用资源 ### 本地工具库 (Tools): ${JSON.stringify(context.toolIndex,null,2)} ﻿ ### 外部节点库 (Nodes): ${JSON.stringify(context.agentNodes,null,2)} ﻿ ﻿ 1. 输出格式必须严格遵循： \`\`\`markdown # [任务名称] 任务清单 ﻿ ## 阶段1: [阶段名称] - [ ] [原子级任务描述] - [ ] [下一个原子级任务] ... ﻿ ## 阶段2: [阶段名称] ... \`\`\` ﻿ 2. 分解原则： - 保持你示例中的4级结构（总任务>阶段>主任务>子任务） - 每个子任务必须是可独立执行的最小单元 - 每个任务都可以通过调用可用的工具完成，不需要人工干预 - 每个任务后表明使用的工具 ﻿ 3. 规则  - 如果需要搜索网页，请搜索后将搜索到的结果写入markdown文件，建议每搜索一次写入一个文件 - 创建文件请使用bash - 尽可能通过网页搜索获取外部最新的知识 - 撰写文档时请不要一次性写入过多内容，请依次追加写入内容，分成多个任务 - 读取文件可以一次性全部读入﻿ 直接输出markdown，不要输出其他无关内容。 `):(`The current time is 2025. You are a professional task planning AI, skilled at breaking down complex tasks into executable steps. Please generate a detailed task list according to the following requirements: The available resources you currently have ###Local Tools Library: ${JSON.stringify(context.toolIndex,null,2)} ###External Node Library: ${JSON.stringify(context.agentNodes,null,2)} 1. The output format must strictly follow: \`\`\`markdown #[Task Name] Task List ##Stage 1: [Stage Name] -[] [Atomic level task description] -[] [Next atomic level task] ... ##Stage 2: [Stage Name] ... \`\`\` 2. Decomposition principle: -Maintain the 4-level structure in your example (total task>stage>main task>subtask) -Each subtask must be the smallest unit that can be independently executed -Each task can be completed by calling available tools without the need for manual intervention -Indicate the tools used after each task 3. Rules -If you need to create and output files, please use the pwd command to check the current path in the first step, and then create a working directory (absolute path). Please check if the directory exists first, and if it does, create a new working directory name. -If you need to search for web pages, please write the search results to a markdown file after searching. It is recommended to write a file every time you search -Please use bash to create files -Try to obtain the latest external knowledge through web search as much as possible -When writing a document, please do not write too much content at once. - When reading documents， you can read at the same time instead of iteration. Please add the content in sequence and divide it into multiple tasks Output markdown directly, do not output any irrelevant content.`))},
+		];
+		/*#{1IP1BRS1S0PrePrompt*/
+		/*}#1IP1BRS1S0PrePrompt*/
+		prompt=user_query;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1IP1BRS1S0FilterMessage*/
+			/*}#1IP1BRS1S0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1IP1BRS1S0PreCall*/
+		/*}#1IP1BRS1S0PreCall*/
+		result=(result===null)?(await session.callSegLLM("Generate@"+agentURL,opts,messages,true)):result;
+		/*#{1IP1BRS1S0PostCall*/
+		todo=result;
+		/*}#1IP1BRS1S0PostCall*/
+		return {seg:output,result:(result),preSeg:"1IP1BRS1S0",outlet:"1IP1BSSUA0"};
+	};
+	Generate.jaxId="1IP1BRS1S0"
+	Generate.url="Generate@"+agentURL
+	
+	segs["LLM"]=LLM=async function(input){//:1IP1C8N7Q0
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4.1",
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=LLM.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"You are a smart assistant."},
+		];
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};messages.push(msg);
+		}
+		result=await session.callSegLLM("LLM@"+agentURL,opts,messages,true);
+		return {seg:NextAction,result:(result),preSeg:"1IP1C8N7Q0",outlet:"1IP1CAF0L0"};
+	};
+	LLM.jaxId="1IP1C8N7Q0"
+	LLM.url="LLM@"+agentURL
+	
+	segs["output"]=output=async function(input){//:1IP1FIUT30
+		let result=input;
+		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let role="assistant";
+		let content=input;
+		/*#{1IP1FIUT30PreCodes*/
+		/*}#1IP1FIUT30PreCodes*/
+		session.addChatText(role,content,opts);
+		/*#{1IP1FIUT30PostCodes*/
+		result=user_query;
+		/*}#1IP1FIUT30PostCodes*/
+		return {result:result};
+	};
+	output.jaxId="1IP1FIUT30"
+	output.url="output@"+agentURL
+	
+	segs["ParseJson"]=ParseJson=async function(input){//:1IPE2KORR0
+		let prompt;
+		let result;
+		
+		let opts={
+			platform:"OpenAI",
+			mode:"gpt-4.1-mini",
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -874,199 +869,45 @@ ${context.agentNodes?JSON.stringify(context.agentNodes,null,"\t"):"暂无"}
 			secret:false,
 			responseFormat:"json_object"
 		};
-		let chatMem=ToolAsk.messages
+		let chatMem=ParseJson.messages
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:`
-### 角色
-你负责帮助当前智能体，回答其调用的工具提出的问题
-
-### 当前智能体
-当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。
-
-### 当前智能体正在执行的用户任务:
-${orgInput.prompt||orgInput}
-
-### 当前智能体调用工具情况
-当前智能体的执行过程以及工具的调用情况，经过化简后如下：
-\`\`\`
-${JSON.stringify(mem,null,"\t")}
-\`\`\`
-
-### 对话
-用户的输入是正在执行的工具提出的问题，你根据当前智能体的信息，用JSON回复
-- 回复的时候请总结当前任务，当前工具执行目的，根据工具的提问以及当前智能体的对话过程，分析答案，并把思考过程写在回复JSON的"think"属性内。
-- 如果根据当前的信息，你可以回答问题，请把你的回答放在回复JSON的"reply"属性中。例如：
-	\`\`\`
-		{
-        	"think": "用户任务是查询股票信息并绘制图表。当前调用工具查询股票几个信息。工具询问文件输出格式，应该是为了下一步绘制收集数据。通常在智能体之间交换数据使用csv或者json多一些。这里虽然也可以使用json格式，但使用csv格式最为通用。"
-			"reply":"请用.csv格式输出数据。"
-		}
-	\`\`\`
-
-- 如果根据当前的信息，你无法做出明确回答，请把回复智能体的"reply"属性设置为null。例如：
-	\`\`\`
-		{
-        	"think": "用户任务是查询股票信息并绘制图表。当前调用工具查询股价信息。工具询问查询股价的API-Key。从当前智能体执行情况来看，我不知道可以有使用的API-Key，无法做出回答"
-			"reply":null
-		}
-	\`\`\`
-
-
-- 为了减少打扰用户，请尽量做出回答。
-
-### 回复JSON参数
-- "think" {string}: 你的思考过程
-- "reply" {string}: 你的回答，如果无法回答，设置为null
-`},
+			{role:"system",content:"你是一个 JSON 转换助手，专门负责将用户输入的可能存在问题的JSON转换为结构化的合法 JSON 格式。请遵循以下规则：\n输出要求：\n- 必须使用双引号包裹所有键名\n- 确保字符串值使用双引号而非单引号\n- 正确处理特殊字符转义(如 \\\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t)\n- 不包含尾随逗号\n- 不包含注释\n- 使用 UTF-8 编码\n\n请直接输出转换后的 JSON，不要包含任何解释或额外文本。现在开始处理用户输入：\n\n"},
 		];
-		/*#{1IO2JK8RE0PrePrompt*/
-		/*}#1IO2JK8RE0PrePrompt*/
 		prompt=input;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			let msg={role:"user",content:prompt};
-			/*#{1IO2JK8RE0FilterMessage*/
-			/*}#1IO2JK8RE0FilterMessage*/
-			messages.push(msg);
+			let msg={role:"user",content:prompt};messages.push(msg);
 		}
-		/*#{1IO2JK8RE0PreCall*/
-		/*}#1IO2JK8RE0PreCall*/
-		result=(result===null)?(await session.callSegLLM("ToolAsk@"+agentURL,opts,messages,true)):result;
+		result=await session.callSegLLM("ParseJson@"+agentURL,opts,messages,true);
 		result=trimJSON(result);
-		/*#{1IO2JK8RE0PostCall*/
-		result.ask=input;
-		/*}#1IO2JK8RE0PostCall*/
-		return {seg:ToolAskReuslt,result:(result),preSeg:"1IO2JK8RE0",outlet:"1IO2JPNBA1"};
-	};
-	ToolAsk.jaxId="1IO2JK8RE0"
-	ToolAsk.url="ToolAsk@"+agentURL
-	
-	segs["ToolAskReuslt"]=ToolAskReuslt=async function(input){//:1IO2JLG770
-		let result=input;
-		/*#{1IO2JLG770Start*/
-		/*}#1IO2JLG770Start*/
-		if(input.reply){
-			let output=input.reply;
-			return {seg:ShowAskAiResult,result:(output),preSeg:"1IO2JLG770",outlet:"1IO2JPNBA2"};
-		}
-		/*#{1IO2JLG770Post*/
-		/*}#1IO2JLG770Post*/
-		return {seg:ToolAskUser,result:(result),preSeg:"1IO2JLG770",outlet:"1IO2JPNBB0"};
-	};
-	ToolAskReuslt.jaxId="1IO2JLG770"
-	ToolAskReuslt.url="ToolAskReuslt@"+agentURL
-	
-	segs["ToolAskUser"]=ToolAskUser=async function(input){//:1IO2JOC730
-		let result;
-		let arg=input.ask;
-		let agentNode=(undefined)||null;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {seg:ShowAskUserResult,result:(result),preSeg:"1IO2JOC730",outlet:"1IO2JPNBB2"};
-	};
-	ToolAskUser.jaxId="1IO2JOC730"
-	ToolAskUser.url="ToolAskUser@"+agentURL
-	
-	segs["ShowAskAiResult"]=ShowAskAiResult=async function(input){//:1IO2JQFFQ0
-		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
-		let role="assistant";
-		let content=input;
-		/*#{1IO2JQFFQ0PreCodes*/
-		opts.icon="/~/-tabos/shared/assets/arrowright.svg";
-		opts.txtHeader+=(($ln==="CN")?(" 答复:"):/*EN*/(" reply:"));
-		opts.iconSize=24;
-		opts.fontSize=12;
-		/*}#1IO2JQFFQ0PreCodes*/
-		session.addChatText(role,content,opts);
-		/*#{1IO2JQFFQ0PostCodes*/
-		/*}#1IO2JQFFQ0PostCodes*/
 		return {result:result};
 	};
-	ShowAskAiResult.jaxId="1IO2JQFFQ0"
-	ShowAskAiResult.url="ShowAskAiResult@"+agentURL
+	ParseJson.jaxId="1IPE2KORR0"
+	ParseJson.url="ParseJson@"+agentURL
 	
-	segs["ShowAskUserResult"]=ShowAskUserResult=async function(input){//:1IODU6QTO0
-		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
-		let role="assistant";
-		let content=input;
-		/*#{1IODU6QTO0PreCodes*/
-		opts.icon="/~/-tabos/shared/assets/arrowright.svg";
-		opts.txtHeader+=(($ln==="CN")?(" 答复:"):/*EN*/(" reply:"));
-		opts.iconSize=24;
-		opts.fontSize=12;
-		/*}#1IODU6QTO0PreCodes*/
-		session.addChatText(role,content,opts);
-		/*#{1IODU6QTO0PostCodes*/
-		/*}#1IODU6QTO0PostCodes*/
-		return {result:result};
+	segs["NextStep"]=NextStep=async function(input){//:1IPEEMQF00
+		let result=input
+		/*#{1IPEEMQF00Code*/
+		/*}#1IPEEMQF00Code*/
+		return {seg:GenAction,result:(result),preSeg:"1IPEEMQF00",outlet:"1IPEEMQF20"};
 	};
-	ShowAskUserResult.jaxId="1IODU6QTO0"
-	ShowAskUserResult.url="ShowAskUserResult@"+agentURL
-	
-	segs["CallToolAsk"]=CallToolAsk=async function(input){//:1IOGH2O1E0
-		let result;
-		let arg={"agentDesc":"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。","orgInput":orgInput.taskPrompt||orgInput.prompt||orgInput,"agentMem":GenAction.messages,"toolAsk":input};
-		let agentNode=(undefined)||null;
-		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSReplyTool.js");
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		/*#{1IOGH2O1E0Input*/
-		/*}#1IOGH2O1E0Input*/
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		/*#{1IOGH2O1E0Output*/
-		/*}#1IOGH2O1E0Output*/
-		return {result:result};
-	};
-	CallToolAsk.jaxId="1IOGH2O1E0"
-	CallToolAsk.url="CallToolAsk@"+agentURL
-	
-	segs["FakeInput"]=FakeInput=async function(input){//:1IV6EAMTH0
-		let tip=("");
-		let tipRole=("assistant");
-		let placeholder=("");
-		let allowFile=(false)||false;
-		let askUpward=(false);
-		let text=("");
-		let result="";
-		if(askUpward && tip){
-			result=await session.askUpward($agent,tip);
-		}else{
-			if(tip){
-				session.addChatText(tipRole,tip);
-			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
-		}
-		if(typeof(result)==="string"){
-			session.addChatText("user",result);
-		}else if(result.assets && result.prompt){
-			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
-		}else{
-			session.addChatText("user",result.text||result.prompt||result);
-		}
-		return {seg:TipStart,result:(result),preSeg:"1IV6EAMTH0",outlet:"1IV6EBB510"};
-	};
-	FakeInput.jaxId="1IV6EAMTH0"
-	FakeInput.url="FakeInput@"+agentURL
+	NextStep.jaxId="1IPEEMQF00"
+	NextStep.url="NextStep@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"SysTabOSChat",
-		showName:(($ln==="CN")?("AI2Apps"):("AI2Apps")),
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1IKCV9VRJ0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{taskPrompt,taskTools,replyTools}*/){
+		execChat:async function(input){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IKCV9VRJ0PreEntry*/
@@ -1088,77 +929,6 @@ ${JSON.stringify(mem,null,"\t")}
 /*}#1IKCV9VRJ0ExCodes*/
 
 //#CodyExport>>>
-export const ChatAPI=[{
-	def:{
-		name: "SysTabOSChat",
-		description: "这是一个AI智能体。",
-		parameters:{
-			type: "object",
-			properties:{
-				taskPrompt:{type:"auto",description:""},
-				taskTools:{type:"auto",description:""},
-				replyTools:{type:"auto",description:""}
-			}
-		}
-	},
-	agent: SysTabOSChat
-}];
-
-//:Export Edit-AddOn:
-const DocAIAgentExporter=VFACT?VFACT.classRegs.DocAIAgentExporter:null;
-if(DocAIAgentExporter){
-	const EditAttr=VFACT.classRegs.EditAttr;
-	const EditAISeg=VFACT.classRegs.EditAISeg;
-	const EditAISegOutlet=VFACT.classRegs.EditAISegOutlet;
-	const SegObjShellAttr=EditAISeg.SegObjShellAttr;
-	const SegOutletDef=EditAISegOutlet.SegOutletDef;
-	const docAIAgentExporter=DocAIAgentExporter.prototype;
-	const packExtraCodes=docAIAgentExporter.packExtraCodes;
-	const packResult=docAIAgentExporter.packResult;
-	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
-	
-	EditAISeg.regDef({
-		name:"SysTabOSChat",showName:"SysTabOSChat",icon:"agent.svg",catalog:["AI Call"],
-		attrs:{
-			...SegObjShellAttr,
-			"taskPrompt":{name:"taskPrompt",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
-			"taskTools":{name:"taskTools",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
-			"replyTools":{name:"replyTools",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
-			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
-		},
-		listHint:["id","taskPrompt","taskTools","replyTools","codes","desc"],
-		desc:"这是一个AI智能体。"
-	});
-	
-	DocAIAgentExporter.segTypeExporters["SysTabOSChat"]=
-	function(seg){
-		let coder=this.coder;
-		let segName=seg.idVal.val;
-		let exportDebug=this.isExportDebug();
-		segName=(segName &&varNameRegex.test(segName))?segName:("SEG"+seg.jaxId);
-		coder.packText(`segs["${segName}"]=${segName}=async function(input){//:${seg.jaxId}`);
-		coder.indentMore();coder.newLine();
-		{
-			coder.packText(`let result,args={};`);coder.newLine();
-			coder.packText("args['taskPrompt']=");this.genAttrStatement(seg.getAttr("taskPrompt"));coder.packText(";");coder.newLine();
-			coder.packText("args['taskTools']=");this.genAttrStatement(seg.getAttr("taskTools"));coder.packText(";");coder.newLine();
-			coder.packText("args['replyTools']=");this.genAttrStatement(seg.getAttr("replyTools"));coder.packText(";");coder.newLine();
-			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/SysTabOSChat.js",args,false);`);coder.newLine();
-			this.packExtraCodes(coder,seg,"PostCodes");
-			this.packUpdateContext(coder,seg);
-			this.packUpdateGlobal(coder,seg);
-			this.packResult(coder,seg,seg.outlet);
-		}
-		coder.indentLess();coder.maybeNewLine();
-		coder.packText(`};`);coder.newLine();
-		if(exportDebug){
-			coder.packText(`${segName}.jaxId="${seg.jaxId}"`);coder.newLine();
-		}
-		coder.packText(`${segName}.url="${segName}@"+agentURL`);coder.newLine();
-		coder.newLine();
-	};
-}
 //#CodyExport<<<
 /*#{1IKCV9VRJ0PostDoc*/
 /*}#1IKCV9VRJ0PostDoc*/
@@ -1206,53 +976,14 @@ export{SysTabOSChat};
 //			"jaxId": "1IKCV9VRJ2",
 //			"attrs": {}
 //		},
-//		"showName": {
-//			"type": "string",
-//			"valText": "AI2Apps",
-//			"localize": {
-//				"EN": "AI2Apps",
-//				"CN": "AI2Apps"
-//			},
-//			"localizable": true
-//		},
+//		"showName": "",
 //		"entry": "ShowLogo",
 //		"autoStart": "true",
 //		"inBrowser": "true",
 //		"debug": "true",
 //		"apiArgs": {
 //			"jaxId": "1IKCV9VRJ3",
-//			"attrs": {
-//				"taskPrompt": {
-//					"type": "object",
-//					"def": "AgentCallArgument",
-//					"jaxId": "1IQ1EA26S0",
-//					"attrs": {
-//						"type": "Auto",
-//						"mockup": "\"\"",
-//						"desc": ""
-//					}
-//				},
-//				"taskTools": {
-//					"type": "object",
-//					"def": "AgentCallArgument",
-//					"jaxId": "1IQ1EA26S1",
-//					"attrs": {
-//						"type": "Auto",
-//						"mockup": "\"\"",
-//						"desc": ""
-//					}
-//				},
-//				"replyTools": {
-//					"type": "object",
-//					"def": "AgentCallArgument",
-//					"jaxId": "1IQ1EA26S2",
-//					"attrs": {
-//						"type": "Auto",
-//						"mockup": "\"\"",
-//						"desc": ""
-//					}
-//				}
-//			}
+//			"attrs": {}
 //		},
 //		"localVars": {
 //			"jaxId": "1IKCV9VRJ4",
@@ -1332,12 +1063,7 @@ export{SysTabOSChat};
 //		},
 //		"globalMockup": {
 //			"jaxId": "1IKCV9VRJ6",
-//			"attrs": {
-//				"bash": {
-//					"type": "string",
-//					"valText": ""
-//				}
-//			}
+//			"attrs": {}
 //		},
 //		"segs": {
 //			"attrs": [
@@ -1349,7 +1075,7 @@ export{SysTabOSChat};
 //						"id": "ShowLogo",
 //						"viewName": "",
 //						"label": "",
-//						"x": "30",
+//						"x": "-75",
 //						"y": "400",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1391,7 +1117,7 @@ export{SysTabOSChat};
 //						"id": "TipStart",
 //						"viewName": "",
 //						"label": "",
-//						"x": "265",
+//						"x": "145",
 //						"y": "400",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -1410,7 +1136,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Welcome to the AI2Apps System Chat.",
@@ -1439,7 +1164,7 @@ export{SysTabOSChat};
 //						"id": "InitTools",
 //						"viewName": "",
 //						"label": "",
-//						"x": "495",
+//						"x": "330",
 //						"y": "400",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -1462,7 +1187,7 @@ export{SysTabOSChat};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IKCVBKKB0"
+//							"linkedSeg": "1INT3PTSB0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1498,7 +1223,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "User",
-//						"channel": "Chat",
 //						"text": "#input.prompt||input",
 //						"outlet": {
 //							"jaxId": "1IKCVDSRP0",
@@ -1681,7 +1405,7 @@ export{SysTabOSChat};
 //						"id": "GenAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1450",
+//						"x": "1815",
 //						"y": "465",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
@@ -1699,11 +1423,19 @@ export{SysTabOSChat};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "$expert",
-//						"system": "#`\n你是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI。\n\n当前的Tools（本地智能体工具）有:\n${context.toolIndex?JSON.stringify(context.toolIndex,null,\"\\t\"):\"暂无\"}\n\n当前的Nodes（外部智能体节点）有:\n${context.agentNodes?JSON.stringify(context.agentNodes,null,\"\\t\"):\"暂无\"}\n\n- - -\n\n- 第一轮对话时，用户输入的是要完成的任务也可能是简单的对话。你根据用户的输入，选择合适的Tool执行任务，或者与用户对话。\n\n- 每一回合对话，跟根据当前对话/任务执行的情况，回复一个JSON对象。\n- 如果需要执行一个Tool，设置回复JSON中的\"action\"属性为\"tool\"；设置\"tool\"属性是下一步要执行的Tool(智能体)的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"tool\",\n\t\"tool\":\"Tool-3\",\n    \"prompt\":\"Search for: Who is the winner of 2024 F1?\"\n}\n注意: 如果输入包含附件，生成的调用tool的prompt属性的文本里，应该包含全部的附件。\n\n- 如果需要执行一个Node，设置回复JSON中的\"action\"属性为\"node\"；回复JSON中的\"node\"属性是下一步要执行的Node（外部智能体）的名称; 回复JSON中的prompt属性是调用这个Tool的输入指令。例如：\n{\n\t\"action\":\"node\",\n\t\"node\":\"DrawNode\",\n    \"prompt\":\"Draw picture of a cute fat cat.\"\n}\n\n- 执行Tool或Node的结果会在对话中告知。你根据任务目标以及当前的执行情况，可能需要继续选择新的Tool/Node进一步执行。\n\n- 如果同时有Tool和Node可以执行当前的任务需求，优先使用Tool，如果Tool执行失败或无法完成任务再尝试Node。\n\n- 如果回答用户的输入不需要使用任何tool，回复将JSON中的\"action\"属性设置为\"finish\"，用回复JSON中的\"content\"属性回答用户。例如：当用户询问：\"西瓜是一种水果么？\"，你的回复：\n{\n\t\"action\":\"finish\",\n\t\"content\":\"是的，西瓜是一种水果。\"\n}\n\n- 如果成功的完成了用户提出的任务，回复将JSON中的\"action\"属性设置为\"finish\"，并通过\"content\"属性总结汇报执行情况。例如\n{\n\t\"action\":\"finish\",\n    \"content\":\"论坛帖子已经成功发布。\"\n}\n\n- 如果执行Tool出现错误，请分析错误原因，如果是参数问题或者需要提供更多的参数，请使用修正后的调用prompt重新调用Tool\n\n- 如果执行Tool出现错误，分析原因后，你认为无法完成用户的任务，设置回复JSON中的\"action\"属性为\"abort\"，并在\"content\"属性中说明原因。例如:\n{\n\t\"action\":\"abort\",\n    \"content\":\"没有登录脸书账号，无法发布新的内容。\"\n}\n\n- 如果没有Tool或Node可以完成用户的要求，设置回复JSON中的\"action\"属性为\"missingTool\"，请设计一个或多个用来完成用户需求的Tool，在回复JSON中用\"missingTools\"数组属性里描述缺失的Tool。例如：\n{\n\t\"action\":\"missingTool\",\n\t\"missingTools\":[\n    \t\"检查脸书账号登录状态\",\n        \"发布脸书动态\"\n    ]\n}\n\n- 如果执行任务需要用户提供更多的信息，设置回复JSON中的\"action\"属性为\"chat\"，要询问用户的内容放在\"content\"属性里。例如，需要用户提供邮箱地址：\n{\n\t\"action\":\"chat\",\n\t\"content\":\"请告诉我你的电子邮箱地址\"\n}\n`",
+//						"platform": "OpenAI",
+//						"mode": "gpt-4.1",
+//						"system": {
+//							"type": "string",
+//							"valText": "#`The current time is ${Date(). toString()}. You are an intelligent routing AI responsible for analyzing user requests and dynamically selecting the best execution method (local tools/external nodes/direct response) strictly according to task planning, and strictly following decision rules. ##Available resources ###Local Tools Library: ${JSON.stringify(context.toolIndex,null,2)} ###External Node Library: ${JSON.stringify(context.agentNodes,null,2)} ##Task planning ${todo} ##Decision rules ### 1. Request classification processing -* * Simple Query/Dialogue * *: Direct Response (action=finish) -* * Tool processing required * *: Prioritize local tools (action=tool) -* * External capability required * *: Call node (action=node) -Insufficient information: Initiate follow-up (action=chat) ### 2. Response specifications { \"action\": Execution type \", //Required fields vary according to action type: //Tool/node ->corresponding tool name+prompt // finish/abort/chat -> content //MissingTools ->missingTools array \"content\": Natural language response, \"tool/node\": Specific tool name, \"prompt\": 'Tool call instruction', \"reason\": Reasons and purposes for using tools, MissingTools \": [{\" name \":\" tool name \",\" desc \":\" feature description \"}] } ### 3. execution priority 1. Local tools (lower latency) 2. External nodes (with broader capabilities) 3. Combination call (chain execution when needed) 4. Strictly call the tools in the order of task planning ### 4. Special treatment -* * File and folder operations * *: -Creating, writing, and modifying files and folders must use absolute paths -Call the pwd tool first when the path is unknown -Please confirm if the file path exists before writing to the file -Ensure that the written content is complete and detailed -Prohibit the use of echo and python3-c -* * Python code * *: -Prohibit the use of echo and python3-c -Must be written to a file before execution -All line breaks in strings must be escaped as \\ \\ \\ \\ n, as this code will be executed through Node.js' fs-writeFile Keep the code logic unchanged and only escape special characters in the string The final output should be in the form of a string that can be directly executed by Node.js -Automatically generate reasonable file names (such as script_ [timestamp]. py) -Attachment processing: -All attachments must be explicitly included in the prompt -Format: [Attachment: File Name. Extension] Processing Requirements ### 5. Error handling process 1. Parameter error ->Fix and retry 2. Permission issue ->Abort and explain (action=abort) 3. Lack of ability ->Report the tool that needs to be developed (action=missingTool) ##Best practice examples 1. File processing: { \"action\": \"tool\", \"tool\": \"FileWriter\", \"prompt\": Save to/tmp/data_20240408.json: [Attachment: data.json]\", \"reason\": I have obtained the data, now I need to write it to a file } 2. Missing tools: { \"action\": \"missingTool\", \"missingTools\": [ {\"name\": \"PDF Signature Tool\", \"desc\": \"Supports embedding digital and handwritten signatures\"}, {\"name\": \"OCR recognition engine\", \"desc\": \"Supports multilingual image and text extraction\"} ] }  Please use English.`",
+//							"localize": {
+//								"EN": "#`The current time is ${Date(). toString()}. You are an intelligent routing AI responsible for analyzing user requests and dynamically selecting the best execution method (local tools/external nodes/direct response) strictly according to task planning, and strictly following decision rules. ##Available resources ###Local Tools Library: ${JSON.stringify(context.toolIndex,null,2)} ###External Node Library: ${JSON.stringify(context.agentNodes,null,2)} ##Task planning ${todo} ##Decision rules ### 1. Request classification processing -* * Simple Query/Dialogue * *: Direct Response (action=finish) -* * Tool processing required * *: Prioritize local tools (action=tool) -* * External capability required * *: Call node (action=node) -Insufficient information: Initiate follow-up (action=chat) ### 2. Response specifications { \"action\": Execution type \", //Required fields vary according to action type: //Tool/node ->corresponding tool name+prompt // finish/abort/chat -> content //MissingTools ->missingTools array \"content\": Natural language response, \"tool/node\": Specific tool name, \"prompt\": 'Tool call instruction', \"reason\": Reasons and purposes for using tools, MissingTools \": [{\" name \":\" tool name \",\" desc \":\" feature description \"}] } ### 3. execution priority 1. Local tools (lower latency) 2. External nodes (with broader capabilities) 3. Combination call (chain execution when needed) 4. Strictly call the tools in the order of task planning ### 4. Special treatment -* * File and folder operations * *: -Creating, writing, and modifying files and folders must use absolute paths -Call the pwd tool first when the path is unknown -Please confirm if the file path exists before writing to the file -Ensure that the written content is complete and detailed -Prohibit the use of echo and python3-c -* * Python code * *: -Prohibit the use of echo and python3-c -Must be written to a file before execution -All line breaks in strings must be escaped as \\ \\ \\ \\ n, as this code will be executed through Node.js' fs-writeFile Keep the code logic unchanged and only escape special characters in the string The final output should be in the form of a string that can be directly executed by Node.js -Automatically generate reasonable file names (such as script_ [timestamp]. py) -Attachment processing: -All attachments must be explicitly included in the prompt -Format: [Attachment: File Name. Extension] Processing Requirements ### 5. Error handling process 1. Parameter error ->Fix and retry 2. Permission issue ->Abort and explain (action=abort) 3. Lack of ability ->Report the tool that needs to be developed (action=missingTool) ##Best practice examples 1. File processing: { \"action\": \"tool\", \"tool\": \"FileWriter\", \"prompt\": Save to/tmp/data_20240408.json: [Attachment: data.json]\", \"reason\": I have obtained the data, now I need to write it to a file } 2. Missing tools: { \"action\": \"missingTool\", \"missingTools\": [ {\"name\": \"PDF Signature Tool\", \"desc\": \"Supports embedding digital and handwritten signatures\"}, {\"name\": \"OCR recognition engine\", \"desc\": \"Supports multilingual image and text extraction\"} ] }  Please use English.`",
+//								"CN": "#`当前的时间是${Date().toString()}。你是一个智能路由AI，负责分析用户请求和严格按照任务规划来动态选择最佳执行方式（本地工具/外部节点/直接响应），并严格遵守决策规则。 ﻿ ## 可用资源 ### 本地工具库 (Tools): ${JSON.stringify(context.toolIndex,null,2)} ﻿ ### 外部节点库 (Nodes): ${JSON.stringify(context.agentNodes,null,2)} ﻿ ## 任务规划 ${todo} ﻿ ## 决策规则 ﻿ ### 1. 请求分类处理 - **简单查询/对话**：直接响应（action=finish） - **需工具处理**：优先本地工具（action=tool） - **需外部能力**：调用节点（action=node） - **信息不足**：发起追问（action=chat） ﻿ ### 2. 响应规范 { \"action\": \"执行类型\", // 必选字段根据action类型变化： // tool/node -> 对应工具名+prompt // finish/abort/chat -> content // missingTool -> missingTools数组 \"content\": \"自然语言响应\", \"tool/node\": \"具体工具名\", \"prompt\": \"工具调用指令\", \"reason\": \"使用工具的原因及目的\", \"missingTools\": [{\"name\":\"工具名\", \"desc\":\"功能描述\"}] } ﻿ ﻿ ### 3. 执行优先级 1. 本地工具（更低延迟） 2. 外部节点（更广能力） 3. 组合调用（需要时链式执行） 4. 严格按照任务规划顺序调用工具 ﻿ ### 4. 特殊处理 - **文件和文件夹操作**： - 创建、写入、修改文件和文件夹必须使用绝对路径 - 未知路径时先调用pwd工具 - 写入文件前请确认文件路径是否存在 - 确保写入的内容完整、详细 - 禁止使用echo和python3 -c - **Python代码**： - 禁止使用echo和python3 -c - 必须先写入文件再执行 - 所有字符串中的换行符 \\\\n 必须转义为 \\\\\\\\n，因为这段代码将通过 Node.js 的 fs.writeFile 执行 保持代码逻辑不变，只对字符串中的特殊字符进行转义处理 最终输出应该是可以直接被 Node.js 执行的字符串形式 - 自动生成合理的文件名（如script_[timestamp].py） ﻿ - **附件处理**： - 所有附件必须显式包含在prompt中（如果以hub://开头必须保留） - 格式：\"[附件: 文件名.扩展名] 处理要求\" ﻿ ### 5. 错误处理流程 1. 参数错误 → 修正后重试 2. 权限问题 → 中止并说明（action=abort） 3. 能力缺失 → 上报需开发的工具（action=missingTool） ﻿ ## 最佳实践示例 1. 文件处理： { \"action\": \"tool\", \"tool\": \"FileWriter\", \"prompt\": \"保存到/tmp/data_20240408.json：[附件: data.json]\", \"reason\": \"我已经得到了数据，现在需要将数据写入文件中\" } ﻿ 2. 工具缺失： { \"action\": \"missingTool\", \"missingTools\": [ {\"name\": \"PDF签名工具\", \"desc\": \"支持数字签名和手写签名嵌入\"}, {\"name\": \"OCR识别引擎\", \"desc\": \"支持多语言图片文字提取\"} ] } ` ﻿"
+//							},
+//							"localizable": true
+//						},
 //						"temperature": "0",
-//						"maxToken": "2000",
+//						"maxToken": "32768",
 //						"topP": "1",
 //						"fqcP": "0",
 //						"prcP": "0",
@@ -1745,7 +1477,7 @@ export{SysTabOSChat};
 //						"id": "CaseAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1685",
+//						"x": "2050",
 //						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -1912,7 +1644,7 @@ export{SysTabOSChat};
 //						"id": "CheckCmd",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1195",
+//						"x": "1560",
 //						"y": "400",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1980,7 +1712,7 @@ export{SysTabOSChat};
 //						"id": "RunCommand",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1450",
+//						"x": "1815",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -2020,7 +1752,7 @@ export{SysTabOSChat};
 //						"id": "ShowResult",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1690",
+//						"x": "2055",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2039,7 +1771,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKCVL5PA0",
@@ -2059,7 +1790,7 @@ export{SysTabOSChat};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1845",
+//						"x": "2210",
 //						"y": "215",
 //						"outlet": {
 //							"jaxId": "1IKCVL5PC20",
@@ -2104,8 +1835,8 @@ export{SysTabOSChat};
 //						"id": "TryNode",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1980",
-//						"y": "260",
+//						"x": "2345",
+//						"y": "230",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2149,10 +1880,10 @@ export{SysTabOSChat};
 //						"id": "TryTool",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1980",
+//						"x": "2345",
 //						"y": "360",
 //						"desc": "这是一个AISeg。",
-//						"codes": "true",
+//						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2173,7 +1904,7 @@ export{SysTabOSChat};
 //								"id": "Try",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IKD03VM90"
+//							"linkedSeg": "1INT632680"
 //						},
 //						"catchlet": {
 //							"jaxId": "1IKCVQU3O5",
@@ -2194,7 +1925,7 @@ export{SysTabOSChat};
 //						"id": "DoChat",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1980",
+//						"x": "2345",
 //						"y": "450",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
@@ -2225,7 +1956,11 @@ export{SysTabOSChat};
 //						},
 //						"outlets": {
 //							"attrs": []
-//						}
+//						},
+//						"mcp": {
+//							"valText": "false"
+//						},
+//						"agentNode": ""
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -2237,7 +1972,7 @@ export{SysTabOSChat};
 //						"id": "TipFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1980",
+//						"x": "2345",
 //						"y": "530",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2256,7 +1991,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Chat",
 //						"text": "#input.content",
 //						"outlet": {
 //							"jaxId": "1IKCVQU3L3",
@@ -2277,7 +2011,7 @@ export{SysTabOSChat};
 //						"id": "TipAbort",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1980",
+//						"x": "2345",
 //						"y": "620",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2296,7 +2030,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Chat",
 //						"text": "#input.content",
 //						"outlet": {
 //							"jaxId": "1IKCVQU3L4",
@@ -2316,7 +2049,7 @@ export{SysTabOSChat};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2355",
+//						"x": "2720",
 //						"y": "705",
 //						"outlet": {
 //							"jaxId": "1IKD025MN0",
@@ -2338,7 +2071,7 @@ export{SysTabOSChat};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1225",
+//						"x": "1590",
 //						"y": "705",
 //						"outlet": {
 //							"jaxId": "1IKD025MN2",
@@ -2361,8 +2094,8 @@ export{SysTabOSChat};
 //						"id": "LogError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1195",
-//						"y": "570",
+//						"x": "1560",
+//						"y": "635",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "link.svg",
@@ -2401,8 +2134,8 @@ export{SysTabOSChat};
 //						"id": "NodeError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2165",
-//						"y": "290",
+//						"x": "2530",
+//						"y": "245",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2426,10 +2159,10 @@ export{SysTabOSChat};
 //						"id": "ToolError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2165",
-//						"y": "390",
+//						"x": "2530",
+//						"y": "420",
 //						"desc": "这是一个AISeg。",
-//						"codes": "true",
+//						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"seg": "LogError",
@@ -2451,8 +2184,8 @@ export{SysTabOSChat};
 //						"id": "ShowNode",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2365",
-//						"y": "245",
+//						"x": "2730",
+//						"y": "215",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2470,7 +2203,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD046QG0",
@@ -2491,8 +2223,8 @@ export{SysTabOSChat};
 //						"id": "ShowTool",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2365",
-//						"y": "345",
+//						"x": "2730",
+//						"y": "375",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2510,7 +2242,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Process",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD046QG1",
@@ -2531,8 +2262,8 @@ export{SysTabOSChat};
 //						"id": "CallTool",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2600",
-//						"y": "345",
+//						"x": "3020",
+//						"y": "375",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2557,32 +2288,7 @@ export{SysTabOSChat};
 //							"linkedSeg": "1IKD0580Q0"
 //						},
 //						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "CodOutlet",
-//									"jaxId": "1IO2IGU820",
-//									"attrs": {
-//										"id": "Ask",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1IO2IGU821",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1IO2IGU822",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										}
-//									},
-//									"linkedSeg": "1IOGH2O1E0"
-//								}
-//							]
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2596,8 +2302,8 @@ export{SysTabOSChat};
 //						"id": "TipNodeRes",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2840",
-//						"y": "245",
+//						"x": "3210",
+//						"y": "215",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2615,7 +2321,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD0BI2O2",
@@ -2636,8 +2341,8 @@ export{SysTabOSChat};
 //						"id": "TipToolRes",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2840",
-//						"y": "330",
+//						"x": "3215",
+//						"y": "375",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2655,7 +2360,6 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
-//						"channel": "Process",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD0BI2O3",
@@ -2676,8 +2380,8 @@ export{SysTabOSChat};
 //						"id": "NextAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3105",
-//						"y": "330",
+//						"x": "3445",
+//						"y": "360",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2696,52 +2400,12 @@ export{SysTabOSChat};
 //				{
 //					"type": "aiseg",
 //					"def": "code",
-//					"jaxId": "1IKD0ABJJ0",
-//					"attrs": {
-//						"id": "NextStep",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1195",
-//						"y": "490",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "link.svg",
-//						"context": {
-//							"jaxId": "1IKD0BI2T0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IKD0BI2T1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1IKD0BI2O5",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IKCVDIJ50"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input"
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
 //					"jaxId": "1IKDJNI2I0",
 //					"attrs": {
 //						"id": "AddChat",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2365",
+//						"x": "2730",
 //						"y": "450",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -2780,7 +2444,7 @@ export{SysTabOSChat};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2955",
+//						"x": "3320",
 //						"y": "450",
 //						"outlet": {
 //							"jaxId": "1IKDJP5CM0",
@@ -2803,7 +2467,7 @@ export{SysTabOSChat};
 //						"id": "AskNext",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2230",
+//						"x": "2595",
 //						"y": "575",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2847,8 +2511,8 @@ export{SysTabOSChat};
 //						"id": "CallNode",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2600",
-//						"y": "245",
+//						"x": "2965",
+//						"y": "215",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2883,58 +2547,304 @@ export{SysTabOSChat};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "jumper",
-//					"jaxId": "1IO2JIV900",
+//					"def": "RemoteChat",
+//					"jaxId": "1INT3PTSB0",
 //					"attrs": {
-//						"id": "JumpToolAsk",
+//						"id": "InitBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2600",
-//						"y": "565",
+//						"x": "515",
+//						"y": "400",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"seg": "1IOGH2O1E0",
-//						"outlet": {
-//							"jaxId": "1IO2JPNBA0",
-//							"attrs": {
-//								"id": "Next",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "arrowupright.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "callLLM",
-//					"jaxId": "1IO2JK8RE0",
-//					"attrs": {
-//						"id": "ToolAsk",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2600",
-//						"y": "630",
-//						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
-//						"segMark": "faces.svg",
+//						"segMark": "None",
 //						"context": {
-//							"jaxId": "1IO2JPNBK0",
+//							"jaxId": "1INT3RMBR0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1IO2JPNBK1",
+//							"jaxId": "1INT3RMBR1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"nodeName": "builder_new",
+//						"callAgent": "Bash.js",
+//						"callArg": "#{action:\"Create\",options:{client:true,ownBySession:false}}",
+//						"checkUpdate": "true",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1INT3RMBL0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IKCVBKKB0"
+//						}
+//					},
+//					"icon": "cloudact.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1INT632680",
+//					"attrs": {
+//						"id": "Check",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2530",
+//						"y": "345",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INT66EV00",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INT66EV01",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1INT63NS21",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1IKD03VM90"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1INT63NS20",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1INT66EV02",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1INT66EV03",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.tool === \"Tool-Bash\""
+//									},
+//									"linkedSeg": "1INT68OMK0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1IP1C7J7B0",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1IP1C83450",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1IP1C83451",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.tool === \"Tool-Ask\""
+//									},
+//									"linkedSeg": "1IP1C8N7Q0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "RemoteChat",
+//					"jaxId": "1INT68OMK0",
+//					"attrs": {
+//						"id": "RunBash",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2730",
+//						"y": "270",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1INT6BP5I0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1INT6BP5I1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"nodeName": "builder_new",
+//						"callAgent": "Bash.js",
+//						"callArg": "#{bashId:globalContext.bash,action:\"Command\",commands:input.prompt}",
+//						"checkUpdate": "true",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1INT6BP5C0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1INT6GMIR0"
+//						}
+//					},
+//					"icon": "cloudact.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1INT6GMIR0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "3320",
+//						"y": "270",
+//						"outlet": {
+//							"jaxId": "1INT6H1CK0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IKD09MJ10"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1IP1BRS1S0",
+//					"attrs": {
+//						"id": "Generate",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1125",
+//						"y": "400",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IP1BSSUK0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IP1BSSUL0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "OpenAI",
+//						"mode": "gpt-4.1",
+//						"system": {
+//							"type": "string",
+//							"valText": "#`The current time is 2025. You are a professional task planning AI, skilled at breaking down complex tasks into executable steps. Please generate a detailed task list according to the following requirements: The available resources you currently have ###Local Tools Library: ${JSON.stringify(context.toolIndex,null,2)} ###External Node Library: ${JSON.stringify(context.agentNodes,null,2)} 1. The output format must strictly follow: \\`\\`\\`markdown #[Task Name] Task List ##Stage 1: [Stage Name] -[] [Atomic level task description] -[] [Next atomic level task] ... ##Stage 2: [Stage Name] ... \\`\\`\\` 2. Decomposition principle: -Maintain the 4-level structure in your example (total task>stage>main task>subtask) -Each subtask must be the smallest unit that can be independently executed -Each task can be completed by calling available tools without the need for manual intervention -Indicate the tools used after each task 3. Rules -If you need to create and output files, please use the pwd command to check the current path in the first step, and then create a working directory (absolute path). Please check if the directory exists first, and if it does, create a new working directory name. -If you need to search for web pages, please write the search results to a markdown file after searching. It is recommended to write a file every time you search -Please use bash to create files -Try to obtain the latest external knowledge through web search as much as possible -When writing a document, please do not write too much content at once. - When reading documents， you can read at the same time instead of iteration. Please add the content in sequence and divide it into multiple tasks Output markdown directly, do not output any irrelevant content.`",
+//							"localize": {
+//								"EN": "#`The current time is 2025. You are a professional task planning AI, skilled at breaking down complex tasks into executable steps. Please generate a detailed task list according to the following requirements: The available resources you currently have ###Local Tools Library: ${JSON.stringify(context.toolIndex,null,2)} ###External Node Library: ${JSON.stringify(context.agentNodes,null,2)} 1. The output format must strictly follow: \\`\\`\\`markdown #[Task Name] Task List ##Stage 1: [Stage Name] -[] [Atomic level task description] -[] [Next atomic level task] ... ##Stage 2: [Stage Name] ... \\`\\`\\` 2. Decomposition principle: -Maintain the 4-level structure in your example (total task>stage>main task>subtask) -Each subtask must be the smallest unit that can be independently executed -Each task can be completed by calling available tools without the need for manual intervention -Indicate the tools used after each task 3. Rules -If you need to create and output files, please use the pwd command to check the current path in the first step, and then create a working directory (absolute path). Please check if the directory exists first, and if it does, create a new working directory name. -If you need to search for web pages, please write the search results to a markdown file after searching. It is recommended to write a file every time you search -Please use bash to create files -Try to obtain the latest external knowledge through web search as much as possible -When writing a document, please do not write too much content at once. - When reading documents， you can read at the same time instead of iteration. Please add the content in sequence and divide it into multiple tasks Output markdown directly, do not output any irrelevant content.`",
+//								"CN": "#`当前的时间是2025年。你是一个专业任务规划AI，擅长将复杂任务分解为可执行的步骤。请按照以下要求生成详细的任务清单： 你目前拥有的可用资源 ### 本地工具库 (Tools): ${JSON.stringify(context.toolIndex,null,2)} ﻿ ### 外部节点库 (Nodes): ${JSON.stringify(context.agentNodes,null,2)} ﻿ ﻿ 1. 输出格式必须严格遵循： \\`\\`\\`markdown # [任务名称] 任务清单 ﻿ ## 阶段1: [阶段名称] - [ ] [原子级任务描述] - [ ] [下一个原子级任务] ... ﻿ ## 阶段2: [阶段名称] ... \\`\\`\\` ﻿ 2. 分解原则： - 保持你示例中的4级结构（总任务>阶段>主任务>子任务） - 每个子任务必须是可独立执行的最小单元 - 每个任务都可以通过调用可用的工具完成，不需要人工干预 - 每个任务后表明使用的工具 ﻿ 3. 规则  - 如果需要搜索网页，请搜索后将搜索到的结果写入markdown文件，建议每搜索一次写入一个文件 - 创建文件请使用bash - 尽可能通过网页搜索获取外部最新的知识 - 撰写文档时请不要一次性写入过多内容，请依次追加写入内容，分成多个任务 - 读取文件可以一次性全部读入﻿ 直接输出markdown，不要输出其他无关内容。 `"
+//							},
+//							"localizable": true
+//						},
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#user_query",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1IP1BSSUA0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IP1FIUT30"
+//						},
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1IP1C8N7Q0",
+//					"attrs": {
+//						"id": "LLM",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2730",
+//						"y": "320",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IP1CAF0T0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IP1CAF0T1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o",
-//						"system": "#`\n### 角色\n你负责帮助当前智能体，回答其调用的工具提出的问题\n\n### 当前智能体\n当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。\n\n### 当前智能体正在执行的用户任务:\n${orgInput.prompt||orgInput}\n\n### 当前智能体调用工具情况\n当前智能体的执行过程以及工具的调用情况，经过化简后如下：\n\\`\\`\\`\n${JSON.stringify(mem,null,\"\\t\")}\n\\`\\`\\`\n\n### 对话\n用户的输入是正在执行的工具提出的问题，你根据当前智能体的信息，用JSON回复\n- 回复的时候请总结当前任务，当前工具执行目的，根据工具的提问以及当前智能体的对话过程，分析答案，并把思考过程写在回复JSON的\"think\"属性内。\n- 如果根据当前的信息，你可以回答问题，请把你的回答放在回复JSON的\"reply\"属性中。例如：\n\t\\`\\`\\`\n\t\t{\n        \t\"think\": \"用户任务是查询股票信息并绘制图表。当前调用工具查询股票几个信息。工具询问文件输出格式，应该是为了下一步绘制收集数据。通常在智能体之间交换数据使用csv或者json多一些。这里虽然也可以使用json格式，但使用csv格式最为通用。\"\n\t\t\t\"reply\":\"请用.csv格式输出数据。\"\n\t\t}\n\t\\`\\`\\`\n\n- 如果根据当前的信息，你无法做出明确回答，请把回复智能体的\"reply\"属性设置为null。例如：\n\t\\`\\`\\`\n\t\t{\n        \t\"think\": \"用户任务是查询股票信息并绘制图表。当前调用工具查询股价信息。工具询问查询股价的API-Key。从当前智能体执行情况来看，我不知道可以有使用的API-Key，无法做出回答\"\n\t\t\t\"reply\":null\n\t\t}\n\t\\`\\`\\`\n\n\n- 为了减少打扰用户，请尽量做出回答。\n\n### 回复JSON参数\n- \"think\" {string}: 你的思考过程\n- \"reply\" {string}: 你的回答，如果无法回答，设置为null\n`",
+//						"mode": "gpt-4.1",
+//						"system": "You are a smart assistant.",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -2946,12 +2856,135 @@ export{SysTabOSChat};
 //						"prompt": "#input",
 //						"seed": "",
 //						"outlet": {
-//							"jaxId": "1IO2JPNBA1",
+//							"jaxId": "1IP1CAF0L0",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IO2JLG770"
+//							"linkedSeg": "1IP1CABF60"
+//						},
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\""
+//					},
+//					"icon": "llm.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1IP1CABF60",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "3320",
+//						"y": "320",
+//						"outlet": {
+//							"jaxId": "1IP1CAF0T2",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IKD09MJ10"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1IP1FIUT30",
+//					"attrs": {
+//						"id": "output",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1340",
+//						"y": "400",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IP1FJFN00",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IP1FJFN01",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1IP1FJFMQ0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1IPE2KORR0",
+//					"attrs": {
+//						"id": "ParseJson",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1820",
+//						"y": "560",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1IPE2O6R30",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1IPE2O6R31",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4.1-mini",
+//						"system": "你是一个 JSON 转换助手，专门负责将用户输入的可能存在问题的JSON转换为结构化的合法 JSON 格式。请遵循以下规则：\n输出要求：\n- 必须使用双引号包裹所有键名\n- 确保字符串值使用双引号而非单引号\n- 正确处理特殊字符转义(如 \\\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t)\n- 不包含尾随逗号\n- 不包含注释\n- 使用 UTF-8 编码\n\n请直接输出转换后的 JSON，不要包含任何解释或额外文本。现在开始处理用户输入：\n\n",
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1IPE2O6QU0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
 //						},
 //						"secret": "false",
 //						"allowCheat": "false",
@@ -2972,328 +3005,49 @@ export{SysTabOSChat};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1IO2JLG770",
+//					"def": "code",
+//					"jaxId": "1IPEEMQF00",
 //					"attrs": {
-//						"id": "ToolAskReuslt",
+//						"id": "NextStep",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2840",
-//						"y": "630",
+//						"x": "1560",
+//						"y": "535",
 //						"desc": "这是一个AISeg。",
-//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1IO2JPNBK2",
+//							"jaxId": "1IPEEMQFE0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1IO2JPNBK3",
+//							"jaxId": "1IPEEMQFE1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"outlet": {
-//							"jaxId": "1IO2JPNBB0",
-//							"attrs": {
-//								"id": "AskUser",
-//								"desc": "输出节点。",
-//								"output": ""
-//							},
-//							"linkedSeg": "1IO2JOC730"
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1IO2JPNBA2",
-//									"attrs": {
-//										"id": "Reply",
-//										"desc": "输出节点。",
-//										"output": "#input.reply",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1IO2JPNBK4",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1IO2JPNBK5",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input.reply"
-//									},
-//									"linkedSeg": "1IO2JQFFQ0"
-//								}
-//							]
-//						}
-//					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1IO2JOC730",
-//					"attrs": {
-//						"id": "ToolAskUser",
-//						"viewName": "",
-//						"label": "",
-//						"x": "3105",
-//						"y": "675",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IO2JPNBK8",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IO2JPNBK9",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "ai/SysTabOSAskUser.js",
-//						"argument": "#{}#>input.ask",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1IO2JPNBB2",
+//							"jaxId": "1IPEEMQF20",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IODU6QTO0"
+//							"linkedSeg": "1IKCVDIJ50"
 //						},
 //						"outlets": {
 //							"attrs": []
-//						}
+//						},
+//						"result": "#input"
 //					},
-//					"icon": "agent.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1IO2JQFFQ0",
-//					"attrs": {
-//						"id": "ShowAskAiResult",
-//						"viewName": "",
-//						"label": "",
-//						"x": "3105",
-//						"y": "590",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IO2JVR8D0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IO2JVR8D1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input",
-//						"outlet": {
-//							"jaxId": "1IO2JVR850",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1IODU6QTO0",
-//					"attrs": {
-//						"id": "ShowAskUserResult",
-//						"viewName": "",
-//						"label": "",
-//						"x": "3365",
-//						"y": "675",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IODUBME50",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IODUBME51",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input",
-//						"outlet": {
-//							"jaxId": "1IODUBME00",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1IOGH2O1E0",
-//					"attrs": {
-//						"id": "CallToolAsk",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2840",
-//						"y": "390",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IOGH44CM0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IOGH44CM1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "ai/SysTabOSReplyTool.js",
-//						"argument": "{\"agentDesc\":\"当前的智能体是一个根据用户输入，选择适合的Tool(本地智能体)或Node(外部智能体节点)运行，与用户对话，完成任务的AI智能体。\",\"orgInput\":\"#orgInput.taskPrompt||orgInput.prompt||orgInput\",\"agentMem\":\"#GenAction.messages\",\"toolAsk\":\"#input\"}",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1IOGH44CF0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						}
-//					},
-//					"icon": "agent.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "askChat",
-//					"jaxId": "1IV6EAMTH0",
-//					"attrs": {
-//						"id": "FakeInput",
-//						"viewName": "",
-//						"label": "",
-//						"x": "465",
-//						"y": "525",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IV6EBB570",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IV6EBB580",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"tip": "",
-//						"tipRole": "Assistant",
-//						"placeholder": "",
-//						"text": "",
-//						"file": "false",
-//						"showText": "true",
-//						"askUpward": "false",
-//						"outlet": {
-//							"jaxId": "1IV6EBB510",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IV6EB3AL0"
-//						}
-//					},
-//					"icon": "chat.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IV6EB3AL0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "595",
-//						"y": "615",
-//						"outlet": {
-//							"jaxId": "1IV6EBB581",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IV6EB7A50"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IV6EB7A50",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "290",
-//						"y": "615",
-//						"outlet": {
-//							"jaxId": "1IV6EBB582",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IKE6V3JM0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
+//					"icon": "tab_css.svg"
 //				}
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
-//		"exportAPI": "true",
-//		"exportAddOn": "true",
+//		"exportAPI": "false",
+//		"exportAddOn": "false",
 //		"addOnOpts": ""
 //	}
 //}

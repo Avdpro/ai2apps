@@ -179,14 +179,14 @@ let APITiPainter=async function(app,router,apiMap) {
 				break;
 			}
 			case "Google": {
-				let images,imgData,aspect,callVo;
+				let images,imgData,aspect,resolution,callVo;
 				if(!GoogleAI){
 					await proxyCall(req,res,next);
 					return;
 				}
 				model=reqVO.model||"gemini-2.5-flash-image";
 				aspect=reqVO.aspect;
-				
+				resolution=reqVO.resolution||reqVO.imageSize||"1K";
 				//Check gas:
 				resVO = await checkAITokenCall(userInfo, platform, model);
 				if (resVO.code !== 200) {
@@ -196,6 +196,7 @@ let APITiPainter=async function(app,router,apiMap) {
 				
 				const prompt = [
 				];
+				prompt.push({ text: reqVO.prompt });
 				images=reqVO.images;
 				if(images && images.length>0){
 					for(imgData of images) {
@@ -207,18 +208,17 @@ let APITiPainter=async function(app,router,apiMap) {
 						});
 					}
 				}
-				prompt.push({ text: reqVO.prompt });
 				callVo={
 					model: model,
 					contents: prompt,
 				};
-				if(aspect){
-					callVo.config={
-						imageConfig: {
-							aspectRatio: aspect,
-						}
-					};
-				}
+				callVo.config={
+					responseModalities:['TEXT', 'IMAGE'],
+					imageConfig: {
+						aspectRatio:aspect?aspect:undefined,
+						imageSize: resolution!="1K"?resolution:undefined
+					}
+				};
 				const response = await GoogleAI.models.generateContent(callVo);
 				console.log("Google-draw result: ",response);
 				let textOutput=[];

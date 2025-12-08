@@ -4,90 +4,91 @@ import pathLib from "/@path";
 import inherits from "/@inherits";
 import Base64 from "/@tabos/utils/base64.js";
 import {trimJSON} from "/@aichat/utils.js";
-/*#{1ILQ95V4G0MoreImports*/
-/*}#1ILQ95V4G0MoreImports*/
+/*#{1INT58F1H0MoreImports*/
+/*}#1INT58F1H0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
 const basePath=pathLib.dirname(agentURL);
 const $ln=VFACT.lanCode||"EN";
-/*#{1ILQ95V4G0StartDoc*/
-/*}#1ILQ95V4G0StartDoc*/
+/*#{1INT58F1H0StartDoc*/
+/*}#1INT58F1H0StartDoc*/
 //----------------------------------------------------------------------------
-let ToolTabOSWebSearch=async function(session){
+let ToolTabOSWriteFIle=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let CallNode;
-	/*#{1ILQ95V4G0LocalVals*/
-	/*}#1ILQ95V4G0LocalVals*/
+	let WriteFile;
+	/*#{1INT58F1H0LocalVals*/
+	/*}#1INT58F1H0LocalVals*/
 	
 	function parseAgentArgs(input){
 		execInput=input;
-		/*#{1ILQ95V4G0ParseArgs*/
-		/*}#1ILQ95V4G0ParseArgs*/
+		/*#{1INT58F1H0ParseArgs*/
+		/*}#1INT58F1H0ParseArgs*/
 	}
 	
-	/*#{1ILQ95V4G0PreContext*/
-	/*}#1ILQ95V4G0PreContext*/
+	/*#{1INT58F1H0PreContext*/
+	/*}#1INT58F1H0PreContext*/
 	context={};
 	context=VFACT.flexState(context);
-	/*#{1ILQ95V4G0PostContext*/
-	/*}#1ILQ95V4G0PostContext*/
+	/*#{1INT58F1H0PostContext*/
+	/*}#1INT58F1H0PostContext*/
 	let $agent,agent,segs={};
-	segs["CallNode"]=CallNode=async function(input){//:1ILQ96BKV0
+	segs["WriteFile"]=WriteFile=async function(input){//:1INT57N8K0
 		let result,args={};
 		args['nodeName']="builder_new";
-		args['callAgent']="RpaWebSearch.js";
+		args['callAgent']="ToolWriteFIle.js";
 		args['callArg']=input;
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
 		return {result:result};
 	};
-	CallNode.jaxId="1ILQ96BKV0"
-	CallNode.url="CallNode@"+agentURL
+	WriteFile.jaxId="1INT57N8K0"
+	WriteFile.url="WriteFile@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"ToolTabOSWebSearch",
+		name:"ToolTabOSWriteFIle",
 		url:agentURL,
 		autoStart:true,
-		jaxId:"1ILQ95V4G0",
+		jaxId:"1INT58F1H0",
 		context:context,
 		livingSeg:null,
 		execChat:async function(input){
 			let result;
 			parseAgentArgs(input);
-			/*#{1ILQ95V4G0PreEntry*/
-			/*}#1ILQ95V4G0PreEntry*/
-			result={seg:CallNode,"input":input};
-			/*#{1ILQ95V4G0PostEntry*/
-			/*}#1ILQ95V4G0PostEntry*/
+			/*#{1INT58F1H0PreEntry*/
+			/*}#1INT58F1H0PreEntry*/
+			result={seg:WriteFile,"input":input};
+			/*#{1INT58F1H0PostEntry*/
+			/*}#1INT58F1H0PostEntry*/
 			return result;
 		},
-		/*#{1ILQ95V4G0MoreAgentAttrs*/
-		/*}#1ILQ95V4G0MoreAgentAttrs*/
+		/*#{1INT58F1H0MoreAgentAttrs*/
+		/*}#1INT58F1H0MoreAgentAttrs*/
 	};
-	/*#{1ILQ95V4G0PostAgent*/
-	/*}#1ILQ95V4G0PostAgent*/
+	/*#{1INT58F1H0PostAgent*/
+	/*}#1INT58F1H0PostAgent*/
 	return agent;
 };
-/*#{1ILQ95V4G0ExCodes*/
-/*}#1ILQ95V4G0ExCodes*/
+/*#{1INT58F1H0ExCodes*/
+/*}#1INT58F1H0ExCodes*/
 
 //#CodyExport>>>
 export const ChatAPI=[{
 	def:{
-		name: "ToolTabOSWebSearch",
-		description: "使用Google进行网页搜索并返回总结后的搜索结果，请提供由若干个简短的英文关键词组成的搜索词，用空格隔开，如“2008 China Olympics”，优先调用此工具，不要调用另一个搜索工具",
+		name: "ToolTabOSWriteFIle",
+		description: "这是一个用于写入文件的工具，需要提供完整、详细的内容和文件的绝对路径以及是否追加末尾写入，如果是纯文本文件如md,txt,py,html等等请提供完整的文本内容，如果是excel类型的文件（xlsx,csv等），请提供用^|^作为分隔符的完整表格内容，如果是pdf或者word（docx）类型的文件，请提供完整的文本内容。请按照{filePath:\"\",content:\"\",append:true/false}的格式给出。",
 		parameters:{
 			type: "object",
 			properties:{
 			}
 		}
 	},
-	agent: ToolTabOSWebSearch
+	label: "WriteFile",
+	agent: ToolTabOSWriteFIle
 }];
 
 //:Export Edit-AddOn:
@@ -104,16 +105,16 @@ if(DocAIAgentExporter){
 	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
 	
 	EditAISeg.regDef({
-		name:"ToolTabOSWebSearch",showName:"ToolTabOSWebSearch",icon:"agent.svg",catalog:["AI Call"],
+		name:"ToolTabOSWriteFIle",showName:"WriteFile",icon:"agent.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
 		listHint:["id","codes","desc"],
-		desc:"使用Google进行网页搜索并返回总结后的搜索结果，请提供由若干个简短的英文关键词组成的搜索词，用空格隔开，如“2008 China Olympics”，优先调用此工具，不要调用另一个搜索工具"
+		desc:"这是一个用于写入文件的工具，需要提供完整、详细的内容和文件的绝对路径以及是否追加末尾写入，如果是纯文本文件如md,txt,py,html等等请提供完整的文本内容，如果是excel类型的文件（xlsx,csv等），请提供用^|^作为分隔符的完整表格内容，如果是pdf或者word（docx）类型的文件，请提供完整的文本内容。请按照{filePath:\"\",content:\"\",append:true/false}的格式给出。"
 	});
 	
-	DocAIAgentExporter.segTypeExporters["ToolTabOSWebSearch"]=
+	DocAIAgentExporter.segTypeExporters["ToolTabOSWriteFIle"]=
 	function(seg){
 		let coder=this.coder;
 		let segName=seg.idVal.val;
@@ -124,7 +125,7 @@ if(DocAIAgentExporter){
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolTabOSWebSearch.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolTabOSWriteFIle.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -140,71 +141,45 @@ if(DocAIAgentExporter){
 	};
 }
 //#CodyExport<<<
-/*#{1ILQ95V4G0PostDoc*/
-/*}#1ILQ95V4G0PostDoc*/
+/*#{1INT58F1H0PostDoc*/
+/*}#1INT58F1H0PostDoc*/
 
 
-export default ToolTabOSWebSearch;
-export{ToolTabOSWebSearch};
+export default ToolTabOSWriteFIle;
+export{ToolTabOSWriteFIle};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
 //	"def": "DocAIAgent",
-//	"jaxId": "1ILQ95V4G0",
+//	"jaxId": "1INT58F1H0",
 //	"attrs": {
 //		"editObjs": {
-//			"jaxId": "1ILQ95V4G1",
-//			"attrs": {
-//				"ToolTabOSWebSearch": {
-//					"type": "objclass",
-//					"def": "ObjClass",
-//					"jaxId": "1ILQ95V4G7",
-//					"attrs": {
-//						"exportType": "UI Data Template",
-//						"constructArgs": {
-//							"jaxId": "1ILQ95V4G8",
-//							"attrs": {}
-//						},
-//						"superClass": "",
-//						"properties": {
-//							"jaxId": "1ILQ95V4G9",
-//							"attrs": {}
-//						},
-//						"functions": {
-//							"jaxId": "1ILQ95V4G10",
-//							"attrs": {}
-//						},
-//						"mockupOnly": "false",
-//						"nullMockup": "false",
-//						"exportClass": "false"
-//					},
-//					"mockups": {}
-//				}
-//			}
+//			"jaxId": "1INT58F1K0",
+//			"attrs": {}
 //		},
 //		"agent": {
-//			"jaxId": "1ILQ95V4G2",
+//			"jaxId": "1INT58F1K1",
 //			"attrs": {}
 //		},
 //		"showName": "",
-//		"entry": "CallNode",
+//		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
 //		"debug": "true",
 //		"apiArgs": {
-//			"jaxId": "1ILQ95V4G3",
+//			"jaxId": "1INT58F1K2",
 //			"attrs": {}
 //		},
 //		"localVars": {
-//			"jaxId": "1ILQ95V4G4",
+//			"jaxId": "1INT58F1K3",
 //			"attrs": {}
 //		},
 //		"context": {
-//			"jaxId": "1ILQ95V4G5",
+//			"jaxId": "1INT58F1K4",
 //			"attrs": {}
 //		},
 //		"globalMockup": {
-//			"jaxId": "1ILQ95V4G6",
+//			"jaxId": "1INT58F1K5",
 //			"attrs": {}
 //		},
 //		"segs": {
@@ -212,36 +187,36 @@ export{ToolTabOSWebSearch};
 //				{
 //					"type": "aiseg",
 //					"def": "RemoteChat",
-//					"jaxId": "1ILQ96BKV0",
+//					"jaxId": "1INT57N8K0",
 //					"attrs": {
-//						"id": "CallNode",
+//						"id": "WriteFile",
 //						"viewName": "",
 //						"label": "",
-//						"x": "135",
-//						"y": "225",
+//						"x": "200",
+//						"y": "100",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1ILQ97ATF0",
+//							"jaxId": "1INT58F1K6",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1ILQ97ATF1",
+//							"jaxId": "1INT58F1K7",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"nodeName": "builder_new",
-//						"callAgent": "RpaWebSearch.js",
+//						"callAgent": "ToolWriteFIle.js",
 //						"callArg": "#input",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {
-//							"jaxId": "1ILQ97ATD0",
+//							"jaxId": "1INT58F1J0",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
@@ -252,9 +227,9 @@ export{ToolTabOSWebSearch};
 //				}
 //			]
 //		},
-//		"desc": "使用Google进行网页搜索并返回总结后的搜索结果，请提供由若干个简短的英文关键词组成的搜索词，用空格隔开，如“2008 China Olympics”，优先调用此工具，不要调用另一个搜索工具",
+//		"desc": "这是一个用于写入文件的工具，需要提供完整、详细的内容和文件的绝对路径以及是否追加末尾写入，如果是纯文本文件如md,txt,py,html等等请提供完整的文本内容，如果是excel类型的文件（xlsx,csv等），请提供用^|^作为分隔符的完整表格内容，如果是pdf或者word（docx）类型的文件，请提供完整的文本内容。请按照{filePath:\"\",content:\"\",append:true/false}的格式给出。",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
-//		"addOnOpts": ""
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"WriteFile\",\"path\":\"\",\"pathInHub\":\"\",\"chatEntry\":false,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\"}"
 //	}
 //}

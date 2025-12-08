@@ -339,10 +339,10 @@ let ToolBrew=async function(session){
 	
 	segs["Failure"]=Failure=async function(input){//:1J58L8IA10
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?(`${pkgName}安装失败，原因是${input.reason}`):(`${pkgName} installation failed due to ${input.reason}`));
+		let content=(($ln==="CN")?(`${pkgName}安装失败，原因是${input.failure_reason}`):(`${pkgName} installation failed due to ${input.failure_reason}`));
 		session.addChatText(role,content,opts);
 		return {seg:Retry,result:(result),preSeg:"1J58L8IA10",outlet:"1J58LALL72"};
 	};
@@ -463,7 +463,7 @@ if(DocAIAgentExporter){
 			coder.packText("args['action']=");this.genAttrStatement(seg.getAttr("action"));coder.packText(";");coder.newLine();
 			coder.packText("args['pkgName']=");this.genAttrStatement(seg.getAttr("pkgName"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/builder2/ai/ToolBrew.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolBrew.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -504,7 +504,6 @@ export{ToolBrew,ChatAPI};
 //							"jaxId": "1IJ40NO878",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IJ40NO879",
 //							"attrs": {}
@@ -515,7 +514,8 @@ export{ToolBrew,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1464,9 +1464,13 @@ export{ToolBrew,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1566,10 +1570,10 @@ export{ToolBrew,ChatAPI};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "#`${pkgName} installation failed due to ${input.reason}`",
+//							"valText": "#`${pkgName} installation failed due to ${input.failure_reason}`",
 //							"localize": {
-//								"EN": "#`${pkgName} installation failed due to ${input.reason}`",
-//								"CN": "#`${pkgName}安装失败，原因是${input.reason}`"
+//								"EN": "#`${pkgName} installation failed due to ${input.failure_reason}`",
+//								"CN": "#`${pkgName}安装失败，原因是${input.failure_reason}`"
 //							},
 //							"localizable": true
 //						},

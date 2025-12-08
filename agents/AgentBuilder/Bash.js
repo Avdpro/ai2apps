@@ -418,18 +418,29 @@ let Bash=async function(session){
 	segs["WaitIdle"]=WaitIdle=async function(input){//:1IIF89Q1I0
 		let result=input
 		/*#{1IIF89Q1I0Code*/
-		let changes="";
-		if(contentLen == -1) contentLen=orgCmdContent.length;
-		while(!changes){
+		let content=await cmdBash.getContent();
+		let trimmed=content.trimEnd();
+		if(trimmed.endsWith(IDLEMaker)){
+			result=content.substring(orgCmdContent.length);
+			return {seg:IsDone,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
+		}
+		let contentLen=content.length;
+		let timeout=options?.idleTimeout||60000;
+		let start=Date.now();
+		while(true){
 			console.log("Wait bash idle...");
 			await cmdBash.waitIdle(true);
-			changes=await cmdBash.getContent();
-			changes=changes.substring(contentLen);
-			contentLen += changes.length;
-			console.log("Bash idle end: "+changes);
+			content=await cmdBash.getContent();
+			if(content.length>contentLen){
+				console.log("Bash idle end: "+content.substring(contentLen));
+				break;
+			}
+			if((Date.now()-start)>timeout){
+				console.log("Wait bash idle timeout");
+				break;
+			}
 		}
-		result=await cmdBash.getContent();
-		result=result.substring(orgCmdContent);
+		result=content.substring(orgCmdContent.length);
 		/*}#1IIF89Q1I0Code*/
 		return {seg:IsDone,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
 	};
@@ -458,7 +469,7 @@ let Bash=async function(session){
 		}else if(result.assets && result.prompt){
 			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
 		}else{
-			session.addChatText("user",result.text||result.prompt||result);
+			session.addChatText("user",`${result.assets.join("\n- - -\n")}`);
 		}
 		return {seg:DoInput,result:(result),preSeg:"1J1V9GOIF0",outlet:"1J1V9HK8H0"};
 	};
@@ -1341,15 +1352,21 @@ export{Bash,ChatAPI};
 //						"shareChatName": "",
 //						"keepChat": "No",
 //						"clearChat": "2",
-//						"compactContext": "200000",
 //						"apiFiles": {
 //							"attrs": []
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"1IIF6SA1I2\""
+//						"formatDef": "\"1IIF6SA1I2\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",

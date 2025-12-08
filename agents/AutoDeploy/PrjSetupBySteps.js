@@ -120,7 +120,7 @@ let PrjSetupBySteps=async function(session){
 	segs["InitEnv"]=InitEnv=async function(input){//:1IJ2KABA10
 		let result;
 		let arg=input;
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AgentBuilder/SysInitWorkEnv.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJ2KABA10Input*/
@@ -294,9 +294,9 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["RunBrew"]=RunBrew=async function(input){//:1IJ2KN5JJ0
 		let result;
-		let arg={"action":"install","pkgName":input.install};
-		let agentNode=("")||null;
-		let sourcePath=pathLib.join(basePath,"../AgentBuilder/ToolBrew.js");
+		let arg={command:`brew install ${input.install}`, repo:repo};
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {result:result};
@@ -307,7 +307,7 @@ let PrjSetupBySteps=async function(session){
 	segs["RunConda"]=RunConda=async function(input){//:1IJ2KNFK40
 		let result;
 		let arg={"refName":input.conda||input.name,"pyversion":input.pythonVersion,"installReq":input.installReq||input.installPkg||input.installDep};
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AgentBuilder/PrjCheckCondaEnv.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJ2KNFK40Input*/
@@ -403,8 +403,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowError"]=ShowError=async function(input){//:1IJ2L4VCN0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`执行安装时发生错误：${input}`;
 		/*#{1IJ2L4VCN0PreCodes*/
@@ -460,8 +460,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipStep"]=TipStep=async function(input){//:1IJ44HLQB0
 		let result=input;
-		let channel="Process";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Process";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input.tip;
 		session.addChatText(role,content,opts);
@@ -473,7 +473,7 @@ let PrjSetupBySteps=async function(session){
 	segs["HfDownLoad"]=HfDownLoad=async function(input){//:1IJ44IVQS0
 		let result;
 		let arg={"model":input.model,"localPath":input.localPath||input.localDir,"token":false};
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AgentBuilder/ToolHfModel.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -514,8 +514,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowGuide"]=ShowGuide=async function(input){//:1IJL3NK8N0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`### 找到安装指南：\n----\n${setupGuide}`;
 		/*#{1IJL3NK8N0PreCodes*/
@@ -533,7 +533,7 @@ let PrjSetupBySteps=async function(session){
 		let prompt;
 		let result=null;
 		{
-			const $text="Plan the deployment process.";
+			const $text=(($ln==="CN")?("规划部署流程"):("Plan the deployment process."));
 			const $role=(undefined)||"assistant";
 			const $roleText=("assistant")||undefined;
 			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
@@ -713,7 +713,7 @@ Based on the task, please determine all the actions required to complete the tas
 4. **Provide usage examples** as final actions
 5. **Only use commands mentioned in project documentation**
 6. **Optimize for target platform** and available resources
-7. **Always create a conda environment first.**
+7. **If the project need python environment, always create a conda environment first.**
 
 ### 🚫 **Prohibited Actions**
 - Using commands not found in project documentation
@@ -741,7 +741,6 @@ Based on the task, please determine all the actions required to complete the tas
 9. **In the tip field, include expected output and fallback options**
 10. If test with command that is impossible to terminate automatically, such as start a web service or api service, you need to set a timeout with 2 minute.
 11. Do not give commands list that requires multiple lines of input in the terminal.
-12. If you need to use pdf/png/... to test the function, you can use wget to download a simple example, for example, https://ontheline.trincoll.edu/images/bookdown/sample-local-pdf.pdf
 ` + (($ln==="CN")?("用中文输出。"):("Output in English."))},
 		];
 		/*#{1ILI9VIEO0PrePrompt*/
@@ -763,6 +762,8 @@ Based on the task, please determine all the actions required to complete the tas
 		/*#{1ILI9VIEO0PostCall*/
 		deploy_guide=JSON.stringify(result);
 		/*}#1ILI9VIEO0PostCall*/
+		/*#{1ILI9VIEO0PreResult*/
+		/*}#1ILI9VIEO0PreResult*/
 		return {seg:Export,result:(result),preSeg:"1ILI9VIEO0",outlet:"1ILIA093U0"};
 	};
 	GenGuideJs.jaxId="1ILI9VIEO0"
@@ -830,7 +831,7 @@ Based on the task, please determine all the actions required to complete the tas
 	segs["RunCommand"]=RunCommand=async function(input){//:1IUIOCI2D0
 		let result;
 		let arg={"command":input.commands,"repo":repo};
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IUIOCI2D0Input*/
@@ -881,8 +882,8 @@ Based on the task, please determine all the actions required to complete the tas
 	
 	segs["OutputGuide"]=OutputGuide=async function(input){//:1IVJ2POB40
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -952,8 +953,8 @@ Based on the task, please determine all the actions required to complete the tas
 	
 	segs["OutputFail"]=OutputFail=async function(input){//:1J3IH77PV0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("Bug修复失败，部署终止"):("Bug fix failed, deployment aborted"));
 		/*#{1J3IH77PV0PreCodes*/
@@ -1096,7 +1097,6 @@ export{PrjSetupBySteps,ChatAPI};
 //							"jaxId": "1IJ2K5IBR8",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IJ2K5IBR9",
 //							"attrs": {}
@@ -1107,7 +1107,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1279,8 +1280,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"mcp": {
 //							"valText": "false"
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -1712,8 +1712,8 @@ export{PrjSetupBySteps,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"source": "AgentBuilder/ToolBrew.js",
-//						"argument": "#{\"action\":\"install\",\"pkgName\":input.install}",
+//						"source": "AutoDeploy/ToolRunCommand.js",
+//						"argument": "#{command:`brew install ${input.install}`, repo:repo}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1IJ2L5O0R5",
@@ -1727,8 +1727,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"mcp": {
 //							"valText": "false"
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -1774,8 +1773,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"mcp": {
 //							"valText": "false"
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -2315,8 +2313,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"mcp": {
 //							"valText": "false"
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -2427,7 +2424,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"platform": "OpenAI",
 //						"mode": "gpt-4.1",
-//						"system": "#`You are using a terminal on a MacOS/Linux or Windows device to help setup a project. The current path is a downloaded github project folder, so you don't need to git clone the project.\n\nThe detailed environment is:\n${JSON.stringify(globalContext.env,null,\"\\t\")}.\n\nYou are able to execute commands in the terminal based on the given task.\nYou can only interact with the terminal (no GUI access).\n\nYour task is to provide **all subsequent actions** at once to complete the given task.\nYou should carefully consider the task and provide a list of actions in the correct order.\n\n## Core Principles\n1. **Efficiency First**: Always look for the simplest, most efficient deployment method\n2. **Resource Awareness**: Consider memory, disk space, and processing requirements vs. available resources\n3. **Alternative Analysis**: Check for easier alternatives (pip packages, pre-built tools, Docker images) before complex setups\n4. **Platform Optimization**: Leverage platform-specific advantages and native optimizations\n5. **Comprehensive Testing**: Ensure the project works end-to-end after setup\n\n## Available Actions\n- bash: Execute a series of bash commands.\n- brew: Install a package using Homebrew.\n- conda: Only for Set up or activate a conda environment, if use conda install, please choose bash action.\n- hf-model: Download a model from Hugging Face.\n\nBased on the task, please determine all the actions required to complete the task, including the commands, parameters, and additional details for each action.\n\n## Output Format\n\n{\n\"Reasoning\": \"Comprehensive analysis including: (1) Project requirements and complexity, (2) Available alternatives considered (pip packages, Docker, simpler tools), (3) Resource requirements vs. environment capacity (memory, disk, GPU), (4) Platform-specific considerations, (5) Chosen approach rationale with estimated setup time and resource usage, (6) Step-by-step plan with validation strategy\",\n\"Actions\": [\n{\n\"action\": \"action_type\", // One of: \"bash\", \"brew\", \"conda\", \"hf-model\"\n\"tip\": \"Clear description including: what this accomplishes\",\n\"commands\": [str], // Array of commands to execute (only for \"bash\" action)\n\"install\": str, // Package to install (only for \"brew\" action)\n\"conda\": str, // Conda environment name (only for \"conda\" action)\n\"pythonVersion\": str, // Python version for conda environment (only for \"conda\" action)\n\"model\": str, // Model to download (only for \"hf-model\" action)\n\"localPath\": str // Local path to save the model (only for \"hf-model\" action)\n}\n// Additional actions including validation and usage examples...\n]\n}\n\n## Enhanced Examples\n\n### Example 1: Traditional Complex Setup with Full Validation\n{\n\"Reasoning\": \"Setting up FishSpeech project requires full environment - no simpler alternatives available for complete functionality. Analyzed resources: needs ~8GB RAM, ~5GB disk, 10-15 minute setup. Current environment has sufficient resources. Plan: install system dependencies → create conda environment → install Python packages → download model → validate functionality → provide usage guidance.\",\n\"Actions\": [\n{\n\"action\": \"conda\",\n\"tip\": \"Create isolated Python 3.10 environment for FishSpeech.\",\n\"conda\": \"fish-speech\",\n\"pythonVersion\": \"3.10\"\n},\n{\n\"action\": \"brew\",\n\"tip\": \"Install FFmpeg for audio processing.\",\n\"install\": \"ffmpeg\"\n},\n{\n\"action\": \"brew\",\n\"tip\": \"Install PortAudio for audio I/O.\",\n\"install\": \"portaudio\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Install PyTorch and core dependencies.\",\n\"commands\": [\n\"pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1\",\n\"pip install websockets huggingface-hub openai nest_asyncio\",\n\"pip install -e .\"\n]\n},\n{\n\"action\": \"hf-model\",\n\"tip\": \"Download pre-trained FishSpeech model (~2GB).,\n\"model\": \"fishaudio/fish-speech-1.5\",\n\"localPath\": \"checkpoints/fish-speech-1.5\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Validate installation by testing import.\",\n\"commands\": [\"python -c \\\"import fish_speech; print('Import successful')\\\"\"]\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Display usage examples and next steps. Shows how to run inference and training commands\",\n\"commands\": [\n\"echo 'Setup complete! Usage examples:'\",\n\"echo ' python inference.py --text \\\"Hello world\\\"'\",\n\"echo ' python train.py --config configs/base.yaml'\",\n\"echo 'Check README.md for detailed usage instructions'\"\n]\n}\n]\n}\n\n### Example 2: Resource-Constrained Smart Setup\n{\n\"Reasoning\": \"Setting up Stable Diffusion project on device with limited resources (27GB free disk). Analyzed options: (1) Full setup needs 20GB+, (2) Lightweight alternatives available. Choosing CPU-optimized approach with smaller models. Estimated: 5GB disk, 4GB RAM, 15 minutes setup. Plan: create environment → install optimized dependencies → download smaller model → validate → provide resource-conscious usage tips.\",\n\"Actions\": [\n{\n\"action\": \"conda\",\n\"tip\": \"Create Python 3.9 environment for compatibility.\",\n\"conda\": \"stable-diffusion-lite\",\n\"pythonVersion\": \"3.9\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Install CPU-optimized PyTorch and essential packages.\",\n\"commands\": [\n\"pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu\",\n\"pip install diffusers transformers accelerate\",\n\"pip install pillow requests\"\n]\n},\n{\n\"action\": \"hf-model\",\n\"tip\": \"Download compact Stable Diffusion model (~2GB vs 8GB full version).\",\n\"model\": \"runwayml/stable-diffusion-v1-5\",\n\"localPath\": \"models/stable-diffusion-v1-5\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Test basic functionality with CPU inference.\",\n\"commands\": [\n\"python -c \\\"from diffusers import StableDiffusionPipeline; print('CPU setup successful')\\\"\",\n\"echo 'Note: Using CPU inference - generation will be slower but uses less resources'\"\n]\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Provide resource-conscious usage examples and optimization tips for the constrained environment\",\n\"commands\": [\n\"echo 'Resource-optimized setup complete!'\",\n\"echo 'Usage tips for limited resources:'\",\n\"echo ' - Use smaller image sizes (512x512 or less)'\",\n\"echo ' - Reduce inference steps (10-20 instead of 50)'\",\n\"echo ' - Use low_cpu_mem_usage=True in pipeline loading'\",\n\"echo 'Example: pipe = StableDiffusionPipeline.from_pretrained(model_path, low_cpu_mem_usage=True)'\"\n]\n}\n]\n}\n\n## Critical Guidelines\n\n### ⚠️ **Mandatory Requirements**\n1. **Always analyze alternatives** in Reasoning before choosing approach\n2. **Consider resource constraints** vs. environment capabilities\n3. **Include validation actions** to ensure functionality works\n4. **Provide usage examples** as final actions\n5. **Only use commands mentioned in project documentation**\n6. **Optimize for target platform** and available resources\n7. **Always create a conda environment first.**\n\n### 🚫 **Prohibited Actions**\n- Using commands not found in project documentation\n- Ignoring simpler alternatives when available\n- Skipping validation steps\n- Assuming unlimited resources\n- Creating unnecessarily complex setups\n\n### 📋 **Quality Checklist for Reasoning**\n- [ ] Checked for simpler installation alternatives (pip packages, Docker, etc.)\n- [ ] Analyzed resource requirements vs. available resources (memory, disk, GPU)\n- [ ] Considered platform-specific optimizations (Apple Silicon, etc.)\n- [ ] Estimated setup time and resource usage\n- [ ] Planned validation strategy\n\n### Important Notes:\n1. Provide all actions at once in the correct order with JSON format\n2. Ensure commands are valid for the target operating system (MacOS/Linux or Windows)\n3. Include all necessary parameters for each action\n4. Include validation actions to test the project works correctly\n5. Include usage example actions as final steps\n6. If downloading from HuggingFace, must use hf-model tool\n7. Only use bash/brew commands mentioned in the input documentation\n8. **Always prioritize efficiency and resource optimization in your analysis**\n9. **In the tip field, include expected output and fallback options**\n10. If test with command that is impossible to terminate automatically, such as start a web service or api service, you need to set a timeout with 2 minute.\n11. Do not give commands list that requires multiple lines of input in the terminal.\n12. If you need to use pdf/png/... to test the function, you can use wget to download a simple example, for example, https://ontheline.trincoll.edu/images/bookdown/sample-local-pdf.pdf\n` + (($ln===\"CN\")?(\"用中文输出。\"):(\"Output in English.\"))",
+//						"system": "#`You are using a terminal on a MacOS/Linux or Windows device to help setup a project. The current path is a downloaded github project folder, so you don't need to git clone the project.\n\nThe detailed environment is:\n${JSON.stringify(globalContext.env,null,\"\\t\")}.\n\nYou are able to execute commands in the terminal based on the given task.\nYou can only interact with the terminal (no GUI access).\n\nYour task is to provide **all subsequent actions** at once to complete the given task.\nYou should carefully consider the task and provide a list of actions in the correct order.\n\n## Core Principles\n1. **Efficiency First**: Always look for the simplest, most efficient deployment method\n2. **Resource Awareness**: Consider memory, disk space, and processing requirements vs. available resources\n3. **Alternative Analysis**: Check for easier alternatives (pip packages, pre-built tools, Docker images) before complex setups\n4. **Platform Optimization**: Leverage platform-specific advantages and native optimizations\n5. **Comprehensive Testing**: Ensure the project works end-to-end after setup\n\n## Available Actions\n- bash: Execute a series of bash commands.\n- brew: Install a package using Homebrew.\n- conda: Only for Set up or activate a conda environment, if use conda install, please choose bash action.\n- hf-model: Download a model from Hugging Face.\n\nBased on the task, please determine all the actions required to complete the task, including the commands, parameters, and additional details for each action.\n\n## Output Format\n\n{\n\"Reasoning\": \"Comprehensive analysis including: (1) Project requirements and complexity, (2) Available alternatives considered (pip packages, Docker, simpler tools), (3) Resource requirements vs. environment capacity (memory, disk, GPU), (4) Platform-specific considerations, (5) Chosen approach rationale with estimated setup time and resource usage, (6) Step-by-step plan with validation strategy\",\n\"Actions\": [\n{\n\"action\": \"action_type\", // One of: \"bash\", \"brew\", \"conda\", \"hf-model\"\n\"tip\": \"Clear description including: what this accomplishes\",\n\"commands\": [str], // Array of commands to execute (only for \"bash\" action)\n\"install\": str, // Package to install (only for \"brew\" action)\n\"conda\": str, // Conda environment name (only for \"conda\" action)\n\"pythonVersion\": str, // Python version for conda environment (only for \"conda\" action)\n\"model\": str, // Model to download (only for \"hf-model\" action)\n\"localPath\": str // Local path to save the model (only for \"hf-model\" action)\n}\n// Additional actions including validation and usage examples...\n]\n}\n\n## Enhanced Examples\n\n### Example 1: Traditional Complex Setup with Full Validation\n{\n\"Reasoning\": \"Setting up FishSpeech project requires full environment - no simpler alternatives available for complete functionality. Analyzed resources: needs ~8GB RAM, ~5GB disk, 10-15 minute setup. Current environment has sufficient resources. Plan: install system dependencies → create conda environment → install Python packages → download model → validate functionality → provide usage guidance.\",\n\"Actions\": [\n{\n\"action\": \"conda\",\n\"tip\": \"Create isolated Python 3.10 environment for FishSpeech.\",\n\"conda\": \"fish-speech\",\n\"pythonVersion\": \"3.10\"\n},\n{\n\"action\": \"brew\",\n\"tip\": \"Install FFmpeg for audio processing.\",\n\"install\": \"ffmpeg\"\n},\n{\n\"action\": \"brew\",\n\"tip\": \"Install PortAudio for audio I/O.\",\n\"install\": \"portaudio\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Install PyTorch and core dependencies.\",\n\"commands\": [\n\"pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1\",\n\"pip install websockets huggingface-hub openai nest_asyncio\",\n\"pip install -e .\"\n]\n},\n{\n\"action\": \"hf-model\",\n\"tip\": \"Download pre-trained FishSpeech model (~2GB).,\n\"model\": \"fishaudio/fish-speech-1.5\",\n\"localPath\": \"checkpoints/fish-speech-1.5\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Validate installation by testing import.\",\n\"commands\": [\"python -c \\\"import fish_speech; print('Import successful')\\\"\"]\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Display usage examples and next steps. Shows how to run inference and training commands\",\n\"commands\": [\n\"echo 'Setup complete! Usage examples:'\",\n\"echo ' python inference.py --text \\\"Hello world\\\"'\",\n\"echo ' python train.py --config configs/base.yaml'\",\n\"echo 'Check README.md for detailed usage instructions'\"\n]\n}\n]\n}\n\n### Example 2: Resource-Constrained Smart Setup\n{\n\"Reasoning\": \"Setting up Stable Diffusion project on device with limited resources (27GB free disk). Analyzed options: (1) Full setup needs 20GB+, (2) Lightweight alternatives available. Choosing CPU-optimized approach with smaller models. Estimated: 5GB disk, 4GB RAM, 15 minutes setup. Plan: create environment → install optimized dependencies → download smaller model → validate → provide resource-conscious usage tips.\",\n\"Actions\": [\n{\n\"action\": \"conda\",\n\"tip\": \"Create Python 3.9 environment for compatibility.\",\n\"conda\": \"stable-diffusion-lite\",\n\"pythonVersion\": \"3.9\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Install CPU-optimized PyTorch and essential packages.\",\n\"commands\": [\n\"pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu\",\n\"pip install diffusers transformers accelerate\",\n\"pip install pillow requests\"\n]\n},\n{\n\"action\": \"hf-model\",\n\"tip\": \"Download compact Stable Diffusion model (~2GB vs 8GB full version).\",\n\"model\": \"runwayml/stable-diffusion-v1-5\",\n\"localPath\": \"models/stable-diffusion-v1-5\"\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Test basic functionality with CPU inference.\",\n\"commands\": [\n\"python -c \\\"from diffusers import StableDiffusionPipeline; print('CPU setup successful')\\\"\",\n\"echo 'Note: Using CPU inference - generation will be slower but uses less resources'\"\n]\n},\n{\n\"action\": \"bash\",\n\"tip\": \"Provide resource-conscious usage examples and optimization tips for the constrained environment\",\n\"commands\": [\n\"echo 'Resource-optimized setup complete!'\",\n\"echo 'Usage tips for limited resources:'\",\n\"echo ' - Use smaller image sizes (512x512 or less)'\",\n\"echo ' - Reduce inference steps (10-20 instead of 50)'\",\n\"echo ' - Use low_cpu_mem_usage=True in pipeline loading'\",\n\"echo 'Example: pipe = StableDiffusionPipeline.from_pretrained(model_path, low_cpu_mem_usage=True)'\"\n]\n}\n]\n}\n\n## Critical Guidelines\n\n### ⚠️ **Mandatory Requirements**\n1. **Always analyze alternatives** in Reasoning before choosing approach\n2. **Consider resource constraints** vs. environment capabilities\n3. **Include validation actions** to ensure functionality works\n4. **Provide usage examples** as final actions\n5. **Only use commands mentioned in project documentation**\n6. **Optimize for target platform** and available resources\n7. **If the project need python environment, always create a conda environment first.**\n\n### 🚫 **Prohibited Actions**\n- Using commands not found in project documentation\n- Ignoring simpler alternatives when available\n- Skipping validation steps\n- Assuming unlimited resources\n- Creating unnecessarily complex setups\n\n### 📋 **Quality Checklist for Reasoning**\n- [ ] Checked for simpler installation alternatives (pip packages, Docker, etc.)\n- [ ] Analyzed resource requirements vs. available resources (memory, disk, GPU)\n- [ ] Considered platform-specific optimizations (Apple Silicon, etc.)\n- [ ] Estimated setup time and resource usage\n- [ ] Planned validation strategy\n\n### Important Notes:\n1. Provide all actions at once in the correct order with JSON format\n2. Ensure commands are valid for the target operating system (MacOS/Linux or Windows)\n3. Include all necessary parameters for each action\n4. Include validation actions to test the project works correctly\n5. Include usage example actions as final steps\n6. If downloading from HuggingFace, must use hf-model tool\n7. Only use bash/brew commands mentioned in the input documentation\n8. **Always prioritize efficiency and resource optimization in your analysis**\n9. **In the tip field, include expected output and fallback options**\n10. If test with command that is impossible to terminate automatically, such as start a web service or api service, you need to set a timeout with 2 minute.\n11. Do not give commands list that requires multiple lines of input in the terminal.\n` + (($ln===\"CN\")?(\"用中文输出。\"):(\"Output in English.\"))",
 //						"temperature": "0.7",
 //						"maxToken": "32768",
 //						"topP": "1",
@@ -2461,19 +2458,34 @@ export{PrjSetupBySteps,ChatAPI};
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
 //						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						},
 //						"process": {
 //							"type": "object",
 //							"def": "ProcessMsg",
 //							"jaxId": "1J1HOPK1D0",
 //							"attrs": {
-//								"text": "Plan the deployment process.",
+//								"text": {
+//									"type": "string",
+//									"valText": "Plan the deployment process.",
+//									"localize": {
+//										"EN": "Plan the deployment process.",
+//										"CN": "规划部署流程"
+//									},
+//									"localizable": true
+//								},
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2579,8 +2591,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"outlets": {
 //							"attrs": []
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -2645,9 +2656,16 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "text",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",

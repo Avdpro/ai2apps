@@ -4,90 +4,91 @@ import pathLib from "/@path";
 import inherits from "/@inherits";
 import Base64 from "/@tabos/utils/base64.js";
 import {trimJSON} from "/@aichat/utils.js";
-/*#{1ILQ95V4G0MoreImports*/
-/*}#1ILQ95V4G0MoreImports*/
+/*#{1IOFAKA9O0MoreImports*/
+/*}#1IOFAKA9O0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
 const basePath=pathLib.dirname(agentURL);
 const $ln=VFACT.lanCode||"EN";
-/*#{1ILQ95V4G0StartDoc*/
-/*}#1ILQ95V4G0StartDoc*/
+/*#{1IOFAKA9O0StartDoc*/
+/*}#1IOFAKA9O0StartDoc*/
 //----------------------------------------------------------------------------
-let ToolTabOSWebSearch=async function(session){
+let ToolTabOSModifyFile=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let CallNode;
-	/*#{1ILQ95V4G0LocalVals*/
-	/*}#1ILQ95V4G0LocalVals*/
+	let Run;
+	/*#{1IOFAKA9O0LocalVals*/
+	/*}#1IOFAKA9O0LocalVals*/
 	
 	function parseAgentArgs(input){
 		execInput=input;
-		/*#{1ILQ95V4G0ParseArgs*/
-		/*}#1ILQ95V4G0ParseArgs*/
+		/*#{1IOFAKA9O0ParseArgs*/
+		/*}#1IOFAKA9O0ParseArgs*/
 	}
 	
-	/*#{1ILQ95V4G0PreContext*/
-	/*}#1ILQ95V4G0PreContext*/
+	/*#{1IOFAKA9O0PreContext*/
+	/*}#1IOFAKA9O0PreContext*/
 	context={};
 	context=VFACT.flexState(context);
-	/*#{1ILQ95V4G0PostContext*/
-	/*}#1ILQ95V4G0PostContext*/
+	/*#{1IOFAKA9O0PostContext*/
+	/*}#1IOFAKA9O0PostContext*/
 	let $agent,agent,segs={};
-	segs["CallNode"]=CallNode=async function(input){//:1ILQ96BKV0
+	segs["Run"]=Run=async function(input){//:1IOFAJ96I0
 		let result,args={};
 		args['nodeName']="builder_new";
-		args['callAgent']="RpaWebSearch.js";
+		args['callAgent']="ToolModifyFile.js";
 		args['callArg']=input;
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
 		return {result:result};
 	};
-	CallNode.jaxId="1ILQ96BKV0"
-	CallNode.url="CallNode@"+agentURL
+	Run.jaxId="1IOFAJ96I0"
+	Run.url="Run@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"ToolTabOSWebSearch",
+		name:"ToolTabOSModifyFile",
 		url:agentURL,
 		autoStart:true,
-		jaxId:"1ILQ95V4G0",
+		jaxId:"1IOFAKA9O0",
 		context:context,
 		livingSeg:null,
 		execChat:async function(input){
 			let result;
 			parseAgentArgs(input);
-			/*#{1ILQ95V4G0PreEntry*/
-			/*}#1ILQ95V4G0PreEntry*/
-			result={seg:CallNode,"input":input};
-			/*#{1ILQ95V4G0PostEntry*/
-			/*}#1ILQ95V4G0PostEntry*/
+			/*#{1IOFAKA9O0PreEntry*/
+			/*}#1IOFAKA9O0PreEntry*/
+			result={seg:Run,"input":input};
+			/*#{1IOFAKA9O0PostEntry*/
+			/*}#1IOFAKA9O0PostEntry*/
 			return result;
 		},
-		/*#{1ILQ95V4G0MoreAgentAttrs*/
-		/*}#1ILQ95V4G0MoreAgentAttrs*/
+		/*#{1IOFAKA9O0MoreAgentAttrs*/
+		/*}#1IOFAKA9O0MoreAgentAttrs*/
 	};
-	/*#{1ILQ95V4G0PostAgent*/
-	/*}#1ILQ95V4G0PostAgent*/
+	/*#{1IOFAKA9O0PostAgent*/
+	/*}#1IOFAKA9O0PostAgent*/
 	return agent;
 };
-/*#{1ILQ95V4G0ExCodes*/
-/*}#1ILQ95V4G0ExCodes*/
+/*#{1IOFAKA9O0ExCodes*/
+/*}#1IOFAKA9O0ExCodes*/
 
 //#CodyExport>>>
 export const ChatAPI=[{
 	def:{
-		name: "ToolTabOSWebSearch",
-		description: "使用Google进行网页搜索并返回总结后的搜索结果，请提供由若干个简短的英文关键词组成的搜索词，用空格隔开，如“2008 China Olympics”，优先调用此工具，不要调用另一个搜索工具",
+		name: "ToolTabOSModifyFile",
+		description: "修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整绝对路径和如何修改的说明。\n请提供{filePath:\"\",guide:\"\"}",
 		parameters:{
 			type: "object",
 			properties:{
 			}
 		}
 	},
-	agent: ToolTabOSWebSearch
+	label: "ModifyFile",
+	agent: ToolTabOSModifyFile
 }];
 
 //:Export Edit-AddOn:
@@ -104,16 +105,16 @@ if(DocAIAgentExporter){
 	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
 	
 	EditAISeg.regDef({
-		name:"ToolTabOSWebSearch",showName:"ToolTabOSWebSearch",icon:"agent.svg",catalog:["AI Call"],
+		name:"ToolTabOSModifyFile",showName:"ModifyFile",icon:"agent.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
 		listHint:["id","codes","desc"],
-		desc:"使用Google进行网页搜索并返回总结后的搜索结果，请提供由若干个简短的英文关键词组成的搜索词，用空格隔开，如“2008 China Olympics”，优先调用此工具，不要调用另一个搜索工具"
+		desc:"修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整绝对路径和如何修改的说明。\n请提供{filePath:\"\",guide:\"\"}"
 	});
 	
-	DocAIAgentExporter.segTypeExporters["ToolTabOSWebSearch"]=
+	DocAIAgentExporter.segTypeExporters["ToolTabOSModifyFile"]=
 	function(seg){
 		let coder=this.coder;
 		let segName=seg.idVal.val;
@@ -124,7 +125,7 @@ if(DocAIAgentExporter){
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolTabOSWebSearch.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolTabOSModifyFile.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -140,71 +141,44 @@ if(DocAIAgentExporter){
 	};
 }
 //#CodyExport<<<
-/*#{1ILQ95V4G0PostDoc*/
-/*}#1ILQ95V4G0PostDoc*/
+/*#{1IOFAKA9O0PostDoc*/
+/*}#1IOFAKA9O0PostDoc*/
 
 
-export default ToolTabOSWebSearch;
-export{ToolTabOSWebSearch};
+export default ToolTabOSModifyFile;
+export{ToolTabOSModifyFile};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
 //	"def": "DocAIAgent",
-//	"jaxId": "1ILQ95V4G0",
+//	"jaxId": "1IOFAKA9O0",
 //	"attrs": {
 //		"editObjs": {
-//			"jaxId": "1ILQ95V4G1",
-//			"attrs": {
-//				"ToolTabOSWebSearch": {
-//					"type": "objclass",
-//					"def": "ObjClass",
-//					"jaxId": "1ILQ95V4G7",
-//					"attrs": {
-//						"exportType": "UI Data Template",
-//						"constructArgs": {
-//							"jaxId": "1ILQ95V4G8",
-//							"attrs": {}
-//						},
-//						"superClass": "",
-//						"properties": {
-//							"jaxId": "1ILQ95V4G9",
-//							"attrs": {}
-//						},
-//						"functions": {
-//							"jaxId": "1ILQ95V4G10",
-//							"attrs": {}
-//						},
-//						"mockupOnly": "false",
-//						"nullMockup": "false",
-//						"exportClass": "false"
-//					},
-//					"mockups": {}
-//				}
-//			}
-//		},
-//		"agent": {
-//			"jaxId": "1ILQ95V4G2",
+//			"jaxId": "1IOFAKA9T0",
 //			"attrs": {}
 //		},
-//		"showName": "",
-//		"entry": "CallNode",
+//		"agent": {
+//			"jaxId": "1IOFAK06P0",
+//			"attrs": {}
+//		},
+//		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
 //		"debug": "true",
 //		"apiArgs": {
-//			"jaxId": "1ILQ95V4G3",
+//			"jaxId": "1IOFAKA9T1",
 //			"attrs": {}
 //		},
 //		"localVars": {
-//			"jaxId": "1ILQ95V4G4",
+//			"jaxId": "1IOFAKA9T2",
 //			"attrs": {}
 //		},
 //		"context": {
-//			"jaxId": "1ILQ95V4G5",
+//			"jaxId": "1IOFAKA9T3",
 //			"attrs": {}
 //		},
 //		"globalMockup": {
-//			"jaxId": "1ILQ95V4G6",
+//			"jaxId": "1IOFAKA9T4",
 //			"attrs": {}
 //		},
 //		"segs": {
@@ -212,36 +186,36 @@ export{ToolTabOSWebSearch};
 //				{
 //					"type": "aiseg",
 //					"def": "RemoteChat",
-//					"jaxId": "1ILQ96BKV0",
+//					"jaxId": "1IOFAJ96I0",
 //					"attrs": {
-//						"id": "CallNode",
+//						"id": "Run",
 //						"viewName": "",
 //						"label": "",
-//						"x": "135",
-//						"y": "225",
+//						"x": "200",
+//						"y": "100",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1ILQ97ATF0",
+//							"jaxId": "1IOFAKA9U0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1ILQ97ATF1",
+//							"jaxId": "1IOFAKA9U1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"nodeName": "builder_new",
-//						"callAgent": "RpaWebSearch.js",
+//						"callAgent": "ToolModifyFile.js",
 //						"callArg": "#input",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {
-//							"jaxId": "1ILQ97ATD0",
+//							"jaxId": "1IOFAKA9Q0",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
@@ -252,9 +226,9 @@ export{ToolTabOSWebSearch};
 //				}
 //			]
 //		},
-//		"desc": "使用Google进行网页搜索并返回总结后的搜索结果，请提供由若干个简短的英文关键词组成的搜索词，用空格隔开，如“2008 China Olympics”，优先调用此工具，不要调用另一个搜索工具",
+//		"desc": "修改文件内容的工具智能体，如修改文件内容，例如代码、配置文件。\n请提供要编辑的文件的完整绝对路径和如何修改的说明。\n请提供{filePath:\"\",guide:\"\"}",
 //		"exportAPI": "true",
 //		"exportAddOn": "true",
-//		"addOnOpts": ""
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"ModifyFile\",\"path\":\"\",\"pathInHub\":\"\",\"chatEntry\":false,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\"}"
 //	}
 //}

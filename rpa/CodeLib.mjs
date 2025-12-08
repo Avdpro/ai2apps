@@ -349,6 +349,9 @@ const codeLib=(codeTag)=>{
 							if (cmpStyle.display === "none") {
 								return null;
 							}
+							if (cmpStyle.visibility === "hidden") {
+								return null;
+							}
 						}
 					}
 					

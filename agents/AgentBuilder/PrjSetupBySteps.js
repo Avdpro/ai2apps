@@ -5,6 +5,7 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 /*#{1IJ2K5IBR0MoreImports*/
 import fsp from 'fs/promises';
+import axios from 'axios'
 /*}#1IJ2K5IBR0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -23,6 +24,27 @@ const argsTemplate={
 };
 
 /*#{1IJ2K5IBR0StartDoc*/
+async function getUserLocation() {
+	try {
+		const response = await axios.get('https://ipinfo.io/json');
+		const data = response.data;
+		const country = data.country;
+
+		if (country === 'CN') {
+			console.log('用户来自中国');
+			return "China";
+		} else {
+			console.log('用户来自国外');
+			return "Foreign";
+		}
+	} 
+	catch (error) {
+		console.error('无法获取地理位置:', error);
+		return "None";
+	}
+}
+
+
 /*}#1IJ2K5IBR0StartDoc*/
 //----------------------------------------------------------------------------
 let PrjSetupBySteps=async function(session){
@@ -30,7 +52,7 @@ let PrjSetupBySteps=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,InitEnv,InitPrj,LoadSteps,HasSteps,LoadGuide,LoopSteps,SwitchAction,RunBash,RunBrew,RunConda,RunTaskBot,CheckStepReuslt,TipHideFinish,AskActive,SaveConda,ExposeAgent,HideAgent,ShowError,AskRetry,AbortStep,CheckGuide,TipNoGuide,TipStep,HfDownLoad,AddNote,LoadRagGudie,CheckRagGude,CfmGuide,ShowGude,AbortGuide,TipPubFinish,GenGuideJs,output,Export,goto,CheckBash,CheckNetwork,Retry;
+	let Start,InitEnv,InitPrj,LoadSteps,HasSteps,LoadGuide,LoopSteps,SwitchAction,RunBash,RunBrew,RunConda,RunTaskBot,CheckStepReuslt,TipHideFinish,AskActive,SaveConda,ExposeAgent,HideAgent,ShowError,AskRetry,AbortStep,CheckGuide,TipNoGuide,TipStep,HfDownLoad,AddNote,LoadRagGudie,CheckRagGude,CfmGuide,ShowGude,AbortGuide,TipPubFinish,GenGuideJs,output,Export,goto,CheckBash,CheckNetwork,Retry,GetLocation,Check,SetMirror;
 	let env=null;
 	let project=null;
 	let steps=null;
@@ -79,7 +101,7 @@ let PrjSetupBySteps=async function(session){
 		/*#{1IJ2KABA10Output*/
 		env=globalContext.env;
 		/*}#1IJ2KABA10Output*/
-		return {seg:InitPrj,result:(result),preSeg:"1IJ2KABA10",outlet:"1IJ2L5O0Q2"};
+		return {seg:GetLocation,result:(result),preSeg:"1IJ2KABA10",outlet:"1IJ2L5O0Q2"};
 	};
 	InitEnv.jaxId="1IJ2KABA10"
 	InitEnv.url="InitEnv@"+agentURL
@@ -315,8 +337,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipHideFinish"]=TipHideFinish=async function(input){//:1IJ2KTD7V0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("AgentNode 安装完毕，没有设置为公开。"):("AgentNode installed but not set to public."));
 		session.addChatText(role,content,opts);
@@ -428,8 +450,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowError"]=ShowError=async function(input){//:1IJ2L4VCN0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`执行安装时发生错误：${input}`;
 		/*#{1IJ2L4VCN0PreCodes*/
@@ -501,8 +523,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipNoGuide"]=TipNoGuide=async function(input){//:1IJ2PL6OI0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="没有找到进一步安装配置本项目的指南。";
 		/*#{1IJ2PL6OI0PreCodes*/
@@ -517,8 +539,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipStep"]=TipStep=async function(input){//:1IJ44HLQB0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input.tip;
 		session.addChatText(role,content,opts);
@@ -630,8 +652,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["ShowGude"]=ShowGude=async function(input){//:1IJL3NK8N0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`### 找到安装指南：\n----\n${setupGuide}`;
 		/*#{1IJL3NK8N0PreCodes*/
@@ -657,8 +679,8 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["TipPubFinish"]=TipPubFinish=async function(input){//:1IK7U888P0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("AgentNode 安装完毕，并设置为公开。"):("AgentNode installed and set to public."));
 		session.addChatText(role,content,opts);
@@ -862,8 +884,8 @@ Output format:
 	
 	segs["output"]=output=async function(input){//:1ILIAT0E90
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		session.addChatText(role,content,opts);
@@ -1024,6 +1046,38 @@ Output format:
 	Retry.jaxId="1J5DAJI1R0"
 	Retry.url="Retry@"+agentURL
 	
+	segs["GetLocation"]=GetLocation=async function(input){//:1JB1VU3M50
+		let result=input
+		/*#{1JB1VU3M50Code*/
+		result=await getUserLocation();
+		/*}#1JB1VU3M50Code*/
+		return {seg:Check,result:(result),preSeg:"1JB1VU3M50",outlet:"1JB1VUBUU0"};
+	};
+	GetLocation.jaxId="1JB1VU3M50"
+	GetLocation.url="GetLocation@"+agentURL
+	
+	segs["Check"]=Check=async function(input){//:1JB201NH10
+		let result=input;
+		if(input==="China"){
+			return {seg:SetMirror,result:(input),preSeg:"1JB201NH10",outlet:"1JB204FF40"};
+		}
+		return {seg:InitPrj,result:(result),preSeg:"1JB201NH10",outlet:"1JB204FF41"};
+	};
+	Check.jaxId="1JB201NH10"
+	Check.url="Check@"+agentURL
+	
+	segs["SetMirror"]=SetMirror=async function(input){//:1JB203G190
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=["export HF_ENDPOINT=https://hf-mirror.com","export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple","export CONDA_CHANNELS=https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/","export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git","export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git","export HOMEBREW_INSTALL_FROM_API=1"];
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:InitPrj,result:(result),preSeg:"1JB203G190",outlet:"1JB204FF42"};
+	};
+	SetMirror.jaxId="1JB203G190"
+	SetMirror.url="SetMirror@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -1095,7 +1149,6 @@ export{PrjSetupBySteps,ChatAPI};
 //							"jaxId": "1IJ2K5IBR8",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IJ2K5IBR9",
 //							"attrs": {}
@@ -1106,7 +1159,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1179,7 +1233,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "Start",
 //						"viewName": "",
 //						"label": "",
-//						"x": "125",
+//						"x": "-550",
 //						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -1224,7 +1278,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "InitEnv",
 //						"viewName": "",
 //						"label": "",
-//						"x": "370",
+//						"x": "-315",
 //						"y": "340",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
@@ -1251,7 +1305,7 @@ export{PrjSetupBySteps,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IJ2K9A670"
+//							"linkedSeg": "1JB1VU3M50"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1267,8 +1321,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "InitPrj",
 //						"viewName": "",
 //						"label": "",
-//						"x": "570",
-//						"y": "340",
+//						"x": "575",
+//						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1307,8 +1361,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "LoadSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "760",
-//						"y": "340",
+//						"x": "765",
+//						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1347,8 +1401,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "HasSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "975",
-//						"y": "340",
+//						"x": "980",
+//						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1415,8 +1469,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "LoadGuide",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1190",
-//						"y": "515",
+//						"x": "1195",
+//						"y": "530",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1455,8 +1509,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "LoopSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1190",
-//						"y": "80",
+//						"x": "1195",
+//						"y": "95",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1502,8 +1556,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "SwitchAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1655",
-//						"y": "-60",
+//						"x": "1660",
+//						"y": "-45",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1669,8 +1723,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "RunBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "-210",
+//						"x": "1910",
+//						"y": "-195",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1710,8 +1764,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "RunBrew",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "-140",
+//						"x": "1910",
+//						"y": "-125",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1752,8 +1806,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "RunConda",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "-5",
+//						"x": "1910",
+//						"y": "10",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1795,8 +1849,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "RunTaskBot",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "65",
+//						"x": "1910",
+//						"y": "80",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1838,8 +1892,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "CheckStepReuslt",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2150",
-//						"y": "25",
+//						"x": "2155",
+//						"y": "40",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1952,8 +2006,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "TipHideFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2160",
-//						"y": "275",
+//						"x": "2165",
+//						"y": "290",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1999,8 +2053,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "AskActive",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1655",
-//						"y": "235",
+//						"x": "1660",
+//						"y": "250",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2107,8 +2161,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "SaveConda",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1420",
-//						"y": "235",
+//						"x": "1425",
+//						"y": "250",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2147,8 +2201,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "ExposeAgent",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "170",
+//						"x": "1910",
+//						"y": "185",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "",
@@ -2187,8 +2241,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "HideAgent",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "275",
+//						"x": "1910",
+//						"y": "290",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "",
@@ -2227,7 +2281,7 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "ShowError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "370",
+//						"x": "-355",
 //						"y": "530",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2382,7 +2436,7 @@ export{PrjSetupBySteps,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "395",
+//						"x": "-290",
 //						"y": "420",
 //						"outlet": {
 //							"jaxId": "1IJ2LAAU95",
@@ -2444,8 +2498,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "CheckGuide",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1420",
-//						"y": "515",
+//						"x": "1425",
+//						"y": "530",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2512,8 +2566,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "TipNoGuide",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2150",
-//						"y": "695",
+//						"x": "2155",
+//						"y": "710",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2551,8 +2605,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "TipStep",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1420",
-//						"y": "-60",
+//						"x": "1425",
+//						"y": "-45",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2591,8 +2645,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "HfDownLoad",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1910",
-//						"y": "-75",
+//						"x": "1915",
+//						"y": "-60",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2633,8 +2687,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "AddNote",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "450",
+//						"x": "1910",
+//						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2673,8 +2727,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "LoadRagGudie",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1680",
-//						"y": "645",
+//						"x": "1685",
+//						"y": "660",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2716,8 +2770,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "CheckRagGude",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "645",
+//						"x": "1910",
+//						"y": "660",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2784,8 +2838,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "CfmGuide",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2145",
-//						"y": "450",
+//						"x": "2150",
+//						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2868,8 +2922,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "ShowGude",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1680",
-//						"y": "450",
+//						"x": "1685",
+//						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2907,8 +2961,8 @@ export{PrjSetupBySteps,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2080",
-//						"y": "545",
+//						"x": "2085",
+//						"y": "560",
 //						"outlet": {
 //							"jaxId": "1IJL3VU376",
 //							"attrs": {
@@ -2929,8 +2983,8 @@ export{PrjSetupBySteps,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1710",
-//						"y": "545",
+//						"x": "1715",
+//						"y": "560",
 //						"outlet": {
 //							"jaxId": "1IJL3VU377",
 //							"attrs": {
@@ -2952,8 +3006,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "AbortGuide",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2405",
-//						"y": "530",
+//						"x": "2410",
+//						"y": "545",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -2991,8 +3045,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "TipPubFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2160",
-//						"y": "170",
+//						"x": "2165",
+//						"y": "185",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3038,8 +3092,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "GenGuideJs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2410",
-//						"y": "420",
+//						"x": "2415",
+//						"y": "435",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
 //						"mkpInput": "",
@@ -3091,9 +3145,13 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "text",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -3103,8 +3161,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "output",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2690",
-//						"y": "420",
+//						"x": "2695",
+//						"y": "435",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3143,8 +3201,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "Export",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2900",
-//						"y": "420",
+//						"x": "2905",
+//						"y": "435",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -3183,8 +3241,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "goto",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3100",
-//						"y": "420",
+//						"x": "3105",
+//						"y": "435",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3208,8 +3266,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "CheckBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2165",
-//						"y": "-210",
+//						"x": "2170",
+//						"y": "-195",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3261,9 +3319,13 @@ export{PrjSetupBySteps,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -3273,8 +3335,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "CheckNetwork",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2395",
-//						"y": "-210",
+//						"x": "2400",
+//						"y": "-195",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -3340,8 +3402,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"id": "Retry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2640",
-//						"y": "-225",
+//						"x": "2645",
+//						"y": "-210",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -3446,8 +3508,8 @@ export{PrjSetupBySteps,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2760",
-//						"y": "-390",
+//						"x": "2765",
+//						"y": "-375",
 //						"outlet": {
 //							"jaxId": "1J5DAU7GB0",
 //							"attrs": {
@@ -3468,8 +3530,8 @@ export{PrjSetupBySteps,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1935",
-//						"y": "-390",
+//						"x": "1940",
+//						"y": "-375",
 //						"outlet": {
 //							"jaxId": "1J5DAU7GB1",
 //							"attrs": {
@@ -3482,6 +3544,155 @@ export{PrjSetupBySteps,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JB1VU3M50",
+//					"attrs": {
+//						"id": "GetLocation",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-95",
+//						"y": "340",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JB1VVH8J0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JB1VVH8J1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JB1VUBUU0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JB201NH10"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input"
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JB201NH10",
+//					"attrs": {
+//						"id": "Check",
+//						"viewName": "",
+//						"label": "",
+//						"x": "160",
+//						"y": "340",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JB204FFA0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JB204FFA1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JB204FF41",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1IJ2K9A670"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JB204FF40",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JB204FFA2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JB204FFA3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input===\"China\""
+//									},
+//									"linkedSeg": "1JB203G190"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JB203G190",
+//					"attrs": {
+//						"id": "SetMirror",
+//						"viewName": "",
+//						"label": "",
+//						"x": "365",
+//						"y": "255",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JB204FFA4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JB204FFA5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#[\"export HF_ENDPOINT=https://hf-mirror.com\",\"export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple\",\"export CONDA_CHANNELS=https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/\",\"export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git\",\"export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git\",\"export HOMEBREW_INSTALL_FROM_API=1\"]",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JB204FF42",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IJ2K9A670"
+//						}
+//					},
+//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

@@ -41,7 +41,7 @@ let ToolHfModel=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,Download,Check,Switch,Install,CheckDownload,tip1,tip2,tip3,SetMirror,InputToken,CheckToken,FormatError,TryAgain,AbortDownload,CheckAgain,tip4,asktoken,tip5,InputModel,CheckInstall,Success,Install2,CheckInstall2,Success2,LLMCheckDownload,CheckError,CheckModelDownload,output,errortoken,Retry,LocalPath,DownloadLocalPath,AskRetry;
+	let FixArgs,Download,Check,Switch,Install,CheckDownload,tip1,tip2,tip3,SetMirror,InputToken,CheckToken,FormatError,TryAgain,AbortDownload,CheckAgain,tip4,asktoken,tip5,InputModel,CheckInstall,Success,Install2,CheckInstall2,Success2,LLMCheckDownload,CheckError,CheckModelDownload,output,errortoken,Retry,AskRetry;
 	/*#{1IJ44VPHU0LocalVals*/
 	/*}#1IJ44VPHU0LocalVals*/
 	
@@ -86,20 +86,18 @@ let ToolHfModel=async function(session){
 		args['commands']="";
 		args['options']="";
 		/*#{1IJ45B6Q50PreCodes*/
-		let command = `huggingface-cli download`;
+		let command = `hf download`;
 		if (token) {
 			command += ` --token ${token}`;
 		}
 		if (model) {
 			command += ` ${model}`;
 		}
-		/*
 		if (localPath) {
 			command += ` --local-dir ${localPath}`;
 		}
-		*/
 		
-		args['commands']= [`rm -rf ~/.cache/huggingface/hub/models--${model.split("/")[0]}--${model.split("/")[1]}`,command];
+		args['commands']= command;
 		/*}#1IJ45B6Q50PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		/*#{1IJ45B6Q50PostCodes*/
@@ -113,7 +111,7 @@ let ToolHfModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="huggingface-cli";
+		args['commands']="hf download";
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:Switch,result:(result),preSeg:"1IL0EDOSU0",outlet:"1IL0EDOSU1"};
@@ -135,7 +133,7 @@ let ToolHfModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="pip install huggingface-hub";
+		args['commands']="pip install huggingface-hub -U";
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:CheckInstall,result:(result),preSeg:"1IL0F6R660",outlet:"1IL0F8C2V0"};
@@ -167,8 +165,8 @@ let ToolHfModel=async function(session){
 	
 	segs["tip1"]=tip1=async function(input){//:1IL0GBNQD0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="LocalEntryNotFoundError: An error happened while trying to locate the file原因：本地缓存缺失且网络连接失败、token权限问题解决方案：1、检查网络连接，尝试通过镜像站重试下载。2、手动下载模型文件并放置到缓存目录（默认路径为 ~/.cache/huggingface/hub）3、检查token是否是read权限";
 		session.addChatText(role,content,opts);
@@ -179,8 +177,8 @@ let ToolHfModel=async function(session){
 	
 	segs["tip2"]=tip2=async function(input){//:1IL0GCLFE0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="下载需登录的私有模型失败原因：未提供有效 Token 或 Token 权限不足。解决方案：1、在命令中添加 --token hf_xxx 参数（hf_xxx 为官网生成的 Token）";
 		session.addChatText(role,content,opts);
@@ -191,8 +189,8 @@ let ToolHfModel=async function(session){
 	
 	segs["tip3"]=tip3=async function(input){//:1IL0GD2U40
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="ConnectionError: Couldn't reach ... on the Hub (SSLError)\n原因：代理配置错误或 SSL 证书问题。\n解决方案：\n1、检查代理设置是否正确（如 export all_proxy=socks5://192.168.1.110:1080）。\n2、若使用科学上网工具，确保 Python 的 urllib3 库代理配置正确";
 		session.addChatText(role,content,opts);
@@ -271,8 +269,8 @@ let ToolHfModel=async function(session){
 	
 	segs["FormatError"]=FormatError=async function(input){//:1IL0HDTOC0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="格式错误，请输入hf_xxx格式的token";
 		session.addChatText(role,content,opts);
@@ -355,8 +353,8 @@ let ToolHfModel=async function(session){
 	
 	segs["tip4"]=tip4=async function(input){//:1IL2R1CUR0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="你的访问权限被作者拒绝了，请重新检查权限或更换token。";
 		session.addChatText(role,content,opts);
@@ -367,8 +365,8 @@ let ToolHfModel=async function(session){
 	
 	segs["asktoken"]=asktoken=async function(input){//:1IL2TF5VG0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("当前模型需要官网的token才能下载，请输入hf_xxx格式的token"):("This model requires an official website token for download, please enter the token in the format hf_xxx"));
 		session.addChatText(role,content,opts);
@@ -379,8 +377,8 @@ let ToolHfModel=async function(session){
 	
 	segs["tip5"]=tip5=async function(input){//:1IL30V13H0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="Respository Not Found for url\n原因：模型不存在\n解决方案：\n1、检查模型名称是否正确";
 		session.addChatText(role,content,opts);
@@ -472,7 +470,7 @@ let ToolHfModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="pip install huggingface-hub -i https://pypi.tuna.tsinghua.edu.cn/simple";
+		args['commands']="pip install huggingface-hub -U -i https://pypi.tuna.tsinghua.edu.cn/simple";
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:CheckInstall2,result:(result),preSeg:"1J2173H5L0",outlet:"1J2174N0N0"};
@@ -609,7 +607,7 @@ let ToolHfModel=async function(session){
 		if(input.error_type==="no_model"){
 			return {seg:InputModel,result:(input),preSeg:"1J21L9QU90",outlet:"1J21LQ2BJ0"};
 		}
-		return {seg:LocalPath,result:(result),preSeg:"1J21L9QU90",outlet:"1J21LC4CC1"};
+		return {result:result};
 	};
 	CheckError.jaxId="1J21L9QU90"
 	CheckError.url="CheckError@"+agentURL
@@ -626,8 +624,8 @@ let ToolHfModel=async function(session){
 	
 	segs["output"]=output=async function(input){//:1J21LJ1QU0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input.suggestion;
 		session.addChatText(role,content,opts);
@@ -638,8 +636,8 @@ let ToolHfModel=async function(session){
 	
 	segs["errortoken"]=errortoken=async function(input){//:1J21LLQ1U0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("当前token无效或权限不足，请检查后输入新的token"):("The current token is invalid or lacks sufficient permissions, please check and input a new token"));
 		session.addChatText(role,content,opts);
@@ -655,42 +653,6 @@ let ToolHfModel=async function(session){
 	};
 	Retry.jaxId="1IJ45B6Q50"
 	Retry.url="Retry@"+agentURL
-	
-	segs["LocalPath"]=LocalPath=async function(input){//:1J21M30ET0
-		let result=input;
-		if(localPath){
-			return {seg:DownloadLocalPath,result:(input),preSeg:"1J21M30ET0",outlet:"1J21M4JC90"};
-		}
-		return {result:result};
-	};
-	LocalPath.jaxId="1J21M30ET0"
-	LocalPath.url="LocalPath@"+agentURL
-	
-	segs["DownloadLocalPath"]=DownloadLocalPath=async function(input){//:1J21M45510
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']="";
-		args['options']="";
-		/*#{1J21M45510PreCodes*/
-		let command = `huggingface-cli download`;
-		if (token) {
-			command += ` --token ${token}`;
-		}
-		if (model) {
-			command += ` ${model}`;
-		}
-		if (localPath) {
-			command += ` --local-dir ${localPath}`;
-		}
-		/*}#1J21M45510PreCodes*/
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		/*#{1J21M45510PostCodes*/
-		/*}#1J21M45510PostCodes*/
-		return {result:result};
-	};
-	DownloadLocalPath.jaxId="1J21M45510"
-	DownloadLocalPath.url="DownloadLocalPath@"+agentURL
 	
 	segs["AskRetry"]=AskRetry=async function(input){//:1J5QL7MF00
 		let prompt=("Please confirm")||input;
@@ -850,7 +812,6 @@ export{ToolHfModel,ChatAPI};
 //							"jaxId": "1IJ44VPHV7",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IJ44VPHV8",
 //							"attrs": {}
@@ -861,7 +822,8 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1022,7 +984,7 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "huggingface-cli",
+//						"commands": "hf download",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IL0EDOSU1",
@@ -1131,7 +1093,7 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "pip install huggingface-hub",
+//						"commands": "pip install huggingface-hub -U",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IL0F8C2V0",
@@ -2181,9 +2143,16 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2281,7 +2250,7 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "pip install huggingface-hub -i https://pypi.tuna.tsinghua.edu.cn/simple",
+//						"commands": "pip install huggingface-hub -U -i https://pypi.tuna.tsinghua.edu.cn/simple",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1J2174N0N0",
@@ -2355,9 +2324,16 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2509,9 +2485,16 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2545,8 +2528,7 @@ export{ToolHfModel,ChatAPI};
 //								"id": "Default",
 //								"desc": "输出节点。",
 //								"output": ""
-//							},
-//							"linkedSeg": "1J21M30ET0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -2926,113 +2908,6 @@ export{ToolHfModel,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1J21M30ET0",
-//					"attrs": {
-//						"id": "LocalPath",
-//						"viewName": "",
-//						"label": "",
-//						"x": "715",
-//						"y": "185",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J21M4JCD0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J21M4JCD1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1J21M4JC91",
-//							"attrs": {
-//								"id": "Default",
-//								"desc": "输出节点。",
-//								"output": ""
-//							}
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1J21M4JC90",
-//									"attrs": {
-//										"id": "Result",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1J21M4JCD2",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1J21M4JCD3",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#localPath"
-//									},
-//									"linkedSeg": "1J21M45510"
-//								}
-//							]
-//						}
-//					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1J21M45510",
-//					"attrs": {
-//						"id": "DownloadLocalPath",
-//						"viewName": "",
-//						"label": "",
-//						"x": "935",
-//						"y": "170",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J21M4JCD4",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J21M4JCD5",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "\"\"",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1J21M4JC92",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "terminal.svg"
 //				},
 //				{
 //					"type": "aiseg",

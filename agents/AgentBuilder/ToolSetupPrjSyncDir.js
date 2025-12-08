@@ -62,11 +62,11 @@ let ToolSetupPrjSyncDir=async function(session){
 		diskJSON=await tabFS.readFile(pathLib.join(dirPath,"disk.json"),"utf8");
 		diskJSON=JSON.parse(diskJSON);
 		syncDir=diskJSON.syncDir;
-		if(!syncDir){
+		if(syncDir){
 			diskJSON.syncDir=syncDir={"name":"","dirs":[]};
 		}
 		FindDir:{
-			for(let dirVO of syncDir.dirs){
+			for(let dirVO in syncDir.dirs){
 				if(dirVO.dir==="ai"){
 					prjSyncVO=dirVO;
 					break FindDir;
@@ -149,7 +149,6 @@ let ToolSetupPrjSyncDir=async function(session){
 		let tip=((($ln==="CN")?("请输入一个新的AI智能体目录名称"):("Please input a new agent dir name")));
 		let tipRole=("assistant");
 		let placeholder=("");
-		let allowFile=(false)||false;
 		let text=("");
 		let result="";
 		/*#{1IJRQG1P70PreCodes*/
@@ -157,14 +156,8 @@ let ToolSetupPrjSyncDir=async function(session){
 		if(tip){
 			session.addChatText(tipRole,tip);
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
-		if(typeof(result)==="string"){
-			session.addChatText("user",result);
-		}else if(result.assets && result.prompt){
-			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
-		}else{
-			session.addChatText("user",result.text||result.prompt||result);
-		}
+		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
+		session.addChatText("user",result);
 		/*#{1IJRQG1P70PostCodes*/
 		agentDir=result;
 		/*}#1IJRQG1P70PostCodes*/

@@ -7,8 +7,9 @@ import {URL} from "url";
 import AATask from "./Task.js";
 import fsp from 'fs/promises';
 /*}#1IG65D1UE0MoreImports*/
-const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
 const VFACT=null;
 /*#{1IG65D1UE0StartDoc*/
 //----------------------------------------------------------------------------
@@ -38,9 +39,9 @@ let PrjSetupPrjDir=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let CheckDirPath,CheckDirName,FixName,CheckDirUsed,GenNewName,MakeDir,GitDownload,CheckDownLoad,CheckPython,DirOK,AskRetry,ShowGitError,GitFailed,ClearDir,CheckPythonEnv,LoadReadme,PreviewPrj,TipPreview,ShowSummary,AbortSetup,AskSetup;
+	let CheckDirPath,CheckDirName,FixName,CheckDirUsed,GenNewName,MakeDir,GitDownload,CheckDownLoad,CheckPython,DirOK,AskRetry,ShowGitError,GitFailed,ClearDir,CheckPythonEnv,LoadReadme,PreviewPrj,TipPreview,ShowSummary,AbortSetup,AskSetup,TestBash,CdDir;
 	let project=globalContext.project;
-	let dirName=project.name;
+	let dirName=project?.name;
 	let dirPath="";
 	let env=globalContext.env;
 	let task=undefined;
@@ -66,7 +67,7 @@ let PrjSetupPrjDir=async function(session){
 	context={};
 	/*#{1IG65D1UE0PostContext*/
 	/*}#1IG65D1UE0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["CheckDirPath"]=CheckDirPath=async function(input){//:1IGNGQ4NK0
 		let result=input;
 		/*#{1IGNGQ4NK0Start*/
@@ -146,7 +147,10 @@ let PrjSetupPrjDir=async function(session){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};
+			/*#{1IG65QUQE0FilterMessage*/
+			/*}#1IG65QUQE0FilterMessage*/
+			messages.push(msg);
 		}
 		/*#{1IG65QUQE0PreCall*/
 		/*}#1IG65QUQE0PreCall*/
@@ -156,6 +160,8 @@ let PrjSetupPrjDir=async function(session){
 		dirName=result.fixed;
 		addLog(`Fixed dir name: "${dirName}".`);
 		/*}#1IG65QUQE0PostCall*/
+		/*#{1IG65QUQE0PreResult*/
+		/*}#1IG65QUQE0PreResult*/
 		return {seg:CheckDirName,result:(result),preSeg:"1IG65QUQE0",outlet:"1IG65SUOF0"};
 	};
 	FixName.jaxId="1IG65QUQE0"
@@ -277,7 +283,8 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["DirOK"]=DirOK=async function(input){//:1IG66KEUC0
 		let result=input;
-		let opts={};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="项目工程目录准备好了。";
 		/*#{1IG66KEUC0PreCodes*/
@@ -321,7 +328,8 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["ShowGitError"]=ShowGitError=async function(input){//:1IG98VL0V0
 		let result=input;
-		let opts={};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`
 Git安装失败：
@@ -361,13 +369,15 @@ ${input}
 	
 	segs["CheckPythonEnv"]=CheckPythonEnv=async function(input){//:1IGB60OJ80
 		let result;
-		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
 		let arg={};
+		let agentNode=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IGB60OJ80Input*/
 		project.dirPath=dirPath;
 		project.dirName=dirName;
 		/*}#1IGB60OJ80Input*/
-		result= await session.pipeChat(sourcePath,arg,false);
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1IGB60OJ80Output*/
 		task.finish("Project dir create, git-download and python-env setup success.");
 		/*}#1IGB60OJ80Output*/
@@ -553,7 +563,10 @@ ${project.readme}
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			messages.push({role:"user",content:prompt});
+			let msg={role:"user",content:prompt};
+			/*#{1IHBDIFBT0FilterMessage*/
+			/*}#1IHBDIFBT0FilterMessage*/
+			messages.push(msg);
 		}
 		/*#{1IHBDIFBT0PreCall*/
 		/*}#1IHBDIFBT0PreCall*/
@@ -563,6 +576,8 @@ ${project.readme}
 		project.requirements.node=result.node;
 		project.requirements.python=result.python;
 		/*}#1IHBDIFBT0PostCall*/
+		/*#{1IHBDIFBT0PreResult*/
+		/*}#1IHBDIFBT0PreResult*/
 		return {seg:ShowSummary,result:(result),preSeg:"1IHBDIFBT0",outlet:"1IHBDKSG31"};
 	};
 	PreviewPrj.jaxId="1IHBDIFBT0"
@@ -570,7 +585,8 @@ ${project.readme}
 	
 	segs["TipPreview"]=TipPreview=async function(input){//:1II1BCUQH0
 		let result=input;
-		let opts={};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("项目已下载完毕，评估项目需求。"):("Project downloaded successfully, checking project requirements."));
 		session.addChatText(role,content,opts);
@@ -581,7 +597,8 @@ ${project.readme}
 	
 	segs["ShowSummary"]=ShowSummary=async function(input){//:1IJ0RFB3T0
 		let result=input;
-		let opts={};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`
 ### 项目简介
@@ -644,7 +661,32 @@ ${input.summary}
 	AskSetup.jaxId="1IJ0SEMOH0"
 	AskSetup.url="AskSetup@"+agentURL
 	
-	agent={
+	segs["TestBash"]=TestBash=async function(input){//:1JBUFOHMO0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Create";
+		args['commands']="cd ~/sdk";
+		args['options']={client:true};
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		globalContext["bash"]=result;
+		return {seg:CdDir,result:(result),preSeg:"1JBUFOHMO0",outlet:"1JBUFQGUF0"};
+	};
+	TestBash.jaxId="1JBUFOHMO0"
+	TestBash.url="TestBash@"+agentURL
+	
+	segs["CdDir"]=CdDir=async function(input){//:1JBUG0TLV0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']="cd ~/sdk";
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {result:result};
+	};
+	CdDir.jaxId="1JBUG0TLV0"
+	CdDir.url="CdDir@"+agentURL
+	
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"PrjSetupPrjDir",
@@ -658,7 +700,7 @@ ${input.summary}
 			parseAgentArgs(input);
 			/*#{1IG65D1UE0PreEntry*/
 			/*}#1IG65D1UE0PreEntry*/
-			result={seg:CheckDirPath,"input":input};
+			result={seg:TestBash,"input":input};
 			/*#{1IG65D1UE0PostEntry*/
 			/*}#1IG65D1UE0PostEntry*/
 			return result;
@@ -689,7 +731,8 @@ let ChatAPI=[{
 			properties:{
 			}
 		}
-	}
+	},
+	isChatApi: true
 }];
 //#CodyExport<<<
 /*#{1IG65D1UE0PostDoc*/
@@ -717,7 +760,6 @@ export{PrjSetupPrjDir,ChatAPI};
 //							"jaxId": "1IG65D1UF0",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IG65D1UF1",
 //							"attrs": {}
@@ -728,7 +770,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -738,7 +781,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //			"jaxId": "1IG65D1UE2",
 //			"attrs": {}
 //		},
-//		"entry": "CheckDIrPath",
+//		"showName": "",
+//		"entry": "TestBash",
 //		"autoStart": "true",
 //		"inBrowser": "false",
 //		"debug": "true",
@@ -755,7 +799,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //				},
 //				"dirName": {
 //					"type": "string",
-//					"valText": "#project.name"
+//					"valText": "#project?.name"
 //				},
 //				"dirPath": {
 //					"type": "string",
@@ -777,7 +821,12 @@ export{PrjSetupPrjDir,ChatAPI};
 //		},
 //		"globalMockup": {
 //			"jaxId": "1IG65D1UE6",
-//			"attrs": {}
+//			"attrs": {
+//				"bash": {
+//					"type": "string",
+//					"valText": ""
+//				}
+//			}
 //		},
 //		"segs": {
 //			"attrs": [
@@ -964,6 +1013,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //							},
 //							"linkedSeg": "1IG666US90"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -977,9 +1027,13 @@ export{PrjSetupPrjDir,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1126,6 +1180,9 @@ export{PrjSetupPrjDir,ChatAPI};
 //							},
 //							"linkedSeg": "1IG66C4030"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1162,6 +1219,9 @@ export{PrjSetupPrjDir,ChatAPI};
 //								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1IG7TP40A0"
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1415,6 +1475,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "项目工程目录准备好了。",
 //						"outlet": {
 //							"jaxId": "1IG6Q27350",
@@ -1526,6 +1587,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#`\nGit安装失败：\n\\`\\`\\`\n${input}\n\\`\\`\\`\n`",
 //						"outlet": {
 //							"jaxId": "1IG9A1AOV0",
@@ -1569,6 +1631,9 @@ export{PrjSetupPrjDir,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -1694,6 +1759,9 @@ export{PrjSetupPrjDir,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
@@ -1753,6 +1821,9 @@ export{PrjSetupPrjDir,ChatAPI};
 //							},
 //							"linkedSeg": "1II1BCUQH0"
 //						},
+//						"outlets": {
+//							"attrs": []
+//						},
 //						"result": "#input"
 //					},
 //					"icon": "tab_css.svg"
@@ -1804,6 +1875,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //							},
 //							"linkedSeg": "1IJ0RFB3T0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -1817,9 +1889,13 @@ export{PrjSetupPrjDir,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"1IG5ML8LS0\""
+//						"formatDef": "\"1IG5ML8LS0\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1848,6 +1924,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Project downloaded successfully, checking project requirements.",
@@ -1895,6 +1972,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#`\n### 项目简介\n${input.brief}\n\n### 存在问题\n${input.error}\n\n### 注意事项\n${input.warn}\n\n### 总结：\n${input.summary}\n`",
 //						"outlet": {
 //							"jaxId": "1IJ0RJS5G0",
@@ -1938,6 +2016,9 @@ export{PrjSetupPrjDir,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							}
+//						},
+//						"outlets": {
+//							"attrs": []
 //						},
 //						"result": "#input"
 //					},
@@ -2050,6 +2131,87 @@ export{PrjSetupPrjDir,ChatAPI};
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JBUFOHMO0",
+//					"attrs": {
+//						"id": "TestBash",
+//						"viewName": "",
+//						"label": "",
+//						"x": "80",
+//						"y": "600",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JBUFQGUM0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JBUFQGUM1",
+//							"attrs": {
+//								"cast": "{\"bash\":\"result\"}"
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Create",
+//						"commands": "\"cd ~/sdk\"",
+//						"options": "#{client:true}",
+//						"outlet": {
+//							"jaxId": "1JBUFQGUF0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JBUG0TLV0"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JBUG0TLV0",
+//					"attrs": {
+//						"id": "CdDir",
+//						"viewName": "",
+//						"label": "",
+//						"x": "310",
+//						"y": "600",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JBUG1JKV0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JBUG1JKV1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "\"cd ~/sdk\"",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JBUG1JKP0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

@@ -16,12 +16,12 @@ const argsTemplate={
 			"name":"search","type":"string",
 			"required":true,
 			"defaultValue":"",
-			"desc":"要搜索的文本，注意文本应该尽量适合搜索。",
+			"desc":"请提供要搜索的文本内容，建议将查询拆分为核心关键词组合，用英文，如'2008 China Olympics'",
 		},
 		"top_k":{
 			"name":"top_k","type":"integer",
 			"required":false,
-			"defaultValue":3,
+			"defaultValue":10,
 			"desc":"要读取的搜索结果网页数量",
 		},
 		"linkOnly":{
@@ -40,7 +40,7 @@ const argsTemplate={
 async function googleSearch(query,apiKey,cx,proxies) {
 	const API_KEY = apiKey;
 	const CX = cx;
-	const url = `https://www.googleapis.com/customsearch/v1?key=${API_KEY}&cx=${CX}&q=${query}`;
+	const url = `https://www.googleapis.com/customsearch/v1?key=${API_KEY}&cx=${CX}&q=${encodeURIComponent(query)}`;
 	try {
 		let response;
 		if(proxies && proxies.ip && proxies.port){
@@ -499,7 +499,7 @@ let RpaWebSearch=async function(session){
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o-mini",
+			mode:"gpt-4.1",
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -593,7 +593,7 @@ ${search}
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o",
+			mode:"gpt-4.1",
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -1223,6 +1223,8 @@ ${JSON.stringify(searchResults,null,"\t")}
 	
 	segs["AsyncCheckPageContent"]=AsyncCheckPageContent=async function(input){//:1INRLESDV0
 		let result=input;
+		/*#{1INRLESDV0Start*/
+		/*}#1INRLESDV0Start*/
 		if(!!pageContents[input]){
 			let output=`
 From link: ${input}
@@ -1231,6 +1233,8 @@ ${pageContents[input]}
 `;
 			return {seg:AsyncReadContent,result:(output),preSeg:"1INRLESDV0",outlet:"1INRLESDV4"};
 		}
+		/*#{1INRLESDV0Post*/
+		/*}#1INRLESDV0Post*/
 		return {result:result};
 	};
 	AsyncCheckPageContent.jaxId="1INRLESDV0"
@@ -1242,7 +1246,7 @@ ${pageContents[input]}
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o-mini",
+			mode:"gpt-4.1",
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -1312,6 +1316,7 @@ ${search}
 		usefulPages+=1;
 		searchResults.push({url:readingUrl,content:pageContents[readingUrl]});
 		if(usefulPages>=top_k){
+			
 			result="break";
 		}
 		/*}#1INRLKIME0Code*/
@@ -1328,7 +1333,7 @@ ${search}
 		
 		let opts={
 			platform:"OpenAI",
-			mode:"gpt-4o",
+			mode:"gpt-4.1",
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -1341,25 +1346,11 @@ ${search}
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:`
-### 角色
-你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI
-
-### 搜索目标
-当前的搜索目标是：
-${search}
-
-### 搜索结果
-当前的搜索网页并初步总结的结果，用JSON格式表达为：
-
-${JSON.stringify(searchResults,null,"\t")}
-
-
-`},
+			{role:"system",content:(($ln==="CN")?(` ### 角色 你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI ### 搜索目标 当前的搜索目标是： ${search} ### 搜索结果 当前的搜索网页并初步总结的结果，用JSON格式表达为： ${JSON.stringify(searchResults,null,"\t")} 用中文回答。`):(` ###Role You are an AI that analyzes and summarizes web search results, based on the input search result content ###Search target The current search objective is: ${search} ###Search results The current search webpage and preliminary summary results are expressed in JSON format as follows: ${JSON.stringify(searchResults,null,"\t")} Please use English.`))},
 		];
 		/*#{1INRLLTLI0PrePrompt*/
 		/*}#1INRLLTLI0PrePrompt*/
-		prompt="请根据搜索结果，回答搜索问题";
+		prompt="According to searched results, answer the question in proper language.";
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
@@ -1434,7 +1425,7 @@ let ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
-				search:{type:"string",description:"要搜索的文本，注意文本应该尽量适合搜索。"},
+				search:{type:"string",description:"请提供要搜索的文本内容，建议将查询拆分为核心关键词组合，用英文，如'2008 China Olympics'"},
 				top_k:{type:"integer",description:"要读取的搜索结果网页数量"},
 				linkOnly:{type:"bool",description:"是否只需要搜索到的网页链接列表，而不需要读取搜索到的页面内的内容。"}
 			}
@@ -1466,7 +1457,7 @@ if(DocAIAgentExporter){
 		attrs:{
 			...SegObjShellAttr,
 			"search":{name:"search",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
-			"top_k":{name:"top_k",showName:undefined,type:"integer",key:1,fixed:1,initVal:3},
+			"top_k":{name:"top_k",showName:undefined,type:"integer",key:1,fixed:1,initVal:10},
 			"linkOnly":{name:"linkOnly",showName:undefined,type:"bool",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
@@ -1488,7 +1479,7 @@ if(DocAIAgentExporter){
 			coder.packText("args['top_k']=");this.genAttrStatement(seg.getAttr("top_k"));coder.packText(";");coder.newLine();
 			coder.packText("args['linkOnly']=");this.genAttrStatement(seg.getAttr("linkOnly"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/RpaWebSearch.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/RpaWebSearch.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -1565,7 +1556,7 @@ export{RpaWebSearch,ChatAPI};
 //					"attrs": {
 //						"type": "String",
 //						"mockup": "\"\"",
-//						"desc": "要搜索的文本，注意文本应该尽量适合搜索。",
+//						"desc": "请提供要搜索的文本内容，建议将查询拆分为核心关键词组合，用英文，如'2008 China Olympics'",
 //						"required": "true"
 //					}
 //				},
@@ -1575,7 +1566,7 @@ export{RpaWebSearch,ChatAPI};
 //					"jaxId": "1ILPRP8EL0",
 //					"attrs": {
 //						"type": "Integer",
-//						"mockup": "3",
+//						"mockup": "10",
 //						"desc": "要读取的搜索结果网页数量",
 //						"required": "false"
 //					}
@@ -2456,7 +2447,7 @@ export{RpaWebSearch,ChatAPI};
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o-mini",
+//						"mode": "gpt-4.1",
 //						"system": "#`\n### 角色\n你是一个判断输入的搜索的网页结果内容是否与搜索目标相关的AI\n\n### 搜索目标\n当前的搜索目标是：\n${search}\n\n### 对话\n对话时用户会输入搜索到的网页内容，可能是纯文本、HTML文本或者Markdown格式。你解析并提取网页内容里与搜索目标相关的内容并以JSON格式返回。例如：\n\\`\\`\\`\n//找到了相关内容：\n{\n\t\"content\":\"北京奥运会是2008年举行的\"\n}\n//没有找到相关内容：\n{\n\t\"content\":null\n}\n\\`\\`\\`\n返回JSON只有一个属性\"content\"：\n- 当输入的内容与搜索目标相关时，\"content\"是你对内容根据搜索目标总结的结果。\n- 当输入的内容与搜索目标无关时，设置\"content\"属性为null\n\n`",
 //						"temperature": "0",
 //						"maxToken": "2000",
@@ -2666,7 +2657,7 @@ export{RpaWebSearch,ChatAPI};
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o",
+//						"mode": "gpt-4.1",
 //						"system": "#`\n### 角色\n你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI\n\n### 搜索目标\n当前的搜索目标是：\n${search}\n\n### 搜索结果\n当前的搜索网页并初步总结的结果，用JSON格式表达为：\n\n${JSON.stringify(searchResults,null,\"\\t\")}\n\n\n`",
 //						"temperature": "0",
 //						"maxToken": "2000",
@@ -4512,10 +4503,10 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "AsyncCheckPageContent",
 //						"viewName": "",
 //						"label": "",
-//						"x": "5190",
+//						"x": "5250",
 //						"y": "820",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -4579,7 +4570,7 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "AsyncReadContent",
 //						"viewName": "",
 //						"label": "",
-//						"x": "5480",
+//						"x": "5540",
 //						"y": "805",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
@@ -4598,7 +4589,7 @@ export{RpaWebSearch,ChatAPI};
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o-mini",
+//						"mode": "gpt-4.1",
 //						"system": "#`\n### 角色\n你是一个判断输入的搜索的网页结果内容是否与搜索目标相关的AI\n\n### 搜索目标\n当前的搜索目标是：\n${search}\n\n### 对话\n- 每轮对话时用户会输入搜索到的网页内容，可能是纯文本、HTML文本或者Markdown格式。\n- 你根据用户的输入，判断用户输入的网页内容是否与回答当前的搜索目标相关，并用JSON返回，例如：\n\\`\\`\\`\n//找到了相关内容：\n{\n    \"useful\":true,\n}\n//没有找到相关内容：\n{\n    \"useful\":false,\n}\n\\`\\`\\`\n\n### 返回JSON属性说明\n\"useful\" {bool}: 本回合对话用户输入的内容是否对搜索目标有帮助\n`",
 //						"temperature": "0",
 //						"maxToken": "2000",
@@ -4643,7 +4634,7 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "AsyncCheckContent",
 //						"viewName": "",
 //						"label": "",
-//						"x": "5750",
+//						"x": "5810",
 //						"y": "805",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -4710,7 +4701,7 @@ export{RpaWebSearch,ChatAPI};
 //						"id": "AsyncCheckFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "6020",
+//						"x": "6080",
 //						"y": "790",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -4768,8 +4759,16 @@ export{RpaWebSearch,ChatAPI};
 //							}
 //						},
 //						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4o",
-//						"system": "#`\n### 角色\n你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI\n\n### 搜索目标\n当前的搜索目标是：\n${search}\n\n### 搜索结果\n当前的搜索网页并初步总结的结果，用JSON格式表达为：\n\n${JSON.stringify(searchResults,null,\"\\t\")}\n\n\n`",
+//						"mode": "gpt-4.1",
+//						"system": {
+//							"type": "string",
+//							"valText": "#` ###Role You are an AI that analyzes and summarizes web search results, based on the input search result content ###Search target The current search objective is: ${search} ###Search results The current search webpage and preliminary summary results are expressed in JSON format as follows: ${JSON.stringify(searchResults,null,\"\\t\")} Please use English.`",
+//							"localize": {
+//								"EN": "#` ###Role You are an AI that analyzes and summarizes web search results, based on the input search result content ###Search target The current search objective is: ${search} ###Search results The current search webpage and preliminary summary results are expressed in JSON format as follows: ${JSON.stringify(searchResults,null,\"\\t\")} Please use English.`",
+//								"CN": "#` ### 角色 你是一个分析总结网页搜索结果的AI，根据输入的搜索结果内容的AI ### 搜索目标 当前的搜索目标是： ${search} ### 搜索结果 当前的搜索网页并初步总结的结果，用JSON格式表达为： ${JSON.stringify(searchResults,null,\"\\t\")} 用中文回答。`"
+//							},
+//							"localizable": true
+//						},
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -4778,7 +4777,7 @@ export{RpaWebSearch,ChatAPI};
 //						"messages": {
 //							"attrs": []
 //						},
-//						"prompt": "请根据搜索结果，回答搜索问题",
+//						"prompt": "According to searched results, answer the question in proper language.",
 //						"seed": "",
 //						"outlet": {
 //							"jaxId": "1INRLLTLI3",

@@ -1290,7 +1290,6 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.screenshot=async function(opts){
-		//TODO: use sendCommand with WebDrive command, opts should be same as puppeteer's API
 		let options = opts || {};
 
 		// Set default options based on WebDriver BiDi specification
@@ -1304,8 +1303,12 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		};
 
 		// Handle quality option for JPEG
-		if (options.type === 'jpeg' && options.quality !== undefined) {
-			screenshotOptions.format.quality = Math.max(0, Math.min(1, options.quality));
+		if (options.type === 'jpeg') {
+			if(options.quality>=0) {
+				screenshotOptions.format.quality = Math.max(0, Math.min(1, options.quality));
+			}else{
+				screenshotOptions.format.quality =0.5;
+			}
 		}
 
 		// Handle clip option (specific area to capture)
@@ -1375,15 +1378,21 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 						let selector = ${JSON.stringify(selector)};
 						let element;
 						try {
-							if (selector.startsWith('::-p-xpath')) {
-								// XPath:
-								selector=selector.substring('::-p-xpath'.length);
+							if (selector.startsWith('::-p-xpath')) {//pup-style XPath
+								selector=selector.substring('::-p-xpath'.length).trim();
+								const xpathResult = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+								element = xpathResult.singleNodeValue;
+							}else if (selector.startsWith('xpath:')) {
+								selector=selector.substring('xpath:'.length).trim();
 								const xpathResult = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 								element = xpathResult.singleNodeValue;
 							}else if (selector.startsWith('(')) {
 								// Selector starts with "(", treat as XPath
 								const xpathResult = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 								element = xpathResult.singleNodeValue;
+							}else if (selector.startsWith('css:')) {//CSS selector
+								selector=selector.substring('css:'.length).trim();
+								element = document.querySelector(selector);
 							} else {
 								// Try querySelector first
 								try {
@@ -1435,7 +1444,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 				try {
 					if (selector.startsWith('::-p-xpath')) {
 						// XPath:
-						selector=selector.substring('::-p-xpath'.length);
+						selector=selector.substring('::-p-xpath'.length).trim();
 						const xpathResult = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 						for (let i = 0; i < xpathResult.snapshotLength; i++) {
 							elements.push(xpathResult.snapshotItem(i));
@@ -1446,6 +1455,15 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 						for (let i = 0; i < xpathResult.snapshotLength; i++) {
 							elements.push(xpathResult.snapshotItem(i));
 						}
+					}else if (selector.startsWith('xpath:')) {
+						selector=selector.substring('xpath:'.length).trim();
+						const xpathResult = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+						for (let i = 0; i < xpathResult.snapshotLength; i++) {
+							elements.push(xpathResult.snapshotItem(i));
+						}
+					}else if (selector.startsWith('css:')) {
+						selector=selector.substring('css:'.length).trim();
+						elements = Array.from(document.querySelectorAll(selector));
 					} else {
 						// Try querySelectorAll first
 						try {
@@ -1694,7 +1712,10 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			handle = await this.$(selector);
 		}
 		if(!handle){
-			return;
+			if(opts.queryError){
+				throw "SelectorError";
+			}
+			return false;
 		}
 		action=this.action;
 		if(!action){
@@ -1737,7 +1758,10 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		orgX=this.pageMouseX;
 		orgY=this.pageMouseY;
 		if(!rect){
-			return;
+			if(opts.queryError){
+				throw "SelectorError";
+			}
+			return false;
 		}
 		offset=opts?.offset;
 		if(offset){
@@ -1812,15 +1836,23 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			this.action.end();
 			this.action=null;
 		}
+		return true;
 	};//Tested
 	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.hover=async function(selector,opts){
 		let handle,smooth,rect,action,actions;
 		let orgX,orgY,objX,objY,offset;
-		handle=await this.$(selector);
+		if(selector.handle){
+			handle=selector;
+		}else {
+			handle = await this.$(selector);
+		}
 		if(!handle){
-			return;
+			if(opts.queryError){
+				throw "SelectorError";
+			}
+			return false;
 		}
 		action=this.action;
 		if(!action){
@@ -1862,7 +1894,10 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		orgX=this.pageMouseX;
 		orgY=this.pageMouseY;
 		if(!rect){
-			return;
+			if(opts.queryError){
+				throw "SelectorError";
+			}
+			return false;
 		}
 		offset=opts?.offset;
 		if(offset){
@@ -1927,6 +1962,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			this.action.end();
 			this.action=null;
 		}
+		return true;
 	};//TODO: Test this later
 	
 	//-----------------------------------------------------------------------
@@ -1947,12 +1983,14 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			}else {
 				handle = await this.$(selector);
 			}
-			
 		}
 		if(handle){
 			const rect=await this.callFunction(function(item){
 				const rect=item.getBoundingClientRect();
 				if(!rect){
+					if(opts.queryError){
+						throw "SelectorError";
+					}
 					return null;
 				}
 				return {
@@ -1963,6 +2001,12 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			y+=rect.y+rect.height*0.5;
 			await this.disown(handle);
 		}else{
+			if(selector){
+				if(opts.queryError){
+					throw "SelectorError";
+				}
+				return false;
+			}
 			const ss=await this.callFunction(function(){
 				return {w:window.innerWidth,h:window.innerHeight}
 			},[]);
@@ -2000,6 +2044,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			this.action.end();
 			this.action=null;
 		}
+		return true;
 	};//Tested
 	
 	//-----------------------------------------------------------------------
@@ -2011,7 +2056,10 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			handle = await this.$(selector);
 		}
 		if(!handle){
-			return;
+			if(opts.queryError){
+				throw "SelectorError";
+			}
+			return false;
 		}
 		action=this.action;
 		if(!action){
@@ -2050,6 +2098,11 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		}`,[handle]);
 		
 		await this.disown(handle);
+		if(!action){
+			this.action.end();
+			this.action=null;
+		}
+		return true;
 	};
 	
 	//-----------------------------------------------------------------------
@@ -2069,7 +2122,10 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			}else {
 				handle = await this.$(selector);
 				if(!handle){
-					return;
+					if(opts.queryError){
+						throw "SelectorError";
+					}
+					return false;
 				}
 				await this.focus(handle);
 				await this.disown(handle);
@@ -2124,6 +2180,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			this.action.end();
 			this.action=null;
 		}
+		return true;
 	};//Tested
 	
 	//-----------------------------------------------------------------------

@@ -92,80 +92,97 @@ async function fetchLinksAndArticles(customQuery, maxResults = 5) {
 }
 
 async function getSolution(query) {
-const url = "http://ec2-43-199-143-95.ap-east-1.compute.amazonaws.com:222/qa/retrieve";
-let solution = "";
+	const url = "http://ec2-43-199-143-95.ap-east-1.compute.amazonaws.com:222/qa/retrieve";
+	let solution = "";
 
-try {
-const response = await fetch(url, {
-method: 'POST',
-headers: {
-'Content-Type': 'application/json'
-},
-body: JSON.stringify({
-error_desc: query,
-tags: []
-})
-});
+	try {
+		const response = await fetch(url, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			error_desc: query,
+			tags: []
+		})
+	});
 
-let result;
+	let result;
 
-if (response.status === 404) {
-result = [];
-} else if (response.status === 200) {
-result = await response.json();
-} else {
-result = [];
-console.log(`Error: ${response.status} - ${await response.text()}`);
-}
+	if (response.status === 404) {
+		result = [];
+	} else if (response.status === 200) {
+		result = await response.json();
+	} else {
+		result = [];
+		console.log(`Error: ${response.status} - ${await response.text()}`);
+	}
 
-// Use result here
-if(result !== [] && result.data) {
-for (let item in result.data) {
-let data = result.data[item];
-let metadata = data.metadata;
-let content = data.page_content;
-if (metadata.dense_score > 0.6) {
-solution += '==============================================\n';
-solution += 'Issue: ' + content + '\n';
-solution += 'Solution: ' + metadata.solution + '\n';
-}
-}
-}
-return solution;
+	// Use result here
+	if(result !== [] && result.data) {
+		for (let item in result.data) {
+			let data = result.data[item];
+			let metadata = data.metadata;
+			let content = data.page_content;
+			if (metadata.dense_score > 0.6) {
+				solution += '==============================================\n';
+				solution += 'Issue: ' + content + '\n';
+				solution += 'Solution: ' + metadata.solution + '\n';
+			}
+		}
+	}
+		return solution;
 
-} catch (error) {
-console.error('Request failed:', error);
-return "";
-}
+	} catch (error) {
+		console.error('Request failed:', error);
+		return "";
+	}
 }
 
 async function sendRequest(error_desc, error_solution) {
-const url = "http://ec2-43-199-143-95.ap-east-1.compute.amazonaws.com:222/qa/index";
+	const url = "http://ec2-43-199-143-95.ap-east-1.compute.amazonaws.com:222/qa/index";
 
-try {
-const response = await axios.post(url, {
-error_desc: error_desc,
-error_solution: error_solution
-});
+	try {
+		const response = await axios.post(url, {
+			error_desc: error_desc,
+			error_solution: error_solution
+	});
 
-if (response.status === 201) {
-return response.data;
-} else {
-return {
-error: "Failed to fetch data",
-status_code: response.status,
-response: response.data
-};
+	if (response.status === 201) {
+		return response.data;
+	} else {
+		return {
+			error: "Failed to fetch data",
+			status_code: response.status,
+			response: response.data
+			};
+		}
+	} catch (error) {
+		console.error('Request failed:', error);
+		return {
+			error: "Request failed",
+			message: error.message
+		};
+	}
 }
-} catch (error) {
-console.error('Request failed:', error);
-return {
-error: "Request failed",
-message: error.message
-};
+
+function countTokens(text) {
+let chineseChars = 0;
+
+// Count Chinese characters (Unicode range: \u4e00 to \u9fff)
+for (let i = 0; i < text.length; i++) {
+const char = text[i];
+if (char >= '\u4e00' && char <= '\u9fff') {
+chineseChars++;
 }
 }
 
+// Calculate the number of other characters
+const otherChars = text.length - chineseChars;
+
+// Return the token count based on the given formula
+return Math.floor(chineseChars / 1.5 + otherChars / 4);
+}
 
 /*}#1IUIO756A0StartDoc*/
 //----------------------------------------------------------------------------
@@ -174,9 +191,10 @@ let ToolRunCommand=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,Run,CheckSuccess,Check,Fix,Action,RunCommand,CheckFinish,Fail,GetPath,BackPath,Success,Issues,RunSearch,SearchIssue,CheckNetwork,Network,Retry,ListFiles,Path,ReadFile,FixSuccess,Modify,WriteFile,UpdateSolution,CheckTimes,Failed;
+	let FixArgs,Run,CheckSuccess,Check,Fix,Action,RunCommand,CheckFinish,Fail,GetPath,BackPath,Success,Issues,RunSearch,SearchIssue,CheckNetwork,Network,Retry,ListFiles,Path,ReadFile,FixSuccess,Modify,WriteFile,UpdateSolution;
 	/*#{1IUIO756A0LocalVals*/
 	let current_output, output, current_path, issue, search_result, bug, current_files, latest_path, all_files, cnt=0;
+	let history_summary="";
 	/*}#1IUIO756A0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -303,7 +321,7 @@ let ToolRunCommand=async function(session){
 		if(input.success){
 			return {seg:Success,result:(input),preSeg:"1IUIPB1E90",outlet:"1IUIPC0300"};
 		}
-		return {seg:CheckNetwork,result:(result),preSeg:"1IUIPB1E90",outlet:"1IUIPC0301"};
+		return {seg:GetPath,result:(result),preSeg:"1IUIPB1E90",outlet:"1IUIPC0301"};
 	};
 	Check.jaxId="1IUIPB1E90"
 	Check.url="Check@"+agentURL
@@ -330,23 +348,106 @@ let ToolRunCommand=async function(session){
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:`你是一个命令行问题修复专家，具备丰富的Linux/Unix系统管理经验和故障排查能力。你正在尝试运行一个命令但遇到了错误，具体是 ${current_output}。输入是当前执行的终端命令及其输出或者是通过上网搜索得出的结果，你需要根据错误信息分析问题并尝试修复。
+			{role:"system",content:`你是一个命令行问题修复专家,具备丰富的Linux/Unix系统管理经验和故障排查能力。
+
+## 当前任务状态
+原始目标：${command}
+历史操作总结：${history_summary}
 项目内包含的所有文件：${all_files}
-你根据相关报错内容查找到相关的问题和解决方案作为参考
-如下：${search_result}
-你需要通过自身思考，分析错误原因并推理，尝试给出新的命令或解决方案，以json格式输出
-你可以通过以下几种方式进行修复：
-1. 如果需要执行终端命令，注意每次只能执行一个命令，输出格式为 {"reason": "<推理过程>", "action": "command", "content": "<命令>"}。如果运行一个可能不会自动退出或者停止的命令时，请设置timeout为2分钟。
-2. 如果你无法通过思考解决问题，可以执行其他命令来获取更多的上下文信息，如阅读相关的文件或日志。
-3. 如果需要查看特定文件内容来帮助诊断问题，可以读取文件，输出格式为 {"reason": "<推理过程>", "action": "read", "content": "<文件绝对路径>"}。
-4. 如果需要创建并写入新文件，可以写入文件，输出格式为 {"reason": "<推理过程>", "action": "write", "filePath": "<文件绝对路径>", "content": "<写入内容>"}。
-5. 如果需要修改配置文件或其他文件来解决问题，可以修改文件，输出格式为 {"reason": "<推理过程>", "action": "modify", "content": "<文件绝对路径>", "guide": "<详细的修改方案>"}。
-6. 如果多次尝试失败且仍无法解决问题，你可以通过上网搜索寻找解决方案，搜索内容要符合搜索的风格，输出格式为 {"reason": "<推理过程>", "action": "search", "content": "<搜索内容>"}，但是请注意，只有在尝试自身思考多次无果后才执行搜索。
-请注意，每次尝试之后，你必须基于新的信息继续思考或修复，确保你在执行搜索之前已经尽力排查和解决问题。每次只能执行一次命令或一次搜索。
-7. 如果修复成功，输出所有有效解决问题的终端命令 {"reason": "<推理过程>", "action": "finish", "content": "success", "commands":["<命令1>","命令2",...], "summary": "<执行的命令以及错误，解决方案的描述和总结，需要包含每一条执行的命令以及执行它的原因>"}。
-8. 如果多次尝试之后仍然失败，无法完成初始命令的目标，请输出 {"reason": "<推理过程>", "action": "finish", "content": "fail"}，注意一定要经过多次尝试后均失败才算失败。`},
+搜索到的参考方案：${search_result}
+
+## 你的任务
+基于历史操作总结，分析当前状态并决定下一步行动。你需要通过自身思考和推理，给出新的命令或解决方案，以json格式输出。
+
+## 可用的操作方式
+1. **执行终端命令**：每次只能执行一个命令
+   输出格式：{"summary": "<更新后的总结：继承history_summary并补充上一步的操作结果>", "reason": "<基于summary的推理过程，说明为什么要执行这个命令>", "action": "command", "content": "<命令>"}
+   注意：如果命令可能不会自动退出，请设置timeout为2分钟
+
+2. **读取文件**：查看特定文件内容来帮助诊断问题
+   输出格式：{"summary": "<更新后的总结：继承并补充上一步结果>", "reason": "<推理过程>", "action": "read", "content": "<文件绝对路径>"}
+
+3. **写入新文件**：创建并写入新文件
+   输出格式：{"summary": "<更新后的总结：继承并补充上一步结果>", "reason": "<推理过程>", "action": "write", "filePath": "<文件绝对路径>", "content": "<写入内容>"}
+
+4. **修改文件**：修改配置文件或其他文件
+   输出格式：{"summary": "<更新后的总结：继承并补充上一步结果>", "reason": "<推理过程>", "action": "modify", "content": "<文件绝对路径>", "guide": "<详细的修改方案>"}
+
+5. **网络搜索**：仅在多次尝试失败后使用
+   输出格式：{"summary": "<更新后的总结：继承并补充上一步结果>", "reason": "<推理过程>", "action": "search", "content": "<搜索内容>"}
+   警告：只有在尝试自身思考多次无果后才执行搜索
+
+6. **完成任务**：修复成功或确认失败
+   - 成功：{"summary": "<完整总结：问题描述+所有步骤+最终方案>", "reason": "<推理过程>", "action": "finish", "content": "success", "commands": ["<命令1>", "<命令2>"]}
+   - 失败：{"summary": "<完整总结：问题描述+所有尝试+失败原因>", "reason": "<推理过程>", "action": "finish", "content": "fail"}
+
+## 关键要求：summary字段的生成规则
+- **summary只包含已完成的历史操作，不包含本次即将执行的操作**
+- **每次输出的summary必须是累积式的完整总结**
+- **必须足够详细，包含所有关键信息，避免信息丢失**
+- **生成逻辑**：
+  1. 从history_summary继承所有历史信息（不要遗漏任何细节）
+  2. 补充上一步操作的执行结果（成功/失败/获得了什么信息）
+  3. 对于文件读取，必须记录关键内容摘要
+  4. 对于命令执行，必须记录完整的输出和错误信息
+  5. 更新当前状态
+  6. 不要在summary中描述本次即将执行的操作
+
+- **summary必须包含以下结构化内容**：
+
+### 1. 原始需求与意图 (Primary Request and Intent)
+- 详细记录用户的原始命令和期望达成的目标
+- 包含所有明确的需求和隐含的意图
+
+### 2. 关键技术概念 (Key Technical Concepts)
+- 列出所有涉及的技术概念、框架、工具
+- 例如：Node.js、npm、端口占用、文件权限等
+
+### 3. 文件与代码操作 (Files and Code Sections)
+- **详细记录**所有读取、修改、创建的文件及其路径
+- 对于文件读取操作，**必须记录读取到的关键内容**（不能只说"已读取"）
+  - 例如：读取了package.json，内容显示start脚本为"node ./bin/www"，依赖包括express@4.16.1, mongodb@3.6.0等
+  - 例如：读取了README.md，发现启动说明为"先运行npm run build，再执行npm start"
+- 对于代码修改，包含关键代码片段的前后对比
+- 说明为什么操作这个文件，达成了什么目的
+- 特别关注最近的操作，但保留所有历史文件操作记录
+
+### 4. 问题解决过程 (Problem Solving)
+- 记录已解决的问题及解决方案
+- 当前正在排查的问题
+- 尝试过但失败的方法
+
+### 5. 执行步骤历史 (Execution History)
+- **详细记录**按时间顺序的所有执行命令/操作
+- 每步必须包含：
+  - 执行的完整命令或操作
+  - 执行结果（成功/失败/部分成功）
+  - **关键输出信息或错误信息**（不能只说"失败"或"成功"）
+- 格式示例：
+  - 第1步：执行\`npm install\`，报错"EACCES: permission denied"
+  - 第2步：执行\`sudo npm install\`，成功安装了25个包，耗时30秒
+  - 第3步：执行\`npm start\`，报错"Error: Cannot find module './bin/www'"
+  - 第4步：读取package.json，发现start脚本指向缺失的./bin/www文件
+  - 第5步：搜索项目目录，确认不存在bin目录，也无app.js或index.js
+
+### 6. 当前状态 (Current Status)
+- 问题是否已解决/部分解决/仍在排查
+- 下一步计划方向
+
+## 其他要求
+- 每次只执行一个操作
+- **必须基于history_summary避免重复无效操作**
+  - 在reason中明确说明为什么选择这个操作，而不是重复之前的操作
+  - 如果某个文件已经读取过，不要再次读取（除非有新的理由）
+  - 如果某个命令已经失败过，不要用相同参数再次执行
+  - 每次操作都应该是基于已有信息的新尝试
+- 在声明失败前必须经过多次不同方向的尝试
+- **推理过程中必须参考执行历史**，明确说明：
+  - 已经尝试过哪些方法
+  - 为什么那些方法失败了
+  - 本次操作与之前的区别是什么
+  - 为什么本次操作有可能成功 `},
 		];
-		messages.push(...chatMem);
 		/*#{1IUIPQ6810PrePrompt*/
 		/*}#1IUIPQ6810PrePrompt*/
 		prompt=`当前路径是: ${latest_path}，
@@ -363,23 +464,16 @@ let ToolRunCommand=async function(session){
 		/*#{1IUIPQ6810PreCall*/
 		/*}#1IUIPQ6810PreCall*/
 		result=(result===null)?(await session.callSegLLM("Fix@"+agentURL,opts,messages,true)):result;
-		/*#{1IUIPQ6810PostLLM*/
-		/*}#1IUIPQ6810PostLLM*/
-		chatMem.push({role:"user",content:prompt});
-		chatMem.push({role:"assistant",content:result});
-		if(chatMem.length>50){
-			let removedMsgs=chatMem.splice(0,2);
-			/*#{1IUIPQ6810PostClear*/
-			/*}#1IUIPQ6810PostClear*/
-		}
 		result=trimJSON(result);
 		/*#{1IUIPQ6810PostCall*/
+		history_summary=result.summary;
 		/*}#1IUIPQ6810PostCall*/
+		/*#{1IUIPQ6810PreResult*/
+		/*}#1IUIPQ6810PreResult*/
 		return {seg:Action,result:(result),preSeg:"1IUIPQ6810",outlet:"1IUIPU6VC1"};
 	};
 	Fix.jaxId="1IUIPQ6810"
 	Fix.url="Fix@"+agentURL
-	Fix.messages=[];
 	
 	segs["Action"]=Action=async function(input){//:1IUIQ6VP90
 		let result=input;
@@ -435,8 +529,8 @@ let ToolRunCommand=async function(session){
 	
 	segs["Fail"]=Fail=async function(input){//:1IUIQQDFG0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="无法修复问题";
 		/*#{1IUIQQDFG0PreCodes*/
@@ -479,7 +573,7 @@ let ToolRunCommand=async function(session){
 		/*#{1IVIPCBLH0PostCodes*/
 		result=input;
 		/*}#1IVIPCBLH0PostCodes*/
-		return {seg:UpdateSolution,result:(result),preSeg:"1IVIPCBLH0",outlet:"1IVIPCU1N0"};
+		return {seg:FixSuccess,result:(result),preSeg:"1IVIPCBLH0",outlet:"1IVIPCU1N0"};
 	};
 	BackPath.jaxId="1IVIPCBLH0"
 	BackPath.url="BackPath@"+agentURL
@@ -542,6 +636,8 @@ let ToolRunCommand=async function(session){
 		/*#{1J08OTLLI0PostCall*/
 		bug=result.search_content;
 		/*}#1J08OTLLI0PostCall*/
+		/*#{1J08OTLLI0PreResult*/
+		/*}#1J08OTLLI0PreResult*/
 		return {seg:SearchIssue,result:(result),preSeg:"1J08OTLLI0",outlet:"1J08P3QKK0"};
 	};
 	Issues.jaxId="1J08OTLLI0"
@@ -587,7 +683,7 @@ let ToolRunCommand=async function(session){
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:"你需要根据输入的终端命令输出，判断是否是由于网络问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}"},
+			{role:"system",content:"你需要根据输入的终端命令输出，判断是否是由于网络不稳定问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络不稳定问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误、端口未打开等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络不稳定问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}"},
 		];
 		prompt=current_output;
 		if(prompt!==null){
@@ -606,9 +702,9 @@ let ToolRunCommand=async function(session){
 	segs["Network"]=Network=async function(input){//:1J0R447KF0
 		let result=input;
 		if(input.is_network_issue){
-			return {seg:Retry,result:(input),preSeg:"1J0R447KF0",outlet:"1J0R45CHR0"};
+			return {result:input};
 		}
-		return {seg:GetPath,result:(result),preSeg:"1J0R447KF0",outlet:"1J0R45CHR1"};
+		return {result:result};
 	};
 	Network.jaxId="1J0R447KF0"
 	Network.url="Network@"+agentURL
@@ -673,7 +769,7 @@ let ToolRunCommand=async function(session){
 		/*#{1J0T8UJ4S0PostCodes*/
 		latest_path=extract(result);
 		/*}#1J0T8UJ4S0PostCodes*/
-		return {seg:CheckTimes,result:(result),preSeg:"1J0T8UJ4S0",outlet:"1J0T8V4S40"};
+		return {seg:Fix,result:(result),preSeg:"1J0T8UJ4S0",outlet:"1J0T8V4S40"};
 	};
 	Path.jaxId="1J0T8UJ4S0"
 	Path.url="Path@"+agentURL
@@ -703,8 +799,8 @@ let ToolRunCommand=async function(session){
 	
 	segs["FixSuccess"]=FixSuccess=async function(input){//:1J1HQ5UUF0
 		let result=input;
-		let channel="Process";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Process";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content="Fixed successfully.";
 		session.addChatText(role,content,opts);
@@ -757,37 +853,10 @@ let ToolRunCommand=async function(session){
 		}
 		
 		/*}#1J3IG34AB0Code*/
-		return {seg:FixSuccess,result:(result),preSeg:"1J3IG34AB0",outlet:"1J3IG3KCB0"};
+		return {result:result};
 	};
 	UpdateSolution.jaxId="1J3IG34AB0"
 	UpdateSolution.url="UpdateSolution@"+agentURL
-	
-	segs["CheckTimes"]=CheckTimes=async function(input){//:1J3IGL3440
-		let result=input;
-		if(cnt<=10){
-			return {seg:Fix,result:(input),preSeg:"1J3IGL3440",outlet:"1J3IGOELM0"};
-		}
-		return {seg:Failed,result:(result),preSeg:"1J3IGL3440",outlet:"1J3IGLH770"};
-	};
-	CheckTimes.jaxId="1J3IGL3440"
-	CheckTimes.url="CheckTimes@"+agentURL
-	
-	segs["Failed"]=Failed=async function(input){//:1J3IGV6IP0
-		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
-		let role="assistant";
-		let content=无法修复问题;
-		/*#{1J3IGV6IP0PreCodes*/
-		/*}#1J3IGV6IP0PreCodes*/
-		session.addChatText(role,content,opts);
-		/*#{1J3IGV6IP0PostCodes*/
-		result="break";
-		/*}#1J3IGV6IP0PostCodes*/
-		return {result:result};
-	};
-	Failed.jaxId="1J3IGV6IP0"
-	Failed.url="Failed@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1046,7 +1115,7 @@ export{ToolRunCommand,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
+//						"platform": "OpenAI",
 //						"mode": "gpt-4.1",
 //						"system": "你是一个终端命令的分析助手。当接收到终端运行的命令和输出时，你需要判断命令是否执行成功。根据命令的输出判断其成功或失败，并以JSON格式输出结果。输出的JSON格式为：{'success': true/false}，其中 'true' 表示命令执行成功，'false' 表示命令执行失败。如果输入是空的，认为执行成功。你只需要根据输出的信息判断命令是否成功，无需进一步的解释。",
 //						"temperature": "0",
@@ -1067,6 +1136,7 @@ export{ToolRunCommand,ChatAPI};
 //							},
 //							"linkedSeg": "1IUIPB1E90"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -1080,9 +1150,16 @@ export{ToolRunCommand,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1117,7 +1194,7 @@ export{ToolRunCommand,ChatAPI};
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1J0R3OUU30"
+//							"linkedSeg": "1IVIP6FF50"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -1160,8 +1237,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "Fix",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2755",
-//						"y": "180",
+//						"x": "2640",
+//						"y": "195",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1180,7 +1257,7 @@ export{ToolRunCommand,ChatAPI};
 //						},
 //						"platform": "OpenAI",
 //						"mode": "gpt-4.1",
-//						"system": "#`你是一个命令行问题修复专家，具备丰富的Linux/Unix系统管理经验和故障排查能力。你正在尝试运行一个命令但遇到了错误，具体是 ${current_output}。输入是当前执行的终端命令及其输出或者是通过上网搜索得出的结果，你需要根据错误信息分析问题并尝试修复。\n项目内包含的所有文件：${all_files}\n你根据相关报错内容查找到相关的问题和解决方案作为参考\n如下：${search_result}\n你需要通过自身思考，分析错误原因并推理，尝试给出新的命令或解决方案，以json格式输出\n你可以通过以下几种方式进行修复：\n1. 如果需要执行终端命令，注意每次只能执行一个命令，输出格式为 {\"reason\": \"<推理过程>\", \"action\": \"command\", \"content\": \"<命令>\"}。如果运行一个可能不会自动退出或者停止的命令时，请设置timeout为2分钟。\n2. 如果你无法通过思考解决问题，可以执行其他命令来获取更多的上下文信息，如阅读相关的文件或日志。\n3. 如果需要查看特定文件内容来帮助诊断问题，可以读取文件，输出格式为 {\"reason\": \"<推理过程>\", \"action\": \"read\", \"content\": \"<文件绝对路径>\"}。\n4. 如果需要创建并写入新文件，可以写入文件，输出格式为 {\"reason\": \"<推理过程>\", \"action\": \"write\", \"filePath\": \"<文件绝对路径>\", \"content\": \"<写入内容>\"}。\n5. 如果需要修改配置文件或其他文件来解决问题，可以修改文件，输出格式为 {\"reason\": \"<推理过程>\", \"action\": \"modify\", \"content\": \"<文件绝对路径>\", \"guide\": \"<详细的修改方案>\"}。\n6. 如果多次尝试失败且仍无法解决问题，你可以通过上网搜索寻找解决方案，搜索内容要符合搜索的风格，输出格式为 {\"reason\": \"<推理过程>\", \"action\": \"search\", \"content\": \"<搜索内容>\"}，但是请注意，只有在尝试自身思考多次无果后才执行搜索。\n请注意，每次尝试之后，你必须基于新的信息继续思考或修复，确保你在执行搜索之前已经尽力排查和解决问题。每次只能执行一次命令或一次搜索。\n7. 如果修复成功，输出所有有效解决问题的终端命令 {\"reason\": \"<推理过程>\", \"action\": \"finish\", \"content\": \"success\", \"commands\":[\"<命令1>\",\"命令2\",...], \"summary\": \"<执行的命令以及错误，解决方案的描述和总结，需要包含每一条执行的命令以及执行它的原因>\"}。\n8. 如果多次尝试之后仍然失败，无法完成初始命令的目标，请输出 {\"reason\": \"<推理过程>\", \"action\": \"finish\", \"content\": \"fail\"}，注意一定要经过多次尝试后均失败才算失败。`",
+//						"system": "#`你是一个命令行问题修复专家,具备丰富的Linux/Unix系统管理经验和故障排查能力。\n\n## 当前任务状态\n原始目标：${command}\n历史操作总结：${history_summary}\n项目内包含的所有文件：${all_files}\n搜索到的参考方案：${search_result}\n\n## 你的任务\n基于历史操作总结，分析当前状态并决定下一步行动。你需要通过自身思考和推理，给出新的命令或解决方案，以json格式输出。\n\n## 可用的操作方式\n1. **执行终端命令**：每次只能执行一个命令\n   输出格式：{\"summary\": \"<更新后的总结：继承history_summary并补充上一步的操作结果>\", \"reason\": \"<基于summary的推理过程，说明为什么要执行这个命令>\", \"action\": \"command\", \"content\": \"<命令>\"}\n   注意：如果命令可能不会自动退出，请设置timeout为2分钟\n\n2. **读取文件**：查看特定文件内容来帮助诊断问题\n   输出格式：{\"summary\": \"<更新后的总结：继承并补充上一步结果>\", \"reason\": \"<推理过程>\", \"action\": \"read\", \"content\": \"<文件绝对路径>\"}\n\n3. **写入新文件**：创建并写入新文件\n   输出格式：{\"summary\": \"<更新后的总结：继承并补充上一步结果>\", \"reason\": \"<推理过程>\", \"action\": \"write\", \"filePath\": \"<文件绝对路径>\", \"content\": \"<写入内容>\"}\n\n4. **修改文件**：修改配置文件或其他文件\n   输出格式：{\"summary\": \"<更新后的总结：继承并补充上一步结果>\", \"reason\": \"<推理过程>\", \"action\": \"modify\", \"content\": \"<文件绝对路径>\", \"guide\": \"<详细的修改方案>\"}\n\n5. **网络搜索**：仅在多次尝试失败后使用\n   输出格式：{\"summary\": \"<更新后的总结：继承并补充上一步结果>\", \"reason\": \"<推理过程>\", \"action\": \"search\", \"content\": \"<搜索内容>\"}\n   警告：只有在尝试自身思考多次无果后才执行搜索\n\n6. **完成任务**：修复成功或确认失败\n   - 成功：{\"summary\": \"<完整总结：问题描述+所有步骤+最终方案>\", \"reason\": \"<推理过程>\", \"action\": \"finish\", \"content\": \"success\", \"commands\": [\"<命令1>\", \"<命令2>\"]}\n   - 失败：{\"summary\": \"<完整总结：问题描述+所有尝试+失败原因>\", \"reason\": \"<推理过程>\", \"action\": \"finish\", \"content\": \"fail\"}\n\n## 关键要求：summary字段的生成规则\n- **summary只包含已完成的历史操作，不包含本次即将执行的操作**\n- **每次输出的summary必须是累积式的完整总结**\n- **必须足够详细，包含所有关键信息，避免信息丢失**\n- **生成逻辑**：\n  1. 从history_summary继承所有历史信息（不要遗漏任何细节）\n  2. 补充上一步操作的执行结果（成功/失败/获得了什么信息）\n  3. 对于文件读取，必须记录关键内容摘要\n  4. 对于命令执行，必须记录完整的输出和错误信息\n  5. 更新当前状态\n  6. 不要在summary中描述本次即将执行的操作\n\n- **summary必须包含以下结构化内容**：\n\n### 1. 原始需求与意图 (Primary Request and Intent)\n- 详细记录用户的原始命令和期望达成的目标\n- 包含所有明确的需求和隐含的意图\n\n### 2. 关键技术概念 (Key Technical Concepts)\n- 列出所有涉及的技术概念、框架、工具\n- 例如：Node.js、npm、端口占用、文件权限等\n\n### 3. 文件与代码操作 (Files and Code Sections)\n- **详细记录**所有读取、修改、创建的文件及其路径\n- 对于文件读取操作，**必须记录读取到的关键内容**（不能只说\"已读取\"）\n  - 例如：读取了package.json，内容显示start脚本为\"node ./bin/www\"，依赖包括express@4.16.1, mongodb@3.6.0等\n  - 例如：读取了README.md，发现启动说明为\"先运行npm run build，再执行npm start\"\n- 对于代码修改，包含关键代码片段的前后对比\n- 说明为什么操作这个文件，达成了什么目的\n- 特别关注最近的操作，但保留所有历史文件操作记录\n\n### 4. 问题解决过程 (Problem Solving)\n- 记录已解决的问题及解决方案\n- 当前正在排查的问题\n- 尝试过但失败的方法\n\n### 5. 执行步骤历史 (Execution History)\n- **详细记录**按时间顺序的所有执行命令/操作\n- 每步必须包含：\n  - 执行的完整命令或操作\n  - 执行结果（成功/失败/部分成功）\n  - **关键输出信息或错误信息**（不能只说\"失败\"或\"成功\"）\n- 格式示例：\n  - 第1步：执行\\`npm install\\`，报错\"EACCES: permission denied\"\n  - 第2步：执行\\`sudo npm install\\`，成功安装了25个包，耗时30秒\n  - 第3步：执行\\`npm start\\`，报错\"Error: Cannot find module './bin/www'\"\n  - 第4步：读取package.json，发现start脚本指向缺失的./bin/www文件\n  - 第5步：搜索项目目录，确认不存在bin目录，也无app.js或index.js\n\n### 6. 当前状态 (Current Status)\n- 问题是否已解决/部分解决/仍在排查\n- 下一步计划方向\n\n## 其他要求\n- 每次只执行一个操作\n- **必须基于history_summary避免重复无效操作**\n  - 在reason中明确说明为什么选择这个操作，而不是重复之前的操作\n  - 如果某个文件已经读取过，不要再次读取（除非有新的理由）\n  - 如果某个命令已经失败过，不要用相同参数再次执行\n  - 每次操作都应该是基于已有信息的新尝试\n- 在声明失败前必须经过多次不同方向的尝试\n- **推理过程中必须参考执行历史**，明确说明：\n  - 已经尝试过哪些方法\n  - 为什么那些方法失败了\n  - 本次操作与之前的区别是什么\n  - 为什么本次操作有可能成功 `",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -1199,22 +1276,30 @@ export{ToolRunCommand,ChatAPI};
 //							},
 //							"linkedSeg": "1IUIQ6VP90"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
 //							"attrs": []
 //						},
 //						"shareChatName": "",
-//						"keepChat": "50 messages",
+//						"keepChat": "No",
 //						"clearChat": "2",
 //						"apiFiles": {
 //							"attrs": []
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1224,8 +1309,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "Action",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2920",
-//						"y": "180",
+//						"x": "2910",
+//						"y": "195",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1416,8 +1501,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "RunCommand",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
-//						"y": "70",
+//						"x": "3120",
+//						"y": "85",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1457,8 +1542,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "CheckFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
-//						"y": "260",
+//						"x": "3120",
+//						"y": "275",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1525,8 +1610,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "Fail",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3365",
-//						"y": "300",
+//						"x": "3355",
+//						"y": "315",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1563,8 +1648,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3295",
-//						"y": "-10",
+//						"x": "3285",
+//						"y": "5",
 //						"outlet": {
 //							"jaxId": "1IUIQTDO70",
 //							"attrs": {
@@ -1585,8 +1670,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2860",
-//						"y": "-10",
+//						"x": "2850",
+//						"y": "5",
 //						"outlet": {
 //							"jaxId": "1IUIQTDO71",
 //							"attrs": {
@@ -1607,8 +1692,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3420",
-//						"y": "-10",
+//						"x": "3410",
+//						"y": "5",
 //						"outlet": {
 //							"jaxId": "1IUIR7LC40",
 //							"attrs": {
@@ -1629,8 +1714,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3520",
-//						"y": "165",
+//						"x": "3510",
+//						"y": "180",
 //						"outlet": {
 //							"jaxId": "1IUIR7LC41",
 //							"attrs": {
@@ -1693,8 +1778,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "BackPath",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3365",
-//						"y": "220",
+//						"x": "3355",
+//						"y": "235",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1721,7 +1806,7 @@ export{ToolRunCommand,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J3IG34AB0"
+//							"linkedSeg": "1J1HQ5UUF0"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -1812,6 +1897,7 @@ export{ToolRunCommand,ChatAPI};
 //							},
 //							"linkedSeg": "1J0BMLV7G0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -1826,6 +1912,12 @@ export{ToolRunCommand,ChatAPI};
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
 //						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						},
 //						"process": {
 //							"type": "object",
 //							"def": "ProcessMsg",
@@ -1833,12 +1925,13 @@ export{ToolRunCommand,ChatAPI};
 //							"attrs": {
 //								"text": "An issue occurs, start automatic repair.",
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1848,8 +1941,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "RunSearch",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
-//						"y": "165",
+//						"x": "3120",
+//						"y": "180",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1929,7 +2022,7 @@ export{ToolRunCommand,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1010",
-//						"y": "180",
+//						"y": "235",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1948,7 +2041,7 @@ export{ToolRunCommand,ChatAPI};
 //						},
 //						"platform": "\"OpenAI\"",
 //						"mode": "gpt-4.1-mini",
-//						"system": "你需要根据输入的终端命令输出，判断是否是由于网络问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}",
+//						"system": "你需要根据输入的终端命令输出，判断是否是由于网络不稳定问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络不稳定问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误、端口未打开等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络不稳定问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -1967,6 +2060,7 @@ export{ToolRunCommand,ChatAPI};
 //							},
 //							"linkedSeg": "1J0R447KF0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -1980,9 +2074,16 @@ export{ToolRunCommand,ChatAPI};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"compactContext": {
+//							"valText": "200000"
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1992,8 +2093,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "Network",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1245",
-//						"y": "180",
+//						"x": "1255",
+//						"y": "235",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2016,8 +2117,7 @@ export{ToolRunCommand,ChatAPI};
 //								"id": "Default",
 //								"desc": "输出节点。",
 //								"output": ""
-//							},
-//							"linkedSeg": "1IVIP6FF50"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -2043,8 +2143,7 @@ export{ToolRunCommand,ChatAPI};
 //											}
 //										},
 //										"condition": "#input.is_network_issue"
-//									},
-//									"linkedSeg": "1J0R4BBI40"
+//									}
 //								}
 //							]
 //						}
@@ -2228,7 +2327,7 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "2380",
-//						"y": "-10",
+//						"y": "5",
 //						"outlet": {
 //							"jaxId": "1J0T8MNRJ2",
 //							"attrs": {
@@ -2278,7 +2377,7 @@ export{ToolRunCommand,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J3IGL3440"
+//							"linkedSeg": "1IUIPQ6810"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -2291,8 +2390,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "ReadFile",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
-//						"y": "385",
+//						"x": "3120",
+//						"y": "400",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2331,8 +2430,8 @@ export{ToolRunCommand,ChatAPI};
 //							"attrs": {
 //								"text": "#`Reading ${input.content}.`",
 //								"role": "Assistant",
-//								"roleText": "",
-//								"codes": "false"
+//								"codes": "false",
+//								"roleText": ""
 //							}
 //						}
 //					},
@@ -2345,8 +2444,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3585",
-//						"y": "385",
+//						"x": "3575",
+//						"y": "400",
 //						"outlet": {
 //							"jaxId": "1J0TDEVAR0",
 //							"attrs": {
@@ -2367,8 +2466,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3585",
-//						"y": "465",
+//						"x": "3575",
+//						"y": "480",
 //						"outlet": {
 //							"jaxId": "1J0TDEVAR1",
 //							"attrs": {
@@ -2390,8 +2489,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "FixSuccess",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3850",
-//						"y": "220",
+//						"x": "3840",
+//						"y": "235",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2429,8 +2528,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "Modify",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3135",
-//						"y": "465",
+//						"x": "3125",
+//						"y": "480",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2473,8 +2572,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "WriteFile",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
-//						"y": "555",
+//						"x": "3120",
+//						"y": "570",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2517,8 +2616,8 @@ export{ToolRunCommand,ChatAPI};
 //						"id": "UpdateSolution",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3580",
-//						"y": "220",
+//						"x": "3595",
+//						"y": "290",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2539,8 +2638,7 @@ export{ToolRunCommand,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1J1HQ5UUF0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -2556,8 +2654,8 @@ export{ToolRunCommand,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3585",
-//						"y": "555",
+//						"x": "3575",
+//						"y": "570",
 //						"outlet": {
 //							"jaxId": "1J3IGEKFI0",
 //							"attrs": {
@@ -2570,113 +2668,6 @@ export{ToolRunCommand,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1J3IGL3440",
-//					"attrs": {
-//						"id": "CheckTimes",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2530",
-//						"y": "195",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J3IGM2QJ0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J3IGM2QJ1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1J3IGLH770",
-//							"attrs": {
-//								"id": "Default",
-//								"desc": "输出节点。",
-//								"output": ""
-//							},
-//							"linkedSeg": "1J3IGV6IP0"
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1J3IGOELM0",
-//									"attrs": {
-//										"id": "Result",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1J3IGPF360",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1J3IGPF361",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#cnt<=10"
-//									},
-//									"linkedSeg": "1IUIPQ6810"
-//								}
-//							]
-//						}
-//					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1J3IGV6IP0",
-//					"attrs": {
-//						"id": "Failed",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2755",
-//						"y": "380",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J3IGVTEO0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J3IGVTEO1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#无法修复问题",
-//						"outlet": {
-//							"jaxId": "1J3IGVTEK0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "hudtxt.svg"
 //				}
 //			]
 //		},
