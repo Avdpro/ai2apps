@@ -19,15 +19,15 @@ function getErrorLocation(e) {
 async function isPortInUse(port, host = '127.0.0.1') {
 	return new Promise((resolve) => {
 		const server = net.createServer();
-		
+
 		server.once('error', (err) => {
 			resolve(err.code === 'EADDRINUSE');
 		});
-		
+
 		server.once('listening', () => {
 			server.close(() => resolve(false));
 		});
-		
+
 		server.listen(port, host);
 	});
 }
@@ -120,18 +120,18 @@ let AgentNode,agentNode;
 		this.nextCallId = 0;
 		this.callHandlers = new Map();
 		this.workload = 0;
-		
+
 		this.debugStepRun = false;
 		this.debugClients=[];
 		this.debugConnected = false;
 		this.debugServer = null;
 		this.slowMo=false;
 		this.debugPort=-1;
-		
+
 		this.termMap=new Map();
 	}
 	agentNode=AgentNode.prototype={};
-	
+
 	//-----------------------------------------------------------------------
 	AgentNode.setupPath=async function(){
 		hubPath=process.env.AGENT_HUB_AGENTDIR||pathLib.join(currentPath,"../agents");
@@ -140,7 +140,7 @@ let AgentNode,agentNode;
 		}
 		hubConfig=await readJSON(pathLib.join(currentPath, "../agents/agenthub.json"));
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.start = async function () {
 		const jsonPath = this.configPath;
@@ -156,24 +156,24 @@ let AgentNode,agentNode;
 				description: "Agent node"
 			};
 		}
-		
+
 		this.name = this.nodeJSON.name || this.name;
 		this.host = this.host || hubConfig.host;
 		this.devKey= this.nodeJSON.devKey||this.hubJSON.devKey||null;
 		this.address=this.nodeJSON.address||this.address;
-		
+
 		try {
 			await this.startDebug();
 		}catch(err){
 			console.warn(`Agent ${this.name} start debug failed: ${err}`);
 		}
-		
+
 		this.websocket = new WebSocket(this.host);
 		this.websocket.on('open', () => this.onOpen());
 		this.websocket.on('message', (message) => this.onMessage(message));
 		this.websocket.on('close', () => this.onClose());
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.onOpen = async function () {
 		const message = JSON.stringify({
@@ -184,7 +184,7 @@ let AgentNode,agentNode;
 		});
 		this.websocket.send(message);
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.onMessage = async function (message) {
 		try {
@@ -193,12 +193,12 @@ let AgentNode,agentNode;
 			console.log(`Parse message error, message: ${message}`);
 			return;
 		}
-		
+
 		const msgCode = message.msg;
 		if (msgCode !== "State") {
 			console.log(`Got websocket message: ${JSON.stringify(message)}`);
 		}
-		
+
 		if (!this.connected) {
 			if (msgCode === 'CONNECTED') {
 				await this.onConnect();
@@ -242,24 +242,27 @@ let AgentNode,agentNode;
 				case 'XTermData':
 					await this.writeXTermData(message);
 					break;
+				case 'XTermResize':
+					await this.resizeXTerm(message);
+					break;
 			}
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.onConnect = async function () {
 		if (!this.connected) {
 			this.connected = true;
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.onClose = function () {
 		this.connected = false;
 		console.log("Will close agent.");
 		return true;
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.createSession = async function (sessionId, options) {
 		if (!this.connected) return false;
@@ -267,13 +270,13 @@ let AgentNode,agentNode;
 		this.sessionMap.set(sessionId, ssn);
 		this.websocket.send(JSON.stringify({ msg: "SessionReady", session: sessionId }));
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.endSession=async function(session){
 		const sessionId=session.sessionId;
 		this.sessionMap.delete(sessionId);
 		this.websocket.send(JSON.stringify({ msg: "EndSession", session: sessionId }));
-		
+
 		//Release resources alloced by session:
 		session.closeTerminals();
 		let term=this.termMap.get(sessionId);
@@ -282,7 +285,7 @@ let AgentNode,agentNode;
 			//TODO: Code this:
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.execAgentMessage = async function (message) {
 		const sessionId = message.sessionId;
@@ -291,7 +294,7 @@ let AgentNode,agentNode;
 			this.websocket.send(JSON.stringify({ msg: "EndExecAgent", session: sessionId, error: "Error: missing agent name/path" }));
 			return;
 		}
-		
+
 		try {
 			const result = await this.execAgent(sessionId, agentPath, message.prompt || "");
 			this.websocket.send(safeJSON({ msg: "EndExecAgent", session: sessionId, result }));
@@ -301,7 +304,7 @@ let AgentNode,agentNode;
 			this.websocket.send(JSON.stringify({ msg: "EndExecAgent", session: sessionId, error: `Error: ${e}. At: ${getErrorLocation(e)}` }));
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.execAgent = async function (sessionId, path, prompt) {
 		const ssn = this.sessionMap.get(sessionId); // 使用 Map 的 get 方法
@@ -309,14 +312,14 @@ let AgentNode,agentNode;
 		const result = await ssn.execAgent(path, prompt,{fromAgent:"$client",askUpwardSeg:true});
 		return result;
 	};
-	
-	
+
+
 	//-----------------------------------------------------------------------
 	agentNode.handleMessage=async function(message){
 		const sessionId=message.session||message.sessionId;
 		const callMsg = message.message?.msg;
 		const callVO = message.message?.vo;
-		
+
 		if(sessionId){
 			let session;
 			session=this.sessionMap.get(sessionId);
@@ -346,13 +349,13 @@ let AgentNode,agentNode;
 			}
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.handleCall = async function (message) {
 		const sessionId=message.session||message.sessionId;
 		const callMsg = message.message?.msg;
 		const callVO = message.message?.vo;
-		
+
 		if(sessionId){
 			let session;
 			session=this.sessionMap.get(sessionId);
@@ -361,11 +364,11 @@ let AgentNode,agentNode;
 			}
 			return await session.handleCall(callMsg,callVO);
 		}
-		
+
 		if (callMsg === 'State') {
 			return { workload: this.workload };
 		}
-		
+
 		if (this.callHandlers.has(callMsg)) {
 			const handler = this.callHandlers.get(callMsg);
 			return handler(callVO);
@@ -373,7 +376,7 @@ let AgentNode,agentNode;
 			throw new Error(`No call handler for '${callMsg}'.`);
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.callResult = async function (message) {
 		const callId = message.callId;
@@ -397,12 +400,41 @@ let AgentNode,agentNode;
 			this.callMap.delete(callId);
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.callHub = async function (msg, vo, session) {
 		const callId = String(this.nextCallId++);
+
+		// 根据调用类型设置不同的超时时间
+		let timeout;
+		if (msg === 'AICall' || msg === 'AICallStream') {
+			// AI 调用设置 5 分钟超时
+			timeout = vo.timeout || 3000000; // 默认 300 秒 (5分钟)
+		} else {
+			// 其他调用设置 2 分钟超时
+			timeout = vo.timeout || 3000000; // 默认 120 秒 (2分钟)
+		}
+
 		return new Promise((resolve, reject) => {
-			this.callMap.set(callId, { resolve, reject });
+			// 设置超时定时器
+			const timeoutId = setTimeout(() => {
+				if (this.callMap.has(callId)) {
+					this.callMap.delete(callId);
+					reject(new Error(`CallHub timeout after ${timeout}ms for message: ${msg}`));
+				}
+			}, timeout);
+
+			this.callMap.set(callId, {
+				resolve: (result) => {
+					clearTimeout(timeoutId);
+					resolve(result);
+				},
+				reject: (error) => {
+					clearTimeout(timeoutId);
+					reject(error);
+				}
+			});
+
 			let message = {
 				msg: "CallHub",
 				callId,
@@ -418,7 +450,7 @@ let AgentNode,agentNode;
 			this.websocket.send(message);
 		});
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.sendToHub=async function(msg,vo,session){
 		let message = {
@@ -434,7 +466,7 @@ let AgentNode,agentNode;
 		message=JSON.stringify(message);
 		this.websocket.send(message);
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.hubCallResult = async function (callId, result) {
 		const stub = this.callMap.get(callId);
@@ -442,7 +474,7 @@ let AgentNode,agentNode;
 		stub.resolve(result);
 		this.callMap.delete(callId);
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.hubCallReject = async function (callId, error) {
 		const stub = this.callMap.get(callId);
@@ -450,8 +482,8 @@ let AgentNode,agentNode;
 		stub.reject(error);
 		this.callMap.delete(callId);
 	};
-	
-	
+
+
 	//-----------------------------------------------------------------------
 	async function startWSServer(port){
 		return new Promise((resolve,reject)=>{
@@ -467,21 +499,21 @@ let AgentNode,agentNode;
 			});
 		});
 	}
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.startDebug=async function() {
 		const handler = async (ws, req) => {
 			console.log('Debug client connected');
-			
+
 			this.debugConnected = true;
 			this.debugClients.push(ws);
-			
+
 			ws.on('message', async (message) => {
 				try {
 					console.log(`Debug port received: ${message}`);
 					const parsedMessage = JSON.parse(message);
 					const cmd = parsedMessage.cmd;
-					
+
 					//TODO: apply these to session?
 					if (cmd === 'StepRunOn') {
 						ws.debugStepRun = true;
@@ -514,7 +546,7 @@ let AgentNode,agentNode;
 					console.error(err);
 				}
 			});
-			
+
 			ws.on('close', () => {
 				let idx;
 				console.log('Client disconnected');
@@ -533,10 +565,10 @@ let AgentNode,agentNode;
 						this.debugConnected=false;
 					}
 				}
-				
+
 			});
 		};
-		
+
 		let port = this.nodeJSON.debugPort || 5001;
 		let portError=false;
 		let debugServer=null;
@@ -556,7 +588,7 @@ let AgentNode,agentNode;
 			console.log(`Agent ${this.name} start debug error: ${err}`);
 		});
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.sendDebugLog=async function(log) {
 		try {
@@ -577,12 +609,12 @@ let AgentNode,agentNode;
 			console.error(err);
 		}
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.regTerminal=function(term){
 		this.termMap.set(term.sessionId,term);
 	};
-	
+
 	//-----------------------------------------------------------------------
 	agentNode.writeXTermData=async function(message){
 		let sessionId,msgVO,term;
@@ -592,6 +624,21 @@ let AgentNode,agentNode;
 			return;
 		}
 		term.write(message.data);
+	};
+
+	//-----------------------------------------------------------------------
+	agentNode.resizeXTerm=async function(message){
+		let sessionId,term;
+		sessionId=message.session||message.sessionId;
+		console.log(`==> [AgentNode] Received XTermResize for session ${sessionId}: ${message.cols}x${message.rows}`);
+		term=this.termMap.get(sessionId);
+		if(!term){
+			console.log(`==> [AgentNode] Terminal ${sessionId} not found in termMap. Available sessions:`, Array.from(this.termMap.keys()));
+			return;
+		}
+		if(message.cols && message.rows){
+			term.resize(message.cols, message.rows);
+		}
 	};
 }
 

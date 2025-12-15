@@ -59,6 +59,31 @@ let AhXTerm,ahXTerm;
 				}
 				try{
 					switch(message.msg){
+						case "CONNECT": {//Client sends terminal size on connect
+							console.log(`==> [AhXTerm] Received CONNECT for session ${this.sessionId}: ${message.cols}x${message.rows}`);
+							if(message.cols && message.rows && this.nodeWS){
+								this.nodeWS.send(JSON.stringify({
+									msg:"XTermResize",
+									session:this.sessionId,
+									cols:message.cols,
+									rows:message.rows
+								}));
+								console.log(`==> [AhXTerm] Sent XTermResize to node`);
+							}
+							return;
+						}
+						case "Resize": {//Client window resized
+							console.log(`==> [AhXTerm] Received Resize for session ${this.sessionId}: ${message.cols}x${message.rows}`);
+							if(message.cols && message.rows && this.nodeWS){
+								this.nodeWS.send(JSON.stringify({
+									msg:"XTermResize",
+									session:this.sessionId,
+									cols:message.cols,
+									rows:message.rows
+								}));
+							}
+							return;
+						}
 						case "Data": {//Client write data into terminal:
 							if(this.nodeWS){
 								this.nodeWS.send(JSON.stringify({msg:"XTermData",session:this.sessionId,data:message.data}))

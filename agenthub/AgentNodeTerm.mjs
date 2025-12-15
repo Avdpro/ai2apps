@@ -41,7 +41,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.killCallback=null;
 		this.waitBuf="";
 		this.idleTime=0;
-		
+
 		this.lastActiveTime=0;
 		this.waitIdlePms=null;
 		this.cmdWaitIdle=false;
@@ -50,18 +50,18 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.isIdle=false;
 	};
 	agentNodeTerminal=AgentNodeTerminal.prototype={};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.start=async function(opts,commands){
 		let shell,terminal,optsCommands;
 		opts=opts||{};
 		terminal=this.terminal = Terminal({
-			cols: opts.w||800,
+			cols: opts.w||100,
 			rows: opts.h||30,
 		});
 		shell=this.shell=pty.spawn('bash', [], {
 			name: 'xterm-color',
-			cols: opts.w||800,
+			cols: opts.w||100,
 			rows: opts.h||30,
 			cwd: process.env.HOME,
 			env: process.env
@@ -83,12 +83,16 @@ let AgentNodeTerminal,agentNodeTerminal;
 		}
 		//Handle data:
 		{
+			this.dataBuffer = "";           // 数据缓冲区
+			this.flushTimer = null;         // 刷新定时器
+
 			shell.onData((data) => {
 				this.lastActiveTime=Date.now();
 				this.isIdle=false;
 				terminal.write(data);
 				this.waitBuf += data.toString();
 				process.stdout.write(data);
+
 				if (this.waitBuf.includes('__AGENT_SHELL__> ')) {//Idle:
 					let callback;
 					this.OnIdle();
@@ -103,13 +107,34 @@ let AgentNodeTerminal,agentNodeTerminal;
 						this._idleTimer();
 					}
 				}
+
+				// ✅ 使用时间窗口防抖：收集数据，延迟发送
 				if(this.clientReady && this.sessionId){
-					this.agentNode.sendToHub("XTermData",{data:data,session:this.sessionId});
+					// 添加到缓冲区
+					this.dataBuffer += data;
+
+					// 清除之前的定时器
+					if(this.flushTimer) {
+						clearTimeout(this.flushTimer);
+					}
+
+					// 设置新定时器：50ms 后刷新缓冲区
+					this.flushTimer = setTimeout(() => {
+						if(this.dataBuffer && this.clientReady && this.sessionId) {
+							// 发送缓冲的数据
+							this.agentNode.sendToHub("XTermData",{
+								data:this.dataBuffer,
+								session:this.sessionId
+							});
+							this.dataBuffer = "";
+						}
+						this.flushTimer = null;
+					}, 50);  // 50ms 窗口，足够收集分片但不影响体验
 				}
 			});
 		}
 		shell.write(`PS1="__AGENT_SHELL__> "\n`);
-		
+
 		if(this.session && opts.client){
 			let res,sessionId;
 			try {
@@ -150,7 +175,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 			await this.runCommands(commands);
 		}
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.close=async function(){
 		let pms;
@@ -173,7 +198,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		await pms;
 		this.shell=null;
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.write=function(text){
 		this.waitBuf="";
@@ -183,7 +208,20 @@ let AgentNodeTerminal,agentNodeTerminal;
 			this._idleTimer();
 		}
 	};
-	
+
+	//------------------------------------------------------------------------
+	agentNodeTerminal.resize=function(cols,rows){
+		if(this.shell && this.alive){
+			console.log(`==> [AgentNodeTerm] Resizing terminal ${this.sessionId} to ${cols}x${rows}`);
+			this.shell.resize(cols, rows);
+			if(this.terminal && this.terminal.resize){
+				this.terminal.resize(cols, rows);
+			}
+		}else{
+			console.log(`==> [AgentNodeTerm] Cannot resize: shell=${!!this.shell}, alive=${this.alive}`);
+		}
+	};
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal._command=async function(command){
 		let pms,callback,callerr;
@@ -205,7 +243,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.write(command);
 		await pms;
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.runCommands=async function(commands,opts){
 		let command,cntLen,content,i,n;
@@ -236,26 +274,26 @@ let AgentNodeTerminal,agentNodeTerminal;
 			command = commands[i];
 			await this._command(command);
 		}
-	
+
 		content=this.getContent();
 		return content.substring(cntLen);
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.clear=function(){
 		this.terminal.clear("__AGENT_SHELL__> ");
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.getRawContent=function(){
 		return this.terminal.getRawContent();
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.getContent=function(){
 		return this.terminal.getContent();
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal._idleTimer=function(){
 		if(this.idleTimer){
@@ -266,7 +304,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 			this.OnIdle();
 		},this.idleTime||idleTime);
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.waitIdle=async function(force=false){
 		let pms;
@@ -282,7 +320,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		});
 		return pms;
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.OnIdle=function(){
 		let callback;
@@ -308,7 +346,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 			}
 		}
 	};
-	
+
 	//------------------------------------------------------------------------
 	agentNodeTerminal.cwd=async function(){
 		let result,lines;

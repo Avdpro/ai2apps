@@ -1,11 +1,16 @@
 var getSysConfig=require('../util/SysConfig.js').getSysConfig;
 const https = require('https');
 const querystring = require('querystring');
+const crypto = require("crypto");
 
 let dbUser=null;
 let dbPreview=null;
 const DAYTIME=24*3600*1000;
 const USERINFO_PROJECTION={email:1,rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
+
+function sha256Hex(str){
+	return crypto.createHash("sha256").update(str, "utf8").digest("hex");
+}
 
 //--------------------------------------------------------------------------
 function initUserUtils(app){
@@ -24,7 +29,7 @@ function getHost(req){
 
 //---------------------------------------------------------------------------
 async function getUserInfo(req,userId,token,projection){
-	let vo,devKey,userInfo,nowTime,nowDay;
+	let vo,devKey,devSign,userInfo,nowTime,nowDay;
 	let saveVO;
 	if(!dbUser){
 		return null;
@@ -36,6 +41,7 @@ async function getUserInfo(req,userId,token,projection){
 		token=req.body.vo.token;
 	}
 	devKey=req.body.devKey;
+	devSign=req.body.devSign;
 	if(userId && token) {
 		let host;
 		host=getHost(req);
@@ -50,6 +56,33 @@ async function getUserInfo(req,userId,token,projection){
 		vo={
 			_id:userId,devKeys:devKey
 		};
+	}else if(devSign && userId && devSign.time && devSign.sign){
+		let devId,time,sign,devKeys,key,localTime;
+		devId=devSign.id||userId;
+		time=parseInt(devSign.time);
+		localTime=Date.now();
+		let dtime=time-localTime;
+		dtime=dtime<0?-dtime:dtime;
+		if(dtime>60*1000){
+			return null;
+		}
+		sign=devSign.sign;
+		userInfo=await dbUser.findOne({_id:devId});
+		if(!userInfo){
+			return null;
+		}
+		devKeys=userInfo.devKeys||[];
+		FindKey:{
+			for (key of devKeys) {
+				key = "" + key + "-" + time;
+				key = sha256Hex(key);
+				if (key === sign) {
+					break FindKey;
+				}
+			}
+			return null;//No key matched.
+		}
+		vo={_id: userId};
 	}else{
 		return null;
 	}
