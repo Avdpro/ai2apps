@@ -120,19 +120,24 @@ let Bash=async function(session){
 	
 	segs["CreateBash"]=CreateBash=async function(input){//:1IG0L7VK60
 		let result=input
-		/*#{1IG0L7VK60Code*/
-		let bash;
-		if(!globalContext.bash){
-			bash=new AgentNodeTerminal(session);
-			options=options||{};
-			options.initConda=true;
-			await bash.start(options,commands);
-			bashMap.set(bash.id,bash);
-			result=bash.id;
-		}else{
-			result=globalContext.bash;
+		try{
+			/*#{1IG0L7VK60Code*/
+			let bash;
+			if(!globalContext.bash){
+				bash=new AgentNodeTerminal(session);
+				options=options||{};
+				options.initConda=true;
+				await bash.start(options,commands);
+				bashMap.set(bash.id,bash);
+				result=bash.id;
+			}else{
+				result=globalContext.bash;
+			}
+			/*}#1IG0L7VK60Code*/
+		}catch(error){
+			/*#{1IG0L7VK60ErrorCode*/
+			/*}#1IG0L7VK60ErrorCode*/
 		}
-		/*}#1IG0L7VK60Code*/
 		return {result:result};
 	};
 	CreateBash.jaxId="1IG0L7VK60"
@@ -140,22 +145,27 @@ let Bash=async function(session){
 	
 	segs["RunCommand"]=RunCommand=async function(input){//:1IG0L8V2P0
 		let result=input
-		/*#{1IG0L8V2P0Code*/
-		let bash;
-		bash=bashMap.get(bashId);
-		if(!bash){
-			throw Error(`Can't find bash: "${bashId}"`);
+		try{
+			/*#{1IG0L8V2P0Code*/
+			let bash;
+			bash=bashMap.get(bashId);
+			if(!bash){
+				throw Error(`Can't find bash: "${bashId}"`);
+			}
+			cmdBash=bash;
+			if(options.clear){
+				bash.clear();
+			}
+			if(typeof(commands)==="string"){
+				commands=commands.split("\n");	
+			}
+			orgContent=await bash.getContent();
+			//result=await bash.runCommands(commands);
+			/*}#1IG0L8V2P0Code*/
+		}catch(error){
+			/*#{1IG0L8V2P0ErrorCode*/
+			/*}#1IG0L8V2P0ErrorCode*/
 		}
-		cmdBash=bash;
-		if(options.clear){
-			bash.clear();
-		}
-		if(typeof(commands)==="string"){
-			commands=commands.split("\n");	
-		}
-		orgContent=await bash.getContent();
-		//result=await bash.runCommands(commands);
-		/*}#1IG0L8V2P0Code*/
 		return {seg:LoopCmd,result:(result),preSeg:"1IG0L8V2P0",outlet:"1IG0LAEGS2"};
 	};
 	RunCommand.jaxId="1IG0L8V2P0"
@@ -188,18 +198,23 @@ let Bash=async function(session){
 	
 	segs["RunOneCmd"]=RunOneCmd=async function(input){//:1IIF4QE770
 		let result=input
-		/*#{1IIF4QE770Code*/
-		orgCmdContent=await cmdBash.getContent();//TODO: Just use length?
-		if(project){
-			let logs=project.bashLogs;
-			if(logs){
-				logs.push(input);
+		try{
+			/*#{1IIF4QE770Code*/
+			orgCmdContent=await cmdBash.getContent();//TODO: Just use length?
+			if(project){
+				let logs=project.bashLogs;
+				if(logs){
+					logs.push(input);
+				}
 			}
+			await cmdBash.runCommands(input,{idleTime:options.idleTime||0});
+			result=await cmdBash.getContent();
+			result=result.substring(orgCmdContent.length);
+			/*}#1IIF4QE770Code*/
+		}catch(error){
+			/*#{1IIF4QE770ErrorCode*/
+			/*}#1IIF4QE770ErrorCode*/
 		}
-		await cmdBash.runCommands(input,{idleTime:options.idleTime||0});
-		result=await cmdBash.getContent();
-		result=result.substring(orgCmdContent.length);
-		/*}#1IIF4QE770Code*/
 		return {seg:IsDone,result:(result),preSeg:"1IIF4QE770",outlet:"1IIF5P1F20"};
 	};
 	RunOneCmd.jaxId="1IIF4QE770"
@@ -213,7 +228,7 @@ let Bash=async function(session){
 		lastLine=lines[lines.length-1].trim();
 		isIdle=(lastLine.endsWith(IDLEMaker));
 		/*}#1IIF4R4RO0Start*/
-		if(!isIdle){
+		if(false){
 			/*#{1IIF5P1F21Codes*/
 			if(lines>10){
 				input=lines.slice(-10).join("\n");
@@ -230,16 +245,21 @@ let Bash=async function(session){
 	
 	segs["CloseBash"]=CloseBash=async function(input){//:1IG0L9DUD0
 		let result=input
-		/*#{1IG0L9DUD0Code*/
-		let bash;
-		bash=bashMap.get(bashId);
-		if(!bash){
-			throw Error(`Can't find bash: "${bashId}"`);
+		try{
+			/*#{1IG0L9DUD0Code*/
+			let bash;
+			bash=bashMap.get(bashId);
+			if(!bash){
+				throw Error(`Can't find bash: "${bashId}"`);
+			}
+			await bash.close();
+			bashMap.delete(bashId);
+			result=true;
+			/*}#1IG0L9DUD0Code*/
+		}catch(error){
+			/*#{1IG0L9DUD0ErrorCode*/
+			/*}#1IG0L9DUD0ErrorCode*/
 		}
-		await bash.close();
-		bashMap.delete(bashId);
-		result=true;
-		/*}#1IG0L9DUD0Code*/
 		return {result:result};
 	};
 	CloseBash.jaxId="1IG0L9DUD0"
@@ -247,14 +267,19 @@ let Bash=async function(session){
 	
 	segs["GetContent"]=GetContent=async function(input){//:1IG2VAJS20
 		let result=input
-		/*#{1IG2VAJS20Code*/
-		let bash;
-		bash=bashMap.get(bashId);
-		if(!bash){
-			throw Error(`Can't find bash: "${bashId}"`);
+		try{
+			/*#{1IG2VAJS20Code*/
+			let bash;
+			bash=bashMap.get(bashId);
+			if(!bash){
+				throw Error(`Can't find bash: "${bashId}"`);
+			}
+			result=await bash.getContent();
+			/*}#1IG2VAJS20Code*/
+		}catch(error){
+			/*#{1IG2VAJS20ErrorCode*/
+			/*}#1IG2VAJS20ErrorCode*/
 		}
-		result=await bash.getContent();
-		/*}#1IG2VAJS20Code*/
 		return {result:result};
 	};
 	GetContent.jaxId="1IG2VAJS20"
@@ -262,15 +287,20 @@ let Bash=async function(session){
 	
 	segs["Clear"]=Clear=async function(input){//:1IG2VBQIK0
 		let result=input
-		/*#{1IG2VBQIK0Code*/
-		let bash;
-		bash=bashMap.get(bashId);
-		if(!bash){
-			throw Error(`Can't find bash: "${bashId}"`);
+		try{
+			/*#{1IG2VBQIK0Code*/
+			let bash;
+			bash=bashMap.get(bashId);
+			if(!bash){
+				throw Error(`Can't find bash: "${bashId}"`);
+			}
+			await bash.clear();
+			result=true;
+			/*}#1IG2VBQIK0Code*/
+		}catch(error){
+			/*#{1IG2VBQIK0ErrorCode*/
+			/*}#1IG2VBQIK0ErrorCode*/
 		}
-		await bash.clear();
-		result=true;
-		/*}#1IG2VBQIK0Code*/
 		return {result:result};
 	};
 	Clear.jaxId="1IG2VBQIK0"
@@ -278,8 +308,13 @@ let Bash=async function(session){
 	
 	segs["Wait"]=Wait=async function(input){//:1IH4M02OP0
 		let result=input
-		/*#{1IH4M02OP0Code*/
-		/*}#1IH4M02OP0Code*/
+		try{
+			/*#{1IH4M02OP0Code*/
+			/*}#1IH4M02OP0Code*/
+		}catch(error){
+			/*#{1IH4M02OP0ErrorCode*/
+			/*}#1IH4M02OP0ErrorCode*/
+		}
 		return {result:result};
 	};
 	Wait.jaxId="1IH4M02OP0"
@@ -341,10 +376,15 @@ let Bash=async function(session){
 	
 	segs["GenResult"]=GenResult=async function(input){//:1IIF4PECH0
 		let result=input
-		/*#{1IIF4PECH0Code*/
-		result=await cmdBash.getContent();
-		result=result.substring(orgContent.length);
-		/*}#1IIF4PECH0Code*/
+		try{
+			/*#{1IIF4PECH0Code*/
+			result=await cmdBash.getContent();
+			result=result.substring(orgContent.length);
+			/*}#1IIF4PECH0Code*/
+		}catch(error){
+			/*#{1IIF4PECH0ErrorCode*/
+			/*}#1IIF4PECH0ErrorCode*/
+		}
 		return {result:result};
 	};
 	GenResult.jaxId="1IIF4PECH0"
@@ -352,8 +392,13 @@ let Bash=async function(session){
 	
 	segs["NextCmd"]=NextCmd=async function(input){//:1IIF4SPFB0
 		let result=input
-		/*#{1IIF4SPFB0Code*/
-		/*}#1IIF4SPFB0Code*/
+		try{
+			/*#{1IIF4SPFB0Code*/
+			/*}#1IIF4SPFB0Code*/
+		}catch(error){
+			/*#{1IIF4SPFB0ErrorCode*/
+			/*}#1IIF4SPFB0ErrorCode*/
+		}
 		return {result:result};
 	};
 	NextCmd.jaxId="1IIF4SPFB0"
@@ -378,23 +423,28 @@ let Bash=async function(session){
 	
 	segs["DoInput"]=DoInput=async function(input){//:1IIF512K60
 		let result=input
-		/*#{1IIF512K60Code*/
-		cmdBash.write(input+"\n");
-		/*
-		let contentLen,curLen;
-		let content;
-		content=await cmdBash.getRawContent();
-		console.log(JSON.stringify(content));
-		contentLen=content.length+input.length;
-		cmdBash.write(input);
-		await sleep(1000);
-		content=await cmdBash.getRawContent();
-		console.log(JSON.stringify(content));
-		curLen=content.length;
-		if(curLen===contentLen){
-			cmdBash.write("\n");
-		}*/
-		/*}#1IIF512K60Code*/
+		try{
+			/*#{1IIF512K60Code*/
+			cmdBash.write(input+"\n");
+			/*
+			let contentLen,curLen;
+			let content;
+			content=await cmdBash.getRawContent();
+			console.log(JSON.stringify(content));
+			contentLen=content.length+input.length;
+			cmdBash.write(input);
+			await sleep(1000);
+			content=await cmdBash.getRawContent();
+			console.log(JSON.stringify(content));
+			curLen=content.length;
+			if(curLen===contentLen){
+				cmdBash.write("\n");
+			}*/
+			/*}#1IIF512K60Code*/
+		}catch(error){
+			/*#{1IIF512K60ErrorCode*/
+			/*}#1IIF512K60ErrorCode*/
+		}
 		return {seg:WaitIdle,result:(result),preSeg:"1IIF512K60",outlet:"1IIF5P1F31"};
 	};
 	DoInput.jaxId="1IIF512K60"
@@ -402,14 +452,19 @@ let Bash=async function(session){
 	
 	segs["NotifyUser"]=NotifyUser=async function(input){//:1IIF53A7Q0
 		let result=input
-		/*#{1IIF53A7Q0Code*/
-		//Notify user:
 		try{
-			session.callClient("BashNotify",{bash:cmdBash.id,info:(($ln==="CN")?("Terminal操作需要你的响应"):/*EN*/("Terminal operation requires your response"))});
-		}catch(err){
-			//missing BashNotify? Do nothing...
+			/*#{1IIF53A7Q0Code*/
+			//Notify user:
+			try{
+				session.callClient("BashNotify",{bash:cmdBash.id,info:(($ln==="CN")?("Terminal操作需要你的响应"):/*EN*/("Terminal operation requires your response"))});
+			}catch(err){
+				//missing BashNotify? Do nothing...
+			}
+			/*}#1IIF53A7Q0Code*/
+		}catch(error){
+			/*#{1IIF53A7Q0ErrorCode*/
+			/*}#1IIF53A7Q0ErrorCode*/
 		}
-		/*}#1IIF53A7Q0Code*/
 		return {result:result};
 	};
 	NotifyUser.jaxId="1IIF53A7Q0"
@@ -417,31 +472,49 @@ let Bash=async function(session){
 	
 	segs["WaitIdle"]=WaitIdle=async function(input){//:1IIF89Q1I0
 		let result=input
-		/*#{1IIF89Q1I0Code*/
-		let content=await cmdBash.getContent();
-		let trimmed=content.trimEnd();
-		if(trimmed.endsWith(IDLEMaker)){
-			result=content.substring(orgCmdContent.length);
-			return {seg:IsDone,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
-		}
-		let contentLen=content.length;
-		let timeout=options?.idleTimeout||60000;
-		let start=Date.now();
-		while(true){
-			console.log("Wait bash idle...");
-			await cmdBash.waitIdle(true);
-			content=await cmdBash.getContent();
-			if(content.length>contentLen){
-				console.log("Bash idle end: "+content.substring(contentLen));
-				break;
+		try{
+			/*#{1IIF89Q1I0Code*/
+			let content, trimmed, prevContentLen;
+			let maxRetries = 6;
+			let retryCount = 0;
+			content = await cmdBash.getContent();
+			prevContentLen = content.length;
+			trimmed = content.trimEnd();
+			if(trimmed.endsWith(IDLEMaker)){
+				result = content.substring(orgCmdContent.length);
+				return {seg:IsDone, result:(result), preSeg:"1IIF89Q1I0", outlet:"1IIF8ATEI0"};
 			}
-			if((Date.now()-start)>timeout){
-				console.log("Wait bash idle timeout");
-				break;
+			
+			while(retryCount < maxRetries){
+				//await cmdBash.waitIdle(true);
+				await sleep(5000);
+				content = await cmdBash.getContent();
+				trimmed = content.trimEnd();
+			
+				if(trimmed.endsWith(IDLEMaker)){
+					result = content.substring(orgCmdContent.length);
+					return {seg:IsDone, result:(result), preSeg:"1IIF89Q1I0", outlet:"1IIF8ATEI0"};
+				}
+				
+				if(content.length !== prevContentLen){
+					console.log(`Content changed: ${prevContentLen} -> ${content.length}, resetting retry count`);
+					prevContentLen = content.length;
+					retryCount = 0;
+					continue;
+				}
+				
+			
+				retryCount++;
+				console.log(`Wait idle retry ${retryCount}/${maxRetries}`);
 			}
+			result = content.substring(orgCmdContent.length);
+			/*}#1IIF89Q1I0Code*/
+		}catch(error){
+			/*#{1IIF89Q1I0ErrorCode*/
+			result = "";
+			console.error("WaitIdle error:", error);
+			/*}#1IIF89Q1I0ErrorCode*/
 		}
-		result=content.substring(orgCmdContent.length);
-		/*}#1IIF89Q1I0Code*/
 		return {seg:IsDone,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
 	};
 	WaitIdle.jaxId="1IIF89Q1I0"
@@ -469,7 +542,7 @@ let Bash=async function(session){
 		}else if(result.assets && result.prompt){
 			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
 		}else{
-			session.addChatText("user",`${result.assets.join("\n- - -\n")}`);
+			session.addChatText("user",result.text||result.prompt||result);
 		}
 		return {seg:DoInput,result:(result),preSeg:"1J1V9GOIF0",outlet:"1J1V9HK8H0"};
 	};
@@ -941,7 +1014,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -981,7 +1055,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1068,7 +1143,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1130,7 +1206,7 @@ export{Bash,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#!isIdle"
+//										"condition": "#false"
 //									},
 //									"linkedSeg": "1IIDUEG0G0"
 //								}
@@ -1175,7 +1251,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1214,7 +1291,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1253,7 +1331,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1292,7 +1371,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1403,7 +1483,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1442,7 +1523,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1599,7 +1681,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1638,7 +1721,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1678,7 +1762,8 @@ export{Bash,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},

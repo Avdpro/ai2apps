@@ -70,78 +70,83 @@ let SysInitWorkEnv=async function(session){
 	let $agent,agent,segs={};
 	segs["InitEnv"]=InitEnv=async function(input){//:1IG32J8B00
 		let result=input
-		/*#{1IG32J8B00Code*/
-		env=globalContext.env;
-		if(!env){
-			env=globalContext.env={};
-		}
-		//系统基本信息:
-		env.platform=process.platform;
-		env.arch=process.arch;
-		env.totalMemory=os.totalmem();
-		env.freeMemory=os.freemem();
-		env.os={
-			type:os.type(),
-			version:os.release()
-		};
-		
-		//GPU 信息
-		try {
-			let gpus = await gpuInfo();
-			env.gpu = gpus;
-		}catch(err){
-			if(env.platform==="darwin"){
-				env.gpu={
-					memory:env.totalMemory
-				};
-			}else{
-				env.gpu=null;
+		try{
+			/*#{1IG32J8B00Code*/
+			env=globalContext.env;
+			if(!env){
+				env=globalContext.env={};
+			}
+			//系统基本信息:
+			env.platform=process.platform;
+			env.arch=process.arch;
+			env.totalMemory=os.totalmem();
+			env.freeMemory=os.freemem();
+			env.os={
+				type:os.type(),
+				version:os.release()
+			};
+			
+			//GPU 信息
+			try {
+				let gpus = await gpuInfo();
+				env.gpu = gpus;
+			}catch(err){
+				if(env.platform==="darwin"){
+					env.gpu={
+						memory:env.totalMemory
+					};
+				}else{
+					env.gpu=null;
+				}
+				
 			}
 			
-		}
-		
-		//磁盘信息:
-		try {
-			const path = process.platform === 'win32' ? 'C:' : '/';
-			const { available, total } = diskUsage.checkSync(path);
-			env.freeDiskSpace=`${(available / 1024 / 1024 / 1024).toFixed(2)} GB`;
-			env.totalDiskSpace=`${(total / 1024 / 1024 / 1024).toFixed(2)} GB`;
-		} catch (error) {
-			console.error('Failed to check disk space:', error);
-		}		
-		//Node信息:		
-		env.node={
-			execPath:process.execPath,
-			version:process.version
-		};
-		
-		//Conda信息:
-		try {
-			const condaName=await getCondaEnvName();
-			const condaVersion = execSync('conda --version').toString().trim();
-			const versionNumber = condaVersion.split(' ')[1];
-			console.log('Conda Version:', versionNumber);
-			env.conda={
-				default:condaName||null,
-				version: versionNumber
+			//磁盘信息:
+			try {
+				const path = process.platform === 'win32' ? 'C:' : '/';
+				const { available, total } = diskUsage.checkSync(path);
+				env.freeDiskSpace=`${(available / 1024 / 1024 / 1024).toFixed(2)} GB`;
+				env.totalDiskSpace=`${(total / 1024 / 1024 / 1024).toFixed(2)} GB`;
+			} catch (error) {
+				console.error('Failed to check disk space:', error);
+			}		
+			//Node信息:		
+			env.node={
+				execPath:process.execPath,
+				version:process.version
 			};
-		}catch (error){
-			console.error('Conda is not installed or not in PATH');
-			env.conda=null;
-		}		
-		
-		//Docker信息:
-		try {
-			const dockerVersion = execSync('docker --version').toString().trim();
-			console.log('Docker is installed:', dockerVersion);
-			env.docker={
-				version:dockerVersion
-			};
-		} catch (error) {
-			console.error('Docker is not installed or not in PATH');
-			env.docker=null;
+			
+			//Conda信息:
+			try {
+				const condaName=await getCondaEnvName();
+				const condaVersion = execSync('conda --version').toString().trim();
+				const versionNumber = condaVersion.split(' ')[1];
+				console.log('Conda Version:', versionNumber);
+				env.conda={
+					default:condaName||null,
+					version: versionNumber
+				};
+			}catch (error){
+				console.error('Conda is not installed or not in PATH');
+				env.conda=null;
+			}		
+			
+			//Docker信息:
+			try {
+				const dockerVersion = execSync('docker --version').toString().trim();
+				console.log('Docker is installed:', dockerVersion);
+				env.docker={
+					version:dockerVersion
+				};
+			} catch (error) {
+				console.error('Docker is not installed or not in PATH');
+				env.docker=null;
+			}
+			/*}#1IG32J8B00Code*/
+		}catch(error){
+			/*#{1IG32J8B00ErrorCode*/
+			/*}#1IG32J8B00ErrorCode*/
 		}
-		/*}#1IG32J8B00Code*/
 		return {seg:ReadConifg,result:(result),preSeg:"1IG32J8B00",outlet:"1IG32JGK90"};
 	};
 	InitEnv.jaxId="1IG32J8B00"
@@ -149,17 +154,22 @@ let SysInitWorkEnv=async function(session){
 	
 	segs["ReadConifg"]=ReadConifg=async function(input){//:1IG32KVO90
 		let result=input
-		/*#{1IG32KVO90Code*/
-		let config=session.agentNode.nodeJSON;
-		env.rootPath=config.rootPath||"";
-		if(env.rootPath[0]!=="/"){
-			env.rootPath=pathLib.join(session.agentNode.path,env.rootPath);
-			if(env.conda && config.conda){
-				env.conda.default=config.conda;
+		try{
+			/*#{1IG32KVO90Code*/
+			let config=session.agentNode.nodeJSON;
+			env.rootPath=config.rootPath||"";
+			if(env.rootPath[0]!=="/"){
+				env.rootPath=pathLib.join(session.agentNode.path,env.rootPath);
+				if(env.conda && config.conda){
+					env.conda.default=config.conda;
+				}
 			}
+			/*}#1IG32KVO90Code*/
+		}catch(error){
+			/*#{1IG32KVO90ErrorCode*/
+			/*}#1IG32KVO90ErrorCode*/
 		}
-		/*}#1IG32KVO90Code*/
-		return {seg:InitBash,result:(result),preSeg:"1IG32KVO90",outlet:"1IG32OB9D0"};
+		return {seg:ShowEnv,result:(result),preSeg:"1IG32KVO90",outlet:"1IG32OB9D0"};
 	};
 	ReadConifg.jaxId="1IG32KVO90"
 	ReadConifg.url="ReadConifg@"+agentURL
@@ -176,15 +186,15 @@ let SysInitWorkEnv=async function(session){
 		/*#{1IG3G17U20PostCodes*/
 		globalContext.bash=result;
 		/*}#1IG3G17U20PostCodes*/
-		return {seg:ShowEnv,result:(result),preSeg:"1IG3G17U20",outlet:"1IG3G2LGG0"};
+		return {result:result};
 	};
 	InitBash.jaxId="1IG3G17U20"
 	InitBash.url="InitBash@"+agentURL
 	
 	segs["ShowEnv"]=ShowEnv=async function(input){//:1IG3GT0LF0
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=`
 Environment:
@@ -271,7 +281,6 @@ export{SysInitWorkEnv,ChatAPI};
 //							"jaxId": "1IG32J2401",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IG32J2402",
 //							"attrs": {}
@@ -282,7 +291,8 @@ export{SysInitWorkEnv,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -356,7 +366,8 @@ export{SysInitWorkEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -391,12 +402,13 @@ export{SysInitWorkEnv,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IG3G17U20"
+//							"linkedSeg": "1IG3GT0LF0"
 //						},
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -408,8 +420,8 @@ export{SysInitWorkEnv,ChatAPI};
 //						"id": "InitBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "615",
-//						"y": "110",
+//						"x": "595",
+//						"y": "-120",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -435,8 +447,7 @@ export{SysInitWorkEnv,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IG3GT0LF0"
+//							}
 //						}
 //					},
 //					"icon": "terminal.svg"
