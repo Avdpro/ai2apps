@@ -1202,9 +1202,30 @@ class ChatSession {
 		}
 	}
 	
+	//-----------------------------------------------------------------------
+	async findAgent(find){
+		//TODO: add server-local agent.
+		let result;
+		try{
+			return await this.callClient("FindAgent",{find:find});
+		}catch (error){
+			return null;
+		}
+	}
 	
 	//-----------------------------------------------------------------------
 	async callAgent(agentNode,path,input,opts){
+		if(path && path.kind){
+			let result;
+			result=await this.findAgent(path);
+			if(result){
+				agentNode=result.agentNode;
+				if(!agentNode){
+					agentNode="$client";
+				}
+				path=result.Path;
+			}
+		}
 		if(agentNode) {//This is a remote chat
 			if(agentNode==="$client"){
 				let oldFromAgent,oldAskSeg,result;

@@ -5,6 +5,7 @@ import AhFileLib from "./AhFileLib.mjs"
 import { exec } from 'child_process';
 import util from "util";
 import ProxyCall from '../util/ProxyCall.js'
+import {AgentSpecs} from '../agentspec/AgentSpec.mjs';
 const { callProxy,proxyCall }=ProxyCall;
 
 const execPromise = util.promisify(exec);
@@ -317,6 +318,7 @@ let AhSystem,ahSystem;
 		
 		await self.startHub();
 		await AhFileLib.setup(self,app,router,apiMap);
+		await AgentSpecs.init();
 		
 		//Apply external agent connection:
 		let selectorMap=app.get("WebSocketSelectorMap");
@@ -521,6 +523,29 @@ let AhSystem,ahSystem;
 			}
 			await self.closeTerm(nodeName,sessionId);
 			res.json({ code: 200});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap[`AhGetAgentSpecs`]=async function(req,res){
+			res.json({code:200,specs:AgentSpecs.getSpecs()});
+		};
+		
+		//-------------------------------------------------------------------
+		apiMap[`AhGetAgentKindSpec`]=async function(req,res){
+			let reqVO,kind,spec;
+			reqVO=req.body.vo;
+			kind=reqVO.kind;
+			if(!kind){
+				res.json({code:400,info:`Missing kind.`});
+				return;
+			}
+			spec=AgentSpecs.getKind(kind);
+			if(!spec){
+				res.json({code:404,info:`Kind "${kind}" not found.`});
+				return;
+			}
+			res.json({code:200,spec:spec});
+			//TODO: Code this:
 		};
 	};
 }
