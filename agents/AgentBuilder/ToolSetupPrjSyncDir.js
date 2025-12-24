@@ -8,7 +8,8 @@ import {trimJSON} from "/@aichat/utils.js";
 import {tabOS,tabFS,tabNT} from "/@tabos";
 /*}#1IJRPS73O0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
 const $ln=VFACT.lanCode||"EN";
 const argsTemplate={
 	properties:{
@@ -54,7 +55,7 @@ let ToolSetupPrjSyncDir=async function(session){
 	context=VFACT.flexState(context);
 	/*#{1IJRPS73O0PostContext*/
 	/*}#1IJRPS73O0PostContext*/
-	let agent,segs={};
+	let $agent,agent,segs={};
 	segs["CheckSyncInfo"]=CheckSyncInfo=async function(input){//:1IJRQQU470
 		let result=input;
 		/*#{1IJRQQU470Start*/
@@ -62,11 +63,11 @@ let ToolSetupPrjSyncDir=async function(session){
 		diskJSON=await tabFS.readFile(pathLib.join(dirPath,"disk.json"),"utf8");
 		diskJSON=JSON.parse(diskJSON);
 		syncDir=diskJSON.syncDir;
-		if(syncDir){
+		if(!syncDir){
 			diskJSON.syncDir=syncDir={"name":"","dirs":[]};
 		}
 		FindDir:{
-			for(let dirVO in syncDir.dirs){
+			for(let dirVO of syncDir.dirs){
 				if(dirVO.dir==="ai"){
 					prjSyncVO=dirVO;
 					break FindDir;
@@ -149,15 +150,28 @@ let ToolSetupPrjSyncDir=async function(session){
 		let tip=((($ln==="CN")?("请输入一个新的AI智能体目录名称"):("Please input a new agent dir name")));
 		let tipRole=("assistant");
 		let placeholder=("");
+		let allowFile=(false)||false;
+		let allowEmpty=(false)||false;
+		let askUpward=(false);
 		let text=("");
 		let result="";
 		/*#{1IJRQG1P70PreCodes*/
 		/*}#1IJRQG1P70PreCodes*/
-		if(tip){
-			session.addChatText(tipRole,tip);
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
-		result=await session.askChatInput({type:"input",placeholder:placeholder,text:text});
-		session.addChatText("user",result);
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
 		/*#{1IJRQG1P70PostCodes*/
 		agentDir=result;
 		/*}#1IJRQG1P70PostCodes*/
@@ -188,7 +202,8 @@ let ToolSetupPrjSyncDir=async function(session){
 	
 	segs["TipBadName"]=TipBadName=async function(input){//:1IJRS5A360
 		let result=input;
-		let opts={};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("智能体目录名不合法，智能体目录名只能包含大、小写字母，数字，\"_\"，\"-\"和空格。"):("The agent directory name is invalid. The agent directory name can only contain uppercase and lowercase letters, numbers, '_', '-', and spaces."));
 		session.addChatText(role,content,opts);
@@ -199,10 +214,15 @@ let ToolSetupPrjSyncDir=async function(session){
 	
 	segs["SaveInfo"]=SaveInfo=async function(input){//:1IJRT096M0
 		let result=input
-		/*#{1IJRT096M0Code*/
-		prjSyncVO.target=agentDir;
-		await tabFS.writeFile(pathLib.join(dirPath,"disk.json"),JSON.stringify(diskJSON,null,"\t"));
-		/*}#1IJRT096M0Code*/
+		try{
+			/*#{1IJRT096M0Code*/
+			prjSyncVO.target=agentDir;
+			await tabFS.writeFile(pathLib.join(dirPath,"disk.json"),JSON.stringify(diskJSON,null,"\t"));
+			/*}#1IJRT096M0Code*/
+		}catch(error){
+			/*#{1IJRT096M0ErrorCode*/
+			/*}#1IJRT096M0ErrorCode*/
+		}
 		return {seg:SyncDir,result:(result),preSeg:"1IJRT096M0",outlet:"1IJRT1EI80"};
 	};
 	SaveInfo.jaxId="1IJRT096M0"
@@ -210,20 +230,25 @@ let ToolSetupPrjSyncDir=async function(session){
 	
 	segs["SyncDir"]=SyncDir=async function(input){//:1IJRQ9C5J0
 		let result=input
-		/*#{1IJRQ9C5J0Code*/
-		let synced;
-		synced=await VFACT.app.modalDlg("/@StdUI/ui/DlgSyncDir.js",{path:dirPath,run:true});
-		if(synced){
-			session.addChatText("assistant",(($ln==="CN")?("智能体工程已和服务器同步完毕."):/*EN*/("Agent project synced with server.")));
+		try{
+			/*#{1IJRQ9C5J0Code*/
+			let synced;
+			synced=await VFACT.app.modalDlg("/@StdUI/ui/DlgSyncDir.js",{path:dirPath,run:true});
+			if(synced){
+				session.addChatText("assistant",(($ln==="CN")?("智能体工程已和服务器同步完毕."):/*EN*/("Agent project synced with server.")));
+			}
+			result={result:"Finish",content:"Project synced.",agentDir:agentDir};
+			/*}#1IJRQ9C5J0Code*/
+		}catch(error){
+			/*#{1IJRQ9C5J0ErrorCode*/
+			/*}#1IJRQ9C5J0ErrorCode*/
 		}
-		result={result:"Finish",content:"Project synced.",agentDir:agentDir};
-		/*}#1IJRQ9C5J0Code*/
 		return {result:result};
 	};
 	SyncDir.jaxId="1IJRQ9C5J0"
 	SyncDir.url="SyncDir@"+agentURL
 	
-	agent={
+	agent=$agent={
 		isAIAgent:true,
 		session:session,
 		name:"ToolSetupPrjSyncDir",
@@ -264,6 +289,7 @@ export const ChatAPI=[{
 			}
 		}
 	},
+	isChatApi: true,
 	agent: ToolSetupPrjSyncDir
 }];
 
@@ -305,6 +331,8 @@ if(DocAIAgentExporter){
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/ToolSetupPrjSyncDir.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
 			this.packResult(coder,seg,seg.outlet);
 		}
 		coder.indentLess();coder.maybeNewLine();
@@ -342,7 +370,6 @@ export{ToolSetupPrjSyncDir};
 //							"jaxId": "1IJRPS73O8",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IJRPS73O9",
 //							"attrs": {}
@@ -353,7 +380,8 @@ export{ToolSetupPrjSyncDir};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -363,6 +391,7 @@ export{ToolSetupPrjSyncDir};
 //			"jaxId": "1IJRPS73O2",
 //			"attrs": {}
 //		},
+//		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
 //		"inBrowser": "true",
@@ -686,7 +715,9 @@ export{ToolSetupPrjSyncDir};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "false",
+//						"allowEmpty": "false",
 //						"showText": "true",
+//						"askUpward": "false",
 //						"outlet": {
 //							"jaxId": "1IJRQHDDD0",
 //							"attrs": {
@@ -881,6 +912,7 @@ export{ToolSetupPrjSyncDir};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "The agent directory name is invalid. The agent directory name can only contain uppercase and lowercase letters, numbers, '_', '-', and spaces.",
@@ -978,7 +1010,11 @@ export{ToolSetupPrjSyncDir};
 //							},
 //							"linkedSeg": "1IJRQ9C5J0"
 //						},
-//						"result": "#input"
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1014,7 +1050,11 @@ export{ToolSetupPrjSyncDir};
 //								"desc": "输出节点。"
 //							}
 //						},
-//						"result": "#input"
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				}

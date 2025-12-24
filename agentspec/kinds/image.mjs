@@ -141,8 +141,13 @@ const imageKind = {
 		'transform.operation':{
 			kind: 'arg',
 			type: 'string',
-			values: ['scale', 'resize', 'mirror', 'slice', 'dedrift'],
+			values: ['scale', 'resize', 'slice', 'mirror', 'rotate', 'dedrift'],
 			desc: '操作。',
+		},
+		'transform.scale':{
+			kind: 'arg',
+			type: 'number',
+			desc: '设置图片的放缩比例，使用放缩比例时，保持横总比。',
 		},
 		'transform.maxSize':{
 			kind: 'arg',
