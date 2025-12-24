@@ -169,7 +169,7 @@ let SysInitWorkEnv=async function(session){
 			/*#{1IG32KVO90ErrorCode*/
 			/*}#1IG32KVO90ErrorCode*/
 		}
-		return {seg:ShowEnv,result:(result),preSeg:"1IG32KVO90",outlet:"1IG32OB9D0"};
+		return {seg:InitBash,result:(result),preSeg:"1IG32KVO90",outlet:"1IG32OB9D0"};
 	};
 	ReadConifg.jaxId="1IG32KVO90"
 	ReadConifg.url="ReadConifg@"+agentURL
@@ -186,7 +186,7 @@ let SysInitWorkEnv=async function(session){
 		/*#{1IG3G17U20PostCodes*/
 		globalContext.bash=result;
 		/*}#1IG3G17U20PostCodes*/
-		return {result:result};
+		return {seg:ShowEnv,result:(result),preSeg:"1IG3G17U20",outlet:"1IG3G2LGG0"};
 	};
 	InitBash.jaxId="1IG3G17U20"
 	InitBash.url="InitBash@"+agentURL
@@ -402,7 +402,7 @@ export{SysInitWorkEnv,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IG3GT0LF0"
+//							"linkedSeg": "1IG3G17U20"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -420,8 +420,8 @@ export{SysInitWorkEnv,ChatAPI};
 //						"id": "InitBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "595",
-//						"y": "-120",
+//						"x": "620",
+//						"y": "110",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -447,7 +447,8 @@ export{SysInitWorkEnv,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1IG3GT0LF0"
 //						}
 //					},
 //					"icon": "terminal.svg"

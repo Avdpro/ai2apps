@@ -228,7 +228,7 @@ let Bash=async function(session){
 		lastLine=lines[lines.length-1].trim();
 		isIdle=(lastLine.endsWith(IDLEMaker));
 		/*}#1IIF4R4RO0Start*/
-		if(false){
+		if(!isIdle){
 			/*#{1IIF5P1F21Codes*/
 			if(lines>10){
 				input=lines.slice(-10).join("\n");
@@ -1206,7 +1206,7 @@ export{Bash,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#false"
+//										"condition": "#!isIdle"
 //									},
 //									"linkedSeg": "1IIDUEG0G0"
 //								}
