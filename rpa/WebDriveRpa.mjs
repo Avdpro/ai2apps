@@ -173,6 +173,27 @@ WebRpa=function(session){
 webRpa=WebRpa.prototype={};
 WebRpa.version=WebRpa_Version;
 
+WebRpa.getPageByRef=function(ref){
+	let browserId,browser,page;
+	browserId=ref.browserId;
+	if(browserId){
+		browser=browserMap.get(browserId);
+		if(!browser){
+			return null;
+		}
+		return browser.pageMap.get(ref.contextId);
+	}else{
+		let browsers=Array.from(browserMap.values());
+		for(browser of browsers){
+			page=browser.pageMap.get(ref.contextId);
+			if(page){
+				return page;
+			}
+		}
+	}
+	return null;
+};
+
 //------------------------------------------------------------------------
 //TODO: Port this:
 webRpa.setupAIQuery=async function(context,agentPath,agentJaxId){
@@ -207,6 +228,7 @@ webRpa.openBrowser=async function(alias,opts){
 	if(browser){
 		browser.aaeRefcount=browser.aaeRefcount?browser.aaeRefcount+1:1;
 	}
+	browser.aaWebRpa=this;
 	return browser;
 };
 

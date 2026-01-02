@@ -214,8 +214,9 @@ AaWebDriveContext=function(webDrive,contextId){
 	this.pageMouseX=Math.floor(Math.random()*30)+10;
 	this.pageMouseY=Math.floor(Math.random()*30)+10;
 	
-	this.action=null;
+	this.pageRef = { browserId: webDrive.aaeBrowserId, contextId:contextId };
 	
+	this.action=null;
 	this.frameMap=new Map();
 	
 	//Inbuilt objects:

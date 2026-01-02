@@ -592,7 +592,7 @@ const codeLib=(codeTag)=>{
 		},
 		
 		"queryNodes":function(aaeId,selector,opts){
-			let list,i,n,node,wraped,visibleOnly,contextNode,wNode;
+			let list,i,n,node,wraped,visibleOnly,contextNode,wNode,isXPath;
 			wraped=[];
 			visibleOnly=opts?(opts.filterVisible===false?false:true):true;
 			try{
@@ -605,7 +605,21 @@ const codeLib=(codeTag)=>{
 				}else{
 					contextNode=document;
 				}
-				if(selector[0]==="("){
+				if (selector.startsWith('::-p-xpath')) {//pup-style XPath
+					isXPath=true;
+					selector=selector.substring('::-p-xpath'.length).trim();
+				}else if(selector.startsWith("xpath:")){
+					isXPath=true;
+					selector=selector.substring('xpath:'.length).trim();
+				}else if (selector.startsWith('(')) {
+					isXPath=true;
+				}else if (selector.startsWith('css:')) {//CSS selector
+					isXPath=true;
+					selector=selector.substring('css:'.length).trim();
+				}else{
+					isXPath=false;
+				}
+				if(isXPath){
 					let result;
 					//This is a XPath querry:
 					result = document.evaluate(selector, contextNode, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
