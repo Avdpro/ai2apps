@@ -1,0 +1,14 @@
+{
+	"web": {
+		"read_list_search_result": {
+			"value": "function extractResults() {\n  var items = [];\n  var results = document.querySelectorAll('div.result, div.result-op');\n  var position = 1;\n  results.forEach(function(node) {\n    // 排除“大家还在搜”类推荐卡（不算结果），通常无 id / mu 属性、tpl=aladdin-san/app/recommend_list/result_bd1d926 等\n    if (node.classList.contains('result') || node.classList.contains('result-op')) {\n      // 过滤无关内容\n      // 获取主跳转链接（通常为第一个大于 8 字的 a 标签）\n      var a = node.querySelector('a[href^=\"http\"],a[href^=\"/s?\"],a[target=\"_blank\"]');\n      if (!a) return;\n      var url = a.href;\n      // 主标题（优先大号可点击 title/a，或 h3/t）\n      var title = '';\n      var h3 = node.querySelector('h3, .t, .cosc-title, [class*=\"title_\"] a');\n      if (h3 && h3.textContent.trim()) {\n        title = h3.textContent.trim();\n      } else if (a && a.textContent.length > 0) {\n        title = a.textContent.trim();\n      }\n      if (!title) return;\n      // 摘要\n      var summary = '';\n      var summaryNode = node.querySelector('.c-abstract, .summary-gap_3Jb4I, .cu-line-clamp-2, .cosd-markdown-content, .dqc2rye');\n      if (summaryNode && summaryNode.textContent.trim().length > 0 && summaryNode.textContent.trim().length < 600) summary = summaryNode.textContent.trim();\n      // 来源（如有）\n      var source = '';\n      var srcNode = node.querySelector('.cosc-source-text, .cosc-source-link, .source-name_6x7Ze');\n      if (srcNode) source = srcNode.textContent.trim();\n      // 广告标记\n      var badges = [];\n      if (node.innerHTML.indexOf('广告') > -1 || (a && a.innerHTML.indexOf('广告') > -1)) badges.push('广告');\n      // 发布时间\n      var publishedAt = '';\n      // 查找如“2026-01”、“yyyy-mm-dd”短日期\n      var dtMatch = node.innerText.match(/(20[12][0-9][.-][01]?\\d[.-][0-3]?\\d)/);\n      if (dtMatch) publishedAt = dtMatch[1].replace(/[.-]/g,'-');\n      items.push({\n        id: node.id||'',\n        url,\n        title,\n        summary,\n        source,\n        publishedAt,\n        position: position++,\n        badges\n      });\n    }\n  });\n  return items;\n}",
+			"time": 1767985219634
+		},
+		"search": {
+			"value": {
+				"click": "css: #chat-input-area"
+			},
+			"time": 1767985219642
+		}
+	}
+}

@@ -1223,7 +1223,7 @@ class ChatSession {
 				if(!agentNode){
 					agentNode="$client";
 				}
-				path=result.Path;
+				path=result.path;
 			}
 		}
 		if(agentNode) {//This is a remote chat

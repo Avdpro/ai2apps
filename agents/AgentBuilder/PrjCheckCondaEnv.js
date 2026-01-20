@@ -125,16 +125,21 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["ReadReq"]=ReadReq=async function(input){//:1IGAU72M10
 		let result=input
-		/*#{1IGAU72M10Code*/
-		if(installReq!==false){
-			try{
-				reqText=await fsp.readFile(pathLib.join(dirPath,"requirements.txt"),"utf8");
-			}catch(err){
-				reqText=null;
+		try{
+			/*#{1IGAU72M10Code*/
+			if(installReq!==false){
+				try{
+					reqText=await fsp.readFile(pathLib.join(dirPath,"requirements.txt"),"utf8");
+				}catch(err){
+					reqText=null;
+				}
+				result=reqText;
 			}
-			result=reqText;
+			/*}#1IGAU72M10Code*/
+		}catch(error){
+			/*#{1IGAU72M10ErrorCode*/
+			/*}#1IGAU72M10ErrorCode*/
 		}
-		/*}#1IGAU72M10Code*/
 		return {seg:CheckReq,result:(result),preSeg:"1IGAU72M10",outlet:"1IGAUQE2K0"};
 	};
 	ReadReq.jaxId="1IGAU72M10"
@@ -152,9 +157,14 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["Result"]=Result=async function(input){//:1IGAU8E150
 		let result=input
-		/*#{1IGAU8E150Code*/
-		result={"missing":false,"conflict":false};
-		/*}#1IGAU8E150Code*/
+		try{
+			/*#{1IGAU8E150Code*/
+			result={"missing":false,"conflict":false};
+			/*}#1IGAU8E150Code*/
+		}catch(error){
+			/*#{1IGAU8E150ErrorCode*/
+			/*}#1IGAU8E150ErrorCode*/
+		}
 		return {seg:AskEnv,result:(result),preSeg:"1IGAU8E150",outlet:"1IGAUQE2K3"};
 	};
 	Result.jaxId="1IGAU8E150"
@@ -162,29 +172,34 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["GetReqType"]=GetReqType=async function(input){//:1IGAU8VK60
 		let result=input
-		/*#{1IGAU8VK60Code*/
-		const lines = reqText.split('\n');
-		const pipRegex = /^[a-zA-Z0-9_.-]+==[0-9]+(\.[0-9]+)*$/;  // pip 格式 (numpy==1.21.0)
-		const condaRegex = /^[a-zA-Z0-9_.-]+=[0-9]+(\.[0-9]+)*$/;  // conda 格式 (numpy=1.21.0)
-		let pipCount = 0;
-		let condaCount = 0;
-		for (let line of lines) {
-			line = line.trim();
-			if (!line || line.startsWith('#')) continue;
-			if (pipRegex.test(line)) {
-				pipCount++;
-			} else if (condaRegex.test(line)) {
-				condaCount++;
+		try{
+			/*#{1IGAU8VK60Code*/
+			const lines = reqText.split('\n');
+			const pipRegex = /^[a-zA-Z0-9_.-]+==[0-9]+(\.[0-9]+)*$/;  // pip 格式 (numpy==1.21.0)
+			const condaRegex = /^[a-zA-Z0-9_.-]+=[0-9]+(\.[0-9]+)*$/;  // conda 格式 (numpy=1.21.0)
+			let pipCount = 0;
+			let condaCount = 0;
+			for (let line of lines) {
+				line = line.trim();
+				if (!line || line.startsWith('#')) continue;
+				if (pipRegex.test(line)) {
+					pipCount++;
+				} else if (condaRegex.test(line)) {
+					condaCount++;
+				}
 			}
+			if (pipCount > condaCount){
+				result='pip';
+			}else if(condaCount > pipCount){
+				result='conda';
+			}else{
+				result='unknown';
+			}
+			/*}#1IGAU8VK60Code*/
+		}catch(error){
+			/*#{1IGAU8VK60ErrorCode*/
+			/*}#1IGAU8VK60ErrorCode*/
 		}
-		if (pipCount > condaCount){
-			result='pip';
-		}else if(condaCount > pipCount){
-			result='conda';
-		}else{
-			result='unknown';
-		}
-		/*}#1IGAU8VK60Code*/
 		return {seg:CheckReqType,result:(result),preSeg:"1IGAU8VK60",outlet:"1IGAUQE2K4"};
 	};
 	GetReqType.jaxId="1IGAU8VK60"
@@ -271,8 +286,8 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["TipIssue"]=TipIssue=async function(input){//:1IGB4O4R30
 		let result=input;
-		let channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:channel};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IGB4O4R30PreCodes*/
@@ -296,9 +311,14 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["NoType"]=NoType=async function(input){//:1IGB15TE40
 		let result=input
-		/*#{1IGB15TE40Code*/
-		result={"missing":false,"conflict":false};
-		/*}#1IGB15TE40Code*/
+		try{
+			/*#{1IGB15TE40Code*/
+			result={"missing":false,"conflict":false};
+			/*}#1IGB15TE40Code*/
+		}catch(error){
+			/*#{1IGB15TE40ErrorCode*/
+			/*}#1IGB15TE40ErrorCode*/
+		}
 		return {seg:AskEnv,result:(result),preSeg:"1IGB15TE40",outlet:"1IGB16AQT0"};
 	};
 	NoType.jaxId="1IGB15TE40"
@@ -309,9 +329,9 @@ let PrjCheckCondaEnv=async function(session){
 		let silent=false;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
-		let button1=("新环境")||"OK";
-		let button2=("当前环境")||"Cancel";
-		let button3=("选择环境")||"";
+		let button1=((($ln==="CN")?("新环境"):("New environment")))||"OK";
+		let button2=((($ln==="CN")?("当前环境"):("Current environment")))||"Cancel";
+		let button3=((($ln==="CN")?("选择环境"):("Select Environment")))||"";
 		let result="";
 		let value=0;
 		if(silent){
@@ -395,7 +415,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName}`];
+		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`,`source activate ${envName}`];
 		args['options']={clear:true};
 		/*#{1IGB4V6D30PreCodes*/
 		/*}#1IGB4V6D30PreCodes*/
@@ -412,12 +432,17 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["End2"]=End2=async function(input){//:1IGB50VR80
 		let result=input
-		/*#{1IGB50VR80Code*/
-		envName=env.conda.default;
-		project.conda=envName;
-		result={result:"Finish",context:`选定conda环境："${envName}"，作为项目的python环境。`};
-		project.progress.push(`选定conda环境："${envName}"，作为项目的python环境。`);
-		/*}#1IGB50VR80Code*/
+		try{
+			/*#{1IGB50VR80Code*/
+			envName=env.conda.default;
+			project.conda=envName;
+			result={result:"Finish",context:`选定conda环境："${envName}"，作为项目的python环境。`};
+			project.progress.push(`选定conda环境："${envName}"，作为项目的python环境。`);
+			/*}#1IGB50VR80Code*/
+		}catch(error){
+			/*#{1IGB50VR80ErrorCode*/
+			/*}#1IGB50VR80ErrorCode*/
+		}
 		return {result:result};
 	};
 	End2.jaxId="1IGB50VR80"
@@ -456,16 +481,21 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["GenEnvName"]=GenEnvName=async function(input){//:1IGB5E9310
 		let result=input
-		/*#{1IGB5E9310Code*/
-		//Generate a new conda name for project:
-		let nameIdx;
-		condaEnvs=await getCondaEnvList();
-		envName=refName||project.name;
-		nameIdx=1;
-		while(condaEnvs.indexOf(envName)>=0){
-			envName=project.name+"-"+(nameIdx++);
+		try{
+			/*#{1IGB5E9310Code*/
+			//Generate a new conda name for project:
+			let nameIdx;
+			condaEnvs=await getCondaEnvList();
+			envName=refName||project.name;
+			nameIdx=1;
+			while(condaEnvs.indexOf(envName)>=0){
+				envName=project.name+"-"+(nameIdx++);
+			}
+			/*}#1IGB5E9310Code*/
+		}catch(error){
+			/*#{1IGB5E9310ErrorCode*/
+			/*}#1IGB5E9310ErrorCode*/
 		}
-		/*}#1IGB5E9310Code*/
 		return {seg:ConfirmName,result:(result),preSeg:"1IGB5E9310",outlet:"1IGB5QNSK1"};
 	};
 	GenEnvName.jaxId="1IGB5E9310"
@@ -546,11 +576,16 @@ let PrjCheckCondaEnv=async function(session){
 	
 	segs["SelectEnv"]=SelectEnv=async function(input){//:1IGB5Q4LI0
 		let result=input
-		/*#{1IGB5Q4LI0Code*/
-		envName=input;
-		project.conda=envName;
-		result={finish:true};
-		/*}#1IGB5Q4LI0Code*/
+		try{
+			/*#{1IGB5Q4LI0Code*/
+			envName=input;
+			project.conda=envName;
+			result={finish:true};
+			/*}#1IGB5Q4LI0Code*/
+		}catch(error){
+			/*#{1IGB5Q4LI0ErrorCode*/
+			/*}#1IGB5Q4LI0ErrorCode*/
+		}
 		return {seg:UseEnv,result:(result),preSeg:"1IGB5Q4LI0",outlet:"1IGB5QNSL1"};
 	};
 	SelectEnv.jaxId="1IGB5Q4LI0"
@@ -560,7 +595,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda init`,`conda activate ${envName}`];
+		args['commands']=[`conda init`,`source activate ${envName}`];
 		args['options']="";
 		/*#{1IGO1NK0L0PreCodes*/
 		/*}#1IGO1NK0L0PreCodes*/
@@ -732,7 +767,6 @@ export{PrjCheckCondaEnv,ChatAPI};
 //							"jaxId": "1IGAU4QB61",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IGAU4QB62",
 //							"attrs": {}
@@ -743,7 +777,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -905,7 +940,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1013,7 +1049,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1053,7 +1090,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1308,7 +1346,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1344,7 +1383,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //									"attrs": {
 //										"id": "NewEnv",
 //										"desc": "输出节点。",
-//										"text": "新环境",
+//										"text": {
+//											"type": "string",
+//											"valText": "New environment",
+//											"localize": {
+//												"EN": "New environment",
+//												"CN": "新环境"
+//											},
+//											"localizable": true
+//										},
 //										"result": "",
 //										"codes": "false",
 //										"context": {
@@ -1369,7 +1416,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //									"attrs": {
 //										"id": "CurEnv",
 //										"desc": "输出节点。",
-//										"text": "当前环境",
+//										"text": {
+//											"type": "string",
+//											"valText": "Current environment",
+//											"localize": {
+//												"EN": "Current environment",
+//												"CN": "当前环境"
+//											},
+//											"localizable": true
+//										},
 //										"result": "",
 //										"codes": "false",
 //										"context": {
@@ -1394,7 +1449,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //									"attrs": {
 //										"id": "Select",
 //										"desc": "输出节点。",
-//										"text": "选择环境",
+//										"text": {
+//											"type": "string",
+//											"valText": "Select Environment",
+//											"localize": {
+//												"EN": "Select Environment",
+//												"CN": "选择环境"
+//											},
+//											"localizable": true
+//										},
 //										"result": "",
 //										"codes": "false",
 //										"context": {
@@ -1627,7 +1690,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName}`]",
+//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`,`source activate ${envName}`]",
 //						"options": "#{clear:true}",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSJ1",
@@ -1674,7 +1737,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1756,7 +1820,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2042,7 +2107,8 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2074,7 +2140,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda init`,`conda activate ${envName}`]",
+//						"commands": "#[`conda init`,`source activate ${envName}`]",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IGO1O5080",

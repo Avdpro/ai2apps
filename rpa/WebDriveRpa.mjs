@@ -1,12 +1,12 @@
-import WebDrive from "./WebDrive.mjs";
-import {AIQuery} from "./aiquery.mjs";
-import clipboardy from "clipboardy";
+import WebDrive from './WebDrive.mjs'
+import { AIQuery } from './aiquery.mjs'
+import clipboardy from 'clipboardy'
 import pathLib from 'path'
 import { promises as fsp, promises as fs } from 'fs'
-import startPPT from './pptstart.mjs';
-import {ensureCodeLib} from "./CodeLib.mjs";
+import { ensureCodeLib } from './CodeLib.mjs'
 import { URL } from 'url'
 import html2md from 'html-to-md'
+import { inPagePickDomElement } from './InPageUI.mjs'
 
 const codeURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const codeDirURL=pathLib.dirname(codeURL);
@@ -37,6 +37,39 @@ async function deleteFile(filePath) {
 	} catch (err) {
 	}
 }
+
+function guessMimeFromExt(filePath) {
+	const ext = pathLib.extname(filePath).toLowerCase();
+	switch (ext) {
+		case ".png": return "image/png";
+		case ".jpg":
+		case ".jpeg": return "image/jpeg";
+		case ".gif": return "image/gif";
+		case ".webp": return "image/webp";
+		case ".svg": return "image/svg+xml";
+		case ".ico": return "image/x-icon";
+		case ".bmp": return "image/bmp";
+		case ".txt": return "text/plain;charset=utf-8";
+		case ".html": return "text/html;charset=utf-8";
+		case ".css": return "text/css;charset=utf-8";
+		case ".js": return "text/javascript;charset=utf-8";
+		case ".json": return "application/json;charset=utf-8";
+		case ".pdf": return "application/pdf";
+		default: return "application/octet-stream";
+	}
+}
+
+async function readFileAsDataURL(p, opts = {}) {
+	if (!p || typeof p !== "string") {
+		throw new TypeError("readFileAsDataURL: path must be a non-empty string");
+	}
+	const resolvedPath = pathLib.isAbsolute(p) ? p : pathLib.resolve(__dirname, p);
+	const buf = await fsp.readFile(resolvedPath);
+	const mime = (opts.mime && String(opts.mime).trim()) || guessMimeFromExt(resolvedPath);
+	const b64 = buf.toString("base64");
+	return `data:${mime};base64,${b64}`;
+}
+
 
 function getBrowserId(browser){
 	let keys,key;
@@ -127,6 +160,8 @@ async function openBrowser(session,alias,opts){
 	await browser.start(sysId,alias,agentNode);
 	return browser;
 }
+
+let aaLogoIcon=null;
 
 //***************************************************************************
 //WebRpa:
@@ -413,24 +448,26 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	//TODO: Maybe use default $() to get node.
 	WebRpa.queryNode=
 	webRpa.queryNode=async function(pageFrame,node,selector,opts){
-		let codeTag;
+		let codeTag,result;
 		codeTag=await ensureCodeLib(pageFrame);
-		return await pageFrame.callFunction((codeTag,node,selector,opts)=>{
+		result=await pageFrame.callFunction((codeTag,node,selector,opts)=>{
 			let codeLib=globalThis[codeTag];
 			return codeLib.queryNode(node,selector,opts);
 		},[codeTag,node,selector,opts]);
+		return result;
 	};
 
 	//-----------------------------------------------------------------------
 	//TODO: Maybe use default $$() to get node
 	WebRpa.queryNodes=
 	webRpa.queryNodes=async function(pageFrame,node,selector,opts){
-		let codeTag;
+		let codeTag,result;
 		codeTag=await ensureCodeLib(pageFrame);
-		return await pageFrame.callFunction((codeTag,node,selector,opts)=>{
+		result=await pageFrame.callFunction((codeTag,node,selector,opts)=>{
 			let codeLib=globalThis[codeTag];
 			return codeLib.queryNodes(node,selector,opts);
 		},[codeTag,node,selector,opts]);
+		return result;
 	};
 
 	//-----------------------------------------------------------------------
@@ -542,6 +579,55 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 		}
 	};
 	
+}
+
+//***************************************************************************
+//In-Page UI and dialogs
+//***************************************************************************
+{
+	//-----------------------------------------------------------------------
+	webRpa.inPagePrompt=async function(page,text,opts={}){
+		opts=opts||{};
+		if(opts.icon===undefined){
+			if(!aaLogoIcon){
+				aaLogoIcon=await readFileAsDataURL(pathLib.join(codeDirPath,"ai2apps.svg"));
+			}
+			opts.icon=aaLogoIcon;
+		}
+		return await page.callFunction((await import("./InPageUI.mjs")).inPagePrompt,[text,opts]);
+	};
+	
+	//-----------------------------------------------------------------------
+	webRpa.inPageTip=async function(page,text,opts={}){
+		opts=opts||{};
+		if(opts.icon===undefined){
+			if(!aaLogoIcon){
+				aaLogoIcon=await readFileAsDataURL(pathLib.join(codeDirPath,"ai2apps.svg"));
+			}
+			opts.icon=aaLogoIcon;
+		}
+		return await page.callFunction((await import("./InPageUI.mjs")).inPageTip,[text,opts]);
+	};
+
+	//-----------------------------------------------------------------------
+	webRpa.inPageTipDismiss=async function(page,idOrAll){
+		return await page.callFunction((await import("./InPageUI.mjs")).inPageTipDismiss,[idOrAll]);
+	};
+
+	//-----------------------------------------------------------------------
+	webRpa.inPagePickDomElement=async function(page,opts){
+		return await page.callFunctionHandle((await import("./InPageUI.mjs")).inPagePickDomElement,[opts||{}]);
+	};
+	
+	//-----------------------------------------------------------------------
+	webRpa.inPageShowSelector=async function(page,selector,opts){
+		return await page.callFunction((await import("./InPageUI.mjs")).inPageShowSelector,[selector,opts]);
+	};
+
+	//-----------------------------------------------------------------------
+	webRpa.inPageDismissSelector=async function(page,selector,opts){
+		return await page.callFunction((await import("./InPageUI.mjs")).inPageDismissSelector,[]);
+	};
 }
 export default WebRpa;
 export {WebRpa,ensureCodeLib,sleep};

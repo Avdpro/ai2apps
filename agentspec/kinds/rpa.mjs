@@ -19,12 +19,19 @@ const rpaKind = {
             desc: '检查当前是否已登录（返回已登录/未登录，或给出原因）'
         },
         'login.ensure': {
-            kind: 'cap',
-            desc: '确保已登录（若未登录可执行登录流程；可能需要 authMode + 凭据/cookie 由系统注入）'
+            kind: 'arg',
+            type:'boolean',
+            desc: '确保已登录（若未登录可执行登录流程；可能需要 authMode + 凭据/cookie 由系统注入或者用户介入）'
         },
         'login.interactive': {
             kind: 'cap',
+            type:'boolean',
             desc: '支持交互式登录（需要用户手动输入账号密码或扫码）'
+        },
+        'login.meta': {
+            kind: 'arg',
+            type: 'object',
+            desc: '登录所需要的信息，比如email，password等。'
         },
         'login.cookie': {
             kind: 'cap',
@@ -50,12 +57,27 @@ const rpaKind = {
         },
 
         // reading
+        'read.article': {
+            kind: 'cap',
+            desc: '读取文章内容'
+        },
         'read.list': {
             kind: 'cap',
             desc: '读取信息流/文章列表/帖子列表（返回条目 url/title 等）'
         },
+        'read.listTarget': {
+            kind: 'arg',
+            type: 'string',
+            desc: '要读取的列表项目的类型[search_result,article,email]'
+        },
+        'read.fields': {
+            kind: 'arg',
+            type: 'array>string>',
+            desc: '要读出项目的哪些属性，比如: url, title, summary...'
+        },
         'read.detail': {
-            kind: 'cap',
+            kind: 'arg',
+            type: 'boolean',
             desc: '读取单个 post/article 的详情内容（正文、作者、时间等）'
         },
         'read.batch': {
@@ -74,16 +96,50 @@ const rpaKind = {
             kind: 'cap',
             desc: '读取用户/频道/页面资料信息（关注数、简介、头像等）'
         },
+        
+        // compose
+        'compose':{
+            kind: 'cap',
+            desc: '编写内容'
+        },
+        'compose.type':{
+            kind: 'arg',
+            type: 'string',
+            desc: '编写内容类型：article, post, thread, comment, reply'
+        },
+        'compose.parent':{
+            kind: 'arg',
+            type: 'string',
+            desc: '如果是评论或者回复，上一级的描述对象/selector'
+        },
+        'compose.action':{
+            kind: 'arg',
+            type: 'string ["start","title","content","block","asset","tag","publish"]',
+            desc: '撰写的动作'
+            
+        },
+        'compose.text':{
+            kind: 'arg',
+            type: 'string',
+            desc: '撰写的内容文本'
+        },
+        'compose.block':{
+            kind: 'arg',
+            type: 'object',
+            desc: '撰写的内容块对象'
+        },
+        'compose.file':{
+            kind: 'arg',
+            type: 'string',
+            desc: '为撰写内容添加文件、图片、视频等附件的DataURL或文件路径'
+        },
+        'compose.visibility':{
+            kind: 'arg',
+            type: 'string',
+            desc: '发布的可见范围, ["public","draft","private","fansOnly","friendsOnly]"'
+        },
 
         // content management
-        'publish.post': {
-            kind: 'cap',
-            desc: '发表 post（可能包含文本/图片/链接等）'
-        },
-        'publish.comment': {
-            kind: 'cap',
-            desc: '发布评论/回复'
-        },
         'edit.post': {
             kind: 'cap',
             desc: '编辑已有 post'
@@ -158,7 +214,24 @@ const rpaKind = {
             kind: 'cap',
             desc: '支持 AI 智能提取内容（从复杂 HTML 中提取结构化数据）'
         },
-
+        
+        // web chat
+        'webChat':{
+            kind: 'cap',
+            desc: '支持 Web 页面内的聊天，例如与AI对话'
+        },
+        
+        'webChat.action':{
+            kind: 'arg',
+            type: 'string',
+            desc: 'Web chat 动作： "getSessions",“newSession”,"enterSession","getMessages",“addAsset”,"input","send","waitReply"'
+        },
+        'webChat.session':{
+            kind: 'arg',
+            type: 'string',
+            desc: 'session descriptor, for "enterSession", "deleteSession"'
+        },
+        
         //arg
         'platform': {
             kind: 'arg',
@@ -234,6 +307,11 @@ const rpaKind = {
             type: 'number_or_range',
             desc: '最大翻页/加载页数（或 {min,max}）',
         },
+        'minItems': {
+            kind: 'arg',
+            type: 'number_or_range',
+            desc: '最少（如果有）抓取条目数（或 {min,max}）',
+        },
         'maxItems': {
             kind: 'arg',
             type: 'number_or_range',
@@ -244,8 +322,66 @@ const rpaKind = {
             type: 'number_or_range',
             desc: '滚动加载轮数（用于无限滚动场景）',
         },
+        
+        //post
+        'publish.post': {
+            kind: 'cap',
+            desc: '发表 post（可能包含文本/图片/链接等）'
+        },
+        'post.addImage':{
+            kind: 'cap',
+            desc: '专门支持添加图片的Agent',
+        },
+        'post.addVideo':{
+            kind: 'cap',
+            desc: '专门支持添加视频的Agent',
+        },
+        'post.title':{
+            kind: 'arg',
+            type: 'string',
+            desc: '发帖子的标题',
+        },
+        'post.text':{
+            kind: 'arg',
+            type: 'string',
+            desc: '发帖子的文本内容',
+        },
+        'post.topic':{
+            kind: 'arg',
+            type: 'string-or-list',
+            desc: '发帖子的标签',
+        },
+        'post.image':{
+            kind: 'arg',
+            type: 'string-or-list',
+            desc: '发帖子的图片',
+        },
+        'post.video':{
+            kind: 'arg',
+            type: 'string-or-list',
+            desc: '发帖子的视频',
+        },
+        'post.contentBlocks':{
+            kind: 'arg',
+            type: 'list',
+            desc: '帖子的标题图文内容块数组，用于复杂文章的发布',
+        },
 
         //comment & reaction
+        'publish.comment': {
+            kind: 'cap',
+            desc: '发布评论/回复'
+        },
+        'comment.text': {
+            kind: 'arg',
+            type: 'string',
+            desc: '要发布的评论文本内容',
+        },
+        'comment.image': {
+            kind: 'arg',
+            type: 'string-or-list',
+            desc: '要发布的评论图片',
+        },
         'comments': {
             kind: 'arg',
             type: 'number_or_range',
@@ -328,7 +464,7 @@ const rpaKind = {
             type: 'number',
             desc: '操作超时时间（ms；默认 30000）',
         },
-
+        
         //concurrency
         'concurrency': {
             kind: 'arg',
@@ -361,6 +497,10 @@ const rpaKind = {
             kind: 'arg',
             type: 'object',
             desc: '自定义提取规则（JSON 对象，定义字段提取逻辑）',
+        },
+        'showMore':{
+            kind: 'cap',
+            desc: '显示更多内容',
         },
     },
 

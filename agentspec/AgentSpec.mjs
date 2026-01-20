@@ -15,7 +15,7 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import { pathToFileURL } from 'url'
+import { pathToFileURL,fileURLToPath } from 'url'
 
 export const AgentSpecs = {
 // internal store: kind -> KindDef (frozen)
@@ -240,7 +240,7 @@ async function _dynImport (fileAbs, bustCache) {
 function _selfPath () {
 // import.meta.url is the canonical source; convert to local path
 	const u = new URL(import.meta.url)
-	return u.protocol === 'file:' ? u.pathname : ''
+	return u.protocol === 'file:' ? fileURLToPath(u) : ''
 }
 
 function _validateKindDef (kd, strict) {

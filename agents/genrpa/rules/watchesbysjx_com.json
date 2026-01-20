@@ -1,0 +1,31 @@
+{
+	"web": {
+		"blocker": {
+			"selectors": {
+				"value": [
+					"css: #c-p-bn"
+				],
+				"time": 1767652543482
+			}
+		},
+		"read_list_search_result": {
+			"value": "function extractResults() {\n  const container = document.querySelector('.content-tile');\n  if (!container) return [];\n  const blocks = Array.from(container.children).filter(el => el.matches('.brand-k, .brand-n, .brand-r'));\n  return blocks.map((el, idx) => {\n    const urlEl = el.querySelector('h2 a[href]');\n    const titleEl = urlEl;\n    const summaryEl = el.querySelector('span[style*=\"overflow-wrap\"], span[style *= \"overflow-wrap\"]');\n    const footer = el.querySelector('footer');\n    let publishedAt = '';\n    let source = '';\n    if (footer) {\n      const dateEl = footer.querySelector('span');\n      if (dateEl) {\n        // Dates are in dd.mm.yyyy, convert to ISO\n        const m = dateEl.textContent.match(/(\\d{2})\\.(\\d{2})\\.(\\d{4})/);\n        if (m) publishedAt = `${m[3]}-${m[2]}-${m[1]}`;\n      }\n      // Extract first tag (as source)\n      const sourceEl = footer.querySelector('a[rel=\"tag\"]');\n      if (sourceEl) source = sourceEl.textContent.trim();\n    }\n    return {\n      id: urlEl ? urlEl.getAttribute('href') : '',\n      url: urlEl ? urlEl.href : '',\n      title: titleEl ? titleEl.textContent.trim() : '',\n      summary: summaryEl ? summaryEl.textContent.trim() : '',\n      publishedAt: publishedAt,\n      source: source,\n      position: idx + 1\n    };\n  });\n}",
+			"time": 1767982251782
+		},
+		"search": {
+			"value": {
+				"click": "css: a.search-link"
+			},
+			"time": 1767982251788
+		},
+		"show_more_items": {
+			"value": [
+				{
+					"type": "click",
+					"by": "css: a.load-more"
+				}
+			],
+			"time": 1768120092953
+		}
+	}
+}

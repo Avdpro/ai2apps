@@ -92,8 +92,12 @@ let AgentNodeTerminal,agentNodeTerminal;
 				terminal.write(data);
 				this.waitBuf += data.toString();
 				process.stdout.write(data);
+				const lines = this.waitBuf.trimEnd().split('\n');
+				const lastLine = lines[lines.length - 1].trim();
 
-				if (this.waitBuf.includes('__AGENT_SHELL__> ')) {//Idle:
+				// 匹配：可选的环境名 + prompt
+				const promptMatch = lastLine.match(/^(\([^)]+\)\s*)?__AGENT_SHELL__>$/);
+				if (promptMatch){//Idle:
 					let callback;
 					this.OnIdle();
 					callback=this.waitCallback;

@@ -81,9 +81,14 @@ let PrjSetupBySteps=async function(session){
 	let $agent,agent,segs={};
 	segs["Start"]=Start=async function(input){//:1IJ2L44GS0
 		let result=input;
-		/*#{1IJ2L44GS0Code*/
-		false
-		/*}#1IJ2L44GS0Code*/
+		try{
+			/*#{1IJ2L44GS0Code*/
+			false
+			/*}#1IJ2L44GS0Code*/
+		}catch(error){
+			/*#{1IJ2L44GS0ErrorCode*/
+			/*}#1IJ2L44GS0ErrorCode*/
+		}
 		return {seg:InitEnv,result:(result),preSeg:"1IJ2L44GS0",outlet:"1IJ2L5O0Q0",catchSeg:ShowError,catchlet:"1IJ2L5O0Q1"};
 	};
 	Start.jaxId="1IJ2L44GS0"
@@ -93,6 +98,7 @@ let PrjSetupBySteps=async function(session){
 		let result;
 		let arg=input;
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./SysInitWorkEnv.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJ2KABA10Input*/
@@ -108,62 +114,67 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["InitPrj"]=InitPrj=async function(input){//:1IJ2K9A670
 		let result=input
-		/*#{1IJ2K9A670Code*/
-		let dirPath,prjJSON,prjURL,gitURL,prjName,owner,rawURL,branch;
-		dirPath=prjPath;
-		if(dirPath[0]!=="/"){
-			prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
-		}
 		try{
-			prjJSON=await fsp.readFile(pathLib.join(dirPath,"project.json"),"utf8");
-			prjJSON=JSON.parse(prjJSON);
-		}catch(err){
-			prjJSON={};
-		}
-		prjURL=prjJSON.github||prjJSON.gitURL;
-		if(prjURL) {
-			if (!prjURL.startsWith("https://")) {
-				prjURL = "https://" + prjURL;
+			/*#{1IJ2K9A670Code*/
+			let dirPath,prjJSON,prjURL,gitURL,prjName,owner,rawURL,branch;
+			dirPath=prjPath;
+			if(dirPath[0]!=="/"){
+				prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
 			}
-			if (prjURL.endsWith(".git")) {
-				gitURL = prjURL;
-				prjURL = prjURL.slice(0, -4);
-			} else {
-				if (prjURL.endsWith("/")) {
-					prjURL = prjURL.substring(0, prjURL.length - 1);
+			try{
+				prjJSON=await fsp.readFile(pathLib.join(dirPath,"project.json"),"utf8");
+				prjJSON=JSON.parse(prjJSON);
+			}catch(err){
+				prjJSON={};
+			}
+			prjURL=prjJSON.github||prjJSON.gitURL;
+			if(prjURL) {
+				if (!prjURL.startsWith("https://")) {
+					prjURL = "https://" + prjURL;
 				}
-				gitURL = prjURL + ".git";
+				if (prjURL.endsWith(".git")) {
+					gitURL = prjURL;
+					prjURL = prjURL.slice(0, -4);
+				} else {
+					if (prjURL.endsWith("/")) {
+						prjURL = prjURL.substring(0, prjURL.length - 1);
+					}
+					gitURL = prjURL + ".git";
+				}
+				let parts = prjURL.split('/');
+				prjName = parts[parts.length - 1];
+				owner = parts[parts.length - 2];
+				branch = "main"
+				rawURL = "https://raw.githubusercontent.com/" + prjURL.substring("https://github.com/".length) + "/refs/heads/" + branch;
+			}else{
+				owner=null;
+				prjName=null;
+				branch=null;
+				prjURL=null;
+				gitURL=null;
+				rawURL=null;
 			}
-			let parts = prjURL.split('/');
-			prjName = parts[parts.length - 1];
-			owner = parts[parts.length - 2];
-			branch = "main"
-			rawURL = "https://raw.githubusercontent.com/" + prjURL.substring("https://github.com/".length) + "/refs/heads/" + branch;
-		}else{
-			owner=null;
-			prjName=null;
-			branch=null;
-			prjURL=null;
-			gitURL=null;
-			rawURL=null;
+			project={
+				owner:owner,
+				repo:prjName,
+				branch:branch,
+				name:prjName,
+				url:prjURL,
+				gitURL:gitURL,
+				rawURL:rawURL,
+				dirPath:dirPath,
+				requirements:{},
+				conda:null,
+				venv:null,
+				progress:[],
+				bashLogs:[]
+			};
+			globalContext.project=project;
+			/*}#1IJ2K9A670Code*/
+		}catch(error){
+			/*#{1IJ2K9A670ErrorCode*/
+			/*}#1IJ2K9A670ErrorCode*/
 		}
-		project={
-			owner:owner,
-			repo:prjName,
-			branch:branch,
-			name:prjName,
-			url:prjURL,
-			gitURL:gitURL,
-			rawURL:rawURL,
-			dirPath:dirPath,
-			requirements:{},
-			conda:null,
-			venv:null,
-			progress:[],
-			bashLogs:[]
-		};
-		globalContext.project=project;
-		/*}#1IJ2K9A670Code*/
 		return {seg:LoadSteps,result:(result),preSeg:"1IJ2K9A670",outlet:"1IJ2L5O0Q3"};
 	};
 	InitPrj.jaxId="1IJ2K9A670"
@@ -171,22 +182,27 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["LoadSteps"]=LoadSteps=async function(input){//:1IJ2KGOHG0
 		let result=input
-		/*#{1IJ2KGOHG0Code*/
 		try{
-			let modual=await import(pathLib.join(prjPath,`setup_agent.js?time=${Date.now()}`));
-			if(modual){
-				try{
-					steps=await modual.default(env,project);
-				}catch(err){
-					console.log("Read setup steps error:");
-					console.error(err);
-					steps=null;
+			/*#{1IJ2KGOHG0Code*/
+			try{
+				let modual=await import(pathLib.join(prjPath,`setup_agent.js?time=${Date.now()}`));
+				if(modual){
+					try{
+						steps=await modual.default(env,project);
+					}catch(err){
+						console.log("Read setup steps error:");
+						console.error(err);
+						steps=null;
+					}
 				}
+			}catch(err){
+				steps=null;
 			}
-		}catch(err){
-			steps=null;
+			/*}#1IJ2KGOHG0Code*/
+		}catch(error){
+			/*#{1IJ2KGOHG0ErrorCode*/
+			/*}#1IJ2KGOHG0ErrorCode*/
 		}
-		/*}#1IJ2KGOHG0Code*/
 		return {seg:HasSteps,result:(result),preSeg:"1IJ2KGOHG0",outlet:"1IJ2L5O0Q4"};
 	};
 	LoadSteps.jaxId="1IJ2KGOHG0"
@@ -204,13 +220,18 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["LoadGuide"]=LoadGuide=async function(input){//:1IJ2SSKUN0
 		let result=input
-		/*#{1IJ2SSKUN0Code*/
 		try{
-			setupGuide=await fsp.readFile(pathLib.join(prjPath,"setup_guide.md"),"utf8");
-		}catch(err){
-			setupGuide=null;
+			/*#{1IJ2SSKUN0Code*/
+			try{
+				setupGuide=await fsp.readFile(pathLib.join(prjPath,"setup_guide.md"),"utf8");
+			}catch(err){
+				setupGuide=null;
+			}
+			/*}#1IJ2SSKUN0Code*/
+		}catch(error){
+			/*#{1IJ2SSKUN0ErrorCode*/
+			/*}#1IJ2SSKUN0ErrorCode*/
 		}
-		/*}#1IJ2SSKUN0Code*/
 		return {seg:CheckGuide,result:(result),preSeg:"1IJ2SSKUN0",outlet:"1IJ2STPIS0"};
 	};
 	LoadGuide.jaxId="1IJ2SSKUN0"
@@ -281,6 +302,7 @@ let PrjSetupBySteps=async function(session){
 		let result;
 		let arg={"action":"install","pkgName":input.install};
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./ToolBrew.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -293,6 +315,7 @@ let PrjSetupBySteps=async function(session){
 		let result;
 		let arg={"refName":input.conda||input.name,"pyversion":input.pythonVersion,"installReq":input.installReq||input.installPkg||input.installDep};
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -305,6 +328,7 @@ let PrjSetupBySteps=async function(session){
 		let result;
 		let arg=input;
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -380,46 +404,56 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["SaveConda"]=SaveConda=async function(input){//:1IJEP433U0
 		let result=input
-		/*#{1IJEP433U0Code*/
-		let dirPath=prjPath;
-		if(dirPath[0]!=="/"){
-			prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
-		}
-		if(project.conda){
-			let agentJSON;
-			try{
-				agentJSON=await fsp.readFile(pathLib.join(dirPath,"agent.json"),"utf8");
-				agentJSON=JSON.parse(agentJSON);
-				agentJSON.conda=project.conda;
-				await fsp.writeFile(pathLib.join(dirPath,"agent.json"),JSON.stringify(agentJSON,null,"\t"));
-			}catch(err){
-				agentJSON={};
+		try{
+			/*#{1IJEP433U0Code*/
+			let dirPath=prjPath;
+			if(dirPath[0]!=="/"){
+				prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
 			}
+			if(project.conda){
+				let agentJSON;
+				try{
+					agentJSON=await fsp.readFile(pathLib.join(dirPath,"agent.json"),"utf8");
+					agentJSON=JSON.parse(agentJSON);
+					agentJSON.conda=project.conda;
+					await fsp.writeFile(pathLib.join(dirPath,"agent.json"),JSON.stringify(agentJSON,null,"\t"));
+				}catch(err){
+					agentJSON={};
+				}
+			}
+			/*}#1IJEP433U0Code*/
+		}catch(error){
+			/*#{1IJEP433U0ErrorCode*/
+			/*}#1IJEP433U0ErrorCode*/
 		}
-		/*}#1IJEP433U0Code*/
-		return {seg:AskActive,result:(result),preSeg:"1IJEP433U0",outlet:"1IJEP51F20"};
+		return {result:result};
 	};
 	SaveConda.jaxId="1IJEP433U0"
 	SaveConda.url="SaveConda@"+agentURL
 	
 	segs["ExposeAgent"]=ExposeAgent=async function(input){//:1IJ2L1V3T0
 		let result=input
-		/*#{1IJ2L1V3T0Code*/
-		let dirPath=prjPath;
-		if(dirPath[0]!=="/"){
-			prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
-		}
-		let agentJSON;
 		try{
-			agentJSON=await fsp.readFile(pathLib.join(dirPath,"agent.json"),"utf8");
-			agentJSON=JSON.parse(agentJSON);
-			//Expose agentNode:
-			agentJSON.expose=true;
-			await fsp.writeFile(pathLib.join(dirPath,"agent.json"),JSON.stringify(agentJSON,null,"\t"));
-		}catch(err){
-			agentJSON={};
+			/*#{1IJ2L1V3T0Code*/
+			let dirPath=prjPath;
+			if(dirPath[0]!=="/"){
+				prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
+			}
+			let agentJSON;
+			try{
+				agentJSON=await fsp.readFile(pathLib.join(dirPath,"agent.json"),"utf8");
+				agentJSON=JSON.parse(agentJSON);
+				//Expose agentNode:
+				agentJSON.expose=true;
+				await fsp.writeFile(pathLib.join(dirPath,"agent.json"),JSON.stringify(agentJSON,null,"\t"));
+			}catch(err){
+				agentJSON={};
+			}
+			/*}#1IJ2L1V3T0Code*/
+		}catch(error){
+			/*#{1IJ2L1V3T0ErrorCode*/
+			/*}#1IJ2L1V3T0ErrorCode*/
 		}
-		/*}#1IJ2L1V3T0Code*/
 		return {seg:TipPubFinish,result:(result),preSeg:"1IJ2L1V3T0",outlet:"1IJ2L5O0S0"};
 	};
 	ExposeAgent.jaxId="1IJ2L1V3T0"
@@ -427,22 +461,27 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["HideAgent"]=HideAgent=async function(input){//:1IK7U7CO50
 		let result=input
-		/*#{1IK7U7CO50Code*/
-		let dirPath=prjPath;
-		if(dirPath[0]!=="/"){
-			prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
-		}
-		let agentJSON;
 		try{
-			agentJSON=await fsp.readFile(pathLib.join(dirPath,"agent.json"),"utf8");
-			agentJSON=JSON.parse(agentJSON);
-			//Not expose agentNode:
-			agentJSON.expose=false;
-			await fsp.writeFile(pathLib.join(dirPath,"agent.json"),JSON.stringify(agentJSON,null,"\t"));
-		}catch(err){
-			agentJSON={};
+			/*#{1IK7U7CO50Code*/
+			let dirPath=prjPath;
+			if(dirPath[0]!=="/"){
+				prjPath=dirPath=pathLib.join(session.agentNode.hubPath,dirPath);
+			}
+			let agentJSON;
+			try{
+				agentJSON=await fsp.readFile(pathLib.join(dirPath,"agent.json"),"utf8");
+				agentJSON=JSON.parse(agentJSON);
+				//Not expose agentNode:
+				agentJSON.expose=false;
+				await fsp.writeFile(pathLib.join(dirPath,"agent.json"),JSON.stringify(agentJSON,null,"\t"));
+			}catch(err){
+				agentJSON={};
+			}
+			/*}#1IK7U7CO50Code*/
+		}catch(error){
+			/*#{1IK7U7CO50ErrorCode*/
+			/*}#1IK7U7CO50ErrorCode*/
 		}
-		/*}#1IK7U7CO50Code*/
 		return {seg:TipHideFinish,result:(result),preSeg:"1IK7U7CO50",outlet:"1IK7U7Q8T0"};
 	};
 	HideAgent.jaxId="1IK7U7CO50"
@@ -497,9 +536,14 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["AbortStep"]=AbortStep=async function(input){//:1IJ2L9VS90
 		let result=input
-		/*#{1IJ2L9VS90Code*/
-		result={result:"Failed",content:`Setup project failed: ${input}`};
-		/*}#1IJ2L9VS90Code*/
+		try{
+			/*#{1IJ2L9VS90Code*/
+			result={result:"Failed",content:`Setup project failed: ${input}`};
+			/*}#1IJ2L9VS90Code*/
+		}catch(error){
+			/*#{1IJ2L9VS90ErrorCode*/
+			/*}#1IJ2L9VS90ErrorCode*/
+		}
 		return {result:result};
 	};
 	AbortStep.jaxId="1IJ2L9VS90"
@@ -553,6 +597,7 @@ let PrjSetupBySteps=async function(session){
 		let result;
 		let arg={"model":input.model,"localPath":input.localPath||input.localDir,"token":false};
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./ToolHfModel.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -563,28 +608,33 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["AddNote"]=AddNote=async function(input){//:1IJI789IM0
 		let result=input
-		/*#{1IJI789IM0Code*/
-		let note;
-		note={
-			desc:`安装指南`,
-			doc:setupGuide,
-			env:{
-				platform:env.platform,
-				arch:env.arch
-			},
-			project:{
-				name:project.name,
-				url:project.url
-			},
-			tags:"agent"
-		};
-		//throw Error("测试 Catch Error 的异常");
 		try{
-			session.callClient("AddNote",{note:note});
-		}catch(err){
-			//Ignore err
+			/*#{1IJI789IM0Code*/
+			let note;
+			note={
+				desc:`安装指南`,
+				doc:setupGuide,
+				env:{
+					platform:env.platform,
+					arch:env.arch
+				},
+				project:{
+					name:project.name,
+					url:project.url
+				},
+				tags:"agent"
+			};
+			//throw Error("测试 Catch Error 的异常");
+			try{
+				session.callClient("AddNote",{note:note});
+			}catch(err){
+				//Ignore err
+			}
+			/*}#1IJI789IM0Code*/
+		}catch(error){
+			/*#{1IJI789IM0ErrorCode*/
+			/*}#1IJI789IM0ErrorCode*/
 		}
-		/*}#1IJI789IM0Code*/
 		return {seg:CfmGuide,result:(result),preSeg:"1IJI789IM0",outlet:"1IJI7915T0"};
 	};
 	AddNote.jaxId="1IJI789IM0"
@@ -594,6 +644,7 @@ let PrjSetupBySteps=async function(session){
 		let result;
 		let arg={"address":ragAddress,"query":"","tags":""};
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./RagQuery.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IJL38S9B0Input*/
@@ -669,9 +720,14 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["AbortGuide"]=AbortGuide=async function(input){//:1IJL3VDFC0
 		let result=input
-		/*#{1IJL3VDFC0Code*/
-		result={result:"Abort",content:"用户放弃安装项目。"};
-		/*}#1IJL3VDFC0Code*/
+		try{
+			/*#{1IJL3VDFC0Code*/
+			result={result:"Abort",content:"用户放弃安装项目。"};
+			/*}#1IJL3VDFC0Code*/
+		}catch(error){
+			/*#{1IJL3VDFC0ErrorCode*/
+			/*}#1IJL3VDFC0ErrorCode*/
+		}
 		return {result:result};
 	};
 	AbortGuide.jaxId="1IJL3VDFC0"
@@ -691,11 +747,14 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["GenGuideJs"]=GenGuideJs=async function(input){//:1ILI9VIEO0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4o";
+		let $agent;
 		let result;
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4o",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -876,7 +935,11 @@ Output format:
 			}
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
-		result=await session.callSegLLM("GenGuideJs@"+agentURL,opts,messages,true);
+		if($agent){
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+		}else{
+			result=await session.callSegLLM("GenGuideJs@"+agentURL,opts,messages,true);
+		}
 		return {seg:output,result:(result),preSeg:"1ILI9VIEO0",outlet:"1ILIA093U0"};
 	};
 	GenGuideJs.jaxId="1ILI9VIEO0"
@@ -896,60 +959,65 @@ Output format:
 	
 	segs["Export"]=Export=async function(input){//:1ILIBLIQU0
 		let result=input
-		/*#{1ILIBLIQU0Code*/
-		result = result.replace("json", '').replaceAll("```","");
-		let actions = JSON.parse(result).Actions;
-		actions.unshift({
-			action: "bash",
-			commands: [
-				`cd ${project.dirPath}`,
-			]
-		});
-		let code = `import pathLib from "path";
-		
-		//----------------------------------------------------------------------------
-		function install(env,project){
-		let $ln=env.$ln||"EN";
-		let steps=null;
-		let dirPath,gitPath,gitURL;
-		dirPath=project.dirPath;
-		gitPath=pathLib.join(dirPath,"prj");
-		gitURL=project.gitURL;
-		if(env.platform==="darwin" && env.arch==="arm64"){
-		steps=${JSON.stringify(actions)};
-		}
-		return steps;
-		}
-		
-		//----------------------------------------------------------------------------
-		function uninstall(env,project){
-		let $ln=env.$ln||"EN";
-		let steps;
-		let dirPath,gitPath,gitURL;
-		dirPath=project.dirPath;
-		gitPath=pathLib.join(dirPath,"prj");
-		gitURL=project.gitURL;
-		if(env.platform==="darwin" && env.arch==="arm64"){
-		steps=[
-			{
-				action:"bash",
-				tip:(($ln==="CN")?("删除GitHub项目内容。"):/*EN*/("Delete GitHub project.")),
-				commands:[
-					\`cd \${dirPath}\`,
-					\`rm -r prj\`,
+		try{
+			/*#{1ILIBLIQU0Code*/
+			result = result.replace("json", '').replaceAll("```","");
+			let actions = JSON.parse(result).Actions;
+			actions.unshift({
+				action: "bash",
+				commands: [
+					`cd ${project.dirPath}`,
 				]
-			},
-		];
+			});
+			let code = `import pathLib from "path";
+			
+			//----------------------------------------------------------------------------
+			function install(env,project){
+			let $ln=env.$ln||"EN";
+			let steps=null;
+			let dirPath,gitPath,gitURL;
+			dirPath=project.dirPath;
+			gitPath=pathLib.join(dirPath,"prj");
+			gitURL=project.gitURL;
+			if(env.platform==="darwin" && env.arch==="arm64"){
+			steps=${JSON.stringify(actions)};
+			}
+			return steps;
+			}
+			
+			//----------------------------------------------------------------------------
+			function uninstall(env,project){
+			let $ln=env.$ln||"EN";
+			let steps;
+			let dirPath,gitPath,gitURL;
+			dirPath=project.dirPath;
+			gitPath=pathLib.join(dirPath,"prj");
+			gitURL=project.gitURL;
+			if(env.platform==="darwin" && env.arch==="arm64"){
+			steps=[
+				{
+					action:"bash",
+					tip:(($ln==="CN")?("删除GitHub项目内容。"):/*EN*/("Delete GitHub project.")),
+					commands:[
+						\`cd \${dirPath}\`,
+						\`rm -r prj\`,
+					]
+				},
+			];
+			}
+			return steps;
+			};
+			
+			export default install;
+			export {install}`;
+			const filePath = pathLib.join(prjPath, 'setup_agent.js');
+			await fsp.writeFile(filePath, code);
+			steps=actions;
+			/*}#1ILIBLIQU0Code*/
+		}catch(error){
+			/*#{1ILIBLIQU0ErrorCode*/
+			/*}#1ILIBLIQU0ErrorCode*/
 		}
-		return steps;
-		};
-		
-		export default install;
-		export {install}`;
-		const filePath = pathLib.join(prjPath, 'setup_agent.js');
-		await fsp.writeFile(filePath, code);
-		steps=actions;
-		/*}#1ILIBLIQU0Code*/
 		return {seg:goto,result:(result),preSeg:"1ILIBLIQU0",outlet:"1ILIBMA7E0"};
 	};
 	Export.jaxId="1ILIBLIQU0"
@@ -965,11 +1033,14 @@ Output format:
 	
 	segs["CheckBash"]=CheckBash=async function(input){//:1J58SM22D0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1-mini";
+		let $agent;
 		let result;
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4.1-mini",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -991,7 +1062,11 @@ Output format:
 			}
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
-		result=await session.callSegLLM("CheckBash@"+agentURL,opts,messages,true);
+		if($agent){
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+		}else{
+			result=await session.callSegLLM("CheckBash@"+agentURL,opts,messages,true);
+		}
 		result=trimJSON(result);
 		return {seg:CheckNetwork,result:(result),preSeg:"1J58SM22D0",outlet:"1J58SM7TK0"};
 	};
@@ -1048,9 +1123,14 @@ Output format:
 	
 	segs["GetLocation"]=GetLocation=async function(input){//:1JB1VU3M50
 		let result=input
-		/*#{1JB1VU3M50Code*/
-		result=await getUserLocation();
-		/*}#1JB1VU3M50Code*/
+		try{
+			/*#{1JB1VU3M50Code*/
+			result=await getUserLocation();
+			/*}#1JB1VU3M50Code*/
+		}catch(error){
+			/*#{1JB1VU3M50ErrorCode*/
+			/*}#1JB1VU3M50ErrorCode*/
+		}
 		return {seg:Check,result:(result),preSeg:"1JB1VU3M50",outlet:"1JB1VUBUU0"};
 	};
 	GetLocation.jaxId="1JB1VU3M50"
@@ -1349,7 +1429,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1389,7 +1470,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1497,7 +1579,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2183,13 +2266,13 @@ export{PrjSetupBySteps,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ2KUBNM0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2229,7 +2312,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2269,7 +2353,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2486,7 +2571,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2715,7 +2801,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -3033,7 +3120,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -3229,7 +3317,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -3581,7 +3670,8 @@ export{PrjSetupBySteps,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},

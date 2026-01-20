@@ -1,0 +1,30 @@
+{
+	"en-US": {
+		"blocker_": {
+			"selectors": {
+				"value": [
+					"css: #CybotCookiebotDialogBodyButtonDecline"
+				],
+				"time": 1767648393226
+			}
+		},
+		"blocker": {
+			"selectors": {
+				"value": [
+					"css: #CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll"
+				],
+				"time": 1767740516996
+			}
+		},
+		"show_more_items": {
+			"value": [
+				"css: nav.pagination-block li.next a"
+			],
+			"time": 1768152262149
+		},
+		"read_list_article": {
+			"value": "function extractArticles() {\n  var articles = [];\n  var nodes = document.querySelectorAll('a.post-tile-box');\n  nodes.forEach(function(node, idx) {\n    var url = node.href;\n    var title = '';\n    var titleElem = node.querySelector('.h2');\n    if (titleElem) {\n      title = titleElem.innerText.trim();\n    }\n    var coverElem = node.querySelector('img');\n    var coverImageUrl = '';\n    if (coverElem) {\n      coverImageUrl = coverElem.getAttribute('data-srcset') || coverElem.getAttribute('src') || '';\n    }\n    var authorElem = node.querySelector('.author_lable');\n    var author = authorElem ? authorElem.innerText.trim() : '';\n    var timeElem = node.querySelector('time');\n    var publishedAt = timeElem ? timeElem.getAttribute('datetime') : '';\n    var summary = '';\n    var obj = {\n      url: url,\n      title: title,\n      author: author,\n      publishedAt: publishedAt,\n      position: idx + 1,\n      coverImageUrl: coverImageUrl,\n      articleKind: 'column'\n    };\n    articles.push(obj);\n  });\n  return articles;\n}",
+			"time": 1768194739344
+		}
+	}
+}

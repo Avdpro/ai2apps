@@ -1,0 +1,26 @@
+{
+	"zh-TW": {
+		"read_list_search_result": {
+			"value": "function extractResults() {\n  function getText(node) {\n    if (!node) return '';\n    return node.innerText || node.textContent || '';\n  }\n  function absUrl(url) {\n    try { return new URL(url, location.origin).href; } catch { return url; }\n  }\n  var results = [];\n  // 主体结果区块（去广告/精选）\n  var rso = document.getElementById('rso');\n  if (!rso) return results;\n  var entries = Array.from(rso.querySelectorAll('div.MjjYud')).filter(function(div) {\n    // 过滤掉非标准结构块等（避免QA/推荐/相关）\n    return div.querySelector('h3') && div.querySelector('a[href]');\n  });\n  entries.forEach(function(entry, idx) {\n    var a = entry.querySelector('a[href]');\n    var titleEl = a.querySelector('h3') || a;\n    var summaryEl = entry.querySelector('.VwiC3b, .VwiC3b.yXK7lf, .VwiC3b.p4wth');\n    var citeEl = entry.querySelector('cite.qLRx3b');\n    var siteNameEl = entry.querySelector('.VuuXrf');\n    var faviconEl = entry.querySelector('img.XNo5Ab');\n    // 标题\n    var title = getText(titleEl).trim();\n    // URL\n    var url = absUrl(a.getAttribute('href'));\n    // 摘要\n    var summary = summaryEl ? getText(summaryEl).trim() : '';\n    // 来源/显示短域名\n    var source = siteNameEl ? getText(siteNameEl).trim() : '';\n    var displayUrl = citeEl ? getText(citeEl).trim() : '';\n    // favicon\n    var faviconUrl = faviconEl ? faviconEl.src : undefined;\n    results.push({\n      url,\n      title,\n      summary,\n      source,\n      position: idx + 1,\n      displayUrl,\n      faviconUrl,\n      siteName: source\n    });\n  });\n  return results;\n}",
+			"time": 1767984913348
+		},
+		"search": {
+			"value": {
+				"click": "css: textarea.gLFyf"
+			},
+			"time": 1767984913355
+		}
+	},
+	"zh-HK": {
+		"search": {
+			"value": {
+				"click": "css: textarea.gLFyf"
+			},
+			"time": 1768334286502
+		},
+		"read_list_search_result": {
+			"value": "function extractGoogleSearchResults() {\n  const results = [];\n  const blocks = document.querySelectorAll('#search .MjjYud .A6K0A');\n  let position = 1;\n  blocks.forEach(block => {\n    try {\n      // 标题和URL\n      const link = block.querySelector('a.zReHs');\n      const titleNode = link ? link.querySelector('h3') : null;\n      const url = link ? link.href : null;\n      const title = titleNode ? titleNode.textContent.trim() : null;\n      if (!url || !title) return;\n      // 摘要\n      let summary = null;\n      const summaryDiv = block.querySelector('.VwiC3b');\n      if (summaryDiv) summary = summaryDiv.innerText.trim();\n      // 来源/站点名/展示URL\n      let displayUrl = null, siteName = null, faviconUrl = null;\n      const cite = block.querySelector('cite');\n      if (cite) displayUrl = cite.textContent.trim();\n      const siteSpan = block.querySelector('.VuuXrf');\n      if (siteSpan) siteName = siteSpan.textContent.trim();\n      const favImg = block.querySelector('img.XNo5Ab');\n      if (favImg && favImg.src && favImg.src.startsWith('http')) faviconUrl = favImg.src;\n      // 卡片图片\n      let cardImageUrl = null;\n      const cardImg = block.querySelector('img.XNo5Ab, img.lWlVCe');\n      if (cardImg && cardImg.src && cardImg.src.startsWith('http')) cardImageUrl = cardImg.src;\n      // 结果唯一id\n      let id = null;\n      if (link && link.id) id = link.id;\n      // 标注/角标\n      let badges = [];\n      block.querySelectorAll('.QU4hqb, .jC6vSe').forEach(badge => {\n        if (badge.innerText) badges.push(badge.innerText.trim());\n      });\n      // 排名（顺序）\n      const result = {\n        id: id||null,\n        url,\n        title,\n        summary: summary||null,\n        source: siteName||null,\n        siteName: siteName||null,\n        faviconUrl: faviconUrl||null,\n        displayUrl: displayUrl||null,\n        cardImageUrl: cardImageUrl||null,\n        position,\n        badges: badges.length ? badges : undefined\n      };\n      results.push(result);\n      position++;\n    } catch (e){}\n  });\n  return results;\n}",
+			"time": 1768334975824
+		}
+	}
+}

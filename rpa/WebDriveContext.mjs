@@ -68,6 +68,9 @@ function deserializeEvaluateResult(result) {
 				return new RegExp(result.value.pattern, result.value.flags);
 			case 'array':
 				return (result.value || []).map(deserializeEvaluateResult);
+			case 'node':{
+				return result.value;
+			}
 			case 'object': {
 				let val
 				const obj = {};
@@ -375,7 +378,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			return !(!!context);
 		} catch (error) {
 			// If the command fails with a no such browsing context error, it's closed
-			if (error.message && error.message.includes('no such ')) {
+			if (error && error.includes('no such ')) {
 				return true;
 			}
 			// For other errors, re-throw them
@@ -450,6 +453,16 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		//TODO: Code this:
 	};//TODO: Code this later:
 	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.evaluateFileOnDocumentLoad=async function(scriptId,filePath,...args){
+		//TODO: Code this:
+	};//TODO: Code this later:
+	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.evaluateOnDocumentLoad=async function(scriptId,pageFunction,...args){
+		//TODO: Code this:
+	};//TODO: Code this later:
+
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.evaluateFile= async function(filePath, opts) {
 		//TODO: ensure full-path, then read file content, then call this.evalaute:
@@ -686,11 +699,17 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			
 			// Handle different result types
 			if (result.type === 'success') {
+				let res=result.result;
+				if(res.type==="null"){
+					return null;
+				}
+				if(res.type==="undefined"){
+					return undefined;
+				}
 				return result.result;
 			} else if (result.type === 'exception') {
 				throw new Error(result.exceptionDetails.text || 'Function call failed');
 			}
-			
 			return result;
 		} catch (error) {
 			// Re-throw with more context if needed
@@ -2867,7 +2886,70 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		}
 		await pms;
 	};//TODO: Test this:
-
+	
+	//-----------------------------------------------------------------------
+	aaWebDriveContext.waitForHostFunction=async function(hostFunction,args,opts){
+		let pms,checker,timer,timeout,callback,callerror,call,interval;
+		
+		timeout=opts?.timeout||0;
+		interval=opts?.interval||200;
+		args=args||[];
+		
+		pms=new Promise((resolve,reject)=>{
+			callback=resolve;
+			callerror=reject;
+		});
+		
+		checker=setInterval(async ()=>{
+			let result;
+			try {
+				result = await hostFunction(...args);
+				if (!!result) {
+					call = callback;
+					clearInterval(checker);
+					if (timer) {
+						clearTimeout(timer);
+					}
+					if (call) {
+						callback = null;
+						callerror = null;
+						call(result);
+					}
+				}
+			}catch(err){
+				console.log("waitForHostFunction ERROR: ",err);
+				if((""+err).startsWith("Error: no such frame: ")){
+					if(await this.isClosed()) {
+						call = callerror;
+						clearInterval(checker);
+						if (timer) {
+							clearTimeout(timer);
+						}
+						if (call) {
+							callback = null;
+							callerror = null;
+							call(""+err);
+						}
+					}
+				}
+				//Other error, do thing, we just try keeping calling it
+			}
+		},interval);
+		if(timeout>0){
+			timer=setTimeout(()=>{
+				let call;
+				call=callerror;
+				clearInterval(checker);
+				if(call){
+					callback=null;
+					callerror=null;
+					call("Timeout");
+				}
+			},timeout);
+		}
+		return await pms;
+	}
+	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.waitForFunction=async function(pageFunction,opts,...args){
 		let pms,checker,timer,timeout,callback,callerror,call,interval;
@@ -2904,7 +2986,29 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 					}
 				}
 			}catch(err){
-				//Do thing, we just try keeping calling it
+				console.log("waitForFunction ERROR: ",err);
+				if((""+err).startsWith("Error: no such frame: ")){
+					if(await this.isClosed()) {
+						call = callerror;
+						clearInterval(checker);
+						if (timer) {
+							clearTimeout(timer);
+						}
+						if (call) {
+							callback = null;
+							callerror = null;
+							call(""+err);
+						} else {
+							if (result.handle) {
+								try {
+									await this.disown(result);
+								} catch (err) {
+								}
+							}
+						}
+					}
+				}
+				//Other error, do thing, we just try keeping calling it
 			}
 		},interval);
 		if(timeout>0){

@@ -407,6 +407,9 @@ const codeLib=(codeTag)=>{
 						}finally {
 							//Do something?
 						}
+						if(snappedNode.style.visibility!==cmpStyle.visibility) snappedNode.style.visibility=cmpStyle.visibility;
+						if(snappedNode.style.display!==cmpStyle.display) snappedNode.style.display=cmpStyle.display;
+						if(snappedNode.style.opacity!==cmpStyle.opacity) snappedNode.style.opacity=cmpStyle.opacity;
 					}
 				}
 			}
@@ -614,7 +617,7 @@ const codeLib=(codeTag)=>{
 				}else if (selector.startsWith('(')) {
 					isXPath=true;
 				}else if (selector.startsWith('css:')) {//CSS selector
-					isXPath=true;
+					isXPath=false;
 					selector=selector.substring('css:'.length).trim();
 				}else{
 					isXPath=false;
