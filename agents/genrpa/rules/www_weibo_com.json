@@ -1,0 +1,80 @@
+{
+	"zh-cn": {
+		"elements": {
+			"sig:6a4e7e5200000000": {
+				"value": [
+					"css: textarea[placeholder*='有什么新鲜事想分享给大家']"
+				],
+				"pending": false,
+				"time": 1769320069633,
+				"queries": [
+					"正文/内容编辑器输入区域（Post body editor）。优先：contenteditable=true 的编辑区或主要 textarea，通常是页面最大输入区",
+					"可见的撰写编辑器/输入区（用于发布内容），通常是 textarea 或 contenteditable 区域，并且附近常出现“发布/发送/下一步/Submit/Post/Publish/Send”等按钮；优先匹配主要编辑区域而非搜索框"
+				],
+				"sigKey": "v2|textbox|textarea|ids:none|a11y:ph=有什么新鲜事想分享给大家？|anchor:c=main|chain=div#homeWrap",
+				"keys": [
+					"compose_input_clickContent",
+					"compose_input_clickContentForTitleFallback",
+					"compose_start_generic_checkComposeReady",
+					"compose_start_generic_check_compose_ready",
+					"compose_input_clickContentForFallback"
+				]
+			},
+			"sig:e75238fe00000000": {
+				"value": [
+					"xpath: //textarea[@placeholder='有什么新鲜事想分享给大家？']/ancestor::div[contains(@class,'_publishCard_')]/descendant::button[.//span[contains(normalize-space(.),'发送')]]"
+				],
+				"pending": false,
+				"time": 1769647841712,
+				"queries": [
+					"发布/发送/提交（Post/Publish/Send/Submit）按钮：用于把当前已编辑好的内容发布出去",
+					"the image upload button or file input for adding photos/images (e.g., 'Add photo', 'Upload image', 'Photos') in the current compose editor"
+				],
+				"sigKey": "v2|textbox|editable|ids:none|a11y:none|anchor:c=main|chain=div#homeWrap",
+				"keys": [
+					"compose_publish_clickPublish",
+					"compose_file_uploadImages"
+				]
+			}
+		},
+		"ruleMap": {
+			"compose_input_clickTitle": {
+				"status": "skipped",
+				"query": "标题输入框（Title input）。优先：placeholder/aria-label/name 含 title/标题；常见为 input 或 textarea，位于编辑器顶部",
+				"time": 1769287901824
+			},
+			"compose_input_clickContentForFallback": {
+				"eid": "sig:6a4e7e5200000000",
+				"query": "正文/内容编辑器输入区域（Post body editor）。优先：contenteditable=true 的编辑区或主要 textarea，通常是页面最大输入区",
+				"time": 1769287918823
+			},
+			"compose_start_generic_checkComposeReady": {
+				"eid": "sig:6a4e7e5200000000",
+				"query": "可见的撰写编辑器/输入区（用于发布内容），通常是 textarea 或 contenteditable 区域，并且附近常出现“发布/发送/下一步/Submit/Post/Publish/Send”等按钮；优先匹配主要编辑区域而非搜索框",
+				"time": 1769318615133
+			},
+			"compose_input_clickContentForTitleFallback": {
+				"eid": "sig:6a4e7e5200000000",
+				"query": "正文/内容编辑器输入区域（Post body editor）。优先：contenteditable=true 的编辑区或主要 textarea，通常是页面最大输入区",
+				"time": 1769319758146
+			},
+			"compose_input_clickContent": {
+				"eid": "sig:6a4e7e5200000000",
+				"query": "正文/内容编辑器输入区域（Post body editor）。优先：contenteditable=true 的编辑区或主要 textarea，通常是页面最大输入区",
+				"time": 1769320069633
+			},
+			"compose_file_uploadImages": {
+				"eid": "sig:e75238fe00000000",
+				"query": "the image upload button or file input for adding photos/images (e.g., 'Add photo', 'Upload image', 'Photos') in the current compose editor",
+				"time": 1769340861649
+			},
+			"compose_publish_clickPublish": {
+				"eid": "sig:e75238fe00000000",
+				"query": "发布/发送/提交（Post/Publish/Send/Submit）按钮：用于把当前已编辑好的内容发布出去",
+				"time": 1769647841712
+			}
+		},
+		"_gcTime": 1769647841712,
+		"_gcRemoved": 0
+	}
+}

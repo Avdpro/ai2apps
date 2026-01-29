@@ -5,7 +5,7 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 import {WebRpa,sleep} from "../../rpa/WebRpa.mjs";
 /*#{1JEV0H5CM0MoreImports*/
-import {readFileAsDataURL,buildRpaMicroDeciderPrompt,readRule,saveRule,findAvailableSelector,armWaitForScroll,waitForScrollOutcome,extractActionableLinks,ai2appsTip} from "./utils.js";
+import {readFileAsDataURL,buildRpaMicroDeciderPrompt,readRule,saveRule,getRuleElementBySigKey,readRuleElements,findAvailableSelector,getRuleElementById} from "./utils.js";
 /*}#1JEV0H5CM0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -47,6 +47,16 @@ const argsTemplate={
 			"name":"allowManual","type":"bool",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"manualTraining":{
+			"name":"manualTraining","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"ruleKey":{
+			"name":"ruleKey","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JEV0H5CM0ArgsView*/
@@ -57,14 +67,16 @@ const argsTemplate={
 /*}#1JEV0H5CM0StartDoc*/
 //----------------------------------------------------------------------------
 let Util_FindSelector=async function(session){
-	let pageRef,url,profile,selectDesc,multiSelect,useManual,allowManual;
+	let pageRef,url,profile,selectDesc,multiSelect,useManual,allowManual,manualTraining,ruleKey;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,ShowPage,ReadPage,UseManual,ManualSelect,JumpAuto,ReadPicked,GenSelector,FindPicked,ConfirmPicked,TryAuto,FinManDone,RetryGen,FinManMaxRetry,FindSelector,CheckSelector,AllowManual,ConfirmSelector,CheckRetry,JumpManual,FinAutoDone,FinAutoMaxRetry,GoManual,CheckAbort,FinAbort;
+	let StartRpa,ShowPage,ReadPage,UseManual,AskUser,ManualSelect,FinUserEnd,ReadCache,JumpAuto,ReadPicked,GenSelector,FindPicked,ConfirmPicked,TryAuto,FinManDone,RetryGen,FinManMaxRetry,FindSelector,CheckSelector,AllowManual,ConfirmSelector,CheckRetry,JumpManual,FinAutoDone,FinAutoMaxRetry,GoManual,CheckAbort,FinAbort;
 	let usedSelector="";
 	let wrongSelectors=[];
 	let retryNum=0;
+	let userResult="";
+	let usedSigKey="";
 	
 	/*#{1JEV0H5CM0LocalVals*/
 	/*}#1JEV0H5CM0LocalVals*/
@@ -78,6 +90,8 @@ let Util_FindSelector=async function(session){
 			multiSelect=input.multiSelect;
 			useManual=input.useManual;
 			allowManual=input.allowManual;
+			manualTraining=input.manualTraining;
+			ruleKey=input.ruleKey;
 		}else{
 			pageRef=undefined;
 			url=undefined;
@@ -86,6 +100,8 @@ let Util_FindSelector=async function(session){
 			multiSelect=undefined;
 			useManual=undefined;
 			allowManual=undefined;
+			manualTraining=undefined;
+			ruleKey=undefined;
 		}
 		/*#{1JEV0H5CM0ParseArgs*/
 		/*}#1JEV0H5CM0ParseArgs*/
@@ -219,18 +235,62 @@ let Util_FindSelector=async function(session){
 	segs["UseManual"]=UseManual=async function(input){//:1JEV12RDR0
 		let result=input;
 		if(useManual){
-			return {seg:ManualSelect,result:(input),preSeg:"1JEV12RDR0",outlet:"1JEV1EQB93"};
+			return {seg:AskUser,result:(input),preSeg:"1JEV12RDR0",outlet:"1JEV1EQB93"};
 		}
 		return {seg:FindSelector,result:(result),preSeg:"1JEV12RDR0",outlet:"1JEV1EQB94"};
 	};
 	UseManual.jaxId="1JEV12RDR0"
 	UseManual.url="UseManual@"+agentURL
 	
+	segs["AskUser"]=AskUser=async function(input){//:1JFH2QBCT0
+		let result=input;
+		/*#{1JFH2QBCT0Start*/
+		let webRpa,page,res;
+		webRpa=context.webRpa;
+		page=context.aaPage;
+		res=await webRpa.inPagePrompt(
+			page,`当前RPA步骤需要选择满足：\n"${selectDesc}"的元素。\n是否继续选择或者跳过/失败这个步骤？`,
+			{
+				menu:[
+					{text:"🎯: 人工选择一个元素再由AI生成Selector。",code:"select"},
+					{text:"🤖: 由AI自主生成Selector。",code:"auto"},
+					{text:"⏭️: 跳过当前步骤。",code:"skip"},
+					{text:"❌: 使当前步骤失败。",code:"fail"},
+				]
+			}
+		);
+		/*}#1JFH2QBCT0Start*/
+		if(res.code==="select"){
+			return {seg:ManualSelect,result:(input),preSeg:"1JFH2QBCT0",outlet:"1JFH2VUAI0"};
+		}
+		if(res.code==="skip"){
+			/*#{1JFH2R5UO0Codes*/
+			userResult="skipped";
+			/*}#1JFH2R5UO0Codes*/
+			return {seg:FinUserEnd,result:(input),preSeg:"1JFH2QBCT0",outlet:"1JFH2R5UO0"};
+		}
+		if(res.code==="fail"){
+			/*#{1JFH2RGR90Codes*/
+			userResult="failed";
+			/*}#1JFH2RGR90Codes*/
+			return {seg:FinUserEnd,result:(input),preSeg:"1JFH2QBCT0",outlet:"1JFH2RGR90"};
+		}
+		if(res.code==="auto"){
+			return {seg:FindSelector,result:(input),preSeg:"1JFH2QBCT0",outlet:"1JFHJSK060"};
+		}
+		/*#{1JFH2QBCT0Post*/
+		/*}#1JFH2QBCT0Post*/
+		return {seg:FindSelector,result:(result),preSeg:"1JFH2QBCT0",outlet:"1JFH2VUAI1"};
+	};
+	AskUser.jaxId="1JFH2QBCT0"
+	AskUser.url="AskUser@"+agentURL
+	
 	segs["ManualSelect"]=ManualSelect=async function(input){//:1JEV18PA20
 		let result=input;
 		/*#{1JEV18PA20Start*/
 		let element;
 		await context.webRpa.inPageTip(context.aaPage,`请选择满足："${selectDesc}"的元素。\n按Esc键放弃，按Control键选择当前高亮元素的上一级元素。`,{timeout:0});
+		
 		element=await context.webRpa.inPagePickDomElement(context.aaPage,{attr:"data-manual-picked"});
 		await context.webRpa.inPageTipDismiss(context.aaPage);
 		/*}#1JEV18PA20Start*/
@@ -244,6 +304,71 @@ let Util_FindSelector=async function(session){
 	};
 	ManualSelect.jaxId="1JEV18PA20"
 	ManualSelect.url="ManualSelect@"+agentURL
+	
+	segs["FinUserEnd"]=FinUserEnd=async function(input){//:1JFH5JV6O0
+		let result=input;
+		let waitBefore=0;
+		let waitAfter=0;
+		let browser=context.rpaBrowser;
+		waitBefore && (await sleep(waitBefore));
+		/*#{1JFH5JV6O0PreCodes*/
+		result={status:userResult,result:userResult};
+		/*}#1JFH5JV6O0PreCodes*/
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JFH5JV6O0ErrorCode*/
+			/*}#1JFH5JV6O0ErrorCode*/
+		}
+		/*#{1JFH5JV6O0PostCodes*/
+		/*}#1JFH5JV6O0PostCodes*/
+		return {result:result};
+	};
+	FinUserEnd.jaxId="1JFH5JV6O0"
+	FinUserEnd.url="FinUserEnd@"+agentURL
+	
+	segs["ReadCache"]=ReadCache=async function(input){//:1JFKQT2KJ0
+		let result=input;
+		/*#{1JFKQT2KJ0Start*/
+		let webRpa,page;
+		let sigKey,element,selector,selectors,nodes,node;
+		webRpa=context.webRpa;
+		page=context.aaPage;
+		usedSigKey=sigKey=await webRpa.computeSigKeyForSelector(page,'[data-manual-picked="true"]');
+		if(sigKey){
+			element=await getRuleElementBySigKey(session,page,sigKey);
+			if(element){
+				selectors=element.value;
+				if(!Array.isArray(selectors)){
+					selectors=[selectors];
+				}
+				FindSel:{
+					for(selector of selectors){
+						nodes=await webRpa.queryNodes(page,null,selector);
+						for(node of nodes){
+							if(node.attrs && node.attributes["data-manual-picked"]==="true"){
+								usedSelector=selector;
+								break FindSel;
+							}
+						}
+					}
+					usedSelector=null;
+				}
+			}
+		}
+		/*}#1JFKQT2KJ0Start*/
+		if(usedSelector){
+			return {seg:ConfirmPicked,result:(input),preSeg:"1JFKQT2KJ0",outlet:"1JFKRAPR60"};
+		}
+		/*#{1JFKQT2KJ0Post*/
+		/*}#1JFKQT2KJ0Post*/
+		return {seg:GenSelector,result:(result),preSeg:"1JFKQT2KJ0",outlet:"1JFKRAPR61"};
+	};
+	ReadCache.jaxId="1JFKQT2KJ0"
+	ReadCache.url="ReadCache@"+agentURL
 	
 	segs["JumpAuto"]=JumpAuto=async function(input){//:1JEV50F390
 		let result=input;
@@ -292,7 +417,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JF00G2A10ErrorCode*/
 		}
 		context["html"]=result;
-		return {seg:GenSelector,result:(result),preSeg:"1JF00G2A10",outlet:"1JF00GKH40"};
+		return {seg:ReadCache,result:(result),preSeg:"1JF00G2A10",outlet:"1JF00GKH40"};
 	};
 	ReadPicked.jaxId="1JF00G2A10"
 	ReadPicked.url="ReadPicked@"+agentURL
@@ -310,7 +435,7 @@ let Util_FindSelector=async function(session){
 				`给定当前页面清洗后的HTML代码，写一个selector，能找到"data-manual-picked"="true"的元素以及与它类似的，满足条件"${selectDesc}"的全部元素。注意你的selector不能使用"data-manual-picked"属性。`,
 				'如果有能找到目标元素的selector，返回"selector"动作，给出要点击的元素的selector。\n'+
 				'如果当前页面不存在目标元素，或页面出错，比如404等，返回"abort"动作\n'+
-				(wrongSelectors.length?`\n\n重要: 已知：${JSON.stringify(wrongSelectors)} 这些selector是错误无效的，不要重复给出重复的错误答案。`:""),
+				(wrongSelectors.length?`\n\n重要: 已知：${JSON.stringify(wrongSelectors,null,"    ")} 这些selector是错误无效的，不要重复给出重复的错误答案。`:""),
 				["selector"]
 			);
 		}else{
@@ -318,7 +443,7 @@ let Util_FindSelector=async function(session){
 				`给定当前页面清洗后的HTML代码，写一个selector，找到"data-manual-picked"="true"的元素。注意你的selector不能使用"data-manual-picked"属性。`,
 				'如果有能找到目标元素的selector，返回"selector"动作，给出要点击的元素的selector。\n'+
 				'如果当前页面不存在目标元素，或页面出错，比如404等，返回"abort"动作\n'+
-				(wrongSelectors.length?`\n\n重要: 已知：${JSON.stringify(wrongSelectors)} 这些selector是错误无效的，不要重复给出重复的错误答案。`:""),
+				(wrongSelectors.length?`\n\n重要: 已知：${JSON.stringify(wrongSelectors,null,"    ")} 这些selector是错误无效的，不要重复给出重复的错误答案。`:""),
 				["selector"]
 			);
 		}
@@ -356,10 +481,13 @@ let Util_FindSelector=async function(session){
 		}
 		/*#{1JEV1AHEM0PreCall*/
 		/*}#1JEV1AHEM0PreCall*/
-		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
-		}else{
-			result=(result===null)?(await session.callSegLLM("GenSelector@"+agentURL,opts,messages,true)):result;
+		result=GenSelector.cheats[prompt]||GenSelector.cheats[input]||(chatMem && GenSelector.cheats[""+chatMem.length])||GenSelector.cheats[""];
+		if(!result){
+			if($agent){
+				result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			}else{
+				result=(result===undefined)?(await session.callSegLLM("GenSelector@"+agentURL,opts,messages,true)):result;
+			}
 		}
 		result=trimJSON(result);
 		/*#{1JEV1AHEM0PostCall*/
@@ -375,6 +503,9 @@ let Util_FindSelector=async function(session){
 	};
 	GenSelector.jaxId="1JEV1AHEM0"
 	GenSelector.url="GenSelector@"+agentURL
+	GenSelector.cheats={
+		"":"{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder*='有什么新鲜事想分享给大家']\" }, \"reason\": \"页面中唯一的发布编辑器为该 textarea，具有独特 placeholder，可稳定定位且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布框区域；定位发布编辑器 textarea；预期选中被手动标记的目标元素；无遮挡风险。\" }"
+	};
 	
 	segs["FindPicked"]=FindPicked=async function(input){//:1JF01ERCT0
 		let result=true;
@@ -436,16 +567,38 @@ let Util_FindSelector=async function(session){
 	segs["ConfirmPicked"]=ConfirmPicked=async function(input){//:1JF1ECNIG0
 		let result=input;
 		/*#{1JF1ECNIG0Start*/
-		let confirm;
+		let confirm,advice;
 		await context.webRpa.inPageShowSelector(context.aaPage,usedSelector);
-		confirm=await context.webRpa.inPagePrompt(context.aaPage,"请确认选择的是否是正确的元素",{
-			icon:null,okText:"正确",cancelText:"不正确",showCancel:true,modal:false
+		confirm=await context.webRpa.inPagePrompt(context.aaPage,`AI生成的 selector 是:\n"${usedSelector}"\n该 selector 选择的元素正被高亮显示，请确认选择的是否是正确的元素。你也可以提供修改意见，重新生成 selector，`,{
+			menu:[
+				{text:"正确，使用这个 selector。",code:true},
+				{text:"错误，重新生成 selector。",code:false},
+			],
+			edit:true,editText:"",placeHolder:"输入修改意见",
+			okText:"按修改意见重新生成 selector",
+			modal:false,mask:false,
+			//icon:null,okText:"正确",cancelText:"不正确",showCancel:true,modal:false
 		});
+		await context.webRpa.inPageDismissSelector(context.aaPage);
+		if(confirm?.code===true){
+			confirm=true;
+		}else if(confirm?.code===false){
+			confirm=false;
+		}else{
+			advice=confirm;
+		}
 		/*}#1JF1ECNIG0Start*/
-		if(confirm){
+		if(confirm===true){
 			return {seg:FinManDone,result:(input),preSeg:"1JF1ECNIG0",outlet:"1JF1ECNIH3"};
 		}
+		if(advice){
+			/*#{1JFHKT2B70Codes*/
+			wrongSelectors.push(`'${usedSelector}' 用户修改建议：${advice}`);
+			/*}#1JFHKT2B70Codes*/
+			return {seg:RetryGen,result:(input),preSeg:"1JF1ECNIG0",outlet:"1JFHKT2B70"};
+		}
 		/*#{1JF1ECNIG0Post*/
+		wrongSelectors.push(`'${usedSelector}' 错误：用户拒绝。`);
 		/*}#1JF1ECNIG0Post*/
 		return {seg:RetryGen,result:(result),preSeg:"1JF1ECNIG0",outlet:"1JF1ECNIH2"};
 	};
@@ -478,7 +631,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JEV3185N0ErrorCode*/
 		}
 		/*#{1JEV3185N0PostCodes*/
-		result={status:"Done",result:"Finish",selector:usedSelector};
+		result={status:"done",result:"Finish",selector:usedSelector,value:usedSelector,sigKey:usedSigKey};
 		/*}#1JEV3185N0PostCodes*/
 		return {result:result};
 	};
@@ -584,13 +737,10 @@ let Util_FindSelector=async function(session){
 		}
 		/*#{1JEV1198Q0PreCall*/
 		/*}#1JEV1198Q0PreCall*/
-		result=FindSelector.cheats[prompt]||FindSelector.cheats[input]||(chatMem && FindSelector.cheats[""+chatMem.length])||FindSelector.cheats[""];
-		if(!result){
-			if($agent){
-				result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
-			}else{
-				result=(result===undefined)?(await session.callSegLLM("FindSelector@"+agentURL,opts,messages,true)):result;
-			}
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("FindSelector@"+agentURL,opts,messages,true)):result;
 		}
 		result=trimJSON(result);
 		/*#{1JEV1198Q0PostCall*/
@@ -606,9 +756,6 @@ let Util_FindSelector=async function(session){
 	};
 	FindSelector.jaxId="1JEV1198Q0"
 	FindSelector.url="FindSelector@"+agentURL
-	FindSelector.cheats={
-		"":"{ \"action\": { \"type\": \"selector\", \"by\": \"css: #scroller article[tabindex='0']\" }, \"reason\": \"页面为微博首页信息流，帖子容器均为带 tabindex=\\\"0\\\" 的 article 元素，位于 #scroller 内，可一次性选中全部帖子。\", \"summary\": \"微博首页信息流可见；选择 #scroller 下的所有 article[tabindex='0'] 作为微博帖子元素；预期返回全部帖子节点。\" }"
-	};
 	
 	segs["CheckSelector"]=CheckSelector=async function(input){//:1JEV1BB5P0
 		let result=true;
@@ -662,18 +809,50 @@ let Util_FindSelector=async function(session){
 	segs["ConfirmSelector"]=ConfirmSelector=async function(input){//:1JEV1OTG40
 		let result=input;
 		/*#{1JEV1OTG40Start*/
-		let confirm;
-		if(allowManual){
-			await context.webRpa.inPageShowSelector(context.aaPage,usedSelector);
-			confirm=await context.webRpa.inPagePrompt(context.aaPage,"请确认选择的是否是正确的元素",{
-				icon:null,okText:"正确",cancelText:"不正确",showCancel:true,modal:false
-			});
-		}else{
+		let confirm,advice,retry;
+		await context.webRpa.inPageShowSelector(context.aaPage,usedSelector);
+		confirm=await context.webRpa.inPagePrompt(context.aaPage,`AI生成的 selector 是:\n"${usedSelector}"\n该 selector 选择的元素正被高亮显示，请确认选择的是否是正确的元素。你也可以提供修改意见，重新生成 selector，`,{
+			menu:[
+				{text:"正确，使用这个 selector。",code:true},
+				{text:"错误，重新生成 selector。",code:false},
+				{text:"错误，进行人工指导",code:"manual"},
+			],
+			edit:true,editText:"",placeHolder:"输入修改意见",
+			okText:"按修改意见重新生成 selector",
+			modal:false,mask:false,
+			//icon:null,okText:"正确",cancelText:"不正确",showCancel:true,modal:false
+		});
+		await context.webRpa.inPageDismissSelector(context.aaPage);
+		if(confirm?.code===true){
 			confirm=true;
+		}else if(confirm?.code===false){
+			retry=true;
+			confirm=false;
+			wrongSelectors.push(`'${usedSelector}' 错误：用户拒绝`);
+		}else if(confirm==="manual"){
+			confirm=false;
+			retry=false;
+		}else{
+			advice=confirm;
+			confirm=false;
+			wrongSelectors.push(`'${usedSelector}' 用户修改建议：${advice}`);
 		}
 		/*}#1JEV1OTG40Start*/
 		if(confirm){
+			/*#{1JEV1R1H90Codes*/
+			try{
+				usedSigKey=await context.webRpa.computeSigKeyForSelector(context.aaPage,usedSelector);
+			}catch(err){
+				usedSigKey=null;
+			}
+			/*}#1JEV1R1H90Codes*/
 			return {seg:FinAutoDone,result:(input),preSeg:"1JEV1OTG40",outlet:"1JEV1R1H90"};
+		}
+		if(advice){
+			return {seg:FindSelector,result:(input),preSeg:"1JEV1OTG40",outlet:"1JFHN32KJ0"};
+		}
+		if(retry){
+			return {seg:FindSelector,result:(input),preSeg:"1JEV1OTG40",outlet:"1JFHN0F3Q0"};
 		}
 		/*#{1JEV1OTG40Post*/
 		/*}#1JEV1OTG40Post*/
@@ -702,10 +881,10 @@ let Util_FindSelector=async function(session){
 	
 	segs["JumpManual"]=JumpManual=async function(input){//:1JEV1DIOG0
 		let result=input;
-		return {seg:ManualSelect,result:result,preSeg:"1JEV18PA20",outlet:"1JEV1EQBA4"};
+		return {seg:AskUser,result:result,preSeg:"1JFH2QBCT0",outlet:"1JEV1EQBA4"};
 	
 	};
-	JumpManual.jaxId="1JEV18PA20"
+	JumpManual.jaxId="1JFH2QBCT0"
 	JumpManual.url="JumpManual@"+agentURL
 	
 	segs["FinAutoDone"]=FinAutoDone=async function(input){//:1JEV3305O0
@@ -726,7 +905,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JEV3305O0ErrorCode*/
 		}
 		/*#{1JEV3305O0PostCodes*/
-		result={status:"Done",result:"Finish",selector:usedSelector};
+		result={status:"done",result:"finish",selector:usedSelector,sigKey:usedSigKey};
 		/*}#1JEV3305O0PostCodes*/
 		return {result:result};
 	};
@@ -760,10 +939,10 @@ let Util_FindSelector=async function(session){
 	
 	segs["GoManual"]=GoManual=async function(input){//:1JF1E66U90
 		let result=input;
-		return {seg:ManualSelect,result:result,preSeg:"1JEV18PA20",outlet:"1JF1E6NA70"};
+		return {seg:AskUser,result:result,preSeg:"1JFH2QBCT0",outlet:"1JF1E6NA70"};
 	
 	};
-	GoManual.jaxId="1JEV18PA20"
+	GoManual.jaxId="1JFH2QBCT0"
 	GoManual.url="GoManual@"+agentURL
 	
 	segs["CheckAbort"]=CheckAbort=async function(input){//:1JF1IH4B40
@@ -818,7 +997,7 @@ let Util_FindSelector=async function(session){
 		jaxId:"1JEV0H5CM0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{pageRef,url,profile,selectDesc,multiSelect,useManual,allowManual}*/){
+		execChat:async function(input/*{pageRef,url,profile,selectDesc,multiSelect,useManual,allowManual,manualTraining,ruleKey}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JEV0H5CM0PreEntry*/
@@ -852,7 +1031,9 @@ let ChatAPI=[{
 				selectDesc:{type:"string",description:""},
 				multiSelect:{type:"bool",description:""},
 				useManual:{type:"bool",description:""},
-				allowManual:{type:"bool",description:""}
+				allowManual:{type:"bool",description:""},
+				manualTraining:{type:"auto",description:""},
+				ruleKey:{type:"auto",description:""}
 			}
 		}
 	},
@@ -982,6 +1163,26 @@ export{Util_FindSelector,ChatAPI};
 //						"mockup": "\"\"",
 //						"desc": ""
 //					}
+//				},
+//				"manualTraining": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JFH1EU4L0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"ruleKey": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JFKQSCTD0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
 //				}
 //			}
 //		},
@@ -999,6 +1200,14 @@ export{Util_FindSelector,ChatAPI};
 //				"retryNum": {
 //					"type": "int",
 //					"valText": "0"
+//				},
+//				"userResult": {
+//					"type": "string",
+//					"valText": ""
+//				},
+//				"usedSigKey": {
+//					"type": "string",
+//					"valText": ""
 //				}
 //			}
 //		},
@@ -1238,7 +1447,150 @@ export{Util_FindSelector,ChatAPI};
 //										},
 //										"condition": "#useManual"
 //									},
+//									"linkedSeg": "1JFH2QBCT0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JFH2QBCT0",
+//					"attrs": {
+//						"id": "AskUser",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1080",
+//						"y": "40",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1JFH2VUAS0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFH2VUAS1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JFH2VUAI1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JFHJR2D50"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFH2VUAI0",
+//									"attrs": {
+//										"id": "Select",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFH2VUAS2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFH2VUAS3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#res.code===\"select\""
+//									},
 //									"linkedSeg": "1JEV18PA20"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFH2R5UO0",
+//									"attrs": {
+//										"id": "Skip",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JFH2VUAS4",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFH2VUAS5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#res.code===\"skip\""
+//									},
+//									"linkedSeg": "1JFH5JV6O0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFH2RGR90",
+//									"attrs": {
+//										"id": "Fail",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JFH2VUAS6",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFH2VUAS7",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#res.code===\"fail\""
+//									},
+//									"linkedSeg": "1JFH5JV6O0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFHJSK060",
+//									"attrs": {
+//										"id": "Auto",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFHJSK0G0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFHJSK0G1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#res.code===\"auto\""
+//									},
+//									"linkedSeg": "1JFHJR2D50"
 //								}
 //							]
 //						}
@@ -1254,8 +1606,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "ManualSelect",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1080",
-//						"y": "20",
+//						"x": "1360",
+//						"y": "-20",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1316,14 +1668,121 @@ export{Util_FindSelector,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
+//					"def": "WebRpaBackToApp",
+//					"jaxId": "1JFH5JV6O0",
+//					"attrs": {
+//						"id": "FinUserEnd",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1360",
+//						"y": "95",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "lab.svg",
+//						"context": {
+//							"jaxId": "1JFH5JV6O1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFH5JV6O2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"errorSeg": "",
+//						"outlet": {
+//							"jaxId": "1JFH5JV6O3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "/@tabos/shared/assets/aalogo.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JFKQT2KJ0",
+//					"attrs": {
+//						"id": "ReadCache",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1870",
+//						"y": "-5",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "lab.svg",
+//						"context": {
+//							"jaxId": "1JFKRAPRF0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFKRAPRF1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JFKRAPR61",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JEV1AHEM0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFKRAPR60",
+//									"attrs": {
+//										"id": "FindRule",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFKRAPRF2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFKRAPRF3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#usedSelector"
+//									},
+//									"linkedSeg": "1JFKTM8V40"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
 //					"def": "jumper",
 //					"jaxId": "1JEV50F390",
 //					"attrs": {
 //						"id": "JumpAuto",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1350",
-//						"y": "-55",
+//						"x": "1625",
+//						"y": "-95",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1347,8 +1806,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "ReadPicked",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1350",
-//						"y": "35",
+//						"x": "1625",
+//						"y": "-5",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1377,7 +1836,7 @@ export{Util_FindSelector,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JEV1AHEM0"
+//							"linkedSeg": "1JFKQT2KJ0"
 //						},
 //						"errorSeg": "",
 //						"run": ""
@@ -1392,8 +1851,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "GenSelector",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1620",
-//						"y": "35",
+//						"x": "2170",
+//						"y": "50",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1433,7 +1892,7 @@ export{Util_FindSelector,ChatAPI};
 //						},
 //						"stream": "true",
 //						"secret": "false",
-//						"allowCheat": "false",
+//						"allowCheat": "true",
 //						"GPTCheats": {
 //							"attrs": [
 //								{
@@ -1441,7 +1900,7 @@ export{Util_FindSelector,ChatAPI};
 //									"def": "GPTCheat",
 //									"jaxId": "1JF12NCC80",
 //									"attrs": {
-//										"reply": "{ \"action\": { \"type\": \"selector\", \"by\": \"css: article[tabindex='0'][showpopmenuspecialattention='true']\" }, \"reason\": \"微博帖子在信息流中以 <article> 卡片呈现，统一带有 tabindex=\\\"0\\\" 且有 showpopmenuspecialattention=\\\"true\\\"；该选择器可同时命中已标注与同类帖子。\", \"summary\": \"当前为微博首页信息流；定位所有微博帖子卡片；预期匹配含 data-manual-picked 的目标及同类帖子；风险：样式属性变更可能影响匹配。\" }",
+//										"reply": "{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder*='有什么新鲜事想分享给大家']\" }, \"reason\": \"页面中唯一的发布编辑器为该 textarea，具有独特 placeholder，可稳定定位且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布框区域；定位发布编辑器 textarea；预期选中被手动标记的目标元素；无遮挡风险。\" }",
 //										"prompt": ""
 //									}
 //								}
@@ -1497,8 +1956,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "FindPicked",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1880",
-//						"y": "20",
+//						"x": "2445",
+//						"y": "35",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1542,7 +2001,7 @@ export{Util_FindSelector,ChatAPI};
 //										"id": "Missing",
 //										"desc": "输出节点。"
 //									},
-//									"linkedSeg": "1JEV23JVF0"
+//									"linkedSeg": "1JFHKRGH30"
 //								}
 //							]
 //						}
@@ -1557,8 +2016,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "ConfirmPicked",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2120",
-//						"y": "-90",
+//						"x": "2685",
+//						"y": "-75",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1582,7 +2041,7 @@ export{Util_FindSelector,ChatAPI};
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JF1EDV6R0"
+//							"linkedSeg": "1JEV23JVF0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -1607,9 +2066,34 @@ export{Util_FindSelector,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#confirm"
+//										"condition": "#confirm===true"
 //									},
 //									"linkedSeg": "1JEV3185N0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFHKT2B70",
+//									"attrs": {
+//										"id": "Advice",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JFHKT2BF0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFHKT2BF1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#advice"
+//									},
+//									"linkedSeg": "1JEV23JVF0"
 //								}
 //							]
 //						}
@@ -1625,8 +2109,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "TryAuto",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2120",
-//						"y": "280",
+//						"x": "2685",
+//						"y": "295",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1650,7 +2134,7 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "FinManDone",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2405",
+//						"x": "2965",
 //						"y": "-105",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1689,8 +2173,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "RetryGen",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2120",
-//						"y": "95",
+//						"x": "2965",
+//						"y": "105",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1757,8 +2241,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "FinManMaxRetry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2405",
-//						"y": "80",
+//						"x": "3250",
+//						"y": "90",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1797,7 +2281,7 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1080",
-//						"y": "550",
+//						"y": "665",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1837,7 +2321,7 @@ export{Util_FindSelector,ChatAPI};
 //						},
 //						"stream": "true",
 //						"secret": "false",
-//						"allowCheat": "true",
+//						"allowCheat": "false",
 //						"GPTCheats": {
 //							"attrs": [
 //								{
@@ -1845,7 +2329,7 @@ export{Util_FindSelector,ChatAPI};
 //									"def": "GPTCheat",
 //									"jaxId": "1JF02MMD20",
 //									"attrs": {
-//										"reply": "{ \"action\": { \"type\": \"selector\", \"by\": \"css: #scroller article[tabindex='0']\" }, \"reason\": \"页面为微博首页信息流，帖子容器均为带 tabindex=\\\"0\\\" 的 article 元素，位于 #scroller 内，可一次性选中全部帖子。\", \"summary\": \"微博首页信息流可见；选择 #scroller 下的所有 article[tabindex='0'] 作为微博帖子元素；预期返回全部帖子节点。\" }",
+//										"reply": "{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder*='新鲜事']\" }, \"reason\": \"页面顶部有发帖编辑区，textarea 占位符为“有什么新鲜事想分享给大家？”，旁边带有“发送”按钮，符合目标。\", \"summary\": \"微博首页发布卡片可见；定位发帖主编辑textarea；预期选中撰写输入区以便后续输入。\" }",
 //										"prompt": ""
 //									}
 //								}
@@ -1902,7 +2386,7 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1360",
-//						"y": "535",
+//						"y": "650",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1962,7 +2446,7 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1360",
-//						"y": "670",
+//						"y": "785",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2030,7 +2514,7 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1620",
-//						"y": "405",
+//						"y": "520",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2066,7 +2550,7 @@ export{Util_FindSelector,ChatAPI};
 //										"id": "Comfirm",
 //										"desc": "输出节点。",
 //										"output": "",
-//										"codes": "false",
+//										"codes": "true",
 //										"context": {
 //											"jaxId": "1JEV1R1HA2",
 //											"attrs": {
@@ -2082,6 +2566,56 @@ export{Util_FindSelector,ChatAPI};
 //										"condition": "#confirm"
 //									},
 //									"linkedSeg": "1JEV3305O0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFHN32KJ0",
+//									"attrs": {
+//										"id": "Advice",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFHN32KT0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFHN32KT1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#advice"
+//									},
+//									"linkedSeg": "1JFHN22OB0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFHN0F3Q0",
+//									"attrs": {
+//										"id": "Retry",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFHN32KT2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFHN32KT3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#retry"
+//									},
+//									"linkedSeg": "1JFHN22OB0"
 //								}
 //							]
 //						}
@@ -2098,7 +2632,7 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1625",
-//						"y": "600",
+//						"y": "715",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2166,12 +2700,12 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1625",
-//						"y": "740",
+//						"y": "855",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"seg": "1JEV18PA20",
+//						"seg": "1JFH2QBCT0",
 //						"outlet": {
 //							"jaxId": "1JEV1EQBA4",
 //							"attrs": {
@@ -2190,8 +2724,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "FinAutoDone",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1905",
-//						"y": "390",
+//						"x": "1900",
+//						"y": "415",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2230,7 +2764,7 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1900",
-//						"y": "585",
+//						"y": "700",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2268,7 +2802,7 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "1790",
-//						"y": "835",
+//						"y": "950",
 //						"outlet": {
 //							"jaxId": "1JEV1LAMB6",
 //							"attrs": {
@@ -2289,8 +2823,8 @@ export{Util_FindSelector,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1115",
-//						"y": "835",
+//						"x": "1095",
+//						"y": "950",
 //						"outlet": {
 //							"jaxId": "1JEV1LAMB7",
 //							"attrs": {
@@ -2311,8 +2845,8 @@ export{Util_FindSelector,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2270",
-//						"y": "330",
+//						"x": "3115",
+//						"y": "340",
 //						"outlet": {
 //							"jaxId": "1JEV2593V0",
 //							"attrs": {
@@ -2333,8 +2867,8 @@ export{Util_FindSelector,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1640",
-//						"y": "330",
+//						"x": "2195",
+//						"y": "340",
 //						"outlet": {
 //							"jaxId": "1JEV2593V5",
 //							"attrs": {
@@ -2357,12 +2891,12 @@ export{Util_FindSelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1900",
-//						"y": "495",
+//						"y": "610",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"seg": "1JEV18PA20",
+//						"seg": "1JFH2QBCT0",
 //						"outlet": {
 //							"jaxId": "1JF1E6NA70",
 //							"attrs": {
@@ -2375,36 +2909,14 @@ export{Util_FindSelector,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1JF1EDV6R0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "2245",
-//						"y": "5",
-//						"outlet": {
-//							"jaxId": "1JF1EEKBJ0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JEV23JVF0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "brunch",
 //					"jaxId": "1JF1IH4B40",
 //					"attrs": {
 //						"id": "CheckAbort",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1880",
-//						"y": "240",
+//						"x": "2445",
+//						"y": "255",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2471,8 +2983,8 @@ export{Util_FindSelector,ChatAPI};
 //						"id": "FinAbort",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2120",
-//						"y": "185",
+//						"x": "2685",
+//						"y": "200",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2501,6 +3013,160 @@ export{Util_FindSelector,ChatAPI};
 //						}
 //					},
 //					"icon": "/@tabos/shared/assets/aalogo.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorT",
+//					"jaxId": "1JFHJR2D50",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1265",
+//						"y": "280",
+//						"outlet": {
+//							"jaxId": "1JFHJSK0H0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFHJRO900"
+//						},
+//						"dir": "T2B"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JFHJRO900",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1115",
+//						"y": "440",
+//						"outlet": {
+//							"jaxId": "1JFHJSK0H1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JEV1198Q0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JFHKRGH30",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2685",
+//						"y": "105",
+//						"outlet": {
+//							"jaxId": "1JFHKT2BF2",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JEV23JVF0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JFHN22OB0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1900",
+//						"y": "515",
+//						"outlet": {
+//							"jaxId": "1JFHN32KT4",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFHN2J0D0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JFHN2J0D0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2155",
+//						"y": "515",
+//						"outlet": {
+//							"jaxId": "1JFHN32KT5",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFHN2MA60"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JFHN2MA60",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2165",
+//						"y": "950",
+//						"outlet": {
+//							"jaxId": "1JFHN32KT6",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JEV1K6RI0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JFKTM8V40",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2165",
+//						"y": "-75",
+//						"outlet": {
+//							"jaxId": "1JFLNT00N0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JF1ECNIG0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

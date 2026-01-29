@@ -9,7 +9,32 @@
 				"click": "css: textarea.gLFyf"
 			},
 			"time": 1767984913355
-		}
+		},
+		"elements": {
+			"sig:8be45dd900000000": {
+				"value": [
+					"css: #APjFqb"
+				],
+				"pending": false,
+				"time": 1769613407224,
+				"queries": [
+					"点击能后输入搜索内容的HTML元素"
+				],
+				"sigKey": "v2|textbox|textarea|ids:id=APjFqb;name=q|a11y:aria=搜尋|anchor:c=role:search|chain=none",
+				"keys": [
+					"search.input"
+				]
+			}
+		},
+		"ruleMap": {
+			"search.input": {
+				"eid": "sig:8be45dd900000000",
+				"query": "点击能后输入搜索内容的HTML元素",
+				"time": 1769613407224
+			}
+		},
+		"_gcTime": 1769613407224,
+		"_gcRemoved": 0
 	},
 	"zh-HK": {
 		"search": {

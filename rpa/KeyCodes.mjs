@@ -1,4 +1,4 @@
-export default {
+const KeyCodes={
 	"Unidentified":"\uE000",
 	"Cancel":"\uE001",
 	"Help":"\uE002",
@@ -23,6 +23,7 @@ export default {
 	"ArrowDown":"\uE015",
 	"Insert":"\uE016",
 	"Delete":"\uE017",
+	"MetaCtrl":process.platform === 'darwin' ? "\uE03D" : "\uE009",
 	";":"\uE018",
 	"=":"\uE019",
 	"0":"\uE01A",
@@ -70,3 +71,37 @@ export default {
 	//"Insert":"\uE05C",
 	//"Delete":"\uE05D",
 };
+const ShortCuts={
+	"Copy":["MetaCtrl","c"],
+	"Paste":["MetaCtrl","v"],
+	"Cut":["MetaCtrl","x"],
+	"Undo":["MetaCtrl","z"],
+	"Redo":["MetaCtrl","y"],
+	"SelectAll":["MetaCtrl","a"],
+	"Save":["MetaCtrl","s"],
+	"Open":["MetaCtrl","o"],
+	"New":["MetaCtrl","n"],
+	"Find":["MetaCtrl","f"],
+	"Replace":["MetaCtrl","h"],
+	"Print":["MetaCtrl","p"],
+	"Refresh":["MetaCtrl","r"],
+	"Close":["MetaCtrl","w"],
+	"Quit":["MetaCtrl","q"],
+	"Bold":["MetaCtrl","b"],
+	"Italic":["MetaCtrl","i"],
+	"Underline":["MetaCtrl","u"],
+	"ZoomIn":["MetaCtrl","+"],
+	"ZoomOut":["MetaCtrl","-"],
+	"NewTab":["MetaCtrl","t"],
+	"CloseTab":["MetaCtrl","w"],
+	"ReopenTab":["MetaCtrl","Shift","t"],
+	"NextTab":["MetaCtrl","Tab"],
+	"PrevTab":["MetaCtrl","Shift","Tab"],
+	"SwitchWindow":["MetaCtrl","~"],
+	"Minimize":["MetaCtrl","m"],
+	"FullScreen":["F11"],
+	"DevTools":["F12"],
+	"AddressBar":["MetaCtrl","l"]
+}
+export default KeyCodes;
+export {KeyCodes,ShortCuts};

@@ -490,7 +490,6 @@ class ChatSession {
 			fromOutlet: segVO.outlet || null,
 			id: Symbol(), // 使用 Symbol 生成唯一 ID
 		};
-		
 		const log = {
 			type: "StartSeg",
 			session: this.sessionId,
@@ -1224,6 +1223,8 @@ class ChatSession {
 					agentNode="$client";
 				}
 				path=result.path;
+			}else{
+				return {status:"failed",reason:`Can't find agent by find: ${JSON.stringify(path)}.`};
 			}
 		}
 		if(agentNode) {//This is a remote chat
@@ -1241,7 +1242,11 @@ class ChatSession {
 				}
 				return result;
 			}else{
-				return await RemoteSession.exec(this,agentNode,path,input,opts);
+				if(agentNode===this.agentNode.name){
+					return await this.execAgent(path, input,opts);
+				}else {
+					return await RemoteSession.exec(this, agentNode, path, input, opts);
+				}
 			}
 		}else{
 			return await this.execAgent(path, input,opts);

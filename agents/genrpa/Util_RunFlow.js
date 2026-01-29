@@ -92,17 +92,20 @@ let Util_RunFlow=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JF9IAF1M0"));
 				if($alias){
 					let $headless=false;
@@ -111,9 +114,9 @@ let Util_RunFlow=async function(session){
 					let $browser=null;
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
@@ -140,6 +143,13 @@ let Util_RunFlow=async function(session){
 			entry=flow.start;
 			curStep=steps[entry];
 			lastResult={status:"Ready",result:"Ready"};
+			{
+				let $channel="Process";
+				let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+				let role="assistant";
+				let content=`Util_RunFlow: [Start]: ${flow.id}`;
+				session.addChatText(role,content,opts);
+			}
 			/*}#1JF9IO87Q0Code*/
 		}catch(error){
 			/*#{1JF9IO87Q0ErrorCode*/
@@ -153,7 +163,13 @@ let Util_RunFlow=async function(session){
 	segs["NextStep"]=NextStep=async function(input){//:1JF9ID44I0
 		let result=input;
 		/*#{1JF9ID44I0Start*/
-		
+		{
+			let $channel="Process";
+			let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+			let role="assistant";
+			let content=`Util_RunFlow: [NextStep]: ${curStep?.id}`;
+			session.addChatText(role,content,opts);
+		}
 		/*}#1JF9ID44I0Start*/
 		if(curStep && curStep.action){
 			let output=curStep;
@@ -188,7 +204,7 @@ let Util_RunFlow=async function(session){
 	
 	segs["QuerySelector"]=QuerySelector=async function(input){//:1JF9IFLCQ0
 		let result;
-		let arg={"pageRef":pageRef,"query":curStep.action.query,"rulePath":flowPath+curStep.id};
+		let arg={"pageRef":pageRef,"query":curStep.action.query,"multiSelect":"","rulePath":flowPath+"_"+curStep.id,"opts":flowOpts};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./Util_QuerySelector.js");
@@ -217,7 +233,6 @@ let Util_RunFlow=async function(session){
 		/*#{1JF9IHEG50Start*/
 		let $status;
 		$status=input.status.toLowerCase();
-		
 		/*}#1JF9IHEG50Start*/
 		if($status==="failed"){
 			return {seg:FailQuery,result:(input),preSeg:"1JF9IHEG50",outlet:"1JF9IIN7O0"};
@@ -232,6 +247,7 @@ let Util_RunFlow=async function(session){
 				break;
 			}
 			default:{
+				curStep.action.by=input.selector||input.value;
 				break;
 			}
 		}
@@ -244,40 +260,80 @@ let Util_RunFlow=async function(session){
 	segs["StepResult"]=StepResult=async function(input){//:1JF9IJ7HH0
 		let result=input;
 		/*#{1JF9IJ7HH0Start*/
+		if(true){
+			let $channel="Process";
+			let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+			let role="assistant";
+			let content=`Util_RunFlow: [StepResult]: ${JSON.stringify(input)}}`;
+			session.addChatText(role,content,opts);
+		}
 		let status,value,stepNext,nextType,nextStep;
 		lastResult=input||{};
 		status=(input?.status||"done").toLowerCase();
-		value=input?.value;
-		stepNext=curStep.next;
-		nextType=typeof(stepNext);
-		if(nextType==="string"){
-			nextStep=stepNext;
-		}else if(nextType==="object"){
-			let router;
-			router=stepNext.router;
-			if(router){
-				if(router instanceof Function){
-					nextStep=await router(lastResult,flowArgs,flowVars,flowOpts);
-				}else{
-					throw Error("None function next-step-router is not supported yet.");
+		if(status==="done" && curStep.saveAs && (typeof(input)==="object") && ("value" in input)){
+			let saveAs=curStep.saveAs;
+			const { parseFlowVal } = await import(pathLib.join(basePath, "./utils_flow.js"));
+			let toSave = saveAs;
+			if (typeof saveAs === "string") {
+				// 旧模式，直接保存 result.value
+				flowVars[saveAs] = input.value;
+			} else if (saveAs && typeof saveAs === "object") {
+				// 新模式，对象映射模式
+				for (const key of Object.keys(saveAs)) {
+					// 跳过危险属性
+					if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+					try {
+						flowVars[key] = parseFlowVal(saveAs[key], flowArgs, flowOpts, flowVars, input);
+					} catch (e) {
+						flowVars[key] = undefined;
+					}
 				}
-			}else{
-				nextStep=stepNext[status]||null;
 			}
 		}
-		curStep=steps[nextStep];
-		/*}#1JF9IJ7HH0Start*/
-		if(curStep){
-			let output=curStep;
-			/*#{1JF9IKHE90Codes*/
-			/*}#1JF9IKHE90Codes*/
-			return {seg:NextStep,result:(output),preSeg:"1JF9IJ7HH0",outlet:"1JF9IKHE90"};
+		if(curStep.action.type==="branch"){
+			value=input?.value;
+			curStep=steps[input?.nextStep];
+		}else{
+			value=input?.value;
+			stepNext=curStep.next;
+			nextType=typeof(stepNext);
+			if(nextType==="string"){
+				nextStep=stepNext;
+			}else if(nextType==="object"){
+				let router;
+				router=stepNext.router;
+				if(router){
+					if(router instanceof Function){
+						nextStep=await router(lastResult,flowArgs,flowVars,flowOpts);
+					}else{
+						throw Error("None function next-step-router is not supported yet.");
+					}
+				}else{
+					nextStep=stepNext[status]||null;
+				}
+			}
+			curStep=steps[nextStep];
 		}
+		if(!curStep && nextType==="object"){
+			if(stepNext.default){
+				nextStep=stepNext.default;
+			}else{
+				nextStep=stepNext["failed"]||null;
+			}
+			curStep=steps[nextStep];
+		}
+		/*}#1JF9IJ7HH0Start*/
 		if(curStep?.action && curStep.action.type==="done"){
 			return {seg:FinDone,result:(input),preSeg:"1JF9IJ7HH0",outlet:"1JFD7VF7H0"};
 		}
 		if(curStep?.action && curStep.action.type==="abort"){
 			return {seg:FinAbort,result:(input),preSeg:"1JF9IJ7HH0",outlet:"1JFD7UONE0"};
+		}
+		if(curStep){
+			let output=curStep;
+			/*#{1JF9IKHE90Codes*/
+			/*}#1JF9IKHE90Codes*/
+			return {seg:NextStep,result:(output),preSeg:"1JF9IJ7HH0",outlet:"1JF9IKHE90"};
 		}
 		/*#{1JF9IJ7HH0Post*/
 		/*}#1JF9IJ7HH0Post*/
@@ -323,7 +379,7 @@ let Util_RunFlow=async function(session){
 			/*#{1JF9IMQ9N0ErrorCode*/
 			/*}#1JF9IMQ9N0ErrorCode*/
 		}
-		return {result:result};
+		return {seg:StepResult,result:(result),preSeg:"1JF9IMQ9N0",outlet:"1JF9IND0E0"};
 	};
 	FailQuery.jaxId="1JF9IMQ9N0"
 	FailQuery.url="FailQuery@"+agentURL
@@ -636,6 +692,7 @@ export{Util_RunFlow,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -758,7 +815,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "895",
-//						"y": "385",
+//						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -851,7 +908,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1150",
-//						"y": "310",
+//						"y": "280",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -869,7 +926,7 @@ export{Util_RunFlow,ChatAPI};
 //							}
 //						},
 //						"source": "ai/Util_QuerySelector.js",
-//						"argument": "{\"pageRef\":\"#pageRef\",\"query\":\"#curStep.action.query\",\"rulePath\":\"#flowPath+curStep.id\"}",
+//						"argument": "{\"pageRef\":\"#pageRef\",\"query\":\"#curStep.action.query\",\"multiSelect\":\"\",\"rulePath\":\"#flowPath+\\\"_\\\"+curStep.id\",\"opts\":\"#flowOpts\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JF9IGO5E0",
@@ -894,7 +951,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1725",
-//						"y": "385",
+//						"y": "355",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -937,7 +994,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1430",
-//						"y": "310",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1029,8 +1086,8 @@ export{Util_RunFlow,ChatAPI};
 //						"id": "StepResult",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1975",
-//						"y": "310",
+//						"x": "1980",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1058,31 +1115,6 @@ export{Util_RunFlow,ChatAPI};
 //						},
 //						"outlets": {
 //							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JF9IKHE90",
-//									"attrs": {
-//										"id": "Next",
-//										"desc": "输出节点。",
-//										"output": "#curStep",
-//										"codes": "true",
-//										"context": {
-//											"jaxId": "1JF9ILTAD2",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JF9ILTAD3",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#curStep"
-//									},
-//									"linkedSeg": "1JF9IL8ML0"
-//								},
 //								{
 //									"type": "aioutlet",
 //									"def": "AIConditionOutlet",
@@ -1132,6 +1164,31 @@ export{Util_RunFlow,ChatAPI};
 //										"condition": "#curStep?.action && curStep.action.type===\"abort\""
 //									},
 //									"linkedSeg": "1JFD6ORII0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JF9IKHE90",
+//									"attrs": {
+//										"id": "Next",
+//										"desc": "输出节点。",
+//										"output": "#curStep",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JF9ILTAD2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JF9ILTAD3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#curStep"
+//									},
+//									"linkedSeg": "1JF9IL8ML0"
 //								}
 //							]
 //						}
@@ -1192,7 +1249,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "2245",
-//						"y": "255",
+//						"y": "205",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",
@@ -1232,7 +1289,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "2245",
-//						"y": "395",
+//						"y": "355",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",
@@ -1272,7 +1329,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1725",
-//						"y": "230",
+//						"y": "200",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",
@@ -1293,7 +1350,8 @@ export{Util_RunFlow,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JF9IJ7HH0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1312,7 +1370,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1725",
-//						"y": "310",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",
@@ -1393,7 +1451,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1150",
-//						"y": "465",
+//						"y": "435",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1435,7 +1493,7 @@ export{Util_RunFlow,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "1825",
-//						"y": "465",
+//						"y": "435",
 //						"outlet": {
 //							"jaxId": "1JFBIHACI0",
 //							"attrs": {
@@ -1457,7 +1515,7 @@ export{Util_RunFlow,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "1150",
-//						"y": "385",
+//						"y": "355",
 //						"outlet": {
 //							"jaxId": "1JFBJ041Q2",
 //							"attrs": {
@@ -1480,7 +1538,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "2245",
-//						"y": "325",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import fsp from "fs/promises";
 import pathLib from "path";
-import KeyCodes from "./KeyCodes.mjs";
+import {KeyCodes,ShortCuts} from "./KeyCodes.mjs";
 import clipboardy from 'clipboardy'
 import { ensureCodeLib } from './CodeLib.mjs'
 import html2md from 'html-to-md';
@@ -69,7 +69,8 @@ function deserializeEvaluateResult(result) {
 			case 'array':
 				return (result.value || []).map(deserializeEvaluateResult);
 			case 'node':{
-				return result.value;
+				//return result.value;
+				return result;
 			}
 			case 'object': {
 				let val
@@ -2265,7 +2266,19 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 	
 	//-----------------------------------------------------------------------
 	aaWebDriveContext.pressShortcut=async function(keys,opts){
-		let key,i,n,action,actions;
+		let key,delay,i,n,action,actions,keyBuf,shortcut;
+		
+		function clearBuff(){
+			let i,n,key;
+			n=keyBuf.length;
+			for(i=n-1;i>=0;i--){
+				key=keyBuf[i];
+				actions.push({ type: "keyUp", value: key });
+				actions.push({ type: "pause", duration: Math.max(10, Math.round(delay)) });
+			}
+			keyBuf.splice(0);
+		}
+		delay=opts?.delay||0;
 		action=this.action;
 		if(!action){
 			await this.startAction();
@@ -2277,20 +2290,34 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 		if(!Array.isArray(keys)){
 			return false;
 		}
+		keyBuf=[];
 		actions=[];
 		n=keys.length;
 		for(i=0;i<n;i++){
 			key=keys[i];
-			key=KeyCodes[key]||key;
-			actions.push({ type: "keyDown", value: key });
-			actions.push({ type: "pause", duration: Math.max(10, Math.round(30)) });
+			if(key==="null"||key===undefined){
+				clearBuff();
+				actions.push({ type: "pause", duration: Math.max(50, Math.round(delay*5)) });
+			}else {
+				shortcut=ShortCuts[key];
+				if(shortcut){
+					for(key of shortcut){
+						key = KeyCodes[key] || key;
+						actions.push({ type: "keyDown", value: key });
+						actions.push({ type: "pause", duration: Math.max(10, Math.round(delay)) });
+						keyBuf.push(key);
+					}
+					clearBuff();
+					actions.push({ type: "pause", duration: Math.max(50, Math.round(delay*5)) });
+				}else {
+					key = KeyCodes[key] || key;
+					actions.push({ type: "keyDown", value: key });
+					actions.push({ type: "pause", duration: Math.max(10, Math.round(delay)) });
+					keyBuf.push(key);
+				}
+			}
 		}
-		for(i=n-1;i>=0;i--){
-			key=keys[i];
-			key=KeyCodes[key]||key;
-			actions.push({ type: "keyUp", value: key });
-			actions.push({ type: "pause", duration: Math.max(10, Math.round(30)) });
-		}
+		clearBuff();
 		await this.webDrive.performActions(this.action,[
 			{
 				type: "key",
@@ -2721,6 +2748,14 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 							n=files.length;
 							for(i=0;i<n;i++){
 								path=files[i];
+								if(typeof(path)==="object"){
+									if(path.path){
+										path=path.path;
+										files[i]=path;
+									}else{
+										//TODO: handle temp file
+									}
+								}
 								if(path.startsWith("hub://")){
 									if(this.webDrive.agentNode){
 										res=await this.webDrive.agentNode.callHub("AhFilePath",{fileName:path.substring(6)});

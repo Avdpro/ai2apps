@@ -17,59 +17,49 @@
 // - Click-through where appropriate for notifications
 // - Proper cleanup and memory management
 
-//----------------------------------------------------
-// inPagePrompt - Modal dialog with customizable appearance and behavior
+// async inPagePrompt(text,opts)============================================================
+// opts:
+// - caption: string = "AI2Apps"
+// - icon: DataURL|string|null = null
+// - okText: string = "OK"
+// - cancelText: string = "Cancel"
+// - showCancel: boolean = false
+// - mask: css-color|string|false = "rgba(0,0,0,0.35)"
+// - modal: boolean = true   // NEW: false => show mask visually, but page remains interactive
+// - iconSize: number = 88 (px)
+// - buttonMinWidth: number = 96 (px)  // NEW: min button width, can grow with text
 //
-// Creates a modal dialog that can be displayed over any web page with full customization
-// options for styling, behavior, and interaction. Supports both modal and non-modal modes.
+// Menu opts:
+// - menu: Array<{ text:string, icon?:string|null, checked?:boolean, enable?:boolean }>
+// - multiSelect: boolean = false
+// - allowEmpty: boolean = true   // only applies when multiSelect=true
 //
-// Parameters:
-//   text: string - The main message text to display
-//   opts: object - Configuration options:
-//     - caption: string = "AI2Apps" - Dialog title bar text
-//     - icon: DataURL|string|null = null - Icon to display (image URL or data URL)
-//     - okText: string = "OK" - Text for the OK button
-//     - cancelText: string = "Cancel" - Text for the Cancel button
-//     - showCancel: boolean = false - Whether to show the Cancel button
-//     - mask: css-color|string|false = "rgba(0,0,0,0.35)" - Background overlay color
-//     - modal: boolean = true - Whether dialog blocks page interaction
-//     - iconSize: number = 88 - Icon size in pixels (minimum 24px)
-//     - buttonMinWidth: number = 96 - Minimum button width in pixels (minimum 40px)
+// Edit opts:
+// - edit: boolean = false
+// - editText: string = ""
+// - placeHolder: string = ""
 //
-// Return Values:
-//   When showCancel = false: Promise<{ok: boolean, action: string, reason?: string}>
-//     - action can be: "ok", "esc", "cancel", "closed"
-//   When showCancel = true: Promise<boolean>
-//     - true for OK/Enter, false for Cancel/Escape
+// Return:
+// - If edit==true and NO menu:
+//   - OK -> string (user input)
+//   - Cancel/Esc (only if showCancel=true) -> null
 //
-// Features:
-//   - Draggable by title bar with viewport constraints
-//   - Keyboard navigation (Enter=OK, Escape=Cancel)
-//   - Responsive design with max-width constraints
-//   - Auto-focus on OK button for accessibility
-//   - Modal mode blocks page interaction, non-modal allows click-through
-//   - Customizable overlay background or transparent
-//   - Prevents multiple instances (replaces existing dialog)
+// - If menu present and edit==false:
+//   - multiSelect=false -> click item returns that object; Cancel/Esc (only if showCancel=true) -> null
+//   - multiSelect=true  -> OK returns Array<menuItem>; Cancel/Esc (only if showCancel=true) -> null
 //
-// Usage Examples:
-//   // Simple confirmation
-//   const result = await inPagePrompt("Are you sure?", { showCancel: true });
-//   if (result) console.log("User confirmed");
+// - If menu present and edit==true:
+//   - multiSelect=false -> OK returns input string (ONLY when input non-empty); Cancel/Esc (only if showCancel=true) -> null
+//   - multiSelect=true  -> OK returns Array (checked items) + (if input non-empty then push input string at end)
 //
-//   // Custom styled dialog
-//   const response = await inPagePrompt("Operation completed!", {
-//     caption: "Success",
-//     icon: "data:image/svg+xml;base64,...",
-//     okText: "Continue",
-//     mask: "rgba(0,100,0,0.2)"
-//   });
+// - Else (legacy, no menu, edit==false):
+//   - showCancel=false  -> Promise<{ok:true, action:string} | {ok:false, reason:string}>
+//   - showCancel=true   -> Promise<boolean> (true=OK/Enter, false=Cancel/Esc)
 //
-//   // Non-modal notification
-//   await inPagePrompt("Background task running...", {
-//     modal: false,
-//     mask: false,
-//     okText: "Dismiss"
-//   });
+// Key rules:
+// - hasMenu && showCancel=false : Esc MUST NOT exit
+// - hasMenu && showCancel=true  : Esc exits (returns null)
+// - edit==true : Enter MUST NOT submit dialog (can insert newline)
 const inPagePrompt = function (text, opts = {}) {
 	text = (text == null) ? "" : String(text);
 	opts = (opts && typeof opts === "object") ? opts : {};
@@ -80,20 +70,35 @@ const inPagePrompt = function (text, opts = {}) {
 	const cancelText = (opts.cancelText == null || opts.cancelText === "") ? "Cancel" : String(opts.cancelText);
 	const showCancel = !!opts.showCancel;
 	
-	const modal = (opts.modal === undefined) ? true : !!opts.modal; // <--- NEW
 	const mask = (opts.mask === undefined) ? "rgba(0,0,0,0.35)" : opts.mask;
+	const modal = (opts.modal === undefined) ? true : !!opts.modal;
 	
 	const iconSize = Number.isFinite(opts.iconSize) ? Math.max(24, opts.iconSize) : 88;
 	const buttonMinWidth = Number.isFinite(opts.buttonMinWidth) ? Math.max(40, opts.buttonMinWidth) : 96;
 	
-	const returnBoolean = showCancel;
+	const hasMenu = Array.isArray(opts.menu);
+	const multiSelect = !!opts.multiSelect;
+	const allowEmpty = (opts.allowEmpty === undefined) ? true : !!opts.allowEmpty;
+	
+	const edit = !!opts.edit;
+	const editText = (opts.editText == null) ? "" : String(opts.editText);
+	const placeHolder = (opts.placeHolder == null) ? "" : String(opts.placeHolder);
+	
+	// Legacy boolean mode only when no menu and no edit
+	const returnBoolean = (!hasMenu) && !edit && showCancel;
+	
+	// Keep original objects for menu return
+	const menu = hasMenu
+		? (opts.menu || []).map((it) => (it && typeof it === "object") ? it : ({ text: String(it) }))
+		: null;
 	
 	return new Promise((resolve) => {
 		try {
 			const doc = document;
 			const body = doc.body || doc.documentElement;
-			if (!body) return resolve(returnBoolean ? false : { ok: false, reason: "no-body" });
+			if (!body) return resolve((hasMenu || edit) ? null : (returnBoolean ? false : { ok: false, reason: "no-body" }));
 			
+			// remove previous
 			const prev = doc.getElementById("__ai2apps_prompt_root__");
 			if (prev) prev.remove();
 			
@@ -105,14 +110,10 @@ const inPagePrompt = function (text, opts = {}) {
 			root.style.width = "100vw";
 			root.style.height = "100vh";
 			root.style.zIndex = "2147483647";
+			root.style.pointerEvents = "none";
 			
-			// NEW:
-			// - modal=true  => root eats events (no click-through)
-			// - modal=false => root does NOT eat events (click-through everywhere except dialog)
-			root.style.pointerEvents = modal ? "auto" : "none";
-			
-			// Overlay only when modal=true AND mask !== false
-			if (modal && mask !== false) {
+			// Mask: modal=true blocks; modal=false visual-only
+			if (mask !== false) {
 				const overlay = doc.createElement("div");
 				overlay.style.position = "absolute";
 				overlay.style.left = "0";
@@ -121,18 +122,21 @@ const inPagePrompt = function (text, opts = {}) {
 				overlay.style.height = "100%";
 				overlay.style.background =
 					(typeof mask === "string" && mask.trim()) ? mask : "rgba(0,0,0,0.35)";
-				overlay.style.pointerEvents = "auto";
 				
-				// Still block scroll only in modal mode
-				overlay.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
-				overlay.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-				
+				if (modal) {
+					overlay.style.pointerEvents = "auto";
+					overlay.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
+					overlay.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+				} else {
+					overlay.style.pointerEvents = "none";
+				}
 				root.appendChild(overlay);
 			}
 			
 			const dlg = doc.createElement("div");
 			dlg.setAttribute("role", "dialog");
-			dlg.setAttribute("aria-modal", modal ? "true" : "false"); // NEW
+			dlg.setAttribute("aria-modal", modal ? "true" : "false");
+			dlg.tabIndex = -1;
 			dlg.style.position = "absolute";
 			dlg.style.left = "50%";
 			dlg.style.top = "30%";
@@ -150,7 +154,7 @@ const inPagePrompt = function (text, opts = {}) {
 			const font = "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
 			const thinBorder = "1px solid rgba(0,0,0,0.28)";
 			
-			// Title bar (16px)
+			// Title bar
 			const titleBar = doc.createElement("div");
 			titleBar.style.display = "flex";
 			titleBar.style.alignItems = "center";
@@ -171,7 +175,7 @@ const inPagePrompt = function (text, opts = {}) {
 			capEl.style.width = "100%";
 			titleBar.appendChild(capEl);
 			
-			// Content
+			// Content area
 			const content = doc.createElement("div");
 			content.style.display = "flex";
 			content.style.alignItems = "flex-start";
@@ -201,7 +205,13 @@ const inPagePrompt = function (text, opts = {}) {
 				iconWrap.appendChild(img);
 			}
 			
-			// Text (14px)
+			const rightCol = doc.createElement("div");
+			rightCol.style.display = "flex";
+			rightCol.style.flexDirection = "column";
+			rightCol.style.gap = (hasMenu || edit) ? "10px" : "0";
+			rightCol.style.flex = "1 1 auto";
+			rightCol.style.minWidth = "0";
+			
 			const textEl = doc.createElement("div");
 			textEl.textContent = text;
 			textEl.style.whiteSpace = "pre-wrap";
@@ -209,13 +219,286 @@ const inPagePrompt = function (text, opts = {}) {
 			textEl.style.fontSize = "14px";
 			textEl.style.fontWeight = "600";
 			textEl.style.color = "#111";
-			textEl.style.flex = "1 1 auto";
 			textEl.style.userSelect = "text";
+			textEl.style.flex = "0 0 auto";
+			rightCol.appendChild(textEl);
+			
+			// State
+			let menuWrap = null;
+			let okBtn = null;
+			let cancelBtn = null;
+			let editBox = null;
+			
+			// keep references to each menu input for UI sync
+			const menuInputEls = []; // index -> <input>
+			
+			let selected = [];
+			const isEnabledItem = (it) => (it && it.enable !== false);
+			
+			const syncSelectedFromMenu = () => {
+				selected = [];
+				if (!hasMenu) return;
+				for (let i = 0; i < menu.length; i++) {
+					if (menu[i] && menu[i].checked === true) selected.push(i);
+				}
+				if (!multiSelect && selected.length > 1) {
+					const keep = selected[0];
+					for (let i = 0; i < menu.length; i++) menu[i].checked = (i === keep);
+					selected = [keep];
+				}
+			};
+			syncSelectedFromMenu();
+			
+			const getEditValue = () => editBox ? String(editBox.value || "") : "";
+			const hasEditText = () => getEditValue().trim().length > 0;
+			
+			// NOTE: even when menu+edit+single, we still show OK button (per previous), but now:
+			// - Clicking a menu item immediately closes and returns the menu item object.
+			const needOk = edit ? true : (hasMenu ? (multiSelect ? true : false) : true);
+			
+			const computeOkEnabled = () => {
+				if (!okBtn) return false;
+				
+				// edit only
+				if (edit && !hasMenu) return true;
+				
+				// menu + edit
+				if (hasMenu && edit) {
+					if (!multiSelect) return hasEditText(); // OK only valid when input has text
+					if (allowEmpty) return true;
+					return (selected.length > 0) || hasEditText();
+				}
+				
+				// menu only
+				if (hasMenu && !edit) {
+					if (!multiSelect) return true; // OK normally absent
+					if (allowEmpty) return true;
+					return selected.length > 0;
+				}
+				
+				// legacy
+				return true;
+			};
+			
+			const updateOkEnabled = () => {
+				if (!okBtn) return;
+				const enabled = computeOkEnabled();
+				okBtn.disabled = !enabled;
+				okBtn.style.opacity = enabled ? "1" : "0.45";
+				okBtn.style.cursor = enabled ? "pointer" : "not-allowed";
+				okBtn.setAttribute("aria-disabled", enabled ? "false" : "true");
+			};
+			
+			// Key target (B mode)
+			const keyTarget = modal ? doc : dlg;
+			
+			let closed = false;
+			const cleanup = (val) => {
+				if (closed) return;
+				closed = true;
+				keyTarget.removeEventListener("keydown", onKeyDown, true);
+				if (root && root.parentNode) root.parentNode.removeChild(root);
+				resolve(val);
+			};
+			
+			// Menu UI
+			const makeMenuRow = (it, idx, groupName) => {
+				const row = doc.createElement("div");
+				row.setAttribute("role", multiSelect ? "menuitemcheckbox" : "menuitemradio");
+				row.tabIndex = (isEnabledItem(it) ? 0 : -1);
+				row.style.display = "flex";
+				row.style.alignItems = "center";
+				row.style.gap = "10px";
+				row.style.padding = "10px 10px";
+				row.style.borderRadius = "10px";
+				row.style.border = thinBorder;
+				row.style.background = "#fff";
+				row.style.userSelect = "none";
+				row.style.outline = "none";
+				
+				const disabled = !isEnabledItem(it);
+				if (disabled) {
+					row.style.opacity = "0.45";
+					row.style.cursor = "not-allowed";
+				} else {
+					row.style.cursor = "pointer";
+					row.addEventListener("mouseenter", () => (row.style.background = "#f6f6f6"));
+					row.addEventListener("mouseleave", () => (row.style.background = "#fff"));
+				}
+				
+				const input = doc.createElement("input");
+				input.type = multiSelect ? "checkbox" : "radio";
+				input.name = multiSelect ? "" : groupName;
+				input.checked = !!it.checked;
+				input.disabled = disabled;
+				input.style.transform = "scale(1.05)";
+				input.style.margin = "0";
+				input.style.flex = "0 0 auto";
+				
+				menuInputEls[idx] = input;
+				
+				const miIconWrap = doc.createElement("div");
+				miIconWrap.style.flex = "0 0 auto";
+				miIconWrap.style.width = "22px";
+				miIconWrap.style.height = "22px";
+				miIconWrap.style.display = it && it.icon ? "flex" : "none";
+				miIconWrap.style.alignItems = "center";
+				miIconWrap.style.justifyContent = "center";
+				
+				if (it && it.icon) {
+					const im = doc.createElement("img");
+					im.alt = "";
+					im.src = String(it.icon);
+					im.style.width = "22px";
+					im.style.height = "22px";
+					im.style.objectFit = "contain";
+					im.style.borderRadius = "6px";
+					im.style.border = "none";
+					miIconWrap.appendChild(im);
+				}
+				
+				const label = doc.createElement("div");
+				label.textContent = (it && it.text != null) ? String(it.text) : "";
+				label.style.flex = "1 1 auto";
+				label.style.minWidth = "0";
+				label.style.fontSize = "14px";
+				label.style.fontWeight = "700";
+				label.style.color = "#111";
+				label.style.whiteSpace = "pre-wrap";
+				label.style.lineHeight = "1.25";
+				
+				row.appendChild(input);
+				row.appendChild(miIconWrap);
+				row.appendChild(label);
+				
+				const setChecked = (checked) => {
+					it.checked = !!checked;
+					input.checked = !!checked;
+				};
+				
+				const syncRadioUI = (pickedIdx) => {
+					for (let i = 0; i < menu.length; i++) {
+						const want = (i === pickedIdx);
+						if (menu[i]) menu[i].checked = want;
+						const el = menuInputEls[i];
+						if (el) el.checked = want;
+					}
+					syncSelectedFromMenu();
+				};
+				
+				const onActivate = () => {
+					if (disabled) return null;
+					
+					if (!multiSelect) {
+						syncRadioUI(idx);
+						updateOkEnabled();
+						
+						// ✅ CHANGE: even when menu+edit+single, clicking menu closes and returns menu object
+						return { type: "singleDone", value: it };
+					}
+					
+					setChecked(!it.checked);
+					syncSelectedFromMenu();
+					updateOkEnabled();
+					return { type: "toggled" };
+				};
+				
+				row.addEventListener("click", (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					const r = onActivate();
+					if (r && r.type === "singleDone") cleanup(r.value);
+				});
+				
+				row.addEventListener("keydown", (e) => {
+					if (!e || disabled) return;
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						e.stopPropagation();
+						const r = onActivate();
+						if (r && r.type === "singleDone") cleanup(r.value);
+					}
+				});
+				
+				return row;
+			};
+			
+			if (hasMenu) {
+				menuWrap = doc.createElement("div");
+				menuWrap.setAttribute("role", "menu");
+				menuWrap.style.display = "flex";
+				menuWrap.style.flexDirection = "column";
+				menuWrap.style.gap = "8px";
+				menuWrap.style.padding = "0";
+				menuWrap.style.margin = "0";
+				menuWrap.style.maxHeight = "min(40vh, 300px)";
+				menuWrap.style.overflow = "auto";
+				menuWrap.style.borderRadius = "12px";
+				
+				const groupName = "__ai2apps_menu_" + Math.random().toString(16).slice(2);
+				
+				for (let i = 0; i < menu.length; i++) {
+					const it = menu[i];
+					if (it.enable === undefined) it.enable = true;
+					if (it.checked === undefined) it.checked = false;
+					menuWrap.appendChild(makeMenuRow(it, i, groupName));
+				}
+				
+				rightCol.appendChild(menuWrap);
+			}
+			
+			// Edit UI
+			if (edit) {
+				const wrap = doc.createElement("div");
+				wrap.style.display = "flex";
+				wrap.style.flexDirection = "column";
+				wrap.style.gap = "6px";
+				wrap.style.flex = "0 0 auto";
+				
+				editBox = doc.createElement("textarea");
+				editBox.value = editText;
+				editBox.placeholder = placeHolder;
+				editBox.rows = 1;
+				
+				editBox.style.width = "100%";
+				editBox.style.boxSizing = "border-box";
+				editBox.style.resize = "none";
+				editBox.style.border = thinBorder;
+				editBox.style.borderRadius = "12px";
+				editBox.style.padding = "10px 10px";
+				editBox.style.fontFamily = font;
+				editBox.style.fontSize = "14px";
+				editBox.style.fontWeight = "650";
+				editBox.style.lineHeight = "1.35";
+				editBox.style.outline = "none";
+				editBox.style.color = "#111";
+				editBox.style.background = "#fff";
+				
+				const MAX_H = 180;
+				const fitHeight = () => {
+					editBox.style.height = "auto";
+					const h = Math.min(MAX_H, Math.max(44, editBox.scrollHeight || 44));
+					editBox.style.height = h + "px";
+					editBox.style.overflowY = (editBox.scrollHeight > h) ? "auto" : "hidden";
+				};
+				editBox.addEventListener("input", () => { fitHeight(); updateOkEnabled(); });
+				
+				// keep Enter newline; prevent bubbling to dialog key handler
+				editBox.addEventListener("keydown", (e) => {
+					if (!e) return;
+					if (e.key === "Enter" || e.key === "Escape" || e.key === "Esc") e.stopPropagation();
+				});
+				
+				wrap.appendChild(editBox);
+				rightCol.appendChild(wrap);
+				
+				setTimeout(() => { try { fitHeight(); } catch {} }, 0);
+			}
 			
 			content.appendChild(iconWrap);
-			content.appendChild(textEl);
+			content.appendChild(rightCol);
 			
-			// Footer buttons (reduced vertical padding)
+			// Footer
 			const footer = doc.createElement("div");
 			footer.style.display = "flex";
 			footer.style.justifyContent = "flex-end";
@@ -229,69 +512,143 @@ const inPagePrompt = function (text, opts = {}) {
 				btn.style.borderRadius = "12px";
 				btn.style.padding = "6px 14px";
 				btn.style.minWidth = `${buttonMinWidth}px`;
+				btn.style.width = "auto";
+				btn.style.whiteSpace = "nowrap";
 				btn.style.textAlign = "center";
 				btn.style.fontFamily = font;
 				btn.style.fontSize = "14px";
 				btn.style.fontWeight = "800";
 				btn.style.cursor = "pointer";
 				if (primary) btn.style.boxShadow = "0 3px 0 rgba(0,0,0,0.16)";
-				btn.addEventListener("mouseenter", () => (btn.style.background = "#f5f5f5"));
+				btn.addEventListener("mouseenter", () => { if (!btn.disabled) btn.style.background = "#f5f5f5"; });
 				btn.addEventListener("mouseleave", () => (btn.style.background = "#fff"));
 			};
 			
-			const cancelBtn = doc.createElement("button");
+			cancelBtn = doc.createElement("button");
 			cancelBtn.type = "button";
 			cancelBtn.textContent = cancelText;
 			baseBtnStyle(cancelBtn, false);
 			
-			const okBtn = doc.createElement("button");
+			okBtn = doc.createElement("button");
 			okBtn.type = "button";
 			okBtn.textContent = okText;
 			baseBtnStyle(okBtn, true);
 			
-			if (showCancel) footer.appendChild(cancelBtn);
-			footer.appendChild(okBtn);
+			let footerHasAnything = false;
+			if (showCancel) { footer.appendChild(cancelBtn); footerHasAnything = true; }
+			if (needOk) { footer.appendChild(okBtn); footerHasAnything = true; }
 			
 			dlg.appendChild(titleBar);
 			dlg.appendChild(content);
-			dlg.appendChild(footer);
+			if (footerHasAnything) dlg.appendChild(footer);
 			
 			root.appendChild(dlg);
 			body.appendChild(root);
 			
-			okBtn.focus({ preventScroll: true });
-			
-			let closed = false;
-			const cleanup = (valOrObj) => {
-				if (closed) return;
-				closed = true;
-				doc.removeEventListener("keydown", onKeyDown, true);
-				if (root && root.parentNode) root.parentNode.removeChild(root);
-				resolve(valOrObj);
+			// External close hook
+			root.__ai2apps_close__ = (reason) => {
+				try {
+					if (hasMenu || edit) return cleanup(null);
+					if (showCancel) return cleanup(false);
+					return cleanup({ ok: true, action: (reason == null ? "closed" : String(reason)) });
+				} catch {
+					try { cleanup(null); } catch {}
+				}
 			};
 			
-			const closeOk = () => (returnBoolean ? cleanup(true) : cleanup({ ok: true, action: "ok" }));
-			const closeCancel = (reason) => (returnBoolean ? cleanup(false) : cleanup({ ok: true, action: reason || "closed" }));
+			// Focus
+			if (editBox) editBox.focus({ preventScroll: true });
+			else if (hasMenu && menuWrap) {
+				const items = Array.from(menuWrap.querySelectorAll('[role="menuitemradio"],[role="menuitemcheckbox"]'));
+				const first = items.find((el) => el && el.tabIndex === 0);
+				if (first) first.focus({ preventScroll: true });
+				else if (needOk && okBtn) okBtn.focus({ preventScroll: true });
+				else dlg.focus({ preventScroll: true });
+			} else if (needOk && okBtn) {
+				okBtn.focus({ preventScroll: true });
+			} else {
+				dlg.focus({ preventScroll: true });
+			}
 			
+			// OK / Cancel actions
+			const closeOkLegacy = () => (returnBoolean ? cleanup(true) : cleanup({ ok: true, action: "ok" }));
+			
+			const onOk = () => {
+				if (!okBtn || okBtn.disabled) return;
+				
+				// edit only
+				if (edit && !hasMenu) return cleanup(getEditValue());
+				
+				// menu + edit
+				if (hasMenu && edit) {
+					if (!multiSelect) return cleanup(getEditValue());
+					const arr = [];
+					for (let i = 0; i < menu.length; i++) if (menu[i] && menu[i].checked === true) arr.push(menu[i]);
+					const v = getEditValue();
+					if (v.trim().length > 0) arr.push(v);
+					return cleanup(arr);
+				}
+				
+				// menu only
+				if (hasMenu && !edit) {
+					if (!multiSelect) {
+						const idx = selected[0];
+						return cleanup((idx == null) ? null : menu[idx]);
+					}
+					const arr = [];
+					for (let i = 0; i < menu.length; i++) if (menu[i] && menu[i].checked === true) arr.push(menu[i]);
+					return cleanup(arr);
+				}
+				
+				// legacy
+				return closeOkLegacy();
+			};
+			
+			const onCancel = () => {
+				if (hasMenu || edit) return cleanup(null);
+				return cleanup(false);
+			};
+			
+			if (needOk && okBtn) okBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onOk(); });
+			if (showCancel && cancelBtn) cancelBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onCancel(); });
+			
+			updateOkEnabled();
+			
+			// Keydown handler
 			const onKeyDown = (e) => {
 				if (!e) return;
-				if (e.key === "Escape" || e.key === "Esc") {
-					e.preventDefault();
-					e.stopPropagation();
-					closeCancel("esc");
-					return;
+				const isEsc = (e.key === "Escape" || e.key === "Esc");
+				const isEnter = (e.key === "Enter");
+				
+				if (isEsc) {
+					if (edit) {
+						if (!showCancel) return;
+						e.preventDefault(); e.stopPropagation();
+						return cleanup(null);
+					}
+					if (hasMenu) {
+						if (!showCancel) return;
+						e.preventDefault(); e.stopPropagation();
+						return cleanup(null);
+					}
+					e.preventDefault(); e.stopPropagation();
+					if (showCancel) return cleanup(false);
+					return cleanup({ ok: true, action: "esc" });
 				}
-				if (e.key === "Enter") {
-					e.preventDefault();
-					e.stopPropagation();
-					closeOk();
-					return;
+				
+				if (isEnter) {
+					if (edit) return; // never submit in edit mode
+					if (hasMenu) {
+						if (!multiSelect) return; // single-select: handled by row keydown
+						e.preventDefault(); e.stopPropagation();
+						return onOk();
+					}
+					e.preventDefault(); e.stopPropagation();
+					return closeOkLegacy();
 				}
 			};
 			
-			okBtn.addEventListener("click", closeOk);
-			cancelBtn.addEventListener("click", () => closeCancel("cancel"));
-			doc.addEventListener("keydown", onKeyDown, true);
+			keyTarget.addEventListener("keydown", onKeyDown, true);
 			
 			// Drag behavior
 			let dragging = false;
@@ -333,34 +690,66 @@ const inPagePrompt = function (text, opts = {}) {
 				titleBar.style.cursor = "move";
 			};
 			
-			titleBar.addEventListener(
-				"pointerdown",
-				(ev) => {
-					ev.preventDefault();
-					ev.stopPropagation();
-					
-					const rect = getDlgRect();
-					dragging = true;
-					startX = ev.clientX;
-					startY = ev.clientY;
-					startLeft = rect.left;
-					startTop = rect.top;
-					
-					dlg.style.left = px(startLeft);
-					dlg.style.top = px(startTop);
-					dlg.style.transform = "none";
-					titleBar.style.cursor = "grabbing";
-					
-					window.addEventListener("pointermove", onPointerMove, true);
-					window.addEventListener("pointerup", onPointerUp, true);
-				},
-				true
-			);
+			titleBar.addEventListener("pointerdown", (ev) => {
+				ev.preventDefault();
+				ev.stopPropagation();
+				
+				const rect = getDlgRect();
+				dragging = true;
+				startX = ev.clientX;
+				startY = ev.clientY;
+				startLeft = rect.left;
+				startTop = rect.top;
+				
+				dlg.style.left = px(startLeft);
+				dlg.style.top = px(startTop);
+				dlg.style.transform = "none";
+				titleBar.style.cursor = "grabbing";
+				
+				window.addEventListener("pointermove", onPointerMove, true);
+				window.addEventListener("pointerup", onPointerUp, true);
+			}, true);
 			
 		} catch (err) {
-			resolve(returnBoolean ? false : { ok: false, reason: String(err && err.message ? err.message : err) });
+			resolve((hasMenu || edit) ? null : (returnBoolean ? false : { ok: false, reason: String(err && err.message ? err.message : err) }));
 		}
 	});
+};
+
+//----------------------------------------------------------------------------------
+// Close current inPagePrompt dialog (if any)
+//
+// Usage:
+//   ai2appsDismissPrompt();                 // -> true if dismissed
+//   ai2appsDismissPrompt("external-close"); // optional reason (used only for legacy object mode)
+//
+// Behavior:
+// - If a prompt is present, it will be removed from DOM.
+// - Best-effort to resolve the pending Promise:
+//   - If there is an "edit" or "menu" mode (we can't know reliably), we resolve with null.
+//   - Else legacy: if it had showCancel=true, resolve false; otherwise resolve {ok:true, action:reason||"closed"}.
+// Note: This works with the ai2appsPrompt implementation that stores a resolver on root.dataset / property.
+//       If your current ai2appsPrompt doesn't store it yet, this will still remove the DOM, but cannot resolve the Promise.
+//
+const inPageDismissPrompt = function (reason) {
+	try {
+		const doc = document;
+		const root = doc.getElementById("__ai2apps_prompt_root__");
+		if (!root) return false;
+		
+		// If ai2appsPrompt stored a resolver on root (recommended), call it:
+		const closeFn = root.__ai2apps_close__;
+		if (typeof closeFn === "function") {
+			try { closeFn(reason); } catch {}
+			return true;
+		}
+		
+		// Fallback: just remove from DOM (cannot resolve pending Promise)
+		root.remove();
+		return true;
+	} catch {
+		return false;
+	}
 };
 
 // --------------------------------------------------
@@ -904,20 +1293,67 @@ const inPageTipDismiss=function(idOrAll) {
 
 
 // --------------------------------------------------
-/**
- * pickDomElement - DevTools-like element picker that plays nicely with inPagePrompt({modal:false})
- *
- * Usage:
- *   const picked = await pickDomElement();
- *   if (picked) console.log(picked.element, picked.selector, picked.rect);
- *
- * Behavior:
- * - Hover highlights element with a box and shows a tooltip near cursor.
- * - Click selects element (prevents default page action), returns info object.
- * - Hold Ctrl to pick parent of current hovered element.
- * - Esc cancels (returns null).
- * - Overlay z-index is below inPagePrompt root, and never blocks pointer events.
- */
+//----------------------------------------------------
+// inPagePickDomElement - Interactive DOM element picker with hierarchical selection
+//
+// Creates an interactive overlay that allows users to visually select DOM elements by hovering
+// and clicking. Features hierarchical navigation using keyboard controls to select parent/child
+// elements in the DOM tree, with real-time visual feedback and detailed element information.
+//
+// Parameters:
+//   opts: object - Configuration options:
+//     - promptRootId: string = "__ai2apps_prompt_root__" - ID of prompt dialog to avoid selecting
+//     - zIndex: number = 2147483645 - Z-index for picker overlay (below prompt by default)
+//     - borderWidth: number = 2 - Width of selection highlight border in pixels (minimum 1px)
+//     - preventPageClick: boolean = true - Whether to prevent default click actions on page elements
+//     - ignoreSelectors: string[] = [] - Array of CSS selectors for elements to ignore during picking
+//     - attr: string|object = null - Attribute to set on picked element:
+//       - string: attribute name (value will be "true")
+//       - object: {key: string, value: string} for custom attribute name and value
+//
+// Interactive Controls:
+//   - Mouse hover: Highlights elements under cursor
+//   - Click: Selects the currently highlighted element
+//   - Ctrl key: Navigate up the DOM hierarchy (select parent elements)
+//   - Shift+Ctrl: Navigate down the DOM hierarchy (select child elements)
+//   - Escape: Cancel selection and exit picker mode
+//
+// Return Values:
+//   Promise<object|null> - Resolves to selection result or null if cancelled:
+//     - ok: true - Selection was successful
+//     - element: HTMLElement - The selected DOM element
+//     - selector: string - Generated CSS selector for the element
+//     - rect: object - Bounding rectangle {x, y, width, height, left, top, right, bottom}
+//     - tagName: string - Lowercase tag name of the element
+//     - id: string - Element's ID attribute (empty string if none)
+//     - className: string - Element's class attribute (empty string if none)
+//
+// Features:
+//   - Real-time visual feedback with highlight border and tooltip
+//   - Hierarchical element selection using Ctrl/Shift+Ctrl navigation
+//   - Detailed element information display (selector, position, dimensions)
+//   - Non-blocking overlay that preserves prompt dialog interaction
+//   - Automatic CSS selector generation for selected elements
+//   - Optional attribute setting on picked elements for marking
+//   - Configurable element filtering to avoid system UI components
+//   - Responsive tooltip positioning with viewport edge detection
+//
+// Visual Feedback:
+//   - Blue highlight border around hoverable elements
+//   - Tooltip showing element selector and position information
+//   - Hierarchical level indicator when using keyboard navigation
+//   - Mode indicators for Ctrl (parent) and Shift+Ctrl (child) navigation
+//
+// Error Handling:
+//   - Returns null if user cancels with Escape key
+//   - Returns null if no valid element can be found at click position
+//   - Gracefully handles DOM changes during selection process
+//   - Safe attribute setting with try-catch error handling
+//
+// Cleanup:
+//   - Automatically removes overlay and event listeners on completion
+//   - Prevents memory leaks by proper cleanup of DOM references
+//   - Ensures only one picker instance can be active at a time
 const inPagePickDomElement = function pickDomElement(opts = {}) {
 	opts = (opts && typeof opts === "object") ? opts : {};
 	
@@ -934,7 +1370,7 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 	// If provided, array of selectors to ignore (besides prompt root)
 	const extraIgnore = Array.isArray(opts.ignoreSelectors) ? opts.ignoreSelectors.map(String) : [];
 	
-	// NEW: normalize opts.attr
+	// normalize opts.attr
 	// - string => {key: string, value: "true"}
 	// - {key,value} => {key,value}
 	const normalizeAttr = (a) => {
@@ -950,7 +1386,7 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 			const v = (a.value == null) ? "" : String(a.value);
 			return { key: k, value: v };
 		}
-		return {key:"data-manual-picked",value:"true"};
+		return { key: "data-manual-picked", value: "true" };
 	};
 	const pickAttr = normalizeAttr(opts.attr);
 	
@@ -1070,15 +1506,35 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 		let hoveredEl = null;
 		let lastMouse = { x: 0, y: 0 };
 		let ctrlDown = false;
+		let shiftDown = false;
 		
-		const pickCandidate = (el) => {
-			if (!el || el.nodeType !== 1) return null;
-			if (ctrlDown && el.parentElement) return el.parentElement;
-			return el;
+		// NEW: ladder selection
+		// ladder[0] = hovered element; ladder[1] = parent; ladder[2] = grandparent...
+		let ladder = [];
+		let ladderIdx = 0;
+		
+		const rebuildLadder = (baseEl) => {
+			ladder = [];
+			ladderIdx = 0;
+			let cur = baseEl;
+			while (cur && cur.nodeType === 1) {
+				ladder.push(cur);
+				cur = cur.parentElement;
+			}
 		};
 		
-		const updateUI = (el, mouseX, mouseY) => {
-			const cand = pickCandidate(el);
+		const getCurrentLadderEl = () => {
+			if (!ladder.length) return null;
+			ladderIdx = clamp(ladderIdx, 0, ladder.length - 1);
+			return ladder[ladderIdx] || null;
+		};
+		
+		const getEffectiveTarget = (fallbackEl) => {
+			return getCurrentLadderEl() || fallbackEl || null;
+		};
+		
+		const updateUI = (rawEl, mouseX, mouseY) => {
+			const cand = getEffectiveTarget(rawEl);
 			
 			if (!cand) {
 				box.style.width = "0";
@@ -1098,7 +1554,10 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 			// Tooltip text
 			const sel = getSimpleSelector(cand);
 			const rx = Math.round(r.left), ry = Math.round(r.top), rw = Math.round(r.width), rh = Math.round(r.height);
-			tip.textContent = `${ctrlDown ? "CTRL→PARENT  " : ""}${sel}  —  x:${rx} y:${ry} w:${rw} h:${rh}`;
+			const mode = shiftDown ? "SHIFT+CTRL→CHILD  " : "CTRL→PARENT  ";
+			const modeShown = ctrlDown ? mode : (ladderIdx > 0 ? "LEVEL↑  " : "");
+			const levelInfo = ladder.length ? `lvl:${ladderIdx}/${Math.max(0, ladder.length - 1)}  ` : "";
+			tip.textContent = `${modeShown}${levelInfo}${sel}  —  x:${rx} y:${ry} w:${rw} h:${rh}`;
 			
 			// Tooltip position near cursor, clamped
 			const pad = 12;
@@ -1162,21 +1621,29 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 			if (under && (inPrompt(under) || (under === root || root.contains(under)))) {
 				updateUI(null, e.clientX, e.clientY);
 				hoveredEl = null;
+				ladder = [];
+				ladderIdx = 0;
 				return;
 			}
 			
 			const el = findElementFromPoint(e.clientX, e.clientY);
-			hoveredEl = el;
-			updateUI(el, e.clientX, e.clientY);
+			
+			// If hover target changes, reset ladder to that element
+			if (el !== hoveredEl) {
+				hoveredEl = el;
+				if (hoveredEl) rebuildLadder(hoveredEl);
+				else { ladder = []; ladderIdx = 0; }
+			}
+			
+			updateUI(hoveredEl, e.clientX, e.clientY);
 		};
 		
 		const finalizePick = (rawEl) => {
-			const el = pickCandidate(rawEl);
+			const el = getEffectiveTarget(rawEl);
 			if (!el) return cleanup(null);
 			
-			// NEW: apply attribute on picked element (best-effort)
+			// Apply attribute on picked element (best-effort)
 			if (pickAttr) {
-				console.log("Will set picked attr at:",el);
 				try {
 					el.setAttribute(pickAttr.key, pickAttr.value);
 				} catch (_) {}
@@ -1217,8 +1684,10 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 			// If user is clicking the prompt, don't interfere.
 			if (e.target && inPrompt(e.target)) return;
 			
-			// Determine target under cursor
-			const el = hoveredEl || findElementFromPoint(lastMouse.x, lastMouse.y) || (e.target && !shouldIgnoreTarget(e.target) ? e.target : null);
+			// Determine raw hovered target under cursor
+			const raw = hoveredEl
+				|| findElementFromPoint(lastMouse.x, lastMouse.y)
+				|| (e.target && !shouldIgnoreTarget(e.target) ? e.target : null);
 			
 			if (preventPageClick) {
 				e.preventDefault();
@@ -1226,7 +1695,10 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 				if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 			}
 			
-			finalizePick(el);
+			// If ladder not built yet, build from raw
+			if (!ladder.length && raw) rebuildLadder(raw);
+			
+			finalizePick(raw);
 		};
 		
 		const onKeyDown = (e) => {
@@ -1239,9 +1711,29 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 				return cleanup(null);
 			}
 			
+			if (e.key === "Shift") {
+				if (!shiftDown) {
+					shiftDown = true;
+					updateUI(hoveredEl, lastMouse.x, lastMouse.y);
+				}
+				return;
+			}
+			
 			if (e.key === "Control" || e.key === "Ctrl") {
 				if (!ctrlDown) {
 					ctrlDown = true;
+					
+					// Ensure ladder exists (if user presses keys before moving mouse)
+					if (!ladder.length && hoveredEl) rebuildLadder(hoveredEl);
+					
+					// Step ladder:
+					// - Ctrl: go up (parent)
+					// - Shift+Ctrl: go down (child)
+					if (ladder.length) {
+						if (shiftDown) ladderIdx = Math.max(0, ladderIdx - 1);
+						else ladderIdx = Math.min(ladder.length - 1, ladderIdx + 1);
+					}
+					
 					updateUI(hoveredEl, lastMouse.x, lastMouse.y);
 				}
 			}
@@ -1249,9 +1741,19 @@ const inPagePickDomElement = function pickDomElement(opts = {}) {
 		
 		const onKeyUp = (e) => {
 			if (!active || !e) return;
+			
+			if (e.key === "Shift") {
+				if (shiftDown) {
+					shiftDown = false;
+					updateUI(hoveredEl, lastMouse.x, lastMouse.y);
+				}
+				return;
+			}
+			
 			if (e.key === "Control" || e.key === "Ctrl") {
 				if (ctrlDown) {
 					ctrlDown = false;
+					// NOTE: we do NOT reset ladderIdx here; selection stays sticky
 					updateUI(hoveredEl, lastMouse.x, lastMouse.y);
 				}
 			}
@@ -1563,55 +2065,6 @@ const inPageShowSelector = function(selector, opts = {}) {
 };
 
 //----------------------------------------------------
-// inPageShowSelector - Highlight elements matching a CSS selector with animated boxes
-//
-// Creates visual highlight overlays on all elements matching the given CSS selector.
-// Each matched element gets a pulsing border box that follows the element's position
-// and size, with automatic viewport tracking and scroll-to-view behavior.
-//
-// Parameters:
-//   selector: string - CSS selector to match elements (e.g., ".my-class", "#my-id", "div[data-attr]")
-//   opts: object - Configuration options:
-//     - zIndex: number = 2147483645 - Z-index for highlight overlays (below prompt by default)
-//     - borderWidth: number = 2 - Width of highlight border in pixels (minimum 1px)
-//     - pulse: boolean = true - Whether to animate with pulsing effect
-//     - pulseSeconds: number = 1.2 - Duration of pulse animation cycle (minimum 0.25s)
-//
-// Return Values:
-//   number - Count of elements that were highlighted (0 if none found or selector invalid)
-//
-// Features:
-//   - Real-time position tracking with requestAnimationFrame for smooth updates
-//   - Automatic scroll-to-view: if no highlighted elements are in viewport, scrolls to first match
-//   - Responsive to window resize and scroll events
-//   - Non-blocking overlay (pointer-events: none)
-//   - Automatic cleanup when dismissed or replaced
-//   - Staggered pulse animation timing for multiple elements
-//   - Handles dynamic DOM changes and element repositioning
-//   - Viewport constraint handling and boundary clamping
-//
-// Usage Examples:
-//   // Highlight all buttons
-//   const count = inPageShowSelector("button");
-//   console.log(`Highlighted ${count} buttons`);
-//
-//   // Highlight specific element with custom styling
-//   inPageShowSelector("#my-target", {
-//     borderWidth: 4,
-//     pulse: false,
-//     zIndex: 1000000
-//   });
-//
-//   // Highlight form inputs with slow pulse
-//   inPageShowSelector("input, textarea, select", {
-//     pulseSeconds: 2.5
-//   });
-//
-// Cleanup:
-//   Use inPageDismissSelector() to remove all highlights, or call the function again
-//   with a new selector to replace the current highlights.
-//
-//----------------------------------------------------
 // inPageDismissSelector - Remove all selector highlights
 //
 // Removes all active highlight overlays created by inPageShowSelector() and cleans up
@@ -1645,4 +2098,4 @@ const inPageDismissSelector = function() {
 	return false;
 };
 
-export {inPagePrompt,inPageTip,inPageTipDismiss,inPagePickDomElement,inPageShowSelector,inPageDismissSelector};
+export {inPagePrompt,inPageDismissPrompt,inPageTip,inPageTipDismiss,inPagePickDomElement,inPageShowSelector,inPageDismissSelector};

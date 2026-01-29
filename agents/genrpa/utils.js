@@ -433,7 +433,7 @@ let deepEq,briefJSON,expandDottedKeys;
 		// 注意：briefVal 内部已经把不支持的类型转成 string/tag 或结构对象
 		return JSON.stringify(briefVal, null, pretty ? indent : 0);
 	}
-	
+
 	/**
 	 * expandDottedKeys(obj, opts) - 扩展带点号的对象键为多层嵌套结构（通常用于配置/表单扁平化后的还原）。
 	 *
@@ -529,73 +529,606 @@ function getLan(){
 }
 
 //----------------------------------------------------------------------------
-let readRule,saveRule;
+let readRule,saveRule,readRuleElements,getRuleElementBySigKey,getRuleElementById;
 {
-	readRule=async function(session,page,key){
-		let url,lan,hostname,rules;
-		url=await page.url();
-		hostname=(() => { try { return new URL(url).hostname; } catch (e) { return ""; } })();
-		lan=await page.callFunction(getLan,[]);
-		key=lan+"."+key;
-		if(hostname){
-			let obj,pts,ptKey;
-			try{
-				let jsonPath=pathLib.join(__dirname,"rules",urlToJsonName(hostname));
-				rules=(await readJson(jsonPath))||{};
-			}catch(error){
-				console.log("Read Rules error: ",error);
-				rules={};
-			}
-			obj=rules;
-			pts=key.split(".");
-			for(ptKey of pts){
-				obj=obj[ptKey];
-				if(!obj){
-					return null;
-				}
-			}
-			//TODO: Check system rules:
+	// =====================================================
+	// Rule Cache vNext (hostname -> json, then lan bucket)
+	// Public-ish API:
+	//   - readRule(session,page,key)
+	//   - saveRule(session,page,key,value,query,sigKey)
+	//   - getRuleElementBySigKey(session,page,sigKey)
+	//   - getElements(session,page,opts)      // for AI (compact view)
+	// =====================================================
 
-			if(("value" in obj) && ("time" in obj)){
-				return obj.value;
+	// -----------------------------
+	// helpers (shared, no duplicates)
+	// -----------------------------
+	function _aa_normStr(s, max = 400) {
+		return (s == null ? "" : String(s)).replace(/\s+/g, " ").trim().slice(0, max);
+	}
+
+	function _aa_normSig(s) {
+		return _aa_normStr(s, 2000);
+	}
+
+	function _aa_hashSigKey(sigKey) {
+		const s = _aa_normSig(sigKey);
+		if (!s) return "";
+		try {
+			const crypto = require("crypto");
+			return crypto.createHash("sha1").update(s, "utf8").digest("hex").slice(0, 16); // 64-bit hex
+		} catch (e) {
+			// FNV-1a fallback (32-bit)
+			let h = 0x811c9dc5;
+			for (let i = 0; i < s.length; i++) {
+				h ^= s.charCodeAt(i);
+				h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
 			}
-			return obj;
+			return ("00000000" + h.toString(16)).slice(-8) + "00000000";
 		}
 	}
 
-	saveRule=async function(session,page,key,value){
-		let url,lan,hostname,rules;
-		url=await page.url();
-		hostname=(() => { try { return new URL(url).hostname; } catch (e) { return ""; } })();
-		lan=await page.callFunction(getLan,[]);
-		key=lan+"."+key;
-		if(hostname){
-			let jsonPath,obj,pObj,pts,ptKey,valKey;
-			try{
-				jsonPath=pathLib.join(__dirname,"rules",urlToJsonName(hostname));
-				rules=(await readJson(jsonPath))||{};
-			}catch(error){
-				console.log("Read Rules error: ",error);
-				rules={};
+	function _aa_eidFromSigKey(sigKey) {
+		const sk = _aa_normSig(sigKey);
+		if (!sk) return "";
+		return "sig:" + _aa_hashSigKey(sk);
+	}
+
+	function _aa_getHost(url) {
+		try { return new URL(url).hostname || ""; } catch (e) { return ""; }
+	}
+
+	async function _aa_loadRulesFile(page) {
+		const url = await page.url();
+		const hostname = _aa_getHost(url);
+		if (!hostname) return { hostname: "", jsonPath: "", rules: {} };
+
+		let rules = {};
+		let jsonPath = "";
+		try {
+			jsonPath = pathLib.join(__dirname, "rules", urlToJsonName(hostname));
+			rules = (await readJson(jsonPath)) || {};
+		} catch (error) {
+			console.log("Read Rules error: ", error);
+			rules = {};
+		}
+		return { hostname, jsonPath, rules };
+	}
+
+	function _aa_ensureLanBucket(rules, lan) {
+		if (!rules[lan] || typeof rules[lan] !== "object") rules[lan] = {};
+		const lanObj = rules[lan];
+
+		lanObj.elements = lanObj.elements && typeof lanObj.elements === "object" ? lanObj.elements : {};
+		lanObj.ruleMap = lanObj.ruleMap && typeof lanObj.ruleMap === "object" ? lanObj.ruleMap : {};
+
+		return lanObj;
+	}
+
+	function _aa_normalizeElement(el) {
+		if (!el || typeof el !== "object") return el;
+
+		// migrate query -> queries
+		if (!Array.isArray(el.queries)) {
+			if (typeof el.query === "string" && el.query.trim()) el.queries = [_aa_normStr(el.query, 400)];
+			else el.queries = [];
+			if ("query" in el) delete el.query;
+		}
+
+		// keys may exist but AI doesn't need them; keep as-is
+		if (Array.isArray(el.originKeys) && !Array.isArray(el.keys)) {
+			el.keys = el.originKeys.map(s => _aa_normStr(s, 200)).filter(Boolean);
+			delete el.originKeys;
+		}
+
+		return el;
+	}
+
+	function _aa_upsertList(el, field, item, maxLen) {
+		item = _aa_normStr(item, 400);
+		if (!item) return false;
+
+		if (!Array.isArray(el[field])) el[field] = [];
+		const arr = el[field];
+
+		const idx = arr.findIndex(x => _aa_normStr(x, 400) === item);
+		let changed = false;
+		if (idx === 0) return false;
+		if (idx > 0) {
+			arr.splice(idx, 1);
+			arr.unshift(item);
+			changed = true;
+		} else {
+			arr.unshift(item);
+			changed = true;
+		}
+
+		if (Number.isFinite(maxLen) && maxLen > 0 && arr.length > maxLen) {
+			arr.length = maxLen;
+			changed = true;
+		}
+		return changed;
+	}
+
+	function _aa_removeKeyFromElement(el, key) {
+		if (!el || !Array.isArray(el.keys)) return false;
+		const k = String(key || "").trim();
+		if (!k) return false;
+		const idx = el.keys.findIndex(x => String(x).trim() === k);
+		if (idx >= 0) {
+			el.keys.splice(idx, 1);
+			return true;
+		}
+		return false;
+	}
+	
+	function _aa_isEidStillReferenced(ruleMap, eid) {
+		for (const k of Object.keys(ruleMap || {})) {
+			const r = ruleMap[k];
+			if (r && typeof r === "object" && r.eid === eid) return true;
+		}
+		return false;
+	}	
+	
+	// -----------------------------
+	// GC: accurate orphan cleanup using ruleMap
+	// -----------------------------
+	function _aa_gc(lanObj, now, opts = {}) {
+		const elements = lanObj?.elements;
+		const ruleMap = lanObj?.ruleMap;
+		if (!elements || !ruleMap) return { ran: false, removed: 0 };
+
+		const MAX_ELEMENTS = Number.isFinite(opts.maxElements) ? opts.maxElements : 1200;
+		const GC_MIN_INTERVAL_MS = Number.isFinite(opts.gcMinIntervalMs) ? opts.gcMinIntervalMs : (6 * 60 * 60 * 1000); // 6h
+		const PENDING_TTL_MS = Number.isFinite(opts.pendingTtlMs) ? opts.pendingTtlMs : (24 * 60 * 60 * 1000); // 1d
+		const ORPHAN_TTL_MS = Number.isFinite(opts.orphanTtlMs) ? opts.orphanTtlMs : (90 * 24 * 60 * 60 * 1000); // 90d
+
+		const lastGc = Number.isFinite(lanObj._gcTime) ? lanObj._gcTime : 0;
+		const elementCount = Object.keys(elements).length;
+
+		if (elementCount <= MAX_ELEMENTS && (now - lastGc) < GC_MIN_INTERVAL_MS) {
+			return { ran: false, removed: 0 };
+		}
+
+		// Build active eid set from ruleMap (authoritative)
+		const active = new Set();
+		for (const k of Object.keys(ruleMap)) {
+			const r = ruleMap[k];
+			if (!r || typeof r !== "object") continue;
+			const eid = _aa_normStr(r.eid, 256);
+			if (eid) active.add(eid);
+		}
+
+		let removed = 0;
+
+		// 1) Drop old pending
+		for (const [eid, el] of Object.entries(elements)) {
+			if (!el || typeof el !== "object") continue;
+			_aa_normalizeElement(el);
+
+			const t = Number.isFinite(el.time) ? el.time : 0;
+			const pending = !!el.pending || el.value == null;
+
+			if (pending && (now - t) > PENDING_TTL_MS) {
+				delete elements[eid];
+				removed++;
 			}
-			obj=rules;
-			pts=key.split(".");
-			valKey=pts.pop();
-			for(ptKey of pts){
-				pObj=obj;
-				obj=pObj[ptKey];
-				if(!obj){
-					obj=pObj[ptKey]={};
+		}
+
+		// 2) Drop orphans that are not referenced and old enough
+		for (const [eid, el] of Object.entries(elements)) {
+			if (!el || typeof el !== "object") continue;
+			if (active.has(eid)) continue;
+
+			const t = Number.isFinite(el.time) ? el.time : 0;
+			if ((now - t) > ORPHAN_TTL_MS) {
+				delete elements[eid];
+				removed++;
+			}
+		}
+
+		// 3) Hard cap by newest time (keep most recent)
+		let entries = Object.entries(elements).map(([eid, el]) => ({
+			eid,
+			t: Number.isFinite(el?.time) ? el.time : 0
+		}));
+		entries.sort((a, b) => b.t - a.t);
+
+		if (entries.length > MAX_ELEMENTS) {
+			for (let i = MAX_ELEMENTS; i < entries.length; i++) {
+				delete elements[entries[i].eid];
+				removed++;
+			}
+		}
+
+		lanObj._gcTime = now;
+		lanObj._gcRemoved = (lanObj._gcRemoved || 0) + removed;
+		return { ran: true, removed };
+	}
+
+	// =====================================================
+	// 1) readRule(session,page,key,opts)
+	// =====================================================
+	readRule = async function(session, page, key, opts) {
+		opts = (opts && typeof opts === "object") ? opts : null;
+		const withSigKey = !!opts?.withSigKey;
+		const allowLoose = !!opts?.loose;
+		const looseQuery = (typeof opts?.query === "string" && opts.query) ? opts.query : null; // 当前 step 的 query 文本（用于 loose）
+
+		const lan = await page.callFunction(getLan, []);
+		const { hostname, rules } = await _aa_loadRulesFile(page);
+		if (!hostname) return null;
+		if (!key) return rules;
+
+		const lanObj = rules?.[lan] || null;
+		const elements = lanObj?.elements || {};
+		const ruleMap = lanObj?.ruleMap || {};
+
+		// ------------------------------
+		// vNext path: ruleMap first (strict)
+		// ------------------------------
+		const r = ruleMap[key];
+		if (r && typeof r === "object") {
+			// status: always return string (do not wrap)
+			if (r.status === "done" || r.status === "skipped" || r.status === "failed") {
+				return r.status;
+			}
+
+			// private value (no element)
+			if ("value" in r) {
+				const v = r.value ?? null;
+				return withSigKey ? { value: v, sigKey: null, loose: false } : v;
+			}
+
+			// shared element
+			const eid = _aa_normStr(r.eid, 256);
+			if (eid) {
+				const el = elements[eid] || null;
+				const v = el ? (el.value ?? null) : null;
+				const sk = el ? (el.sigKey ?? null) : null;
+				if (el) return withSigKey ? { value: v, sigKey: sk, loose: false } : v;
+				// el missing => treat as strict miss and continue (legacy / loose)
+			}
+		}
+
+		// ------------------------------
+		// legacy fallback (strict)
+		// ------------------------------
+		{
+			let obj = rules;
+			const fullKey = lan + "." + key;
+			for (const ptKey of fullKey.split(".")) {
+				obj = obj?.[ptKey];
+				if (!obj) { obj = null; break; }
+			}
+
+			if (obj && typeof obj === "object" && ("value" in obj) && ("time" in obj)) {
+				const v = obj.value;
+				if (typeof v === "string" && v.startsWith("elm:")) {
+					const eid = v.substring(4).trim();
+					const el = elements[eid] || null;
+					const vv = el ? (el.value ?? null) : null;
+					const sk = el ? (el.sigKey ?? null) : null;
+					return withSigKey ? { value: vv, sigKey: sk, loose: false } : vv;
+				}
+				return withSigKey ? { value: v ?? null, sigKey: null, loose: false } : (v ?? null);
+			}
+
+			// legacy could also return a nested object
+			if (obj !== null && obj !== undefined) {
+				return withSigKey ? { value: obj, sigKey: null, loose: false } : obj;
+			}
+		}
+
+		// ------------------------------
+		// loose fallback (only if strict miss)
+		// 条件：
+		// - opts.loose === true
+		// - opts.query 是当前查询文本
+		// - 在某个 element.queries 里存在完全一致的 query
+		// - 且 element.keys 里存在与 key 在最后一个 "_" 之前前缀相同的 key（同 flow 不同 step）
+		// ------------------------------
+		if (allowLoose && looseQuery) {
+			const cut = (typeof key === "string") ? key.lastIndexOf("_") : -1;
+			const prefix = (cut > 0) ? key.slice(0, cut) : null;
+
+			if (prefix) {
+				let best = null;
+
+				for (const eid in elements) {
+					const el = elements[eid];
+					if (!el || typeof el !== "object") continue;
+
+					const qs = el.queries;
+					if (!qs) continue;
+
+					let hasQuery = false;
+					if (Array.isArray(qs)) hasQuery = qs.includes(looseQuery);
+					else if (typeof qs === "string") hasQuery = (qs === looseQuery);
+					else if (typeof qs === "object") {
+						// 兼容 { "queryText": true } / { "queryText": 123 } 这类结构
+						hasQuery = (looseQuery in qs);
+					}
+					if (!hasQuery) continue;
+
+					const ks = el.keys;
+					if (!ks) continue;
+
+					let hasPrefixKey = false;
+					if (Array.isArray(ks)) {
+						for (let i = 0; i < ks.length; i++) {
+							const k = ks[i];
+							if (typeof k !== "string") continue;
+							const j = k.lastIndexOf("_");
+							if (j > 0 && k.slice(0, j) === prefix) { hasPrefixKey = true; break; }
+						}
+					} else if (typeof ks === "object") {
+						// 兼容 { "flow_step": true } 这种 map
+						for (const k in ks) {
+							if (typeof k !== "string") continue;
+							const j = k.lastIndexOf("_");
+							if (j > 0 && k.slice(0, j) === prefix) { hasPrefixKey = true; break; }
+						}
+					}
+					if (!hasPrefixKey) continue;
+
+					// 命中候选：选择一个最“近”的（如果有 key 相同前缀且更长/更具体也可自定义策略）
+					best = el;
+					break;
+				}
+
+				if (best) {
+					const v = best.value ?? null;
+					const sk = best.sigKey ?? null;
+					return withSigKey ? { value: v, sigKey: sk, loose: true } : v;
 				}
 			}
-			if(!obj[valKey] || !deepEq(obj[valKey].value,value)){
-				obj[valKey]={value:value,time:Date.now()};
-				await saveJson(jsonPath,rules);
+		}
+
+		return null;
+	};
+	
+	// =====================================================
+	// 2) saveRule(session,page,key,value,query,sigKey)
+	//    - value: selector list OR "skipped"/"failed"
+	//    - sigKey: recommended if value is selector list
+	// =====================================================
+	saveRule = async function(session, page, key, value, query, sigKey) {
+		const lan = await page.callFunction(getLan, []);
+		const { hostname, jsonPath, rules } = await _aa_loadRulesFile(page);
+		if (!hostname) return null;
+		if (!key) return null;
+
+		const lanObj = _aa_ensureLanBucket(rules, lan);
+		const elements = lanObj.elements;
+		const ruleMap = lanObj.ruleMap;
+
+		const now = Date.now();
+		const qNorm = _aa_normStr(query, 400);
+
+		// -----------------------------
+		// read old binding (if any)
+		// -----------------------------
+		const oldRec = ruleMap[key];
+		const oldEid = (oldRec && typeof oldRec === "object" && typeof oldRec.eid === "string" && oldRec.eid)
+		? oldRec.eid
+		: null;
+
+		// helper: cleanup oldEid reference from keys and maybe delete orphan
+		const cleanupOldEidIfNeeded = (eid) => {
+			if (!eid) return false;
+
+			const oldEl = elements[eid];
+			if (oldEl) {
+				_aa_normalizeElement(oldEl);
+				// keys 作为“当前引用”维护：移除当前 key
+				_aa_removeKeyFromElement(oldEl, key);
 			}
+
+			// 若 oldEl 不存在，也一样可以做 orphan check（ruleMap 是真相）
+			// 只有在 oldEl.keys 为空(或 oldEl 不存在)时，才做一次引用检查并尝试回收
+			const noKeys =
+				  !oldEl ||
+				  !Array.isArray(oldEl.keys) ||
+				  oldEl.keys.length === 0;
+
+			if (noKeys) {
+				if (!_aa_isEidStillReferenced(ruleMap, eid)) {
+					delete elements[eid];
+					return true;
+				}
+			}
+			return false;
+		};
+
+		// helper: write private value record (no elements)
+		const writePrivate = () => {
+			// 若旧的是共享 element，先清理旧 eid
+			if (oldEid) cleanupOldEidIfNeeded(oldEid);
+
+			// 如果内容没变就不写
+			if (oldRec && typeof oldRec === "object" && ("value" in oldRec) && !("eid" in oldRec) && !("status" in oldRec)) {
+				// old private
+				if (deepEq(oldRec.value, value) && _aa_normStr(oldRec.query, 400) === qNorm) return false;
+			}
+
+			ruleMap[key] = { value: value, query: query, time: now };
+			return true;
+		};
+
+		// helper: write status record (skipped/failed)
+		const writeStatus = (status) => {
+			if (oldEid) cleanupOldEidIfNeeded(oldEid);
+
+			if (oldRec && typeof oldRec === "object" && oldRec.status === status && _aa_normStr(oldRec.query, 400) === qNorm) {
+				return false;
+			}
+
+			ruleMap[key] = { status: status, query: query, time: now };
+			return true;
+		};
+
+		// helper: write shared element record by sigKey
+		const writeShared = (eid, skNorm) => {
+			// 如果 eid 变了，清理旧 eid（移除 key & 可能回收）
+			if (oldEid && oldEid !== eid) cleanupOldEidIfNeeded(oldEid);
+
+			let el = elements[eid];
+			if (!el) el = elements[eid] = { value: null, pending: true, time: now };
+
+			_aa_normalizeElement(el);
+
+			// 更新 element 内容
+			el.value = value;
+			el.pending = false;
+			el.time = now;
+			if (skNorm) el.sigKey = skNorm;
+
+			// queries 维护
+			_aa_upsertList(el, "queries", query, 20);
+
+			// keys 作为“当前引用”维护：确保包含当前 key（置顶+去重）
+			_aa_upsertList(el, "keys", key, 200);
+
+			// 写 ruleMap
+			// 若 ruleMap 已经指向同一个 eid 且 query/value 没变，则可早退，但 element 可能更新了 value/time/queries
+			const oldSame = oldRec && typeof oldRec === "object" && oldRec.eid === eid && _aa_normStr(oldRec.query, 400) === qNorm;
+			ruleMap[key] = { eid: eid, query: query, time: now };
+
+			// oldSame 也可能仍需要写盘（element 更新），这里不做“无写盘返回”
+			return true;
+		};
+
+		// -----------------------------
+		// decide branch
+		// -----------------------------
+		// 1) status
+		if (value === "skipped" || value === "failed") {
+			const changed = writeStatus(value);
+			if (changed) {
+				// 可选：当你确实删了 oldEid 或 elements 太多时跑 GC；这里简单跑一次轻 GC
+				_aa_gc(lanObj, now);
+				await saveJson(jsonPath, rules);
+				return rules;
+			}
+			return; // no change
+		}
+
+		// 2) shared vs private
+		const skNorm = _aa_normSig(sigKey);
+		if (!skNorm) {
+			// private (no sharing)
+			const changed = writePrivate();
+			if (changed) {
+				_aa_gc(lanObj, now);
+				await saveJson(jsonPath, rules);
+				return rules;
+			}
+			return;
+		}
+
+		// shared
+		const newEid = _aa_eidFromSigKey(skNorm);
+		if (!newEid) {
+			// 极端：sigKey 归一化后为空 -> 退化成 private
+			const changed = writePrivate();
+			if (changed) {
+				_aa_gc(lanObj, now);
+				await saveJson(jsonPath, rules);
+				return rules;
+			}
+			return;
+		}
+
+		const changed = writeShared(newEid, skNorm);
+		if (changed) {
+			_aa_gc(lanObj, now);
+			await saveJson(jsonPath, rules);
 			return rules;
 		}
-		return null;
-	}
+		return;
+	};
+	
+	// =====================================================
+	// 3) getRuleElementBySigKey(session,page,sigKey)
+	//    - for user-picked element: compute sigKey in page -> get cached selector quickly
+	// =====================================================
+	getRuleElementBySigKey = async function(session, page, sigKey) {
+		const lan = await page.callFunction(getLan, []);
+		const { hostname, rules } = await _aa_loadRulesFile(page);
+		if (!hostname) return null;
+
+		const sk = _aa_normSig(sigKey);
+		if (!sk) return null;
+
+		const lanObj = rules[lan];
+		const elements = lanObj?.elements || {};
+		const eid = _aa_eidFromSigKey(sk);
+		const el = elements[eid] || null;
+		if (!el) return null;
+
+		_aa_normalizeElement(el);
+
+		return {
+			eid,
+			sigKey: el.sigKey ?? sk,
+			value: el.value ?? null,
+			pending: !!el.pending || el.value == null,
+			time: Number.isFinite(el.time) ? el.time : null,
+			queries: Array.isArray(el.queries) ? el.queries : [],
+			// keys intentionally omitted here; use getElements/read raw if you need
+		};
+	};
+
+	// =====================================================
+	// 4) getRuleElementById(session,page,elid)
+	// =====================================================
+	getRuleElementById=async function(session, page, eid){
+		const lan = await page.callFunction(getLan, []);
+		const { hostname, rules } = await _aa_loadRulesFile(page);
+		if (!hostname) return null;
+		const lanObj = rules[lan];
+		const elements = lanObj?.elements || {};
+		const el = elements[eid] || null;
+		return el;
+	};
+
+	// =====================================================
+	// 5) getElements(session,page,opts)  -- for AI (compact)
+	//    - omit keys to reduce noise
+	// =====================================================
+	readRuleElements = async function(session, page, opts = {}) {
+		const lan = await page.callFunction(getLan, []);
+		const { hostname, rules } = await _aa_loadRulesFile(page);
+		if (!hostname) return [];
+
+		const lanObj = rules[lan];
+		const elements = lanObj?.elements || {};
+
+		const limit = Number.isFinite(opts.limit) ? Math.max(1, opts.limit) : 400;
+		const includeValue = !!opts.includeValue; // default false (AI often only needs queries+sigKey)
+
+		const arr = [];
+		for (const [eid, el0] of Object.entries(elements)) {
+			if (!el0 || typeof el0 !== "object") continue;
+
+			const el = _aa_normalizeElement(el0);
+			arr.push({
+				eid,
+				sigKey: el.sigKey ?? null,
+				pending: !!el.pending || el.value == null,
+				time: Number.isFinite(el.time) ? el.time : null,
+				queries: Array.isArray(el.queries) ? el.queries : [],
+				...(includeValue ? { value: el.value ?? null } : null),
+			});
+		}
+
+		// sort newest first, then truncate
+		arr.sort((a, b) => ((b.time || 0) - (a.time || 0)));
+		if (arr.length > limit) arr.length = limit;
+
+		return arr;
+	};
 }
 
 //----------------------------------------------------------------------------
@@ -2411,7 +2944,7 @@ export {
 urlToJsonName,readJson,saveJson,resolveUrl,readFileAsDataURL,
 	findAvailableSelector,findAvailableSelectors,armWaitForScroll,waitForScrollOutcome,extractActionableLinks,
 	deepEq,getLan,briefJSON,expandDottedKeys,
-	readRule,saveRule,
+	readRule,saveRule,readRuleElements,getRuleElementBySigKey,getRuleElementById,
 	ai2appsPrompt,ai2appsTip,ai2appsTipDismiss,
 	buildRpaMicroDeciderPrompt
 };

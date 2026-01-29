@@ -500,6 +500,7 @@ const codeLib=(codeTag)=>{
 			}
 			return null;
 		},
+		
 		//---------------------------------------------------------------
 		"getInnerHTML":function(aaeId){
 			let node;
@@ -683,6 +684,286 @@ const codeLib=(codeTag)=>{
 			}
 			return null;
 		},
+		
+		/**
+		 * computeSigKey(el)
+		 * -------------------
+		 * Stronger sigKey that includes MULTIPLE strong attributes (not just one),
+		 * while remaining stable across minor UI changes.
+		 *
+		 * Designed so that:
+		 * - Different "Send" buttons in different dialogs/forms tend to have different keys (anchor helps).
+		 * - List items of the same type may share the same key (acceptable for multi-select workflows).
+		 */
+		"computeSigKey":function(el) {
+			try {
+				if (!el || el.nodeType !== 1) return null;
+				
+				// ---------- helpers ----------
+				const norm = (s, max = 80) =>
+					(s == null ? "" : String(s))
+						.replace(/\s+/g, " ")
+						.trim()
+						.slice(0, max);
+				
+				const getAttr = (node, name) => {
+					try {
+						const v = node.getAttribute(name);
+						return v == null ? "" : String(v);
+					} catch {
+						return "";
+					}
+				};
+				
+				const getTestId = (node) => {
+					const keys = ["data-testid", "data-test", "data-qa", "data-cy"];
+					for (const k of keys) {
+						const v = norm(getAttr(node, k));
+						if (v) return v;
+					}
+					return "";
+				};
+				
+				const getRole = (node) => norm(getAttr(node, "role")) || "";
+				const getType = (node) => norm(getAttr(node, "type")) || "";
+				const getName = (node) => norm(getAttr(node, "name")) || "";
+				const getId = (node) => norm(node.id) || "";
+				const getAriaLabel = (node) => norm(getAttr(node, "aria-label")) || "";
+				const getPlaceholder = (node) => norm(getAttr(node, "placeholder")) || "";
+				
+				const getLabelledByText = (node) => {
+					const ids = norm(getAttr(node, "aria-labelledby"), 120);
+					if (!ids) return "";
+					const parts = ids.split(/\s+/).filter(Boolean);
+					const texts = [];
+					for (const id of parts) {
+						const target = document.getElementById(id);
+						if (!target) continue;
+						const t = norm(target.innerText || target.textContent || "", 80);
+						if (t) texts.push(t);
+						if (texts.join(" ").length > 120) break;
+					}
+					return norm(texts.join(" "), 120);
+				};
+				
+				const isEditable = (node) => {
+					const tag = (node.tagName || "").toLowerCase();
+					if (tag === "input" || tag === "textarea") return true;
+					const ce = getAttr(node, "contenteditable");
+					return ce === "" || String(ce).toLowerCase() === "true";
+				};
+				
+				const getVisibleText = (node) => {
+					// visible-ish text
+					return norm(node.innerText || node.textContent || "", 80);
+				};
+				
+				const kindOf = (node) => {
+					const tag = (node.tagName || "").toLowerCase();
+					const role = getRole(node);
+					const type = getType(node);
+					const editable = isEditable(node);
+					
+					if (editable) {
+						if (tag === "textarea") return "textbox|textarea";
+						if (tag === "input") return "textbox|input:" + (type || "text");
+						return "textbox|editable";
+					}
+					
+					const isButtonish = tag === "button" || role === "button" || type === "submit";
+					if (isButtonish) {
+						return "button|" + (type ? type : (role ? "role=" + role : "plain"));
+					}
+					
+					if (tag === "a") return "link|" + (role ? "role=" + role : "a");
+					
+					return tag || "element";
+				};
+				
+				const findContainer = (node) => {
+					const selectors = [
+						"[role='dialog']",
+						"dialog",
+						"form",
+						"main",
+						"section",
+						"nav",
+						"header",
+						"footer",
+						"aside",
+					];
+					for (const sel of selectors) {
+						const c = node.closest ? node.closest(sel) : null;
+						if (c) return c;
+					}
+					return null;
+				};
+				
+				const containerPart = (c) => {
+					if (!c) return "c=none";
+					const tag = (c.tagName || "").toLowerCase();
+					const role = getRole(c);
+					const id = getId(c);
+					const testid = getTestId(c);
+					
+					let p = "c=" + (role ? ("role:" + role) : tag);
+					if (testid) p += ":testid=" + testid;
+					if (id) p += ":id=" + id;
+					return p;
+				};
+				
+				const chainPart = (node, container) => {
+					const items = [];
+					let cur = node;
+					let guard = 0;
+					
+					while (cur && cur !== container && guard++ < 50) {
+						cur = cur.parentElement;
+						if (!cur || cur === container) break;
+						
+						const id = getId(cur);
+						const testid = getTestId(cur);
+						const role = getRole(cur);
+						
+						// only keep ancestors with some stable identity
+						if (!id && !testid && !role) continue;
+						
+						const tag = (cur.tagName || "").toLowerCase();
+						let frag = tag;
+						if (testid) frag += "[testid=" + testid + "]";
+						if (id) frag += "#" + id;
+						if (role) frag += "[role=" + role + "]";
+						items.push(frag);
+						
+						if (items.length >= 3) break;
+					}
+					
+					return items.length ? ("chain=" + items.reverse().join(">")) : "chain=none";
+				};
+				
+				// ---------- build parts ----------
+				const kind = kindOf(el);
+				
+				// ids: include multiple strong IDs (if present)
+				const ids = [];
+				const id = getId(el);
+				const testid = getTestId(el);
+				const name = getName(el);
+				if (id) ids.push("id=" + id);
+				if (testid) ids.push("testid=" + testid);
+				if (name) ids.push("name=" + name);
+				const idsPart = "ids:" + (ids.length ? ids.join(";") : "none");
+				
+				// a11y/text: include multiple semantic labels (if present)
+				const a11y = [];
+				const alby = getLabelledByText(el);
+				const aria = getAriaLabel(el);
+				const ph = getPlaceholder(el);
+				const txt = getVisibleText(el);
+				
+				if (alby) a11y.push("alby=" + alby);
+				if (aria) a11y.push("aria=" + aria);
+				if (ph) a11y.push("ph=" + ph);
+				
+				// Only include text for button-ish / link-ish (text on huge divs is noisy)
+				if (kind.startsWith("button|") || kind.startsWith("link|")) {
+					if (txt) a11y.push("txt=" + txt);
+				}
+				
+				const a11yPart = "a11y:" + (a11y.length ? a11y.join(";") : "none");
+				
+				// anchor
+				const c = findContainer(el);
+				const anchorPart = "anchor:" + containerPart(c) + "|" + chainPart(el, c);
+				
+				// cap total length (safety)
+				let key = "v2|" + kind + "|" + idsPart + "|" + a11yPart + "|" + anchorPart;
+				if (key.length > 600) key = key.slice(0, 600);
+				
+				return key;
+			} catch (e) {
+				return null;
+			}
+		},
+		"computeSigKeyForSelector":function(selector,opts){
+			console.log("computeSigKeyForSelector> selector:"+selector);
+			opts = (opts && typeof opts === "object") ? opts : {};
+			const mode = (opts.mode === "all") ? "all" : "first";
+			
+			let sel = (selector == null) ? "" : String(selector).trim();
+			if (!sel) return null;
+			
+			// default scheme: css
+			let scheme = "css";
+			const lower = sel.toLowerCase();
+			if (lower.startsWith("css:")) {
+				scheme = "css";
+				sel = sel.slice(4).trim();
+			} else if (lower.startsWith("xpath:")) {
+				scheme = "xpath";
+				sel = sel.slice(6).trim();
+			}
+			if (!sel)
+				return null;
+			const sigOf = (el) => {
+				try {
+					return el ? this.computeSigKey(el) : null;
+				} catch {
+					return null;
+				}
+			};
+			
+			try {
+				if (scheme === "css") {
+					if (mode === "all") {
+						const list = Array.from(document.querySelectorAll(sel));
+						const sigKeys = list.map(sigOf).filter(Boolean);
+						return sigKeys;
+					} else {
+						const el = document.querySelector(sel);
+						console.log("computeSigKeyForSelector> el:",el);
+						if(!el) {
+							return null;
+						}
+						const sigKey = sigOf(el);
+						console.log("computeSigKeyForSelector> sigKey:",sigKey);
+						return sigKey;
+					}
+				}
+				
+				// xpath
+				const doc = document;
+				const ctxNode = doc; // you can change to doc.documentElement if you prefer
+				const type = (mode === "all")
+					? XPathResult.ORDERED_NODE_SNAPSHOT_TYPE
+					: XPathResult.FIRST_ORDERED_NODE_TYPE;
+				
+				const res = doc.evaluate(sel, ctxNode, null, type, null);
+				
+				if (mode === "all") {
+					const sigKeys = [];
+					const n = res.snapshotLength || 0;
+					for (let i = 0; i < n; i++) {
+						const node = res.snapshotItem(i);
+						if (node && node.nodeType === 1) {
+							const sk = sigOf(node);
+							if (sk) sigKeys.push(sk);
+						}
+					}
+					return sigKeys;
+				} else {
+					const node = res.singleNodeValue;
+					const el = (node && node.nodeType === 1) ? node : null;
+					if(!el){
+						return null;
+					}
+					const sigKey = sigOf(el);
+					return sigKey;
+				}
+			} catch (e) {
+				return null;
+			}
+		}
 	};
 	console.log("AI2Apps WebRPALib engaged.");
 };

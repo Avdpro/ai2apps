@@ -86,17 +86,20 @@ let CaRpa_OpenBrowser=async function(session){
 		let $ref=undefined;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JDTDK5BH0"));
 				if($alias){
 					let $headless=headless||false;
@@ -105,9 +108,9 @@ let CaRpa_OpenBrowser=async function(session){
 					let $browser=null;
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
@@ -475,7 +478,8 @@ export{CaRpa_OpenBrowser,ChatAPI};
 //							},
 //							"linkedSeg": "1JDTDSJ1T0"
 //						},
-//						"aiQuery": "true"
+//						"aiQuery": "true",
+//						"autoCurrentPage": "true"
 //					},
 //					"icon": "start.svg"
 //				},

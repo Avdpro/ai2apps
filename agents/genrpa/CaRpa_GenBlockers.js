@@ -290,7 +290,7 @@ let CaRpa_GenBlockers=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,CheckRule,CheckBlocker,NoBlocker,CheckRemove,ReadHtml,HasBlocker,FindSelector,DoClick,LoopRules,FindClick,ClickRule,CheckClicked,SaveRule,CheckUsed,LoopAgain,WaitAfter,Jump,CheckMaxClick,JumpEnd,IsAllowManual,ManualFailed,ActivePage,TipManual,WaitManue,ManualDone,JumpManualFailed,StillBlocker,JumpMissing;
+	let StartRpa,CheckRule,LoopRules,CheckBlocker,NoBlocker,CheckRemove,ReadHtml,HasBlocker,FindSelector,DoClick,FindClick,ClickRule,CheckClicked,SaveRule,CheckUsed,LoopAgain,WaitAfter,Jump,CheckMaxClick,JumpEnd,IsAllowManual,ManualFailed,ActivePage,TipManual,WaitManue,ManualDone,JumpManualFailed,StillBlocker,JumpFin;
 	let ruleClicked=false;
 	let clickNum=0;
 	let loopNum=0;
@@ -334,17 +334,20 @@ let CaRpa_GenBlockers=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JDULJK530"));
 				if($alias){
 					let $headless=false;
@@ -353,9 +356,9 @@ let CaRpa_GenBlockers=async function(session){
 					let $browser=null;
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
@@ -374,19 +377,9 @@ let CaRpa_GenBlockers=async function(session){
 	segs["CheckRule"]=CheckRule=async function(input){//:1JDUSTGN90
 		let result=input;
 		/*#{1JDUSTGN90Start*/
-		let rule=await readRule(session,context.aaPage,"blockers.selectors");
-		console.log("RULE: ",rule);
+		let rule=await readRule(session,context.aaPage,"blockers.selectors",{query:"解决页面阻挡需要点击的HTML元素",loose:true});
 		context.url=await context.aaPage.url();
 		context.hostname=(() => { try { return new URL(context.url).hostname; } catch (e) { return ""; } })();
-		if(context.hostname){
-			try{
-				let jsonPath=pathLib.join(basePath,"rules",urlToJsonName(context.hostname));
-				context.rules=(await readJson(jsonPath))||{};
-			}catch(error){
-				console.log("Read Rules error: ",error);
-				context.rules={};
-			}
-		}
 		/*}#1JDUSTGN90Start*/
 		if(rule){
 			let output=rule;
@@ -398,6 +391,33 @@ let CaRpa_GenBlockers=async function(session){
 	};
 	CheckRule.jaxId="1JDUSTGN90"
 	CheckRule.url="CheckRule@"+agentURL
+	
+	segs["LoopRules"]=LoopRules=async function(input){//:1JDVC2HMM0
+		let result=input;
+		let list=input;
+		let i,n,item,loopR;
+		/*#{1JDVC2HMM0PreLoop*/
+		ruleClicked=false;
+		loopNum+=1;
+		/*}#1JDVC2HMM0PreLoop*/
+		n=list.length;
+		for(i=0;i<n;i++){
+			item=list[i];
+			/*#{1JDVC2HMM0InLoopPre*/
+			/*}#1JDVC2HMM0InLoopPre*/
+			loopR=await session.runAISeg(agent,FindClick,item,"1JDVC2HMM0","1JDVD2JJE0")
+			if(loopR==="break"){
+				break;
+			}
+			/*#{1JDVC2HMM0InLoopPost*/
+			/*}#1JDVC2HMM0InLoopPost*/
+		}
+		/*#{1JDVC2HMM0PostCodes*/
+		/*}#1JDVC2HMM0PostCodes*/
+		return {seg:StillBlocker,result:(result),preSeg:"1JDVC2HMM0",outlet:"1JDVD2JJE1"};
+	};
+	LoopRules.jaxId="1JDVC2HMM0"
+	LoopRules.url="LoopRules@"+agentURL
 	
 	segs["CheckBlocker"]=CheckBlocker=async function(input){//:1JDUM5BGU0
 		let result=input;
@@ -420,7 +440,7 @@ let CaRpa_GenBlockers=async function(session){
 		let result=input
 		try{
 			/*#{1JDUM82720Code*/
-			result={status:"Done",result:"Finish",blocker:false};
+			result={status:"done",value:{blocked:false,cleared:context.usedRules?.length>0},blocker:false};
 			/*}#1JDUM82720Code*/
 		}catch(error){
 			/*#{1JDUM82720ErrorCode*/
@@ -433,7 +453,7 @@ let CaRpa_GenBlockers=async function(session){
 	
 	segs["CheckRemove"]=CheckRemove=async function(input){//:1JDUM8RH40
 		let result=input;
-		if(blockers && blockers.remove){
+		if(blockers && (blockers.clear||blockers.remove)){
 			return {seg:ReadHtml,result:(input),preSeg:"1JDUM8RH40",outlet:"1JDUM9GE33"};
 		}
 		return {seg:HasBlocker,result:(result),preSeg:"1JDUM8RH40",outlet:"1JDUM9GE34"};
@@ -488,7 +508,7 @@ let CaRpa_GenBlockers=async function(session){
 		let result=input
 		try{
 			/*#{1JDURTLAI0Code*/
-			result={status:"Done",result:"Finish",blocker:true};
+			result={status:"done",value:{blocked:true},blocker:true};
 			/*}#1JDURTLAI0Code*/
 		}catch(error){
 			/*#{1JDURTLAI0ErrorCode*/
@@ -507,7 +527,7 @@ let CaRpa_GenBlockers=async function(session){
 		let result=null;
 		/*#{1JE7UC9690Input*/
 		let $system=buildRpaMicroDeciderPrompt(
-			"给定当前页面清洗后的HTML代码，确认当前页面是否有阻挡的情况，如果是，返回解决页面阻挡需要点击的HTML的定位语句，或者请求人工干预。",
+			"给定当前页面清洗后的HTML代码，确认当前页面是否有阻挡的情况，如果是，返回解决页面阻挡需要点击的HTML元素的定位语句，或者请求人工干预。",
 			`如果找到需要点击解除blocker的元素，返回"selector"动作.`+
 			`如果当前页面不存在任何blocker，返回"done"动作。`+
 			`如果要解除blocker，比如登录等，必须通过用户人工干预，当前页面不存在任何blocker，返回"ask_assist"动作。`+
@@ -619,33 +639,6 @@ let CaRpa_GenBlockers=async function(session){
 	DoClick.jaxId="1JDUS0NJM0"
 	DoClick.url="DoClick@"+agentURL
 	
-	segs["LoopRules"]=LoopRules=async function(input){//:1JDVC2HMM0
-		let result=input;
-		let list=input;
-		let i,n,item,loopR;
-		/*#{1JDVC2HMM0PreLoop*/
-		ruleClicked=false;
-		loopNum+=1;
-		/*}#1JDVC2HMM0PreLoop*/
-		n=list.length;
-		for(i=0;i<n;i++){
-			item=list[i];
-			/*#{1JDVC2HMM0InLoopPre*/
-			/*}#1JDVC2HMM0InLoopPre*/
-			loopR=await session.runAISeg(agent,FindClick,item,"1JDVC2HMM0","1JDVD2JJE0")
-			if(loopR==="break"){
-				break;
-			}
-			/*#{1JDVC2HMM0InLoopPost*/
-			/*}#1JDVC2HMM0InLoopPost*/
-		}
-		/*#{1JDVC2HMM0PostCodes*/
-		/*}#1JDVC2HMM0PostCodes*/
-		return {seg:StillBlocker,result:(result),preSeg:"1JDVC2HMM0",outlet:"1JDVD2JJE1"};
-	};
-	LoopRules.jaxId="1JDVC2HMM0"
-	LoopRules.url="LoopRules@"+agentURL
-	
 	segs["FindClick"]=FindClick=async function(input){//:1JDUSV9N10
 		let result=true;
 		let pageVal="aaPage";
@@ -675,7 +668,7 @@ let CaRpa_GenBlockers=async function(session){
 			/*#{1JDUSV9N10ErrorCode*/
 			error=null;
 			/*}#1JDUSV9N10ErrorCode*/
-			return {seg:JumpMissing,result:error,preSeg:"1JDUSV9N10",outlet:"1JDUSV9MJ0"};
+			return {seg:CheckBlocker,result:error,preSeg:"1JDUSV9N10",outlet:"1JDUSV9MJ0"};
 		}
 		/*#{1JDUSV9N10PostCodes*/
 		result=$query;
@@ -745,7 +738,7 @@ let CaRpa_GenBlockers=async function(session){
 		try{
 			/*#{1JDUU3KQR0Code*/
 			let used,selector,idx,newRule;
-			let rules=(await readRule(session,context.aaPage,"blockers.selectors"))||[];
+			let rules=(await readRule(session,context.aaPage,"blockers.selectors",{query:"解决页面阻挡需要点击的HTML元素",loose:true}))||[];
 			newRule=false;
 			used=context.usedRules;
 			for(selector of used){
@@ -755,13 +748,13 @@ let CaRpa_GenBlockers=async function(session){
 				}else{
 					newRule=true;
 				}
-				rules.push(selector);
+				rules.unshift(selector);
 			}
 			if(newRule){
 				if(rules.length>10){
-					rules=rules.slice(-10);
+					rules=rules.slice(0,10);
 				}
-				await saveRule(session,context.aaPage,"blockers.selectors",rules);
+				await saveRule(session,context.aaPage,"blockers.selectors",rules,"解决页面阻挡需要点击的HTML元素");
 			}
 			/*}#1JDUU3KQR0Code*/
 		}catch(error){
@@ -827,7 +820,7 @@ let CaRpa_GenBlockers=async function(session){
 			return {seg:CheckBlocker,result:(input),preSeg:"1JE00IIE40",outlet:"1JE00JQ1B0"};
 		}
 		/*#{1JE00IIE40Post*/
-		result={status:"Failed",result:"Failed",blocker:true,reason:"Max click."};
+		result={status:"failed",value:{blocked:true},blocker:true,reason:"Max retry."};
 		/*}#1JE00IIE40Post*/
 		return {seg:JumpEnd,result:(result),preSeg:"1JE00IIE40",outlet:"1JE00JQ1B1"};
 	};
@@ -856,6 +849,7 @@ let CaRpa_GenBlockers=async function(session){
 		let result=input
 		try{
 			/*#{1JE6OC1HK0Code*/
+			result={status:"failed",value:{blocked:true},reason:"Can't clear blockers with user assistant.",blocked:true};
 			/*}#1JE6OC1HK0Code*/
 		}catch(error){
 			/*#{1JE6OC1HK0ErrorCode*/
@@ -960,23 +954,23 @@ let CaRpa_GenBlockers=async function(session){
 		$page=context.aaPage;
 		res=await $page.callFunction(detectBlockersWebDriver,[],{});
 		/*}#1JE81T9Q80Start*/
-		if(res.hasBlocker){
-			return {seg:CheckUsed,result:(input),preSeg:"1JE81T9Q80",outlet:"1JE81UJ110"};
+		if(!res.hasBlocker){
+			return {seg:JumpFin,result:(input),preSeg:"1JE81T9Q80",outlet:"1JE81UJ110"};
 		}
 		/*#{1JE81T9Q80Post*/
 		/*}#1JE81T9Q80Post*/
-		return {seg:CheckBlocker,result:(result),preSeg:"1JE81T9Q80",outlet:"1JE81UJ111"};
+		return {seg:CheckUsed,result:(result),preSeg:"1JE81T9Q80",outlet:"1JE81UJ111"};
 	};
 	StillBlocker.jaxId="1JE81T9Q80"
 	StillBlocker.url="StillBlocker@"+agentURL
 	
-	segs["JumpMissing"]=JumpMissing=async function(input){//:1JEBOUN5B0
+	segs["JumpFin"]=JumpFin=async function(input){//:1JG235CSJ0
 		let result=input;
-		return {seg:CheckBlocker,result:result,preSeg:"1JDUM5BGU0",outlet:"1JEBOV6AQ0"};
+		return {seg:CheckClicked,result:result,preSeg:"1JDUU2NIQ0",outlet:"1JG236L620"};
 	
 	};
-	JumpMissing.jaxId="1JDUM5BGU0"
-	JumpMissing.url="JumpMissing@"+agentURL
+	JumpFin.jaxId="1JDUU2NIQ0"
+	JumpFin.url="JumpFin@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1251,6 +1245,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -1322,6 +1317,53 @@ export{CaRpa_GenBlockers,ChatAPI};
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "loopArray",
+//					"jaxId": "1JDVC2HMM0",
+//					"attrs": {
+//						"id": "LoopRules",
+//						"viewName": "",
+//						"label": "",
+//						"x": "605",
+//						"y": "255",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "check_fat.svg",
+//						"context": {
+//							"jaxId": "1JDVD2JJJ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JDVD2JJJ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"loopArray": "#input",
+//						"method": "forEach",
+//						"outlet": {
+//							"jaxId": "1JDVD2JJE0",
+//							"attrs": {
+//								"id": "Looper",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JDUSV9N10"
+//						},
+//						"catchlet": {
+//							"jaxId": "1JDVD2JJE1",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JE81T9Q80"
+//						}
+//					},
+//					"icon": "loop_array.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1490,7 +1532,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#blockers && blockers.remove"
+//										"condition": "#blockers && (blockers.clear||blockers.remove)"
 //									},
 //									"linkedSeg": "1JDURSUK30"
 //								}
@@ -1796,7 +1838,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "635",
+//						"x": "640",
 //						"y": "555",
 //						"outlet": {
 //							"jaxId": "1JDUS35P09",
@@ -1810,53 +1852,6 @@ export{CaRpa_GenBlockers,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "loopArray",
-//					"jaxId": "1JDVC2HMM0",
-//					"attrs": {
-//						"id": "LoopRules",
-//						"viewName": "",
-//						"label": "",
-//						"x": "605",
-//						"y": "255",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "check_fat.svg",
-//						"context": {
-//							"jaxId": "1JDVD2JJJ0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JDVD2JJJ1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"loopArray": "#input",
-//						"method": "forEach",
-//						"outlet": {
-//							"jaxId": "1JDVD2JJE0",
-//							"attrs": {
-//								"id": "Looper",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JDUSV9N10"
-//						},
-//						"catchlet": {
-//							"jaxId": "1JDVD2JJE1",
-//							"attrs": {
-//								"id": "Next",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JE81T9Q80"
-//						}
-//					},
-//					"icon": "loop_array.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1910,8 +1905,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //									"attrs": {
 //										"id": "Missing",
 //										"desc": "输出节点。"
-//									},
-//									"linkedSeg": "1JEBOUN5B0"
+//									}
 //								}
 //							]
 //						}
@@ -1975,8 +1969,8 @@ export{CaRpa_GenBlockers,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1020",
-//						"y": "460",
+//						"x": "1130",
+//						"y": "555",
 //						"outlet": {
 //							"jaxId": "1JDUT5P629",
 //							"attrs": {
@@ -2108,7 +2102,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1135",
-//						"y": "330",
+//						"y": "360",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2175,8 +2169,8 @@ export{CaRpa_GenBlockers,ChatAPI};
 //						"id": "LoopAgain",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1405",
-//						"y": "315",
+//						"x": "1400",
+//						"y": "345",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2712,11 +2706,11 @@ export{CaRpa_GenBlockers,ChatAPI};
 //						"outlet": {
 //							"jaxId": "1JE81UJ111",
 //							"attrs": {
-//								"id": "Free",
+//								"id": "Blocker",
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JDUT3KBD0"
+//							"linkedSeg": "1JDVCV9NT0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -2725,7 +2719,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //									"def": "AIConditionOutlet",
 //									"jaxId": "1JE81UJ110",
 //									"attrs": {
-//										"id": "Blocker",
+//										"id": "Free",
 //										"desc": "输出节点。",
 //										"output": "",
 //										"codes": "false",
@@ -2741,9 +2735,9 @@ export{CaRpa_GenBlockers,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#res.hasBlocker"
+//										"condition": "#!res.hasBlocker"
 //									},
-//									"linkedSeg": "1JDVCV9NT0"
+//									"linkedSeg": "1JG235CSJ0"
 //								}
 //							]
 //						}
@@ -2758,7 +2752,7 @@ export{CaRpa_GenBlockers,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1290",
+//						"x": "1280",
 //						"y": "460",
 //						"outlet": {
 //							"jaxId": "1JE821O130",
@@ -2776,20 +2770,20 @@ export{CaRpa_GenBlockers,ChatAPI};
 //				{
 //					"type": "aiseg",
 //					"def": "jumper",
-//					"jaxId": "1JEBOUN5B0",
+//					"jaxId": "1JG235CSJ0",
 //					"attrs": {
-//						"id": "JumpMissing",
+//						"id": "JumpFin",
 //						"viewName": "",
 //						"label": "",
 //						"x": "1135",
-//						"y": "235",
+//						"y": "260",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
-//						"seg": "1JDUM5BGU0",
+//						"seg": "1JDUU2NIQ0",
 //						"outlet": {
-//							"jaxId": "1JEBOV6AQ0",
+//							"jaxId": "1JG236L620",
 //							"attrs": {
 //								"id": "Next",
 //								"desc": "输出节点。"

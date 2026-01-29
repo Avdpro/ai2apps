@@ -506,6 +506,9 @@ let AgentNode,agentNode;
 			console.log('Debug client connected');
 
 			this.debugConnected = true;
+			if(this.debugClients.length>0){
+				console.log(this.debugClients[0]===ws);
+			}
 			this.debugClients.push(ws);
 
 			ws.on('message', async (message) => {

@@ -40,8 +40,8 @@ async function getUserInfo(req,userId,token,projection){
 	if(!token){
 		token=req.body.vo.token;
 	}
-	devKey=req.body.devKey;
-	devSign=req.body.devSign;
+	devKey=req.body.vo.devKey;
+	devSign=req.body.vo.devSign;
 	if(userId && token) {
 		let host;
 		host=getHost(req);
@@ -64,26 +64,31 @@ async function getUserInfo(req,userId,token,projection){
 		let dtime=time-localTime;
 		dtime=dtime<0?-dtime:dtime;
 		if(dtime>60*1000){
+			throw `Time error: ${dtime}`;
 			return null;
 		}
 		sign=devSign.sign;
 		userInfo=await dbUser.findOne({_id:devId});
 		if(!userInfo){
+			throw `User Id error ${devId}`
 			return null;
 		}
 		devKeys=userInfo.devKeys||[];
 		FindKey:{
+			let s;
 			for (key of devKeys) {
-				key = "" + key + "-" + time;
-				key = sha256Hex(key);
-				if (key === sign) {
+				s = "" + key + "-" + time;
+				s = sha256Hex(s);
+				if (s === sign) {
 					break FindKey;
 				}
+				throw `key not match: key=${key}, sign=${s} vs ${sign}`;
 			}
 			return null;//No key matched.
 		}
 		vo={_id: userId};
 	}else{
+		throw("Branch error.");
 		return null;
 	}
 	if(projection==="all"){

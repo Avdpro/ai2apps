@@ -17,7 +17,7 @@ let TestAgents=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,TestShowMore,Blocker,CheckLogin,Search,ReadList,ShowMore,TestReadList,TestReadArticle,ReadArticle,Output,TestSearch,TestSelector,FindSelector,FindSelector2,ClickStart,TestCompose,Compose;
+	let Start,TestShowMore,Blocker,CheckLogin,Search,ReadList,ShowMore,TestReadList,TestReadArticle,ReadArticle,Output,TestSearch,TestSelector,FindSelector,FindSelector2,ClickStart,TestCompose,StartCompose,InputTitle,CompseDone,InputConent,AddImages,TestLogin,Publish;
 	/*#{1JDVK5JNN0LocalVals*/
 	/*}#1JDVK5JNN0LocalVals*/
 	
@@ -92,7 +92,7 @@ let TestAgents=async function(session){
 	
 	segs["Search"]=Search=async function(input){//:1JE8UADJB0
 		let result;
-		let arg={"pageRef":input.pageRef,"url":"","profile":"","search":"五十浔38","searchNum":"","waitAfter":""};
+		let arg={"pageRef":input.pageRef,"url":"","profile":"","search":"劳力士 万年历","searchNum":"","waitAfter":"","opts":""};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./CaRpa_GenSearch.js");
@@ -278,24 +278,102 @@ ${JSON.stringify(input,null,"\t")}
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./CaRpa_OpenBrowser.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		/*#{1JFC8TRVB0Input*/
+		/*}#1JFC8TRVB0Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {seg:Compose,result:(result),preSeg:"1JFC8TRVB0",outlet:"1JFC8TRVB3"};
+		/*#{1JFC8TRVB0Output*/
+		/*}#1JFC8TRVB0Output*/
+		context["pageRef"]=result.pageRef;
+		return {seg:Publish,result:(result),preSeg:"1JFC8TRVB0",outlet:"1JFC8TRVB3"};
 	};
 	TestCompose.jaxId="1JFC8TRVB0"
 	TestCompose.url="TestCompose@"+agentURL
 	
-	segs["Compose"]=Compose=async function(input){//:1JFC9099O0
+	segs["StartCompose"]=StartCompose=async function(input){//:1JFC9099O0
 		let result;
-		let arg={"pageRef":input.pageRef,"url":"","profile":"","compose":{action:"start"},"opts":""};
+		let arg={"pageRef":input.pageRef,"url":"","profile":"","compose":{action:"start"},"opts":{useManual:true,allowManual:true}};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {seg:Output,result:(result),preSeg:"1JFC9099O0",outlet:"1JFC9117E0"};
+		return {seg:InputTitle,result:(result),preSeg:"1JFC9099O0",outlet:"1JFC9117E0"};
 	};
-	Compose.jaxId="1JFC9099O0"
-	Compose.url="Compose@"+agentURL
+	StartCompose.jaxId="1JFC9099O0"
+	StartCompose.url="StartCompose@"+agentURL
+	
+	segs["InputTitle"]=InputTitle=async function(input){//:1JFIGJJL80
+		let result;
+		let arg={"pageRef":context.pageRef,"url":"","profile":"","compose":{action:"input",field:"title",text:"上海好冷啊"},"opts":{useManual:true,allowManual:true}};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:InputConent,result:(result),preSeg:"1JFIGJJL80",outlet:"1JFIGMMFA0"};
+	};
+	InputTitle.jaxId="1JFIGJJL80"
+	InputTitle.url="InputTitle@"+agentURL
+	
+	segs["CompseDone"]=CompseDone=async function(input){//:1JFIGN1D80
+		let result=input;
+		return {seg:Output,result:result,preSeg:"1JESE9M5T0",outlet:"1JFIGNEL70"};
+	
+	};
+	CompseDone.jaxId="1JESE9M5T0"
+	CompseDone.url="CompseDone@"+agentURL
+	
+	segs["InputConent"]=InputConent=async function(input){//:1JFPQSVQN0
+		let result;
+		let arg={"pageRef":context.pageRef,"url":"","profile":"","compose":{action:"input",field:"content",text:"这都赶上北京了……"},"opts":{useManual:true,allowManual:true}};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:AddImages,result:(result),preSeg:"1JFPQSVQN0",outlet:"1JFPQSVQO2"};
+	};
+	InputConent.jaxId="1JFPQSVQN0"
+	InputConent.url="InputConent@"+agentURL
+	
+	segs["AddImages"]=AddImages=async function(input){//:1JFQCHT4E0
+		let result;
+		let arg={"pageRef":context.pageRef,"url":"","profile":"","compose":{action:"file",field:"image",files:["/Users/avdpropang/Downloads/IMG_9560.JPG"]},"opts":{useManual:true,allowManual:true}};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:Publish,result:(result),preSeg:"1JFQCHT4E0",outlet:"1JFQCHT4F0"};
+	};
+	AddImages.jaxId="1JFQCHT4E0"
+	AddImages.url="AddImages@"+agentURL
+	
+	segs["TestLogin"]=TestLogin=async function(input){//:1JG2NAHD90
+		let result;
+		let arg={"url":"https://www.weibo.com","profile":"","headless":"","waitAfter":1000,"open":""};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./CaRpa_OpenBrowser.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:CheckLogin,result:(result),preSeg:"1JG2NAHD90",outlet:"1JG2NAHDA2"};
+	};
+	TestLogin.jaxId="1JG2NAHD90"
+	TestLogin.url="TestLogin@"+agentURL
+	
+	segs["Publish"]=Publish=async function(input){//:1JG3IH98A0
+		let result;
+		let arg={"pageRef":context.pageRef,"url":"","profile":"","compose":{action:"publish","visibility":""},"opts":""};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:CompseDone,result:(result),preSeg:"1JG3IH98A0",outlet:"1JG3IHKBC0"};
+	};
+	Publish.jaxId="1JG3IH98A0"
+	Publish.url="Publish@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -604,7 +682,7 @@ export{TestAgents};
 //							}
 //						},
 //						"source": "ai/CaRpa_GenSearch.js",
-//						"argument": "{\"pageRef\":\"#input.pageRef\",\"url\":\"\",\"profile\":\"\",\"search\":\"五十浔38\",\"searchNum\":\"\",\"waitAfter\":\"\"}",
+//						"argument": "{\"pageRef\":\"#input.pageRef\",\"url\":\"\",\"profile\":\"\",\"search\":\"劳力士 万年历\",\"searchNum\":\"\",\"waitAfter\":\"\",\"opts\":\"\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JE916VGM0",
@@ -1107,13 +1185,13 @@ export{TestAgents};
 //						"x": "365",
 //						"y": "80",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
 //							"jaxId": "1JFC8TRVB1",
 //							"attrs": {
-//								"cast": ""
+//								"cast": "{\"pageRef\":\"#result.pageRef\"}"
 //							}
 //						},
 //						"global": {
@@ -1131,7 +1209,7 @@ export{TestAgents};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JFC9099O0"
+//							"linkedSeg": "1JG3J3HLS0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1144,7 +1222,7 @@ export{TestAgents};
 //					"def": "aiBot",
 //					"jaxId": "1JFC9099O0",
 //					"attrs": {
-//						"id": "Compose",
+//						"id": "StartCompose",
 //						"viewName": "",
 //						"label": "",
 //						"x": "655",
@@ -1166,7 +1244,7 @@ export{TestAgents};
 //							}
 //						},
 //						"source": "ai/CaRpa_GenCompose.js",
-//						"argument": "{\"pageRef\":\"#input.pageRef\",\"url\":\"\",\"profile\":\"\",\"compose\":\"#{action:\\\"start\\\"}\",\"opts\":\"\"}",
+//						"argument": "{\"pageRef\":\"#input.pageRef\",\"url\":\"\",\"profile\":\"\",\"compose\":\"#{action:\\\"start\\\"}\",\"opts\":\"#{useManual:true,allowManual:true}\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JFC9117E0",
@@ -1174,13 +1252,297 @@ export{TestAgents};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JESE9M5T0"
+//							"linkedSeg": "1JFIGJJL80"
 //						},
 //						"outlets": {
 //							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JFIGJJL80",
+//					"attrs": {
+//						"id": "InputTitle",
+//						"viewName": "",
+//						"label": "",
+//						"x": "930",
+//						"y": "80",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JFIGMMFF0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFIGMMFF1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/CaRpa_GenCompose.js",
+//						"argument": "{\"pageRef\":\"#context.pageRef\",\"url\":\"\",\"profile\":\"\",\"compose\":\"#{action:\\\"input\\\",field:\\\"title\\\",text:\\\"上海好冷啊\\\"}\",\"opts\":\"#{useManual:true,allowManual:true}\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JFIGMMFA0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFPQSVQN0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1JFIGN1D80",
+//					"attrs": {
+//						"id": "CompseDone",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1945",
+//						"y": "80",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "1JESE9M5T0",
+//						"outlet": {
+//							"jaxId": "1JFIGNEL70",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JFPQSVQN0",
+//					"attrs": {
+//						"id": "InputConent",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1190",
+//						"y": "80",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JFPQSVQO0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFPQSVQO1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/CaRpa_GenCompose.js",
+//						"argument": "{\"pageRef\":\"#context.pageRef\",\"url\":\"\",\"profile\":\"\",\"compose\":\"#{action:\\\"input\\\",field:\\\"content\\\",text:\\\"这都赶上北京了……\\\"}\",\"opts\":\"#{useManual:true,allowManual:true}\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JFPQSVQO2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFQCHT4E0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JFQCHT4E0",
+//					"attrs": {
+//						"id": "AddImages",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1450",
+//						"y": "80",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JFQCHT4E1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFQCHT4E2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/CaRpa_GenCompose.js",
+//						"argument": "{\"pageRef\":\"#context.pageRef\",\"url\":\"\",\"profile\":\"\",\"compose\":\"#{action:\\\"file\\\",field:\\\"image\\\",files:[\\\"/Users/avdpropang/Downloads/IMG_9560.JPG\\\"]}\",\"opts\":\"#{useManual:true,allowManual:true}\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JFQCHT4F0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JG3IH98A0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JG2NAHD90",
+//					"attrs": {
+//						"id": "TestLogin",
+//						"viewName": "",
+//						"label": "",
+//						"x": "365",
+//						"y": "270",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JG2NAHDA0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG2NAHDA1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/CaRpa_OpenBrowser.js",
+//						"argument": "{\"url\":\"https://www.weibo.com\",\"profile\":\"\",\"headless\":\"\",\"waitAfter\":1000,\"open\":\"\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JG2NAHDA2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JE3LRKOO0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JG3IH98A0",
+//					"attrs": {
+//						"id": "Publish",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1705",
+//						"y": "80",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JG3IHKBH0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG3IHKBH1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/CaRpa_GenCompose.js",
+//						"argument": "{\"pageRef\":\"#context.pageRef\",\"url\":\"\",\"profile\":\"\",\"compose\":\"#{action:\\\"publish\\\",\\\"visibility\\\":\\\"\\\"}\",\"opts\":\"\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JG3IHKBC0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFIGN1D80"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JG3J3HLS0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "610",
+//						"y": "-30",
+//						"outlet": {
+//							"jaxId": "1JG3J3U7G0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JG3J3MCE0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JG3J3MCE0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1550",
+//						"y": "-30",
+//						"outlet": {
+//							"jaxId": "1JG3J3U7G1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JG3IH98A0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

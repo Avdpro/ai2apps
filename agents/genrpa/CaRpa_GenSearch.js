@@ -42,6 +42,11 @@ const argsTemplate={
 			"name":"waitAfter","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"opts":{
+			"name":"opts","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JE5HADIA0ArgsView*/
@@ -52,13 +57,14 @@ const argsTemplate={
 /*}#1JE5HADIA0StartDoc*/
 //----------------------------------------------------------------------------
 let CaRpa_GenSearch=async function(session){
-	let pageRef,url,profile,search,searchNum,waitAfter;
+	let pageRef,url,profile,search,searchNum,waitAfter,opts;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,CheckRule,FindClick,ReadPage,FindSearch,ClickSearch,InputSearch,AwaitNav,WaitNav,ReadList,Success,FinDone,FinFailed,WaitAfter,PressEnter,FinNoSearch,CheckNewRule,SaveRule,RemoveBlocker,IsBlockerDone,JumpRule,FailBlcoker,GotoPage,FinTimeout;
+	let StartRpa,CheckRule,FindClick,ReadPage,FindSearch,ClickSearch,InputSearch,AwaitNav,WaitNav,ReadList,Success,FinDone,FinFailed,WaitAfter,PressEnter,FinNoSearch,CheckNewRule,SaveRule,GotoPage,FinTimeout,Blockers,FailBlcocked,QuerySelector,CheckSelector;
 	let usedRule=null;
 	let wrongSelectors=[];
+	let searchOpts=undefined;
 	
 	/*#{1JE5HADIA0LocalVals*/
 	/*}#1JE5HADIA0LocalVals*/
@@ -71,6 +77,7 @@ let CaRpa_GenSearch=async function(session){
 			search=input.search;
 			searchNum=input.searchNum;
 			waitAfter=input.waitAfter;
+			opts=input.opts;
 		}else{
 			pageRef=undefined;
 			url=undefined;
@@ -78,8 +85,10 @@ let CaRpa_GenSearch=async function(session){
 			search=undefined;
 			searchNum=undefined;
 			waitAfter=undefined;
+			opts=undefined;
 		}
 		/*#{1JE5HADIA0ParseArgs*/
+		searchOpts=opts||{};
 		/*}#1JE5HADIA0ParseArgs*/
 	}
 	
@@ -101,17 +110,20 @@ let CaRpa_GenSearch=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JE5JK3AB0"));
 				if($alias){
 					let $headless=false;
@@ -120,9 +132,9 @@ let CaRpa_GenSearch=async function(session){
 					let $browser=null;
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
@@ -133,7 +145,7 @@ let CaRpa_GenSearch=async function(session){
 		}catch(error){
 			throw error;
 		}
-		return {seg:CheckRule,result:(result),preSeg:"1JE5JK3AB0",outlet:"1JE5JK3AB3"};
+		return {seg:Blockers,result:(result),preSeg:"1JE5JK3AB0",outlet:"1JE5JK3AB3"};
 	};
 	StartRpa.jaxId="1JE5JK3AB0"
 	StartRpa.url="StartRpa@"+agentURL
@@ -141,8 +153,14 @@ let CaRpa_GenSearch=async function(session){
 	segs["CheckRule"]=CheckRule=async function(input){//:1JE5JN9BL0
 		let result=input;
 		/*#{1JE5JN9BL0Start*/
-		let rule=await readRule(session,context.aaPage,"search");
+		let rule;
+		if(input?.status==="done" && !input.blocker){
+			rule=await readRule(session,context.aaPage,"search.input");
+		}
 		/*}#1JE5JN9BL0Start*/
+		if(input?.status!=="done" || !!input.blocker){
+			return {seg:FailBlcocked,result:(input),preSeg:"1JE5JN9BL0",outlet:"1JG24CKED0"};
+		}
 		if(rule && rule.url){
 			let output=rule.url;
 			return {seg:GotoPage,result:(output),preSeg:"1JE5JN9BL0",outlet:"1JE5JN9BM0"};
@@ -153,7 +171,7 @@ let CaRpa_GenSearch=async function(session){
 		}
 		/*#{1JE5JN9BL0Post*/
 		/*}#1JE5JN9BL0Post*/
-		return {seg:ReadPage,result:(result),preSeg:"1JE5JN9BL0",outlet:"1JE5JN9BL3"};
+		return {seg:QuerySelector,result:(result),preSeg:"1JE5JN9BL0",outlet:"1JE5JN9BL3"};
 	};
 	CheckRule.jaxId="1JE5JN9BL0"
 	CheckRule.url="CheckRule@"+agentURL
@@ -180,12 +198,13 @@ let CaRpa_GenSearch=async function(session){
 			if((!result)||($multi && !result.length)){
 				throw "Querry not found";
 			}
+			/*#{1JE5JVJ4R1CheckItem*/
+			/*}#1JE5JVJ4R1CheckItem*/
 			$waitAfter && (await sleep($waitAfter))
 		}catch(error){
 			/*#{1JE5JVJ4R1ErrorCode*/
 			wrongSelectors.push($query);
 			/*}#1JE5JVJ4R1ErrorCode*/
-			return {seg:ReadPage,result:error,preSeg:"1JE5JVJ4R1",outlet:"1JE5JVJ4S1"};
 		}
 		/*#{1JE5JVJ4R1PostCodes*/
 		result=$query;
@@ -296,17 +315,14 @@ let CaRpa_GenSearch=async function(session){
 		/*}#1JE5K5SH60PostCall*/
 		if(result && result.action && result.action.type==="selector"){
 			let output=result.action.by;
-			return {seg:ClickSearch,result:(output),preSeg:"1JE5K5SH60",outlet:"1JE5K8RPV1"};
-		}
-		if(result && result.action && result.action==="removeBlocker"){
-			return {seg:RemoveBlocker,result:(input),preSeg:"1JE5K5SH60",outlet:"1JE6NMT980"};
+			return {result:output};
 		}
 		if(input==="NoFind"){
-			return {seg:FinNoSearch,result:(input),preSeg:"1JE5K5SH60",outlet:"1JE6NJK780"};
+			return {result:input};
 		}
 		/*#{1JE5K5SH60PreResult*/
 		/*}#1JE5K5SH60PreResult*/
-		return {seg:FinNoSearch,result:(result),preSeg:"1JE5K5SH60",outlet:"1JE5K8RPV2"};
+		return {result:result};
 	};
 	FindSearch.jaxId="1JE5K5SH60"
 	FindSearch.url="FindSearch@"+agentURL
@@ -357,10 +373,10 @@ let CaRpa_GenSearch=async function(session){
 	segs["InputSearch"]=InputSearch=async function(input){//:1JE5K89FR0
 		let result=true;
 		let pageVal="aaPage";
-		let $action="Type";
+		let $action="Paste";
 		let $query="";
 		let $queryHint="";
-		let $key=search;
+		let $key=search.query||search;
 		let $options=null;
 		let $waitBefore=0;
 		let $waitAfter=0;
@@ -370,13 +386,7 @@ let CaRpa_GenSearch=async function(session){
 		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		try{
-			if($query||$queryHint){
-				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JE5K89FR0")):$query;
-				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-				$pms=page.type($query,$key,$options||{});
-			}else{
-				$pms=page.keyboard.type($key,$options||{});
-			}
+			$pms=page.pasteText($key,$options||{});
 			if($pms && (!$async)){$done=await $pms;}
 			$waitAfter && (await sleep($waitAfter))
 		}catch(error){
@@ -449,7 +459,7 @@ let CaRpa_GenSearch=async function(session){
 			/*#{1JE5KJIBS0Codes*/
 			context.searchResult=output;
 			/*}#1JE5KJIBS0Codes*/
-			return {seg:CheckNewRule,result:(output),preSeg:"1JE5KFLIL0",outlet:"1JE5KJIBS0"};
+			return {seg:FinDone,result:(output),preSeg:"1JE5KFLIL0",outlet:"1JE5KJIBS0"};
 		}
 		return {seg:FinFailed,result:(result),preSeg:"1JE5KFLIL0",outlet:"1JE5KG0AF4"};
 	};
@@ -460,7 +470,14 @@ let CaRpa_GenSearch=async function(session){
 		let result=input
 		try{
 			/*#{1JE5KGERJ0Code*/
-			result={status:"Done",result:"Finish",items:context.searchResult||[]};
+			let list,urls;;
+			list=context.searchResult||[];
+			if(Array.isArray(list)){
+				urls=list.map((item)=>{return item.url});
+				result={status:"done",value:{urls:urls,items:list}};
+			}else{
+				result={status:"failed",reason:"Can't find search result."};
+			}
 			/*}#1JE5KGERJ0Code*/
 		}catch(error){
 			/*#{1JE5KGERJ0ErrorCode*/
@@ -475,7 +492,7 @@ let CaRpa_GenSearch=async function(session){
 		let result=input
 		try{
 			/*#{1JE5KGM2I0Code*/
-			result={status:"Failed", result: "Failed", reason: input && input.reason ? input.reason : "Search process failed."};
+			result={status:"failed",reason:input&&input.reason?input.reason:"Search process failed."};
 			/*}#1JE5KGM2I0Code*/
 		}catch(error){
 			/*#{1JE5KGM2I0ErrorCode*/
@@ -537,7 +554,7 @@ let CaRpa_GenSearch=async function(session){
 		let result=input
 		try{
 			/*#{1JE5KMS000Code*/
-			result={status:"Failed",result:"Failed",reason:"Can't initial search。"};
+			result={status:"failed",reason:"Can't initial search。"};
 			/*}#1JE5KMS000Code*/
 		}catch(error){
 			/*#{1JE5KMS000ErrorCode*/
@@ -554,7 +571,7 @@ let CaRpa_GenSearch=async function(session){
 			let output=input;
 			return {seg:SaveRule,result:(output),preSeg:"1JE5KRV8T0",outlet:"1JE5KU7D50"};
 		}
-		return {seg:FinDone,result:(result),preSeg:"1JE5KRV8T0",outlet:"1JE5KU7D51"};
+		return {result:result};
 	};
 	CheckNewRule.jaxId="1JE5KRV8T0"
 	CheckNewRule.url="CheckNewRule@"+agentURL
@@ -569,56 +586,10 @@ let CaRpa_GenSearch=async function(session){
 			/*#{1JE5KTD4C0ErrorCode*/
 			/*}#1JE5KTD4C0ErrorCode*/
 		}
-		return {seg:FinDone,result:(result),preSeg:"1JE5KTD4C0",outlet:"1JE5KU7D52"};
+		return {result:result};
 	};
 	SaveRule.jaxId="1JE5KTD4C0"
 	SaveRule.url="SaveRule@"+agentURL
-	
-	segs["RemoveBlocker"]=RemoveBlocker=async function(input){//:1JE6NLMG40
-		let result;
-		let arg={"pageRef":pageRef,"blocker":{remove:true},"waitAfter":""};
-		let agentNode=(undefined)||null;
-		let $query=(undefined)||null;
-		let sourcePath=pathLib.join(basePath,"./CaRpa_GenBlockers.js");
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {seg:IsBlockerDone,result:(result),preSeg:"1JE6NLMG40",outlet:"1JE6NMT990"};
-	};
-	RemoveBlocker.jaxId="1JE6NLMG40"
-	RemoveBlocker.url="RemoveBlocker@"+agentURL
-	
-	segs["IsBlockerDone"]=IsBlockerDone=async function(input){//:1JE6NN49G0
-		let result=input;
-		if(input && input.status==="Done" && (!input.blocker)){
-			return {seg:JumpRule,result:(input),preSeg:"1JE6NN49G0",outlet:"1JE6O1GRC0"};
-		}
-		return {seg:FailBlcoker,result:(result),preSeg:"1JE6NN49G0",outlet:"1JE6O1GRC1"};
-	};
-	IsBlockerDone.jaxId="1JE6NN49G0"
-	IsBlockerDone.url="IsBlockerDone@"+agentURL
-	
-	segs["JumpRule"]=JumpRule=async function(input){//:1JE6O0GGG0
-		let result=input;
-		return {seg:CheckRule,result:result,preSeg:"1JE5JN9BL0",outlet:"1JE6O1GRC2"};
-	
-	};
-	JumpRule.jaxId="1JE5JN9BL0"
-	JumpRule.url="JumpRule@"+agentURL
-	
-	segs["FailBlcoker"]=FailBlcoker=async function(input){//:1JE6O21BQ0
-		let result=input
-		try{
-			/*#{1JE6O21BQ0Code*/
-			result={status:"Failed",result:"Failed",reason:"Can't remove page blocker."};
-			/*}#1JE6O21BQ0Code*/
-		}catch(error){
-			/*#{1JE6O21BQ0ErrorCode*/
-			/*}#1JE6O21BQ0ErrorCode*/
-		}
-		return {result:result};
-	};
-	FailBlcoker.jaxId="1JE6O21BQ0"
-	FailBlcoker.url="FailBlcoker@"+agentURL
 	
 	segs["GotoPage"]=GotoPage=async function(input){//:1JEBI23L30
 		let result=true;
@@ -646,7 +617,7 @@ let CaRpa_GenSearch=async function(session){
 		let result=input
 		try{
 			/*#{1JEHVHS0D0Code*/
-			result = {status: "Failed", result: "Failed",reason:"Navigation timed out or did not complete in expected time."};
+			result = {status:"failed",reason:"Navigation timed out or did not complete in expected time."};
 			/*}#1JEHVHS0D0Code*/
 		}catch(error){
 			/*#{1JEHVHS0D0ErrorCode*/
@@ -657,6 +628,69 @@ let CaRpa_GenSearch=async function(session){
 	FinTimeout.jaxId="1JEHVHS0D0"
 	FinTimeout.url="FinTimeout@"+agentURL
 	
+	segs["Blockers"]=Blockers=async function(input){//:1JG1J7SR90
+		let result;
+		let arg={"pageRef":context.aaPage.pageRef,"blockers":"${clear:true}","waitAfter":""};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./CaRpa_GenBlockers.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		/*#{1JG1J7SR90Input*/
+		/*}#1JG1J7SR90Input*/
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		/*#{1JG1J7SR90Output*/
+		/*}#1JG1J7SR90Output*/
+		return {seg:CheckRule,result:(result),preSeg:"1JG1J7SR90",outlet:"1JG1J9QJQ0"};
+	};
+	Blockers.jaxId="1JG1J7SR90"
+	Blockers.url="Blockers@"+agentURL
+	
+	segs["FailBlcocked"]=FailBlcocked=async function(input){//:1JG24C67Q0
+		let result=input
+		try{
+			/*#{1JG24C67Q0Code*/
+			/*}#1JG24C67Q0Code*/
+		}catch(error){
+			/*#{1JG24C67Q0ErrorCode*/
+			/*}#1JG24C67Q0ErrorCode*/
+		}
+		return {result:result};
+	};
+	FailBlcocked.jaxId="1JG24C67Q0"
+	FailBlcocked.url="FailBlcocked@"+agentURL
+	
+	segs["QuerySelector"]=QuerySelector=async function(input){//:1JG24SM040
+		let result;
+		let arg={"pageRef":context.aaPage?.pageRef,"query":"点击能后输入搜索内容的HTML元素","multiSelect":"","rulePath":"search.input","cacheMode":"","opts":searchOpts};
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"./Util_QuerySelector.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:CheckSelector,result:(result),preSeg:"1JG24SM040",outlet:"1JG24SM052"};
+	};
+	QuerySelector.jaxId="1JG24SM040"
+	QuerySelector.url="QuerySelector@"+agentURL
+	
+	segs["CheckSelector"]=CheckSelector=async function(input){//:1JG2583HD0
+		let result=input;
+		/*#{1JG2583HD0Start*/
+		let $status,$selector;
+		$status=input.status.toLowerCase();
+		$selector=input.value?.selector||input.selector||input.value;
+		/*}#1JG2583HD0Start*/
+		if($status==="done" && $selector){
+			let output=$selector;
+			return {seg:ClickSearch,result:(output),preSeg:"1JG2583HD0",outlet:"1JG2583HD4"};
+		}
+		/*#{1JG2583HD0Post*/
+		result=$selector;
+		/*}#1JG2583HD0Post*/
+		return {seg:FinNoSearch,result:(result),preSeg:"1JG2583HD0",outlet:"1JG2583HD3"};
+	};
+	CheckSelector.jaxId="1JG2583HD0"
+	CheckSelector.url="CheckSelector@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -666,7 +700,7 @@ let CaRpa_GenSearch=async function(session){
 		jaxId:"1JE5HADIA0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{pageRef,url,profile,search,searchNum,waitAfter}*/){
+		execChat:async function(input/*{pageRef,url,profile,search,searchNum,waitAfter,opts}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JE5HADIA0PreEntry*/
@@ -699,7 +733,8 @@ let ChatAPI=[{
 				profile:{type:"auto",description:""},
 				search:{type:"auto",description:""},
 				searchNum:{type:"integer",description:""},
-				waitAfter:{type:"auto",description:""}
+				waitAfter:{type:"auto",description:""},
+				opts:{type:"auto",description:""}
 			}
 		}
 	},
@@ -823,6 +858,16 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"mockup": "\"\"",
 //						"desc": ""
 //					}
+//				},
+//				"opts": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JG24UTKF0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
 //				}
 //			}
 //		},
@@ -836,6 +881,10 @@ export{CaRpa_GenSearch,ChatAPI};
 //				"wrongSelectors": {
 //					"type": "auto",
 //					"valText": "[]"
+//				},
+//				"searchOpts": {
+//					"type": "auto",
+//					"valText": ""
 //				}
 //			}
 //		},
@@ -899,7 +948,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JE5JN9BL0"
+//							"linkedSeg": "1JG1J7SR90"
 //						},
 //						"catchlet": {
 //							"jaxId": "1JE5JK3AB4",
@@ -923,6 +972,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -935,7 +985,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "CheckRule",
 //						"viewName": "",
 //						"label": "",
-//						"x": "345",
+//						"x": "590",
 //						"y": "405",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -964,6 +1014,31 @@ export{CaRpa_GenSearch,ChatAPI};
 //						},
 //						"outlets": {
 //							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JG24CKED0",
+//									"attrs": {
+//										"id": "Blocked",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JG24CKEL0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JG24CKEL1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input?.status!==\"done\" || !!input.blocker"
+//									},
+//									"linkedSeg": "1JG24C67Q0"
+//								},
 //								{
 //									"type": "aioutlet",
 //									"def": "AIConditionOutlet",
@@ -1028,8 +1103,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "FindClick",
 //						"viewName": "",
 //						"label": "",
-//						"x": "585",
-//						"y": "405",
+//						"x": "830",
+//						"y": "420",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1072,8 +1147,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //									"attrs": {
 //										"id": "Missing",
 //										"desc": "输出节点。"
-//									},
-//									"linkedSeg": "1JE5K5CHS0"
+//									}
 //								}
 //							]
 //						}
@@ -1088,8 +1162,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "ReadPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "825",
-//						"y": "535",
+//						"x": "1055",
+//						"y": "845",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1133,8 +1207,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "FindSearch",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1085",
-//						"y": "535",
+//						"x": "1315",
+//						"y": "845",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1169,8 +1243,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JE5KMS000"
+//							}
 //						},
 //						"stream": "true",
 //						"secret": "false",
@@ -1221,33 +1294,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //											}
 //										},
 //										"condition": "#result && result.action && result.action.type===\"selector\""
-//									},
-//									"linkedSeg": "1JE5K7TEP0"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JE6NMT980",
-//									"attrs": {
-//										"id": "Blocker",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JE6NMT9B0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JE6NMT9B1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#result && result.action && result.action===\"removeBlocker\""
-//									},
-//									"linkedSeg": "1JE6NLMG40"
+//									}
 //								},
 //								{
 //									"type": "aioutlet",
@@ -1271,8 +1318,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //											}
 //										},
 //										"condition": ""
-//									},
-//									"linkedSeg": "1JE5KMS000"
+//									}
 //								}
 //							]
 //						}
@@ -1288,8 +1334,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "ClickSearch",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1330",
-//						"y": "390",
+//						"x": "1590",
+//						"y": "405",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1339,8 +1385,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "InputSearch",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1835",
-//						"y": "390",
+//						"x": "2095",
+//						"y": "405",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1358,10 +1404,10 @@ export{CaRpa_GenSearch,ChatAPI};
 //							}
 //						},
 //						"page": "aaPage",
-//						"action": "Type",
+//						"action": "Paste",
 //						"query": "",
 //						"queryHint": "",
-//						"key": "#search",
+//						"key": "#search.query||search",
 //						"async": "false",
 //						"options": "",
 //						"waitBefore": "0",
@@ -1387,8 +1433,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "AwaitNav",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2310",
-//						"y": "390",
+//						"x": "2570",
+//						"y": "405",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1436,8 +1482,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "WaitNav",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1585",
-//						"y": "390",
+//						"x": "1845",
+//						"y": "405",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1481,8 +1527,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "ReadList",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2570",
-//						"y": "375",
+//						"x": "2830",
+//						"y": "390",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1524,8 +1570,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "Success",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2800",
-//						"y": "375",
+//						"x": "3060",
+//						"y": "390",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1576,7 +1622,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //										},
 //										"condition": "#input.items"
 //									},
-//									"linkedSeg": "1JE5KRV8T0"
+//									"linkedSeg": "1JE5KGERJ0"
 //								}
 //							]
 //						}
@@ -1592,8 +1638,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "FinDone",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3515",
-//						"y": "325",
+//						"x": "3300",
+//						"y": "340",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "lab.svg",
@@ -1633,7 +1679,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "FinFailed",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3025",
+//						"x": "3300",
 //						"y": "435",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -1674,8 +1720,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "WaitAfter",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3725",
-//						"y": "435",
+//						"x": "3550",
+//						"y": "390",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1721,8 +1767,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "PressEnter",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2075",
-//						"y": "390",
+//						"x": "2335",
+//						"y": "405",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1769,8 +1815,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "FinNoSearch",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1330",
-//						"y": "705",
+//						"x": "1590",
+//						"y": "550",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -1809,8 +1855,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "CheckNewRule",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3025",
-//						"y": "310",
+//						"x": "3115",
+//						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1833,8 +1879,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //								"id": "Default",
 //								"desc": "输出节点。",
 //								"output": ""
-//							},
-//							"linkedSeg": "1JE5KGERJ0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -1877,8 +1922,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "SaveRule",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3290",
-//						"y": "250",
+//						"x": "3415",
+//						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "lab.svg",
@@ -1896,183 +1941,6 @@ export{CaRpa_GenSearch,ChatAPI};
 //						},
 //						"outlet": {
 //							"jaxId": "1JE5KU7D52",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JE5KGERJ0"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"errorSeg": ""
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1JE6NLMG40",
-//					"attrs": {
-//						"id": "RemoveBlocker",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1330",
-//						"y": "520",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "lab.svg",
-//						"context": {
-//							"jaxId": "1JE6NMT9B4",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JE6NMT9B5",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "ai/CaRpa_GenBlockers.js",
-//						"argument": "{\"pageRef\":\"#pageRef\",\"blocker\":\"#{remove:true}\",\"waitAfter\":\"\"}",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1JE6NMT990",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JE6NN49G0"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						}
-//					},
-//					"icon": "agent.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1JE6NN49G0",
-//					"attrs": {
-//						"id": "IsBlockerDone",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1585",
-//						"y": "520",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "lab.svg",
-//						"context": {
-//							"jaxId": "1JE6O1GRE0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JE6O1GRE1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JE6O1GRC1",
-//							"attrs": {
-//								"id": "Default",
-//								"desc": "输出节点。",
-//								"output": ""
-//							},
-//							"linkedSeg": "1JE6O21BQ0"
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JE6O1GRC0",
-//									"attrs": {
-//										"id": "Done",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JE6O1GRE2",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JE6O1GRE3",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input && input.status===\"Done\" && (!input.blocker)"
-//									},
-//									"linkedSeg": "1JE6O0GGG0"
-//								}
-//							]
-//						}
-//					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "jumper",
-//					"jaxId": "1JE6O0GGG0",
-//					"attrs": {
-//						"id": "JumpRule",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1835",
-//						"y": "505",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"seg": "1JE5JN9BL0",
-//						"outlet": {
-//							"jaxId": "1JE6O1GRC2",
-//							"attrs": {
-//								"id": "Next",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "arrowupright.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1JE6O21BQ0",
-//					"attrs": {
-//						"id": "FailBlcoker",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1835",
-//						"y": "635",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "flag.svg",
-//						"context": {
-//							"jaxId": "1JE6O2SG80",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JE6O2SG81",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JE6O2SG50",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
@@ -2094,8 +1962,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "GotoPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "585",
-//						"y": "285",
+//						"x": "830",
+//						"y": "325",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2136,7 +2004,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "585",
+//						"x": "830",
 //						"y": "535",
 //						"outlet": {
 //							"jaxId": "1JEBIR1UR2",
@@ -2144,7 +2012,7 @@ export{CaRpa_GenSearch,ChatAPI};
 //								"id": "Outlet",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JE5K5CHS0"
+//							"linkedSeg": "1JG24SM040"
 //						},
 //						"dir": "L2R"
 //					},
@@ -2158,8 +2026,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1005",
-//						"y": "390",
+//						"x": "1250",
+//						"y": "405",
 //						"outlet": {
 //							"jaxId": "1JEBIR1UR3",
 //							"attrs": {
@@ -2181,8 +2049,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //						"id": "FinTimeout",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2570",
-//						"y": "495",
+//						"x": "2830",
+//						"y": "510",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "flag.svg",
@@ -2220,8 +2088,8 @@ export{CaRpa_GenSearch,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2440",
-//						"y": "285",
+//						"x": "2685",
+//						"y": "325",
 //						"outlet": {
 //							"jaxId": "1JEIB1A7B0",
 //							"attrs": {
@@ -2234,6 +2102,200 @@ export{CaRpa_GenSearch,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JG1J7SR90",
+//					"attrs": {
+//						"id": "Blockers",
+//						"viewName": "",
+//						"label": "",
+//						"x": "355",
+//						"y": "405",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JG1J9QJU0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG1J9QJU1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/CaRpa_GenBlockers.js",
+//						"argument": "{\"pageRef\":\"#context.aaPage.pageRef\",\"blockers\":\"${clear:true}\",\"waitAfter\":\"\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JG1J9QJQ0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JE5JN9BL0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JG24C67Q0",
+//					"attrs": {
+//						"id": "FailBlcocked",
+//						"viewName": "",
+//						"label": "",
+//						"x": "830",
+//						"y": "245",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1JG24CKEL2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG24CKEL3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JG24CKEF0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JG24SM040",
+//					"attrs": {
+//						"id": "QuerySelector",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1050",
+//						"y": "535",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "lab.svg",
+//						"context": {
+//							"jaxId": "1JG24SM050",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG24SM051",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/Util_QuerySelector.js",
+//						"argument": "{\"pageRef\":\"#context.aaPage?.pageRef\",\"query\":\"点击能后输入搜索内容的HTML元素\",\"multiSelect\":\"\",\"rulePath\":\"search.input\",\"cacheMode\":\"\",\"opts\":\"#searchOpts\"}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JG24SM052",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JG2583HD0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JG2583HD0",
+//					"attrs": {
+//						"id": "CheckSelector",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1325",
+//						"y": "535",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1JG2583HD1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG2583HD2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JG2583HD3",
+//							"attrs": {
+//								"id": "Failed",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JE5KMS000"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JG2583HD4",
+//									"attrs": {
+//										"id": "Selector",
+//										"desc": "输出节点。",
+//										"output": "#$selector",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JG2583HD5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JG2583HD6",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#$status===\"done\" && $selector"
+//									},
+//									"linkedSeg": "1JE5K7TEP0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
 //				}
 //			]
 //		},

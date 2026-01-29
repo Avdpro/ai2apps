@@ -415,12 +415,12 @@ async function execRunJsAction(action, ctx) {
 		const code = String(action.code || "");
 
 		// spec: code 不做插值，简单粗暴：禁止出现 ${（不区分是否在字符串里）
-		if (code.includes("${")) {
+		/*if (code.includes("${")) {
 			return {
 				status: "failed",
 				reason: "run_js.code must not contain '${' (interpolation is forbidden in code)",
 			};
-		}
+		}*/
 
 		// 解析 action.args（允许插值、且支持对象/数组递归）
 		const rawArgs = Array.isArray(action.args) ? action.args : [];
@@ -439,7 +439,11 @@ async function execRunJsAction(action, ctx) {
 
 		if (scope === "agent") {
 			// agent scope：直接在当前环境调用
-			value = await compiled.fn(...parsedArgs);
+			if(action.code instanceof Function){
+				value = await action.code(...parsedArgs);
+			}else {
+				value = await compiled.fn(...parsedArgs);
+			}
 		} else {
 			// page scope：交给页面执行器
 			if (typeof ctx.pageEval !== "function") {

@@ -23,8 +23,23 @@ const argsTemplate={
 			"defaultValue":"",
 			"desc":"",
 		},
+		"multiSelect":{
+			"name":"multiSelect","type":"bool",
+			"defaultValue":false,
+			"desc":"",
+		},
 		"rulePath":{
 			"name":"rulePath","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"cacheMode":{
+			"name":"cacheMode","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		},
+		"opts":{
+			"name":"opts","type":"auto",
 			"defaultValue":"",
 			"desc":"",
 		}
@@ -37,14 +52,18 @@ const argsTemplate={
 /*}#1JF9IR9640StartDoc*/
 //----------------------------------------------------------------------------
 let Util_QuerySelector=async function(session){
-	let pageRef,query,rulePath;
+	let pageRef,query,multiSelect,rulePath,cacheMode,opts;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,ReadRule,CheckSkip,FinSkip,LoopSelectors,QueryRule,BreakFind,CheckFind,FindSelector,CheckSelector,FailSelector,FinDone,SaveRule;
+	let StartRpa,ReadRule,CheckSkip,FinCacheStatus,LoopSelectors,QueryRule,BreakFind,CheckFind,FindSelector,CheckSelector,FinDone,SaveSelector,AskSaveStatus,SaveStatusCache,FinStatus,ShowPage,Back2App;
+	let ruleStub=undefined;
 	let ruleSelectors=undefined;
+	let looseRule=false;
 	let curRuleSelector="";
 	let checkedSelector="";
+	let ctxOpts=undefined;
+	let ruleSigKey="";
 	
 	/*#{1JF9IR9640LocalVals*/
 	/*}#1JF9IR9640LocalVals*/
@@ -53,13 +72,21 @@ let Util_QuerySelector=async function(session){
 		if(typeof(input)=='object'){
 			pageRef=input.pageRef;
 			query=input.query;
+			multiSelect=input.multiSelect;
 			rulePath=input.rulePath;
+			cacheMode=input.cacheMode;
+			opts=input.opts;
 		}else{
 			pageRef=undefined;
 			query=undefined;
+			multiSelect=undefined;
 			rulePath=undefined;
+			cacheMode=undefined;
+			opts=undefined;
 		}
 		/*#{1JF9IR9640ParseArgs*/
+		ctxOpts=opts;
+		cacheMode=cacheMode||"Array";
 		/*}#1JF9IR9640ParseArgs*/
 	}
 	
@@ -77,31 +104,51 @@ let Util_QuerySelector=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
+		/*#{1JF9ISD5T0PreCodes*/
+		if(false){
+			let $channel="Process";
+			let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+			let role="assistant";
+			let content=`Util_QuerySelector: [StartRpa]: ${query}`;
+			session.addChatText(role,content,opts);
+		}
+		/*}#1JF9ISD5T0PreCodes*/
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JF9ISD5T0"));
 				if($alias){
 					let $headless=false;
 					let $devtools=false;
 					let options={$headless:false,$devtools:false,autoDataDir:false};
 					let $browser=null;
+					/*#{1JF9ISD5T0PreBrowser*/
+					/*}#1JF9ISD5T0PreBrowser*/
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+					/*#{1JF9ISD5T0PostBrowser*/
+					/*}#1JF9ISD5T0PostBrowser*/
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
+						/*#{1JF9ISD5T0PrePage*/
+						/*}#1JF9ISD5T0PrePage*/
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
+						/*#{1JF9ISD5T0PostPage*/
+						/*}#1JF9ISD5T0PostPage*/
 					}
 				}
 			}
@@ -109,6 +156,8 @@ let Util_QuerySelector=async function(session){
 		}catch(error){
 			throw error;
 		}
+		/*#{1JF9ISD5T0PostCodes*/
+		/*}#1JF9ISD5T0PostCodes*/
 		return {seg:ReadRule,result:(result),preSeg:"1JF9ISD5T0",outlet:"1JF9ISD5T3"};
 	};
 	StartRpa.jaxId="1JF9ISD5T0"
@@ -118,7 +167,7 @@ let Util_QuerySelector=async function(session){
 		let result=input;
 		/*#{1JF9IT8CG0Start*/
 		let rule;
-		rule=await readRule(session,context.aaPage,rulePath);
+		rule=await readRule(session,context.aaPage,rulePath,{loose:true,query:query,withSigKey:true});
 		/*}#1JF9IT8CG0Start*/
 		if(rule){
 			let output=rule;
@@ -134,14 +183,21 @@ let Util_QuerySelector=async function(session){
 	segs["CheckSkip"]=CheckSkip=async function(input){//:1JF9IU0260
 		let result=input;
 		/*#{1JF9IU0260Start*/
-		if(typeof(input)==="string"){
-			ruleSelectors=[input];
-		}else if(Array.isArray(input)){
-			ruleSelectors=[...input].reverse();;
+		let value;
+		ruleStub=input.value?input:null;
+		value=input?.value;
+		looseRule=input?.loose||false;
+		if(typeof(value)==="string"){
+			ruleSelectors=[value];
+		}else if(Array.isArray(value)){
+			ruleSelectors=value;
 		}
 		/*}#1JF9IU0260Start*/
-		if(input==="skip"){
-			return {seg:FinSkip,result:(input),preSeg:"1JF9IU0260",outlet:"1JF9IU0264"};
+		if(input==="skipped"){
+			return {seg:FinCacheStatus,result:(input),preSeg:"1JF9IU0260",outlet:"1JF9IU0264"};
+		}
+		if(input==="failed"){
+			return {seg:FinCacheStatus,result:(input),preSeg:"1JF9IU0260",outlet:"1JFH6H2H60"};
 		}
 		if(ruleSelectors){
 			return {seg:LoopSelectors,result:(input),preSeg:"1JF9IU0260",outlet:"1JFDAOTIF0"};
@@ -153,10 +209,11 @@ let Util_QuerySelector=async function(session){
 	CheckSkip.jaxId="1JF9IU0260"
 	CheckSkip.url="CheckSkip@"+agentURL
 	
-	segs["FinSkip"]=FinSkip=async function(input){//:1JF9IUAK60
+	segs["FinCacheStatus"]=FinCacheStatus=async function(input){//:1JF9IUAK60
 		let result=input
 		try{
 			/*#{1JF9IUAK60Code*/
+			result={status:input,result:input};
 			/*}#1JF9IUAK60Code*/
 		}catch(error){
 			/*#{1JF9IUAK60ErrorCode*/
@@ -164,8 +221,8 @@ let Util_QuerySelector=async function(session){
 		}
 		return {result:result};
 	};
-	FinSkip.jaxId="1JF9IUAK60"
-	FinSkip.url="FinSkip@"+agentURL
+	FinCacheStatus.jaxId="1JF9IUAK60"
+	FinCacheStatus.url="FinCacheStatus@"+agentURL
 	
 	segs["LoopSelectors"]=LoopSelectors=async function(input){//:1JF9IUNK00
 		let result=input;
@@ -196,6 +253,7 @@ let Util_QuerySelector=async function(session){
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1JF9J0OB91PreCodes*/
+		let sigKey;
 		curRuleSelector=input;
 		/*}#1JF9J0OB91PreCodes*/
 		try{
@@ -208,6 +266,13 @@ let Util_QuerySelector=async function(session){
 				throw "Querry not found";
 			}
 			/*#{1JF9J0OB91CheckItem*/
+			if(ruleSigKey){
+				let sigKey;
+				sigKey=await context.webRpa.computeSigKeyForSelector(page,$query);
+				if(sigKey!==ruleSigKey){
+					console.log(`Mismatch sigKey: "${ruleSigKey}" vs "${sigKey}"`);
+				}
+			}
 			/*}#1JF9J0OB91CheckItem*/
 			$waitAfter && (await sleep($waitAfter))
 		}catch(error){
@@ -239,8 +304,16 @@ let Util_QuerySelector=async function(session){
 	
 	segs["CheckFind"]=CheckFind=async function(input){//:1JF9J1PGL0
 		let result=input;
-		if(checkedSelector){
+		if(checkedSelector && !looseRule){
+			/*#{1JF9J1PGL4Codes*/
+			/*}#1JF9J1PGL4Codes*/
 			return {seg:FinDone,result:(input),preSeg:"1JF9J1PGL0",outlet:"1JF9J1PGL4"};
+		}
+		if(checkedSelector){
+			let output={selector:checkedSelector,sigKey:ruleStub.sigKey};
+			/*#{1JFPLFCS80Codes*/
+			/*}#1JFPLFCS80Codes*/
+			return {seg:SaveSelector,result:(output),preSeg:"1JF9J1PGL0",outlet:"1JFPLFCS80"};
 		}
 		return {seg:FindSelector,result:(result),preSeg:"1JF9J1PGL0",outlet:"1JF9J1PGL3"};
 	};
@@ -249,10 +322,10 @@ let Util_QuerySelector=async function(session){
 	
 	segs["FindSelector"]=FindSelector=async function(input){//:1JF9J2J820
 		let result;
-		let arg=input;
+		let arg={"pageRef":pageRef,"url":"","profile":"","selectDesc":query,"multiSelect":multiSelect,"useManual":ctxOpts.useManual,"allowManual":ctxOpts.allowManual};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
-		let sourcePath=pathLib.join(basePath,"");
+		let sourcePath=pathLib.join(basePath,"./Util_FindSelector.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		return {seg:CheckSelector,result:(result),preSeg:"1JF9J2J820",outlet:"1JF9J2J830"};
@@ -262,32 +335,27 @@ let Util_QuerySelector=async function(session){
 	
 	segs["CheckSelector"]=CheckSelector=async function(input){//:1JF9J31E70
 		let result=input;
-		if(input==="Selector"){
-			return {seg:SaveRule,result:(input),preSeg:"1JF9J31E70",outlet:"1JF9J31E80"};
+		/*#{1JF9J31E70Start*/
+		await sleep(500);
+		/*}#1JF9J31E70Start*/
+		if(input?.selector){
+			return {seg:SaveSelector,result:(input),preSeg:"1JF9J31E70",outlet:"1JF9J31E80"};
 		}
-		return {seg:FailSelector,result:(result),preSeg:"1JF9J31E70",outlet:"1JF9J31E73"};
+		if(input.status && input.status.toLowerCase()==="skipped"){
+			return {seg:ShowPage,result:(input),preSeg:"1JF9J31E70",outlet:"1JFEEA7I80"};
+		}
+		/*#{1JF9J31E70Post*/
+		/*}#1JF9J31E70Post*/
+		return {seg:ShowPage,result:(result),preSeg:"1JF9J31E70",outlet:"1JF9J31E73"};
 	};
 	CheckSelector.jaxId="1JF9J31E70"
 	CheckSelector.url="CheckSelector@"+agentURL
-	
-	segs["FailSelector"]=FailSelector=async function(input){//:1JF9J3L100
-		let result=input
-		try{
-			/*#{1JF9J3L100Code*/
-			/*}#1JF9J3L100Code*/
-		}catch(error){
-			/*#{1JF9J3L100ErrorCode*/
-			/*}#1JF9J3L100ErrorCode*/
-		}
-		return {result:result};
-	};
-	FailSelector.jaxId="1JF9J3L100"
-	FailSelector.url="FailSelector@"+agentURL
 	
 	segs["FinDone"]=FinDone=async function(input){//:1JF9J40NV0
 		let result=input
 		try{
 			/*#{1JF9J40NV0Code*/
+			result={status:"done",result:"done",value:checkedSelector,selector:checkedSelector};
 			/*}#1JF9J40NV0Code*/
 		}catch(error){
 			/*#{1JF9J40NV0ErrorCode*/
@@ -298,10 +366,30 @@ let Util_QuerySelector=async function(session){
 	FinDone.jaxId="1JF9J40NV0"
 	FinDone.url="FinDone@"+agentURL
 	
-	segs["SaveRule"]=SaveRule=async function(input){//:1JF9J5R210
+	segs["SaveSelector"]=SaveSelector=async function(input){//:1JF9J5R210
 		let result=input
 		try{
 			/*#{1JF9J5R210Code*/
+			let rule,idx,sigKey;
+			checkedSelector=input.selector;
+			sigKey=input.sigKey||null;
+			rule=await readRule(session,context.aaPage,rulePath);
+			if(!rule){
+				rule=[];
+			}
+			if(Array.isArray(rule)){
+				idx=rule.indexOf(checkedSelector);
+				if(idx>=0){
+					rule.splice(idx,1);
+				}
+				rule.unshift(checkedSelector);
+				if(rule.length>10){
+					rule=rule.slice(0,10);
+				}
+			}else{
+				rule=checkedSelector;
+			}
+			await saveRule(session,context.aaPage,rulePath,rule,query,sigKey);
 			/*}#1JF9J5R210Code*/
 		}catch(error){
 			/*#{1JF9J5R210ErrorCode*/
@@ -309,8 +397,113 @@ let Util_QuerySelector=async function(session){
 		}
 		return {seg:FinDone,result:(result),preSeg:"1JF9J5R210",outlet:"1JF9J72R00"};
 	};
-	SaveRule.jaxId="1JF9J5R210"
-	SaveRule.url="SaveRule@"+agentURL
+	SaveSelector.jaxId="1JF9J5R210"
+	SaveSelector.url="SaveSelector@"+agentURL
+	
+	segs["AskSaveStatus"]=AskSaveStatus=async function(input){//:1JFH5OO1N0
+		let result=input;
+		/*#{1JFH5OO1N0Start*/
+		let webRpa,page,res;
+		if(ctxOpts.useManual){
+			webRpa=context.webRpa;
+			page=context.aaPage;
+			res=await webRpa.inPagePrompt(
+				page,`是否记住（缓存）这个结果，以后在当前页面配置下，都返回"${input.status}"状态？`,
+				{
+					menu:[
+						{text:"💾: 记住步骤结果。",code:true},
+						{text:"❌: 不缓存步骤结果",code:false},
+					]
+				}
+			);
+		}else{
+			res=false;
+		}
+		/*}#1JFH5OO1N0Start*/
+		if(!!res){
+			return {seg:SaveStatusCache,result:(input),preSeg:"1JFH5OO1N0",outlet:"1JFH5OO1N4"};
+		}
+		/*#{1JFH5OO1N0Post*/
+		/*}#1JFH5OO1N0Post*/
+		return {seg:Back2App,result:(result),preSeg:"1JFH5OO1N0",outlet:"1JFH5OO1N3"};
+	};
+	AskSaveStatus.jaxId="1JFH5OO1N0"
+	AskSaveStatus.url="AskSaveStatus@"+agentURL
+	
+	segs["SaveStatusCache"]=SaveStatusCache=async function(input){//:1JFEEB4OQ0
+		let result=input
+		try{
+			/*#{1JFEEB4OQ0Code*/
+			await saveRule(session,context.aaPage,rulePath,input?.status||"skipped",query);
+			/*}#1JFEEB4OQ0Code*/
+		}catch(error){
+			/*#{1JFEEB4OQ0ErrorCode*/
+			/*}#1JFEEB4OQ0ErrorCode*/
+		}
+		return {seg:Back2App,result:(result),preSeg:"1JFEEB4OQ0",outlet:"1JFEECN9D0"};
+	};
+	SaveStatusCache.jaxId="1JFEEB4OQ0"
+	SaveStatusCache.url="SaveStatusCache@"+agentURL
+	
+	segs["FinStatus"]=FinStatus=async function(input){//:1JF9J3L100
+		let result=input
+		try{
+			/*#{1JF9J3L100Code*/
+			/*}#1JF9J3L100Code*/
+		}catch(error){
+			/*#{1JF9J3L100ErrorCode*/
+			/*}#1JF9J3L100ErrorCode*/
+		}
+		return {result:result};
+	};
+	FinStatus.jaxId="1JF9J3L100"
+	FinStatus.url="FinStatus@"+agentURL
+	
+	segs["ShowPage"]=ShowPage=async function(input){//:1JFHIL3VV0
+		let result=input;
+		let pageVal="aaPage";
+		let waitBefore=0;
+		let waitAfter=0;
+		let $options={"focusBrowser":true,"switchBack":0};
+		let page=context[pageVal];
+		waitBefore && (await sleep(waitBefore));
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JFHIL3VV0ErrorCode*/
+			/*}#1JFHIL3VV0ErrorCode*/
+		}
+		return {seg:AskSaveStatus,result:(result),preSeg:"1JFHIL3VV0",outlet:"1JFHIMJMH0"};
+	};
+	ShowPage.jaxId="1JFHIL3VV0"
+	ShowPage.url="ShowPage@"+agentURL
+	
+	segs["Back2App"]=Back2App=async function(input){//:1JFHIN2P50
+		let result=input;
+		let waitBefore=0;
+		let waitAfter=0;
+		let browser=context.rpaBrowser;
+		waitBefore && (await sleep(waitBefore));
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JFHIN2P50ErrorCode*/
+			/*}#1JFHIN2P50ErrorCode*/
+		}
+		return {seg:FinStatus,result:(result),preSeg:"1JFHIN2P50",outlet:"1JFHINDB80"};
+	};
+	Back2App.jaxId="1JFHIN2P50"
+	Back2App.url="Back2App@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -321,7 +514,7 @@ let Util_QuerySelector=async function(session){
 		jaxId:"1JF9IR9640",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{pageRef,query,rulePath}*/){
+		execChat:async function(input/*{pageRef,query,multiSelect,rulePath,cacheMode,opts}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JF9IR9640PreEntry*/
@@ -351,7 +544,10 @@ let ChatAPI=[{
 			properties:{
 				pageRef:{type:"auto",description:""},
 				query:{type:"auto",description:""},
-				rulePath:{type:"auto",description:""}
+				multiSelect:{type:"bool",description:""},
+				rulePath:{type:"auto",description:""},
+				cacheMode:{type:"auto",description:""},
+				opts:{type:"auto",description:""}
 			}
 		}
 	},
@@ -432,10 +628,40 @@ export{Util_QuerySelector,ChatAPI};
 //						"desc": ""
 //					}
 //				},
+//				"multiSelect": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JFEEURN60",
+//					"attrs": {
+//						"type": "Boolean",
+//						"mockup": "false",
+//						"desc": ""
+//					}
+//				},
 //				"rulePath": {
 //					"type": "object",
 //					"def": "AgentCallArgument",
 //					"jaxId": "1JF9JA1442",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"cacheMode": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JG2F1VP50",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"opts": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JFEE22O90",
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",
@@ -447,15 +673,31 @@ export{Util_QuerySelector,ChatAPI};
 //		"localVars": {
 //			"jaxId": "1JF9IR9644",
 //			"attrs": {
+//				"ruleStub": {
+//					"type": "auto",
+//					"valText": ""
+//				},
 //				"ruleSelectors": {
 //					"type": "auto",
 //					"valText": ""
+//				},
+//				"looseRule": {
+//					"type": "bool",
+//					"valText": "false"
 //				},
 //				"curRuleSelector": {
 //					"type": "string",
 //					"valText": ""
 //				},
 //				"checkedSelector": {
+//					"type": "string",
+//					"valText": ""
+//				},
+//				"ctxOpts": {
+//					"type": "auto",
+//					"valText": ""
+//				},
+//				"ruleSigKey": {
 //					"type": "string",
 //					"valText": ""
 //				}
@@ -482,7 +724,7 @@ export{Util_QuerySelector,ChatAPI};
 //						"x": "105",
 //						"y": "335",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -534,6 +776,7 @@ export{Util_QuerySelector,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -619,7 +862,7 @@ export{Util_QuerySelector,ChatAPI};
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
+//						"segMark": "lab.svg",
 //						"context": {
 //							"jaxId": "1JF9IU0261",
 //							"attrs": {
@@ -664,7 +907,32 @@ export{Util_QuerySelector,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#input===\"skip\""
+//										"condition": "#input===\"skipped\""
+//									},
+//									"linkedSeg": "1JF9IUAK60"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFH6H2H60",
+//									"attrs": {
+//										"id": "Fail",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFH6H2HD0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFH6H2HD1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input===\"failed\""
 //									},
 //									"linkedSeg": "1JF9IUAK60"
 //								},
@@ -704,14 +972,14 @@ export{Util_QuerySelector,ChatAPI};
 //					"def": "code",
 //					"jaxId": "1JF9IUAK60",
 //					"attrs": {
-//						"id": "FinSkip",
+//						"id": "FinCacheStatus",
 //						"viewName": "",
 //						"label": "",
-//						"x": "840",
-//						"y": "160",
+//						"x": "845",
+//						"y": "215",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
+//						"segMark": "flag.svg",
 //						"context": {
 //							"jaxId": "1JF9IUAK61",
 //							"attrs": {
@@ -930,7 +1198,7 @@ export{Util_QuerySelector,ChatAPI};
 //										"id": "Find",
 //										"desc": "输出节点。",
 //										"output": "",
-//										"codes": "false",
+//										"codes": "true",
 //										"context": {
 //											"jaxId": "1JF9J1PGL5",
 //											"attrs": {
@@ -943,9 +1211,34 @@ export{Util_QuerySelector,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#checkedSelector"
+//										"condition": "#checkedSelector && !looseRule"
 //									},
 //									"linkedSeg": "1JF9J40NV0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFPLFCS80",
+//									"attrs": {
+//										"id": "Loose",
+//										"desc": "输出节点。",
+//										"output": "#{selector:checkedSelector,sigKey:ruleStub.sigKey}",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JFPLGSNP0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFPLGSNP1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#checkedSelector"
+//									},
+//									"linkedSeg": "1JF9J5R210"
 //								}
 //							]
 //						}
@@ -962,11 +1255,11 @@ export{Util_QuerySelector,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1405",
-//						"y": "575",
+//						"y": "550",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
+//						"segMark": "lab.svg",
 //						"context": {
 //							"jaxId": "1JF9J2J821",
 //							"attrs": {
@@ -979,8 +1272,8 @@ export{Util_QuerySelector,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"source": "",
-//						"argument": "#{}#>input",
+//						"source": "ai/Util_FindSelector.js",
+//						"argument": "{\"pageRef\":\"#pageRef\",\"url\":\"\",\"profile\":\"\",\"selectDesc\":\"#query\",\"multiSelect\":\"#multiSelect\",\"useManual\":\"#ctxOpts.useManual\",\"allowManual\":\"#ctxOpts.allowManual\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JF9J2J830",
@@ -1004,12 +1297,12 @@ export{Util_QuerySelector,ChatAPI};
 //						"id": "CheckSelector",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1650",
-//						"y": "575",
+//						"x": "1670",
+//						"y": "550",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
+//						"segMark": "lab.svg",
 //						"context": {
 //							"jaxId": "1JF9J31E71",
 //							"attrs": {
@@ -1029,7 +1322,7 @@ export{Util_QuerySelector,ChatAPI};
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JF9J3L100"
+//							"linkedSeg": "1JFHIL3VV0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -1054,9 +1347,34 @@ export{Util_QuerySelector,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": ""
+//										"condition": "#input?.selector"
 //									},
 //									"linkedSeg": "1JF9J5R210"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFEEA7I80",
+//									"attrs": {
+//										"id": "Skipped",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFEECN9L0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFEECN9L1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.status && input.status.toLowerCase()===\"skipped\""
+//									},
+//									"linkedSeg": "1JFHIL3VV0"
 //								}
 //							]
 //						}
@@ -1067,53 +1385,13 @@ export{Util_QuerySelector,ChatAPI};
 //				{
 //					"type": "aiseg",
 //					"def": "code",
-//					"jaxId": "1JF9J3L100",
-//					"attrs": {
-//						"id": "FailSelector",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1930",
-//						"y": "655",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
-//						"context": {
-//							"jaxId": "1JF9J3L101",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JF9J3L102",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JF9J3L103",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"errorSeg": ""
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
 //					"jaxId": "1JF9J40NV0",
 //					"attrs": {
 //						"id": "FinDone",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2180",
-//						"y": "460",
+//						"x": "2195",
+//						"y": "445",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",
@@ -1152,7 +1430,7 @@ export{Util_QuerySelector,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "590",
-//						"y": "575",
+//						"y": "550",
 //						"outlet": {
 //							"jaxId": "1JF9J72R22",
 //							"attrs": {
@@ -1171,14 +1449,14 @@ export{Util_QuerySelector,ChatAPI};
 //					"def": "code",
 //					"jaxId": "1JF9J5R210",
 //					"attrs": {
-//						"id": "SaveRule",
+//						"id": "SaveSelector",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1930",
-//						"y": "560",
+//						"x": "1940",
+//						"y": "475",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
+//						"segMark": "lab.svg",
 //						"context": {
 //							"jaxId": "1JF9J72R23",
 //							"attrs": {
@@ -1215,7 +1493,7 @@ export{Util_QuerySelector,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "850",
-//						"y": "575",
+//						"y": "550",
 //						"outlet": {
 //							"jaxId": "1JFDAQ8SI2",
 //							"attrs": {
@@ -1228,6 +1506,238 @@ export{Util_QuerySelector,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JFH5OO1N0",
+//					"attrs": {
+//						"id": "AskSaveStatus",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2195",
+//						"y": "590",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1JFH5OO1N1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFH5OO1N2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JFH5OO1N3",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JFHIN2P50"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JFH5OO1N4",
+//									"attrs": {
+//										"id": "Cache",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JFH5OO1N5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JFH5OO1N6",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#!!res"
+//									},
+//									"linkedSeg": "1JFEEB4OQ0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JFEEB4OQ0",
+//					"attrs": {
+//						"id": "SaveStatusCache",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2460",
+//						"y": "535",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JFEECN9L2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFEECN9L3",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JFEECN9D0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFHIN2P50"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JF9J3L100",
+//					"attrs": {
+//						"id": "FinStatus",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2975",
+//						"y": "605",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "working.svg",
+//						"context": {
+//							"jaxId": "1JF9J3L101",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JF9J3L102",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JF9J3L103",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaActivePage",
+//					"jaxId": "1JFHIL3VV0",
+//					"attrs": {
+//						"id": "ShowPage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1935",
+//						"y": "590",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JFHIPPM70",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFHIPPM71",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "aaPage",
+//						"options": "{\"focusBrowser\":true,\"switchBack\":0}",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1JFHIMJMH0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JFH5OO1N0"
+//						},
+//						"errorSeg": "",
+//						"run": ""
+//					},
+//					"icon": "/@aae/assets/tab_tap.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaBackToApp",
+//					"jaxId": "1JFHIN2P50",
+//					"attrs": {
+//						"id": "Back2App",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2740",
+//						"y": "605",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JFHIPPM72",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JFHIPPM73",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"errorSeg": "",
+//						"outlet": {
+//							"jaxId": "1JFHINDB80",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JF9J3L100"
+//						}
+//					},
+//					"icon": "/@tabos/shared/assets/aalogo.svg"
 //				}
 //			]
 //		},

@@ -50,7 +50,7 @@ let CaRpa_GenCompose=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,OnAction,LoadFlow,CheckFlow,FailFlowError2,HasParent,FailFlowError1,RunFlow;
+	let StartRpa,OnAction,LoadFlow,CheckFlow,FailFlowError2,HasParent,FailFlowError1,RunFlow,FinOrFail;
 	let composeType="";
 	let flow=undefined;
 	let args=undefined;
@@ -94,17 +94,20 @@ let CaRpa_GenCompose=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JF1LRNS90"));
 				if($alias){
 					let $headless=false;
@@ -113,9 +116,9 @@ let CaRpa_GenCompose=async function(session){
 					let $browser=null;
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
@@ -160,11 +163,12 @@ let CaRpa_GenCompose=async function(session){
 		}
 		/*}#1JFAJGUTO0Start*/
 		if(!!$flow && $flow.steps && $flow.id){
+			let output=flow;
 			/*#{1JFAJI0RB0Codes*/
 			flow=$flow;
 			args={...compose};
 			/*}#1JFAJI0RB0Codes*/
-			return {seg:RunFlow,result:(input),preSeg:"1JFAJGUTO0",outlet:"1JFAJI0RB0"};
+			return {seg:RunFlow,result:(output),preSeg:"1JFAJGUTO0",outlet:"1JFAJI0RB0"};
 		}
 		/*#{1JFAJGUTO0Post*/
 		/*}#1JFAJGUTO0Post*/
@@ -242,10 +246,29 @@ let CaRpa_GenCompose=async function(session){
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1JF9JQ6GG0Output*/
 		/*}#1JF9JQ6GG0Output*/
-		return {result:result};
+		return {seg:FinOrFail,result:(result),preSeg:"1JF9JQ6GG0",outlet:"1JF9JQAAS0"};
 	};
 	RunFlow.jaxId="1JF9JQ6GG0"
 	RunFlow.url="RunFlow@"+agentURL
+	
+	segs["FinOrFail"]=FinOrFail=async function(input){//:1JG3G7P8U0
+		let result=input
+		try{
+			/*#{1JG3G7P8U0Code*/
+			let action;
+			action=compose?.action;
+			if(action){
+				result.action=action;
+			}
+			/*}#1JG3G7P8U0Code*/
+		}catch(error){
+			/*#{1JG3G7P8U0ErrorCode*/
+			/*}#1JG3G7P8U0ErrorCode*/
+		}
+		return {result:result};
+	};
+	FinOrFail.jaxId="1JG3G7P8U0"
+	FinOrFail.url="FinOrFail@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -292,7 +315,11 @@ let ChatAPI=[{
 			}
 		}
 	},
-	isChatApi: true
+	isChatApi: true,
+	kind: "rpa",
+	capabilities: ["compose.publish"],
+	filters: [{"key":"domain","value":"*"}],
+	metrics: {"quality":"","costPerCall":"","costPer1M":"","speed":"","size":""}
 }];
 //#CodyExport<<<
 /*#{1JF1LRBT00PostDoc*/
@@ -499,6 +526,7 @@ export{CaRpa_GenCompose,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -615,7 +643,7 @@ export{CaRpa_GenCompose,ChatAPI};
 //									"attrs": {
 //										"id": "Flow",
 //										"desc": "输出节点。",
-//										"output": "",
+//										"output": "#flow",
 //										"codes": "true",
 //										"context": {
 //											"jaxId": "1JFAJI0RG2",
@@ -889,19 +917,60 @@ export{CaRpa_GenCompose,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JG3G7P8U0"
 //						},
 //						"outlets": {
 //							"attrs": []
 //						}
 //					},
 //					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JG3G7P8U0",
+//					"attrs": {
+//						"id": "FinOrFail",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1365",
+//						"y": "435",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JG3G8DNE0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JG3G8DNE1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JG3G8DND0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
 //				}
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
 //		"exportAPI": "true",
 //		"exportAddOn": "false",
-//		"addOnOpts": ""
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"\",\"chatEntry\":false,\"isChatApi\":1,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\",\"kind\":\"rpa\",\"capabilities\":[\"compose.publish\"],\"filters\":[{\"key\":\"domain\",\"value\":\"*\"}],\"metrics\":{\"quality\":\"\",\"costPerCall\":\"\",\"costPer1M\":\"\",\"speed\":\"\",\"size\":\"\"},\"meta\":\"\"}"
 //	}
 //}

@@ -167,11 +167,18 @@ let aaLogoIcon=null;
 //WebRpa:
 //***************************************************************************
 let WebRpa,webRpa;
-WebRpa=function(session){
+WebRpa=function(session,opts){
 	this.session=session;
 	this.agentNode=session.agentNode;
 	this.version=WebRpa_Version;
 	this.aiQuery=null;
+	this.options=opts||{};
+	
+	this.browser=null;
+	this.allowMultiBrowsers=!!this.options.allowMultiBrowsers;
+	this.autoCurrentPage=this.options.autoCurrentPage!==false;
+	this.sessionPages=[];
+	this.currentPage=null;
 	
 	//We only need set this once:
 	if(!this.agentNode.WSMsg_WebDriveBrowserClosed){
@@ -258,17 +265,80 @@ webRpa.listBrowserAndPages=async function(){
 };//TODO: Port this:
 
 //---------------------------------------------------------------------------
+webRpa.getPageByContextId=function(context){
+	let page;
+	for(page of this.sessionPages){
+		if(page.context===context){
+			return page;
+		}
+	}
+	return null;
+};
+
+//---------------------------------------------------------------------------
 webRpa.openBrowser=async function(alias,opts){
+	let self=this;
 	let browser=await openBrowser(this.session,alias,opts);
+	if(this.browser && browser!==this.browser && !this.allowMultiBrowsers){
+		throw Error("WebRpa.openBrowser ERROR: webRpa already binded with browser.");
+	}
 	if(browser){
 		browser.aaeRefcount=browser.aaeRefcount?browser.aaeRefcount+1:1;
 	}
 	browser.aaWebRpa=this;
+	if(!this.browser) {
+		this.browser = browser;
+	}
+	
+	let waitFunc=async (message)=>{
+		let pages,context,call,page;
+		let parent,opener;
+		context=message.context;
+		
+		if(this.getPageByContextId(context)){
+			//Already in pages, do nothing...
+			return;
+		}
+		if(this.getPageByContextId(message.parent)||this.getPageByContextId(message.originalOpener)){
+			pages = await browser.getPages();
+			page = pages.find((page) => {return page.context === context});
+			if(page){
+				this.sessionPages.push(page);
+				if(!this.currentPage || this.autoCurrentPage){
+					this.currentPage=page;
+				}
+			}
+		}
+	}
+	this.traceOpen=waitFunc;
+	browser.on("browsingContext.contextCreated",waitFunc);
+
+	waitFunc=(message)=>{
+		let context,page,pages,i,n;
+		context=message.context;
+		pages=this.sessionPages;
+		n=pages.length;
+		for(i=0;i<n;i++){
+			page=pages[i];
+			if(page.context===context){
+				pages.splice(i,1);
+				if(page===this.currentPage){
+					this.currentPage=pages[pages.length-1]||null;
+				}
+				break;
+			}
+		}
+	};
+	this.traceClose=waitFunc;
+	browser.on("browsingContext.contextDestroyed",waitFunc);
 	return browser;
 };
 
 //---------------------------------------------------------------------------
 webRpa.closeBrowser=async function(browser){
+	if(browser!==this.browser){
+		return;
+	}
 	await this.agentNode.callHub("WebDriveCloseBrowser",{alias:browser.alias});
 }
 
@@ -288,6 +358,12 @@ webRpa.getPageByTitle=async function(browser,title){
 webRpa.openPage=async function(browser){
 	let page;
 	page = await browser.newPage();
+	if(!this.getPageByContextId(page.context)) {
+		this.sessionPages.push(page)
+		if (!this.currentPage || this.autoCurrentPage) {
+			this.currentPage=page;
+		}
+	}
 	return page;
 };
 
@@ -295,6 +371,17 @@ webRpa.openPage=async function(browser){
 webRpa.closePage=async function(page){
 	await page.close();
 };
+
+//---------------------------------------------------------------------------
+webRpa.setCurrentPage=function(page){
+	let idx;
+	idx=this.sessionPages.indexOf(page);
+	if(idx<0){
+		this.sessionPages.push(page);
+	}
+	this.currentPage=page;
+	return page;
+}
 
 //---------------------------------------------------------------------------
 webRpa.saveFile=async function(browser,fileName,data){
@@ -456,7 +543,56 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 		},[codeTag,node,selector,opts]);
 		return result;
 	};
-
+	
+	//-----------------------------------------------------------------------
+	webRpa.queryNodeInPages=async function(pageFrame,node,selector,scope,opts){
+		let codeTag,result,pages,i,n,find,page,resultPage;
+		if(pageFrame){
+			if(Array.isArray(pageFrame)){
+				pages=pageFrame;
+			}else {
+				pages = [pageFrame];
+			}
+		}else{
+			switch(scope){
+				case "newest":{
+					pages=[this.sessionPages[this.sessionPages.length-1]];
+					break;
+				}
+				case "any":{
+					pages=this.sessionPages;
+					break;
+				}
+				default:{
+					pages=[this.currentPage];
+					break;
+				}
+			}
+		}
+		n=pages.length;
+		result=null;
+		resultPage=null;
+		for(i=0;i<n;i++){
+			page=pages[i];
+			codeTag=await ensureCodeLib(page);
+			find=await page.callFunction((codeTag,node,selector,opts)=>{
+				let codeLib=globalThis[codeTag];
+				return codeLib.queryNode(node,selector,opts);
+			},[codeTag,node,selector,opts]);
+			if(find){
+				resultPage=page;
+				result=find;
+				if(page===this.currentPage){
+					break;
+				}
+			}
+		}
+		if(result) {
+			return { page: resultPage, node: result };
+		}
+		return null;
+	};
+	
 	//-----------------------------------------------------------------------
 	//TODO: Maybe use default $$() to get node
 	WebRpa.queryNodes=
@@ -469,13 +605,61 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 		},[codeTag,node,selector,opts]);
 		return result;
 	};
-
+	
+	//-----------------------------------------------------------------------
+	webRpa.queryNodesInPages=async function(pageFrame,node,selector,scope,opts){
+		let codeTag,result,pages,i,n,find,page,resultPage;
+		if(pageFrame){
+			if(Array.isArray(pageFrame)){
+				pages=pageFrame;
+			}else {
+				pages = [pageFrame];
+			}
+		}else{
+			switch(scope){
+				case "newest":{
+					pages=[this.sessionPages[this.sessionPages.length-1]];
+					break;
+				}
+				case "any":{
+					pages=this.sessionPages;
+					break;
+				}
+				default:{
+					pages=[this.currentPage];
+					break;
+				}
+			}
+		}
+		n=pages.length;
+		result=null;
+		resultPage=null;
+		for(i=0;i<n;i++){
+			page=pages[i];
+			codeTag=await ensureCodeLib(page);
+			find=await page.callFunction((codeTag,node,selector,opts)=>{
+				let codeLib=globalThis[codeTag];
+				return codeLib.queryNodes(node,selector,opts);
+			},[codeTag,node,selector,opts]);
+			if(find && find.length>0){
+				resultPage=page;
+				result=find;
+				if(page===this.currentPage){
+					break;
+				}
+			}
+		}
+		if(result) {
+			return { page: resultPage, nodes: result };
+		}
+		return null;
+	};
+	
 	//-----------------------------------------------------------------------
 	//TODO: Maybe use default $() to get node.
 	webRpa.waitQuery=async function(pageFrame,selector,opts){
 		let codeTag,startTime,node,timeout;
 		timeout=opts.timeout||0;
-		codeTag=await ensureCodeLib(pageFrame);
 		node=opts.aaeId||opts.AAEId||opts.root;
 		startTime=Date.now();
 		do{
@@ -491,6 +675,71 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 				return null;
 			}
 		}while(1);
+	}
+	
+	//-----------------------------------------------------------------------
+	webRpa.waitQueryInPages=async function(pageFrame,selector,scope,opts){
+		let codeTag,startTime,node,timeout,pages,i,n,find,page,result,resultPage;
+		timeout=opts.timeout||0;
+		node=opts.aaeId||opts.AAEId||opts.root;
+		startTime=Date.now();
+		if(pageFrame){
+			if(Array.isArray(pageFrame)){
+				pages=pageFrame;
+			}else {
+				pages = [pageFrame];
+			}
+		}else{
+			switch(scope){
+				case "newest":{
+					pages=[this.sessionPages[this.sessionPages.length-1]];
+					break;
+				}
+				case "any":{
+					pages=this.sessionPages;
+					break;
+				}
+				default:{
+					pages=[this.currentPage];
+					break;
+				}
+			}
+		}
+		codeTag=await ensureCodeLib(pageFrame);
+		FindNode:{
+			do {
+				result=null;
+				resultPage=null;
+				n = pages.length;
+				for (i = 0; i < n; i++) {
+					page=pages[i];
+					codeTag = await ensureCodeLib(page);
+					node = await page.callFunction((codeTag, node, selector, opts) => {
+						let codeLib = globalThis[codeTag];
+						return codeLib.queryNode(node, selector, opts);
+					}, [codeTag, node, selector, opts]);
+					if (node) {
+						result=node;
+						resultPage=page;
+						if(page===this.currentPage){
+							break FindNode;
+						}
+					}
+					
+				}
+				if(result){
+					break FindNode;
+				}
+				await sleep(200);
+				if(timeout>0 && Date.now()-startTime>timeout){
+					return null;
+				}
+			} while (1);
+		}
+		if(result){
+			return {page:resultPage,node:result};
+		}
+		return null;
 	}
 }
 
@@ -625,8 +874,18 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 	};
 
 	//-----------------------------------------------------------------------
-	webRpa.inPageDismissSelector=async function(page,selector,opts){
+	webRpa.inPageDismissSelector=async function(page,opts){
 		return await page.callFunction((await import("./InPageUI.mjs")).inPageDismissSelector,[]);
+	};
+	
+	//-----------------------------------------------------------------------
+	webRpa.computeSigKeyForSelector=async function(pageFrame,selector,opts){
+		const codeTag=await ensureCodeLib(pageFrame);
+		return await pageFrame.callFunction((codeTag,selector,opts)=>{
+			let codeLib=globalThis[codeTag];
+			console.log("webRpa.computeSigKeyForSelector: ",codeLib.computeSigKeyForSelector);
+			return codeLib.computeSigKeyForSelector(selector,opts);
+		},[codeTag,selector,opts]);
 	};
 }
 export default WebRpa;

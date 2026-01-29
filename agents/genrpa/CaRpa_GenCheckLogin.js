@@ -279,7 +279,9 @@ let CaRpa_GenCheckLogin=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,CheckLogin,FinLogined,CheckInteractive,WaitAfter,FinNotLogined,FocusPage,WaitLogin,TipLogin,AwaitLogin,JumpError,JumpLogined,JumAbort,GoBack,WaitNetwork,CheckAgain,JumpWait,AbortBack,GoBack2,AskDone,JumpAbort;
+	let StartRpa,CheckLogin,FinLogined,CheckInteractive,WaitAfter,FinNotLogined,FocusPage,WaitLogin,TipLogin,AwaitLogin,JumpError,JumpLogined,GoBack,WaitNetwork,CheckAgain,JumpWait,AbortBack,GoBack2,AskDone,JumpAbort;
+	let userLogin=false;
+	
 	/*#{1JDUKACEC0LocalVals*/
 	/*}#1JDUKACEC0LocalVals*/
 	
@@ -317,31 +319,45 @@ let CaRpa_GenCheckLogin=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=pageRef?0:1000;
+		let $webRpa=null;
+		/*#{1JDUKHIQS0PreCodes*/
+		console.log(`>>>>>>>>>>>>>>Init page ref: ${JSON.stringify(pageRef)}`);
+		/*}#1JDUKHIQS0PreCodes*/
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JDUKHIQS0"));
 				if($alias){
 					let $headless=false;
 					let $devtools=false;
 					let options={$headless:false,$devtools:false,autoDataDir:false};
 					let $browser=null;
+					/*#{1JDUKHIQS0PreBrowser*/
+					/*}#1JDUKHIQS0PreBrowser*/
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+					/*#{1JDUKHIQS0PostBrowser*/
+					/*}#1JDUKHIQS0PostBrowser*/
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
+						/*#{1JDUKHIQS0PrePage*/
+						/*}#1JDUKHIQS0PrePage*/
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
+						/*#{1JDUKHIQS0PostPage*/
+						/*}#1JDUKHIQS0PostPage*/
 					}
 				}
 			}
@@ -349,6 +365,8 @@ let CaRpa_GenCheckLogin=async function(session){
 		}catch(error){
 			throw error;
 		}
+		/*#{1JDUKHIQS0PostCodes*/
+		/*}#1JDUKHIQS0PostCodes*/
 		return {seg:CheckLogin,result:(result),preSeg:"1JDUKHIQS0",outlet:"1JDUKICMI0"};
 	};
 	StartRpa.jaxId="1JDUKHIQS0"
@@ -358,6 +376,7 @@ let CaRpa_GenCheckLogin=async function(session){
 		let result=input;
 		/*#{1JE2L00OE0Start*/
 		let $page,res;
+		userLogin=false;
 		$page=context.aaPage;
 		res=await $page.callFunction(detectLoginState,[{allowOffscreen:true}],{});
 		/*}#1JE2L00OE0Start*/
@@ -375,7 +394,7 @@ let CaRpa_GenCheckLogin=async function(session){
 		let result=input
 		try{
 			/*#{1JE2LARPL0Code*/
-			result={status:"Done",result:"Finish",login:true};
+			result={status:"done",value:{loggedIn:true,reason:userLogin?"Page is logged in by user action.":"Page already logged in."},login:true};
 			/*}#1JE2LARPL0Code*/
 		}catch(error){
 			/*#{1JE2LARPL0ErrorCode*/
@@ -423,7 +442,7 @@ let CaRpa_GenCheckLogin=async function(session){
 		let result=input
 		try{
 			/*#{1JE2M9T0I0Code*/
-			result={status:"Failed",result:"Failed",login:false};
+			result={status:"failed",value:{loggedIn:false,reason:"Page not logged in. Only check, no login action taken."},login:false};
 			/*}#1JE2M9T0I0Code*/
 		}catch(error){
 			/*#{1JE2M9T0I0ErrorCode*/
@@ -547,14 +566,6 @@ let CaRpa_GenCheckLogin=async function(session){
 	JumpLogined.jaxId="1JE2LARPL0"
 	JumpLogined.url="JumpLogined@"+agentURL
 	
-	segs["JumAbort"]=JumAbort=async function(input){//:1JE3Q09910
-		let result=input;
-		return {seg:FinNotLogined,result:result,preSeg:"1JE2M9T0I0",outlet:"1JE3Q0Q8L2"};
-	
-	};
-	JumAbort.jaxId="1JE2M9T0I0"
-	JumAbort.url="JumAbort@"+agentURL
-	
 	segs["GoBack"]=GoBack=async function(input){//:1JE3T5G5R0
 		let result=input;
 		let waitBefore=0;
@@ -602,7 +613,13 @@ let CaRpa_GenCheckLogin=async function(session){
 		/*#{1JE43AQUO0Start*/
 		let $page,res;
 		$page=context.aaPage;
-		res=await $page.callFunction(detectLoginState,[{allowOffscreen:true}],{});
+		console.log(`>>>>>>>>>>>>>>Init page ref: ${JSON.stringify($page.pageRef)}`);
+		try{
+			res=await $page.callFunction(detectLoginState,[{allowOffscreen:true}],{});
+		}catch(err){
+			console.error(err);
+			res=true;
+		}
 		/*}#1JE43AQUO0Start*/
 		if(!!res){
 			return {seg:GoBack,result:(input),preSeg:"1JE43AQUO0",outlet:"1JE43AQUP3"};
@@ -628,6 +645,8 @@ let CaRpa_GenCheckLogin=async function(session){
 		let waitAfter=0;
 		let browser=context.rpaBrowser;
 		waitBefore && (await sleep(waitBefore));
+		/*#{1JE5E23H70PreCodes*/
+		/*}#1JE5E23H70PreCodes*/
 		try{
 			if(browser){
 				await browser.backToApp();
@@ -637,7 +656,10 @@ let CaRpa_GenCheckLogin=async function(session){
 			/*#{1JE5E23H70ErrorCode*/
 			/*}#1JE5E23H70ErrorCode*/
 		}
-		return {seg:JumAbort,result:(result),preSeg:"1JE5E23H70",outlet:"1JE5E2LVQ0"};
+		/*#{1JE5E23H70PostCodes*/
+		result={status:"failed",value:{loggedIn:false,reason:"Page not logged in. User aborted/rejected login."},login:false};
+		/*}#1JE5E23H70PostCodes*/
+		return {seg:WaitAfter,result:(result),preSeg:"1JE5E23H70",outlet:"1JE5E2LVQ0"};
 	};
 	AbortBack.jaxId="1JE5E23H70"
 	AbortBack.url="AbortBack@"+agentURL
@@ -677,6 +699,8 @@ let CaRpa_GenCheckLogin=async function(session){
 		
 		if(silent){
 			result="";
+			/*#{1JE5J6D580Silent*/
+			/*}#1JE5J6D580Silent*/
 			return {seg:JumpLogined,result:(result),preSeg:"1JE5J6D5M0",outlet:"1JE5J6D580"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
@@ -684,6 +708,9 @@ let CaRpa_GenCheckLogin=async function(session){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
+			/*#{1JE5J6D580*/
+			userLogin=true;
+			/*}#1JE5J6D580*/
 			return {seg:JumpLogined,result:(result),preSeg:"1JE5J6D5M0",outlet:"1JE5J6D580"};
 		}else if(item.code===1){
 			return {seg:JumpAbort,result:(result),preSeg:"1JE5J6D5M0",outlet:"1JE5JDU9L0"};
@@ -751,7 +778,7 @@ let ChatAPI=[{
 	agentName: "CaRpa_GenCheckLogin.js",
 	isChatApi: true,
 	kind: "rpa",
-	capabilities: ["login.check","login.interactive","login.ensure"],
+	capabilities: ["login.check","login.ensure","login.interactive"],
 	filters: [{"key":"domain","value":"*"}],
 	metrics: {"quality":7,"costPerCall":0,"costPer1M":0,"speed":9,"size":0}
 }];
@@ -874,7 +901,12 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //		},
 //		"localVars": {
 //			"jaxId": "1JDUKACEC4",
-//			"attrs": {}
+//			"attrs": {
+//				"userLogin": {
+//					"type": "bool",
+//					"valText": "false"
+//				}
+//			}
 //		},
 //		"context": {
 //			"jaxId": "1JDUKACEC5",
@@ -897,7 +929,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //						"x": "125",
 //						"y": "235",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -949,6 +981,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -1138,7 +1171,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //						"id": "WaitAfter",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1160",
+//						"x": "1665",
 //						"y": "160",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1208,7 +1241,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JDVK00GO0"
+//							"linkedSeg": "1JG2TKQSN0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1475,31 +1508,6 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "jumper",
-//					"jaxId": "1JE3Q09910",
-//					"attrs": {
-//						"id": "JumAbort",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1675",
-//						"y": "340",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"seg": "1JE2M9T0I0",
-//						"outlet": {
-//							"jaxId": "1JE3Q0Q8L2",
-//							"attrs": {
-//								"id": "Next",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "arrowupright.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "WebRpaBackToApp",
 //					"jaxId": "1JE3T5G5R0",
 //					"attrs": {
@@ -1686,7 +1694,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //						"x": "1425",
 //						"y": "340",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1710,7 +1718,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JE3Q09910"
+//							"linkedSeg": "1JDVK00GO0"
 //						}
 //					},
 //					"icon": "/@tabos/shared/assets/aalogo.svg"
@@ -1807,7 +1815,7 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //											"localizable": true
 //										},
 //										"result": "",
-//										"codes": "false",
+//										"codes": "true",
 //										"context": {
 //											"jaxId": "1JE5JDBQD0",
 //											"attrs": {
@@ -1889,12 +1897,34 @@ export{CaRpa_GenCheckLogin,ChatAPI};
 //						}
 //					},
 //					"icon": "arrowupright.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JG2TKQSN0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1485",
+//						"y": "270",
+//						"outlet": {
+//							"jaxId": "1JG2TL29T0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JDVK00GO0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},
 //		"desc": "这是一个AI智能体。",
 //		"exportAPI": "true",
 //		"exportAddOn": "false",
-//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"genrpa\",\"chatEntry\":false,\"isChatApi\":1,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\",\"kind\":\"rpa\",\"capabilities\":[\"login.check\",\"login.interactive\",\"login.ensure\"],\"filters\":[{\"key\":\"domain\",\"value\":\"*\"}],\"metrics\":{\"quality\":7,\"costPerCall\":0,\"costPer1M\":0,\"speed\":9,\"size\":0},\"meta\":\"\"}"
+//		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"genrpa\",\"chatEntry\":false,\"isChatApi\":1,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\",\"kind\":\"rpa\",\"capabilities\":[\"login.check\",\"login.ensure\",\"login.interactive\"],\"filters\":[{\"key\":\"domain\",\"value\":\"*\"}],\"metrics\":{\"quality\":7,\"costPerCall\":0,\"costPer1M\":0,\"speed\":9,\"size\":0},\"meta\":\"\"}"
 //	}
 //}
