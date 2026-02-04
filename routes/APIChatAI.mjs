@@ -48,6 +48,12 @@ const AIPlatforms={
 		"terrence/openbuddy":{model:"terrence/openbuddy",label:"LLAMA3 Chinese"},
 		"phi3":{model:"phi3",label:"Phi3"},
 		"moondream":{model:"moondream",label:"Moon Dream"},
+	},
+	"OpenRouter":{
+		"google/gemini-3-flash-preview":{model:"google/gemini-3-flash-preview",label:"Gemini 3 Flash Preview"},
+		"google/gemini-2.5-flash":{model:"google/gemini-2.5-flash",label:"Gemini 2.5 Flash"},
+		"anthropic/claude-3.5-sonnet":{model:"anthropic/claude-3.5-sonnet",label:"Claude 3.5 Sonnet"},
+		"openai/gpt-4o":{model:"openai/gpt-4o",label:"GPT-4O"},
 	}
 };
 
@@ -120,7 +126,7 @@ export default async function(app,router,apiMap) {
 	const env = app.get("env");
 	const dbUser = app.get("DBUser");
 	const dbPreview= app.get("DBPreview");
-	
+
 	try{
 		const m=await import("../util/TokenUtils.mjs");
 		setupTokenUtils=m.setupTokenUtils;
@@ -145,7 +151,7 @@ export default async function(app,router,apiMap) {
 		getUserInfo=null;
 		getPVUserInfo=null;
 	}
-	
+
 	//***********************************************************************
 	//Basic AI Calls:
 	//***********************************************************************
@@ -178,7 +184,7 @@ export default async function(app,router,apiMap) {
 			}
 			res.json({ code: 200, info: "AICall is ready." });
 		};
-		
+
 		//-------------------------------------------------------------------
 		apiMap['readAIChatStream'] = async function (req, res, next) {
 			let reqVO, streamId, streamVO, textRead, textGot, pms, functionCall,toolCalls;
@@ -199,7 +205,7 @@ export default async function(app,router,apiMap) {
 				textGot = JSON.stringify(functionCall);
 			}else if(toolCalls){
 				textGot = JSON.stringify(toolCalls);
-			
+
 			}else{
 				textGot = streamVO.content;
 			}
@@ -229,7 +235,7 @@ export default async function(app,router,apiMap) {
 			streamVO.textRead = textGot;
 			res.json({ code: 200, message: textGot, closed: streamVO.closed,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens });
 		};
-		
+
 		//-------------------------------------------------------------------
 		let fixHostPrompt=async function(messages,userId,token,userInfo){
 			let systemPmt,res;
@@ -253,7 +259,7 @@ export default async function(app,router,apiMap) {
 			}
 			return true;//OK to go
 		};
-		
+
 		//-------------------------------------------------------------------
 		let AICall = async function (callAIObj, req, res, next) {
 			let reqVO,userInfo=null;
@@ -279,12 +285,12 @@ export default async function(app,router,apiMap) {
 					}
 				}
 			}
-			
+
 			if(await fixHostPrompt(reqVO.messages,reqVO.userId,reqVO.token,userInfo)===false){
 				await proxyCall(req,res,next);
 				return;
 			}
-			
+
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			//Make AI-Call:
 			switch (platform) {
@@ -302,7 +308,7 @@ export default async function(app,router,apiMap) {
 							return;
 						}
 					}
-					
+
 					try {
 						let content="";
 						let messages=reqVO.messages;
@@ -333,7 +339,7 @@ export default async function(app,router,apiMap) {
 							}
 						}
 						callVO.messages=messages;
-						
+
 						try {
 							rawResVO = await anthropic.messages.create(callVO);
 						}catch(error){
@@ -344,7 +350,7 @@ export default async function(app,router,apiMap) {
 						content=rawResVO.content[0];
 						resVO = { code: 200,message:content.text||content};
 						res.json(resVO);
-						
+
 						//Charge user token:
 						chargePointsByUsage(userInfo,rawResVO.usage.input_tokens,rawResVO.usage.output_tokens,platform,callVO.model);
 					} catch (err) {
@@ -366,7 +372,7 @@ export default async function(app,router,apiMap) {
 							return;
 						}
 					}
-					
+
 					try {
 						let content="";
 						try {
@@ -388,7 +394,7 @@ export default async function(app,router,apiMap) {
 						content=rawResVO.choices[0].message;
 						resVO = { code: 200,message:content.content||content};
 						res.json(resVO);
-						
+
 						//Charge user token:
 						chargePointsByChat(userInfo, callVO.messages, content, platform, callVO.model);
 					} catch (err) {
@@ -431,7 +437,7 @@ export default async function(app,router,apiMap) {
 						history:history,
 						config:callVO
 					});
-					
+
 					result=await chat.sendMessage({message:prompt});
 					resVO = { code: 200,message:result.text};
 					res.json(resVO);
@@ -443,6 +449,60 @@ export default async function(app,router,apiMap) {
 					}
 					return;
 				}
+				case "OpenRouter": {
+					// 自定义的 OpenRouter API
+					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/api/chat/completions";
+					const API_KEY = process.env.OPENROUTER_API_KEY || "";
+
+					try {
+						const callVO = {
+							model: reqVO.model || "google/gemini-3-flash-preview",
+							messages: reqVO.messages,
+							temperature: reqVO.temperature || 1,
+							max_tokens: reqVO.max_tokens || 4096,
+							// 添加身份验证信息
+							userId: reqVO.userId,
+							token: reqVO.token,
+						};
+
+						// 构建请求头
+						const headers = {
+							"Content-Type": "application/json",
+						};
+						if (API_KEY) {
+							headers["Authorization"] = `Bearer ${API_KEY}`;
+						}
+
+						// 发送请求
+						const response = await fetch(API_URL, {
+							method: "POST",
+							headers: headers,
+							body: JSON.stringify(callVO),
+						});
+
+						if (!response.ok) {
+							const errorText = await response.text();
+							res.json({
+								code: response.status,
+								info: `OpenRouter API error: ${errorText}`
+							});
+							return;
+						}
+
+						const rawResVO = await response.json();
+						const content = rawResVO.choices?.[0]?.message?.content || "";
+
+						resVO = { code: 200, message: content };
+						res.json(resVO);
+					} catch (err) {
+						console.error("OpenRouter API error:", err);
+						res.json({
+							code: 500,
+							info: `OpenRouter API call failed: ${err.message}`
+						});
+					}
+					return;
+				}
 				//TODO: Code more:
 				default: {
 					res.json({ code: 405, info: `Platform ${platform} is not supported.` });
@@ -450,12 +510,12 @@ export default async function(app,router,apiMap) {
 				}
 			}
 		};
-		
+
 		//-------------------------------------------------------------------
 		let AIStreamCall = async function (callAIObj, req, res,next) {
 			let reqVO,userInfo=null;
 			let platform, callVO, resVO;
-			
+
 			reqVO = req.body.vo;
 
 			if(getUserInfo) {
@@ -476,9 +536,9 @@ export default async function(app,router,apiMap) {
 				await proxyCall(req,res,next);
 				return;
 			}
-			
+
 			platform = reqVO.platform || "OpenAI";
-			
+
 			//Make AI-Call:
 			switch (platform) {
 				case "Ollama":{
@@ -499,7 +559,7 @@ export default async function(app,router,apiMap) {
 						}
 						messages=reqVO.messages;
 						callVO.messages=messages;
-						
+
 						try {
 							chatStream = await ollama.chat(callVO, { responseType: 'stream' });
 						}catch(error){
@@ -508,11 +568,11 @@ export default async function(app,router,apiMap) {
 							return;
 						}
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-						
+
 						resVO = { code: 200, streamId: streamId };
 						streamMap.set(streamId, streamVO);
 						res.json(resVO);
-						
+
 						{
 							let content;
 							for await (const part of chatStream) {
@@ -542,7 +602,7 @@ export default async function(app,router,apiMap) {
 					}catch(err){
 						console.error(err);
 						if(!res.headersSent) {
-							res.json({ code: 500, err: "" + err });
+							res.json({ code: 500, info: `Ollama stream error: ${err.message || err}` });
 						}
 					}
 					break;
@@ -621,7 +681,7 @@ export default async function(app,router,apiMap) {
 								}
 							});
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-						
+
 						resVO = { code: 200, streamId: streamId };
 						streamMap.set(streamId, streamVO);
 						res.json(resVO);
@@ -639,7 +699,7 @@ export default async function(app,router,apiMap) {
 					}catch(err){
 						console.error(err);
 						if(!res.headersSent) {
-							res.json({ code: 500, err: "" + err });
+							res.json({ code: 500, info: `Claude stream error: ${err.message || err}` });
 						}
 					}
 					break;
@@ -657,7 +717,7 @@ export default async function(app,router,apiMap) {
 							return;
 						}
 					}
-					
+
 					try {
 						let streamVO, streamId,chatStream;
 						let dataLeft="";
@@ -681,7 +741,7 @@ export default async function(app,router,apiMap) {
 							}
 							return;
 						}
-						
+
 						streamId = getStreamId();
 						streamVO = {
 							streamId,
@@ -694,11 +754,11 @@ export default async function(app,router,apiMap) {
 							timer: null
 						}
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
-						
+
 						resVO = { code: 200, streamId: streamId };
 						streamMap.set(streamId, streamVO);
 						res.json(resVO);
-						
+
 						{
 							let choice0,delta,content,funcCall,toolCalls,func,refusal;
 							let inputTokens=0,outputTokens=0;
@@ -781,7 +841,7 @@ export default async function(app,router,apiMap) {
 										outputTokens=part.usage.completion_tokens||0;
 									}
 								}
-								
+
 								if(streamVO.timer){
 									clearTimeout(streamVO.timer);
 									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
@@ -867,7 +927,7 @@ export default async function(app,router,apiMap) {
 						streamMap.set(streamId, streamVO);
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
 						res.json(resVO);
-						
+
 						for await (const chunk of result) {
 							const chunkText = chunk.text;
 							//console.log(chunk);
@@ -903,13 +963,158 @@ export default async function(app,router,apiMap) {
 					}catch(err){
 						console.error(err);
 						if(!res.headersSent) {
-							res.json({ code: 500, err: "" + err });
+							res.json({ code: 500, info: `Stream error: ${err.message || err}` });
 						}
 					}
+					break;
+				}
+				case "OpenRouter": {
+					// OpenRouter 流式调用（模拟流式输出）
+					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/api/chat/completions";
+					const API_KEY = process.env.OPENROUTER_API_KEY || "";
+
+					let streamId, streamVO, func;
+					try {
+						const callVO = {
+							model: reqVO.model || "google/gemini-3-flash-preview",
+							messages: reqVO.messages,
+							temperature: reqVO.temperature || 1,
+							max_tokens: reqVO.max_tokens || 4096,
+							// 添加身份验证信息
+							userId: reqVO.userId,
+							token: reqVO.token,
+						};
+
+						streamId = getStreamId();
+						streamVO = {
+							streamId,
+							role: "",
+							content: "",
+							textRead: "",
+							closed: false,
+							waitFunc: null,
+							errorFunc: null,
+							timer: null,
+							inputTokens: 0,
+							outputTokens: 0
+						};
+
+						streamMap.set(streamId, streamVO);
+						// 先不启动定时器，等到开始读取内容时再启动
+
+						resVO = { code: 200, streamId: streamId };
+						res.json(resVO);
+
+						// 构建请求头
+						const headers = {
+							"Content-Type": "application/json",
+						};
+						if (API_KEY) {
+							headers["Authorization"] = `Bearer ${API_KEY}`;
+						}
+
+						// 发送请求（非流式）- 使用更长的超时时间
+						const controller = new AbortController();
+						const fetchTimeout = setTimeout(() => controller.abort(), 300000); // 5分钟超时
+
+						let response;
+						try {
+							response = await fetch(API_URL, {
+								method: "POST",
+								headers: headers,
+								body: JSON.stringify(callVO),
+								signal: controller.signal,
+							});
+						} catch (fetchErr) {
+							clearTimeout(fetchTimeout);
+							streamVO.content = `Error: Request timeout or network error - ${fetchErr.message}`;
+							streamVO.closed = true;
+							func = streamVO.waitFunc;
+							if (func) {
+								streamVO.waitFunc = null;
+								func();
+							}
+							return;
+						}
+						clearTimeout(fetchTimeout);
+
+						if (!response.ok) {
+							const errorText = await response.text();
+							streamVO.content = `Error: ${errorText}`;
+							streamVO.closed = true;
+							func = streamVO.waitFunc;
+							if (func) {
+								streamVO.waitFunc = null;
+								func();
+							}
+							return;
+						}
+
+						const rawResVO = await response.json();
+
+						// 成功获取响应后，再启动 stream 超时定时器
+						streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000); // 增加到60秒
+						const fullContent = rawResVO.choices?.[0]?.message?.content || "";
+
+						// 模拟流式输出：将内容分块逐步添加
+						const chunkSize = 20; // 每次添加的字符数
+						for (let i = 0; i < fullContent.length; i += chunkSize) {
+							const chunk = fullContent.substring(i, i + chunkSize);
+							streamVO.content += chunk;
+
+							if (streamVO.timer) {
+								clearTimeout(streamVO.timer);
+								streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000); // 60秒
+							}
+
+							if (streamVO.content !== streamVO.textRead) {
+								func = streamVO.waitFunc;
+								if (func) {
+									streamVO.waitFunc = null;
+									func();
+								}
+							}
+
+							// 添加小延迟以模拟流式效果
+							await new Promise(resolve => setTimeout(resolve, 10));
+						}
+
+						// 保存 token 使用信息
+						if (rawResVO.usage) {
+							streamVO.inputTokens = rawResVO.usage.prompt_tokens || 0;
+							streamVO.outputTokens = rawResVO.usage.completion_tokens || 0;
+							if (userInfo) {
+								chargePointsByUsage(userInfo, streamVO.inputTokens, streamVO.outputTokens, platform, callVO.model);
+							}
+						}
+
+						streamVO.closed = true;
+						func = streamVO.waitFunc;
+						if (func) {
+							streamVO.waitFunc = null;
+							func();
+						}
+					} catch (err) {
+						console.error("OpenRouter stream error:", err);
+						// 确保即使发生异常，streamVO 也有内容返回
+						if (streamVO && !streamVO.closed) {
+							streamVO.content = `Error: ${err.message || err}`;
+							streamVO.closed = true;
+							const func = streamVO.waitFunc;
+							if (func) {
+								streamVO.waitFunc = null;
+								func();
+							}
+						}
+						if (!res.headersSent) {
+							res.json({ code: 500, info: `OpenRouter error: ${err.message || err}` });
+						}
+					}
+					break;
 				}
 			}
 		};
-		
+
 		//-------------------------------------------------------------------
 		let plainCall = {
 			buildCallVO (reqVO,platform) {
@@ -1000,10 +1205,26 @@ export default async function(app,router,apiMap) {
 						}
 						return callVO;
 					}
+					case "OpenRouter":{
+						let callVO = {
+							model: reqVO.model || "google/gemini-3-flash-preview",
+							messages: reqVO.messages,
+						};
+						if (reqVO.temperature !== undefined) {
+							callVO.temperature = reqVO.temperature;
+						}
+						if (reqVO.max_tokens) {
+							callVO.max_tokens = reqVO.max_tokens;
+						}
+						if (reqVO.top_p) {
+							callVO.top_p = reqVO.top_p;
+						}
+						return callVO;
+					}
 				}
 			}
 		};
-		
+
 		//-------------------------------------------------------------------
 		apiMap['AICall'] = async function (req, res, next) {
 			return await AICall(plainCall, req, res, next);
@@ -1013,7 +1234,7 @@ export default async function(app,router,apiMap) {
 		apiMap['AICallStream'] = async function (req, res, next) {
 			return await AIStreamCall(plainCall, req, res, next);
 		};
-		
+
 		//-------------------------------------------------------------------
 		apiMap['AICalculateTokens'] = async function(req,res,next){
 			let reqVO;
@@ -1035,13 +1256,13 @@ export default async function(app,router,apiMap) {
 			}
 			res.json({code:400,info:"Platform not supported."});
 		};
-		
+
 		//-------------------------------------------------------------------
 		apiMap['AIGetPlatforms'] = async function (req, res, next) {
-			res.json({code:200,platforms:["OpenAI","Claude","Google","Ollama"]});
-		
+			res.json({code:200,platforms:["OpenAI","Claude","Google","Ollama","OpenRouter"]});
+
 		};
-		
+
 		//-------------------------------------------------------------------
 		apiMap['AIGetModels'] = async function (req, res, next) {
 			let reqVO=req.body.vo;
@@ -1062,10 +1283,10 @@ export default async function(app,router,apiMap) {
 					break;
 			}
 			res.json({code:200,models:models});
-			
+
 		};
 	}
-	
+
 	//***********************************************************************
 	//Image related:
 	//***********************************************************************
@@ -1073,12 +1294,12 @@ export default async function(app,router,apiMap) {
 		let dataURLtoBuffer=function (dataUrl) {
 			const matches = dataUrl.match(/^data:(.*?);base64,(.*)$/);
 			if (!matches) return null;
-			
+
 			const [, mimeType, base64Data] = matches;
 			const buffer = Buffer.from(base64Data, "base64");
 			return { buffer, mimeType };
 		}
-		
+
 		//-------------------------------------------------------------------
 		apiMap['AIDraw']=async function (req,res,next){
 			let reqVO,userInfo=null;
@@ -1087,7 +1308,7 @@ export default async function(app,router,apiMap) {
 			let orgImages;
 			let prompt,model,img,size;
 			reqVO = req.body.vo;
-			
+
 			if(getUserInfo) {
 				let userId = reqVO.userId;
 				let token = reqVO.token;
@@ -1121,7 +1342,7 @@ export default async function(app,router,apiMap) {
 						break;
 				}
 			}
-			
+
 			//Check gas
 			{
 				resVO = await checkAITokenCall(userInfo, platform, model);
@@ -1217,7 +1438,7 @@ export default async function(app,router,apiMap) {
 				}
 			}
 		};
-		
+
 		//-------------------------------------------------------------------
 		apiMap['AIEditDraw']=async function (req,res,next){
 			let reqVO, userInfo=null;
@@ -1248,7 +1469,7 @@ export default async function(app,router,apiMap) {
 				return;
 			}
 			mskImg=reqVO.mask;
-			
+
 			//Check gas
 			{
 				resVO = await checkAITokenCall(userInfo, platform, model);
@@ -1291,7 +1512,7 @@ export default async function(app,router,apiMap) {
 			let callVO, resVO;
 			let model,orgImg,img,size;
 			reqVO = req.body.vo;
-			
+
 			function createStreamFromBase64(base64String) {
 				const buffer = Buffer.from(base64String, 'base64');
 				return Readable.from(buffer);
@@ -1309,7 +1530,7 @@ export default async function(app,router,apiMap) {
 					}
 				}
 			}
-			
+
 			platform = reqVO.platform || "OpenAI";//Only OpenAI supported by now.
 			model=reqVO.model||"dall-e-2";
 			size=reqVO.size||"1024x1024";
@@ -1325,7 +1546,7 @@ export default async function(app,router,apiMap) {
 				}
 				orgImg=createStreamFromBase64(orgImg);
 			}
-			
+
 			//Check gas
 			{
 				resVO = await checkAITokenCall(userInfo, platform, model);
@@ -1359,7 +1580,7 @@ export default async function(app,router,apiMap) {
 			chargePointsByChat(userInfo, "", "", platform, model);
 		};
 	}
-	
+
 	//***********************************************************************
 	//Audio related:
 	//***********************************************************************
@@ -1372,7 +1593,7 @@ export default async function(app,router,apiMap) {
 			let callDone,apiURL,httpOpts,postText,postAPI,httpReq;
 			let inputText,model,mp3,voice;
 			reqVO = req.body.vo;
-			
+
 			if(getUserInfo) {
 				let userId = reqVO.userId;
 				let token = reqVO.token;
@@ -1389,7 +1610,7 @@ export default async function(app,router,apiMap) {
 			model=reqVO.model||"tts-1";
 			inputText= reqVO.input||reqVO.text;
 			voice= reqVO.voice||"alloy";
-			
+
 			//Check gas
 			{
 				resVO = await checkAITokenCall(userInfo, platform, model);
@@ -1398,7 +1619,7 @@ export default async function(app,router,apiMap) {
 					return;
 				}
 			}
-			
+
 			//charge points by chat:
 			chargePointsByChat(userInfo, inputText, "", platform, model);
 
@@ -1456,7 +1677,7 @@ export default async function(app,router,apiMap) {
 			}
 		};
 	}
-	
+
 	//***********************************************************************
 	//Web API Call
 	//***********************************************************************
@@ -1550,7 +1771,7 @@ export default async function(app,router,apiMap) {
 				httpReq.end();
 			}
 		};
-		
+
 		apiMap['WebFetch']=async function(req,res,next){
 			let reqVO, userInfo=null, resVO,replaceKey;
 			let apiURL, httpOpts, httpReq, postText,callDone,postAPI,headers;

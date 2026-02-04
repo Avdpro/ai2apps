@@ -1554,7 +1554,7 @@ let Util_StepAction=async function(session){
 				function selectAll(by){
 					if(!isStr(by) || !by.trim()) return [];
 					const s = by.trim();
-
+			
 					if(/^css\s*:/i.test(s)){
 						const css = s.replace(/^css\s*:/i,"").trim();
 						if(!css) return [];
@@ -1639,29 +1639,29 @@ let Util_StepAction=async function(session){
 				const desiredText  = normText(desiredOpt.textContent);
 				// 已满足则不改
 				const already =
-					  (before.index === targetIndex) ||
-					  (before.value === desiredValue) ||
-					  (before.text === desiredText);
+					(before.index === targetIndex) ||
+					(before.value === desiredValue) ||
+					(before.text === desiredText);
 				let changed = false;
 				if(!already){
 					// 设置选中
 					sel.selectedIndex = targetIndex;
 					// 有些情况下 value 需要同步写一下
 					try{ sel.value = desiredValue; }catch(e){}
-
+			
 					// 触发事件（bubbles=true）
 					try{ sel.dispatchEvent(new Event("input", {bubbles:true})); }catch(e){}
 					try{ sel.dispatchEvent(new Event("change", {bubbles:true})); }catch(e){}
-
+			
 					changed = true;
 				}
 				const after = snapshot(sel);
 				// 验证：after 至少应匹配目标 option 的 value/text
 				const okAfter =
-					  (after.value === desiredValue) ||
-					  (after.text === desiredText) ||
-					  (after.index === targetIndex);
-
+					(after.value === desiredValue) ||
+					(after.text === desiredText) ||
+					(after.index === targetIndex);
+			
 				if(!okAfter){
 					return {
 						ok:false,
@@ -1673,7 +1673,7 @@ let Util_StepAction=async function(session){
 				}
 				return {ok:true,count:1,value:{before,after,changed,target:{ mode, value: desiredValue, text: desiredText, index: targetIndex }}};
 			}, [by, mode, (mode==="value"?targetValue:null), (mode==="text"?targetText:null)]);
-
+			
 			if(!payload || !payload.ok){
 				result={status:"failed",reason:payload?.reason || "setSelect failed"};
 			}else{

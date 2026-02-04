@@ -22,18 +22,18 @@
 			},
 			"sig:e75238fe00000000": {
 				"value": [
-					"xpath: //textarea[@placeholder='有什么新鲜事想分享给大家？']/ancestor::div[contains(@class,'_publishCard_')]/descendant::button[.//span[contains(normalize-space(.),'发送')]]"
+					"xpath: //div[contains(@class,\"_publishCard_gykin_19\")]//div[contains(@class,\"_file_\") and .//span[normalize-space(.)=\"图片\"]]"
 				],
 				"pending": false,
-				"time": 1769647841712,
+				"time": 1769693651910,
 				"queries": [
-					"发布/发送/提交（Post/Publish/Send/Submit）按钮：用于把当前已编辑好的内容发布出去",
-					"the image upload button or file input for adding photos/images (e.g., 'Add photo', 'Upload image', 'Photos') in the current compose editor"
+					"the image upload button or file input for adding photos/images (e.g., 'Add photo', 'Upload image', 'Photos') in the current compose editor",
+					"发布/发送/提交（Post/Publish/Send/Submit）按钮：用于把当前已编辑好的内容发布出去"
 				],
 				"sigKey": "v2|textbox|editable|ids:none|a11y:none|anchor:c=main|chain=div#homeWrap",
 				"keys": [
-					"compose_publish_clickPublish",
-					"compose_file_uploadImages"
+					"compose_file_uploadImages",
+					"compose_publish_clickPublish"
 				]
 			}
 		},
@@ -63,18 +63,18 @@
 				"query": "正文/内容编辑器输入区域（Post body editor）。优先：contenteditable=true 的编辑区或主要 textarea，通常是页面最大输入区",
 				"time": 1769320069633
 			},
-			"compose_file_uploadImages": {
-				"eid": "sig:e75238fe00000000",
-				"query": "the image upload button or file input for adding photos/images (e.g., 'Add photo', 'Upload image', 'Photos') in the current compose editor",
-				"time": 1769340861649
-			},
 			"compose_publish_clickPublish": {
 				"eid": "sig:e75238fe00000000",
 				"query": "发布/发送/提交（Post/Publish/Send/Submit）按钮：用于把当前已编辑好的内容发布出去",
 				"time": 1769647841712
+			},
+			"compose_file_uploadImages": {
+				"eid": "sig:e75238fe00000000",
+				"query": "the image upload button or file input for adding photos/images (e.g., 'Add photo', 'Upload image', 'Photos') in the current compose editor",
+				"time": 1769693651910
 			}
 		},
-		"_gcTime": 1769647841712,
+		"_gcTime": 1769693500591,
 		"_gcRemoved": 0
 	}
 }

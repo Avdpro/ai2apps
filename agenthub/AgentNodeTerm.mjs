@@ -83,8 +83,8 @@ let AgentNodeTerminal,agentNodeTerminal;
 		}
 		//Handle data:
 		{
-			this.dataBuffer = "";           // 数据缓冲区
-			this.flushTimer = null;         // 刷新定时器
+			this.dataBuffer = "";
+			this.flushTimer = null;
 
 			shell.onData((data) => {
 				this.lastActiveTime=Date.now();
@@ -95,37 +95,24 @@ let AgentNodeTerminal,agentNodeTerminal;
 				const lines = this.waitBuf.trimEnd().split('\n');
 				const lastLine = lines[lines.length - 1].trim();
 
-				// 匹配：可选的环境名 + prompt
 				const promptMatch = lastLine.match(/^(\([^)]+\)\s*)?__AGENT_SHELL__>$/);
-				if (promptMatch){//Idle:
-					let callback;
+				if (promptMatch){
+					// 触发 idle 状态，OnIdle 会统一处理所有回调
 					this.OnIdle();
-					callback=this.waitCallback;
-					if(callback){
-						this.waitCallback=null;
-						this.waitBuf="";
-						callback();
-					}
 				}else{
 					if(this.idleTimer){
 						this._idleTimer();
 					}
 				}
 
-				// ✅ 使用时间窗口防抖：收集数据，延迟发送
 				if(this.clientReady && this.sessionId){
-					// 添加到缓冲区
 					this.dataBuffer += data;
-
-					// 清除之前的定时器
 					if(this.flushTimer) {
 						clearTimeout(this.flushTimer);
 					}
 
-					// 设置新定时器：50ms 后刷新缓冲区
 					this.flushTimer = setTimeout(() => {
 						if(this.dataBuffer && this.clientReady && this.sessionId) {
-							// 发送缓冲的数据
 							this.agentNode.sendToHub("XTermData",{
 								data:this.dataBuffer,
 								session:this.sessionId
@@ -133,7 +120,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 							this.dataBuffer = "";
 						}
 						this.flushTimer = null;
-					}, 50);  // 50ms 窗口，足够收集分片但不影响体验
+					}, 50);
 				}
 			});
 		}
@@ -183,9 +170,11 @@ let AgentNodeTerminal,agentNodeTerminal;
 	//------------------------------------------------------------------------
 	agentNodeTerminal.close=async function(){
 		let pms;
-		if(this.alive){
+		// 修复：如果已经关闭了，直接返回
+		if(!this.alive){
 			return;
 		}
+		// 如果正在关闭，等待完成
 		if(this.killPms){
 			await this.killPms;
 			return;
@@ -310,17 +299,36 @@ let AgentNodeTerminal,agentNodeTerminal;
 	};
 
 	//------------------------------------------------------------------------
-	agentNodeTerminal.waitIdle=async function(force=false){
+	agentNodeTerminal.waitIdle=async function(force=false, timeout=null){
 		let pms;
 		if((!force) && this.isIdle){
+			console.log(`[waitIdle] Already idle, returning immediately`);
 			return;
 		}
 		if(this.waitIdlePms){
+			console.log(`[waitIdle] Another waitIdle is in progress, sharing promise`);
 			return await this.waitIdlePms;
 		}
+
+		// 使用独立的等待时间，不受 runCommands 的 idleTime 影响
+		// 确保最小等待时间为 1 秒，避免 idleTime=0 导致立即触发
+		const waitTimeout = Math.max(
+			timeout !== null ? timeout : (idleTime || 15000),
+			1000
+		);
+		const savedIdleTime = this.idleTime;
+		this.idleTime = waitTimeout;
+
+		console.log(`[waitIdle] Starting wait with timeout=${waitTimeout}ms (saved=${savedIdleTime}ms)`);
+
 		this._idleTimer();
 		pms=this.waitIdlePms=new Promise((resolve,reject)=>{
-			this.waitIdleCallback=resolve;
+			this.waitIdleCallback=()=>{
+				console.log(`[waitIdle] Idle detected, restoring idleTime to ${savedIdleTime}ms`);
+				// 恢复原来的 idleTime
+				this.idleTime = savedIdleTime;
+				resolve();
+			};
 		});
 		return pms;
 	};
@@ -340,7 +348,6 @@ let AgentNodeTerminal,agentNodeTerminal;
 			callback();
 		}
 		if(this.cmdWaitIdle){
-			let callback;
 			this.cmdWaitIdle=false;
 			callback=this.waitCallback;
 			if(callback){

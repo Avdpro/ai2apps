@@ -39,9 +39,9 @@ let PrjSetupPrjDir=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let CheckDirPath,CheckDirName,FixName,CheckDirUsed,GenNewName,MakeDir,GitDownload,CheckDownLoad,CheckPython,DirOK,AskRetry,ShowGitError,GitFailed,ClearDir,CheckPythonEnv,LoadReadme,PreviewPrj,TipPreview,ShowSummary,AbortSetup,AskSetup,TestBash,CdDir;
+	let CheckDirPath,CheckDirName,FixName,CheckDirUsed,GenNewName,MakeDir,GitDownload,CheckDownLoad,CheckPython,DirOK,AskRetry,ShowGitError,GitFailed,ClearDir,CheckPythonEnv,LoadReadme,PreviewPrj,TipPreview,ShowSummary,AbortSetup,AskSetup;
 	let project=globalContext.project;
-	let dirName=project?.name;
+	let dirName=project.name;
 	let dirPath="";
 	let env=globalContext.env;
 	let task=undefined;
@@ -109,13 +109,16 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["FixName"]=FixName=async function(input){//:1IG65QUQE0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="$fast";
+		let $agent;
 		let result=null;
 		/*#{1IG65QUQE0Input*/
 		/*}#1IG65QUQE0Input*/
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"$fast",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -154,7 +157,11 @@ let PrjSetupPrjDir=async function(session){
 		}
 		/*#{1IG65QUQE0PreCall*/
 		/*}#1IG65QUQE0PreCall*/
-		result=(result===null)?(await session.callSegLLM("FixName@"+agentURL,opts,messages,true)):result;
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("FixName@"+agentURL,opts,messages,true)):result;
+		}
 		result=trimJSON(result);
 		/*#{1IG65QUQE0PostCall*/
 		dirName=result.fixed;
@@ -193,15 +200,20 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["GenNewName"]=GenNewName=async function(input){//:1IG66AF3H0
 		let result=input
-		/*#{1IG66AF3H0Code*/
-		let pathUsed;
-		do{
-			dirName=orgName+(nextNameIdx++);
-			dirPath=pathLib.join(env.rootPath,dirName);
-			pathUsed=await dirPathExists(dirPath);
-		}while(pathUsed);
-		addLog(`New dir path: ${dirPath}.`);
-		/*}#1IG66AF3H0Code*/
+		try{
+			/*#{1IG66AF3H0Code*/
+			let pathUsed;
+			do{
+				dirName=orgName+(nextNameIdx++);
+				dirPath=pathLib.join(env.rootPath,dirName);
+				pathUsed=await dirPathExists(dirPath);
+			}while(pathUsed);
+			addLog(`New dir path: ${dirPath}.`);
+			/*}#1IG66AF3H0Code*/
+		}catch(error){
+			/*#{1IG66AF3H0ErrorCode*/
+			/*}#1IG66AF3H0ErrorCode*/
+		}
 		return {seg:MakeDir,result:(result),preSeg:"1IG66AF3H0",outlet:"1IG6Q27340"};
 	};
 	GenNewName.jaxId="1IG66AF3H0"
@@ -209,12 +221,17 @@ let PrjSetupPrjDir=async function(session){
 	
 	segs["MakeDir"]=MakeDir=async function(input){//:1IG66C4030
 		let result=input
-		/*#{1IG66C4030Code*/
-		//We don't need 
-		await fsp.mkdir(dirPath, { recursive: true });
-		addLog(`Dir "${dirPath}" created.`);
-		project.progress.push(`项目目录已创建：${dirPath}`);
-		/*}#1IG66C4030Code*/
+		try{
+			/*#{1IG66C4030Code*/
+			//We don't need 
+			await fsp.mkdir(dirPath, { recursive: true });
+			addLog(`Dir "${dirPath}" created.`);
+			project.progress.push(`项目目录已创建：${dirPath}`);
+			/*}#1IG66C4030Code*/
+		}catch(error){
+			/*#{1IG66C4030ErrorCode*/
+			/*}#1IG66C4030ErrorCode*/
+		}
 		return {seg:GitDownload,result:(result),preSeg:"1IG66C4030",outlet:"1IG6Q27341"};
 	};
 	MakeDir.jaxId="1IG66C4030"
@@ -345,11 +362,16 @@ ${input}
 	
 	segs["GitFailed"]=GitFailed=async function(input){//:1IG99A55C0
 		let result=input
-		/*#{1IG99A55C0Code*/
-		addLog(`Abort: git download error.`);
-		result={result:"Failed",content:"Git download error."};
-		task.abort("git download error.");
-		/*}#1IG99A55C0Code*/
+		try{
+			/*#{1IG99A55C0Code*/
+			addLog(`Abort: git download error.`);
+			result={result:"Failed",content:"Git download error."};
+			task.abort("git download error.");
+			/*}#1IG99A55C0Code*/
+		}catch(error){
+			/*#{1IG99A55C0ErrorCode*/
+			/*}#1IG99A55C0ErrorCode*/
+		}
 		return {result:result};
 	};
 	GitFailed.jaxId="1IG99A55C0"
@@ -371,6 +393,7 @@ ${input}
 		let result;
 		let arg={};
 		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1IGB60OJ80Input*/
@@ -388,22 +411,27 @@ ${input}
 	
 	segs["LoadReadme"]=LoadReadme=async function(input){//:1IHBDHHPD0
 		let result=input
-		/*#{1IHBDHHPD0Code*/
-		//Make sure we have readme:
-		if(!project.readme){
-			let readme;
-			try{
-				readme=await fsp.readFile(pathLib.join(project.dirPath,"README.md"),"utf8");
-				//TODO: Check readme size before compress?
-				readme=compressMarkdownImageLinks(readme);
-				if(readme){
-					project.readme=readme;
+		try{
+			/*#{1IHBDHHPD0Code*/
+			//Make sure we have readme:
+			if(!project.readme){
+				let readme;
+				try{
+					readme=await fsp.readFile(pathLib.join(project.dirPath,"README.md"),"utf8");
+					//TODO: Check readme size before compress?
+					readme=compressMarkdownImageLinks(readme);
+					if(readme){
+						project.readme=readme;
+					}
+				}catch(err){
+					project.readme="";
 				}
-			}catch(err){
-				project.readme="";
 			}
+			/*}#1IHBDHHPD0Code*/
+		}catch(error){
+			/*#{1IHBDHHPD0ErrorCode*/
+			/*}#1IHBDHHPD0ErrorCode*/
 		}
-		/*}#1IHBDHHPD0Code*/
 		return {seg:TipPreview,result:(result),preSeg:"1IHBDHHPD0",outlet:"1IHBDKSG30"};
 	};
 	LoadReadme.jaxId="1IHBDHHPD0"
@@ -411,93 +439,23 @@ ${input}
 	
 	segs["PreviewPrj"]=PreviewPrj=async function(input){//:1IHBDIFBT0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4o-mini";
+		let $agent;
 		let result=null;
 		/*#{1IHBDIFBT0Input*/
 		/*}#1IHBDIFBT0Input*/
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4o-mini",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
 			fqcP:0,
 			prcP:0,
 			secret:false,
-			responseFormat:{
-				"type":"json_schema",
-				"json_schema":{
-					"name":"ResultPreview",
-					"schema":{
-						"type":"object",
-						"description":"",
-						"properties":{
-							"brief":{
-								"type":"string",
-								"description":"当前项目的简短总结，包括采用了什么技术，达到什么目的，有什么优势。"
-							},
-							"aiPrj":{
-								"type":"boolean",
-								"description":"项目是否是AI相关的"
-							},
-							"aiType":{
-								"type":[
-									"string","null"
-								],
-								"description":"如果是AI项目，属于那种类型",
-								"enum":[
-									"Chat"," Graphic","Voice","Video","Coding","Others"
-								]
-							},
-							"diffusers":{
-								"type":[
-									"boolean","null"
-								],
-								"description":"是否可以用diffusers来执行"
-							},
-							"diffusersPipeline":{
-								"type":"boolean",
-								"description":"是否有diffusers pipline"
-							},
-							"comfyUI":{
-								"type":"boolean",
-								"description":"是否是一个comfyUI项目"
-							},
-							"setup":{
-								"type":"boolean",
-								"description":"本地是否可以部署项目"
-							},
-							"node":{
-								"type":"boolean",
-								"description":"项目是否需要node环境"
-							},
-							"python":{
-								"type":"boolean",
-								"description":"项目是否需要python环境"
-							},
-							"warn":{
-								"type":"string",
-								"description":"部署时可能遇到的问题"
-							},
-							"error":{
-								"type":[
-									"string","null"
-								],
-								"description":"如果不能部署项目，不能部署的错误原因"
-							},
-							"summary":{
-								"type":"string",
-								"description":"总结：项目用途，项目技术要点，以及在本地部署项目的可行性总结。"
-							}
-						},
-						"required":[
-							"brief","aiPrj","aiType","diffusers","diffusersPipeline","comfyUI","setup","node","python","warn","error","summary"
-						],
-						"additionalProperties":false
-					},
-					"strict":true
-				}
-			}
+			responseFormat:"json_object"
 		};
 		let chatMem=PreviewPrj.messages
 		let seed="";
@@ -570,7 +528,11 @@ ${project.readme}
 		}
 		/*#{1IHBDIFBT0PreCall*/
 		/*}#1IHBDIFBT0PreCall*/
-		result=(result===null)?(await session.callSegLLM("PreviewPrj@"+agentURL,opts,messages,true)):result;
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("PreviewPrj@"+agentURL,opts,messages,true)):result;
+		}
 		result=trimJSON(result);
 		/*#{1IHBDIFBT0PostCall*/
 		project.requirements.node=result.node;
@@ -621,9 +583,14 @@ ${input.summary}
 	
 	segs["AbortSetup"]=AbortSetup=async function(input){//:1IJ0RJ6910
 		let result=input
-		/*#{1IJ0RJ6910Code*/
-		result={result:"Abort",content:"User aborted."};
-		/*}#1IJ0RJ6910Code*/
+		try{
+			/*#{1IJ0RJ6910Code*/
+			result={result:"Abort",content:"User aborted."};
+			/*}#1IJ0RJ6910Code*/
+		}catch(error){
+			/*#{1IJ0RJ6910ErrorCode*/
+			/*}#1IJ0RJ6910ErrorCode*/
+		}
 		return {result:result};
 	};
 	AbortSetup.jaxId="1IJ0RJ6910"
@@ -661,31 +628,6 @@ ${input.summary}
 	AskSetup.jaxId="1IJ0SEMOH0"
 	AskSetup.url="AskSetup@"+agentURL
 	
-	segs["TestBash"]=TestBash=async function(input){//:1JBUFOHMO0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Create";
-		args['commands']="cd ~/sdk";
-		args['options']={client:true};
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		globalContext["bash"]=result;
-		return {seg:CdDir,result:(result),preSeg:"1JBUFOHMO0",outlet:"1JBUFQGUF0"};
-	};
-	TestBash.jaxId="1JBUFOHMO0"
-	TestBash.url="TestBash@"+agentURL
-	
-	segs["CdDir"]=CdDir=async function(input){//:1JBUG0TLV0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']="cd ~/sdk";
-		args['options']="";
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {result:result};
-	};
-	CdDir.jaxId="1JBUG0TLV0"
-	CdDir.url="CdDir@"+agentURL
-	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -700,7 +642,7 @@ ${input.summary}
 			parseAgentArgs(input);
 			/*#{1IG65D1UE0PreEntry*/
 			/*}#1IG65D1UE0PreEntry*/
-			result={seg:TestBash,"input":input};
+			result={seg:CheckDirPath,"input":input};
 			/*#{1IG65D1UE0PostEntry*/
 			/*}#1IG65D1UE0PostEntry*/
 			return result;
@@ -782,7 +724,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //			"attrs": {}
 //		},
 //		"showName": "",
-//		"entry": "TestBash",
+//		"entry": "CheckDIrPath",
 //		"autoStart": "true",
 //		"inBrowser": "false",
 //		"debug": "true",
@@ -799,7 +741,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //				},
 //				"dirName": {
 //					"type": "string",
-//					"valText": "#project?.name"
+//					"valText": "#project.name"
 //				},
 //				"dirPath": {
 //					"type": "string",
@@ -821,12 +763,7 @@ export{PrjSetupPrjDir,ChatAPI};
 //		},
 //		"globalMockup": {
 //			"jaxId": "1IG65D1UE6",
-//			"attrs": {
-//				"bash": {
-//					"type": "string",
-//					"valText": ""
-//				}
-//			}
+//			"attrs": {}
 //		},
 //		"segs": {
 //			"attrs": [
@@ -1183,7 +1120,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1223,7 +1161,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1635,7 +1574,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1824,7 +1764,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2020,7 +1961,8 @@ export{PrjSetupPrjDir,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2131,87 +2073,6 @@ export{PrjSetupPrjDir,ChatAPI};
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1JBUFOHMO0",
-//					"attrs": {
-//						"id": "TestBash",
-//						"viewName": "",
-//						"label": "",
-//						"x": "80",
-//						"y": "600",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JBUFQGUM0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JBUFQGUM1",
-//							"attrs": {
-//								"cast": "{\"bash\":\"result\"}"
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Create",
-//						"commands": "\"cd ~/sdk\"",
-//						"options": "#{client:true}",
-//						"outlet": {
-//							"jaxId": "1JBUFQGUF0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JBUG0TLV0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1JBUG0TLV0",
-//					"attrs": {
-//						"id": "CdDir",
-//						"viewName": "",
-//						"label": "",
-//						"x": "310",
-//						"y": "600",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JBUG1JKV0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JBUG1JKV1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "\"cd ~/sdk\"",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1JBUG1JKP0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

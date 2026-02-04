@@ -31,6 +31,11 @@ const argsTemplate={
 			"required":false,
 			"defaultValue":"",
 			"desc":"是否安装依赖库，默认调用不必安装",
+		},
+		"auto":{
+			"name":"auto","type":"bool",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1IGAU4QB50ArgsView*/
@@ -60,7 +65,7 @@ async function getCondaEnvList() {
 /*}#1IGAU4QB50StartDoc*/
 //----------------------------------------------------------------------------
 let PrjCheckCondaEnv=async function(session){
-	let refName,pyversion,installReq;
+	let refName,pyversion,installReq,auto;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -82,15 +87,18 @@ let PrjCheckCondaEnv=async function(session){
 			refName=input.refName;
 			pyversion=input.pyversion;
 			installReq=input.installReq;
+			auto=input.auto;
 		}else{
 			refName=undefined;
 			pyversion=undefined;
 			installReq=undefined;
+			auto=undefined;
 		}
 		/*#{1IGAU4QB50ParseArgs*/
 		refName=refName||project.name;
 		pyversion=pyversion||(($ln==="CN")?("无"):/*EN*/("NA"));
 		installReq=installReq||false;
+		auto=auto||false;
 		/*}#1IGAU4QB50ParseArgs*/
 	}
 	
@@ -114,6 +122,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result=input;
 		let missing=false;
 		let smartAsk=false;
+		if(auto===undefined || auto==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -334,11 +343,16 @@ let PrjCheckCondaEnv=async function(session){
 		let button3=((($ln==="CN")?("选择环境"):("Select Environment")))||"";
 		let result="";
 		let value=0;
+		/*#{1IGB4NMLD0PreCodes*/
+		silent=auto;
+		/*}#1IGB4NMLD0PreCodes*/
 		if(silent){
 			result="";
 			return {seg:GenEnvName,result:(result),preSeg:"1IGB4NMLD0",outlet:"1IGB4NMKQ0"};
 		}
 		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		/*#{1IGB4NMLD0PostCodes*/
+		/*}#1IGB4NMLD0PostCodes*/
 		if(value===1){
 			result=("")||result;
 			return {seg:GenEnvName,result:(result),preSeg:"1IGB4NMLD0",outlet:"1IGB4NMKQ0"};
@@ -370,13 +384,19 @@ let PrjCheckCondaEnv=async function(session){
 		let result="";
 		let item=null;
 		
+		/*#{1IGG3ILB70PreCodes*/
+		silent=auto;
+		/*}#1IGG3ILB70PreCodes*/
 		if(silent){
 			result="";
 			/*#{1IGG3ILAR0Silent*/
+			pythonVersion=pyversion||"3.9";
 			/*}#1IGG3ILAR0Silent*/
 			return {seg:NewEnv,result:(result),preSeg:"1IGG3ILB70",outlet:"1IGG3ILAR0"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		/*#{1IGG3ILB70PostCodes*/
+		/*}#1IGG3ILB70PostCodes*/
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
@@ -406,6 +426,8 @@ let PrjCheckCondaEnv=async function(session){
 			/*}#1J0B3ECO40*/
 			return {seg:NewEnv,result:(result),preSeg:"1IGG3ILB70",outlet:"1J0B3ECO40"};
 		}
+		/*#{1IGG3ILB70FinCodes*/
+		/*}#1IGG3ILB70FinCodes*/
 		return {result:result};
 	};
 	AskPythonVersion.jaxId="1IGG3ILB70"
@@ -415,7 +437,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`,`source activate ${envName}`];
+		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName} || source activate ${envName}`];
 		args['options']={clear:true};
 		/*#{1IGB4V6D30PreCodes*/
 		/*}#1IGB4V6D30PreCodes*/
@@ -489,7 +511,7 @@ let PrjCheckCondaEnv=async function(session){
 			envName=refName||project.name;
 			nameIdx=1;
 			while(condaEnvs.indexOf(envName)>=0){
-				envName=project.name+"-"+(nameIdx++);
+				envName=refName+"-"+(nameIdx++);
 			}
 			/*}#1IGB5E9310Code*/
 		}catch(error){
@@ -511,11 +533,16 @@ let PrjCheckCondaEnv=async function(session){
 		let button3="";
 		let result="";
 		let value=0;
+		/*#{1IGB5EMM00PreCodes*/
+		silent=auto;
+		/*}#1IGB5EMM00PreCodes*/
 		if(silent){
 			result="";
 			return {seg:AskPythonVersion,result:(result),preSeg:"1IGB5EMM00",outlet:"1IGB5EMLH0"};
 		}
 		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		/*#{1IGB5EMM00PostCodes*/
+		/*}#1IGB5EMM00PostCodes*/
 		if(value===1){
 			result=("")||result;
 			return {seg:AskPythonVersion,result:(result),preSeg:"1IGB5EMM00",outlet:"1IGB5EMLH0"};
@@ -595,7 +622,7 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda init`,`source activate ${envName}`];
+		args['commands']=[`conda init`,`conda activate ${envName} || source activate ${envName}`];
 		args['options']="";
 		/*#{1IGO1NK0L0PreCodes*/
 		/*}#1IGO1NK0L0PreCodes*/
@@ -705,7 +732,7 @@ let PrjCheckCondaEnv=async function(session){
 		jaxId:"1IGAU4QB50",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{refName,pyversion,installReq}*/){
+		execChat:async function(input/*{refName,pyversion,installReq,auto}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IGAU4QB50PreEntry*/
@@ -735,7 +762,8 @@ let ChatAPI=[{
 			properties:{
 				refName:{type:"string",description:"推荐的Conda环境名字"},
 				pyversion:{type:"string",description:"需要的Python版本号"},
-				installReq:{type:"bool",description:"是否安装依赖库，默认调用不必安装"}
+				installReq:{type:"bool",description:"是否安装依赖库，默认调用不必安装"},
+				auto:{type:"bool",description:""}
 			}
 		}
 	},
@@ -827,6 +855,16 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"mockup": "\"\"",
 //						"desc": "是否安装依赖库，默认调用不必安装",
 //						"required": "false"
+//					}
+//				},
+//				"auto": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JG3OKUDT0",
+//					"attrs": {
+//						"type": "Boolean",
+//						"mockup": "\"\"",
+//						"desc": ""
 //					}
 //				}
 //			}
@@ -1362,7 +1400,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"x": "1715",
 //						"y": "470",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"prompt": {
@@ -1514,7 +1552,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"x": "2975",
 //						"y": "195",
 //						"desc": "TODO: Python版本应该可以从Readme里提取？",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "faces.svg",
 //						"prompt": "#pyversion?(($ln===\"CN\")?(`系统推荐的Python版本是: ${pyversion}，你也可以选择一个`):/*EN*/(`The recommended Python version is: ${pyversion}, you can also choose one`)):(($ln===\"CN\")?(\"请选择新环境的Python版本\"):/*EN*/(\"Please select the Python version for the new environment\"))",
@@ -1690,7 +1728,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`,`source activate ${envName}`]",
+//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName} || source activate ${envName}`]",
 //						"options": "#{clear:true}",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSJ1",
@@ -1836,7 +1874,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						"x": "2185",
 //						"y": "210",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"prompt": {
@@ -2140,7 +2178,7 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda init`,`source activate ${envName}`]",
+//						"commands": "#[`conda init`,`conda activate ${envName} || source activate ${envName}`]",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IGO1O5080",

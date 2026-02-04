@@ -30,7 +30,7 @@ function getHost(req){
 //---------------------------------------------------------------------------
 async function getUserInfo(req,userId,token,projection){
 	let vo,devKey,devSign,userInfo,nowTime,nowDay;
-	let saveVO;
+	let saveVO,signKey;
 	if(!dbUser){
 		return null;
 	}
@@ -80,6 +80,7 @@ async function getUserInfo(req,userId,token,projection){
 				s = "" + key + "-" + time;
 				s = sha256Hex(s);
 				if (s === sign) {
+					signKey=key;
 					break FindKey;
 				}
 				throw `key not match: key=${key}, sign=${s} vs ${sign}`;
@@ -143,6 +144,9 @@ async function getUserInfo(req,userId,token,projection){
 			dbUser.findOneAndUpdate(vo, saveVO);
 			userInfo.activeDay = nowDay;
 		}
+	}
+	if(signKey){
+		userInfo.signKey=signKey;
 	}
 	return userInfo;
 }
