@@ -69,7 +69,7 @@ let PrjCheckCondaEnv=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,ReadReq,CheckReq,Result,GetReqType,CheckReqType,TryConda,TryPip,TipIssue,NoType,AskEnv,AskPythonVersion,NewEnv,End2,ChooseEnv,GenEnvName,ConfirmName,AskEnvName,CheckEnvName,SelectEnv,UseEnv,AskNewName,AskPrjEnv,NewSourceEnv;
+	let FixArgs,ReadReq,CheckReq,Result,GetReqType,CheckReqType,TryConda,TryPip,TipIssue,NoType,AskEnv,AskPythonVersion,NewEnv,End2,ChooseEnv,GenEnvName,ConfirmName,AskEnvName,CheckEnvName,SelectEnv,UseEnv,AskNewName,AskPrjEnv,NewSourceEnv,Check,ActivateEnv,Handle;
 	let env=globalContext.env;
 	let project=globalContext.project;
 	let dirPath=project.dirPath;
@@ -437,17 +437,16 @@ let PrjCheckCondaEnv=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName} || source activate ${envName}`];
+		args['commands']=[`conda create -n ${envName} python=${pythonVersion} -y`];
 		args['options']={clear:true};
 		/*#{1IGB4V6D30PreCodes*/
 		/*}#1IGB4V6D30PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		/*#{1IGB4V6D30PostCodes*/
 		project.conda=envName;
-		result={result:"Finish",content:`创建了新的conda环境："${envName}"，作为项目的python环境。`};
 		project.progress.push(`创建了新的conda环境："${envName}"，作为项目的python环境。`);
 		/*}#1IGB4V6D30PostCodes*/
-		return {result:result};
+		return {seg:Check,result:(result),preSeg:"1IGB4V6D30",outlet:"1IGB5QNSJ1"};
 	};
 	NewEnv.jaxId="1IGB4V6D30"
 	NewEnv.url="NewEnv@"+agentURL
@@ -722,6 +721,45 @@ let PrjCheckCondaEnv=async function(session){
 	};
 	NewSourceEnv.jaxId="1IHC8T4DO0"
 	NewSourceEnv.url="NewSourceEnv@"+agentURL
+	
+	segs["Check"]=Check=async function(input){//:1JGLQK1F60
+		let result=input;
+		if(input.includes("CondaToSNonInteractiveError")){
+			return {seg:Handle,result:(input),preSeg:"1JGLQK1F60",outlet:"1JGLQL79D0"};
+		}
+		return {seg:ActivateEnv,result:(result),preSeg:"1JGLQK1F60",outlet:"1JGLQL79D1"};
+	};
+	Check.jaxId="1JGLQK1F60"
+	Check.url="Check@"+agentURL
+	
+	segs["ActivateEnv"]=ActivateEnv=async function(input){//:1JGLQKCP20
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=[`conda activate ${envName} || source activate ${envName}`];
+		args['options']="";
+		/*#{1JGLQKCP20PreCodes*/
+		/*}#1JGLQKCP20PreCodes*/
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1JGLQKCP20PostCodes*/
+		result={result:"Finish",content:`创建了新的conda环境："${envName}"，作为项目的python环境。`};
+		/*}#1JGLQKCP20PostCodes*/
+		return {result:result};
+	};
+	ActivateEnv.jaxId="1JGLQKCP20"
+	ActivateEnv.url="ActivateEnv@"+agentURL
+	
+	segs["Handle"]=Handle=async function(input){//:1JGLQMCGG0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=["conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main","conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r"];
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:NewEnv,result:(result),preSeg:"1JGLQMCGG0",outlet:"1JGLQNQIA0"};
+	};
+	Handle.jaxId="1JGLQMCGG0"
+	Handle.url="Handle@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1728,14 +1766,15 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`,`conda activate ${envName} || source activate ${envName}`]",
+//						"commands": "#[`conda create -n ${envName} python=${pythonVersion} -y`]",
 //						"options": "#{clear:true}",
 //						"outlet": {
 //							"jaxId": "1IGB5QNSJ1",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JGLQK1F60"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -2365,6 +2404,199 @@ export{PrjCheckCondaEnv,ChatAPI};
 //						}
 //					},
 //					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JGLQK1F60",
+//					"attrs": {
+//						"id": "Check",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3500",
+//						"y": "180",
+//						"desc": "This is an AISeg.",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGLQL79O0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGLQL79O1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JGLQL79D1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "Outlet.",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JGLQKCP20"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JGLQL79D0",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "Outlet.",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JGLQL79O2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JGLQL79O3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.includes(\"CondaToSNonInteractiveError\")"
+//									},
+//									"linkedSeg": "1JGLQMCGG0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JGLQKCP20",
+//					"attrs": {
+//						"id": "ActivateEnv",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3700",
+//						"y": "295",
+//						"desc": "This is an AISeg.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGLQL79O4",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGLQL79O5",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#[`conda activate ${envName} || source activate ${envName}`]",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JGLQL79D2",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							}
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JGLQMCGG0",
+//					"attrs": {
+//						"id": "Handle",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3700",
+//						"y": "75",
+//						"desc": "This is an AISeg.",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGLQNQID0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGLQNQID1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#[\"conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main\",\"conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r\"]",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JGLQNQIA0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JGLR37GN0"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JGLR37GN0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "3825",
+//						"y": "-60",
+//						"outlet": {
+//							"jaxId": "1JGLR3GOI0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JGLR3B8H0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JGLR3B8H0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "3315",
+//						"y": "-60",
+//						"outlet": {
+//							"jaxId": "1JGLR3GOI1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1IGB4V6D30"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

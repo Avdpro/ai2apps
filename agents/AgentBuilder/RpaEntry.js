@@ -146,7 +146,7 @@ let RpaEntry=async function(session){
 		/*#{1JAI4NAPN0PostCodes*/
 		const resultArray = result.split(", ").map(item => item.trim());
 		context.websites = resultArray;
-		console.log(resultArray,'resultArray');
+		//console.log(resultArray,'resultArray');
 		result = resultArray;
 		/*}#1JAI4NAPN0PostCodes*/
 		/*#{1JAI4NAPN0FinCodes*/
@@ -164,7 +164,7 @@ let RpaEntry=async function(session){
 			search,
 			searchNum,
 		};
-		console.log(input,"input test====")
+		//console.log(input,"input test====")
 		/*}#1JAI4HS2T0Start*/
 		if((input.platform === "小红书" || input.platform === "RedNote")){
 			return {seg:RedNoteLoginAgent,result:(input),preSeg:"1JAI4HS2T0",outlet:"1JAI4MAIF0"};
@@ -298,6 +298,7 @@ let RpaEntry=async function(session){
 		let $ref=undefined;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		/*#{1JAVCP71K0PreCodes*/
 		context.channel = input;
 		//context.search = input;
@@ -309,11 +310,13 @@ let RpaEntry=async function(session){
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JAVCP71K0"));
 				if($alias){
 					let $headless=false;
@@ -324,11 +327,11 @@ let RpaEntry=async function(session){
 					/*}#1JAVCP71K0PreBrowser*/
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					/*#{1JAVCP71K0PostBrowser*/
 					/*}#1JAVCP71K0PostBrowser*/
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						/*#{1JAVCP71K0PrePage*/
 						/*}#1JAVCP71K0PrePage*/
@@ -1484,7 +1487,8 @@ export{RpaEntry,ChatAPI};
 //								}
 //							}
 //						},
-//						"aiQuery": "true"
+//						"aiQuery": "true",
+//						"autoCurrentPage": "true"
 //					},
 //					"icon": "start.svg"
 //				},

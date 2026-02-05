@@ -67,7 +67,7 @@ let ToolSetupPrjSyncDir=async function(session){
 			diskJSON.syncDir=syncDir={"name":"","dirs":[]};
 		}
 		FindDir:{
-			for(let dirVO of syncDir.dirs){
+			for(let dirVO in syncDir.dirs){
 				if(dirVO.dir==="ai"){
 					prjSyncVO=dirVO;
 					break FindDir;
@@ -329,7 +329,7 @@ if(DocAIAgentExporter){
 			coder.packText(`let result,args={};`);coder.newLine();
 			coder.packText("args['dirPath']=");this.genAttrStatement(seg.getAttr("dirPath"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AgentBuilder/ai/ToolSetupPrjSyncDir.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/builder_new/ai/ToolSetupPrjSyncDir.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);

@@ -13,12 +13,12 @@ const VFACT=null;
 /*#{1HDBOSUN90StartDoc*/
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
-let baiduSearch=async function(session){
+let BaiduSearch=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let OpenPage,Notify,TypeText,ClickSearchBtn,CheckContentElement,DoExist,ShowError,ShowExistMsg,ReadContentRes,GetHtml,CheckDataLength,GoToNextPage,TipResult,ShowRes,ClosePage,CloseBrowser,ReadSearchRes,ShowAllRes,AddProcess,AddProcessText,StartBaidu;
+	let OpenPage,Notify,TypeText,ClickSearchBtn,CheckContentElement,DoExist,ShowError,ReadContentRes,GetHtml,CheckDataLength,GoToNextPage,TipResult,ShowRes,ClosePage,ReadSearchRes,ShowAllRes;
 	let data=undefined;
 	
 	/*#{1HDBOSUN90LocalVals*/
@@ -58,11 +58,16 @@ let baiduSearch=async function(session){
 		context.rpaBrowser = globalContext.rpaBrowser;
 		context.webRpa = globalContext.webRpa;
 		/*}#1IH28P38Q0PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1IH28P38Q0ErrorCode*/
+			/*}#1IH28P38Q0ErrorCode*/
+		}
 		/*#{1IH28P38Q0PostCodes*/
 		globalContext.aaPage = context[pageVal];
 		context.search = input.search;
@@ -98,17 +103,24 @@ let baiduSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1J0TKOVEG0PreCodes*/
 		/*}#1J0TKOVEG0PreCodes*/
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J0TKOVEG0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.type($query,$key,$options||{});
-		}else{
-			$pms=page.keyboard.type($key,$options||{});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J0TKOVEG0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.type($query,$key,$options||{});
+			}else{
+				$pms=page.keyboard.type($key,$options||{});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1J0TKOVEG0ErrorCode*/
+			/*}#1J0TKOVEG0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		/*#{1J0TKOVEG0PostCodes*/
 		/*}#1J0TKOVEG0PostCodes*/
 		return {seg:ClickSearchBtn,result:(result),preSeg:"1J0TKOVEG0",outlet:"1J0TKP1OU0"};
@@ -129,18 +141,25 @@ let baiduSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1J0TKRJ230PreCodes*/
 		context.webRpa = globalContext.webRpa;
 		/*}#1J0TKRJ230PreCodes*/
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J0TKRJ230")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.click($query,{...$options,offset:((!!$x) || (!!$y))?{x:$x||0,y:$y||0}:undefined});
-		}else{
-			$pms=page.mouse.click($x,$y,$options||{});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J0TKRJ230")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.click($query,{...$options,offset:((!!$x) || (!!$y))?{x:$x||0,y:$y||0}:undefined});
+			}else{
+				$pms=page.mouse.click($x,$y,$options||{});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1J0TKRJ230ErrorCode*/
+			/*}#1J0TKRJ230ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		/*#{1J0TKRJ230PostCodes*/
 		/*}#1J0TKRJ230PostCodes*/
 		return {seg:CheckContentElement,result:(result),preSeg:"1J0TKRJ230",outlet:"1J0TKRLAF0"};
@@ -159,18 +178,21 @@ let baiduSearch=async function(session){
 		let $waitAfter=0;
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
-		if($multi){
-			result=await context.webRpa.queryNodes(page,$node,$query,$options);
-		}else{
-			result=await context.webRpa.queryNode(page,$node,$query,$options);
-		}
-		if((!result)||($multi && !result.length)){
+		try{
+			if($multi){
+				result=await context.webRpa.queryNodes(page,$node,$query,$options);
+			}else{
+				result=await context.webRpa.queryNode(page,$node,$query,$options);
+			}
+			if((!result)||($multi && !result.length)){
+				throw "Querry not found";
+			}
 			$waitAfter && (await sleep($waitAfter))
-			return {result:result};
-		}else{
-			$waitAfter && (await sleep($waitAfter))
-			return {seg:DoExist,result:(result),preSeg:"1J3KOKJMN0",outlet:"1J3KOL1NP0"};
+		}catch(error){
+			/*#{1J3KOKJMN0ErrorCode*/
+			/*}#1J3KOKJMN0ErrorCode*/
 		}
+		return {seg:DoExist,result:(result),preSeg:"1J3KOKJMN0",outlet:"1J3KOL1NP0"};
 	};
 	CheckContentElement.jaxId="1J3KOKJMN0"
 	CheckContentElement.url="CheckContentElement@"+agentURL
@@ -198,18 +220,6 @@ let baiduSearch=async function(session){
 	ShowError.jaxId="1J1V2OG2B0"
 	ShowError.url="ShowError@"+agentURL
 	
-	segs["ShowExistMsg"]=ShowExistMsg=async function(input){//:1J1V38FT00
-		let result=input;
-		let $channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
-		let role="assistant";
-		let content=input;
-		session.addChatText(role,content,opts);
-		return {seg:AddProcessText,result:(result),preSeg:"1J1V38FT00",outlet:"1J1V398BD0"};
-	};
-	ShowExistMsg.jaxId="1J1V38FT00"
-	ShowExistMsg.url="ShowExistMsg@"+agentURL
-	
 	segs["ReadContentRes"]=ReadContentRes=async function(input){//:1J3KPQB720
 		let result=null;
 		let pageVal="aaPage";
@@ -220,29 +230,34 @@ let baiduSearch=async function(session){
 		let page=context[pageVal];
 		let $target="cleanHTML";
 		$waitBefore && (await sleep($waitBefore));
-		switch($target){
-			case "cleanHTML":{
-				result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
-				break;
+		try{
+			switch($target){
+				case "cleanHTML":{
+					result=await context.webRpa.readInnerHTML(page,$node,{removeHidden:true,...$options});
+					break;
+				}
+				case "html":{
+					result=await context.webRpa.getInnerHTML(page,$node);
+					break;
+				}
+				case "view":{
+					result=await context.webRpa.readNodeView(page,$node,{removeHidden:false,...$options});
+					break;
+				}
+				case "text":{
+					result=await context.webRpa.readNodeText(page,$node,{removeHidden:false,...$options});
+					break;
+				}
+				case "article":{
+					result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
+					break;
+				}
 			}
-			case "html":{
-				result=await context.webRpa.getInnerHTML(page,$node);
-				break;
-			}
-			case "view":{
-				result=await context.webRpa.readNodeView(page,$node,{removeHidden:false,...$options});
-				break;
-			}
-			case "text":{
-				result=await context.webRpa.readNodeText(page,$node,{removeHidden:false,...$options});
-				break;
-			}
-			case "article":{
-				result=await context.webRpa.readArticle(page,$node,{removeHidden:false,...$options});
-				break;
-			}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1J3KPQB720ErrorCode*/
+			/*}#1J3KPQB720ErrorCode*/
 		}
-		$waitAfter && (await sleep($waitAfter))
 		return {seg:GetHtml,result:(result),preSeg:"1J3KPQB720",outlet:"1J3KPQTN10"};
 	};
 	ReadContentRes.jaxId="1J3KPQB720"
@@ -250,53 +265,58 @@ let baiduSearch=async function(session){
 	
 	segs["GetHtml"]=GetHtml=async function(input){//:1J3KPV5CC0
 		let result=input
-		/*#{1J3KPV5CC0Code*/
-		try {
-			const page = context.aaPage;
-			const searchResults = await page.callFunction((searchNumber) => {
-				const isAd = (el) => {
-					const adSelectors = ['.ec_tuiguang', '[data-tuiguang]', '.c-container[tpl*="ad"]'];
-					const adTitleSelector = 'span[title="广告"], .ec_tuiguang';
-					const adTextContent = /广告/;
-		
-					return adSelectors.some(selector => el.closest(selector)) ||
-						el.querySelector(adTitleSelector) ||
-						adTextContent.test(el.textContent);
-				};
-		
-				return Array.from(document.querySelectorAll('#content_left .result, #content_left [tpl]'))
-					.filter(el => !isAd(el))
-					.map((el, idx) => ({
-						title: el.querySelector('h3 a') ? el.querySelector('h3 a').textContent.trim() : '',
-						url: el.querySelector('h3 a') ? el.querySelector('h3 a').href : '',
-						platform: 'baidu'
-					}))
-					.filter(r => r.title && r.url && !/最新相关信息/i.test(r.title) && r.url.includes('baidu.com/link?'));
-			},[context.searchNum]);
+		try{
+			/*#{1J3KPV5CC0Code*/
+			try {
+				const page = context.aaPage;
+				const searchResults = await page.callFunction((searchNumber) => {
+					const isAd = (el) => {
+						const adSelectors = ['.ec_tuiguang', '[data-tuiguang]', '.c-container[tpl*="ad"]'];
+						const adTitleSelector = 'span[title="广告"], .ec_tuiguang';
+						const adTextContent = /广告/;
 			
-			if (Array.isArray(context.data)) {
-				context.data = context.data.concat(searchResults);
-			} else {
-				context.data = searchResults;
+						return adSelectors.some(selector => el.closest(selector)) ||
+							el.querySelector(adTitleSelector) ||
+							adTextContent.test(el.textContent);
+					};
+			
+					return Array.from(document.querySelectorAll('#content_left .result, #content_left [tpl]'))
+						.filter(el => !isAd(el))
+						.map((el, idx) => ({
+							title: el.querySelector('h3 a') ? el.querySelector('h3 a').textContent.trim() : '',
+							url: el.querySelector('h3 a') ? el.querySelector('h3 a').href : '',
+							platform: 'baidu'
+						}))
+						.filter(r => r.title && r.url && !/最新相关信息/i.test(r.title) && r.url.includes('baidu.com/link?'));
+				},[context.searchNum]);
+				
+				if (Array.isArray(context.data)) {
+					context.data = context.data.concat(searchResults);
+				} else {
+					context.data = searchResults;
+				}
+				context.data = context.data.filter((item, index, self) =>
+						index === self.findIndex((t) => (
+							t.title === item.title 
+						))
+				);
+				context.data = context.data.slice(0, context.searchNum);
+			
+				console.log("searchResults baidu", context.data.length);
+			
+				const markdown = [
+					context.data.map((d,i)=>`${i+1}. [${d.title}](${d.url})`).join('\n')
+				].filter(line => line !== '').join('\n');
+			
+				result = { res: 'Finish', length: context.data.length, keyword: context.search, platform: 'baidu', finds: context.data , markdown };
+			} catch (e) {
+				result = { res: 'Fail', info: e.message };
 			}
-			context.data = context.data.filter((item, index, self) =>
-					index === self.findIndex((t) => (
-						t.title === item.title 
-					))
-			);
-			context.data = context.data.slice(0, context.searchNum);
-		
-			console.log("searchResults baidu", context.data.length);
-		
-			const markdown = [
-				context.data.map((d,i)=>`${i+1}. [${d.title}](${d.url})`).join('\n')
-			].filter(line => line !== '').join('\n');
-		
-			result = { res: 'Finish', length: context.data.length, keyword: context.search, platform: 'baidu', finds: context.data , markdown };
-		} catch (e) {
-			result = { res: 'Fail', info: e.message };
+			/*}#1J3KPV5CC0Code*/
+		}catch(error){
+			/*#{1J3KPV5CC0ErrorCode*/
+			/*}#1J3KPV5CC0ErrorCode*/
 		}
-		/*}#1J3KPV5CC0Code*/
 		return {seg:CheckDataLength,result:(result),preSeg:"1J3KPV5CC0",outlet:"1J3KPVHKK0"};
 	};
 	GetHtml.jaxId="1J3KPV5CC0"
@@ -325,8 +345,13 @@ let baiduSearch=async function(session){
 		/*#{1J3KTH1430PreCodes*/
 		context.pageNo = (context.pageNo || 0) + 1;
 		/*}#1J3KTH1430PreCodes*/
-		await page.goto(url,opts);
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.goto(url,opts);
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1J3KTH1430ErrorCode*/
+			/*}#1J3KTH1430ErrorCode*/
+		}
 		/*#{1J3KTH1430PostCodes*/
 		/*}#1J3KTH1430PostCodes*/
 		return {seg:ReadContentRes,result:(result),preSeg:"1J3KTH1430",outlet:"1J3KTHNG40"};
@@ -341,7 +366,7 @@ let baiduSearch=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JBH2EPUA0PreCodes*/
-		content=`共找到：${input.finds.length}条笔记。`;
+		content= ($ln==="CN") ? `共找到：${input.finds.length} 条笔记。` : `Find ${input.finds.length} notes.`;
 		/*}#1JBH2EPUA0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JBH2EPUA0PostCodes*/
@@ -375,31 +400,28 @@ ${input.markdown}
 		let waitAfter=0;
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.close();
-		context[pageVal]=null;
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.close();
+			context[pageVal]=null;
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1J2GMS02K0ErrorCode*/
+			/*}#1J2GMS02K0ErrorCode*/
+		}
 		return {result:result};
 	};
 	ClosePage.jaxId="1J2GMS02K0"
 	ClosePage.url="ClosePage@"+agentURL
 	
-	segs["CloseBrowser"]=CloseBrowser=async function(input){//:1J0TOBBQ10
-		let result=input;
-		let browser=context.rpaBrowser;
-		if(browser){
-			await context.webRpa.closeBrowser(browser);
-		}
-		context.rpaBrowser=null;
-		context.rpaHostPage=null;
-		return {result:result};
-	};
-	CloseBrowser.jaxId="1J0TOBBQ10"
-	CloseBrowser.url="CloseBrowser@"+agentURL
-	
 	segs["ReadSearchRes"]=ReadSearchRes=async function(input){//:1J1A396C50
 		let result=input
-		/*#{1J1A396C50Code*/
-		/*}#1J1A396C50Code*/
+		try{
+			/*#{1J1A396C50Code*/
+			/*}#1J1A396C50Code*/
+		}catch(error){
+			/*#{1J1A396C50ErrorCode*/
+			/*}#1J1A396C50ErrorCode*/
+		}
 		return {seg:ShowAllRes,result:(result),preSeg:"1J1A396C50",outlet:"1J1A39R980"};
 	};
 	ReadSearchRes.jaxId="1J1A396C50"
@@ -421,55 +443,10 @@ ${JSON.stringify(input,null,"\t")}
 	ShowAllRes.jaxId="1J1A3UQ580"
 	ShowAllRes.url="ShowAllRes@"+agentURL
 	
-	segs["AddProcess"]=AddProcess=async function(input){//:1J4269J9H0
-		let result=input
-		{
-			const $text="百度搜索已结束";
-			const $role=(undefined)||"assistant";
-			const $roleText=("assistant")||undefined;
-			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
-		}
-		/*#{1J4269J9H0Code*/
-		/*}#1J4269J9H0Code*/
-		return {result:result};
-	};
-	AddProcess.jaxId="1J4269J9H0"
-	AddProcess.url="AddProcess@"+agentURL
-	
-	segs["AddProcessText"]=AddProcessText=async function(input){//:1J426DVKC0
-		let result=input
-		{
-			const $text="正在获取搜索列表";
-			const $role=(undefined)||"assistant";
-			const $roleText=("assistant")||undefined;
-			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
-		}
-		/*#{1J426DVKC0Code*/
-		/*}#1J426DVKC0Code*/
-		return {result:result};
-	};
-	AddProcessText.jaxId="1J426DVKC0"
-	AddProcessText.url="AddProcessText@"+agentURL
-	
-	segs["StartBaidu"]=StartBaidu=async function(input){//:1J44K313B0
-		let result=input
-		{
-			const $text="即将开始百度搜索";
-			const $role=(undefined)||"assistant";
-			const $roleText=("assistant")||undefined;
-			await session.addChatText($role,$text,{"channel":"Process","txtHeader":$roleText});
-		}
-		/*#{1J44K313B0Code*/
-		/*}#1J44K313B0Code*/
-		return {result:result};
-	};
-	StartBaidu.jaxId="1J44K313B0"
-	StartBaidu.url="StartBaidu@"+agentURL
-	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"baiduSearch",
+		name:"BaiduSearch",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1HDBOSUN90",
@@ -498,7 +475,7 @@ ${JSON.stringify(input,null,"\t")}
 //#CodyExport>>>
 let ChatAPI=[{
 	def:{
-		name: "baiduSearch",
+		name: "BaiduSearch",
 		description: "这是一个AI代理。",
 		parameters:{
 			type: "object",
@@ -513,8 +490,8 @@ let ChatAPI=[{
 /*}#1HDBOSUN90PostDoc*/
 
 
-export default baiduSearch;
-export{baiduSearch,ChatAPI};
+export default BaiduSearch;
+export{BaiduSearch,ChatAPI};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -655,7 +632,8 @@ export{baiduSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1IH28Q6DB0"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -750,6 +728,7 @@ export{baiduSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J0TKRJ230"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "keybtn.svg"
@@ -800,6 +779,7 @@ export{baiduSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J3KOKJMN0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "mouse.svg"
@@ -836,6 +816,7 @@ export{baiduSearch,ChatAPI};
 //						"queryHint": "",
 //						"multi": "false",
 //						"options": "",
+//						"errorSeg": "",
 //						"waitBefore": "1000",
 //						"waitAfter": "0",
 //						"outlet": {
@@ -979,46 +960,6 @@ export{baiduSearch,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1J1V38FT00",
-//					"attrs": {
-//						"id": "ShowExistMsg",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1570",
-//						"y": "105",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J1V398BG0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J1V398BG1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input",
-//						"outlet": {
-//							"jaxId": "1J1V398BD0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1J426DVKC0"
-//						}
-//					},
-//					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "WebRpaReadPage",
 //					"jaxId": "1J3KPQB720",
 //					"attrs": {
@@ -1057,6 +998,7 @@ export{baiduSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J3KPV5CC0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "read.svg"
@@ -1097,7 +1039,8 @@ export{baiduSearch,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1207,6 +1150,7 @@ export{baiduSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J3KVDUK30"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/wait_goto.svg"
@@ -1335,45 +1279,10 @@ export{baiduSearch,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_close.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "WebRpaCloseBrowser",
-//					"jaxId": "1J0TOBBQ10",
-//					"attrs": {
-//						"id": "CloseBrowser",
-//						"viewName": "",
-//						"label": "",
-//						"x": "3620",
-//						"y": "60",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J0TOBN090",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J0TOBN091",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1J0TOBN070",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						}
-//					},
-//					"icon": "close.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1411,7 +1320,8 @@ export{baiduSearch,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1497,156 +1407,6 @@ export{baiduSearch,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1J4269J9H0",
-//					"attrs": {
-//						"id": "AddProcess",
-//						"viewName": "",
-//						"label": "",
-//						"x": "3155",
-//						"y": "40",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J426AHAD0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J426AHAD1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1J426AHA50",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"process": {
-//							"type": "object",
-//							"def": "ProcessMsg",
-//							"jaxId": "1J426B6FH0",
-//							"attrs": {
-//								"text": "百度搜索已结束",
-//								"role": "Assistant",
-//								"codes": "false",
-//								"roleText": ""
-//							}
-//						}
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1J426DVKC0",
-//					"attrs": {
-//						"id": "AddProcessText",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1825",
-//						"y": "105",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J426GAGL0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J426GAGL1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1J426GAGI0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"process": {
-//							"type": "object",
-//							"def": "ProcessMsg",
-//							"jaxId": "1J426GPLS0",
-//							"attrs": {
-//								"text": "正在获取搜索列表",
-//								"role": "Assistant",
-//								"codes": "false",
-//								"roleText": ""
-//							}
-//						}
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1J44K313B0",
-//					"attrs": {
-//						"id": "StartBaidu",
-//						"viewName": "",
-//						"label": "",
-//						"x": "475",
-//						"y": "320",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J44K4D5K0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J44K4D5K1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1J44K4D5D0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"process": {
-//							"type": "object",
-//							"def": "ProcessMsg",
-//							"jaxId": "1J44K4D5K2",
-//							"attrs": {
-//								"text": "即将开始百度搜索",
-//								"role": "Assistant",
-//								"codes": "false",
-//								"roleText": ""
-//							}
-//						}
-//					},
-//					"icon": "tab_css.svg"
 //				}
 //			]
 //		},

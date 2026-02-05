@@ -8,7 +8,8 @@ import {trimJSON} from "/@aichat/utils.js";
 import {tabNT} from "/@tabos";
 /*}#1IKCV9VRJ0MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
-const basePath=pathLib.dirname(agentURL);
+const baseURL=pathLib.dirname(agentURL);
+const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
 const $ln=VFACT.lanCode||"EN";
 /*#{1IKCV9VRJ0StartDoc*/
 import {AATools} from "/@tabos/AATools.js";
@@ -76,7 +77,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipStart"]=TipStart=async function(input){//:1IKE6V3JM0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("欢迎使用AI2Apps系统对话."):("Welcome to the AI2Apps System Chat."));
 		session.addChatText(role,content,opts);
@@ -87,48 +89,53 @@ let SysTabOSChat=async function(session){
 	
 	segs["InitTools"]=InitTools=async function(input){//:1IKCVA57O0
 		let result=input
-		/*#{1IKCVA57O0Code*/
-		let tools;
-		tools=context.aaTools=new AATools();
-		await tools.load();
-		context.toolIndex=tools.getToolDescIndex();
-		context.toolIndex = Object.entries(context.toolIndex);
-		context.toolIndex.push(["Tool-Bash", "这是一个用于执行命令行命令的工具，可以用于执行允许的命令行命令，如解压缩，ls，cd，执行代码文件，git，wget，brew下载等等，请提供合法的可以直接在terminal执行的命令。"]);
-		//context.toolIndex.push(["Tool-Ask", "这是一个调用大语言模型问答或生成内容的工具，请提供需要询问的问题或者需要生成的内容。"]);
-		context.toolIndex = Object.fromEntries(context.toolIndex);
-		session.debugLog("Tools index:");
-		session.debugLog(context.toolIndex);
-		console.log("Tools index:");
-		console.log(context.toolIndex);
-		
-		//Build agentNodes info:
-		{
-			let res,nodes;
-			nodes=context.agentNodes={};
-			res=await tabNT.makeCall("AhListAgentNodes",{});
-			if(res && res.code===200){
-				let list,node;
-				list=res.nodes;
-				for(node of list){
-					if(node.chatEntry){
-						nodes[node.name]={
-							"descritption":node.description,
-							"entry":node.chatEntry,
-							"workload":node.workload
-						}
+		try{
+			/*#{1IKCVA57O0Code*/
+			let tools;
+			tools=context.aaTools=new AATools();
+			await tools.load();
+			context.toolIndex=tools.getToolDescIndex();
+			context.toolIndex = Object.entries(context.toolIndex);
+			context.toolIndex.push(["Tool-Bash", "这是一个用于执行命令行命令的工具，可以用于执行允许的命令行命令，如解压缩，ls，cd，执行代码文件，git，wget，brew下载等等，请提供合法的可以直接在terminal执行的命令。"]);
+			//context.toolIndex.push(["Tool-Ask", "这是一个调用大语言模型问答或生成内容的工具，请提供需要询问的问题或者需要生成的内容。"]);
+			context.toolIndex = Object.fromEntries(context.toolIndex);
+			session.debugLog("Tools index:");
+			session.debugLog(context.toolIndex);
+			console.log("Tools index:");
+			console.log(context.toolIndex);
+			
+			//Build agentNodes info:
+			{
+				let res,nodes;
+				nodes=context.agentNodes={};
+				res=await tabNT.makeCall("AhListAgentNodes",{});
+				if(res && res.code===200){
+					let list,node;
+					list=res.nodes;
+					for(node of list){
+						if(node.chatEntry){
+							nodes[node.name]={
+								"descritption":node.description,
+								"entry":node.chatEntry,
+								"workload":node.workload
+							}
+					}
+					}
 				}
-				}
+				session.debugLog("Nodes index:");
+				session.debugLog(context.agentNodes);
+				console.log("Nodes index:");
+				console.log(nodes);
 			}
-			session.debugLog("Nodes index:");
-			session.debugLog(context.agentNodes);
-			console.log("Nodes index:");
-			console.log(nodes);
+			
+			//Init cokeEnv&tty
+			cokeEnv=await session.WSCall_CreateCokeEnv();
+			cokeTty=cokeEnv.tty;
+			/*}#1IKCVA57O0Code*/
+		}catch(error){
+			/*#{1IKCVA57O0ErrorCode*/
+			/*}#1IKCVA57O0ErrorCode*/
 		}
-		
-		//Init cokeEnv&tty
-		cokeEnv=await session.WSCall_CreateCokeEnv();
-		cokeTty=cokeEnv.tty;
-		/*}#1IKCVA57O0Code*/
 		return {seg:InitBash,result:(result),preSeg:"1IKCVA57O0",outlet:"1IKCVADJI0"};
 	};
 	InitTools.jaxId="1IKCVA57O0"
@@ -136,7 +143,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["StartTip"]=StartTip=async function(input){//:1IKCVAMJC0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="user";
 		let content=input.prompt||input;
 		/*#{1IKCVAMJC0PreCodes*/
@@ -230,6 +238,7 @@ let SysTabOSChat=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(true)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -239,7 +248,7 @@ let SysTabOSChat=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -255,13 +264,16 @@ let SysTabOSChat=async function(session){
 	
 	segs["GenAction"]=GenAction=async function(input){//:1IKCVDIJ50
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1";
+		let $agent;
 		let result=null;
 		/*#{1IKCVDIJ50Input*/
 		/*}#1IKCVDIJ50Input*/
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4.1",
+			platform:$platform,
+			mode:$model,
 			maxToken:32768,
 			temperature:0,
 			topP:1,
@@ -349,7 +361,11 @@ let SysTabOSChat=async function(session){
 		}
 		/*#{1IKCVDIJ50PreCall*/
 		/*}#1IKCVDIJ50PreCall*/
-		result=(result===null)?(await session.callSegLLM("GenAction@"+agentURL,opts,messages,true)):result;
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("GenAction@"+agentURL,opts,messages,true)):result;
+		}
 		/*#{1IKCVDIJ50PostLLM*/
 		/*}#1IKCVDIJ50PostLLM*/
 		chatMem.push({role:"user",content:prompt});
@@ -362,6 +378,8 @@ let SysTabOSChat=async function(session){
 		result=trimJSON(result);
 		/*#{1IKCVDIJ50PostCall*/
 		/*}#1IKCVDIJ50PostCall*/
+		/*#{1IKCVDIJ50PreResult*/
+		/*}#1IKCVDIJ50PreResult*/
 		return {seg:CaseAction,result:(result),preSeg:"1IKCVDIJ50",outlet:"1IKCVDSRP4"};
 	};
 	GenAction.jaxId="1IKCVDIJ50"
@@ -426,14 +444,19 @@ let SysTabOSChat=async function(session){
 	
 	segs["RunCommand"]=RunCommand=async function(input){//:1IKCVJFTJ0
 		let result=input
-		/*#{1IKCVJFTJ0Code*/
-		let orgContentLen,content;
-		cmdText=input;
-		orgContentLen=cokeTty.getContent().length;
-		await cokeEnv.execCmd(input);
-		content=cokeTty.getContent();
-		result=content.substring(orgContentLen);
-		/*}#1IKCVJFTJ0Code*/
+		try{
+			/*#{1IKCVJFTJ0Code*/
+			let orgContentLen,content;
+			cmdText=input;
+			orgContentLen=cokeTty.getContent().length;
+			await cokeEnv.execCmd(input);
+			content=cokeTty.getContent();
+			result=content.substring(orgContentLen);
+			/*}#1IKCVJFTJ0Code*/
+		}catch(error){
+			/*#{1IKCVJFTJ0ErrorCode*/
+			/*}#1IKCVJFTJ0ErrorCode*/
+		}
 		return {seg:ShowResult,result:(result),preSeg:"1IKCVJFTJ0",outlet:"1IKCVL5P94"};
 	};
 	RunCommand.jaxId="1IKCVJFTJ0"
@@ -441,7 +464,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["ShowResult"]=ShowResult=async function(input){//:1IKCVK9ES0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKCVK9ES0PreCodes*/
@@ -459,9 +483,14 @@ let SysTabOSChat=async function(session){
 	
 	segs["TryNode"]=TryNode=async function(input){//:1IKCVMUAG0
 		let result=input;
-		/*#{1IKCVMUAG0Code*/
-		false
-		/*}#1IKCVMUAG0Code*/
+		try{
+			/*#{1IKCVMUAG0Code*/
+			false
+			/*}#1IKCVMUAG0Code*/
+		}catch(error){
+			/*#{1IKCVMUAG0ErrorCode*/
+			/*}#1IKCVMUAG0ErrorCode*/
+		}
 		return {seg:ShowNode,result:(result),preSeg:"1IKCVMUAG0",outlet:"1IKCVQU3L0",catchSeg:NodeError,catchlet:"1IKCVQU3O2"};
 	};
 	TryNode.jaxId="1IKCVMUAG0"
@@ -469,9 +498,14 @@ let SysTabOSChat=async function(session){
 	
 	segs["TryTool"]=TryTool=async function(input){//:1IKCVNB7A0
 		let result=input;
-		/*#{1IKCVNB7A0Code*/
-		false
-		/*}#1IKCVNB7A0Code*/
+		try{
+			/*#{1IKCVNB7A0Code*/
+			false
+			/*}#1IKCVNB7A0Code*/
+		}catch(error){
+			/*#{1IKCVNB7A0ErrorCode*/
+			/*}#1IKCVNB7A0ErrorCode*/
+		}
 		return {seg:Check,result:(result),preSeg:"1IKCVNB7A0",outlet:"1IKCVQU3L1",catchSeg:ToolError,catchlet:"1IKCVQU3O5"};
 	};
 	TryTool.jaxId="1IKCVNB7A0"
@@ -480,7 +514,8 @@ let SysTabOSChat=async function(session){
 	segs["DoChat"]=DoChat=async function(input){//:1IKCVNLLO0
 		let result;
 		let arg=input.content;
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./SysTabOSAskUser.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -491,7 +526,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipFinish"]=TipFinish=async function(input){//:1IKCVOA650
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -502,7 +538,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipAbort"]=TipAbort=async function(input){//:1IKCVOQ6C0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input.content;
 		session.addChatText(role,content,opts);
@@ -513,9 +550,14 @@ let SysTabOSChat=async function(session){
 	
 	segs["LogError"]=LogError=async function(input){//:1IKCVU57C0
 		let result=input
-		/*#{1IKCVU57C0Code*/
-		session.addChatText("error",""+input);
-		/*}#1IKCVU57C0Code*/
+		try{
+			/*#{1IKCVU57C0Code*/
+			session.addChatText("error",""+input);
+			/*}#1IKCVU57C0Code*/
+		}catch(error){
+			/*#{1IKCVU57C0ErrorCode*/
+			/*}#1IKCVU57C0ErrorCode*/
+		}
 		return {seg:GenAction,result:(result),preSeg:"1IKCVU57C0",outlet:"1IKD025ML0"};
 	};
 	LogError.jaxId="1IKCVU57C0"
@@ -539,7 +581,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["ShowNode"]=ShowNode=async function(input){//:1IKD03BL10
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03BL10PreCodes*/
@@ -560,7 +603,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["ShowTool"]=ShowTool=async function(input){//:1IKD03VM90
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD03VM90PreCodes*/
@@ -584,23 +628,28 @@ let SysTabOSChat=async function(session){
 	
 	segs["CallTool"]=CallTool=async function(input){//:1IKD04LRQ0
 		let result=input
-		/*#{1IKD04LRQ0Code*/
-		let tools=context.aaTools;
-		let tool=context.curTool;
-		let toolPath=tool.filePath;
-		let prompt=input.prompt;
-		if(typeof(prompt)==="string"){
-			try{
-				prompt=JSON.parse(prompt);
-			}catch (e){
-				prompt=prompt;
+		try{
+			/*#{1IKD04LRQ0Code*/
+			let tools=context.aaTools;
+			let tool=context.curTool;
+			let toolPath=tool.filePath;
+			let prompt=input.prompt;
+			if(typeof(prompt)==="string"){
+				try{
+					prompt=JSON.parse(prompt);
+				}catch (e){
+					prompt=prompt;
+				}
+				
 			}
-			
+			session.debugLog({type:"CallTool",tool:toolPath,prompt:prompt});
+			result=await tools.execTool(VFACT.app,tool,prompt,session);
+			session.debugLog({type:"ToolResult",tool:toolPath,result:result});
+			/*}#1IKD04LRQ0Code*/
+		}catch(error){
+			/*#{1IKD04LRQ0ErrorCode*/
+			/*}#1IKD04LRQ0ErrorCode*/
 		}
-		session.debugLog({type:"CallTool",tool:toolPath,prompt:prompt});
-		result=await tools.execTool(VFACT.app,tool,prompt,session);
-		session.debugLog({type:"ToolResult",tool:toolPath,result:result});
-		/*}#1IKD04LRQ0Code*/
 		return {seg:TipToolRes,result:(result),preSeg:"1IKD04LRQ0",outlet:"1IKD0BI2O1"};
 	};
 	CallTool.jaxId="1IKD04LRQ0"
@@ -608,7 +657,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipNodeRes"]=TipNodeRes=async function(input){//:1IKD04TDE0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD04TDE0PreCodes*/
@@ -626,7 +676,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["TipToolRes"]=TipToolRes=async function(input){//:1IKD0580Q0
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IKD0580Q0PreCodes*/
@@ -653,8 +704,13 @@ let SysTabOSChat=async function(session){
 	
 	segs["AddChat"]=AddChat=async function(input){//:1IKDJNI2I0
 		let result=input
-		/*#{1IKDJNI2I0Code*/
-		/*}#1IKDJNI2I0Code*/
+		try{
+			/*#{1IKDJNI2I0Code*/
+			/*}#1IKDJNI2I0Code*/
+		}catch(error){
+			/*#{1IKDJNI2I0ErrorCode*/
+			/*}#1IKDJNI2I0ErrorCode*/
+		}
 		return {seg:NextAction,result:(result),preSeg:"1IKDJNI2I0",outlet:"1IKDJOFUD0"};
 	};
 	AddChat.jaxId="1IKDJNI2I0"
@@ -665,6 +721,7 @@ let SysTabOSChat=async function(session){
 		let tipRole=("assistant");
 		let placeholder=("");
 		let allowFile=(true)||false;
+		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
 		let result="";
@@ -674,7 +731,7 @@ let SysTabOSChat=async function(session){
 			if(tip){
 				session.addChatText(tipRole,tip);
 			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile});
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
 		}
 		if(typeof(result)==="string"){
 			session.addChatText("user",result);
@@ -707,7 +764,7 @@ let SysTabOSChat=async function(session){
 	
 	segs["InitBash"]=InitBash=async function(input){//:1INT3PTSB0
 		let result,args={};
-		args['nodeName']="builder_new";
+		args['nodeName']="AgentBuilder";
 		args['callAgent']="Bash.js";
 		args['callArg']={action:"Create",options:{client:true,ownBySession:false}};
 		args['checkUpdate']=true;
@@ -739,7 +796,7 @@ let SysTabOSChat=async function(session){
 	
 	segs["RunBash"]=RunBash=async function(input){//:1INT68OMK0
 		let result,args={};
-		args['nodeName']="builder_new";
+		args['nodeName']="AgentBuilder";
 		args['callAgent']="Bash.js";
 		args['callArg']={bashId:globalContext.bash,action:"Command",commands:input.prompt};
 		args['checkUpdate']=true;
@@ -760,13 +817,16 @@ let SysTabOSChat=async function(session){
 	
 	segs["Generate"]=Generate=async function(input){//:1IP1BRS1S0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1";
+		let $agent;
 		let result=null;
 		/*#{1IP1BRS1S0Input*/
 		/*}#1IP1BRS1S0Input*/
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4.1",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -795,10 +855,16 @@ let SysTabOSChat=async function(session){
 		}
 		/*#{1IP1BRS1S0PreCall*/
 		/*}#1IP1BRS1S0PreCall*/
-		result=(result===null)?(await session.callSegLLM("Generate@"+agentURL,opts,messages,true)):result;
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("Generate@"+agentURL,opts,messages,true)):result;
+		}
 		/*#{1IP1BRS1S0PostCall*/
 		todo=result;
 		/*}#1IP1BRS1S0PostCall*/
+		/*#{1IP1BRS1S0PreResult*/
+		/*}#1IP1BRS1S0PreResult*/
 		return {seg:output,result:(result),preSeg:"1IP1BRS1S0",outlet:"1IP1BSSUA0"};
 	};
 	Generate.jaxId="1IP1BRS1S0"
@@ -806,11 +872,14 @@ let SysTabOSChat=async function(session){
 	
 	segs["LLM"]=LLM=async function(input){//:1IP1C8N7Q0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1";
+		let $agent;
 		let result;
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4.1",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -832,7 +901,11 @@ let SysTabOSChat=async function(session){
 			}
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
-		result=await session.callSegLLM("LLM@"+agentURL,opts,messages,true);
+		if($agent){
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+		}else{
+			result=await session.callSegLLM("LLM@"+agentURL,opts,messages,true);
+		}
 		return {seg:NextAction,result:(result),preSeg:"1IP1C8N7Q0",outlet:"1IP1CAF0L0"};
 	};
 	LLM.jaxId="1IP1C8N7Q0"
@@ -840,7 +913,8 @@ let SysTabOSChat=async function(session){
 	
 	segs["output"]=output=async function(input){//:1IP1FIUT30
 		let result=input;
-		let opts={txtHeader:($agent.showName||$agent.name||null)};
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
 		/*#{1IP1FIUT30PreCodes*/
@@ -856,11 +930,14 @@ let SysTabOSChat=async function(session){
 	
 	segs["ParseJson"]=ParseJson=async function(input){//:1IPE2KORR0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1-mini";
+		let $agent;
 		let result;
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4.1-mini",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -882,7 +959,11 @@ let SysTabOSChat=async function(session){
 			}
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
-		result=await session.callSegLLM("ParseJson@"+agentURL,opts,messages,true);
+		if($agent){
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+		}else{
+			result=await session.callSegLLM("ParseJson@"+agentURL,opts,messages,true);
+		}
 		result=trimJSON(result);
 		return {result:result};
 	};
@@ -891,8 +972,13 @@ let SysTabOSChat=async function(session){
 	
 	segs["NextStep"]=NextStep=async function(input){//:1IPEEMQF00
 		let result=input
-		/*#{1IPEEMQF00Code*/
-		/*}#1IPEEMQF00Code*/
+		try{
+			/*#{1IPEEMQF00Code*/
+			/*}#1IPEEMQF00Code*/
+		}catch(error){
+			/*#{1IPEEMQF00ErrorCode*/
+			/*}#1IPEEMQF00ErrorCode*/
+		}
 		return {seg:GenAction,result:(result),preSeg:"1IPEEMQF00",outlet:"1IPEEMQF20"};
 	};
 	NextStep.jaxId="1IPEEMQF00"
@@ -955,7 +1041,6 @@ export{SysTabOSChat};
 //							"jaxId": "1IKCV9VRK0",
 //							"attrs": {}
 //						},
-//						"superClass": "",
 //						"properties": {
 //							"jaxId": "1IKCV9VRK1",
 //							"attrs": {}
@@ -966,7 +1051,8 @@ export{SysTabOSChat};
 //						},
 //						"mockupOnly": "false",
 //						"nullMockup": "false",
-//						"exportClass": "false"
+//						"exportClass": "false",
+//						"superClass": ""
 //					},
 //					"mockups": {}
 //				}
@@ -1136,6 +1222,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": {
 //							"type": "string",
 //							"valText": "Welcome to the AI2Apps System Chat.",
@@ -1192,7 +1279,8 @@ export{SysTabOSChat};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1223,6 +1311,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "User",
+//						"channel": "Chat",
 //						"text": "#input.prompt||input",
 //						"outlet": {
 //							"jaxId": "1IKCVDSRP0",
@@ -1384,6 +1473,7 @@ export{SysTabOSChat};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "true",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {
@@ -1452,6 +1542,7 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IKCVE61A0"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -1465,9 +1556,13 @@ export{SysTabOSChat};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1740,7 +1835,8 @@ export{SysTabOSChat};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1771,6 +1867,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKCVL5PA0",
@@ -1959,8 +2056,7 @@ export{SysTabOSChat};
 //						},
 //						"mcp": {
 //							"valText": "false"
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				},
@@ -1991,6 +2087,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input.content",
 //						"outlet": {
 //							"jaxId": "1IKCVQU3L3",
@@ -2030,6 +2127,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input.content",
 //						"outlet": {
 //							"jaxId": "1IKCVQU3L4",
@@ -2122,7 +2220,8 @@ export{SysTabOSChat};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2203,6 +2302,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD046QG0",
@@ -2242,6 +2342,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD046QG1",
@@ -2290,7 +2391,8 @@ export{SysTabOSChat};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2321,6 +2423,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD0BI2O2",
@@ -2360,6 +2463,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IKD0BI2O3",
@@ -2433,7 +2537,8 @@ export{SysTabOSChat};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -2490,6 +2595,7 @@ export{SysTabOSChat};
 //						"placeholder": "",
 //						"text": "",
 //						"file": "true",
+//						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
 //						"outlet": {
@@ -2571,7 +2677,7 @@ export{SysTabOSChat};
 //								"cast": ""
 //							}
 //						},
-//						"nodeName": "builder_new",
+//						"nodeName": "AgentBuilder",
 //						"callAgent": "Bash.js",
 //						"callArg": "#{action:\"Create\",options:{client:true,ownBySession:false}}",
 //						"checkUpdate": "true",
@@ -2706,7 +2812,7 @@ export{SysTabOSChat};
 //								"cast": ""
 //							}
 //						},
-//						"nodeName": "builder_new",
+//						"nodeName": "AgentBuilder",
 //						"callAgent": "Bash.js",
 //						"callArg": "#{bashId:globalContext.bash,action:\"Command\",commands:input.prompt}",
 //						"checkUpdate": "true",
@@ -2799,6 +2905,7 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IP1FIUT30"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -2812,9 +2919,13 @@ export{SysTabOSChat};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "text",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2863,6 +2974,7 @@ export{SysTabOSChat};
 //							},
 //							"linkedSeg": "1IP1CABF60"
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -2876,9 +2988,13 @@ export{SysTabOSChat};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "text",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2929,6 +3045,7 @@ export{SysTabOSChat};
 //							}
 //						},
 //						"role": "Assistant",
+//						"channel": "Chat",
 //						"text": "#input",
 //						"outlet": {
 //							"jaxId": "1IP1FJFMQ0",
@@ -2986,6 +3103,7 @@ export{SysTabOSChat};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -2999,9 +3117,13 @@ export{SysTabOSChat};
 //						},
 //						"parallelFunction": "false",
 //						"responseFormat": "json_object",
-//						"formatDef": "\"\""
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
 //					},
-//					"icon": "llm.svg"
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -3039,7 +3161,8 @@ export{SysTabOSChat};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				}

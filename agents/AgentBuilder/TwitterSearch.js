@@ -13,7 +13,7 @@ const VFACT=null;
 /*#{1HDBOSUN90StartDoc*/
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
-let twitterSearch=async function(session){
+let TwitterSearch=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
@@ -56,11 +56,16 @@ let twitterSearch=async function(session){
 		}
 		$url = `https://x.com/${search}`;
 		/*}#1J9P7UIKE0PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1J9P7UIKE0ErrorCode*/
+			/*}#1J9P7UIKE0ErrorCode*/
+		}
 		/*#{1J9P7UIKE0PostCodes*/
 		/*}#1J9P7UIKE0PostCodes*/
 		return {result:true};
@@ -86,22 +91,26 @@ let twitterSearch=async function(session){
 		context.search = input.search;
 		context.searchNum = input.searchNum;
 		/*}#1J9P8I5D20PreCodes*/
-		if($multi){
-			result=await context.webRpa.queryNodes(page,$node,$query,$options);
-		}else{
-			result=await context.webRpa.queryNode(page,$node,$query,$options);
-		}
-		if((!result)||($multi && !result.length)){
+		try{
+			if($multi){
+				result=await context.webRpa.queryNodes(page,$node,$query,$options);
+			}else{
+				result=await context.webRpa.queryNode(page,$node,$query,$options);
+			}
+			if((!result)||($multi && !result.length)){
+				throw "Querry not found";
+			}
+			/*#{1J9P8I5D20CheckItem*/
+			/*}#1J9P8I5D20CheckItem*/
 			$waitAfter && (await sleep($waitAfter))
-			/*#{1J9P8I5D20MissingCodes*/
-			/*}#1J9P8I5D20MissingCodes*/
-			return {seg:ParseSearch,result:(result),preSeg:"1J9P8I5D20",outlet:"1J9P8I5CD0"};
-		}else{
-			$waitAfter && (await sleep($waitAfter))
-			/*#{1J9P8I5D20PostCodes*/
-			/*}#1J9P8I5D20PostCodes*/
-			return {seg:Error,result:(result),preSeg:"1J9P8I5D20",outlet:"1J9P8IDF00"};
+		}catch(error){
+			/*#{1J9P8I5D20ErrorCode*/
+			/*}#1J9P8I5D20ErrorCode*/
+			return {seg:ParseSearch,result:error,preSeg:"1J9P8I5D20",outlet:"1J9P8I5CD0"};
 		}
+		/*#{1J9P8I5D20PostCodes*/
+		/*}#1J9P8I5D20PostCodes*/
+		return {seg:Error,result:(result),preSeg:"1J9P8I5D20",outlet:"1J9P8IDF00"};
 	};
 	AccountBranch.jaxId="1J9P8I5D20"
 	AccountBranch.url="AccountBranch@"+agentURL
@@ -351,11 +360,16 @@ let twitterSearch=async function(session){
 		/*#{1J9PAUP6D0PreCodes*/
 		$url = $url.url;
 		/*}#1J9PAUP6D0PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1J9PAUP6D0ErrorCode*/
+			/*}#1J9PAUP6D0ErrorCode*/
+		}
 		/*#{1J9PAUP6D0PostCodes*/
 		return {seg:DeepParse,result:(input),preSeg:"1J9PAUP6D0",outlet:"1J9PAV14T0"};
 		/*}#1J9PAUP6D0PostCodes*/
@@ -472,9 +486,14 @@ let twitterSearch=async function(session){
 		let waitAfter=0;
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.close();
-		context[pageVal]=null;
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.close();
+			context[pageVal]=null;
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1J9PBM8TH0ErrorCode*/
+			/*}#1J9PBM8TH0ErrorCode*/
+		}
 		return {result:result};
 	};
 	ClosePage.jaxId="1J9PBM8TH0"
@@ -530,7 +549,7 @@ let twitterSearch=async function(session){
 		console.log("input.comments",input.comments);
 		/*}#1JBHHCNF50PreCodes*/
 		try{
-			result=await context[$flag];
+			result=$flag?(await context[$flag]):input;
 		}catch(error){
 			return {result:error};
 		}
@@ -555,6 +574,7 @@ let twitterSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1JB45QRSC0PreCodes*/
 		//page = globalContext.aaPage;
@@ -563,14 +583,20 @@ let twitterSearch=async function(session){
 		//context.search = input.search;
 		//context.searchNum = input.searchNum;
 		/*}#1JB45QRSC0PreCodes*/
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JB45QRSC0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.type($query,$key,$options||{});
-		}else{
-			$pms=page.keyboard.type($key,$options||{});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JB45QRSC0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.type($query,$key,$options||{});
+			}else{
+				$pms=page.keyboard.type($key,$options||{});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1JB45QRSC0ErrorCode*/
+			/*}#1JB45QRSC0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		/*#{1JB45QRSC0PostCodes*/
 		await page.keyboard.press('Enter');
 		/*}#1JB45QRSC0PostCodes*/
@@ -707,10 +733,15 @@ let twitterSearch=async function(session){
 		waitBefore && (await sleep(waitBefore));
 		/*#{1JB4GL3J30PreCodes*/
 		/*}#1JB4GL3J30PreCodes*/
-		if(browser){
-			await browser.backToApp();
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JB4GL3J30ErrorCode*/
+			/*}#1JB4GL3J30ErrorCode*/
 		}
-		waitAfter && (await sleep(waitAfter))
 		/*#{1JB4GL3J30PostCodes*/
 		context.finds = result;
 		/*}#1JB4GL3J30PostCodes*/
@@ -726,14 +757,15 @@ let twitterSearch=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JB4JA1RS0PreCodes*/
-		content=`共找到：${context.finds.length}条笔记。`;
+		//content=`共找到：${context.finds.length}条笔记。`;
+		content= ($ln==="CN") ? `共找到：${context.finds.length} 条笔记。` : `Find ${context.finds.length} notes.`;
 		/*}#1JB4JA1RS0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JB4JA1RS0PostCodes*/
 		const markdown = context.finds
-  			.map((d, i) => `${i + 1}. [${d.title.slice(0, 20)}${d.title.length > 20 ? '…' : ''}](${d.url})`)
-  			.filter(line => line !== '')   
-  			.join('\n');
+		.map((d, i) => `${i + 1}. [${d.title.slice(0, 20)}${d.title.length > 20 ? '…' : ''}](${d.url})`)
+		.filter(line => line !== '')   
+		.join('\n');
 		
 		result = {
 			markdown,
@@ -773,8 +805,23 @@ let twitterSearch=async function(session){
 		let $options={"focusBrowser":true};
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.bringToFront($options);
-		waitAfter && (await sleep(waitAfter))
+		/*#{1JCIH72IO0PreCodes*/
+		/*}#1JCIH72IO0PreCodes*/
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JCIH72IO0ErrorCode*/
+			/*}#1JCIH72IO0ErrorCode*/
+		}
+		/*#{1JCIH72IO0PostCodes*/
+		/*}#1JCIH72IO0PostCodes*/
 		return {seg:ScrollDown,result:(result),preSeg:"1JCIH72IO0",outlet:"1JCIHAK0V0"};
 	};
 	ShowPage.jaxId="1JCIH72IO0"
@@ -793,15 +840,22 @@ let twitterSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JCIH8BBJ0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
-		}else{
-			$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JCIH8BBJ0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+			}else{
+				$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1JCIH8BBJ0ErrorCode*/
+			/*}#1JCIH8BBJ0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		return {seg:ReadMore,result:(result),preSeg:"1JCIH8BBJ0",outlet:"1JCIHAK100"};
 	};
 	ScrollDown.jaxId="1JCIH8BBJ0"
@@ -820,7 +874,7 @@ let twitterSearch=async function(session){
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"twitterSearch",
+		name:"TwitterSearch",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1HDBOSUN90",
@@ -852,8 +906,8 @@ let twitterSearch=async function(session){
 /*}#1HDBOSUN90PostDoc*/
 
 
-export default twitterSearch;
-export{twitterSearch};
+export default TwitterSearch;
+export{TwitterSearch};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -962,7 +1016,8 @@ export{twitterSearch};
 //								"desc": "输出节点。"
 //							}
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -998,6 +1053,7 @@ export{twitterSearch};
 //						"queryHint": "",
 //						"multi": "false",
 //						"options": "",
+//						"errorSeg": "",
 //						"waitBefore": "1000",
 //						"waitAfter": "0",
 //						"outlet": {
@@ -1152,7 +1208,8 @@ export{twitterSearch};
 //							},
 //							"linkedSeg": "1J9PB7AP70"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -1204,8 +1261,8 @@ export{twitterSearch};
 //						"id": "ClosePage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1855",
-//						"y": "190",
+//						"x": "1905",
+//						"y": "175",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1232,6 +1289,7 @@ export{twitterSearch};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_close.svg"
@@ -1408,6 +1466,7 @@ export{twitterSearch};
 //							},
 //							"linkedSeg": "1JB47O9T70"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "keybtn.svg"
@@ -1639,6 +1698,7 @@ export{twitterSearch};
 //						},
 //						"waitBefore": "0",
 //						"waitAfter": "0",
+//						"errorSeg": "",
 //						"outlet": {
 //							"jaxId": "1JB4GLKHG0",
 //							"attrs": {
@@ -1749,7 +1809,7 @@ export{twitterSearch};
 //						"x": "1010",
 //						"y": "70",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1776,6 +1836,7 @@ export{twitterSearch};
 //							},
 //							"linkedSeg": "1JCIH8BBJ0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_tap.svg"
@@ -1826,6 +1887,7 @@ export{twitterSearch};
 //							},
 //							"linkedSeg": "1JB4GJ65S0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "mouse.svg"

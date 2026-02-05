@@ -13,12 +13,12 @@ const VFACT=null;
 /*#{1HDBOSUN90StartDoc*/
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
-let rednoteLogin=async function(session){
+let RedNoteLogin=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,OpenBrowser,OpenPage,Notify,FindLoginBtn,ActivePage,FlagLogin,AskLogin,AwaitLogin,BackToApp,CheckAgain,AbortBack,AbortPage,AbortLogin;
+	let Start,OpenBrowser,OpenPage,Notify,FindLoginBtn,ActivePage,FlagLogin,AskLogin,AwaitLogin,BackToApp,CheckAgain,AbortBack,AbortPage,AbortLogin,RedNoteLoginConfirm,ActivePage_1,BackToApp_1,NeedLoginNotice,CheckAgain_1;
 	/*#{1HDBOSUN90LocalVals*/
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -37,12 +37,45 @@ let rednoteLogin=async function(session){
 	segs["Start"]=Start=async function(input){//:1IH28H5RP0
 		let result=true;
 		let aiQuery=true;
+		let $alias="RPAHOME";
+		let $url="";
+		let $ref=undefined;
+		let $waitBefore=0;
+		let $waitAfter=0;
+		let $webRpa=null;
 		try{
-			context.webRpa=session.webRpa || new WebRpa(session);
-			session.webRpa=context.webRpa;
-			aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1IH28H5RP0"));
-		}catch(err){
-			throw err;
+			if($ref){
+				let $page,$browser;
+				let $pageVal="aaPage";
+				$page=WebRpa.getPageByRef($ref);
+				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+				context[$pageVal]=$page;
+			}else{
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
+				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1IH28H5RP0"));
+				if($alias){
+					let $headless=false;
+					let $devtools=false;
+					let options={$headless:false,$devtools:false,autoDataDir:false};
+					let $browser=null;
+					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
+					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+					if($url){
+						let $page=null;
+						let $opts={};
+						context[$pageVal]=$page=await $browser.newPage();
+						await $page.goto($url,{});
+					}
+				}
+			}
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			throw error;
 		}
 		return {seg:OpenBrowser,result:(result),preSeg:"1IH28H5RP0",outlet:"1IH28I25B0"};
 	};
@@ -59,8 +92,14 @@ let rednoteLogin=async function(session){
 		let options={headless,devtools,autoDataDir:dataDir};
 		/*#{1IH28HPRB0PreCodes*/
 		/*}#1IH28HPRB0PreCodes*/
-		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
-		context.rpaHostPage=browser.hostPage;
+		try{
+			context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
+			context.rpaHostPage=browser.hostPage;
+		
+		}catch(error){
+			/*#{1IH28HPRB0ErrorCode*/
+			/*}#1IH28HPRB0ErrorCode*/
+		}
 		/*#{1IH28HPRB0PostCodes*/
 		/*}#1IH28HPRB0PostCodes*/
 		return {result:result};
@@ -84,11 +123,16 @@ let rednoteLogin=async function(session){
 		context.rpaBrowser = globalContext.rpaBrowser;
 		context.webRpa = globalContext.webRpa;
 		/*}#1IH28P38Q0PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1IH28P38Q0ErrorCode*/
+			/*}#1IH28P38Q0ErrorCode*/
+		}
 		/*#{1IH28P38Q0PostCodes*/
 		globalContext.aaPage = context[pageVal];
 		context.search = input.search;
@@ -129,25 +173,29 @@ let rednoteLogin=async function(session){
 			result=await globalContext.webRpa.queryNode(page,$node,$query,$options);
 		}
 		/*}#1JAQDDK940PreCodes*/
-		if($multi){
-			result=await context.webRpa.queryNodes(page,$node,$query,$options);
-		}else{
-			result=await context.webRpa.queryNode(page,$node,$query,$options);
-		}
-		if((!result)||($multi && !result.length)){
+		try{
+			if($multi){
+				result=await context.webRpa.queryNodes(page,$node,$query,$options);
+			}else{
+				result=await context.webRpa.queryNode(page,$node,$query,$options);
+			}
+			if((!result)||($multi && !result.length)){
+				throw "Querry not found";
+			}
+			/*#{1JAQDDK940CheckItem*/
+			/*}#1JAQDDK940CheckItem*/
 			$waitAfter && (await sleep($waitAfter))
-			/*#{1JAQDDK940MissingCodes*/
-			/*}#1JAQDDK940MissingCodes*/
-			return {seg:ActivePage,result:(result),preSeg:"1JAQDDK940",outlet:"1JAQDDK8J0"};
-		}else{
-			$waitAfter && (await sleep($waitAfter))
-			/*#{1JAQDDK940PostCodes*/
-			//globalContext.rednotePage = context.aaPage;
-			//globalContext.rednoteBrowser = context.rpaBrowser;
-			//globalContext.rednoteWebRpa = context.webRpa
-			/*}#1JAQDDK940PostCodes*/
-			return {result:result};
+		}catch(error){
+			/*#{1JAQDDK940ErrorCode*/
+			/*}#1JAQDDK940ErrorCode*/
+			return {seg:ActivePage,result:error,preSeg:"1JAQDDK940",outlet:"1JAQDDK8J0"};
 		}
+		/*#{1JAQDDK940PostCodes*/
+		//globalContext.rednotePage = context.aaPage;
+		//globalContext.rednoteBrowser = context.rpaBrowser;
+		//globalContext.rednoteWebRpa = context.webRpa
+		/*}#1JAQDDK940PostCodes*/
+		return {result:result};
 	};
 	FindLoginBtn.jaxId="1JAQDDK940"
 	FindLoginBtn.url="FindLoginBtn@"+agentURL
@@ -160,8 +208,19 @@ let rednoteLogin=async function(session){
 		let $options={"focusBrowser":true};
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.bringToFront($options);
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JAQDFJII0ErrorCode*/
+			/*}#1JAQDFJII0ErrorCode*/
+		}
 		return {seg:FlagLogin,result:(result),preSeg:"1JAQDFJII0",outlet:"1JAQDH9MB1"};
 	};
 	ActivePage.jaxId="1JAQDFJII0"
@@ -191,7 +250,7 @@ let rednoteLogin=async function(session){
 		/*#{1JAQDGC4G0PostCodes*/
 		context[$flag]=globalContext.webRpa.waitQuery(page,$query,$options);
 		/*}#1JAQDGC4G0PostCodes*/
-		return {seg:AskLogin,result:(result),preSeg:"1JAQDGC4G0",outlet:"1JAQDH9MB2"};
+		return {seg:RedNoteLoginConfirm,result:(result),preSeg:"1JAQDGC4G0",outlet:"1JAQDH9MB2"};
 	};
 	FlagLogin.jaxId="1JAQDGC4G0"
 	FlagLogin.url="FlagLogin@"+agentURL
@@ -223,7 +282,7 @@ let rednoteLogin=async function(session){
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
 		try{
-			result=await context[$flag];
+			result=$flag?(await context[$flag]):input;
 		}catch(error){
 			return {result:error};
 		}
@@ -239,10 +298,15 @@ let rednoteLogin=async function(session){
 		let waitAfter=0;
 		let browser=context.rpaBrowser;
 		waitBefore && (await sleep(waitBefore));
-		if(browser){
-			await browser.backToApp();
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JAQDKOJ30ErrorCode*/
+			/*}#1JAQDKOJ30ErrorCode*/
 		}
-		waitAfter && (await sleep(waitAfter))
 		return {seg:CheckAgain,result:(result),preSeg:"1JAQDKOJ30",outlet:"1JAQDLCK53"};
 	};
 	BackToApp.jaxId="1JAQDKOJ30"
@@ -265,10 +329,15 @@ let rednoteLogin=async function(session){
 		/*#{1JAQDNSL10PreCodes*/
 		browser = globalContext.rpaBrowser;
 		/*}#1JAQDNSL10PreCodes*/
-		if(browser){
-			await browser.backToApp();
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JAQDNSL10ErrorCode*/
+			/*}#1JAQDNSL10ErrorCode*/
 		}
-		waitAfter && (await sleep(waitAfter))
 		/*#{1JAQDNSL10PostCodes*/
 		/*}#1JAQDNSL10PostCodes*/
 		return {seg:AbortPage,result:(result),preSeg:"1JAQDNSL10",outlet:"1JAQDPCLQ1"};
@@ -285,9 +354,14 @@ let rednoteLogin=async function(session){
 		waitBefore && (await sleep(waitBefore));
 		/*#{1JAQDO7VO0PreCodes*/
 		/*}#1JAQDO7VO0PreCodes*/
-		await page.close();
-		context[pageVal]=null;
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.close();
+			context[pageVal]=null;
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JAQDO7VO0ErrorCode*/
+			/*}#1JAQDO7VO0ErrorCode*/
+		}
 		/*#{1JAQDO7VO0PostCodes*/
 		/*}#1JAQDO7VO0PostCodes*/
 		return {seg:AbortLogin,result:(result),preSeg:"1JAQDO7VO0",outlet:"1JAQDPCLR0"};
@@ -297,17 +371,114 @@ let rednoteLogin=async function(session){
 	
 	segs["AbortLogin"]=AbortLogin=async function(input){//:1JAQDOTHU0
 		let result=input
-		/*#{1JAQDOTHU0Code*/
-		/*}#1JAQDOTHU0Code*/
+		try{
+			/*#{1JAQDOTHU0Code*/
+			/*}#1JAQDOTHU0Code*/
+		}catch(error){
+			/*#{1JAQDOTHU0ErrorCode*/
+			/*}#1JAQDOTHU0ErrorCode*/
+		}
 		return {result:result};
 	};
 	AbortLogin.jaxId="1JAQDOTHU0"
 	AbortLogin.url="AbortLogin@"+agentURL
 	
+	segs["RedNoteLoginConfirm"]=RedNoteLoginConfirm=async function(input){//:1JGJRRPBP0
+		let prompt=((($ln==="CN")?("是否登录？"):("Login?")))||input;
+		let silent=false;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let button1=((($ln==="CN")?("已登录"):("Logged in")))||"OK";
+		let button2=((($ln==="CN")?("未登录"):("Not logged in")))||"Cancel";
+		let button3="";
+		let result="";
+		let value=0;
+		if(silent){
+			result="";
+			return {seg:ActivePage_1,result:(result),preSeg:"1JGJRRPBP0",outlet:"1JGJRRPB80"};
+		}
+		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		if(value===1){
+			result=("")||result;
+			return {seg:ActivePage_1,result:(result),preSeg:"1JGJRRPBP0",outlet:"1JGJRRPB80"};
+		}
+		result=("")||result;
+		return {seg:NeedLoginNotice,result:(result),preSeg:"1JGJRRPBP0",outlet:"1JGJRRPB81"};
+	
+	};
+	RedNoteLoginConfirm.jaxId="1JGJRRPBP0"
+	RedNoteLoginConfirm.url="RedNoteLoginConfirm@"+agentURL
+	
+	segs["ActivePage_1"]=ActivePage_1=async function(input){//:1JGJRU92E0
+		let result=input;
+		let pageVal="aaPage";
+		let waitBefore=0;
+		let waitAfter=0;
+		let $options={"focusBrowser":true};
+		let page=context[pageVal];
+		waitBefore && (await sleep(waitBefore));
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JGJRU92E0ErrorCode*/
+			/*}#1JGJRU92E0ErrorCode*/
+		}
+		return {seg:BackToApp_1,result:(result),preSeg:"1JGJRU92E0",outlet:"1JGJRU92E3"};
+	};
+	ActivePage_1.jaxId="1JGJRU92E0"
+	ActivePage_1.url="ActivePage_1@"+agentURL
+	
+	segs["BackToApp_1"]=BackToApp_1=async function(input){//:1JGJRUH630
+		let result=input;
+		let waitBefore=0;
+		let waitAfter=0;
+		let browser=context.rpaBrowser;
+		waitBefore && (await sleep(waitBefore));
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JGJRUH630ErrorCode*/
+			/*}#1JGJRUH630ErrorCode*/
+		}
+		return {seg:CheckAgain_1,result:(result),preSeg:"1JGJRUH630",outlet:"1JGJRUH633"};
+	};
+	BackToApp_1.jaxId="1JGJRUH630"
+	BackToApp_1.url="BackToApp_1@"+agentURL
+	
+	segs["NeedLoginNotice"]=NeedLoginNotice=async function(input){//:1JGJRUPFB0
+		let result=input;
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+		let role="assistant";
+		let content=(($ln==="CN")?("检测到您尚未登录，请先登录。"):("You are not logged in yet. Please log in first."));
+		session.addChatText(role,content,opts);
+		return {seg:CheckAgain_1,result:(result),preSeg:"1JGJRUPFB0",outlet:"1JGJS0D110"};
+	};
+	NeedLoginNotice.jaxId="1JGJRUPFB0"
+	NeedLoginNotice.url="NeedLoginNotice@"+agentURL
+	
+	segs["CheckAgain_1"]=CheckAgain_1=async function(input){//:1JGJRVTDC0
+		let result=input;
+		return {seg:FindLoginBtn,result:result,preSeg:"1JAQDDK940",outlet:"1JGJRVTDC1"};
+	
+	};
+	CheckAgain_1.jaxId="1JAQDDK940"
+	CheckAgain_1.url="CheckAgain_1@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"rednoteLogin",
+		name:"RedNoteLogin",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1HDBOSUN90",
@@ -339,8 +510,8 @@ let rednoteLogin=async function(session){
 /*}#1HDBOSUN90PostDoc*/
 
 
-export default rednoteLogin;
-export{rednoteLogin};
+export default RedNoteLogin;
+export{RedNoteLogin};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -430,6 +601,13 @@ export{rednoteLogin};
 //								"cast": ""
 //							}
 //						},
+//						"browser": "RPAHOME",
+//						"headless": "false",
+//						"devtools": "false",
+//						"url": "",
+//						"valName": "aaPage",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
 //						"outlet": {
 //							"jaxId": "1IH28I25B0",
 //							"attrs": {
@@ -459,7 +637,8 @@ export{rednoteLogin};
 //								}
 //							}
 //						},
-//						"aiQuery": "true"
+//						"aiQuery": "true",
+//						"autoCurrentPage": "true"
 //					},
 //					"icon": "start.svg"
 //				},
@@ -500,7 +679,8 @@ export{rednoteLogin};
 //								"desc": "输出节点。"
 //							}
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "web.svg"
 //				},
@@ -545,7 +725,8 @@ export{rednoteLogin};
 //							},
 //							"linkedSeg": "1IH28Q6DB0"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -629,6 +810,7 @@ export{rednoteLogin};
 //						"queryHint": "",
 //						"multi": "false",
 //						"options": "",
+//						"errorSeg": "",
 //						"waitBefore": "500",
 //						"waitAfter": "0",
 //						"outlet": {
@@ -693,6 +875,7 @@ export{rednoteLogin};
 //							},
 //							"linkedSeg": "1JAQDGC4G0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_tap.svg"
@@ -736,7 +919,7 @@ export{rednoteLogin};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JAQDHJ0S0"
+//							"linkedSeg": "1JGJRRPBP0"
 //						}
 //					},
 //					"icon": "/@aae/assets/wait_flag.svg"
@@ -749,8 +932,8 @@ export{rednoteLogin};
 //						"id": "AskLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1655",
-//						"y": "240",
+//						"x": "1620",
+//						"y": "840",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -817,8 +1000,8 @@ export{rednoteLogin};
 //						"id": "AwaitLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1895",
-//						"y": "185",
+//						"x": "1860",
+//						"y": "785",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -865,8 +1048,8 @@ export{rednoteLogin};
 //						"id": "BackToApp",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2115",
-//						"y": "170",
+//						"x": "2080",
+//						"y": "770",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -885,6 +1068,7 @@ export{rednoteLogin};
 //						},
 //						"waitBefore": "0",
 //						"waitAfter": "0",
+//						"errorSeg": "",
 //						"outlet": {
 //							"jaxId": "1JAQDLCK53",
 //							"attrs": {
@@ -904,8 +1088,8 @@ export{rednoteLogin};
 //						"id": "CheckAgain",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2355",
-//						"y": "170",
+//						"x": "2320",
+//						"y": "770",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -929,8 +1113,8 @@ export{rednoteLogin};
 //						"id": "AbortBack",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1895",
-//						"y": "280",
+//						"x": "1860",
+//						"y": "880",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -949,6 +1133,7 @@ export{rednoteLogin};
 //						},
 //						"waitBefore": "0",
 //						"waitAfter": "0",
+//						"errorSeg": "",
 //						"outlet": {
 //							"jaxId": "1JAQDPCLQ1",
 //							"attrs": {
@@ -968,8 +1153,8 @@ export{rednoteLogin};
 //						"id": "AbortPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2130",
-//						"y": "280",
+//						"x": "2095",
+//						"y": "880",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -997,6 +1182,7 @@ export{rednoteLogin};
 //							},
 //							"linkedSeg": "1JAQDOTHU0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_close.svg"
@@ -1009,8 +1195,8 @@ export{rednoteLogin};
 //						"id": "AbortLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2365",
-//						"y": "280",
+//						"x": "2330",
+//						"y": "880",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1036,9 +1222,263 @@ export{rednoteLogin};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askConfirm",
+//					"jaxId": "1JGJRRPBP0",
+//					"attrs": {
+//						"id": "RedNoteLoginConfirm",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1660",
+//						"y": "240",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Login?",
+//							"localize": {
+//								"EN": "Login?",
+//								"CN": "是否登录？"
+//							},
+//							"localizable": true
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JGJRRPB80",
+//									"attrs": {
+//										"id": "Ok",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Logged in",
+//											"localize": {
+//												"EN": "Logged in",
+//												"CN": "已登录"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JGJRTQN50",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JGJRTQN51",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1JGJRU92E0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JGJRRPB81",
+//									"attrs": {
+//										"id": "Cancel",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Not logged in",
+//											"localize": {
+//												"EN": "Not logged in",
+//												"CN": "未登录"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JGJRTQN52",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JGJRTQN53",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1JGJRUPFB0"
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "help.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaActivePage",
+//					"jaxId": "1JGJRU92E0",
+//					"attrs": {
+//						"id": "ActivePage_1",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1940",
+//						"y": "205",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGJRU92E1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGJRU92E2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "aaPage",
+//						"options": "{\"focusBrowser\":true}",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"outlet": {
+//							"jaxId": "1JGJRU92E3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JGJRUH630"
+//						},
+//						"errorSeg": "",
+//						"run": ""
+//					},
+//					"icon": "/@aae/assets/tab_tap.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "WebRpaBackToApp",
+//					"jaxId": "1JGJRUH630",
+//					"attrs": {
+//						"id": "BackToApp_1",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2180",
+//						"y": "205",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGJRUH631",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGJRUH632",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"waitBefore": "0",
+//						"waitAfter": "0",
+//						"errorSeg": "",
+//						"outlet": {
+//							"jaxId": "1JGJRUH633",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JGJRVTDC0"
+//						}
+//					},
+//					"icon": "/@tabos/shared/assets/aalogo.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1JGJRUPFB0",
+//					"attrs": {
+//						"id": "NeedLoginNotice",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2045",
+//						"y": "275",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGJS0D140",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGJS0D141",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"channel": "Chat",
+//						"text": {
+//							"type": "string",
+//							"valText": "You are not logged in yet. Please log in first.",
+//							"localize": {
+//								"EN": "You are not logged in yet. Please log in first.",
+//								"CN": "检测到您尚未登录，请先登录。"
+//							},
+//							"localizable": true
+//						},
+//						"outlet": {
+//							"jaxId": "1JGJS0D110",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JGJRVTDC0"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "jumper",
+//					"jaxId": "1JGJRVTDC0",
+//					"attrs": {
+//						"id": "CheckAgain_1",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2480",
+//						"y": "275",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"seg": "1JAQDDK940",
+//						"outlet": {
+//							"jaxId": "1JGJRVTDC1",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "arrowupright.svg"
 //				}
 //			]
 //		},

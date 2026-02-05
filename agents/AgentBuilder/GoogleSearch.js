@@ -26,7 +26,7 @@ const VFACT=null;
 /*#{1HDBOSUN90StartDoc*/
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
-let googleSearch=async function(session){
+let GoogleSearch=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
@@ -68,11 +68,16 @@ let googleSearch=async function(session){
 		context.rpaBrowser = globalContext.rpaBrowser;
 		context.webRpa = globalContext.webRpa;
 		/*}#1IH28P38Q0PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1IH28P38Q0ErrorCode*/
+			/*}#1IH28P38Q0ErrorCode*/
+		}
 		/*#{1IH28P38Q0PostCodes*/
 		globalContext.aaPage = context[pageVal];
 		context.search = input.search;
@@ -132,73 +137,78 @@ let googleSearch=async function(session){
 	
 	segs["Extract"]=Extract=async function(input){//:1JBEEJKDN0
 		let result=input
-		/*#{1JBEEJKDN0Code*/
-		try {
-			const page = context.aaPage;
-			
-			// 1. 等待核心元素加载
-			// 尝试等待 Google 的结果列表容器
+		try{
+			/*#{1JBEEJKDN0Code*/
 			try {
-				console.log("Waiting for selectors...");
-				// writeLog("Waiting for selectors (div.g or a[jsname='UWckNb'])...");
-				// 假如 aaPage 封装了 waitForSelector，则使用它；否则依靠 sleep
-				if (page.waitForSelector) {
-					await page.waitForSelector('div.g, a[jsname="UWckNb"]', { timeout: 10000 });
-				} else {
-					await sleep(1000); // 降级方案
-				}
-			} catch (waitErr) {
-				console.log("Wait timeout (ignoring): " + waitErr.message);
-			}
-		
-			// 2. 使用 callFunction 提取数据
-			// 注意：callFunction 第一个参数是函数，第二个参数是参数数组(这里不需要传参，传空数组或不传)
-			const currentResults = await page.callFunction(() => {
-				let items = [];
+				const page = context.aaPage;
 				
-				// 方案A: 使用你在 Parse 中提供的精确选择器
-				const specificLinks = Array.from(document.querySelectorAll('a[jsname="UWckNb"].zReHs'));
-				if (specificLinks.length > 0) {
-					items = specificLinks.map(link => {
-						const h3 = link.querySelector('h3.LC20lb.MBeuO.DKV0Md');
-						return {
-							title: h3 ? h3.textContent : 'No Title',
-							url: link.href,
-							platform: 'google'
-						};
-					});
+				// 1. 等待核心元素加载
+				// 尝试等待 Google 的结果列表容器
+				try {
+					console.log("Waiting for selectors...");
+					// writeLog("Waiting for selectors (div.g or a[jsname='UWckNb'])...");
+					// 假如 aaPage 封装了 waitForSelector，则使用它；否则依靠 sleep
+					if (page.waitForSelector) {
+						await page.waitForSelector('div.g, a[jsname="UWckNb"]', { timeout: 10000 });
+					} else {
+						await sleep(1000); // 降级方案
+					}
+				} catch (waitErr) {
+					console.log("Wait timeout (ignoring): " + waitErr.message);
 				}
-				return items;
-			});
-		
-			// 记录日志
-			const foundCount = currentResults ? currentResults.length : 0;
-			const msg = `Extract finished. Found items: ${foundCount}`;
-			console.log(msg);
-			// writeLog(msg);
-		
-			// 3. 数据处理 (去重)
-			if (foundCount > 0) {
-				const newItems = currentResults.filter(newItem => 
-					!context.allResults.some(existing => existing.url === newItem.url)
-				);
-				context.allResults = [...context.allResults, ...newItems];
-				// writeLog(`Added ${newItems.length} unique items. Total: ${context.allResults.length}`);
+			
+				// 2. 使用 callFunction 提取数据
+				// 注意：callFunction 第一个参数是函数，第二个参数是参数数组(这里不需要传参，传空数组或不传)
+				const currentResults = await page.callFunction(() => {
+					let items = [];
+					
+					// 方案A: 使用你在 Parse 中提供的精确选择器
+					const specificLinks = Array.from(document.querySelectorAll('a[jsname="UWckNb"].zReHs'));
+					if (specificLinks.length > 0) {
+						items = specificLinks.map(link => {
+							const h3 = link.querySelector('h3.LC20lb.MBeuO.DKV0Md');
+							return {
+								title: h3 ? h3.textContent : 'No Title',
+								url: link.href,
+								platform: 'google'
+							};
+						});
+					}
+					return items;
+				});
+			
+				// 记录日志
+				const foundCount = currentResults ? currentResults.length : 0;
+				const msg = `Extract finished. Found items: ${foundCount}`;
+				console.log(msg);
+				// writeLog(msg);
+			
+				// 3. 数据处理 (去重)
+				if (foundCount > 0) {
+					const newItems = currentResults.filter(newItem => 
+						!context.allResults.some(existing => existing.url === newItem.url)
+					);
+					context.allResults = [...context.allResults, ...newItems];
+					// writeLog(`Added ${newItems.length} unique items. Total: ${context.allResults.length}`);
+				}
+			
+				// 4. 【关键】使用 callFunction 滑动到底部
+				// 这有助于触发懒加载，确保底部的"下一页"按钮被渲染
+				await page.callFunction(() => {
+					window.scrollTo(0, document.body.scrollHeight);
+				});
+				// 滑动后等待一下，给页面反应时间
+				await sleep(1000);
+			
+			} catch (e) {
+				console.error("Error in Extract:", e);
+				// writeLog("Error in Extract: " + e.message);
 			}
-		
-			// 4. 【关键】使用 callFunction 滑动到底部
-			// 这有助于触发懒加载，确保底部的"下一页"按钮被渲染
-			await page.callFunction(() => {
-				window.scrollTo(0, document.body.scrollHeight);
-			});
-			// 滑动后等待一下，给页面反应时间
-			await sleep(1000);
-		
-		} catch (e) {
-			console.error("Error in Extract:", e);
-			// writeLog("Error in Extract: " + e.message);
+			/*}#1JBEEJKDN0Code*/
+		}catch(error){
+			/*#{1JBEEJKDN0ErrorCode*/
+			/*}#1JBEEJKDN0ErrorCode*/
 		}
-		/*}#1JBEEJKDN0Code*/
 		return {seg:CheckNumber,result:(result),preSeg:"1JBEEJKDN0",outlet:"1JBEEJV3I0"};
 	};
 	Extract.jaxId="1JBEEJKDN0"
@@ -217,75 +227,79 @@ let googleSearch=async function(session){
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1JBEEP5DO0PreCodes*/
 		/*}#1JBEEP5DO0PreCodes*/
-		if($multi){
-			result=await context.webRpa.queryNodes(page,$node,$query,$options);
-		}else{
-			result=await context.webRpa.queryNode(page,$node,$query,$options);
-		}
-		if((!result)||($multi && !result.length)){
-			$waitAfter && (await sleep($waitAfter))
-			/*#{1JBEEP5DO0MissingCodes*/
-			console.log("NextPage node not found.");
-			// writeLog("NextPage node not found.");
-			// 没找到下一页链接，置空以停止外部循环
-			context.nextPageUrl = null;
-			/*}#1JBEEP5DO0MissingCodes*/
-			return {result:result};
-		}else{
-			$waitAfter && (await sleep($waitAfter))
-			/*#{1JBEEP5DO0PostCodes*/
-			try {
-				// 【修改】不使用 result.evaluate，改用 page.callFunction 直接在页面内获取
-				// 因为 queryNode 已经确认元素存在，这里直接 querySelector 获取 href 是安全的
-				const nextUrl = await page.callFunction(() => {
-					const el = document.querySelector('a#pnnext');
-					return el ? el.href : null;
-				});
-				if (nextUrl) {
-					console.log("NextPage URL found:", nextUrl);
-					// writeLog("NextPage URL found: " + nextUrl);
-					context.nextPageUrl = nextUrl;
-				} else {
-					// 如果 href 为空，手动抛错进入 catch 处理
-					throw new Error("Node found but href is empty");
-				}
-			} catch (e) {
-				console.error("Error extracting next page URL:", e);
-				// writeLog("Error extracting next page URL: " + (e.message || e));
-				context.nextPageUrl = null;
+		try{
+			if($multi){
+				result=await context.webRpa.queryNodes(page,$node,$query,$options);
+			}else{
+				result=await context.webRpa.queryNode(page,$node,$query,$options);
 			}
-			/*}#1JBEEP5DO0PostCodes*/
-			return {result:result};
+			if((!result)||($multi && !result.length)){
+				throw "Querry not found";
+			}
+			/*#{1JBEEP5DO0CheckItem*/
+			/*}#1JBEEP5DO0CheckItem*/
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1JBEEP5DO0ErrorCode*/
+			/*}#1JBEEP5DO0ErrorCode*/
 		}
+		/*#{1JBEEP5DO0PostCodes*/
+		try {
+			// 【修改】不使用 result.evaluate，改用 page.callFunction 直接在页面内获取
+			// 因为 queryNode 已经确认元素存在，这里直接 querySelector 获取 href 是安全的
+			const nextUrl = await page.callFunction(() => {
+				const el = document.querySelector('a#pnnext');
+				return el ? el.href : null;
+			});
+			if (nextUrl) {
+				console.log("NextPage URL found:", nextUrl);
+				// writeLog("NextPage URL found: " + nextUrl);
+				context.nextPageUrl = nextUrl;
+			} else {
+				// 如果 href 为空，手动抛错进入 catch 处理
+				throw new Error("Node found but href is empty");
+			}
+		} catch (e) {
+			console.error("Error extracting next page URL:", e);
+			// writeLog("Error extracting next page URL: " + (e.message || e));
+			context.nextPageUrl = null;
+		}
+		/*}#1JBEEP5DO0PostCodes*/
+		return {result:result};
 	};
 	NextPage.jaxId="1JBEEP5DO0"
 	NextPage.url="NextPage@"+agentURL
 	
 	segs["Return"]=Return=async function(input){//:1JBEERSIG0
 		let result=input
-		/*#{1JBEERSIG0Code*/
-		const finalResults = (context.allResults || []).slice(0, context.searchNum);
-		
-		const markdown = [
-			finalResults.map((d,i)=>`${i+1}. [${d.title}](${d.url})`).join('\n')
-		].filter(line => line !== '').join('\n');
-		
-		result = {
-			result: "Finish",
-			finds: finalResults,
-			markdown,
-		};
-		
-		//result = {
-			//result: "Finish",
-			//finds: finalResults,
-			//type: "post",
-			//totalFound: finalResults.length
-		//};
-		console.log("Agent finished. Returning data.");
-		// writeLog("Agent finished. Returning data.");
-		// writeLog(JSON.stringify(result));
-		/*}#1JBEERSIG0Code*/
+		try{
+			/*#{1JBEERSIG0Code*/
+			const finalResults = (context.allResults || []).slice(0, context.searchNum);
+			
+			const markdown = [
+				finalResults.map((d,i)=>`${i+1}. [${d.title}](${d.url})`).join('\n')
+			].filter(line => line !== '').join('\n');
+			
+			result = {
+				result: "Finish",
+				finds: finalResults,
+				markdown,
+			};
+			
+			//result = {
+				//result: "Finish",
+				//finds: finalResults,
+				//type: "post",
+				//totalFound: finalResults.length
+			//};
+			console.log("Agent finished. Returning data.");
+			// writeLog("Agent finished. Returning data.");
+			// writeLog(JSON.stringify(result));
+			/*}#1JBEERSIG0Code*/
+		}catch(error){
+			/*#{1JBEERSIG0ErrorCode*/
+			/*}#1JBEERSIG0ErrorCode*/
+		}
 		return {seg:GoogleTipRes,result:(result),preSeg:"1JBEERSIG0",outlet:"1JBEES2RE0"};
 	};
 	Return.jaxId="1JBEERSIG0"
@@ -307,11 +321,16 @@ let googleSearch=async function(session){
 		console.log(`Opening next page: ${$url}`);
 		// writeLog(`Opening next page: ${$url}`);
 		/*}#1JBEF0OF50PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1JBEF0OF50ErrorCode*/
+			/*}#1JBEF0OF50ErrorCode*/
+		}
 		/*#{1JBEF0OF50PostCodes*/
 		/*}#1JBEF0OF50PostCodes*/
 		return {seg:Extract,result:(true),preSeg:"1JBEF0OF50",outlet:"1JBEF0UOA0"};
@@ -328,9 +347,14 @@ let googleSearch=async function(session){
 		waitBefore && (await sleep(waitBefore));
 		/*#{1JBERLFKE0PreCodes*/
 		/*}#1JBERLFKE0PreCodes*/
-		await page.close();
-		context[pageVal]=null;
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.close();
+			context[pageVal]=null;
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JBERLFKE0ErrorCode*/
+			/*}#1JBERLFKE0ErrorCode*/
+		}
 		/*#{1JBERLFKE0PostCodes*/
 		/*}#1JBERLFKE0PostCodes*/
 		return {result:result};
@@ -388,7 +412,8 @@ let googleSearch=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JBH3JDHT0PreCodes*/
-		content=`共找到：${input.finds.length}条笔记。`;
+		//content=`共找到：${input.finds.length}条笔记。`;
+		content= ($ln==="CN") ? `共找到：${input.finds.length} 条笔记。` : `Find ${input.finds.length} notes.`;
 		/*}#1JBH3JDHT0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JBH3JDHT0PostCodes*/
@@ -401,7 +426,7 @@ let googleSearch=async function(session){
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"googleSearch",
+		name:"GoogleSearch",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1HDBOSUN90",
@@ -433,8 +458,8 @@ let googleSearch=async function(session){
 /*}#1HDBOSUN90PostDoc*/
 
 
-export default googleSearch;
-export{googleSearch};
+export default GoogleSearch;
+export{GoogleSearch};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -539,7 +564,8 @@ export{googleSearch};
 //							},
 //							"linkedSeg": "1JBF3FF6S0"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -626,7 +652,8 @@ export{googleSearch};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -662,6 +689,7 @@ export{googleSearch};
 //						"queryHint": "",
 //						"multi": "false",
 //						"options": "",
+//						"errorSeg": "",
 //						"waitBefore": "0",
 //						"waitAfter": "1000",
 //						"outlet": {
@@ -723,7 +751,8 @@ export{googleSearch};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -768,7 +797,8 @@ export{googleSearch};
 //							},
 //							"linkedSeg": "1JBEEJKDN0"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -808,6 +838,7 @@ export{googleSearch};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_close.svg"

@@ -13,7 +13,7 @@ const VFACT=null;
 /*#{1JC5LFDLN0StartDoc*/
 /*}#1JC5LFDLN0StartDoc*/
 //----------------------------------------------------------------------------
-let redditSearch=async function(session){
+let RedditSearch=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
@@ -59,11 +59,16 @@ let redditSearch=async function(session){
 		context.rpaBrowser = globalContext.rpaBrowser;
 		context.webRpa = globalContext.webRpa;
 		/*}#1JC5LGFA60PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1JC5LGFA60ErrorCode*/
+			/*}#1JC5LGFA60ErrorCode*/
+		}
 		/*#{1JC5LGFA60PostCodes*/
 		globalContext.aaPage = context[pageVal];
 		context.search = input.search;
@@ -95,7 +100,7 @@ let redditSearch=async function(session){
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
 		try{
-			result=await context[$flag];
+			result=$flag?(await context[$flag]):input;
 		}catch(error){
 			return {result:error};
 		}
@@ -194,8 +199,19 @@ let redditSearch=async function(session){
 		let $options={"focusBrowser":true};
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.bringToFront($options);
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JC5VDAK40ErrorCode*/
+			/*}#1JC5VDAK40ErrorCode*/
+		}
 		return {seg:ScrollDown,result:(result),preSeg:"1JC5VDAK40",outlet:"1JC5VDU2B0"};
 	};
 	ShowPage.jaxId="1JC5VDAK40"
@@ -214,15 +230,22 @@ let redditSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JC5VE4PG0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
-		}else{
-			$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JC5VE4PG0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+			}else{
+				$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1JC5VE4PG0ErrorCode*/
+			/*}#1JC5VE4PG0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		return {seg:ReadMore,result:(result),preSeg:"1JC5VE4PG0",outlet:"1JC5VF60S0"};
 	};
 	ScrollDown.jaxId="1JC5VE4PG0"
@@ -255,10 +278,15 @@ let redditSearch=async function(session){
 		let waitAfter=0;
 		let browser=context.rpaBrowser;
 		waitBefore && (await sleep(waitBefore));
-		if(browser){
-			await browser.backToApp();
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JC5VKK5A0ErrorCode*/
+			/*}#1JC5VKK5A0ErrorCode*/
 		}
-		waitAfter && (await sleep(waitAfter))
 		return {seg:TipResult,result:(result),preSeg:"1JC5VKK5A0",outlet:"1JC5VMTAS0"};
 	};
 	Back2App.jaxId="1JC5VKK5A0"
@@ -276,7 +304,8 @@ let redditSearch=async function(session){
 		const markdown = [
 			data.map((d,i)=>`${i+1}. [${d.title}](${d.url})`).join('\n')
 		].filter(line => line !== '').join('\n');
-		content=`共找到：${data.length}条笔记。`;
+		//content=`共找到：${data.length}条笔记。`;
+		content= ($ln==="CN") ? `共找到：${data.length} 条笔记。` : `Find ${data.length} notes.`;
 		/*}#1JC5VLB8F0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JC5VLB8F0PostCodes*/
@@ -296,9 +325,14 @@ let redditSearch=async function(session){
 		waitBefore && (await sleep(waitBefore));
 		/*#{1JC5VNG7G0PreCodes*/
 		/*}#1JC5VNG7G0PreCodes*/
-		await page.close();
-		context[pageVal]=null;
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.close();
+			context[pageVal]=null;
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JC5VNG7G0ErrorCode*/
+			/*}#1JC5VNG7G0ErrorCode*/
+		}
 		/*#{1JC5VNG7G0PostCodes*/
 		/*}#1JC5VNG7G0PostCodes*/
 		return {result:result};
@@ -325,7 +359,7 @@ let redditSearch=async function(session){
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"redditSearch",
+		name:"RedditSearch",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1JC5LFDLN0",
@@ -357,8 +391,8 @@ let redditSearch=async function(session){
 /*}#1JC5LFDLN0PostDoc*/
 
 
-export default redditSearch;
-export{redditSearch};
+export default RedditSearch;
+export{RedditSearch};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -509,7 +543,8 @@ export{redditSearch};
 //							},
 //							"linkedSeg": "1JC5MC9GH0"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -781,6 +816,7 @@ export{redditSearch};
 //							},
 //							"linkedSeg": "1JC5VE4PG0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_tap.svg"
@@ -831,6 +867,7 @@ export{redditSearch};
 //							},
 //							"linkedSeg": "1JC5VJ9RK0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "mouse.svg"
@@ -956,6 +993,7 @@ export{redditSearch};
 //						},
 //						"waitBefore": "0",
 //						"waitAfter": "0",
+//						"errorSeg": "",
 //						"outlet": {
 //							"jaxId": "1JC5VMTAS0",
 //							"attrs": {
@@ -1043,6 +1081,7 @@ export{redditSearch};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_close.svg"

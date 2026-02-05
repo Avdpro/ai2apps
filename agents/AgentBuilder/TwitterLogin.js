@@ -13,12 +13,12 @@ const VFACT=null;
 /*#{1HDBOSUN90StartDoc*/
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
-let twitterLogin=async function(session){
+let TwitterLogin=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,OpenBrowser,OpenPage,Notify,FindTwitterLoginBtn,ActivePage,FlagLogin,TwitterLoginConfirm,BackToApp,NeedLoginNotice,CheckAgain,ActivePage_1;
+	let Start,OpenBrowser,OpenPage,Notify,FindTwitterLoginBtn,ActivePage,FlagLogin,TwitterLoginConfirm,BackToApp,NeedLoginNotice,CheckAgain,ActivePage_1,ChecklLogin;
 	/*#{1HDBOSUN90LocalVals*/
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -37,12 +37,45 @@ let twitterLogin=async function(session){
 	segs["Start"]=Start=async function(input){//:1IH28H5RP0
 		let result=true;
 		let aiQuery=true;
+		let $alias="RPAHOME";
+		let $url="";
+		let $ref=undefined;
+		let $waitBefore=0;
+		let $waitAfter=0;
+		let $webRpa=null;
 		try{
-			context.webRpa=session.webRpa || new WebRpa(session);
-			session.webRpa=context.webRpa;
-			aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1IH28H5RP0"));
-		}catch(err){
-			throw err;
+			if($ref){
+				let $page,$browser;
+				let $pageVal="aaPage";
+				$page=WebRpa.getPageByRef($ref);
+				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+				context[$pageVal]=$page;
+			}else{
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
+				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1IH28H5RP0"));
+				if($alias){
+					let $headless=false;
+					let $devtools=false;
+					let options={$headless:false,$devtools:false,autoDataDir:false};
+					let $browser=null;
+					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
+					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+					if($url){
+						let $page=null;
+						let $opts={};
+						context[$pageVal]=$page=await $browser.newPage();
+						await $page.goto($url,{});
+					}
+				}
+			}
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			throw error;
 		}
 		return {seg:OpenBrowser,result:(result),preSeg:"1IH28H5RP0",outlet:"1IH28I25B0"};
 	};
@@ -57,8 +90,14 @@ let twitterLogin=async function(session){
 		let dataDir=false;
 		let alias="RPAHOME";
 		let options={headless,devtools,autoDataDir:dataDir};
-		context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
-		context.rpaHostPage=browser.hostPage;
+		try{
+			context.rpaBrowser=browser=await context.webRpa.openBrowser(alias,options);
+			context.rpaHostPage=browser.hostPage;
+		
+		}catch(error){
+			/*#{1IH28HPRB0ErrorCode*/
+			/*}#1IH28HPRB0ErrorCode*/
+		}
 		return {result:result};
 	};
 	OpenBrowser.jaxId="1IH28HPRB0"
@@ -80,11 +119,16 @@ let twitterLogin=async function(session){
 		context.rpaBrowser = globalContext.rpaBrowser;
 		context.webRpa = globalContext.webRpa;
 		/*}#1IH28P38Q0PreCodes*/
-		context[pageVal]=page=await context.rpaBrowser.newPage();
-		($width && $height) && (await page.setViewport({width:$width,height:$height}));
-		$userAgent && (await page.setUserAgent($userAgent));
-		await page.goto($url,$openOpts);
-		$waitAfter && (await sleep($waitAfter));
+		try{
+			context[pageVal]=page=await context.rpaBrowser.newPage();
+			($width && $height) && (await page.setViewport({width:$width,height:$height}));
+			$userAgent && (await page.setUserAgent($userAgent));
+			await page.goto($url,$openOpts);
+			$waitAfter && (await sleep($waitAfter));
+		}catch(error){
+			/*#{1IH28P38Q0ErrorCode*/
+			/*}#1IH28P38Q0ErrorCode*/
+		}
 		/*#{1IH28P38Q0PostCodes*/
 		globalContext.aaPage = context[pageVal];
 		context.search = input.search;
@@ -119,18 +163,21 @@ let twitterLogin=async function(session){
 		let $waitAfter=0;
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
-		if($multi){
-			result=await context.webRpa.queryNodes(page,$node,$query,$options);
-		}else{
-			result=await context.webRpa.queryNode(page,$node,$query,$options);
-		}
-		if((!result)||($multi && !result.length)){
+		try{
+			if($multi){
+				result=await context.webRpa.queryNodes(page,$node,$query,$options);
+			}else{
+				result=await context.webRpa.queryNode(page,$node,$query,$options);
+			}
+			if((!result)||($multi && !result.length)){
+				throw "Querry not found";
+			}
 			$waitAfter && (await sleep($waitAfter))
-			return {result:result};
-		}else{
-			$waitAfter && (await sleep($waitAfter))
-			return {seg:ActivePage,result:(result),preSeg:"1JAQFTV110",outlet:"1JAQFUJCO0"};
+		}catch(error){
+			/*#{1JAQFTV110ErrorCode*/
+			/*}#1JAQFTV110ErrorCode*/
 		}
+		return {seg:ChecklLogin,result:(result),preSeg:"1JAQFTV110",outlet:"1JAQFUJCO0"};
 	};
 	FindTwitterLoginBtn.jaxId="1JAQFTV110"
 	FindTwitterLoginBtn.url="FindTwitterLoginBtn@"+agentURL
@@ -143,8 +190,19 @@ let twitterLogin=async function(session){
 		let $options={"focusBrowser":true};
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.bringToFront($options);
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JAQFV8EG0ErrorCode*/
+			/*}#1JAQFV8EG0ErrorCode*/
+		}
 		return {seg:FlagLogin,result:(result),preSeg:"1JAQFV8EG0",outlet:"1JAQFVN1H0"};
 	};
 	ActivePage.jaxId="1JAQFV8EG0"
@@ -206,10 +264,15 @@ let twitterLogin=async function(session){
 		let waitAfter=0;
 		let browser=context.rpaBrowser;
 		waitBefore && (await sleep(waitBefore));
-		if(browser){
-			await browser.backToApp();
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1JAQG3M440ErrorCode*/
+			/*}#1JAQG3M440ErrorCode*/
 		}
-		waitAfter && (await sleep(waitAfter))
 		return {seg:CheckAgain,result:(result),preSeg:"1JAQG3M440",outlet:"1JAQG5EHK0"};
 	};
 	BackToApp.jaxId="1JAQG3M440"
@@ -243,17 +306,38 @@ let twitterLogin=async function(session){
 		let $options={"focusBrowser":true};
 		let page=context[pageVal];
 		waitBefore && (await sleep(waitBefore));
-		await page.bringToFront($options);
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1JASG0CSQ0ErrorCode*/
+			/*}#1JASG0CSQ0ErrorCode*/
+		}
 		return {seg:BackToApp,result:(result),preSeg:"1JASG0CSQ0",outlet:"1JASG0CSQ3"};
 	};
 	ActivePage_1.jaxId="1JASG0CSQ0"
 	ActivePage_1.url="ActivePage_1@"+agentURL
 	
+	segs["ChecklLogin"]=ChecklLogin=async function(input){//:1JGJQQ8M30
+		let result=input;
+		if(input && input.nodeType){
+			return {seg:ActivePage,result:(input),preSeg:"1JGJQQ8M30",outlet:"1JGJQS4TV0"};
+		}
+		return {result:result};
+	};
+	ChecklLogin.jaxId="1JGJQQ8M30"
+	ChecklLogin.url="ChecklLogin@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"twitterLogin",
+		name:"TwitterLogin",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1HDBOSUN90",
@@ -285,8 +369,8 @@ let twitterLogin=async function(session){
 /*}#1HDBOSUN90PostDoc*/
 
 
-export default twitterLogin;
-export{twitterLogin};
+export default TwitterLogin;
+export{TwitterLogin};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -358,7 +442,7 @@ export{twitterLogin};
 //						"id": "Start",
 //						"viewName": "",
 //						"label": "",
-//						"x": "95",
+//						"x": "-190",
 //						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -376,6 +460,13 @@ export{twitterLogin};
 //								"cast": ""
 //							}
 //						},
+//						"browser": "RPAHOME",
+//						"headless": "false",
+//						"devtools": "false",
+//						"url": "",
+//						"valName": "aaPage",
+//						"waitBefore": "0",
+//						"waitAfter": "0",
 //						"outlet": {
 //							"jaxId": "1IH28I25B0",
 //							"attrs": {
@@ -405,7 +496,8 @@ export{twitterLogin};
 //								}
 //							}
 //						},
-//						"aiQuery": "true"
+//						"aiQuery": "true",
+//						"autoCurrentPage": "true"
 //					},
 //					"icon": "start.svg"
 //				},
@@ -417,7 +509,7 @@ export{twitterLogin};
 //						"id": "OpenBrowser",
 //						"viewName": "",
 //						"label": "",
-//						"x": "300",
+//						"x": "15",
 //						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -446,7 +538,8 @@ export{twitterLogin};
 //								"desc": "输出节点。"
 //							}
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "web.svg"
 //				},
@@ -458,7 +551,7 @@ export{twitterLogin};
 //						"id": "OpenPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "535",
+//						"x": "315",
 //						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -491,7 +584,8 @@ export{twitterLogin};
 //							},
 //							"linkedSeg": "1IH28Q6DB0"
 //						},
-//						"run": ""
+//						"run": "",
+//						"errorSeg": ""
 //					},
 //					"icon": "/@aae/assets/tab_add.svg"
 //				},
@@ -503,7 +597,7 @@ export{twitterLogin};
 //						"id": "Notify",
 //						"viewName": "",
 //						"label": "",
-//						"x": "760",
+//						"x": "535",
 //						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -551,7 +645,7 @@ export{twitterLogin};
 //						"id": "FindTwitterLoginBtn",
 //						"viewName": "",
 //						"label": "",
-//						"x": "960",
+//						"x": "715",
 //						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -575,6 +669,7 @@ export{twitterLogin};
 //						"queryHint": "",
 //						"multi": "false",
 //						"options": "",
+//						"errorSeg": "",
 //						"waitBefore": "1000",
 //						"waitAfter": "0",
 //						"outlet": {
@@ -583,7 +678,7 @@ export{twitterLogin};
 //								"id": "Found",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JAQFV8EG0"
+//							"linkedSeg": "1JGJQQ8M30"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -609,7 +704,7 @@ export{twitterLogin};
 //						"id": "ActivePage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1230",
+//						"x": "1225",
 //						"y": "210",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -639,6 +734,7 @@ export{twitterLogin};
 //							},
 //							"linkedSeg": "1JAQG03H10"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_tap.svg"
@@ -812,6 +908,7 @@ export{twitterLogin};
 //						},
 //						"waitBefore": "0",
 //						"waitAfter": "0",
+//						"errorSeg": "",
 //						"outlet": {
 //							"jaxId": "1JAQG5EHK0",
 //							"attrs": {
@@ -934,9 +1031,77 @@ export{twitterLogin};
 //							},
 //							"linkedSeg": "1JAQG3M440"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_tap.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JGJQQ8M30",
+//					"attrs": {
+//						"id": "ChecklLogin",
+//						"viewName": "",
+//						"label": "",
+//						"x": "975",
+//						"y": "210",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGJQS4U70",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGJQS4U71",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JGJQS4TV1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JGJQS4TV0",
+//									"attrs": {
+//										"id": "Login",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JGJQS4U72",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JGJQS4U73",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input && input.nodeType"
+//									},
+//									"linkedSeg": "1JAQFV8EG0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
 //				}
 //			]
 //		},

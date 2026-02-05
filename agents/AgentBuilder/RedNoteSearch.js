@@ -13,7 +13,7 @@ const VFACT=null;
 /*#{1J54NE9UK0StartDoc*/
 /*}#1J54NE9UK0StartDoc*/
 //----------------------------------------------------------------------------
-let rednoteSearch=async function(session){
+let RedNoteSearch=async function(session){
 	let execInput;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
@@ -56,6 +56,7 @@ let rednoteSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1J54O73FH0PreCodes*/
 		context.webRpa = page = globalContext.aaPage;
@@ -64,14 +65,20 @@ let rednoteSearch=async function(session){
 		context.search = input.search;
 		context.searchNum = input.searchNum;
 		/*}#1J54O73FH0PreCodes*/
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J54O73FH0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.click($query,{...$options,offset:((!!$x) || (!!$y))?{x:$x||0,y:$y||0}:undefined});
-		}else{
-			$pms=page.mouse.click($x,$y,$options||{});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J54O73FH0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.click($query,{...$options,offset:((!!$x) || (!!$y))?{x:$x||0,y:$y||0}:undefined});
+			}else{
+				$pms=page.mouse.click($x,$y,$options||{});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1J54O73FH0ErrorCode*/
+			/*}#1J54O73FH0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		/*#{1J54O73FH0PostCodes*/
 		/*}#1J54O73FH0PostCodes*/
 		return {seg:FlagNavi,result:(result),preSeg:"1J54O73FH0",outlet:"1J54ORN5V0"};
@@ -92,18 +99,25 @@ let rednoteSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1J54OM67N0PreCodes*/
 		page = globalContext.aaPage;
 		/*}#1J54OM67N0PreCodes*/
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J54OM67N0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.type($query,$key,$options||{});
-		}else{
-			$pms=page.keyboard.type($key,$options||{});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J54OM67N0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.type($query,$key,$options||{});
+			}else{
+				$pms=page.keyboard.type($key,$options||{});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1J54OM67N0ErrorCode*/
+			/*}#1J54OM67N0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		/*#{1J54OM67N0PostCodes*/
 		/*}#1J54OM67N0PostCodes*/
 		return {seg:WaitNavi,result:(result),preSeg:"1J54OM67N0",outlet:"1J54ORN5V1"};
@@ -150,7 +164,7 @@ let rednoteSearch=async function(session){
 		page = globalContext.aaPage;
 		/*}#1J54OOCK20PreCodes*/
 		try{
-			result=await context[$flag];
+			result=$flag?(await context[$flag]):input;
 		}catch(error){
 			return {result:error};
 		}
@@ -254,9 +268,14 @@ let rednoteSearch=async function(session){
 		/*#{1J59QBN5H0PreCodes*/
 		page = globalContext.aaPage;
 		/*}#1J59QBN5H0PreCodes*/
-		await page.close();
-		context[pageVal]=null;
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.close();
+			context[pageVal]=null;
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1J59QBN5H0ErrorCode*/
+			/*}#1J59QBN5H0ErrorCode*/
+		}
 		/*#{1J59QBN5H0PostCodes*/
 		result={"result":"Finish",finds:context.finds,type:"Card"};
 		/*}#1J59QBN5H0PostCodes*/
@@ -295,8 +314,19 @@ let rednoteSearch=async function(session){
 		/*#{1J5CHC3UR0PreCodes*/
 		page = globalContext.aaPage;
 		/*}#1J5CHC3UR0PreCodes*/
-		await page.bringToFront($options);
-		waitAfter && (await sleep(waitAfter))
+		try{
+			await page.bringToFront($options);
+			waitAfter && (await sleep(waitAfter))
+			if($options.focusBrowser && $options.switchBack){
+				let $browser=context.rpaBrowser;
+				if($browser){
+					await $browser.backToApp();
+				}
+			}
+		}catch(error){
+			/*#{1J5CHC3UR0ErrorCode*/
+			/*}#1J5CHC3UR0ErrorCode*/
+		}
 		/*#{1J5CHC3UR0PostCodes*/
 		/*}#1J5CHC3UR0PostCodes*/
 		return {seg:ScrollDown,result:(result),preSeg:"1J5CHC3UR0",outlet:"1J5CHC3UR3"};
@@ -317,18 +347,25 @@ let rednoteSearch=async function(session){
 		let page=context[pageVal];
 		let $async=false;
 		let $pms=null;
+		let $done=false;
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1J5CHDJ8Q0PreCodes*/
 		page = globalContext.aaPage;
 		/*}#1J5CHDJ8Q0PreCodes*/
-		if($query||$queryHint){
-			$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J5CHDJ8Q0")):$query;
-			if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-			$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
-		}else{
-			$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+		try{
+			if($query||$queryHint){
+				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1J5CHDJ8Q0")):$query;
+				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
+				$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+			}else{
+				$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
+			}
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1J5CHDJ8Q0ErrorCode*/
+			/*}#1J5CHDJ8Q0ErrorCode*/
 		}
-		if($pms && (!$async)){await $pms;}$waitAfter && (await sleep($waitAfter))
 		/*#{1J5CHDJ8Q0PostCodes*/
 		result = input?.finds;
 		/*}#1J5CHDJ8Q0PostCodes*/
@@ -364,10 +401,15 @@ let rednoteSearch=async function(session){
 		let waitAfter=0;
 		let browser=context.rpaBrowser;
 		waitBefore && (await sleep(waitBefore));
-		if(browser){
-			await browser.backToApp();
+		try{
+			if(browser){
+				await browser.backToApp();
+			}
+			waitAfter && (await sleep(waitAfter))
+		}catch(error){
+			/*#{1J5CHRGQ60ErrorCode*/
+			/*}#1J5CHRGQ60ErrorCode*/
 		}
-		waitAfter && (await sleep(waitAfter))
 		return {seg:TipResult,result:(result),preSeg:"1J5CHRGQ60",outlet:"1J5CHT3A42"};
 	};
 	Back2App.jaxId="1J5CHRGQ60"
@@ -380,7 +422,8 @@ let rednoteSearch=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1J5CIBOCU0PreCodes*/
-		content=`共找到：${context.finds.length}条笔记。`;
+		//content=`共找到：${context.finds.length}条笔记。`;
+		content= ($ln==="CN") ? `共找到：${context.finds.length} 条笔记。` : `Find ${context.finds.length} notes.`;
 		/*}#1J5CIBOCU0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1J5CIBOCU0PostCodes*/
@@ -413,7 +456,7 @@ let rednoteSearch=async function(session){
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"rednoteSearch",
+		name:"RedNoteSearch",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1J54NE9UK0",
@@ -442,7 +485,7 @@ let rednoteSearch=async function(session){
 //#CodyExport>>>
 let ChatAPI=[{
 	def:{
-		name: "rednoteSearch",
+		name: "RedNoteSearch",
 		description: "这是一个AI智能体。",
 		parameters:{
 			type: "object",
@@ -451,7 +494,7 @@ let ChatAPI=[{
 		}
 	},
 	agentNode: "GlobalSearch",
-	agentName: "rednoteSearch.js",
+	agentName: "RedNoteSearch.js",
 	label: "{\"CN\":\"小红书搜索\",\"EN\":\"RedNote Search\"}",
 	isChatApi: true,
 	capabilities: ["search"],
@@ -463,8 +506,8 @@ let ChatAPI=[{
 /*}#1J54NE9UK0PostDoc*/
 
 
-export default rednoteSearch;
-export{rednoteSearch,ChatAPI};
+export default RedNoteSearch;
+export{RedNoteSearch,ChatAPI};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -620,6 +663,7 @@ export{rednoteSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J54ONSTI0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "mouse.svg"
@@ -667,6 +711,7 @@ export{rednoteSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J54OOCK20"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "keybtn.svg"
@@ -840,6 +885,7 @@ export{rednoteSearch,ChatAPI};
 //								"desc": "输出节点。"
 //							}
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_close.svg"
@@ -975,6 +1021,7 @@ export{rednoteSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J5CHDJ8Q0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "/@aae/assets/tab_tap.svg"
@@ -1025,6 +1072,7 @@ export{rednoteSearch,ChatAPI};
 //							},
 //							"linkedSeg": "1J5CHEP7G0"
 //						},
+//						"errorSeg": "",
 //						"run": ""
 //					},
 //					"icon": "mouse.svg"
@@ -1150,6 +1198,7 @@ export{rednoteSearch,ChatAPI};
 //						},
 //						"waitBefore": "0",
 //						"waitAfter": "0",
+//						"errorSeg": "",
 //						"outlet": {
 //							"jaxId": "1J5CHT3A42",
 //							"attrs": {
