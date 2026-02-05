@@ -313,7 +313,7 @@ let PrjSetupBySteps=async function(session){
 	
 	segs["RunConda"]=RunConda=async function(input){//:1IJ2KNFK40
 		let result;
-		let arg={"refName":input.conda||input.name,"pyversion":input.pythonVersion,"installReq":input.installReq||input.installPkg||input.installDep};
+		let arg={"refName":input.conda||input.name,"pyversion":input.pythonVersion,"installReq":input.installReq||input.installPkg||input.installDep,"auto":true};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./PrjCheckCondaEnv.js");
@@ -1908,7 +1908,7 @@ export{PrjSetupBySteps,ChatAPI};
 //							}
 //						},
 //						"source": "ai/PrjCheckCondaEnv.js",
-//						"argument": "{\"refName\":\"#input.conda||input.name\",\"pyversion\":\"#input.pythonVersion\",\"installReq\":\"#input.installReq||input.installPkg||input.installDep\"}",
+//						"argument": "{\"refName\":\"#input.conda||input.name\",\"pyversion\":\"#input.pythonVersion\",\"installReq\":\"#input.installReq||input.installPkg||input.installDep\",\"auto\":true}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1IJ2L5O0R6",
