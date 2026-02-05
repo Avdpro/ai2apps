@@ -55,14 +55,14 @@ let Bash=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let SwitchAction,CreateBash,RunCommand,LoopCmd,RunOneCmd,IsDone,CloseBash,GetContent,Clear,Wait,GetReact,GenResult,NextCmd,CheckReact,DoInput,NotifyUser,WaitIdle,AskUser;
+	let SwitchAction,CreateBash,RunCommand,LoopCmd,RunOneCmd,IsDone,CloseBash,GetContent,Clear,Wait,GetReact,GenResult,NextCmd,CheckReact,DoInput,WaitIdle,AskUser,CheckSame;
 	let cmdBash=null;
 	let orgContent="";
 	let orgCmdContent="";
 	let project=globalContext.project;
 	
 	/*#{1IG0KVFDB0LocalVals*/
-	let contentLen=-1;
+	let contentLen=-1, last_input="";
 	/*}#1IG0KVFDB0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -325,7 +325,9 @@ let Bash=async function(session){
 		let $platform="OpenAI";
 		let $model="gpt-4o";
 		let $agent;
-		let result;
+		let result=null;
+		/*#{1IIDUEG0G0Input*/
+		/*}#1IIDUEG0G0Input*/
 		
 		let opts={
 			platform:$platform,
@@ -363,19 +365,31 @@ let Bash=async function(session){
 `  + (($ln==="CN")?("AskUser的内容需要用中文输出。"):("Output in English when need AskUser."))
 },
 		];
+		/*#{1IIDUEG0G0PrePrompt*/
+		/*}#1IIDUEG0G0PrePrompt*/
 		prompt=input;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
 			}
-			let msg={role:"user",content:prompt};messages.push(msg);
+			let msg={role:"user",content:prompt};
+			/*#{1IIDUEG0G0FilterMessage*/
+			/*}#1IIDUEG0G0FilterMessage*/
+			messages.push(msg);
 		}
+		/*#{1IIDUEG0G0PreCall*/
+		last_input=prompt;
+		/*}#1IIDUEG0G0PreCall*/
 		if($agent){
-			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
 		}else{
-			result=await session.callSegLLM("GetReact@"+agentURL,opts,messages,true);
+			result=(result===null)?(await session.callSegLLM("GetReact@"+agentURL,opts,messages,true)):result;
 		}
 		result=trimJSON(result);
+		/*#{1IIDUEG0G0PostCall*/
+		/*}#1IIDUEG0G0PostCall*/
+		/*#{1IIDUEG0G0PreResult*/
+		/*}#1IIDUEG0G0PreResult*/
 		return {seg:CheckReact,result:(result),preSeg:"1IIDUEG0G0",outlet:"1IIDV9VFE0"};
 	};
 	GetReact.jaxId="1IIDUEG0G0"
@@ -457,26 +471,6 @@ let Bash=async function(session){
 	DoInput.jaxId="1IIF512K60"
 	DoInput.url="DoInput@"+agentURL
 	
-	segs["NotifyUser"]=NotifyUser=async function(input){//:1IIF53A7Q0
-		let result=input
-		try{
-			/*#{1IIF53A7Q0Code*/
-			//Notify user:
-			try{
-				session.callClient("BashNotify",{bash:cmdBash.id,info:(($ln==="CN")?("Terminal操作需要你的响应"):/*EN*/("Terminal operation requires your response"))});
-			}catch(err){
-				//missing BashNotify? Do nothing...
-			}
-			/*}#1IIF53A7Q0Code*/
-		}catch(error){
-			/*#{1IIF53A7Q0ErrorCode*/
-			/*}#1IIF53A7Q0ErrorCode*/
-		}
-		return {result:result};
-	};
-	NotifyUser.jaxId="1IIF53A7Q0"
-	NotifyUser.url="NotifyUser@"+agentURL
-	
 	segs["WaitIdle"]=WaitIdle=async function(input){//:1IIF89Q1I0
 		let result=input
 		try{
@@ -496,7 +490,7 @@ let Bash=async function(session){
 			console.error("WaitIdle error:", error);
 			/*}#1IIF89Q1I0ErrorCode*/
 		}
-		return {seg:IsDone,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
+		return {seg:CheckSame,result:(result),preSeg:"1IIF89Q1I0",outlet:"1IIF8ATEI0"};
 	};
 	WaitIdle.jaxId="1IIF89Q1I0"
 	WaitIdle.url="WaitIdle@"+agentURL
@@ -529,6 +523,16 @@ let Bash=async function(session){
 	};
 	AskUser.jaxId="1J1V9GOIF0"
 	AskUser.url="AskUser@"+agentURL
+	
+	segs["CheckSame"]=CheckSame=async function(input){//:1JGM2HGLJ0
+		let result=input;
+		if(input!==last_input){
+			return {seg:IsDone,result:(input),preSeg:"1JGM2HGLJ0",outlet:"1JGM2HS090"};
+		}
+		return {seg:WaitIdle,result:(result),preSeg:"1JGM2HGLJ0",outlet:"1JGM2HS091"};
+	};
+	CheckSame.jaxId="1JGM2HGLJ0"
+	CheckSame.url="CheckSame@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1368,7 +1372,7 @@ export{Bash,ChatAPI};
 //						"x": "1315",
 //						"y": "95",
 //						"desc": "执行一次LLM调用。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1670,46 +1674,6 @@ export{Bash,ChatAPI};
 //				{
 //					"type": "aiseg",
 //					"def": "code",
-//					"jaxId": "1IIF53A7Q0",
-//					"attrs": {
-//						"id": "NotifyUser",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1770",
-//						"y": "-160",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IIF5P1FA18",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IIF5P1FA19",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1IIF5P1F32",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							}
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"errorSeg": ""
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
 //					"jaxId": "1IIF89Q1I0",
 //					"attrs": {
 //						"id": "WaitIdle",
@@ -1738,7 +1702,7 @@ export{Bash,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1IIF54S290"
+//							"linkedSeg": "1JGM2HGLJ0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1747,28 +1711,6 @@ export{Bash,ChatAPI};
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1IIF54S290",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "2150",
-//						"y": "-70",
-//						"outlet": {
-//							"jaxId": "1IIF5P1FA23",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IIF556UM0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -1902,6 +1844,140 @@ export{Bash,ChatAPI};
 //						}
 //					},
 //					"icon": "chat.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JGM2HGLJ0",
+//					"attrs": {
+//						"id": "CheckSame",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2240",
+//						"y": "65",
+//						"desc": "This is an AISeg.",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JGM2I2DJ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JGM2I2DJ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JGM2HS091",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "Outlet.",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JGM2MP9M0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JGM2HS090",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "Outlet.",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JGM2I2DJ2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JGM2I2DJ3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input!==last_input"
+//									},
+//									"linkedSeg": "1JGM2LSNO0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JGM2LSNO0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2400",
+//						"y": "-70",
+//						"outlet": {
+//							"jaxId": "1JGM2MG7D0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1IIF556UM0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JGM2MP9M0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2400",
+//						"y": "190",
+//						"outlet": {
+//							"jaxId": "1JGM2N4480",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JGM2MV6B0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JGM2MV6B0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2070",
+//						"y": "190",
+//						"outlet": {
+//							"jaxId": "1JGM2N4481",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1IIF89Q1I0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

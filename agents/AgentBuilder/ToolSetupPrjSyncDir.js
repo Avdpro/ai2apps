@@ -67,7 +67,7 @@ let ToolSetupPrjSyncDir=async function(session){
 			diskJSON.syncDir=syncDir={"name":"","dirs":[]};
 		}
 		FindDir:{
-			for(let dirVO in syncDir.dirs){
+			for(let dirVO of syncDir.dirs){
 				if(dirVO.dir==="ai"){
 					prjSyncVO=dirVO;
 					break FindDir;
