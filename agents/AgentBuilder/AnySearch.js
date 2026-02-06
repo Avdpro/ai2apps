@@ -431,7 +431,7 @@ export{AnySearch};
 //						"id": "Entry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-250",
+//						"x": "-245",
 //						"y": "115",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",

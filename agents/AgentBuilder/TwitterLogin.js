@@ -18,7 +18,7 @@ let TwitterLogin=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,OpenBrowser,OpenPage,Notify,FindTwitterLoginBtn,ActivePage,FlagLogin,TwitterLoginConfirm,BackToApp,NeedLoginNotice,CheckAgain,ActivePage_1,ChecklLogin;
+	let Start,OpenBrowser,OpenPage,Notify,FindTwitterLoginBtn,ActivePage,FlagLogin,TwitterLoginConfirm,BackToApp,NeedLoginNotice,CheckAgain,ActivePage_1,FindTwitterLoginBtn_1;
 	/*#{1HDBOSUN90LocalVals*/
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -147,7 +147,7 @@ let TwitterLogin=async function(session){
 		let role="assistant";
 		let content=(($ln==="CN")?("推特已打开。"):("Twitter has been opened."));
 		session.addChatText(role,content,opts);
-		return {seg:FindTwitterLoginBtn,result:(result),preSeg:"1IH28Q6DB0",outlet:"1IH28R1BB0"};
+		return {seg:FindTwitterLoginBtn_1,result:(result),preSeg:"1IH28Q6DB0",outlet:"1IH28R1BB0"};
 	};
 	Notify.jaxId="1IH28Q6DB0"
 	Notify.url="Notify@"+agentURL
@@ -156,7 +156,7 @@ let TwitterLogin=async function(session){
 		let result=true;
 		let pageVal="aaPage";
 		let $node=undefined;
-		let $query="(//a[@data-testid='loginButton'])";
+		let $query="(//button[@data-testid='SideNav_AccountSwitcher_Button'])";
 		let $multi=false;
 		let $options=undefined;
 		let $waitBefore=1000;
@@ -177,7 +177,7 @@ let TwitterLogin=async function(session){
 			/*#{1JAQFTV110ErrorCode*/
 			/*}#1JAQFTV110ErrorCode*/
 		}
-		return {seg:ChecklLogin,result:(result),preSeg:"1JAQFTV110",outlet:"1JAQFUJCO0"};
+		return {result:result};
 	};
 	FindTwitterLoginBtn.jaxId="1JAQFTV110"
 	FindTwitterLoginBtn.url="FindTwitterLoginBtn@"+agentURL
@@ -212,10 +212,10 @@ let TwitterLogin=async function(session){
 		let result=true;
 		let pageVal="aaPage";
 		let $flag="$WaitFlag";
-		let $query="(//a[@data-testid='loginButton'])";
+		let $query="(//button[@data-testid='SideNav_AccountSwitcher_Button'])";
 		let $queryHint="";
 		let $waitBefore=0;
-		let $waitAfter=0;
+		let $waitAfter=500;
 		let $options={};
 		let $timeout=undefined;
 		let page=context[pageVal];
@@ -301,7 +301,7 @@ let TwitterLogin=async function(session){
 	segs["ActivePage_1"]=ActivePage_1=async function(input){//:1JASG0CSQ0
 		let result=input;
 		let pageVal="aaPage";
-		let waitBefore=0;
+		let waitBefore=500;
 		let waitAfter=0;
 		let $options={"focusBrowser":true};
 		let page=context[pageVal];
@@ -324,15 +324,35 @@ let TwitterLogin=async function(session){
 	ActivePage_1.jaxId="1JASG0CSQ0"
 	ActivePage_1.url="ActivePage_1@"+agentURL
 	
-	segs["ChecklLogin"]=ChecklLogin=async function(input){//:1JGJQQ8M30
-		let result=input;
-		if(input && input.nodeType){
-			return {seg:ActivePage,result:(input),preSeg:"1JGJQQ8M30",outlet:"1JGJQS4TV0"};
+	segs["FindTwitterLoginBtn_1"]=FindTwitterLoginBtn_1=async function(input){//:1JGM7BIBL1
+		let result=true;
+		let pageVal="aaPage";
+		let $node=undefined;
+		let $query="(//a[@data-testid='loginButton'])";
+		let $multi=false;
+		let $options=undefined;
+		let $waitBefore=1000;
+		let $waitAfter=0;
+		let page=context[pageVal];
+		$waitBefore && (await sleep($waitBefore));
+		try{
+			if($multi){
+				result=await context.webRpa.queryNodes(page,$node,$query,$options);
+			}else{
+				result=await context.webRpa.queryNode(page,$node,$query,$options);
+			}
+			if((!result)||($multi && !result.length)){
+				throw "Querry not found";
+			}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1JGM7BIBL1ErrorCode*/
+			/*}#1JGM7BIBL1ErrorCode*/
 		}
-		return {result:result};
+		return {seg:ActivePage,result:(result),preSeg:"1JGM7BIBL1",outlet:"1JGM7BIBM2"};
 	};
-	ChecklLogin.jaxId="1JGJQQ8M30"
-	ChecklLogin.url="ChecklLogin@"+agentURL
+	FindTwitterLoginBtn_1.jaxId="1JGM7BIBL1"
+	FindTwitterLoginBtn_1.url="FindTwitterLoginBtn_1@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -551,7 +571,7 @@ export{TwitterLogin};
 //						"id": "OpenPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "315",
+//						"x": "255",
 //						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -597,7 +617,7 @@ export{TwitterLogin};
 //						"id": "Notify",
 //						"viewName": "",
 //						"label": "",
-//						"x": "535",
+//						"x": "475",
 //						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -632,7 +652,7 @@ export{TwitterLogin};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JAQFTV110"
+//							"linkedSeg": "1JGM7BIBL1"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -645,8 +665,8 @@ export{TwitterLogin};
 //						"id": "FindTwitterLoginBtn",
 //						"viewName": "",
 //						"label": "",
-//						"x": "715",
-//						"y": "225",
+//						"x": "690",
+//						"y": "670",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -665,7 +685,7 @@ export{TwitterLogin};
 //						},
 //						"page": "aaPage",
 //						"node": "",
-//						"query": "(//a[@data-testid='loginButton'])",
+//						"query": "(//button[@data-testid='SideNav_AccountSwitcher_Button'])",
 //						"queryHint": "",
 //						"multi": "false",
 //						"options": "",
@@ -677,8 +697,7 @@ export{TwitterLogin};
 //							"attrs": {
 //								"id": "Found",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JGJQQ8M30"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -704,8 +723,8 @@ export{TwitterLogin};
 //						"id": "ActivePage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1225",
-//						"y": "210",
+//						"x": "970",
+//						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -747,8 +766,8 @@ export{TwitterLogin};
 //						"id": "FlagLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1460",
-//						"y": "210",
+//						"x": "1205",
+//						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -768,10 +787,10 @@ export{TwitterLogin};
 //						"page": "aaPage",
 //						"action": "Query",
 //						"flag": "$WaitFlag",
-//						"query": "(//a[@data-testid='loginButton'])",
+//						"query": "(//button[@data-testid='SideNav_AccountSwitcher_Button'])",
 //						"queryHint": "",
 //						"waitBefore": "0",
-//						"waitAfter": "0",
+//						"waitAfter": "500",
 //						"outlet": {
 //							"jaxId": "1JAQG0NQJ0",
 //							"attrs": {
@@ -791,8 +810,8 @@ export{TwitterLogin};
 //						"id": "TwitterLoginConfirm",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1670",
-//						"y": "210",
+//						"x": "1415",
+//						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -888,8 +907,8 @@ export{TwitterLogin};
 //						"id": "BackToApp",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2165",
-//						"y": "195",
+//						"x": "1910",
+//						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -928,8 +947,8 @@ export{TwitterLogin};
 //						"id": "NeedLoginNotice",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1935",
-//						"y": "260",
+//						"x": "1680",
+//						"y": "290",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -976,8 +995,8 @@ export{TwitterLogin};
 //						"id": "CheckAgain",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2390",
-//						"y": "260",
+//						"x": "2135",
+//						"y": "290",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1001,8 +1020,8 @@ export{TwitterLogin};
 //						"id": "ActivePage_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1940",
-//						"y": "195",
+//						"x": "1685",
+//						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1021,7 +1040,7 @@ export{TwitterLogin};
 //						},
 //						"page": "aaPage",
 //						"options": "{\"focusBrowser\":true}",
-//						"waitBefore": "0",
+//						"waitBefore": "500",
 //						"waitAfter": "0",
 //						"outlet": {
 //							"jaxId": "1JASG0CSQ3",
@@ -1038,70 +1057,62 @@ export{TwitterLogin};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1JGJQQ8M30",
+//					"def": "WebRpaQuery",
+//					"jaxId": "1JGM7BIBL1",
 //					"attrs": {
-//						"id": "ChecklLogin",
+//						"id": "FindTwitterLoginBtn_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "975",
-//						"y": "210",
+//						"x": "675",
+//						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1JGJQS4U70",
+//							"jaxId": "1JGM7BIBM0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1JGJQS4U71",
+//							"jaxId": "1JGM7BIBM1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
+//						"page": "aaPage",
+//						"node": "",
+//						"query": "(//a[@data-testid='loginButton'])",
+//						"queryHint": "",
+//						"multi": "false",
+//						"options": "",
+//						"errorSeg": "",
+//						"waitBefore": "1000",
+//						"waitAfter": "0",
 //						"outlet": {
-//							"jaxId": "1JGJQS4TV1",
+//							"jaxId": "1JGM7BIBM2",
 //							"attrs": {
-//								"id": "Default",
-//								"desc": "输出节点。",
-//								"output": ""
-//							}
+//								"id": "Found",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JAQFV8EG0"
 //						},
 //						"outlets": {
 //							"attrs": [
 //								{
 //									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JGJQS4TV0",
+//									"def": "AISegOutlet",
+//									"jaxId": "1JGM7BIBM3",
 //									"attrs": {
-//										"id": "Login",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JGJQS4U72",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JGJQS4U73",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input && input.nodeType"
-//									},
-//									"linkedSeg": "1JAQFV8EG0"
+//										"id": "Missing",
+//										"desc": "输出节点。"
+//									}
 //								}
 //							]
 //						}
 //					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
+//					"icon": "/@aae/assets/wait_find.svg"
 //				}
 //			]
 //		},

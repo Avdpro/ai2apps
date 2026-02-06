@@ -167,11 +167,6 @@ let RedNoteLogin=async function(session){
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
 		/*#{1JAQDDK940PreCodes*/
-		if($multi){
-			result=await globalContext.webRpa.queryNodes(page,$node,$query,$options);
-		}else{
-			result=await globalContext.webRpa.queryNode(page,$node,$query,$options);
-		}
 		/*}#1JAQDDK940PreCodes*/
 		try{
 			if($multi){
@@ -191,9 +186,6 @@ let RedNoteLogin=async function(session){
 			return {seg:ActivePage,result:error,preSeg:"1JAQDDK940",outlet:"1JAQDDK8J0"};
 		}
 		/*#{1JAQDDK940PostCodes*/
-		//globalContext.rednotePage = context.aaPage;
-		//globalContext.rednoteBrowser = context.rpaBrowser;
-		//globalContext.rednoteWebRpa = context.webRpa
 		/*}#1JAQDDK940PostCodes*/
 		return {result:result};
 	};
@@ -250,7 +242,7 @@ let RedNoteLogin=async function(session){
 		/*#{1JAQDGC4G0PostCodes*/
 		context[$flag]=globalContext.webRpa.waitQuery(page,$query,$options);
 		/*}#1JAQDGC4G0PostCodes*/
-		return {seg:RedNoteLoginConfirm,result:(result),preSeg:"1JAQDGC4G0",outlet:"1JAQDH9MB2"};
+		return {seg:AskLogin,result:(result),preSeg:"1JAQDGC4G0",outlet:"1JAQDH9MB2"};
 	};
 	FlagLogin.jaxId="1JAQDGC4G0"
 	FlagLogin.url="FlagLogin@"+agentURL
@@ -393,11 +385,15 @@ let RedNoteLogin=async function(session){
 		let button3="";
 		let result="";
 		let value=0;
+		/*#{1JGJRRPBP0PreCodes*/
+		/*}#1JGJRRPBP0PreCodes*/
 		if(silent){
 			result="";
 			return {seg:ActivePage_1,result:(result),preSeg:"1JGJRRPBP0",outlet:"1JGJRRPB80"};
 		}
 		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		/*#{1JGJRRPBP0PostCodes*/
+		/*}#1JGJRRPBP0PostCodes*/
 		if(value===1){
 			result=("")||result;
 			return {seg:ActivePage_1,result:(result),preSeg:"1JGJRRPBP0",outlet:"1JGJRRPB80"};
@@ -919,7 +915,7 @@ export{RedNoteLogin};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JGJRRPBP0"
+//							"linkedSeg": "1JAQDHJ0S0"
 //						}
 //					},
 //					"icon": "/@aae/assets/wait_flag.svg"
@@ -932,8 +928,8 @@ export{RedNoteLogin};
 //						"id": "AskLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1620",
-//						"y": "840",
+//						"x": "1650",
+//						"y": "240",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1000,8 +996,8 @@ export{RedNoteLogin};
 //						"id": "AwaitLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1860",
-//						"y": "785",
+//						"x": "1890",
+//						"y": "185",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1048,8 +1044,8 @@ export{RedNoteLogin};
 //						"id": "BackToApp",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2080",
-//						"y": "770",
+//						"x": "2110",
+//						"y": "170",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1088,8 +1084,8 @@ export{RedNoteLogin};
 //						"id": "CheckAgain",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2320",
-//						"y": "770",
+//						"x": "2350",
+//						"y": "170",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1113,8 +1109,8 @@ export{RedNoteLogin};
 //						"id": "AbortBack",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1860",
-//						"y": "880",
+//						"x": "1890",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1153,8 +1149,8 @@ export{RedNoteLogin};
 //						"id": "AbortPage",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2095",
-//						"y": "880",
+//						"x": "2125",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1195,8 +1191,8 @@ export{RedNoteLogin};
 //						"id": "AbortLogin",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2330",
-//						"y": "880",
+//						"x": "2360",
+//						"y": "280",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1235,10 +1231,10 @@ export{RedNoteLogin};
 //						"id": "RedNoteLoginConfirm",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1660",
-//						"y": "240",
+//						"x": "1035",
+//						"y": "825",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"prompt": {
@@ -1332,8 +1328,8 @@ export{RedNoteLogin};
 //						"id": "ActivePage_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1940",
-//						"y": "205",
+//						"x": "1315",
+//						"y": "790",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1375,8 +1371,8 @@ export{RedNoteLogin};
 //						"id": "BackToApp_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2180",
-//						"y": "205",
+//						"x": "1555",
+//						"y": "790",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1415,8 +1411,8 @@ export{RedNoteLogin};
 //						"id": "NeedLoginNotice",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2045",
-//						"y": "275",
+//						"x": "1315",
+//						"y": "860",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1463,8 +1459,8 @@ export{RedNoteLogin};
 //						"id": "CheckAgain_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2480",
-//						"y": "275",
+//						"x": "1855",
+//						"y": "860",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
