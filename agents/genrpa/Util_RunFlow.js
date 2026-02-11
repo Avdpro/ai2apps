@@ -5,6 +5,7 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 import {WebRpa,sleep} from "../../rpa/WebRpa.mjs";
 /*#{1JF9I9VVS0MoreImports*/
+import {parseFlowVal} from "./utils_flow.js";
 /*}#1JF9I9VVS0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -45,7 +46,7 @@ let Util_RunFlow=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,Start,NextStep,HasQuery,QuerySelector,RunStep,CheckSelector,StepResult,FinDone,FinNextError,FailQuery,SkipStep,FinNoStep,RunCodeStep,FinAbort;
+	let StartRpa,Start,NextStep,HasQuery,ResolveQuery,RunStep,CheckResolve,StepResult,FinDone,FinNextError,FinNoStep,FinAbort;
 	let curStep=undefined;
 	let stepAction=null;
 	let flowPath="null";
@@ -142,7 +143,7 @@ let Util_RunFlow=async function(session){
 			}
 			entry=flow.start;
 			curStep=steps[entry];
-			lastResult={status:"Ready",result:"Ready"};
+			lastResult={status:"done",value:true};
 			{
 				let $channel="Process";
 				let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
@@ -189,31 +190,34 @@ let Util_RunFlow=async function(session){
 		let result=input;
 		/*#{1JF9IEPFR0Start*/
 		/*}#1JF9IEPFR0Start*/
-		if(stepAction.query && stepAction.type!=="js_code"){
-			return {seg:QuerySelector,result:(input),preSeg:"1JF9IEPFR0",outlet:"1JF9IGO5D0"};
-		}
-		if(stepAction.type!=="js_code"){
-			return {seg:RunStep,result:(input),preSeg:"1JF9IEPFR0",outlet:"1JFB9BF3S0"};
+		if(stepAction.query){
+			/*#{1JF9IGO5D0Codes*/
+			/*}#1JF9IGO5D0Codes*/
+			return {seg:ResolveQuery,result:(input),preSeg:"1JF9IEPFR0",outlet:"1JF9IGO5D0"};
 		}
 		/*#{1JF9IEPFR0Post*/
 		/*}#1JF9IEPFR0Post*/
-		return {seg:RunCodeStep,result:(result),preSeg:"1JF9IEPFR0",outlet:"1JF9IGO5D1"};
+		return {seg:RunStep,result:(result),preSeg:"1JF9IEPFR0",outlet:"1JF9IGO5D1"};
 	};
 	HasQuery.jaxId="1JF9IEPFR0"
 	HasQuery.url="HasQuery@"+agentURL
 	
-	segs["QuerySelector"]=QuerySelector=async function(input){//:1JF9IFLCQ0
+	segs["ResolveQuery"]=ResolveQuery=async function(input){//:1JF9IFLCQ0
 		let result;
-		let arg={"pageRef":pageRef,"query":curStep.action.query,"multiSelect":"","rulePath":flowPath+"_"+curStep.id,"opts":flowOpts};
+		let arg={"pageRef":pageRef,"cacheKey":flowPath+"_"+curStep.id,"cacheQuery":curStep.action.query,"cacheKind":curStep.action.query?.kind,"cachePolicy":curStep.action.query?.policy,"flowArgs":flowArgs,"flowVars":flowVars,"flowOpts":flowOpts,"flowResult":lastResult,"flowHistory":[],"selectorMode":curStep.action.query?.mode,"codeScope":curStep.action.scope||"page"};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
-		let sourcePath=pathLib.join(basePath,"./Util_QuerySelector.js");
+		let sourcePath=pathLib.join(basePath,"./Util_ResolveQuery.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		/*#{1JF9IFLCQ0Input*/
+		/*}#1JF9IFLCQ0Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {seg:CheckSelector,result:(result),preSeg:"1JF9IFLCQ0",outlet:"1JF9IGO5E0"};
+		/*#{1JF9IFLCQ0Output*/
+		/*}#1JF9IFLCQ0Output*/
+		return {seg:CheckResolve,result:(result),preSeg:"1JF9IFLCQ0",outlet:"1JF9IGO5E0"};
 	};
-	QuerySelector.jaxId="1JF9IFLCQ0"
-	QuerySelector.url="QuerySelector@"+agentURL
+	ResolveQuery.jaxId="1JF9IFLCQ0"
+	ResolveQuery.url="ResolveQuery@"+agentURL
 	
 	segs["RunStep"]=RunStep=async function(input){//:1JF9IGANO0
 		let result;
@@ -228,34 +232,62 @@ let Util_RunFlow=async function(session){
 	RunStep.jaxId="1JF9IGANO0"
 	RunStep.url="RunStep@"+agentURL
 	
-	segs["CheckSelector"]=CheckSelector=async function(input){//:1JF9IHEG50
+	segs["CheckResolve"]=CheckResolve=async function(input){//:1JF9IHEG50
 		let result=input;
 		/*#{1JF9IHEG50Start*/
-		let $status;
-		$status=input.status.toLowerCase();
-		/*}#1JF9IHEG50Start*/
-		if($status==="failed"){
-			return {seg:FailQuery,result:(input),preSeg:"1JF9IHEG50",outlet:"1JF9IIN7O0"};
+		let $status,$selector,$code,$reason;
+		$status= String(input?.status || "failed").toLowerCase();
+		if(input?.value?.kind==="status"){
+			$status=input.value.status;
+			$reason=input.value.reason||"";
+		}else if(input?.value?.kind==="selector"){
+			$selector=input.value.selector;
+			if($selector){
+				$status="done";
+			}else{
+				$status="failed";
+				$reason=`QuerySelector result missing selector: ${JSON.stringify(input)}`;
+			}
+		}else if(input?.value?.kind==="code"){
+			$code=input.value.code;
+			if($code){
+				$status="done";
+			}else{
+				$status="failed";
+				$reason=`QuerySelector result missing code: ${JSON.stringify(input)}`;
+			}
 		}
+		/*}#1JF9IHEG50Start*/
 		if($status==="skipped"){
 			let output=input;
-			return {seg:SkipStep,result:(output),preSeg:"1JF9IHEG50",outlet:"1JF9JKU2K0"};
+			/*#{1JF9JKU2K0Codes*/
+			output={status:"skipped",reason:$reason||""};
+			/*}#1JF9JKU2K0Codes*/
+			return {seg:StepResult,result:(output),preSeg:"1JF9IHEG50",outlet:"1JF9JKU2K0"};
+		}
+		if($status!=="done"){
+			let output=input;
+			/*#{1JF9IIN7O0Codes*/
+			output={status:"failed",reason:$reason||""};
+			/*}#1JF9IIN7O0Codes*/
+			return {seg:StepResult,result:(output),preSeg:"1JF9IHEG50",outlet:"1JF9IIN7O0"};
 		}
 		/*#{1JF9IHEG50Post*/
 		switch(curStep.action.type){
-			case "js_code":{
+			case "run_js":{
+				curStep.action.code=$code;
 				break;
 			}
 			default:{
-				curStep.action.by=input.selector||input.value;
+				curStep.action.by=$selector;
 				break;
 			}
 		}
 		/*}#1JF9IHEG50Post*/
 		return {seg:RunStep,result:(result),preSeg:"1JF9IHEG50",outlet:"1JF9IIN7O1"};
 	};
-	CheckSelector.jaxId="1JF9IHEG50"
-	CheckSelector.url="CheckSelector@"+agentURL
+	CheckResolve.jaxId="1JF9IHEG50"
+	CheckResolve.url="CheckResolve@"+agentURL
 	
 	segs["StepResult"]=StepResult=async function(input){//:1JF9IJ7HH0
 		let result=input;
@@ -264,16 +296,15 @@ let Util_RunFlow=async function(session){
 			let $channel="Process";
 			let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 			let role="assistant";
-			let content=`Util_RunFlow: [StepResult]: ${JSON.stringify(input)}}`;
+			let content=`Util_RunFlow: [StepResult]: ${JSON.stringify(input)}`;
 			session.addChatText(role,content,opts);
 		}
 		let status,value,stepNext,nextType,nextStep;
 		lastResult=input||{};
-		status=(input?.status||"done").toLowerCase();
+		status = String(input?.status || "failed").toLowerCase();
+		if (!["done","failed","skipped","timeout"].includes(status)) status = "failed";
 		if(status==="done" && curStep.saveAs && (typeof(input)==="object") && ("value" in input)){
 			let saveAs=curStep.saveAs;
-			const { parseFlowVal } = await import(pathLib.join(basePath, "./utils_flow.js"));
-			let toSave = saveAs;
 			if (typeof saveAs === "string") {
 				// 旧模式，直接保存 result.value
 				flowVars[saveAs] = input.value;
@@ -285,14 +316,25 @@ let Util_RunFlow=async function(session){
 					try {
 						flowVars[key] = parseFlowVal(saveAs[key], flowArgs, flowOpts, flowVars, input);
 					} catch (e) {
+						let meta,logs;
 						flowVars[key] = undefined;
+						//Save error into logs:
+						meta=lastResult.meta;
+						if(!meta){
+							lastResult.meta=meta={};
+						}
+						logs=meta.logs;
+						if(!logs){
+							meta.logs=logs=[];
+						}
+						logs.push(`Step saveAs for key "${key}" error: ${e}, expression: ${saveAs[key]}`);
 					}
 				}
 			}
 		}
 		if(curStep.action.type==="branch"){
-			value=input?.value;
-			curStep=steps[input?.nextStep];
+			value=input?.value || input?.nextStep || curStep.action.default;
+			curStep=steps[value];
 		}else{
 			value=input?.value;
 			stepNext=curStep.next;
@@ -303,13 +345,30 @@ let Util_RunFlow=async function(session){
 				let router;
 				router=stepNext.router;
 				if(router){
-					if(router instanceof Function){
-						nextStep=await router(lastResult,flowArgs,flowVars,flowOpts);
+					if (stepNext.unsafe !== true) {
+						// 按 spec：非法 next 定义 => 本 step failed
+						lastResult.status = "failed";
+						lastResult.reason = "next.router requires unsafe:true (spec v0.50)";
+						nextStep = stepNext.failed ?? stepNext.default ?? null;
+					}else if(router instanceof Function){
+						try{
+							nextStep = await router(lastResult, flowArgs, flowVars, flowOpts);
+							if (!nextStep || typeof nextStep !== "string" || !steps[nextStep]) {
+								throw new Error(`router returned invalid stepId: ${String(nextStep)}`);
+							}
+						}catch(e){
+							lastResult.status = "failed";
+							lastResult.reason = `next.router error: ${e?.message || e}`;
+							nextStep = stepNext.failed ?? stepNext.default ?? null;
+						}
 					}else{
-						throw Error("None function next-step-router is not supported yet.");
+						lastResult.status = "failed";
+						lastResult.reason = "next.router must be function";
+						nextStep = stepNext.failed ?? stepNext.default ?? null;
 					}
 				}else{
-					nextStep=stepNext[status]||null;
+					//nextStep=stepNext[status]||null;
+					nextStep = stepNext[status] ?? stepNext.default ?? stepNext.failed ?? null;
 				}
 			}
 			curStep=steps[nextStep];
@@ -370,34 +429,6 @@ let Util_RunFlow=async function(session){
 	FinNextError.jaxId="1JF9IMGBK0"
 	FinNextError.url="FinNextError@"+agentURL
 	
-	segs["FailQuery"]=FailQuery=async function(input){//:1JF9IMQ9N0
-		let result=input
-		try{
-			/*#{1JF9IMQ9N0Code*/
-			/*}#1JF9IMQ9N0Code*/
-		}catch(error){
-			/*#{1JF9IMQ9N0ErrorCode*/
-			/*}#1JF9IMQ9N0ErrorCode*/
-		}
-		return {seg:StepResult,result:(result),preSeg:"1JF9IMQ9N0",outlet:"1JF9IND0E0"};
-	};
-	FailQuery.jaxId="1JF9IMQ9N0"
-	FailQuery.url="FailQuery@"+agentURL
-	
-	segs["SkipStep"]=SkipStep=async function(input){//:1JF9JMJTC0
-		let result=input
-		try{
-			/*#{1JF9JMJTC0Code*/
-			/*}#1JF9JMJTC0Code*/
-		}catch(error){
-			/*#{1JF9JMJTC0ErrorCode*/
-			/*}#1JF9JMJTC0ErrorCode*/
-		}
-		return {seg:StepResult,result:(result),preSeg:"1JF9JMJTC0",outlet:"1JF9JNAEG0"};
-	};
-	SkipStep.jaxId="1JF9JMJTC0"
-	SkipStep.url="SkipStep@"+agentURL
-	
 	segs["FinNoStep"]=FinNoStep=async function(input){//:1JFALJR7N0
 		let result=input
 		try{
@@ -411,19 +442,6 @@ let Util_RunFlow=async function(session){
 	};
 	FinNoStep.jaxId="1JFALJR7N0"
 	FinNoStep.url="FinNoStep@"+agentURL
-	
-	segs["RunCodeStep"]=RunCodeStep=async function(input){//:1JFB99HRT0
-		let result;
-		let arg=input;
-		let agentNode=(undefined)||null;
-		let $query=(undefined)||null;
-		let sourcePath=pathLib.join(basePath,"");
-		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
-		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {seg:StepResult,result:(result),preSeg:"1JFB99HRT0",outlet:"1JFB9BF3U0"};
-	};
-	RunCodeStep.jaxId="1JFB99HRT0"
-	RunCodeStep.url="RunCodeStep@"+agentURL
 	
 	segs["FinAbort"]=FinAbort=async function(input){//:1JFD6ORII0
 		let result=input
@@ -839,7 +857,7 @@ export{Util_RunFlow,ChatAPI};
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JFB99HRT0"
+//							"linkedSeg": "1JFBIH2FB0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -851,7 +869,7 @@ export{Util_RunFlow,ChatAPI};
 //										"id": "Query",
 //										"desc": "输出节点。",
 //										"output": "",
-//										"codes": "false",
+//										"codes": "true",
 //										"context": {
 //											"jaxId": "1JF9IGO5F2",
 //											"attrs": {
@@ -864,34 +882,9 @@ export{Util_RunFlow,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#stepAction.query && stepAction.type!==\"js_code\""
+//										"condition": "#stepAction.query"
 //									},
 //									"linkedSeg": "1JF9IFLCQ0"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JFB9BF3S0",
-//									"attrs": {
-//										"id": "NotCode",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JFB9G0VB0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JFB9G0VB1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#stepAction.type!==\"js_code\""
-//									},
-//									"linkedSeg": "1JFBIVJCP0"
 //								}
 //							]
 //						}
@@ -904,13 +897,13 @@ export{Util_RunFlow,ChatAPI};
 //					"def": "aiBot",
 //					"jaxId": "1JF9IFLCQ0",
 //					"attrs": {
-//						"id": "QuerySelector",
+//						"id": "ResolveQuery",
 //						"viewName": "",
 //						"label": "",
 //						"x": "1150",
 //						"y": "280",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "lab.svg",
 //						"context": {
@@ -925,8 +918,8 @@ export{Util_RunFlow,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"source": "ai/Util_QuerySelector.js",
-//						"argument": "{\"pageRef\":\"#pageRef\",\"query\":\"#curStep.action.query\",\"multiSelect\":\"\",\"rulePath\":\"#flowPath+\\\"_\\\"+curStep.id\",\"opts\":\"#flowOpts\"}",
+//						"source": "ai/Util_ResolveQuery.js",
+//						"argument": "{\"pageRef\":\"#pageRef\",\"cacheKey\":\"#flowPath+\\\"_\\\"+curStep.id\",\"cacheQuery\":\"#curStep.action.query\",\"cacheKind\":\"#curStep.action.query?.kind\",\"cachePolicy\":\"#curStep.action.query?.policy\",\"flowArgs\":\"#flowArgs\",\"flowVars\":\"#flowVars\",\"flowOpts\":\"#flowOpts\",\"flowResult\":\"#lastResult\",\"flowHistory\":\"#[]\",\"selectorMode\":\"#curStep.action.query?.mode\",\"codeScope\":\"#curStep.action.scope||\\\"page\\\"\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JF9IGO5E0",
@@ -951,7 +944,7 @@ export{Util_RunFlow,ChatAPI};
 //						"viewName": "",
 //						"label": "",
 //						"x": "1725",
-//						"y": "355",
+//						"y": "370",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -990,7 +983,7 @@ export{Util_RunFlow,ChatAPI};
 //					"def": "brunch",
 //					"jaxId": "1JF9IHEG50",
 //					"attrs": {
-//						"id": "CheckSelector",
+//						"id": "CheckResolve",
 //						"viewName": "",
 //						"label": "",
 //						"x": "1430",
@@ -1025,37 +1018,12 @@ export{Util_RunFlow,ChatAPI};
 //								{
 //									"type": "aioutlet",
 //									"def": "AIConditionOutlet",
-//									"jaxId": "1JF9IIN7O0",
-//									"attrs": {
-//										"id": "Failed",
-//										"desc": "输出节点。",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JF9IIN7Q2",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JF9IIN7Q3",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#$status===\"failed\""
-//									},
-//									"linkedSeg": "1JF9IMQ9N0"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
 //									"jaxId": "1JF9JKU2K0",
 //									"attrs": {
-//										"id": "Skip",
+//										"id": "Skipped",
 //										"desc": "输出节点。",
 //										"output": "#input",
-//										"codes": "false",
+//										"codes": "true",
 //										"context": {
 //											"jaxId": "1JF9JNAEI0",
 //											"attrs": {
@@ -1070,7 +1038,32 @@ export{Util_RunFlow,ChatAPI};
 //										},
 //										"condition": "#$status===\"skipped\""
 //									},
-//									"linkedSeg": "1JF9JMJTC0"
+//									"linkedSeg": "1JGTHQDVQ0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JF9IIN7O0",
+//									"attrs": {
+//										"id": "Failed",
+//										"desc": "输出节点。",
+//										"output": "#input",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JF9IIN7Q2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JF9IIN7Q3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#$status!==\"done\""
+//									},
+//									"linkedSeg": "1JGTHQDVQ0"
 //								}
 //							]
 //						}
@@ -1323,95 +1316,13 @@ export{Util_RunFlow,ChatAPI};
 //				{
 //					"type": "aiseg",
 //					"def": "code",
-//					"jaxId": "1JF9IMQ9N0",
-//					"attrs": {
-//						"id": "FailQuery",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1725",
-//						"y": "200",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
-//						"context": {
-//							"jaxId": "1JF9IND0H0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JF9IND0H1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JF9IND0E0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JF9IJ7HH0"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"errorSeg": ""
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1JF9JMJTC0",
-//					"attrs": {
-//						"id": "SkipStep",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1725",
-//						"y": "280",
-//						"desc": "这是一个AISeg。",
-//						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
-//						"context": {
-//							"jaxId": "1JF9JNAEI2",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JF9JNAEI3",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JF9JNAEG0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JF9IJ7HH0"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"errorSeg": ""
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
 //					"jaxId": "1JFALJR7N0",
 //					"attrs": {
 //						"id": "FinNoStep",
 //						"viewName": "",
 //						"label": "",
 //						"x": "895",
-//						"y": "530",
+//						"y": "485",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "working.svg",
@@ -1444,80 +1355,15 @@ export{Util_RunFlow,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "aiBot",
-//					"jaxId": "1JFB99HRT0",
-//					"attrs": {
-//						"id": "RunCodeStep",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1150",
-//						"y": "435",
-//						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "working.svg",
-//						"context": {
-//							"jaxId": "1JFB9G0VB2",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JFB9G0VB3",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"source": "",
-//						"argument": "#{}#>input",
-//						"secret": "false",
-//						"outlet": {
-//							"jaxId": "1JFB9BF3U0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JFBIH2FB0"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						}
-//					},
-//					"icon": "agent.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "connectorL",
 //					"jaxId": "1JFBIH2FB0",
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1825",
-//						"y": "435",
+//						"x": "1145",
+//						"y": "370",
 //						"outlet": {
 //							"jaxId": "1JFBIHACI0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JF9IJ7HH0"
-//						},
-//						"dir": "L2R"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connectorL",
-//					"jaxId": "1JFBIVJCP0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1150",
-//						"y": "355",
-//						"outlet": {
-//							"jaxId": "1JFBJ041Q2",
 //							"attrs": {
 //								"id": "Outlet",
 //								"desc": "输出节点。"
@@ -1568,6 +1414,28 @@ export{Util_RunFlow,ChatAPI};
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JGTHQDVQ0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1725",
+//						"y": "280",
+//						"outlet": {
+//							"jaxId": "1JGTHRKGR0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JF9IJ7HH0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

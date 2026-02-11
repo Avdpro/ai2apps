@@ -69,8 +69,8 @@ function deserializeEvaluateResult(result) {
 			case 'array':
 				return (result.value || []).map(deserializeEvaluateResult);
 			case 'node':{
-				//return result.value;
-				return result;
+				return result.value;
+				//return result;
 			}
 			case 'object': {
 				let val
@@ -518,7 +518,7 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			
 			// Handle different result types
 			if (result.type === 'success') {
-				return deserializeEvaluateResult(result.result);;
+				return deserializeEvaluateResult(result.result);
 			} else if (result.type === 'exception') {
 				throw new Error(result.exceptionDetails.text || 'Script evaluation failed');
 			}
@@ -565,7 +565,8 @@ aaWebDriveContext.sendCommand=async function(cmd,params,timeout){
 			
 			// Handle different result types
 			if (result.type === 'success') {
-				return deserializeEvaluateResult(result.result);
+				//return deserializeEvaluateResult(result.result);
+				return result.result;
 			} else if (result.type === 'exception') {
 				throw new Error(result.exceptionDetails.text || 'Script evaluation failed');
 			}

@@ -40,6 +40,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.killPms=null;
 		this.killCallback=null;
 		this.waitBuf="";
+		this.cmdOutput="";
 		this.idleTime=0;
 
 		this.lastActiveTime=0;
@@ -349,6 +350,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		}
 		if(this.cmdWaitIdle){
 			this.cmdWaitIdle=false;
+			this.cmdOutput=this.waitBuf;
 			callback=this.waitCallback;
 			if(callback){
 				this.waitCallback=null;

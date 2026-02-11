@@ -57,7 +57,7 @@ let Util_StepAction=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let StartRpa,OnAction,HyperInput,Click,Hover,Wheel,Scroll2Show,OldInput,PressKey,GotoUrl,RunJS,FinDone,Invoke,ShowPage,TipAndWait,FinManual,Branch,FailManual,FinFailed,CanManual,FailNoManual,Selector,Wait,OldSelector,_FlagWait,WaitSelector,FinWaitDone,FinWaitError,FlagFile,ClickFile,AwaitFile,UploadFile,FinUploadFile,RunAI,FinAI,ReadPage,ReadElement,SetChecked,SetSelect;
+	let StartRpa,OnAction,HyperInput,Click,Hover,Wheel,Scroll2Show,OldInput,PressKey,GotoUrl,RunJS,FinDone,Invoke,ShowPage,TipAndWait,FinManual,Branch,FailManual,FinFailed,CanManual,FailNoManual,Selector,Wait,OldSelector,_FlagWait,WaitSelector,FinWaitDone,FinWaitError,FlagFile,ClickFile,AwaitFile,UploadFile,FinUploadFile,RunAI,FinAI,ReadPage,ReadElement,SetChecked,SetSelect,PageError;
 	let ctxArgs=undefined;
 	let ctxOpts=undefined;
 	let ctxVars=undefined;
@@ -105,6 +105,8 @@ let Util_StepAction=async function(session){
 		let $waitBefore=0;
 		let $waitAfter=0;
 		let $webRpa=null;
+		/*#{1JF1KIV0I0PreCodes*/
+		/*}#1JF1KIV0I0PreCodes*/
 		try{
 			if($ref){
 				let $page,$browser;
@@ -122,23 +124,33 @@ let Util_StepAction=async function(session){
 				if($alias){
 					let $headless=false;
 					let $devtools=false;
-					let options={$headless:false,$devtools:false,autoDataDir:false};
+					let options={headless:$headless,devtools:$devtools,autoDataDir:false};
 					let $browser=null;
+					/*#{1JF1KIV0I0PreBrowser*/
+					/*}#1JF1KIV0I0PreBrowser*/
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
 					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
+					/*#{1JF1KIV0I0PostBrowser*/
+					/*}#1JF1KIV0I0PostBrowser*/
 					if($url){
 						let $page=null;
 						let $opts={};
+						/*#{1JF1KIV0I0PrePage*/
+						/*}#1JF1KIV0I0PrePage*/
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
+						/*#{1JF1KIV0I0PostPage*/
+						/*}#1JF1KIV0I0PostPage*/
 					}
 				}
 			}
 			$waitAfter && (await sleep($waitAfter));
 		}catch(error){
-			throw error;
+			return {seg:PageError,result:(error),preSeg:"1JF1KIV0I0",outlet:"1JF1KIV0J1",catchSeg:PageError,catchlet:"1JF1KIV0J1"};
 		}
+		/*#{1JF1KIV0I0PostCodes*/
+		/*}#1JF1KIV0I0PostCodes*/
 		return {seg:OnAction,result:(result),preSeg:"1JF1KIV0I0",outlet:"1JF1KIV0J0"};
 	};
 	StartRpa.jaxId="1JF1KIV0I0"
@@ -199,13 +211,13 @@ let Util_StepAction=async function(session){
 		if(action.type==="readElement"){
 			return {seg:ReadElement,result:(input),preSeg:"1JF1KJM740",outlet:"1JFTFRP900"};
 		}
-		if(input==="DragDrop"){
+		if(action.type==="dragDrop"){
 			return {result:input};
 		}
 		if(action.type==="setChecked"){
 			return {seg:SetChecked,result:(input),preSeg:"1JF1KJM740",outlet:"1JFTFMBBF0"};
 		}
-		if(input==="SetSelection"){
+		if(action.type==="setSelect"){
 			return {seg:SetSelect,result:(input),preSeg:"1JF1KJM740",outlet:"1JFTFRE590"};
 		}
 		/*#{1JF1KJM740Post*/
@@ -289,8 +301,8 @@ let Util_StepAction=async function(session){
 	segs["Hover"]=Hover=async function(input){//:1JF1KVGRK0
 		let result=true;
 		let pageVal="aaPage";
-		let $query=input.by;
-		let $queryHint=action.by;
+		let $query=action.by;
+		let $queryHint="";
 		let $x=0;
 		let $y=0;
 		let $options=null;
@@ -376,13 +388,6 @@ let Util_StepAction=async function(session){
 				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JF1L0NDP0")):$query;
 				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
 				$pms=page.scrollIntoView($query);
-			}
-			if($query||$queryHint){
-				$query=$queryHint?(await context.webRpa.confirmQuery(page,$query,$queryHint,"1JF1L0NDP0")):$query;
-				if(!$query) throw Error("Missing query. Query hint: "+$queryHint);
-				$pms=page.mouseWheel($query,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
-			}else{
-				$pms=page.mouseWheel(null,{...$options,deltaX:$deltaX||0,deltaY:$deltaY||100});
 			}
 			if($pms && (!$async)){$done=await $pms;}
 			$waitAfter && (await sleep($waitAfter))
@@ -514,7 +519,7 @@ let Util_StepAction=async function(session){
 			/*}#1JF1L5VP90Code*/
 		}catch(error){
 			/*#{1JF1L5VP90ErrorCode*/
-			result={status:"Failed",result:"Failed",reaon:`run_js action error: ${error}`}
+			error={status:"failed",reason:`run_js action error: ${error}`};
 			/*}#1JF1L5VP90ErrorCode*/
 			return {seg:FinFailed,result:error,preSeg:"1JF1L5VP90",outlet:null};
 		}
@@ -532,9 +537,6 @@ let Util_StepAction=async function(session){
 				value=input.value;
 			}
 			result={status:"done",result:"done",value:value};
-			if(action.saveAs){
-				ctxVars[action.saveAs]=value;
-			}
 			/*}#1JF1L7U0V0Code*/
 		}catch(error){
 			/*#{1JF1L7U0V0ErrorCode*/
@@ -652,7 +654,7 @@ let Util_StepAction=async function(session){
 			/*#{1JF9EHQKF0Code*/
 			let nextId;
 			nextId=runBranchAction(action,ctxArgs,ctxOpts,ctxVars,ctxResult);
-			result={status:"Done",result:"Finish",value:nextId,nextStep:nextId};
+			result={status:"done",value:nextId,nextStep:nextId};
 			/*}#1JF9EHQKF0Code*/
 		}catch(error){
 			/*#{1JF9EHQKF0ErrorCode*/
@@ -683,7 +685,10 @@ let Util_StepAction=async function(session){
 		let result=input
 		try{
 			/*#{1JFAMJ9GE0Code*/
-			result={status:"failed",result:"failed",reason:input?.reason||`Action "${action.id}" failed.`};
+			result={
+				status:"failed",
+				reason:input?.reason|| input?.message|| (typeof input === "string" ? input : null)|| `Action "${action?.id || action?.type || "unknown"}" failed.`
+			};
 			/*}#1JFAMJ9GE0Code*/
 		}catch(error){
 			/*#{1JFAMJ9GE0ErrorCode*/
@@ -697,7 +702,7 @@ let Util_StepAction=async function(session){
 	segs["CanManual"]=CanManual=async function(input){//:1JFAOR4CG0
 		let result=input;
 		if(input==="Allow"){
-			let output=ctxOpts.allowManual||ctxArgs.ctxOpts.allowManual||ctxOpts.manual||ctxArgs.manual;
+			let output=ctxOpts?.allowManual||ctxArgs?.allowManual||ctxOpts?.useManual||ctxArgs?.useManual;
 			return {seg:ShowPage,result:(output),preSeg:"1JFAOR4CG0",outlet:"1JFAOUFCH0"};
 		}
 		return {seg:FailNoManual,result:(result),preSeg:"1JFAOR4CG0",outlet:"1JFAOUFCH1"};
@@ -744,7 +749,7 @@ let Util_StepAction=async function(session){
 		if($find){
 			let output=result;
 			/*#{1JFT5RC2L0Codes*/
-			output={status:"done",page:$find.page,node:$find.node||$find.nodes,$value:$find.node||$find.nodes,page:context.aaPage?.pageRef};
+			output={status:"done",node:$find.node||$find.nodes,value:$find.node||$find.nodes,page:context.aaPage?.pageRef};
 			/*}#1JFT5RC2L0Codes*/
 			return {result:output};
 		}
@@ -766,12 +771,12 @@ let Util_StepAction=async function(session){
 			$options={timeout:action.timeout||0};
 			$scope=action.scope||"current";
 			$multi=!!action.multi;
-			$find=await context.webRpa.waitQueryInPages(null,null,$query,$scope);
+			$find=await context.webRpa.waitQueryInPages(null,null,$query,$scope,$options);
 			if($find){
 				if($autoSwitch){
 					context.webRpa.setCurrentPage($find.page);
 				}
-				result={status:"done",page:$find.page,node:$find.node,$value:$find.node,page:context.aaPage?.pageRef};
+				result={status:"done",node:$find.node,value:$find.node,page:context.aaPage?.pageRef};
 			}else{
 				throw "Not found";
 			}
@@ -1018,6 +1023,7 @@ let Util_StepAction=async function(session){
 		/*#{1JFRQI1NV0Input*/
 		let $promptObj={};
 		let $page=context.aaPage;
+		let $screenshot=null;
 		$promptObj.prompt=action.prompt;
 		if(action.input){
 			$promptObj.input=parseFlowVal(action.input,ctxArgs,ctxOpts,ctxVars,ctxResult);
@@ -1034,13 +1040,13 @@ let Util_StepAction=async function(session){
 				$promptObj.page.html=await context.webRpa.readInnerHTML($page,null,{removeHidden:true});
 			}
 			if(action.page.screenshot){
-				let data;
-				data=await $page.screenshot({encoding: 'base64',type:"jpeg",fullPage:false,quality:0.5});
-				data=`data:image/${$format};base64,`+result;
-				$promptObj.page.screenshot=data;
+				let data,$format;
+				$format="jpeg";
+				data=await $page.screenshot({encoding: 'base64',type:$format,fullPage:false,quality:0.5});
+				$screenshot=`data:image/${$format};base64,`+data;
 			}
 			if(action.page.article){
-				$promptObj.page.article=await context.webRpa.readArticle(page,null,{removeHidden:false});
+				$promptObj.page.article=await context.webRpa.readArticle($page,null,{removeHidden:false});
 			}
 		}
 		if(action.schema){
@@ -1077,6 +1083,11 @@ let Util_StepAction=async function(session){
 			}
 			let msg={role:"user",content:prompt};
 			/*#{1JFRQI1NV0FilterMessage*/
+			if($screenshot){
+				let content=[{type:"text",text:prompt}];
+				content.push({type:"image_url","image_url":{"url":$screenshot}});
+				msg={role:"user",content:content};
+			}
 			/*}#1JFRQI1NV0FilterMessage*/
 			messages.push(msg);
 		}
@@ -1101,11 +1112,13 @@ let Util_StepAction=async function(session){
 		let result=input
 		try{
 			/*#{1JFRQL9NS0Code*/
+			let $status;
+			$status=input.status?input.status.toLowerCase():"failed";
 			result.status=result.status?result.status.toLowerCase():"failed";
-			if(result.status==="done"){
-				result.value=result.result;
+			if($status==="ok"){
+				result={status:"done",value:input.result};
 			}else{
-				result.status="failed";
+				result={status:"failed",reason:input.reason||"Acrion run_ai failed."};
 			}
 			/*}#1JFRQL9NS0Code*/
 		}catch(error){
@@ -1334,7 +1347,7 @@ let Util_StepAction=async function(session){
 			let target = parseFlowVal(action.checked, ctxArgs, ctxOpts, ctxVars, ctxResult);
 			target = !!target;
 			if(action.multi){
-				return {seg:FinFailed, result:{reason:"setChecked does not support multi"}, preSeg:"__SETCHECKED__", outlet:null};
+				throw Error(`setChecked does not support multi`);
 			}
 			// ========== 统一的页面内读状态函数（read1/read2 复用）==========
 			const readStateInPage = function(by){
@@ -1429,10 +1442,10 @@ let Util_StepAction=async function(session){
 			// ---- read1 ----
 			const read1 = await page.callFunction(readStateInPage, [by]);
 			if(!read1 || !read1.ok){
-				return {seg:FinFailed, result:{reason:read1?.reason || "setChecked: cannot read target"}, preSeg:"__SETCHECKED__", outlet:null};
+				throw Error(read1?.reason || "setChecked: cannot read target");
 			}
 			if(read1.isRadio && target === false){
-				return {seg:FinFailed, result:{reason:"radio cannot be unchecked"}, preSeg:"__SETCHECKED__", outlet:null};
+				throw Error("radio cannot be unchecked");
 			}
 			const beforeChecked = read1.checked; // 可能为 null
 			let changed = false;
@@ -1478,12 +1491,7 @@ let Util_StepAction=async function(session){
 							return true;
 						}, [by]);
 					}catch(e2){
-						return {
-							seg:FinFailed,
-							result:{reason:`setChecked click failed (webdriver + js). webdriverErr=${clickErr?.message||clickErr} jsErr=${e2?.message||e2}`},
-							preSeg:"__SETCHECKED__",
-							outlet:null
-						};
+						throw Error(`setChecked click failed (webdriver + js). webdriverErr=${clickErr?.message||clickErr} jsErr=${e2?.message||e2}`);
 					}
 				}
 			}
@@ -1689,6 +1697,21 @@ let Util_StepAction=async function(session){
 	};
 	SetSelect.jaxId="1JFU0J5E10"
 	SetSelect.url="SetSelect@"+agentURL
+	
+	segs["PageError"]=PageError=async function(input){//:1JH0CQLK50
+		let result=input
+		try{
+			/*#{1JH0CQLK50Code*/
+			result={status:"failed",reason:`Can't open page: ${JSON.stringify(pageRef)}`};
+			/*}#1JH0CQLK50Code*/
+		}catch(error){
+			/*#{1JH0CQLK50ErrorCode*/
+			/*}#1JH0CQLK50ErrorCode*/
+		}
+		return {result:result};
+	};
+	PageError.jaxId="1JH0CQLK50"
+	PageError.url="PageError@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1897,7 +1920,7 @@ export{Util_StepAction,ChatAPI};
 //						"x": "80",
 //						"y": "620",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1946,7 +1969,8 @@ export{Util_StepAction,ChatAPI};
 //										"cast": ""
 //									}
 //								}
-//							}
+//							},
+//							"linkedSeg": "1JH0CQLK50"
 //						},
 //						"aiQuery": "true",
 //						"autoCurrentPage": "true",
@@ -2436,7 +2460,7 @@ export{Util_StepAction,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": ""
+//										"condition": "#action.type===\"dragDrop\""
 //									}
 //								},
 //								{
@@ -2485,7 +2509,7 @@ export{Util_StepAction,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": ""
+//										"condition": "#action.type===\"setSelect\""
 //									},
 //									"linkedSeg": "1JFU0J5E10"
 //								}
@@ -2615,8 +2639,8 @@ export{Util_StepAction,ChatAPI};
 //						},
 //						"page": "aaPage",
 //						"action": "Mouse Move",
-//						"query": "#input.by",
-//						"queryHint": "#action.by",
+//						"query": "#action.by",
+//						"queryHint": "",
 //						"dx": "0",
 //						"dy": "0",
 //						"deltaX": "0",
@@ -3333,7 +3357,7 @@ export{Util_StepAction,ChatAPI};
 //									"attrs": {
 //										"id": "Allow",
 //										"desc": "输出节点。",
-//										"output": "#ctxOpts.allowManual||ctxArgs.ctxOpts.allowManual||ctxOpts.manual||ctxArgs.manual",
+//										"output": "#ctxOpts?.allowManual||ctxArgs?.allowManual||ctxOpts?.useManual||ctxArgs?.useManual",
 //										"codes": "false",
 //										"context": {
 //											"jaxId": "1JFAOUFCM2",
@@ -4215,6 +4239,46 @@ export{Util_StepAction,ChatAPI};
 //						},
 //						"outlet": {
 //							"jaxId": "1JFU0JJ080",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JH0CQLK50",
+//					"attrs": {
+//						"id": "PageError",
+//						"viewName": "",
+//						"label": "",
+//						"x": "315",
+//						"y": "1035",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JH0CQSDD0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JH0CQSDD1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JH0CQSD40",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"

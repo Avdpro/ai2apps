@@ -125,28 +125,31 @@ let Util_FindSelector=async function(session){
 		let $ref=pageRef;
 		let $waitBefore=0;
 		let $waitAfter=0;
+		let $webRpa=null;
 		try{
 			if($ref){
 				let $page,$browser;
 				let $pageVal="aaPage";
 				$page=WebRpa.getPageByRef($ref);
 				context.rpaBrowser=$browser=$page.webDrive;
+				context.webRpa=$webRpa=$browser.aaWebRpa;
+				Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 				context[$pageVal]=$page;
-				context.webRpa=$browser.aaWebRpa;
 			}else{
-				context.webRpa=session.webRpa || new WebRpa(session);
-				session.webRpa=context.webRpa;
+				let $pageVal="aaPage";
+				context.webRpa=$webRpa=session.webRpa || new WebRpa(session);
+				session.webRpa=$webRpa;
 				aiQuery && (await context.webRpa.setupAIQuery(session,context,basePath,"1JEV0VCEL0"));
 				if($alias){
 					let $headless=false;
 					let $devtools=false;
-					let options={$headless:false,$devtools:false,autoDataDir:false};
+					let options={headless:$headless,devtools:$devtools,autoDataDir:false};
 					let $browser=null;
 					context.rpaBrowser=$browser=await context.webRpa.openBrowser($alias,options);
 					context.rpaHostPage=$browser.hostPage;
+					Object.defineProperty(context, $pageVal, {enumerable:true,get(){return $webRpa.currentPage},set(v){$webRpa.setCurrentPage(v)}});
 					if($url){
 						let $page=null;
-						let $pageVal="aaPage";
 						let $opts={};
 						context[$pageVal]=$page=await $browser.newPage();
 						await $page.goto($url,{});
@@ -290,7 +293,6 @@ let Util_FindSelector=async function(session){
 		/*#{1JEV18PA20Start*/
 		let element;
 		await context.webRpa.inPageTip(context.aaPage,`请选择满足："${selectDesc}"的元素。\n按Esc键放弃，按Control键选择当前高亮元素的上一级元素。`,{timeout:0});
-		
 		element=await context.webRpa.inPagePickDomElement(context.aaPage,{attr:"data-manual-picked"});
 		await context.webRpa.inPageTipDismiss(context.aaPage);
 		/*}#1JEV18PA20Start*/
@@ -312,7 +314,11 @@ let Util_FindSelector=async function(session){
 		let browser=context.rpaBrowser;
 		waitBefore && (await sleep(waitBefore));
 		/*#{1JFH5JV6O0PreCodes*/
-		result={status:userResult,result:userResult};
+		if (userResult === "skipped") {
+			result = { status:"skipped", value:null };
+		} else { // failed
+			result = { status:"failed", reason:`User chose fail.` };
+		}
 		/*}#1JFH5JV6O0PreCodes*/
 		try{
 			if(browser){
@@ -334,7 +340,7 @@ let Util_FindSelector=async function(session){
 		let result=input;
 		/*#{1JFKQT2KJ0Start*/
 		let webRpa,page;
-		let sigKey,element,selector,selectors,nodes,node;
+		let sigKey,element,selector,selectors,nodes,node,a;
 		webRpa=context.webRpa;
 		page=context.aaPage;
 		usedSigKey=sigKey=await webRpa.computeSigKeyForSelector(page,'[data-manual-picked="true"]');
@@ -349,7 +355,8 @@ let Util_FindSelector=async function(session){
 					for(selector of selectors){
 						nodes=await webRpa.queryNodes(page,null,selector);
 						for(node of nodes){
-							if(node.attrs && node.attributes["data-manual-picked"]==="true"){
+							a=node.attrs||node.attributes;
+							if(a && a["data-manual-picked"]==="true"){
 								usedSelector=selector;
 								break FindSel;
 							}
@@ -504,7 +511,7 @@ let Util_FindSelector=async function(session){
 	GenSelector.jaxId="1JEV1AHEM0"
 	GenSelector.url="GenSelector@"+agentURL
 	GenSelector.cheats={
-		"":"{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder*='有什么新鲜事想分享给大家']\" }, \"reason\": \"页面中唯一的发布编辑器为该 textarea，具有独特 placeholder，可稳定定位且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布框区域；定位发布编辑器 textarea；预期选中被手动标记的目标元素；无遮挡风险。\" }"
+		"":"{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder='有什么新鲜事想分享给大家？']\" }, \"reason\": \"目标是发布编辑区的 textarea，页面仅此一处，使用唯一的 placeholder 文案即可稳定定位，且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布编辑器存在；定位 placeholder 为“有什么新鲜事想分享给大家？”的 textarea；预期命中目标元素；风险：若占位文案改动可能失效。\" }"
 	};
 	
 	segs["FindPicked"]=FindPicked=async function(input){//:1JF01ERCT0
@@ -532,10 +539,11 @@ let Util_FindSelector=async function(session){
 			}
 			/*#{1JF01ERCT0CheckItem*/
 			if(multiSelect){
-				let el;
+				let el,a;
 				FindTgt:{
 					for(el of result){
-						if(el.attributes["data-manual-picked"]==="true"){
+						a=el.attrs||el.attributes;
+						if(a && a["data-manual-picked"]==="true"){
 							break FindTgt;
 						}
 					}
@@ -543,9 +551,10 @@ let Util_FindSelector=async function(session){
 				}
 			}else{
 				if(result.length>1){
-					throw "Multi querry error";
+					throw `Not unique: matched ${result.length} elements`;
 				}
-				if(result[0].attributes["data-manual-picked"]!=="true"){
+				let a=result[0].attrs||result[0].attributes;
+				if(a["data-manual-picked"]!=="true"){
 					throw "Querry error";
 				}
 			}
@@ -553,7 +562,12 @@ let Util_FindSelector=async function(session){
 			$waitAfter && (await sleep($waitAfter))
 		}catch(error){
 			/*#{1JF01ERCT0ErrorCode*/
-			wrongSelectors.push(`${$query} 错误："${error}"`);
+			const msg = String(error);
+			if (msg.startsWith("Not unique:")) {
+				wrongSelectors.push(`${$query} 需要更精确：${msg}。请生成能唯一匹配目标元素的 selector。`);
+			} else {
+				wrongSelectors.push(`${$query} 无效：${msg}`);
+			}
 			/*}#1JF01ERCT0ErrorCode*/
 			return {seg:RetryGen,result:error,preSeg:"1JF01ERCT0",outlet:"1JF01ERCE0"};
 		}
@@ -631,7 +645,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JEV3185N0ErrorCode*/
 		}
 		/*#{1JEV3185N0PostCodes*/
-		result={status:"done",result:"Finish",selector:usedSelector,value:usedSelector,sigKey:usedSigKey};
+		result={status:"done",selector:usedSelector,value:usedSelector,sigKey:usedSigKey};
 		/*}#1JEV3185N0PostCodes*/
 		return {result:result};
 	};
@@ -671,7 +685,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JEV320VJ0ErrorCode*/
 		}
 		/*#{1JEV320VJ0PostCodes*/
-		result={status:"Failed",result:"Failed",reason:"Max retry"};
+		result={status:"failed",result:"failed",reason:"Max retry"};
 		/*}#1JEV320VJ0PostCodes*/
 		return {result:result};
 	};
@@ -798,7 +812,7 @@ let Util_FindSelector=async function(session){
 	
 	segs["AllowManual"]=AllowManual=async function(input){//:1JEV1CR6C0
 		let result=input;
-		if(input==="NotAllow"){
+		if(!allowManual && !useManual){
 			return {seg:CheckRetry,result:(input),preSeg:"1JEV1CR6C0",outlet:"1JEV1EQBA2"};
 		}
 		return {seg:JumpManual,result:(result),preSeg:"1JEV1CR6C0",outlet:"1JEV1EQBA3"};
@@ -829,7 +843,7 @@ let Util_FindSelector=async function(session){
 			retry=true;
 			confirm=false;
 			wrongSelectors.push(`'${usedSelector}' 错误：用户拒绝`);
-		}else if(confirm==="manual"){
+		}else if(confirm?.code==="manual"){
 			confirm=false;
 			retry=false;
 		}else{
@@ -905,7 +919,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JEV3305O0ErrorCode*/
 		}
 		/*#{1JEV3305O0PostCodes*/
-		result={status:"done",result:"finish",selector:usedSelector,sigKey:usedSigKey};
+		result={status:"done",value:usedSelector,selector:usedSelector,sigKey:usedSigKey};
 		/*}#1JEV3305O0PostCodes*/
 		return {result:result};
 	};
@@ -930,7 +944,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JEV33MBI0ErrorCode*/
 		}
 		/*#{1JEV33MBI0PostCodes*/
-		result={status:"Failed",result:"Failed",reason:"Max retry"};
+		result={status:"failed",result:"failed",reason:"Max retry"};
 		/*}#1JEV33MBI0PostCodes*/
 		return {result:result};
 	};
@@ -981,7 +995,7 @@ let Util_FindSelector=async function(session){
 			/*}#1JF1IJ8BR0ErrorCode*/
 		}
 		/*#{1JF1IJ8BR0PostCodes*/
-		result={status:"Failed",result:"Failed",reason:"User abort."};
+		result={status:"failed",result:"failed",reason:"User abort."};
 		/*}#1JF1IJ8BR0PostCodes*/
 		return {result:result};
 	};
@@ -1295,6 +1309,7 @@ export{Util_FindSelector,ChatAPI};
 //							}
 //						},
 //						"aiQuery": "true",
+//						"autoCurrentPage": "true",
 //						"ref": "#pageRef"
 //					},
 //					"icon": "start.svg"
@@ -1900,7 +1915,7 @@ export{Util_FindSelector,ChatAPI};
 //									"def": "GPTCheat",
 //									"jaxId": "1JF12NCC80",
 //									"attrs": {
-//										"reply": "{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder*='有什么新鲜事想分享给大家']\" }, \"reason\": \"页面中唯一的发布编辑器为该 textarea，具有独特 placeholder，可稳定定位且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布框区域；定位发布编辑器 textarea；预期选中被手动标记的目标元素；无遮挡风险。\" }",
+//										"reply": "{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder='有什么新鲜事想分享给大家？']\" }, \"reason\": \"目标是发布编辑区的 textarea，页面仅此一处，使用唯一的 placeholder 文案即可稳定定位，且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布编辑器存在；定位 placeholder 为“有什么新鲜事想分享给大家？”的 textarea；预期命中目标元素；风险：若占位文案改动可能失效。\" }",
 //										"prompt": ""
 //									}
 //								}
@@ -2495,7 +2510,7 @@ export{Util_FindSelector,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": ""
+//										"condition": "#!allowManual && !useManual"
 //									},
 //									"linkedSeg": "1JEV1G7MR0"
 //								}
