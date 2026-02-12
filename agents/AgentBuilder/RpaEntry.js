@@ -121,7 +121,7 @@ let RpaEntry=async function(session){
 	fixagrs.url="fixagrs@"+agentURL
 	
 	segs["SelectPlatform"]=SelectPlatform=async function(input){//:1JAI4NAPN0
-		let prompt=((($ln==="CN")?("请选择"):("Please confirm")))||input;
+		let prompt=((($ln==="CN")?("请选择"):("Please select the web platforms")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
 		let withChat=false;
@@ -812,9 +812,9 @@ export{RpaEntry,ChatAPI};
 //						"segMark": "None",
 //						"prompt": {
 //							"type": "string",
-//							"valText": "Please confirm",
+//							"valText": "Please select the web platforms",
 //							"localize": {
-//								"EN": "Please confirm",
+//								"EN": "Please select the web platforms",
 //								"CN": "请选择"
 //							},
 //							"localizable": true

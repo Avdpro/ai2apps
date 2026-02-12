@@ -83,7 +83,7 @@ let BaiduSearch=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("百度已打开。"):("Baidu has been opened."));
+		let content=(($ln==="CN")?("百度页面已打开，AI 正在执行联网搜索任务......"):("Baidu page has been opened, AI is performing an online search task......"));
 		session.addChatText(role,content,opts);
 		return {seg:TypeText,result:(result),preSeg:"1IH28Q6DB0",outlet:"1IH28R1BB0"};
 	};
@@ -667,10 +667,10 @@ export{BaiduSearch,ChatAPI};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Baidu has been opened.",
+//							"valText": "Baidu page has been opened, AI is performing an online search task......",
 //							"localize": {
-//								"EN": "Baidu has been opened.",
-//								"CN": "百度已打开。"
+//								"EN": "Baidu page has been opened, AI is performing an online search task......",
+//								"CN": "百度页面已打开，AI 正在执行联网搜索任务......"
 //							},
 //							"localizable": true
 //						},

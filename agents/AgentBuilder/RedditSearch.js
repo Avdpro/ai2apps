@@ -84,7 +84,7 @@ let RedditSearch=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("Reddit已打开。"):("Reddit has been opened."));
+		let content=(($ln==="CN")?("Reddit页面已打开，AI 正在执行联网搜索任务......"):("Reddit page has been opened, AI is performing online search task......"));
 		session.addChatText(role,content,opts);
 		return {seg:WaitNavi,result:(result),preSeg:"1JC5MC9GH0",outlet:"1JC5MDT7N0"};
 	};
@@ -345,7 +345,7 @@ let RedditSearch=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=input.markdown ? input.markdown : 'no data';
+		let content=(($ln==="CN")?(input.markdown ? input.markdown : '未搜索到数据'):(input.markdown ? input.markdown : 'No data found'));
 		/*#{1JC602I1U0PreCodes*/
 		/*}#1JC602I1U0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -578,10 +578,10 @@ export{RedditSearch};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Reddit has been opened.",
+//							"valText": "Reddit page has been opened, AI is performing online search task......",
 //							"localize": {
-//								"EN": "Reddit has been opened.",
-//								"CN": "Reddit已打开。"
+//								"EN": "Reddit page has been opened, AI is performing online search task......",
+//								"CN": "Reddit页面已打开，AI 正在执行联网搜索任务......"
 //							},
 //							"localizable": true
 //						},
@@ -1114,7 +1114,15 @@ export{RedditSearch};
 //						},
 //						"role": "Assistant",
 //						"channel": "Chat",
-//						"text": "#input.markdown ? input.markdown : 'no data'",
+//						"text": {
+//							"type": "string",
+//							"valText": "#input.markdown ? input.markdown : 'No data found'",
+//							"localize": {
+//								"EN": "#input.markdown ? input.markdown : 'No data found'",
+//								"CN": "#input.markdown ? input.markdown : '未搜索到数据'"
+//							},
+//							"localizable": true
+//						},
 //						"outlet": {
 //							"jaxId": "1JC6030PG0",
 //							"attrs": {

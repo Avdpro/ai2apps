@@ -49,7 +49,7 @@ let ToolBrew=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew,Verify,CheckInstall,LLMcheck,Success,Failure,Retry;
+	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew,Verify,CheckInstall,LLMcheck,Success,Failure,Retry,CheckFinish,Fail,Upgrade;
 	/*#{1IJ40NO870LocalVals*/
 	/*}#1IJ40NO870LocalVals*/
 	
@@ -106,14 +106,14 @@ let ToolBrew=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=`brew install ${pkgName}`;
+		args['commands']=`brew install ${pkgName} && echo "Successful" || echo "Failed"`;
 		args['options']="";
 		/*#{1IJ414D9E0PreCodes*/
 		/*}#1IJ414D9E0PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		/*#{1IJ414D9E0PostCodes*/
 		/*}#1IJ414D9E0PostCodes*/
-		return {seg:LLMcheck,result:(result),preSeg:"1IJ414D9E0",outlet:"1IJ415BPN2"};
+		return {seg:CheckFinish,result:(result),preSeg:"1IJ414D9E0",outlet:"1IJ415BPN2"};
 	};
 	Install.jaxId="1IJ414D9E0"
 	Install.url="Install@"+agentURL
@@ -205,9 +205,14 @@ let ToolBrew=async function(session){
 	
 	segs["AbortInstall"]=AbortInstall=async function(input){//:1IJ41MD230
 		let result=input
-		/*#{1IJ41MD230Code*/
-		result={result:"Abort",content:(($ln==="CN")?("当前环境下没有安装brew工具。"):/*EN*/("The brew tool is not installed in the current environment."))};
-		/*}#1IJ41MD230Code*/
+		try{
+			/*#{1IJ41MD230Code*/
+			result={result:"Abort",content:(($ln==="CN")?("当前环境下没有安装brew工具。"):/*EN*/("The brew tool is not installed in the current environment."))};
+			/*}#1IJ41MD230Code*/
+		}catch(error){
+			/*#{1IJ41MD230ErrorCode*/
+			/*}#1IJ41MD230ErrorCode*/
+		}
 		return {result:result};
 	};
 	AbortInstall.jaxId="1IJ41MD230"
@@ -215,14 +220,14 @@ let ToolBrew=async function(session){
 	
 	segs["FinInstall"]=FinInstall=async function(input){//:1IJ42E4DL0
 		let result=input
-		/*#{1IJ42E4DL0Code*/
-		input=""+input;
-		if(input.indexOf("Error:")>=0){
-			result={result:"Failed",content:`安装失败，操作日志：\n${input}`};
-		}else{
+		try{
+			/*#{1IJ42E4DL0Code*/
 			result={result:"Finish",content:`安装成功。`};
+			/*}#1IJ42E4DL0Code*/
+		}catch(error){
+			/*#{1IJ42E4DL0ErrorCode*/
+			/*}#1IJ42E4DL0ErrorCode*/
 		}
-		/*}#1IJ42E4DL0Code*/
 		return {result:result};
 	};
 	FinInstall.jaxId="1IJ42E4DL0"
@@ -230,14 +235,19 @@ let ToolBrew=async function(session){
 	
 	segs["FinUninstall"]=FinUninstall=async function(input){//:1IJ42ECIF0
 		let result=input
-		/*#{1IJ42ECIF0Code*/
-		input=""+input;
-		if(input.indexOf("Error:")>=0){
-			result={result:"Failed",content:`卸载失败，操作日志：\n${input}`};
-		}else{
-			result={result:"Finish",content:`卸载成功`};
+		try{
+			/*#{1IJ42ECIF0Code*/
+			input=""+input;
+			if(input.indexOf("Error:")>=0){
+				result={result:"Failed",content:`卸载失败，操作日志：\n${input}`};
+			}else{
+				result={result:"Finish",content:`卸载成功`};
+			}
+			/*}#1IJ42ECIF0Code*/
+		}catch(error){
+			/*#{1IJ42ECIF0ErrorCode*/
+			/*}#1IJ42ECIF0ErrorCode*/
 		}
-		/*}#1IJ42ECIF0Code*/
 		return {result:result};
 	};
 	FinUninstall.jaxId="1IJ42ECIF0"
@@ -245,14 +255,19 @@ let ToolBrew=async function(session){
 	
 	segs["FinCheck"]=FinCheck=async function(input){//:1IJ42EMUJ0
 		let result=input
-		/*#{1IJ42EMUJ0Code*/
-		input=""+input;
-		if(input.indexOf("Error:")>=0){
-			result={result:"Missing",content:`${pkgName} 没有安装。`};
-		}else{
-			result={result:"Ready",content:`${pkgName} 已安装。`};
+		try{
+			/*#{1IJ42EMUJ0Code*/
+			input=""+input;
+			if(input.indexOf("Error:")>=0){
+				result={result:"Missing",content:`${pkgName} 没有安装。`};
+			}else{
+				result={result:"Ready",content:`${pkgName} 已安装。`};
+			}
+			/*}#1IJ42EMUJ0Code*/
+		}catch(error){
+			/*#{1IJ42EMUJ0ErrorCode*/
+			/*}#1IJ42EMUJ0ErrorCode*/
 		}
-		/*}#1IJ42EMUJ0Code*/
 		return {result:result};
 	};
 	FinCheck.jaxId="1IJ42EMUJ0"
@@ -285,7 +300,7 @@ let ToolBrew=async function(session){
 	segs["CheckInstall"]=CheckInstall=async function(input){//:1IVRNCEQR0
 		let result=input;
 		if(input.split(pkgName).length - 1 === 2){
-			return {result:input};
+			return {seg:Upgrade,result:(input),preSeg:"1IVRNCEQR0",outlet:"1IVRNF36F0"};
 		}
 		return {seg:Install,result:(result),preSeg:"1IVRNCEQR0",outlet:"1IVRNF36F1"};
 	};
@@ -294,11 +309,14 @@ let ToolBrew=async function(session){
 	
 	segs["LLMcheck"]=LLMcheck=async function(input){//:1J58KVSNO0
 		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1-mini";
+		let $agent;
 		let result;
 		
 		let opts={
-			platform:"OpenAI",
-			mode:"gpt-4.1-mini",
+			platform:$platform,
+			mode:$model,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -320,7 +338,11 @@ let ToolBrew=async function(session){
 			}
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
-		result=await session.callSegLLM("LLMcheck@"+agentURL,opts,messages,true);
+		if($agent){
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+		}else{
+			result=await session.callSegLLM("LLMcheck@"+agentURL,opts,messages,true);
+		}
 		result=trimJSON(result);
 		return {seg:Success,result:(result),preSeg:"1J58KVSNO0",outlet:"1J58L5AM60"};
 	};
@@ -356,29 +378,78 @@ let ToolBrew=async function(session){
 		let withChat=false;
 		let silent=false;
 		let items=[
-			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("是的"):("Yes")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("是"):("Yes")),code:0},
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("否"):("No")),code:1},
 		];
 		let result="";
 		let item=null;
 		
+		/*#{1J58LFBGK0PreCodes*/
+		/*}#1J58LFBGK0PreCodes*/
 		if(silent){
 			result="";
 			return {seg:Install,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG80"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		/*#{1J58LFBGK0PostCodes*/
+		/*}#1J58LFBGK0PostCodes*/
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
 			return {seg:Install,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG80"};
 		}else if(item.code===1){
-			return {result:result};
+			return {seg:Fail,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG81"};
 		}
+		/*#{1J58LFBGK0FinCodes*/
+		/*}#1J58LFBGK0FinCodes*/
 		return {result:result};
 	};
 	Retry.jaxId="1J58LFBGK0"
 	Retry.url="Retry@"+agentURL
+	
+	segs["CheckFinish"]=CheckFinish=async function(input){//:1JH05UIFU0
+		let result=input;
+		/*#{1JH05UIFU0Start*/
+		const lines = result.trim().split('\n');
+		const lastTwoLines = lines.slice(-2).join('\n');
+		/*}#1JH05UIFU0Start*/
+		if(lastTwoLines.includes('Successful')){
+			return {seg:FinInstall,result:(input),preSeg:"1JH05UIFU0",outlet:"1JH05VQI20"};
+		}
+		/*#{1JH05UIFU0Post*/
+		/*}#1JH05UIFU0Post*/
+		return {seg:LLMcheck,result:(result),preSeg:"1JH05UIFU0",outlet:"1JH05VQI21"};
+	};
+	CheckFinish.jaxId="1JH05UIFU0"
+	CheckFinish.url="CheckFinish@"+agentURL
+	
+	segs["Fail"]=Fail=async function(input){//:1JH066LNL0
+		let result=input
+		try{
+			/*#{1JH066LNL0Code*/
+			result={result:"Failed"};
+			/*}#1JH066LNL0Code*/
+		}catch(error){
+			/*#{1JH066LNL0ErrorCode*/
+			/*}#1JH066LNL0ErrorCode*/
+		}
+		return {result:result};
+	};
+	Fail.jaxId="1JH066LNL0"
+	Fail.url="Fail@"+agentURL
+	
+	segs["Upgrade"]=Upgrade=async function(input){//:1JH3R9R7B0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=`brew upgrade ${pkgName} && echo "Successful" || echo "Failed"`;
+		args['options']="";
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		return {seg:CheckFinish,result:(result),preSeg:"1JH3R9R7B0",outlet:"1JH3RAMM50"};
+	};
+	Upgrade.jaxId="1JH3R9R7B0"
+	Upgrade.url="Upgrade@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -758,7 +829,7 @@ export{ToolBrew,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#`brew install ${pkgName}`",
+//						"commands": "#`brew install ${pkgName} && echo \"Successful\" || echo \"Failed\"`",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IJ415BPN2",
@@ -766,7 +837,7 @@ export{ToolBrew,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J58KVSNO0"
+//							"linkedSeg": "1JH05UIFU0"
 //						}
 //					},
 //					"icon": "terminal.svg"
@@ -1081,7 +1152,8 @@ export{ToolBrew,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1137,8 +1209,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "FinInstall",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2275",
-//						"y": "45",
+//						"x": "2745",
+//						"y": "-65",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "",
@@ -1164,7 +1236,8 @@ export{ToolBrew,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1203,7 +1276,8 @@ export{ToolBrew,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1242,7 +1316,8 @@ export{ToolBrew,ChatAPI};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input"
+//						"result": "#input",
+//						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
 //				},
@@ -1387,7 +1462,8 @@ export{ToolBrew,ChatAPI};
 //											}
 //										},
 //										"condition": "#input.split(pkgName).length - 1 === 2"
-//									}
+//									},
+//									"linkedSeg": "1JH3R9R7B0"
 //								}
 //							]
 //						}
@@ -1403,8 +1479,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "LLMcheck",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1820",
-//						"y": "60",
+//						"x": "2180",
+//						"y": "75",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1480,8 +1556,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "Success",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2055",
-//						"y": "60",
+//						"x": "2520",
+//						"y": "75",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1548,8 +1624,8 @@ export{ToolBrew,ChatAPI};
 //						"id": "Failure",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2280",
-//						"y": "150",
+//						"x": "2745",
+//						"y": "165",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1596,10 +1672,10 @@ export{ToolBrew,ChatAPI};
 //						"id": "Retry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2475",
-//						"y": "150",
+//						"x": "2940",
+//						"y": "165",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"prompt": {
@@ -1635,7 +1711,7 @@ export{ToolBrew,ChatAPI};
 //											"valText": "Yes",
 //											"localize": {
 //												"EN": "Yes",
-//												"CN": "是的"
+//												"CN": "是"
 //											},
 //											"localizable": true
 //										},
@@ -1686,7 +1762,8 @@ export{ToolBrew,ChatAPI};
 //												"cast": ""
 //											}
 //										}
-//									}
+//									},
+//									"linkedSeg": "1JH066LNL0"
 //								}
 //							]
 //						},
@@ -1702,8 +1779,8 @@ export{ToolBrew,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2610",
-//						"y": "295",
+//						"x": "3070",
+//						"y": "320",
 //						"outlet": {
 //							"jaxId": "1J58LHQIP0",
 //							"attrs": {
@@ -1725,7 +1802,7 @@ export{ToolBrew,ChatAPI};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "1640",
-//						"y": "295",
+//						"y": "320",
 //						"outlet": {
 //							"jaxId": "1J58LHQIP1",
 //							"attrs": {
@@ -1738,6 +1815,177 @@ export{ToolBrew,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JH05UIFU0",
+//					"attrs": {
+//						"id": "CheckFinish",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1825",
+//						"y": "60",
+//						"desc": "This is an AISeg.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JH05VQI80",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JH05VQI81",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JH05VQI21",
+//							"attrs": {
+//								"id": "Fail",
+//								"desc": "Outlet.",
+//								"output": ""
+//							},
+//							"linkedSeg": "1J58KVSNO0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JH05VQI20",
+//									"attrs": {
+//										"id": "Success",
+//										"desc": "Outlet.",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JH05VQI82",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JH05VQI83",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#lastTwoLines.includes('Successful')"
+//									},
+//									"linkedSeg": "1JH060HAB0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JH060HAB0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "2075",
+//						"y": "-65",
+//						"outlet": {
+//							"jaxId": "1JH061HQS0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1IJ42E4DL0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JH066LNL0",
+//					"attrs": {
+//						"id": "Fail",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3200",
+//						"y": "165",
+//						"desc": "This is an AISeg.",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JH066PT20",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JH066PT21",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JH066PSR0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JH3R9R7B0",
+//					"attrs": {
+//						"id": "Upgrade",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1615",
+//						"y": "-35",
+//						"desc": "This is an AISeg.",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JH3RAMMF0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JH3RAMMF1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#`brew upgrade ${pkgName} && echo \"Successful\" || echo \"Failed\"`",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JH3RAMM50",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JH05UIFU0"
+//						}
+//					},
+//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

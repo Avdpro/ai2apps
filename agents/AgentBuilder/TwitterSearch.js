@@ -60,7 +60,7 @@ let TwitterSearch=async function(session){
 		let result=true;
 		let pageVal="aaPage";
 		let $flag="$WaitFlag";
-		let $waitBefore=0;
+		let $waitBefore=300;
 		let $waitAfter=200;
 		let page=context[pageVal];
 		$waitBefore && (await sleep($waitBefore));
@@ -552,7 +552,7 @@ export{TwitterSearch};
 //						},
 //						"page": "aaPage",
 //						"flag": "$WaitFlag",
-//						"waitBefore": "0",
+//						"waitBefore": "300",
 //						"waitAfter": "200",
 //						"outlet": {
 //							"jaxId": "1JBHHD4CE1",

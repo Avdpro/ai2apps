@@ -394,7 +394,7 @@ let GoogleSearch=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("谷歌已打开。"):("Google has been opened."));
+		let content=(($ln==="CN")?("谷歌页面已打开，AI 正在执行联网搜索任务......"):("Google page has been opened, AI is performing online search tasks......"));
 		/*#{1JBF3FF6S0PreCodes*/
 		/*}#1JBF3FF6S0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -980,10 +980,10 @@ export{GoogleSearch};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Google has been opened.",
+//							"valText": "Google page has been opened, AI is performing online search tasks......",
 //							"localize": {
-//								"EN": "Google has been opened.",
-//								"CN": "谷歌已打开。"
+//								"EN": "Google page has been opened, AI is performing online search tasks......",
+//								"CN": "谷歌页面已打开，AI 正在执行联网搜索任务......"
 //							},
 //							"localizable": true
 //						},

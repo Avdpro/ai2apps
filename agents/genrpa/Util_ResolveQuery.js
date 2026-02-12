@@ -341,8 +341,8 @@ let Util_ResolveQuery=async function(session){
 		let result=input;
 		/*#{1JG7RVDVE0Start*/
 		/*}#1JG7RVDVE0Start*/
-		if(input.kind==="selector"){
-			let output=input.selectors;
+		if(input?.kind==="selector" && input?.selector && input?.selector.selectors && input?.selector.selectors[0]){
+			let output=input.selector.selectors;
 			/*#{1JG7S2BQT1Codes*/
 			if(!Array.isArray(output)){
 				output=[output];//ensure array:
@@ -1582,7 +1582,7 @@ export{Util_ResolveQuery,ChatAPI};
 //									"attrs": {
 //										"id": "Selector",
 //										"desc": "输出节点。",
-//										"output": "#input.selectors",
+//										"output": "#input.selector.selectors",
 //										"codes": "true",
 //										"context": {
 //											"jaxId": "1JG7S2BQV4",
@@ -1596,7 +1596,7 @@ export{Util_ResolveQuery,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#input.kind===\"selector\""
+//										"condition": "#input?.kind===\"selector\" && input?.selector && input?.selector.selectors && input?.selector.selectors[0]"
 //									},
 //									"linkedSeg": "1JG7S2TIS0"
 //								},

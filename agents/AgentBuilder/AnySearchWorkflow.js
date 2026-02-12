@@ -39,7 +39,7 @@ let AnySearchWorkflow=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let fixargs,DefaultWaitTips,DefaultCallAPI,ShowDefaultCallAPIRes,InitAskUser,DefaultUserType,DefaultSearchWaitTips,CallInternalAPI,ShowInternalAPIRes,SelectQuestionWay,AskUserQuestion,UserTypeQuestion,RPA,IsReport,WaitTips_1,AxiosCallRpaAPI,CheckError,ShowError,GetAllLinks,ShowAllLinks,ContinueRPA,FileType,CheckLength,SimpleReport,ShowSimpleReport,WaitInfo,ConfirmAgain,ShowSelectedPlatform,ContinueRPA_1,ContinueAsk_2,Retry,RetryTips,ShowRetryError;
+	let fixargs,DefaultWaitTips,DefaultCallAPI,ShowDefaultCallAPIRes,InitAskUser,DefaultUserType,DefaultSearchWaitTips,CallInternalAPI,ShowInternalAPIRes,SelectQuestionWay,AskUserQuestion,UserTypeQuestion,RPA,IsReport,WaitTips_1,AxiosCallRpaAPI,CheckError,ShowError,GetAllLinks,ShowAllLinks,ContinueRPA,FileType,CheckLength,SimpleReport,ShowSimpleReport,WaitInfo,ConfirmAgain,ShowSelectedPlatform,ContinueRPA_1,ContinueAsk_2,Retry,RetryTips,ShowRetryError,SummarQuestion;
 	/*#{1HDBOSUN90LocalVals*/
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -91,7 +91,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("正在为您获取模型信息，请稍候..."):("Fetching model information for you. Please wait..."));
+		let content=(($ln==="CN")?("正在为您获取模型信息，请稍候......"):("Fetching model information, please wait......"));
 		/*#{1JFSGBHTU0PreCodes*/
 		/*}#1JFSGBHTU0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -116,6 +116,8 @@ let AnySearchWorkflow=async function(session){
 		}else{
 			context.modelInfo = modelName + ', Please answer in English.';
 		};
+		
+		console.log(context.modelInfo,'context.modelInfo')
 		/*}#1JFSFTQFT0PreCodes*/
 		let json={
 			"query":context.modelInfo,"history":[]
@@ -159,7 +161,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("您还想了解？"):("Want to know more?"));
+		let content=(($ln==="CN")?("你还想了解此模型的哪些信息？"):("What else would you like to know about this model?"));
 		session.addChatText(role,content,opts);
 		return {seg:DefaultUserType,result:(result),preSeg:"1JFSGHND40",outlet:"1JFSGHND43"};
 	};
@@ -204,7 +206,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("好的，正在为您查询，请稍等..."):("Alright, searching for you. Please wait..."));
+		let content=(($ln==="CN")?("好的，正在为您查询，请稍等......"):("Searching, please wait......"));
 		/*#{1JFSH8ALP0PreCodes*/
 		/*}#1JFSH8ALP0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -270,14 +272,14 @@ let AnySearchWorkflow=async function(session){
 	ShowInternalAPIRes.url="ShowInternalAPIRes@"+agentURL
 	
 	segs["SelectQuestionWay"]=SelectQuestionWay=async function(input){//:1JFSHQOST0
-		let prompt=((($ln==="CN")?("上述信息是否满足您的需求？如若不满足，您可选择联网搜索进一步查询。"):("Does the above information meet your needs? If not, you can choose to search online for further information.")))||input;
+		let prompt=((($ln==="CN")?("上述信息是否满足您的需求？如若不满足，您可按需联网搜索。"):("Continue asking or search online for more information?")))||input;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
 		let withChat=false;
 		let silent=false;
 		let items=[
 			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("继续提问"):("Continue asking")),code:0},
-			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("联网搜素"):("Online search")),code:1},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("联网搜索"):("Online search")),code:1},
 		];
 		let result="";
 		let item=null;
@@ -305,7 +307,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("好的，AI 即将接管浏览器控制权限以执行联网搜索任务。请输入您的问题。"):("Alright, AI is about to take control of the browser to perform online search tasks. Please enter your question."));
+		let content=(($ln==="CN")?("好的，AI 即将接管浏览器控制权限以执行联网搜索任务。请输入您的问题。"):("The AI is about to take control of the browser. Please enter your question."));
 		session.addChatText(role,content,opts);
 		return {seg:UserTypeQuestion,result:(result),preSeg:"1JC63DF8F0",outlet:"1JC63DF8F3"};
 	};
@@ -322,6 +324,7 @@ let AnySearchWorkflow=async function(session){
 		let text=("");
 		let result="";
 		/*#{1JC63DTVT0PreCodes*/
+		console.log("UserTypeQuestion ===",context.history);
 		/*}#1JC63DTVT0PreCodes*/
 		if(askUpward && tip){
 			result=await session.askUpward($agent,tip);
@@ -340,13 +343,16 @@ let AnySearchWorkflow=async function(session){
 		}
 		/*#{1JC63DTVT0PostCodes*/
 		context.externalQuestion = result;
+		const userContents = context.history.map(item => item.user).filter(Boolean).join('，');
+		console.log(userContents);
 		result = {
+			userContents:userContents,
 			search: result,
 			searchNum: searchNum > 20 ? 20 : searchNum,
 			platforms: (context.platforms && context.platforms.length) ? context.platforms : []
 		};
 		/*}#1JC63DTVT0PostCodes*/
-		return {seg:RPA,result:(result),preSeg:"1JC63DTVT0",outlet:"1JC63DTVT3"};
+		return {seg:SummarQuestion,result:(result),preSeg:"1JC63DTVT0",outlet:"1JC63DTVT3"};
 	};
 	UserTypeQuestion.jaxId="1JC63DTVT0"
 	UserTypeQuestion.url="UserTypeQuestion@"+agentURL
@@ -372,7 +378,7 @@ let AnySearchWorkflow=async function(session){
 	RPA.url="RPA@"+agentURL
 	
 	segs["IsReport"]=IsReport=async function(input){//:1JC62L42T0
-		let prompt=((($ln==="CN")?("请确认上述信息是否满足您的需求，是否需要生成深度报告？"):("Please confirm whether the above information meets your needs or if you require a detailed report.")))||input;
+		let prompt=((($ln==="CN")?("请确认上述信息是否满足您的需求，是否需要生成深度报告？"):(" Would you like a detailed report generated?")))||input;
 		let silent=false;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
@@ -415,7 +421,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("好的，正在为您生成报告，请稍等..."):("Okay, generating report for you. Please wait..."));
+		let content=(($ln==="CN")?("好的，正在为您生成报告，请稍等......"):("Generating report for you, please wait......"));
 		/*#{1JC68VSRG0PreCodes*/
 		/*}#1JC68VSRG0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -567,12 +573,12 @@ let AnySearchWorkflow=async function(session){
 	ContinueRPA.url="ContinueRPA@"+agentURL
 	
 	segs["FileType"]=FileType=async function(input){//:1JC8CQE880
-		let prompt=((($ln==="CN")?("请先选择您喜欢的呈现方式？"):("Please choose your preferred display method first.")))||input;
+		let prompt=((($ln==="CN")?("请选择报告的输出形式。"):("Please select the report output format.")))||input;
 		let silent=false;
 		let countdown=undefined;
 		let placeholder=(undefined)||null;
-		let button1=((($ln==="CN")?("Md"):("Md")))||"OK";
-		let button2=((($ln==="CN")?("Html"):("Html")))||"Cancel";
+		let button1=((($ln==="CN")?("Markdown 文档"):("Markdown Document")))||"OK";
+		let button2=((($ln==="CN")?("Html 页面"):("Html Page")))||"Cancel";
 		let button3="";
 		let result="";
 		let value=0;
@@ -586,7 +592,8 @@ let AnySearchWorkflow=async function(session){
 		/*#{1JC8CQE880PostCodes*/
 		//console.log("result",result);
 		//result = input;
-		if(result === "Md"){
+		// Html 页面 Html Page
+		if(result === "Markdown 文档" || result === "Markdown Document"){
 			result = {
 				type: 'Md',
 				userPrompt: input.answer
@@ -643,7 +650,7 @@ let AnySearchWorkflow=async function(session){
 		let seed="";
 		if(seed!==undefined){opts.seed=seed;}
 		let messages=[
-			{role:"system",content:(($ln==="CN")?(`你是一位专业的内容总结 AI 助手。 - 任务：根据用户问题「${context.externalQuestion}」，仅提取 ${JSON.stringify(input,null,"\t")} 中所有 "content" 字段并进行总结，务必突出核心结论，不展开细节， 总结内容不超过 300 字。 - 最终输出为 json 格式： { "user": "${context.externalQuestion}", "assistant": "生成的总结内容" } `):(`You are a professional content summarization AI assistant. - Task: Based on the user question "${context.externalQuestion}", extract all "content" fields from ${JSON.stringify(input,null,"\t")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words. - The final output should be in JSON format: { "user": "${context.externalQuestion}", "assistant": "Generated summary content" } `))},
+			{role:"system",content:(($ln==="CN")?(`你是一位专业的内容总结 AI 助手。 - 任务：根据用户问题「${context.externalQuestion}」，仅提取 ${JSON.stringify(input,null,"\t")} 中所有 "content" 字段并进行总结，务必突出核心结论，不展开细节， 总结内容不超过 300 字，用中文回答。 - 最终输出为 json 格式： { "user": "${context.externalQuestion}", "assistant": "生成的总结内容" } `):(`You are a professional content summarization AI assistant. - Task: Based on the user question "${context.externalQuestion}", extract all "content" fields from ${JSON.stringify(input,null,"\t")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words, and please use english. - The final output should be in JSON format: { "user": "${context.externalQuestion}", "assistant": "Generated summary content" } `))},
 		];
 		messages.push(...chatMem);
 		/*#{1JD7C9HUJ0PrePrompt*/
@@ -706,7 +713,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("总结中，请稍等..."):("Summarizing, please wait..."));
+		let content=(($ln==="CN")?("正在为您总结搜索结果，请稍等......"):("Summarizing search results for you, please wait......"));
 		/*#{1JD7E4EHN0PreCodes*/
 		/*}#1JD7E4EHN0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -770,7 +777,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?(`好的，我们将继续使用 ${JSON.stringify(context.platforms,null,"\t")} 平台进行搜索。`):(`OK, we will continue to use the ${JSON.stringify(context.platforms,null,"\t")} platforms for the search. `));
+		let content=(($ln==="CN")?(`好的，我们将继续使用 ${JSON.stringify(context.platforms,null,"\t")} 平台进行搜索。`):(`We will continue to use the ${JSON.stringify(context.platforms,null,"\t")} platforms for the search. `));
 		/*#{1JD7J7B7O0PreCodes*/
 		/*}#1JD7J7B7O0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -833,7 +840,7 @@ let AnySearchWorkflow=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("好的，正在为您生成报告，请稍等..."):("Okay, generating report for you. Please wait..."));
+		let content=(($ln==="CN")?("好的，正在为您生成报告，请稍等......"):("Generating report for you, please wait......"));
 		/*#{1JGJ7KERC0PreCodes*/
 		/*}#1JGJ7KERC0PreCodes*/
 		session.addChatText(role,content,opts);
@@ -859,6 +866,147 @@ let AnySearchWorkflow=async function(session){
 	};
 	ShowRetryError.jaxId="1JGJ7OET60"
 	ShowRetryError.url="ShowRetryError@"+agentURL
+	
+	segs["SummarQuestion"]=SummarQuestion=async function(input){//:1JH04QDG10
+		let prompt;
+		let $platform="OpenAI";
+		let $model="gpt-4.1";
+		let $agent;
+		let result=null;
+		/*#{1JH04QDG10Input*/
+		//console.log("SummarQuestion",'-----');
+		//console.log(JSON.stringify(context.history,null,"\t"))
+		console.log('=====', input)
+		/*}#1JH04QDG10Input*/
+		
+		let opts={
+			platform:$platform,
+			mode:$model,
+			maxToken:2000,
+			temperature:0,
+			topP:1,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"json_object"
+		};
+		let chatMem=SummarQuestion.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:(($ln==="CN")?(`你是一位专业的关键词提取助手。
+- 任务：
+1. 回顾对话历史数据${input.userContents} ，总结用户的核心需求主题
+2. 结合当前输入的 ${input.search} 内容，提炼一个精准关键词
+
+- 关联性判断：
+1. 如果对话历史与当前输入语义相关，则融合生成关键词
+2. 如果对话历史与当前输入完全无关，则仅以当前输入生成关键词，忽略历史
+
+- 要求：
+1. 关键词长度控制在2-10个字
+2. 优先使用名词或名词短语
+3. 需准确反映用户意图
+4. 当历史与当前输入无关时，关键词必须完全基于当前输入，不得混入历史内容
+
+- 最终输出为 json 格式： { "keyword": "关键词" }
+
+- 示例1（有关联）
+1. 输入历史：["sparktts", "该模型部署的环境要求"] + 当前输入："这个模型的研发团队"
+2. 输出：{"keyword": "sparktts研发团队"}
+
+- 示例2（有关联）
+1. 输入历史：["sparktts", "部署的环境要求"] + 当前输入："这个模型的研发团队"
+2. 输出：{"keyword": "sparktts研发团队"}
+
+- 示例3（无关联）
+1. 输入历史：["sparktts", "模型部署环境"] + 当前输入："今天天气怎么样"
+2. 输出：{"keyword": "今日天气"}
+
+- 示例4（无关联）
+1. 输入历史：["python教程", "数据分析"] + 当前输入："北京旅游景点推荐"
+2. 输出：{"keyword": "北京旅游景点"}
+`
+
+):(`You are a professional keyword extraction assistant.
+
+- Task:
+1. Review the conversation history data ${input.userContents} and summarize the user's core needs and themes
+2. Combine with the current input ${input.search} to refine a precise keyword
+
+
+- Relevance Judgment:
+1. If the conversation history and current input are semantically related, fuse them to generate the keyword
+2. If the conversation history and current input are completely unrelated, generate the keyword based solely on the current input, ignoring the history
+
+- Requirements:
+1. Keyword length should be controlled within 2-10 characters 2. Prioritize using nouns or noun phrases
+3. Must accurately reflect user intent
+4. When history and current input are unrelated, the keyword must be based entirely on the current input without mixing in historical content
+
+- Final output in JSON format: { "keyword": "keyword" }
+
+- Example 1 (Related)
+1. Input history: ["sparktts", "environment requirements for deploying this model"] + Current input: "the R&D team of this model"
+2. Output: {"keyword": "sparktts R&D team"}
+
+- Example 2 (Related)
+1. Input history: ["sparktts", "deployment environment requirements"] + Current input: "the R&D team of this model"
+2. Output: {"keyword": "sparktts R&D team"}
+
+- Example 3 (Unrelated)
+1. Input history: ["sparktts", "model deployment environment"] + Current input: "how is the weather today"
+2. Output: {"keyword": "today's weather"}
+
+- Example 4 (Unrelated)
+1. Input history: ["python tutorial", "data analysis"] + Current input: "Beijing tourist attractions recommendation"
+2. Output: {"keyword": "Beijing tourist attractions"}
+`))},
+		];
+		messages.push(...chatMem);
+		/*#{1JH04QDG10PrePrompt*/
+		/*}#1JH04QDG10PrePrompt*/
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1JH04QDG10FilterMessage*/
+			/*}#1JH04QDG10FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1JH04QDG10PreCall*/
+		/*}#1JH04QDG10PreCall*/
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("SummarQuestion@"+agentURL,opts,messages,true)):result;
+		}
+		/*#{1JH04QDG10PostLLM*/
+		/*}#1JH04QDG10PostLLM*/
+		chatMem.push({role:"user",content:prompt});
+		chatMem.push({role:"assistant",content:result});
+		if(chatMem.length>50){
+			let removedMsgs=chatMem.splice(0,2);
+			/*#{1JH04QDG10PostClear*/
+			/*}#1JH04QDG10PostClear*/
+		}
+		result=trimJSON(result);
+		/*#{1JH04QDG10PostCall*/
+		result = {
+			search: result.keyword,
+			searchNum: input.searchNum > 20 ? 20 : input.searchNum,
+			platforms: (context.platforms && context.platforms.length) ? context.platforms : []
+		};
+		/*}#1JH04QDG10PostCall*/
+		/*#{1JH04QDG10PreResult*/
+		/*}#1JH04QDG10PreResult*/
+		return {seg:RPA,result:(result),preSeg:"1JH04QDG10",outlet:"1JH04RCTC0"};
+	};
+	SummarQuestion.jaxId="1JH04QDG10"
+	SummarQuestion.url="SummarQuestion@"+agentURL
+	SummarQuestion.messages=[];
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1108,10 +1256,10 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Fetching model information for you. Please wait...",
+//							"valText": "Fetching model information, please wait......",
 //							"localize": {
-//								"EN": "Fetching model information for you. Please wait...",
-//								"CN": "正在为您获取模型信息，请稍候..."
+//								"EN": "Fetching model information, please wait......",
+//								"CN": "正在为您获取模型信息，请稍候......"
 //							},
 //							"localizable": true
 //						},
@@ -1256,10 +1404,10 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Want to know more?",
+//							"valText": "What else would you like to know about this model?",
 //							"localize": {
-//								"EN": "Want to know more?",
-//								"CN": "您还想了解？"
+//								"EN": "What else would you like to know about this model?",
+//								"CN": "你还想了解此模型的哪些信息？"
 //							},
 //							"localizable": true
 //						},
@@ -1349,10 +1497,10 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Alright, searching for you. Please wait...",
+//							"valText": "Searching, please wait......",
 //							"localize": {
-//								"EN": "Alright, searching for you. Please wait...",
-//								"CN": "好的，正在为您查询，请稍等..."
+//								"EN": "Searching, please wait......",
+//								"CN": "好的，正在为您查询，请稍等......"
 //							},
 //							"localizable": true
 //						},
@@ -1483,10 +1631,10 @@ export{AnySearchWorkflow};
 //						"segMark": "None",
 //						"prompt": {
 //							"type": "string",
-//							"valText": "Does the above information meet your needs? If not, you can choose to search online for further information.",
+//							"valText": "Continue asking or search online for more information?",
 //							"localize": {
-//								"EN": "Does the above information meet your needs? If not, you can choose to search online for further information.",
-//								"CN": "上述信息是否满足您的需求？如若不满足，您可选择联网搜索进一步查询。"
+//								"EN": "Continue asking or search online for more information?",
+//								"CN": "上述信息是否满足您的需求？如若不满足，您可按需联网搜索。"
 //							},
 //							"localizable": true
 //						},
@@ -1547,7 +1695,7 @@ export{AnySearchWorkflow};
 //											"valText": "Online search",
 //											"localize": {
 //												"EN": "Online search",
-//												"CN": "联网搜素"
+//												"CN": "联网搜索"
 //											},
 //											"localizable": true
 //										},
@@ -1605,9 +1753,9 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Alright, AI is about to take control of the browser to perform online search tasks. Please enter your question.",
+//							"valText": "The AI is about to take control of the browser. Please enter your question.",
 //							"localize": {
-//								"EN": "Alright, AI is about to take control of the browser to perform online search tasks. Please enter your question.",
+//								"EN": "The AI is about to take control of the browser. Please enter your question.",
 //								"CN": "好的，AI 即将接管浏览器控制权限以执行联网搜索任务。请输入您的问题。"
 //							},
 //							"localizable": true
@@ -1631,7 +1779,7 @@ export{AnySearchWorkflow};
 //						"id": "UserTypeQuestion",
 //						"viewName": "",
 //						"label": "",
-//						"x": "630",
+//						"x": "670",
 //						"y": "460",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1663,7 +1811,7 @@ export{AnySearchWorkflow};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JC0JAE5K0"
+//							"linkedSeg": "1JH04QDG10"
 //						}
 //					},
 //					"icon": "chat.svg"
@@ -1676,7 +1824,7 @@ export{AnySearchWorkflow};
 //						"id": "RPA",
 //						"viewName": "",
 //						"label": "",
-//						"x": "885",
+//						"x": "1250",
 //						"y": "460",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
@@ -1719,7 +1867,7 @@ export{AnySearchWorkflow};
 //						"id": "IsReport",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2425",
+//						"x": "2790",
 //						"y": "445",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1727,9 +1875,9 @@ export{AnySearchWorkflow};
 //						"segMark": "None",
 //						"prompt": {
 //							"type": "string",
-//							"valText": "Please confirm whether the above information meets your needs or if you require a detailed report.",
+//							"valText": " Would you like a detailed report generated?",
 //							"localize": {
-//								"EN": "Please confirm whether the above information meets your needs or if you require a detailed report.",
+//								"EN": " Would you like a detailed report generated?",
 //								"CN": "请确认上述信息是否满足您的需求，是否需要生成深度报告？"
 //							},
 //							"localizable": true
@@ -1816,7 +1964,7 @@ export{AnySearchWorkflow};
 //						"id": "WaitTips_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2630",
+//						"x": "2995",
 //						"y": "430",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -1838,10 +1986,10 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Okay, generating report for you. Please wait...",
+//							"valText": "Generating report for you, please wait......",
 //							"localize": {
-//								"EN": "Okay, generating report for you. Please wait...",
-//								"CN": "好的，正在为您生成报告，请稍等..."
+//								"EN": "Generating report for you, please wait......",
+//								"CN": "好的，正在为您生成报告，请稍等......"
 //							},
 //							"localizable": true
 //						},
@@ -1864,7 +2012,7 @@ export{AnySearchWorkflow};
 //						"id": "AxiosCallRpaAPI",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2865",
+//						"x": "3230",
 //						"y": "430",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -1905,7 +2053,7 @@ export{AnySearchWorkflow};
 //						"id": "CheckError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
+//						"x": "3495",
 //						"y": "430",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -1973,7 +2121,7 @@ export{AnySearchWorkflow};
 //						"id": "ShowError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3380",
+//						"x": "3745",
 //						"y": "385",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2013,7 +2161,7 @@ export{AnySearchWorkflow};
 //						"id": "GetAllLinks",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1265",
+//						"x": "1630",
 //						"y": "460",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -2054,7 +2202,7 @@ export{AnySearchWorkflow};
 //						"id": "ShowAllLinks",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2190",
+//						"x": "2555",
 //						"y": "445",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2094,7 +2242,7 @@ export{AnySearchWorkflow};
 //						"id": "ContinueRPA",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2875",
+//						"x": "3240",
 //						"y": "530",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2119,7 +2267,7 @@ export{AnySearchWorkflow};
 //						"id": "FileType",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3380",
+//						"x": "3745",
 //						"y": "475",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2127,10 +2275,10 @@ export{AnySearchWorkflow};
 //						"segMark": "None",
 //						"prompt": {
 //							"type": "string",
-//							"valText": "Please choose your preferred display method first.",
+//							"valText": "Please select the report output format.",
 //							"localize": {
-//								"EN": "Please choose your preferred display method first.",
-//								"CN": "请先选择您喜欢的呈现方式？"
+//								"EN": "Please select the report output format.",
+//								"CN": "请选择报告的输出形式。"
 //							},
 //							"localizable": true
 //						},
@@ -2145,10 +2293,10 @@ export{AnySearchWorkflow};
 //										"desc": "输出节点。",
 //										"text": {
 //											"type": "string",
-//											"valText": "Md",
+//											"valText": "Markdown Document",
 //											"localize": {
-//												"EN": "Md",
-//												"CN": "Md"
+//												"EN": "Markdown Document",
+//												"CN": "Markdown 文档"
 //											},
 //											"localizable": true
 //										},
@@ -2177,10 +2325,10 @@ export{AnySearchWorkflow};
 //										"desc": "输出节点。",
 //										"text": {
 //											"type": "string",
-//											"valText": "Html",
+//											"valText": "Html Page",
 //											"localize": {
-//												"EN": "Html",
-//												"CN": "Html"
+//												"EN": "Html Page",
+//												"CN": "Html 页面"
 //											},
 //											"localizable": true
 //										},
@@ -2214,7 +2362,7 @@ export{AnySearchWorkflow};
 //						"id": "CheckLength",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1480",
+//						"x": "1845",
 //						"y": "460",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2281,7 +2429,7 @@ export{AnySearchWorkflow};
 //						"id": "SimpleReport",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1715",
+//						"x": "2080",
 //						"y": "445",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
@@ -2303,10 +2451,10 @@ export{AnySearchWorkflow};
 //						"mode": "gpt-4.1",
 //						"system": {
 //							"type": "string",
-//							"valText": "#`You are a professional content summarization AI assistant. - Task: Based on the user question \"${context.externalQuestion}\", extract all \"content\" fields from ${JSON.stringify(input,null,\"\\t\")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words. - The final output should be in JSON format: { \"user\": \"${context.externalQuestion}\", \"assistant\": \"Generated summary content\" } `",
+//							"valText": "#`You are a professional content summarization AI assistant. - Task: Based on the user question \"${context.externalQuestion}\", extract all \"content\" fields from ${JSON.stringify(input,null,\"\\t\")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words, and please use english. - The final output should be in JSON format: { \"user\": \"${context.externalQuestion}\", \"assistant\": \"Generated summary content\" } `",
 //							"localize": {
-//								"EN": "#`You are a professional content summarization AI assistant. - Task: Based on the user question \"${context.externalQuestion}\", extract all \"content\" fields from ${JSON.stringify(input,null,\"\\t\")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words. - The final output should be in JSON format: { \"user\": \"${context.externalQuestion}\", \"assistant\": \"Generated summary content\" } `",
-//								"CN": "#`你是一位专业的内容总结 AI 助手。 - 任务：根据用户问题「${context.externalQuestion}」，仅提取 ${JSON.stringify(input,null,\"\\t\")} 中所有 \"content\" 字段并进行总结，务必突出核心结论，不展开细节， 总结内容不超过 300 字。 - 最终输出为 json 格式： { \"user\": \"${context.externalQuestion}\", \"assistant\": \"生成的总结内容\" } `"
+//								"EN": "#`You are a professional content summarization AI assistant. - Task: Based on the user question \"${context.externalQuestion}\", extract all \"content\" fields from ${JSON.stringify(input,null,\"\\t\")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words, and please use english. - The final output should be in JSON format: { \"user\": \"${context.externalQuestion}\", \"assistant\": \"Generated summary content\" } `",
+//								"CN": "#`你是一位专业的内容总结 AI 助手。 - 任务：根据用户问题「${context.externalQuestion}」，仅提取 ${JSON.stringify(input,null,\"\\t\")} 中所有 \"content\" 字段并进行总结，务必突出核心结论，不展开细节， 总结内容不超过 300 字，用中文回答。 - 最终输出为 json 格式： { \"user\": \"${context.externalQuestion}\", \"assistant\": \"生成的总结内容\" } `"
 //							},
 //							"localizable": true
 //						},
@@ -2358,7 +2506,7 @@ export{AnySearchWorkflow};
 //						"id": "ShowSimpleReport",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1935",
+//						"x": "2300",
 //						"y": "445",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2398,7 +2546,7 @@ export{AnySearchWorkflow};
 //						"id": "WaitInfo",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1070",
+//						"x": "1435",
 //						"y": "460",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2420,10 +2568,10 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Summarizing, please wait...",
+//							"valText": "Summarizing search results for you, please wait......",
 //							"localize": {
-//								"EN": "Summarizing, please wait...",
-//								"CN": "总结中，请稍等..."
+//								"EN": "Summarizing search results for you, please wait......",
+//								"CN": "正在为您总结搜索结果，请稍等......"
 //							},
 //							"localizable": true
 //						},
@@ -2446,7 +2594,7 @@ export{AnySearchWorkflow};
 //						"id": "ConfirmAgain",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2630",
+//						"x": "2995",
 //						"y": "545",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2543,7 +2691,7 @@ export{AnySearchWorkflow};
 //						"id": "ShowSelectedPlatform",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2875",
+//						"x": "3240",
 //						"y": "605",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2565,9 +2713,9 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "#`OK, we will continue to use the ${JSON.stringify(context.platforms,null,\"\\t\")} platforms for the search. `",
+//							"valText": "#`We will continue to use the ${JSON.stringify(context.platforms,null,\"\\t\")} platforms for the search. `",
 //							"localize": {
-//								"EN": "#`OK, we will continue to use the ${JSON.stringify(context.platforms,null,\"\\t\")} platforms for the search. `",
+//								"EN": "#`We will continue to use the ${JSON.stringify(context.platforms,null,\"\\t\")} platforms for the search. `",
 //								"CN": "#`好的，我们将继续使用 ${JSON.stringify(context.platforms,null,\"\\t\")} 平台进行搜索。`"
 //							},
 //							"localizable": true
@@ -2591,7 +2739,7 @@ export{AnySearchWorkflow};
 //						"id": "ContinueRPA_1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3130",
+//						"x": "3495",
 //						"y": "605",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2685,7 +2833,7 @@ export{AnySearchWorkflow};
 //						"id": "Retry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3600",
+//						"x": "3965",
 //						"y": "385",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -2781,7 +2929,7 @@ export{AnySearchWorkflow};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3920",
+//						"x": "4285",
 //						"y": "290",
 //						"outlet": {
 //							"jaxId": "1JGJ6VLIE0",
@@ -2803,7 +2951,7 @@ export{AnySearchWorkflow};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2890",
+//						"x": "3255",
 //						"y": "290",
 //						"outlet": {
 //							"jaxId": "1JGJ6VLIE1",
@@ -2826,7 +2974,7 @@ export{AnySearchWorkflow};
 //						"id": "RetryTips",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3780",
+//						"x": "4145",
 //						"y": "370",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2848,10 +2996,10 @@ export{AnySearchWorkflow};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Okay, generating report for you. Please wait...",
+//							"valText": "Generating report for you, please wait......",
 //							"localize": {
-//								"EN": "Okay, generating report for you. Please wait...",
-//								"CN": "好的，正在为您生成报告，请稍等..."
+//								"EN": "Generating report for you, please wait......",
+//								"CN": "好的，正在为您生成报告，请稍等......"
 //							},
 //							"localizable": true
 //						},
@@ -2874,7 +3022,7 @@ export{AnySearchWorkflow};
 //						"id": "ShowRetryError",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3780",
+//						"x": "4145",
 //						"y": "425",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -2912,6 +3060,83 @@ export{AnySearchWorkflow};
 //						}
 //					},
 //					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1JH04QDG10",
+//					"attrs": {
+//						"id": "SummarQuestion",
+//						"viewName": "",
+//						"label": "",
+//						"x": "945",
+//						"y": "460",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JH04RCTN0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JH04RCTN1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "\"OpenAI\"",
+//						"mode": "gpt-4.1",
+//						"system": {
+//							"type": "string",
+//							"valText": "#`You are a professional keyword extraction assistant.\n\n- Task:\n1. Review the conversation history data ${input.userContents} and summarize the user's core needs and themes\n2. Combine with the current input ${input.search} to refine a precise keyword\n\n\n- Relevance Judgment:\n1. If the conversation history and current input are semantically related, fuse them to generate the keyword\n2. If the conversation history and current input are completely unrelated, generate the keyword based solely on the current input, ignoring the history\n\n- Requirements:\n1. Keyword length should be controlled within 2-10 characters 2. Prioritize using nouns or noun phrases\n3. Must accurately reflect user intent\n4. When history and current input are unrelated, the keyword must be based entirely on the current input without mixing in historical content\n\n- Final output in JSON format: { \"keyword\": \"keyword\" }\n\n- Example 1 (Related)\n1. Input history: [\"sparktts\", \"environment requirements for deploying this model\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 2 (Related)\n1. Input history: [\"sparktts\", \"deployment environment requirements\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 3 (Unrelated)\n1. Input history: [\"sparktts\", \"model deployment environment\"] + Current input: \"how is the weather today\"\n2. Output: {\"keyword\": \"today's weather\"}\n\n- Example 4 (Unrelated)\n1. Input history: [\"python tutorial\", \"data analysis\"] + Current input: \"Beijing tourist attractions recommendation\"\n2. Output: {\"keyword\": \"Beijing tourist attractions\"}\n`",
+//							"localize": {
+//								"EN": "#`You are a professional keyword extraction assistant.\n\n- Task:\n1. Review the conversation history data ${input.userContents} and summarize the user's core needs and themes\n2. Combine with the current input ${input.search} to refine a precise keyword\n\n\n- Relevance Judgment:\n1. If the conversation history and current input are semantically related, fuse them to generate the keyword\n2. If the conversation history and current input are completely unrelated, generate the keyword based solely on the current input, ignoring the history\n\n- Requirements:\n1. Keyword length should be controlled within 2-10 characters 2. Prioritize using nouns or noun phrases\n3. Must accurately reflect user intent\n4. When history and current input are unrelated, the keyword must be based entirely on the current input without mixing in historical content\n\n- Final output in JSON format: { \"keyword\": \"keyword\" }\n\n- Example 1 (Related)\n1. Input history: [\"sparktts\", \"environment requirements for deploying this model\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 2 (Related)\n1. Input history: [\"sparktts\", \"deployment environment requirements\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 3 (Unrelated)\n1. Input history: [\"sparktts\", \"model deployment environment\"] + Current input: \"how is the weather today\"\n2. Output: {\"keyword\": \"today's weather\"}\n\n- Example 4 (Unrelated)\n1. Input history: [\"python tutorial\", \"data analysis\"] + Current input: \"Beijing tourist attractions recommendation\"\n2. Output: {\"keyword\": \"Beijing tourist attractions\"}\n`",
+//								"CN": "#`你是一位专业的关键词提取助手。\n- 任务：\n1. 回顾对话历史数据${input.userContents} ，总结用户的核心需求主题\n2. 结合当前输入的 ${input.search} 内容，提炼一个精准关键词\n\n- 关联性判断：\n1. 如果对话历史与当前输入语义相关，则融合生成关键词\n2. 如果对话历史与当前输入完全无关，则仅以当前输入生成关键词，忽略历史\n\n- 要求：\n1. 关键词长度控制在2-10个字\n2. 优先使用名词或名词短语\n3. 需准确反映用户意图\n4. 当历史与当前输入无关时，关键词必须完全基于当前输入，不得混入历史内容\n\n- 最终输出为 json 格式： { \"keyword\": \"关键词\" }\n\n- 示例1（有关联）\n1. 输入历史：[\"sparktts\", \"该模型部署的环境要求\"] + 当前输入：\"这个模型的研发团队\"\n2. 输出：{\"keyword\": \"sparktts研发团队\"}\n\n- 示例2（有关联）\n1. 输入历史：[\"sparktts\", \"部署的环境要求\"] + 当前输入：\"这个模型的研发团队\"\n2. 输出：{\"keyword\": \"sparktts研发团队\"}\n\n- 示例3（无关联）\n1. 输入历史：[\"sparktts\", \"模型部署环境\"] + 当前输入：\"今天天气怎么样\"\n2. 输出：{\"keyword\": \"今日天气\"}\n\n- 示例4（无关联）\n1. 输入历史：[\"python教程\", \"数据分析\"] + 当前输入：\"北京旅游景点推荐\"\n2. 输出：{\"keyword\": \"北京旅游景点\"}\n`\n\n"
+//							},
+//							"localizable": true
+//						},
+//						"temperature": "0",
+//						"maxToken": "2000",
+//						"topP": "1",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1JH04RCTC0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JC0JAE5K0"
+//						},
+//						"stream": "true",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "50 messages",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "json_object",
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				}
 //			]
 //		},

@@ -188,10 +188,11 @@ ${input.html} 
 		try{
 			/*#{1JCIQDUEP0Code*/
 			htmlCode=input.html;
-			result=session.WSCall_WebSandbox(htmlCode);
+			result=await session.WSCall_WebSandbox(htmlCode);
 			/*}#1JCIQDUEP0Code*/
 		}catch(error){
 			/*#{1JCIQDUEP0ErrorCode*/
+			console.error("WSCall_WebSandbox error:", error);
 			/*}#1JCIQDUEP0ErrorCode*/
 		}
 		return {seg:Finish,result:(result),preSeg:"1JCIQDUEP0",outlet:"1JCIQEIVC0"};

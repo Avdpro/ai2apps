@@ -62,7 +62,7 @@ let Bash=async function(session){
 	let project=globalContext.project;
 	
 	/*#{1IG0KVFDB0LocalVals*/
-	let contentLen=-1, last_input="";
+	let contentLen=-1, last_input="", allCmdOutput="";
 	/*}#1IG0KVFDB0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -208,8 +208,7 @@ let Bash=async function(session){
 				}
 			}
 			await cmdBash.runCommands(input,{idleTime:options.idleTime||0});
-			result=await cmdBash.getContent();
-			result=result.substring(orgCmdContent.length);
+			result=cmdBash.cmdOutput;
 			/*}#1IIF4QE770Code*/
 		}catch(error){
 			/*#{1IIF4QE770ErrorCode*/
@@ -229,12 +228,7 @@ let Bash=async function(session){
 		isIdle=(lastLine.endsWith(IDLEMaker));
 		/*}#1IIF4R4RO0Start*/
 		if(!isIdle){
-			/*#{1IIF5P1F21Codes*/
-			if(lines.length>10){
-				input=lines.slice(-10).join("\n");
-			}
-			/*}#1IIF5P1F21Codes*/
-			return {seg:GetReact,result:(input),preSeg:"1IIF4R4RO0",outlet:"1IIF5P1F21"};
+			return {seg:GetReact,result:(input),preSeg:"1IIF4R4RO0",outlet:"1JH3PM7US0"};
 		}
 		/*#{1IIF4R4RO0Post*/
 		/*}#1IIF4R4RO0Post*/
@@ -338,7 +332,36 @@ let Bash=async function(session){
 			fqcP:0,
 			prcP:0,
 			secret:false,
-			responseFormat:"json_object"
+			responseFormat:{
+				"type":"json_schema",
+				"json_schema":{
+					"name":"BashReact",
+					"schema":{
+						"type":"object",
+						"description":"",
+						"properties":{
+							"action":{
+								"type":"string",
+								"description":"下一步行动",
+								"enum":[
+									"Wait","Input","AskUser","Finish"
+								]
+							},
+							"input":{
+								"type":[
+									"string","null"
+								],
+								"description":"当\"action\"为\"Input\"，要输出Terminal的内容。"
+							}
+						},
+						"required":[
+							"action","input"
+						],
+						"additionalProperties":false
+					},
+					"strict":true
+				}
+			}
 		};
 		let chatMem=GetReact.messages
 		let seed="";
@@ -353,7 +376,7 @@ let Bash=async function(session){
 - 请用JSON格式返回当前需要进行的操作
 
 ### 返回JSON属性
-- "action" {string}: 下一步的动作，可以取的值有:"Wait"， "Input", "Finish"和"AskUser"
+- "action" {string}: 下一步的动作，可以取的值有:"Wait"， "Input" 和"AskUser"
 	- "Wait": 当前Termnial还在执行任务，不需要干预
     - "Input": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。
     - "AskUser": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等
@@ -399,8 +422,7 @@ let Bash=async function(session){
 		let result=input
 		try{
 			/*#{1IIF4PECH0Code*/
-			result=await cmdBash.getContent();
-			result=result.substring(orgContent.length);
+			result=allCmdOutput;
 			/*}#1IIF4PECH0Code*/
 		}catch(error){
 			/*#{1IIF4PECH0ErrorCode*/
@@ -415,6 +437,7 @@ let Bash=async function(session){
 		let result=input
 		try{
 			/*#{1IIF4SPFB0Code*/
+			allCmdOutput += cmdBash.cmdOutput;
 			/*}#1IIF4SPFB0Code*/
 		}catch(error){
 			/*#{1IIF4SPFB0ErrorCode*/
@@ -1173,20 +1196,20 @@ export{Bash,ChatAPI};
 //								{
 //									"type": "aioutlet",
 //									"def": "AIConditionOutlet",
-//									"jaxId": "1IIF5P1F21",
+//									"jaxId": "1JH3PM7US0",
 //									"attrs": {
 //										"id": "NotDone",
-//										"desc": "输出节点。",
+//										"desc": "Outlet.",
 //										"output": "",
-//										"codes": "true",
+//										"codes": "false",
 //										"context": {
-//											"jaxId": "1IIF5P1FA4",
+//											"jaxId": "1JH3PPU8Q0",
 //											"attrs": {
 //												"cast": ""
 //											}
 //										},
 //										"global": {
-//											"jaxId": "1IIF5P1FA5",
+//											"jaxId": "1JH3PPU8Q1",
 //											"attrs": {
 //												"cast": ""
 //											}
@@ -1369,7 +1392,7 @@ export{Bash,ChatAPI};
 //						"id": "GetReact",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1315",
+//						"x": "1340",
 //						"y": "95",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
@@ -1389,7 +1412,7 @@ export{Bash,ChatAPI};
 //						},
 //						"platform": "OpenAI",
 //						"mode": "gpt-4o",
-//						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\", \"Finish\"和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`  + (($ln===\"CN\")?(\"AskUser的内容需要用中文输出。\"):(\"Output in English when need AskUser.\"))\n",
+//						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\" 和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`  + (($ln===\"CN\")?(\"AskUser的内容需要用中文输出。\"):(\"Output in English when need AskUser.\"))\n",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",

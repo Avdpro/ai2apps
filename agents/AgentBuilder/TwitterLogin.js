@@ -145,9 +145,9 @@ let TwitterLogin=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("推特已打开。"):("Twitter has been opened."));
+		let content=(($ln==="CN")?("推特页面已打开，AI 正在执行联网搜索任务......"):("Twitter page has been opened, AI is performing a web search task......"));
 		session.addChatText(role,content,opts);
-		return {seg:FindTwitterLoginBtn_1,result:(result),preSeg:"1IH28Q6DB0",outlet:"1IH28R1BB0"};
+		return {seg:FindTwitterLoginBtn,result:(result),preSeg:"1IH28Q6DB0",outlet:"1IH28R1BB0"};
 	};
 	Notify.jaxId="1IH28Q6DB0"
 	Notify.url="Notify@"+agentURL
@@ -176,6 +176,7 @@ let TwitterLogin=async function(session){
 		}catch(error){
 			/*#{1JAQFTV110ErrorCode*/
 			/*}#1JAQFTV110ErrorCode*/
+			return {seg:ActivePage,result:error,preSeg:"1JAQFTV110",outlet:"1JAQFTV0C0"};
 		}
 		return {result:result};
 	};
@@ -349,7 +350,7 @@ let TwitterLogin=async function(session){
 			/*#{1JGM7BIBL1ErrorCode*/
 			/*}#1JGM7BIBL1ErrorCode*/
 		}
-		return {seg:ActivePage,result:(result),preSeg:"1JGM7BIBL1",outlet:"1JGM7BIBM2"};
+		return {result:result};
 	};
 	FindTwitterLoginBtn_1.jaxId="1JGM7BIBL1"
 	FindTwitterLoginBtn_1.url="FindTwitterLoginBtn_1@"+agentURL
@@ -639,10 +640,10 @@ export{TwitterLogin};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Twitter has been opened.",
+//							"valText": "Twitter page has been opened, AI is performing a web search task......",
 //							"localize": {
-//								"EN": "Twitter has been opened.",
-//								"CN": "推特已打开。"
+//								"EN": "Twitter page has been opened, AI is performing a web search task......",
+//								"CN": "推特页面已打开，AI 正在执行联网搜索任务......"
 //							},
 //							"localizable": true
 //						},
@@ -652,7 +653,7 @@ export{TwitterLogin};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JGM7BIBL1"
+//							"linkedSeg": "1JAQFTV110"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -665,8 +666,8 @@ export{TwitterLogin};
 //						"id": "FindTwitterLoginBtn",
 //						"viewName": "",
 //						"label": "",
-//						"x": "690",
-//						"y": "670",
+//						"x": "670",
+//						"y": "225",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -708,7 +709,8 @@ export{TwitterLogin};
 //									"attrs": {
 //										"id": "Missing",
 //										"desc": "输出节点。"
-//									}
+//									},
+//									"linkedSeg": "1JAQFV8EG0"
 //								}
 //							]
 //						}
@@ -1064,7 +1066,7 @@ export{TwitterLogin};
 //						"viewName": "",
 //						"label": "",
 //						"x": "675",
-//						"y": "225",
+//						"y": "65",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1095,8 +1097,7 @@ export{TwitterLogin};
 //							"attrs": {
 //								"id": "Found",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JAQFV8EG0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [

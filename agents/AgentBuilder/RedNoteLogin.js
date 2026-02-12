@@ -148,7 +148,7 @@ let RedNoteLogin=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("小红书已打开。"):("RedNote has been opened."));
+		let content=(($ln==="CN")?("小红书页面已打开，AI 正在执行联网搜索任务......"):("RedNote page has been opened, AI is performing an online search task......"));
 		session.addChatText(role,content,opts);
 		return {seg:FindLoginBtn,result:(result),preSeg:"1IH28Q6DB0",outlet:"1IH28R1BB0"};
 	};
@@ -756,10 +756,10 @@ export{RedNoteLogin};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "RedNote has been opened.",
+//							"valText": "RedNote page has been opened, AI is performing an online search task......",
 //							"localize": {
-//								"EN": "RedNote has been opened.",
-//								"CN": "小红书已打开。"
+//								"EN": "RedNote page has been opened, AI is performing an online search task......",
+//								"CN": "小红书页面已打开，AI 正在执行联网搜索任务......"
 //							},
 //							"localizable": true
 //						},
