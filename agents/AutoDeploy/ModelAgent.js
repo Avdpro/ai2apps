@@ -25,6 +25,28 @@ const argsTemplate={
 };
 
 /*#{1JGP1AAKD0StartDoc*/
+async function isTextFile(filePath) {
+	let fileHandle = null;
+	
+	try {
+		fileHandle = await fsp.open(filePath, 'r');
+		const bufferSize = 1024;
+		const buffer = Buffer.alloc(bufferSize);
+		const result = await fileHandle.read(buffer, 0, bufferSize, 0);
+		const content = buffer.slice(0, result.bytesRead);
+		if (content.includes(0)) {
+			return false;
+		}
+		return true;
+	} catch (err) {
+		console.error(`检查文件失败: ${filePath}`, err);
+		throw err; 
+	} finally {
+		if (fileHandle) {
+			await fileHandle.close();
+		}
+	}
+}
 /*}#1JGP1AAKD0StartDoc*/
 //----------------------------------------------------------------------------
 let ModelAgent=async function(session){
@@ -84,7 +106,7 @@ let ModelAgent=async function(session){
 				}
 				config.global_execution.working_directory = pathLib.resolve(wd);
 			}
-			if (config.base_command) base_command=config.base_command;
+			if (config.global_execution.base_command) base_command=config.global_execution.base_command;
 		} catch (error) {
 			throw new Error(`Failed to load model config for "${model}": ${error.message}`);
 		}
@@ -163,6 +185,7 @@ let ModelAgent=async function(session){
 			userRequest = result.text || result.prompt || JSON.stringify(result);
 			query = `用户要求：${userRequest}`;
 		}
+		result=query;
 		/*}#1JGP2DSRR0PostCodes*/
 		return {seg:Agent,result:(result),preSeg:"1JGP2DSRR0",outlet:"1JGP2E32A0"};
 	};
@@ -229,13 +252,18 @@ let ModelAgent=async function(session){
 		❌ **禁止** 在生成的命令中包含 \`cd\` 或 \`conda activate\`。
 		❗ **绝对路径规则**：在 Finish 动作中返回的 \`filePath\` **必须** 是绝对路径（例如 \`/home/user/workspace/data.csv\`），**严禁** 使用相对路径。
 		
+		**核心原则 (Critical Rules)**：
+		1. **先验证，后交付**：在通过 'Finish' 返回文件路径之前，你 **必须** 先使用 'Bash' 动作执行 \`ls -l <绝对路径>\` 或 \`test -f <绝对路径> && echo "Exists"\` 来确认文件确实生成了。
+		2. **善用辅助命令**：除了下方的 Skills，你可以自由使用系统命令（如 \`mkdir -p\`, \`ls\`, \`pwd\`, \`cat\`, \`grep\`）来准备环境或检查结果。
+		3. **绝对路径强制**：所有涉及文件的操作，尽量使用绝对路径。Finish 动作中的 \`filePath\` **必须** 是绝对路径。
+		
 		**可用功能列表 (Skills)**：
 		${allSkillsDoc}
 		
 		**可用动作 (Actions)** - 请返回 JSON，每次仅一个动作：
 		
 		1. **Bash** (执行任务)
-		- 场景：找到匹配功能且参数齐全。
+		- 场景：执行 Skill、系统辅助命令或验证命令。
 		- 格式：{"action": "Bash", "command": "完整命令", "message": "简短告知用户正在执行什么操作", "reasoning": "..."}
 		
 		2. **Ask** (追问参数)
@@ -271,6 +299,11 @@ let ModelAgent=async function(session){
 		❌ **DO NOT** include \`cd\` or \`conda activate\` in commands.
 		❗ **ABSOLUTE PATH RULE**: The \`filePath\` returned in Finish action **MUST** be an ABSOLUTE path (e.g., \`/home/user/workspace/output.png\`). Relative paths are **FORBIDDEN**.
 		
+		**Critical Rules**:
+		1. **Verify Before Finish**: Before returning a file path in 'Finish', you **MUST** first use the 'Bash' action to run \`ls -l <abs_path>\` or \`test -f <abs_path> && echo "Exists"\` to confirm the file actually exists.
+		2. **Use Auxiliary Commands**: Besides the Skills listed below, you are free to use system commands (e.g., \`mkdir -p\`, \`ls\`, \`pwd\`, \`cat\`, \`grep\`) to prepare environments or check results.
+		3. **Absolute Paths**: Prefer absolute paths for file operations. The \`filePath\` in the Finish action **MUST** be an absolute path.
+		
 		**Available Skills**:
 		${allSkillsDoc}
 		
@@ -278,19 +311,22 @@ let ModelAgent=async function(session){
 		Return JSON output:
 		
 		1. **Bash** (Execute Command)
-		- Format: {"action": "Bash", "command": "command", "message": "status update", "reasoning": "reasoning"}
+		- Context: Running a Skill, a system command, or a verification command.
+		- Format: {"action": "Bash", "command": "command", "message": "status update (e.g., Verifying output...)", "reasoning": "chain of thought"}
 		
 		2. **Ask** (Ask User)
+		- Context: Missing critical parameters.
 		- Format: {"action": "Ask", "question": "question", "reasoning": "reasoning"}
 		
 		3. **Finish** (Task Success)
+		- Context: **Main task executed AND verification command confirmed success**.
 		- Format: {
-		"action": "Finish", 
-		"type": "text" | "image" | "audio" | "video" | "file", 
-		"message": "closing message or text result", 
-		"filePath": "Single absolute path (String) OR List of absolute paths (Array<String>). NOTE: MUST use Absolute Path.", 
-		"reasoning": "reasoning"
-		}
+			"action": "Finish", 
+			"type": "text" | "image" | "audio" | "video" | "file", 
+			"message": "closing message", 
+			"filePath": "Verified ABSOLUTE path (String) or List (Array).", 
+			"reasoning": "reasoning"
+			}
 		
 		4. **Chitchat** (Casual Conversation)
 		- Format: {"action": "Chitchat", "message": "response", "reasoning": "reasoning"}
@@ -368,7 +404,7 @@ let ModelAgent=async function(session){
 	
 	segs["Run"]=Run=async function(input){//:1JGP3RICD0
 		let result,args={};
-		args['bashId']=globalContext.bash;
+		args['bashId']=globalContext.bash1;
 		args['action']="Command";
 		args['commands']=input.command;
 		args['options']="";
@@ -388,7 +424,7 @@ let ModelAgent=async function(session){
 		/*}#1JGP3RVH10PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		/*#{1JGP3RVH10PostCodes*/
-		globalContext.bash=result;
+		globalContext.bash1=result;
 		/*}#1JGP3RVH10PostCodes*/
 		return {seg:Enter,result:(result),preSeg:"1JGP3RVH10",outlet:"1JGP3SQ0T1"};
 	};
@@ -447,7 +483,7 @@ let ModelAgent=async function(session){
 	
 	segs["Enter"]=Enter=async function(input){//:1JGP4II6C0
 		let result,args={};
-		args['bashId']=globalContext.bash;
+		args['bashId']=globalContext.bash1;
 		args['action']="Command";
 		args['commands']="";
 		args['options']="";
@@ -469,6 +505,7 @@ let ModelAgent=async function(session){
 		let role="assistant";
 		let content=input.message;
 		/*#{1JGPM3RLV0PreCodes*/
+		session.addChatText(role,content,opts);
 		let filePaths = [];
 		if (input.filePath) {
 			if (Array.isArray(input.filePath)) {
@@ -508,6 +545,10 @@ let ModelAgent=async function(session){
 						} else {
 							fileContent += " (Download in Files panel)";
 						}
+						let flag = await isTextFile(fp);
+						const texts = await fsp.readFile(fp, 'utf8');
+						if(flag) fileContent += `\n\`\`\`markdown\n${texts}`;
+						
 					}
 					session.addChatText(role, fileContent, fileOpts);
 					
@@ -516,6 +557,7 @@ let ModelAgent=async function(session){
 				}
 			}
 		}
+		return {seg:Again,result:(result),preSeg:"1JGPM3RLV0",outlet:"1JGPM44AH0"};
 		/*}#1JGPM3RLV0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JGPM3RLV0PostCodes*/
@@ -581,7 +623,7 @@ let ModelAgent=async function(session){
 	
 	segs["Check"]=Check=async function(input){//:1JH7SQRPI0
 		let result=input;
-		if(input==="undefined"){
+		if(base_command){
 			return {seg:InitBash2,result:(input),preSeg:"1JH7SQRPI0",outlet:"1JH7SRM9M0"};
 		}
 		return {seg:Welcome,result:(result),preSeg:"1JH7SQRPI0",outlet:"1JH7SR6CU0"};
@@ -749,7 +791,7 @@ export{ModelAgent};
 //						"viewName": "",
 //						"label": "",
 //						"x": "970",
-//						"y": "70",
+//						"y": "75",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1147,7 +1189,7 @@ export{ModelAgent};
 //								"cast": ""
 //							}
 //						},
-//						"bashId": "#globalContext.bash",
+//						"bashId": "#globalContext.bash1",
 //						"action": "Command",
 //						"commands": "#input.command",
 //						"options": "\"\"",
@@ -1274,7 +1316,7 @@ export{ModelAgent};
 //								"cast": ""
 //							}
 //						},
-//						"bashId": "#globalContext.bash",
+//						"bashId": "#globalContext.bash1",
 //						"action": "Command",
 //						"commands": "\"\"",
 //						"options": "\"\"",
@@ -1562,7 +1604,7 @@ export{ModelAgent};
 //									"def": "AIConditionOutlet",
 //									"jaxId": "1JH7SRM9M0",
 //									"attrs": {
-//										"id": "#base_command",
+//										"id": "",
 //										"desc": "Outlet.",
 //										"output": "",
 //										"codes": "false",
@@ -1578,7 +1620,7 @@ export{ModelAgent};
 //												"cast": ""
 //											}
 //										},
-//										"condition": ""
+//										"condition": "#base_command"
 //									},
 //									"linkedSeg": "1JH7SNN4S0"
 //								}

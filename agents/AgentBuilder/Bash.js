@@ -123,16 +123,12 @@ let Bash=async function(session){
 		try{
 			/*#{1IG0L7VK60Code*/
 			let bash;
-			if(!globalContext.bash){
-				bash=new AgentNodeTerminal(session);
-				options=options||{};
-				options.initConda=true;
-				await bash.start(options,commands);
-				bashMap.set(bash.id,bash);
-				result=bash.id;
-			}else{
-				result=globalContext.bash;
-			}
+			bash=new AgentNodeTerminal(session);
+			options=options||{};
+			options.initConda=true;
+			await bash.start(options,commands);
+			bashMap.set(bash.id,bash);
+			result=bash.id;
 			/*}#1IG0L7VK60Code*/
 		}catch(error){
 			/*#{1IG0L7VK60ErrorCode*/
@@ -153,6 +149,9 @@ let Bash=async function(session){
 				throw Error(`Can't find bash: "${bashId}"`);
 			}
 			cmdBash=bash;
+			if(bash.sessionId){
+				session.callClient("SwitchXTerm", {session: bash.sessionId});
+			}
 			if(options.clear){
 				bash.clear();
 			}
@@ -332,36 +331,7 @@ let Bash=async function(session){
 			fqcP:0,
 			prcP:0,
 			secret:false,
-			responseFormat:{
-				"type":"json_schema",
-				"json_schema":{
-					"name":"BashReact",
-					"schema":{
-						"type":"object",
-						"description":"",
-						"properties":{
-							"action":{
-								"type":"string",
-								"description":"下一步行动",
-								"enum":[
-									"Wait","Input","AskUser","Finish"
-								]
-							},
-							"input":{
-								"type":[
-									"string","null"
-								],
-								"description":"当\"action\"为\"Input\"，要输出Terminal的内容。"
-							}
-						},
-						"required":[
-							"action","input"
-						],
-						"additionalProperties":false
-					},
-					"strict":true
-				}
-			}
+			responseFormat:"json_object"
 		};
 		let chatMem=GetReact.messages
 		let seed="";

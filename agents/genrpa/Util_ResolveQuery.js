@@ -317,7 +317,7 @@ let Util_ResolveQuery=async function(session){
 				isLooseSelector=true;
 			}
 		}
-		if(cache && cacheKind){
+		if(cache && cacheKind && cache.kind!=="status"){
 			if(!cache.kind || cache.kind !== cacheKind){
 				cache=null;
 			}

@@ -488,13 +488,10 @@ let Util_FindSelector=async function(session){
 		}
 		/*#{1JEV1AHEM0PreCall*/
 		/*}#1JEV1AHEM0PreCall*/
-		result=GenSelector.cheats[prompt]||GenSelector.cheats[input]||(chatMem && GenSelector.cheats[""+chatMem.length])||GenSelector.cheats[""];
-		if(!result){
-			if($agent){
-				result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
-			}else{
-				result=(result===undefined)?(await session.callSegLLM("GenSelector@"+agentURL,opts,messages,true)):result;
-			}
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("GenSelector@"+agentURL,opts,messages,true)):result;
 		}
 		result=trimJSON(result);
 		/*#{1JEV1AHEM0PostCall*/
@@ -510,9 +507,6 @@ let Util_FindSelector=async function(session){
 	};
 	GenSelector.jaxId="1JEV1AHEM0"
 	GenSelector.url="GenSelector@"+agentURL
-	GenSelector.cheats={
-		"":"{ \"action\": { \"type\": \"selector\", \"by\": \"css: textarea[placeholder='有什么新鲜事想分享给大家？']\" }, \"reason\": \"目标是发布编辑区的 textarea，页面仅此一处，使用唯一的 placeholder 文案即可稳定定位，且未使用 data-manual-picked 属性。\", \"summary\": \"微博首页发布编辑器存在；定位 placeholder 为“有什么新鲜事想分享给大家？”的 textarea；预期命中目标元素；风险：若占位文案改动可能失效。\" }"
-	};
 	
 	segs["FindPicked"]=FindPicked=async function(input){//:1JF01ERCT0
 		let result=true;
@@ -1907,7 +1901,7 @@ export{Util_FindSelector,ChatAPI};
 //						},
 //						"stream": "true",
 //						"secret": "false",
-//						"allowCheat": "true",
+//						"allowCheat": "false",
 //						"GPTCheats": {
 //							"attrs": [
 //								{

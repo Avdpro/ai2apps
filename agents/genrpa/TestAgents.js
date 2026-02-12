@@ -310,7 +310,7 @@ ${JSON.stringify(input,null,"\t")}
 		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {result:result};
+		return {seg:InputConent,result:(result),preSeg:"1JFIGJJL80",outlet:"1JFIGMMFA0"};
 	};
 	InputTitle.jaxId="1JFIGJJL80"
 	InputTitle.url="InputTitle@"+agentURL
@@ -344,7 +344,7 @@ ${JSON.stringify(input,null,"\t")}
 		let sourcePath=pathLib.join(basePath,"./CaRpa_GenCompose.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
-		return {result:result};
+		return {seg:Publish,result:(result),preSeg:"1JFQCHT4E0",outlet:"1JFQCHT4F0"};
 	};
 	AddImages.jaxId="1JFQCHT4E0"
 	AddImages.url="AddImages@"+agentURL
@@ -1294,7 +1294,8 @@ export{TestAgents};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JFPQSVQN0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1404,7 +1405,8 @@ export{TestAgents};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JG3IH98A0"
 //						},
 //						"outlets": {
 //							"attrs": []

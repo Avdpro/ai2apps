@@ -111,7 +111,7 @@ let ToolHfModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="hf download";
+		args['commands']="hf download --help";
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:Switch,result:(result),preSeg:"1IL0EDOSU0",outlet:"1IL0EDOSU1"};
@@ -897,7 +897,7 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "hf download",
+//						"commands": "hf download --help",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IL0EDOSU1",

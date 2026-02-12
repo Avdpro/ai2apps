@@ -192,7 +192,7 @@ let ModelDeploy=async function(session){
 			let output=input;
 			return {seg:RunConda,result:(output),preSeg:"1IJ2KK3SJ0",outlet:"1IJ2KKLVA0"};
 		}
-		if(input.action==="hf-model"){
+		if(input.action==="hf_model"){
 			let output=input;
 			return {seg:HfDownLoad,result:(output),preSeg:"1IJ2KK3SJ0",outlet:"1IJ44KI9E0"};
 		}
@@ -617,7 +617,7 @@ let ModelDeploy=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=[`conda create -n ${input.refName} python=${input.pythonVersion} -y`, `conda activate ${input.refName} || source activate ${input.refName} && echo "Successful" || echo "Failed"`];
+		args['commands']=[`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo "Successful" || echo "Failed"`];
 		args['options']="";
 		/*#{1JGUUBSIU0PreCodes*/
 		current_command=args['commands'];
@@ -1242,7 +1242,7 @@ export{ModelDeploy,ChatAPI};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#input.action===\"hf-model\""
+//										"condition": "#input.action===\"hf_model\""
 //									},
 //									"linkedSeg": "1IJ44IVQS0"
 //								},
@@ -2569,7 +2569,7 @@ export{ModelDeploy,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[`conda create -n ${input.refName} python=${input.pythonVersion} -y`, `conda activate ${input.refName} || source activate ${input.refName} && echo \"Successful\" || echo \"Failed\"`]",
+//						"commands": "#[`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo \"Successful\" || echo \"Failed\"`]",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1JGUUL0030",
