@@ -54,7 +54,7 @@ let ModelAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,Welcome,Ask,Output,Agent,Action,AskUser,Run,InitBash,Respond,Enter,Show,Again,Execute,InitBash2,Enter2,Check;
+	let FixArgs,Welcome,Ask,Output,Agent,Action,AskUser,Run,InitBash,Respond,Enter,Show,Again,Execute,InitBash2,Enter2,Check,Wrong;
 	/*#{1JGP1AAKD0LocalVals*/
 	let query="", config, skill, base_command;
 	/*}#1JGP1AAKD0LocalVals*/
@@ -177,13 +177,16 @@ let ModelAgent=async function(session){
 				const absolutePath = pathLib.join(filelibPath, assetPath);
 				fileList.push(absolutePath);
 			}
-			query = `用户要求：${userRequest}\n上传的文件：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
+			if($ln==="CN") query = `用户要求：${userRequest}\n上传的文件：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
+			else query = `User Query：${userRequest}\nUploaded Files：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
 		} else if(typeof(result) === 'string') {
 			userRequest = result;
-			query = `用户要求：${userRequest}`;
+			if($ln==="CN") query = `用户要求：${userRequest}`;
+			else query = `User Query：${userRequest}`;
 		} else if(typeof(result) === 'object') {
 			userRequest = result.text || result.prompt || JSON.stringify(result);
-			query = `用户要求：${userRequest}`;
+			if($ln==="CN") query = `用户要求：${userRequest}`;
+			else query = `User Query：${userRequest}`;
 		}
 		result=query;
 		/*}#1JGP2DSRR0PostCodes*/
@@ -261,6 +264,7 @@ let ModelAgent=async function(session){
 		${allSkillsDoc}
 		
 		**可用动作 (Actions)** - 请返回 JSON，每次仅一个动作：
+		⚠️ **严重警告：JSON 中的 "action" 字段只能是以下 5 个字符串之一。绝对禁止将 Skill 名称（如 "GenerateImage"）作为 action。**
 		
 		1. **Bash** (执行任务)
 		- 场景：执行 Skill、系统辅助命令或验证命令。
@@ -282,7 +286,7 @@ let ModelAgent=async function(session){
 		
 		4. **Chitchat** (闲聊)
 		- 场景：用户打招呼、闲聊。
-		- 格式：{"action": "Chitchat", "message": "回复内容", "reasoning": "..."}
+		- 格式：{"action": "ChitChat", "message": "回复内容", "reasoning": "..."}
 		
 		5. **Reject** (无法处理)
 		- 场景：请求超出能力范围。
@@ -309,6 +313,7 @@ let ModelAgent=async function(session){
 		
 		**Available Actions**:
 		Return JSON output:
+		⚠️ **CRITICAL WARNING: The "action" field in JSON MUST be one of the following 5 strings. NEVER use a Skill name (e.g., "GenerateImage") as an action.**
 		
 		1. **Bash** (Execute Command)
 		- Context: Running a Skill, a system command, or a verification command.
@@ -329,7 +334,7 @@ let ModelAgent=async function(session){
 			}
 		
 		4. **Chitchat** (Casual Conversation)
-		- Format: {"action": "Chitchat", "message": "response", "reasoning": "reasoning"}
+		- Format: {"action": "ChitChat", "message": "response", "reasoning": "reasoning"}
 		
 		5. **Reject** (Cannot Handle)
 		- Format: {"action": "Reject", "message": "response", "reasoning": "reasoning"}
@@ -385,7 +390,10 @@ let ModelAgent=async function(session){
 		if(input.action==="ChitChat"){
 			return {seg:Output,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JGPQPU9E0"};
 		}
-		return {seg:Show,result:(result),preSeg:"1JGP3NVPQ0",outlet:"1JGP3PR1S1"};
+		if(input.action==="Finish"){
+			return {seg:Show,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JHAD68IL0"};
+		}
+		return {seg:Wrong,result:(result),preSeg:"1JGP3NVPQ0",outlet:"1JGP3PR1S1"};
 	};
 	Action.jaxId="1JGP3NVPQ0"
 	Action.url="Action@"+agentURL
@@ -435,7 +443,7 @@ let ModelAgent=async function(session){
 		let tip=("");
 		let tipRole=("assistant");
 		let placeholder=("");
-		let allowFile=(false)||false;
+		let allowFile=(true)||false;
 		let allowEmpty=(false)||false;
 		let askUpward=(false);
 		let text=("");
@@ -471,7 +479,8 @@ let ModelAgent=async function(session){
 				const absolutePath = pathLib.join(filelibPath, assetPath);
 				fileList.push(absolutePath);
 			}
-			result = `${userResponse}\n上传的文件：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
+			if($ln==="CN") result = `${userResponse}\n上传的文件：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
+			else result = `${userResponse}\nUploaded Files：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
 		} else if(typeof(result) === 'object') {
 			result = result.text || result.prompt || JSON.stringify(result);
 		}
@@ -630,6 +639,50 @@ let ModelAgent=async function(session){
 	};
 	Check.jaxId="1JH7SQRPI0"
 	Check.url="Check@"+agentURL
+	
+	segs["Wrong"]=Wrong=async function(input){//:1JHAD6NVF0
+		let result=input
+		try{
+			/*#{1JHAD6NVF0Code*/
+			const invalidAction = input.action || "undefined";
+			const language = $ln === 'CN' ? 'zh' : 'en';
+			
+			if (language === 'zh') {
+				result = `❌ **系统格式错误警报**：
+			你生成的 JSON 中包含非法的 "action": "${invalidAction}"。
+			**严重错误**：你可能错误地将 Skill（技能）名称当作了 Action，或者编造了不存在的 Action。
+			
+			请**立即修正**。你必须严格遵守协议，**仅**从以下 5 个合法 Action 中选择一个：
+			1. **Bash** (核心！用于调用任何 Skill 或执行系统命令)
+			2. **Ask** (用于向用户询问缺少的信息)
+			3. **Finish** (任务完成，且已通过 ls -l 验证文件存在)
+			4. **Chitchat** (纯闲聊)
+			5. **Reject** (无法处理)
+			
+			请重新思考，并返回正确的 JSON。`;
+			} else {
+				result = `❌ **SYSTEM FORMAT ERROR**:
+			The "action": "${invalidAction}" in your JSON response is **INVALID**.
+			**CRITICAL ERROR**: You likely used a Skill name directly as an Action, or hallucinated an Action.
+			
+			**CORRECT IMMEDIATELY**. You MUST strictly follow the protocol and select **ONLY** from these 5 legal Actions:
+			1. **Bash** (Core! Use this to execute ANY Skill or system command)
+			2. **Ask** (To ask the user for missing info)
+			3. **Finish** (Task done AND file verification via ls -l passed)
+			4. **Chitchat** (Casual conversation)
+			5. **Reject** (Cannot handle)
+			
+			Re-think and return the valid JSON.`;
+			}
+			/*}#1JHAD6NVF0Code*/
+		}catch(error){
+			/*#{1JHAD6NVF0ErrorCode*/
+			/*}#1JHAD6NVF0ErrorCode*/
+		}
+		return {seg:Agent,result:(result),preSeg:"1JHAD6NVF0",outlet:"1JHAD7Q3H0"};
+	};
+	Wrong.jaxId="1JHAD6NVF0"
+	Wrong.url="Wrong@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1009,11 +1062,11 @@ export{ModelAgent};
 //						"outlet": {
 //							"jaxId": "1JGP3PR1S1",
 //							"attrs": {
-//								"id": "Finish",
+//								"id": "Default",
 //								"desc": "Outlet.",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JGPM3RLV0"
+//							"linkedSeg": "1JHAD6NVF0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -1116,6 +1169,31 @@ export{ModelAgent};
 //										"condition": "#input.action===\"ChitChat\""
 //									},
 //									"linkedSeg": "1JGP381J70"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JHAD68IL0",
+//									"attrs": {
+//										"id": "Finish",
+//										"desc": "Outlet.",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JHAD68IS0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JHAD68IS1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#input.action===\"Finish\""
+//									},
+//									"linkedSeg": "1JGPM3RLV0"
 //								}
 //							]
 //						}
@@ -1275,7 +1353,7 @@ export{ModelAgent};
 //						"tipRole": "Assistant",
 //						"placeholder": "",
 //						"text": "",
-//						"file": "false",
+//						"file": "true",
 //						"allowEmpty": "false",
 //						"showText": "true",
 //						"askUpward": "false",
@@ -1384,7 +1462,7 @@ export{ModelAgent};
 //						"viewName": "",
 //						"label": "",
 //						"x": "525",
-//						"y": "695",
+//						"y": "650",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1629,6 +1707,69 @@ export{ModelAgent};
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JHAD6NVF0",
+//					"attrs": {
+//						"id": "Wrong",
+//						"viewName": "",
+//						"label": "",
+//						"x": "525",
+//						"y": "715",
+//						"desc": "This is an AISeg.",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JHAD7QJD0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JHAD7QJD1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JHAD7Q3H0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JHAD78LP0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JHAD78LP0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "795",
+//						"y": "715",
+//						"outlet": {
+//							"jaxId": "1JHAD7QJD2",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JGPKDRUP0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

@@ -50,7 +50,8 @@
     "vm2": "^3.9.19",
     "ws": "^8.18.0",
     "xlsx": "^0.18.5",
-    "yahoo-finance2": "^2.13.3"
+    "yahoo-finance2": "^2.13.3",
+    "js-yaml":"*"
   },
   "devDependencies": {
     "@rollup/plugin-alias": "^3.1.5",
