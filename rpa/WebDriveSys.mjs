@@ -506,6 +506,10 @@ function hideAppByPid(pid) {
 		
 		//---------------------------------------------------------------------------
 		webDriveApp.activate=async function(){
+			if(!this.firefox) {
+				console.warn("webDriveApp.activate: firefox is null.");
+				return;
+			}
 			await activateByPid(this.firefox.pid);
 		};
 	}

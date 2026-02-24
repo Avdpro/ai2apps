@@ -662,18 +662,26 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 		timeout=opts.timeout||0;
 		node=opts.aaeId||opts.AAEId||opts.root;
 		startTime=Date.now();
+		codeTag=await ensureCodeLib(pageFrame);
 		do{
-			node=await pageFrame.callFunction((codeTag,node,selector,opts)=>{
-				let codeLib=globalThis[codeTag];
-				return codeLib.queryNode(node,selector,opts);
-			},[codeTag,node,selector,opts]);
-			if(node){
-				return node;
+			try {
+				node=await pageFrame.callFunction((codeTag,node,selector,opts)=>{
+					let codeLib=globalThis[codeTag];
+					return codeLib.queryNode(node,selector,opts);
+				},[codeTag,node,selector,opts]);
+				if(node){
+					return node;
+				}
+				await sleep(200);
+				if(timeout>0 && Date.now()-startTime>timeout){
+					return null;
+				}
+			} catch(e) {
+				console.log(`[WebDriveRpa.waitQuery] Exception: ${e.message}, codeTag: ${codeTag}, selector: ${selector}`);
+
+				throw e;
 			}
-			await sleep(200);
-			if(timeout>0 && Date.now()-startTime>timeout){
-				return null;
-			}
+			
 		}while(1);
 	}
 	
