@@ -56,7 +56,7 @@ let ModelDeployAgent=async function(session){
 		let result=input
 		try{
 			/*#{1JH0351Q70Code*/
-			let modelJSON=await tabFS.readFile(pathLib.join(basePath.slice(2),"model.json"),"utf8");
+			let modelJSON=await tabFS.readFile(pathLib.join("/doc/ModelHunt","model.json"),"utf8");
 			modelJSON=JSON.parse(modelJSON);
 			result=modelJSON;
 			if (!modelJSON.deployable.includes(model)) {
@@ -65,7 +65,7 @@ let ModelDeployAgent=async function(session){
 			} else {
 				console.log(`模型 ${model} 已存在，跳过添加。`);
 			}
-			await tabFS.writeFile(pathLib.join(basePath.slice(2),"model.json"),JSON.stringify(modelJSON,null,"\t"));
+			await tabFS.writeFile(pathLib.join("/doc/ModelHunt","model.json"),JSON.stringify(modelJSON,null,"\t"));
 			/*}#1JH0351Q70Code*/
 		}catch(error){
 			/*#{1JH0351Q70ErrorCode*/
