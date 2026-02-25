@@ -56,7 +56,7 @@ let ModelHunt=async function(session){
 		let result=input
 		try{
 			/*#{1JH0A9C8N0Code*/
-			let modelJSON=await tabFS.readFile(pathLib.join(basePath.slice(2),"model.json"),"utf8");
+			let modelJSON=await tabFS.readFile(pathLib.join("/doc/ModelHunt","model.json"),"utf8");
 			modelJSON=JSON.parse(modelJSON);
 			result=modelJSON;
 			result = modelJSON.deployable.includes(model);
@@ -114,7 +114,7 @@ let ModelHunt=async function(session){
 	segs["Use"]=Use=async function(input){//:1JH0AENRO0
 		let result;
 		let arg={model:model};
-		let agentNode=("")||null;
+		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelUseAgent.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
@@ -490,8 +490,7 @@ export{ModelHunt};
 //						},
 //						"outlets": {
 //							"attrs": []
-//						},
-//						"agentNode": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				}
