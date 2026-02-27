@@ -117,7 +117,7 @@ let AnySearchWorkflow=async function(session){
 			context.modelInfo = modelName + ', Please answer in English.';
 		};
 		
-		console.log(context.modelInfo,'context.modelInfo')
+		//	console.log(context.modelInfo,'context.modelInfo')
 		/*}#1JFSFTQFT0PreCodes*/
 		let json={
 			"query":context.modelInfo,"history":[]
@@ -238,7 +238,7 @@ let AnySearchWorkflow=async function(session){
 		};
 		callVO={url:url,method:method,argMode:"JSON",headers:headers,json:json};
 		/*#{1JFSHB9A70AboutCall*/
-		console.log("context.history",context.history);
+		//console.log("context.history",context.history);
 		/*}#1JFSHB9A70AboutCall*/
 		rsp=await session.webCall(callVO,true,30000);
 		if(rsp.code===200){
@@ -324,7 +324,7 @@ let AnySearchWorkflow=async function(session){
 		let text=("");
 		let result="";
 		/*#{1JC63DTVT0PreCodes*/
-		console.log("UserTypeQuestion ===",context.history);
+		//console.log("UserTypeQuestion ===",context.history);
 		/*}#1JC63DTVT0PreCodes*/
 		if(askUpward && tip){
 			result=await session.askUpward($agent,tip);
@@ -342,9 +342,9 @@ let AnySearchWorkflow=async function(session){
 			session.addChatText("user",result.text||result.prompt||result);
 		}
 		/*#{1JC63DTVT0PostCodes*/
-		context.externalQuestion = result;
+		//context.externalQuestion = result;
 		const userContents = context.history.map(item => item.user).filter(Boolean).join('，');
-		console.log(userContents);
+		//console.log(userContents);
 		result = {
 			userContents:userContents,
 			search: result,
@@ -994,6 +994,7 @@ let AnySearchWorkflow=async function(session){
 		}
 		result=trimJSON(result);
 		/*#{1JH04QDG10PostCall*/
+		context.externalQuestion = result.keyword;
 		result = {
 			search: result.keyword,
 			searchNum: input.searchNum > 20 ? 20 : input.searchNum,
