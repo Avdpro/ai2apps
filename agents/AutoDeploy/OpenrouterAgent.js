@@ -57,14 +57,14 @@ async function getInputModalityOutputTokens(modelName) {
 }
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
-let agent=async function(session){
+let OpenrouterAgent=async function(session){
 	let model;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
 	let FixArgs,GetInputModality,Welcome,AskInput,Generate2,Output2;
 	/*#{1HDBOSUN90LocalVals*/
-	let model_list, input_modality, max_tokens;
+	let model_list, input_modality, max_tokens, last_generated_image, flag=false;
 	/*}#1HDBOSUN90LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -103,7 +103,7 @@ let agent=async function(session){
 			/*#{1JGJH0L600Code*/
 			let response = await getInputModalityOutputTokens(model);
 			input_modality = response.modalities;
-			max_tokens = response.max_tokens;
+			max_tokens = Math.floor(response.max_tokens / 2);
 			/*}#1JGJH0L600Code*/
 		}catch(error){
 			/*#{1JGJH0L600ErrorCode*/
@@ -304,9 +304,12 @@ let agent=async function(session){
 				}
 			}
 		} else {
-			// Simple text prompt
-			prompt = input;
+			content.push({
+				type: "text",
+				text: input
+			});
 		}
+		
 		if(content.length > 0){
 			input=content;
 		}
@@ -328,13 +331,26 @@ let agent=async function(session){
 		if($agent){
 			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
 		}else{
-			result=(result===null)?(await session.callSegLLM("Generate2@"+agentURL,opts,messages,true)):result;
+			result=(result===null)?(await session.makeAICall("Generate2@"+agentURL,opts,messages,true)):result;
 		}
 		/*#{1JGJHQV9K0PostLLM*/
 		/*}#1JGJHQV9K0PostLLM*/
 		chatMem.push({role:"user",content:prompt});
 		chatMem.push({role:"assistant",content:result});
 		/*#{1JGJHQV9K0PostCall*/
+		if (result && typeof result === 'object') {
+			let lastMsg = chatMem[chatMem.length - 1];
+			if (result.images && result.images.length > 0) {
+				lastMsg.content = result.content || "（图片已生成）";
+				let imageContent = [];
+				for (let i = 0; i < result.images.length; i++) {
+					imageContent.push(result.images[i]);
+				}
+				chatMem.push({ role: "user", content: imageContent });
+			} else {
+				lastMsg.content = result.content || JSON.stringify(result);
+			}
+		}
 		/*}#1JGJHQV9K0PostCall*/
 		/*#{1JGJHQV9K0PreResult*/
 		/*}#1JGJHQV9K0PreResult*/
@@ -350,7 +366,40 @@ let agent=async function(session){
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
+		/*#{1JGJI4MHM0PreCodes*/
+		if(typeof(input) === 'object' && input.images && input.images.length > 0){
+			content=input.content;
+			if(input.content && input.content.length>0) session.addChatText(role,content,opts);
+			const images = input.images;
+			let fileOpts = { channel: $channel }; 
+			for(let i = 0; i < images.length; i ++){
+				let image = images[i];
+				if(image.type==="image_url"){
+					const regex = /^data:image\/(\w+);base64,/;
+					const data = image.image_url.url;
+					if(data){
+						last_generated_image=data;
+						flag=true;
+						const matches = data.match(regex);
+						if (matches && matches.length === 2) {
+							let saveName = `output_${Date.now()}_${i}.${matches[1]}`;
+							let savedHubName = await session.saveHubFile(saveName, data);
+							let hubUrl = "hub://" + savedHubName;
+							fileOpts.image = hubUrl;
+							session.addChatText(role, " ", fileOpts);
+						}
+					}
+				}
+			}
+		}
+		else{
+			session.addChatText(role,content,opts);
+		}
+		return {seg:AskInput,result:(result),preSeg:"1JGJI4MHM0",outlet:"1JGJI500E0"};
+		/*}#1JGJI4MHM0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1JGJI4MHM0PostCodes*/
+		/*}#1JGJI4MHM0PostCodes*/
 		return {seg:AskInput,result:(result),preSeg:"1JGJI4MHM0",outlet:"1JGJI500E0"};
 	};
 	Output2.jaxId="1JGJI4MHM0"
@@ -359,7 +408,7 @@ let agent=async function(session){
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
-		name:"agent",
+		name:"OpenrouterAgent",
 		url:agentURL,
 		autoStart:true,
 		jaxId:"1HDBOSUN90",
@@ -391,8 +440,8 @@ let agent=async function(session){
 /*}#1HDBOSUN90PostDoc*/
 
 
-export default agent;
-export{agent};
+export default OpenrouterAgent;
+export{OpenrouterAgent};
 /*Cody Project Doc*/
 //{
 //	"type": "docfile",
@@ -667,7 +716,7 @@ export{agent};
 //							},
 //							"linkedSeg": "1JGJI4MHM0"
 //						},
-//						"stream": "true",
+//						"stream": "false",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -700,7 +749,7 @@ export{agent};
 //						"x": "1100",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
