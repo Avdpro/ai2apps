@@ -2595,8 +2595,8 @@ Terminal.prototype.setMode = function(params) {
 				this.cursorHidden = false;
 				break;
 			case 1049: // alt screen buffer cursor
-				//this.saveCursor();
-				// FALL-THROUGH
+			//this.saveCursor();
+			// FALL-THROUGH
 			case 47: // alt screen buffer
 			case 1047: // alt screen buffer
 				if (!this.normal) {
@@ -2773,7 +2773,7 @@ Terminal.prototype.resetMode = function(params) {
 				this.cursorHidden = true;
 				break;
 			case 1049: // alt screen buffer cursor
-				// FALL-THROUGH
+			// FALL-THROUGH
 			case 47: // normal screen buffer
 			case 1047: // normal screen buffer - clearing it first
 				if (this.normal) {
@@ -3133,9 +3133,9 @@ function inherits(child, parent) {
 	child.prototype = new F;
 }
 
-var String = this.String;
-var setTimeout = this.setTimeout;
-var setInterval = this.setInterval;
+// var String = this.String;
+// var setTimeout = this.setTimeout;
+// var setInterval = this.setInterval;
 
 function indexOf(obj, el) {
 	var i = obj.length;

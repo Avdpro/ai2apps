@@ -48,8 +48,9 @@ async function getInputModalityOutputTokens(modelName) {
 
 		// Get input_modalities from architecture
 		const inputModalities = model.architecture?.input_modalities || [];
+		const outputModalities = model.architecture?.output_modalities || [];
 		const max_tokens = model.top_provider?.max_completion_tokens || 2048;
-		return {modalities: inputModalities, max_tokens: max_tokens};
+		return {modalities: inputModalities, max_tokens: max_tokens, output: outputModalities};
 	} catch (error) {
 		console.error('Error fetching model data:', error.message);
 		throw error;
@@ -62,9 +63,9 @@ let OpenrouterAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,GetInputModality,Welcome,AskInput,Generate2,Output2;
+	let FixArgs,GetInputModality,Welcome,AskInput,Generate2,Output2,Check,Generate1;
 	/*#{1HDBOSUN90LocalVals*/
-	let model_list, input_modality, max_tokens, last_generated_image, flag=false;
+	let model_list, input_modality, max_tokens, last_generated_image, flag=false, output_modality;
 	/*}#1HDBOSUN90LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -103,6 +104,7 @@ let OpenrouterAgent=async function(session){
 			/*#{1JGJH0L600Code*/
 			let response = await getInputModalityOutputTokens(model);
 			input_modality = response.modalities;
+			output_modality = response.output;
 			max_tokens = Math.floor(response.max_tokens / 2);
 			/*}#1JGJH0L600Code*/
 		}catch(error){
@@ -186,7 +188,7 @@ let OpenrouterAgent=async function(session){
 		}else{
 			session.addChatText("user",result.text||result.prompt||result);
 		}
-		return {seg:Generate2,result:(result),preSeg:"1JGJHEJD10",outlet:"1JGJHETJR0"};
+		return {seg:Check,result:(result),preSeg:"1JGJHEJD10",outlet:"1JGJHETJR0"};
 	};
 	AskInput.jaxId="1JGJHEJD10"
 	AskInput.url="AskInput@"+agentURL
@@ -331,7 +333,7 @@ let OpenrouterAgent=async function(session){
 		if($agent){
 			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
 		}else{
-			result=(result===null)?(await session.makeAICall("Generate2@"+agentURL,opts,messages,true)):result;
+			result=(result===null)?(await session.callSegLLM("Generate2@"+agentURL,opts,messages,true)):result;
 		}
 		/*#{1JGJHQV9K0PostLLM*/
 		/*}#1JGJHQV9K0PostLLM*/
@@ -404,6 +406,185 @@ let OpenrouterAgent=async function(session){
 	};
 	Output2.jaxId="1JGJI4MHM0"
 	Output2.url="Output2@"+agentURL
+	
+	segs["Check"]=Check=async function(input){//:1JIP30I8E0
+		let result=input;
+		if(output_modality.includes("image")){
+			return {seg:Generate1,result:(input),preSeg:"1JIP30I8E0",outlet:"1JIP31KNA0"};
+		}
+		return {seg:Generate2,result:(result),preSeg:"1JIP30I8E0",outlet:"1JIP31KNA1"};
+	};
+	Check.jaxId="1JIP30I8E0"
+	Check.url="Check@"+agentURL
+	
+	segs["Generate1"]=Generate1=async function(input){//:1JIP319SH0
+		let prompt;
+		let $platform="OpenRouter";
+		let $model=model;
+		let $agent;
+		let result=null;
+		/*#{1JIP319SH0Input*/
+		/*}#1JIP319SH0Input*/
+		
+		let opts={
+			platform:$platform,
+			mode:$model,
+			maxToken:max_tokens,
+			temperature:1,
+			topP:0.0001,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=Generate1.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"You are a smart assistant."},
+		];
+		messages.push(...chatMem);
+		/*#{1JIP319SH0PrePrompt*/
+		let content = [];
+		if(typeof(input) === 'object' && input.assets && input.assets.length > 0) {
+			prompt = input.prompt || input.text || "";
+		
+			// Add text content first
+			if(prompt) {
+				content.push({
+					type: "text",
+					text: prompt
+				});
+			}
+		
+			// Convert hub:// paths to absolute @filelib/ paths and read as base64
+			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
+			for(let i = 0; i < input.assets.length; i++) {
+				let assetPath = input.assets[i];
+				// Remove hub:// prefix if present
+				if(assetPath.startsWith('hub://')) {
+					assetPath = assetPath.substring(6);
+				}
+				const absolutePath = pathLib.join(filelibPath, assetPath);
+		
+				try {
+					// Read file as base64
+					const fileBuffer = await fsp.readFile(absolutePath);
+					const base64Data = fileBuffer.toString('base64');
+					const fileName = pathLib.basename(absolutePath);
+					const ext = pathLib.extname(fileName).toLowerCase();
+		
+					// Determine file type based on extension
+					if(['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+						// Image file - check if model supports images
+						if(input_modality && input_modality.includes('image')) {
+							const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+											ext === '.png' ? 'image/png' :
+											ext === '.gif' ? 'image/gif' : 'image/webp';
+							content.push({
+								type: "image_url",
+								image_url: {
+									url: `data:${mimeType};base64,${base64Data}`
+								}
+							});
+						}
+					} else if(['.mp4', '.mpeg', '.mov', '.webm'].includes(ext)) {
+						// Video file
+						if(input_modality && input_modality.includes('video')) {
+							const mimeType = ext === '.mp4' ? 'video/mp4' :
+											ext === '.mpeg' ? 'video/mpeg' :
+											ext === '.mov' ? 'video/mov' : 'video/webm';
+							content.push({
+								type: "video_url",
+								video_url: {
+									url: `data:${mimeType};base64,${base64Data}`
+								}
+							});
+						}
+					} else if(['.wav', '.mp3', '.aiff', '.aac', '.ogg', '.flac', '.m4a'].includes(ext)) {
+						// Audio file
+						if(input_modality && input_modality.includes('audio')) {
+							const format = ext.substring(1); // Remove the dot
+							content.push({
+								type: "input_audio",
+								input_audio: {
+									data: base64Data,
+									format: format
+								}
+							});
+						}
+					} else if(ext === '.pdf') {
+						// PDF file
+						if(input_modality && input_modality.includes('file')) {
+							content.push({
+								type: "file",
+								file: {
+									filename: fileName,
+									file_data: `data:application/pdf;base64,${base64Data}`
+								}
+							});
+						}
+					}
+				} catch(error) {
+					console.error(`Failed to read file: ${absolutePath}`, error);
+				}
+			}
+		} else {
+			content.push({
+				type: "text",
+				text: input
+			});
+		}
+		
+		if(content.length > 0){
+			input=content;
+		}
+		/*}#1JIP319SH0PrePrompt*/
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1JIP319SH0FilterMessage*/
+			if(content.length > 0)prompt=JSON.parse(prompt);
+			msg={role:"user",content:prompt};
+			/*}#1JIP319SH0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1JIP319SH0PreCall*/
+		/*}#1JIP319SH0PreCall*/
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+		}else{
+			result=(result===null)?(await session.makeAICall("Generate1@"+agentURL,opts,messages,true)):result;
+		}
+		/*#{1JIP319SH0PostLLM*/
+		/*}#1JIP319SH0PostLLM*/
+		chatMem.push({role:"user",content:prompt});
+		chatMem.push({role:"assistant",content:result});
+		/*#{1JIP319SH0PostCall*/
+		if (result && typeof result === 'object') {
+			let lastMsg = chatMem[chatMem.length - 1];
+			if (result.images && result.images.length > 0) {
+				lastMsg.content = result.content || "（图片已生成）";
+				let imageContent = [];
+				for (let i = 0; i < result.images.length; i++) {
+					imageContent.push(result.images[i]);
+				}
+				chatMem.push({ role: "user", content: imageContent });
+			} else {
+				lastMsg.content = result.content || JSON.stringify(result);
+			}
+		}
+		/*}#1JIP319SH0PostCall*/
+		/*#{1JIP319SH0PreResult*/
+		/*}#1JIP319SH0PreResult*/
+		return {seg:Output2,result:(result),preSeg:"1JIP319SH0",outlet:"1JIP319SI0"};
+	};
+	Generate1.jaxId="1JIP319SH0"
+	Generate1.url="Generate1@"+agentURL
+	Generate1.messages=[];
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -664,7 +845,7 @@ export{OpenrouterAgent};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JGJHQV9K0"
+//							"linkedSeg": "1JIP30I8E0"
 //						}
 //					},
 //					"icon": "chat.svg"
@@ -677,8 +858,8 @@ export{OpenrouterAgent};
 //						"id": "Generate2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "860",
-//						"y": "320",
+//						"x": "1105",
+//						"y": "335",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -716,7 +897,7 @@ export{OpenrouterAgent};
 //							},
 //							"linkedSeg": "1JGJI4MHM0"
 //						},
-//						"stream": "false",
+//						"stream": "true",
 //						"secret": "false",
 //						"allowCheat": "false",
 //						"GPTCheats": {
@@ -746,8 +927,8 @@ export{OpenrouterAgent};
 //						"id": "Output2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1100",
-//						"y": "320",
+//						"x": "1355",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -785,7 +966,7 @@ export{OpenrouterAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1225",
+//						"x": "1470",
 //						"y": "125",
 //						"outlet": {
 //							"jaxId": "1JGJI6E350",
@@ -821,6 +1002,143 @@ export{OpenrouterAgent};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JIP30I8E0",
+//					"attrs": {
+//						"id": "Check",
+//						"viewName": "",
+//						"label": "",
+//						"x": "860",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JIP31KNM0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JIP31KNM1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JIP31KNA1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JGJHQV9K0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JIP31KNA0",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JIP31KNM2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JIP31KNM3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#output_modality.includes(\"image\")"
+//									},
+//									"linkedSeg": "1JIP319SH0"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1JIP319SH0",
+//					"attrs": {
+//						"id": "Generate1",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1105",
+//						"y": "230",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JIP319SH1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JIP319SH2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "OpenRouter",
+//						"mode": "#model",
+//						"system": "You are a smart assistant.",
+//						"temperature": "1",
+//						"maxToken": "#max_tokens",
+//						"topP": "0.0001",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1JIP319SI0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JGJI4MHM0"
+//						},
+//						"stream": "false",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "All messages",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
 //				}
 //			]
 //		},
