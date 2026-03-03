@@ -87,6 +87,10 @@ if(GOOGLEAI_API_KEY) {
 	googleAI = new GoogleGenAI({apiKey: GOOGLEAI_API_KEY});
 }
 
+//---------------------------------------------------------------------------
+//OpenRouter (test):
+
+
 const DAYTIME=24*3600*1000;
 const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
 
@@ -450,8 +454,7 @@ export default async function(app,router,apiMap) {
 					return;
 				}
 				case "OpenRouter": {
-					// 自定义的 OpenRouter API
-					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/api/chat/completions";
+					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/v1/chat/completions";
 					const API_KEY = process.env.OPENROUTER_API_KEY || "";
 
 					try {
@@ -459,7 +462,6 @@ export default async function(app,router,apiMap) {
 							model: reqVO.model || "google/gemini-3-flash-preview",
 							messages: reqVO.messages,
 							temperature: reqVO.temperature || 1,
-							max_tokens: reqVO.max_tokens || 4096,
 							// 添加身份验证信息
 							userId: reqVO.userId,
 							token: reqVO.token,
@@ -472,7 +474,7 @@ export default async function(app,router,apiMap) {
 						if (API_KEY) {
 							headers["Authorization"] = `Bearer ${API_KEY}`;
 						}
-
+						console.log(JSON.stringify(callVO));
 						// 发送请求
 						const response = await fetch(API_URL, {
 							method: "POST",
@@ -490,12 +492,15 @@ export default async function(app,router,apiMap) {
 						}
 
 						const rawResVO = await response.json();
-						const content = rawResVO.choices?.[0]?.message?.content || "";
-
+						const message = rawResVO.choices?.[0]?.message || {};
+						let content = message?.content || "";
+						if (message.images) {
+							content = {content:content, images:message.images};
+						}
 						resVO = { code: 200, message: content };
 						res.json(resVO);
 					} catch (err) {
-						console.error("OpenRouter API error:", err);
+						console.error("OpenRouter API error:", err.message, err.cause);
 						res.json({
 							code: 500,
 							info: `OpenRouter API call failed: ${err.message}`
@@ -969,148 +974,132 @@ export default async function(app,router,apiMap) {
 					break;
 				}
 				case "OpenRouter": {
-					// OpenRouter 流式调用（模拟流式输出）
-					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/api/chat/completions";
-					const API_KEY = process.env.OPENROUTER_API_KEY || "";
+					const callVO = {
+						model: reqVO.model || "google/gemini-3-flash-preview",
+						messages: reqVO.messages,
+						temperature: reqVO.temperature || 1,
+						// 添加身份验证信息
+						userId: reqVO.userId,
+						token: reqVO.token,
+					};
+					callVO.stream = true;
 
-					let streamId, streamVO, func;
-					try {
-						const callVO = {
-							model: reqVO.model || "google/gemini-3-flash-preview",
-							messages: reqVO.messages,
-							temperature: reqVO.temperature || 1,
-							max_tokens: reqVO.max_tokens || 4096,
-							// 添加身份验证信息
-							userId: reqVO.userId,
-							token: reqVO.token,
-						};
+					let streamId, streamVO;
+					streamId = getStreamId();
+					streamVO = {
+						streamId,
+						role: "",
+						content: "",
+						textRead: "",
+						closed: false,
+						waitFunc: null,
+						errorFunc: null,
+						timer: null
+					};
+					streamMap.set(streamId, streamVO);
+					resVO = { code: 200, streamId: streamId };
+					res.json(resVO);
 
-						streamId = getStreamId();
-						streamVO = {
-							streamId,
-							role: "",
-							content: "",
-							textRead: "",
-							closed: false,
-							waitFunc: null,
-							errorFunc: null,
-							timer: null,
-							inputTokens: 0,
-							outputTokens: 0
-						};
-
-						streamMap.set(streamId, streamVO);
-						// 先不启动定时器，等到开始读取内容时再启动
-
-						resVO = { code: 200, streamId: streamId };
-						res.json(resVO);
-
-						// 构建请求头
-						const headers = {
-							"Content-Type": "application/json",
-						};
-						if (API_KEY) {
-							headers["Authorization"] = `Bearer ${API_KEY}`;
-						}
-
-						// 发送请求（非流式）- 使用更长的超时时间
-						const controller = new AbortController();
-						const fetchTimeout = setTimeout(() => controller.abort(), 300000); // 5分钟超时
-
-						let response;
+					// 流式读取放在 fire-and-forget 异步函数里，不阻塞 handler 返回
+					// 这样 handleCallHub 能立刻把 streamId 发回给 agent，agent 才能开始轮询
+					(async () => {
+						let func;
 						try {
-							response = await fetch(API_URL, {
-								method: "POST",
-								headers: headers,
+							const response = await fetch('http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/v1/chat/completions', {
+								method: 'POST',
+								headers: {
+									'Content-Type': 'application/json',
+									'Authorization': 'Bearer EMPTY',
+								},
 								body: JSON.stringify(callVO),
-								signal: controller.signal,
 							});
-						} catch (fetchErr) {
-							clearTimeout(fetchTimeout);
-							streamVO.content = `Error: Request timeout or network error - ${fetchErr.message}`;
-							streamVO.closed = true;
-							func = streamVO.waitFunc;
-							if (func) {
-								streamVO.waitFunc = null;
-								func();
-							}
-							return;
-						}
-						clearTimeout(fetchTimeout);
 
-						if (!response.ok) {
-							const errorText = await response.text();
-							streamVO.content = `Error: ${errorText}`;
-							streamVO.closed = true;
-							func = streamVO.waitFunc;
-							if (func) {
-								streamVO.waitFunc = null;
-								func();
-							}
-							return;
-						}
-
-						const rawResVO = await response.json();
-
-						// 成功获取响应后，再启动 stream 超时定时器
-						streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000); // 增加到60秒
-						const fullContent = rawResVO.choices?.[0]?.message?.content || "";
-
-						// 模拟流式输出：将内容分块逐步添加
-						const chunkSize = 20; // 每次添加的字符数
-						for (let i = 0; i < fullContent.length; i += chunkSize) {
-							const chunk = fullContent.substring(i, i + chunkSize);
-							streamVO.content += chunk;
-
-							if (streamVO.timer) {
-								clearTimeout(streamVO.timer);
-								streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000); // 60秒
-							}
-
-							if (streamVO.content !== streamVO.textRead) {
+							if (!response.ok) {
+								const errorText = await response.text();
+								streamVO.content = `Error ${response.status}: ${errorText}`;
+								streamVO.closed = true;
 								func = streamVO.waitFunc;
-								if (func) {
-									streamVO.waitFunc = null;
-									func();
+								if (func) { streamVO.waitFunc = null; func(); }
+								return;
+							}
+
+							streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000);
+
+							const reader = response.body.getReader();
+							const decoder = new TextDecoder();
+							let buffer = "";
+
+							while (true) {
+								const { done, value } = await reader.read();
+								if (done) break;
+
+								buffer += decoder.decode(value, { stream: true });
+
+								const lines = buffer.split("\n");
+								buffer = lines.pop();
+
+								for (const line of lines) {
+									const trimmed = line.trim();
+									if (!trimmed || trimmed.startsWith(":")) continue;
+									if (trimmed === "data: [DONE]") continue;
+									if (!trimmed.startsWith("data: ")) continue;
+
+									try {
+										const json = JSON.parse(trimmed.slice(6));
+										const choice0 = json.choices?.[0];
+										if (choice0) {
+											const delta = choice0.delta;
+											if (delta) {
+												if (delta.role) {
+													streamVO.role = (streamVO.role || "") + delta.role;
+												}
+												if (delta.content) {
+													streamVO.content += delta.content;
+												}
+											}
+										}
+										if (json.usage) {
+											streamVO.inputTokens = json.usage.prompt_tokens || 0;
+											streamVO.outputTokens = json.usage.completion_tokens || 0;
+										}
+									} catch (e) {
+										// 忽略解析错误
+									}
+								}
+
+								if (streamVO.timer) {
+									clearTimeout(streamVO.timer);
+									streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000);
+								}
+
+								if (streamVO.content !== streamVO.textRead) {
+									func = streamVO.waitFunc;
+									if (func) {
+										streamVO.waitFunc = null;
+										func();
+									}
 								}
 							}
 
-							// 添加小延迟以模拟流式效果
-							await new Promise(resolve => setTimeout(resolve, 10));
-						}
-
-						// 保存 token 使用信息
-						if (rawResVO.usage) {
-							streamVO.inputTokens = rawResVO.usage.prompt_tokens || 0;
-							streamVO.outputTokens = rawResVO.usage.completion_tokens || 0;
-							if (userInfo) {
-								chargePointsByUsage(userInfo, streamVO.inputTokens, streamVO.outputTokens, platform, callVO.model);
-							}
-						}
-
-						streamVO.closed = true;
-						func = streamVO.waitFunc;
-						if (func) {
-							streamVO.waitFunc = null;
-							func();
-						}
-					} catch (err) {
-						console.error("OpenRouter stream error:", err);
-						// 确保即使发生异常，streamVO 也有内容返回
-						if (streamVO && !streamVO.closed) {
-							streamVO.content = `Error: ${err.message || err}`;
 							streamVO.closed = true;
-							const func = streamVO.waitFunc;
+							func = streamVO.waitFunc;
 							if (func) {
 								streamVO.waitFunc = null;
 								func();
 							}
+							if (streamVO.inputTokens > 0) {
+								chargePointsByUsage(userInfo, streamVO.inputTokens, streamVO.outputTokens, platform, callVO.model);
+							}
+						} catch (err) {
+							console.error("OpenRouter test stream error:", err);
+							if (!streamVO.closed) {
+								streamVO.closed = true;
+								func = streamVO.waitFunc;
+								if (func) { streamVO.waitFunc = null; func(); }
+							}
 						}
-						if (!res.headersSent) {
-							res.json({ code: 500, info: `OpenRouter error: ${err.message || err}` });
-						}
-					}
-					break;
+					})();
+					return;
 				}
 			}
 		};
