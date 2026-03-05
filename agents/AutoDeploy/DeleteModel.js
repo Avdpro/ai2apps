@@ -160,7 +160,7 @@ let DeleteModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=`conda env remove -n ${conda_env}`;
+		args['commands']=`conda env remove -n ${conda_env} -y`;
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:RemoveModel,result:(result),preSeg:"1JIBV94JM0",outlet:"1JIC0EE160"};
@@ -224,7 +224,12 @@ let DeleteModel=async function(session){
 		args['action']="Command";
 		args['commands']=extra_command;
 		args['options']="";
+		/*#{1JIEG1N380PreCodes*/
+		if(!extra_command) return {seg:Finish,result:(result),preSeg:"1JIEG1N380",outlet:"1JIEG2AE40"};
+		/*}#1JIEG1N380PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1JIEG1N380PostCodes*/
+		/*}#1JIEG1N380PostCodes*/
 		return {seg:Finish,result:(result),preSeg:"1JIEG1N380",outlet:"1JIEG2AE40"};
 	};
 	Extra.jaxId="1JIEG1N380"
@@ -674,7 +679,7 @@ export{DeleteModel};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#`conda env remove -n ${conda_env}`",
+//						"commands": "#`conda env remove -n ${conda_env} -y`",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1JIC0EE160",
@@ -871,7 +876,7 @@ export{DeleteModel};
 //						"x": "1600",
 //						"y": "180",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
