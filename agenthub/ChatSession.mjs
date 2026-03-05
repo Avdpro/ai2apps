@@ -772,6 +772,7 @@ class ChatSession {
 			}
 			if (opts.image) blockVO.image = opts.image;
 			if (opts.audio) blockVO.audio = opts.audio;
+			if (opts.video) blockVO.video = opts.video;
 			await this.sendToClient("ChatBlock", blockVO);
 		}
 	}
@@ -871,7 +872,7 @@ class ChatSession {
 		}
 		return res.message;
 	}
-
+	
 	//-----------------------------------------------------------------------
 	async callHubLLM(opts, messages, waitBlk) {
 		let res;
@@ -1052,7 +1053,7 @@ class ChatSession {
 			"gpt-4-32k": "OpenAI",
 			"gpt-4-1106-preview": "OpenAI",
 		};
-
+		
 		await this.logLlmCall(codeURL,opts,messages,fromSeg,this.curAgent,this.curAISeg);
 		
 		let model = opts.model || opts.mode || "gpt-4o-mini";
@@ -1074,7 +1075,7 @@ class ChatSession {
 		
 		let waitBlk = 0;
 		if (this.agentNode) {
-			waitBlk = await this.callClient("AddWaitBlock", { text: "..." });
+			waitBlk = await this.callClient("AddWaitBlock", {});
 		}
 		
 		try {
@@ -1089,7 +1090,7 @@ class ChatSession {
 				
 				const useStream = opts.stream !== false;
 				const temperature = opts.temperature || 1;
-
+				
 				let resFormat=opts.responseFormat;
 				if(typeof(resFormat)!=="object"){
 					resFormat=resFormat === "json_object" ? "json_object" : "text";
@@ -1314,10 +1315,10 @@ class ChatSession {
 	async askUserView(vo) {
 		return await this.callClient("AskUserView", vo);
 	}
-
+	
 	//-----------------------------------------------------------------------
 	async showWait(text) {
-		return await this.callClient("AddWaitBlock", { text: text || "..." });
+		return await this.callClient("AddWaitBlock", { text: text });
 	}
 	
 	//-----------------------------------------------------------------------
@@ -1346,7 +1347,7 @@ class ChatSession {
 		}
 		this.termMap.clear();
 	}
-
+	
 	//-----------------------------------------------------------------------
 	arrayBufferToDataURL(fileName,buf){
 		let ext,result;

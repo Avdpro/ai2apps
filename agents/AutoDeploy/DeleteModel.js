@@ -160,7 +160,7 @@ let DeleteModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="`conda env remove -n ${conda_env}`";
+		args['commands']=`conda env remove -n ${conda_env}`;
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:RemoveModel,result:(result),preSeg:"1JIBV94JM0",outlet:"1JIC0EE160"};
@@ -674,7 +674,7 @@ export{DeleteModel};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "`conda env remove -n ${conda_env}`",
+//						"commands": "#`conda env remove -n ${conda_env}`",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1JIC0EE160",

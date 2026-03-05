@@ -470,6 +470,7 @@ export default async function(app,router,apiMap) {
 						// 构建请求头
 						const headers = {
 							"Content-Type": "application/json",
+							'Connection': 'close'
 						};
 						if (API_KEY) {
 							headers["Authorization"] = `Bearer ${API_KEY}`;
@@ -480,6 +481,7 @@ export default async function(app,router,apiMap) {
 							method: "POST",
 							headers: headers,
 							body: JSON.stringify(callVO),
+
 						});
 
 						if (!response.ok) {
@@ -547,48 +549,127 @@ export default async function(app,router,apiMap) {
 			//Make AI-Call:
 			switch (platform) {
 				case "Ollama":{
-					let streamId,streamVO,chatStream,func,messages;
+					const OLLAMA_URL = process.env.OLLAMA_API_URL || "http://localhost:11434/v1/chat/completions";
 					callVO = callAIObj.buildCallVO(reqVO,platform);
-					callVO.stream=true;
-					try {
-						streamId = getStreamId();
-						streamVO = {
-							streamId,
-							role:"",
-							content: "",
-							textRead: "",
-							closed: false,
-							waitFunc: null,
-							errorFunc: null,
-							timer: null
-						}
-						messages=reqVO.messages;
-						callVO.messages=messages;
+					callVO.stream = true;
+					callVO.messages = reqVO.messages;
 
+					let streamId, streamVO;
+					streamId = getStreamId();
+					streamVO = {
+						streamId,
+						role: "",
+						content: "",
+						textRead: "",
+						closed: false,
+						waitFunc: null,
+						errorFunc: null,
+						timer: null
+					};
+					streamMap.set(streamId, streamVO);
+					resVO = { code: 200, streamId: streamId };
+					res.json(resVO);
+
+					(async () => {
+						let func;
 						try {
-							chatStream = await ollama.chat(callVO, { responseType: 'stream' });
-						}catch(error){
-							console.log(error);
-							res.json({code: 500,info:`Ollama chat error: ${""+error}`});
-							return;
-						}
-						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+							const response = await fetch(OLLAMA_URL, {
+								method: 'POST',
+								headers: {
+									'Content-Type': 'application/json',
+									'Connection': 'close'
+								},
+								body: JSON.stringify(callVO),
+							});
 
-						resVO = { code: 200, streamId: streamId };
-						streamMap.set(streamId, streamVO);
-						res.json(resVO);
+							if (!response.ok) {
+								const errorText = await response.text();
+								streamVO.content = `Error ${response.status}: ${errorText}`;
+								streamVO.closed = true;
+								func = streamVO.waitFunc;
+								if (func) { streamVO.waitFunc = null; func(); }
+								return;
+							}
 
-						{
-							let content;
-							for await (const part of chatStream) {
-								content = part.message.content;
-								if (content) {
-									streamVO.content += content;
+							streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000);
+
+							const reader = response.body.getReader();
+							const decoder = new TextDecoder();
+							let buffer = "";
+
+							while (true) {
+								const { done, value } = await reader.read();
+								if (done) break;
+
+								buffer += decoder.decode(value, { stream: true });
+
+								const lines = buffer.split("\n");
+								buffer = lines.pop();
+
+								for (const line of lines) {
+									const trimmed = line.trim();
+									if (!trimmed || trimmed.startsWith(":")) continue;
+									if (trimmed === "data: [DONE]") continue;
+									if (!trimmed.startsWith("data: ")) continue;
+
+									try {
+										const json = JSON.parse(trimmed.slice(6));
+										const choice0 = json.choices?.[0];
+										if (choice0) {
+											const delta = choice0.delta;
+											if (delta) {
+												if (delta.role) {
+													streamVO.role = (streamVO.role || "") + delta.role;
+												}
+												if (delta.content) {
+													streamVO.content += delta.content;
+												}
+												// toolCalls support:
+												if (delta.tool_calls) {
+													let srcList, tgtList, i, n, idx, srcStub, tgtStub, srcFunc, tgtFunc;
+													srcList = delta.tool_calls;
+													tgtList = streamVO.toolCalls;
+													if (!tgtList) {
+														tgtList = streamVO.toolCalls = [];
+													}
+													n = srcList.length;
+													for (i = 0; i < n; i++) {
+														srcStub = srcList[i];
+														idx = srcStub.index >= 0 ? srcStub.index : i;
+														tgtStub = tgtList[idx];
+														if (!tgtStub) {
+															tgtStub = tgtList[idx] = {
+																index: idx, id: "", type: "function",
+																function: { name: "", arguments: "" }
+															};
+														}
+														if ("id" in srcStub) {
+															tgtStub.id += srcStub.id;
+														}
+														srcFunc = srcStub.function;
+														tgtFunc = tgtStub.function;
+														if (srcFunc) {
+															tgtFunc.name += srcFunc.name || "";
+															tgtFunc["arguments"] += srcFunc["arguments"] || "";
+														}
+													}
+												}
+											}
+										}
+										if (json.usage) {
+											streamVO.inputTokens = json.usage.prompt_tokens || 0;
+											streamVO.outputTokens = json.usage.completion_tokens || 0;
+										}
+									} catch (e) {
+										// ignore parse errors
+									}
 								}
-								if(streamVO.timer){
+
+								if (streamVO.timer) {
 									clearTimeout(streamVO.timer);
-									streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
+									streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000);
 								}
+
 								if (streamVO.content !== streamVO.textRead) {
 									func = streamVO.waitFunc;
 									if (func) {
@@ -597,19 +678,22 @@ export default async function(app,router,apiMap) {
 									}
 								}
 							}
+
+							streamVO.closed = true;
+							func = streamVO.waitFunc;
+							if (func) {
+								streamVO.waitFunc = null;
+								func();
+							}
+						} catch (err) {
+							console.error("Ollama stream error:", err);
+							if (!streamVO.closed) {
+								streamVO.closed = true;
+								func = streamVO.waitFunc;
+								if (func) { streamVO.waitFunc = null; func(); }
+							}
 						}
-						streamVO.closed = true;
-						func = streamVO.waitFunc;
-						if (func) {
-							streamVO.waitFunc = null;
-							func();
-						}
-					}catch(err){
-						console.error(err);
-						if(!res.headersSent) {
-							res.json({ code: 500, info: `Ollama stream error: ${err.message || err}` });
-						}
-					}
+					})();
 					break;
 				}
 				case "Claude":{
@@ -1010,6 +1094,7 @@ export default async function(app,router,apiMap) {
 								headers: {
 									'Content-Type': 'application/json',
 									'Authorization': 'Bearer EMPTY',
+									'Connection': 'close'
 								},
 								body: JSON.stringify(callVO),
 							});
