@@ -2392,7 +2392,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 		if(typeof(allowRoot)==="object"){
 			let opts=allowRoot;
 			allowRoot=opts.allowRoot||false;
-			recursive=opts.recursive||true;
+			recursive=opts.recursive!==undefined?opts.recursive:true;
 			actorId=opts.actor||null;
 		}else {
 			actorId=null;
@@ -2603,7 +2603,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 		
 		if(opts){
 			actorId=opts.actor||null;
-			recursive=opts.recursive||true;
+			recursive=opts.recursive!==undefined?opts.recursive:true;
 		}
 		
 		//console.log("JAXDisk.saveFile: Disk.saveFile: "+path);
@@ -3350,7 +3350,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 		if(!disk){
 			return false;
 		}
-		return disk.writeFileSync(diskPath,encode);
+		return disk.writeFileSync(diskPath,data,encode);
 	};
 	
 	//-----------------------------------------------------------------------
@@ -3475,10 +3475,10 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 		let entry,overwrite;
 		overwrite=options?options.force||false:false;
 		if(orgPath.endsWith("/")){
-			orgPath=orgPath.substring(orgPath.length-1);
+			orgPath=orgPath.substring(0,orgPath.length-1);
 		}
 		if(tgtPath.endsWith("/")){
-			tgtPath=tgtPath.substring(tgtPath.length-1);
+			tgtPath=tgtPath.substring(0,tgtPath.length-1);
 		}
 		entry=await JAXDisk$1.getEntry(orgPath);
 		if(!entry){
@@ -3507,7 +3507,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 		if(entry && !overwrite){
 			return false;
 		}
-		if(orgPath===tgtPath || tgtPath.startsWith(orgPath) || orgPath.startsWith(orgPath)){
+		if(orgPath===tgtPath || tgtPath.startsWith(orgPath+"/") || orgPath.startsWith(tgtPath+"/")){
 			return false;
 		}
 		JAXDisk$1.copySync(orgPath,tgtPath,options);
@@ -3549,7 +3549,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 		keys=await disk.getAllItemPath();
 		plist=[];
 		function readEntry(path){
-			return get(path,disk.store).then(fileObj=>{
+			return get(path,disk.dbStore).then(fileObj=>{
 				entries.set(path,fileObj);
 			});
 		}
@@ -3607,7 +3607,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 			}
 			[tgtName,upDir]=divPath(path);
 			if(!upDir){
-				upDir=this.entries.get(".");
+				upDirObj=this.entries.get(".");
 			}else {
 				upDirObj=this.entries.get(upDir);
 			}
@@ -3862,7 +3862,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 				return;//Can't set disk root info
 			}
 			dir=this.entries.get(dir);
-			if(dir && dir.dir) {
+			if(dir && !(dir instanceof Uint8Array)) {
 				let orgInfo=dir[fileName];
 				if(!orgInfo){
 					return false;
@@ -3895,7 +3895,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 				newPath=newPath.substring(1);
 			}
 			if(newPath.endsWith("/")){
-				newPath=newPath.substring(0,orgPath.length-1);
+				newPath=newPath.substring(0,newPath.length-1);
 			}
 			if(orgPath.startsWith("/")){
 				orgPath=orgPath.substring(1);
@@ -3969,7 +3969,7 @@ JAXDisk$1.liveDisks=TabNTDisk$1.liveDisks={};
 			if(!this.memDisk){
 				throw Error(`Disk ${this.name} is not in memory to async access.`);
 			}
-			return this.moveSync.copySync(...args);
+			return this.memDisk.moveSync(...args);
 		};
 	}
 }
@@ -15223,12 +15223,12 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 411,
+		"versionIdx": 414,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 221,
+		"versionIdx": 222,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15288,7 +15288,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-AutoDeploy",
-		"versionIdx": 32,
+		"versionIdx": 33,
 		"zip": "AutoDeploy.zip"
 	},
 	{
@@ -15301,12 +15301,12 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 411,
+		"versionIdx": 414,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 221,
+		"versionIdx": 222,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15356,7 +15356,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-AutoDeploy",
-		"versionIdx": 32,
+		"versionIdx": 33,
 		"zip": "AutoDeploy.zip"
 	},
 	{
@@ -15369,12 +15369,12 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 411,
+		"versionIdx": 414,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 221,
+		"versionIdx": 222,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15404,7 +15404,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-AutoDeploy",
-		"versionIdx": 32,
+		"versionIdx": 33,
 		"zip": "AutoDeploy.zip"
 	},
 	{
@@ -15417,12 +15417,12 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 411,
+		"versionIdx": 414,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 221,
+		"versionIdx": 222,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15447,7 +15447,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AutoDeploy",
-		"versionIdx": 32,
+		"versionIdx": 33,
 		"zip": "AutoDeploy.zip"
 	},
 	{
@@ -15457,12 +15457,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 411,
+		"versionIdx": 414,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 221,
+		"versionIdx": 222,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15522,7 +15522,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-AutoDeploy",
-		"versionIdx": 32,
+		"versionIdx": 33,
 		"zip": "AutoDeploy.zip"
 	},
 	{
