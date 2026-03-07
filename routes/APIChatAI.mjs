@@ -454,7 +454,7 @@ export default async function(app,router,apiMap) {
 					return;
 				}
 				case "OpenRouter": {
-					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/v1/chat/completions";
+					const API_URL = process.env.OPENROUTER_API_URL || "http://ec2-13-250-37-180.ap-southeast-1.compute.amazonaws.com:8050/v1/chat/completions";
 					const API_KEY = process.env.OPENROUTER_API_KEY || "";
 
 					try {
@@ -477,7 +477,7 @@ export default async function(app,router,apiMap) {
 						}
 						console.log(JSON.stringify(callVO));
 						// 发送请求
-						const response = await fetch(API_URL, {
+						const response = await fetch("http://ec2-13-250-37-180.ap-southeast-1.compute.amazonaws.com:8050/v1/chat/completions", {
 							method: "POST",
 							headers: headers,
 							body: JSON.stringify(callVO),
@@ -1089,7 +1089,7 @@ export default async function(app,router,apiMap) {
 					(async () => {
 						let func;
 						try {
-							const response = await fetch('http://ec2-54-234-128-29.compute-1.amazonaws.com:8050/v1/chat/completions', {
+							const response = await fetch('http://ec2-13-250-37-180.ap-southeast-1.compute.amazonaws.com:8050/v1/chat/completions', {
 								method: 'POST',
 								headers: {
 									'Content-Type': 'application/json',
