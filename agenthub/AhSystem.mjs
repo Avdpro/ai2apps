@@ -383,7 +383,28 @@ let AhSystem,ahSystem;
 			session.userToken = reqVO.token;
 			res.json({ code: 200, sessionId: session.sessionId});
 		};
-		
+
+		//-------------------------------------------------------------------
+		apiMap['AhGetDebugLogs']=async function(req,res){
+			let reqVO,sessionId,node,logs;
+			reqVO=req.body.vo;
+			sessionId=reqVO.sessionId;
+			if(!sessionId){
+				res.json({code:400,info:"Missing sessionId"});
+				return;
+			}
+			for(node of self.nodeMap.values()){
+				if(node.sessionDebugLogs){
+					logs=node.sessionDebugLogs.get(sessionId);
+					if(logs){
+						res.json({code:200,logs});
+						return;
+					}
+				}
+			}
+			res.json({code:200,logs:[]});
+		};
+
 		//-------------------------------------------------------------------
 		apiMap['AhListAgentNodes']=async function(req,res){
 			let reqVO,userId,token,nodeMap,nodeVO,node,staticVO;

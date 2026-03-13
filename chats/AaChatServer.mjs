@@ -24,6 +24,7 @@ let AaChatThread,aaChatThread;
 		this.stared=false;
 		this.asking=false;
 		this.askVo=null;
+		this.fixIcon=null;
 	};
 	aaChatThread=AaChatThread.prototype={};
 	
@@ -42,6 +43,7 @@ let AaChatThread,aaChatThread;
 		this.client=client;
 		this.status=STATUS_LIVE;
 		this.title=prompt.prompt||prompt;
+		this.fixIcon=prompt.fixIcon||null;
 		this.timeStamp=Date.now();
 		this.messages=[];
 	};
@@ -57,6 +59,7 @@ let AaChatThread,aaChatThread;
 		this.allowTakeOver=!!vo.allowTakeOver;
 		this.status=STATUS_DORMANT;
 		this.timeStamp=vo.timeStamp||0;
+		this.fixIcon=vo.fixIcon||null;
 	};
 	
 	//-----------------------------------------------------------------------
@@ -125,7 +128,8 @@ let AaChatThread,aaChatThread;
 			client:this.client?this.client.id:null,
 			archived:this.archived,
 			asking:this.asking,
-			askVo:this.askVo
+			askVo:this.askVo,
+			fixIcon:this.fixIcon,
 		};
 		if(withMessages){
 			vo.messages=this.messages;

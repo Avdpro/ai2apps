@@ -94,7 +94,7 @@ self.addEventListener('install',function(evt){
 			if (Array.isArray(list)) {
 				console.log("Disk SW: Disk database ready!");
 			} else {
-				set("disks", [], JAXDisk.sysStore).then(() => {
+				return set("disks", [], sysStore).then(() => {
 					console.log("Disk SW: Disk database installed!");
 				});
 			}
@@ -107,6 +107,7 @@ let routes={
 let routeCalls={};
 let nextCallIdx=1;
 let routeClientId=0;
+const routeCallTimeout=30000;
 
 let Clients=self.clients;
 function checkZombieStub(stub,checkTime){
@@ -171,7 +172,7 @@ async function routeCall(evt){
 		headers[key]=request.headers.get(key);
 	}
 	reqData=await request.arrayBuffer();
-	if(routeObj.lastCheck-timeNow>checkZombieTime) {
+	if(timeNow-routeObj.lastCheck>checkZombieTime) {
 		checkZombieStub(routeObj,timeNow);
 	}
 	//Check if route client still online:
@@ -185,10 +186,15 @@ async function routeCall(evt){
 	return new Promise((resolve,reject)=>{
 		//register callback stub:
 		if(routeObj) {
+			let timeoutTimer;
 			//Check if client alive:
 			routeCalls[callId] = {
 				callId: callId,
+				timer: null,
 				resolve: function (vo) {
+					if(timeoutTimer){
+						clearTimeout(timeoutTimer);
+					}
 					let res;
 					res = new Response(vo.body, {
 						status: vo.code,
@@ -197,6 +203,17 @@ async function routeCall(evt){
 					resolve(res);
 				}
 			};
+			timeoutTimer=setTimeout(()=>{
+				let callStub=routeCalls[callId];
+				if(callStub){
+					delete routeCalls[callId];
+					resolve(new Response("Route call timeout.", {
+						status: 504,
+						headers: { "content-type": "text/plain" },
+					}));
+				}
+			},routeCallTimeout);
+			routeCalls[callId].timer=timeoutTimer;
 			//send the request to route client:
 			client.postMessage({ msg: "RouteCall", path:routeObj.orgPath,callId:callId,
 				request:{
@@ -270,7 +287,7 @@ self.addEventListener('fetch', async (evt)=>{
 					body: JSON.stringify({ msg: "fileDownload", vo: { dir: ntPath, path: filePath } })
 				});
 				if (res.ok) {
-					let json,buf;
+					let json,buf,contentType,cache;
 					json=await res.json();
 					buf=base64_decode(json.data);
 					[contentType,cache]=getCntType(filePath);
@@ -455,16 +472,22 @@ self.addEventListener('fetch', async (evt)=>{
 					}
 				}else{
 					//The target tag is not installed on disk, try find a compatible tag:
-					let tagName,name,maxName,maxIdx,maxVO;
+					let name,maxName,maxIdx,maxVO;
+					let requestedTag=tagName;
 					maxIdx=-1;
 					maxVO=null;
-					for(tagName in tags){
-						name=tagName;
+					for(name in tags){
 						tagObj=tags[name];
-						if(tagObj.cmpTags && tagObj.cmpTags.indexOf(name)>=0 && !tagObj.redirect){
+						if(
+							!tagObj.redirect &&
+							(
+								!requestedTag ||
+								(tagObj.cmpTags && tagObj.cmpTags.indexOf(requestedTag)>=0)
+							)
+						){
 							//Find the max versionIdx, or maybe we just break and use the first compatible one we meet:
 							if(tagObj.versionIdx>maxIdx){
-								maxIdx=tagObj.versionIdx;
+							maxIdx=tagObj.versionIdx;
 								maxName=name;
 								maxVO=tagObj;
 							}
@@ -978,7 +1001,7 @@ self.addEventListener('message', function(event) {
 				let clientId=event.source.id;
 				RemoveRoute:{
 					for (let i = 0, n = list.length; i < n; i++) {
-						if (clientId === list[i].client.id) {
+						if (clientId === list[i].client.id && path === list[i].path) {
 							list.splice(i,1);
 							if(!list.length){
 								routes[lead]=null;
@@ -994,6 +1017,9 @@ self.addEventListener('message', function(event) {
 			callId=data.callId;
 			callStub=routeCalls[callId];
 			if(callStub){
+					if(callStub.timer){
+						clearTimeout(callStub.timer);
+					}
 				callStub.resolve(data.res);//data.res:{code:200,contentType:"text/plain",content:"Hello world",headers:{}}
 				delete routeCalls[callId];
 			}

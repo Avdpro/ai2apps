@@ -113,11 +113,11 @@ async function showChatThread({chatThread,embed}){
 	}
 	if(embed && embed.appendNewChild){
 		return embed.appendNewChild({
-			type:AppFrame(app,threadMeta,params,{embed:true}),x:0,y:0
+			type:AppFrame(app,runMeta,params,{embed:true}),x:0,y:0
 		});
 	}else{
 		if(app && app.newFrameApp){
-			return app.newFrameApp(threadMeta,params);
+			return app.newFrameApp(runMeta,params);
 		}
 	}
 }

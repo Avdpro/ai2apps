@@ -183,6 +183,9 @@ class AgentNode:
 			if msg == 'CreateSession':
 				await self.createSession(message.get("sessionId"),message.get("options")or{})
 
+			elif msg == 'EndSession':
+				await self.endSession(message.get("session") or message.get("sessionId"))
+
 			elif msg == 'State':
 				await self.websocket.send(json.dumps({"msg": "State","workload":self.workload}))
 
@@ -271,6 +274,16 @@ class AgentNode:
 		if self.connected:
 			await self.websocket.send(json.dumps({"msg": "SessionReady", "session": sessionId}))
 		return ssn
+
+	# -------------------------------------------------------------------------
+	async def endSession(self, sessionId):
+		ssn = self.sessionMap.get(sessionId, None)
+		if not ssn:
+			return False
+		self.sessionMap.pop(sessionId, None)
+		if self.connected:
+			await self.websocket.send(json.dumps({"msg": "EndSession", "session": sessionId}))
+		return True
 
 	# -------------------------------------------------------------------------
 	async def execAgent(self, sessionId, path, prompt):

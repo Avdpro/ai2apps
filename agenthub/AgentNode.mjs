@@ -127,6 +127,7 @@ let AgentNode,agentNode;
 		this.debugServer = null;
 		this.slowMo=false;
 		this.debugPort=-1;
+		this.sessionDebugLogs=new Map();
 
 		this.termMap=new Map();
 	}
@@ -544,6 +545,14 @@ let AgentNode,agentNode;
 						}
 					} else if (cmd === 'SlowMo') {
 						this.slowMo=!!parsedMessage.enable;
+					} else if (cmd === 'Register') {
+						ws.registeredSessionId=parsedMessage.sessionId;
+						const storedLogs=this.sessionDebugLogs.get(parsedMessage.sessionId);
+						if(storedLogs && storedLogs.length>0){
+							for(const savedLog of storedLogs){
+								await ws.send(safeJSON(savedLog));
+							}
+						}
 					}
 				} catch (err) {
 					console.error(err);
@@ -595,9 +604,26 @@ let AgentNode,agentNode;
 	//-----------------------------------------------------------------------
 	agentNode.sendDebugLog=async function(log) {
 		try {
+			if(log.session){
+				let arr=this.sessionDebugLogs.get(log.session);
+				if(!arr){
+					arr=[];
+					this.sessionDebugLogs.set(log.session,arr);
+				}
+				arr.push(log);
+			}
+			// Forward to hub for server-side accumulation (enables log replay after refresh):
+			if(this.websocket && log.session){
+				try{
+					this.websocket.send(JSON.stringify({msg:"DebugLog",session:log.session,log:log}));
+				}catch(e){}
+			}
 			const logType = log.type;
 			const serializedLog = safeJSON(log);
 			for(let ws of this.debugClients) {
+				if(ws.registeredSessionId && log.session && ws.registeredSessionId !== log.session){
+					continue;
+				}
 				await ws.send(serializedLog);
 				if (logType === 'StartSeg' && ws.debugStepRun) {
 					await ws.send(JSON.stringify({ type: 'StepPaused' }));

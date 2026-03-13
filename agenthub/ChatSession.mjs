@@ -18,7 +18,7 @@ let openAI = null;
 // *****************************************************************************
 function setupOpenAI(session) {
 	if (openAI) return openAI;
-	
+
 	const key = session.agentNode.hubJSON?.key_OpenAI;
 	if (key) {
 		openAI = new OpenAI({
@@ -74,7 +74,7 @@ let frameSeqId=0;
 
 class ChatSession {
 	static agentDict = {};
-	
+
 	constructor(basePath, node = null, sessionId = null, options = {}) {
 		this.basePath = basePath;
 		this.curPath = null;
@@ -104,31 +104,31 @@ class ChatSession {
 			}
 		}
 		this.termMap=new Map();
-		
+
 		this.debugStarted=false;
 		this.debugConnected=false;
-		
+
 		this.callClientFromAgent=null;
 		this.callClientAskSeg=null;
 	}
-	
+
 	// -------------------------------------------------------------------------
 	// Show version:
 	showVersion() {
 		console.log("ChatSession 0.02");
 	}
-	
+
 	//--------------------------------------------------------------------------
 	async startDebug(agentURL,entryDef){
 		this.debugStarted=true;
 		try{
-			await this.callClient("ConnectAgentDebug",{address:this.agentNode.address,port:this.agentNode.debugPort,entryURL:agentURL,entryAgent:entryDef});
+			await this.callClient("ConnectAgentDebug",{address:this.agentNode.address,port:this.agentNode.debugPort,entryURL:agentURL,entryAgent:entryDef,sessionId:this.sessionId});
 		}catch(err){
 			return;
 		}
 		this.debugConnected=true;
 	};
-	
+
 	// -------------------------------------------------------------------------
 	async sendToClient(msg, vo) {
 		const message = JSON.stringify({
@@ -141,14 +141,14 @@ class ChatSession {
 		});
 		await this.agentNode.websocket.send(message);
 	}
-	
+
 	// ----------------------------------------------------------------------
 	async callClient(msg, vo) {
 		const callId = String(this.nextCallId++);
 		const pms = new Promise((resolve, reject) => {
 			this.callMap.set(callId,{ resolve, reject });
 		});
-		
+
 		const message = JSON.stringify({
 			msg: "CallClient",
 			sessionId: this.sessionId,
@@ -158,7 +158,7 @@ class ChatSession {
 		await this.agentNode.websocket.send(message);
 		return pms;
 	}
-	
+
 	// ----------------------------------------------------------------------
 	async clientCallResult(callId, result) {
 		const stub = this.callMap.get(callId);
@@ -166,7 +166,7 @@ class ChatSession {
 		this.callMap.delete(callId);
 		stub.resolve(result);
 	}
-	
+
 	// ----------------------------------------------------------------------
 	async clientCallError(callId, error) {
 		const stub = this.callMap.get(callId);
@@ -174,7 +174,7 @@ class ChatSession {
 		this.callMap.delete(callId);
 		stub.reject(new Error(error));
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async handleMessage(msg,vo){
 		let handler;
@@ -184,17 +184,17 @@ class ChatSession {
 		}
 		return await handler(vo);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async indentMore(){
 		await this.callClient("IndentMore",{});
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async indentLess(){
 		await this.callClient("IndentLess",{});
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async handleCall(msg,vo){
 		let handler;
@@ -216,7 +216,7 @@ class ChatSession {
 		}
 		return await handler(vo);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async loadAgent(fromAgent, path) {
 		let agent = null;
@@ -234,7 +234,7 @@ class ChatSession {
 		if (agent){
 			return agent;
 		}
-		
+
 		let entryPath = path;
 		if (entryPath.startsWith("/@")) {
 			entryPath = "../" + entryPath.slice(2);
@@ -272,7 +272,7 @@ class ChatSession {
 			throw e;
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async runSeg(agent, segVO) {
 		let result = null;
@@ -280,11 +280,11 @@ class ChatSession {
 		let input = segVO.input || segVO.result || "";
 		let seg = segVO.seg;
 		let oldSeg=this.curAISeg;
-		
+
 		if ("catchSeg" in segVO) {
 			catchSeg = segVO.catchSeg;
 		}
-		
+
 		try {
 			while (seg) {
 				const segAct = await this.logSegStart(agent, result || segVO);
@@ -296,18 +296,18 @@ class ChatSession {
 				}
 				this.curAISeg=oldSeg;
 				await this.logSegEnd(agent, segAct, result);
-				
+
 				if (typeof(result)==="object" && "result" in result) {
 					input = result.result;
 				}
-				
+
 				if (result.seg) {
 					seg = result.seg;
 				} else {
 					seg = null;
 					result = input;
 				}
-				
+
 				if (seg && result.catchSeg) {
 					return await this.runSeg(agent, result);
 				}
@@ -315,7 +315,7 @@ class ChatSession {
 		} catch (e) {
 			console.error(`Caught error: [${e.name}]: ${e.message}`);
 			console.error("Traceback (most recent call last):", e.stack);
-			
+
 			const info = `Caught error: ${e} at ${getErrorLocation(e)}`;
 			if (catchSeg) {
 				await this.logCatchError(agent,""+e);
@@ -329,7 +329,7 @@ class ChatSession {
 		}
 		return result;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async execAgent(agentPath, input, opts) {
 		const fromAgent = this.curAgent;
@@ -346,13 +346,13 @@ class ChatSession {
 		agent.agentFrameId=frameSeqId++;
 		agent.upperAgent=opts.fromAgent||opts.upperAgent||fromAgent;
 		agent.askUpwardSeg=opts.askUpwardSeg||null;
-		
+
 		this.curAgent=agent;
-		
+
 		if(!this.debugStarted){
 			await this.startDebug(agent.url,sourceDef);
 		}
-		
+
 		await this.logAgentStart(agent,input);
 		const entry = await agent.execChat(input);
 		let result = await this.runSeg(agent, entry);
@@ -363,7 +363,7 @@ class ChatSession {
 		this.curAgent = fromAgent; // Restore the previous agent
 		return result;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	//TODO: Never called?
 	async execAISeg(agent, seg, input,fromSeg,fromOutlet) {
@@ -375,7 +375,7 @@ class ChatSession {
 		};
 		return await this.runSeg(agent, execVO);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async runAISeg(agent, seg, input,fromSeg,fromOutlet) {
 		const execVO = {
@@ -386,7 +386,7 @@ class ChatSession {
 		};
 		return await this.runSeg(agent, execVO);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async askUpward(agent,prompt){
 		let askAgent,askUpwardSeg,result;
@@ -427,19 +427,20 @@ class ChatSession {
 		}
 		return result;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async debugLog(log){
 		console.log(log);
 		await this.logSegLog(log,this.curAgent,this.curAISeg);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logAgentStart(agent,input) {
 		if (!this.agentNode) return;
-		
+
 		const log = {
 			type: "StartAgent",
+			session: this.sessionId,
 			agent: agent.jaxId,
 			name:agent.name,
 			url:agent.url,
@@ -452,12 +453,13 @@ class ChatSession {
 		}
 		//await this.sendToClient("DebugLog", log);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logAgentEnd(agent,result) {
 		if (!this.agentNode) return;
 		const log = {
 			type: "EndAgent",
+			session: this.sessionId,
 			agent: agent.jaxId,
 			name:agent.name,
 			url:agent.url,
@@ -469,17 +471,17 @@ class ChatSession {
 		}
 		//await this.sendToClient("DebugLog", log);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logSegStart(agent, segVO) {
 		let agentNode=this.agentNode;
 		if (!agentNode)
 			return;
-		
+
 		const seg = segVO.seg || null;
 		if (!seg)
 			return;
-		
+
 		const segAct = {
 			agent: agent.jaxId,
 			name: seg.name || "seg",
@@ -507,11 +509,11 @@ class ChatSession {
 		}
 		return segAct;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logSegEnd(agent, segAct, result) {
 		if (!this.agentNode) return;
-		
+
 		segAct["result"] = result||null;
 		const log = {
 			type: "EndSeg",
@@ -523,11 +525,12 @@ class ChatSession {
 		}
 		//await this.sendToClient("DebugLog", log);
 	}
-	
+
 	async logCatchError(agent,error){
 		if (!this.agentNode) return;
 		const log = {
 			type: "CatchError",
+			session: this.sessionId,
 			agent: agent.jaxId,
 			url:agent.url,
 			frameId:agent.agentFrameId,
@@ -535,7 +538,7 @@ class ChatSession {
 		};
 		await this.agentNode.sendDebugLog(log);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logLlmCall(codeURL,opts,messages,fromSeg,agent,seg){
 		if(!this.agentNode){
@@ -563,7 +566,7 @@ class ChatSession {
 		}
 		//await this.sendToClient("DebugLog", log);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logLlmResult(codeURL,opts,messages,result,agent,seg){
 		if(!this.agentNode){
@@ -592,7 +595,7 @@ class ChatSession {
 		}
 		//await this.sendToClient("DebugLog", log);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async logSegLog(message,agent,seg){
 		if(!this.agentNode){
@@ -610,14 +613,14 @@ class ChatSession {
 		}
 		//await this.sendToClient("DebugLog", log);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async importFile(filePath) {
 		const name = pathLib.basename(filePath).replace(/\.js$/, "");
 		const module = await import(pathLib.resolve(filePath));
 		return module.default || module;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async loadAPIFromFile(filePath) {
 		if (!filePath.startsWith("/")) {
@@ -633,7 +636,7 @@ class ChatSession {
 			return null;
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async loadAISegAPIs(list) {
 		const allApis = [];
@@ -646,7 +649,7 @@ class ChatSession {
 		}
 		return allApis;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async readFile(path, outputFormat) {
 		if (!path.startsWith("/")) {
@@ -656,7 +659,7 @@ class ChatSession {
 		const content = await fsp.readFile(path, outputFormat === "text" ? "utf8" : null);
 		return content;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async writeFile(path, content, outputFormat) {
 		if (!path.startsWith("/")) {
@@ -665,13 +668,13 @@ class ChatSession {
 		}
 		await fsp.writeFile(path, content, outputFormat === "text" ? "utf8" : null);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async saveHubTextFile(fileName, text) {
 		const content = Buffer.from(text, "utf-8").toString("base64");
 		return await this.saveHubFile(fileName, content);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async saveHubFile(fileName, content) {
 		if (typeof content === "string") {
@@ -689,7 +692,7 @@ class ChatSession {
 			}
 			content = Buffer.from(content, "utf-8").toString("base64");
 		}
-		
+
 		const res = await this.callHub("AhFileSave", { fileName, data: content });
 		if (res && res.code === 200) {
 			await this.callClient("NewHubFile",res.fileName);
@@ -698,7 +701,7 @@ class ChatSession {
 		const errorInfo = res ? `${res.code}: ${res.info}` : "Unknown error";
 		throw new Error(`Save hub file ${fileName} failed: ${errorInfo}`);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async loadHubFile(fileName, outputFormat = "utf-8") {
 		outputFormat = outputFormat.toLowerCase();
@@ -707,7 +710,7 @@ class ChatSession {
 			const errorInfo = res ? `${res.code}: ${res.info}` : "Unknown error";
 			throw new Error(`Load hub file ${fileName} failed: ${errorInfo}`);
 		}
-		
+
 		const decodedBytes = Buffer.from(res.data, "base64");
 		switch (outputFormat) {
 			case "utf-8":
@@ -733,7 +736,7 @@ class ChatSession {
 				return res.data;
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async getHubPath(fileName){
 		if(fileName.startsWith("hub://")){
@@ -746,7 +749,7 @@ class ChatSession {
 		}
 		return res.path;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async normURL(url) {
 		if (url.startsWith("hub://")) {
@@ -755,7 +758,7 @@ class ChatSession {
 		}
 		return url;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async addChatText(role, content, opts = {}) {
 		if (this.agentNode) {
@@ -776,16 +779,16 @@ class ChatSession {
 			await this.sendToClient("ChatBlock", blockVO);
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async resizeImage(dataURL, maxSize, imgFormat = "jpeg") {
 		const imageData = Buffer.from(dataURL.split(",")[1], "base64");
 		const metadata = await sharp(imageData).metadata();
-		
+
 		let { width: orgW, height: orgH } = metadata;
 		let newW = orgW;
 		let newH = orgH;
-		
+
 		if (orgW > maxSize) {
 			newH = Math.floor((orgH * maxSize) / orgW);
 			newW = maxSize;
@@ -794,20 +797,20 @@ class ChatSession {
 			newW = Math.floor((newW * maxSize) / newH);
 			newH = maxSize;
 		}
-		
+
 		if (orgW <= maxSize && orgH <= maxSize) {
 			return dataURL;
 		}
-		
+
 		const resizedBuffer = await sharp(imageData)
 			.resize(newW, newH)
 			.toFormat(imgFormat.toLowerCase())
 			.toBuffer();
-		
+
 		const resizedBase64 = resizedBuffer.toString("base64");
 		return `data:image/${imgFormat.toLowerCase()};base64,${resizedBase64}`;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async askChatInput(vo) {
 		const askVO = {
@@ -819,12 +822,12 @@ class ChatSession {
 		};
 		return await this.callClient("AskChatInput", askVO);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async callHub(msg, vo) {
 		return await this.agentNode.callHub(msg, vo, this);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async callHubAI(opts, messages, waitBlk) {
 		let res;
@@ -856,7 +859,7 @@ class ChatSession {
 		if (seed) {
 			callVO.seed = seed;
 		}
-		
+
 		const apis = opts.apis;
 		if (apis) {
 			callVO.functions = apis.functions;
@@ -872,7 +875,7 @@ class ChatSession {
 		}
 		return res.message;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async callHubLLM(opts, messages, waitBlk) {
 		let res;
@@ -904,7 +907,7 @@ class ChatSession {
 		if (seed) {
 			callVO.seed = seed;
 		}
-		
+
 		const apis = opts.apis;
 		if (apis) {
 			callVO.functions = apis.functions;
@@ -918,7 +921,7 @@ class ChatSession {
 		if (res.code !== 200) {
 			throw new Error(`AIStreamCall failed: ${res.code}:${res.info}`);
 		}
-		
+
 		const streamId = res.streamId;
 		const streamObj = {};
 		while (!res.closed) {
@@ -928,7 +931,7 @@ class ChatSession {
 			}
 			const content = res.message || "";
 			streamObj.content = content;
-			
+
 			if (res.functionCall) {
 				streamObj.functionCall = res.functionCall;
 			}
@@ -941,14 +944,14 @@ class ChatSession {
 			if (res.outputTokens >= 0) {
 				streamObj.outputTokens = res.outputTokens;
 			}
-			
+
 			await this.sendToClient("SetWaitBlockText", { block: waitBlk, text: content });
 		}
-		
+
 		const content = streamObj.content;
 		const functionCall = streamObj.functionCall;
 		const toolCalls = streamObj.toolCalls;
-		
+
 		if (functionCall) {
 			const name = functionCall.name;
 			const stub = opts.apis.stubs[name];
@@ -1006,7 +1009,7 @@ class ChatSession {
 		}
 		return content;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async makeAICall(codeURL,opts,messages,fromSeg=false){
 		const model2Platform = {
@@ -1040,7 +1043,7 @@ class ChatSession {
 		await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
 		return result;
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async callSegLLM(codeURL, opts, messages, fromSeg) {
 		const model2Platform = {
@@ -1053,9 +1056,9 @@ class ChatSession {
 			"gpt-4-32k": "OpenAI",
 			"gpt-4-1106-preview": "OpenAI",
 		};
-		
+
 		await this.logLlmCall(codeURL,opts,messages,fromSeg,this.curAgent,this.curAISeg);
-		
+
 		let model = opts.model || opts.mode || "gpt-4o-mini";
 		let platform;
 		{
@@ -1072,12 +1075,12 @@ class ChatSession {
 				platform= model2Platform[model] || opts.platform;
 			}
 		}
-		
+
 		let waitBlk = 0;
 		if (this.agentNode) {
 			waitBlk = await this.callClient("AddWaitBlock", {});
 		}
-		
+
 		try {
 			if (platform === "OpenAI") {
 				const openAI = setupOpenAI(this);
@@ -1087,15 +1090,15 @@ class ChatSession {
 					await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
 					return result;
 				}
-				
+
 				const useStream = opts.stream !== false;
 				const temperature = opts.temperature || 1;
-				
+
 				let resFormat=opts.responseFormat;
 				if(typeof(resFormat)!=="object"){
 					resFormat=resFormat === "json_object" ? "json_object" : "text";
 				}
-				
+
 				let completion;
 				if (opts.apis) {
 					const apis = opts.apis;
@@ -1104,7 +1107,7 @@ class ChatSession {
 						apiHash[stub.def.name] = stub;
 						return { type: "function", function: stub.def };
 					});
-					
+
 					completion = await openAI.createChatCompletion({
 						model,
 						temperature,
@@ -1123,7 +1126,7 @@ class ChatSession {
 						stream: useStream,
 					});
 				}
-				
+
 				if (useStream) {
 					const content = [];
 					const toolCalls=[];
@@ -1201,7 +1204,7 @@ class ChatSession {
 			}
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async findAgent(find){
 		//TODO: add server-local agent.
@@ -1212,7 +1215,7 @@ class ChatSession {
 			return null;
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async callAgent(agentNode,path,input,opts){
 		if(path && path.kind){
@@ -1253,21 +1256,21 @@ class ChatSession {
 			return await this.execAgent(path, input,opts);
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async pipeChat(path, input, hideInter = false) {
 		return await this.execAgent(path, input);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async webCall(vo, fromAgent, timeout) {
 		const url = vo.url;
 		const method = vo.method || "GET";
 		const headers = vo.headers || {};
 		const argMode = vo.argMode || null;
-		
+
 		let response;
-		
+
 		if (argMode === "JSON") {
 			headers["Content-Type"] = "application/json";
 			response = await fetch(url, {
@@ -1292,7 +1295,7 @@ class ChatSession {
 		} else {
 			response = await fetch(url, { method, headers });
 		}
-		
+
 		const responseBody = await response.text();
 		if (response.ok) {
 			return { code: 200, data: responseBody };
@@ -1300,37 +1303,37 @@ class ChatSession {
 			return { code: response.status, info: responseBody };
 		}
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async askUserRaw(vo) {
 		return await this.callClient("AskUserRaw", vo);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async askUserDlg(vo) {
 		return await this.callClient("AskUserDlg", vo);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async askUserView(vo) {
 		return await this.callClient("AskUserView", vo);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async showWait(text) {
 		return await this.callClient("AddWaitBlock", { text: text });
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async setWaitText(waitBlk, text) {
 		await this.sendToClient("SetWaitBlockText", { block: waitBlk, text });
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async removeWait(waitBlk) {
 		await this.sendToClient("RemoveWaitBlock", { block: waitBlk });
 	}	// Additional methods would follow the same pattern
-	
+
 	//-----------------------------------------------------------------------
 	regTerminal(term,ownBySession){
 		if(ownBySession!==false) {
@@ -1338,7 +1341,7 @@ class ChatSession {
 		}
 		this.agentNode.regTerminal(term);
 	}
-	
+
 	//-----------------------------------------------------------------------
 	async closeTerminals(){
 		let terms=this.termMap.values();
@@ -1347,7 +1350,7 @@ class ChatSession {
 		}
 		this.termMap.clear();
 	}
-	
+
 	//-----------------------------------------------------------------------
 	arrayBufferToDataURL(fileName,buf){
 		let ext,result;

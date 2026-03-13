@@ -167,7 +167,8 @@ let AaChatDb,aaChatDb;
 				userId: thread.userId,
 				timeStamp: thread.timeStamp,
 				star: !!thread.star,
-				status: thread.status
+				status: thread.status,
+				fixIcon: thread.fixIcon||null,
 			});
 		}catch(err){
 			console.log("NewThread DB Error:");
