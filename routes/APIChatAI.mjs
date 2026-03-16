@@ -90,6 +90,20 @@ if(GOOGLEAI_API_KEY) {
 //---------------------------------------------------------------------------
 //OpenRouter (test):
 
+async function fetchWithRetry(url, opts, retries = 3, delay = 1000) {
+	const NO_RETRY = new Set([400, 401, 403, 404]);
+	for (let i = 0; i < retries; i++) {
+		try {
+			const res = await fetch(url, opts);
+			if (res.ok || NO_RETRY.has(res.status)) return res;
+			if (i < retries - 1) await new Promise(r => setTimeout(r, delay * (i + 1)));
+			else return res;
+		} catch (err) {
+			if (i === retries - 1) throw err;
+			await new Promise(r => setTimeout(r, delay * (i + 1)));
+		}
+	}
+}
 
 const DAYTIME=24*3600*1000;
 const USERINFO_PROJECTION={rank:1,rankExpire:1,points:1,coins:1,token:1,tokenExpire:1,lastLogin:1,tokens:1,AIUsage:1};
@@ -477,12 +491,12 @@ export default async function(app,router,apiMap) {
 						}
 						console.log(JSON.stringify(callVO));
 						// 发送请求
-						const response = await fetch("http://ec2-13-250-37-180.ap-southeast-1.compute.amazonaws.com:8050/v1/chat/completions", {
+						const response = await fetchWithRetry(API_URL, {
 							method: "POST",
 							headers: headers,
 							body: JSON.stringify(callVO),
-
 						});
+						console.log(JSON.stringify(response));
 
 						if (!response.ok) {
 							const errorText = await response.text();
@@ -1089,7 +1103,8 @@ export default async function(app,router,apiMap) {
 					(async () => {
 						let func;
 						try {
-							const response = await fetch('http://ec2-13-250-37-180.ap-southeast-1.compute.amazonaws.com:8050/v1/chat/completions', {
+							const API_URL_STREAM = process.env.OPENROUTER_API_URL || 'http://ec2-13-250-37-180.ap-southeast-1.compute.amazonaws.com:8050/v1/chat/completions';
+							const response = await fetchWithRetry(API_URL_STREAM, {
 								method: 'POST',
 								headers: {
 									'Content-Type': 'application/json',

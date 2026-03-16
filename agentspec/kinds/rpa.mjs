@@ -1,6 +1,6 @@
 const rpaKind = {
     kind: 'rpa',
-
+    
     // semantics:
     // - In find.must/find.prefer, keys mean the agent *has* the capability/arg; they do NOT mean "execute".
     // - By default, all args can also be treated as capabilities for matching/sorting.
@@ -9,18 +9,20 @@ const rpaKind = {
         findIsHasCapOnly: true,
         // 语义约定：所有 args 默认也可作为 capability key 被 find.must / find.prefer 引用
         argsAreCapsByDefault: true,
+        // 语义约定：invoke.args 建议使用 capability 对应的“点号键”传参（如 "login.ensure": true），不要使用嵌套对象（如 {login:{ensure:true}}）
+        invokeArgsPreferDottedKeys: true,
     },
-
+    
     caps: {
         // blockers
         'blockers.check': {
             kind: 'cap',
-            desc: '检查当前页面是否包含阻挡操作的干扰（Cookie 同意/订阅弹窗/模态对话框/遮罩层/插屏等）'
+            desc: '检查当前页面是否包含阻挡操作的干扰（Cookie 同意/订阅弹窗/模态对话框/遮罩层/插屏等）。注意：这是能力键，不是 invoke 参数键；需要清理时应传 blockers.clear=true。'
         },
         'blockers.clear': {
             kind: 'arg',
             type: 'boolean',
-            desc: '自动清理阻挡操作的干扰（Cookie 同意/订阅弹窗/模态对话框/遮罩层/插屏等），以恢复可点击/可滚动状态'
+            desc: '自动清理阻挡操作的干扰（Cookie 同意/订阅弹窗/模态对话框/遮罩层/插屏等），以恢复可点击/可滚动状态。应作为 invoke args 传入（例如 {"blockers.clear": true}）。'
         },
         //result:
         'blockers.check.result': {
@@ -37,12 +39,12 @@ const rpaKind = {
         // login
         'login.check': {
             kind: 'cap',
-            desc: '检查当前是否已登录（返回已登录/未登录，或给出原因）'
+            desc: '检查当前是否已登录（返回已登录/未登录，或给出原因）。编排层应优先通过 invoke 调用该能力，不建议手写页面级登录判断流程。'
         },
         'login.ensure': {
             kind: 'arg',
             type:'boolean',
-            desc: '确保已登录（先 check；若未登录则引导用户在页面完成登录/验证码等交互流程；不持久化保存任何登录信息/凭据。若通过安全通道注入一次性凭据/会话信息，也必须仅用于本次运行）'
+            desc: '确保已登录开关。建议在 invoke login.* 时显式传入 login.ensure=true：先 check；若未登录则引导用户在页面完成登录/验证码等交互流程；不持久化保存任何登录信息/凭据。若通过安全通道注入一次性凭据/会话信息，也必须仅用于本次运行。'
         },
         'login.interactive': {
             kind: 'cap',
@@ -106,6 +108,11 @@ const rpaKind = {
             values: ['user', 'post', 'product', 'shop'],
             desc: '当 search.target="entity" 时生效，用于细分实体类型（用户/帖子/商品/店铺等）。'
         },
+        'search.login': {
+            kind: 'arg',
+            type: 'string',
+            desc: '搜索前登录策略：auto|true|false（默认 auto）。auto 时按站点域名判断是否需要登录；true 强制执行 invoke + login.ensure=true；false 跳过登录检查。'
+        },
         'search.minResults': {
             kind: 'arg',
             type: 'number',
@@ -123,7 +130,42 @@ const rpaKind = {
                 }
             }
         },
-
+        
+        // find-until (probe + advance loop)
+        'find.until': {
+            kind: 'cap',
+            desc: '在当前页面循环查找目标信息：若未找到，则按允许的原子动作（如 click/scroll/goto）推进页面，直到找到或达到上限。'
+        },
+        'find.goal': {
+            kind: 'arg',
+            type: 'string',
+            desc: '要查找的目标信息描述（自然语言）。'
+        },
+        'find.allowedActions': {
+            kind: 'arg',
+            type: 'array<enum>',
+            values: ['click', 'scroll', 'goto'],
+            desc: '可选。允许用于推进页面的原子动作白名单（默认 ["click","scroll","goto"]）。'
+        },
+        'find.maxSteps': {
+            kind: 'arg',
+            type: 'number',
+            desc: '可选。最多推进轮数（best-effort，默认 5）。达到上限仍未找到则失败。'
+        },
+        'find.result': {
+            kind: 'result',
+            desc: 'find.until 成功时的 value 结构',
+            done: {
+                value: {
+                    found: { type: 'boolean', desc: '是否已找到目标信息' },
+                    answer: { type: 'string', required: false, desc: '找到后的简要结论（best-effort）' },
+                    confidence: { type: 'number', required: false, desc: '置信度（0~1，best-effort）' },
+                    evidence: { type: 'array<string>', required: false, desc: '命中证据（best-effort）' },
+                    stepsUsed: { type: 'number', required: false, desc: '本次使用的推进步数（best-effort）' },
+                }
+            }
+        },
+        
         // reading
         'read.action': {
             kind: 'arg',
@@ -137,7 +179,7 @@ const rpaKind = {
                 comments: { required: [], optional: ['read.target', 'read.minItems', 'read.filter', 'read.sort', 'read.fields', 'read.requireFields', 'read.output'] },
                 reactions: { required: [], optional: ['read.target', 'read.fields', 'read.requireFields', 'read.output'] },
                 profile: { required: [], optional: ['read.target', 'read.fields', 'read.requireFields', 'read.output'] },
-                batch: { required: [], optional: ['read.target', 'read.minItems', 'read.filter', 'read.sort', 'read.fields', 'read.requireFields', 'read.output'] },
+                batch: { required: [], optional: ['read.target', 'read.minItems', 'read.concurrency', 'read.filter', 'read.sort', 'read.fields', 'read.requireFields', 'read.output'] },
             }
         },
         'read.article': {
@@ -174,6 +216,11 @@ const rpaKind = {
             type: 'number',
             desc: '用于 list/comments/batch：尽量至少返回的条目数量（best-effort）。达到该数量或已无更多结果时停止。'
         },
+        'read.concurrency': {
+            kind: 'arg',
+            type: 'number',
+            desc: '用于 batch：并发读取数量上限（best-effort，默认 2）。'
+        },
         'read.filter': {
             kind: 'arg',
             type: 'array<object>',
@@ -188,8 +235,8 @@ const rpaKind = {
         'read.output': {
             kind: 'arg',
             type: 'enum',
-            values: ['raw', 'markdown', 'json'],
-            desc: '输出格式偏好。raw=原始字段值；markdown=适合展示；json=结构化输出（字段仍由 read.fields/requireFields 决定）。'
+            values: ['raw', 'markdown', 'json', 'text'],
+            desc: '输出格式偏好。仅允许：raw|markdown|json|text。raw=原始字段值；markdown=保留 markdown 结构（含图片/链接）；json=结构化输出（字段仍由 read.fields/requireFields 决定）；text=纯文本（去图片 markdown）。未指定时建议默认 markdown。'
         },
         'read.detail': {
             kind: 'arg',
@@ -206,7 +253,7 @@ const rpaKind = {
         },
         'read.reactions': {
             kind: 'cap',
-            desc: '读取 post 的互动数据（赞/踩/收藏/转发/评论数等，字段由 outFields 指定）'
+            desc: '读取 post 的互动数据（赞/踩/收藏/转发/评论数等，字段由 read.fields 指定）'
         },
         'read.profile': {
             kind: 'cap',
@@ -299,26 +346,26 @@ const rpaKind = {
                 }
             }
         },
-
+        
         // loadMore
         'loadMore': {
             kind: 'cap',
-            desc: '在当前页面加载更多列表内容（自动判断使用下一页/滚动/“加载更多”按钮等方式）'
+            desc: '在当前页面“继续拉取列表条目”（列表增长导向）。用于信息流/分页列表场景，目标是让 items 数量变多；可通过下一页/滚动/“加载更多”按钮等方式实现。与 showMore 的区别：showMore 主要用于展开折叠内容，不要求一定新增列表条目。'
         },
         'loadMore.target': {
             kind: 'arg',
             type: 'object',
-            desc: '可选。用于指定要加载更多的列表/信息流目标（by=query|selector|auto）。缺省表示页面主列表/主内容流。'
+            desc: '可选。指定要“继续拉取”的列表/信息流目标（by=query|selector|auto）。缺省表示页面主列表/主内容流。'
         },
         'loadMore.minNewItems': {
             kind: 'arg',
             type: 'number',
-            desc: '可选。期望本次至少新增的条目数量（best-effort，默认 1）。用于判断是否“确实加载到了更多”。'
+            desc: '可选。期望本次至少新增的条目数量（best-effort，默认 1）。用于判断是否“确实拉到了更多列表条目”。'
         },
         'loadMore.maxTries': {
             kind: 'arg',
             type: 'number',
-            desc: '可选。最多尝试次数（best-effort，默认 3）。用于避免无限加载循环。'
+            desc: '可选。最多尝试次数（best-effort，默认 3）。用于避免无限加载循环；达到次数后仍不足 minNewItems 则可返回失败/部分成功。'
         },
         'loadMore.result': {
             kind: 'result',
@@ -349,17 +396,19 @@ const rpaKind = {
         'compose.action':{
             kind: 'arg',
             type: 'enum',
-            values: ['start','input','file','publish','edit'],
+            values: ['start','input','file','publish','edit','postOnce'],
             desc: '撰写的动作（用于路由到对应的原子/短任务链）',
             // action -> 参数约束（required/optional 仅用于校验与生成提示；不影响 must/prefer 的 has-cap 语义）
             argsByAction: {
-                start:   { required: [], optional: ['compose.type','compose.visibility'] },
-                input:   { required: [], optional: ['compose.field','compose.text','compose.blocks'] },
+                start:   { required: [], optional: ['compose.type','compose.visibility','compose.resetDraftOnStart'] },
+                input:   { required: [], optional: ['compose.field','compose.text','compose.blocks','compose.to','compose.cc','compose.bcc','compose.subject','compose.fieldPolicy'] },
                 file:    { required: ['compose.files'], optional: ['compose.field'] },
-                publish: { required: [], optional: ['compose.visibility'] },
-                edit:    { required: ['compose.parent'], optional: ['compose.field','compose.text','compose.blocks','compose.files','compose.visibility'] },
+                publish: { required: [], optional: ['compose.visibility','compose.strictVisibility'] },
+                edit:    { required: ['compose.parent'], optional: ['compose.field','compose.text','compose.blocks','compose.files','compose.visibility','compose.to','compose.cc','compose.bcc','compose.subject','compose.fieldPolicy'] },
+                // 一次性发帖/发布（组合动作）：统一只接收 compose.post 聚合参数
+                postOnce:{ required: ['compose.post'], optional: [] },
             }
-
+            
         },
         'compose.start':{
             kind: 'cap',
@@ -377,20 +426,69 @@ const rpaKind = {
             kind: 'cap',
             desc: '具备发布能力（可将已撰写内容发布/发送/提交）'
         },
+        'compose.postOnce':{
+            kind: 'cap',
+            desc: '具备一次性完成发帖能力（start -> input/file -> publish 的组合能力）'
+        },
         'compose.edit':{
             kind: 'cap',
             desc: '具备编辑已发布内容的能力'
         },
+        'compose.post':{
+            kind: 'arg',
+            type: 'object',
+            desc: '一次性发帖的聚合参数对象。建议字段：type,title,content,subtitle,tags,blocks,files,visibility,strictVisibility,resetDraftOnStart,fieldPolicy。其中 content 为必填，visibility 为可选。',
+            schema: {
+                required: ['content'],
+                type: 'post|article|thread|comment|reply',
+                title: 'string (optional)',
+                content: 'string (required)',
+                subtitle: 'string (optional)',
+                tags: 'array<string> (optional)',
+                blocks: 'array<object> (optional)',
+                files: 'array<string> (optional)',
+                visibility: 'public|draft|private|fansOnly|friendsOnly (optional)',
+                strictVisibility: 'boolean (optional)',
+                resetDraftOnStart: 'boolean (optional)',
+                fieldPolicy: 'strict|fallback|assist (optional)'
+            }
+        },
         'compose.field':{
             kind: 'arg',
             type: 'enum',
-            values: ['title','content','tag','subtitle','image','video'],
+            values: ['title','content','tag','subtitle','image','video','to','cc','bcc','subject'],
             desc: '填写的目标，默认为"content"'
         },
         'compose.text':{
             kind: 'arg',
             type: 'string',
             desc: '要填写的内容文本'
+        },
+        'compose.to':{
+            kind: 'arg',
+            type: 'array<string>',
+            desc: '收件人列表（邮箱地址）；用于邮件/私信场景'
+        },
+        'compose.cc':{
+            kind: 'arg',
+            type: 'array<string>',
+            desc: '抄送列表（邮箱地址）；用于邮件场景'
+        },
+        'compose.bcc':{
+            kind: 'arg',
+            type: 'array<string>',
+            desc: '密送列表（邮箱地址）；用于邮件场景'
+        },
+        'compose.subject':{
+            kind: 'arg',
+            type: 'string',
+            desc: '主题/标题文本（邮件等场景）'
+        },
+        'compose.fieldPolicy':{
+            kind: 'arg',
+            type: 'enum',
+            values: ['strict','fallback','assist'],
+            desc: '当目标字段在当前网站不存在时的策略：strict=失败；fallback=按规则降级（如 title/subtitle -> content）；assist=请求用户手动完成。默认 strict'
         },
         'compose.block':{
             kind: 'arg',
@@ -411,6 +509,16 @@ const rpaKind = {
             kind: 'arg',
             type: 'string',
             desc: '发布的可见范围, ["public","draft","private","fansOnly","friendsOnly"]'
+        },
+        'compose.strictVisibility':{
+            kind: 'arg',
+            type: 'boolean',
+            desc: '发布前设置 compose.visibility 时是否启用严格模式。true=设置失败则中止发布；false=设置失败也继续发布（默认 false）'
+        },
+        'compose.resetDraftOnStart':{
+            kind: 'arg',
+            type: 'boolean',
+            desc: 'compose.start 时是否清空编辑器已有草稿内容。默认 true'
         },
         //compose results:
         'compose.result': {
@@ -435,7 +543,7 @@ const rpaKind = {
                 }
             }
         },
-
+        
         // content management
         'delete.post': {
             kind: 'cap',
@@ -532,6 +640,10 @@ const rpaKind = {
             values: ['like','dislike','bookmark','follow','share','repost','open','expand','collapse', 'select'],
             desc: '交互动作类型（不代表一定执行；find.must/find.prefer 仅表示具备能力；执行时由 invoke args 指定 action）'
         },
+        'interact.open': {
+            kind: 'cap',
+            desc: '支持执行 interact.action=open（在当前页主对象或目标列表项上执行打开动作）'
+        },
         'interact.selectMode': {
             kind: 'arg',
             type: 'enum',
@@ -557,7 +669,7 @@ const rpaKind = {
         'interact.control': {
             kind: 'arg',
             type: 'object',
-            desc: '可选。用于在 target 选中的容器内部再次定位具体可点击控件（按钮/链接）。支持 by=query|selector|auto。省略则根据 interact.action 自动定位。实现时应限制在容器内查找以减少误点'
+            desc: '可选。用于在 target 选中的容器内部再次定位具体可点击控件（按钮/链接）。支持 by=query|selector|auto，并支持 pick（number=第N个/ -1 最后一个；string=文本包含）在多命中时二次选择。省略则根据 interact.action 自动定位。实现时应限制在容器内查找以减少误点'
         },
         //interac result:
         'interact.result': {
@@ -592,33 +704,7 @@ const rpaKind = {
                 }
             }
         },
-
-        //open
-        'open': {
-            kind: 'cap',
-            desc: '支持打开浏览器/页面'
-        },
-        'open.focus': {
-            kind: 'arg',
-            type: 'boolean',
-            desc: '是否聚焦打开的页面，默认为true'
-        },
-        'open.focusBack': {
-            kind: 'arg',
-            type: 'boolean',
-            desc: '聚焦打开的页面后，是否切回来，默认为true'
-        },
-        'open.result': {
-            kind: 'result',
-            desc: 'open 成功时的 value 结构',
-            done: {
-                value: {
-                    pageRef: { type: 'string', required: false, desc: '新页面引用（若有）' },
-                    url: { type: 'string', required: false, desc: '打开的 url（若可获取）' },
-                }
-            }
-        },
-
+        
         // download
         'download': {
             kind: 'cap',
@@ -655,7 +741,7 @@ const rpaKind = {
             type: 'boolean',
             desc: '可选。是否允许一次下载多个文件。默认 false。'
         },
-
+        
         //browser
         'browser.headless': {
             kind: 'cap',
@@ -673,12 +759,8 @@ const rpaKind = {
             kind: 'cap',
             desc: '支持 cookie 管理和持久化'
         },
-
+        
         // ai related
-        'ai.query': {
-            kind: 'cap',
-            desc: '支持 AI 辅助查询和解析（使用 LLM 理解页面结构）'
-        },
         'ai.extract': {
             kind: 'cap',
             desc: '支持 AI 智能提取内容（从复杂 HTML 中提取结构化数据）'
@@ -687,18 +769,20 @@ const rpaKind = {
         // web chat
         'webChat':{
             kind: 'cap',
-            desc: '支持 Web IM/聊天（Discord/WhatsApp Web/各类 Web AI Bot 等），以“会话/消息”为中心提供原子/短任务链。'
+            desc: '支持 Web 聊天（优先面向网页 AI 对话，其次兼容 IM）。以“会话/消息”为中心提供原子/短任务链；同一接口覆盖 ChatGPT/Claude/Gemini/Perplexity Web 与常见 Web IM。'
         },
         'webChat.action':{
             kind: 'arg',
             type: 'enum',
-            values: ['getSessions','newSession','enterSession','getMessages','loadMoreMessages','searchMessages','addAsset','input','send','react','markRead','waitReply'],
-            desc: 'Web chat 动作（用于路由到对应的原子/短任务链）。',
+            values: ['getSessions','newSession','deleteSession','renameSession','enterSession','getMessages','loadMoreMessages','searchMessages','addAsset','input','send','react','markRead','waitReply'],
+            desc: 'Web chat 动作（用于路由到对应的原子/短任务链）。当前阶段优先保证 AI 对话链路：enterSession/getMessages/send/waitReply。',
             
             // argsByAction 仅用于说明/校验；find.must/find.prefer 仍表示 has-cap。
             argsByAction: {
                 getSessions: { optional: ['webChat.limit','webChat.fields'] },
                 newSession: { required: ['webChat.session'], optional: ['webChat.text','webChat.assets'] },
+                deleteSession: { required: ['webChat.session'], optional: ['webChat.confirm'] },
+                renameSession: { required: ['webChat.session'], optional: ['webChat.confirm'] },
                 enterSession: { required: ['webChat.session'] },
                 getMessages: { optional: ['webChat.session','webChat.limit','webChat.cursor','webChat.direction','webChat.minNew','webChat.fields'] },
                 loadMoreMessages: { optional: ['webChat.session','webChat.minNew'] },
@@ -714,9 +798,9 @@ const rpaKind = {
         'webChat.session':{
             kind: 'arg',
             type: 'object',
-            desc: '会话/频道/线程 descriptor（用于 enterSession/newSession 等）。兼容：也可传 string 作为 title。',
+            desc: '会话/频道/线程 descriptor（用于 enterSession/newSession 等）。兼容：也可传 string 作为 title。AI 对话时建议显式提供 kind=ai 与 title/path。',
             schema: {
-                kind: 'dm|group|channel|thread (optional)',
+                kind: 'ai|dm|group|channel|thread (optional)',
                 title: 'string (optional)',
                 id: 'string (optional)',
                 path: 'array<string> (optional, e.g. ["Server","Channel","Thread"])',
@@ -747,12 +831,12 @@ const rpaKind = {
         'webChat.fields':{
             kind: 'arg',
             type: 'array<string>',
-            desc: '可选。期望输出/抽取的字段（如 id/ts/author/text/assets/reactions 等），best-effort。'
+            desc: '可选。期望输出/抽取的字段（如 id/ts/author/role/text/assets/reactions/model/status 等），best-effort。AI 对话建议至少包含 role+text。'
         },
         'webChat.text':{
             kind: 'arg',
             type: 'string',
-            desc: '可选。输入或发送的文本内容。'
+            desc: '可选。输入或发送的文本内容。AI 场景等价于 prompt。'
         },
         'webChat.assets':{
             kind: 'arg',
@@ -788,12 +872,17 @@ const rpaKind = {
         'webChat.query':{
             kind: 'arg',
             type: 'string',
-            desc: '可选。会话内搜索关键词（用于 searchMessages）。'
+            desc: '可选。会话内搜索关键词（用于 searchMessages）。AI 对话可用于检索历史问答片段。'
         },
         'webChat.reaction':{
             kind: 'arg',
             type: 'string',
             desc: '可选。反应/表情（emoji 或名称），用于 react。'
+        },
+        'webChat.confirm':{
+            kind: 'arg',
+            type: 'boolean',
+            desc: '可选。危险/不可逆动作的确认开关（如 deleteSession）。默认 true；若为 false，流程可只探测并返回可执行状态。'
         },
         'webChat.message':{
             kind: 'arg',
@@ -803,13 +892,16 @@ const rpaKind = {
         //webChat results:
         'webChat.result': {
             kind: 'result',
-            desc: 'webChat 成功时的 value 结构（由 webChat.action 路由，best-effort）',
+            desc: 'webChat 成功时的 value 结构（由 webChat.action 路由，best-effort）。items 在 AI 场景建议包含 role(user/assistant/system)、text、status(streaming/done/error)、model（可选）。',
             done: {
                 value: {
                     action: { type: 'string', desc: '本次执行的 webChat.action' },
                     session: { type: 'object', required: false, desc: '会话 descriptor（若适用）' },
                     items: { type: 'array<object>', required: false, desc: '会话列表或消息列表（best-effort）' },
                     cursor: { type: 'string', required: false, desc: '游标（用于继续拉取/等待回复，best-effort）' },
+                    created: { type: 'boolean', required: false, desc: 'newSession 是否创建成功（best-effort）' },
+                    deleted: { type: 'boolean', required: false, desc: 'deleteSession 是否删除成功（best-effort）' },
+                    renamed: { type: 'boolean', required: false, desc: 'renameSession 是否重命名成功（best-effort）' },
                     sent: { type: 'boolean', required: false, desc: 'send 是否已发送成功（best-effort）' },
                 }
             }
@@ -848,7 +940,7 @@ const rpaKind = {
             values: ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es'],
             desc: '目标页面/内容语言（用于选择解析策略/输出语言）',
         },
-
+        
         //auth
         'authMode': {
             kind: 'arg',
@@ -866,7 +958,7 @@ const rpaKind = {
             type: 'string',
             desc: '登录密码（authMode=password 时使用）',
         },
-
+        
         // crawler
         'maxPages': {
             kind: 'arg',
@@ -915,7 +1007,7 @@ const rpaKind = {
             type: 'string',
             desc: '自定义 User-Agent',
         },
-
+        
         // timing
         'waitMs': {
             kind: 'arg',
@@ -954,7 +1046,7 @@ const rpaKind = {
             type: 'number',
             desc: '失败重试次数（默认 0）',
         },
-
+        
         // others
         'xpath': {
             kind: 'arg',
@@ -978,9 +1070,34 @@ const rpaKind = {
         },
         'showMore':{
             kind: 'cap',
-            desc: '显示更多内容',
+            desc: '在当前页面“展开折叠内容”（展开导向）。用于“更多正文/更多评论/展开描述/显示全部”等场景；不要求一定新增列表条目。与 loadMore 的区别：loadMore 关注列表条目增长，showMore 关注可见内容展开。'
         },
-
+        'showMore.target':{
+            kind: 'arg',
+            type: 'object',
+            desc: '可选。指定要检测/展开的区域或入口（by=query|selector|auto）。缺省表示主内容区域。'
+        },
+        'showMore.checkOnly':{
+            kind: 'arg',
+            type: 'boolean',
+            desc: '可选。是否只检测当前是否存在可展开内容而不执行展开。true=仅检查；false=按策略执行展开。默认 false。'
+        },
+        'showMore.expand':{
+            kind: 'arg',
+            type: 'boolean',
+            desc: '可选。是否在检测到“可展开内容”时自动执行展开。true=检测到即展开；false=仅返回检测结果。默认 true。'
+        },
+        'showMore.maxTries':{
+            kind: 'arg',
+            type: 'number',
+            desc: '可选。最大展开尝试次数（best-effort，默认 2），用于多层“展开更多”场景。'
+        },
+        'showMore.timeoutMs':{
+            kind: 'arg',
+            type: 'number',
+            desc: '可选。单次检测/展开等待超时（毫秒，best-effort，默认 8000）。'
+        },
+        
         // ------------------------------------------------------------
         // results (规范 done.value 的结构；保持外层 {status,value,logs,meta} 不变)
         // - kind:'result' 不参与 find.must/find.prefer 的 has-cap 匹配，仅用于约束/文档/校验
@@ -990,18 +1107,19 @@ const rpaKind = {
             desc: 'showMore 成功时的 value 结构',
             done: {
                 value: {
+                    blocked: { type: 'boolean', required: false, desc: '是否检测到“存在折叠/可展开内容”（check 结果）' },
                     expanded: { type: 'boolean', desc: '是否已展开更多内容（best-effort）' },
                     newItems: { type: 'number', required: false, desc: '若用于列表扩展，本次新增条目数量（best-effort）' },
+                    reason: { type: 'string', required: false, desc: '未展开/展开失败时的原因（best-effort）' },
                 }
             }
         },
-
+        
         // env/ai capability placeholders（通常仅用于 has-cap；若被调用可返回 supported=true）
         'browser.headless.result': { kind: 'result', desc: 'browser.headless 返回占位', done: { value: { supported: { type: 'boolean', desc: '是否支持（固定 true）' } } } },
         'browser.devtools.result': { kind: 'result', desc: 'browser.devtools 返回占位', done: { value: { supported: { type: 'boolean', desc: '是否支持（固定 true）' } } } },
         'browser.profile.result': { kind: 'result', desc: 'browser.profile 返回占位', done: { value: { supported: { type: 'boolean', desc: '是否支持（固定 true）' } } } },
         'browser.cookies.result': { kind: 'result', desc: 'browser.cookies 返回占位', done: { value: { supported: { type: 'boolean', desc: '是否支持（固定 true）' } } } },
-        'ai.query.result': { kind: 'result', desc: 'ai.query 返回占位', done: { value: { data: { type: 'any', desc: 'AI 查询结果（实现自定义）' } } } },
         'ai.extract.result': { kind: 'result', desc: 'ai.extract 返回占位', done: { value: { data: { type: 'any', desc: 'AI 提取结果（实现自定义）' } } } },
     },
     
@@ -1049,10 +1167,9 @@ const rpaKind = {
             missing: 'last',
         },
     },
-
+    
     defaultRanks: ['successRate', 'latency', 'size'],
 }
 
 export default rpaKind
 export {rpaKind}
-
