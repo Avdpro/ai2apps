@@ -15223,7 +15223,7 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 426,
+		"versionIdx": 427,
 		"zip": "coke.zip"
 	},
 	{
@@ -15233,7 +15233,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 219,
+		"versionIdx": 220,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15301,7 +15301,7 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 426,
+		"versionIdx": 427,
 		"zip": "coke.zip"
 	},
 	{
@@ -15311,7 +15311,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 219,
+		"versionIdx": 220,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15369,7 +15369,7 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 426,
+		"versionIdx": 427,
 		"zip": "coke.zip"
 	},
 	{
@@ -15379,7 +15379,7 @@ var previewDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 219,
+		"versionIdx": 220,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15417,7 +15417,7 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 426,
+		"versionIdx": 427,
 		"zip": "coke.zip"
 	},
 	{
@@ -15427,7 +15427,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 219,
+		"versionIdx": 220,
 		"zip": "homekit.zip"
 	},
 	{
@@ -15457,7 +15457,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 426,
+		"versionIdx": 427,
 		"zip": "coke.zip"
 	},
 	{
@@ -15467,7 +15467,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-homekit",
-		"versionIdx": 219,
+		"versionIdx": 220,
 		"zip": "homekit.zip"
 	},
 	{
@@ -17850,7 +17850,11 @@ let MainUI=function(app){
 			if(appParams.app){
 				document.location.href = document.location.origin + `/@homekit?app=${appParams.app}`;
 			}else {
-				document.location.href = document.location.origin + "/@homekit";
+				if(appParams.notdev){
+					document.location.href = document.location.origin + "/@homekit?notdev=1";
+				}else {
+					document.location.href = document.location.origin + "/@homekit";
+				}
 			}
 		}
 	};
