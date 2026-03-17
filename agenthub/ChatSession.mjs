@@ -926,8 +926,9 @@ class ChatSession {
 		const streamObj = {};
 		while (!res.closed) {
 			res = await this.callHub("readAIChatStream", { streamId });
+			console.log(`[DBG] readAIChatStream res: code=${res.code}, closed=${res.closed}, info=${res.info}, content_len=${res.message?.length}`);
 			if (res.code !== 200) {
-				break;
+				throw new Error(`AIStreamCall failed: ${res.code}: ${res.info}`);
 			}
 			const content = res.message || "";
 			streamObj.content = content;
@@ -1046,6 +1047,7 @@ class ChatSession {
 
 	//-----------------------------------------------------------------------
 	async callSegLLM(codeURL, opts, messages, fromSeg) {
+		console.log(`[DBG] callSegLLM called, fromSeg=${fromSeg}, agentNode=${!!this.agentNode}`);
 		const model2Platform = {
 			"gpt-4o": "OpenAI",
 			"gpt-4o-mini": "OpenAI",
@@ -1198,6 +1200,22 @@ class ChatSession {
 				await this.logLlmResult(codeURL,opts,messages,result,this.curAgent,this.curAISeg);
 				return result;
 			}
+		} catch(err) {
+			console.log(`[DBG] callSegLLM catch: err=${err}, fromSeg=${fromSeg}, agentNode=${!!this.agentNode}`);
+			if(fromSeg && this.agentNode) {
+				const $ln = this.language;
+				const rawResult = await this.callClient("AskUserRaw", {
+					type: "confirm",
+					text: ($ln === "CN") ? `调用LLM错误: ${err}\n你想再试一次吗?` : `Call LLM error: ${err}\nWould you like to try again?`,
+					button1: ($ln === "CN") ? "再试一次" : "Try again",
+					button2: ($ln === "CN") ? "中止" : "Abort"
+				});
+				const tryAgain = Array.isArray(rawResult) ? rawResult[1] : rawResult;
+				if(tryAgain) {
+					return await this.callSegLLM(codeURL, opts, messages, fromSeg);
+				}
+			}
+			throw err;
 		} finally {
 			if (this.agentNode) {
 				await this.sendToClient("RemoveWaitBlock", { block: waitBlk });

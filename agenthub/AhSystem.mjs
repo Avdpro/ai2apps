@@ -65,6 +65,8 @@ let AhSystem,ahSystem;
 		this.staticNodes=[];
 		this.staticNodeMap=new Map();
 		this.nodeMap=new Map();
+		this.threadSessionMap=new Map(); // threadId -> sessionId, for debug restore
+		this.threadSessionFile=null; // set during setup
 		//Make agent dir path:
 		this.agentDir=AH_AgentDir;
 		this.condaPath=AH_CondaPath;
@@ -315,7 +317,17 @@ let AhSystem,ahSystem;
 		self=this;
 		app=self.app;
 		this.apiMap=apiMap;
-		
+
+		// Load persisted thread→session map
+		self.threadSessionFile=pathLib.join(app.get("AppHomePath"),"dbgSession.json");
+		try{
+			const raw=await fs.readFile(self.threadSessionFile,"utf8");
+			const obj=JSON.parse(raw);
+			for(const [k,v] of Object.entries(obj)){
+				self.threadSessionMap.set(k,v);
+			}
+		}catch(e){}
+
 		await self.startHub();
 		await AhFileLib.setup(self,app,router,apiMap);
 		await AgentSpecs.init();
@@ -402,7 +414,47 @@ let AhSystem,ahSystem;
 					}
 				}
 			}
-			res.json({code:200,logs:[]});
+			// Not in memory (server restarted) — try file:
+			try{
+				const logFile=pathLib.join(app.get("AppHomePath"),"logs",`dbgLogs_${sessionId}.json`);
+				const raw=await fs.readFile(logFile,"utf8");
+				logs=JSON.parse(raw);
+				res.json({code:200,logs});
+			}catch(e){
+				res.json({code:200,logs:[]});
+			}
+		};
+
+		//-------------------------------------------------------------------
+		apiMap['AhSaveDebugSession']=async function(req,res){
+			let reqVO,threadId,sessionId;
+			reqVO=req.body.vo;
+			threadId=reqVO.threadId;
+			sessionId=reqVO.sessionId;
+			if(!threadId || !sessionId){
+				res.json({code:400,info:"Missing threadId or sessionId"});
+				return;
+			}
+			self.threadSessionMap.set(threadId,sessionId);
+			// Persist to file
+			try{
+				const obj=Object.fromEntries(self.threadSessionMap);
+				await fs.writeFile(self.threadSessionFile,JSON.stringify(obj),"utf8");
+			}catch(e){}
+			res.json({code:200});
+		};
+
+		//-------------------------------------------------------------------
+		apiMap['AhGetDebugSession']=async function(req,res){
+			let reqVO,threadId,sessionId;
+			reqVO=req.body.vo;
+			threadId=reqVO.threadId;
+			if(!threadId){
+				res.json({code:400,info:"Missing threadId"});
+				return;
+			}
+			sessionId=self.threadSessionMap.get(threadId)||null;
+			res.json({code:200,sessionId});
 		};
 
 		//-------------------------------------------------------------------

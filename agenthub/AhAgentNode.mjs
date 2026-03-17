@@ -66,7 +66,8 @@ let AhAgentNode,ahAgentNode;
 		this.callMap=new Map();
 		this.handlerMap=ahAgentNode.handlerMap;
 		this.termMap=new Map();
-		
+		this.sessionDebugLogs=new Map();
+
 		this.workload=0;
 	};
 	ahAgentNode=AhAgentNode.prototype={};
@@ -588,13 +589,23 @@ let AhAgentNode,ahAgentNode;
 	
 	//-----------------------------------------------------------------------
 	ahAgentNode.OnDebugLog=async function(message){
-		let session;
-		session=message.session||message.sessionId;
-		session=this.sessionMap.get(session);
-		if(session){
-			await session.sendToClient("DebugLog",message.log);//send debug log to client
-			return true;
+		let sessionId,session;
+		sessionId=message.session||message.sessionId;
+		// Accumulate for log replay after refresh:
+		if(sessionId && message.log){
+			let arr=this.sessionDebugLogs.get(sessionId);
+			if(!arr){ arr=[]; this.sessionDebugLogs.set(sessionId,arr); }
+			arr.push(message.log);
+			// Persist to file for restore after server restart:
+			try{
+				const logsDir=pathLib.join(this.app.get("AppHomePath"),"logs");
+				await fs.mkdir(logsDir,{recursive:true});
+				const logFile=pathLib.join(logsDir,`dbgLogs_${sessionId}.json`);
+				await fs.writeFile(logFile,JSON.stringify(arr),"utf8");
+			}catch(e){}
 		}
+		// Note: direct debug WebSocket (port 5001+) handles live delivery to browser.
+		// We only accumulate here so AhGetDebugLogs can replay logs after refresh.
 	}
 	
 	//-----------------------------------------------------------------------

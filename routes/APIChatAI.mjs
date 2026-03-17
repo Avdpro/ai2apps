@@ -228,7 +228,11 @@ export default async function(app,router,apiMap) {
 				textGot = streamVO.content;
 			}
 			textRead = streamVO.textRead;
-			if(streamVO.closed && streamVO.refusal){
+			if(streamVO.closed && streamVO.error){
+				console.log(`[DBG] readAIChatStream returning 500, error=${streamVO.error}`);
+				res.json({ code: 500, info: streamVO.error });
+				return;
+			}else if(streamVO.closed && streamVO.refusal){
 				streamVO.textRead = textGot;
 				res.json({ code: 500, info:`AI refused: ${streamVO.refusal}`});
 				return;
@@ -249,6 +253,10 @@ export default async function(app,router,apiMap) {
 				streamVO.errorFunc = reject;
 			})
 			await pms;
+			if(streamVO.error){
+				res.json({ code: 500, info: streamVO.error });
+				return;
+			}
 			textGot = streamVO.content;
 			streamVO.textRead = textGot;
 			res.json({ code: 200, message: textGot, closed: streamVO.closed,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens });
@@ -598,7 +606,7 @@ export default async function(app,router,apiMap) {
 
 							if (!response.ok) {
 								const errorText = await response.text();
-								streamVO.content = `Error ${response.status}: ${errorText}`;
+								streamVO.error = `${response.status}: ${errorText}`;
 								streamVO.closed = true;
 								func = streamVO.waitFunc;
 								if (func) { streamVO.waitFunc = null; func(); }
@@ -1116,7 +1124,7 @@ export default async function(app,router,apiMap) {
 
 							if (!response.ok) {
 								const errorText = await response.text();
-								streamVO.content = `Error ${response.status}: ${errorText}`;
+								streamVO.error = `${response.status}: ${errorText}`;
 								streamVO.closed = true;
 								func = streamVO.waitFunc;
 								if (func) { streamVO.waitFunc = null; func(); }
@@ -1194,6 +1202,7 @@ export default async function(app,router,apiMap) {
 							console.error("OpenRouter test stream error:", err);
 							if (!streamVO.closed) {
 								streamVO.closed = true;
+								streamVO.error = `${err}`;
 								func = streamVO.waitFunc;
 								if (func) { streamVO.waitFunc = null; func(); }
 							}
