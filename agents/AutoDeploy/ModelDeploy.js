@@ -414,7 +414,7 @@ let ModelDeploy=async function(session){
 		if(input.is_network_issue){
 			return {seg:Retry,result:(input),preSeg:"1J5DAI4RE0",outlet:"1J5DAMHU40"};
 		}
-		return {result:result};
+		return {seg:Fail,result:(result),preSeg:"1J5DAI4RE0",outlet:"1J5DAMHU41"};
 	};
 	CheckNetwork.jaxId="1J5DAI4RE0"
 	CheckNetwork.url="CheckNetwork@"+agentURL
@@ -548,8 +548,32 @@ let ModelDeploy=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=input;
+		let content=(input);
+		/*#{1JGUT2FMK0PreCodes*/
+		const formatSpace = (gb) => {
+			if (gb >= 1000) {
+				return `${(gb / 1000).toFixed(2)} TB`;
+			}
+			return `${gb.toFixed(2)} GB`;
+		};
+		
+		const needSpaceStr = formatSpace(needspace);
+		const freeSpaceStr = formatSpace(freespace);
+		let prompt="";
+		if ($ln === "CN") {
+			prompt = `此模型需要至少 ${needSpaceStr} 的磁盘空间\n` +
+				`您的电脑当前可用空间: ${freeSpaceStr}\n\n` +
+				`磁盘空间不足！我们需要更多空间来部署您的 AI 模型。`;
+		} else {
+			prompt = `This model requires at least ${needSpaceStr} of disk space\n` +
+				`Your available space: ${freeSpaceStr}\n\n` +
+				`Not enough space! We need a bit more space to deploy your AI model.`;
+		}
+		content=prompt;
+		/*}#1JGUT2FMK0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1JGUT2FMK0PostCodes*/
+		/*}#1JGUT2FMK0PostCodes*/
 		return {seg:GoTo,result:(result),preSeg:"1JGUT2FMK0",outlet:"1JGUT4C181"};
 	};
 	NoSpace.jaxId="1JGUT2FMK0"
@@ -1945,7 +1969,8 @@ export{ModelDeploy,ChatAPI};
 //								"id": "Default",
 //								"desc": "输出节点。",
 //								"output": ""
-//							}
+//							},
+//							"linkedSeg": "1JJ8GKUD60"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -2412,7 +2437,7 @@ export{ModelDeploy,ChatAPI};
 //						"x": "155",
 //						"y": "370",
 //						"desc": "This is an AISeg.",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2429,7 +2454,14 @@ export{ModelDeploy,ChatAPI};
 //						},
 //						"role": "Assistant",
 //						"channel": "Chat",
-//						"text": "#input",
+//						"text": {
+//							"type": "string",
+//							"valText": "#input",
+//							"localize": {
+//								"EN": "#input"
+//							},
+//							"localizable": true
+//						},
 //						"outlet": {
 //							"jaxId": "1JGUT4C181",
 //							"attrs": {
@@ -2993,6 +3025,28 @@ export{ModelDeploy,ChatAPI};
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connectorL",
+//					"jaxId": "1JJ8GKUD60",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "3255",
+//						"y": "-260",
+//						"outlet": {
+//							"jaxId": "1JJ8GL3VP0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JH06EVSO0"
+//						},
+//						"dir": "L2R"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

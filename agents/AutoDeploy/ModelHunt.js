@@ -115,7 +115,7 @@ let ModelHunt=async function(session){
 		let result;
 		let arg={model:model};
 		let agentNode=(undefined)||null;
-		let $query=(undefined)||null;
+		let $query=(null)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelUseAgent.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -490,7 +490,8 @@ export{ModelHunt};
 //						},
 //						"outlets": {
 //							"attrs": []
-//						}
+//						},
+//						"query": ""
 //					},
 //					"icon": "agent.svg"
 //				}

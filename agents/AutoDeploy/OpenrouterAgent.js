@@ -24,24 +24,58 @@ const argsTemplate={
 };
 
 /*#{1HDBOSUN90StartDoc*/
+async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
+	let lastError;
+
+	for (let attempt = 0; attempt <= retries; attempt++) {
+		try {
+			const response = await fetch(url, options);
+
+			// 对 429 和 5xx 进行重试
+			if (!response.ok) {
+				if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+					const waitTime = delay * Math.pow(2, attempt); // 指数退避
+					await new Promise(resolve => setTimeout(resolve, waitTime));
+					continue;
+				}
+
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			return response;
+		} catch (error) {
+			lastError = error;
+
+			// 网络错误时重试
+			if (attempt < retries) {
+				const waitTime = delay * Math.pow(2, attempt); // 指数退避
+				await new Promise(resolve => setTimeout(resolve, waitTime));
+				continue;
+			}
+		}
+	}
+
+	throw lastError;
+}
+
 async function getInputModalityOutputTokens(modelName) {
 	try {
-		const response = await fetch('https://openrouter.ai/api/v1/models', {
-			headers: {
-				'Authorization': 'Bearer EMPTY',
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
-		}
+		const response = await fetchWithRetry(
+			'https://openrouter.ai/api/v1/models',
+			{
+				headers: {
+					'Authorization': 'Bearer EMPTY',
+					'Content-Type': 'application/json'
+				}
+			},
+			3,     // 最多重试 3 次
+			1000   // 初始延迟 1 秒
+		);
 
 		const data = await response.json();
 
 		// Find the model by ID
 		const model = data.data.find(m => m.id === modelName);
-
 		if (!model) {
 			throw new Error(`Model "${modelName}" not found`);
 		}
@@ -50,7 +84,14 @@ async function getInputModalityOutputTokens(modelName) {
 		const inputModalities = model.architecture?.input_modalities || [];
 		const outputModalities = model.architecture?.output_modalities || [];
 		const max_tokens = model.top_provider?.max_completion_tokens || 2048;
-		return {modalities: inputModalities, max_tokens: max_tokens, output: outputModalities};
+		const thinking = model.supported_parameters?.includes("reasoning") || false;
+
+		return {
+			modalities: inputModalities,
+			max_tokens,
+			output: outputModalities,
+			thinking
+		};
 	} catch (error) {
 		console.error('Error fetching model data:', error.message);
 		throw error;
@@ -63,9 +104,9 @@ let OpenrouterAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,GetInputModality,Welcome,AskInput,Generate2,Output2,Check,Generate1;
+	let FixArgs,GetInfo,Welcome,AskInput,Generate2,Output2,Check,Generate1,AskReasoning,Reasoning;
 	/*#{1HDBOSUN90LocalVals*/
-	let model_list, input_modality, max_tokens, last_generated_image, flag=false, output_modality;
+	let model_list, input_modality, max_tokens, last_generated_image, flag=false, output_modality, support_thinking=false, enable_thinking=false;
 	/*}#1HDBOSUN90LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -93,12 +134,12 @@ let OpenrouterAgent=async function(session){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
-		return {seg:GetInputModality,result:(result),preSeg:"1J9OR4L7L0",outlet:"1J9OR4L7L1"};
+		return {seg:GetInfo,result:(result),preSeg:"1J9OR4L7L0",outlet:"1J9OR4L7L1"};
 	};
 	FixArgs.jaxId="1J9OR4L7L0"
 	FixArgs.url="FixArgs@"+agentURL
 	
-	segs["GetInputModality"]=GetInputModality=async function(input){//:1JGJH0L600
+	segs["GetInfo"]=GetInfo=async function(input){//:1JGJH0L600
 		let result=input
 		try{
 			/*#{1JGJH0L600Code*/
@@ -106,6 +147,7 @@ let OpenrouterAgent=async function(session){
 			input_modality = response.modalities;
 			output_modality = response.output;
 			max_tokens = Math.floor(response.max_tokens / 2);
+			support_thinking=response.thinking;
 			/*}#1JGJH0L600Code*/
 		}catch(error){
 			/*#{1JGJH0L600ErrorCode*/
@@ -113,8 +155,8 @@ let OpenrouterAgent=async function(session){
 		}
 		return {seg:Welcome,result:(result),preSeg:"1JGJH0L600",outlet:"1JGJH0R9I0"};
 	};
-	GetInputModality.jaxId="1JGJH0L600"
-	GetInputModality.url="GetInputModality@"+agentURL
+	GetInfo.jaxId="1JGJH0L600"
+	GetInfo.url="GetInfo@"+agentURL
 	
 	segs["Welcome"]=Welcome=async function(input){//:1JGJH42JR0
 		let result=input;
@@ -159,7 +201,7 @@ let OpenrouterAgent=async function(session){
 		session.addChatText(role,content,opts);
 		/*#{1JGJH42JR0PostCodes*/
 		/*}#1JGJH42JR0PostCodes*/
-		return {seg:AskInput,result:(result),preSeg:"1JGJH42JR0",outlet:"1JGJH48410"};
+		return {seg:Reasoning,result:(result),preSeg:"1JGJH42JR0",outlet:"1JGJH48410"};
 	};
 	Welcome.jaxId="1JGJH42JR0"
 	Welcome.url="Welcome@"+agentURL
@@ -205,6 +247,7 @@ let OpenrouterAgent=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:true,
 			maxToken:max_tokens,
 			temperature:1,
 			topP:0.0001,
@@ -221,6 +264,7 @@ let OpenrouterAgent=async function(session){
 		];
 		messages.push(...chatMem);
 		/*#{1JGJHQV9K0PrePrompt*/
+		opts.enable_thinking=enable_thinking;
 		let content = [];
 		if(typeof(input) === 'object' && input.assets && input.assets.length > 0) {
 			prompt = input.prompt || input.text || "";
@@ -331,7 +375,7 @@ let OpenrouterAgent=async function(session){
 		/*#{1JGJHQV9K0PreCall*/
 		/*}#1JGJHQV9K0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("Generate2@"+agentURL,opts,messages,true)):result;
 		}
@@ -339,6 +383,11 @@ let OpenrouterAgent=async function(session){
 		/*}#1JGJHQV9K0PostLLM*/
 		chatMem.push({role:"user",content:prompt});
 		chatMem.push({role:"assistant",content:result});
+		if(chatMem.length>10){
+			let removedMsgs=chatMem.splice(0,2);
+			/*#{1JGJHQV9K0PostClear*/
+			/*}#1JGJHQV9K0PostClear*/
+		}
 		/*#{1JGJHQV9K0PostCall*/
 		if (result && typeof result === 'object') {
 			let lastMsg = chatMem[chatMem.length - 1];
@@ -429,6 +478,7 @@ let OpenrouterAgent=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:true,
 			maxToken:max_tokens,
 			temperature:1,
 			topP:0.0001,
@@ -555,7 +605,7 @@ let OpenrouterAgent=async function(session){
 		/*#{1JIP319SH0PreCall*/
 		/*}#1JIP319SH0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.makeAICall("Generate1@"+agentURL,opts,messages,true)):result;
 		}
@@ -563,6 +613,11 @@ let OpenrouterAgent=async function(session){
 		/*}#1JIP319SH0PostLLM*/
 		chatMem.push({role:"user",content:prompt});
 		chatMem.push({role:"assistant",content:result});
+		if(chatMem.length>10){
+			let removedMsgs=chatMem.splice(0,2);
+			/*#{1JIP319SH0PostClear*/
+			/*}#1JIP319SH0PostClear*/
+		}
 		/*#{1JIP319SH0PostCall*/
 		if (result && typeof result === 'object') {
 			let lastMsg = chatMem[chatMem.length - 1];
@@ -585,6 +640,49 @@ let OpenrouterAgent=async function(session){
 	Generate1.jaxId="1JIP319SH0"
 	Generate1.url="Generate1@"+agentURL
 	Generate1.messages=[];
+	
+	segs["AskReasoning"]=AskReasoning=async function(input){//:1JK2KNDJ70
+		let prompt=((($ln==="CN")?("请选择是否开启深度思考"):("Please choose whether to enable deep thinking")))||input;
+		let silent=false;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let button1=((($ln==="CN")?("是"):("Yes")))||"OK";
+		let button2=((($ln==="CN")?("否"):("No")))||"Cancel";
+		let button3="";
+		let result="";
+		let value=0;
+		if(silent){
+			result="";
+			/*#{1JK2KNDIL0Silent*/
+			/*}#1JK2KNDIL0Silent*/
+			return {seg:AskInput,result:(result),preSeg:"1JK2KNDJ70",outlet:"1JK2KNDIL0"};
+		}
+		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		if(value===1){
+			result=("")||result;
+			/*#{1JK2KNDIL0Btn1*/
+			enable_thinking=true;
+			/*}#1JK2KNDIL0Btn1*/
+			return {seg:AskInput,result:(result),preSeg:"1JK2KNDJ70",outlet:"1JK2KNDIL0"};
+		}
+		result=("")||result;
+		/*#{1JK2KNDIL1Btn2*/
+		/*}#1JK2KNDIL1Btn2*/
+		return {seg:AskInput,result:(result),preSeg:"1JK2KNDJ70",outlet:"1JK2KNDIL1"};
+	
+	};
+	AskReasoning.jaxId="1JK2KNDJ70"
+	AskReasoning.url="AskReasoning@"+agentURL
+	
+	segs["Reasoning"]=Reasoning=async function(input){//:1JK2KQG040
+		let result=input;
+		if(support_thinking){
+			return {seg:AskReasoning,result:(input),preSeg:"1JK2KQG040",outlet:"1JK2KRN3E0"};
+		}
+		return {seg:AskInput,result:(result),preSeg:"1JK2KQG040",outlet:"1JK2KRN3E1"};
+	};
+	Reasoning.jaxId="1JK2KQG040"
+	Reasoning.url="Reasoning@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -706,7 +804,7 @@ export{OpenrouterAgent};
 //						"id": "FixArgs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-115",
+//						"x": "-455",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -729,10 +827,10 @@ export{OpenrouterAgent};
 //					"def": "code",
 //					"jaxId": "1JGJH0L600",
 //					"attrs": {
-//						"id": "GetInputModality",
+//						"id": "GetInfo",
 //						"viewName": "",
 //						"label": "",
-//						"x": "120",
+//						"x": "-220",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -773,7 +871,7 @@ export{OpenrouterAgent};
 //						"id": "Welcome",
 //						"viewName": "",
 //						"label": "",
-//						"x": "395",
+//						"x": "25",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -800,7 +898,7 @@ export{OpenrouterAgent};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JGJHEJD10"
+//							"linkedSeg": "1JK2KQG040"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -813,8 +911,8 @@ export{OpenrouterAgent};
 //						"id": "AskInput",
 //						"viewName": "",
 //						"label": "",
-//						"x": "625",
-//						"y": "320",
+//						"x": "770",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -858,8 +956,8 @@ export{OpenrouterAgent};
 //						"id": "Generate2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1105",
-//						"y": "335",
+//						"x": "1250",
+//						"y": "350",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -879,6 +977,7 @@ export{OpenrouterAgent};
 //						"platform": "OpenRouter",
 //						"mode": "#model",
 //						"system": "You are a smart assistant.",
+//						"enable_thinking": "true",
 //						"temperature": "1",
 //						"maxToken": "#max_tokens",
 //						"topP": "0.0001",
@@ -904,7 +1003,7 @@ export{OpenrouterAgent};
 //							"attrs": []
 //						},
 //						"shareChatName": "",
-//						"keepChat": "All messages",
+//						"keepChat": "10 messages",
 //						"clearChat": "2",
 //						"apiFiles": {
 //							"attrs": []
@@ -927,8 +1026,8 @@ export{OpenrouterAgent};
 //						"id": "Output2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1355",
-//						"y": "335",
+//						"x": "1500",
+//						"y": "350",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -966,8 +1065,8 @@ export{OpenrouterAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1470",
-//						"y": "125",
+//						"x": "1615",
+//						"y": "140",
 //						"outlet": {
 //							"jaxId": "1JGJI6E350",
 //							"attrs": {
@@ -988,8 +1087,8 @@ export{OpenrouterAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "655",
-//						"y": "125",
+//						"x": "800",
+//						"y": "140",
 //						"outlet": {
 //							"jaxId": "1JGJI6E351",
 //							"attrs": {
@@ -1011,8 +1110,8 @@ export{OpenrouterAgent};
 //						"id": "Check",
 //						"viewName": "",
 //						"label": "",
-//						"x": "860",
-//						"y": "320",
+//						"x": "1005",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1079,8 +1178,8 @@ export{OpenrouterAgent};
 //						"id": "Generate1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1105",
-//						"y": "230",
+//						"x": "1250",
+//						"y": "245",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1100,6 +1199,7 @@ export{OpenrouterAgent};
 //						"platform": "OpenRouter",
 //						"mode": "#model",
 //						"system": "You are a smart assistant.",
+//						"enable_thinking": "true",
 //						"temperature": "1",
 //						"maxToken": "#max_tokens",
 //						"topP": "0.0001",
@@ -1125,7 +1225,7 @@ export{OpenrouterAgent};
 //							"attrs": []
 //						},
 //						"shareChatName": "",
-//						"keepChat": "All messages",
+//						"keepChat": "10 messages",
 //						"clearChat": "2",
 //						"apiFiles": {
 //							"attrs": []
@@ -1138,6 +1238,171 @@ export{OpenrouterAgent};
 //						}
 //					},
 //					"icon": "llm.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askConfirm",
+//					"jaxId": "1JK2KNDJ70",
+//					"attrs": {
+//						"id": "AskReasoning",
+//						"viewName": "",
+//						"label": "",
+//						"x": "475",
+//						"y": "210",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Please choose whether to enable deep thinking",
+//							"localize": {
+//								"EN": "Please choose whether to enable deep thinking",
+//								"CN": "请选择是否开启深度思考"
+//							},
+//							"localizable": true
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JK2KNDIL0",
+//									"attrs": {
+//										"id": "Yes",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Yes",
+//											"localize": {
+//												"EN": "Yes",
+//												"CN": "是"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JK2KP2VS0",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JK2KP2VS1",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1JGJHEJD10"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JK2KNDIL1",
+//									"attrs": {
+//										"id": "No",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "No",
+//											"localize": {
+//												"EN": "No",
+//												"CN": "否"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JK2KP2VS2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JK2KP2VS3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1JGJHEJD10"
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "help.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JK2KQG040",
+//					"attrs": {
+//						"id": "Reasoning",
+//						"viewName": "",
+//						"label": "",
+//						"x": "245",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JK2KRN3P0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JK2KRN3P1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JK2KRN3E1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JGJHEJD10"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JK2KRN3E0",
+//									"attrs": {
+//										"id": "Result",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JK2KRN3P2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JK2KRN3P3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#support_thinking"
+//									},
+//									"linkedSeg": "1JK2KNDJ70"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
 //					"reverseOutlets": true
 //				}
 //			]

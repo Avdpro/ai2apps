@@ -149,7 +149,7 @@ let DeleteModel=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("正在删除模型，请稍等"):("Deleting model, please wait"));
+		let content=(($ln==="CN")?(`正在删除模型 ${model}，请稍等`):(`Deleting model ${model}, please wait`));
 		session.addChatText(role,content,opts);
 		return {seg:CheckType,result:(result),preSeg:"1JIBV3ENF0",outlet:"1JIBV57D40"};
 	};
@@ -633,10 +633,10 @@ export{DeleteModel};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Deleting model, please wait",
+//							"valText": "#`Deleting model ${model}, please wait`",
 //							"localize": {
-//								"EN": "Deleting model, please wait",
-//								"CN": "正在删除模型，请稍等"
+//								"EN": "#`Deleting model ${model}, please wait`",
+//								"CN": "#`正在删除模型 ${model}，请稍等`"
 //							},
 //							"localizable": true
 //						},

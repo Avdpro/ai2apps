@@ -89,7 +89,7 @@ let ModelAgent=async function(session){
 		}
 		/*#{1JGP1KHU70PostCodes*/
 		const apiUrl = process.env.MODELHUNT_API_URL;
-		const modelUsageUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}/usage`;
+		const modelUsageUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}/usage`;
 		
 		try {
 			const response = await fetch(modelUsageUrl);

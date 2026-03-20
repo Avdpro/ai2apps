@@ -889,6 +889,7 @@ class ChatSession {
 			presence_penalty: opts.prcP || 0,
 			frequency_penalty: opts.fqcP || 0,
 			response_format: opts.responseFormat || "text",
+			enable_thinking: opts.enable_thinking || false
 		};
 		{
 			let models=this.globalContext.models||{};

@@ -24,6 +24,27 @@ const argsTemplate={
 };
 
 /*#{1HDBOSUN90StartDoc*/
+async function supportsThinking(modelName, retries = 3) {
+	const baseName = modelName.split(":")[0];
+	const url = `https://ollama.com/library/${baseName}/tags`;
+	for (let i = 0; i < retries; i++) {
+		try {
+			const res = await fetch(url);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const html = await res.text();
+			const tagRegex = /text-indigo-600[^>]*>([^<]+)</g;
+			let match;
+			while ((match = tagRegex.exec(html)) !== null) {
+				if (match[1].trim() === "thinking") return true;
+			}
+			return false;
+		} catch (err) {
+			if (i === retries - 1) throw err;
+			await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+		}
+	}
+}
+
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
 let OllamaAgent=async function(session){
@@ -31,9 +52,9 @@ let OllamaAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,InitBash,ListModels,CheckInstall,Pull,Greet,Ask,Generate,Output,Download,CheckPull,Fail,Retry,CheckRun,Start;
+	let FixArgs,InitBash,ListModels,CheckInstall,Pull,Greet,Ask,Generate,Output,Download,CheckPull,Fail,Retry,CheckRun,Start,Check,AskReasoning;
 	/*#{1HDBOSUN90LocalVals*/
-	let model_list, input_modality;
+	let model_list, input_modality, support_thinking=false, enable_thinking=false;
 	/*}#1HDBOSUN90LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -61,7 +82,7 @@ let OllamaAgent=async function(session){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
-		return {seg:InitBash,result:(result),preSeg:"1J9OR4L7L0",outlet:"1J9OR4L7L1"};
+		return {seg:Check,result:(result),preSeg:"1J9OR4L7L0",outlet:"1J9OR4L7L1"};
 	};
 	FixArgs.jaxId="1J9OR4L7L0"
 	FixArgs.url="FixArgs@"+agentURL
@@ -170,6 +191,7 @@ let OllamaAgent=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -186,6 +208,7 @@ let OllamaAgent=async function(session){
 		];
 		messages.push(...chatMem);
 		/*#{1J9OS7UUK0PrePrompt*/
+		opts.enable_thinking=enable_thinking;
 		// Handle input with images
 		let images = [];
 		if(typeof(input) === 'object' && input.assets && input.assets.length > 0) {
@@ -231,7 +254,7 @@ let OllamaAgent=async function(session){
 		
 		/*}#1J9OS7UUK0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("Generate@"+agentURL,opts,messages,true)):result;
 		}
@@ -239,7 +262,7 @@ let OllamaAgent=async function(session){
 		/*}#1J9OS7UUK0PostLLM*/
 		chatMem.push({role:"user",content:prompt});
 		chatMem.push({role:"assistant",content:result});
-		if(chatMem.length>50){
+		if(chatMem.length>10){
 			let removedMsgs=chatMem.splice(0,2);
 			/*#{1J9OS7UUK0PostClear*/
 			/*}#1J9OS7UUK0PostClear*/
@@ -345,13 +368,61 @@ let OllamaAgent=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.backend;
 		args['action']="Command";
-		args['commands']="brew services start ollama";
+		args['commands']="nohup ollama serve > /tmp/ollama.log 2>&1 & sleep 5";
 		args['options']={ownBySession:true};
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:ListModels,result:(result),preSeg:"1J9R9V1S90",outlet:"1J9R9VV392"};
 	};
 	Start.jaxId="1J9R9V1S90"
 	Start.url="Start@"+agentURL
+	
+	segs["Check"]=Check=async function(input){//:1JK4PPTGA0
+		let result=input;
+		/*#{1JK4PPTGA0Start*/
+		support_thinking=await supportsThinking(model);
+		/*}#1JK4PPTGA0Start*/
+		if(support_thinking){
+			return {seg:AskReasoning,result:(input),preSeg:"1JK4PPTGA0",outlet:"1JK4PQ56O0"};
+		}
+		/*#{1JK4PPTGA0Post*/
+		/*}#1JK4PPTGA0Post*/
+		return {seg:InitBash,result:(result),preSeg:"1JK4PPTGA0",outlet:"1JK4PQ0C60"};
+	};
+	Check.jaxId="1JK4PPTGA0"
+	Check.url="Check@"+agentURL
+	
+	segs["AskReasoning"]=AskReasoning=async function(input){//:1JK4PUQM23
+		let prompt=((($ln==="CN")?("请选择是否开启深度思考"):("Please choose whether to enable deep thinking")))||input;
+		let silent=false;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let button1=((($ln==="CN")?("是"):("Yes")))||"OK";
+		let button2=((($ln==="CN")?("否"):("No")))||"Cancel";
+		let button3="";
+		let result="";
+		let value=0;
+		if(silent){
+			result="";
+			/*#{1JK4PUQM24Silent*/
+			/*}#1JK4PUQM24Silent*/
+			return {seg:InitBash,result:(result),preSeg:"1JK4PUQM23",outlet:"1JK4PUQM24"};
+		}
+		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		if(value===1){
+			result=("")||result;
+			/*#{1JK4PUQM24Btn1*/
+			enable_thinking=true;
+			/*}#1JK4PUQM24Btn1*/
+			return {seg:InitBash,result:(result),preSeg:"1JK4PUQM23",outlet:"1JK4PUQM24"};
+		}
+		result=("")||result;
+		/*#{1JK4PUQM27Btn2*/
+		/*}#1JK4PUQM27Btn2*/
+		return {seg:InitBash,result:(result),preSeg:"1JK4PUQM23",outlet:"1JK4PUQM27"};
+	
+	};
+	AskReasoning.jaxId="1JK4PUQM23"
+	AskReasoning.url="AskReasoning@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -473,7 +544,7 @@ export{OllamaAgent};
 //						"id": "FixArgs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-160",
+//						"x": "-500",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -486,7 +557,7 @@ export{OllamaAgent};
 //								"id": "Next",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J9OR88QE0"
+//							"linkedSeg": "1JK4PPTGA0"
 //						}
 //					},
 //					"icon": "args.svg"
@@ -499,8 +570,8 @@ export{OllamaAgent};
 //						"id": "InitBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "80",
-//						"y": "320",
+//						"x": "225",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -540,8 +611,8 @@ export{OllamaAgent};
 //						"id": "ListModels",
 //						"viewName": "",
 //						"label": "",
-//						"x": "340",
-//						"y": "320",
+//						"x": "460",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -581,8 +652,8 @@ export{OllamaAgent};
 //						"id": "CheckInstall",
 //						"viewName": "",
 //						"label": "",
-//						"x": "945",
-//						"y": "335",
+//						"x": "1065",
+//						"y": "350",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -649,8 +720,8 @@ export{OllamaAgent};
 //						"id": "Pull",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1380",
-//						"y": "450",
+//						"x": "1500",
+//						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -690,8 +761,8 @@ export{OllamaAgent};
 //						"id": "Greet",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1225",
-//						"y": "320",
+//						"x": "1345",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -738,8 +809,8 @@ export{OllamaAgent};
 //						"id": "Ask",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1455",
-//						"y": "320",
+//						"x": "1575",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -783,8 +854,8 @@ export{OllamaAgent};
 //						"id": "Generate",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1680",
-//						"y": "320",
+//						"x": "1800",
+//						"y": "335",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -804,6 +875,7 @@ export{OllamaAgent};
 //						"platform": "Ollama",
 //						"mode": "#model",
 //						"system": "You are a smart assistant.",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -829,7 +901,7 @@ export{OllamaAgent};
 //							"attrs": []
 //						},
 //						"shareChatName": "",
-//						"keepChat": "50 messages",
+//						"keepChat": "10 messages",
 //						"clearChat": "2",
 //						"apiFiles": {
 //							"attrs": []
@@ -855,8 +927,8 @@ export{OllamaAgent};
 //						"id": "Output",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1915",
-//						"y": "320",
+//						"x": "2035",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -894,8 +966,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2045",
-//						"y": "180",
+//						"x": "2165",
+//						"y": "195",
 //						"outlet": {
 //							"jaxId": "1J9OSDOEK0",
 //							"attrs": {
@@ -916,8 +988,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1480",
-//						"y": "180",
+//						"x": "1600",
+//						"y": "195",
 //						"outlet": {
 //							"jaxId": "1J9OSDOEK1",
 //							"attrs": {
@@ -939,8 +1011,8 @@ export{OllamaAgent};
 //						"id": "Download",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1150",
-//						"y": "450",
+//						"x": "1270",
+//						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -987,8 +1059,8 @@ export{OllamaAgent};
 //						"id": "CheckPull",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1575",
-//						"y": "450",
+//						"x": "1695",
+//						"y": "465",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1055,8 +1127,8 @@ export{OllamaAgent};
 //						"id": "Fail",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1795",
-//						"y": "540",
+//						"x": "1915",
+//						"y": "555",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1102,8 +1174,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1720",
-//						"y": "370",
+//						"x": "1840",
+//						"y": "385",
 //						"outlet": {
 //							"jaxId": "1J9P1U64H2",
 //							"attrs": {
@@ -1124,8 +1196,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1250",
-//						"y": "370",
+//						"x": "1370",
+//						"y": "385",
 //						"outlet": {
 //							"jaxId": "1J9P1U64H3",
 //							"attrs": {
@@ -1147,8 +1219,8 @@ export{OllamaAgent};
 //						"id": "Retry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1975",
-//						"y": "540",
+//						"x": "2095",
+//						"y": "555",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1245,8 +1317,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "2100",
-//						"y": "700",
+//						"x": "2220",
+//						"y": "715",
 //						"outlet": {
 //							"jaxId": "1J9P214TJ0",
 //							"attrs": {
@@ -1267,8 +1339,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1415",
-//						"y": "700",
+//						"x": "1535",
+//						"y": "715",
 //						"outlet": {
 //							"jaxId": "1J9P214TJ1",
 //							"attrs": {
@@ -1290,8 +1362,8 @@ export{OllamaAgent};
 //						"id": "CheckRun",
 //						"viewName": "",
 //						"label": "",
-//						"x": "605",
-//						"y": "320",
+//						"x": "725",
+//						"y": "335",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1358,8 +1430,8 @@ export{OllamaAgent};
 //						"id": "Start",
 //						"viewName": "",
 //						"label": "",
-//						"x": "835",
-//						"y": "220",
+//						"x": "955",
+//						"y": "235",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1378,7 +1450,7 @@ export{OllamaAgent};
 //						},
 //						"bashId": "#globalContext.backend",
 //						"action": "Command",
-//						"commands": "brew services start ollama",
+//						"commands": "nohup ollama serve > /tmp/ollama.log 2>&1 & sleep 5",
 //						"options": "#{ownBySession:true}",
 //						"outlet": {
 //							"jaxId": "1J9R9VV392",
@@ -1398,8 +1470,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "960",
-//						"y": "145",
+//						"x": "1080",
+//						"y": "160",
 //						"outlet": {
 //							"jaxId": "1J9RA0HV70",
 //							"attrs": {
@@ -1420,8 +1492,8 @@ export{OllamaAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "375",
-//						"y": "145",
+//						"x": "495",
+//						"y": "160",
 //						"outlet": {
 //							"jaxId": "1J9RA0HV71",
 //							"attrs": {
@@ -1434,6 +1506,171 @@ export{OllamaAgent};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JK4PPTGA0",
+//					"attrs": {
+//						"id": "Check",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-265",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JK4PQCDQ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JK4PQCDQ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JK4PQ0C60",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1J9OR88QE0"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JK4PQ56O0",
+//									"attrs": {
+//										"id": "support",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JK4PQCDQ2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JK4PQCDQ3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#support_thinking"
+//									},
+//									"linkedSeg": "1JK4PUQM23"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askConfirm",
+//					"jaxId": "1JK4PUQM23",
+//					"attrs": {
+//						"id": "AskReasoning",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-60",
+//						"y": "180",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Please choose whether to enable deep thinking",
+//							"localize": {
+//								"EN": "Please choose whether to enable deep thinking",
+//								"CN": "请选择是否开启深度思考"
+//							},
+//							"localizable": true
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JK4PUQM24",
+//									"attrs": {
+//										"id": "Yes",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Yes",
+//											"localize": {
+//												"EN": "Yes",
+//												"CN": "是"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JK4PUQM25",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JK4PUQM26",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1J9OR88QE0"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JK4PUQM27",
+//									"attrs": {
+//										"id": "No",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "No",
+//											"localize": {
+//												"EN": "No",
+//												"CN": "否"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "true",
+//										"context": {
+//											"jaxId": "1JK4PUQM28",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JK4PUQM29",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1J9OR88QE0"
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "help.svg"
 //				}
 //			]
 //		},

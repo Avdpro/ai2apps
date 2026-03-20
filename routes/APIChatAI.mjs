@@ -572,9 +572,9 @@ export default async function(app,router,apiMap) {
 			switch (platform) {
 				case "Ollama":{
 					const OLLAMA_URL = process.env.OLLAMA_API_URL || "http://localhost:11434/v1/chat/completions";
+					const OLLAMA_NATIVE_URL = process.env.OLLAMA_NATIVE_API_URL ||
+						OLLAMA_URL.replace(/\/v1\/chat\/completions$/, "") + "/api/chat";
 					callVO = callAIObj.buildCallVO(reqVO,platform);
-					callVO.stream = true;
-					callVO.messages = reqVO.messages;
 
 					let streamId, streamVO;
 					streamId = getStreamId();
@@ -586,7 +586,9 @@ export default async function(app,router,apiMap) {
 						closed: false,
 						waitFunc: null,
 						errorFunc: null,
-						timer: null
+						timer: null,
+						thinking: "",
+						answer: ""
 					};
 					streamMap.set(streamId, streamVO);
 					resVO = { code: 200, streamId: streamId };
@@ -595,13 +597,20 @@ export default async function(app,router,apiMap) {
 					(async () => {
 						let func;
 						try {
-							const response = await fetch(OLLAMA_URL, {
+							const nativeBody = {
+								model: callVO.model,
+								messages: reqVO.messages,
+								stream: true,
+								think: reqVO.enable_thinking,
+
+							};
+							const response = await fetch(OLLAMA_NATIVE_URL, {
 								method: 'POST',
 								headers: {
 									'Content-Type': 'application/json',
 									'Connection': 'close'
 								},
-								body: JSON.stringify(callVO),
+								body: JSON.stringify(nativeBody),
 							});
 
 							if (!response.ok) {
@@ -629,61 +638,28 @@ export default async function(app,router,apiMap) {
 								buffer = lines.pop();
 
 								for (const line of lines) {
-									const trimmed = line.trim();
-									if (!trimmed || trimmed.startsWith(":")) continue;
-									if (trimmed === "data: [DONE]") continue;
-									if (!trimmed.startsWith("data: ")) continue;
-
+									if (!line.trim()) continue;
 									try {
-										const json = JSON.parse(trimmed.slice(6));
-										const choice0 = json.choices?.[0];
-										if (choice0) {
-											const delta = choice0.delta;
-											if (delta) {
-												if (delta.role) {
-													streamVO.role = (streamVO.role || "") + delta.role;
-												}
-												if (delta.content) {
-													streamVO.content += delta.content;
-												}
-												// toolCalls support:
-												if (delta.tool_calls) {
-													let srcList, tgtList, i, n, idx, srcStub, tgtStub, srcFunc, tgtFunc;
-													srcList = delta.tool_calls;
-													tgtList = streamVO.toolCalls;
-													if (!tgtList) {
-														tgtList = streamVO.toolCalls = [];
-													}
-													n = srcList.length;
-													for (i = 0; i < n; i++) {
-														srcStub = srcList[i];
-														idx = srcStub.index >= 0 ? srcStub.index : i;
-														tgtStub = tgtList[idx];
-														if (!tgtStub) {
-															tgtStub = tgtList[idx] = {
-																index: idx, id: "", type: "function",
-																function: { name: "", arguments: "" }
-															};
-														}
-														if ("id" in srcStub) {
-															tgtStub.id += srcStub.id;
-														}
-														srcFunc = srcStub.function;
-														tgtFunc = tgtStub.function;
-														if (srcFunc) {
-															tgtFunc.name += srcFunc.name || "";
-															tgtFunc["arguments"] += srcFunc["arguments"] || "";
-														}
-													}
-												}
-											}
+										const json = JSON.parse(line);
+										if (json.message?.thinking) {
+											streamVO.thinking += json.message.thinking;
 										}
-										if (json.usage) {
-											streamVO.inputTokens = json.usage.prompt_tokens || 0;
-											streamVO.outputTokens = json.usage.completion_tokens || 0;
+										if (json.message?.content) {
+											streamVO.answer += json.message.content;
+										}
+										streamVO.content = (streamVO.thinking ? "💭 " + streamVO.thinking + "\n\n" : "") + streamVO.answer;
+										if (json.done === true) {
+											streamVO.content = streamVO.answer;
+											streamVO.inputTokens = json.prompt_eval_count || 0;
+											streamVO.outputTokens = json.eval_count || 0;
+											streamVO.closed = true;
 										}
 									} catch (e) {
 										// ignore parse errors
+									}
+									if (streamVO.content !== streamVO.textRead) {
+										func = streamVO.waitFunc;
+										if (func) { streamVO.waitFunc = null; func(); }
 									}
 								}
 
@@ -691,21 +667,13 @@ export default async function(app,router,apiMap) {
 									clearTimeout(streamVO.timer);
 									streamVO.timer = setTimeout(() => { shutdownStream(streamId) }, 60000);
 								}
-
-								if (streamVO.content !== streamVO.textRead) {
-									func = streamVO.waitFunc;
-									if (func) {
-										streamVO.waitFunc = null;
-										func();
-									}
-								}
 							}
 
-							streamVO.closed = true;
-							func = streamVO.waitFunc;
-							if (func) {
-								streamVO.waitFunc = null;
-								func();
+							if (!streamVO.closed) {
+								streamVO.content = streamVO.answer;
+								streamVO.closed = true;
+								func = streamVO.waitFunc;
+								if (func) { streamVO.waitFunc = null; func(); }
 							}
 						} catch (err) {
 							console.error("Ollama stream error:", err);
@@ -1080,14 +1048,21 @@ export default async function(app,router,apiMap) {
 					break;
 				}
 				case "OpenRouter": {
+					console.log(JSON.stringify(reqVO));
 					const callVO = {
 						model: reqVO.model || "google/gemini-3-flash-preview",
 						messages: reqVO.messages,
 						temperature: reqVO.temperature || 1,
+						reasoning:{
+							enabled: reqVO.enable_thinking
+						},
 						// 添加身份验证信息
 						userId: reqVO.userId,
 						token: reqVO.token,
 					};
+					if(reqVO.enable_thinking){
+						callVO.include_reasoning=true;
+					}
 					callVO.stream = true;
 
 					let streamId, streamVO;
@@ -1100,7 +1075,9 @@ export default async function(app,router,apiMap) {
 						closed: false,
 						waitFunc: null,
 						errorFunc: null,
-						timer: null
+						timer: null,
+						thinking: "",
+						answer: ""
 					};
 					streamMap.set(streamId, streamVO);
 					resVO = { code: 200, streamId: streamId };
@@ -1161,9 +1138,13 @@ export default async function(app,router,apiMap) {
 												if (delta.role) {
 													streamVO.role = (streamVO.role || "") + delta.role;
 												}
-												if (delta.content) {
-													streamVO.content += delta.content;
+												if (delta.reasoning) {
+													streamVO.thinking += delta.reasoning;
 												}
+												if (delta.content) {
+													streamVO.answer += delta.content;
+												}
+												streamVO.content = (streamVO.thinking ? "💭 " + streamVO.thinking + "\n\n" : "") + streamVO.answer;
 											}
 										}
 										if (json.usage) {
@@ -1189,6 +1170,7 @@ export default async function(app,router,apiMap) {
 								}
 							}
 
+							streamVO.content = streamVO.answer;
 							streamVO.closed = true;
 							func = streamVO.waitFunc;
 							if (func) {

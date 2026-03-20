@@ -1,7 +1,7 @@
 import {nanoid} from "nanoid";
 import {AaChatDb} from './AaChatDb.mjs';
 import {InvokeApi} from "../util/InvokeApi.mjs";
-const MAX_LIVE_THREADS=5;
+const MAX_LIVE_THREADS=1000;
 
 //***************************************************************************
 //AaChatThread

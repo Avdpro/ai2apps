@@ -156,7 +156,7 @@ let ModelDeployAgent=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("部署未能完成。建议检查一下网络连接，之后重试看看。"):("Deployment couldn't be completed. Please check your connection and try again later."));
+		let content=(($ln==="CN")?("部署未能完成。建议检查一下网络连接或者磁盘空间，之后重试看看。"):("Deployment couldn't be completed. Please check your network connection or disk space and try again later."));
 		session.addChatText(role,content,opts);
 		return {result:result};
 	};
@@ -614,10 +614,10 @@ export{ModelDeployAgent};
 //						"channel": "Chat",
 //						"text": {
 //							"type": "string",
-//							"valText": "Deployment couldn't be completed. Please check your connection and try again later.",
+//							"valText": "Deployment couldn't be completed. Please check your network connection or disk space and try again later.",
 //							"localize": {
-//								"EN": "Deployment couldn't be completed. Please check your connection and try again later.",
-//								"CN": "部署未能完成。建议检查一下网络连接，之后重试看看。"
+//								"EN": "Deployment couldn't be completed. Please check your network connection or disk space and try again later.",
+//								"CN": "部署未能完成。建议检查一下网络连接或者磁盘空间，之后重试看看。"
 //							},
 //							"localizable": true
 //						},
