@@ -106,7 +106,7 @@ let AnySearchWorkflow=async function(session){
 		let callVO=null;
 		let result=input;
 		let rsp=null;
-		let url="http://api.modelhunt.ai2apps.cn/api/public/v1/qa";
+		let url="https://api.modelhunt.ai2apps.cn/api/public/v1/qa";
 		let method="POST";
 		let headers={
 		};
@@ -221,7 +221,7 @@ let AnySearchWorkflow=async function(session){
 		let callVO=null;
 		let result=input;
 		let rsp=null;
-		let url="http://api.modelhunt.ai2apps.cn/api/public/v1/qa";
+		let url="https://api.modelhunt.ai2apps.cn/api/public/v1/qa";
 		let method="POST";
 		let headers={
 		};
@@ -441,7 +441,7 @@ let AnySearchWorkflow=async function(session){
 		try{
 			/*#{1JC8K0M8V0Code*/
 			let lang = ($ln==="CN") ? '，请用中文回答。' : ', Please answer in English.';
-			const url = 'http://api.modelhunt.ai2apps.cn/api/public/v1/qa';
+			const url = 'https://api.modelhunt.ai2apps.cn/api/public/v1/qa';
 			const json = {
 				query: context.externalQuestion + lang ,
 				output_report: true,

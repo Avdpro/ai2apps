@@ -96,7 +96,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 				const lines = this.waitBuf.trimEnd().split('\n');
 				const lastLine = lines[lines.length - 1].trim();
 
-				const promptMatch = lastLine.match(/^(\([^)]+\)\s*)?__AGENT_SHELL__>$/);
+				const promptMatch = lastLine.match(/(\([^)]+\)\s*)?__AGENT_SHELL__>$/);
 				if (promptMatch){
 					// 触发 idle 状态，OnIdle 会统一处理所有回调
 					this.OnIdle();
@@ -286,6 +286,11 @@ let AgentNodeTerminal,agentNodeTerminal;
 	//------------------------------------------------------------------------
 	agentNodeTerminal.getContent=function(){
 		return this.terminal.getContent();
+	};
+
+	//------------------------------------------------------------------------
+	agentNodeTerminal.getVisibleContent=function(){
+		return this.terminal.getVisibleContent();
 	};
 
 	//------------------------------------------------------------------------

@@ -325,13 +325,43 @@ let Bash=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
 			fqcP:0,
 			prcP:0,
 			secret:false,
-			responseFormat:"json_object"
+			responseFormat:{
+				"type":"json_schema",
+				"json_schema":{
+					"name":"BashReact",
+					"schema":{
+						"type":"object",
+						"description":"",
+						"properties":{
+							"action":{
+								"type":"string",
+								"description":"下一步行动",
+								"enum":[
+									"Wait","Input","AskUser","Finish"
+								]
+							},
+							"input":{
+								"type":[
+									"string","null"
+								],
+								"description":"当\"action\"为\"Input\"，要输出Terminal的内容。"
+							}
+						},
+						"required":[
+							"action","input"
+						],
+						"additionalProperties":false
+					},
+					"strict":true
+				}
+			}
 		};
 		let chatMem=GetReact.messages
 		let seed="";
@@ -374,7 +404,7 @@ let Bash=async function(session){
 		last_input=prompt;
 		/*}#1IIDUEG0G0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("GetReact@"+agentURL,opts,messages,true)):result;
 		}
@@ -407,7 +437,12 @@ let Bash=async function(session){
 		let result=input
 		try{
 			/*#{1IIF4SPFB0Code*/
-			allCmdOutput += cmdBash.cmdOutput;
+			let fullContent = cmdBash.getContent();
+			if(fullContent.length > orgCmdContent.length){
+				allCmdOutput += fullContent.substring(orgCmdContent.length);
+			} else {
+				allCmdOutput += cmdBash.cmdOutput;
+			}
 			/*}#1IIF4SPFB0Code*/
 		}catch(error){
 			/*#{1IIF4SPFB0ErrorCode*/
@@ -469,7 +504,7 @@ let Bash=async function(session){
 		try{
 			/*#{1IIF89Q1I0Code*/
 			await cmdBash.waitIdle(true);
-			let content = await cmdBash.getContent();
+			let content = await cmdBash.getVisibleContent();
 			let lines = content.split('\n');
 			if(lines.length > 20){
 				result = lines.slice(-20).join('\n');
@@ -1383,6 +1418,7 @@ export{Bash,ChatAPI};
 //						"platform": "OpenAI",
 //						"mode": "gpt-4o",
 //						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\" 和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`  + (($ln===\"CN\")?(\"AskUser的内容需要用中文输出。\"):(\"Output in English when need AskUser.\"))\n",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
