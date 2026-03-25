@@ -657,7 +657,7 @@ export default async function(app,router,apiMap) {
 									} catch (e) {
 										// ignore parse errors
 									}
-									if (streamVO.content !== streamVO.textRead) {
+									if (streamVO.content !== streamVO.textRead || streamVO.closed) {
 										func = streamVO.waitFunc;
 										if (func) { streamVO.waitFunc = null; func(); }
 									}

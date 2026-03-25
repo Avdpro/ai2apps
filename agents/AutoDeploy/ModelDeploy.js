@@ -122,7 +122,7 @@ let ModelDeploy=async function(session){
 			/*#{1IJ2KGOHG0Code*/
 			try{
 				const apiUrl = process.env.MODELHUNT_API_URL;
-				const deployUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}/deploy`;
+				const deployUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}/deploy`;
 			
 				try {
 					const response = await fetch(deployUrl);
@@ -377,6 +377,7 @@ let ModelDeploy=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -399,7 +400,7 @@ let ModelDeploy=async function(session){
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		if($agent){
-			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking});
 		}else{
 			result=await session.callSegLLM("Network@"+agentURL,opts,messages,true);
 		}
@@ -507,14 +508,14 @@ let ModelDeploy=async function(session){
 		}
 		/*#{1JGTKFNIM0PostCodes*/
 		const apiUrl = process.env.MODELHUNT_API_URL;
-		const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}`;
+		const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}`;
 		const response = await fetch(basicUrl)
 		if (!response.ok) {
 			throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
 		}
 		const Config = await response.json();
-		needspace = Config.size_info;
-		model_type = Config.model_type;
+		needspace = Config.space || 0;
+		model_type = Config.source;
 		project={
 			dirPath:null,
 		};
@@ -1897,6 +1898,7 @@ export{ModelDeploy,ChatAPI};
 //						"platform": "\"OpenAI\"",
 //						"mode": "gpt-4.1-mini",
 //						"system": "你需要根据输入的终端命令输出，判断是否是由于网络问题导致的错误。请根据以下标准判断：\n\n- 如果输出中有与网络连接、服务器不可达、DNS解析错误、超时、无法连接等相关的错误信息，则可能是由于网络问题导致的。\n- 如果输出中有与文件、权限、磁盘空间、程序错误等无关的错误，则可能不是网络问题。\n- 请输出结果为一个JSON格式，包含两个字段：\n  - is_network_issue：布尔值，表示是否是网络问题导致的。\n  - message：一个字符串，描述判断的依据。\n示例： \n{\n\"is_network_issue\": true,\n\"message\": \"Output contains 'Network is unreachable' and 'Connection timed out', indicating a network issue.\"\n}",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",

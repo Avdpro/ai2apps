@@ -63,13 +63,13 @@ let ModelUse=async function(session){
 		}
 		/*#{1JH0RJ9FE0PostCodes*/
 		const apiUrl = process.env.MODELHUNT_API_URL;
-		const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}`;
+		const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}`;
 		const response = await fetch(basicUrl)
 		if (!response.ok) {
 			throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
 		}
 		const Config = await response.json();
-		model_type = Config.model_type;
+		model_type = Config.source;
 		/*}#1JH0RJ9FE0PostCodes*/
 		return {seg:Check,result:(result),preSeg:"1JH0RJ9FE0",outlet:"1JH0RJBUU0"};
 	};
@@ -78,13 +78,13 @@ let ModelUse=async function(session){
 	
 	segs["Check"]=Check=async function(input){//:1JH0RLRPT0
 		let result=input;
-		if(model_type==="github"){
-			return {seg:Github,result:(input),preSeg:"1JH0RLRPT0",outlet:"1JH0RMESB0"};
+		if(model_type==="openrouter"){
+			return {seg:Openrouter,result:(input),preSeg:"1JH0RLRPT0",outlet:"1JH0RMESB0"};
 		}
 		if(model_type==="ollama"){
 			return {seg:Ollama,result:(input),preSeg:"1JH0RLRPT0",outlet:"1JH0RLVMT0"};
 		}
-		return {seg:Openrouter,result:(result),preSeg:"1JH0RLRPT0",outlet:"1JH0RMESD0"};
+		return {seg:Github,result:(result),preSeg:"1JH0RLRPT0",outlet:"1JH0RMESD0"};
 	};
 	Check.jaxId="1JH0RLRPT0"
 	Check.url="Check@"+agentURL
@@ -268,11 +268,11 @@ export{ModelUse};
 //						"outlet": {
 //							"jaxId": "1JH0RMESD0",
 //							"attrs": {
-//								"id": "Openrouter",
+//								"id": "Github",
 //								"desc": "Outlet.",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JH0RN8MN0"
+//							"linkedSeg": "1JH0RMOTH0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -281,7 +281,7 @@ export{ModelUse};
 //									"def": "AIConditionOutlet",
 //									"jaxId": "1JH0RMESB0",
 //									"attrs": {
-//										"id": "Github",
+//										"id": "Openrouter",
 //										"desc": "Outlet.",
 //										"output": "",
 //										"codes": "false",
@@ -297,9 +297,9 @@ export{ModelUse};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#model_type===\"github\""
+//										"condition": "#model_type===\"openrouter\""
 //									},
-//									"linkedSeg": "1JH0RMOTH0"
+//									"linkedSeg": "1JH0RN8MN0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -341,7 +341,7 @@ export{ModelUse};
 //						"viewName": "",
 //						"label": "",
 //						"x": "730",
-//						"y": "150",
+//						"y": "410",
 //						"desc": "Call AI Agent, use it's output as result",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -425,7 +425,7 @@ export{ModelUse};
 //						"viewName": "",
 //						"label": "",
 //						"x": "730",
-//						"y": "450",
+//						"y": "170",
 //						"desc": "Call AI Agent, use it's output as result",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
