@@ -108,7 +108,7 @@ let OllamaAgent=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="ollama list";
+		args['commands']="/usr/local/bin/ollama list && echo \"Successful\" || echo \"Failed\"";
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:CheckRun,result:(result),preSeg:"1J9ORDF050",outlet:"1J9OREIEF0"};
@@ -130,7 +130,7 @@ let OllamaAgent=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=`ollama pull ${model}`;
+		args['commands']=`/usr/local/bin/ollama pull ${model}`;
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:CheckPull,result:(result),preSeg:"1J9OS17JC0",outlet:"1J9OS3S740"};
@@ -356,9 +356,15 @@ let OllamaAgent=async function(session){
 	
 	segs["CheckRun"]=CheckRun=async function(input){//:1J9R9TNTS0
 		let result=input;
-		if(input.includes("ollama server not responding")){
+		/*#{1J9R9TNTS0Start*/
+		const lines = result.trim().split('\n');
+		const lastTwoLines = lines.slice(-2).join('\n');
+		/*}#1J9R9TNTS0Start*/
+		if(!lastTwoLines.includes('Successful')){
 			return {seg:Start,result:(input),preSeg:"1J9R9TNTS0",outlet:"1J9R9VV390"};
 		}
+		/*#{1J9R9TNTS0Post*/
+		/*}#1J9R9TNTS0Post*/
 		return {seg:CheckInstall,result:(result),preSeg:"1J9R9TNTS0",outlet:"1J9R9VV391"};
 	};
 	CheckRun.jaxId="1J9R9TNTS0"
@@ -366,10 +372,10 @@ let OllamaAgent=async function(session){
 	
 	segs["Start"]=Start=async function(input){//:1J9R9V1S90
 		let result,args={};
-		args['bashId']=globalContext.backend;
+		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="nohup ollama serve > /tmp/ollama.log 2>&1 & sleep 5";
-		args['options']={ownBySession:true};
+		args['commands']="nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 & sleep 5";
+		args['options']=undefined;
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:ListModels,result:(result),preSeg:"1J9R9V1S90",outlet:"1J9R9VV392"};
 	};
@@ -631,7 +637,7 @@ export{OllamaAgent};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "ollama list",
+//						"commands": "/usr/local/bin/ollama list && echo \"Successful\" || echo \"Failed\"",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1J9OREIEF0",
@@ -740,7 +746,7 @@ export{OllamaAgent};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#`ollama pull ${model}`",
+//						"commands": "#`/usr/local/bin/ollama pull ${model}`",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1J9OS3S740",
@@ -1365,7 +1371,7 @@ export{OllamaAgent};
 //						"x": "725",
 //						"y": "335",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1412,7 +1418,7 @@ export{OllamaAgent};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#input.includes(\"ollama server not responding\")"
+//										"condition": "#!lastTwoLines.includes('Successful')"
 //									},
 //									"linkedSeg": "1J9R9V1S90"
 //								}
@@ -1448,10 +1454,10 @@ export{OllamaAgent};
 //								"cast": ""
 //							}
 //						},
-//						"bashId": "#globalContext.backend",
+//						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "nohup ollama serve > /tmp/ollama.log 2>&1 & sleep 5",
-//						"options": "#{ownBySession:true}",
+//						"commands": "nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 & sleep 5",
+//						"options": "",
 //						"outlet": {
 //							"jaxId": "1J9R9VV392",
 //							"attrs": {
