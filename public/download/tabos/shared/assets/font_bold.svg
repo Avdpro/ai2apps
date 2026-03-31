@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="200"
+   height="200"
+   viewBox="0 0 52.916666 52.916666"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)"
+   sodipodi:docname="font_bold.svg">
+  <defs
+     id="defs2">
+    <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="0 : 26.458333 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="52.916666 : 26.458333 : 1"
+       inkscape:persp3d-origin="26.458333 : 17.638889 : 1"
+       id="perspective848" />
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="3.6887404"
+     inkscape:cx="119.83907"
+     inkscape:cy="109.37296"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="true"
+     units="px"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid833" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="图层 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       aria-label="B"
+       id="text1429"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:55.98619999999999663px;line-height:1.25;font-family:'Arial Black';-inkscape-font-specification:'Arial Black, ';letter-spacing:13.99660000000000082px;word-spacing:13.99660000000000082px;stroke-width:1.39966;fill:#1a1a1a;fill-opacity:1">
+      <path
+         d="m 7.9375,6.3500017 h 23.181785 q 5.795447,0 8.884529,2.8703861 3.116419,2.8703862 3.116419,7.1076232 0,3.553811 -2.214298,6.096153 -1.476198,1.694895 -4.319248,2.679027 4.319248,1.038807 6.342187,3.581149 2.050276,2.515005 2.050276,6.342186 0,3.116419 -1.448862,5.604087 -1.448861,2.487668 -3.963866,3.93653 -1.55821,0.902121 -4.701966,1.312177 -4.182563,0.54674 -5.549413,0.54674 H 7.9375 Z M 20.430514,22.068783 h 5.385391 q 2.897723,0 4.018541,-0.984132 1.148154,-1.01147 1.148154,-2.897724 0,-1.749568 -1.148154,-2.733701 -1.120818,-0.984132 -3.93653,-0.984132 h -5.467402 z m 0,15.746118 h 6.31485 q 3.19843,0 4.510606,-1.120817 1.312177,-1.148155 1.312177,-3.061745 0,-1.776906 -1.312177,-2.84305 -1.284839,-1.09348 -4.537944,-1.09348 h -6.287512 z"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:'Arial Black';-inkscape-font-specification:'Arial Black, ';stroke-width:1.39966;fill:#1a1a1a;fill-opacity:1"
+         id="path1449" />
+    </g>
+  </g>
+</svg>

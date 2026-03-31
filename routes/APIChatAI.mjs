@@ -518,8 +518,16 @@ export default async function(app,router,apiMap) {
 						const rawResVO = await response.json();
 						const message = rawResVO.choices?.[0]?.message || {};
 						let content = message?.content || "";
-						if (message.images) {
-							content = {content:content, images:message.images};
+						if (message.audio) {
+							// 音频模型：content=transcript，audio=dataURL
+							const b64 = message.audio.data || "";
+							let mime = "audio/wav";
+							if (b64.startsWith("SUQz") || b64.startsWith("//uQ") || b64.startsWith("//tQ")) {
+								mime = "audio/mpeg";
+							}
+							content = { content: message.audio.transcript || content, audio: b64 ? `data:${mime};base64,${b64}` : "" };
+						} else if (message.images) {
+							content = { content: content, images: message.images };
 						}
 						resVO = { code: 200, message: content };
 						res.json(resVO);
@@ -588,7 +596,8 @@ export default async function(app,router,apiMap) {
 						errorFunc: null,
 						timer: null,
 						thinking: "",
-						answer: ""
+						answer: "",
+						startTime: Date.now()
 					};
 					streamMap.set(streamId, streamVO);
 					resVO = { code: 200, streamId: streamId };
@@ -602,7 +611,10 @@ export default async function(app,router,apiMap) {
 								messages: reqVO.messages,
 								stream: true,
 								think: reqVO.enable_thinking,
-
+								temperature: 0.7,
+								top_p: 0.9,
+								top_k: 20,
+								repetition_penalty: 1.15
 							};
 							const response = await fetch(OLLAMA_NATIVE_URL, {
 								method: 'POST',
@@ -653,6 +665,12 @@ export default async function(app,router,apiMap) {
 											streamVO.inputTokens = json.prompt_eval_count || 0;
 											streamVO.outputTokens = json.eval_count || 0;
 											streamVO.closed = true;
+											const elapsed = (Date.now() - streamVO.startTime) / 1000;
+											const outTok = streamVO.outputTokens;
+											const speed = json.eval_duration
+												? (json.eval_count / (json.eval_duration / 1e9))
+												: (outTok > 0 ? outTok / elapsed : 0);
+											console.log(`[Ollama] ${callVO.model} | ${streamVO.inputTokens} in + ${outTok} out | ${elapsed * 1000} ms | ${speed.toFixed(1)} tok/s`);
 										}
 									} catch (e) {
 										// ignore parse errors
@@ -712,7 +730,8 @@ export default async function(app,router,apiMap) {
 							closed: false,
 							waitFunc: null,
 							errorFunc: null,
-							timer: null
+							timer: null,
+							startTime: Date.now()
 						}
 						messages=reqVO.messages;
 						if(messages[0].role==="system"){
@@ -767,11 +786,16 @@ export default async function(app,router,apiMap) {
 
 						const message = await stream.finalMessage();
 						streamVO.closed = true;
+						streamVO.inputTokens=message.usage.input_tokens;
+						streamVO.outputTokens=message.usage.output_tokens;
+						{
+							const elapsed = (Date.now() - streamVO.startTime) / 1000;
+							const speed = streamVO.outputTokens > 0 ? streamVO.outputTokens / elapsed : 0;
+							console.log(`[Claude] ${callVO.model} | ${streamVO.inputTokens} in + ${streamVO.outputTokens} out | ${elapsed.toFixed(1)}s | ${speed.toFixed(1)} tok/s`);
+						}
 						func = streamVO.waitFunc;
 						if (func) {
 							streamVO.waitFunc = null;
-							streamVO.inputTokens=message.usage.input_tokens;
-							streamVO.outputTokens=message.usage.output_tokens;
 							func();
 						}
 						chargePointsByUsage(userInfo,message.usage.input_tokens,message.usage.output_tokens,platform,callVO.model);
@@ -830,7 +854,8 @@ export default async function(app,router,apiMap) {
 							closed: false,
 							waitFunc: null,
 							errorFunc: null,
-							timer: null
+							timer: null,
+							startTime: Date.now()
 						}
 						streamVO.timer = setTimeout(() => {shutdownStream(streamId)}, 20000);
 
@@ -936,6 +961,11 @@ export default async function(app,router,apiMap) {
 							streamVO.closed = true;
 							streamVO.inputTokens=inputTokens||0;
 							streamVO.outputTokens=outputTokens||0;
+							{
+								const elapsed = (Date.now() - streamVO.startTime) / 1000;
+								const speed = streamVO.outputTokens > 0 ? streamVO.outputTokens / elapsed : 0;
+								console.log(`[OpenAI] ${callVO.model} | ${streamVO.inputTokens} in + ${streamVO.outputTokens} out | ${elapsed.toFixed(1)}s | ${speed.toFixed(1)} tok/s`);
+							}
 							func = streamVO.waitFunc;
 							if (func) {
 								streamVO.waitFunc = null;
@@ -1000,7 +1030,8 @@ export default async function(app,router,apiMap) {
 							closed: false,
 							waitFunc: null,
 							errorFunc: null,
-							timer: null
+							timer: null,
+							startTime: Date.now()
 						}
 						resVO = { code: 200, streamId: streamId };
 						streamMap.set(streamId, streamVO);
@@ -1032,6 +1063,12 @@ export default async function(app,router,apiMap) {
 							inputTokens=tokenUsage.promptTokenCount;
 							outputTokens=(tokenUsage.candidatesTokenCount||0)+(tokenUsage.thoughtsTokenCount||0);
 							chargePointsByUsage(userInfo,inputTokens,outputTokens,platform,modelName);
+						}
+						{
+							const elapsed = (Date.now() - streamVO.startTime) / 1000;
+							const outTok = outputTokens || 0;
+							const speed = outTok > 0 ? outTok / elapsed : 0;
+							console.log(`[Google] ${modelName} | ${inputTokens||0} in + ${outTok} out | ${elapsed.toFixed(1)}s | ${speed.toFixed(1)} tok/s`);
 						}
 
 						func = streamVO.waitFunc;
@@ -1077,7 +1114,10 @@ export default async function(app,router,apiMap) {
 						errorFunc: null,
 						timer: null,
 						thinking: "",
-						answer: ""
+						answer: "",
+						audioChunks: [],
+						audioTranscript: "",
+						startTime: Date.now()
 					};
 					streamMap.set(streamId, streamVO);
 					resVO = { code: 200, streamId: streamId };
@@ -1144,7 +1184,21 @@ export default async function(app,router,apiMap) {
 												if (delta.content) {
 													streamVO.answer += delta.content;
 												}
-												streamVO.content = (streamVO.thinking ? "💭 " + streamVO.thinking + "\n\n" : "") + streamVO.answer;
+												// 音频模型：收集 audio chunks
+												if (delta.audio) {
+													if (delta.audio.data) {
+														streamVO.audioChunks.push(delta.audio.data);
+													}
+													if (delta.audio.transcript) {
+														streamVO.audioTranscript += delta.audio.transcript;
+													}
+												}
+												// 如果有音频数据，content 显示转录文本
+												if (streamVO.audioChunks.length > 0) {
+													streamVO.content = streamVO.audioTranscript || "[Audio generating...]";
+												} else {
+													streamVO.content = (streamVO.thinking ? "💭 " + streamVO.thinking + "\n\n" : "") + streamVO.answer;
+												}
 											}
 										}
 										if (json.usage) {
@@ -1170,8 +1224,29 @@ export default async function(app,router,apiMap) {
 								}
 							}
 
-							streamVO.content = streamVO.answer;
+							// 流结束：设置最终 content
+							if (streamVO.audioChunks.length > 0) {
+								// 音频模型：拼接所有 base64 chunks，转 dataURL
+								const fullAudioB64 = streamVO.audioChunks.join("");
+								let mime = "audio/wav";
+								if (fullAudioB64.startsWith("SUQz") || fullAudioB64.startsWith("//uQ") || fullAudioB64.startsWith("//tQ")) {
+									mime = "audio/mpeg";
+								}
+								const transcript = streamVO.audioTranscript || streamVO.answer || "";
+								streamVO.content = {
+									content: transcript,
+									audio: `data:${mime};base64,${fullAudioB64}`
+								};
+							} else {
+								streamVO.content = streamVO.answer;
+							}
 							streamVO.closed = true;
+							{
+								const elapsed = (Date.now() - streamVO.startTime) / 1000;
+								const outTok = streamVO.outputTokens || 0;
+								const speed = outTok > 0 ? outTok / elapsed : 0;
+								console.log(`[OpenRouter] ${callVO.model} | ${streamVO.inputTokens||0} in + ${outTok} out | ${elapsed * 1000} ms | ${speed.toFixed(1)} tok/s`);
+							}
 							func = streamVO.waitFunc;
 							if (func) {
 								streamVO.waitFunc = null;

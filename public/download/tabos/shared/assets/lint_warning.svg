@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   class="icon"
+   width="200"
+   height="200"
+   viewBox="0 0 200 200"
+   version="1.1"
+   id="svg16"
+   sodipodi:docname="lint_warning.svg"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)">
+  <metadata
+     id="metadata22">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs20" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     id="namedview18"
+     showgrid="true"
+     inkscape:zoom="4"
+     inkscape:cx="101.25868"
+     inkscape:cy="101.19871"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg16"
+     inkscape:document-rotation="0">
+    <inkscape:grid
+       type="xygrid"
+       id="grid2131" />
+  </sodipodi:namedview>
+  <path
+     id="path3024"
+     style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:10;stroke-linecap:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke"
+     d="M 99.828125 10 A 90 90 0 0 0 10 100 A 90 90 0 0 0 100 190 A 90 90 0 0 0 190 100 A 90 90 0 0 0 100 10 A 90 90 0 0 0 99.828125 10 z M 100 35 A 20 17.5 0 0 1 120 52.5 A 20 17.5 0 0 1 119.92773 53.976562 C 119.97273 54.317383 120 54.658783 120 55 C 120 80 115 130 100 130 C 85 130 80 80 80 55 C 80 54.658783 80.027279 54.317383 80.072266 53.976562 A 20 17.5 0 0 1 80 52.5 A 20 17.5 0 0 1 100 35 z M 99.910156 135 A 18 18 0 0 1 100 135 A 18 18 0 0 1 118 153 A 18 18 0 0 1 100 171 A 18 18 0 0 1 82 153 A 18 18 0 0 1 99.910156 135 z " />
+</svg>

@@ -61,7 +61,7 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
 async function getInputModalityOutputTokens(modelName) {
 	try {
 		const response = await fetchWithRetry(
-			'https://openrouter.ai/api/v1/models',
+			'https://openrouter.ai/api/v1/models?output_modalities=all',
 			{
 				headers: {
 					'Authorization': 'Bearer EMPTY',
@@ -104,7 +104,7 @@ let OpenrouterAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,GetInfo,Welcome,AskInput,Generate2,Output2,Check,Generate1,AskReasoning,Reasoning;
+	let FixArgs,GetInfo,Welcome,AskInput,Generate2,Output2,Check,Generate1,AskReasoning,Reasoning,Type,Ask1,GenerateImage,OutputImage,Ask2,GenerateAudio,OutputAudio;
 	/*#{1HDBOSUN90LocalVals*/
 	let model_list, input_modality, max_tokens, last_generated_image, flag=false, output_modality, support_thinking=false, enable_thinking=false;
 	/*}#1HDBOSUN90LocalVals*/
@@ -201,7 +201,7 @@ let OpenrouterAgent=async function(session){
 		session.addChatText(role,content,opts);
 		/*#{1JGJH42JR0PostCodes*/
 		/*}#1JGJH42JR0PostCodes*/
-		return {seg:Reasoning,result:(result),preSeg:"1JGJH42JR0",outlet:"1JGJH48410"};
+		return {seg:Type,result:(result),preSeg:"1JGJH42JR0",outlet:"1JGJH48410"};
 	};
 	Welcome.jaxId="1JGJH42JR0"
 	Welcome.url="Welcome@"+agentURL
@@ -684,6 +684,464 @@ let OpenrouterAgent=async function(session){
 	Reasoning.jaxId="1JK2KQG040"
 	Reasoning.url="Reasoning@"+agentURL
 	
+	segs["Type"]=Type=async function(input){//:1JL11NDNJ0
+		let result=input;
+		if(output_modality.length===1&&output_modality.includes("image")){
+			return {seg:Ask1,result:(input),preSeg:"1JL11NDNJ0",outlet:"1JL12945V0"};
+		}
+		if(output_modality.includes("audio")){
+			return {seg:Ask2,result:(input),preSeg:"1JL11NDNJ0",outlet:"1JL11NHSU0"};
+		}
+		return {seg:Reasoning,result:(result),preSeg:"1JL11NDNJ0",outlet:"1JL12945V1"};
+	};
+	Type.jaxId="1JL11NDNJ0"
+	Type.url="Type@"+agentURL
+	
+	segs["Ask1"]=Ask1=async function(input){//:1JL12BLJ20
+		let tip=((($ln==="CN")?("描述你想生成的图片，或上传参考图来引导风格"):("Describe the image you want to generate, or upload a reference image to guide the style.")));
+		let tipRole=("assistant");
+		let placeholder=("");
+		let allowFile=(true)||false;
+		let allowEmpty=(false)||false;
+		let askUpward=(false);
+		let text=("");
+		let result="";
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
+		}
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
+		return {seg:GenerateImage,result:(result),preSeg:"1JL12BLJ20",outlet:"1JL12PF2L0"};
+	};
+	Ask1.jaxId="1JL12BLJ20"
+	Ask1.url="Ask1@"+agentURL
+	
+	segs["GenerateImage"]=GenerateImage=async function(input){//:1JL12Q63D0
+		let prompt;
+		let $platform="OpenRouter";
+		let $model=model;
+		let $agent;
+		let result=null;
+		/*#{1JL12Q63D0Input*/
+		/*}#1JL12Q63D0Input*/
+		
+		let opts={
+			platform:$platform,
+			mode:$model,
+			enable_thinking:true,
+			maxToken:max_tokens,
+			temperature:1,
+			topP:0.0001,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=GenerateImage.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"You are a smart assistant."},
+		];
+		/*#{1JL12Q63D0PrePrompt*/
+		let content = [];
+		if(typeof(input) === 'object' && input.assets && input.assets.length > 0) {
+			prompt = input.prompt || input.text || "";
+		
+			// Add text content first
+			if(prompt) {
+				content.push({
+					type: "text",
+					text: prompt
+				});
+			}
+		
+			// Convert hub:// paths to absolute @filelib/ paths and read as base64
+			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
+			for(let i = 0; i < input.assets.length; i++) {
+				let assetPath = input.assets[i];
+				// Remove hub:// prefix if present
+				if(assetPath.startsWith('hub://')) {
+					assetPath = assetPath.substring(6);
+				}
+				const absolutePath = pathLib.join(filelibPath, assetPath);
+		
+				try {
+					// Read file as base64
+					const fileBuffer = await fsp.readFile(absolutePath);
+					const base64Data = fileBuffer.toString('base64');
+					const fileName = pathLib.basename(absolutePath);
+					const ext = pathLib.extname(fileName).toLowerCase();
+		
+					// Determine file type based on extension
+					if(['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+						// Image file - check if model supports images
+						if(input_modality && input_modality.includes('image')) {
+							const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+											ext === '.png' ? 'image/png' :
+											ext === '.gif' ? 'image/gif' : 'image/webp';
+							content.push({
+								type: "image_url",
+								image_url: {
+									url: `data:${mimeType};base64,${base64Data}`
+								}
+							});
+						}
+					} else if(['.mp4', '.mpeg', '.mov', '.webm'].includes(ext)) {
+						// Video file
+						if(input_modality && input_modality.includes('video')) {
+							const mimeType = ext === '.mp4' ? 'video/mp4' :
+											ext === '.mpeg' ? 'video/mpeg' :
+											ext === '.mov' ? 'video/mov' : 'video/webm';
+							content.push({
+								type: "video_url",
+								video_url: {
+									url: `data:${mimeType};base64,${base64Data}`
+								}
+							});
+						}
+					} else if(['.wav', '.mp3', '.aiff', '.aac', '.ogg', '.flac', '.m4a'].includes(ext)) {
+						// Audio file
+						if(input_modality && input_modality.includes('audio')) {
+							const format = ext.substring(1); // Remove the dot
+							content.push({
+								type: "input_audio",
+								input_audio: {
+									data: base64Data,
+									format: format
+								}
+							});
+						}
+					} else if(ext === '.pdf') {
+						// PDF file
+						if(input_modality && input_modality.includes('file')) {
+							content.push({
+								type: "file",
+								file: {
+									filename: fileName,
+									file_data: `data:application/pdf;base64,${base64Data}`
+								}
+							});
+						}
+					}
+				} catch(error) {
+					console.error(`Failed to read file: ${absolutePath}`, error);
+				}
+			}
+		} else {
+			content.push({
+				type: "text",
+				text: input
+			});
+		}
+		
+		if(content.length > 0){
+			input=content;
+		}
+		/*}#1JL12Q63D0PrePrompt*/
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1JL12Q63D0FilterMessage*/
+			if(content.length > 0)prompt=JSON.parse(prompt);
+			msg={role:"user",content:prompt};
+			/*}#1JL12Q63D0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1JL12Q63D0PreCall*/
+		/*}#1JL12Q63D0PreCall*/
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
+		}else{
+			result=(result===null)?(await session.makeAICall("GenerateImage@"+agentURL,opts,messages,true)):result;
+		}
+		/*#{1JL12Q63D0PostCall*/
+		/*}#1JL12Q63D0PostCall*/
+		/*#{1JL12Q63D0PreResult*/
+		/*}#1JL12Q63D0PreResult*/
+		return {seg:OutputImage,result:(result),preSeg:"1JL12Q63D0",outlet:"1JL12Q63F0"};
+	};
+	GenerateImage.jaxId="1JL12Q63D0"
+	GenerateImage.url="GenerateImage@"+agentURL
+	
+	segs["OutputImage"]=OutputImage=async function(input){//:1JL12ST4U0
+		let result=input;
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+		let role="assistant";
+		let content=input;
+		/*#{1JL12ST4U0PreCodes*/
+		if(typeof(input) === 'object' && input.images && input.images.length > 0){
+		content=input.content;
+		if(input.content && input.content.length>0) session.addChatText(role,content,opts);
+		const images = input.images;
+		let fileOpts = { channel: $channel }; 
+		for(let i = 0; i < images.length; i ++){
+		let image = images[i];
+		if(image.type==="image_url"){
+			const regex = /^data:image\/(\w+);base64,/;
+			const data = image.image_url.url;
+			if(data){
+				last_generated_image=data;
+				flag=true;
+				const matches = data.match(regex);
+				if (matches && matches.length === 2) {
+					let saveName = `output_${Date.now()}_${i}.${matches[1]}`;
+					let savedHubName = await session.saveHubFile(saveName, data);
+					let hubUrl = "hub://" + savedHubName;
+					fileOpts.image = hubUrl;
+					session.addChatText(role, " ", fileOpts);
+				}
+			}
+		}
+		}
+		}
+		else{
+		session.addChatText(role,content,opts);
+		}
+		return {seg:Ask1,result:(result),preSeg:"1JL12ST4U0",outlet:"1JL12ST4V0"};
+		/*}#1JL12ST4U0PreCodes*/
+		session.addChatText(role,content,opts);
+		/*#{1JL12ST4U0PostCodes*/
+		/*}#1JL12ST4U0PostCodes*/
+		return {seg:Ask1,result:(result),preSeg:"1JL12ST4U0",outlet:"1JL12ST4V0"};
+	};
+	OutputImage.jaxId="1JL12ST4U0"
+	OutputImage.url="OutputImage@"+agentURL
+	
+	segs["Ask2"]=Ask2=async function(input){//:1JL15V4H70
+		let tip=("");
+		let tipRole=("assistant");
+		let placeholder=("");
+		let allowFile=(true)||false;
+		let allowEmpty=(false)||false;
+		let askUpward=(false);
+		let text=("");
+		let result="";
+		if(askUpward && tip){
+			result=await session.askUpward($agent,tip);
+		}else{
+			if(tip){
+				session.addChatText(tipRole,tip);
+			}
+			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
+		}
+		if(typeof(result)==="string"){
+			session.addChatText("user",result);
+		}else if(result.assets && result.prompt){
+			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
+		}else{
+			session.addChatText("user",result.text||result.prompt||result);
+		}
+		return {seg:GenerateAudio,result:(result),preSeg:"1JL15V4H70",outlet:"1JL15V4H73"};
+	};
+	Ask2.jaxId="1JL15V4H70"
+	Ask2.url="Ask2@"+agentURL
+	
+	segs["GenerateAudio"]=GenerateAudio=async function(input){//:1JL16ANFB0
+		let prompt;
+		let $platform="OpenRouter";
+		let $model=model;
+		let $agent;
+		let result=null;
+		/*#{1JL16ANFB0Input*/
+		/*}#1JL16ANFB0Input*/
+		
+		let opts={
+			platform:$platform,
+			mode:$model,
+			enable_thinking:true,
+			maxToken:max_tokens,
+			temperature:1,
+			topP:0.0001,
+			fqcP:0,
+			prcP:0,
+			secret:false,
+			responseFormat:"text"
+		};
+		let chatMem=GenerateAudio.messages
+		let seed="";
+		if(seed!==undefined){opts.seed=seed;}
+		let messages=[
+			{role:"system",content:"You are a smart assistant."},
+		];
+		/*#{1JL16ANFB0PrePrompt*/
+		let content = [];
+		if(typeof(input) === 'object' && input.assets && input.assets.length > 0) {
+			prompt = input.prompt || input.text || "";
+		
+			// Add text content first
+			if(prompt) {
+				content.push({
+					type: "text",
+					text: prompt
+				});
+			}
+		
+			// Convert hub:// paths to absolute @filelib/ paths and read as base64
+			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
+			for(let i = 0; i < input.assets.length; i++) {
+				let assetPath = input.assets[i];
+				// Remove hub:// prefix if present
+				if(assetPath.startsWith('hub://')) {
+					assetPath = assetPath.substring(6);
+				}
+				const absolutePath = pathLib.join(filelibPath, assetPath);
+		
+				try {
+					// Read file as base64
+					const fileBuffer = await fsp.readFile(absolutePath);
+					const base64Data = fileBuffer.toString('base64');
+					const fileName = pathLib.basename(absolutePath);
+					const ext = pathLib.extname(fileName).toLowerCase();
+		
+					// Determine file type based on extension
+					if(['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+						// Image file - check if model supports images
+						if(input_modality && input_modality.includes('image')) {
+							const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+											ext === '.png' ? 'image/png' :
+											ext === '.gif' ? 'image/gif' : 'image/webp';
+							content.push({
+								type: "image_url",
+								image_url: {
+									url: `data:${mimeType};base64,${base64Data}`
+								}
+							});
+						}
+					} else if(['.mp4', '.mpeg', '.mov', '.webm'].includes(ext)) {
+						// Video file
+						if(input_modality && input_modality.includes('video')) {
+							const mimeType = ext === '.mp4' ? 'video/mp4' :
+											ext === '.mpeg' ? 'video/mpeg' :
+											ext === '.mov' ? 'video/mov' : 'video/webm';
+							content.push({
+								type: "video_url",
+								video_url: {
+									url: `data:${mimeType};base64,${base64Data}`
+								}
+							});
+						}
+					} else if(['.wav', '.mp3', '.aiff', '.aac', '.ogg', '.flac', '.m4a'].includes(ext)) {
+						// Audio file
+						if(input_modality && input_modality.includes('audio')) {
+							const format = ext.substring(1); // Remove the dot
+							content.push({
+								type: "input_audio",
+								input_audio: {
+									data: base64Data,
+									format: format
+								}
+							});
+						}
+					} else if(ext === '.pdf') {
+						// PDF file
+						if(input_modality && input_modality.includes('file')) {
+							content.push({
+								type: "file",
+								file: {
+									filename: fileName,
+									file_data: `data:application/pdf;base64,${base64Data}`
+								}
+							});
+						}
+					}
+				} catch(error) {
+					console.error(`Failed to read file: ${absolutePath}`, error);
+				}
+			}
+		} else {
+			content.push({
+				type: "text",
+				text: input
+			});
+		}
+		
+		if(content.length > 0){
+			input=content;
+		}
+		/*}#1JL16ANFB0PrePrompt*/
+		prompt=input;
+		if(prompt!==null){
+			if(typeof(prompt)!=="string"){
+				prompt=JSON.stringify(prompt,null,"	");
+			}
+			let msg={role:"user",content:prompt};
+			/*#{1JL16ANFB0FilterMessage*/
+			if(content.length > 0)prompt=JSON.parse(prompt);
+			msg={role:"user",content:prompt};
+			/*}#1JL16ANFB0FilterMessage*/
+			messages.push(msg);
+		}
+		/*#{1JL16ANFB0PreCall*/
+		/*}#1JL16ANFB0PreCall*/
+		if($agent){
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
+		}else{
+			result=(result===null)?(await session.callSegLLM("GenerateAudio@"+agentURL,opts,messages,true)):result;
+		}
+		/*#{1JL16ANFB0PostCall*/
+		/*}#1JL16ANFB0PostCall*/
+		/*#{1JL16ANFB0PreResult*/
+		/*}#1JL16ANFB0PreResult*/
+		return {seg:OutputAudio,result:(result),preSeg:"1JL16ANFB0",outlet:"1JL16ANFC0"};
+	};
+	GenerateAudio.jaxId="1JL16ANFB0"
+	GenerateAudio.url="GenerateAudio@"+agentURL
+	
+	segs["OutputAudio"]=OutputAudio=async function(input){//:1JL16CCPS0
+		let result=input;
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+		let role="assistant";
+		let content=input;
+		/*#{1JL16CCPS0PreCodes*/
+		if(typeof(input) === 'object'){
+			content = input.content || "";
+			// 显示 transcript 文本
+			if(content && content.length > 0){
+				session.addChatText(role, content, opts);
+			}
+			// 处理音频 dataURL
+			if(input.audio && input.audio.startsWith("data:audio/")){
+				let fileOpts = { channel: $channel };
+				const regex = /^data:audio\/(\w+);base64,/;
+				const matches = input.audio.match(regex);
+				if(matches && matches.length === 2){
+					let ext = matches[1] === 'mpeg' ? 'mp3' : matches[1];
+					let saveName = `output_${Date.now()}.${ext}`;
+					let savedHubName = await session.saveHubFile(saveName, input.audio);
+					let hubUrl = "hub://" + savedHubName;
+					fileOpts.audio = hubUrl;
+					session.addChatText(role, " ", fileOpts);
+				}
+			}
+		} else {
+			session.addChatText(role, content, opts);
+		}
+		return {seg:Ask2,result:(result),preSeg:"1JL16CCPS0",outlet:"1JL16CP6S0"};
+		/*}#1JL16CCPS0PreCodes*/
+		session.addChatText(role,content,opts);
+		/*#{1JL16CCPS0PostCodes*/
+		/*}#1JL16CCPS0PostCodes*/
+		return {seg:Ask2,result:(result),preSeg:"1JL16CCPS0",outlet:"1JL16CP6S0"};
+	};
+	OutputAudio.jaxId="1JL16CCPS0"
+	OutputAudio.url="OutputAudio@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -804,7 +1262,7 @@ export{OpenrouterAgent};
 //						"id": "FixArgs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-455",
+//						"x": "-945",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -830,7 +1288,7 @@ export{OpenrouterAgent};
 //						"id": "GetInfo",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-220",
+//						"x": "-740",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -871,7 +1329,7 @@ export{OpenrouterAgent};
 //						"id": "Welcome",
 //						"viewName": "",
 //						"label": "",
-//						"x": "25",
+//						"x": "-500",
 //						"y": "320",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -898,7 +1356,7 @@ export{OpenrouterAgent};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JK2KQG040"
+//							"linkedSeg": "1JL11NDNJ0"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -911,8 +1369,8 @@ export{OpenrouterAgent};
 //						"id": "AskInput",
 //						"viewName": "",
 //						"label": "",
-//						"x": "770",
-//						"y": "335",
+//						"x": "470",
+//						"y": "665",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -956,8 +1414,8 @@ export{OpenrouterAgent};
 //						"id": "Generate2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1250",
-//						"y": "350",
+//						"x": "950",
+//						"y": "680",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1026,8 +1484,8 @@ export{OpenrouterAgent};
 //						"id": "Output2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1500",
-//						"y": "350",
+//						"x": "1200",
+//						"y": "680",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1065,8 +1523,8 @@ export{OpenrouterAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "1615",
-//						"y": "140",
+//						"x": "1315",
+//						"y": "470",
 //						"outlet": {
 //							"jaxId": "1JGJI6E350",
 //							"attrs": {
@@ -1087,8 +1545,8 @@ export{OpenrouterAgent};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "800",
-//						"y": "140",
+//						"x": "500",
+//						"y": "470",
 //						"outlet": {
 //							"jaxId": "1JGJI6E351",
 //							"attrs": {
@@ -1110,8 +1568,8 @@ export{OpenrouterAgent};
 //						"id": "Check",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1005",
-//						"y": "335",
+//						"x": "705",
+//						"y": "665",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1178,8 +1636,8 @@ export{OpenrouterAgent};
 //						"id": "Generate1",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1250",
-//						"y": "245",
+//						"x": "950",
+//						"y": "580",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1248,8 +1706,8 @@ export{OpenrouterAgent};
 //						"id": "AskReasoning",
 //						"viewName": "",
 //						"label": "",
-//						"x": "475",
-//						"y": "210",
+//						"x": "175",
+//						"y": "540",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1345,8 +1803,8 @@ export{OpenrouterAgent};
 //						"id": "Reasoning",
 //						"viewName": "",
 //						"label": "",
-//						"x": "245",
-//						"y": "320",
+//						"x": "-55",
+//						"y": "650",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1404,6 +1862,505 @@ export{OpenrouterAgent};
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "brunch",
+//					"jaxId": "1JL11NDNJ0",
+//					"attrs": {
+//						"id": "Type",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-270",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "#output_modality",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL12946R0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL12946R1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JL12945V1",
+//							"attrs": {
+//								"id": "Default",
+//								"desc": "输出节点。",
+//								"output": ""
+//							},
+//							"linkedSeg": "1JK2KQG040"
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JL12945V0",
+//									"attrs": {
+//										"id": "Draw",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JL12946R2",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JL12946R3",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#output_modality.length===1&&output_modality.includes(\"image\")"
+//									},
+//									"linkedSeg": "1JL12BLJ20"
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIConditionOutlet",
+//									"jaxId": "1JL11NHSU0",
+//									"attrs": {
+//										"id": "Audio",
+//										"desc": "输出节点。",
+//										"output": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JL12946R4",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JL12946R5",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"condition": "#output_modality.includes(\"audio\")"
+//									},
+//									"linkedSeg": "1JL15V4H70"
+//								}
+//							]
+//						}
+//					},
+//					"icon": "condition.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askChat",
+//					"jaxId": "1JL12BLJ20",
+//					"attrs": {
+//						"id": "Ask1",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-55",
+//						"y": "30",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL12PF320",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL12PF321",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"tip": {
+//							"type": "string",
+//							"valText": "Describe the image you want to generate, or upload a reference image to guide the style.",
+//							"localize": {
+//								"EN": "Describe the image you want to generate, or upload a reference image to guide the style.",
+//								"CN": "描述你想生成的图片，或上传参考图来引导风格"
+//							},
+//							"localizable": true
+//						},
+//						"tipRole": "Assistant",
+//						"placeholder": "",
+//						"text": "",
+//						"file": "true",
+//						"allowEmpty": "false",
+//						"showText": "true",
+//						"askUpward": "false",
+//						"outlet": {
+//							"jaxId": "1JL12PF2L0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL12Q63D0"
+//						}
+//					},
+//					"icon": "chat.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1JL12Q63D0",
+//					"attrs": {
+//						"id": "GenerateImage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "170",
+//						"y": "30",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL12Q63E0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL12Q63E1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "OpenRouter",
+//						"mode": "#model",
+//						"system": "You are a smart assistant.",
+//						"enable_thinking": "true",
+//						"temperature": "1",
+//						"maxToken": "#max_tokens",
+//						"topP": "0.0001",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1JL12Q63F0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL12ST4U0"
+//						},
+//						"stream": "false",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1JL12ST4U0",
+//					"attrs": {
+//						"id": "OutputImage",
+//						"viewName": "",
+//						"label": "",
+//						"x": "460",
+//						"y": "30",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL12ST4U1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL12ST4U2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"channel": "Chat",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1JL12ST4V0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL12UJI80"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JL12UJI80",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "605",
+//						"y": "-155",
+//						"outlet": {
+//							"jaxId": "1JL132B3H0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL12UO8G0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JL12UO8G0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "-15",
+//						"y": "-155",
+//						"outlet": {
+//							"jaxId": "1JL132B3H1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL12BLJ20"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askChat",
+//					"jaxId": "1JL15V4H70",
+//					"attrs": {
+//						"id": "Ask2",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-55",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL15V4H71",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL15V4H72",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"tip": "",
+//						"tipRole": "Assistant",
+//						"placeholder": "",
+//						"text": "",
+//						"file": "true",
+//						"allowEmpty": "false",
+//						"showText": "true",
+//						"askUpward": "false",
+//						"outlet": {
+//							"jaxId": "1JL15V4H73",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL16ANFB0"
+//						}
+//					},
+//					"icon": "chat.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "callLLM",
+//					"jaxId": "1JL16ANFB0",
+//					"attrs": {
+//						"id": "GenerateAudio",
+//						"viewName": "",
+//						"label": "",
+//						"x": "170",
+//						"y": "320",
+//						"desc": "执行一次LLM调用。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL16ANFB1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL16ANFB2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"platform": "OpenRouter",
+//						"mode": "#model",
+//						"system": "You are a smart assistant.",
+//						"enable_thinking": "true",
+//						"temperature": "1",
+//						"maxToken": "#max_tokens",
+//						"topP": "0.0001",
+//						"fqcP": "0",
+//						"prcP": "0",
+//						"messages": {
+//							"attrs": []
+//						},
+//						"prompt": "#input",
+//						"seed": "",
+//						"outlet": {
+//							"jaxId": "1JL16ANFC0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL16CCPS0"
+//						},
+//						"stream": "true",
+//						"secret": "false",
+//						"allowCheat": "false",
+//						"GPTCheats": {
+//							"attrs": []
+//						},
+//						"shareChatName": "",
+//						"keepChat": "No",
+//						"clearChat": "2",
+//						"apiFiles": {
+//							"attrs": []
+//						},
+//						"parallelFunction": "false",
+//						"responseFormat": "text",
+//						"formatDef": "\"\"",
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "llm.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1JL16CCPS0",
+//					"attrs": {
+//						"id": "OutputAudio",
+//						"viewName": "",
+//						"label": "",
+//						"x": "460",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JL16CP7B0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JL16CP7B1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"channel": "Chat",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1JL16CP6S0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL16DUDB0"
+//						}
+//					},
+//					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JL16DUDB0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "620",
+//						"y": "160",
+//						"outlet": {
+//							"jaxId": "1JL16EPSL0",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL16E1AK0"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JL16E1AK0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "-15",
+//						"y": "155",
+//						"outlet": {
+//							"jaxId": "1JL16EPSL1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JL15V4H70"
+//						},
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
 //				}
 //			]
 //		},

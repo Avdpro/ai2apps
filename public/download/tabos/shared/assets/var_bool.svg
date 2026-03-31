@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   class="icon"
+   width="200"
+   height="200"
+   viewBox="0 0 200 200"
+   version="1.1"
+   id="svg16"
+   sodipodi:docname="var_bool.svg"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)">
+  <metadata
+     id="metadata22">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs20" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     id="namedview18"
+     showgrid="true"
+     inkscape:zoom="4"
+     inkscape:cx="110.13368"
+     inkscape:cy="108.44871"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg16"
+     inkscape:document-rotation="0">
+    <inkscape:grid
+       type="xygrid"
+       id="grid2131" />
+  </sodipodi:namedview>
+  <g
+     aria-label="Bool"
+     transform="scale(0.89981608,1.1113382)"
+     id="text960"
+     style="font-size:57.914px;line-height:1.25;font-family:'Big Caslon';-inkscape-font-specification:'Big Caslon';letter-spacing:14.4785px;word-spacing:14.4785px;stroke-width:1.44785">
+    <path
+       d="m 80.480112,98.592352 q 0,3.054058 -1.244246,5.457718 -1.215968,2.40366 -3.36512,3.98724 -2.488492,1.86637 -5.485994,2.65816 -2.969224,0.7918 -7.550312,0.7918 H 44.453531 V 69.380847 h 16.34487 q 5.090098,0 7.437198,0.339339 2.375379,0.33934 4.694202,1.498751 2.403657,1.215968 3.563068,3.280286 1.18769,2.036039 1.18769,4.665923 0,3.054058 -1.611865,5.401159 -1.611864,2.318822 -4.552809,3.619625 v 0.226227 q 4.128634,0.820071 6.532292,3.393398 2.431935,2.573327 2.431935,6.786797 z M 66.567178,81.28602 q 0,-1.046298 -0.537288,-2.092596 -0.50901,-1.046298 -1.838091,-1.555308 -1.187689,-0.452453 -2.969223,-0.480731 -1.753256,-0.05656 -4.948706,-0.05656 h -1.01802 v 8.907671 h 1.696699 q 2.573327,0 4.38314,-0.08483 1.809813,-0.08483 2.85611,-0.565566 1.470473,-0.650401 1.922926,-1.668421 0.452453,-1.046298 0.452453,-2.403657 z m 2.658163,17.136662 q 0,-2.007761 -0.791793,-3.082337 -0.763515,-1.102854 -2.629884,-1.640142 -1.272525,-0.367619 -3.506512,-0.395897 -2.233987,-0.02828 -4.665923,-0.02828 H 55.25585 v 10.491252 h 0.791793 q 4.581088,0 6.56057,-0.0283 1.979483,-0.0283 3.647904,-0.73524 1.696699,-0.70696 2.318822,-1.86637 0.650402,-1.187688 0.650402,-2.714718 z"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Al Bayan';-inkscape-font-specification:'Al Bayan Bold';letter-spacing:0px;stroke-width:1.44785"
+       id="path1136" />
+    <path
+       d="m 120.46566,95.623128 q 0,7.833092 -4.58109,12.357622 -4.55281,4.49626 -12.81008,4.49626 -8.257268,0 -12.838356,-4.49626 -4.55281,-4.52453 -4.55281,-12.357622 0,-7.889651 4.581088,-12.385904 4.609366,-4.496253 12.810078,-4.496253 8.31383,0 12.83836,4.524531 4.55281,4.524532 4.55281,12.357626 z m -12.5273,7.719982 q 0.98974,-1.21597 1.47048,-2.91267 0.50901,-1.724975 0.50901,-4.750755 0,-2.799554 -0.50901,-4.694201 -0.50901,-1.894648 -1.41392,-3.025781 -0.90491,-1.159411 -2.17743,-1.640142 -1.27253,-0.480732 -2.743,-0.480732 -1.47047,0 -2.62988,0.395897 -1.131135,0.395896 -2.177433,1.583586 -0.933185,1.102854 -1.498751,3.02578 -0.537288,1.922926 -0.537288,4.835593 0,2.601606 0.480731,4.524535 0.480732,1.89464 1.413916,3.05406 0.904907,1.10285 2.149155,1.61186 1.27252,0.50901 2.88439,0.50901 1.38563,0 2.62988,-0.45245 1.27252,-0.48074 2.14915,-1.58359 z"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Al Bayan';-inkscape-font-specification:'Al Bayan Bold';letter-spacing:0px;stroke-width:1.44785"
+       id="path1138" />
+    <path
+       d="m 160.28153,95.623128 q 0,7.833092 -4.58109,12.357622 -4.55281,4.49626 -12.81008,4.49626 -8.25727,0 -12.83835,-4.49626 -4.55281,-4.52453 -4.55281,-12.357622 0,-7.889651 4.58108,-12.385904 4.60937,-4.496253 12.81008,-4.496253 8.31383,0 12.83836,4.524531 4.55281,4.524532 4.55281,12.357626 z m -12.5273,7.719982 q 0.98975,-1.21597 1.47048,-2.91267 0.50901,-1.724975 0.50901,-4.750755 0,-2.799554 -0.50901,-4.694201 -0.50901,-1.894648 -1.41392,-3.025781 -0.9049,-1.159411 -2.17743,-1.640142 -1.27252,-0.480732 -2.743,-0.480732 -1.47047,0 -2.62988,0.395897 -1.13113,0.395896 -2.17743,1.583586 -0.93319,1.102854 -1.49875,3.02578 -0.53729,1.922926 -0.53729,4.835593 0,2.601606 0.48073,4.524535 0.48073,1.89464 1.41392,3.05406 0.9049,1.10285 2.14915,1.61186 1.27252,0.50901 2.88439,0.50901 1.38564,0 2.62988,-0.45245 1.27253,-0.48074 2.14915,-1.58359 z"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Al Bayan';-inkscape-font-specification:'Al Bayan Bold';letter-spacing:0px;stroke-width:1.44785"
+       id="path1140" />
+    <path
+       d="M 177.81409,111.48727 H 167.6339 V 67.486199 h 10.18019 z"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Al Bayan';-inkscape-font-specification:'Al Bayan Bold';letter-spacing:0px;stroke-width:1.44785"
+       id="path1142" />
+  </g>
+  <rect
+     style="fill:none;fill-rule:evenodd;stroke:#333333;stroke-width:10;stroke-linecap:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke"
+     id="rect964"
+     width="160"
+     height="120"
+     x="20"
+     y="40"
+     rx="20"
+     ry="20" />
+</svg>

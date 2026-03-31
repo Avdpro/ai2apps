@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="200mm"
+   height="200mm"
+   viewBox="0 0 200 200"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="paste.svg"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)">
+  <defs
+     id="defs2">
+    <rect
+       x="79.375"
+       y="81.642857"
+       width="77.107143"
+       height="78.619048"
+       id="rect869" />
+    <rect
+       x="58.964286"
+       y="171.60119"
+       width="142.875"
+       height="77.107143"
+       id="rect863" />
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="0.49497475"
+     inkscape:cx="369.01273"
+     inkscape:cy="305.02918"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="false"
+     inkscape:object-paths="true"
+     inkscape:snap-nodes="false"
+     inkscape:snap-page="false"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="图层 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       id="rect833"
+       style="fill:#1a1a1a;fill-rule:nonzero;stroke:#000000;stroke-width:0.529167"
+       d="m 35.434013,26.458259 c -6.648,0 -11.999785,5.352301 -11.999785,12.000302 v 95.999819 c 0,6.648 5.351785,11.99979 11.999785,11.99979 h 8.131286 V 58.589114 c 0,-6.648 5.352301,-11.999783 12.000301,-11.999783 h 87.86854 v -8.13077 c 0,-6.648001 -5.35179,-12.000302 -11.99979,-12.000302 z" />
+    <path
+       id="rect833-6"
+       style="fill:#1a1a1a;fill-rule:nonzero;stroke:#000000;stroke-width:2"
+       d="M 244.29688 207.51367 C 219.17058 207.51367 198.94336 227.74284 198.94336 252.86914 L 198.94336 615.70312 C 198.94336 640.82942 219.17058 661.05664 244.29688 661.05664 L 607.13086 661.05664 C 632.25716 661.05664 652.48633 640.82942 652.48633 615.70312 L 652.48633 252.86914 C 652.48633 227.74284 632.25716 207.51367 607.13086 207.51367 L 244.29688 207.51367 z M 338.97852 312.79492 L 416.6875 312.79492 C 433.87036 312.79492 448.4242 314.13322 460.34961 316.80664 C 472.27503 319.36382 482.85336 323.43046 492.08594 329.00977 C 502.98551 335.63519 511.38461 343.8895 517.2832 353.76953 C 523.31003 363.64955 526.32422 376.14328 526.32422 391.25391 C 526.32422 402.76122 524.07986 413.45591 519.5918 423.33594 C 515.23197 433.0997 509.07723 441.58441 501.12695 448.79102 C 491.25322 457.7412 479.58332 464.48247 466.11914 469.01562 C 452.65497 473.43259 435.66528 475.64062 415.14844 475.64062 L 377.06445 475.64062 L 377.06445 572.4082 L 338.97852 572.4082 L 338.97852 312.79492 z M 377.06445 342.43555 L 377.06445 446.17578 L 409.18555 446.17578 C 424.57318 446.17578 437.07609 444.95458 446.69336 442.51367 C 456.31062 439.95649 464.13138 435.94745 470.1582 430.48438 C 476.18503 424.90506 480.41714 419.03548 482.85352 412.875 C 485.41812 406.71451 486.70117 399.79851 486.70117 392.12695 C 486.70117 383.17682 484.97003 375.3891 481.50781 368.76367 C 478.0456 362.13824 472.78704 356.73331 465.73438 352.54883 C 459.57933 348.94553 452.52645 346.38801 444.57617 344.87695 C 436.75412 343.24965 426.81732 342.43555 414.76367 342.43555 L 377.06445 342.43555 z "
+       transform="scale(0.26458333)" />
+    <g
+       aria-label="P"
+       transform="matrix(2.9544232,0,0,2.6780657,-154.99734,-153.38822)"
+       id="text867"
+       style="font-style:normal;font-weight:normal;font-size:10.5833px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect869);fill:#ffffff;fill-opacity:1;stroke:none" />
+  </g>
+</svg>

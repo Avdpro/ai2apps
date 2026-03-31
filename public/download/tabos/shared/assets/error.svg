@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   class="icon"
+   width="200px"
+   height="200.00px"
+   viewBox="0 0 1024 1024"
+   version="1.1"
+   id="svg835"
+   sodipodi:docname="error.svg"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)">
+  <metadata
+     id="metadata841">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs839" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     id="namedview837"
+     showgrid="true"
+     inkscape:zoom="0.280633"
+     inkscape:cx="44.905304"
+     inkscape:cy="-66.769281"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg835">
+    <inkscape:grid
+       type="xygrid"
+       id="grid843" />
+  </sodipodi:namedview>
+  <path
+     d="M 512,102.4 C 285.9008,102.4 102.4,285.9008 102.4,512 102.4,738.0992 285.9008,921.6 512,921.6 738.0992,921.6 921.6,738.0992 921.6,512 921.6,285.9008 738.0992,102.4 512,102.4 Z"
+     fill="#d81e06"
+     id="path833"
+     style="stroke-width:0.910223"
+     sodipodi:nodetypes="sssss" />
+  <rect
+     style="fill:#ffffff;stroke:none;stroke-width:159.886;stroke-linecap:round;stroke-linejoin:round;paint-order:markers stroke fill"
+     id="rect845"
+     width="184.32001"
+     height="409.60001"
+     x="419.84"
+     y="179.2"
+     rx="92.160004"
+     ry="92.160004" />
+  <rect
+     style="fill:#ffffff;stroke:none;stroke-width:107.255;stroke-linecap:round;stroke-linejoin:round;paint-order:markers stroke fill"
+     id="rect845-4"
+     width="184.32001"
+     height="184.32001"
+     x="419.84"
+     y="614.40002"
+     rx="92.160004"
+     ry="92.160004" />
+</svg>

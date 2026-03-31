@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en-us">
+<body>
+<script type="text/javascript">
+	let appURL=document.location.href;
+	let pts=appURL.split("?");
+	window.isJAXEXECFrame=1;
+	//window.cmdFrameSeq=pts[1]||window.name;
+	
+	var appParams={};
+	let pos=appURL.indexOf("?");
+	if(pos<0){
+		pos=appURL.indexOf("#");
+	}
+	if(pos>0){
+		let ptext,list;
+		let subs,key,val;			
+		ptext=appURL.substring(pos+1);
+		pos=ptext.lastIndexOf("#");
+		if(pos>=0){
+			ptext=ptext.substring(0,pos);
+		}
+		list=ptext.split("&");
+		if(list.length===1){
+			subs=list[0].split("=");
+			if(subs.length===2){
+				key=decodeURIComponent(subs[0]);
+				val=decodeURIComponent(subs[1]);
+				appParams[key]=val;
+			}else{
+				appParams["cmdFrameSeq"]=ptext;
+			}
+		}else{
+			list.forEach(item=>{
+				subs=item.split("=");
+				if(subs.length===2){
+					key=decodeURIComponent(subs[0]);
+					val=decodeURIComponent(subs[1]);
+					appParams[key]=val;
+				}
+			});
+		}
+	}
+	if(appParams.cmdFrameSeq){
+		window.cmdFrameSeq=appParams.cmdFrameSeq;
+	}
+	
+</script>
+<script type="module">
+	import {tabOS} from "/@tabos";
+	import {jaxClientExec} from "/@tabos/tabos_env.js";
+	let src=appParams.src;
+	async function exec(){
+		if(src){
+			await tabOS.setup();
+			let mod=await import(src);
+			let cmdFunc=mod.default;
+			if(cmdFunc instanceof Function){
+				jaxClientExec(cmdFunc);
+			}
+		}else{
+			console.error("No command source file to execute.");
+		}
+	}
+	exec();
+</script>
+</body>
+</html>

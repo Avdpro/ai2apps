@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="200"
+   height="200"
+   viewBox="0 0 200 200"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)"
+   sodipodi:docname="btn_switch.svg">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="4"
+     inkscape:cx="100.53125"
+     inkscape:cy="103.27941"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="true"
+     units="px"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid833" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="图层 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:none;fill-opacity:0.6;fill-rule:evenodd;stroke:#333333;stroke-width:10;stroke-linecap:square;stroke-linejoin:bevel;stroke-opacity:1;paint-order:markers fill stroke"
+       id="rect920-6"
+       width="170"
+       height="80"
+       x="15"
+       y="12.5"
+       rx="40"
+       ry="40" />
+    <g
+       aria-label="Button"
+       transform="matrix(0.97148621,0,0,1.0293507,0,-12.5)"
+       id="text880"
+       style="font-size:40.0591px;line-height:1.25;font-family:'Apple Braille';-inkscape-font-specification:'Apple Braille';letter-spacing:10.0148px;word-spacing:10.0148px;stroke-width:1.00148" />
+    <path
+       id="rect920"
+       style="fill:#333333;fill-opacity:0.6;fill-rule:evenodd;stroke:none;stroke-width:10;stroke-linecap:square;stroke-linejoin:bevel;stroke-opacity:1;paint-order:markers fill stroke"
+       d="m 55,12.5 c -22.16,0 -40,17.84 -40,40 0,22.16 17.84,40 40,40 h 90 a 40,40 0 0 1 -40,-40 40,40 0 0 1 39.92383,-40 z m 93.81641,0.183594 a 40,40 0 0 1 0.63086,0.06445 c -0.20993,-0.02303 -0.41995,-0.04466 -0.63086,-0.06445 z m 1.74218,0.205078 a 40,40 0 0 1 1.25782,0.197266 c -0.41732,-0.07112 -0.83611,-0.139095 -1.25782,-0.197266 z m 1.45313,0.230469 a 40,40 0 0 1 32.36133,32.330078 C 181.46088,28.952699 168.51386,16.015388 152.01172,13.119141 Z m 32.39258,32.5 a 40,40 0 0 1 0.20117,1.27539 c -0.0595,-0.427624 -0.12836,-0.852287 -0.20117,-1.27539 z m 0.34765,2.443359 a 40,40 0 0 1 0.0606,0.564453 c -0.018,-0.188826 -0.04,-0.376418 -0.0606,-0.564453 z m 0.19141,2.330078 a 40,40 0 0 1 0.006,0.0957 c -0.002,-0.03192 -0.004,-0.06381 -0.006,-0.0957 z m -0.12695,5.923832 a 40,40 0 0 1 -0.0645,0.63086 c 0.023,-0.20993 0.0447,-0.41995 0.0645,-0.63086 z m -0.20508,1.74218 a 40,40 0 0 1 -0.19727,1.25782 c 0.0711,-0.41732 0.1391,-0.83611 0.19727,-1.25782 z m -0.23047,1.45313 a 40,40 0 0 1 -32.33008,32.36133 c 16.49652,-2.91217 29.43383,-15.85919 32.33008,-32.36133 z m -32.5,32.39258 a 40,40 0 0 1 -1.27539,0.20117 c 0.42762,-0.0595 0.85229,-0.12836 1.27539,-0.20117 z m -2.44336,0.34765 a 40,40 0 0 1 -0.56445,0.0606 c 0.18882,-0.018 0.37642,-0.04 0.56445,-0.0606 z m -2.33008,0.19141 a 40,40 0 0 1 -0.0957,0.006 c 0.0319,-0.002 0.0638,-0.004 0.0957,-0.006 z" />
+    <circle
+       style="fill:none;fill-opacity:0.6;fill-rule:evenodd;stroke:#333333;stroke-width:10;stroke-linecap:square;stroke-linejoin:bevel;stroke-opacity:1;paint-order:markers fill stroke"
+       id="path922-9"
+       cx="145"
+       cy="52.5"
+       r="40" />
+    <rect
+       style="fill:none;fill-opacity:0.6;fill-rule:evenodd;stroke:#333333;stroke-width:10;stroke-linecap:square;stroke-linejoin:bevel;stroke-opacity:1;paint-order:markers fill stroke"
+       id="rect920-6-7"
+       width="170"
+       height="80"
+       x="15"
+       y="107.5"
+       rx="40"
+       ry="40" />
+    <circle
+       style="fill:none;fill-opacity:0.6;fill-rule:evenodd;stroke:#333333;stroke-width:10;stroke-linecap:square;stroke-linejoin:bevel;stroke-opacity:1;paint-order:markers fill stroke"
+       id="path922-9-0"
+       cx="55"
+       cy="147.5"
+       r="40" />
+  </g>
+</svg>

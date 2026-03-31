@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="200"
+   height="200"
+   viewBox="0 0 52.916666 52.916666"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)"
+   sodipodi:docname="android.svg">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="4.8153846"
+     inkscape:cx="110"
+     inkscape:cy="114.41"
+     inkscape:document-units="mm"
+     inkscape:current-layer="g841"
+     inkscape:document-rotation="0"
+     showgrid="true"
+     units="px"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="1"
+     showguides="false">
+    <inkscape:grid
+       type="xygrid"
+       id="grid833" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="图层 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       transform="matrix(0.24258863,0,0,-0.24258863,-11.237757,60.450337)"
+       id="g841">
+      <path
+         id="path1599"
+         style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:5.45333;stroke-linecap:round;paint-order:markers fill stroke"
+         d="m 155.391,220.45681 a 65.440006,65.440006 0 0 1 -65.439997,-65.44 H 155.391 220.83101 a 65.440006,65.440006 0 0 1 -65.44001,65.44 z m -27.26666,-27.26667 a 5.4533336,5.4533336 0 0 0 5.45333,-5.45333 5.4533336,5.4533336 0 0 0 -5.45333,-5.45333 5.4533336,5.4533336 0 0 0 -5.45334,5.45333 5.4533336,5.4533336 0 0 0 5.45334,5.45333 z m 49.08,0 a 5.4533335,5.4533335 0 0 0 5.45333,-5.45333 5.4533335,5.4533335 0 0 0 -5.45333,-5.45333 5.4533335,5.4533335 0 0 0 -5.45333,5.45333 5.4533335,5.4533335 0 0 0 5.45333,5.45333 z" />
+      <rect
+         style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:6.13752;stroke-linecap:round;paint-order:markers fill stroke"
+         id="rect1618"
+         width="130.88"
+         height="103.61333"
+         x="89.951004"
+         y="-149.56348"
+         transform="scale(1,-1)" />
+      <rect
+         style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:5.45333;stroke-linecap:round;paint-order:markers fill stroke"
+         id="rect1620"
+         width="10.906667"
+         height="38.173336"
+         x="223.67834"
+         y="-90.159721"
+         transform="matrix(0.70710678,0.70710678,0.70710678,-0.70710678,0,0)"
+         rx="5.4533334"
+         ry="5.4533334" />
+      <rect
+         style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:5.45333;stroke-linecap:round;paint-order:markers fill stroke"
+         id="rect1620-4"
+         width="10.906667"
+         height="38.173336"
+         x="-18.685057"
+         y="-306.05969"
+         rx="5.4533334"
+         ry="5.4533334"
+         transform="matrix(0.70710678,-0.70710678,-0.70710678,-0.70710678,0,0)" />
+      <rect
+         style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:5.45333;stroke-linecap:round;paint-order:markers fill stroke"
+         id="rect1639"
+         width="27.266668"
+         height="87.253334"
+         x="57.231003"
+         y="-144.11014"
+         transform="scale(1,-1)"
+         rx="13.633333"
+         ry="13.633333" />
+      <rect
+         style="fill:#333333;fill-rule:evenodd;stroke:none;stroke-width:5.45333;stroke-linecap:round;paint-order:markers fill stroke"
+         id="rect1639-5"
+         width="27.266668"
+         height="87.253334"
+         x="226.28433"
+         y="-144.11014"
+         rx="13.633333"
+         ry="13.633333"
+         transform="scale(1,-1)" />
+    </g>
+  </g>
+</svg>

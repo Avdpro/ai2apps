@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   class="icon"
+   width="200"
+   height="200"
+   viewBox="0 0 200 200"
+   version="1.1"
+   id="svg16"
+   sodipodi:docname="var_color.svg"
+   inkscape:version="1.0.1 (c497b03c, 2020-09-10)">
+  <metadata
+     id="metadata22">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs20" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1792"
+     inkscape:window-height="1075"
+     id="namedview18"
+     showgrid="true"
+     inkscape:zoom="4"
+     inkscape:cx="84.25868"
+     inkscape:cy="84.44871"
+     inkscape:window-x="0"
+     inkscape:window-y="23"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg16"
+     inkscape:document-rotation="0">
+    <inkscape:grid
+       type="xygrid"
+       id="grid2131" />
+  </sodipodi:namedview>
+  <circle
+     style="fill:#999999;fill-rule:evenodd;stroke-width:10;stroke-linecap:round;paint-order:markers fill stroke"
+     id="path2895"
+     cx="99.75"
+     cy="60"
+     r="50" />
+  <circle
+     style="fill:#999999;fill-rule:evenodd;stroke-width:10;stroke-linecap:round;paint-order:markers fill stroke"
+     id="path2895-0"
+     cx="65"
+     cy="125"
+     r="50"
+     inkscape:transform-center-x="-6"
+     inkscape:transform-center-y="-76" />
+  <circle
+     style="fill:#999999;fill-rule:evenodd;stroke-width:10;stroke-linecap:round;paint-order:markers fill stroke"
+     id="path2895-0-1"
+     cx="135"
+     cy="125"
+     r="50"
+     inkscape:transform-center-x="-6"
+     inkscape:transform-center-y="-76" />
+  <circle
+     style="fill:#999999;fill-rule:evenodd;stroke-width:10;stroke-linecap:round;paint-order:markers fill stroke"
+     id="path2895-5"
+     cx="99.75"
+     cy="60"
+     r="50" />
+</svg>
