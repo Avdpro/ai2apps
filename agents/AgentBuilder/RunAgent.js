@@ -76,7 +76,7 @@ async function runAgent({chatClient=null,chatThread=null,agent,agentNode=null,ar
 	}
 }
 
-async function callAgent({agent,agentNode=null,args=null,title="Run Agent",embed=null}){
+async function callAgent({agent,agentNode=null,args=null,title="Run Agent",embed=null,keepOpen=false}){
 	let pms,callback,callerror,result,appFrame;
 	pms=new Promise((resolve,reject)=>{
 		callback=resolve;
@@ -86,11 +86,11 @@ async function callAgent({agent,agentNode=null,args=null,title="Run Agent",embed
 		appFrame=await runAgent({agent:agent,agentNode:agentNode,args:args,title:title,callback:callback,callerror:callerror,embed:embed});
 		appFrame.onNotify("FrameClosed",()=>{callerror("User aborted agent execution.");});
 		result=await pms;
-		appFrame.close();
+		if(!keepOpen) appFrame.close();
 		return result;
 	}catch(err){
-		appFrame.close();
-		throw err;		
+		if(!keepOpen) appFrame.close();
+		throw err;
 	}
 }
 

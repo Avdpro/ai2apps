@@ -165,6 +165,7 @@ let OpenrouterAgent=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JGJH42JR0PreCodes*/
+		opts.txtHeader=model;
 		let modalityText = "";
 		if(input_modality && input_modality.length > 0) {
 			const modalityIcons = {
@@ -418,6 +419,7 @@ let OpenrouterAgent=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JGJI4MHM0PreCodes*/
+		opts.txtHeader=model;
 		if(typeof(input) === 'object' && input.images && input.images.length > 0){
 			content=input.content;
 			if(input.content && input.content.length>0) session.addChatText(role,content,opts);
@@ -884,6 +886,7 @@ let OpenrouterAgent=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JL12ST4U0PreCodes*/
+		opts.txtHeader=model;
 		if(typeof(input) === 'object' && input.images && input.images.length > 0){
 		content=input.content;
 		if(input.content && input.content.length>0) session.addChatText(role,content,opts);
@@ -1109,6 +1112,7 @@ let OpenrouterAgent=async function(session){
 		let role="assistant";
 		let content=input;
 		/*#{1JL16CCPS0PreCodes*/
+		opts.txtHeader=model;
 		if(typeof(input) === 'object'){
 			content = input.content || "";
 			// 显示 transcript 文本
@@ -2326,7 +2330,7 @@ export{OpenrouterAgent};
 //						"id": "",
 //						"label": "New AI Seg",
 //						"x": "620",
-//						"y": "160",
+//						"y": "155",
 //						"outlet": {
 //							"jaxId": "1JL16EPSL0",
 //							"attrs": {

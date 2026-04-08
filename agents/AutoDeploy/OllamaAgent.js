@@ -144,7 +144,12 @@ let OllamaAgent=async function(session){
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("你好，需要什么帮助吗？"):("Hello, how can I help you?"));
+		/*#{1J9OS5E6P0PreCodes*/
+		opts.txtHeader=model;
+		/*}#1J9OS5E6P0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1J9OS5E6P0PostCodes*/
+		/*}#1J9OS5E6P0PostCodes*/
 		return {seg:Ask,result:(result),preSeg:"1J9OS5E6P0",outlet:"1J9OS72MR0"};
 	};
 	Greet.jaxId="1J9OS5E6P0"
@@ -283,7 +288,12 @@ let OllamaAgent=async function(session){
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
+		/*#{1J9OSCN8T0PreCodes*/
+		opts.txtHeader=model;
+		/*}#1J9OSCN8T0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1J9OSCN8T0PostCodes*/
+		/*}#1J9OSCN8T0PostCodes*/
 		return {seg:Ask,result:(result),preSeg:"1J9OSCN8T0",outlet:"1J9OSCUJ00"};
 	};
 	Output.jaxId="1J9OSCN8T0"
@@ -295,7 +305,12 @@ let OllamaAgent=async function(session){
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("正在下载模型，请稍等"):("Downloading model, please wait"));
+		/*#{1J9P1OS850PreCodes*/
+		opts.txtHeader=model;
+		/*}#1J9P1OS850PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1J9P1OS850PostCodes*/
+		/*}#1J9P1OS850PostCodes*/
 		return {seg:Pull,result:(result),preSeg:"1J9P1OS850",outlet:"1J9P1PQFR0"};
 	};
 	Download.jaxId="1J9P1OS850"
@@ -317,7 +332,12 @@ let OllamaAgent=async function(session){
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=(($ln==="CN")?("模型下载失败，是否重试"):("Model download failed, would you like to retry?"));
+		/*#{1J9P1SBLP0PreCodes*/
+		opts.txtHeader=model;
+		/*}#1J9P1SBLP0PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1J9P1SBLP0PostCodes*/
+		/*}#1J9P1SBLP0PostCodes*/
 		return {seg:Retry,result:(result),preSeg:"1J9P1SBLP0",outlet:"1J9P1U64F0"};
 	};
 	Fail.jaxId="1J9P1SBLP0"
@@ -770,7 +790,7 @@ export{OllamaAgent};
 //						"x": "1345",
 //						"y": "335",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -936,7 +956,7 @@ export{OllamaAgent};
 //						"x": "2035",
 //						"y": "335",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1020,7 +1040,7 @@ export{OllamaAgent};
 //						"x": "1270",
 //						"y": "465",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1136,7 +1156,7 @@ export{OllamaAgent};
 //						"x": "1915",
 //						"y": "555",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {

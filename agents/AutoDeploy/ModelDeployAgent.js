@@ -66,6 +66,15 @@ let ModelDeployAgent=async function(session){
 				console.log(`模型 ${model} 已存在，跳过添加。`);
 			}
 			await tabFS.writeFile(pathLib.join("/doc/ModelHunt","model.json"),JSON.stringify(modelJSON,null,"\t"));
+			try {
+				await fetch("http://127.0.0.1:3015/api/modelhunt/sync", {
+					method: "POST",
+					headers: {"Content-Type": "application/json"},
+					body: JSON.stringify(modelJSON)
+				});
+			} catch(e) {
+				console.warn("modelhunt sync failed:", e.message);
+			}
 			/*}#1JH0351Q70Code*/
 		}catch(error){
 			/*#{1JH0351Q70ErrorCode*/

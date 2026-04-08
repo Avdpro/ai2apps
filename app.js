@@ -46,6 +46,115 @@ app.initCokeCodesApp=async function(){
 	app.use('//', swrootRouter);
 	app.use('/ws', wsRouter(app));
 	
+	// ModelHunt sync: browser pushes model.json to local filesystem
+	{
+		const fsp = require('fs').promises;
+		const os = require('os');
+		const modelHuntFile = require('path').join(os.homedir(), '.modelhunt', 'model.json');
+		const corsHeaders = (res) => {
+			res.setHeader('Access-Control-Allow-Origin', '*');
+			res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+			res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+		};
+		app.options('/api/modelhunt/sync', (req, res) => { corsHeaders(res); res.sendStatus(204); });
+		app.post('/api/modelhunt/sync', async (req, res) => {
+			corsHeaders(res);
+			try {
+				await fsp.mkdir(require('path').dirname(modelHuntFile), {recursive: true});
+				await fsp.writeFile(modelHuntFile, JSON.stringify(req.body, null, '\t'));
+				res.json({ok: true});
+			} catch(e) {
+				res.status(500).json({ok: false, error: e.message});
+			}
+		});
+		app.options('/api/modelhunt/models', (req, res) => { corsHeaders(res); res.sendStatus(204); });
+		app.get('/api/modelhunt/models', async (req, res) => {
+			corsHeaders(res);
+			try {
+				const data = await fsp.readFile(modelHuntFile, 'utf8');
+				res.json(JSON.parse(data));
+			} catch(e) {
+				res.status(404).json({ok: false, error: 'not found'});
+			}
+		});
+
+		// SSE: frontend subscribes to push events
+		const sseClients = new Set();
+		app.get('/api/modelhunt/events', (req, res) => {
+			corsHeaders(res);
+			res.setHeader('Content-Type', 'text/event-stream');
+			res.setHeader('Cache-Control', 'no-cache');
+			res.setHeader('Connection', 'keep-alive');
+			res.flushHeaders();
+			sseClients.add(res);
+			req.on('close', () => sseClients.delete(res));
+		});
+
+		// Install trigger: external caller POSTs { model }, SSE pushes to frontend
+		// AND we stream logs back to the caller
+		const installWaiters = new Map(); // taskId -> res
+		app.options('/api/modelhunt/install', (req, res) => { corsHeaders(res); res.sendStatus(204); });
+		app.post('/api/modelhunt/install', (req, res) => {
+			corsHeaders(res);
+			const { model } = req.body || {};
+			if (!model) return res.status(400).json({ ok: false, error: 'missing model' });
+			if (sseClients.size === 0) return res.status(503).json({ ok: false, error: 'AI2Apps is not running or page not open' });
+
+			// Set up SSE to stream logs back to curl/Claude Code
+			res.setHeader('Content-Type', 'text/event-stream');
+			res.setHeader('Cache-Control', 'no-cache');
+			res.setHeader('Connection', 'keep-alive');
+			res.flushHeaders();
+
+			const taskId = Date.now().toString();
+			installWaiters.set(taskId, res);
+			res.on('close', () => installWaiters.delete(taskId));
+
+			// Notify frontend to start install
+			const data = `data: ${JSON.stringify({ type: 'install', model, taskId })}\n\n`;
+			sseClients.forEach(client => client.write(data));
+			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
+		});
+
+		// Delete trigger: external caller POSTs { model }, SSE pushes to frontend
+		app.options('/api/modelhunt/delete', (req, res) => { corsHeaders(res); res.sendStatus(204); });
+		app.post('/api/modelhunt/delete', (req, res) => {
+			corsHeaders(res);
+			const { model } = req.body || {};
+			if (!model) return res.status(400).json({ ok: false, error: 'missing model' });
+			if (sseClients.size === 0) return res.status(503).json({ ok: false, error: 'AI2Apps is not running or page not open' });
+
+			res.setHeader('Content-Type', 'text/event-stream');
+			res.setHeader('Cache-Control', 'no-cache');
+			res.setHeader('Connection', 'keep-alive');
+			res.flushHeaders();
+
+			const taskId = Date.now().toString();
+			installWaiters.set(taskId, res);
+			res.on('close', () => installWaiters.delete(taskId));
+
+			const data = `data: ${JSON.stringify({ type: 'delete', model, taskId })}\n\n`;
+			sseClients.forEach(client => client.write(data));
+			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
+		});
+
+		// Frontend sends logs here
+		app.options('/api/modelhunt/log', (req, res) => { corsHeaders(res); res.sendStatus(204); });
+		app.post('/api/modelhunt/log', (req, res) => {
+			corsHeaders(res);
+			const { taskId, log, done, error } = req.body || {};
+			const waiter = installWaiters.get(taskId);
+			if (waiter) {
+				waiter.write(`data: ${JSON.stringify(req.body)}\n\n`);
+				if (done || error) {
+					waiter.end();
+					installWaiters.delete(taskId);
+				}
+			}
+			res.json({ ok: true });
+		});
+	}
+	
 	//Shadow chat:
 	{
 		if (process.env.SHADOW_CHAT === "TRUE") {
