@@ -216,6 +216,22 @@ let ModelDeploy=async function(session){
 		args['commands']=input.commands||input.command;
 		args['options']="";
 		/*#{1IJ2KMQM70PreCodes*/
+		let rawCmd = input.commands ?? input.command;
+		if (Array.isArray(rawCmd)) {
+		  rawCmd = rawCmd.join(' && ');
+		} else if (typeof rawCmd !== 'string') {
+		  throw new TypeError(`commands/command must be a string or string array, got ${typeof rawCmd}`);
+		}
+
+		rawCmd = rawCmd.trim();
+		if (!rawCmd) {
+		  throw new Error('command is empty');
+		}
+
+		// 去掉原本末尾自带的成功失败输出
+		rawCmd = rawCmd.replace(/\s*&&\s*echo\s+["']Successful["']\s*\|\|\s*echo\s+["']Failed["']\s*;?\s*$/, '');
+
+		args.commands = `for i in 1 2 3; do if ${rawCmd}; then echo "Successful"; break; else echo "Attempt $i failed"; [ "$i" -eq 3 ] && echo "Failed"; [ "$i" -lt 3 ] && sleep 3; fi; done`;
 		current_command=args['commands'];
 		/*}#1IJ2KMQM70PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
