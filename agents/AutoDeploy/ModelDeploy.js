@@ -17,6 +17,11 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"auto":{
+			"name":"auto","type":"bool",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1IJ2K5IBR0ArgsView*/
@@ -48,7 +53,7 @@ async function getUserLocation() {
 /*}#1IJ2K5IBR0StartDoc*/
 //----------------------------------------------------------------------------
 let ModelDeploy=async function(session){
-	let model;
+	let model,auto;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -66,8 +71,10 @@ let ModelDeploy=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			auto=input.auto;
 		}else{
 			model=undefined;
+			auto=undefined;
 		}
 		/*#{1IJ2K5IBR0ParseArgs*/
 		/*}#1IJ2K5IBR0ParseArgs*/
@@ -218,19 +225,19 @@ let ModelDeploy=async function(session){
 		/*#{1IJ2KMQM70PreCodes*/
 		let rawCmd = input.commands ?? input.command;
 		if (Array.isArray(rawCmd)) {
-		  rawCmd = rawCmd.join(' && ');
+		rawCmd = rawCmd.join(' && ');
 		} else if (typeof rawCmd !== 'string') {
-		  throw new TypeError(`commands/command must be a string or string array, got ${typeof rawCmd}`);
+		throw new TypeError(`commands/command must be a string or string array, got ${typeof rawCmd}`);
 		}
-
+		
 		rawCmd = rawCmd.trim();
 		if (!rawCmd) {
-		  throw new Error('command is empty');
+		throw new Error('command is empty');
 		}
-
+		
 		// 去掉原本末尾自带的成功失败输出
 		rawCmd = rawCmd.replace(/\s*&&\s*echo\s+["']Successful["']\s*\|\|\s*echo\s+["']Failed["']\s*;?\s*$/, '');
-
+		
 		args.commands = `for i in 1 2 3; do if ${rawCmd}; then echo "Successful"; break; else echo "Attempt $i failed"; [ "$i" -eq 3 ] && echo "Failed"; [ "$i" -lt 3 ] && sleep 3; fi; done`;
 		current_command=args['commands'];
 		/*}#1IJ2KMQM70PreCodes*/
@@ -450,6 +457,7 @@ let ModelDeploy=async function(session){
 		let item=null;
 		
 		/*#{1J5DAJI1R0PreCodes*/
+		silent=auto;
 		/*}#1J5DAJI1R0PreCodes*/
 		if(silent){
 			result={command:current_command};
@@ -518,6 +526,7 @@ let ModelDeploy=async function(session){
 		/*#{1JGTKFNIM0PreCodes*/
 		/*}#1JGTKFNIM0PreCodes*/
 		if(model===undefined || model==="") missing=true;
+		if(auto===undefined || auto==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -610,6 +619,7 @@ let ModelDeploy=async function(session){
 		let item=null;
 		
 		/*#{1JGUT435M0PreCodes*/
+		silent=auto;
 		const formatSpace = (gb) => {
 			if (gb >= 1000) {
 				return `${(gb / 1000).toFixed(2)} TB`;
@@ -795,7 +805,7 @@ let ModelDeploy=async function(session){
 		jaxId:"1IJ2K5IBR0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,auto}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IJ2K5IBR0PreEntry*/
@@ -823,7 +833,8 @@ let ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
-				model:{type:"auto",description:""}
+				model:{type:"auto",description:""},
+				auto:{type:"bool",description:""}
 			}
 		}
 	},
@@ -892,6 +903,16 @@ export{ModelDeploy,ChatAPI};
 //					"jaxId": "1JGTKHIC40",
 //					"attrs": {
 //						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"auto": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JLQKRAGG0",
+//					"attrs": {
+//						"type": "Boolean",
 //						"mockup": "\"\"",
 //						"desc": ""
 //					}
@@ -2126,7 +2147,8 @@ export{ModelDeploy,ChatAPI};
 //								}
 //							]
 //						},
-//						"silent": "false"
+//						"silent": "false",
+//						"silentOutlet": "Retry"
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true
@@ -2586,7 +2608,8 @@ export{ModelDeploy,ChatAPI};
 //								}
 //							]
 //						},
-//						"silent": "false"
+//						"silent": "false",
+//						"silentOutlet": "Yes"
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true

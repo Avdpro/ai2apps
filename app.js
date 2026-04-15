@@ -45,7 +45,7 @@ app.initCokeCodesApp=async function(){
 	app.use('/', indexRouter);
 	app.use('//', swrootRouter);
 	app.use('/ws', wsRouter(app));
-	
+
 	// ModelHunt sync: browser pushes model.json to local filesystem
 	{
 		const fsp = require('fs').promises;
@@ -136,6 +136,37 @@ app.initCokeCodesApp=async function(){
 			const data = `data: ${JSON.stringify({ type: 'delete', model, taskId })}\n\n`;
 			sseClients.forEach(client => client.write(data));
 			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
+		});
+
+
+		app.options('/api/modelhunt/test', (req, res) => {
+		corsHeaders(res);
+		res.sendStatus(204);
+		});
+
+		app.post('/api/modelhunt/test', (req, res) => {
+			corsHeaders(res);
+
+			const { model, task } = req.body || {};
+			if (!model) return res.status(400).json({ ok: false, error: 'missing model' });
+
+			if (sseClients.size === 0) {
+				return res.status(503).json({ ok: false, error: 'AI2Apps is not running or page not open' });
+			}
+
+			res.setHeader('Content-Type', 'text/event-stream');
+			res.setHeader('Cache-Control', 'no-cache');
+			res.setHeader('Connection', 'keep-alive');
+			res.flushHeaders();
+
+			const taskId = Date.now().toString();
+			installWaiters.set(taskId, res);
+			res.on('close', () => installWaiters.delete(taskId));
+
+			const data = `data: ${JSON.stringify({ type: 'test', model, task, taskId })}\n\n`;
+			sseClients.forEach(client => client.write(data));
+
+			res.write(`data: {"status":"started","clients":${sseClients.size}}\n\n`);
 		});
 
 		// Frontend sends logs here

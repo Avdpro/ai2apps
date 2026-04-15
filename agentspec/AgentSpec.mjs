@@ -58,11 +58,13 @@ export const AgentSpecs = {
 		for (const name of files) {
 			const fileAbs = path.join(dirAbs, name)
 			const mod = await _dynImport(fileAbs, bustCache)
-			const kindDefs = _extractKindDefs(mod, fileAbs)
-			
-			for (const kd of kindDefs) {
-				const reg = this.registerKind(kd, { override: true, fromFile: fileAbs })
-				loaded.push(reg)
+			if(mod) {
+				const kindDefs = _extractKindDefs(mod, fileAbs)
+				
+				for (const kd of kindDefs) {
+					const reg = this.registerKind(kd, { override: true, fromFile: fileAbs })
+					loaded.push(reg)
+				}
 			}
 		}
 		
@@ -229,11 +231,15 @@ function _looksLikeKindDef (v) {
 
 async function _dynImport (fileAbs, bustCache) {
 	const url = pathToFileURL(fileAbs)
-	if (bustCache) {
-		// cache-bust to allow init() refresh
-		url.searchParams.set('v', String(Date.now()) + '_' + String(Math.random()).slice(2))
+	try {
+		if (bustCache) {
+			// cache-bust to allow init() refresh
+			url.searchParams.set('v', String(Date.now()) + '_' + String(Math.random()).slice(2))
+		}
+		return import(url.href)
+	}catch (err){
+		return null;
 	}
-	return import(url.href)
 }
 
 // obtain current module path robustly in Node ESM
