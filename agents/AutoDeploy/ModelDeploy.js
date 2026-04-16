@@ -15,11 +15,13 @@ const argsTemplate={
 	properties:{
 		"model":{
 			"name":"model","type":"auto",
+			"required":true,
 			"defaultValue":"",
 			"desc":"",
 		},
 		"auto":{
 			"name":"auto","type":"bool",
+			"required":false,
 			"defaultValue":"",
 			"desc":"",
 		}
@@ -526,7 +528,6 @@ let ModelDeploy=async function(session){
 		/*#{1JGTKFNIM0PreCodes*/
 		/*}#1JGTKFNIM0PreCodes*/
 		if(model===undefined || model==="") missing=true;
-		if(auto===undefined || auto==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -904,7 +905,8 @@ export{ModelDeploy,ChatAPI};
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",
-//						"desc": ""
+//						"desc": "",
+//						"required": "true"
 //					}
 //				},
 //				"auto": {
@@ -914,7 +916,8 @@ export{ModelDeploy,ChatAPI};
 //					"attrs": {
 //						"type": "Boolean",
 //						"mockup": "\"\"",
-//						"desc": ""
+//						"desc": "",
+//						"required": "false"
 //					}
 //				}
 //			}

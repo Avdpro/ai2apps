@@ -155,7 +155,7 @@ if(DocAIAgentExporter){
 			coder.packText("args['model']=");this.genAttrStatement(seg.getAttr("model"));coder.packText(";");coder.newLine();
 			coder.packText("args['task']=");this.genAttrStatement(seg.getAttr("task"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AutoDeploy_dev/ai/ModelUseAgentTest.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/-AutoDeploy/ai/ModelUseAgentTest.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
