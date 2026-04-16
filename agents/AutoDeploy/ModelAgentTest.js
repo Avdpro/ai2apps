@@ -138,6 +138,7 @@ let ModelAgentTest=async function(session){
 		/*}#1JGP1TLH70PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JGP1TLH70PostCodes*/
+		result=task;
 		/*}#1JGP1TLH70PostCodes*/
 		return {seg:Agent,result:(result),preSeg:"1JGP1TLH70",outlet:"1JGP1TRNS0"};
 	};
@@ -230,7 +231,7 @@ let ModelAgentTest=async function(session){
 		- 格式：{
 		"action": "Finish", 
 		"type": "text" | "image" | "audio" | "video" | "file", 
-		"message": "结束语(纯文本结果写在这里)", 
+		"message": "结束语(纯文本结果写在这里)，以及提及结果文件绝对路径在哪", 
 		"filePath": "单个文件的绝对路径 (String) 或 多个文件的绝对路径列表 (Array<String>)。注意：必须是绝对路径！", 
 		"reasoning": "..."
 		}
@@ -298,7 +299,7 @@ let ModelAgentTest=async function(session){
 		
 		messages[0].content = systemPrompt;
 						/*}#1JGP3LBMP0PrePrompt*/
-		prompt=task;
+		prompt=input;
 		if(prompt!==null){
 			if(typeof(prompt)!=="string"){
 				prompt=JSON.stringify(prompt,null,"	");
@@ -427,16 +428,16 @@ let ModelAgentTest=async function(session){
 					let hubUrl = "hub://" + savedHubName;
 					if (input.type === 'image') {
 						fileOpts.image = hubUrl;
-						fileContent = `Image ${i+1}: ${originalName}`;
+						fileContent = `Image ${i+1}: ${fp}`;
 					} else if (input.type === 'audio') {
 						fileOpts.audio = hubUrl;
-						fileContent = `Audio ${i+1}: ${originalName}`;
+						fileContent = `Audio ${i+1}: ${fp}`;
 					} else if (input.type === 'video') {
 						fileOpts.video = hubUrl;
-						fileContent = `Video ${i+1}: ${originalName}`;
+						fileContent = `Video ${i+1}: ${fp}`;
 					} else {
 						fileOpts.file = hubUrl;
-						fileContent = `File ${i+1}: ${originalName}`;
+						fileContent = `File ${i+1}: ${fp}`;
 						if ($ln === 'CN') {
 							fileContent += " (可在右侧文件面板下载)";
 						} else {
@@ -454,7 +455,7 @@ let ModelAgentTest=async function(session){
 				}
 			}
 		}
-		return {seg:Again,result:(result),preSeg:"1JGPM3RLV0",outlet:"1JGPM44AH0"};
+		return {result:result};
 		/*}#1JGPM3RLV0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JGPM3RLV0PostCodes*/
@@ -846,7 +847,7 @@ export{ModelAgentTest};
 //						"messages": {
 //							"attrs": []
 //						},
-//						"prompt": "#task",
+//						"prompt": "#input",
 //						"seed": "",
 //						"outlet": {
 //							"jaxId": "1JGP3LT3M0",
