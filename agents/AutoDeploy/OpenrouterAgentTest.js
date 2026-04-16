@@ -109,7 +109,7 @@ let OpenrouterAgentTest=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,GetInfo,Welcome,Generate2,Output2,Check,Generate1,Reasoning,Type,GenerateImage,OutputImage,GenerateAudio,OutputAudio,EnableThinking;
+	let FixArgs,GetInfo,Welcome,Generate2,Output2,Check,Generate1,Reasoning,Type,GenerateImage,OutputImage,GenerateAudio,OutputAudio,EnableThinking,Output;
 	/*#{1HDBOSUN90LocalVals*/
 	let model_list, input_modality, max_tokens, last_generated_image, flag=false, output_modality, support_thinking=false, enable_thinking=false;
 	/*}#1HDBOSUN90LocalVals*/
@@ -420,6 +420,7 @@ let OpenrouterAgentTest=async function(session){
 							let hubUrl = "hub://" + savedHubName;
 							fileOpts.image = hubUrl;
 							session.addChatText(role, " ", fileOpts);
+							result=await session.getHubPath(hubUrl);
 						}
 					}
 				}
@@ -428,12 +429,12 @@ let OpenrouterAgentTest=async function(session){
 		else{
 			session.addChatText(role,content,opts);
 		}
-		return {result:result};
+		return {seg:Output,result:(result),preSeg:"1JGJI4MHM0",outlet:"1JGJI500E0"};
 		/*}#1JGJI4MHM0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JGJI4MHM0PostCodes*/
 		/*}#1JGJI4MHM0PostCodes*/
-		return {result:result};
+		return {seg:Output,result:(result),preSeg:"1JGJI4MHM0",outlet:"1JGJI500E0"};
 	};
 	Output2.jaxId="1JGJI4MHM0"
 	Output2.url="Output2@"+agentURL
@@ -827,6 +828,7 @@ let OpenrouterAgentTest=async function(session){
 					let hubUrl = "hub://" + savedHubName;
 					fileOpts.image = hubUrl;
 					session.addChatText(role, " ", fileOpts);
+					result=await session.getHubPath(hubUrl);
 				}
 			}
 		}
@@ -835,12 +837,12 @@ let OpenrouterAgentTest=async function(session){
 		else{
 		session.addChatText(role,content,opts);
 		}
-		return {result:result};
+		return {seg:Output,result:(result),preSeg:"1JGJI4MHM0",outlet:"1JGJI500E0"};
 		/*}#1JL12ST4U0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JL12ST4U0PostCodes*/
 		/*}#1JL12ST4U0PostCodes*/
-		return {result:result};
+		return {seg:Output,result:(result),preSeg:"1JL12ST4U0",outlet:"1JL12ST4V0"};
 	};
 	OutputImage.jaxId="1JL12ST4U0"
 	OutputImage.url="OutputImage@"+agentURL
@@ -1022,17 +1024,18 @@ let OpenrouterAgentTest=async function(session){
 					let hubUrl = "hub://" + savedHubName;
 					fileOpts.audio = hubUrl;
 					session.addChatText(role, " ", fileOpts);
+					result=await session.getHubPath(hubUrl);
 				}
 			}
 		} else {
 			session.addChatText(role, content, opts);
 		}
-		return {result:result};
+		return {seg:Output,result:(result),preSeg:"1JGJI4MHM0",outlet:"1JGJI500E0"};
 		/*}#1JL16CCPS0PreCodes*/
 		session.addChatText(role,content,opts);
 		/*#{1JL16CCPS0PostCodes*/
 		/*}#1JL16CCPS0PostCodes*/
-		return {result:result};
+		return {seg:Output,result:(result),preSeg:"1JL16CCPS0",outlet:"1JL16CP6S0"};
 	};
 	OutputAudio.jaxId="1JL16CCPS0"
 	OutputAudio.url="OutputAudio@"+agentURL
@@ -1051,6 +1054,18 @@ let OpenrouterAgentTest=async function(session){
 	};
 	EnableThinking.jaxId="1JM7GH26I0"
 	EnableThinking.url="EnableThinking@"+agentURL
+	
+	segs["Output"]=Output=async function(input){//:1JMAOVCP80
+		let result=input;
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+		let role="assistant";
+		let content=input;
+		session.addChatText(role,content,opts);
+		return {result:result};
+	};
+	Output.jaxId="1JMAOVCP80"
+	Output.url="Output@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1385,7 +1400,8 @@ export{OpenrouterAgentTest};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JMAOVCP80"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -1793,7 +1809,8 @@ export{OpenrouterAgentTest};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JMAOVCP80"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -1902,7 +1919,8 @@ export{OpenrouterAgentTest};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JMAOVCP80"
 //						}
 //					},
 //					"icon": "hudtxt.svg"
@@ -1947,6 +1965,45 @@ export{OpenrouterAgentTest};
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "output",
+//					"jaxId": "1JMAOVCP80",
+//					"attrs": {
+//						"id": "Output",
+//						"viewName": "",
+//						"label": "",
+//						"x": "585",
+//						"y": "115",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JMAOVN3G0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JMAOVN3G1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"role": "Assistant",
+//						"channel": "Chat",
+//						"text": "#input",
+//						"outlet": {
+//							"jaxId": "1JMAOVN300",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "hudtxt.svg"
 //				}
 //			]
 //		},

@@ -455,6 +455,8 @@ let ModelAgentTest=async function(session){
 				}
 			}
 		}
+		const allPathsStr = filePaths.join(',');
+		session.addChatText(role, allPathsStr, { channel: $channel });
 		return {result:result};
 		/*}#1JGPM3RLV0PreCodes*/
 		session.addChatText(role,content,opts);
