@@ -17,6 +17,12 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"auto":{
+			"name":"auto","type":"bool",
+			"required":false,
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JH032HA90ArgsView*/
@@ -27,7 +33,7 @@ const argsTemplate={
 /*}#1JH032HA90StartDoc*/
 //----------------------------------------------------------------------------
 let ModelDeployAgent=async function(session){
-	let model;
+	let model,auto;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -38,8 +44,10 @@ let ModelDeployAgent=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			auto=input.auto;
 		}else{
 			model=undefined;
+			auto=undefined;
 		}
 		/*#{1JH032HA90ParseArgs*/
 		/*}#1JH032HA90ParseArgs*/
@@ -90,7 +98,7 @@ let ModelDeployAgent=async function(session){
 		let result,args={};
 		args['nodeName']="AutoDeploy";
 		args['callAgent']="ModelDeploy.js";
-		args['callArg']={model:model};
+		args['callArg']={model:model,auto:auto};
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -181,7 +189,7 @@ let ModelDeployAgent=async function(session){
 		jaxId:"1JH032HA90",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,auto}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JH032HA90PreEntry*/
@@ -239,6 +247,17 @@ export{ModelDeployAgent};
 //						"type": "Auto",
 //						"mockup": "\"\"",
 //						"desc": ""
+//					}
+//				},
+//				"auto": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JMD613FA0",
+//					"attrs": {
+//						"type": "Boolean",
+//						"mockup": "\"\"",
+//						"desc": "",
+//						"required": "false"
 //					}
 //				}
 //			}
@@ -326,7 +345,7 @@ export{ModelDeployAgent};
 //						},
 //						"nodeName": "AutoDeploy",
 //						"callAgent": "ModelDeploy.js",
-//						"callArg": "#{model:model}",
+//						"callArg": "#{model:model,auto:auto}",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {

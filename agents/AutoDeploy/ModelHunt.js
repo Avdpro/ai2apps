@@ -17,6 +17,12 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"auto":{
+			"name":"auto","type":"bool",
+			"required":false,
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JH0A9FG20ArgsView*/
@@ -27,7 +33,7 @@ const argsTemplate={
 /*}#1JH0A9FG20StartDoc*/
 //----------------------------------------------------------------------------
 let ModelHunt=async function(session){
-	let model;
+	let model,auto;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -38,8 +44,10 @@ let ModelHunt=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			auto=input.auto;
 		}else{
 			model=undefined;
+			auto=undefined;
 		}
 		/*#{1JH0A9FG20ParseArgs*/
 		/*}#1JH0A9FG20ParseArgs*/
@@ -100,7 +108,7 @@ let ModelHunt=async function(session){
 	
 	segs["Deploy"]=Deploy=async function(input){//:1JH0ADNPF0
 		let result;
-		let arg={model:model};
+		let arg={model:model,auto:auto};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelDeployAgent.js");
@@ -115,7 +123,7 @@ let ModelHunt=async function(session){
 		let result;
 		let arg={model:model};
 		let agentNode=(undefined)||null;
-		let $query=(null)||null;
+		let $query=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelUseAgent.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -133,7 +141,7 @@ let ModelHunt=async function(session){
 		jaxId:"1JH0A9FG20",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,auto}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JH0A9FG20PreEntry*/
@@ -161,7 +169,8 @@ export const ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
-				model:{type:"auto",description:""}
+				model:{type:"auto",description:""},
+				auto:{type:"bool",description:""}
 			}
 		}
 	},
@@ -187,9 +196,10 @@ if(DocAIAgentExporter){
 		attrs:{
 			...SegObjShellAttr,
 			"model":{name:"model",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
+			"auto":{name:"auto",showName:undefined,type:"bool",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
-		listHint:["id","model","codes","desc"],
+		listHint:["id","model","auto","codes","desc"],
 		desc:"This is an AI agent."
 	});
 	
@@ -204,6 +214,7 @@ if(DocAIAgentExporter){
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
 			coder.packText("args['model']=");this.genAttrStatement(seg.getAttr("model"));coder.packText(";");coder.newLine();
+			coder.packText("args['auto']=");this.genAttrStatement(seg.getAttr("auto"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/~/AutoDeploy_dev/ai/ModelHunt.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
@@ -257,6 +268,17 @@ export{ModelHunt};
 //						"type": "Auto",
 //						"mockup": "\"\"",
 //						"desc": ""
+//					}
+//				},
+//				"auto": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JMD5VF4J0",
+//					"attrs": {
+//						"type": "Boolean",
+//						"mockup": "\"\"",
+//						"desc": "",
+//						"required": "false"
 //					}
 //				}
 //			}
@@ -437,7 +459,7 @@ export{ModelHunt};
 //							}
 //						},
 //						"source": "ai/ModelDeployAgent.js",
-//						"argument": "#{model:model}",
+//						"argument": "#{model:model,auto:auto}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JH0AEFKE0",
@@ -490,8 +512,7 @@ export{ModelHunt};
 //						},
 //						"outlets": {
 //							"attrs": []
-//						},
-//						"query": ""
+//						}
 //					},
 //					"icon": "agent.svg"
 //				}
