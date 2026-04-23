@@ -238,11 +238,11 @@ export default async function(app,router,apiMap) {
 				return;
 			}else if (textRead !== textGot || streamVO.closed) {
 				if(functionCall){
-					res.json({ code: 200, message: textGot, closed: streamVO.closed, functionCall: functionCall,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
+					res.json({ code: 200, message: textGot, closed: streamVO.closed, functionCall: functionCall,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens, gasUsed: streamVO.gasUsed, costInfo: streamVO.costInfo});
 				}else if(toolCalls){
-					res.json({ code: 200, message: textGot, closed: streamVO.closed, toolCalls: toolCalls,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
+					res.json({ code: 200, message: textGot, closed: streamVO.closed, toolCalls: toolCalls,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens, gasUsed: streamVO.gasUsed, costInfo: streamVO.costInfo});
 				}else {
-					res.json({ code: 200, message: textGot, closed: streamVO.closed ,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens});
+					res.json({ code: 200, message: textGot, closed: streamVO.closed ,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens, gasUsed: streamVO.gasUsed, costInfo: streamVO.costInfo});
 				}
 				streamVO.textRead = textGot;
 				return;
@@ -259,7 +259,7 @@ export default async function(app,router,apiMap) {
 			}
 			textGot = streamVO.content;
 			streamVO.textRead = textGot;
-			res.json({ code: 200, message: textGot, closed: streamVO.closed,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens });
+			res.json({ code: 200, message: textGot, closed: streamVO.closed,inputTokens:streamVO.inputTokens,outputTokens:streamVO.outputTokens, gasUsed: streamVO.gasUsed, costInfo: streamVO.costInfo });
 		};
 
 		//-------------------------------------------------------------------
@@ -484,6 +484,10 @@ export default async function(app,router,apiMap) {
 							model: reqVO.model || "google/gemini-3-flash-preview",
 							messages: reqVO.messages,
 							temperature: reqVO.temperature || 1,
+							max_tokens: reqVO.max_tokens,
+							top_p: reqVO.top_p,
+							frequency_penalty: reqVO.frequency_penalty,
+							presence_penalty: reqVO.presence_penalty,
 							// 添加身份验证信息
 							userId: reqVO.userId,
 							token: reqVO.token,
@@ -497,14 +501,13 @@ export default async function(app,router,apiMap) {
 						if (API_KEY) {
 							headers["Authorization"] = `Bearer ${API_KEY}`;
 						}
-						console.log(JSON.stringify(callVO));
+						console.log("[OpenRouter] Request:", JSON.stringify({model: callVO.model, userId: callVO.userId}));
 						// 发送请求
 						const response = await fetchWithRetry(API_URL, {
 							method: "POST",
 							headers: headers,
 							body: JSON.stringify(callVO),
 						});
-						console.log(JSON.stringify(response));
 
 						if (!response.ok) {
 							const errorText = await response.text();
@@ -529,7 +532,31 @@ export default async function(app,router,apiMap) {
 						} else if (message.images) {
 							content = { content: content, images: message.images };
 						}
-						resVO = { code: 200, message: content };
+
+						// Extract gas usage from cost_info
+						const costInfo = rawResVO.cost_info || {};
+						const usage = rawResVO.usage || {};
+						const totalCostUsd = costInfo.total_cost_usd || 0;
+						const gasUsed = totalCostUsd > 0 ? Math.ceil(totalCostUsd / 0.001) : 0;
+
+						console.log(`[GAS] OpenRouter call - Model: ${callVO.model}, Cost: $${totalCostUsd}, Gas: ${gasUsed}`);
+						if (totalCostUsd === 0) {
+							console.log(`[GAS] Warning: No cost info from OpenRouter. Response keys:`, Object.keys(rawResVO));
+							console.log(`[GAS] cost_info:`, JSON.stringify(costInfo));
+							console.log(`[GAS] usage:`, JSON.stringify(usage));
+						}
+
+						resVO = {
+							code: 200,
+							message: content,
+							gasUsed: gasUsed,
+							costInfo: {
+								prompt_tokens: costInfo.prompt_tokens || usage.prompt_tokens || 0,
+								completion_tokens: costInfo.completion_tokens || usage.completion_tokens || 0,
+								total_tokens: costInfo.total_tokens || usage.total_tokens || 0,
+								total_cost_usd: totalCostUsd
+							}
+						};
 						res.json(resVO);
 					} catch (err) {
 						console.error("OpenRouter API error:", err.message, err.cause);
@@ -1205,6 +1232,10 @@ export default async function(app,router,apiMap) {
 											streamVO.inputTokens = json.usage.prompt_tokens || 0;
 											streamVO.outputTokens = json.usage.completion_tokens || 0;
 										}
+										// Extract cost_info for gas tracking
+										if (json.cost_info) {
+											streamVO.costInfo = json.cost_info;
+										}
 									} catch (e) {
 										// 忽略解析错误
 									}
@@ -1241,11 +1272,23 @@ export default async function(app,router,apiMap) {
 								streamVO.content = streamVO.answer;
 							}
 							streamVO.closed = true;
+
+							// Calculate gas from cost_info
+							const costInfo = streamVO.costInfo || {};
+							const totalCostUsd = costInfo.total_cost_usd || 0;
+							const gasUsed = totalCostUsd > 0 ? Math.ceil(totalCostUsd / 0.001) : 0;
+							streamVO.gasUsed = gasUsed;
+
 							{
 								const elapsed = (Date.now() - streamVO.startTime) / 1000;
 								const outTok = streamVO.outputTokens || 0;
 								const speed = outTok > 0 ? outTok / elapsed : 0;
 								console.log(`[OpenRouter] ${callVO.model} | ${streamVO.inputTokens||0} in + ${outTok} out | ${elapsed * 1000} ms | ${speed.toFixed(1)} tok/s`);
+								console.log(`[GAS] OpenRouter stream - Model: ${callVO.model}, Cost: $${totalCostUsd}, Gas: ${gasUsed}`);
+								if (totalCostUsd === 0) {
+									console.log(`[GAS] Warning: No cost info from OpenRouter stream.`);
+									console.log(`[GAS] streamVO.costInfo:`, JSON.stringify(streamVO.costInfo));
+								}
 							}
 							func = streamVO.waitFunc;
 							if (func) {

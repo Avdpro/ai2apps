@@ -110,6 +110,10 @@ class ChatSession {
 
 		this.callClientFromAgent=null;
 		this.callClientAskSeg=null;
+
+		// Gas tracking
+		this.totalGasUsed = 0;
+		this.gasBreakdown = [];
 	}
 
 	// -------------------------------------------------------------------------
@@ -360,6 +364,19 @@ class ChatSession {
 		if(agent.endChat){
 			result=await agent.endChat(result)||result;
 		}
+
+		// Log gas usage summary after agent completes
+		console.log(`[GAS] Agent execution completed. Total gas: ${this.totalGasUsed}`);
+		if (this.gasBreakdown.length > 0) {
+			console.log(`[GAS] Breakdown:`, JSON.stringify(this.gasBreakdown, null, 2));
+		}
+
+		// Include gas info in result
+		if (typeof result === 'object' && result !== null) {
+			result.gasUsed = this.totalGasUsed;
+			result.gasBreakdown = this.gasBreakdown;
+		}
+
 		this.curAgent = fromAgent; // Restore the previous agent
 		return result;
 	}
@@ -873,6 +890,21 @@ class ChatSession {
 		if (res.code !== 200) {
 			throw new Error(`AIStreamCall failed: ${res.code}:${res.info}`);
 		}
+
+		// Track gas usage if available
+		if (res.gasUsed && res.gasUsed > 0) {
+			this.totalGasUsed += res.gasUsed;
+			this.gasBreakdown.push({
+				segment: this.curAISeg?.jaxId || this.curAISeg?.id || 'unknown',
+				model: callVO.model,
+				platform: callVO.platform,
+				gas: res.gasUsed,
+				cost: res.costInfo?.total_cost_usd || 0,
+				timestamp: Date.now()
+			});
+			console.log(`[GAS] Segment: ${this.curAISeg?.jaxId || this.curAISeg?.id}, Model: ${callVO.model}, Gas: ${res.gasUsed}, Cost: $${res.costInfo?.total_cost_usd || 0}`);
+		}
+
 		return res.message;
 	}
 
@@ -946,8 +978,29 @@ class ChatSession {
 			if (res.outputTokens >= 0) {
 				streamObj.outputTokens = res.outputTokens;
 			}
+			// Track gas usage from streaming response
+			if (res.gasUsed !== undefined) {
+				streamObj.gasUsed = res.gasUsed;
+			}
+			if (res.costInfo) {
+				streamObj.costInfo = res.costInfo;
+			}
 
 			await this.sendToClient("SetWaitBlockText", { block: waitBlk, text: content });
+		}
+
+		// Track gas usage after stream completes
+		if (streamObj.gasUsed && streamObj.gasUsed > 0) {
+			this.totalGasUsed += streamObj.gasUsed;
+			this.gasBreakdown.push({
+				segment: this.curAISeg?.jaxId || this.curAISeg?.id || 'unknown',
+				model: callVO.model,
+				platform: callVO.platform,
+				gas: streamObj.gasUsed,
+				cost: streamObj.costInfo?.total_cost_usd || 0,
+				timestamp: Date.now()
+			});
+			console.log(`[GAS] Segment: ${this.curAISeg?.jaxId || this.curAISeg?.id}, Model: ${callVO.model}, Gas: ${streamObj.gasUsed}, Cost: $${streamObj.costInfo?.total_cost_usd || 0}`);
 		}
 
 		const content = streamObj.content;

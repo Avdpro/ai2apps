@@ -1061,7 +1061,12 @@ let OpenrouterAgentTest=async function(session){
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
 		let content=input;
+		/*#{1JMAOVCP80PreCodes*/
+		result={result:result};
+		/*}#1JMAOVCP80PreCodes*/
 		session.addChatText(role,content,opts);
+		/*#{1JMAOVCP80PostCodes*/
+		/*}#1JMAOVCP80PostCodes*/
 		return {result:result};
 	};
 	Output.jaxId="1JMAOVCP80"
@@ -1977,7 +1982,7 @@ export{OpenrouterAgentTest};
 //						"x": "585",
 //						"y": "115",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {

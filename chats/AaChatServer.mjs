@@ -1,5 +1,6 @@
 import {nanoid} from "nanoid";
 import {AaChatDb} from './AaChatDb.mjs';
+function safeId(){const id=nanoid();return (id[0]==='_'||id[0]==='-')?'t'+id:id;}
 import {InvokeApi} from "../util/InvokeApi.mjs";
 const MAX_LIVE_THREADS=1000;
 
@@ -38,7 +39,7 @@ let AaChatThread,aaChatThread;
 		if(this.id){
 			throw Error(`Start thread error: thread ${this.id} already has threadId.`);
 		}
-		this.id=nanoid();
+		this.id=safeId();
 		
 		this.client=client;
 		this.status=STATUS_LIVE;
@@ -599,7 +600,7 @@ let AaChatClient,aaChatClient;
 			let app, selectorMap;
 			app = this.app;
 			selectorMap = app.get("WebSocketSelectorMap");
-			this.id = id||nanoid();
+			this.id = id||safeId();
 			this.hostClient = this;
 			this.type = TYPE_HOST;
 			selectorMap.set("ChatClient:" + this.id, (ws, msg) => {
@@ -620,7 +621,7 @@ let AaChatClient,aaChatClient;
 			let app, selectorMap;
 			app = this.app;
 			selectorMap = app.get("WebSocketSelectorMap");
-			this.id = nanoid();
+			this.id = safeId();
 			this.hostClient = hostClient;
 			this.type = TYPE_SHADOW;
 			selectorMap.set("ChatClient:" + this.id, (ws, msg) => {
