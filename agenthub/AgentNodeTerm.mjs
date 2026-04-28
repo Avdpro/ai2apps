@@ -5,16 +5,21 @@ import Terminal  from './nodeterm.js';
 
 //----------------------------------------------------------------------------
 async function getCondaPath() {
-	let execPromise = promisify(child_process.exec);
-	try {
-		const { stdout, stderr } = await execPromise('conda env list --json');
-		const condaVO=JSON.parse(stdout);
-		return condaVO.root_prefix;
-	} catch (error) {
-		console.error('Error fetching conda environments:', error.message);
+		let execPromise = promisify(child_process.exec);
+		try {
+			const { stdout } = await execPromise('conda env list --json');
+			const root = JSON.parse(stdout).envs[0];
+			return root;
+		} catch (e) {
+			process.stderr.write("[getCondaPath] conda command failed: " + e.message + "\n");
+		}
+		const { stat } = await import('fs/promises');
+		const home = process.env.HOME || '/tmp';
+		for (const p of [home + '/miniconda3', home + '/anaconda3', '/opt/miniconda3', '/opt/anaconda3']) {
+			try { await stat(p + '/etc/profile.d/conda.sh'); process.stderr.write("[getCondaPath] fallback found: " + p + "\n"); return p; } catch {}
+		}
 		return null;
 	}
-}
 
 const idleTime=15000;
 
@@ -149,7 +154,10 @@ let AgentNodeTerminal,agentNodeTerminal;
 			let condaPath;
 			condaPath=await getCondaPath();
 			if(condaPath){
+				process.stderr.write("[initConda] sourcing: " + condaPath + "/etc/profile.d/conda.sh\n");
 				await this.runCommands(`source ${condaPath}/etc/profile.d/conda.sh`);
+			} else {
+				process.stderr.write("[initConda] no conda path found, skipped\n");
 			}
 		}
 		optsCommands=opts.commands||opts.command;
