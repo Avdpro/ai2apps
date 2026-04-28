@@ -18,6 +18,7 @@ const argsTemplate={
 	properties:{
 		"searchNum":{
 			"name":"searchNum","type":"number",
+			"required":false,
 			"defaultValue":5,
 			"desc":"",
 		},
@@ -75,7 +76,6 @@ let AnySearchWorkflow=async function(session){
 		let result=input;
 		let missing=false;
 		let smartAsk=false;
-		if(searchNum===undefined || searchNum==="") missing=true;
 		if(modelName===undefined || modelName==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
@@ -628,8 +628,8 @@ let AnySearchWorkflow=async function(session){
 	
 	segs["SimpleReport"]=SimpleReport=async function(input){//:1JD7C9HUJ0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1";
+		let $platform="OpenRouter";
+		let $model="openai/gpt-4.1";
 		let $agent;
 		let result=null;
 		/*#{1JD7C9HUJ0Input*/
@@ -638,6 +638,7 @@ let AnySearchWorkflow=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -668,7 +669,7 @@ let AnySearchWorkflow=async function(session){
 		/*#{1JD7C9HUJ0PreCall*/
 		/*}#1JD7C9HUJ0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("SimpleReport@"+agentURL,opts,messages,true)):result;
 		}
@@ -869,8 +870,8 @@ let AnySearchWorkflow=async function(session){
 	
 	segs["SummarQuestion"]=SummarQuestion=async function(input){//:1JH04QDG10
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1";
+		let $platform="OpenRouter";
+		let $model="openai/gpt-4.1";
 		let $agent;
 		let result=null;
 		/*#{1JH04QDG10Input*/
@@ -882,6 +883,7 @@ let AnySearchWorkflow=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -979,7 +981,7 @@ let AnySearchWorkflow=async function(session){
 		/*#{1JH04QDG10PreCall*/
 		/*}#1JH04QDG10PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("SummarQuestion@"+agentURL,opts,messages,true)):result;
 		}
@@ -1101,6 +1103,7 @@ export{AnySearchWorkflow};
 //					"attrs": {
 //						"type": "Number",
 //						"mockup": "5",
+//						"required": "false",
 //						"desc": ""
 //					}
 //				},
@@ -1301,7 +1304,7 @@ export{AnySearchWorkflow};
 //								"cast": ""
 //							}
 //						},
-//						"url": "http://api.modelhunt.ai2apps.cn/api/public/v1/qa",
+//						"url": "https://api.modelhunt.ai2apps.cn/api/public/v1/qa",
 //						"method": "POST",
 //						"argMode": "JOSN",
 //						"format": "JOSN",
@@ -1542,7 +1545,7 @@ export{AnySearchWorkflow};
 //								"cast": ""
 //							}
 //						},
-//						"url": "http://api.modelhunt.ai2apps.cn/api/public/v1/qa",
+//						"url": "https://api.modelhunt.ai2apps.cn/api/public/v1/qa",
 //						"method": "POST",
 //						"argMode": "JOSN",
 //						"format": "JOSN",
@@ -2448,8 +2451,8 @@ export{AnySearchWorkflow};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1",
+//						"platform": "OpenRouter",
+//						"mode": "openai/gpt-4.1",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`You are a professional content summarization AI assistant. - Task: Based on the user question \"${context.externalQuestion}\", extract all \"content\" fields from ${JSON.stringify(input,null,\"\\t\")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words, and please use english. - The final output should be in JSON format: { \"user\": \"${context.externalQuestion}\", \"assistant\": \"Generated summary content\" } `",
@@ -2459,6 +2462,7 @@ export{AnySearchWorkflow};
 //							},
 //							"localizable": true
 //						},
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -3088,8 +3092,8 @@ export{AnySearchWorkflow};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1",
+//						"platform": "OpenRouter",
+//						"mode": "openai/gpt-4.1",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`You are a professional keyword extraction assistant.\n\n- Task:\n1. Review the conversation history data ${input.userContents} and summarize the user's core needs and themes\n2. Combine with the current input ${input.search} to refine a precise keyword\n\n\n- Relevance Judgment:\n1. If the conversation history and current input are semantically related, fuse them to generate the keyword\n2. If the conversation history and current input are completely unrelated, generate the keyword based solely on the current input, ignoring the history\n\n- Requirements:\n1. Keyword length should be controlled within 2-10 characters 2. Prioritize using nouns or noun phrases\n3. Must accurately reflect user intent\n4. When history and current input are unrelated, the keyword must be based entirely on the current input without mixing in historical content\n\n- Final output in JSON format: { \"keyword\": \"keyword\" }\n\n- Example 1 (Related)\n1. Input history: [\"sparktts\", \"environment requirements for deploying this model\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 2 (Related)\n1. Input history: [\"sparktts\", \"deployment environment requirements\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 3 (Unrelated)\n1. Input history: [\"sparktts\", \"model deployment environment\"] + Current input: \"how is the weather today\"\n2. Output: {\"keyword\": \"today's weather\"}\n\n- Example 4 (Unrelated)\n1. Input history: [\"python tutorial\", \"data analysis\"] + Current input: \"Beijing tourist attractions recommendation\"\n2. Output: {\"keyword\": \"Beijing tourist attractions\"}\n`",
@@ -3099,6 +3103,7 @@ export{AnySearchWorkflow};
 //							},
 //							"localizable": true
 //						},
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",

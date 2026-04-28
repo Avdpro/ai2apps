@@ -52,8 +52,8 @@ let AnySearch=async function(session){
 	
 	segs["WriteHtml"]=WriteHtml=async function(input){//:1JCIQ227E0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1";
+		let $platform="OpenRouter";
+		let $model="openai/gpt-4.1";
 		let $agent;
 		let result=null;
 		/*#{1JCIQ227E0Input*/
@@ -62,6 +62,7 @@ let AnySearch=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -113,7 +114,7 @@ You are an AI agent that creates simple HTML pages according to user requirement
 		/*#{1JCIQ227E0PreCall*/
 		/*}#1JCIQ227E0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("WriteHtml@"+agentURL,opts,messages,true)):result;
 		}
@@ -334,7 +335,7 @@ if(DocAIAgentExporter){
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/builder/ai/AnySearch.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/-AgentBuilder/ai/AnySearch.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -492,8 +493,8 @@ export{AnySearch};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1",
+//						"platform": "OpenRouter",
+//						"mode": "openai/gpt-4.1",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`\n## Role\nYou are an AI agent that creates simple HTML pages according to user requirements.\n## Dialogue\n- The user will provide the content to be rendered in HTML: \\${input.userPrompt}\n- Based on the given content, reply to the user with a JSON object.\n- If you are able to generate the HTML page based on the information provided, include the complete HTML page code (including the necessary CSS/JS and external scripts) in the \"html\" property of the JSON. For example:\n\\`\\`\\`\n{ \"html\":\"<html>...</html>\" }\n\\`\\`\\`\n## Reply JSON Object Properties\n- \"html\" {string}: The HTML page code you generate. Make sure it is a complete HTML page code (including all necessary CSS/JS and any required external scripts).`",
@@ -503,6 +504,7 @@ export{AnySearch};
 //							},
 //							"localizable": true
 //						},
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
