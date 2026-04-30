@@ -49,7 +49,7 @@ let ToolBrew=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,SwitchAction,Install,Uninstall,Check,AskInstallBrew,SwitchBrew,InstallBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckBrew,Verify,CheckInstall,LLMcheck,Success,Failure,Retry,CheckFinish,Fail,Upgrade;
+	let FixArgs,SwitchAction,AskInstallBrew,SwitchBrew,AbortInstall,FinInstall,FinUninstall,FinCheck,CheckInstall,LLMcheck,Success,Failure,Retry,CheckFinish,Fail;
 	/*#{1IJ40NO870LocalVals*/
 	/*}#1IJ40NO870LocalVals*/
 	
@@ -81,7 +81,7 @@ let ToolBrew=async function(session){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
-		return {seg:CheckBrew,result:(result),preSeg:"1IJ40NV0F0",outlet:"1IJ411OA50"};
+		return {result:result};
 	};
 	FixArgs.jaxId="1IJ40NV0F0"
 	FixArgs.url="FixArgs@"+agentURL
@@ -89,66 +89,18 @@ let ToolBrew=async function(session){
 	segs["SwitchAction"]=SwitchAction=async function(input){//:1IJ41329S0
 		let result=input;
 		if(action.toLowerCase()==="install"){
-			return {seg:Verify,result:(input),preSeg:"1IJ41329S0",outlet:"1IJ415BPN0"};
+			return {result:input};
 		}
 		if(action.toLowerCase()==="uninstall"){
-			return {seg:Uninstall,result:(input),preSeg:"1IJ41329S0",outlet:"1IJ413I2I0"};
+			return {result:input};
 		}
 		if(action.toLowerCase()==="check"){
-			return {seg:Check,result:(input),preSeg:"1IJ41329S0",outlet:"1IJ413NIB0"};
+			return {result:input};
 		}
 		return {result:result};
 	};
 	SwitchAction.jaxId="1IJ41329S0"
 	SwitchAction.url="SwitchAction@"+agentURL
-	
-	segs["Install"]=Install=async function(input){//:1IJ414D9E0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=`brew install ${pkgName} && echo "Successful" || echo "Failed"`;
-		args['options']="";
-		/*#{1IJ414D9E0PreCodes*/
-		/*}#1IJ414D9E0PreCodes*/
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		/*#{1IJ414D9E0PostCodes*/
-		/*}#1IJ414D9E0PostCodes*/
-		return {seg:CheckFinish,result:(result),preSeg:"1IJ414D9E0",outlet:"1IJ415BPN2"};
-	};
-	Install.jaxId="1IJ414D9E0"
-	Install.url="Install@"+agentURL
-	
-	segs["Uninstall"]=Uninstall=async function(input){//:1IJ414S3J0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=`brew uninstall ${pkgName}`;
-		args['options']="";
-		/*#{1IJ414S3J0PreCodes*/
-		/*}#1IJ414S3J0PreCodes*/
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		/*#{1IJ414S3J0PostCodes*/
-		/*}#1IJ414S3J0PostCodes*/
-		return {seg:FinUninstall,result:(result),preSeg:"1IJ414S3J0",outlet:"1IJ415BPN3"};
-	};
-	Uninstall.jaxId="1IJ414S3J0"
-	Uninstall.url="Uninstall@"+agentURL
-	
-	segs["Check"]=Check=async function(input){//:1IJ4156ER0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=`brew list ${pkgName}`;
-		args['options']="";
-		/*#{1IJ4156ER0PreCodes*/
-		/*}#1IJ4156ER0PreCodes*/
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		/*#{1IJ4156ER0PostCodes*/
-		/*}#1IJ4156ER0PostCodes*/
-		return {seg:FinCheck,result:(result),preSeg:"1IJ4156ER0",outlet:"1IJ415BPN4"};
-	};
-	Check.jaxId="1IJ4156ER0"
-	Check.url="Check@"+agentURL
 	
 	segs["AskInstallBrew"]=AskInstallBrew=async function(input){//:1IJ41EDJ00
 		let prompt=("当前没有Brew环境，是否安装Brew?")||input;
@@ -165,14 +117,14 @@ let ToolBrew=async function(session){
 		
 		if(silent){
 			result="";
-			return {seg:InstallBrew,result:(result),preSeg:"1IJ41EDJ00",outlet:"1IJ41EDIE0"};
+			return {result:result};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		if(typeof(item)==='string'){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
-			return {seg:InstallBrew,result:(result),preSeg:"1IJ41EDJ00",outlet:"1IJ41EDIE0"};
+			return {result:result};
 		}else if(item.code===1){
 			return {seg:AbortInstall,result:(result),preSeg:"1IJ41EDJ00",outlet:"1IJ41EDIE1"};
 		}
@@ -190,18 +142,6 @@ let ToolBrew=async function(session){
 	};
 	SwitchBrew.jaxId="1IJ41EPKU0"
 	SwitchBrew.url="SwitchBrew@"+agentURL
-	
-	segs["InstallBrew"]=InstallBrew=async function(input){//:1IJ41M3D80
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=[`/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`,`echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.bash_profile`,`source ~/.bash_profile`,`echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.zshrc`,`source ~/.zshrc`];
-		args['options']="";
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {seg:SwitchAction,result:(result),preSeg:"1IJ41M3D80",outlet:"1IJ41MM8M4"};
-	};
-	InstallBrew.jaxId="1IJ41M3D80"
-	InstallBrew.url="InstallBrew@"+agentURL
 	
 	segs["AbortInstall"]=AbortInstall=async function(input){//:1IJ41MD230
 		let result=input
@@ -273,50 +213,27 @@ let ToolBrew=async function(session){
 	FinCheck.jaxId="1IJ42EMUJ0"
 	FinCheck.url="FinCheck@"+agentURL
 	
-	segs["CheckBrew"]=CheckBrew=async function(input){//:1IL0IJ4I00
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']="brew";
-		args['options']="";
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {seg:SwitchBrew,result:(result),preSeg:"1IL0IJ4I00",outlet:"1IL0IJUFL0"};
-	};
-	CheckBrew.jaxId="1IL0IJ4I00"
-	CheckBrew.url="CheckBrew@"+agentURL
-	
-	segs["Verify"]=Verify=async function(input){//:1IVRNAS4R0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=`brew list --versions ${pkgName}`;
-		args['options']="";
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {seg:CheckInstall,result:(result),preSeg:"1IVRNAS4R0",outlet:"1IVRNC0TA0"};
-	};
-	Verify.jaxId="1IVRNAS4R0"
-	Verify.url="Verify@"+agentURL
-	
 	segs["CheckInstall"]=CheckInstall=async function(input){//:1IVRNCEQR0
 		let result=input;
 		if(input.split(pkgName).length - 1 === 2){
-			return {seg:Upgrade,result:(input),preSeg:"1IVRNCEQR0",outlet:"1IVRNF36F0"};
+			return {result:input};
 		}
-		return {seg:Install,result:(result),preSeg:"1IVRNCEQR0",outlet:"1IVRNF36F1"};
+		return {result:result};
 	};
 	CheckInstall.jaxId="1IVRNCEQR0"
 	CheckInstall.url="CheckInstall@"+agentURL
 	
 	segs["LLMcheck"]=LLMcheck=async function(input){//:1J58KVSNO0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1-mini";
+		let $platform="OpenRouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result;
 		
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -339,7 +256,7 @@ let ToolBrew=async function(session){
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		if($agent){
-			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking});
 		}else{
 			result=await session.callSegLLM("LLMcheck@"+agentURL,opts,messages,true);
 		}
@@ -388,7 +305,7 @@ let ToolBrew=async function(session){
 		/*}#1J58LFBGK0PreCodes*/
 		if(silent){
 			result="";
-			return {seg:Install,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG80"};
+			return {result:result};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		/*#{1J58LFBGK0PostCodes*/
@@ -397,7 +314,7 @@ let ToolBrew=async function(session){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
-			return {seg:Install,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG80"};
+			return {result:result};
 		}else if(item.code===1){
 			return {seg:Fail,result:(result),preSeg:"1J58LFBGK0",outlet:"1J58LFBG81"};
 		}
@@ -438,18 +355,6 @@ let ToolBrew=async function(session){
 	};
 	Fail.jaxId="1JH066LNL0"
 	Fail.url="Fail@"+agentURL
-	
-	segs["Upgrade"]=Upgrade=async function(input){//:1JH3R9R7B0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=`brew upgrade ${pkgName} && echo "Successful" || echo "Failed"`;
-		args['options']="";
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {seg:CheckFinish,result:(result),preSeg:"1JH3R9R7B0",outlet:"1JH3RAMM50"};
-	};
-	Upgrade.jaxId="1JH3R9R7B0"
-	Upgrade.url="Upgrade@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -678,8 +583,7 @@ export{ToolBrew,ChatAPI};
 //							"attrs": {
 //								"id": "Next",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IL0IJ4I00"
+//							}
 //						}
 //					},
 //					"icon": "args.svg"
@@ -742,8 +646,7 @@ export{ToolBrew,ChatAPI};
 //											}
 //										},
 //										"condition": "#action.toLowerCase()===\"install\""
-//									},
-//									"linkedSeg": "1IVRNAS4R0"
+//									}
 //								},
 //								{
 //									"type": "aioutlet",
@@ -767,8 +670,7 @@ export{ToolBrew,ChatAPI};
 //											}
 //										},
 //										"condition": "#action.toLowerCase()===\"uninstall\""
-//									},
-//									"linkedSeg": "1IJ414S3J0"
+//									}
 //								},
 //								{
 //									"type": "aioutlet",
@@ -792,137 +694,13 @@ export{ToolBrew,ChatAPI};
 //											}
 //										},
 //										"condition": "#action.toLowerCase()===\"check\""
-//									},
-//									"linkedSeg": "1IJ4156ER0"
+//									}
 //								}
 //							]
 //						}
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IJ414D9E0",
-//					"attrs": {
-//						"id": "Install",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1615",
-//						"y": "60",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "",
-//						"context": {
-//							"jaxId": "1IJ415BPR8",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ415BPR9",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#`brew install ${pkgName} && echo \"Successful\" || echo \"Failed\"`",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IJ415BPN2",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JH05UIFU0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IJ414S3J0",
-//					"attrs": {
-//						"id": "Uninstall",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1095",
-//						"y": "170",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "",
-//						"context": {
-//							"jaxId": "1IJ415BPR10",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ415BPR11",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#`brew uninstall ${pkgName}`",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IJ415BPN3",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ42ECIF0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IJ4156ER0",
-//					"attrs": {
-//						"id": "Check",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1095",
-//						"y": "260",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "",
-//						"context": {
-//							"jaxId": "1IJ415BPR12",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ415BPR13",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#`brew list ${pkgName}`",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IJ415BPN4",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ42EMUJ0"
-//						}
-//					},
-//					"icon": "terminal.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -973,8 +751,7 @@ export{ToolBrew,ChatAPI};
 //												"cast": ""
 //											}
 //										}
-//									},
-//									"linkedSeg": "1IJ41M3D80"
+//									}
 //								},
 //								{
 //									"type": "aioutlet",
@@ -1075,47 +852,6 @@ export{ToolBrew,ChatAPI};
 //					},
 //					"icon": "condition.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IJ41M3D80",
-//					"attrs": {
-//						"id": "InstallBrew",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1065",
-//						"y": "435",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "",
-//						"context": {
-//							"jaxId": "1IJ41MM8R10",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ41MM8R11",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#[`/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"`,`echo 'export PATH=\"/opt/homebrew/bin:$PATH\"' >> ~/.bash_profile`,`source ~/.bash_profile`,`echo 'export PATH=\"/opt/homebrew/bin:$PATH\"' >> ~/.zshrc`,`source ~/.zshrc`]",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IJ41MM8M4",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ41MOO20"
-//						}
-//					},
-//					"icon": "terminal.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1323,88 +1059,6 @@ export{ToolBrew,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IL0IJ4I00",
-//					"attrs": {
-//						"id": "CheckBrew",
-//						"viewName": "",
-//						"label": "",
-//						"x": "310",
-//						"y": "255",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IL0IKE780",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IL0IKE781",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "brew",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IL0IJUFL0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ41EPKU0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IVRNAS4R0",
-//					"attrs": {
-//						"id": "Verify",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1095",
-//						"y": "45",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IVRNC0TG0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IVRNC0TG1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#`brew list --versions ${pkgName}`",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IVRNC0TA0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IVRNCEQR0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "brunch",
 //					"jaxId": "1IVRNCEQR0",
 //					"attrs": {
@@ -1435,8 +1089,7 @@ export{ToolBrew,ChatAPI};
 //								"id": "Default",
 //								"desc": "输出节点。",
 //								"output": ""
-//							},
-//							"linkedSeg": "1IJ414D9E0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -1462,8 +1115,7 @@ export{ToolBrew,ChatAPI};
 //											}
 //										},
 //										"condition": "#input.split(pkgName).length - 1 === 2"
-//									},
-//									"linkedSeg": "1JH3R9R7B0"
+//									}
 //								}
 //							]
 //						}
@@ -1497,8 +1149,8 @@ export{ToolBrew,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1-mini",
+//						"platform": "OpenRouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`User input is the output of the terminal. You need to parse this output to determine if the installation was successful. If successful, return the following JSON format: { \"status\": \"success\" } If failed, return the reason for failure and relevant error information in the following format: { \"status\": \"failure\", \"failure_reason\": \"<reason>\"}`",
@@ -1508,6 +1160,7 @@ export{ToolBrew,ChatAPI};
 //							},
 //							"localizable": true
 //						},
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -1808,8 +1461,7 @@ export{ToolBrew,ChatAPI};
 //							"attrs": {
 //								"id": "Outlet",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ414D9E0"
+//							}
 //						},
 //						"dir": "R2L"
 //					},
@@ -1945,47 +1597,6 @@ export{ToolBrew,ChatAPI};
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1JH3R9R7B0",
-//					"attrs": {
-//						"id": "Upgrade",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1615",
-//						"y": "-35",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JH3RAMMF0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JH3RAMMF1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#`brew upgrade ${pkgName} && echo \"Successful\" || echo \"Failed\"`",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1JH3RAMM50",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JH05UIFU0"
-//						}
-//					},
-//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

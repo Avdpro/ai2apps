@@ -10,11 +10,23 @@ const agentURL=(new URL(import.meta.url)).pathname;
 const baseURL=pathLib.dirname(agentURL);
 const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
 const $ln=VFACT.lanCode||"EN";
+const argsTemplate={
+	properties:{
+		"model":{
+			"name":"model","type":"auto",
+			"defaultValue":"",
+			"desc":"",
+		}
+	},
+	/*#{1J0BHD5IP0ArgsView*/
+	/*}#1J0BHD5IP0ArgsView*/
+};
+
 /*#{1J0BHD5IP0StartDoc*/
 /*}#1J0BHD5IP0StartDoc*/
 //----------------------------------------------------------------------------
 let AutoDeploy=async function(session){
-	let execInput;
+	let model;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -23,7 +35,11 @@ let AutoDeploy=async function(session){
 	/*}#1J0BHD5IP0LocalVals*/
 	
 	function parseAgentArgs(input){
-		execInput=input;
+		if(typeof(input)=='object'){
+			model=input.model;
+		}else{
+			model=undefined;
+		}
 		/*#{1J0BHD5IP0ParseArgs*/
 		/*}#1J0BHD5IP0ParseArgs*/
 	}
@@ -38,8 +54,8 @@ let AutoDeploy=async function(session){
 	segs["Run"]=Run=async function(input){//:1J0BHD35J0
 		let result,args={};
 		args['nodeName']="AutoDeploy";
-		args['callAgent']="agent.js";
-		args['callArg']=input;
+		args['callAgent']="AutoDeployAgent.js";
+		args['callArg']={model:model};
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -57,7 +73,7 @@ let AutoDeploy=async function(session){
 		jaxId:"1J0BHD5IP0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input){
+		execChat:async function(input/*{model}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1J0BHD5IP0PreEntry*/
@@ -85,9 +101,11 @@ export const ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
+				model:{type:"auto",description:""}
 			}
 		}
 	},
+	isChatApi: true,
 	agent: AutoDeploy
 }];
 
@@ -108,9 +126,10 @@ if(DocAIAgentExporter){
 		name:"AutoDeploy",showName:"AutoDeploy",icon:"agent.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
+			"model":{name:"model",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
-		listHint:["id","codes","desc"],
+		listHint:["id","model","codes","desc"],
 		desc:"这是一个帮助用户自动部署github项目的agent，需要给出github的链接如https://github.com/Avdpro/ai2apps或repo的名称如Avdpro/ai2apps。"
 	});
 	
@@ -124,8 +143,9 @@ if(DocAIAgentExporter){
 		coder.indentMore();coder.newLine();
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
+			coder.packText("args['model']=");this.genAttrStatement(seg.getAttr("model"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
-			coder.packText(`result= await session.pipeChat("/~/AutoDeploy/ai/AutoDeploy.js",args,false);`);coder.newLine();
+			coder.packText(`result= await session.pipeChat("/~/AutoDeploy_dev/ai/AutoDeploy.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
 			this.packUpdateContext(coder,seg);
 			this.packUpdateGlobal(coder,seg);
@@ -168,7 +188,18 @@ export{AutoDeploy};
 //		"debug": "true",
 //		"apiArgs": {
 //			"jaxId": "1J0BHD5IQ2",
-//			"attrs": {}
+//			"attrs": {
+//				"model": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JNE9AFCL0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				}
+//			}
 //		},
 //		"localVars": {
 //			"jaxId": "1J0BHD5IQ3",
@@ -192,7 +223,7 @@ export{AutoDeploy};
 //						"id": "Run",
 //						"viewName": "",
 //						"label": "",
-//						"x": "255",
+//						"x": "585",
 //						"y": "95",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
@@ -211,8 +242,8 @@ export{AutoDeploy};
 //							}
 //						},
 //						"nodeName": "AutoDeploy",
-//						"callAgent": "agent.js",
-//						"callArg": "#input",
+//						"callAgent": "AutoDeployAgent.js",
+//						"callArg": "#{model:model}",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {

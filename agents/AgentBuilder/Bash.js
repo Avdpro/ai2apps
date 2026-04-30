@@ -315,8 +315,8 @@ let Bash=async function(session){
 	
 	segs["GetReact"]=GetReact=async function(input){//:1IIDUEG0G0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4o";
+		let $platform="Openrouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1IIDUEG0G0Input*/
@@ -1415,8 +1415,8 @@ export{Bash,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "OpenAI",
-//						"mode": "gpt-4o",
+//						"platform": "Openrouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\" 和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`  + (($ln===\"CN\")?(\"AskUser的内容需要用中文输出。\"):(\"Output in English when need AskUser.\"))\n",
 //						"enable_thinking": "false",
 //						"temperature": "0",

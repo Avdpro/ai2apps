@@ -31,7 +31,7 @@ app.initCokeCodesApp=async function(){
 	app.set("AppHomePath",__dirname);
 
 	app.use(logger('dev'));
-	
+
 	app.use(express.json({limit: '200mb'}));
 	app.use(express.urlencoded({limit: '200mb', extended: false }));
 	app.use(cookieParser());
@@ -139,6 +139,28 @@ app.initCokeCodesApp=async function(){
 		});
 
 
+		// AutoDeploy trigger: external caller POSTs { model }, SSE pushes to frontend
+		app.options('/api/modelhunt/autodeploy', (req, res) => { corsHeaders(res); res.sendStatus(204); });
+		app.post('/api/modelhunt/autodeploy', (req, res) => {
+			corsHeaders(res);
+			const { model, auto } = req.body || {};
+			if (!model) return res.status(400).json({ ok: false, error: 'missing model' });
+			if (sseClients.size === 0) return res.status(503).json({ ok: false, error: 'AI2Apps is not running or page not open' });
+
+			res.setHeader('Content-Type', 'text/event-stream');
+			res.setHeader('Cache-Control', 'no-cache');
+			res.setHeader('Connection', 'keep-alive');
+			res.flushHeaders();
+
+			const taskId = Date.now().toString();
+			installWaiters.set(taskId, res);
+			res.on('close', () => installWaiters.delete(taskId));
+			const data = `data: ${JSON.stringify({ type: 'autodeploy', model, auto, taskId })}\n\n`;
+			sseClients.forEach(client => client.write(data));
+			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
+		});
+
+
 		app.options('/api/modelhunt/test', (req, res) => {
 		corsHeaders(res);
 		res.sendStatus(204);
@@ -185,7 +207,7 @@ app.initCokeCodesApp=async function(){
 			res.json({ ok: true });
 		});
 	}
-	
+
 	//Shadow chat:
 	{
 		if (process.env.SHADOW_CHAT === "TRUE") {
@@ -197,7 +219,7 @@ app.initCokeCodesApp=async function(){
 			app.use('/shadow', shadowRouter);
 		}
 	}
-	
+
 	//Payments:
 	{
 		if(process.env.PAYMENT==="TRUE") {
@@ -207,7 +229,7 @@ app.initCokeCodesApp=async function(){
 				const esmModule = await import('./payments/paypal.mjs');
 				esmModule.default(app, paymentsRouter);
 			})();
-			
+
 			//Stripe-WX handlers:
 			/*await (async () => {
 				const esmModule = await import('./payments//stripe_ap.mjs');
@@ -237,7 +259,7 @@ app.initCokeCodesApp=async function(){
 		res.status(err.status || 500);
 		res.render('error');
 	});
-	
+
 	//Test WebDrive
 	if(false){
 		await (async () => {
