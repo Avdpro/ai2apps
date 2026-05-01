@@ -62,6 +62,7 @@ let ModelAgentTest=async function(session){
 	let FixArgs,Welcome,Output,Agent,Action,Run,InitBash,Enter,Show,Execute,InitBash2,Enter2,Check,Wrong;
 	/*#{1JGP1AAKD0LocalVals*/
 	let query="", config, skill, base_command;
+	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JGP1AAKD0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -100,7 +101,14 @@ let ModelAgentTest=async function(session){
 		const modelUsageUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}/usage`;
 		
 		try {
-			const response = await fetch(modelUsageUrl);
+			const response = await fetch(modelUsageUrl, {
+				method: 'GET',
+				headers: {
+					'accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${KEY}`
+				}
+			});
 			if (!response.ok) {
 				throw new Error(`Failed to fetch model config: ${response.status} ${response.statusText}`);
 			}
@@ -159,8 +167,8 @@ let ModelAgentTest=async function(session){
 	
 	segs["Agent"]=Agent=async function(input){//:1JGP3LBMP0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1";
+		let $platform="OpenRouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1JGP3LBMP0Input*/
@@ -837,8 +845,8 @@ export{ModelAgentTest};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "OpenAI",
-//						"mode": "gpt-4.1",
+//						"platform": "OpenRouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": "You are a smart assistant.",
 //						"enable_thinking": "false",
 //						"temperature": "0",

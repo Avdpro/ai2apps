@@ -6,6 +6,7 @@ import {URL} from "url";
 /*#{1IJ2K5IBR0MoreImports*/
 import fsp from 'fs/promises';
 import axios from 'axios'
+import { runClaudeWithSession, createClaudeSession, buildAutoDeployPrompt, buildFixPrompt, isClaudeAvailable } from './ClaudeBridge.mjs';
 /*}#1IJ2K5IBR0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -59,7 +60,7 @@ let ModelDeploy=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Start,InitEnv,LoadSteps,HasSteps,LoopSteps,SwitchAction,RunBash,RunBrew,RunTaskBot,CheckStepReuslt,ShowError,AskRetry,AbortStep,TipStep,HfDownLoad,Network,CheckNetwork,Retry,GetLocation,Check,SetMirror,FixArgs,CheckSpace,GoTo,NoSpace,Confirm,RunConda,CheckBash,Finish,Welcome,Fail,Success,CheckStepFinish,CheckType,Finish2;
+	let Start,InitEnv,LoadSteps,HasSteps,LoopSteps,SwitchAction,RunBrew,RunTaskBot,CheckStepReuslt,ShowError,AskRetry,AbortStep,TipStep,HfDownLoad,Network,CheckNetwork,Retry,GetLocation,Check,SetMirror,FixArgs,CheckSpace,GoTo,NoSpace,Confirm,Finish,Welcome,Fail,CheckStepFinish,CheckType,Finish2,ClaudeInit,RunBash,RunConda;
 	let env=null;
 	let project=null;
 	let steps=null;
@@ -68,6 +69,7 @@ let ModelDeploy=async function(session){
 	
 	/*#{1IJ2K5IBR0LocalVals*/
 	let current_command="", platform="mac",freespace,needspace, flag=true, model_type;
+	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1IJ2K5IBR0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -132,9 +134,15 @@ let ModelDeploy=async function(session){
 			try{
 				const apiUrl = process.env.MODELHUNT_API_URL;
 				const deployUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}/deploy`;
-			
 				try {
-					const response = await fetch(deployUrl);
+					const response = await fetch(deployUrl, {
+						method: 'GET',
+						headers: {
+							'accept': 'application/json',
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${KEY}`
+						}
+					});
 					if (!response.ok) {
 						throw new Error(`Failed to fetch deploy config: ${response.status} ${response.statusText}`);
 					}
@@ -167,7 +175,7 @@ let ModelDeploy=async function(session){
 	segs["HasSteps"]=HasSteps=async function(input){//:1IJ2OT4DU0
 		let result=input;
 		if(!!steps){
-			return {seg:LoopSteps,result:(input),preSeg:"1IJ2OT4DU0",outlet:"1IJ2PM4NQ0"};
+			return {seg:ClaudeInit,result:(input),preSeg:"1IJ2OT4DU0",outlet:"1IJ2PM4NQ0"};
 		}
 		return {result:result};
 	};
@@ -217,39 +225,6 @@ let ModelDeploy=async function(session){
 	};
 	SwitchAction.jaxId="1IJ2KK3SJ0"
 	SwitchAction.url="SwitchAction@"+agentURL
-	
-	segs["RunBash"]=RunBash=async function(input){//:1IJ2KMQM70
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=input.commands||input.command;
-		args['options']="";
-		/*#{1IJ2KMQM70PreCodes*/
-		let rawCmd = input.commands ?? input.command;
-		if (Array.isArray(rawCmd)) {
-		rawCmd = rawCmd.join(' && ');
-		} else if (typeof rawCmd !== 'string') {
-		throw new TypeError(`commands/command must be a string or string array, got ${typeof rawCmd}`);
-		}
-		
-		rawCmd = rawCmd.trim();
-		if (!rawCmd) {
-		throw new Error('command is empty');
-		}
-		
-		// 去掉原本末尾自带的成功失败输出
-		rawCmd = rawCmd.replace(/\s*&&\s*echo\s+["']Successful["']\s*\|\|\s*echo\s+["']Failed["']\s*;?\s*$/, '');
-		
-		args.commands = `for i in 1 2 3; do if ${rawCmd}; then echo "Successful"; break; else echo "Attempt $i failed"; [ "$i" -eq 3 ] && echo "Failed"; [ "$i" -lt 3 ] && sleep 3; fi; done`;
-		current_command=args['commands'];
-		/*}#1IJ2KMQM70PreCodes*/
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		/*#{1IJ2KMQM70PostCodes*/
-		/*}#1IJ2KMQM70PostCodes*/
-		return {seg:CheckBash,result:(result),preSeg:"1IJ2KMQM70",outlet:"1IJ2L5O0R4"};
-	};
-	RunBash.jaxId="1IJ2KMQM70"
-	RunBash.url="RunBash@"+agentURL
 	
 	segs["RunBrew"]=RunBrew=async function(input){//:1IJ2KN5JJ0
 		let result;
@@ -430,7 +405,7 @@ let ModelDeploy=async function(session){
 			result=await session.callSegLLM("Network@"+agentURL,opts,messages,true);
 		}
 		result=trimJSON(result);
-		return {seg:CheckNetwork,result:(result),preSeg:"1J58SM22D0",outlet:"1J58SM7TK0"};
+		return {result:result};
 	};
 	Network.jaxId="1J58SM22D0"
 	Network.url="Network@"+agentURL
@@ -438,7 +413,7 @@ let ModelDeploy=async function(session){
 	segs["CheckNetwork"]=CheckNetwork=async function(input){//:1J5DAI4RE0
 		let result=input;
 		if(input.is_network_issue){
-			return {seg:Retry,result:(input),preSeg:"1J5DAI4RE0",outlet:"1J5DAMHU40"};
+			return {result:input};
 		}
 		return {seg:Fail,result:(result),preSeg:"1J5DAI4RE0",outlet:"1J5DAMHU41"};
 	};
@@ -463,7 +438,7 @@ let ModelDeploy=async function(session){
 		/*}#1J5DAJI1R0PreCodes*/
 		if(silent){
 			result={command:current_command};
-			return {seg:RunBash,result:(result),preSeg:"1J5DAJI1R0",outlet:"1J5DAJI170"};
+			return {result:result};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		/*#{1J5DAJI1R0PostCodes*/
@@ -473,7 +448,7 @@ let ModelDeploy=async function(session){
 			return {result:result};
 		}else if(item.code===0){
 			result=({command:current_command});
-			return {seg:RunBash,result:(result),preSeg:"1J5DAJI1R0",outlet:"1J5DAJI170"};
+			return {result:result};
 		}else if(item.code===1){
 			return {seg:Fail,result:(result),preSeg:"1J5DAJI1R0",outlet:"1J5DAJI171"};
 		}
@@ -665,39 +640,6 @@ let ModelDeploy=async function(session){
 	Confirm.jaxId="1JGUT435M0"
 	Confirm.url="Confirm@"+agentURL
 	
-	segs["RunConda"]=RunConda=async function(input){//:1JGUUBSIU0
-		let result,args={};
-		args['bashId']=globalContext.bash;
-		args['action']="Command";
-		args['commands']=[`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo "Successful" || echo "Failed"`];
-		args['options']="";
-		/*#{1JGUUBSIU0PreCodes*/
-		current_command=args['commands'];
-		/*}#1JGUUBSIU0PreCodes*/
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		/*#{1JGUUBSIU0PostCodes*/
-		/*}#1JGUUBSIU0PostCodes*/
-		return {seg:CheckBash,result:(result),preSeg:"1JGUUBSIU0",outlet:"1JGUUL0030"};
-	};
-	RunConda.jaxId="1JGUUBSIU0"
-	RunConda.url="RunConda@"+agentURL
-	
-	segs["CheckBash"]=CheckBash=async function(input){//:1JGUUQ0GJ0
-		let result=input;
-		/*#{1JGUUQ0GJ0Start*/
-		const lines = result.trim().split('\n');
-		const lastTwoLines = lines.slice(-2).join('\n');
-		/*}#1JGUUQ0GJ0Start*/
-		if(!lastTwoLines.includes('Successful')){
-			return {seg:Network,result:(input),preSeg:"1JGUUQ0GJ0",outlet:"1JGUUSD410"};
-		}
-		/*#{1JGUUQ0GJ0Post*/
-		/*}#1JGUUQ0GJ0Post*/
-		return {seg:Success,result:(result),preSeg:"1JGUUQ0GJ0",outlet:"1JGUUR5L50"};
-	};
-	CheckBash.jaxId="1JGUUQ0GJ0"
-	CheckBash.url="CheckBash@"+agentURL
-	
 	segs["Finish"]=Finish=async function(input){//:1JGUV82L40
 		let result=input
 		try{
@@ -736,25 +678,10 @@ let ModelDeploy=async function(session){
 			/*#{1JH06EVSO0ErrorCode*/
 			/*}#1JH06EVSO0ErrorCode*/
 		}
-		return {seg:CheckStepFinish,result:(result),preSeg:"1JH06EVSO0",outlet:"1JH06F8HO0"};
+		return {result:result};
 	};
 	Fail.jaxId="1JH06EVSO0"
 	Fail.url="Fail@"+agentURL
-	
-	segs["Success"]=Success=async function(input){//:1JH06IMIQ0
-		let result=input
-		try{
-			/*#{1JH06IMIQ0Code*/
-			result={result:"Finish"};
-			/*}#1JH06IMIQ0Code*/
-		}catch(error){
-			/*#{1JH06IMIQ0ErrorCode*/
-			/*}#1JH06IMIQ0ErrorCode*/
-		}
-		return {seg:CheckStepFinish,result:(result),preSeg:"1JH06IMIQ0",outlet:"1JH06IVRN0"};
-	};
-	Success.jaxId="1JH06IMIQ0"
-	Success.url="Success@"+agentURL
 	
 	segs["CheckStepFinish"]=CheckStepFinish=async function(input){//:1JH06ND110
 		let result=input;
@@ -796,6 +723,63 @@ let ModelDeploy=async function(session){
 	};
 	Finish2.jaxId="1JH0R118K0"
 	Finish2.url="Finish2@"+agentURL
+	
+	segs["ClaudeInit"]=ClaudeInit=async function(input){//:1JNEH0TO60
+		let result=input
+		try{
+			/*#{1JNEH0TO60Code*/
+			// Create persistent Claude Code session
+			const deployCtx = steps
+				? "Current deployment steps:\n" + JSON.stringify(steps, null, 2)
+				: "No pre-written steps. Will auto-deploy.";
+			const sysPrompt = `You are a deployment error fixer. ${deployCtx}. ` +
+				"When a command fails, diagnose the error, run fix commands, and update the deploy.json steps per Deploy/guide.md.";
+			const cc = await createClaudeSession({
+				session: session,
+				systemPrompt: sysPrompt,
+				cwd: process.env.HOME || '/tmp',
+				onProgress: (text) => {
+					if (text && text.trim()) {
+						session.addChatText("assistant", text.trim(), {channel: "Chat"});
+					}
+				}
+			});
+			globalContext.claudeSession = cc;
+			/*}#1JNEH0TO60Code*/
+		}catch(error){
+			/*#{1JNEH0TO60ErrorCode*/
+			/*}#1JNEH0TO60ErrorCode*/
+		}
+		return {seg:LoopSteps,result:(result),preSeg:"1JNEH0TO60",outlet:"1JNEH1CP40"};
+	};
+	ClaudeInit.jaxId="1JNEH0TO60"
+	ClaudeInit.url="ClaudeInit@"+agentURL
+	
+	segs["RunBash"]=RunBash=async function(input){//:1JNEH6ESP0
+		let result;
+		let arg=input.commands||input.command;
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:CheckStepFinish,result:(result),preSeg:"1JNEH6ESP0",outlet:"1JNEH7KMK0"};
+	};
+	RunBash.jaxId="1JNEH6ESP0"
+	RunBash.url="RunBash@"+agentURL
+	
+	segs["RunConda"]=RunConda=async function(input){//:1JNEH8AHM0
+		let result;
+		let arg=`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo "Successful" || echo "Failed"`;
+		let agentNode=(undefined)||null;
+		let $query=(undefined)||null;
+		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {seg:CheckStepFinish,result:(result),preSeg:"1JNEH8AHM0",outlet:"1JNEH8S6J0"};
+	};
+	RunConda.jaxId="1JNEH8AHM0"
+	RunConda.url="RunConda@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -905,8 +889,8 @@ export{ModelDeploy,ChatAPI};
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",
-//						"desc": "",
-//						"required": "true"
+//						"required": "true",
+//						"desc": ""
 //					}
 //				},
 //				"auto": {
@@ -916,8 +900,8 @@ export{ModelDeploy,ChatAPI};
 //					"attrs": {
 //						"type": "Boolean",
 //						"mockup": "\"\"",
-//						"desc": "",
-//						"required": "false"
+//						"required": "false",
+//						"desc": ""
 //					}
 //				}
 //			}
@@ -1145,7 +1129,7 @@ export{ModelDeploy,ChatAPI};
 //										},
 //										"condition": "#!!steps"
 //									},
-//									"linkedSeg": "1IJ2KJ0UK0"
+//									"linkedSeg": "1JNEH0TO60"
 //								}
 //							]
 //						}
@@ -1161,8 +1145,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "LoopSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1530",
-//						"y": "-45",
+//						"x": "1800",
+//						"y": "200",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1208,8 +1192,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "SwitchAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1995",
-//						"y": "-185",
+//						"x": "2265",
+//						"y": "60",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1259,7 +1243,7 @@ export{ModelDeploy,ChatAPI};
 //										},
 //										"condition": "#input.action.toLowerCase()===\"bash\""
 //									},
-//									"linkedSeg": "1IJ2KMQM70"
+//									"linkedSeg": "1JNEH6ESP0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -1284,7 +1268,7 @@ export{ModelDeploy,ChatAPI};
 //										},
 //										"condition": "#input.action.toLowerCase()===\"conda\""
 //									},
-//									"linkedSeg": "1JGUUBSIU0"
+//									"linkedSeg": "1JNEH8AHM0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -1369,55 +1353,14 @@ export{ModelDeploy,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1IJ2KMQM70",
-//					"attrs": {
-//						"id": "RunBash",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2245",
-//						"y": "-335",
-//						"desc": "这是一个AISeg。",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1IJ2L5O0T20",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1IJ2L5O0T21",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#input.commands||input.command",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1IJ2L5O0R4",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JGUUQ0GJ0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "aiBot",
 //					"jaxId": "1IJ2KN5JJ0",
 //					"attrs": {
 //						"id": "RunBrew",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2245",
-//						"y": "-135",
+//						"x": "2515",
+//						"y": "110",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1459,8 +1402,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "RunTaskBot",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2245",
-//						"y": "-60",
+//						"x": "2515",
+//						"y": "185",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1502,8 +1445,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "CheckStepReuslt",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2490",
-//						"y": "50",
+//						"x": "2760",
+//						"y": "295",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1834,8 +1777,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "TipStep",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1760",
-//						"y": "-185",
+//						"x": "2030",
+//						"y": "60",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1874,8 +1817,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "HfDownLoad",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2245",
-//						"y": "-200",
+//						"x": "2515",
+//						"y": "45",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1917,8 +1860,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "Network",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2740",
-//						"y": "-350",
+//						"x": "2730",
+//						"y": "-610",
 //						"desc": "执行一次LLM调用。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1954,8 +1897,7 @@ export{ModelDeploy,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1J5DAI4RE0"
+//							}
 //						},
 //						"stream": "true",
 //						"secret": "false",
@@ -1987,8 +1929,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "CheckNetwork",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2945",
-//						"y": "-350",
+//						"x": "2925",
+//						"y": "-810",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2038,8 +1980,7 @@ export{ModelDeploy,ChatAPI};
 //											}
 //										},
 //										"condition": "#input.is_network_issue"
-//									},
-//									"linkedSeg": "1J5DAJI1R0"
+//									}
 //								}
 //							]
 //						}
@@ -2055,8 +1996,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "Retry",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3180",
-//						"y": "-365",
+//						"x": "3160",
+//						"y": "-825",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2112,8 +2053,7 @@ export{ModelDeploy,ChatAPI};
 //												"cast": ""
 //											}
 //										}
-//									},
-//									"linkedSeg": "1J5DATULS0"
+//									}
 //								},
 //								{
 //									"type": "aioutlet",
@@ -2155,50 +2095,6 @@ export{ModelDeploy,ChatAPI};
 //					},
 //					"icon": "menu.svg",
 //					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1J5DATULS0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "3335",
-//						"y": "-515",
-//						"outlet": {
-//							"jaxId": "1J5DAU7GB0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1J5DAU3GC0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1J5DAU3GC0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "2275",
-//						"y": "-515",
-//						"outlet": {
-//							"jaxId": "1J5DAU7GB1",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IJ2KMQM70"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
 //				},
 //				{
 //					"type": "aiseg",
@@ -2619,123 +2515,14 @@ export{ModelDeploy,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1JGUUBSIU0",
-//					"attrs": {
-//						"id": "RunConda",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2245",
-//						"y": "-265",
-//						"desc": "This is an AISeg.",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGUUL00E0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGUUL00E1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash",
-//						"action": "Command",
-//						"commands": "#[`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo \"Successful\" || echo \"Failed\"`]",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1JGUUL0030",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGUUQ0GJ0"
-//						}
-//					},
-//					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1JGUUQ0GJ0",
-//					"attrs": {
-//						"id": "CheckBash",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2490",
-//						"y": "-335",
-//						"desc": "This is an AISeg.",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGUUR5LC0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGUUR5LC1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JGUUR5L50",
-//							"attrs": {
-//								"id": "Success",
-//								"desc": "Outlet.",
-//								"output": ""
-//							},
-//							"linkedSeg": "1JH06IMIQ0"
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JGUUSD410",
-//									"attrs": {
-//										"id": "Fail",
-//										"desc": "Outlet.",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JGUV0AD10",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JGUV0AD11",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#!lastTwoLines.includes('Successful')"
-//									},
-//									"linkedSeg": "1J58SM22D0"
-//								}
-//							]
-//						}
-//					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "code",
 //					"jaxId": "1JGUV82L40",
 //					"attrs": {
 //						"id": "Finish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1760",
-//						"y": "-30",
+//						"x": "2030",
+//						"y": "215",
 //						"desc": "This is an AISeg.",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2822,8 +2609,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "Fail",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3410",
-//						"y": "-365",
+//						"x": "3390",
+//						"y": "-825",
 //						"desc": "This is an AISeg.",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2844,49 +2631,7 @@ export{ModelDeploy,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JH06ND110"
-//						},
-//						"outlets": {
-//							"attrs": []
-//						},
-//						"result": "#input",
-//						"errorSeg": ""
-//					},
-//					"icon": "tab_css.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "code",
-//					"jaxId": "1JH06IMIQ0",
-//					"attrs": {
-//						"id": "Success",
-//						"viewName": "",
-//						"label": "",
-//						"x": "2740",
-//						"y": "-280",
-//						"desc": "This is an AISeg.",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JH06JH5G0",
-//							"attrs": {
-//								"cast": ""
 //							}
-//						},
-//						"global": {
-//							"jaxId": "1JH06JH5G1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JH06IVRN0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JH06ND110"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -2904,8 +2649,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "CheckStepFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "3325",
-//						"y": "-185",
+//						"x": "2825",
+//						"y": "45",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -3077,8 +2822,8 @@ export{ModelDeploy,ChatAPI};
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "3255",
-//						"y": "-260",
+//						"x": "3235",
+//						"y": "-720",
 //						"outlet": {
 //							"jaxId": "1JJ8GL3VP0",
 //							"attrs": {
@@ -3091,6 +2836,133 @@ export{ModelDeploy,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JNEH0TO60",
+//					"attrs": {
+//						"id": "ClaudeInit",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1560",
+//						"y": "200",
+//						"desc": "这是一个AISeg。",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JNEH1IOP0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JNEH1IOP1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JNEH1CP40",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1IJ2KJ0UK0"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JNEH6ESP0",
+//					"attrs": {
+//						"id": "RunBash",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2515",
+//						"y": "-95",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JNEH7KMU0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JNEH7KMU1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "AutoDeploy/ToolRunCommand.js",
+//						"argument": "#input.commands||input.command",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JNEH7KMK0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JH06ND110"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JNEH8AHM0",
+//					"attrs": {
+//						"id": "RunConda",
+//						"viewName": "",
+//						"label": "",
+//						"x": "2515",
+//						"y": "-20",
+//						"desc": "调用其它AI Agent，把调用的结果作为输出",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JNEH8S7C0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JNEH8S7C1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "AutoDeploy/ToolRunCommand.js",
+//						"argument": "#`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo \"Successful\" || echo \"Failed\"`",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JNEH8S6J0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JH06ND110"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						}
+//					},
+//					"icon": "agent.svg"
 //				}
 //			]
 //		},

@@ -9,6 +9,207 @@ import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 import { createServer } from 'http';
 
+/**
+ * Multi-turn: keep one Claude Code session alive across multiple send() calls.
+ * Usage:
+ *   const cc = await createClaudeSession({ session, systemPrompt, cwd });
+ *   const r1 = await cc.send("analyze the repo...");
+ *   const r2 = await cc.send("generate deploy.json...");
+ *   cc.close();
+ */
+export async function createClaudeSession({ session, systemPrompt, cwd, onProgress }) {
+  const globalContext = session.globalContext;
+  if (!globalContext) throw new Error('session.globalContext is required');
+
+  const bashId = await ensureBash(session, globalContext);
+
+  // Local HTTP bridge server
+  const bridgeServer = createServer(async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') return res.end();
+    if (req.method === 'POST' && req.url === '/bash') {
+      let body = '';
+      req.on('data', c => body += c);
+      req.on('end', async () => {
+        try {
+          const { command } = JSON.parse(body);
+          const output = await runBashViaPTY(session, bashId, globalContext, command);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ output }));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(e) }));
+        }
+      });
+      return;
+    }
+    res.writeHead(404); res.end();
+  });
+
+  await new Promise(r => bridgeServer.listen(0, '127.0.0.1', r));
+  bridgeServer.timeout = 0; // no timeout for long commands
+  const bridgePort = bridgeServer.address()?.port;
+
+  const mcpConfigPath = join(tmpdir(), `ai2apps-mcp-${Date.now()}.json`);
+  const serverPath = join(fileURLToPath(new URL('.', import.meta.url)), 'McpBashServer.mjs');
+
+  await writeFile(mcpConfigPath, JSON.stringify({
+    mcpServers: {
+      'ai2apps-terminal': {
+        type: 'stdio', command: 'node', args: [serverPath],
+        env: { AI2APPS_BRIDGE_URL: `http://127.0.0.1:${bridgePort}`, HOME: process.env.HOME || '/tmp', PATH: process.env.PATH || '' },
+      },
+    },
+  }));
+
+  const defaultSys = [
+    'You have access to a "terminal_bash" MCP tool for ALL shell commands. Always use terminal_bash instead of Bash.',
+    'Terminal state (cwd, env vars, conda) persists between commands.',
+    'IMPORTANT: Do NOT use "conda run -n". Run "conda activate ENV_NAME" once, then run commands directly.',
+  ].join('\n');
+
+  const args = [
+    '--print', '--verbose',
+    '--input-format', 'stream-json', '--output-format', 'stream-json',
+    '--dangerously-skip-permissions',
+    '--mcp-config', mcpConfigPath,
+    '--disallowedTools', 'Bash',
+    '--system-prompt', systemPrompt ? `${defaultSys}\n\n${systemPrompt}` : defaultSys,
+  ];
+
+  const child = spawn('claude', args, {
+    cwd: cwd || process.env.HOME || '/tmp',
+    env: { ...process.env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  let closed = false;
+  const msgQueue = [];
+  let draining = false;
+  let buf = '';
+  let currentResolve = null;
+  let currentText = '';
+
+  function enqueue(line) {
+    if (!line.trim()) return;
+    try { msgQueue.push(JSON.parse(line)); } catch {}
+  }
+
+  async function drainQueue() {
+    if (draining) return;
+    draining = true;
+    while (msgQueue.length > 0) {
+      await handleMessage(msgQueue.shift());
+    }
+    draining = false;
+  }
+
+  child.stdout.on('data', (chunk) => {
+    buf += chunk.toString();
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) enqueue(line);
+    drainQueue();
+  });
+
+  child.stderr.on('data', (chunk) => {
+    const text = chunk.toString().trim();
+    if (text && onProgress) onProgress(`[stderr] ${text}`);
+  });
+
+  child.on('error', (err) => { cleanup(); if (currentResolve) { currentResolve({ success: false, error: `spawn: ${err.message}` }); currentResolve = null; } });
+  child.on('close', (code) => { cleanup(); if (currentResolve) { currentResolve({ success: code === 0, error: code === 0 ? undefined : `exited ${code}` }); currentResolve = null; } });
+
+  async function cleanup() { bridgeServer.close(); try { await unlink(mcpConfigPath); } catch {} }
+
+  function extractText(content) {
+    if (!content) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) return content.map(b => b.text || '').join('\n');
+    return String(content);
+  }
+
+  function isBashTool(name) { return name && name.includes('terminal_bash'); }
+
+  async function handleMessage(msg) {
+    switch (msg.type) {
+      case 'assistant': {
+        const content = msg.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === 'text' && block.text) {
+              currentText += block.text + '\n';
+              if (onProgress) onProgress(block.text.trim());
+            } else if (block.type === 'tool_use') {
+              const name = block.name || '';
+              if (name === 'TodoWrite' || name === 'TaskCreate' || name === 'TaskUpdate') continue;
+              if (isBashTool(name)) {
+                if (onProgress) onProgress(`$ ${(block.input?.command || '').slice(0, 120)}`);
+              } else if (name === 'Read') {
+                if (onProgress) onProgress(`Read: ${(block.input?.file_path || '').slice(-60)}`);
+              } else if (name === 'Write') {
+                if (onProgress) onProgress(`Write: ${(block.input?.file_path || '').slice(-60)}`);
+              } else {
+                if (onProgress) onProgress(`[running] ${name}`);
+              }
+            }
+          }
+        }
+        break;
+      }
+      case 'user': {
+        const content = msg.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type !== 'tool_result') continue;
+            const text = extractText(block.content);
+            if (!text || text.includes('Todos have been modified')) continue;
+            if (onProgress) onProgress(text.slice(0, 300));
+          }
+        }
+        break;
+      }
+      case 'result':
+        if (onProgress) onProgress(`[done]`);
+        if (currentResolve) {
+          currentResolve({ success: true, output: currentText });
+          currentResolve = null;
+          currentText = '';
+        }
+        break;
+      case 'system':
+        if (msg.subtype === 'init' && onProgress) {
+          onProgress(`[init] ${msg.model || ''} (mcp:${msg.mcp_servers?.length || 0})`);
+        }
+        break;
+      case 'control_request':
+        child.stdin.write(JSON.stringify({
+          type: 'control_response',
+          response: { requestId: msg.request?.requestId || msg.requestId || '', allowed: true },
+        }) + '\n');
+        break;
+    }
+  }
+
+  return {
+    send(prompt) {
+      if (closed) throw new Error('session closed');
+      return new Promise((resolve) => {
+        currentResolve = resolve;
+        currentText = '';
+        child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: prompt } }) + '\n');
+      });
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      child.kill('SIGTERM');
+      setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 5000);
+    },
+  };
+}
+
+/** One-shot convenience wrapper. */
 export async function runClaudeWithSession({
   session,
   prompt,
@@ -230,9 +431,6 @@ export async function runClaudeWithSession({
 
 async function runBashViaPTY(session, bashId, globalContext, command) {
   const cmd = String(command).trim();
-  if (!cmd.includes('echo "Successful"') && !cmd.includes("echo 'Successful'")) {
-    return await runBashViaExec(cmd);
-  }
 
   if (bashId) {
     try {
@@ -314,30 +512,17 @@ When finished, clearly state "DEPLOYMENT SUCCESSFUL" or "DEPLOYMENT FAILED: <rea
 Do NOT claim success without a passing test.`;
 }
 
-export function buildFixPrompt({ failedCommand, errorOutput, platform, model, completedSteps }) {
-  const stepsCtx = completedSteps?.length
-    ? `\n## Completed Steps\n${completedSteps.map((s, i) => `${i + 1}. ${s.tip?.en || s.action || 'unknown'}`).join('\n')}`
-    : '';
-  return `A deployment step failed for model **${model}** on **${platform}**. Diagnose and fix.
+export function buildFixPrompt({ failedCommand, errorOutput, platform }) {
+  return `A deployment command failed on **${platform}**. Fix it.
 
 ## Failed Command
-\`\`\`bash
 ${failedCommand}
-\`\`\`
 
-## Error
-\`\`\`
+## Error Output
 ${errorOutput || '(no output)'}
-\`\`\`
-${stepsCtx}
 
 ## Task
-1. Analyze the error
-2. Output the fix as JSON:
-\`\`\`json
-{ "diagnosis": "root cause", "fixedCommand": "corrected command", "preCommands": ["setup if needed"] }
-\`\`\`
-If unfixable: \`{ "diagnosis": "explanation", "unfixable": true }\``;
+Diagnose the error and fix it. You have full access to the terminal — run whatever commands you need to fix the problem. When done, just tell me: "FIXED" if it's fixed, or "UNFIXABLE: <reason>" if you can't fix it.`;
 }
 
 export function isClaudeAvailable() {

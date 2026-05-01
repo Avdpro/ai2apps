@@ -36,7 +36,7 @@ let AutoDeployAgent=async function(session){
 	/*#{1JN92DRGT0LocalVals*/
 	let deployGuideMD, usageGuideMD, url;
 	const API_URL = process.env.MODELHUNT_TEST_API_URL;
-	const KEY = process.env.MODELHUNT_PUBLIC_KEY;;
+	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JN92DRGT0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -164,7 +164,7 @@ let AutoDeployAgent=async function(session){
 			}
 			
 			// 3. 构建目标 URL (将写死的 spark_tts 替换为动态传入的 model 变量)
-			const targetUrl = `${API_URL}/api/public/v1/models/${model}`;
+			const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}`;
 			
 			// 4. 发送 API 请求
 			const response = await fetch(targetUrl, {
@@ -222,7 +222,7 @@ let AutoDeployAgent=async function(session){
 			};
 			
 			// 3. 构建目标 URL (替换 spark_ttss 为动态变量 model)
-			const targetUrl = `${API_URL}/api/public/v1/models/${model}/usage`;
+			const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}/usage`;
 			
 			// 4. 发送 PUT 请求
 			const response = await fetch(targetUrl, {
@@ -311,7 +311,7 @@ let AutoDeployAgent=async function(session){
 					};
 			
 					// 4. 构建目标 URL (将 spark_tts 替换为动态变量 model)
-					const targetUrl = `${API_URL}/api/public/v1/models/${model}`;
+					const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}`;
 			
 					// 5. 发送 PATCH 请求
 					const response = await fetch(targetUrl, {
@@ -345,11 +345,11 @@ let AutoDeployAgent=async function(session){
 	UpdateSize.url="UpdateSize@"+agentURL
 	
 	segs["GetUrl"]=GetUrl=async function(input){//:1JNE94TEK0
-		let result=input
+		let result=API_URL
 		try{
 			/*#{1JNE94TEK0Code*/
 			let opts = { txtHeader: 'AutoDeploy', channel: 'Chat' };
-			const targetUrl = `${API_URL}/api/public/v1/models/${model}`;
+			const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}`;
 			const response = await fetch(targetUrl, {
 				method: 'GET',
 				headers: {
@@ -362,10 +362,11 @@ let AutoDeployAgent=async function(session){
 				throw new Error(`获取模型详情失败! HTTP 状态码: ${response.status}, 详情: ${errorText}`);
 			}
 			const responseJson = await response.json();
-			if (!responseJson.urlGithub) {
+			result=response;
+			if (!responseJson.urlGitHub) {
 				throw new Error(`API 响应中未找到 'urlGithub' 字段! 可能是该模型未配置仓库地址。`);
 			}
-			url = responseJson.urlGithub;
+			url = responseJson.urlGitHub;
 															/*}#1JNE94TEK0Code*/
 		}catch(error){
 			/*#{1JNE94TEK0ErrorCode*/
@@ -742,7 +743,7 @@ export{AutoDeployAgent};
 //						"outlets": {
 //							"attrs": []
 //						},
-//						"result": "#input",
+//						"result": "#API_URL",
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"

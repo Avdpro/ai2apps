@@ -209,8 +209,8 @@ let ModelAgent=async function(session){
 	
 	segs["Agent"]=Agent=async function(input){//:1JGP3LBMP0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1";
+		let $platform="OpenRouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1JGP3LBMP0Input*/
@@ -219,6 +219,7 @@ let ModelAgent=async function(session){
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -368,7 +369,7 @@ let ModelAgent=async function(session){
 		/*#{1JGP3LBMP0PreCall*/
 		/*}#1JGP3LBMP0PreCall*/
 		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat})):result;
+			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
 		}else{
 			result=(result===null)?(await session.callSegLLM("Agent@"+agentURL,opts,messages,true)):result;
 		}
@@ -1001,9 +1002,10 @@ export{ModelAgent};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "OpenAI",
-//						"mode": "gpt-4.1",
+//						"platform": "OpenRouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": "You are a smart assistant.",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
