@@ -238,16 +238,26 @@ let AgentNodeTerminal,agentNodeTerminal;
 			callerr=reject;
 			this.waitCallback=resolve;
 		});
-		if(!command.endsWith("\r")){
-			command+="\r";
-		}
 		this.idle=false;
-		this.write(command);
+		if(command.includes("\n")){
+			// Multi-line command (heredoc, line continuation, etc.):
+			// write as-is. bash reads the entire block from PTY stdin
+			// and handles heredoc syntax natively.
+			if(!command.endsWith("\n")){
+				command+="\n";
+			}
+			this.write(command);
+		}else{
+			if(!command.endsWith("\r")){
+				command+="\r";
+			}
+			this.write(command);
+		}
 		await pms;
 	};
 
-	//------------------------------------------------------------------------
-	agentNodeTerminal.runCommands=async function(commands,opts){
+		//------------------------------------------------------------------------
+		agentNodeTerminal.runCommands=async function(commands,opts){
 		let command,cntLen,content,i,n;
 		if(!commands){
 			return;

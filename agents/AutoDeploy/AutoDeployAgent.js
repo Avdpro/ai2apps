@@ -64,7 +64,7 @@ let AutoDeployAgent=async function(session){
 			let role = 'assistant';
 			// Build the full pipeline prompt
 			const prompt = buildFullPipelinePrompt({
-				model,
+				modelId: model,
 				repoUrl: url,
 				deployGuideMD,
 				usageGuideMD,

@@ -1,0 +1,195 @@
+id: "acestep"
+name: "ACE-Step 1.5 AI 音乐生成"
+description: "An ultra-fast AI music generation model that creates full songs from text descriptions and lyrics. Supports text-to-music, cover generation, audio repainting, track separation, and more."
+version: "1.0.0"
+
+interface:
+  default_language: "zh"
+  languages:
+    zh:
+      greeting: |
+        👋 你好！我是 **ACE-Step 1.5 AI 音乐助手**。
+
+        我可以帮你生成完整的音乐作品：
+        1. 🎵 **文本生成音乐**：描述风格 + 歌词，直接命令行生成。
+        2. 🎤 **翻唱生成**：基于参考音频生成同风格翻唱。
+        3. 🎨 **音频重绘**：选择片段重新生成，精细编辑。
+        4. 🎸 **纯音乐模式**：生成无人声的纯乐器伴奏。
+        5. 🖥️ **Web UI**：启动可视化界面进行交互式创作。
+
+        支持 50+ 种语言歌词，10 秒到 10 分钟时长。
+
+      suggested_queries:
+        - "生成一首欢快的流行歌曲，时长 60 秒"
+        - "用中文歌词创作一首民谣"
+        - "生成一段 30 秒的纯音乐 Lo-Fi 节拍"
+        - "基于这段音频翻唱成爵士风格"
+
+    en:
+      greeting: |
+        👋 Hello! I am your **ACE-Step 1.5 AI Music Assistant**.
+
+        I can generate complete music for you:
+        1. 🎵 **Text-to-Music**: Describe style + lyrics, generate from CLI directly.
+        2. 🎤 **Cover Generation**: Generate covers based on reference audio.
+        3. 🎨 **Audio Repainting**: Selectively edit and regenerate sections.
+        4. 🎸 **Instrumental Mode**: Generate vocal-free instrumentals.
+        5. 🖥️ **Web UI**: Launch visual interface for interactive creation.
+
+        Supports 50+ languages and 10s to 10min duration.
+
+      suggested_queries:
+        - "Generate a cheerful pop song, 60 seconds"
+        - "Create a Lo-Fi beat, 30 seconds, instrumental"
+        - "Make a rock song with English lyrics"
+        - "Cover this audio in jazz style"
+
+global_execution:
+  type: "conda_cli"
+  env_name: "base"
+  working_directory: "~/.modelhunt/ace-step"
+  base_command: ""
+
+skills:
+  # === 技能 1: 文本生成音乐 (CLI 直接生成) ===
+  - name: "text2music"
+    description: "Generate music from text description and optional lyrics via CLI. Creates a TOML config and runs non-interactive generation. Use this when the user wants to generate music directly without opening a UI."
+    command_template: >
+      export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
+      { echo 'project_root = "~/.modelhunt/ace-step"'; echo 'config_path = "acestep-v15-turbo"'; echo 'backend = "mlx"'; echo 'device = "auto"'; echo 'offload_to_cpu = false'; echo 'task_type = "text2music"'; echo 'caption = "{caption}"'; echo 'lyrics = "{lyrics}"'; echo 'instrumental = {instrumental}'; echo 'duration = {duration}'; echo 'bpm = {bpm}'; echo 'vocal_language = "{vocal_language}"'; echo 'inference_steps = 8'; echo 'seed = -1'; echo 'thinking = false'; echo 'batch_size = {batch_size}'; echo 'use_random_seed = true'; echo 'audio_format = "{audio_format}"'; echo 'save_dir = "{save_dir}"'; } > /tmp/acestep_gen.toml &&
+      uv run python cli.py --config /tmp/acestep_gen.toml
+
+    arguments:
+      type: "object"
+      required: ["caption"]
+      properties:
+        caption:
+          type: "string"
+          description: "Text description of the desired music style, genre, instruments, mood, etc. Example: 'upbeat electronic dance music with heavy bass'."
+        lyrics:
+          type: "string"
+          description: "Lyrics for vocal music. Use '[Instrumental]' for instrumental tracks. Supports structure tags like [Verse], [Chorus], [Bridge]."
+          default: "[Instrumental]"
+        instrumental:
+          type: "boolean"
+          description: "If true, generate instrumental music regardless of lyrics."
+          default: false
+        duration:
+          type: "number"
+          description: "Target audio length in seconds (10-600). Use -1 for auto-detection based on lyrics."
+          default: 30
+        bpm:
+          type: "integer"
+          description: "Beats per minute (30-300). Use 0 for auto-detection by LM."
+          default: 0
+        vocal_language:
+          type: "string"
+          description: "Language code for vocals. Use 'unknown' for auto-detection."
+          enum: ["unknown", "en", "zh", "ja", "ko", "es", "fr", "de", "ru", "pt", "it"]
+          default: "unknown"
+        batch_size:
+          type: "integer"
+          description: "Number of variations to generate (1-4)."
+          default: 1
+        audio_format:
+          type: "string"
+          description: "Output audio format."
+          enum: ["flac", "wav", "mp3"]
+          default: "flac"
+        save_dir:
+          type: "string"
+          description: "Output directory for generated audio files."
+          default: "./output"
+
+  # === 技能 2: 翻唱生成 (CLI 直接生成) ===
+  - name: "cover"
+    description: "Generate a cover version of an existing audio file in a different style. Requires a source audio file and a style description."
+    command_template: >
+      export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
+      { echo 'project_root = "~/.modelhunt/ace-step"'; echo 'config_path = "acestep-v15-turbo"'; echo 'backend = "mlx"'; echo 'device = "auto"'; echo 'task_type = "cover"'; echo 'src_audio = "{src_audio}"'; echo 'caption = "{caption}"'; echo 'audio_cover_strength = {strength}'; echo 'thinking = false'; echo 'inference_steps = 8'; echo 'batch_size = {batch_size}'; echo 'audio_format = "{audio_format}"'; echo 'save_dir = "{save_dir}"'; } > /tmp/acestep_cover.toml &&
+      uv run python cli.py --config /tmp/acestep_cover.toml
+
+    arguments:
+      type: "object"
+      required: ["src_audio", "caption"]
+      properties:
+        src_audio:
+          type: "string"
+          description: "Absolute path to the source audio file to cover."
+        caption:
+          type: "string"
+          description: "Description of the desired cover style. Example: 'jazz piano version', 'orchestral symphonic arrangement'."
+        strength:
+          type: "number"
+          description: "Influence of original audio (0.0-1.0). 1.0 = strong adherence, 0.2 = loose interpretation."
+          default: 0.8
+        batch_size:
+          type: "integer"
+          default: 1
+        audio_format:
+          type: "string"
+          enum: ["flac", "wav", "mp3"]
+          default: "flac"
+        save_dir:
+          type: "string"
+          default: "./output"
+
+  # === 技能 3: 音频重绘 (CLI 直接生成) ===
+  - name: "repaint"
+    description: "Regenerate a specific time segment of an audio file while keeping the rest unchanged. Use this for precise editing of specific sections."
+    command_template: >
+      export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
+      { echo 'project_root = "~/.modelhunt/ace-step"'; echo 'config_path = "acestep-v15-turbo"'; echo 'backend = "mlx"'; echo 'device = "auto"'; echo 'task_type = "repaint"'; echo 'src_audio = "{src_audio}"'; echo 'caption = "{caption}"'; echo 'repainting_start = {start}'; echo 'repainting_end = {end}'; echo 'thinking = false'; echo 'inference_steps = 8'; echo 'batch_size = 1'; echo 'audio_format = "{audio_format}"'; echo 'save_dir = "{save_dir}"'; } > /tmp/acestep_repaint.toml &&
+      uv run python cli.py --config /tmp/acestep_repaint.toml
+
+    arguments:
+      type: "object"
+      required: ["src_audio", "caption", "start", "end"]
+      properties:
+        src_audio:
+          type: "string"
+          description: "Absolute path to the source audio file."
+        caption:
+          type: "string"
+          description: "Description of desired content for the repainted section."
+        start:
+          type: "number"
+          description: "Repainting start time in seconds."
+        end:
+          type: "number"
+          description: "Repainting end time in seconds. Use -1 for end of file."
+        audio_format:
+          type: "string"
+          enum: ["flac", "wav", "mp3"]
+          default: "flac"
+        save_dir:
+          type: "string"
+          default: "./output"
+
+  # === 技能 4: 启动 Gradio Web UI ===
+  - name: "start_ui"
+    description: "Launch the ACE-Step Gradio Web UI for interactive music generation with full visual control. Use this when the user wants a graphical interface."
+    command_template: >
+      export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
+      uv run acestep
+      --config_path acestep-v15-turbo
+      --backend mlx
+      --port {port}
+      --init_service true
+      --language {language}
+
+    arguments:
+      type: "object"
+      required: []
+      properties:
+        port:
+          type: "integer"
+          description: "Port for the Gradio web server."
+          default: 7860
+        language:
+          type: "string"
+          description: "UI language."
+          enum: ["zh", "en", "ja"]
+          default: "zh"
+
+

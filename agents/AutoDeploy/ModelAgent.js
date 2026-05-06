@@ -57,6 +57,7 @@ let ModelAgent=async function(session){
 	let FixArgs,Welcome,Ask,Output,Agent,Action,AskUser,Run,InitBash,Respond,Enter,Show,Again,Execute,InitBash2,Enter2,Check,Wrong;
 	/*#{1JGP1AAKD0LocalVals*/
 	let query="", config, skill, base_command;
+	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JGP1AAKD0LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -92,7 +93,14 @@ let ModelAgent=async function(session){
 		const modelUsageUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}/usage`;
 		
 		try {
-			const response = await fetch(modelUsageUrl);
+			const response = await fetch(modelUsageUrl, {
+				method: 'GET',
+				headers: {
+					'accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${KEY}`
+				}
+			});
 			if (!response.ok) {
 				throw new Error(`Failed to fetch model config: ${response.status} ${response.statusText}`);
 			}

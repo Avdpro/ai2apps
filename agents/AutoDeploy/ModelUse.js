@@ -32,6 +32,7 @@ let ModelUse=async function(session){
 	let FixArgs,Check,Github,Ollama,Openrouter;
 	/*#{1JH0RJ1S60LocalVals*/
 	let model_type;
+	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JH0RJ1S60LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -64,7 +65,14 @@ let ModelUse=async function(session){
 		/*#{1JH0RJ9FE0PostCodes*/
 		const apiUrl = process.env.MODELHUNT_API_URL;
 		const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}`;
-		const response = await fetch(basicUrl)
+		const response = await fetch(basicUrl, {
+			method: 'GET',
+			headers: {
+				'accept': 'application/json',
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${KEY}`
+			}
+		});
 		if (!response.ok) {
 			throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
 		}

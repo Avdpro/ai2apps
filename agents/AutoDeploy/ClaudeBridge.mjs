@@ -28,6 +28,8 @@ export async function createClaudeSession({ session, systemPrompt, cwd, onProgre
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'OPTIONS') return res.end();
     if (req.method === 'POST' && req.url === '/bash') {
+      req.socket.setTimeout(0); // never timeout long commands
+      res.setTimeout(0);
       let body = '';
       req.on('data', c => body += c);
       req.on('end', async () => {
@@ -229,6 +231,8 @@ export async function runClaudeWithSession({
     if (req.method === 'OPTIONS') return res.end();
 
     if (req.method === 'POST' && req.url === '/bash') {
+      req.socket.setTimeout(0); // never timeout long commands
+      res.setTimeout(0);
       let body = '';
       req.on('data', c => body += c);
       req.on('end', async () => {

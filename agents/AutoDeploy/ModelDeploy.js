@@ -510,7 +510,14 @@ let ModelDeploy=async function(session){
 		/*#{1JGTKFNIM0PostCodes*/
 		const apiUrl = process.env.MODELHUNT_API_URL;
 		const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}`;
-		const response = await fetch(basicUrl)
+		const response = await fetch(basicUrl, {
+			method: 'GET',
+			headers: {
+				'accept': 'application/json',
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${KEY}`
+			}
+		});
 		if (!response.ok) {
 			throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
 		}

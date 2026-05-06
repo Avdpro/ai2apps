@@ -5,6 +5,7 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 /*#{1IG0KVFDB0MoreImports*/
 import {AgentNodeTerminal} from "../../agenthub/AgentNodeTerm.mjs";
+import {splitShellCommands} from "../../agenthub/commandSplitter.mjs"; 
 /*}#1IG0KVFDB0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -156,7 +157,7 @@ let Bash=async function(session){
 				bash.clear();
 			}
 			if(typeof(commands)==="string"){
-				commands=commands.split("\n");	
+				commands=splitShellCommands(commands); 
 			}
 			orgContent=await bash.getContent();
 			//result=await bash.runCommands(commands);
