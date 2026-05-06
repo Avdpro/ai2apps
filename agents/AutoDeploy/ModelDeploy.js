@@ -764,7 +764,7 @@ let ModelDeploy=async function(session){
 	
 	segs["RunBash"]=RunBash=async function(input){//:1JNEH6ESP0
 		let result;
-		let arg=input.commands||input.command;
+		let arg={command:input.commands||input.command};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
@@ -777,7 +777,7 @@ let ModelDeploy=async function(session){
 	
 	segs["RunConda"]=RunConda=async function(input){//:1JNEH8AHM0
 		let result;
-		let arg=`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo "Successful" || echo "Failed"`;
+		let arg={command:`conda create -n ${input.conda} python=${input.pythonVersion} -y && (conda activate ${input.conda} || source activate ${input.conda}) && echo "Successful" || echo "Failed"`};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
@@ -1452,8 +1452,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "CheckStepReuslt",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2760",
-//						"y": "295",
+//						"x": "2825",
+//						"y": "220",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2912,7 +2912,7 @@ export{ModelDeploy,ChatAPI};
 //							}
 //						},
 //						"source": "AutoDeploy/ToolRunCommand.js",
-//						"argument": "#input.commands||input.command",
+//						"argument": "#{command:input.commands||input.command}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JNEH7KMK0",
@@ -2955,7 +2955,7 @@ export{ModelDeploy,ChatAPI};
 //							}
 //						},
 //						"source": "AutoDeploy/ToolRunCommand.js",
-//						"argument": "#`conda create -n ${input.conda} python=${input.pythonVersion} -y`, `conda activate ${input.conda} || source activate ${input.conda} && echo \"Successful\" || echo \"Failed\"`",
+//						"argument": "#{command:`conda create -n ${input.conda} python=${input.pythonVersion} -y && (conda activate ${input.conda} || source activate ${input.conda}) && echo \"Successful\" || echo \"Failed\"`}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JNEH8S6J0",
