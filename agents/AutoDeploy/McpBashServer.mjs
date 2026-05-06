@@ -1,10 +1,15 @@
-// McpBashServer — MCP stdio → HTTP relay
-// Started by Claude Code. Receives JSON-RPC on stdin, forwards bash commands
-// via HTTP to the bridge's local server (which has session.pipeChat access).
+// McpBashServer — MCP stdio server. Tries HTTP relay to bridge (PTY),
+// falls back to child_process.exec if bridge is unreachable.
 
 import { createInterface } from 'readline';
+import { exec } from 'child_process';
+import { request } from 'http';
+import { promisify } from 'util';
 
-const BRIDGE_URL = process.env.AI2APPS_BRIDGE_URL || 'http://localhost:19999';
+const execP = promisify(exec);
+const BRIDGE_URL = process.env.AI2APPS_BRIDGE_URL || 'http://127.0.0.1:19999';
+const { hostname, port } = new URL(BRIDGE_URL);
+
 const rl = createInterface({ input: process.stdin });
 
 rl.on('line', async (line) => {
@@ -60,27 +65,56 @@ async function handle(msg) {
       }
 
       const command = params.arguments?.command || '';
+
+      // 1) Try bridge HTTP relay (PTY terminal with conda persistence)
       try {
-        const resp = await fetch(`${BRIDGE_URL}/bash`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command }),
+        const text = await httpPost('/bash', { command });
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } };
+      } catch {}
+
+      // 2) Fallback: direct exec
+      try {
+        const { stdout, stderr } = await execP(command, {
+          timeout: 0, maxBuffer: 10 * 1024 * 1024,
+          shell: true, cwd: process.env.HOME || '/tmp',
         });
-        const data = await resp.json();
-        const text = data.output || data.error || '(no output)';
-        return {
-          jsonrpc: '2.0', id,
-          result: { content: [{ type: 'text', text }], isError: !!data.error },
-        };
+        const text = ((stdout || '') + (stderr || '')).trim() || '(no output)';
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } };
       } catch (e) {
-        return {
-          jsonrpc: '2.0', id,
-          result: { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true },
-        };
+        const text = ((e.stdout || '') + (e.stderr || '') + `\n[exit ${e.code || '?'}] ${e.message || ''}`).trim();
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }], isError: true } };
       }
     }
 
     default:
       return { jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown method: ${method}` } };
   }
+}
+
+// ---- raw HTTP POST, no timeout ----
+function httpPost(path, data) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(data);
+    const req = request({
+      hostname, port: Number(port),
+      path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      timeout: 0, // socket timeout disabled
+    }, (res) => {
+      let buf = '';
+      res.on('data', c => buf += c);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(buf);
+          resolve(json.output || json.error || '(no output)');
+        } catch {
+          resolve(buf || '(no output)');
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('request timeout')); });
+    req.write(body);
+    req.end();
+  });
 }
