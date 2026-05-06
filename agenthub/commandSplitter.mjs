@@ -2,58 +2,13 @@
  * Smart shell command splitter.
  *
  * Replaces naive `commands.split("\n")` so that multi-line constructs
- * (heredocs, line continuations) stay as single array elements.
+ * stay as single array elements. Handles:
  *
- * Handles:
- *   - heredocs:        cat > file << "EOF" ... EOF
- *   - nested heredocs: outer << EOF containing inner << INNER
- *   - <<- (tab-indented delimiters)
- *   - line continuation: echo hello \
- *                        world
+ *   - heredocs:               cat > file << "EOF" ... EOF
+ *   - quoted strings:         python -c "code\ncode\ncode"
+ *   - line continuations:     echo hello \
+ *                             world
  */
-
-/**
- * Find a heredoc delimiter on a line, ignoring << that appears inside quotes.
- * @returns {{delimiter: string, indentAware: boolean}|null}
- */
-function findHeredocStart(line) {
-  let inSingle = false;
-  let inDouble = false;
-  let escaping = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-
-    if (escaping) {
-      escaping = false;
-      continue;
-    }
-    if (ch === "\\" && (inSingle || inDouble)) {
-      escaping = true;
-      continue;
-    }
-
-    // Toggle quote state
-    if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-      continue;
-    }
-
-    // Only check for << when outside quotes
-    if (!inSingle && !inDouble && ch === "<" && line[i + 1] === "<" && line[i + 2] !== "<") {
-      const rest = line.substring(i + 2);
-      const m = rest.match(/^-?\s*['"]?([a-zA-Z_]\w*)['"]?/);
-      if (m) {
-        return { delimiter: m[1], indentAware: rest.startsWith("-") };
-      }
-    }
-  }
-  return null;
-}
 
 /**
  * @param {string} text - Raw multi-line shell command string
@@ -64,51 +19,129 @@ export function splitShellCommands(text) {
 
   const lines = text.split("\n");
   const result = [];
-  const block = [];
+  let currentCommand = [];
   const heredocStack = [];
 
+  let inSingle = false;
+  let inDouble = false;
+  let escaping = false;
+
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    block.push(line);
+    let line = lines[i];
+    currentCommand.push(line);
 
-    // Detect heredoc starts (including nested ones inside existing heredocs)
-    const hd = findHeredocStart(line);
-    if (hd) {
-      heredocStack.push(hd);
-    }
-
-    // Check if this line terminates the innermost heredoc(s)
-    const trimmed = line.trim();
-    while (heredocStack.length > 0) {
-      const top = heredocStack[heredocStack.length - 1];
-      if (top.indentAware) {
-        // <<- allows leading tabs before the delimiter
-        const withoutTabs = line.replace(/^\t+/, "");
-        if (withoutTabs === top.delimiter) {
-          heredocStack.pop();
+    // Process the line to update state
+    let iLine = 0;
+    while (iLine < line.length) {
+      const ch = line[iLine];
+      
+      if (escaping) {
+        escaping = false;
+        iLine++;
+        continue;
+      }
+      
+      if (ch === '\\' && (inSingle || inDouble)) {
+        escaping = true;
+        iLine++;
+        continue;
+      }
+      
+      // Toggle quote states (mutually exclusive)
+      if (ch === "'" && !inDouble) {
+        inSingle = !inSingle;
+        iLine++;
+        continue;
+      }
+      if (ch === '"' && !inSingle) {
+        inDouble = !inDouble;
+        iLine++;
+        continue;
+      }
+      
+      // Heredoc detection (only when not inside quotes and not already in heredoc)
+      if (heredocStack.length === 0 && !inSingle && !inDouble && 
+          ch === '<' && line[iLine + 1] === '<' && line[iLine + 2] !== '<') {
+        
+        const rest = line.substring(iLine + 2);
+        const match = rest.match(/^-?\s*['"]?([a-zA-Z_][a-zA-Z0-9_]*)(?:['"]?)?/);
+        
+        if (match) {
+          let delimiter = match[1];
+          // Handle quoted delimiters
+          const afterMatch = rest.substring(match[0].length);
+          if (afterMatch.startsWith('"') || afterMatch.startsWith("'")) {
+            // The delimiter was quoted, preserve the exact delimiter
+            delimiter = afterMatch[0] === '"' ? `"${delimiter}"` : `'${delimiter}'`;
+          }
+          
+          heredocStack.push({
+            delimiter: delimiter,
+            indentAware: rest.startsWith("-")
+          });
+          // Skip over the heredoc operator for state tracking
+          iLine += 2 + match[0].length;
           continue;
         }
       }
-      if (trimmed === top.delimiter) {
-        heredocStack.pop();
-        continue;
-      }
-      break;
+      
+      iLine++;
     }
-
-    // Check for line continuation (unescaped backslash at end of line)
-    const hasContinuation = !!(line.match(/(^|[^\\])(\\\\)*\\$/));
-
-    // Flush block when no active heredocs and no continuation pending
-    if (heredocStack.length === 0 && !hasContinuation) {
-      result.push(block.join("\n"));
-      block.length = 0;
+    
+    // Check for heredoc termination on this line (after processing content)
+    const trimmed = line.trim();
+    let terminatedHeredoc = false;
+    
+    while (heredocStack.length > 0 && !terminatedHeredoc) {
+      const top = heredocStack[heredocStack.length - 1];
+      let isTerminator = false;
+      
+      if (top.indentAware) {
+        // For <<-, strip leading tabs
+        const withoutLeadingTabs = line.replace(/^\t+/, "");
+        if (withoutLeadingTabs === top.delimiter || 
+            (top.delimiter.startsWith('"') || top.delimiter.startsWith("'")) && 
+            withoutLeadingTabs === top.delimiter.slice(1, -1)) {
+          isTerminator = true;
+        }
+      } else {
+        if (trimmed === top.delimiter) {
+          isTerminator = true;
+        } else if ((top.delimiter.startsWith('"') || top.delimiter.startsWith("'")) && 
+                   trimmed === top.delimiter.slice(1, -1)) {
+          isTerminator = true;
+        }
+      }
+      
+      if (isTerminator) {
+        heredocStack.pop();
+        terminatedHeredoc = true;
+        // When exiting a heredoc, reset quote state
+        inSingle = false;
+        inDouble = false;
+      } else {
+        break;
+      }
+    }
+    
+    // Check for line continuation (backslash at end of line, not escaped)
+    const hasContinuation = /(?<!\\)\\$/.test(line);
+    
+    // Check if this command is complete
+    const isComplete = heredocStack.length === 0 && !inSingle && !inDouble && !hasContinuation;
+    
+    if (isComplete && currentCommand.length > 0) {
+      result.push(currentCommand.join("\n"));
+      currentCommand = [];
+      // Reset quote states (should already be reset, but just to be safe)
+      inSingle = false;
+      inDouble = false;
     }
   }
 
-  // Flush any remaining block (best effort)
-  if (block.length > 0) {
-    result.push(block.join("\n"));
+  // Handle any incomplete command at the end
+  if (currentCommand.length > 0) {
+    result.push(currentCommand.join("\n"));
   }
 
   return result;

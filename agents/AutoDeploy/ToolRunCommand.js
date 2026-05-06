@@ -18,11 +18,6 @@ const argsTemplate={
 			"required":true,
 			"defaultValue":"",
 			"desc":"A bash command",
-		},
-		"repo":{
-			"name":"repo","type":"auto",
-			"defaultValue":"",
-			"desc":"",
 		}
 	},
 	/*#{1IUIO756A0ArgsView*/
@@ -188,7 +183,7 @@ return Math.floor(chineseChars / 1.5 + otherChars / 4);
 /*}#1IUIO756A0StartDoc*/
 //----------------------------------------------------------------------------
 let ToolRunCommand=async function(session){
-	let command,repo;
+	let command;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -201,10 +196,8 @@ let ToolRunCommand=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			command=input.command;
-			repo=input.repo;
 		}else{
 			command=undefined;
-			repo=undefined;
 		}
 		/*#{1IUIO756A0ParseArgs*/
 		/*}#1IUIO756A0ParseArgs*/
@@ -253,7 +246,6 @@ let ToolRunCommand=async function(session){
 		let missing=false;
 		let smartAsk=false;
 		if(command===undefined || command==="") missing=true;
-		if(repo===undefined || repo==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -393,7 +385,7 @@ let ToolRunCommand=async function(session){
 		jaxId:"1IUIO756A0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{command,repo}*/){
+		execChat:async function(input/*{command}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1IUIO756A0PreEntry*/
@@ -421,8 +413,7 @@ let ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
-				command:{type:"auto",description:"A bash command"},
-				repo:{type:"auto",description:""}
+				command:{type:"auto",description:"A bash command"}
 			}
 		}
 	},
@@ -447,10 +438,9 @@ if(DocAIAgentExporter){
 		attrs:{
 			...SegObjShellAttr,
 			"command":{name:"command",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
-			"repo":{name:"repo",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
-		listHint:["id","command","repo","codes","desc"],
+		listHint:["id","command","codes","desc"],
 		desc:"这是一个AI智能体。"
 	});
 	
@@ -465,7 +455,6 @@ if(DocAIAgentExporter){
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
 			coder.packText("args['command']=");this.genAttrStatement(seg.getAttr("command"));coder.packText(";");coder.newLine();
-			coder.packText("args['repo']=");this.genAttrStatement(seg.getAttr("repo"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/~/AutoDeploy_dev/ai/ToolRunCommand.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
@@ -520,16 +509,6 @@ export{ToolRunCommand,ChatAPI};
 //						"mockup": "\"\"",
 //						"desc": "A bash command",
 //						"required": "true"
-//					}
-//				},
-//				"repo": {
-//					"type": "object",
-//					"def": "AgentCallArgument",
-//					"jaxId": "1J08OD2VG0",
-//					"attrs": {
-//						"type": "Auto",
-//						"mockup": "\"\"",
-//						"desc": ""
 //					}
 //				}
 //			}
