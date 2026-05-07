@@ -18,6 +18,12 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"url":{
+			"name":"url","type":"auto",
+			"required":false,
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JN92DRGT0ArgsView*/
@@ -28,13 +34,13 @@ const argsTemplate={
 /*}#1JN92DRGT0StartDoc*/
 //----------------------------------------------------------------------------
 let AutoDeployAgent=async function(session){
-	let model;
+	let model,url;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
 	let AutoDeploy,Read,UpdateDeploy,UpdateUsage,UpdateDelete,UpdateSize,GetUrl;
 	/*#{1JN92DRGT0LocalVals*/
-	let deployGuideMD, usageGuideMD, url;
+	let deployGuideMD, usageGuideMD;
 	const API_URL = process.env.MODELHUNT_TEST_API_URL;
 	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JN92DRGT0LocalVals*/
@@ -42,8 +48,10 @@ let AutoDeployAgent=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			url=input.url;
 		}else{
 			model=undefined;
+			url=undefined;
 		}
 		/*#{1JN92DRGT0ParseArgs*/
 		/*}#1JN92DRGT0ParseArgs*/
@@ -168,7 +176,11 @@ let AutoDeployAgent=async function(session){
 			}
 			
 			// 2. 提取需要发送的 platform 字段
-			const requestBody = deployData.platforms;
+			const requestBody = {
+				deploy_config: {
+					platforms: deployData.platforms
+				}
+			};
 			if (!requestBody) {
 				throw new Error(`在 deploy.json 中未找到 'platforms' 字段!`);
 			}
@@ -361,25 +373,27 @@ let AutoDeployAgent=async function(session){
 		let result=API_URL
 		try{
 			/*#{1JNE94TEK0Code*/
-			let opts = { txtHeader: 'AutoDeploy', channel: 'Chat' };
-			const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}`;
-			const response = await fetch(targetUrl, {
-				method: 'GET',
-				headers: {
-					'accept': 'application/json',
-					'Authorization': `Bearer ${KEY}`
+			if(!url){
+				let opts = { txtHeader: 'AutoDeploy', channel: 'Chat' };
+				const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}`;
+				const response = await fetch(targetUrl, {
+					method: 'GET',
+					headers: {
+						'accept': 'application/json',
+						'Authorization': `Bearer ${KEY}`
+					}
+				});
+				if (!response.ok) {
+					const errorText = await response.text();
+					throw new Error(`获取模型详情失败! HTTP 状态码: ${response.status}, 详情: ${errorText}`);
 				}
-			});
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`获取模型详情失败! HTTP 状态码: ${response.status}, 详情: ${errorText}`);
+				const responseJson = await response.json();
+				result=response;
+				if (!responseJson.urlGitHub) {
+					throw new Error(`API 响应中未找到 'urlGithub' 字段! 可能是该模型未配置仓库地址。`);
+				}
+				url = responseJson.urlGitHub;
 			}
-			const responseJson = await response.json();
-			result=response;
-			if (!responseJson.urlGitHub) {
-				throw new Error(`API 响应中未找到 'urlGithub' 字段! 可能是该模型未配置仓库地址。`);
-			}
-			url = responseJson.urlGitHub;
 															/*}#1JNE94TEK0Code*/
 		}catch(error){
 			/*#{1JNE94TEK0ErrorCode*/
@@ -400,7 +414,7 @@ let AutoDeployAgent=async function(session){
 		jaxId:"1JN92DRGT0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,url}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JN92DRGT0PreEntry*/
@@ -458,6 +472,17 @@ export{AutoDeployAgent};
 //						"type": "Auto",
 //						"mockup": "\"\"",
 //						"desc": ""
+//					}
+//				},
+//				"url": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JO0O53DI0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": "",
+//						"required": "false"
 //					}
 //				}
 //			}
