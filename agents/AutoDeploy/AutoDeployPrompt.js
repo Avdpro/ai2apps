@@ -116,15 +116,41 @@ Use du -sh to get each size (e.g. du -sh ~/.modelhunt/{project_dir} | cut -f1). 
 
 ## Final Report
 
-When all phases complete, report exactly:
+When all phases complete, write the result JSON to ~/.modelhunt/deploy/${modelId}_result.json, then briefly state "Deployment succeeded" or "Deployment failed" along with the file path.
 
-=== GitHub Deployer Summary ===
-Repo: ${repoUrl}
-Project ID: ${modelId}
-Phase 1 (Analyze): OK / FAIL
-Phase 2 (deploy.json): OK / FAIL, saved to ~/.modelhunt/deploy/${modelId}.json
-Phase 3 (Deploy + Test): OK / FAIL (include test command and output)
-Phase 4 (usage.yaml): OK / FAIL, saved to ~/.modelhunt/usage/${modelId}.yaml
-Phase 5 (Uninstall): OK / FAIL, saved to ~/.modelhunt/deploy/${modelId}_uninstall.json
-Phase 5 (Disk Usage): OK / FAIL, saved to ~/.modelhunt/deploy/${modelId}_size.json`;
+### Result JSON schema (written to file)
+
+{
+  "status": "success" | "failure",
+  "repo": "${repoUrl}",
+  "project_id": "${modelId}",
+
+  // ——— status "success": complete deployment guide ———
+  "deployment_guide": {
+    "summary": "One paragraph: what the project does and how it was deployed.",
+    "errors_and_fixes": [
+      {
+        "step": "which step",
+        "error": "error message",
+        "fix": "how it was resolved"
+      }
+    ]
+  },
+
+  // ——— status "failure": why it failed ———
+  "failure": {
+    "failed_phase": "e.g. Phase 3 (Deploy + Test)",
+    "failed_step": "which specific step failed",
+    "error_message": "the error output",
+    "root_cause_analysis": "diagnosis of why it failed"
+  }
+}
+
+### Rules
+
+1. **status**: "success" ONLY if the model is deployed AND passes the test (Phase 3 fully OK).
+2. On success, include ALL errors encountered (even resolved ones) in errors_and_fixes.
+3. On failure, write a clear root_cause_analysis so a human can understand and fix it.
+4. Write the JSON to ~/.modelhunt/deploy/${modelId}_result.json.
+5. After writing the file, just say "Deployment succeeded, result saved to ~/.modelhunt/deploy/${modelId}_result.json" or "Deployment failed, details at ~/.modelhunt/deploy/${modelId}_result.json".`;
 }

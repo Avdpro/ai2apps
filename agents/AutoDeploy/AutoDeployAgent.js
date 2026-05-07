@@ -85,7 +85,6 @@ let AutoDeployAgent=async function(session){
 				session,
 				prompt,
 				cwd: process.env.HOME || '/tmp',
-				timeout: 60 * 60 * 1000, // 1 hour
 				onProgress: (text) => {
 					if (text && text.trim()) {
 						session.addChatText('assistant', text.trim(), { ...opts, channel: 'Log' });
@@ -93,25 +92,36 @@ let AutoDeployAgent=async function(session){
 				},
 			});
 			
-			if (deployResult.success) {
+			const resultPath = pathLib.join(process.env.HOME || '/tmp', '.modelhunt/deploy', `${model}_result.json`);
+			let resultData;
+			try {
+				const fileContent = await fsp.readFile(resultPath, 'utf-8');
+				resultData = JSON.parse(fileContent);
+			} catch (err) {
+				throw new Error(`读取 result.json 失败: ${err.message}`);
+			}
+			
+			
+			if (resultData.status === "success") {
 				session.addChatText(role, ($ln === 'CN'
 										? '✅ 全流程完成！\n\n文件已生成:\n'
-										+ '  • ~/.modelhunt/deploy/{id}.json\n'
-										+ '  • ~/.modelhunt/usage/{id}.yaml'
+										+ `  • ~/.modelhunt/deploy/${model}.json\n`
+										+ `  • ~/.modelhunt/usage/${model}.yaml`
 										: '✅ Pipeline complete!\n\nFiles generated:\n'
-										+ '  • ~/.modelhunt/deploy/{id}.json\n'
-										+ '  • ~/.modelhunt/usage/{id}.yaml'), opts);
+										+ `  • ~/.modelhunt/deploy/${model}.json\n`
+										+ `  • ~/.modelhunt/usage/${model}.yaml`), opts);
 				result = { result: 'Finish', output: deployResult.output };
 			} else {
 				session.addChatText(role, ($ln === 'CN'
-										? '❌ 流程失败: ' + (deployResult.error || '未知错误')
-										: '❌ Pipeline failed: ' + (deployResult.error || 'unknown error')), opts);
+										? `❌ 流程失败. 打开 ~/.modelhunt/deploy/${model}_result.json 查看详情`
+										: `❌ Pipeline failed. Open ~/.modelhunt/deploy/${model}_result.json for details`), opts);
+				throw new Error(`部署失败`);
 				result = { result: 'Failed', error: deployResult.error, output: deployResult.output };
 			}
 			/*}#1JN92GB540Code*/
 		}catch(error){
 			/*#{1JN92GB540ErrorCode*/
-			result=error;
+			throw new Error(error);
 			/*}#1JN92GB540ErrorCode*/
 		}
 		return {seg:UpdateDeploy,result:(result),preSeg:"1JN92GB540",outlet:"1JN92GJ540"};
@@ -190,6 +200,7 @@ let AutoDeployAgent=async function(session){
 			/*}#1JNE5FQ6D0Code*/
 		}catch(error){
 			/*#{1JNE5FQ6D0ErrorCode*/
+			throw new Error(error);
 			/*}#1JNE5FQ6D0ErrorCode*/
 		}
 		return {seg:UpdateUsage,result:(result),preSeg:"1JNE5FQ6D0",outlet:"1JNE5G43S0"};
@@ -248,6 +259,7 @@ let AutoDeployAgent=async function(session){
 			/*}#1JNE6AVC40Code*/
 		}catch(error){
 			/*#{1JNE6AVC40ErrorCode*/
+			throw new Error(error);
 			/*}#1JNE6AVC40ErrorCode*/
 		}
 		return {seg:UpdateDelete,result:(result),preSeg:"1JNE6AVC40",outlet:"1JNE6B3P50"};
@@ -337,6 +349,7 @@ let AutoDeployAgent=async function(session){
 						/*}#1JNE8Q00C0Code*/
 		}catch(error){
 			/*#{1JNE8Q00C0ErrorCode*/
+			throw new Error(error);
 			/*}#1JNE8Q00C0ErrorCode*/
 		}
 		return {result:result};
@@ -370,6 +383,7 @@ let AutoDeployAgent=async function(session){
 															/*}#1JNE94TEK0Code*/
 		}catch(error){
 			/*#{1JNE94TEK0ErrorCode*/
+			throw new Error(error);
 			/*}#1JNE94TEK0ErrorCode*/
 		}
 		return {seg:Read,result:(result),preSeg:"1JNE94TEK0",outlet:"1JNE954100"};
