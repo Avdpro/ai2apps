@@ -110,7 +110,7 @@ After deployment, run du -sh on every deployed directory and conda env, then wri
   }
 }
 
-Use du -sh to get each size (e.g. du -sh ~/.modelhunt/{project_dir} | cut -f1). Convert KB/GB to MB as needed.
+Use du -sh to get each size (e.g. du -sh ~/.modelhunt/{project_dir} | cut -f1). MUST USE GB.
 
 ---
 

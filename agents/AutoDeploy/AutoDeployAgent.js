@@ -164,7 +164,7 @@ let AutoDeployAgent=async function(session){
 			}
 			
 			// 3. 构建目标 URL (将写死的 spark_tts 替换为动态传入的 model 变量)
-			const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}`;
+			const targetUrl = `${API_URL.replace(/\/$/, '')}/api/public/v1/models/${model}/deploy`;
 			
 			// 4. 发送 API 请求
 			const response = await fetch(targetUrl, {
