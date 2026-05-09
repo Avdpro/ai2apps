@@ -18,12 +18,13 @@ const argsTemplate={
 	properties:{
 		"searchNum":{
 			"name":"searchNum","type":"number",
-			"required":false,
+			"required":true,
 			"defaultValue":5,
 			"desc":"",
 		},
 		"modelName":{
 			"name":"modelName","type":"string",
+			"required":true,
 			"defaultValue":"",
 			"desc":"",
 		}
@@ -76,11 +77,17 @@ let AnySearchWorkflow=async function(session){
 		let result=input;
 		let missing=false;
 		let smartAsk=false;
+		/*#{1JCFV0B9G0PreCodes*/
+		/*}#1JCFV0B9G0PreCodes*/
+		if(searchNum===undefined || searchNum==="") missing=true;
 		if(modelName===undefined || modelName==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
+		/*#{1JCFV0B9G0PostCodes*/
+		console.log("fixargs ===",input, result, modelName, searchNum)
+		/*}#1JCFV0B9G0PostCodes*/
 		return {seg:DefaultWaitTips,result:(result),preSeg:"1JCFV0B9G0",outlet:"1JCFV0GPE0"};
 	};
 	fixargs.jaxId="1JCFV0B9G0"
@@ -351,6 +358,7 @@ let AnySearchWorkflow=async function(session){
 			searchNum: searchNum > 20 ? 20 : searchNum,
 			platforms: (context.platforms && context.platforms.length) ? context.platforms : []
 		};
+		console.log(result,'before RPA ===');
 		/*}#1JC63DTVT0PostCodes*/
 		return {seg:SummarQuestion,result:(result),preSeg:"1JC63DTVT0",outlet:"1JC63DTVT3"};
 	};
@@ -365,6 +373,7 @@ let AnySearchWorkflow=async function(session){
 		let sourcePath=pathLib.join(basePath,"../AgentBuilder/RpaEntry.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
 		/*#{1JC0JAE5K0Input*/
+		console.log(input,'RPA===')
 		/*}#1JC0JAE5K0Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
 		/*#{1JC0JAE5K0Output*/
@@ -1103,7 +1112,7 @@ export{AnySearchWorkflow};
 //					"attrs": {
 //						"type": "Number",
 //						"mockup": "5",
-//						"required": "false",
+//						"required": "true",
 //						"desc": ""
 //					}
 //				},
@@ -1114,6 +1123,7 @@ export{AnySearchWorkflow};
 //					"attrs": {
 //						"type": "String",
 //						"mockup": "\"\"",
+//						"required": "true",
 //						"desc": ""
 //					}
 //				}
@@ -1215,7 +1225,7 @@ export{AnySearchWorkflow};
 //						"x": "100",
 //						"y": "245",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"smartAsk": "false",
