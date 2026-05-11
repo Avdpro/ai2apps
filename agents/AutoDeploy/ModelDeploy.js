@@ -777,7 +777,7 @@ let ModelDeploy=async function(session){
 	
 	segs["RunConda"]=RunConda=async function(input){//:1JNEH8AHM0
 		let result;
-		let arg={command:`conda create -n ${input.conda} python=${input.pythonVersion} -y && (conda activate ${input.conda} || source activate ${input.conda}) && echo "Successful" || echo "Failed"`};
+		let arg={command:`conda create -n ${input.conda} python=${input.pythonVersion} -y && { conda activate ${input.conda} 2>/dev/null || source activate ${input.conda}; } && echo "Successful" || echo "Failed"`};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
@@ -2955,7 +2955,7 @@ export{ModelDeploy,ChatAPI};
 //							}
 //						},
 //						"source": "AutoDeploy/ToolRunCommand.js",
-//						"argument": "#{command:`conda create -n ${input.conda} python=${input.pythonVersion} -y && (conda activate ${input.conda} || source activate ${input.conda}) && echo \"Successful\" || echo \"Failed\"`}",
+//						"argument": "#{command:`conda create -n ${input.conda} python=${input.pythonVersion} -y && { conda activate ${input.conda} 2>/dev/null || source activate ${input.conda}; } && echo \"Successful\" || echo \"Failed\"`}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JNEH8S6J0",
