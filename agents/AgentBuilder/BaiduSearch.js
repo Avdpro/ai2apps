@@ -131,7 +131,7 @@ let BaiduSearch=async function(session){
 	segs["ClickSearchBtn"]=ClickSearchBtn=async function(input){//:1J0TKRJ230
 		let result=true;
 		let pageVal="aaPage";
-		let $query="(//button[@id='chat-submit-button'])";
+		let $query="(//div[@class='ci-bottom-search-btn'])";
 		let $queryHint="";
 		let $x=0;
 		let $y=0;
@@ -761,7 +761,7 @@ export{BaiduSearch,ChatAPI};
 //						},
 //						"page": "aaPage",
 //						"action": "Click",
-//						"query": "(//button[@id='chat-submit-button'])",
+//						"query": "(//div[@class='ci-bottom-search-btn'])",
 //						"queryHint": "",
 //						"dx": "0",
 //						"dy": "0",
