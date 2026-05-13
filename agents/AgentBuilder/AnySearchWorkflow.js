@@ -41,7 +41,7 @@ let AnySearchWorkflow=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let fixargs,DefaultWaitTips,DefaultCallAPI,ShowDefaultCallAPIRes,InitAskUser,DefaultUserType,DefaultSearchWaitTips,CallInternalAPI,ShowInternalAPIRes,SelectQuestionWay,AskUserQuestion,UserTypeQuestion,RPA,IsReport,WaitTips_1,AxiosCallRpaAPI,CheckError,ShowError,GetAllLinks,ShowAllLinks,ContinueRPA,FileType,CheckLength,SimpleReport,ShowSimpleReport,WaitInfo,ConfirmAgain,ShowSelectedPlatform,ContinueRPA_1,ContinueAsk_2,Retry,RetryTips,ShowRetryError,SummarQuestion;
+	let fixargs,DefaultWaitTips,DefaultCallAPI,ShowDefaultCallAPIRes,InitAskUser,DefaultUserType,DefaultSearchWaitTips,CallInternalAPI,ShowInternalAPIRes,SelectQuestionWay,AskUserQuestion,UserTypeQuestion,RPA,IsReport,WaitTips_1,AxiosCallRpaAPI,CheckError,ShowError,GetAllLinks,ShowAllLinks,ContinueRPA,FileType,DocType,CheckLength,SimpleReport,ShowSimpleReport,WaitInfo,ConfirmAgain,ShowSelectedPlatform,ContinueRPA_1,ContinueAsk_2,Retry,RetryTips,ShowRetryError,SummarQuestion;
 	/*#{1HDBOSUN90LocalVals*/
 	/*}#1HDBOSUN90LocalVals*/
 	
@@ -506,7 +506,7 @@ let AnySearchWorkflow=async function(session){
 		if(input.errMsg){
 			return {seg:ShowError,result:(input),preSeg:"1JD2HUA490",outlet:"1JD2I4PL50"};
 		}
-		return {seg:FileType,result:(result),preSeg:"1JD2HUA490",outlet:"1JD2HVHAT1"};
+		return {seg:DocType,result:(result),preSeg:"1JD2HUA490",outlet:"1JD2HVHAT1"};
 	};
 	CheckError.jaxId="1JD2HUA490"
 	CheckError.url="CheckError@"+agentURL
@@ -625,6 +625,54 @@ let AnySearchWorkflow=async function(session){
 	FileType.jaxId="1JC8CQE880"
 	FileType.url="FileType@"+agentURL
 	
+	segs["DocType"]=DocType=async function(input){//:1JOFH71EM0
+		let prompt=((($ln==="CN")?("请选择报告的输出形式。"):("Please select the report output format.")))||input;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let withChat=false;
+		let silent=false;
+		let items=[
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("Markdown 文档"):("Markdown Document")),code:0},
+			{icon:"/~/-tabos/shared/assets/dot.svg",text:(($ln==="CN")?("Html 页面"):("Html Page")),code:1},
+		];
+		let result="";
+		let item=null;
+		
+		/*#{1JOFH71EM0PreCodes*/
+		/*}#1JOFH71EM0PreCodes*/
+		if(silent){
+			result="";
+			return {result:result};
+		}
+		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
+		/*#{1JOFH71EM0PostCodes*/
+		if(result === "Markdown 文档" || result === "Markdown Document"){
+			result = {
+				type: 'Md',
+				userPrompt: input.answer
+			};
+		}else{
+			result = { 
+				type: 'Html',
+				userPrompt: input.answer 
+			};
+		};
+		/*}#1JOFH71EM0PostCodes*/
+		if(typeof(item)==='string'){
+			result=item;
+			return {result:result};
+		}else if(item.code===0){
+			return {result:result};
+		}else if(item.code===1){
+			return {result:result};
+		}
+		/*#{1JOFH71EM0FinCodes*/
+		/*}#1JOFH71EM0FinCodes*/
+		return {result:result};
+	};
+	DocType.jaxId="1JOFH71EM0"
+	DocType.url="DocType@"+agentURL
+	
 	segs["CheckLength"]=CheckLength=async function(input){//:1JD2BIT1J0
 		let result=input;
 		if(input.length){
@@ -638,7 +686,7 @@ let AnySearchWorkflow=async function(session){
 	segs["SimpleReport"]=SimpleReport=async function(input){//:1JD7C9HUJ0
 		let prompt;
 		let $platform="OpenRouter";
-		let $model="openai/gpt-4.1";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1JD7C9HUJ0Input*/
@@ -880,7 +928,7 @@ let AnySearchWorkflow=async function(session){
 	segs["SummarQuestion"]=SummarQuestion=async function(input){//:1JH04QDG10
 		let prompt;
 		let $platform="OpenRouter";
-		let $model="openai/gpt-4.1";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1JH04QDG10Input*/
@@ -2092,7 +2140,7 @@ export{AnySearchWorkflow};
 //								"desc": "输出节点。",
 //								"output": ""
 //							},
-//							"linkedSeg": "1JC8CQE880"
+//							"linkedSeg": "1JOFH71EM0"
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -2370,6 +2418,112 @@ export{AnySearchWorkflow};
 //				},
 //				{
 //					"type": "aiseg",
+//					"def": "askMenu",
+//					"jaxId": "1JOFH71EM0",
+//					"attrs": {
+//						"id": "DocType",
+//						"viewName": "",
+//						"label": "",
+//						"x": "3735",
+//						"y": "620",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": {
+//							"type": "string",
+//							"valText": "Please select the report output format.",
+//							"localize": {
+//								"EN": "Please select the report output format.",
+//								"CN": "请选择报告的输出形式。"
+//							},
+//							"localizable": true
+//						},
+//						"multi": "false",
+//						"withChat": "false",
+//						"outlet": {
+//							"jaxId": "1JOFH8GFU0",
+//							"attrs": {
+//								"id": "ChatInput",
+//								"desc": "输出节点。",
+//								"codes": "false"
+//							}
+//						},
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JOFH71DS0",
+//									"attrs": {
+//										"id": "Markdwon",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Markdown Document",
+//											"localize": {
+//												"EN": "Markdown Document",
+//												"CN": "Markdown 文档"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JOFH8GG80",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JOFH8GG81",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									}
+//								},
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JOFH71DS1",
+//									"attrs": {
+//										"id": "Html",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Html Page",
+//											"localize": {
+//												"EN": "Html Page",
+//												"CN": "Html 页面"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JOFH8GG82",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JOFH8GG83",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									}
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "menu.svg",
+//					"reverseOutlets": true
+//				},
+//				{
+//					"type": "aiseg",
 //					"def": "brunch",
 //					"jaxId": "1JD2BIT1J0",
 //					"attrs": {
@@ -2462,7 +2616,7 @@ export{AnySearchWorkflow};
 //							}
 //						},
 //						"platform": "OpenRouter",
-//						"mode": "openai/gpt-4.1",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`You are a professional content summarization AI assistant. - Task: Based on the user question \"${context.externalQuestion}\", extract all \"content\" fields from ${JSON.stringify(input,null,\"\\t\")} and summarize them, focusing on the core conclusion without expanding on details. The summary must not exceed 300 words, and please use english. - The final output should be in JSON format: { \"user\": \"${context.externalQuestion}\", \"assistant\": \"Generated summary content\" } `",
@@ -3103,7 +3257,7 @@ export{AnySearchWorkflow};
 //							}
 //						},
 //						"platform": "OpenRouter",
-//						"mode": "openai/gpt-4.1",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`You are a professional keyword extraction assistant.\n\n- Task:\n1. Review the conversation history data ${input.userContents} and summarize the user's core needs and themes\n2. Combine with the current input ${input.search} to refine a precise keyword\n\n\n- Relevance Judgment:\n1. If the conversation history and current input are semantically related, fuse them to generate the keyword\n2. If the conversation history and current input are completely unrelated, generate the keyword based solely on the current input, ignoring the history\n\n- Requirements:\n1. Keyword length should be controlled within 2-10 characters 2. Prioritize using nouns or noun phrases\n3. Must accurately reflect user intent\n4. When history and current input are unrelated, the keyword must be based entirely on the current input without mixing in historical content\n\n- Final output in JSON format: { \"keyword\": \"keyword\" }\n\n- Example 1 (Related)\n1. Input history: [\"sparktts\", \"environment requirements for deploying this model\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 2 (Related)\n1. Input history: [\"sparktts\", \"deployment environment requirements\"] + Current input: \"the R&D team of this model\"\n2. Output: {\"keyword\": \"sparktts R&D team\"}\n\n- Example 3 (Unrelated)\n1. Input history: [\"sparktts\", \"model deployment environment\"] + Current input: \"how is the weather today\"\n2. Output: {\"keyword\": \"today's weather\"}\n\n- Example 4 (Unrelated)\n1. Input history: [\"python tutorial\", \"data analysis\"] + Current input: \"Beijing tourist attractions recommendation\"\n2. Output: {\"keyword\": \"Beijing tourist attractions\"}\n`",

@@ -18,7 +18,7 @@ let BaiduSearch=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let OpenPage,Notify,TypeText,ClickSearchBtn,CheckContentElement,DoExist,ShowError,ReadContentRes,GetHtml,CheckDataLength,GoToNextPage,TipResult,ShowRes,ClosePage,ReadSearchRes,ShowAllRes;
+	let OpenPage,Notify,TypeText,ClickSearchBtn,TypeSearchBtn,CheckContentElement,DoExist,ShowError,ReadContentRes,GetHtml,CheckDataLength,GoToNextPage,TipResult,ShowRes,ClosePage,ReadSearchRes,ShowAllRes;
 	let data=undefined;
 	
 	/*#{1HDBOSUN90LocalVals*/
@@ -123,7 +123,7 @@ let BaiduSearch=async function(session){
 		}
 		/*#{1J0TKOVEG0PostCodes*/
 		/*}#1J0TKOVEG0PostCodes*/
-		return {seg:ClickSearchBtn,result:(result),preSeg:"1J0TKOVEG0",outlet:"1J0TKP1OU0"};
+		return {seg:TypeSearchBtn,result:(result),preSeg:"1J0TKOVEG0",outlet:"1J0TKP1OU0"};
 	};
 	TypeText.jaxId="1J0TKOVEG0"
 	TypeText.url="TypeText@"+agentURL
@@ -131,7 +131,7 @@ let BaiduSearch=async function(session){
 	segs["ClickSearchBtn"]=ClickSearchBtn=async function(input){//:1J0TKRJ230
 		let result=true;
 		let pageVal="aaPage";
-		let $query="(//div[@class='ci-bottom-search-btn'])";
+		let $query="(//div[@class='ci-sug-search-btn-wrapper' or @class='ci-bottom-search-btn'])";
 		let $queryHint="";
 		let $x=0;
 		let $y=0;
@@ -162,10 +162,43 @@ let BaiduSearch=async function(session){
 		}
 		/*#{1J0TKRJ230PostCodes*/
 		/*}#1J0TKRJ230PostCodes*/
-		return {seg:CheckContentElement,result:(result),preSeg:"1J0TKRJ230",outlet:"1J0TKRLAF0"};
+		return {result:result};
 	};
 	ClickSearchBtn.jaxId="1J0TKRJ230"
 	ClickSearchBtn.url="ClickSearchBtn@"+agentURL
+	
+	segs["TypeSearchBtn"]=TypeSearchBtn=async function(input){//:1JOFHOQHS0
+		let result=true;
+		let pageVal="aaPage";
+		let $action="KeyPress";
+		let $query="";
+		let $queryHint="";
+		let $key="Enter";
+		let $options={};
+		let $waitBefore=0;
+		let $waitAfter=500;
+		let page=context[pageVal];
+		let $async=false;
+		let $pms=null;
+		let $done=false;
+		$waitBefore && (await sleep($waitBefore));
+		/*#{1JOFHOQHS0PreCodes*/
+		context.webRpa = globalContext.webRpa;
+		/*}#1JOFHOQHS0PreCodes*/
+		try{
+			$pms=page.keyboard.press($key,$options||{});
+			if($pms && (!$async)){$done=await $pms;}
+			$waitAfter && (await sleep($waitAfter))
+		}catch(error){
+			/*#{1JOFHOQHS0ErrorCode*/
+			/*}#1JOFHOQHS0ErrorCode*/
+		}
+		/*#{1JOFHOQHS0PostCodes*/
+		/*}#1JOFHOQHS0PostCodes*/
+		return {seg:CheckContentElement,result:(result),preSeg:"1JOFHOQHS0",outlet:"1JOFHPHQL0"};
+	};
+	TypeSearchBtn.jaxId="1JOFHOQHS0"
+	TypeSearchBtn.url="TypeSearchBtn@"+agentURL
 	
 	segs["CheckContentElement"]=CheckContentElement=async function(input){//:1J3KOKJMN0
 		let result=true;
@@ -693,7 +726,7 @@ export{BaiduSearch,ChatAPI};
 //						"id": "TypeText",
 //						"viewName": "",
 //						"label": "",
-//						"x": "610",
+//						"x": "585",
 //						"y": "210",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
@@ -726,7 +759,7 @@ export{BaiduSearch,ChatAPI};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1J0TKRJ230"
+//							"linkedSeg": "1JOFHOQHS0"
 //						},
 //						"errorSeg": "",
 //						"run": ""
@@ -741,8 +774,8 @@ export{BaiduSearch,ChatAPI};
 //						"id": "ClickSearchBtn",
 //						"viewName": "",
 //						"label": "",
-//						"x": "835",
-//						"y": "210",
+//						"x": "825",
+//						"y": "130",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -761,7 +794,7 @@ export{BaiduSearch,ChatAPI};
 //						},
 //						"page": "aaPage",
 //						"action": "Click",
-//						"query": "(//div[@class='ci-bottom-search-btn'])",
+//						"query": "(//div[@class='ci-sug-search-btn-wrapper' or @class='ci-bottom-search-btn'])",
 //						"queryHint": "",
 //						"dx": "0",
 //						"dy": "0",
@@ -776,13 +809,60 @@ export{BaiduSearch,ChatAPI};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
+//							}
+//						},
+//						"errorSeg": "",
+//						"run": ""
+//					},
+//					"icon": "mouse.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "AAFKeyboardAction",
+//					"jaxId": "1JOFHOQHS0",
+//					"attrs": {
+//						"id": "TypeSearchBtn",
+//						"viewName": "",
+//						"label": "",
+//						"x": "825",
+//						"y": "210",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JOFHPHQQ0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JOFHPHQQ1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"page": "aaPage",
+//						"action": "Key Press",
+//						"query": "",
+//						"queryHint": "",
+//						"key": "Enter",
+//						"async": "false",
+//						"options": "{}",
+//						"waitBefore": "0",
+//						"waitAfter": "500",
+//						"outlet": {
+//							"jaxId": "1JOFHPHQL0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
 //							},
 //							"linkedSeg": "1J3KOKJMN0"
 //						},
 //						"errorSeg": "",
 //						"run": ""
 //					},
-//					"icon": "mouse.svg"
+//					"icon": "keybtn.svg"
 //				},
 //				{
 //					"type": "aiseg",
