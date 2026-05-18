@@ -1289,8 +1289,42 @@ class ChatSession {
 	}
 
 	//-----------------------------------------------------------------------
+	async runRpaFlowByFind(find,input,opts){
+		let vo,runArgs,runOpts,res;
+		if(!find || String(find.kind||"").toLowerCase()!=="rpa"){
+			return {status:"failed",reason:"runRpaFlowByFind: find.kind must be rpa"};
+		}
+		runArgs=(input&&typeof(input)==="object"&&!Array.isArray(input))?input:{input:input};
+		runOpts=(opts&&typeof(opts)==="object"&&!Array.isArray(opts))?opts:{};
+		vo={
+			findVO:find,
+			args:runArgs,
+			opts:runOpts,
+			launchMode:find.launchMode||runOpts.launchMode||undefined,
+			startUrl:find.startUrl||runOpts.startUrl||undefined,
+			profile:find.profile||runOpts.profile||undefined,
+			timeoutMs:find.timeoutMs||runOpts.timeoutMs||undefined,
+			callerFlowId:find.callerFlowId||runOpts.callerFlowId||undefined,
+			returnTo:find.returnTo||runOpts.returnTo||undefined,
+			onError:find.onError||runOpts.onError||undefined
+		};
+		res=await this.callHub("rpaFlowRunByFind",vo);
+		if(res && res.code===200){
+			return (res.result!==undefined)?res.result:{status:"done",value:res};
+		}
+		return {
+			status:"failed",
+			reason:(res&&res.info)?res.info:"rpaFlowRunByFind failed",
+			value:res||null
+		};
+	}
+	
+	//-----------------------------------------------------------------------
 	async callAgent(agentNode,path,input,opts){
 		if(path && path.kind){
+			if(String(path.kind||"").toLowerCase()==="rpa"){
+				return await this.runRpaFlowByFind(path,input,opts);
+			}
 			let result;
 			result=await this.findAgent(path);
 			if(result){
