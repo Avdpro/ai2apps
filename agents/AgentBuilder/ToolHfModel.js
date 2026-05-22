@@ -133,7 +133,7 @@ let ToolHfModel=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']="pip install huggingface-hub -U";
+		args['commands']=`pip install huggingface-hub -U && echo "Successful" && echo "Failed"`;
 		args['options']="";
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
 		return {seg:CheckInstall,result:(result),preSeg:"1IL0F6R660",outlet:"1IL0F8C2V0"};
@@ -269,14 +269,15 @@ let ToolHfModel=async function(session){
 	
 	segs["CheckInstall"]=CheckInstall=async function(input){//:1J216PG2G0
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1-mini";
+		let $platform="OpenRouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result;
 		
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -299,7 +300,7 @@ let ToolHfModel=async function(session){
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		if($agent){
-			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking});
 		}else{
 			result=await session.callSegLLM("CheckInstall@"+agentURL,opts,messages,true);
 		}
@@ -333,14 +334,15 @@ let ToolHfModel=async function(session){
 	
 	segs["CheckInstall2"]=CheckInstall2=async function(input){//:1J2176E080
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1-mini";
+		let $platform="OpenRouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result;
 		
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -363,7 +365,7 @@ let ToolHfModel=async function(session){
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		if($agent){
-			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking});
 		}else{
 			result=await session.callSegLLM("CheckInstall2@"+agentURL,opts,messages,true);
 		}
@@ -390,14 +392,15 @@ let ToolHfModel=async function(session){
 	
 	segs["LLMCheckDownload"]=LLMCheckDownload=async function(input){//:1J21KPET10
 		let prompt;
-		let $platform="OpenAI";
-		let $model="gpt-4.1-mini";
+		let $platform="OpenRouter";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result;
 		
 		let opts={
 			platform:$platform,
 			mode:$model,
+			enable_thinking:false,
 			maxToken:2000,
 			temperature:0,
 			topP:1,
@@ -447,7 +450,7 @@ let ToolHfModel=async function(session){
 			let msg={role:"user",content:prompt};messages.push(msg);
 		}
 		if($agent){
-			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat});
+			result=await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking});
 		}else{
 			result=await session.callSegLLM("LLMCheckDownload@"+agentURL,opts,messages,true);
 		}
@@ -1006,7 +1009,7 @@ export{ToolHfModel,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "pip install huggingface-hub -U",
+//						"commands": "#`pip install huggingface-hub -U && echo \"Successful\" && echo \"Failed\"`",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1IL0F8C2V0",
@@ -1450,9 +1453,10 @@ export{ToolHfModel,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1-mini",
+//						"platform": "OpenRouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": "用户正在通过pip安装huggingface-hub库，请根据终端的输出判断是否安装成功，输出json格式，{\"success\":true/false}",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -1631,9 +1635,10 @@ export{ToolHfModel,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1-mini",
+//						"platform": "OpenRouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": "用户正在通过pip安装huggingface-hub库，请根据终端的输出判断是否安装成功，输出json格式，{\"success\":true/false}",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",
@@ -1792,9 +1797,10 @@ export{ToolHfModel,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"platform": "\"OpenAI\"",
-//						"mode": "gpt-4.1-mini",
+//						"platform": "OpenRouter",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": "#`你是一个专门分析 Hugging Face CLI 下载模型终端输出的助手。收到用户提供的一段终端输出（纯文本），请你完成以下步骤：\n\n1. 判断本次下载是否成功。  \n\n2. 如果失败，请根据终端输出内容，匹配以下四种错误类型之一：  \n   - network_interruption：网络中断、连接超时、DNS 失败等，提示“重试下载”；  \n   - requires_token：模型私有，需要登录 token，但用户未设置任何 token；  \n   - invalid_token：检测到用户已设置 token，但 token 无效（返回 401/403 授权失败等）；  \n   - add_mirror：网络环境受限，需要添加 HF 镜像源（如国内环境）。\n   - no_model：Repository not found，模型不存在。\n\n3. 生成并返回一个 JSON 对象，格式如下：\n\n{\n  \"success\": true|false,\n  \"error_type\": null|\"network_interruption\"|\"requires_token\"|\"invalid_token\"|\"add_mirror\"|\"no_model\",\n  \"suggestion\": \"针对错误的操作建议文字\"\n}\n\n\n* 当 success 为 true 时，error_type 和 suggestion 均应为 null。\n\n* 当 success 为 false 时，error_type 必须是上述四种之一，suggestion 为对应的具体操作提示。\n\n请严格按照上述流程和 JSON 模板输出，且不要额外输出其他内容。\n` + (($ln===\"CN\")?(\"用中文输出。\"):(\"Output in English.\"))\n\n",
+//						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
 //						"topP": "1",

@@ -56,7 +56,7 @@ let Bash=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let SwitchAction,CreateBash,RunCommand,LoopCmd,RunOneCmd,IsDone,CloseBash,GetContent,Clear,Wait,GetReact,GenResult,NextCmd,CheckReact,DoInput,WaitIdle,AskUser,CheckSame;
+	let SwitchAction,CreateBash,RunCommand,LoopCmd,RunOneCmd,IsDone,CloseBash,GetContent,Clear,Wait,GetReact,GenResult,NextCmd,CheckReact,DoInput,WaitIdle,CheckSame,Confirm;
 	let cmdBash=null;
 	let orgContent="";
 	let orgCmdContent="";
@@ -151,7 +151,7 @@ let Bash=async function(session){
 			}
 			cmdBash=bash;
 			if(bash.sessionId){
-				session.callClient("SwitchXTerm", {session: bash.sessionId});
+				session.callClient("SwitchXTerm", {session: bash.sessionId}).catch(() => {});
 			}
 			if(options.clear){
 				bash.clear();
@@ -382,7 +382,7 @@ let Bash=async function(session){
     - "Input": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。
     - "AskUser": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等
 
-- "input" {string}: 当"action"属性为"Input"时，需要向terminal里输入的内容。例如, 当询问是否继续时: "y"等。当"action"属性为"AskUser"时，需要询问用户的内容。
+- "input" {string}: 当"action"属性为"Input"时，需要向terminal里输入的内容。例如, 当询问是否继续时: "y"等。当"action"属性为"AskUser"时，需要询问用户的内容，需要提示用户在终端页面输入。
 
 ### 确保流程进行
 - 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用"Input"的action来自动回复，保证流程不受中断。
@@ -457,7 +457,7 @@ let Bash=async function(session){
 	segs["CheckReact"]=CheckReact=async function(input){//:1IIF4UL9V0
 		let result=input;
 		if(input.action==="AskUser"){
-			return {seg:AskUser,result:(input),preSeg:"1IIF4UL9V0",outlet:"1IIF5056O0"};
+			return {seg:Confirm,result:(input),preSeg:"1IIF4UL9V0",outlet:"1IIF5056O0"};
 		}
 		if(input.action==="Input"){
 			let output=input.input;
@@ -524,35 +524,6 @@ let Bash=async function(session){
 	WaitIdle.jaxId="1IIF89Q1I0"
 	WaitIdle.url="WaitIdle@"+agentURL
 	
-	segs["AskUser"]=AskUser=async function(input){//:1J1V9GOIF0
-		let tip=(input.input);
-		let tipRole=("assistant");
-		let placeholder=("");
-		let allowFile=(false)||false;
-		let allowEmpty=(false)||false;
-		let askUpward=(false);
-		let text=("");
-		let result="";
-		if(askUpward && tip){
-			result=await session.askUpward($agent,tip);
-		}else{
-			if(tip){
-				session.addChatText(tipRole,tip);
-			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
-		}
-		if(typeof(result)==="string"){
-			session.addChatText("user",result);
-		}else if(result.assets && result.prompt){
-			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
-		}else{
-			session.addChatText("user",result.text||result.prompt||result);
-		}
-		return {seg:DoInput,result:(result),preSeg:"1J1V9GOIF0",outlet:"1J1V9HK8H0"};
-	};
-	AskUser.jaxId="1J1V9GOIF0"
-	AskUser.url="AskUser@"+agentURL
-	
 	segs["CheckSame"]=CheckSame=async function(input){//:1JGM2HGLJ0
 		let result=input;
 		if(input!==last_input){
@@ -562,6 +533,30 @@ let Bash=async function(session){
 	};
 	CheckSame.jaxId="1JGM2HGLJ0"
 	CheckSame.url="CheckSame@"+agentURL
+	
+	segs["Confirm"]=Confirm=async function(input){//:1JOD3L4AQ0
+		let prompt=(input.input)||input;
+		let silent=false;
+		let countdown=undefined;
+		let placeholder=(undefined)||null;
+		let button1=((($ln==="CN")?("输入完成"):("Input completed")))||"OK";
+		let button2="";
+		let button3="";
+		let result="";
+		let value=0;
+		if(silent){
+			result="";
+			return {seg:WaitIdle,result:(result),preSeg:"1JOD3L4AQ0",outlet:"1JOD3L4A50"};
+		}
+		[result,value]=await session.askUserRaw({type:"confirm",prompt:prompt,button1:button1,button2:button2,button3:button3,countdown:countdown,withChat:undefined,placeholder:placeholder});
+		if(value===1){
+			result=("")||result;
+			return {seg:WaitIdle,result:(result),preSeg:"1JOD3L4AQ0",outlet:"1JOD3L4A50"};
+		}
+	
+	};
+	Confirm.jaxId="1JOD3L4AQ0"
+	Confirm.url="Confirm@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -1418,7 +1413,7 @@ export{Bash,ChatAPI};
 //						},
 //						"platform": "OpenRouter",
 //						"mode": "deepseek/deepseek-v4-flash",
-//						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\" 和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`  + (($ln===\"CN\")?(\"AskUser的内容需要用中文输出。\"):(\"Output in English when need AskUser.\"))\n",
+//						"system": "#`\n### 角色任务\n你是一个根据Terminal输出的最后几行内容来判断是否需要需要向terminal内输入，以继续执行当前操作的AI\n\n### 对话\n- 对话的输入是当前Terminal输出的最后几行内容\n- 请用JSON格式返回当前需要进行的操作\n\n### 返回JSON属性\n- \"action\" {string}: 下一步的动作，可以取的值有:\"Wait\"， \"Input\" 和\"AskUser\"\n\t- \"Wait\": 当前Termnial还在执行任务，不需要干预\n    - \"Input\": 当前Terminal需要用户输入才能继续执行，而你可以生成输入内容，例如询问是否确认某个操作。\n    - \"AskUser\": 当前Terminal需要用户输入才能继续执行，而你无法生成输入内容，例如询问sudo、登陆密码等\n\n- \"input\" {string}: 当\"action\"属性为\"Input\"时，需要向terminal里输入的内容。例如, 当询问是否继续时: \"y\"等。当\"action\"属性为\"AskUser\"时，需要询问用户的内容，需要提示用户在终端页面输入。\n\n### 确保流程进行\n- 除非是有明确的安全风险或者你无法提供相应的信息，你应该尽量使用\"Input\"的action来自动回复，保证流程不受中断。\n`  + (($ln===\"CN\")?(\"AskUser的内容需要用中文输出。\"):(\"Output in English when need AskUser.\"))\n",
 //						"enable_thinking": "false",
 //						"temperature": "0",
 //						"maxToken": "2000",
@@ -1602,7 +1597,7 @@ export{Bash,ChatAPI};
 //										},
 //										"condition": "#input.action===\"AskUser\""
 //									},
-//									"linkedSeg": "1J1V9GOIF0"
+//									"linkedSeg": "1JOD3L4AQ0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -1832,51 +1827,6 @@ export{Bash,ChatAPI};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "askChat",
-//					"jaxId": "1J1V9GOIF0",
-//					"attrs": {
-//						"id": "AskUser",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1790",
-//						"y": "-10",
-//						"desc": "这是一个AISeg。",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1J1V9HK8O0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1J1V9HK8O1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"tip": "#input.input",
-//						"tipRole": "Assistant",
-//						"placeholder": "",
-//						"text": "",
-//						"file": "false",
-//						"allowEmpty": "false",
-//						"showText": "true",
-//						"askUpward": "false",
-//						"outlet": {
-//							"jaxId": "1J1V9HK8H0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1IIF512K60"
-//						}
-//					},
-//					"icon": "chat.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "brunch",
 //					"jaxId": "1JGM2HGLJ0",
 //					"attrs": {
@@ -2008,6 +1958,62 @@ export{Bash,ChatAPI};
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "askConfirm",
+//					"jaxId": "1JOD3L4AQ0",
+//					"attrs": {
+//						"id": "Confirm",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1790",
+//						"y": "-35",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"prompt": "#input.input",
+//						"outlets": {
+//							"attrs": [
+//								{
+//									"type": "aioutlet",
+//									"def": "AIButtonOutlet",
+//									"jaxId": "1JOD3L4A50",
+//									"attrs": {
+//										"id": "Button1",
+//										"desc": "输出节点。",
+//										"text": {
+//											"type": "string",
+//											"valText": "Input completed",
+//											"localize": {
+//												"EN": "Input completed",
+//												"CN": "输入完成"
+//											},
+//											"localizable": true
+//										},
+//										"result": "",
+//										"codes": "false",
+//										"context": {
+//											"jaxId": "1JOD3M0S20",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										},
+//										"global": {
+//											"jaxId": "1JOD3M0S21",
+//											"attrs": {
+//												"cast": ""
+//											}
+//										}
+//									},
+//									"linkedSeg": "1IIF89Q1I0"
+//								}
+//							]
+//						},
+//						"silent": "false"
+//					},
+//					"icon": "help.svg"
 //				}
 //			]
 //		},

@@ -418,7 +418,7 @@ export default async function(app,router,apiMap) {
 							return;
 						}
 						content=rawResVO.choices[0].message;
-						resVO = { code: 200,message:content.content||content};
+						resVO = { code: 200, message: content.content || content, toolCalls: content.tool_calls || null };
 						res.json(resVO);
 
 						//Charge user token:
@@ -488,10 +488,21 @@ export default async function(app,router,apiMap) {
 							top_p: reqVO.top_p,
 							frequency_penalty: reqVO.frequency_penalty,
 							presence_penalty: reqVO.presence_penalty,
-							// 添加身份验证信息
 							userId: reqVO.userId,
 							token: reqVO.token,
 						};
+						// Forward tools for tool calling
+						if (reqVO.tools) {
+							callVO.tools = reqVO.tools;
+						} else if (reqVO.functions) {
+							callVO.tools = reqVO.functions.map(f => ({
+								type: 'function', function: f
+							}));
+						}
+						if (reqVO.enable_thinking) {
+							callVO.reasoning = { enabled: reqVO.enable_thinking };
+							callVO.include_reasoning = true;
+						}
 
 						// 构建请求头
 						const headers = {
@@ -507,6 +518,7 @@ export default async function(app,router,apiMap) {
 							method: "POST",
 							headers: headers,
 							body: JSON.stringify(callVO),
+							signal: AbortSignal.timeout(300000), // 5min timeout
 						});
 
 						if (!response.ok) {
@@ -521,6 +533,10 @@ export default async function(app,router,apiMap) {
 						const rawResVO = await response.json();
 						const message = rawResVO.choices?.[0]?.message || {};
 						let content = message?.content || "";
+						let toolCalls = message?.tool_calls || null;
+						if (!toolCalls && message?.function_call) {
+							toolCalls = [{ id: `func_${Date.now()}`, function: message.function_call }];
+						}
 						if (message.audio) {
 							// 音频模型：content=transcript，audio=dataURL
 							const b64 = message.audio.data || "";
@@ -549,6 +565,7 @@ export default async function(app,router,apiMap) {
 						resVO = {
 							code: 200,
 							message: content,
+toolCalls: toolCalls,
 							gasUsed: gasUsed,
 							costInfo: {
 								prompt_tokens: costInfo.prompt_tokens || usage.prompt_tokens || 0,
@@ -852,7 +869,15 @@ export default async function(app,router,apiMap) {
 						let streamVO, streamId,chatStream;
 						let dataLeft="";
 						callVO.stream = true;
-						callVO.stream_options={include_usage:true};
+
+						// Forward tools for tool calling
+						if (reqVO.tools) {
+							callVO.tools = reqVO.tools;
+						} else if (reqVO.functions) {
+							callVO.tools = reqVO.functions.map(f => ({
+								type: 'function', function: f
+							}));
+						}						callVO.stream_options={include_usage:true};
 						//console.log("Call Code VO:");
 						//console.log(callVO);
 						try {
@@ -1129,6 +1154,14 @@ export default async function(app,router,apiMap) {
 					}
 					callVO.stream = true;
 
+						// Forward tools for tool calling
+						if (reqVO.tools) {
+							callVO.tools = reqVO.tools;
+						} else if (reqVO.functions) {
+							callVO.tools = reqVO.functions.map(f => ({
+								type: 'function', function: f
+							}));
+						}
 					let streamId, streamVO;
 					streamId = getStreamId();
 					streamVO = {
@@ -1164,6 +1197,7 @@ export default async function(app,router,apiMap) {
 									'Connection': 'close'
 								},
 								body: JSON.stringify(callVO),
+							signal: AbortSignal.timeout(300000), // 5min timeout
 							});
 
 							if (!response.ok) {
@@ -1210,6 +1244,32 @@ export default async function(app,router,apiMap) {
 												}
 												if (delta.content) {
 													streamVO.answer += delta.content;
+												}
+												// tool_calls support:
+												if (delta.tool_calls) {
+													let srcList = delta.tool_calls;
+													let tgtList = streamVO.toolCalls;
+													if (!tgtList) {
+														tgtList = streamVO.toolCalls = [];
+													}
+													for (let i = 0; i < srcList.length; i++) {
+														let srcStub = srcList[i];
+														let idx = srcStub.index >= 0 ? srcStub.index : i;
+														let tgtStub = tgtList[idx];
+														if (!tgtStub) {
+															tgtStub = tgtList[idx] = {
+																index: idx, id: "", type: "function",
+																function: { name: "", arguments: "" }
+															};
+														}
+														if ("id" in srcStub) tgtStub.id += srcStub.id;
+														if ("type" in srcStub) tgtStub.type = "function";
+														let sf = srcStub.function;
+														if (sf) {
+															tgtStub.function.name += sf.name || "";
+															tgtStub.function.arguments += sf.arguments || "";
+														}
+													}
 												}
 												// 音频模型：收集 audio chunks
 												if (delta.audio) {
@@ -1354,7 +1414,8 @@ export default async function(app,router,apiMap) {
 									});
 								}
 								callVO.tools = tools;
-								callVO.tool_choice = reqVO.function_call || "auto";
+								// tool_choice omitted — many models (DeepSeek, etc.) don't support it.
+								// Without it, models default to choosing whether to call tools.
 							}else {
 								callVO.functions = reqVO.functions;
 								callVO.function_call = reqVO.function_call || "auto";

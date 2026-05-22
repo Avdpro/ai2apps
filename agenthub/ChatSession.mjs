@@ -1066,6 +1066,85 @@ class ChatSession {
 	}
 
 	//-----------------------------------------------------------------------
+	// Like callHubLLM but returns raw tool calls WITHOUT auto-executing them.
+	// Used by NativeAgenticLoop so it can batch and control tool execution.
+	async callHubLLMRaw(opts, messages) {
+		let res;
+		const callVO = {
+			platform: opts.platform || "OpenAI",
+			model: opts.model || opts.mode || "gpt-4o-mini",
+			temperature: opts.temperature || 0,
+			max_tokens: opts.maxToken || 4096,
+			messages,
+			top_p: opts.topP || 1,
+			presence_penalty: opts.prcP || 0,
+			frequency_penalty: opts.fqcP || 0,
+			response_format: opts.responseFormat || "text",
+			enable_thinking: opts.enable_thinking || false
+		};
+		{
+			let models = this.globalContext.models || {};
+			let name = callVO.model;
+			if (name[0] === "$") {
+				name = name.substring(1);
+				let vo = models[name];
+				if (!vo) {
+					throw Error(`Can't find platform shortcut: ${name}`);
+				}
+				callVO.platform = vo.platform;
+				callVO.model = vo.model;
+			}
+		}
+		const seed = opts.seed;
+		if (seed) {
+			callVO.seed = seed;
+		}
+
+		const apis = opts.apis;
+		if (apis) {
+			callVO.functions = apis.functions;
+			// Also build tools format — required by OpenRouter / newer APIs
+			if (apis.functions && apis.functions.length > 0) {
+				callVO.tools = apis.functions.map(f => ({
+					type: 'function',
+					function: f,
+				}));
+			}
+			if (opts.parallelFunction) {
+				callVO.parallelFunction = true;
+			}
+		}
+		console.log(`Call LLM Raw: ${JSON.stringify(callVO)}`);
+		res = await this.callHub("AICall", callVO);
+		if (res.code !== 200) {
+			throw new Error(`AICall failed: ${res.code}:${res.info}`);
+		}
+
+		// Track gas usage
+		const totalGas = res.gasUsed || 0;
+		if (totalGas > 0) {
+			this.totalGasUsed += totalGas;
+			this.gasBreakdown.push({
+				segment: this.curAISeg?.jaxId || this.curAISeg?.id || 'native_loop',
+				model: callVO.model,
+				platform: callVO.platform,
+				gas: totalGas,
+				cost: res.costInfo?.total_cost_usd || 0,
+				timestamp: Date.now()
+			});
+		}
+
+		// Return raw result — do NOT execute tool calls, do NOT recurse
+		return {
+			content: res.message || '',
+			toolCalls: res.toolCalls || null,
+			functionCall: res.functionCall || null,
+			inputTokens: res.costInfo?.prompt_tokens || 0,
+			outputTokens: res.costInfo?.completion_tokens || 0,
+		};
+	}
+
+	//-----------------------------------------------------------------------
 	async makeAICall(codeURL,opts,messages,fromSeg=false){
 		const model2Platform = {
 			"gpt-4o": "OpenAI",
@@ -1289,42 +1368,8 @@ class ChatSession {
 	}
 
 	//-----------------------------------------------------------------------
-	async runRpaFlowByFind(find,input,opts){
-		let vo,runArgs,runOpts,res;
-		if(!find || String(find.kind||"").toLowerCase()!=="rpa"){
-			return {status:"failed",reason:"runRpaFlowByFind: find.kind must be rpa"};
-		}
-		runArgs=(input&&typeof(input)==="object"&&!Array.isArray(input))?input:{input:input};
-		runOpts=(opts&&typeof(opts)==="object"&&!Array.isArray(opts))?opts:{};
-		vo={
-			findVO:find,
-			args:runArgs,
-			opts:runOpts,
-			launchMode:find.launchMode||runOpts.launchMode||undefined,
-			startUrl:find.startUrl||runOpts.startUrl||undefined,
-			profile:find.profile||runOpts.profile||undefined,
-			timeoutMs:find.timeoutMs||runOpts.timeoutMs||undefined,
-			callerFlowId:find.callerFlowId||runOpts.callerFlowId||undefined,
-			returnTo:find.returnTo||runOpts.returnTo||undefined,
-			onError:find.onError||runOpts.onError||undefined
-		};
-		res=await this.callHub("rpaFlowRunByFind",vo);
-		if(res && res.code===200){
-			return (res.result!==undefined)?res.result:{status:"done",value:res};
-		}
-		return {
-			status:"failed",
-			reason:(res&&res.info)?res.info:"rpaFlowRunByFind failed",
-			value:res||null
-		};
-	}
-	
-	//-----------------------------------------------------------------------
 	async callAgent(agentNode,path,input,opts){
 		if(path && path.kind){
-			if(String(path.kind||"").toLowerCase()==="rpa"){
-				return await this.runRpaFlowByFind(path,input,opts);
-			}
 			let result;
 			result=await this.findAgent(path);
 			if(result){
