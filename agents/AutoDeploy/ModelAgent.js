@@ -7,6 +7,8 @@ import {URL} from "url";
 import fsp from 'fs/promises';
 import yaml from 'js-yaml';
 import os from 'os';
+import { runAgenticTask } from '../../agenthub/NativeAgenticLoop.mjs';
+import { getAllTools } from '../../agenthub/NativeTools.mjs';
 /*}#1JGP1AAKD0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -54,7 +56,7 @@ let ModelAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,Welcome,Ask,Output,Agent,Action,AskUser,Run,InitBash,Respond,Enter,Show,Again,Execute,InitBash2,Enter2,Check,Wrong;
+	let FixArgs,Welcome,Ask,InitBash,Enter,InitBash2,Enter2,Check,Run;
 	/*#{1JGP1AAKD0LocalVals*/
 	let query="", config, skill, base_command;
 	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
@@ -198,249 +200,10 @@ let ModelAgent=async function(session){
 		}
 		result=query;
 		/*}#1JGP2DSRR0PostCodes*/
-		return {seg:Agent,result:(result),preSeg:"1JGP2DSRR0",outlet:"1JGP2E32A0"};
+		return {seg:Run,result:(result),preSeg:"1JGP2DSRR0",outlet:"1JGP2E32A0"};
 	};
 	Ask.jaxId="1JGP2DSRR0"
 	Ask.url="Ask@"+agentURL
-	
-	segs["Output"]=Output=async function(input){//:1JGP381J70
-		let result=input;
-		let $channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
-		let role="assistant";
-		let content=input.message;
-		session.addChatText(role,content,opts);
-		return {seg:Again,result:(result),preSeg:"1JGP381J70",outlet:"1JGP389H50"};
-	};
-	Output.jaxId="1JGP381J70"
-	Output.url="Output@"+agentURL
-	
-	segs["Agent"]=Agent=async function(input){//:1JGP3LBMP0
-		let prompt;
-		let $platform="OpenRouter";
-		let $model="deepseek/deepseek-v4-flash";
-		let $agent;
-		let result=null;
-		/*#{1JGP3LBMP0Input*/
-		/*}#1JGP3LBMP0Input*/
-		
-		let opts={
-			platform:$platform,
-			mode:$model,
-			enable_thinking:false,
-			maxToken:2000,
-			temperature:0,
-			topP:1,
-			fqcP:0,
-			prcP:0,
-			secret:false,
-			responseFormat:"json_object"
-		};
-		let chatMem=Agent.messages
-		let seed="";
-		if(seed!==undefined){opts.seed=seed;}
-		let messages=[
-			{role:"system",content:"You are a smart assistant."},
-		];
-		messages.push(...chatMem);
-		/*#{1JGP3LBMP0PrePrompt*/
-		const allSkillsDoc = config.skills?.map(s => {
-					return `
-		### Function Name: ${s.name}
-		- Description: ${s.description}
-		- Arguments Definition: ${JSON.stringify(s.arguments)}
-		- Command Template: ${s.command_template}
-		`;
-		}).join('\n') || "No specific skills configured.";
-		
-		const language = $ln === 'CN' ? 'zh' : 'en';
-		
-		const systemPrompt = language === 'zh'
-		? `你是一个基于命令行和预设技能的任务执行助手。你的能力**仅限于**使用下方提供的“可用功能列表 (Skills)”以及系统的基础终端命令。
-		⚠️ **核心限制**：你**不具备**任何联网搜索或浏览网页的能力。如果用户的请求涉及你未知的知识且需要通过联网搜索才能获得答案，你必须直接拒绝。
-		
-		**当前运行状态 (非常重要)**：
-		1. 系统 **已自动切换** 到工作目录：${config.global_execution?.working_directory || '未指定'}
-		2. 系统 **已自动激活** Conda 环境：${config.global_execution?.env_name || '未指定'}
-		❌ **禁止** 在生成的命令中包含 \`cd\` 或 \`conda activate\`。
-		❗ **绝对路径规则**：在 Finish 动作中返回的 \`filePath\` **必须** 是绝对路径（例如 \`/home/user/workspace/data.csv\`），**严禁** 使用相对路径。
-		
-		**核心原则 (Critical Rules)**：
-		1. **Skill 执行前置协议 (Pre-Execution Protocol)** - **执行 Skill 前必须遵守**：
-		- **📂 确保目录存在**：如果 Skill 需要输出文件，你 **必须** 确保目标文件夹已存在。建议在执行 Skill 前先执行 \`mkdir -p <输出目录绝对路径>\`。
-		- **🛡️ 严禁覆盖 (File Safety)**：在执行 Skill 前，必须确保**目标文件路径不存在**。如果文件已存在，你必须自动更改输出文件名（例如添加 \`_v2\` 或时间戳），并再次用 \`ls\` 命令确认，**绝不** 允许覆盖用户已有的文件。
-		2. **先验证，后交付**：在通过 'Finish' 返回文件路径之前，你 **必须** 先使用 'Bash' 动作执行 \`ls -l <绝对路径>\` 或 \`test -f <绝对路径> && echo "Exists"\` 来确认文件确实生成了。
-		3. **善用辅助命令**：除了下方的 Skills，你可以自由使用系统基础命令（如 \`mkdir -p\`, \`ls\`, \`pwd\`, \`cat\`, \`grep\`）来准备环境或检查结果。
-		4. **绝对路径强制**：所有涉及文件的操作，尽量使用绝对路径。Finish 动作中的 \`filePath\` **必须** 是绝对路径。
-		
-		**可用功能列表 (Skills)**：
-		${allSkillsDoc}
-		
-		**可用动作 (Actions)** - 请返回 JSON，每次仅一个动作：
-		⚠️ **严重警告：JSON 中的 "action" 字段只能是以下 5 个字符串之一。绝对禁止将 Skill 名称（如 "GenerateImage"）作为 action。**
-		
-		1. **Bash** (执行任务)
-		- 场景：执行 Skill、**创建目录(mkdir)**、系统辅助命令或验证命令。
-		- 格式：{"action": "Bash", "command": "完整命令", "message": "简短告知用户正在执行什么操作", "reasoning": "..."}
-		
-		2. **Ask** (追问参数)
-		- 场景：匹配到功能但缺少参数。
-		- 格式：{"action": "Ask", "question": "问题", "reasoning": "..."}
-		
-		3. **Finish** (任务成功)
-		- 场景：命令执行成功，任务已完成。
-		- 格式：{
-		"action": "Finish", 
-		"type": "text" | "image" | "audio" | "video" | "file", 
-		"message": "结束语(纯文本结果写在这里)", 
-		"filePath": "单个文件的绝对路径 (String) 或 多个文件的绝对路径列表 (Array<String>)。注意：必须是绝对路径！", 
-		"reasoning": "..."
-		}
-		
-		4. **ChitChat** (闲聊)
-		- 场景：用户打招呼、闲聊。
-		- 格式：{"action": "ChitChat", "message": "回复内容", "reasoning": "..."}
-		
-		5. **Reject** (无法处理)
-		- 场景：请求超出能力范围（特别是**需要联网搜索才能回答**的问题）。
-		- 格式：{"action": "Reject", "message": "拒绝理由及能力介绍（例如：我没有联网搜索能力，无法回答该问题...）", "reasoning": "..."}
-		
-		**执行流程**：
-		1. 分析请求 -> 2. 匹配 Skills -> 3. **前置检查(mkdir/防覆盖)** -> 4. 执行 Skill (Bash) -> 5. 验证结果 (Bash) -> 6. 结束 (Finish)
-		`
-		: `You are a task execution assistant restricted to command-line tools and predefined skills. Your capabilities are **STRICTLY LIMITED** to the "Available Skills" listed below and basic system terminal commands.
-		⚠️ **CORE LIMITATION**: You **DO NOT** have internet search or web browsing capabilities. If a user's request requires searching the web to find information, you MUST reject it directly.
-		
-		**Current Execution State (CRITICAL)**:
-		1. Working directory is SET: ${config.global_execution?.working_directory || 'N/A'}
-		2. Conda environment is ACTIVATED: ${config.global_execution?.env_name || 'N/A'}
-		❌ **DO NOT** include \`cd\` or \`conda activate\` in commands.
-		❗ **ABSOLUTE PATH RULE**: The \`filePath\` returned in Finish action **MUST** be an ABSOLUTE path (e.g., \`/home/user/workspace/output.png\`). Relative paths are **FORBIDDEN**.
-		
-		**Critical Rules**:
-		1. **Pre-Execution Protocol (MANDATORY)** - **Before running any Skill**:
-		- **📂 Ensure Directory**: You **MUST** ensure the output directory exists before running a skill. Use \`mkdir -p <abs_output_dir>\` proactively.
-		- **🛡️ No Overwrite (File Safety)**: You **MUST** ensure the target file path **does not exist** before execution. If it exists, change the filename (e.g., append \`_v2\`) and use \`ls\` command to confirm again. **NEVER** overwrite existing files.
-		2. **Verify Before Finish**: Before returning a file path in 'Finish', you **MUST** first use the 'Bash' action to run \`ls -l <abs_path>\` or \`test -f <abs_path> && echo "Exists"\` to confirm the file actually exists.
-		3. **Use Auxiliary Commands**: Besides the Skills listed below, you are free to use basic system commands (e.g., \`mkdir -p\`, \`ls\`, \`pwd\`, \`cat\`, \`grep\`) to prepare environments or check results.
-		4. **Absolute Paths**: Prefer absolute paths for file operations. The \`filePath\` in the Finish action **MUST** be an absolute path.
-		
-		**Available Skills**:
-		${allSkillsDoc}
-		
-		**Available Actions**:
-		Return JSON output:
-		⚠️ **CRITICAL WARNING: The "action" field in JSON MUST be one of the following 5 strings. NEVER use a Skill name (e.g., "GenerateImage") as an action.**
-		
-		1. **Bash** (Execute Command)
-		- Context: Running a Skill, **creating directories (mkdir)**, system commands, or verification.
-		- Format: {"action": "Bash", "command": "command", "message": "status update (e.g., Verifying output...)", "reasoning": "chain of thought"}
-		
-		2. **Ask** (Ask User)
-		- Context: Missing critical parameters.
-		- Format: {"action": "Ask", "question": "question", "reasoning": "reasoning"}
-		
-		3. **Finish** (Task Success)
-		- Context: **Main task executed AND verification command confirmed success**.
-		- Format: {
-		"action": "Finish", 
-		"type": "text" | "image" | "audio" | "video" | "file", 
-		"message": "closing message", 
-		"filePath": "Verified ABSOLUTE path (String) or List (Array).", 
-		"reasoning": "reasoning"
-		}
-		
-		4. **ChitChat** (Casual Conversation)
-		- Context: Greetings, casual chats.
-		- Format: {"action": "ChitChat", "message": "response", "reasoning": "reasoning"}
-		
-		5. **Reject** (Cannot Handle)
-		- Context: Request is beyond capabilities (especially **questions requiring internet search**).
-		- Format: {"action": "Reject", "message": "response explaining lack of internet/capability", "reasoning": "reasoning"}
-		
-		**Execution Flow**:
-		1. Analyze -> 2. Match Skill -> 3. **Pre-Check (mkdir/Safety)** -> 4. Execute Skill (Bash) -> 5. Verify (Bash) -> 6. Finish`;
-		
-		
-		messages[0].content = systemPrompt;
-						/*}#1JGP3LBMP0PrePrompt*/
-		prompt=input;
-		if(prompt!==null){
-			if(typeof(prompt)!=="string"){
-				prompt=JSON.stringify(prompt,null,"	");
-			}
-			let msg={role:"user",content:prompt};
-			/*#{1JGP3LBMP0FilterMessage*/
-			/*}#1JGP3LBMP0FilterMessage*/
-			messages.push(msg);
-		}
-		/*#{1JGP3LBMP0PreCall*/
-		/*}#1JGP3LBMP0PreCall*/
-		if($agent){
-			result=(result===undefined)?(await session.callAgent($agent.agentNode,$agent.path,{messages:messages,maxToken:opts.maxToken,responseFormat:opts.responseFormat,enable_thinking:opts.enable_thinking})):result;
-		}else{
-			result=(result===null)?(await session.callSegLLM("Agent@"+agentURL,opts,messages,true)):result;
-		}
-		/*#{1JGP3LBMP0PostLLM*/
-		/*}#1JGP3LBMP0PostLLM*/
-		chatMem.push({role:"user",content:prompt});
-		chatMem.push({role:"assistant",content:result});
-		result=trimJSON(result);
-		/*#{1JGP3LBMP0PostCall*/
-		/*}#1JGP3LBMP0PostCall*/
-		/*#{1JGP3LBMP0PreResult*/
-		/*}#1JGP3LBMP0PreResult*/
-		return {seg:Action,result:(result),preSeg:"1JGP3LBMP0",outlet:"1JGP3LT3M0"};
-	};
-	Agent.jaxId="1JGP3LBMP0"
-	Agent.url="Agent@"+agentURL
-	Agent.messages=[];
-	
-	segs["Action"]=Action=async function(input){//:1JGP3NVPQ0
-		let result=input;
-		if(input.action==="Ask"){
-			return {seg:AskUser,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JGP3PR1S0"};
-		}
-		if(input.action==="Bash"){
-			return {seg:Execute,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JGP3OP2U0"};
-		}
-		if(input.action==="Reject"){
-			return {seg:Output,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JGPPCJ030"};
-		}
-		if(input.action==="ChitChat"){
-			return {seg:Output,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JGPQPU9E0"};
-		}
-		if(input.action==="Finish"){
-			return {seg:Show,result:(input),preSeg:"1JGP3NVPQ0",outlet:"1JHAD68IL0"};
-		}
-		return {seg:Wrong,result:(result),preSeg:"1JGP3NVPQ0",outlet:"1JGP3PR1S1"};
-	};
-	Action.jaxId="1JGP3NVPQ0"
-	Action.url="Action@"+agentURL
-	
-	segs["AskUser"]=AskUser=async function(input){//:1JGP3QVB70
-		let result=input;
-		let $channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
-		let role="assistant";
-		let content=input.question;
-		session.addChatText(role,content,opts);
-		return {seg:Respond,result:(result),preSeg:"1JGP3QVB70",outlet:"1JGP3SQ0S0"};
-	};
-	AskUser.jaxId="1JGP3QVB70"
-	AskUser.url="AskUser@"+agentURL
-	
-	segs["Run"]=Run=async function(input){//:1JGP3RICD0
-		let result,args={};
-		args['bashId']=globalContext.bash1;
-		args['action']="Command";
-		args['commands']=input.command;
-		args['options']="";
-		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
-		return {seg:Agent,result:(result),preSeg:"1JGP3RICD0",outlet:"1JGP3SQ0T0"};
-	};
-	Run.jaxId="1JGP3RICD0"
-	Run.url="Run@"+agentURL
 	
 	segs["InitBash"]=InitBash=async function(input){//:1JGP3RVH10
 		let result,args={};
@@ -459,57 +222,6 @@ let ModelAgent=async function(session){
 	InitBash.jaxId="1JGP3RVH10"
 	InitBash.url="InitBash@"+agentURL
 	
-	segs["Respond"]=Respond=async function(input){//:1JGP4CTCI0
-		let tip=("");
-		let tipRole=("assistant");
-		let placeholder=("");
-		let allowFile=(true)||false;
-		let allowEmpty=(false)||false;
-		let askUpward=(false);
-		let text=("");
-		let result="";
-		/*#{1JGP4CTCI0PreCodes*/
-		/*}#1JGP4CTCI0PreCodes*/
-		if(askUpward && tip){
-			result=await session.askUpward($agent,tip);
-		}else{
-			if(tip){
-				session.addChatText(tipRole,tip);
-			}
-			result=await session.askChatInput({type:"input",placeholder:placeholder,text:text,allowFile:allowFile,allowEmpty:allowEmpty});
-		}
-		if(typeof(result)==="string"){
-			session.addChatText("user",result);
-		}else if(result.assets && result.prompt){
-			session.addChatText("user",`${result.prompt}\n- - -\n${result.assets.join("\n- - -\n")}`,{render:true});
-		}else{
-			session.addChatText("user",result.text||result.prompt||result);
-		}
-		/*#{1JGP4CTCI0PostCodes*/
-		if(typeof(result) === 'object' && result.assets && result.assets.length > 0) {
-			let userResponse = result.prompt || result.text || "";
-			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
-			let fileList = [];
-			
-			for(let i = 0; i < result.assets.length; i++) {
-				let assetPath = result.assets[i];
-				if(assetPath.startsWith('hub://')) {
-					assetPath = assetPath.substring(6);
-				}
-				const absolutePath = pathLib.join(filelibPath, assetPath);
-				fileList.push(absolutePath);
-			}
-			if($ln==="CN") result = `${userResponse}\n上传的文件：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
-			else result = `${userResponse}\nUploaded Files：\n${fileList.map((f, idx) => `${idx + 1}. ${f}`).join('\n')}`;
-		} else if(typeof(result) === 'object') {
-			result = result.text || result.prompt || JSON.stringify(result);
-		}
-		/*}#1JGP4CTCI0PostCodes*/
-		return {seg:Agent,result:(result),preSeg:"1JGP4CTCI0",outlet:"1JGP4D2120"};
-	};
-	Respond.jaxId="1JGP4CTCI0"
-	Respond.url="Respond@"+agentURL
-	
 	segs["Enter"]=Enter=async function(input){//:1JGP4II6C0
 		let result,args={};
 		args['bashId']=globalContext.bash1;
@@ -526,95 +238,6 @@ let ModelAgent=async function(session){
 	};
 	Enter.jaxId="1JGP4II6C0"
 	Enter.url="Enter@"+agentURL
-	
-	segs["Show"]=Show=async function(input){//:1JGPM3RLV0
-		let result=input;
-		let $channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
-		let role="assistant";
-		let content=input.message;
-		/*#{1JGPM3RLV0PreCodes*/
-		session.addChatText(role,content,opts);
-		let filePaths = [];
-		if (input.filePath) {
-			if (Array.isArray(input.filePath)) {
-				filePaths = input.filePath;
-			} else {
-				if (input.filePath) filePaths = [input.filePath];
-			}
-		}
-		if (input.type !== 'text' && filePaths.length > 0) {
-			for (let i = 0; i < filePaths.length; i++) {
-				let fp = filePaths[i];
-				let fileOpts = { channel: $channel }; 
-				let fileContent = ""; 
-				
-				try {
-					let originalName = pathLib.basename(fp);
-					let ext = pathLib.extname(fp);
-					if (!ext) ext = ".bin";
-					let data = await fsp.readFile(fp);
-					let saveName = `output_${Date.now()}_${i}_${originalName}`;
-					let savedHubName = await session.saveHubFile(saveName, data);
-					let hubUrl = "hub://" + savedHubName;
-					if (input.type === 'image') {
-						fileOpts.image = hubUrl;
-						fileContent = `Image ${i+1}: ${originalName}`;
-					} else if (input.type === 'audio') {
-						fileOpts.audio = hubUrl;
-						fileContent = `Audio ${i+1}: ${originalName}`;
-					} else if (input.type === 'video') {
-						fileOpts.video = hubUrl;
-						fileContent = `Video ${i+1}: ${originalName}`;
-					} else {
-						fileOpts.file = hubUrl;
-						fileContent = `File ${i+1}: ${originalName}`;
-						if ($ln === 'CN') {
-							fileContent += " (可在右侧文件面板下载)";
-						} else {
-							fileContent += " (Download in Files panel)";
-						}
-						let flag = await isTextFile(fp);
-						const texts = await fsp.readFile(fp, 'utf8');
-						if(flag) fileContent += `\n\`\`\`markdown\n${texts}`;
-						
-					}
-					session.addChatText(role, fileContent, fileOpts);
-					
-				} catch (e) {
-					session.addChatText(role, `[Error processing file ${pathLib.basename(fp)}: ${e.message}]`, {channel:$channel});
-				}
-			}
-		}
-		return {seg:Again,result:(result),preSeg:"1JGPM3RLV0",outlet:"1JGPM44AH0"};
-		/*}#1JGPM3RLV0PreCodes*/
-		session.addChatText(role,content,opts);
-		/*#{1JGPM3RLV0PostCodes*/
-		/*}#1JGPM3RLV0PostCodes*/
-		return {seg:Again,result:(result),preSeg:"1JGPM3RLV0",outlet:"1JGPM44AH0"};
-	};
-	Show.jaxId="1JGPM3RLV0"
-	Show.url="Show@"+agentURL
-	
-	segs["Again"]=Again=async function(input){//:1JGPN2B3H0
-		let result=input;
-		return {seg:Ask,result:result,preSeg:"1JGP2DSRR0",outlet:"1JGPN38BL0"};
-	
-	};
-	Again.jaxId="1JGP2DSRR0"
-	Again.url="Again@"+agentURL
-	
-	segs["Execute"]=Execute=async function(input){//:1JGPPV87R0
-		let result=input;
-		let $channel="Chat";
-		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
-		let role="assistant";
-		let content=input.message;
-		session.addChatText(role,content,opts);
-		return {seg:Run,result:(result),preSeg:"1JGPPV87R0",outlet:"1JGPQ089F0"};
-	};
-	Execute.jaxId="1JGPPV87R0"
-	Execute.url="Execute@"+agentURL
 	
 	segs["InitBash2"]=InitBash2=async function(input){//:1JH7SNN4S0
 		let result,args={};
@@ -660,49 +283,51 @@ let ModelAgent=async function(session){
 	Check.jaxId="1JH7SQRPI0"
 	Check.url="Check@"+agentURL
 	
-	segs["Wrong"]=Wrong=async function(input){//:1JHAD6NVF0
+	segs["Run"]=Run=async function(input){//:1JP4KF0800
 		let result=input
 		try{
-			/*#{1JHAD6NVF0Code*/
-			const invalidAction = input.action || "undefined";
-			const language = $ln === 'CN' ? 'zh' : 'en';
+			/*#{1JP4KF0800Code*/
+			let userRequest = input;
+			let opts = { txtHeader: ($agent.showName || $agent.name || null), channel: "Chat" };
+			let language = $ln === 'CN' ? 'zh' : 'en';
+			const skillsDoc = config.skills?.map(s => {
+				return `### ${s.name}\n- Description: ${s.description}\n- Command: ${s.command_template}\n- Arguments: ${JSON.stringify(s.arguments)}`;
+			}).join('\n\n') || "No specific skills.";
 			
-			if (language === 'zh') {
-				result = `❌ **系统格式错误警报**：
-			你生成的 JSON 中包含非法的 "action": "${invalidAction}"。
-			**严重错误**：你可能错误地将 Skill（技能）名称当作了 Action，或者编造了不存在的 Action。
+			const workingDir = config.global_execution?.working_directory || os.homedir();
+			const envName = config.global_execution?.env_name || 'base';
 			
-			请**立即修正**。你必须严格遵守协议，**仅**从以下 5 个合法 Action 中选择一个：
-			1. **Bash** (核心！用于调用任何 Skill 或执行系统命令)
-			2. **Ask** (用于向用户询问缺少的信息)
-			3. **Finish** (任务完成，且已通过 ls -l 验证文件存在)
-			4. **Chitchat** (纯闲聊)
-			5. **Reject** (无法处理)
+			const taskContext = language === 'zh'
+				? `## 模型使用任务\n用户正在使用模型 "${model}"。当前环境已就绪：\n- 工作目录: ${workingDir}\n- Conda 环境: ${envName} (已激活)\n- 终端 ID: ${globalContext.bash1}\n\n可用技能 (Skills):\n${skillsDoc}\n\n用户的请求: ${userRequest}`
+				: `## Model Task\nUser is using model "${model}". Environment is ready:\n- Working dir: ${workingDir}\n- Conda env: ${envName} (activated)\n- Terminal ID: ${globalContext.bash1}\n\nAvailable Skills:\n${skillsDoc}\n\nUser request: ${userRequest}`;
 			
-			请重新思考，并返回正确的 JSON。`;
-			} else {
-				result = `❌ **SYSTEM FORMAT ERROR**:
-			The "action": "${invalidAction}" in your JSON response is **INVALID**.
-			**CRITICAL ERROR**: You likely used a Skill name directly as an Action, or hallucinated an Action.
-			
-			**CORRECT IMMEDIATELY**. You MUST strictly follow the protocol and select **ONLY** from these 5 legal Actions:
-			1. **Bash** (Core! Use this to execute ANY Skill or system command)
-			2. **Ask** (To ask the user for missing info)
-			3. **Finish** (Task done AND file verification via ls -l passed)
-			4. **Chitchat** (Casual conversation)
-			5. **Reject** (Cannot handle)
-			
-			Re-think and return the valid JSON.`;
-			}
-			/*}#1JHAD6NVF0Code*/
+			const result = await runAgenticTask(session, {
+				sessionKey: 'model_' + model,
+				prompt: userRequest,
+				tools: getAllTools(),
+				model: 'deepseek/deepseek-v4-flash',
+				platform: 'OpenRouter',
+				maxTurns: 50,
+				temperature: 0.0,
+				userContext: {
+					model: model,
+					workingDirectory: workingDir,
+					condaEnv: envName,
+					skills: skillsDoc,
+				},
+				headerOpts: opts,
+				cwd: workingDir,
+				bashId: globalContext.bash1
+			});
+			/*}#1JP4KF0800Code*/
 		}catch(error){
-			/*#{1JHAD6NVF0ErrorCode*/
-			/*}#1JHAD6NVF0ErrorCode*/
+			/*#{1JP4KF0800ErrorCode*/
+			/*}#1JP4KF0800ErrorCode*/
 		}
-		return {seg:Agent,result:(result),preSeg:"1JHAD6NVF0",outlet:"1JHAD7Q3H0"};
+		return {seg:Ask,result:(result),preSeg:"1JP4KF0800",outlet:"1JP4KF5OR0"};
 	};
-	Wrong.jaxId="1JHAD6NVF0"
-	Wrong.url="Wrong@"+agentURL
+	Run.jaxId="1JP4KF0800"
+	Run.url="Run@"+agentURL
 	
 	agent=$agent={
 		isAIAgent:true,
@@ -823,7 +448,7 @@ export{ModelAgent};
 //						"id": "Welcome",
 //						"viewName": "",
 //						"label": "",
-//						"x": "695",
+//						"x": "1030",
 //						"y": "75",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
@@ -863,7 +488,7 @@ export{ModelAgent};
 //						"id": "Ask",
 //						"viewName": "",
 //						"label": "",
-//						"x": "970",
+//						"x": "1280",
 //						"y": "75",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
@@ -895,413 +520,10 @@ export{ModelAgent};
 //								"id": "Result",
 //								"desc": "Outlet."
 //							},
-//							"linkedSeg": "1JGP3KRLK0"
+//							"linkedSeg": "1JP4KF0800"
 //						}
 //					},
 //					"icon": "chat.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1JGP381J70",
-//					"attrs": {
-//						"id": "Output",
-//						"viewName": "",
-//						"label": "",
-//						"x": "525",
-//						"y": "590",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGP38PRR0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGP38PRR1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input.message",
-//						"outlet": {
-//							"jaxId": "1JGP389H50",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGPN2B3H0"
-//						}
-//					},
-//					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1JGP3KRLK0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "1095",
-//						"y": "295",
-//						"outlet": {
-//							"jaxId": "1JGP3LT3U0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP3L6890"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connector",
-//					"jaxId": "1JGP3L6890",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "-150",
-//						"y": "295",
-//						"outlet": {
-//							"jaxId": "1JGP3LT3U1",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP3LBMP0"
-//						},
-//						"dir": "R2L"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "callLLM",
-//					"jaxId": "1JGP3LBMP0",
-//					"attrs": {
-//						"id": "Agent",
-//						"viewName": "",
-//						"label": "",
-//						"x": "-185",
-//						"y": "535",
-//						"desc": "Excute a LLM call.",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGP3LT3U2",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGP3LT3U3",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"platform": "OpenRouter",
-//						"mode": "deepseek/deepseek-v4-flash",
-//						"system": "You are a smart assistant.",
-//						"enable_thinking": "false",
-//						"temperature": "0",
-//						"maxToken": "2000",
-//						"topP": "1",
-//						"fqcP": "0",
-//						"prcP": "0",
-//						"messages": {
-//							"attrs": []
-//						},
-//						"prompt": "#input",
-//						"seed": "",
-//						"outlet": {
-//							"jaxId": "1JGP3LT3M0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP3NVPQ0"
-//						},
-//						"stream": "true",
-//						"secret": "false",
-//						"allowCheat": "false",
-//						"GPTCheats": {
-//							"attrs": []
-//						},
-//						"shareChatName": "",
-//						"keepChat": "All messages",
-//						"clearChat": "2",
-//						"apiFiles": {
-//							"attrs": []
-//						},
-//						"parallelFunction": "false",
-//						"responseFormat": "json_object",
-//						"formatDef": "\"\"",
-//						"outlets": {
-//							"attrs": []
-//						}
-//					},
-//					"icon": "llm.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "brunch",
-//					"jaxId": "1JGP3NVPQ0",
-//					"attrs": {
-//						"id": "Action",
-//						"viewName": "",
-//						"label": "",
-//						"x": "275",
-//						"y": "535",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGP3PR230",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGP3PR231",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"outlet": {
-//							"jaxId": "1JGP3PR1S1",
-//							"attrs": {
-//								"id": "Default",
-//								"desc": "Outlet.",
-//								"output": ""
-//							},
-//							"linkedSeg": "1JHAD6NVF0"
-//						},
-//						"outlets": {
-//							"attrs": [
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JGP3PR1S0",
-//									"attrs": {
-//										"id": "Ask",
-//										"desc": "Outlet.",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JGP3PR232",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JGP3PR233",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input.action===\"Ask\""
-//									},
-//									"linkedSeg": "1JGP3QVB70"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JGP3OP2U0",
-//									"attrs": {
-//										"id": "Bash",
-//										"desc": "Outlet.",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JGP3PR236",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JGP3PR237",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input.action===\"Bash\""
-//									},
-//									"linkedSeg": "1JGPPV87R0"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JGPPCJ030",
-//									"attrs": {
-//										"id": "Reject",
-//										"desc": "Outlet.",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JGPPCJ0H0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JGPPCJ0H1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input.action===\"Reject\""
-//									},
-//									"linkedSeg": "1JGP381J70"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JGPQPU9E0",
-//									"attrs": {
-//										"id": "Chat",
-//										"desc": "Outlet.",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JGPQRSH00",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JGPQRSH01",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input.action===\"ChitChat\""
-//									},
-//									"linkedSeg": "1JGP381J70"
-//								},
-//								{
-//									"type": "aioutlet",
-//									"def": "AIConditionOutlet",
-//									"jaxId": "1JHAD68IL0",
-//									"attrs": {
-//										"id": "Finish",
-//										"desc": "Outlet.",
-//										"output": "",
-//										"codes": "false",
-//										"context": {
-//											"jaxId": "1JHAD68IS0",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"global": {
-//											"jaxId": "1JHAD68IS1",
-//											"attrs": {
-//												"cast": ""
-//											}
-//										},
-//										"condition": "#input.action===\"Finish\""
-//									},
-//									"linkedSeg": "1JGPM3RLV0"
-//								}
-//							]
-//						}
-//					},
-//					"icon": "condition.svg",
-//					"reverseOutlets": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1JGP3QVB70",
-//					"attrs": {
-//						"id": "AskUser",
-//						"viewName": "",
-//						"label": "",
-//						"x": "525",
-//						"y": "445",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGP3SQ140",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGP3SQ141",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input.question",
-//						"outlet": {
-//							"jaxId": "1JGP3SQ0S0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP4CTCI0"
-//						}
-//					},
-//					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "Bash",
-//					"jaxId": "1JGP3RICD0",
-//					"attrs": {
-//						"id": "Run",
-//						"viewName": "",
-//						"label": "",
-//						"x": "740",
-//						"y": "520",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGP3SQ142",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGP3SQ143",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"bashId": "#globalContext.bash1",
-//						"action": "Command",
-//						"commands": "#input.command",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1JGP3SQ0T0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGPKDRUP0"
-//						}
-//					},
-//					"icon": "terminal.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1346,51 +568,6 @@ export{ModelAgent};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "askChat",
-//					"jaxId": "1JGP4CTCI0",
-//					"attrs": {
-//						"id": "Respond",
-//						"viewName": "",
-//						"label": "",
-//						"x": "740",
-//						"y": "445",
-//						"desc": "This is an AISeg.",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGP4D21A0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGP4D21A1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"tip": "",
-//						"tipRole": "Assistant",
-//						"placeholder": "",
-//						"text": "",
-//						"file": "true",
-//						"allowEmpty": "false",
-//						"showText": "true",
-//						"askUpward": "false",
-//						"outlet": {
-//							"jaxId": "1JGP4D2120",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGPKF6O30"
-//						}
-//					},
-//					"icon": "chat.svg"
-//				},
-//				{
-//					"type": "aiseg",
 //					"def": "Bash",
 //					"jaxId": "1JGP4II6C0",
 //					"attrs": {
@@ -1429,155 +606,6 @@ export{ModelAgent};
 //						}
 //					},
 //					"icon": "terminal.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connectorL",
-//					"jaxId": "1JGPKDRUP0",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "940",
-//						"y": "520",
-//						"outlet": {
-//							"jaxId": "1JGPKESVE0",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP3KRLK0"
-//						},
-//						"dir": "L2R"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "connectorL",
-//					"jaxId": "1JGPKF6O30",
-//					"attrs": {
-//						"id": "",
-//						"label": "New AI Seg",
-//						"x": "940",
-//						"y": "445",
-//						"outlet": {
-//							"jaxId": "1JGPKGOQ10",
-//							"attrs": {
-//								"id": "Outlet",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP3KRLK0"
-//						},
-//						"dir": "L2R"
-//					},
-//					"icon": "arrowright.svg",
-//					"isConnector": true
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1JGPM3RLV0",
-//					"attrs": {
-//						"id": "Show",
-//						"viewName": "",
-//						"label": "",
-//						"x": "525",
-//						"y": "650",
-//						"desc": "This is an AISeg.",
-//						"codes": "true",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGPM4RSI0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGPM4RSI1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input.message",
-//						"outlet": {
-//							"jaxId": "1JGPM44AH0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGPN2B3H0"
-//						}
-//					},
-//					"icon": "hudtxt.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "jumper",
-//					"jaxId": "1JGPN2B3H0",
-//					"attrs": {
-//						"id": "Again",
-//						"viewName": "",
-//						"label": "",
-//						"x": "740",
-//						"y": "590",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"seg": "1JGP2DSRR0",
-//						"outlet": {
-//							"jaxId": "1JGPN38BL0",
-//							"attrs": {
-//								"id": "Next",
-//								"desc": "Outlet."
-//							}
-//						}
-//					},
-//					"icon": "arrowupright.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "output",
-//					"jaxId": "1JGPPV87R0",
-//					"attrs": {
-//						"id": "Execute",
-//						"viewName": "",
-//						"label": "",
-//						"x": "525",
-//						"y": "520",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JGPQ089P0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JGPQ089P1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"role": "Assistant",
-//						"channel": "Chat",
-//						"text": "#input.message",
-//						"outlet": {
-//							"jaxId": "1JGPQ089F0",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							},
-//							"linkedSeg": "1JGP3RICD0"
-//						}
-//					},
-//					"icon": "hudtxt.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -1628,7 +656,7 @@ export{ModelAgent};
 //						"id": "Enter2",
 //						"viewName": "",
 //						"label": "",
-//						"x": "835",
+//						"x": "810",
 //						"y": "-55",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
@@ -1732,35 +760,35 @@ export{ModelAgent};
 //				{
 //					"type": "aiseg",
 //					"def": "code",
-//					"jaxId": "1JHAD6NVF0",
+//					"jaxId": "1JP4KF0800",
 //					"attrs": {
-//						"id": "Wrong",
+//						"id": "Run",
 //						"viewName": "",
 //						"label": "",
-//						"x": "525",
-//						"y": "715",
+//						"x": "1510",
+//						"y": "75",
 //						"desc": "This is an AISeg.",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
-//							"jaxId": "1JHAD7QJD0",
+//							"jaxId": "1JP4KFG2F0",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"global": {
-//							"jaxId": "1JHAD7QJD1",
+//							"jaxId": "1JP4KFG2F1",
 //							"attrs": {
 //								"cast": ""
 //							}
 //						},
 //						"outlet": {
-//							"jaxId": "1JHAD7Q3H0",
+//							"jaxId": "1JP4KF5OR0",
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "Outlet."
 //							},
-//							"linkedSeg": "1JHAD78LP0"
+//							"linkedSeg": "1JP4KM9UN0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -1772,22 +800,44 @@ export{ModelAgent};
 //				},
 //				{
 //					"type": "aiseg",
-//					"def": "connectorL",
-//					"jaxId": "1JHAD78LP0",
+//					"def": "connector",
+//					"jaxId": "1JP4KM9UN0",
 //					"attrs": {
 //						"id": "",
 //						"label": "New AI Seg",
-//						"x": "795",
-//						"y": "715",
+//						"x": "1625",
+//						"y": "-120",
 //						"outlet": {
-//							"jaxId": "1JHAD7QJD2",
+//							"jaxId": "1JP4KN18I0",
 //							"attrs": {
 //								"id": "Outlet",
 //								"desc": "Outlet."
 //							},
-//							"linkedSeg": "1JGPKDRUP0"
+//							"linkedSeg": "1JP4KMF9G0"
 //						},
-//						"dir": "L2R"
+//						"dir": "R2L"
+//					},
+//					"icon": "arrowright.svg",
+//					"isConnector": true
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "connector",
+//					"jaxId": "1JP4KMF9G0",
+//					"attrs": {
+//						"id": "",
+//						"label": "New AI Seg",
+//						"x": "1305",
+//						"y": "-120",
+//						"outlet": {
+//							"jaxId": "1JP4KN18I1",
+//							"attrs": {
+//								"id": "Outlet",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JGP2DSRR0"
+//						},
+//						"dir": "R2L"
 //					},
 //					"icon": "arrowright.svg",
 //					"isConnector": true

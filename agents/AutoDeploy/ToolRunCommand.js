@@ -5,7 +5,8 @@ import {trimJSON} from "../../agenthub/ChatSession.mjs";
 import {URL} from "url";
 /*#{1IUIO756A0MoreImports*/
 import axios from 'axios';
-import { buildFixPrompt } from "./ClaudeBridge.mjs";
+import { runAgenticTask } from '../../agenthub/NativeAgenticLoop.mjs';
+import { getFixTools } from '../../agenthub/NativeTools.mjs';
 /*}#1IUIO756A0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -187,7 +188,7 @@ let ToolRunCommand=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let FixArgs,Run,UpdateSolution,Check,Fail,ClaudeFix,Check2,Success;
+	let FixArgs,Run,UpdateSolution,Check,Fail,Fix,Check2,Success;
 	/*#{1IUIO756A0LocalVals*/
 	let current_output, output, current_path, issue, search_result, bug, current_files, latest_path, all_files, cnt=0;
 	let history_summary="";
@@ -301,7 +302,7 @@ let ToolRunCommand=async function(session){
 		const lastTwoLines = lines.slice(-2).join('\n');
 		/*}#1JNEG598A0Start*/
 		if(!lastTwoLines.includes('Successful')){
-			return {seg:ClaudeFix,result:(input),preSeg:"1JNEG598A0",outlet:"1JNEG60TB0"};
+			return {seg:Fix,result:(input),preSeg:"1JNEG598A0",outlet:"1JNEG60TB0"};
 		}
 		/*#{1JNEG598A0Post*/
 		/*}#1JNEG598A0Post*/
@@ -325,22 +326,31 @@ let ToolRunCommand=async function(session){
 	Fail.jaxId="1JNEG6TA30"
 	Fail.url="Fail@"+agentURL
 	
-	segs["ClaudeFix"]=ClaudeFix=async function(input){//:1JNEG8N1P0
+	segs["Fix"]=Fix=async function(input){//:1JNEG8N1P0
 		let result=input
 		try{
-			/*#{1JNEG8N1P0Code*/
-			const cc = globalContext.claudeSession;
-			const fixPrompt = buildFixPrompt({
-				failedCommand: command,
-				errorOutput: input,
-				platform: process.platform,
-				model: "",
-				completedSteps: [],
+			/*#{1JNEG8N1P0Code*/const errorOutput = typeof input === 'string' ? input : JSON.stringify(input || '');
+			let opts = { txtHeader: 'FixAgent', channel: "Chat" };
+
+			const prompt = `The following bash command failed. Diagnose the error and try to fix it. If you can fix it, run the fixed command. If you cannot fix it, finish with saying "UNFIXABLE".
+
+	Failed command: ${command}
+
+	Error output:
+	${errorOutput}`;
+
+			const fixResult = await runAgenticTask(session, {
+				prompt,
+				tools: getFixTools(),
+				model: 'deepseek/deepseek-v4-pro',
+				platform: 'OpenRouter',
+				maxTurns: 50,
+				temperature: 0.0,
+				systemPrompt: 'You are a command-line error recovery assistant. Diagnose errors, fix commands, and re-run them. Say "UNFIXABLE" if you cannot fix it.',
+				headerOpts: opts,
+				bashId: globalContext.bash || globalContext.nativeLoopBashId || null,
 			});
-			
-			const fixResult = await cc.send(fixPrompt);
-			const output = fixResult.output || "";
-			result=output;
+			result=fixResult.text;
 			/*}#1JNEG8N1P0Code*/
 		}catch(error){
 			/*#{1JNEG8N1P0ErrorCode*/
@@ -348,8 +358,8 @@ let ToolRunCommand=async function(session){
 		}
 		return {seg:Check2,result:(result),preSeg:"1JNEG8N1P0",outlet:"1JNEG8RBJ0"};
 	};
-	ClaudeFix.jaxId="1JNEG8N1P0"
-	ClaudeFix.url="ClaudeFix@"+agentURL
+	Fix.jaxId="1JNEG8N1P0"
+	Fix.url="Fix@"+agentURL
 	
 	segs["Check2"]=Check2=async function(input){//:1JNEGSF1V0
 		let result=input;
@@ -747,7 +757,7 @@ export{ToolRunCommand,ChatAPI};
 //					"def": "code",
 //					"jaxId": "1JNEG8N1P0",
 //					"attrs": {
-//						"id": "ClaudeFix",
+//						"id": "Fix",
 //						"viewName": "",
 //						"label": "",
 //						"x": "905",

@@ -54,7 +54,7 @@ let AutoDeploy=async function(session){
 	segs["Run"]=Run=async function(input){//:1J0BHD35J0
 		let result,args={};
 		args['nodeName']="AutoDeploy";
-		args['callAgent']="AutoDeployAgent.js";
+		args['callAgent']="NativeAutoDeployAgent.js";
 		args['callArg']={model:model};
 		args['checkUpdate']=true;
 		args['options']="";
@@ -242,7 +242,7 @@ export{AutoDeploy};
 //							}
 //						},
 //						"nodeName": "AutoDeploy",
-//						"callAgent": "AutoDeployAgent.js",
+//						"callAgent": "NativeAutoDeployAgent.js",
 //						"callArg": "#{model:model}",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
