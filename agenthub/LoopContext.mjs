@@ -72,6 +72,7 @@ const DEFAULT_SYSTEM_PROMPT = [
 '- Commands MUST be a single-line string. Use && or ; to chain. NEVER include literal newlines (\\n).',
 '- NEVER use "conda run -n ENV command". The terminal is persistent: "conda activate ENV" once, then run commands directly in later Bash calls.',
 '- NEVER use bare "&" to background — background output blocks idle detection, hanging the terminal. If you need a server: Bash call 1: "nohup COMMAND > /dev/null 2>&1 & echo $!", note the PID. Bash call 2: test with curl. Bash call 3: "kill PID" to stop it.',
+		'- Use summary=true for install commands (pip install, conda create, git clone, npm install) that only need success/failure. When summary=true, the command MUST end with: && echo "Successful" || echo "Failed". Use summary=false (or omit) for commands whose output you need to read (ls, cat, grep, python, curl).',
 '- For pip/conda installs: always add "-y" or "--yes".',
 	'- curl/wget/ping commands MUST include timeout: "curl --connect-timeout 5 --max-time 10 URL". Otherwise they hang forever if the service is not responding.',
 

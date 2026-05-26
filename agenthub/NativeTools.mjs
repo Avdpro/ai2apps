@@ -87,12 +87,13 @@ function truncateOutput(output, maxChars) {
 
 export const BashTool = {
 	name: 'Bash',
-	description: 'Execute a bash command in a persistent terminal. The shell state (cwd, env vars, conda activation) persists between calls. Use for ALL system operations: installing packages, running scripts, managing files, checking system state.',
+	description: 'Execute a bash command in a persistent terminal. The shell state (cwd, env vars, conda activation) persists between calls.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			command: { type: 'string', description: 'The bash command to execute.' },
-			purpose: { type: 'string', description: 'What this command does, in natural conversational language. Use the same language as the user (Chinese for Chinese users, English for English users). For example: "正在安装 Flask 和 SQLAlchemy 依赖进行测试" or "Installing Flask and SQLAlchemy dependencies for testing"' },
+			purpose: { type: 'string', description: 'What this command does, in natural conversational language.' },
+			summary: { type: 'boolean', description: 'Set to true when you only care about success/failure of the command (e.g. pip install, git clone, npm install). When true, the command MUST end with: && echo "Successful" || echo "Failed". The tool will REJECT the call if this marker is missing.' },
 		},
 		required: ['command'],
 	},
@@ -104,23 +105,41 @@ export const BashTool = {
 		const { session, globalContext } = context;
 		const bashId = await ensureBashId(session, globalContext);
 		if (!bashId) {
-			return { output: 'Terminal not available — cannot run bash commands.' };
+			return { output: 'Terminal not available.' };
 		}
-		// Reject commands with literal newlines — they get split into separate commands
-		const command = String(input.command || '');
+		let command = String(input.command || '');
 		if (command.includes('\n')) {
-			return { output: 'ERROR: Command contains literal newlines. Each newline creates a separate command that runs independently, breaking the sequence. Use && or ; to chain commands in a SINGLE line instead.', error: 'newlines in command' };
+			return { output: 'ERROR: Command contains literal newlines. Use && or ; to chain commands in a SINGLE line.', error: 'newlines' };
 		}
+
+		const isSummary = input.summary === true;
+		const MARKER = 'echo "Successful" || echo "Failed"';
+		if (isSummary) {
+			const trimmed = command.trim();
+			if (!trimmed.endsWith(MARKER)) {
+				return { output: `ERROR: summary=true requires the command to end with: && ${MARKER}. Add this to your command and retry.`, error: 'missing summary marker' };
+			}
+		}
+
 		try {
 			const result = await session.pipeChat('/@AgentBuilder/Bash.js', {
-				bashId,
-				action: 'Command',
-				commands: command,
-				options: { idleTime: 600000 },
+				bashId, action: 'Command', commands: command, options: { idleTime: 600000 },
 			}, false);
-			const output = typeof result === 'string' ? result
-				: result?.content ? result.content
-				: JSON.stringify(result || '(no output)');
+			let output = typeof result === 'string' ? result : (result?.content || JSON.stringify(result || '(no output)'));
+
+			// Strip terminal noise: command echo and __AGENT_SHELL__> prompts
+			output = output.split('\n').filter(line => !line.includes('__AGENT_SHELL__>')).join('\n');
+			output = output.replace(/\n{3,}/g, '\n\n').trim();
+
+			if (isSummary) {
+				const lines = output.trim().split('\n');
+				const tail = lines.slice(-4).join('\n');
+				if (tail.includes('Successful')) {
+					output = 'Completed successfully.';
+				}
+				// Failed or neither found: return full output for diagnosis
+			}
+
 			return { output: truncateOutput(output, this.maxResultSizeChars) };
 		} catch (e) {
 			return { output: `Bash error: ${e.message}` };
@@ -489,10 +508,6 @@ export const ShowFileTool = {
 			const { session } = context;
 			const absPath = input.file_path;
 			const basename = pathLib.basename(absPath);
-			// Verify file exists
-			try { await fsp.access(absPath); } catch (e) {
-				return { output: `File not found: ${absPath}`, error: 'not found' };
-			}
 			const data = await fsp.readFile(absPath);
 			const saveName = `output_${Date.now()}_${basename}`;
 			const savedHubName = await session.saveHubFile(saveName, data);
