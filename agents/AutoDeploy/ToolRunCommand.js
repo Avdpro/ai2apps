@@ -338,7 +338,7 @@ let ToolRunCommand=async function(session){
 
 	Error output:
 	${errorOutput}`;
-
+	
 			const fixResult = await runAgenticTask(session, {
 				prompt,
 				tools: getFixTools(),
@@ -346,7 +346,9 @@ let ToolRunCommand=async function(session){
 				platform: 'OpenRouter',
 				maxTurns: 50,
 				temperature: 0.0,
-				systemPrompt: 'You are a command-line error recovery assistant. Diagnose errors, fix commands, and re-run them. Say "UNFIXABLE" if you cannot fix it.',
+				systemPrompt: $ln === 'CN'
+				? '你是命令行错误修复助手。诊断错误、修复命令、重新执行。如果无法修复，说"UNFIXABLE"。请用中文回复。'
+				: 'You are a command-line error recovery assistant. Diagnose errors, fix commands, and re-run them. Say "UNFIXABLE" if you cannot fix it. Reply in English.',
 				headerOpts: opts,
 				bashId: globalContext.bash || globalContext.nativeLoopBashId || null,
 			});

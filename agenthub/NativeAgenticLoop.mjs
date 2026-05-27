@@ -136,22 +136,17 @@ export async function* nativeAgenticLoop(session, params) {
 		};
 
 		let response;
-		const maxRetries = 3;
-		let lastError = null;
+		let attempt = 0;
 
-		for (let attempt = 0; attempt < maxRetries; attempt++) {
-			if (abortController?.signal?.aborted) {
-				yield { type: 'progress', text: '任务已取消.' };
-				return { reason: 'aborted', messages };
-			}
+		while (!abortController?.signal?.aborted) {
+			attempt++;
 			try {
 				response = await session.callHubLLMRaw(opts, messagesForAPI);
 				if (response) break;
 			} catch (err) {
-				lastError = err;
-				if (isRetryableError(err) && attempt < maxRetries - 1) {
-					const delay = Math.pow(2, attempt) * 1000;
-					yield { type: 'progress', text: `API 调用失败，${delay / 1000} 秒后重试 (${attempt + 1}/${maxRetries})...` };
+				if (isRetryableError(err)) {
+					const delay = Math.min(Math.pow(2, Math.min(attempt, 10)) * 500, 32000);
+					yield { type: 'progress', text: `API 调用失败，${(delay / 1000).toFixed(1)} 秒后重试 (第 ${attempt} 次)...` };
 					await sleep(delay);
 					continue;
 				}
@@ -161,8 +156,7 @@ export async function* nativeAgenticLoop(session, params) {
 		}
 
 		if (!response) {
-			yield { type: 'error', error: `API 调用失败（已重试 ${maxRetries} 次）: ${lastError?.message || 'unknown'}` };
-			return { reason: 'error', messages, error: lastError?.message || 'API call failed' };
+			return { reason: 'aborted', messages };
 		}
 
 		totalInputTokens += response.inputTokens || 0;
@@ -323,7 +317,10 @@ export async function* nativeAgenticLoop(session, params) {
 				}
 				break;
 			case 'progress':
-				// Skip round counts — pure noise for the user
+				// Show retry/error messages, skip round counts
+				if (event.text.includes('失败') || event.text.includes('retry') || event.text.includes('重试') || event.text.includes('Retry')) {
+					try { session.addChatText?.('assistant', event.text, opts); } catch {}
+				}
 				break;
 			case 'tool_progress': {
 				const toolName = event.name || '';
@@ -340,11 +337,13 @@ export async function* nativeAgenticLoop(session, params) {
 				if (tr.isError) {
 					const preview = (tr.output || '').slice(0, 300);
 					try { session.addChatText?.('assistant', '❌ **' + tr.name + '**\n' + preview, opts); } catch {}
-				} else if (tr.name === 'Read') {
-					// Don't show file content — only confirm what was read
-					try { session.addChatText?.('assistant', '已读取文件.', opts); } catch {}
 				} else if (tr.name === 'Write' || tr.name === 'Edit') {
 					try { session.addChatText?.('assistant', tr.output, opts); } catch {}
+				} else if (tr.name === 'Read') {
+					const path = tr._filePath || '';
+					const fname = path.slice(path.lastIndexOf('/') + 1) || path;
+					const label = (session.language || '').toUpperCase() === 'CN' ? '已读取: ' + fname : 'Read file: ' + fname;
+					try { session.addChatText?.('assistant', label, opts); } catch {}
 				}
 				break;
 			}
