@@ -257,6 +257,7 @@ export async function* nativeAgenticLoop(session, params) {
 
 	const globalContext = session.globalContext || {};
 	const opts = headerOpts || { channel: 'Chat' };
+	const isCN = (session.language || 'CN') === 'CN';
 	let finalText = '';
 	let finalReason = 'completed';
 	let toolCount = 0;

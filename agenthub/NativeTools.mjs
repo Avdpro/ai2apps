@@ -192,9 +192,10 @@ export const WriteFileTool = {
 	isConcurrencySafe: false,
 	maxResultSizeChars: 2000,
 
-	async call(input) {
+	async call(input, context) {
 		const filePath = input.file_path;
 		const content = input.content;
+		const isCN = (context?.session?.language || 'CN') === 'CN';
 		try {
 			await fsp.mkdir(pathLib.dirname(filePath), { recursive: true });
 			let oldContent = null;
@@ -207,15 +208,15 @@ export const WriteFileTool = {
 				else { throw e; }
 			}
 			if (!isCreate && oldContent === content.replaceAll('\r\n', '\n')) {
-				return { output: `The file ${filePath} has not been changed.` };
+				return { output: isCN ? `文件未改变: ${filePath}` : `The file ${filePath} has not been changed.` };
 			}
 			await fsp.writeFile(filePath, content, 'utf8');
 			if (isCreate) {
-				return { output: `File created successfully at: ${filePath}` };
+				return { output: isCN ? `文件已创建: ${filePath}` : `File created successfully at: ${filePath}` };
 			}
-			return { output: `The file ${filePath} has been updated successfully.` };
+			return { output: isCN ? `文件已更新: ${filePath}` : `The file ${filePath} has been updated successfully.` };
 		} catch (e) {
-			return { output: `Error writing file: ${e.message}`, error: e.message };
+			return { output: isCN ? `写入文件出错: ${e.message}` : `Error writing file: ${e.message}`, error: e.message };
 		}
 	},
 };
@@ -237,11 +238,12 @@ export const EditFileTool = {
 	isConcurrencySafe: false,
 	maxResultSizeChars: 2000,
 
-	async call(input) {
+	async call(input, context) {
 		const filePath = input.file_path;
 		const oldStr = input.old_string;
 		const newStr = input.new_string;
 		const replaceAll = input.replace_all || false;
+		const isCN = (context?.session?.language || 'CN') === 'CN';
 
 		if (oldStr === newStr) {
 			return { output: 'No changes to make: old_string and new_string are exactly the same.', error: 'same strings' };
@@ -308,11 +310,11 @@ export const EditFileTool = {
 			await fsp.writeFile(filePath, updated, 'utf8');
 
 			if (replaceAll) {
-				return { output: `The file ${filePath} has been updated. All ${matchCount} occurrences were replaced.` };
+				return { output: isCN ? `文件已更新: ${filePath}，共替换 ${matchCount} 处。` : `The file ${filePath} has been updated. All ${matchCount} occurrences were replaced.` };
 			}
-			return { output: `The file ${filePath} has been updated successfully.` };
+			return { output: isCN ? `文件已更新: ${filePath}` : `The file ${filePath} has been updated successfully.` };
 		} catch (e) {
-			return { output: `Error editing file: ${e.message}`, error: e.message };
+			return { output: isCN ? `编辑文件出错: ${e.message}` : `Error editing file: ${e.message}`, error: e.message };
 		}
 	},
 };
