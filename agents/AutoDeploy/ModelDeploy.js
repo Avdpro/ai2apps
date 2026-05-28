@@ -6,7 +6,7 @@ import {URL} from "url";
 /*#{1IJ2K5IBR0MoreImports*/
 import fsp from 'fs/promises';
 import axios from 'axios'
-import { runClaudeWithSession, createClaudeSession, buildAutoDeployPrompt, buildFixPrompt, isClaudeAvailable } from './ClaudeBridge.mjs';
+import { selectBestMirrors, toExportCommands } from './MirrorSelector.mjs';
 /*}#1IJ2K5IBR0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
 const baseURL=pathLib.dirname(agentURL);
@@ -441,9 +441,9 @@ let ModelDeploy=async function(session){
 	segs["Check"]=Check=async function(input){//:1JB201NH10
 		let result=input;
 		if(input==="China"){
-			return {seg:SetMirror,result:(input),preSeg:"1JB201NH10",outlet:"1JB204FF40"};
+			return {result:input};
 		}
-		return {seg:LoadSteps,result:(result),preSeg:"1JB201NH10",outlet:"1JB204FF41"};
+		return {result:result};
 	};
 	Check.jaxId="1JB201NH10"
 	Check.url="Check@"+agentURL
@@ -452,9 +452,32 @@ let ModelDeploy=async function(session){
 		let result,args={};
 		args['bashId']=globalContext.bash;
 		args['action']="Command";
-		args['commands']=["export HF_ENDPOINT=https://hf-mirror.com","export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple","export CONDA_CHANNELS=https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/","export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git","export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git","export HOMEBREW_INSTALL_FROM_API=1"];
+		args['commands']=["export HF_ENDPOINT=https://hf-mirror.com"];
 		args['options']="";
+		/*#{1JB203G190PreCodes*/
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+		let role="assistant";
+		let content=(($ln==="CN")?("正在测速选择最佳下载源，请稍等"):("Measuring speed to find the best download source, please wait."));
+		session.addChatText(role,content,opts);
+		const timeoutSec = 5;
+		const best = selectBestMirrors({ tools: ['pip', 'conda', 'npm', 'brew'], timeoutSec });
+		args['commands'] = toExportCommands(best);
+		args['commands'].push("export HF_ENDPOINT=https://aa-mirror.continue-ai.com/hf");
+		let detailsCN = "已选最佳源：\n";
+		let detailsEN = " Best sources selected:\n";
+		for (const [tool, info] of Object.entries(best)) {
+		  detailsCN += `- **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
+		  detailsEN += `- **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
+		}
+		content = ($ln === "CN") 
+			? ("测速完成，已为您配置最佳下载源。" + detailsCN) 
+			: ("Speed test complete, best download sources have been configured." + detailsEN);
+		session.addChatText(role,content,opts);
+		/*}#1JB203G190PreCodes*/
 		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1JB203G190PostCodes*/
+		/*}#1JB203G190PostCodes*/
 		return {seg:LoadSteps,result:(result),preSeg:"1JB203G190",outlet:"1JB204FF42"};
 	};
 	SetMirror.jaxId="1JB203G190"
@@ -591,7 +614,7 @@ let ModelDeploy=async function(session){
 		/*}#1JGUT435M0PreCodes*/
 		if(silent){
 			result="";
-			return {seg:GetLocation,result:(result),preSeg:"1JGUT435M0",outlet:"1JGUT43580"};
+			return {seg:SetMirror,result:(result),preSeg:"1JGUT435M0",outlet:"1JGUT43580"};
 		}
 		[result,item]=await session.askUserRaw({type:"menu",prompt:prompt,multiSelect:false,items:items,withChat:withChat,countdown:countdown,placeholder:placeholder});
 		/*#{1JGUT435M0PostCodes*/
@@ -600,7 +623,7 @@ let ModelDeploy=async function(session){
 			result=item;
 			return {result:result};
 		}else if(item.code===0){
-			return {seg:GetLocation,result:(result),preSeg:"1JGUT435M0",outlet:"1JGUT43580"};
+			return {seg:SetMirror,result:(result),preSeg:"1JGUT435M0",outlet:"1JGUT43580"};
 		}else if(item.code===1){
 			return {seg:GoTo,result:(result),preSeg:"1JGUT435M0",outlet:"1JGUT43581"};
 		}
@@ -1012,8 +1035,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "LoadSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1100",
-//						"y": "215",
+//						"x": "660",
+//						"y": "200",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1053,8 +1076,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "HasSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1315",
-//						"y": "215",
+//						"x": "875",
+//						"y": "200",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1120,8 +1143,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "LoopSteps",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1595",
-//						"y": "200",
+//						"x": "1155",
+//						"y": "185",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1167,8 +1190,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "SwitchAction",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2060",
-//						"y": "60",
+//						"x": "1620",
+//						"y": "45",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1334,8 +1357,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "RunBrew",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2310",
-//						"y": "110",
+//						"x": "1870",
+//						"y": "95",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1595,8 +1618,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "TipStep",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1825",
-//						"y": "60",
+//						"x": "1385",
+//						"y": "45",
 //						"desc": "这是一个AISeg。",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -1635,8 +1658,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "HfDownLoad",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2310",
-//						"y": "45",
+//						"x": "1870",
+//						"y": "30",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1922,8 +1945,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "GetLocation",
 //						"viewName": "",
 //						"label": "",
-//						"x": "425",
-//						"y": "200",
+//						"x": "435",
+//						"y": "20",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -1963,8 +1986,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "Check",
 //						"viewName": "",
 //						"label": "",
-//						"x": "680",
-//						"y": "200",
+//						"x": "690",
+//						"y": "20",
 //						"desc": "这是一个AISeg。",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -1987,8 +2010,7 @@ export{ModelDeploy,ChatAPI};
 //								"id": "Default",
 //								"desc": "输出节点。",
 //								"output": ""
-//							},
-//							"linkedSeg": "1IJ2KGOHG0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": [
@@ -2014,8 +2036,7 @@ export{ModelDeploy,ChatAPI};
 //											}
 //										},
 //										"condition": "#input===\"China\""
-//									},
-//									"linkedSeg": "1JB203G190"
+//									}
 //								}
 //							]
 //						}
@@ -2031,10 +2052,10 @@ export{ModelDeploy,ChatAPI};
 //						"id": "SetMirror",
 //						"viewName": "",
 //						"label": "",
-//						"x": "885",
-//						"y": "115",
+//						"x": "415",
+//						"y": "200",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -2051,7 +2072,7 @@ export{ModelDeploy,ChatAPI};
 //						},
 //						"bashId": "#globalContext.bash",
 //						"action": "Command",
-//						"commands": "#[\"export HF_ENDPOINT=https://hf-mirror.com\",\"export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple\",\"export CONDA_CHANNELS=https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/\",\"export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git\",\"export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git\",\"export HOMEBREW_INSTALL_FROM_API=1\"]",
+//						"commands": "#[\"export HF_ENDPOINT=https://hf-mirror.com\"]",
 //						"options": "\"\"",
 //						"outlet": {
 //							"jaxId": "1JB204FF42",
@@ -2288,7 +2309,7 @@ export{ModelDeploy,ChatAPI};
 //											}
 //										}
 //									},
-//									"linkedSeg": "1JB1VU3M50"
+//									"linkedSeg": "1JB203G190"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -2339,8 +2360,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "Finish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "1825",
-//						"y": "215",
+//						"x": "1385",
+//						"y": "200",
 //						"desc": "This is an AISeg.",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
@@ -2467,8 +2488,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "CheckStepFinish",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2620",
-//						"y": "45",
+//						"x": "2180",
+//						"y": "30",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2663,8 +2684,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "RunBash",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2310",
-//						"y": "-95",
+//						"x": "1870",
+//						"y": "-110",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",
@@ -2706,8 +2727,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "RunConda",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2310",
-//						"y": "-20",
+//						"x": "1870",
+//						"y": "-35",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "false",
 //						"mkpInput": "$$input$$",
@@ -2749,8 +2770,8 @@ export{ModelDeploy,ChatAPI};
 //						"id": "RunApt",
 //						"viewName": "",
 //						"label": "",
-//						"x": "2310",
-//						"y": "205",
+//						"x": "1870",
+//						"y": "190",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
 //						"codes": "true",
 //						"mkpInput": "$$input$$",

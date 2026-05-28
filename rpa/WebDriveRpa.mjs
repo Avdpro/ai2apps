@@ -667,10 +667,19 @@ webRpa.ensureCodeLib=webRpa.getCodeTag=async function(page){
 			try {
 				node=await pageFrame.callFunction((codeTag,node,selector,opts)=>{
 					let codeLib=globalThis[codeTag];
+					if(!codeLib){
+						return null;
+					}
 					return codeLib.queryNode(node,selector,opts);
 				},[codeTag,node,selector,opts]);
 				if(node){
 					return node;
+				}
+				if(node===null){
+					console.log(`[WebDriveRpa.waitQuery] queryNode returned null: codeTag: ${codeTag}, selector: ${selector}`);
+					//Maybe codeLib is lost, try to ensure again:
+					codeTag=await ensureCodeLib(pageFrame);
+					continue;
 				}
 				await sleep(200);
 				if(timeout>0 && Date.now()-startTime>timeout){
