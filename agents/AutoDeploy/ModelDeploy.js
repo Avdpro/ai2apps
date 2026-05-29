@@ -461,14 +461,13 @@ let ModelDeploy=async function(session){
 		let content=(($ln==="CN")?("正在测速选择最佳下载源，请稍等"):("Measuring speed to find the best download source, please wait."));
 		session.addChatText(role,content,opts);
 		const timeoutSec = 5;
-		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew'], timeoutSec });
+		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
 		args['commands'] = toExportCommands(best);
-		args['commands'].push("export HF_ENDPOINT=https://aa-mirror.continue-ai.com/hf");
 		let detailsCN = "已选最佳源：\n";
 		let detailsEN = " Best sources selected:\n";
 		for (const [tool, info] of Object.entries(best)) {
-		detailsCN += `- **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
-		detailsEN += `- **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
+			detailsCN += `- **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
+			detailsEN += `- **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
 		}
 		content = ($ln === "CN") 
 			? ("测速完成，已为您配置最佳下载源。" + detailsCN) 

@@ -120,6 +120,21 @@ const MIRRORS = {
 		name: { cn: 'ghfast.top', en: 'ghfast.top' },
 		speedUrl: 'https://ghfast.top/https://github.com/stilleshan/dockerfiles/archive/master.zip',
 	},
+	hf_upstream: {
+		abbr: 'HF',
+		name: { cn: 'HuggingFace 官方', en: 'HuggingFace Official' },
+		speedUrl: 'https://huggingface.co/SparkAudio/Spark-TTS-0.5B/resolve/642071559bfc6346c2359d19dcb6be3f9dd8a05d/wav2vec2-large-xlsr-53/pytorch_model.bin',
+	},
+	hf_mirror: {
+		abbr: 'hf-mirror',
+		name: { cn: 'HF-Mirror (hf-mirror.com)', en: 'HF-Mirror' },
+		speedUrl: 'https://hf-mirror.com/SparkAudio/Spark-TTS-0.5B/resolve/642071559bfc6346c2359d19dcb6be3f9dd8a05d/wav2vec2-large-xlsr-53/pytorch_model.bin',
+	},
+	aa_hf: {
+		abbr: 'AI2APPS',
+		name: { cn: 'AI2APPS', en: 'AI2APPS' },
+		speedUrl: 'https://update-cn.continue-ai.com/huggingface/SparkAudio/Spark-TTS-0.5B/642071559bfc6346c2359d19dcb6be3f9dd8a05d/wav2vec2-large-xlsr-53/pytorch_model.bin',
+	},
 };
 
 
@@ -176,6 +191,14 @@ const TOOLS = {
 		mirrors: {
 			github_upstream: 'https://github.com',
 			ghfast:          'https://ghfast.top',
+		},
+	},
+
+	huggingface: {
+		mirrors: {
+			hf_upstream:    'https://huggingface.co',
+			hf_mirror:      'https://hf-mirror.com',
+			aa_hf: 'https://aa-mirror.continue-ai.com/hf',
 		},
 	},
 };
@@ -291,7 +314,7 @@ function rankMirrors(mirrorKeys, timeoutSec = 5) {
  * @param {number}  opts.timeoutSec  每个镜像测速超时秒数，默认 5
  * @returns {Object}  { pip: {url, mirror, speed}, npm: {...}, ... }
  */
-function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github'], timeoutSec = 5 } = {}) {
+function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github', 'huggingface'], timeoutSec = 5 } = {}) {
 	// 1. 收集所有涉及的唯一镜像站
 	const uniqueMirrors = new Set();
 	for (const tool of tools) {
@@ -397,6 +420,12 @@ function toExportCommands(selected) {
 		case 'github':
 			if (info.mirror !== 'github_upstream') {
 				commands.push(`GITHUB_PREFIX="${url}"`);
+			}
+			break;
+
+		case 'huggingface':
+			if (info.mirror !== 'hf_upstream') {
+				commands.push(`export HF_ENDPOINT=${url}`);
 			}
 			break;
 		}
