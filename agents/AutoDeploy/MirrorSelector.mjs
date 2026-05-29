@@ -13,7 +13,6 @@ import { execSync } from 'child_process';
 // ═══════════════════════════════════════════════════════════════
 // 镜像站定义（含模糊测速 URL）
 // ═══════════════════════════════════════════════════════════════
-
 const MIRRORS = {
 	aa: {
 		abbr: 'AI2APPS',
@@ -106,12 +105,23 @@ const MIRRORS = {
 		name: { cn: 'Anaconda 官方源', en: 'Anaconda Official' },
 		speedUrl: 'https://repo.anaconda.com/pkgs/main/linux-64/python-3.12.0-h996f2a0_0.conda',
 	},
-	github_upstream: {
+	brew_upstream: {
 		abbr: 'GitHub',
-		name: { cn: 'GitHub (Homebrew 官方)', en: 'GitHub (Homebrew Official)' },
+		name: { cn: 'Homebrew', en: 'Homebrew Official' },
 		speedUrl: 'https://codeload.github.com/Homebrew/brew/zip/refs/heads/master',
 	},
+	github_upstream: {
+		abbr: 'GitHub',
+		name: { cn: 'GitHub 官方', en: 'Github Official' },
+		speedUrl: 'https://github.com/stilleshan/dockerfiles/archive/master.zip',
+	},
+	ghfast: {
+		abbr: 'ghfast',
+		name: { cn: 'ghfast.top', en: 'ghfast.top' },
+		speedUrl: 'https://ghfast.top/https://github.com/stilleshan/dockerfiles/archive/master.zip',
+	},
 };
+
 
 // ═══════════════════════════════════════════════════════════════
 // 工具定义：每个包管理器在各镜像上的源 URL
@@ -120,8 +130,8 @@ const MIRRORS = {
 const TOOLS = {
 	pip: {
 		mirrors: {
-			tsinghua:     'https://pypi.tuna.tsinghua.edu.cn/simple',
 			aa:       'https://aa-mirror.continue-ai.com/simple',
+			tuna:     'https://pypi.tuna.tsinghua.edu.cn/simple',
 			bfsu:     'https://mirrors.bfsu.edu.cn/pypi/web/simple',
 			aliyun:   'https://mirrors.aliyun.com/pypi/simple',
 			sjtug:    'https://mirror.sjtu.edu.cn/pypi-packages',
@@ -141,7 +151,7 @@ const TOOLS = {
 
 	conda: {
 		mirrors: {
-			tsinghua:     'https://mirrors.tuna.tsinghua.edu.cn/anaconda',
+			tuna:     'https://mirrors.tuna.tsinghua.edu.cn/anaconda',
 			bfsu:     'https://mirrors.bfsu.edu.cn/anaconda',
 			nju:      'https://mirror.nju.edu.cn/anaconda',
 			sjtug:    'https://mirror.sjtu.edu.cn/anaconda',
@@ -154,11 +164,18 @@ const TOOLS = {
 
 	brew: {
 		mirrors: {
-			tsinghua:     'https://mirrors.tuna.tsinghua.edu.cn/',
+			tuna:     'https://mirrors.tuna.tsinghua.edu.cn/',
 			bfsu:     'https://mirrors.bfsu.edu.cn/',
 			nju:      'https://mirror.nju.edu.cn/',
 			nyist:    'https://mirror.nyist.edu.cn/',
-			github_upstream: 'https://github.com/Homebrew/brew.git',
+			brew_upstream: 'https://github.com/Homebrew/brew.git',
+		},
+	},
+
+	github: {
+		mirrors: {
+			github_upstream: 'https://github.com',
+			ghfast:          'https://ghfast.top',
 		},
 	},
 };
@@ -234,9 +251,9 @@ function rankMirrors(mirrorKeys, timeoutSec = 5) {
 		
 		// 实时输出测速结果
 		if (speed === -1) {
-			console.warn(`[MirrorSelector] ❌ ${mirror.name}: 测速失败 (${error})`);
+			console.warn(`[MirrorSelector] ❌ ${mirror.name.en}: 测速失败 (${error})`);
 		} else {
-			console.log(`[MirrorSelector] ✅ ${mirror.name}: ${speed} MB/s`);
+			console.log(`[MirrorSelector] ✅ ${mirror.name.en}: ${speed} MB/s`);
 		}
 		
 		results.push({ key, speed });
@@ -274,7 +291,7 @@ function rankMirrors(mirrorKeys, timeoutSec = 5) {
  * @param {number}  opts.timeoutSec  每个镜像测速超时秒数，默认 5
  * @returns {Object}  { pip: {url, mirror, speed}, npm: {...}, ... }
  */
-function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew'], timeoutSec = 5 } = {}) {
+function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github'], timeoutSec = 5 } = {}) {
 	// 1. 收集所有涉及的唯一镜像站
 	const uniqueMirrors = new Set();
 	for (const tool of tools) {
@@ -306,6 +323,7 @@ function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew'], timeoutSec
 				bestSpeed = speed;
 				break;
 			}
+
 		}
 
 		// 第二轮：全部测速失败时，取列表第一个可用的（兜底）
@@ -317,6 +335,7 @@ function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew'], timeoutSec
 					bestSpeed = 0;
 					break;
 				}
+
 			}
 		}
 
@@ -363,12 +382,10 @@ function toExportCommands(selected) {
 			commands.push(`export npm_config_registry=${url}`);
 			break;
 		case 'conda':
-			// conda 通过 .condarc 配置更可靠，这里提供环境变量作为轻量方案
 			commands.push(`export CONDA_CHANNELS=${url}/pkgs/main/`);
 			break;
 		case 'brew':
 			if (info.mirror === 'github_upstream') {
-				// 使用官方源时，不需要指定 Git 远程，或显式还原为默认值
 				commands.push('unset HOMEBREW_BREW_GIT_REMOTE');
 				commands.push('unset HOMEBREW_CORE_GIT_REMOTE');
 			} else {
@@ -377,18 +394,16 @@ function toExportCommands(selected) {
 			}
 			commands.push('export HOMEBREW_INSTALL_FROM_API=1');
 			break;
+		case 'github':
+			if (info.mirror !== 'github_upstream') {
+				commands.push(`GITHUB_PREFIX="${url}"`);
+			}
+			break;
 		}
 	}
 
 	return commands;
 }
-
-/**
- * 为单个工具返回其所有候选镜像 URL 列表（不测速），供手动选择。
- *
- * @param {string} tool  工具名：pip | npm | conda | brew
- * @returns {{mirror: string, url: string}[]}
- */
 function listMirrors(tool) {
 	const def = TOOLS[tool];
 	if (!def) return [];
