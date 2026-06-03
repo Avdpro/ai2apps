@@ -321,6 +321,7 @@ let Bash=async function(session){
 		let $agent;
 		let result=null;
 		/*#{1IIDUEG0G0Input*/
+		
 		/*}#1IIDUEG0G0Input*/
 		
 		let opts={
@@ -390,6 +391,9 @@ let Bash=async function(session){
 },
 		];
 		/*#{1IIDUEG0G0PrePrompt*/
+		if (typeof input === "string" && input.length > 30000) {
+			input = input.slice(-30000);
+		}
 		/*}#1IIDUEG0G0PrePrompt*/
 		prompt=input;
 		if(prompt!==null){

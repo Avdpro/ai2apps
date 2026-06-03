@@ -259,4 +259,105 @@ export async function gatherSystemContext(cwd) {
 	return ctx;
 }
 
-export default { assembleSystemPrompt, buildMessagesForQuery, buildAutoDeployPrompt, buildFixPrompt, gatherSystemContext };
+// ---- Auto-Compact (adapted from Claude Code's compact.ts and autoCompact.ts) ----
+
+const AUTO_COMPACT_THRESHOLD = 200000; // tokens — conservative for 1M context
+
+export const COMPACT_PROMPT = [
+'CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.',
+'',
+'- Do NOT use Bash, Read, Write, Edit, Grep, Glob, or ANY other tool.',
+'- You already have all the context you need in the conversation below.',
+'- Tool calls will be REJECTED — your only turn will be wasted.',
+'- Your entire response must be plain text: an <analysis> block followed by a <summary> block.',
+'',
+'Your task is to create a detailed summary of the conversation so far, paying close attention to the user\'s explicit requests and your previous actions.',
+'This summary should be thorough in capturing technical details, code patterns, and decisions essential for continuing work without losing context.',
+'',
+'Before providing your final summary, wrap your analysis in <analysis> tags. In your analysis:',
+'1. Chronologically analyze each message and section. For each section identify:',
+'   - The user\'s explicit requests and intents',
+'   - Your approach to addressing the requests',
+'   - Key decisions, technical concepts and code patterns',
+'   - Specific details: file names, full code snippets, function signatures, file edits',
+'   - Errors encountered and how you fixed them',
+'   - Specific user feedback, especially if the user told you to do something differently',
+'2. Double-check for technical accuracy and completeness.',
+'',
+'Your summary should include these sections:',
+'',
+'1. Primary Request and Intent: Capture all of the user\'s explicit requests in detail',
+'2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks.',
+'3. Files and Code Sections: Enumerate specific files examined, modified, or created. Include full code snippets where applicable and a summary of why each file is important.',
+'4. Errors and fixes: List all errors encountered and how you fixed them. Include specific user feedback.',
+'5. Problem Solving: Document problems solved and any ongoing troubleshooting.',
+'6. All user messages: List ALL user messages that are not tool results.',
+'7. Pending Tasks: Outline any pending tasks explicitly requested.',
+'8. Current Work: Describe precisely what was being worked on immediately before this summary request. Include file names and code snippets.',
+'9. Optional Next Step: List the next step directly in line with the user\'s most recent explicit requests. Include direct quotes from the conversation showing exactly what task you were working on.',
+'',
+'Format your response as:',
+'<analysis>',
+'[Your analysis process]',
+'</analysis>',
+'',
+'<summary>',
+'1. Primary Request and Intent:',
+'   [Description]',
+'',
+'2. Key Technical Concepts:',
+'   - [Concept 1]',
+'   - [Concept 2]',
+'',
+'3. Files and Code Sections:',
+'   - [File Name]',
+'      - [Why important]',
+'      - [Code snippet]',
+'',
+'4. Errors and fixes:',
+'    - [Error]:',
+'      - [How fixed]',
+'',
+'5. Problem Solving:',
+'   [Description]',
+'',
+'6. All user messages:',
+'    - [Message]',
+'',
+'7. Pending Tasks:',
+'   - [Task]',
+'',
+'8. Current Work:',
+'   [Description]',
+'',
+'9. Optional Next Step:',
+'   [Next step]',
+'</summary>',
+].join('\n');
+
+/**
+ * Estimate total tokens from messages array.
+ * Uses API usage data from the most recent messages + rough estimation for older ones.
+ * Rough estimate: content.length / 4 (same as Claude Code).
+ */
+export function estimateTotalTokens(messages, recentInputTokens = 0) {
+	let total = recentInputTokens;
+	for (const m of messages) {
+		if (typeof m.content === 'string') total += Math.round(m.content.length / 4);
+		else if (m.content) total += Math.round(JSON.stringify(m.content).length / 4);
+	}
+	return total;
+}
+
+/**
+ * Check if auto-compact should trigger.
+ * @param {number} estimatedTokens - Current token estimate
+ * @param {number} consecutiveFailures - How many consecutive compact attempts failed
+ * @returns {boolean}
+ */
+export function shouldAutoCompact(estimatedTokens, consecutiveFailures = 0) {
+	if (consecutiveFailures >= 3) return false; // circuit breaker
+	return estimatedTokens >= AUTO_COMPACT_THRESHOLD;
+}
+
+export default { assembleSystemPrompt, buildMessagesForQuery, buildAutoDeployPrompt, buildFixPrompt, gatherSystemContext, COMPACT_PROMPT, estimateTotalTokens, shouldAutoCompact };

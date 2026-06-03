@@ -8,7 +8,7 @@
 //   nativeAgenticLoop()  — low-level async generator, full control over events
 //   runAgenticTask()     — high-level wrapper: terminal setup + loop + output display + cleanup
 
-import { assembleSystemPrompt, buildMessagesForQuery } from './LoopContext.mjs';
+import { assembleSystemPrompt, buildMessagesForQuery, COMPACT_PROMPT, estimateTotalTokens, shouldAutoCompact } from './LoopContext.mjs';
 import { runTools } from './ToolScheduler.mjs';
 
 // ---- Helpers ----
@@ -39,30 +39,6 @@ function isRetryableError(err) {
  * Apply model-specific parameter overrides.
  * Different models need different temp, parallel, and token settings for reliable tool calling.
  */
-function applyModelDefaults(model, platform, params) {
-	const m = model.toLowerCase();
-
-	// Detect model family
-	if (m.includes('deepseek') || m.includes('deep-seek')) {
-		params.temperature = Math.min(params.temperature, 0.3);
-		params.enable_thinking = false;
-	} else if (m.includes('gpt-4o') || m.includes('gpt-4.1')) {
-		// defaults are fine
-	} else if (m.includes('gpt-4')) {
-		params.temperature = Math.min(params.temperature, 0.7);
-	} else if (m.includes('gpt-3.5')) {
-		params.temperature = Math.min(params.temperature, 0.3);
-	} else if (m.includes('claude') || m.includes('opus') || m.includes('sonnet') || m.includes('haiku')) {
-		// defaults are fine
-	} else if (m.includes('qwen') || m.includes('llama')) {
-		params.temperature = Math.min(params.temperature, 0.3);
-	}
-
-	// Cap maxTokens for models with smaller context or thinking overhead
-	if (m.includes('deepseek') || m.includes('qwen')) {
-		params.maxTokens = Math.min(params.maxTokens, 2048);
-	}
-}
 
 // ---- Low-level: Async Generator Loop ----
 
@@ -86,7 +62,7 @@ export async function* nativeAgenticLoop(session, params) {
 		platform = 'OpenRouter',
 		maxTurns = 30,
 		temperature = 0.7,
-		maxTokens = 4096,
+		maxTokens = 16384,
 		thinkingEnabled = true,
 		abortController = null,
 		globalContext = {},
@@ -97,6 +73,7 @@ export async function* nativeAgenticLoop(session, params) {
 	let turnCount = 0;
 	let totalInputTokens = 0;
 	let totalOutputTokens = 0;
+	let compactFailures = 0;
 
 	const functionDefs = tools.map(t => ({
 		name: t.name,
@@ -119,20 +96,55 @@ export async function* nativeAgenticLoop(session, params) {
 		turnCount++;
 		yield { type: 'progress', text: `第 ${turnCount}/${maxTurns} 轮...` };
 
+		// ---- Auto-Compact ----
+		const estimatedTokens = estimateTotalTokens(messages, totalInputTokens);
+		if (shouldAutoCompact(estimatedTokens, compactFailures)) {
+			yield { type: 'progress', text: `上下文已达 ${Math.round(estimatedTokens/1000)}K tokens，正在压缩...` };
+			try {
+				// Take the oldest 60% of messages to summarize
+				const splitIdx = Math.floor(messages.length * 0.6);
+				const toSummarize = messages.slice(0, splitIdx);
+				const toKeep = messages.slice(splitIdx);
+
+				const compactMessages = [
+					{ role: 'user', content: COMPACT_PROMPT + '\n\n<conversation>\n' + JSON.stringify(toSummarize, null, 2) + '\n</conversation>' },
+				];
+
+				const compactResp = await session.callHubLLMRaw({
+					platform,
+					model,
+					temperature: 0,
+					maxToken: 4096,
+				}, compactMessages);
+
+				const summaryText = compactResp.content || '';
+				// Extract <summary> block
+				const summaryMatch = summaryText.match(/<summary>([\s\S]*?)<\/summary>/);
+				const summary = summaryMatch ? summaryMatch[1].trim() : summaryText.slice(0, 3000);
+
+				// Replace old messages with compact boundary + summary
+				messages = [
+					{ role: 'user', content: '[Conversation history summarized]\n\n' + summary },
+					...toKeep,
+				];
+				compactFailures = 0;
+				yield { type: 'progress', text: `压缩完成，释放约 ${Math.round(estimatedTokens/1000)}K tokens。` };
+			} catch (e) {
+				compactFailures++;
+				yield { type: 'progress', text: `压缩失败 (${compactFailures}/3): ${e.message}` };
+			}
+		}
+
 		let messagesForAPI = [{ role: 'system', content: fullSystemPrompt }];
 		messagesForAPI = messagesForAPI.concat(buildMessagesForQuery(messages, {}));
 
-		// Apply model-specific tuning each turn (in case model changes)
-		const tuned = { temperature, enable_thinking: thinkingEnabled, maxTokens };
-		applyModelDefaults(model, platform, tuned);
-
 		const opts = {
 			platform, model,
-			temperature: tuned.temperature,
-			maxToken: tuned.maxTokens,
+			temperature,
+			maxToken: maxTokens,
 			apis: { functions: functionDefs, stubs },
-			parallelFunction: true,  // always use tools format (OpenRouter + all models support it)
-			enable_thinking: tuned.enable_thinking,
+			parallelFunction: true,
+			enable_thinking: thinkingEnabled,
 		};
 
 		let response;
@@ -341,9 +353,7 @@ export async function* nativeAgenticLoop(session, params) {
 				} else if (tr.name === 'Write' || tr.name === 'Edit') {
 					try { session.addChatText?.('assistant', tr.output, opts); } catch {}
 				} else if (tr.name === 'Read') {
-					const path = tr._filePath || '';
-					const fname = path.slice(path.lastIndexOf('/') + 1) || path;
-					const label = (session.language || '').toUpperCase() === 'CN' ? '已读取: ' + fname : 'Read file: ' + fname;
+					const label = isCN ? '已读取文件.' : 'File read.';
 					try { session.addChatText?.('assistant', label, opts); } catch {}
 				}
 				break;

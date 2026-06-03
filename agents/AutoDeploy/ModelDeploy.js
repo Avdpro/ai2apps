@@ -323,12 +323,27 @@ let ModelDeploy=async function(session){
 	
 	segs["HfDownLoad"]=HfDownLoad=async function(input){//:1IJ44IVQS0
 		let result;
-		let arg={"model":input.model,"localPath":input.localPath||input.localDir,"token":false};
+		let arg=null;
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
-		let sourcePath=pathLib.join(basePath,"../AgentBuilder/ToolHfModel.js");
+		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
 		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		/*#{1IJ44IVQS0Input*/
+		let command = `hf download`;
+		let localPath = input.localPath||input.localDir;
+		if (model) {
+			command += ` ${input.model}`;
+		}
+		if (localPath) {
+			command += ` --local-dir ${localPath}`;
+		}
+		command += ` && echo "Successful" || echo "Failed"`;
+        command = command.replace(/\s*&&\s*echo\s+["']Successful["']\s*\|\|\s*echo\s+["']Failed["']\s*;?\s*$/, '');
+		arg.command = `for i in 1 2 3; do if ${command}; then echo "Successful"; break; else echo "Attempt $i failed"; [ "$i" -eq 3 ] && echo "Failed"; [ "$i" -lt 3 ] && sleep 3; fi; done`;
+		/*}#1IJ44IVQS0Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		/*#{1IJ44IVQS0Output*/
+		/*}#1IJ44IVQS0Output*/
 		return {seg:CheckStepFinish,result:(result),preSeg:"1IJ44IVQS0",outlet:"1IJ44KI9F1"};
 	};
 	HfDownLoad.jaxId="1IJ44IVQS0"
@@ -1669,7 +1684,7 @@ export{ModelDeploy,ChatAPI};
 //						"x": "1870",
 //						"y": "30",
 //						"desc": "调用其它AI Agent，把调用的结果作为输出",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"context": {
@@ -1684,8 +1699,8 @@ export{ModelDeploy,ChatAPI};
 //								"cast": ""
 //							}
 //						},
-//						"source": "AgentBuilder/ToolHfModel.js",
-//						"argument": "{\"model\":\"#input.model\",\"localPath\":\"#input.localPath||input.localDir\",\"token\":false}",
+//						"source": "AutoDeploy/ToolRunCommand.js",
+//						"argument": "",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1IJ44KI9F1",
