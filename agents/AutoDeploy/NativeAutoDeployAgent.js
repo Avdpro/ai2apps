@@ -7,6 +7,7 @@ import {URL} from "url";
 import { runAgenticTask } from '../../agenthub/NativeAgenticLoop.mjs';
 import { buildFullPipelinePrompt } from './AutoDeployPrompt.js';
 import { getDeployTools } from '../../agenthub/NativeTools.mjs';
+import { selectBestMirrors, toExportCommands } from './MirrorSelector.mjs';
 import fsp from 'fs/promises';
 /*}#1JN92DRGT0MoreImports*/
 const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
@@ -39,7 +40,7 @@ let NativeAutoDeployAgent=async function(session){
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let AutoDeploy,Read,UpdateDeploy,UpdateUsage,UpdateDelete,UpdateSize,GetUrl;
+	let AutoDeploy,Read,UpdateDeploy,UpdateUsage,UpdateDelete,UpdateSize,GetUrl,SetMirror,Init;
 	/*#{1JN92DRGT0LocalVals*/
 	let deployGuideMD, usageGuideMD;
 	const API_URL = process.env.MODELHUNT_TEST_API_URL;
@@ -103,6 +104,7 @@ let NativeAutoDeployAgent=async function(session){
 				},
 				headerOpts: opts,
 				cwd: process.env.HOME || '/tmp',
+				bashId: globalContext.bash
 			});
 			
 			const resultPath = pathLib.join(process.env.HOME || '/tmp', '.modelhunt/deploy', `${model}_result.json`);
@@ -155,7 +157,7 @@ let NativeAutoDeployAgent=async function(session){
 			/*#{1JN92VKAH0ErrorCode*/
 			/*}#1JN92VKAH0ErrorCode*/
 		}
-		return {seg:AutoDeploy,result:(result),preSeg:"1JN92VKAH0",outlet:"1JN92VRVI0"};
+		return {seg:Init,result:(result),preSeg:"1JN92VKAH0",outlet:"1JN92VRVI0"};
 	};
 	Read.jaxId="1JN92VKAH0"
 	Read.url="Read@"+agentURL
@@ -410,6 +412,57 @@ let NativeAutoDeployAgent=async function(session){
 	GetUrl.jaxId="1JNE94TEK0"
 	GetUrl.url="GetUrl@"+agentURL
 	
+	segs["SetMirror"]=SetMirror=async function(input){//:1JQ0QOIPF0
+		let result,args={};
+		args['bashId']=globalContext.bash;
+		args['action']="Command";
+		args['commands']=["export HF_ENDPOINT=https://hf-mirror.com"];
+		args['options']="";
+		/*#{1JQ0QOIPF0PreCodes*/
+		let $channel="Chat";
+		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
+		let role="assistant";
+		let content=(($ln==="CN")?("正在测速选择最佳下载源，请稍等..."):("Measuring speed to find the best download source, please wait..."));
+		session.addChatText(role,content,opts);
+		const timeoutSec = 5;
+		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
+		args['commands'] = toExportCommands(best);
+		let detailsCN = "已选最佳源：\n";
+		let detailsEN = " Best sources selected:\n";
+		for (const [tool, info] of Object.entries(best)) {
+			detailsCN += `- **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
+			detailsEN += `- **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
+		}
+		content = ($ln === "CN") 
+			? ("测速完成，已为您配置最佳下载源。" + detailsCN) 
+			: ("Speed test complete, best download sources have been configured." + detailsEN);
+		session.addChatText(role,content,opts);
+		/*}#1JQ0QOIPF0PreCodes*/
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1JQ0QOIPF0PostCodes*/
+		/*}#1JQ0QOIPF0PostCodes*/
+		return {seg:AutoDeploy,result:(result),preSeg:"1JQ0QOIPF0",outlet:"1JQ0QOIPF3"};
+	};
+	SetMirror.jaxId="1JQ0QOIPF0"
+	SetMirror.url="SetMirror@"+agentURL
+	
+	segs["Init"]=Init=async function(input){//:1JQ0QPF5F0
+		let result,args={};
+		args['bashId']="";
+		args['action']="Create";
+		args['commands']=undefined;
+		args['options']={client:true};
+		/*#{1JQ0QPF5F0PreCodes*/
+		/*}#1JQ0QPF5F0PreCodes*/
+		result= await session.pipeChat("/@AgentBuilder/Bash.js",args,false);
+		/*#{1JQ0QPF5F0PostCodes*/
+		globalContext.bash=result;
+		/*}#1JQ0QPF5F0PostCodes*/
+		return {seg:SetMirror,result:(result),preSeg:"1JQ0QPF5F0",outlet:"1JQ0QQAP10"};
+	};
+	Init.jaxId="1JQ0QPF5F0"
+	Init.url="Init@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -555,7 +608,7 @@ export{NativeAutoDeployAgent};
 //						"id": "Read",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-100",
+//						"x": "-460",
 //						"y": "100",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -578,7 +631,7 @@ export{NativeAutoDeployAgent};
 //								"id": "Result",
 //								"desc": "输出节点。"
 //							},
-//							"linkedSeg": "1JN92GB540"
+//							"linkedSeg": "1JQ0QPF5F0"
 //						},
 //						"outlets": {
 //							"attrs": []
@@ -759,7 +812,7 @@ export{NativeAutoDeployAgent};
 //						"id": "GetUrl",
 //						"viewName": "",
 //						"label": "",
-//						"x": "-430",
+//						"x": "-695",
 //						"y": "100",
 //						"desc": "这是一个AISeg。",
 //						"mkpInput": "$$input$$",
@@ -791,6 +844,88 @@ export{NativeAutoDeployAgent};
 //						"errorSeg": ""
 //					},
 //					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JQ0QOIPF0",
+//					"attrs": {
+//						"id": "SetMirror",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-25",
+//						"y": "100",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JQ0QOIPF1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JQ0QOIPF2",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "#globalContext.bash",
+//						"action": "Command",
+//						"commands": "#[\"export HF_ENDPOINT=https://hf-mirror.com\"]",
+//						"options": "\"\"",
+//						"outlet": {
+//							"jaxId": "1JQ0QOIPF3",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JN92GB540"
+//						}
+//					},
+//					"icon": "terminal.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "Bash",
+//					"jaxId": "1JQ0QPF5F0",
+//					"attrs": {
+//						"id": "Init",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-250",
+//						"y": "100",
+//						"desc": "This is an AISeg.",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JQ0QQL0G0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JQ0QQL0G1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"bashId": "\"\"",
+//						"action": "Create",
+//						"commands": "",
+//						"options": "#{client:true}",
+//						"outlet": {
+//							"jaxId": "1JQ0QQAP10",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JQ0QOIPF0"
+//						}
+//					},
+//					"icon": "terminal.svg"
 //				}
 //			]
 //		},

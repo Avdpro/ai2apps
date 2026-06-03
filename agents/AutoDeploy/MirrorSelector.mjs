@@ -113,12 +113,12 @@ const MIRRORS = {
 	github_upstream: {
 		abbr: 'GitHub',
 		name: { cn: 'GitHub 官方', en: 'Github Official' },
-		speedUrl: 'https://github.com/stilleshan/dockerfiles/archive/master.zip',
+		speedUrl: 'https://github.com/torvalds/linux/archive/refs/heads/master.zip',
 	},
 	ghfast: {
 		abbr: 'ghfast',
 		name: { cn: 'ghfast.top', en: 'ghfast.top' },
-		speedUrl: 'https://ghfast.top/https://github.com/stilleshan/dockerfiles/archive/master.zip',
+		speedUrl: 'https://ghfast.top/https://github.com/torvalds/linux/archive/refs/heads/master.zip',
 	},
 	hf_upstream: {
 		abbr: 'HF',

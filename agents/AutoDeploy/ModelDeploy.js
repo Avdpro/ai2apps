@@ -150,6 +150,9 @@ let ModelDeploy=async function(session){
 					if (deployConfig.platforms && deployConfig.platforms[platform]) {
 						steps = deployConfig.platforms[platform].steps;
 						console.log(`Loaded ${steps?.length || 0} steps for platform: ${platform}`);
+						if (!steps || steps.length === 0) {
+							throw new Error(`No steps defined for platform: ${platform}`);
+						}
 					} else {
 						console.log(`No steps found for platform: ${platform}`);
 						steps = null;
@@ -458,7 +461,7 @@ let ModelDeploy=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?("正在测速选择最佳下载源，请稍等"):("Measuring speed to find the best download source, please wait."));
+		let content=(($ln==="CN")?("正在测速选择最佳下载源，请稍等..."):("Measuring speed to find the best download source, please wait..."));
 		session.addChatText(role,content,opts);
 		const timeoutSec = 5;
 		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
@@ -654,7 +657,7 @@ let ModelDeploy=async function(session){
 		let $channel="Chat";
 		let opts={txtHeader:($agent.showName||$agent.name||null),channel:$channel};
 		let role="assistant";
-		let content=(($ln==="CN")?(`正在为 ${model} 初始化运行环境，请稍候...`):(`Initializing runtime environment for ${model}, please wait...`));
+		let content=(($ln==="CN")?(`正在为 ${model} 初始化运行环境，请稍等...`):(`Initializing runtime environment for ${model}, please wait...`));
 		session.addChatText(role,content,opts);
 		return {seg:CheckType,result:(result),preSeg:"1JH01VEB30",outlet:"1JH01VL760"};
 	};
@@ -2430,7 +2433,7 @@ export{ModelDeploy,ChatAPI};
 //							"valText": "#`Initializing runtime environment for ${model}, please wait...`",
 //							"localize": {
 //								"EN": "#`Initializing runtime environment for ${model}, please wait...`",
-//								"CN": "#`正在为 ${model} 初始化运行环境，请稍候...`"
+//								"CN": "#`正在为 ${model} 初始化运行环境，请稍等...`"
 //							},
 //							"localizable": true
 //						},
