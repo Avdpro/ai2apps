@@ -323,7 +323,7 @@ let ModelDeploy=async function(session){
 	
 	segs["HfDownLoad"]=HfDownLoad=async function(input){//:1IJ44IVQS0
 		let result;
-		let arg=null;
+		let arg={command:""};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"../AutoDeploy/ToolRunCommand.js");
@@ -338,7 +338,7 @@ let ModelDeploy=async function(session){
 			command += ` --local-dir ${localPath}`;
 		}
 		command += ` && echo "Successful" || echo "Failed"`;
-        command = command.replace(/\s*&&\s*echo\s+["']Successful["']\s*\|\|\s*echo\s+["']Failed["']\s*;?\s*$/, '');
+		command = command.replace(/\s*&&\s*echo\s+["']Successful["']\s*\|\|\s*echo\s+["']Failed["']\s*;?\s*$/, '');
 		arg.command = `for i in 1 2 3; do if ${command}; then echo "Successful"; break; else echo "Attempt $i failed"; [ "$i" -eq 3 ] && echo "Failed"; [ "$i" -lt 3 ] && sleep 3; fi; done`;
 		/*}#1IJ44IVQS0Input*/
 		result= await session.callAgent(agentNode,sourcePath,arg,opts);
@@ -481,6 +481,7 @@ let ModelDeploy=async function(session){
 		const timeoutSec = 5;
 		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
 		args['commands'] = toExportCommands(best);
+		args['commands'].push("HOMEBREW_NO_AUTO_UPDATE=1");
 		let detailsCN = "已选最佳源：\n";
 		let detailsEN = " Best sources selected:\n";
 		for (const [tool, info] of Object.entries(best)) {
@@ -1700,7 +1701,7 @@ export{ModelDeploy,ChatAPI};
 //							}
 //						},
 //						"source": "AutoDeploy/ToolRunCommand.js",
-//						"argument": "",
+//						"argument": "#{command:\"\"}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1IJ44KI9F1",

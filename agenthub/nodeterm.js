@@ -727,7 +727,8 @@ Terminal.prototype.write = function(data) {
 							}
 							line=this.lines[this.y + this.ybase];
 							if(!line){
-								//TODO: Add a blank line:
+								line=this.blankLine();
+								this.lines[this.y + this.ybase]=line;
 							}
 							line[this.x] = [this.curAttr, ch];
 							this.x++;

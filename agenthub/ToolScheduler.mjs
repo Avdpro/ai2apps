@@ -123,7 +123,6 @@ export async function executeTool(toolCall, toolDefinitions, session, globalCont
 	try {
 		const result = await tool.call(input, { session, globalContext });
 		const output = result.output ?? JSON.stringify(result);
-		// Pass through _finished and _status from Finish tool
 		return {
 			name: toolName,
 			toolCallId,
@@ -131,6 +130,8 @@ export async function executeTool(toolCall, toolDefinitions, session, globalCont
 			isError: !!result.error,
 			_finished: result._finished,
 			_status: result._status,
+			_purpose: result._purpose,
+			_filePath: input.file_path || null,
 		};
 	} catch (e) {
 		return {

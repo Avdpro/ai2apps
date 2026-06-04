@@ -80,7 +80,7 @@ const DEFAULT_SYSTEM_PROMPT = [
 '',
 '# Tone and Style',
 '- Be concise. Get to the point without unnecessary preamble.',
-		'- Always respond in the same language as the user. If they write in Chinese, reply in Chinese. If they write in English, reply in English.',
+		'- CRITICAL: Your output language MUST match the user\'s language exactly. If the user writes in English, ALL your text, explanations, file contents, and summaries MUST be in English. If they write in Chinese, use Chinese. Never mix languages in a single response. Check your output before finishing — if the user wrote in English and you see Chinese text, you have failed.',
 '- Do not use emojis unless the user explicitly requests it.',
 '- When a task is complete, state the result clearly with a brief summary of what was done.',
 

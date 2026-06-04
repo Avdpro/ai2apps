@@ -114,7 +114,6 @@ export async function* nativeAgenticLoop(session, params) {
 					platform,
 					model,
 					temperature: 0,
-					maxToken: 4096,
 				}, compactMessages);
 
 				const summaryText = compactResp.content || '';
@@ -147,6 +146,14 @@ export async function* nativeAgenticLoop(session, params) {
 			enable_thinking: thinkingEnabled,
 		};
 
+		// Show "Thinking..." wait block
+		let waitBlk = 0;
+		const isCN = (session.language || 'CN') === 'CN';
+		try { waitBlk = await session.callClient?.("AddWaitBlock", {}); } catch {}
+		if (waitBlk) {
+			try { session.sendToClient?.("SetWaitBlockText", { block: waitBlk, text: isCN ? "思考中..." : "Thinking..." }); } catch {}
+		}
+
 		let response;
 		let attempt = 0;
 
@@ -162,11 +169,12 @@ export async function* nativeAgenticLoop(session, params) {
 					await sleep(delay);
 					continue;
 				}
+				if (waitBlk) { try { session.sendToClient?.("RemoveWaitBlock", { block: waitBlk }); } catch {} }
 				yield { type: 'error', error: `API 调用失败: ${err.message}` };
 				return { reason: 'error', messages, error: err.message };
 			}
 		}
-
+		if (waitBlk) { try { session.sendToClient?.("RemoveWaitBlock", { block: waitBlk }); } catch {} }
 		if (!response) {
 			return { reason: 'aborted', messages };
 		}
@@ -174,7 +182,15 @@ export async function* nativeAgenticLoop(session, params) {
 		totalInputTokens += response.inputTokens || 0;
 		totalOutputTokens += response.outputTokens || 0;
 
-		const assistantText = response.content || '';
+		// Strip DSML and thinking from final display
+		let assistantText = response.content || '';
+		assistantText = assistantText.split('\n').filter(l => !l.includes('DSML') && !l.includes('｜')).join('\n');
+		const thinkIdx = assistantText.lastIndexOf('💭');
+		if (thinkIdx >= 0) {
+			const afterThink = assistantText.slice(thinkIdx);
+			const answerStart = afterThink.indexOf('\n\n');
+			if (answerStart >= 0) assistantText = afterThink.slice(answerStart + 2).trimStart();
+		}
 		if (assistantText.trim()) {
 			yield { type: 'assistant', text: assistantText, tokens: { input: totalInputTokens, output: totalOutputTokens } };
 		}
@@ -348,13 +364,10 @@ export async function* nativeAgenticLoop(session, params) {
 				if (!tr) break;
 				if (tr.name === 'TodoWrite' || tr.name === 'Finish' || tr.name === 'AskUser') break;
 				if (tr.isError) {
-					const preview = (tr.output || '').slice(0, 300);
-					try { session.addChatText?.('assistant', '❌ **' + tr.name + '**\n' + preview, opts); } catch {}
-				} else if (tr.name === 'Write' || tr.name === 'Edit') {
-					try { session.addChatText?.('assistant', tr.output, opts); } catch {}
-				} else if (tr.name === 'Read') {
-					const label = isCN ? '已读取文件.' : 'File read.';
-					try { session.addChatText?.('assistant', label, opts); } catch {}
+					// Internal errors — model handles them, no need to show user
+				} else if (tr.name === 'Write' || tr.name === 'Edit' || tr.name === 'Read') {
+					const display = tr._purpose || tr.output;
+					try { session.addChatText?.('assistant', display, opts); } catch {}
 				}
 				break;
 			}

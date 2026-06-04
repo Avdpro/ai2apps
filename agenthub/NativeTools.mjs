@@ -92,10 +92,10 @@ export const BashTool = {
 		type: 'object',
 		properties: {
 			command: { type: 'string', description: 'The bash command to execute.' },
-			purpose: { type: 'string', description: 'What this command does, in natural conversational language.' },
+			purpose: { type: 'string', description: 'What this command does, in natural conversational language. MUST use the user\'s language: if the user writes in Chinese, write this in Chinese; if the user writes in English, write this in English.' },
 			summary: { type: 'boolean', description: 'Set to true when you only care about success/failure of the command (e.g. pip install, git clone, npm install). When true, the command MUST end with: && echo "Successful" || echo "Failed". The tool will REJECT the call if this marker is missing.' },
 		},
-		required: ['command'],
+		required: ['command', 'summary'],
 	},
 	isReadOnly: false,
 	isConcurrencySafe: false,
@@ -140,7 +140,11 @@ export const BashTool = {
 				// Failed or neither found: return full output for diagnosis
 			}
 
-			return { output: truncateOutput(output, this.maxResultSizeChars) };
+			// Truncate from end — the last lines are usually the result/error that matters
+			if (output.length > this.maxResultSizeChars) {
+				output = '... (truncated)\n' + output.slice(-this.maxResultSizeChars);
+			}
+			return { output };
 		} catch (e) {
 			return { output: `Bash error: ${e.message}` };
 		}
@@ -154,10 +158,11 @@ export const ReadFileTool = {
 		type: 'object',
 		properties: {
 			file_path: { type: 'string', description: 'The absolute path to the file to read' },
+			purpose: { type: 'string', description: 'Brief description of what you are reading and why, shown to the user. Use the user\'s language.' },
 			offset: { type: 'number', description: 'Optional line number to start reading from' },
 			limit: { type: 'number', description: 'Optional max number of lines to read' },
 		},
-		required: ['file_path'],
+		required: ['file_path', 'purpose'],
 	},
 	isReadOnly: true,
 	isConcurrencySafe: true,
@@ -170,7 +175,8 @@ export const ReadFileTool = {
 			if (input.offset && input.limit) content = lines.slice(Math.max(0, input.offset), input.offset + input.limit).join('\n');
 			else if (input.offset) content = lines.slice(Math.max(0, input.offset)).join('\n');
 			else if (input.limit) content = lines.slice(0, input.limit).join('\n');
-			return { output: truncateOutput(content, this.maxResultSizeChars) };
+			const result = truncateOutput(content, this.maxResultSizeChars);
+			return { output: result, _purpose: input.purpose || null };
 		} catch (e) {
 			return { output: `Error reading file: ${e.message}`, error: e.message };
 		}
@@ -184,9 +190,10 @@ export const WriteFileTool = {
 		type: 'object',
 		properties: {
 			file_path: { type: 'string', description: 'The absolute path to the file to write' },
+			purpose: { type: 'string', description: 'What you are creating/updating and why, shown to the user. Use the user\'s language.' },
 			content: { type: 'string', description: 'The content to write to the file' },
 		},
-		required: ['file_path', 'content'],
+		required: ['file_path', 'content', 'purpose'],
 	},
 	isReadOnly: false,
 	isConcurrencySafe: false,
@@ -211,10 +218,11 @@ export const WriteFileTool = {
 				return { output: isCN ? `文件未改变: ${filePath}` : `The file ${filePath} has not been changed.` };
 			}
 			await fsp.writeFile(filePath, content, 'utf8');
+			const _p = input.purpose || null;
 			if (isCreate) {
-				return { output: isCN ? `文件已创建: ${filePath}` : `File created successfully at: ${filePath}` };
+				return { output: isCN ? `文件已创建: ${filePath}` : `File created successfully at: ${filePath}`, _purpose: _p };
 			}
-			return { output: isCN ? `文件已更新: ${filePath}` : `The file ${filePath} has been updated successfully.` };
+			return { output: isCN ? `文件已更新: ${filePath}` : `The file ${filePath} has been updated successfully.`, _purpose: _p };
 		} catch (e) {
 			return { output: isCN ? `写入文件出错: ${e.message}` : `Error writing file: ${e.message}`, error: e.message };
 		}
@@ -228,11 +236,12 @@ export const EditFileTool = {
 		type: 'object',
 		properties: {
 			file_path: { type: 'string', description: 'The absolute path to the file to modify' },
+			purpose: { type: 'string', description: 'What you are editing and why, shown to the user. Use the user\'s language.' },
 			old_string: { type: 'string', description: 'The exact text to find and replace' },
 			new_string: { type: 'string', description: 'The text to replace it with (must be different from old_string)' },
 			replace_all: { type: 'boolean', description: 'Replace all occurrences (default false)' },
 		},
-		required: ['file_path', 'old_string', 'new_string'],
+		required: ['file_path', 'old_string', 'new_string', 'purpose'],
 	},
 	isReadOnly: false,
 	isConcurrencySafe: false,
@@ -260,7 +269,7 @@ export const EditFileTool = {
 					if (oldStr === '') {
 						await fsp.mkdir(pathLib.dirname(filePath), { recursive: true });
 						await fsp.writeFile(filePath, newStr, 'utf8');
-						return { output: `File created: ${filePath}` };
+						return { output: `File created: ${filePath}`, _purpose: input.purpose || null };
 					}
 					return { output: `File does not exist: ${filePath}`, error: 'not found' };
 				}
@@ -310,9 +319,9 @@ export const EditFileTool = {
 			await fsp.writeFile(filePath, updated, 'utf8');
 
 			if (replaceAll) {
-				return { output: isCN ? `文件已更新: ${filePath}，共替换 ${matchCount} 处。` : `The file ${filePath} has been updated. All ${matchCount} occurrences were replaced.` };
+				return { output: isCN ? `文件已更新: ${filePath}，共替换 ${matchCount} 处。` : `The file ${filePath} has been updated. All ${matchCount} occurrences were replaced.`, _purpose: input.purpose || null };
 			}
-			return { output: isCN ? `文件已更新: ${filePath}` : `The file ${filePath} has been updated successfully.` };
+			return { output: isCN ? `文件已更新: ${filePath}` : `The file ${filePath} has been updated successfully.`, _purpose: input.purpose || null };
 		} catch (e) {
 			return { output: isCN ? `编辑文件出错: ${e.message}` : `Error editing file: ${e.message}`, error: e.message };
 		}
