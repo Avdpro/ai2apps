@@ -92,7 +92,7 @@ let NativeAutoDeployAgent=async function(session){
 			
 			// Run Claude Code for the full pipeline
 			const deployResult = await runAgenticTask(session, {
-				prompt,
+				prompt: "Start",
 				tools: getDeployTools(),
 				model: 'deepseek/deepseek-v4-pro',
 				platform: 'OpenRouter',
@@ -101,6 +101,7 @@ let NativeAutoDeployAgent=async function(session){
 				userContext: {
 					model: model,
 					repoUrl: url,
+					requirements: prompt,
 				},
 				headerOpts: opts,
 				cwd: process.env.HOME || '/tmp',
@@ -139,7 +140,7 @@ let NativeAutoDeployAgent=async function(session){
 			throw new Error(error);
 			/*}#1JN92GB540ErrorCode*/
 		}
-		return {seg:UpdateDeploy,result:(result),preSeg:"1JN92GB540",outlet:"1JN92GJ540"};
+		return {result:result};
 	};
 	AutoDeploy.jaxId="1JN92GB540"
 	AutoDeploy.url="AutoDeploy@"+agentURL
@@ -427,7 +428,7 @@ let NativeAutoDeployAgent=async function(session){
 		const timeoutSec = 5;
 		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
 		args['commands'] = toExportCommands(best);
-		args['commands'].push("HOMEBREW_NO_AUTO_UPDATE=1");
+		args['commands'].push("export HOMEBREW_NO_AUTO_UPDATE=1");
 		let detailsCN = "已选最佳源：\n";
 		let detailsEN = " Best sources selected:\n";
 		for (const [tool, info] of Object.entries(best)) {
@@ -590,8 +591,7 @@ export{NativeAutoDeployAgent};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							},
-//							"linkedSeg": "1JNE5FQ6D0"
+//							}
 //						},
 //						"outlets": {
 //							"attrs": []

@@ -72,9 +72,9 @@ const DEFAULT_SYSTEM_PROMPT = [
 '- Commands MUST be a single-line string. Use && or ; to chain. NEVER include literal newlines (\\n).',
 '- NEVER use "conda run -n ENV command". The terminal is persistent: "conda activate ENV" once, then run commands directly in later Bash calls.',
 '- NEVER use bare "&" to background — background output blocks idle detection, hanging the terminal. If you need a server: Bash call 1: "nohup COMMAND > /dev/null 2>&1 & echo $!", note the PID. Bash call 2: test with curl. Bash call 3: "kill PID" to stop it.',
-		'- Use summary=true for install commands (pip install, conda create, git clone, npm install) that only need success/failure. When summary=true, the command MUST end with: && echo "Successful" || echo "Failed". Use summary=false (or omit) for commands whose output you need to read (ls, cat, grep, python, curl).',
-'- For pip/conda installs: always add "-y" or "--yes".',
-	'- curl/wget/ping commands MUST include timeout: "curl --connect-timeout 5 --max-time 10 URL". Otherwise they hang forever if the service is not responding.',
+		'- Use summary=true for install commands (pip install, conda create, git clone, npm install, model downloads) that only need success/failure. When summary=true, the command MUST end with: && echo "Successful" || echo "Failed".',
+		'- NEVER use "2>&1 | tail -5" or similar output-hiding tricks. The user needs to see the actual output of commands — do NOT truncate, hide, or suppress command output. If a command produces too much output, the system will handle truncation automatically.',
+		'- NEVER include shell prompt artifacts in commands: no "(env_name)", no "__AGENT_SHELL__>", no "source conda.sh" in the middle of commands. The terminal is already in the right environment.',
 
 // --- Tone and Style (getSimpleToneAndStyleSection) ---
 '',
@@ -261,7 +261,7 @@ export async function gatherSystemContext(cwd) {
 
 // ---- Auto-Compact (adapted from Claude Code's compact.ts and autoCompact.ts) ----
 
-const AUTO_COMPACT_THRESHOLD = 200000; // tokens — conservative for 1M context
+const AUTO_COMPACT_THRESHOLD = 600000; // tokens — conservative for 1M context
 
 export const COMPACT_PROMPT = [
 'CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.',

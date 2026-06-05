@@ -5,23 +5,24 @@ import Terminal  from './nodeterm.js';
 
 //----------------------------------------------------------------------------
 async function getCondaPath() {
-		let execPromise = promisify(child_process.exec);
-		try {
-			const { stdout } = await execPromise('conda env list --json');
-			const root = JSON.parse(stdout).envs[0];
-			return root;
-		} catch (e) {
-			process.stderr.write("[getCondaPath] conda command failed: " + e.message + "\n");
-		}
-		const { stat } = await import('fs/promises');
-		const home = process.env.HOME || '/tmp';
-		for (const p of [home + '/miniconda3', home + '/anaconda3', '/opt/miniconda3', '/opt/anaconda3']) {
-			try { await stat(p + '/etc/profile.d/conda.sh'); process.stderr.write("[getCondaPath] fallback found: " + p + "\n"); return p; } catch {}
-		}
-		return null;
+	let execPromise = promisify(child_process.exec);
+	try {
+		const { stdout } = await execPromise('conda env list --json', {env: process.env});
+		const root = JSON.parse(stdout).envs[0];
+		return root;
+	} catch (e) {
+		process.stderr.write("[getCondaPath] conda command failed: " + e.message + "\n");
 	}
+	const { stat } = await import('fs/promises');
+	const home = process.env.HOME || '/tmp';
+	for (const p of [home + '/miniconda3', home + '/anaconda3', '/opt/miniconda3', '/opt/anaconda3']) {
+		try { await stat(p + '/etc/profile.d/conda.sh'); process.stderr.write("[getCondaPath] fallback found: " + p + "\n"); return p; } catch {}
+	}
+	return null;
+}
 
 const idleTime=15000;
+const passwordPromptPattern = /\[sudo\]\s*password|[Pp]assword:\s*$|\(current\)\s*UNIX\s*password:/;
 
 //****************************************************************************
 //BashFrame
@@ -54,6 +55,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 		this.waitIdleCallback=null;
 		this.idleTimer=null;
 		this.isIdle=false;
+		this.waitingForInput=false;
 	};
 	agentNodeTerminal=AgentNodeTerminal.prototype={};
 
@@ -102,8 +104,11 @@ let AgentNodeTerminal,agentNodeTerminal;
 				const lastLine = lines[lines.length - 1].trim();
 
 				const promptMatch = lastLine.match(/(\([^)]+\)\s*)?__AGENT_SHELL__>$/);
-				if (promptMatch){
-					// 触发 idle 状态，OnIdle 会统一处理所有回调
+				const passwordMatch = lastLine.match(passwordPromptPattern);
+				if (promptMatch || passwordMatch){
+					if(passwordMatch){
+						this.waitingForInput=true;
+					}
 					this.OnIdle();
 				}else{
 					if(this.idleTimer){
@@ -203,6 +208,7 @@ let AgentNodeTerminal,agentNodeTerminal;
 
 	//------------------------------------------------------------------------
 	agentNodeTerminal.write=function(text){
+		this.waitingForInput=false;
 		this.waitBuf="";
 		this.shell.write(text);
 		this.isIdle=false;
@@ -256,8 +262,8 @@ let AgentNodeTerminal,agentNodeTerminal;
 		await pms;
 	};
 
-		//------------------------------------------------------------------------
-		agentNodeTerminal.runCommands=async function(commands,opts){
+	//------------------------------------------------------------------------
+	agentNodeTerminal.runCommands=async function(commands,opts){
 		let command,cntLen,content,i,n;
 		if(!commands){
 			return;

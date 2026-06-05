@@ -62,7 +62,7 @@ export async function* nativeAgenticLoop(session, params) {
 		platform = 'OpenRouter',
 		maxTurns = 30,
 		temperature = 0.7,
-		maxTokens = 16384,
+		maxTokens = 32768,
 		thinkingEnabled = true,
 		abortController = null,
 		globalContext = {},
@@ -97,7 +97,7 @@ export async function* nativeAgenticLoop(session, params) {
 		yield { type: 'progress', text: `第 ${turnCount}/${maxTurns} 轮...` };
 
 		// ---- Auto-Compact ----
-		const estimatedTokens = estimateTotalTokens(messages, totalInputTokens);
+		const estimatedTokens = totalInputTokens;
 		if (shouldAutoCompact(estimatedTokens, compactFailures)) {
 			yield { type: 'progress', text: `上下文已达 ${Math.round(estimatedTokens/1000)}K tokens，正在压缩...` };
 			try {
@@ -114,6 +114,7 @@ export async function* nativeAgenticLoop(session, params) {
 					platform,
 					model,
 					temperature: 0,
+					max_tokens: 32768
 				}, compactMessages);
 
 				const summaryText = compactResp.content || '';
@@ -127,6 +128,7 @@ export async function* nativeAgenticLoop(session, params) {
 					...toKeep,
 				];
 				compactFailures = 0;
+				totalInputTokens = 0;
 				yield { type: 'progress', text: `压缩完成，释放约 ${Math.round(estimatedTokens/1000)}K tokens。` };
 			} catch (e) {
 				compactFailures++;
@@ -140,7 +142,7 @@ export async function* nativeAgenticLoop(session, params) {
 		const opts = {
 			platform, model,
 			temperature,
-			maxToken: maxTokens,
+			maxToken: 32768,
 			apis: { functions: functionDefs, stubs },
 			parallelFunction: true,
 			enable_thinking: thinkingEnabled,
@@ -179,7 +181,7 @@ export async function* nativeAgenticLoop(session, params) {
 			return { reason: 'aborted', messages };
 		}
 
-		totalInputTokens += response.inputTokens || 0;
+		totalInputTokens = response.inputTokens || 0;
 		totalOutputTokens += response.outputTokens || 0;
 
 		// Strip DSML and thinking from final display
@@ -267,7 +269,7 @@ export async function* nativeAgenticLoop(session, params) {
  *
  * @returns {{ text: string, reason: string, toolCount: number }}
  */
-	export async function runAgenticTask(session, params) {
+export async function runAgenticTask(session, params) {
 	const {
 		prompt,
 		sessionKey = null,
@@ -280,7 +282,7 @@ export async function* nativeAgenticLoop(session, params) {
 		userContext = {},
 		headerOpts = null,
 		cwd = null,
-			bashId = null,
+		bashId = null,
 	} = params;
 
 	const globalContext = session.globalContext || {};
@@ -304,16 +306,16 @@ export async function* nativeAgenticLoop(session, params) {
 		messages.push({ role: 'user', content: prompt });
 		storedSystemContext = stored.systemContext;
 	} else {
-			// New session: use provided bashId or create one
-			if (bashId) {
-				globalContext.nativeLoopBashId = bashId;
-			} else {
-				try {
-					const args = { bashId: '', action: 'Create', commands: '', options: { client: true, initConda: true } };
-					const result = await session.pipeChat('/@AgentBuilder/Bash.js', args, false);
-					globalContext.nativeLoopBashId = String(result || '');
-				} catch (e) {}
-			}
+		// New session: use provided bashId or create one
+		if (bashId) {
+			globalContext.nativeLoopBashId = bashId;
+		} else {
+			try {
+				const args = { bashId: '', action: 'Create', commands: '', options: { client: true, initConda: true } };
+				const result = await session.pipeChat('/@AgentBuilder/Bash.js', args, false);
+				globalContext.nativeLoopBashId = String(result || '');
+			} catch (e) {}
+		}
 
 		storedSystemContext = {};
 		try {

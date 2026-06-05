@@ -91,9 +91,9 @@ export const BashTool = {
 	inputSchema: {
 		type: 'object',
 		properties: {
-			command: { type: 'string', description: 'The bash command to execute.' },
+			command: { type: 'string', description: 'The bash command to execute. Do NOT use "2>&1 | tail" or similar to hide output — the system handles truncation.' },
 			purpose: { type: 'string', description: 'What this command does, in natural conversational language. MUST use the user\'s language: if the user writes in Chinese, write this in Chinese; if the user writes in English, write this in English.' },
-			summary: { type: 'boolean', description: 'Set to true when you only care about success/failure of the command (e.g. pip install, git clone, npm install). When true, the command MUST end with: && echo "Successful" || echo "Failed". The tool will REJECT the call if this marker is missing.' },
+			summary: { type: 'boolean', description: 'Set to true when you only care about success/failure of the command (e.g. pip install, git clone, npm install). When true, the command MUST end with: && echo "Successful" || echo "Failed". The tool will REJECT the call if this marker is missing. If you want to see the complete output of the command, you must set to false.' },
 		},
 		required: ['command', 'summary'],
 	},

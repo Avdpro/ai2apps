@@ -481,7 +481,7 @@ let ModelDeploy=async function(session){
 		const timeoutSec = 5;
 		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
 		args['commands'] = toExportCommands(best);
-		args['commands'].push("HOMEBREW_NO_AUTO_UPDATE=1");
+		args['commands'].push("export HOMEBREW_NO_AUTO_UPDATE=1");
 		let detailsCN = "已选最佳源：\n";
 		let detailsEN = " Best sources selected:\n";
 		for (const [tool, info] of Object.entries(best)) {
