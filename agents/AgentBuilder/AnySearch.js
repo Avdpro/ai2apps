@@ -53,7 +53,7 @@ let AnySearch=async function(session){
 	segs["WriteHtml"]=WriteHtml=async function(input){//:1JCIQ227E0
 		let prompt;
 		let $platform="OpenRouter";
-		let $model="openai/gpt-4.1";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1JCIQ227E0Input*/
@@ -494,7 +494,7 @@ export{AnySearch};
 //							}
 //						},
 //						"platform": "OpenRouter",
-//						"mode": "openai/gpt-4.1",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`\n## Role\nYou are an AI agent that creates simple HTML pages according to user requirements.\n## Dialogue\n- The user will provide the content to be rendered in HTML: \\${input.userPrompt}\n- Based on the given content, reply to the user with a JSON object.\n- If you are able to generate the HTML page based on the information provided, include the complete HTML page code (including the necessary CSS/JS and external scripts) in the \"html\" property of the JSON. For example:\n\\`\\`\\`\n{ \"html\":\"<html>...</html>\" }\n\\`\\`\\`\n## Reply JSON Object Properties\n- \"html\" {string}: The HTML page code you generate. Make sure it is a complete HTML page code (including all necessary CSS/JS and any required external scripts).`",
