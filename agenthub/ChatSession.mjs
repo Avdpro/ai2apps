@@ -846,6 +846,20 @@ class ChatSession {
 	}
 
 	//-----------------------------------------------------------------------
+	_aiCallErrorMessage(code, info) {
+		const msg = String(info || '');
+		const isCN = (this.language || 'CN') === 'CN';
+		if (code === 401 || /Gas is not enough|Not enough gas|活力不足/i.test(msg)) {
+			if (isCN) return `活力值不足，无法发起 AI 调用。请充值后重试。`;
+			return `Not enough gas to make this AI call. Please recharge and try again.`;
+		}
+		if (code === 403 || /token invalid/i.test(msg)) {
+			if (isCN) return `用户认证失败，请重新登录后再试。`;
+			return `Authentication failed. Please log in again.`;
+		}
+		return `AIStreamCall failed: ${code}:${info}`;
+	}
+
 	async callHubAI(opts, messages, waitBlk) {
 		let res;
 		const callVO = {
@@ -888,7 +902,7 @@ class ChatSession {
 		console.log(callVO);
 		res = await this.callHub("AICall", callVO);
 		if (res.code !== 200) {
-			throw new Error(`AIStreamCall failed: ${res.code}:${res.info}`);
+			throw new Error(this._aiCallErrorMessage(res.code, res.info));
 		}
 
 		// Track gas usage if available
@@ -952,7 +966,7 @@ class ChatSession {
 		console.log(callVO);
 		res = await this.callHub("AICallStream", callVO);
 		if (res.code !== 200) {
-			throw new Error(`AIStreamCall failed: ${res.code}:${res.info}`);
+			throw new Error(this._aiCallErrorMessage(res.code, res.info));
 		}
 
 		const streamId = res.streamId;
@@ -961,7 +975,7 @@ class ChatSession {
 			res = await this.callHub("readAIChatStream", { streamId });
 			console.log(`[DBG] readAIChatStream res: code=${res.code}, closed=${res.closed}, info=${res.info}, content_len=${res.message?.length}`);
 			if (res.code !== 200) {
-				throw new Error(`AIStreamCall failed: ${res.code}: ${res.info}`);
+				throw new Error(this._aiCallErrorMessage(res.code, res.info));
 			}
 			const content = res.message || "";
 			streamObj.content = content;
@@ -1117,7 +1131,7 @@ class ChatSession {
 		console.log(`Call LLM Raw: ${JSON.stringify(callVO)}`);
 		res = await this.callHub("AICall", callVO);
 		if (res.code !== 200) {
-			throw new Error(`AICall failed: ${res.code}:${res.info}`);
+			throw new Error(this._aiCallErrorMessage(res.code, res.info));
 		}
 
 		// Track gas usage
@@ -1141,6 +1155,100 @@ class ChatSession {
 			functionCall: res.functionCall || null,
 			inputTokens: res.costInfo?.prompt_tokens || 0,
 			outputTokens: res.costInfo?.completion_tokens || 0,
+		};
+	}
+
+	//-----------------------------------------------------------------------
+	// Streaming variant of callHubLLMRaw — returns tool calls with real-time content.
+	// Like callHubLLM but does NOT auto-execute tools. Uses AICallStream + polling.
+	async callHubLLMRawStream(opts, messages, onContent = null) {
+		let res;
+		const callVO = {
+			platform: opts.platform || "OpenAI",
+			model: opts.model || opts.mode || "gpt-4o-mini",
+			temperature: opts.temperature || 0,
+			max_tokens: opts.maxToken || 4096,
+			messages,
+			top_p: opts.topP || 1,
+			presence_penalty: opts.prcP || 0,
+			frequency_penalty: opts.fqcP || 0,
+			response_format: opts.responseFormat || "text",
+			enable_thinking: opts.enable_thinking || false
+		};
+		{
+			let models = this.globalContext.models || {};
+			let name = callVO.model;
+			if (name[0] === "$") {
+				name = name.substring(1);
+				let vo = models[name];
+				if (!vo) throw Error(`Can't find platform shortcut: ${name}`);
+				callVO.platform = vo.platform;
+				callVO.model = vo.model;
+			}
+		}
+		const seed = opts.seed;
+		if (seed) callVO.seed = seed;
+
+		const apis = opts.apis;
+		if (apis) {
+			callVO.functions = apis.functions;
+			if (apis.functions && apis.functions.length > 0) {
+				callVO.tools = apis.functions.map(f => ({ type: 'function', function: f }));
+			}
+			if (opts.parallelFunction) callVO.parallelFunction = true;
+		}
+
+		console.log(`Call LLM Raw Stream: ${JSON.stringify({ model: callVO.model, platform: callVO.platform })}`);
+		res = await this.callHub("AICallStream", callVO);
+		if (res.code !== 200) throw new Error(this._aiCallErrorMessage(res.code, res.info));
+
+		const streamId = res.streamId;
+		const streamObj = {};
+		while (!res.closed) {
+			res = await this.callHub("readAIChatStream", { streamId });
+			if (res.code !== 200) throw new Error(this._aiCallErrorMessage(res.code, res.info));
+			if (res.message) {
+				// When functionCall/toolCalls arrive, res.message is JSON — not displayable text
+				if (!res.functionCall && !res.toolCalls) {
+					streamObj.content = res.message;
+					if (onContent) {
+					// Strip DSML tool call XML artifacts from display
+						let displayText = res.message;
+						displayText = displayText.split('\n').filter(l =>
+							!l.includes('DSML') && !l.includes('tool_calls') && !l.includes('｜')
+						).join('\n');
+						onContent(displayText);
+				}
+				} else {
+					// Don't overwrite content with tool calls JSON
+					// streamObj.content stays as the previous text content
+				}
+			}
+			if (res.functionCall) streamObj.functionCall = res.functionCall;
+			if (res.toolCalls) streamObj.toolCalls = res.toolCalls;
+			if (res.inputTokens >= 0) streamObj.inputTokens = res.inputTokens;
+			if (res.outputTokens >= 0) streamObj.outputTokens = res.outputTokens;
+			if (res.gasUsed !== undefined) streamObj.gasUsed = res.gasUsed;
+			if (res.costInfo) streamObj.costInfo = res.costInfo;
+		}
+
+		if (streamObj.gasUsed && streamObj.gasUsed > 0) {
+			this.totalGasUsed += streamObj.gasUsed;
+			this.gasBreakdown.push({
+				segment: this.curAISeg?.jaxId || this.curAISeg?.id || 'native_loop_stream',
+				model: callVO.model, platform: callVO.platform,
+				gas: streamObj.gasUsed,
+				cost: streamObj.costInfo?.total_cost_usd || 0,
+				timestamp: Date.now()
+			});
+		}
+
+		return {
+			content: streamObj.content || '',
+			toolCalls: streamObj.toolCalls || null,
+			functionCall: streamObj.functionCall || null,
+			inputTokens: streamObj.inputTokens ?? 0,
+			outputTokens: streamObj.outputTokens ?? 0,
 		};
 	}
 

@@ -33,6 +33,11 @@ function isRetryableError(err) {
 	return false;
 }
 
+function isGasError(err) {
+	const msg = String(err.message || err);
+	return /活力值不足|not enough gas|请充值|recharge/i.test(msg);
+}
+
 // ---- Per-model defaults (tuned for tool-calling accuracy) ----
 
 /**
@@ -165,6 +170,28 @@ export async function* nativeAgenticLoop(session, params) {
 				response = await session.callHubLLMRaw(opts, messagesForAPI);
 				if (response) break;
 			} catch (err) {
+				// Gas error — show retry button, don't auto-retry
+				if (isGasError(err)) {
+					if (waitBlk) { try { session.sendToClient?.("RemoveWaitBlock", { block: waitBlk }); } catch {} }
+					const errMsg = String(err.message || err);
+					const isCN = (session.language || 'CN') === 'CN';
+					try {
+						const rawResult = await session.callClient?.("AskUserRaw", {
+							type: "confirm",
+							text: errMsg,
+							button1: isCN ? '再试一次' : 'Retry',
+							button2: isCN ? '中止' : 'Abort'
+						});
+						const tryAgain = Array.isArray(rawResult) ? rawResult[1] : rawResult;
+						if (tryAgain) {
+							attempt = 0;
+							try { waitBlk = await session.callClient?.("AddWaitBlock", {}); } catch {}
+							continue;
+						}
+					} catch {}
+					yield { type: 'error', error: errMsg };
+					return { reason: 'error', messages, error: errMsg };
+				}
 				if (isRetryableError(err)) {
 					const delay = Math.min(Math.pow(2, Math.min(attempt, 10)) * 500, 32000);
 					yield { type: 'progress', text: `API 调用失败，${(delay / 1000).toFixed(1)} 秒后重试 (第 ${attempt} 次)...` };
