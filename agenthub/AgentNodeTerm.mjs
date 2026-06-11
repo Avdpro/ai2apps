@@ -7,8 +7,9 @@ import Terminal  from './nodeterm.js';
 async function getCondaPath() {
 	let execPromise = promisify(child_process.exec);
 	try {
+		process.stderr.write(process.env.PATH + "\n");
 		const { stdout } = await execPromise('conda env list --json', {env: process.env});
-		const root = JSON.parse(stdout).envs[0];
+		const root = JSON.parse(stdout).active_prefix;
 		return root;
 	} catch (e) {
 		process.stderr.write("[getCondaPath] conda command failed: " + e.message + "\n");
