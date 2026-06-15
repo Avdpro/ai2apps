@@ -140,7 +140,7 @@ let NativeAutoDeployAgent=async function(session){
 			throw new Error(error);
 			/*}#1JN92GB540ErrorCode*/
 		}
-		return {result:result};
+		return {seg:UpdateDeploy,result:(result),preSeg:"1JN92GB540",outlet:"1JN92GJ540"};
 	};
 	AutoDeploy.jaxId="1JN92GB540"
 	AutoDeploy.url="AutoDeploy@"+agentURL
@@ -426,14 +426,14 @@ let NativeAutoDeployAgent=async function(session){
 		let content=(($ln==="CN")?("正在测速选择最佳下载源，请稍等..."):("Measuring speed to find the best download source, please wait..."));
 		session.addChatText(role,content,opts);
 		const timeoutSec = 5;
-		const best = selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
+		const best = await selectBestMirrors({ tools: ['github', 'pip', 'conda', 'npm', 'brew', 'huggingface'], timeoutSec });
 		args['commands'] = toExportCommands(best);
 		args['commands'].push("export HOMEBREW_NO_AUTO_UPDATE=1");
 		let detailsCN = "已选最佳源：\n";
 		let detailsEN = " Best sources selected:\n";
 		for (const [tool, info] of Object.entries(best)) {
-			detailsCN += `- **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
-			detailsEN += `- **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
+			detailsCN += `- ✅ **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
+			detailsEN += `- ✅ **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
 		}
 		content = ($ln === "CN") 
 			? ("测速完成，已为您配置最佳下载源。" + detailsCN) 
@@ -591,7 +591,8 @@ export{NativeAutoDeployAgent};
 //							"attrs": {
 //								"id": "Result",
 //								"desc": "输出节点。"
-//							}
+//							},
+//							"linkedSeg": "1JNE5FQ6D0"
 //						},
 //						"outlets": {
 //							"attrs": []

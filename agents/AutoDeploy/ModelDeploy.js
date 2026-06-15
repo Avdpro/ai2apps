@@ -485,8 +485,8 @@ let ModelDeploy=async function(session){
 		let detailsCN = "已选最佳源：\n";
 		let detailsEN = " Best sources selected:\n";
 		for (const [tool, info] of Object.entries(best)) {
-			detailsCN += `- **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
-			detailsEN += `- **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
+			detailsCN += `- ✅ **${tool}**: ${info.mirrorName.cn} (${info.speed} MB/s)\n`;
+			detailsEN += `- ✅ **${tool}**: ${info.mirrorName.en} (${info.speed} MB/s)\n`;
 		}
 		content = ($ln === "CN") 
 			? ("测速完成，已为您配置最佳下载源。" + detailsCN) 

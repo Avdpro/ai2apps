@@ -9,6 +9,52 @@
 //   - 本模块返回最佳 URL + 生成 export 命令，由调用方通过环境变量设置（参考 ModelDeploy.js 的 SetMirror）
 
 import { execSync } from 'child_process';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+
+// ═══════════════════════════════════════════════════════════════
+// 缓存
+// ═══════════════════════════════════════════════════════════════
+
+const CACHE_DIR = join(homedir(), '.modelhunt');
+const CACHE_FILE = join(CACHE_DIR, '.mirror_cache.json');
+const CACHE_TTL = 24 * 60 * 60 * 1000;      // 24 小时
+const SPEED_THRESHOLD = 0.5;                 // 当前速度 ≥ 上次的 50%
+
+function readCache() {
+	try {
+		if (!existsSync(CACHE_FILE)) {
+			console.log(`[MirrorSelector] 缓存文件不存在: ${CACHE_FILE}`);
+			return null;
+		}
+		const raw = readFileSync(CACHE_FILE, 'utf-8');
+		const data = JSON.parse(raw);
+		if (!data || !data.timestamp || !data.results) {
+			console.log(`[MirrorSelector] 缓存格式无效`);
+			return null;
+		}
+		if (Date.now() - data.timestamp > CACHE_TTL) {
+			console.log(`[MirrorSelector] 缓存已过期 (${Math.round((Date.now() - data.timestamp) / 3600000)}h)`);
+			return null;
+		}
+		console.log(`[MirrorSelector] 缓存命中，年龄: ${Math.round((Date.now() - data.timestamp) / 60000)}min`);
+		return data;
+	} catch (e) {
+		console.log(`[MirrorSelector] 读取缓存异常: ${e.message}`);
+		return null;
+	}
+}
+
+function writeCache(results) {
+	try {
+		if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+		writeFileSync(CACHE_FILE, JSON.stringify({ timestamp: Date.now(), results }, null, 2));
+		console.log(`[MirrorSelector] 缓存已写入: ${CACHE_FILE}`);
+	} catch (e) {
+		console.log(`[MirrorSelector] 写入缓存失败: ${e.message}`);
+	}
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 镜像站定义（含模糊测速 URL）
@@ -230,7 +276,7 @@ function measureSpeed(url, timeoutSec = 5) {
 				return result; // 成功抢救出速度数据
 			}
 		}
-		
+
 		const stderr = (e.stderr || "").toString().trim();
 		return { speed: -1, error: stderr || e.message || "unknown" };
 	}
@@ -248,10 +294,10 @@ function parseCurlOutput(stdout) {
 	// httpCode 为 0 表示可能彻底没连上，或者刚连上就被掐断了
 	if (httpCode !== 200 && httpCode !== 0) return { speed: -1, error: `HTTP ${httpCode}` };
 	if (isNaN(speedBytes) || speedBytes <= 0) return { speed: -1, error: `zero speed` };
-	
+
 	// 转换为 MB/s (1 MB = 1024 * 1024 Bytes)，并保留两位小数
 	const speedMBps = Number((speedBytes / (1024 * 1024)).toFixed(2));
-	
+
 	return { speed: speedMBps };
 }
 /**
@@ -269,16 +315,16 @@ function rankMirrors(mirrorKeys, timeoutSec = 5) {
 			results.push({ key, speed: -1 });
 			continue;
 		}
-		
+
 		const { speed, error } = measureSpeed(mirror.speedUrl, timeoutSec);
-		
+
 		// 实时输出测速结果
 		if (speed === -1) {
 			console.warn(`[MirrorSelector] ❌ ${mirror.name.en}: 测速失败 (${error})`);
 		} else {
 			console.log(`[MirrorSelector] ✅ ${mirror.name.en}: ${speed} MB/s`);
 		}
-		
+
 		results.push({ key, speed });
 	}
 
@@ -315,6 +361,45 @@ function rankMirrors(mirrorKeys, timeoutSec = 5) {
  * @returns {Object}  { pip: {url, mirror, speed}, npm: {...}, ... }
  */
 function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github', 'huggingface'], timeoutSec = 5 } = {}) {
+	// ── 尝试从缓存读取 ──
+	const cache = readCache();
+	if (cache) {
+		// 收集缓存里的 mirror key 集合
+		const cachedKeys = new Set();
+		for (const tool of tools) {
+			const entry = cache.results[tool];
+			if (entry && entry.mirror) cachedKeys.add(entry.mirror);
+		}
+
+		if (cachedKeys.size > 0) {
+			console.log(`[MirrorSelector] 缓存命中，先测 ${cachedKeys.size} 个历史最佳 mirror...`);
+			const cachedRanked = rankMirrors([...cachedKeys], timeoutSec);
+
+			// 检查每个 tool 的缓存 mirror 是否仍然够快
+			let allGood = true;
+			for (const tool of tools) {
+				const cached = cache.results[tool];
+				if (!cached || !cached.mirror) { allGood = false; break; }
+				const current = cachedRanked.find(r => r.key === cached.mirror);
+				if (!current || current.speed <= 0) { allGood = false; break; }
+				if (current.speed < cached.speed * SPEED_THRESHOLD) {
+					console.log(`[MirrorSelector] ${tool}: ${cached.mirror} 速度从 ${cached.speed} 降到 ${current.speed} MB/s (<50%)，全量重测`);
+					allGood = false;
+					break;
+				}
+			}
+
+			if (allGood) {
+				console.log(`[MirrorSelector] 缓存 mirror 速度均在阈值内，跳过其余测速`);
+				const ranked = cachedRanked;
+				const result = buildResult(tools, ranked);
+				writeCache(makeCacheEntries(tools, result));
+				return result;
+			}
+		}
+	}
+
+	// ── 全量测速 ──
 	// 1. 收集所有涉及的唯一镜像站
 	const uniqueMirrors = new Set();
 	for (const tool of tools) {
@@ -327,7 +412,18 @@ function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github', '
 
 	// 2. 对所有唯一镜像站测速、排序
 	const ranked = rankMirrors([...uniqueMirrors], timeoutSec);
-	// 3. 为每个工具选择最快且可用的镜像
+
+	// 3. 构建结果
+	const result = buildResult(tools, ranked);
+
+	// 4. 写入缓存
+	writeCache(makeCacheEntries(tools, result));
+
+	return result;
+}
+
+// 从排序结果中为每个 tool 选最快 mirror
+function buildResult(tools, ranked) {
 	const result = {};
 	for (const tool of tools) {
 		const def = TOOLS[tool];
@@ -346,7 +442,6 @@ function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github', '
 				bestSpeed = speed;
 				break;
 			}
-
 		}
 
 		// 第二轮：全部测速失败时，取列表第一个可用的（兜底）
@@ -358,7 +453,6 @@ function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github', '
 					bestSpeed = 0;
 					break;
 				}
-
 			}
 		}
 
@@ -369,8 +463,19 @@ function selectBestMirrors({ tools = ['pip', 'conda', 'npm', 'brew', 'github', '
 			speed: bestSpeed,
 		};
 	}
-
 	return result;
+}
+
+// 将 result 转为缓存格式 { pip: {mirror, speed}, conda: {mirror, speed}, ... }
+function makeCacheEntries(tools, result) {
+	const entries = {};
+	for (const tool of tools) {
+		const info = result[tool];
+		if (info && info.mirror) {
+			entries[tool] = { mirror: info.mirror, speed: info.speed };
+		}
+	}
+	return entries;
 }
 
 // ═══════════════════════════════════════════════════════════════
