@@ -1,15 +1,16 @@
 //Auto genterated by Cody
-import pathLib from "path";
-import Base64 from "../../agenthub/base64.mjs";
-import {trimJSON} from "../../agenthub/ChatSession.mjs";
-import {URL} from "url";
+import {$P,VFACT,callAfter,sleep} from "/@vfact";
+import pathLib from "/@path";
+import inherits from "/@inherits";
+import Base64 from "/@tabos/utils/base64.js";
+import {trimJSON} from "/@aichat/utils.js";
 /*#{1HDBOSUN90MoreImports*/
-import fsp from 'fs/promises';
+import {tabOS,tabFS,tabNT} from "/@tabos";
 /*}#1HDBOSUN90MoreImports*/
-const agentURL=decodeURIComponent((new URL(import.meta.url)).pathname);
+const agentURL=(new URL(import.meta.url)).pathname;
 const baseURL=pathLib.dirname(agentURL);
-const basePath=baseURL.startsWith("file://")?pathLib.fileURLToPath(baseURL):baseURL;
-const VFACT=null;
+const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
+const $ln=VFACT.lanCode||"EN";
 const argsTemplate={
 	properties:{
 		"model":{
@@ -59,7 +60,18 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
 }
 
 async function getInputModalityOutputTokens(modelName) {
+	const safeModelName = modelName.replace(/[\/\\]/g, '_');
+	const cacheFilePath = pathLib.join("/doc/ModelHunt", `cache_${safeModelName}.json`);
 	try {
+		let cachedData = await tabFS.readFile(cacheFilePath, "utf8");
+		if (cachedData) {
+			return JSON.parse(cachedData);
+		}
+	} catch (e) {
+		console.log(`[FS Cache Miss]`);
+	}
+	try {
+		
 		const response = await fetchWithRetry(
 			'https://openrouter.ai/api/v1/models?output_modalities=all',
 			{
@@ -85,7 +97,19 @@ async function getInputModalityOutputTokens(modelName) {
 		const outputModalities = model.architecture?.output_modalities || [];
 		const max_tokens = model.top_provider?.max_completion_tokens || 2048;
 		const thinking = model.supported_parameters?.includes("reasoning") || false;
-
+		const resultObj = {
+			modalities: inputModalities,
+			max_tokens,
+			output: outputModalities,
+			thinking
+		};
+		try {
+			await tabFS.writeFile(cacheFilePath, JSON.stringify(resultObj, null, 2), "utf8");
+			console.log(`[FS Cache Saved]: ${cacheFilePath}`);
+		} catch (writeErr) {
+			console.warn(`[FS Cache Error]:`, writeErr);
+		}
+		
 		return {
 			modalities: inputModalities,
 			max_tokens,
@@ -93,13 +117,13 @@ async function getInputModalityOutputTokens(modelName) {
 			thinking
 		};
 	} catch (error) {
-		console.error('Error fetching model data:', error.message);
-		throw error;
+		throw new Error('Error fetching model data:', error.message);
 	}
 }
 /*}#1HDBOSUN90StartDoc*/
 //----------------------------------------------------------------------------
 let OpenrouterAgent=async function(session){
+	console.log("OR_V2: execChat will _loadState from",sessionStorage.getItem("or_tab_key")||"no key yet");
 	let model;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
@@ -107,6 +131,18 @@ let OpenrouterAgent=async function(session){
 	let FixArgs,GetInfo,Welcome,AskInput,Generate2,Output2,Check,Generate1,AskReasoning,Reasoning,Type,Ask1,GenerateImage,OutputImage,Ask2,GenerateAudio,OutputAudio;
 	/*#{1HDBOSUN90LocalVals*/
 	let model_list, input_modality, max_tokens, last_generated_image, flag=false, output_modality, support_thinking=false, enable_thinking=false;
+	let _tid=session.chatThreadId||Date.now()+"_"+Math.random().toString(36).slice(2,8);
+	let _sf=`/doc/ModelHunt/session_${_tid}_state.json`;
+	let _cf=`/doc/ModelHunt/session_${_tid}_chat.json`;
+	async function _loadState(){
+		try{let d=await tabFS.readFile(_sf,"utf8");return JSON.parse(d);}catch(e){return null;}
+	}
+	async function _saveState(){
+		try{await tabFS.writeFile(_sf,JSON.stringify({model,input_modality,output_modality,max_tokens,support_thinking,enable_thinking}),"utf8");}catch(e){}
+	}
+	async function _saveChat(){
+		try{await tabFS.writeFile(_cf,JSON.stringify({chatMem2:Generate2.messages,chatMem1:Generate1.messages}),"utf8");}catch(e){}
+	}
 	/*}#1HDBOSUN90LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -122,6 +158,7 @@ let OpenrouterAgent=async function(session){
 	/*#{1HDBOSUN90PreContext*/
 	/*}#1HDBOSUN90PreContext*/
 	context={};
+	context=VFACT.flexState(context);
 	/*#{1HDBOSUN90PostContext*/
 	/*}#1HDBOSUN90PostContext*/
 	let $agent,agent,segs={};
@@ -131,8 +168,8 @@ let OpenrouterAgent=async function(session){
 		let smartAsk=false;
 		if(model===undefined || model==="") missing=true;
 		if(missing){
-			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
-			parseAgentArgs(result);
+			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
+			parseAgentArgs(result);_saveState();
 		}
 		return {seg:GetInfo,result:(result),preSeg:"1J9OR4L7L0",outlet:"1J9OR4L7L1"};
 	};
@@ -147,7 +184,7 @@ let OpenrouterAgent=async function(session){
 			input_modality = response.modalities;
 			output_modality = response.output;
 			max_tokens = Math.floor(response.max_tokens / 2);
-			support_thinking=response.thinking;
+			support_thinking=response.thinking;_saveState();
 			/*}#1JGJH0L600Code*/
 		}catch(error){
 			/*#{1JGJH0L600ErrorCode*/
@@ -282,17 +319,11 @@ let OpenrouterAgent=async function(session){
 			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
 			for(let i = 0; i < input.assets.length; i++) {
 				let assetPath = input.assets[i];
-				// Remove hub:// prefix if present
-				if(assetPath.startsWith('hub://')) {
-					assetPath = assetPath.substring(6);
-				}
-				const absolutePath = pathLib.join(filelibPath, assetPath);
-		
 				try {
 					// Read file as base64
-					const fileBuffer = await fsp.readFile(absolutePath);
+					const fileBuffer = await session.loadHubFile(assetPath);
 					const base64Data = fileBuffer.toString('base64');
-					const fileName = pathLib.basename(absolutePath);
+					const fileName = pathLib.basename(assetPath.substring(6));
 					const ext = pathLib.extname(fileName).toLowerCase();
 		
 					// Determine file type based on extension
@@ -383,7 +414,7 @@ let OpenrouterAgent=async function(session){
 		/*#{1JGJHQV9K0PostLLM*/
 		/*}#1JGJHQV9K0PostLLM*/
 		chatMem.push({role:"user",content:prompt});
-		chatMem.push({role:"assistant",content:result});
+		chatMem.push({role:"assistant",content:result});_saveChat();
 		if(chatMem.length>10){
 			let removedMsgs=chatMem.splice(0,2);
 			/*#{1JGJHQV9K0PostClear*/
@@ -513,17 +544,11 @@ let OpenrouterAgent=async function(session){
 			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
 			for(let i = 0; i < input.assets.length; i++) {
 				let assetPath = input.assets[i];
-				// Remove hub:// prefix if present
-				if(assetPath.startsWith('hub://')) {
-					assetPath = assetPath.substring(6);
-				}
-				const absolutePath = pathLib.join(filelibPath, assetPath);
-		
 				try {
 					// Read file as base64
-					const fileBuffer = await fsp.readFile(absolutePath);
+					const fileBuffer = await session.loadHubFile(assetPath);
 					const base64Data = fileBuffer.toString('base64');
-					const fileName = pathLib.basename(absolutePath);
+					const fileName = pathLib.basename(assetPath.substring(6));
 					const ext = pathLib.extname(fileName).toLowerCase();
 		
 					// Determine file type based on extension
@@ -614,7 +639,7 @@ let OpenrouterAgent=async function(session){
 		/*#{1JIP319SH0PostLLM*/
 		/*}#1JIP319SH0PostLLM*/
 		chatMem.push({role:"user",content:prompt});
-		chatMem.push({role:"assistant",content:result});
+		chatMem.push({role:"assistant",content:result});_saveChat();
 		if(chatMem.length>10){
 			let removedMsgs=chatMem.splice(0,2);
 			/*#{1JIP319SH0PostClear*/
@@ -663,7 +688,7 @@ let OpenrouterAgent=async function(session){
 		if(value===1){
 			result=("")||result;
 			/*#{1JK2KNDIL0Btn1*/
-			enable_thinking=true;
+			enable_thinking=true;_saveState();
 			/*}#1JK2KNDIL0Btn1*/
 			return {seg:AskInput,result:(result),preSeg:"1JK2KNDJ70",outlet:"1JK2KNDIL0"};
 		}
@@ -756,6 +781,7 @@ let OpenrouterAgent=async function(session){
 			{role:"system",content:"You are a smart assistant."},
 		];
 		/*#{1JL12Q63D0PrePrompt*/
+		chatMem=Generate2.messages;
 		let content = [];
 		if(typeof(input) === 'object' && input.assets && input.assets.length > 0) {
 			prompt = input.prompt || input.text || "";
@@ -772,17 +798,11 @@ let OpenrouterAgent=async function(session){
 			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
 			for(let i = 0; i < input.assets.length; i++) {
 				let assetPath = input.assets[i];
-				// Remove hub:// prefix if present
-				if(assetPath.startsWith('hub://')) {
-					assetPath = assetPath.substring(6);
-				}
-				const absolutePath = pathLib.join(filelibPath, assetPath);
-		
 				try {
 					// Read file as base64
-					const fileBuffer = await fsp.readFile(absolutePath);
+					const fileBuffer = await session.loadHubFile(assetPath);
 					const base64Data = fileBuffer.toString('base64');
-					const fileName = pathLib.basename(absolutePath);
+					const fileName = pathLib.basename(assetPath.substring(6));
 					const ext = pathLib.extname(fileName).toLowerCase();
 		
 					// Determine file type based on extension
@@ -998,17 +1018,11 @@ let OpenrouterAgent=async function(session){
 			const filelibPath = pathLib.join(pathLib.dirname(pathLib.dirname(basePath)), 'filelib');
 			for(let i = 0; i < input.assets.length; i++) {
 				let assetPath = input.assets[i];
-				// Remove hub:// prefix if present
-				if(assetPath.startsWith('hub://')) {
-					assetPath = assetPath.substring(6);
-				}
-				const absolutePath = pathLib.join(filelibPath, assetPath);
-		
 				try {
 					// Read file as base64
-					const fileBuffer = await fsp.readFile(absolutePath);
+					const fileBuffer = await session.loadHubFile(assetPath);
 					const base64Data = fileBuffer.toString('base64');
-					const fileName = pathLib.basename(absolutePath);
+					const fileName = pathLib.basename(assetPath.substring(6));
 					const ext = pathLib.extname(fileName).toLowerCase();
 		
 					// Determine file type based on extension
@@ -1157,7 +1171,24 @@ let OpenrouterAgent=async function(session){
 		livingSeg:null,
 		execChat:async function(input/*{model}*/){
 			let result;
-			parseAgentArgs(input);
+			let _saved=await _loadState();
+			if(_saved && _saved.model){
+				model=_saved.model;input_modality=_saved.input_modality;output_modality=_saved.output_modality;max_tokens=_saved.max_tokens;support_thinking=_saved.support_thinking;enable_thinking=_saved.enable_thinking;
+				let _ch={};
+				try{let d=await tabFS.readFile(_cf,"utf8");_ch=JSON.parse(d);}catch(e){}
+				_ch=_ch||{};
+				Generate2.messages=_ch.chatMem2||[];
+				Generate1.messages=_ch.chatMem1||[];
+				let _hasInput=input&&typeof input==="string"&&input.trim();
+				if(_hasInput){
+					session.addChatText("user",input);
+					return {seg:Check,input:input};
+				}
+				if(output_modality && output_modality.length===1 && output_modality.includes("image")){return {seg:Ask1,input:input};}
+				if(output_modality && output_modality.includes("audio")){return {seg:Ask2,input:input};}
+				return {seg:AskInput,input:input};
+			}
+			parseAgentArgs(input);_saveState();
 			/*#{1HDBOSUN90PreEntry*/
 			/*}#1HDBOSUN90PreEntry*/
 			result={seg:FixArgs,"input":input};
@@ -1176,6 +1207,76 @@ let OpenrouterAgent=async function(session){
 /*}#1HDBOSUN90ExCodes*/
 
 //#CodyExport>>>
+export const ChatAPI=[{
+	def:{
+		name: "OpenrouterAgent",
+		description: "这是一个AI代理。",
+		parameters:{
+			type: "object",
+			properties:{
+				model:{type:"string",description:""}
+			}
+		}
+	},
+	isChatApi: true,
+	kind: "chat",
+	capabilities: [],
+	filters: [],
+	metrics: {"quality":"","costPerCall":"","costPer1M":"","speed":"","size":""},
+	agent: OpenrouterAgent
+}];
+
+//:Export Edit-AddOn:
+const DocAIAgentExporter=VFACT?VFACT.classRegs.DocAIAgentExporter:null;
+if(DocAIAgentExporter){
+	const EditAttr=VFACT.classRegs.EditAttr;
+	const EditAISeg=VFACT.classRegs.EditAISeg;
+	const EditAISegOutlet=VFACT.classRegs.EditAISegOutlet;
+	const SegObjShellAttr=EditAISeg.SegObjShellAttr;
+	const SegOutletDef=EditAISegOutlet.SegOutletDef;
+	const docAIAgentExporter=DocAIAgentExporter.prototype;
+	const packExtraCodes=docAIAgentExporter.packExtraCodes;
+	const packResult=docAIAgentExporter.packResult;
+	const varNameRegex = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+	
+	EditAISeg.regDef({
+		name:"OpenrouterAgent",showName:"OpenrouterAgent",icon:"agent.svg",catalog:["AI Call"],
+		attrs:{
+			...SegObjShellAttr,
+			"model":{name:"model",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
+			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
+		},
+		listHint:["id","model","codes","desc"],
+		desc:"这是一个AI代理。"
+	});
+	
+	DocAIAgentExporter.segTypeExporters["OpenrouterAgent"]=
+	function(seg){
+		let coder=this.coder;
+		let segName=seg.idVal.val;
+		let exportDebug=this.isExportDebug();
+		segName=(segName &&varNameRegex.test(segName))?segName:("SEG"+seg.jaxId);
+		coder.packText(`segs["${segName}"]=${segName}=async function(input){//:${seg.jaxId}`);
+		coder.indentMore();coder.newLine();
+		{
+			coder.packText(`let result,args={};`);coder.newLine();
+			coder.packText("args['model']=");this.genAttrStatement(seg.getAttr("model"));coder.packText(";");coder.newLine();
+			this.packExtraCodes(coder,seg,"PreCodes");
+			coder.packText(`result= await session.pipeChat("/~/AutoDeploy_dev/ai/OpenrouterAgent.js",args,false);`);coder.newLine();
+			this.packExtraCodes(coder,seg,"PostCodes");
+			this.packUpdateContext(coder,seg);
+			this.packUpdateGlobal(coder,seg);
+			this.packResult(coder,seg,seg.outlet);
+		}
+		coder.indentLess();coder.maybeNewLine();
+		coder.packText(`};`);coder.newLine();
+		if(exportDebug){
+			coder.packText(`${segName}.jaxId="${seg.jaxId}"`);coder.newLine();
+		}
+		coder.packText(`${segName}.url="${segName}@"+agentURL`);coder.newLine();
+		coder.newLine();
+	};
+}
 //#CodyExport<<<
 /*#{1HDBOSUN90PostDoc*/
 /*}#1HDBOSUN90PostDoc*/
@@ -1226,7 +1327,7 @@ export{OpenrouterAgent};
 //		"showName": "",
 //		"entry": "",
 //		"autoStart": "true",
-//		"inBrowser": "false",
+//		"inBrowser": "true",
 //		"debug": "true",
 //		"apiArgs": {
 //			"jaxId": "1J9OR4L7O0",
@@ -2369,8 +2470,8 @@ export{OpenrouterAgent};
 //			]
 //		},
 //		"desc": "这是一个AI代理。",
-//		"exportAPI": "false",
-//		"exportAddOn": "false",
+//		"exportAPI": "true",
+//		"exportAddOn": "true",
 //		"addOnOpts": "{\"name\":\"\",\"label\":\"\",\"path\":\"\",\"pathInHub\":\"\",\"chatEntry\":false,\"isChatApi\":1,\"isRPA\":0,\"rpaHost\":\"\",\"segIcon\":\"\",\"catalog\":\"AI Call\",\"kind\":\"chat\",\"capabilities\":[],\"filters\":[],\"metrics\":{\"quality\":\"\",\"costPerCall\":\"\",\"costPer1M\":\"\",\"speed\":\"\",\"size\":\"\"},\"meta\":\"\"}"
 //	}
 //}
