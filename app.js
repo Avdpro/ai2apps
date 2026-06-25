@@ -31,7 +31,7 @@ app.initCokeCodesApp=async function(){
 	app.set("AppHomePath",__dirname);
 
 	app.use(logger('dev'));
-
+	
 	app.use(express.json({limit: '200mb'}));
 	app.use(express.urlencoded({limit: '200mb', extended: false }));
 	app.use(cookieParser());
@@ -45,6 +45,18 @@ app.initCokeCodesApp=async function(){
 	app.use('/', indexRouter);
 	app.use('//', swrootRouter);
 	app.use('/ws', wsRouter(app));
+
+	// Expose env vars to browser
+	app.get('/api/env', (req, res) => {
+		const keys = (req.query.keys || '').split(',').filter(Boolean);
+		if (keys.length > 0) {
+			const result = {};
+			for (const k of keys) result[k] = process.env[k] || null;
+			res.json(result);
+		} else {
+			res.json(process.env);
+		}
+	});
 
 	// ModelHunt sync: browser pushes model.json to local filesystem
 	{
@@ -79,15 +91,36 @@ app.initCokeCodesApp=async function(){
 		});
 
 		// SSE: frontend subscribes to push events
+		const MAX_SSE_CLIENTS = 50;
 		const sseClients = new Set();
+		// Heartbeat: keep connections alive and detect dead ones
+		const sseHeartbeat = setInterval(() => {
+			for (const client of sseClients) {
+				try { client.write(': heartbeat\n\n'); } catch { sseClients.delete(client); }
+			}
+		}, 15000);
+		app.options('/api/modelhunt/events', (req, res) => { corsHeaders(res); res.sendStatus(204); });
 		app.get('/api/modelhunt/events', (req, res) => {
 			corsHeaders(res);
 			res.setHeader('Content-Type', 'text/event-stream');
 			res.setHeader('Cache-Control', 'no-cache');
 			res.setHeader('Connection', 'keep-alive');
+			res.setHeader('X-Accel-Buffering', 'no');
 			res.flushHeaders();
+			// Evict oldest if at capacity
+			if (sseClients.size >= MAX_SSE_CLIENTS) {
+				const oldest = sseClients.values().next().value;
+				try { oldest.end(); } catch {}
+				sseClients.delete(oldest);
+			}
 			sseClients.add(res);
-			req.on('close', () => sseClients.delete(res));
+			console.log(`[SSE] client connected, total: ${sseClients.size}`);
+			const cleanup = () => {
+				sseClients.delete(res);
+				console.log(`[SSE] client disconnected, total: ${sseClients.size}`);
+			};
+			req.on('close', cleanup);
+			req.on('error', cleanup);
 		});
 
 		// Install trigger: external caller POSTs { model }, SSE pushes to frontend
@@ -112,7 +145,7 @@ app.initCokeCodesApp=async function(){
 
 			// Notify frontend to start install
 			const data = `data: ${JSON.stringify({ type: 'install', model, taskId })}\n\n`;
-			sseClients.forEach(client => client.write(data));
+			sseClients.forEach(client => { try { client.write(data); } catch { sseClients.delete(client); } });
 			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
 		});
 
@@ -134,29 +167,7 @@ app.initCokeCodesApp=async function(){
 			res.on('close', () => installWaiters.delete(taskId));
 
 			const data = `data: ${JSON.stringify({ type: 'delete', model, taskId })}\n\n`;
-			sseClients.forEach(client => client.write(data));
-			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
-		});
-
-
-		// AutoDeploy trigger: external caller POSTs { model }, SSE pushes to frontend
-		app.options('/api/modelhunt/autodeploy', (req, res) => { corsHeaders(res); res.sendStatus(204); });
-		app.post('/api/modelhunt/autodeploy', (req, res) => {
-			corsHeaders(res);
-			const { model, auto } = req.body || {};
-			if (!model) return res.status(400).json({ ok: false, error: 'missing model' });
-			if (sseClients.size === 0) return res.status(503).json({ ok: false, error: 'AI2Apps is not running or page not open' });
-
-			res.setHeader('Content-Type', 'text/event-stream');
-			res.setHeader('Cache-Control', 'no-cache');
-			res.setHeader('Connection', 'keep-alive');
-			res.flushHeaders();
-
-			const taskId = Date.now().toString();
-			installWaiters.set(taskId, res);
-			res.on('close', () => installWaiters.delete(taskId));
-			const data = `data: ${JSON.stringify({ type: 'autodeploy', model, auto, taskId })}\n\n`;
-			sseClients.forEach(client => client.write(data));
+			sseClients.forEach(client => { try { client.write(data); } catch { sseClients.delete(client); } });
 			res.write(`data: {"status": "started", "clients": ${sseClients.size}}\n\n`);
 		});
 
@@ -186,7 +197,7 @@ app.initCokeCodesApp=async function(){
 			res.on('close', () => installWaiters.delete(taskId));
 
 			const data = `data: ${JSON.stringify({ type: 'test', model, task, taskId })}\n\n`;
-			sseClients.forEach(client => client.write(data));
+			sseClients.forEach(client => { try { client.write(data); } catch { sseClients.delete(client); } });
 
 			res.write(`data: {"status":"started","clients":${sseClients.size}}\n\n`);
 		});
@@ -207,7 +218,7 @@ app.initCokeCodesApp=async function(){
 			res.json({ ok: true });
 		});
 	}
-
+	
 	//Shadow chat:
 	{
 		if (process.env.SHADOW_CHAT === "TRUE") {
@@ -219,7 +230,7 @@ app.initCokeCodesApp=async function(){
 			app.use('/shadow', shadowRouter);
 		}
 	}
-
+	
 	//Payments:
 	{
 		if(process.env.PAYMENT==="TRUE") {
@@ -229,7 +240,7 @@ app.initCokeCodesApp=async function(){
 				const esmModule = await import('./payments/paypal.mjs');
 				esmModule.default(app, paymentsRouter);
 			})();
-
+			
 			//Stripe-WX handlers:
 			/*await (async () => {
 				const esmModule = await import('./payments//stripe_ap.mjs');
@@ -259,7 +270,7 @@ app.initCokeCodesApp=async function(){
 		res.status(err.status || 500);
 		res.render('error');
 	});
-
+	
 	//Test WebDrive
 	if(false){
 		await (async () => {
