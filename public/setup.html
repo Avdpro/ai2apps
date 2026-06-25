@@ -1362,9 +1362,15 @@ cokeNT.logout=async function(){
 	if(this.loginDone){
 		localStorage.setItem("LastAccount",this.loginVO.email);
 	}
+	
+	localStorage.removeItem("LoginVO");
+	//延迟几秒
+	await new Promise(resolve => {
+		setTimeout(resolve,3000);
+	});
 	this.loginVO=null;
 	this.loginDone=0;
-	localStorage.removeItem("LoginVO");
+
 	this.emitNotify("Offline");
 	if(tabOS){
 		tabOS.emitGlobalNotify("Offline");
@@ -15223,12 +15229,12 @@ VFACT.initApp=initApp;
 var diskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 480,
+		"versionIdx": 481,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 228,
+		"versionIdx": 229,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15268,7 +15274,7 @@ var diskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 209,
+		"versionIdx": 210,
 		"zip": "aae.zip"
 	},
 	{
@@ -15301,12 +15307,12 @@ var diskInfo = [
 var mobileDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 480,
+		"versionIdx": 481,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 228,
+		"versionIdx": 229,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15346,7 +15352,7 @@ var mobileDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 209,
+		"versionIdx": 210,
 		"zip": "aae.zip"
 	},
 	{
@@ -15369,12 +15375,12 @@ var mobileDiskInfo = [
 var previewDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 480,
+		"versionIdx": 481,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 228,
+		"versionIdx": 229,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15417,12 +15423,12 @@ var previewDiskInfo = [
 var botnodeDiskInfo = [
 	{
 		"name": "coke",
-		"versionIdx": 480,
+		"versionIdx": 481,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 228,
+		"versionIdx": 229,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15457,12 +15463,12 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "coke",
-		"versionIdx": 480,
+		"versionIdx": 481,
 		"zip": "coke.zip"
 	},
 	{
 		"name": "-tabos",
-		"versionIdx": 228,
+		"versionIdx": 229,
 		"zip": "tabos.zip"
 	},
 	{
@@ -15512,7 +15518,7 @@ var botnodeDiskInfo = [
 	},
 	{
 		"name": "-aae",
-		"versionIdx": 209,
+		"versionIdx": 210,
 		"zip": "aae.zip"
 	},
 	{
