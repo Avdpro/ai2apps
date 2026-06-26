@@ -14,7 +14,8 @@ const $ln=VFACT.lanCode||"EN";
 const argsTemplate={
 	properties:{
 		"model":{
-			"name":"model","type":"auto",
+			"name":"model","type":"string",
+			"required":true,
 			"defaultValue":"",
 			"desc":"",
 		},
@@ -39,6 +40,7 @@ let ModelHunt=async function(session){
 	let self;
 	let Read,FixArgs,Check,Deploy,Use;
 	/*#{1JH0A9FG20LocalVals*/
+	let public_key = "";
 	/*}#1JH0A9FG20LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -64,10 +66,18 @@ let ModelHunt=async function(session){
 		let result=input
 		try{
 			/*#{1JH0A9C8N0Code*/
-			let modelJSON=await tabFS.readFile(pathLib.join("/doc/ModelHunt","model.json"),"utf8");
-			modelJSON=JSON.parse(modelJSON);
-			result=modelJSON;
-			result = modelJSON.deployable.includes(model);
+			let modelJSONPath = pathLib.join("/doc/ModelHunt", "model.json");
+			let modelJSON = await tabFS.readFile(modelJSONPath, "utf8");
+			modelJSON = JSON.parse(modelJSON);
+			
+			let isDeployable = modelJSON.deployable.includes(model);
+			public_key = await tabNT.getModelHuntKey();
+			if(!public_key){
+				throw new Error("Failed to get key");
+			}
+			result = {
+				deployable: isDeployable
+			};
 			/*}#1JH0A9C8N0Code*/
 		}catch(error){
 			/*#{1JH0A9C8N0ErrorCode*/
@@ -98,7 +108,7 @@ let ModelHunt=async function(session){
 	
 	segs["Check"]=Check=async function(input){//:1JH0ABO060
 		let result=input;
-		if(input){
+		if(input.deployable){
 			return {seg:Use,result:(input),preSeg:"1JH0ABO060",outlet:"1JH0ACAAI0"};
 		}
 		return {seg:Deploy,result:(result),preSeg:"1JH0ABO060",outlet:"1JH0ACAAI1"};
@@ -108,7 +118,7 @@ let ModelHunt=async function(session){
 	
 	segs["Deploy"]=Deploy=async function(input){//:1JH0ADNPF0
 		let result;
-		let arg={model:model,auto:auto};
+		let arg={model:model,auto:auto,key:public_key};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelDeployAgent.js");
@@ -121,7 +131,7 @@ let ModelHunt=async function(session){
 	
 	segs["Use"]=Use=async function(input){//:1JH0AENRO0
 		let result;
-		let arg={model:model};
+		let arg={model:model || _st.model,key:public_key};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelUseAgent.js");
@@ -169,7 +179,7 @@ export const ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
-				model:{type:"auto",description:""},
+				model:{type:"string",description:""},
 				auto:{type:"bool",description:""}
 			}
 		}
@@ -195,7 +205,7 @@ if(DocAIAgentExporter){
 		name:"ModelHunt",showName:"ModelHunt",icon:"agent.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
-			"model":{name:"model",showName:undefined,type:"auto",key:1,fixed:1,initVal:""},
+			"model":{name:"model",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
 			"auto":{name:"auto",showName:undefined,type:"bool",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
@@ -265,8 +275,9 @@ export{ModelHunt};
 //					"def": "AgentCallArgument",
 //					"jaxId": "1JH0A9QO80",
 //					"attrs": {
-//						"type": "Auto",
+//						"type": "String",
 //						"mockup": "\"\"",
+//						"required": "true",
 //						"desc": ""
 //					}
 //				},
@@ -277,8 +288,8 @@ export{ModelHunt};
 //					"attrs": {
 //						"type": "Boolean",
 //						"mockup": "\"\"",
-//						"desc": "",
-//						"required": "false"
+//						"required": "false",
+//						"desc": ""
 //					}
 //				}
 //			}
@@ -305,7 +316,7 @@ export{ModelHunt};
 //						"id": "Read",
 //						"viewName": "",
 //						"label": "",
-//						"x": "320",
+//						"x": "305",
 //						"y": "195",
 //						"desc": "This is an AISeg.",
 //						"mkpInput": "$$input$$",
@@ -346,7 +357,7 @@ export{ModelHunt};
 //						"id": "FixArgs",
 //						"viewName": "",
 //						"label": "",
-//						"x": "45",
+//						"x": "55",
 //						"y": "195",
 //						"desc": "This is an AISeg.",
 //						"codes": "true",
@@ -422,7 +433,7 @@ export{ModelHunt};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#input"
+//										"condition": "#input.deployable"
 //									},
 //									"linkedSeg": "1JH0AENRO0"
 //								}
@@ -459,7 +470,7 @@ export{ModelHunt};
 //							}
 //						},
 //						"source": "ai/ModelDeployAgent.js",
-//						"argument": "#{model:model,auto:auto}",
+//						"argument": "#{model:model,auto:auto,key:public_key}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JH0AEFKE0",
@@ -501,7 +512,7 @@ export{ModelHunt};
 //							}
 //						},
 //						"source": "ai/ModelUseAgent.js",
-//						"argument": "#{model:model}",
+//						"argument": "#{model:model || _st.model,key:public_key}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JH0AFDQB0",

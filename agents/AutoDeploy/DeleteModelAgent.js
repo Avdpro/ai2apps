@@ -33,6 +33,7 @@ let DeleteModelAgent=async function(session){
 	let self;
 	let FixArgs,Delete,Save;
 	/*#{1JIEF1OI60LocalVals*/
+	let key;
 	/*}#1JIEF1OI60LocalVals*/
 	
 	function parseAgentArgs(input){
@@ -56,11 +57,19 @@ let DeleteModelAgent=async function(session){
 		let result=input;
 		let missing=false;
 		let smartAsk=false;
+		/*#{1JIEF1KHF0PreCodes*/
+		/*}#1JIEF1KHF0PreCodes*/
 		if(model===undefined || model==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
 		}
+		/*#{1JIEF1KHF0PostCodes*/
+		key = await tabNT.getModelHuntKey();
+		if(!key){
+			throw new Error("Failed to get key");
+		}
+		/*}#1JIEF1KHF0PostCodes*/
 		return {seg:Delete,result:(result),preSeg:"1JIEF1KHF0",outlet:"1JIEF1OI61"};
 	};
 	FixArgs.jaxId="1JIEF1KHF0"
@@ -70,7 +79,7 @@ let DeleteModelAgent=async function(session){
 		let result,args={};
 		args['nodeName']="AutoDeploy";
 		args['callAgent']="DeleteModel.js";
-		args['callArg']={model:model};
+		args['callArg']={model:model,key:key};
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -262,7 +271,7 @@ export{DeleteModelAgent};
 //						"x": "205",
 //						"y": "280",
 //						"desc": "这是一个AISeg。",
-//						"codes": "false",
+//						"codes": "true",
 //						"mkpInput": "$$input$$",
 //						"segMark": "None",
 //						"smartAsk": "false",
@@ -305,7 +314,7 @@ export{DeleteModelAgent};
 //						},
 //						"nodeName": "AutoDeploy",
 //						"callAgent": "DeleteModel.js",
-//						"callArg": "#{model:model}",
+//						"callArg": "#{model:model,key:key}",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {

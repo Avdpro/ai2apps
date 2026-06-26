@@ -23,6 +23,11 @@ const argsTemplate={
 			"required":false,
 			"defaultValue":"",
 			"desc":"",
+		},
+		"key":{
+			"name":"key","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JH032HA90ArgsView*/
@@ -33,11 +38,11 @@ const argsTemplate={
 /*}#1JH032HA90StartDoc*/
 //----------------------------------------------------------------------------
 let ModelDeployAgent=async function(session){
-	let model,auto;
+	let model,auto,key;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Save,Deploy,Check,Ask,Run,Bye,Fail;
+	let Save,Deploy,Check,Ask,Bye,Fail,Run;
 	/*#{1JH032HA90LocalVals*/
 	/*}#1JH032HA90LocalVals*/
 	
@@ -45,9 +50,11 @@ let ModelDeployAgent=async function(session){
 		if(typeof(input)=='object'){
 			model=input.model;
 			auto=input.auto;
+			key=input.key;
 		}else{
 			model=undefined;
 			auto=undefined;
+			key=undefined;
 		}
 		/*#{1JH032HA90ParseArgs*/
 		/*}#1JH032HA90ParseArgs*/
@@ -98,7 +105,7 @@ let ModelDeployAgent=async function(session){
 		let result,args={};
 		args['nodeName']="AutoDeploy";
 		args['callAgent']="ModelDeploy.js";
-		args['callArg']={model:model,auto:auto};
+		args['callArg']={model:model,auto:auto,key:key};
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -143,19 +150,6 @@ let ModelDeployAgent=async function(session){
 	Ask.jaxId="1JH04FVFC0"
 	Ask.url="Ask@"+agentURL
 	
-	segs["Run"]=Run=async function(input){//:1JH05985V0
-		let result,args={};
-		args['nodeName']="AutoDeploy";
-		args['callAgent']="ModelUse.js";
-		args['callArg']={model:model};
-		args['checkUpdate']=true;
-		args['options']="";
-		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
-		return {result:result};
-	};
-	Run.jaxId="1JH05985V0"
-	Run.url="Run@"+agentURL
-	
 	segs["Bye"]=Bye=async function(input){//:1JH05BJ6I0
 		let result=input;
 		let $channel="Chat";
@@ -180,6 +174,19 @@ let ModelDeployAgent=async function(session){
 	Fail.jaxId="1JH06UJ270"
 	Fail.url="Fail@"+agentURL
 	
+	segs["Run"]=Run=async function(input){//:1JS0VJ8KJ0
+		let result;
+		let arg={model:model};
+		let agentNode=(undefined)||null;
+		let $query=(null)||null;
+		let sourcePath=pathLib.joinTabOSURL(basePath,"./ModelHunt.js");
+		let opts={secrect:false,fromAgent:$agent,askUpwardSeg:null};
+		result= await session.callAgent(agentNode,sourcePath,arg,opts);
+		return {result:result};
+	};
+	Run.jaxId="1JS0VJ8KJ0"
+	Run.url="Run@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -189,12 +196,12 @@ let ModelDeployAgent=async function(session){
 		jaxId:"1JH032HA90",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model,auto}*/){
+		execChat:async function(input/*{model,auto,key}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JH032HA90PreEntry*/
 			/*}#1JH032HA90PreEntry*/
-			result={seg:Deploy,"input":input};
+			result={seg:Run,"input":input};
 			/*#{1JH032HA90PostEntry*/
 			/*}#1JH032HA90PostEntry*/
 			return result;
@@ -232,7 +239,7 @@ export{ModelDeployAgent};
 //			"attrs": {}
 //		},
 //		"showName": "",
-//		"entry": "Deploy",
+//		"entry": "Run",
 //		"autoStart": "true",
 //		"inBrowser": "true",
 //		"debug": "true",
@@ -256,8 +263,18 @@ export{ModelDeployAgent};
 //					"attrs": {
 //						"type": "Boolean",
 //						"mockup": "\"\"",
-//						"desc": "",
-//						"required": "false"
+//						"required": "false",
+//						"desc": ""
+//					}
+//				},
+//				"key": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JRMNLMBT0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
 //					}
 //				}
 //			}
@@ -345,7 +362,7 @@ export{ModelDeployAgent};
 //						},
 //						"nodeName": "AutoDeploy",
 //						"callAgent": "ModelDeploy.js",
-//						"callArg": "#{model:model,auto:auto}",
+//						"callArg": "#{model:model,auto:auto,key:key}",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {
@@ -483,7 +500,7 @@ export{ModelDeployAgent};
 //											}
 //										}
 //									},
-//									"linkedSeg": "1JH05985V0"
+//									"linkedSeg": "1JS0VJ8KJ0"
 //								},
 //								{
 //									"type": "aioutlet",
@@ -523,47 +540,6 @@ export{ModelDeployAgent};
 //						"silent": "false"
 //					},
 //					"icon": "help.svg"
-//				},
-//				{
-//					"type": "aiseg",
-//					"def": "RemoteChat",
-//					"jaxId": "1JH05985V0",
-//					"attrs": {
-//						"id": "Run",
-//						"viewName": "",
-//						"label": "",
-//						"x": "1215",
-//						"y": "185",
-//						"desc": "This is an AISeg.",
-//						"codes": "false",
-//						"mkpInput": "$$input$$",
-//						"segMark": "None",
-//						"context": {
-//							"jaxId": "1JH059B5C0",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"global": {
-//							"jaxId": "1JH059B5C1",
-//							"attrs": {
-//								"cast": ""
-//							}
-//						},
-//						"nodeName": "AutoDeploy",
-//						"callAgent": "ModelUse.js",
-//						"callArg": "#{model:model}",
-//						"checkUpdate": "true",
-//						"options": "\"\"",
-//						"outlet": {
-//							"jaxId": "1JH059B590",
-//							"attrs": {
-//								"id": "Result",
-//								"desc": "Outlet."
-//							}
-//						}
-//					},
-//					"icon": "cloudact.svg"
 //				},
 //				{
 //					"type": "aiseg",
@@ -658,6 +634,49 @@ export{ModelDeployAgent};
 //						}
 //					},
 //					"icon": "hudtxt.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "aiBot",
+//					"jaxId": "1JS0VJ8KJ0",
+//					"attrs": {
+//						"id": "Run",
+//						"viewName": "",
+//						"label": "",
+//						"x": "1215",
+//						"y": "175",
+//						"desc": "Call AI Agent, use it's output as result",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JS0VKD6K0",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JS0VKD6K1",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"source": "ai/ModelHunt.js",
+//						"argument": "#{model:model}",
+//						"secret": "false",
+//						"outlet": {
+//							"jaxId": "1JS0VKD6I0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							}
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"query": ""
+//					},
+//					"icon": "agent.svg"
 //				}
 //			]
 //		},

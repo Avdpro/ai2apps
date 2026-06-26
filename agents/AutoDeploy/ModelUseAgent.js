@@ -16,6 +16,11 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"key":{
+			"name":"key","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JH054SQN0ArgsView*/
@@ -26,7 +31,7 @@ const argsTemplate={
 /*}#1JH054SQN0StartDoc*/
 //----------------------------------------------------------------------------
 let ModelUseAgent=async function(session){
-	let model;
+	let model,key;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -37,8 +42,10 @@ let ModelUseAgent=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			key=input.key;
 		}else{
 			model=undefined;
+			key=undefined;
 		}
 		/*#{1JH054SQN0ParseArgs*/
 		/*}#1JH054SQN0ParseArgs*/
@@ -55,7 +62,7 @@ let ModelUseAgent=async function(session){
 		let result,args={};
 		args['nodeName']="AutoDeploy";
 		args['callAgent']="ModelUse.js";
-		args['callArg']={model:model};
+		args['callArg']={model:model,key:key};
 		args['checkUpdate']=true;
 		args['options']="";
 		result= await session.pipeChat("/@aichat/ai/RemoteChat.js",args,false);
@@ -73,7 +80,7 @@ let ModelUseAgent=async function(session){
 		jaxId:"1JH054SQN0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,key}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JH054SQN0PreEntry*/
@@ -132,6 +139,16 @@ export{ModelUseAgent};
 //						"mockup": "\"\"",
 //						"desc": ""
 //					}
+//				},
+//				"key": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JRMNMHVP0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
 //				}
 //			}
 //		},
@@ -177,7 +194,7 @@ export{ModelUseAgent};
 //						},
 //						"nodeName": "AutoDeploy",
 //						"callAgent": "ModelUse.js",
-//						"callArg": "#{model:model}",
+//						"callArg": "#{model:model,key:key}",
 //						"checkUpdate": "true",
 //						"options": "\"\"",
 //						"outlet": {

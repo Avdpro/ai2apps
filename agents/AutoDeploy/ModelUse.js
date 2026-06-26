@@ -15,6 +15,11 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"key":{
+			"name":"key","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JH0RJ1S60ArgsView*/
@@ -25,21 +30,22 @@ const argsTemplate={
 /*}#1JH0RJ1S60StartDoc*/
 //----------------------------------------------------------------------------
 let ModelUse=async function(session){
-	let model;
+	let model,key;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
 	let FixArgs,Check,Github,Ollama,Openrouter;
 	/*#{1JH0RJ1S60LocalVals*/
 	let model_type;
-	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JH0RJ1S60LocalVals*/
 	
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			key=input.key;
 		}else{
 			model=undefined;
+			key=undefined;
 		}
 		/*#{1JH0RJ1S60ParseArgs*/
 		/*}#1JH0RJ1S60ParseArgs*/
@@ -58,6 +64,7 @@ let ModelUse=async function(session){
 		/*#{1JH0RJ9FE0PreCodes*/
 		/*}#1JH0RJ9FE0PreCodes*/
 		if(model===undefined || model==="") missing=true;
+		if(key===undefined || key==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -70,7 +77,7 @@ let ModelUse=async function(session){
 			headers: {
 				'accept': 'application/json',
 				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${KEY}`
+				'Authorization': `Bearer ${key}`
 			}
 		});
 		if (!response.ok) {
@@ -99,7 +106,7 @@ let ModelUse=async function(session){
 	
 	segs["Github"]=Github=async function(input){//:1JH0RMOTH0
 		let result;
-		let arg={model:model};
+		let arg={model:model,key:key};
 		let agentNode=(undefined)||null;
 		let $query=(undefined)||null;
 		let sourcePath=pathLib.join(basePath,"./ModelAgent.js");
@@ -145,7 +152,7 @@ let ModelUse=async function(session){
 		jaxId:"1JH0RJ1S60",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,key}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JH0RJ1S60PreEntry*/
@@ -199,6 +206,16 @@ export{ModelUse};
 //					"type": "object",
 //					"def": "AgentCallArgument",
 //					"jaxId": "1JH0RJPRC0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"key": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JRMNP8MK0",
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",
@@ -367,7 +384,7 @@ export{ModelUse};
 //							}
 //						},
 //						"source": "ai/ModelAgent.js",
-//						"argument": "#{model:model}",
+//						"argument": "#{model:model,key:key}",
 //						"secret": "false",
 //						"outlet": {
 //							"jaxId": "1JH0RNSKD0",

@@ -20,6 +20,11 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"key":{
+			"name":"key","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JGP1AAKD0ArgsView*/
@@ -52,21 +57,22 @@ async function isTextFile(filePath) {
 /*}#1JGP1AAKD0StartDoc*/
 //----------------------------------------------------------------------------
 let ModelAgent=async function(session){
-	let model;
+	let model,key;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
 	let FixArgs,Welcome,Ask,InitBash,Enter,InitBash2,Enter2,Check,Run;
 	/*#{1JGP1AAKD0LocalVals*/
 	let query="", config, skill, base_command;
-	const KEY = process.env.MODELHUNT_PUBLIC_KEY;
 	/*}#1JGP1AAKD0LocalVals*/
 	
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			key=input.key;
 		}else{
 			model=undefined;
+			key=undefined;
 		}
 		/*#{1JGP1AAKD0ParseArgs*/
 		/*}#1JGP1AAKD0ParseArgs*/
@@ -86,6 +92,7 @@ let ModelAgent=async function(session){
 		/*#{1JGP1KHU70PreCodes*/
 		/*}#1JGP1KHU70PreCodes*/
 		if(model===undefined || model==="") missing=true;
+		if(key===undefined || key==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -100,7 +107,7 @@ let ModelAgent=async function(session){
 				headers: {
 					'accept': 'application/json',
 					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${KEY}`
+					'Authorization': `Bearer ${key}`
 				}
 			});
 			if (!response.ok) {
@@ -338,7 +345,7 @@ let ModelAgent=async function(session){
 		jaxId:"1JGP1AAKD0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,key}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JGP1AAKD0PreEntry*/
@@ -392,6 +399,16 @@ export{ModelAgent};
 //					"type": "object",
 //					"def": "AgentCallArgument",
 //					"jaxId": "1JGP1FIQ82",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"key": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JRN1RHK50",
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",

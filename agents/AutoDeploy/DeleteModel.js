@@ -15,6 +15,11 @@ const argsTemplate={
 			"name":"model","type":"auto",
 			"defaultValue":"",
 			"desc":"",
+		},
+		"key":{
+			"name":"key","type":"auto",
+			"defaultValue":"",
+			"desc":"",
 		}
 	},
 	/*#{1JIBT8AQO0ArgsView*/
@@ -25,7 +30,7 @@ const argsTemplate={
 /*}#1JIBT8AQO0StartDoc*/
 //----------------------------------------------------------------------------
 let DeleteModel=async function(session){
-	let model;
+	let model,key;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
@@ -37,8 +42,10 @@ let DeleteModel=async function(session){
 	function parseAgentArgs(input){
 		if(typeof(input)=='object'){
 			model=input.model;
+			key=input.key;
 		}else{
 			model=undefined;
+			key=undefined;
 		}
 		/*#{1JIBT8AQO0ParseArgs*/
 		/*}#1JIBT8AQO0ParseArgs*/
@@ -55,6 +62,7 @@ let DeleteModel=async function(session){
 		let missing=false;
 		let smartAsk=false;
 		if(model===undefined || model==="") missing=true;
+		if(key===undefined || key==="") missing=true;
 		if(missing){
 			result=await session.pipeChat("/@tabos/HubFixArgs.mjs",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
 			parseAgentArgs(result);
@@ -68,21 +76,43 @@ let DeleteModel=async function(session){
 		let result=input
 		try{
 			/*#{1JIBU5U7N0Code*/
+			let platform=process.platform;
+			if(platform==="darwin") platform="mac";
+			else if(platform==="linux") platform="linux";
+			else if(platform==="win32") platform="windows";
 			const apiUrl = process.env.MODELHUNT_API_URL;
 			const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}`;
-			const response = await fetch(basicUrl)
+			const deleteConfigUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}/delete`;
+			const response = await fetch(basicUrl, {
+				method: 'GET',
+				headers: {
+					'accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${key}`
+				}
+			});
+			const response2 = await fetch(deleteConfigUrl, {
+				method: 'GET',
+				headers: {
+					'accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${key}`
+				}
+			});
 			if (!response.ok) {
 				throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
 			}
-			const Config = await response.json();
-			model_type = Config.model_type;
-			conda_env = Config.conda_env;
-			project_path = Config.project_path;
-			model_path = Config.model_path;
-			extra_command = Config.uninstall_command;
+			const Config1 = await response.json();
+			const Config2 = await response2.json();
+			model_type = Config1.source;
+			conda_env = Config2.platform.conda_env_name;
+			project_path = Config2.platform.project_path;
+			model_path = Config2.platform.model_path;
+			extra_command = Config2.platform.uninstall_command;
 			/*}#1JIBU5U7N0Code*/
 		}catch(error){
 			/*#{1JIBU5U7N0ErrorCode*/
+			throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
 			/*}#1JIBU5U7N0ErrorCode*/
 		}
 		return {seg:Init,result:(result),preSeg:"1JIBU5U7N0",outlet:"1JIBU662V0"};
@@ -92,7 +122,7 @@ let DeleteModel=async function(session){
 	
 	segs["CheckType"]=CheckType=async function(input){//:1JIBUA8NV0
 		let result=input;
-		if(model_type==="github"){
+		if(model_type==="wechat"){
 			return {seg:RemoveConda,result:(input),preSeg:"1JIBUA8NV0",outlet:"1JIBUDJPM0"};
 		}
 		if(model_type==="ollama"){
@@ -244,7 +274,7 @@ let DeleteModel=async function(session){
 		jaxId:"1JIBT8AQO0",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input/*{model}*/){
+		execChat:async function(input/*{model,key}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JIBT8AQO0PreEntry*/
@@ -298,6 +328,16 @@ export{DeleteModel};
 //					"type": "object",
 //					"def": "AgentCallArgument",
 //					"jaxId": "1JIBT8STG0",
+//					"attrs": {
+//						"type": "Auto",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"key": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JS0VVCEH0",
 //					"attrs": {
 //						"type": "Auto",
 //						"mockup": "\"\"",
@@ -445,7 +485,7 @@ export{DeleteModel};
 //												"cast": ""
 //											}
 //										},
-//										"condition": "#model_type===\"github\""
+//										"condition": "#model_type===\"wechat\""
 //									},
 //									"linkedSeg": "1JIBV94JM0"
 //								},
