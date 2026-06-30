@@ -201,7 +201,7 @@ let ModelDeployAgent=async function(session){
 			parseAgentArgs(input);
 			/*#{1JH032HA90PreEntry*/
 			/*}#1JH032HA90PreEntry*/
-			result={seg:Run,"input":input};
+			result={seg:Deploy,"input":input};
 			/*#{1JH032HA90PostEntry*/
 			/*}#1JH032HA90PostEntry*/
 			return result;
@@ -239,7 +239,7 @@ export{ModelDeployAgent};
 //			"attrs": {}
 //		},
 //		"showName": "",
-//		"entry": "Run",
+//		"entry": "Deploy",
 //		"autoStart": "true",
 //		"inBrowser": "true",
 //		"debug": "true",
