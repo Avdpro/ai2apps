@@ -81,8 +81,8 @@ let DeleteModel=async function(session){
 			else if(platform==="linux") platform="linux";
 			else if(platform==="win32") platform="windows";
 			const apiUrl = process.env.MODELHUNT_API_URL;
-			const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}`;
-			const deleteConfigUrl = `${apiUrl.replace(/\/$/, '')}/api/v1/models/${model}/delete`;
+			const basicUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}`;
+			const deleteConfigUrl = `${apiUrl.replace(/\/$/, '')}/api/public/v1/models/${model}/delete`;
 			const response = await fetch(basicUrl, {
 				method: 'GET',
 				headers: {
@@ -112,7 +112,7 @@ let DeleteModel=async function(session){
 			/*}#1JIBU5U7N0Code*/
 		}catch(error){
 			/*#{1JIBU5U7N0ErrorCode*/
-			throw new Error(`Failed to fetch basic information: ${response.status} ${response.statusText}`);
+			throw new Error(`Failed to fetch basic information: ${error}`);
 			/*}#1JIBU5U7N0ErrorCode*/
 		}
 		return {seg:Init,result:(result),preSeg:"1JIBU5U7N0",outlet:"1JIBU662V0"};
