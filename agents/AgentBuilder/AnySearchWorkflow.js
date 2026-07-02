@@ -67,6 +67,7 @@ let AnySearchWorkflow=async function(session){
 		allLinks: [],
 		platforms: [],
 		modelInfo: "",
+		apiKey: "",
 		/*#{1HDBOSUNA3ExCtxAttrs*/
 		/*}#1HDBOSUNA3ExCtxAttrs*/
 	};
@@ -86,7 +87,10 @@ let AnySearchWorkflow=async function(session){
 			parseAgentArgs(result);
 		}
 		/*#{1JCFV0B9G0PostCodes*/
-		console.log("fixargs ===",input, result, modelName, searchNum)
+		//console.log("fixargs ===",input, result, modelName, searchNum)
+		console.log("fixargs ===+++!!!: ",input)
+		//context.apiKey = "mh_pub_6BksjzXLgxsXDL-yhhBvMV_oiO5CErjjD3unvgdynh4";
+		context.apiKey = input.apiKey;
 		/*}#1JCFV0B9G0PostCodes*/
 		return {seg:DefaultWaitTips,result:(result),preSeg:"1JCFV0B9G0",outlet:"1JCFV0GPE0"};
 	};
@@ -118,6 +122,15 @@ let AnySearchWorkflow=async function(session){
 		let headers={
 		};
 		/*#{1JFSFTQFT0PreCodes*/
+		console.log("DefaultCallAPI apiKey: ",context.apiKey)
+		const apiUrl = process.env.MODELHUNT_API_URL;
+		url = `${apiUrl.replace(/\/$/, '')}/api/public/v1/qa`;
+		console.log("DefaultCallAPI url: ",url);
+		
+		headers={
+			"Authorization": "Bearer " + context.apiKey
+		};
+		
 		if($ln==="CN"){
 			context.modelInfo = modelName + '，请用中文回答。';
 		}else{
@@ -233,6 +246,14 @@ let AnySearchWorkflow=async function(session){
 		let headers={
 		};
 		/*#{1JFSHB9A70PreCodes*/
+		const apiUrl = process.env.MODELHUNT_API_URL;
+		url = `${apiUrl.replace(/\/$/, '')}/api/public/v1/qa`;
+		console.log("CallInternalAPI url: ",url);
+		
+		headers={
+			"Authorization": "Bearer " + context.apiKey
+		};
+		console.log("headers",headers,url,context.apiKey);
 		if($ln==="CN"){
 			input = input + '，请用中文回答。';
 		}else{
@@ -450,7 +471,11 @@ let AnySearchWorkflow=async function(session){
 		try{
 			/*#{1JC8K0M8V0Code*/
 			let lang = ($ln==="CN") ? '，请用中文回答。' : ', Please answer in English.';
-			const url = 'https://api.modelhunt.ai2apps.cn/api/public/v1/qa';
+			const apiUrl = process.env.MODELHUNT_API_URL;
+			console.log("AxiosCallRpaAPI apiUrl: ",apiUrl);
+			const url = `${apiUrl.replace(/\/$/, '')}/api/public/v1/qa`;
+			console.log("AxiosCallRpaAPI url: ",url);
+			
 			const json = {
 				query: context.externalQuestion + lang ,
 				output_report: true,
@@ -458,19 +483,17 @@ let AnySearchWorkflow=async function(session){
 				web_search_result: input,
 				history: context.rpaHistory
 			};
-			//console.log("json",json,"json");
-			/* ---------- 写请求日志 ---------- */
-			//const logFile = './logs/run.log';
-			//mkdirSync(dirname(logFile), { recursive: true });
-			//appendFileSync(logFile, `[${new Date().toISOString()}] ${JSON.stringify(json, null, 2)}\n`,'utf8');
-			
+			console.log("AxiosCallRpaAPI",json);
 			try {
 				const rsp = await axios.post(url, json, {
-					headers: { 'Content-Type': 'application/json' },
+					headers: { 
+						'Content-Type': 'application/json',
+						"Authorization": "Bearer " + context.apiKey
+					},
 					timeout: 5 * 60 * 1000,
 				});
 				result = rsp.data;
-				//console.log(result,'CallRpaAPI');
+				console.log(result,'CallRpaAPI');
 				context.rpaHistory.push({
 					user: context.externalQuestion,
 					assistant: result?.answer
@@ -494,6 +517,11 @@ let AnySearchWorkflow=async function(session){
 			/*}#1JC8K0M8V0Code*/
 		}catch(error){
 			/*#{1JC8K0M8V0ErrorCode*/
+			result = {
+				res: "fail",
+				web_search_result: input,
+				errMsg: error?.message
+			};
 			/*}#1JC8K0M8V0ErrorCode*/
 		}
 		return {seg:CheckError,result:(result),preSeg:"1JC8K0M8V0",outlet:"1JC8K0QBC0"};
@@ -1248,6 +1276,16 @@ export{AnySearchWorkflow};
 //					"type": "object",
 //					"def": "AgentCallArgument",
 //					"jaxId": "1JGGK6DR20",
+//					"attrs": {
+//						"type": "String",
+//						"mockup": "\"\"",
+//						"desc": ""
+//					}
+//				},
+//				"apiKey": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JQQP74HQ0",
 //					"attrs": {
 //						"type": "String",
 //						"mockup": "\"\"",

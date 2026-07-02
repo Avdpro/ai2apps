@@ -5,27 +5,53 @@ import inherits from "/@inherits";
 import Base64 from "/@tabos/utils/base64.js";
 import {trimJSON} from "/@aichat/utils.js";
 /*#{1JC0LF9K60MoreImports*/
+import {tabNT} from "/@tabos";
 /*}#1JC0LF9K60MoreImports*/
 const agentURL=(new URL(import.meta.url)).pathname;
 const baseURL=pathLib.dirname(agentURL);
 const basePath=baseURL.startsWith("file://")?decodeURI(baseURL):baseURL;
 const $ln=VFACT.lanCode||"EN";
+const argsTemplate={
+	properties:{
+		"searchNum":{
+			"name":"searchNum","type":"number",
+			"required":true,
+			"defaultValue":5,
+			"desc":"",
+		},
+		"modelName":{
+			"name":"modelName","type":"string",
+			"required":true,
+			"defaultValue":"",
+			"desc":"",
+		}
+	},
+	/*#{1JC0LF9K60ArgsView*/
+	/*}#1JC0LF9K60ArgsView*/
+};
+
 /*#{1JC0LF9K60StartDoc*/
 /*}#1JC0LF9K60StartDoc*/
 //----------------------------------------------------------------------------
 let AnySearch=async function(session){
-	let execInput;
+	let searchNum,modelName;
 	const $ln=session.language||"EN";
 	let context,globalContext=session.globalContext;
 	let self;
-	let Entry,WriteHtml,CheckChat,ShowCode,AIRetry,ShowPage,Finish,CheckType,ShowReportAPIRes,SaveMDReport;
+	let Entry,WriteHtml,CheckChat,ShowCode,AIRetry,ShowPage,Finish,CheckType,ShowReportAPIRes,SaveMDReport,GetUserInfo,GetKey,fixargs;
 	let htmlCode="";
 	
 	/*#{1JC0LF9K60LocalVals*/
 	/*}#1JC0LF9K60LocalVals*/
 	
 	function parseAgentArgs(input){
-		execInput=input;
+		if(typeof(input)=='object'){
+			searchNum=input.searchNum;
+			modelName=input.modelName;
+		}else{
+			searchNum=undefined;
+			modelName=undefined;
+		}
 		/*#{1JC0LF9K60ParseArgs*/
 		/*}#1JC0LF9K60ParseArgs*/
 	}
@@ -53,7 +79,7 @@ let AnySearch=async function(session){
 	segs["WriteHtml"]=WriteHtml=async function(input){//:1JCIQ227E0
 		let prompt;
 		let $platform="OpenRouter";
-		let $model="deepseek/deepseek-v4-flash";
+		let $model="openai/gpt-4.1";
 		let $agent;
 		let result=null;
 		/*#{1JCIQ227E0Input*/
@@ -257,6 +283,74 @@ ${input.html} 
 	SaveMDReport.jaxId="1JCIRF6V90"
 	SaveMDReport.url="SaveMDReport@"+agentURL
 	
+	segs["GetUserInfo"]=GetUserInfo=async function(input){//:1JQQMS3MD0
+		let result=input
+		try{
+			/*#{1JQQMS3MD0Code*/
+			const key = await tabNT.getModelHuntKey();
+			//const json = { userId: info.userId, token: info.token };
+			result = {
+				...input,
+				apiKey: key,
+			};
+			console.log("GetUserInfo",result);
+			/*}#1JQQMS3MD0Code*/
+		}catch(error){
+			/*#{1JQQMS3MD0ErrorCode*/
+			/*}#1JQQMS3MD0ErrorCode*/
+		}
+		return {seg:Entry,result:(result),preSeg:"1JQQMS3MD0",outlet:"1JQQMSHK70"};
+	};
+	GetUserInfo.jaxId="1JQQMS3MD0"
+	GetUserInfo.url="GetUserInfo@"+agentURL
+	
+	segs["GetKey"]=GetKey=async function(input){//:1JQQMSTFB0
+		let callVO=null;
+		let result=input;
+		let rsp=null;
+		let url="https://modelhunt.ai2apps.cn/api/public/v1/auth/token";
+		let method="POST";
+		let headers={
+			"Content-Type":"application/json"
+		};
+		/*#{1JQQMSTFB0PreCodes*/
+		/*}#1JQQMSTFB0PreCodes*/
+		let json={
+			"userId":"input.userId","token":"input.token"
+		};
+		callVO={url:url,method:method,argMode:"JSON",headers:headers,json:json};
+		/*#{1JQQMSTFB0AboutCall*/
+		/*}#1JQQMSTFB0AboutCall*/
+		rsp=await session.webCall(callVO,true,30000);
+		if(rsp.code===200){
+			result=JSON.parse(rsp.data);
+		}else{
+			throw Error("Error "+rsp.code+": "+rsp.info||"")
+		}
+		/*#{1JQQMSTFB0AfterCall*/
+		/*}#1JQQMSTFB0AfterCall*/
+		/*#{1JQQMSTFB0PostCodes*/
+		/*}#1JQQMSTFB0PostCodes*/
+		return {result:result};
+	};
+	GetKey.jaxId="1JQQMSTFB0"
+	GetKey.url="GetKey@"+agentURL
+	
+	segs["fixargs"]=fixargs=async function(input){//:1JQQO91Q80
+		let result=input;
+		let missing=false;
+		let smartAsk=false;
+		if(searchNum===undefined || searchNum==="") missing=true;
+		if(modelName===undefined || modelName==="") missing=true;
+		if(missing){
+			result=await session.pipeChat("/@aichat/ai/CompleteArgs.js",{"argsTemplate":argsTemplate,"command":input,smartAsk:smartAsk},false);
+			parseAgentArgs(result);
+		}
+		return {seg:GetUserInfo,result:(result),preSeg:"1JQQO91Q80",outlet:"1JQQO9K6Q0"};
+	};
+	fixargs.jaxId="1JQQO91Q80"
+	fixargs.url="fixargs@"+agentURL
+	
 	agent=$agent={
 		isAIAgent:true,
 		session:session,
@@ -266,12 +360,12 @@ ${input.html} 
 		jaxId:"1JC0LF9K60",
 		context:context,
 		livingSeg:null,
-		execChat:async function(input){
+		execChat:async function(input/*{searchNum,modelName}*/){
 			let result;
 			parseAgentArgs(input);
 			/*#{1JC0LF9K60PreEntry*/
 			/*}#1JC0LF9K60PreEntry*/
-			result={seg:Entry,"input":input};
+			result={seg:fixargs,"input":input};
 			/*#{1JC0LF9K60PostEntry*/
 			/*}#1JC0LF9K60PostEntry*/
 			return result;
@@ -294,6 +388,8 @@ export const ChatAPI=[{
 		parameters:{
 			type: "object",
 			properties:{
+				searchNum:{type:"number",description:""},
+				modelName:{type:"string",description:""}
 			}
 		}
 	},
@@ -318,9 +414,11 @@ if(DocAIAgentExporter){
 		name:"AnySearch",showName:"AnySearch",icon:"agent.svg",catalog:["AI Call"],
 		attrs:{
 			...SegObjShellAttr,
+			"searchNum":{name:"searchNum",showName:undefined,type:"number",key:1,fixed:1,initVal:5},
+			"modelName":{name:"modelName",showName:undefined,type:"string",key:1,fixed:1,initVal:""},
 			"outlet":{name:"outlet",type:"aioutlet",def:SegOutletDef,key:1,fixed:1,edit:false,navi:"doc"}
 		},
-		listHint:["id","codes","desc"],
+		listHint:["id","searchNum","modelName","codes","desc"],
 		desc:"这是一个AI智能体。"
 	});
 	
@@ -334,6 +432,8 @@ if(DocAIAgentExporter){
 		coder.indentMore();coder.newLine();
 		{
 			coder.packText(`let result,args={};`);coder.newLine();
+			coder.packText("args['searchNum']=");this.genAttrStatement(seg.getAttr("searchNum"));coder.packText(";");coder.newLine();
+			coder.packText("args['modelName']=");this.genAttrStatement(seg.getAttr("modelName"));coder.packText(";");coder.newLine();
 			this.packExtraCodes(coder,seg,"PreCodes");
 			coder.packText(`result= await session.pipeChat("/~/-AgentBuilder/ai/AnySearch.js",args,false);`);coder.newLine();
 			this.packExtraCodes(coder,seg,"PostCodes");
@@ -398,13 +498,36 @@ export{AnySearch};
 //			"attrs": {}
 //		},
 //		"showName": "",
-//		"entry": "Entry",
+//		"entry": "fixargs",
 //		"autoStart": "true",
 //		"inBrowser": "true",
 //		"debug": "true",
 //		"apiArgs": {
 //			"jaxId": "1JC0LF9K72",
-//			"attrs": {}
+//			"attrs": {
+//				"searchNum": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JQQOAB8S0",
+//					"attrs": {
+//						"type": "Number",
+//						"mockup": "5",
+//						"required": "true",
+//						"desc": ""
+//					}
+//				},
+//				"modelName": {
+//					"type": "object",
+//					"def": "AgentCallArgument",
+//					"jaxId": "1JQQOAB8S1",
+//					"attrs": {
+//						"type": "String",
+//						"mockup": "\"\"",
+//						"required": "true",
+//						"desc": ""
+//					}
+//				}
+//			}
 //		},
 //		"localVars": {
 //			"jaxId": "1JC0LF9K73",
@@ -494,7 +617,7 @@ export{AnySearch};
 //							}
 //						},
 //						"platform": "OpenRouter",
-//						"mode": "deepseek/deepseek-v4-flash",
+//						"mode": "openai/gpt-4.1",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`\n## Role\nYou are an AI agent that creates simple HTML pages according to user requirements.\n## Dialogue\n- The user will provide the content to be rendered in HTML: \\${input.userPrompt}\n- Based on the given content, reply to the user with a JSON object.\n- If you are able to generate the HTML page based on the information provided, include the complete HTML page code (including the necessary CSS/JS and external scripts) in the \"html\" property of the JSON. For example:\n\\`\\`\\`\n{ \"html\":\"<html>...</html>\" }\n\\`\\`\\`\n## Reply JSON Object Properties\n- \"html\" {string}: The HTML page code you generate. Make sure it is a complete HTML page code (including all necessary CSS/JS and any required external scripts).`",
@@ -999,6 +1122,137 @@ export{AnySearch};
 //						}
 //					},
 //					"icon": "cloudact.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "code",
+//					"jaxId": "1JQQMS3MD0",
+//					"attrs": {
+//						"id": "GetUserInfo",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-470",
+//						"y": "115",
+//						"desc": "This is an AISeg.",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JQQMSHK90",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JQQMSHK91",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JQQMSHK70",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "Outlet."
+//							},
+//							"linkedSeg": "1JC0LFH770"
+//						},
+//						"outlets": {
+//							"attrs": []
+//						},
+//						"result": "#input",
+//						"errorSeg": ""
+//					},
+//					"icon": "tab_css.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "webCall",
+//					"jaxId": "1JQQMSTFB0",
+//					"attrs": {
+//						"id": "GetKey",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-460",
+//						"y": "320",
+//						"desc": "这是一个AISeg。",
+//						"codes": "true",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"context": {
+//							"jaxId": "1JQQMT8010",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"global": {
+//							"jaxId": "1JQQMT8011",
+//							"attrs": {
+//								"cast": ""
+//							}
+//						},
+//						"url": "https://modelhunt.ai2apps.cn/api/public/v1/auth/token",
+//						"method": "POST",
+//						"argMode": "JOSN",
+//						"format": "JOSN",
+//						"args": {
+//							"jaxId": "1JQQMT8012",
+//							"attrs": {
+//								"userId": {
+//									"type": "string",
+//									"valText": "input.userId"
+//								},
+//								"token": {
+//									"type": "string",
+//									"valText": "input.token"
+//								}
+//							}
+//						},
+//						"text": "",
+//						"timeout": "30000",
+//						"headers": {
+//							"jaxId": "1JQQMT8013",
+//							"attrs": {
+//								"Content-Type": {
+//									"type": "string",
+//									"valText": "application/json"
+//								}
+//							}
+//						},
+//						"outlet": {
+//							"jaxId": "1JQQMT7VS0",
+//							"attrs": {
+//								"id": "Result",
+//								"desc": "输出节点。"
+//							}
+//						}
+//					},
+//					"icon": "web.svg"
+//				},
+//				{
+//					"type": "aiseg",
+//					"def": "fixArgs",
+//					"jaxId": "1JQQO91Q80",
+//					"attrs": {
+//						"id": "fixargs",
+//						"viewName": "",
+//						"label": "",
+//						"x": "-665",
+//						"y": "115",
+//						"desc": "这是一个AISeg。",
+//						"codes": "false",
+//						"mkpInput": "$$input$$",
+//						"segMark": "None",
+//						"smartAsk": "false",
+//						"outlet": {
+//							"jaxId": "1JQQO9K6Q0",
+//							"attrs": {
+//								"id": "Next",
+//								"desc": "输出节点。"
+//							},
+//							"linkedSeg": "1JQQMS3MD0"
+//						}
+//					},
+//					"icon": "args.svg"
 //				}
 //			]
 //		},
