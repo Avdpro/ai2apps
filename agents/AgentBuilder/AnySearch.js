@@ -287,10 +287,13 @@ ${input.html} 
 		let result=input
 		try{
 			/*#{1JQQMS3MD0Code*/
+			//let info = tabNT.loginVO;
+			debugger;
 			const key = await tabNT.getModelHuntKey();
 			//const json = { userId: info.userId, token: info.token };
 			result = {
 				...input,
+				//...json,
 				apiKey: key,
 			};
 			console.log("GetUserInfo",result);
@@ -314,6 +317,10 @@ ${input.html} 
 			"Content-Type":"application/json"
 		};
 		/*#{1JQQMSTFB0PreCodes*/
+		const allEnv = await fetch('/api/env').then(r => r.json());
+		const apiUrl = allEnv["MODELHUNT_API_URL"] ? allEnv["MODELHUNT_API_URL"] : url;
+		url = `${apiUrl.replace(/\/$/, '')}/api/public/v1/auth/token`;
+		console.log("url: ",url);
 		/*}#1JQQMSTFB0PreCodes*/
 		let json={
 			"userId":"input.userId","token":"input.token"
@@ -328,6 +335,15 @@ ${input.html} 
 			throw Error("Error "+rsp.code+": "+rsp.info||"")
 		}
 		/*#{1JQQMSTFB0AfterCall*/
+		if(rsp.code===200){
+			result={
+				...JSON.parse(rsp.data),
+				searchNum: input.searchNum,
+				modelName: input.modelName
+			};
+		}else{
+			throw Error("Error "+rsp.code+": "+rsp.info||"")
+		}
 		/*}#1JQQMSTFB0AfterCall*/
 		/*#{1JQQMSTFB0PostCodes*/
 		/*}#1JQQMSTFB0PostCodes*/
