@@ -101,15 +101,15 @@ let DeleteModel=async function(session){
 			}
 			let Config1 = await response.json();
 			let Config2 = await response2.json();
-			Config2 = Config2.platforms;
-			if(platform==="darwin") Config2 = Config2.mac;
-			else if(platform==="linux") Config2 = Config2.linux;
-			else if(platform==="win32") Config2 = Config2.windows;
-			model_type = Config1.source;
-			conda_env = Config2.conda_env_name;
-			project_path = Config2.project_path;
-			model_path = Config2.model_path;
-			extra_command = Config2.uninstall_command;
+			Config2 = Config2?.platforms;
+			if(platform==="darwin") Config2 = Config2?.mac;
+			else if(platform==="linux") Config2 = Config2?.linux;
+			else if(platform==="win32") Config2 = Config2?.windows;
+			model_type = Config1?.source;
+			conda_env = Config2?.conda_env_name;
+			project_path = Config2?.project_path;
+			model_path = Config2?.model_path;
+			extra_command = Config2?.uninstall_command;
 			/*}#1JIBU5U7N0Code*/
 		}catch(error){
 			/*#{1JIBU5U7N0ErrorCode*/
