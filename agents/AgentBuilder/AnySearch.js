@@ -79,7 +79,7 @@ let AnySearch=async function(session){
 	segs["WriteHtml"]=WriteHtml=async function(input){//:1JCIQ227E0
 		let prompt;
 		let $platform="OpenRouter";
-		let $model="openai/gpt-4.1";
+		let $model="deepseek/deepseek-v4-flash";
 		let $agent;
 		let result=null;
 		/*#{1JCIQ227E0Input*/
@@ -287,13 +287,10 @@ ${input.html} 
 		let result=input
 		try{
 			/*#{1JQQMS3MD0Code*/
-			//let info = tabNT.loginVO;
-			debugger;
 			const key = await tabNT.getModelHuntKey();
 			//const json = { userId: info.userId, token: info.token };
 			result = {
 				...input,
-				//...json,
 				apiKey: key,
 			};
 			console.log("GetUserInfo",result);
@@ -317,10 +314,6 @@ ${input.html} 
 			"Content-Type":"application/json"
 		};
 		/*#{1JQQMSTFB0PreCodes*/
-		const allEnv = await fetch('/api/env').then(r => r.json());
-		const apiUrl = allEnv["MODELHUNT_API_URL"] ? allEnv["MODELHUNT_API_URL"] : url;
-		url = `${apiUrl.replace(/\/$/, '')}/api/public/v1/auth/token`;
-		console.log("url: ",url);
 		/*}#1JQQMSTFB0PreCodes*/
 		let json={
 			"userId":"input.userId","token":"input.token"
@@ -335,15 +328,6 @@ ${input.html} 
 			throw Error("Error "+rsp.code+": "+rsp.info||"")
 		}
 		/*#{1JQQMSTFB0AfterCall*/
-		if(rsp.code===200){
-			result={
-				...JSON.parse(rsp.data),
-				searchNum: input.searchNum,
-				modelName: input.modelName
-			};
-		}else{
-			throw Error("Error "+rsp.code+": "+rsp.info||"")
-		}
 		/*}#1JQQMSTFB0AfterCall*/
 		/*#{1JQQMSTFB0PostCodes*/
 		/*}#1JQQMSTFB0PostCodes*/
@@ -633,7 +617,7 @@ export{AnySearch};
 //							}
 //						},
 //						"platform": "OpenRouter",
-//						"mode": "openai/gpt-4.1",
+//						"mode": "deepseek/deepseek-v4-flash",
 //						"system": {
 //							"type": "string",
 //							"valText": "#`\n## Role\nYou are an AI agent that creates simple HTML pages according to user requirements.\n## Dialogue\n- The user will provide the content to be rendered in HTML: \\${input.userPrompt}\n- Based on the given content, reply to the user with a JSON object.\n- If you are able to generate the HTML page based on the information provided, include the complete HTML page code (including the necessary CSS/JS and external scripts) in the \"html\" property of the JSON. For example:\n\\`\\`\\`\n{ \"html\":\"<html>...</html>\" }\n\\`\\`\\`\n## Reply JSON Object Properties\n- \"html\" {string}: The HTML page code you generate. Make sure it is a complete HTML page code (including all necessary CSS/JS and any required external scripts).`",

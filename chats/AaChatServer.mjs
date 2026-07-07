@@ -68,7 +68,7 @@ let AaChatThread,aaChatThread;
 		if(!this.id){
 			throw Error(`Thread go live missing threadId`);
 		}
-		if(this.status!==TYPE_DORMANT){
+		if(this.status!==STATUS_DORMANT){
 			throw Error(`Thread ${this.id} go live with wrong type: ${this.status}.`);
 		}
 		this.client=client;
@@ -926,6 +926,11 @@ let AaChatServer,aaChatServer
 				self.clients.push(client);
 				if(type==="host") {
 					await self.chatDb.newClient(client.id, userId);
+					for(let t of self.threads){
+						if(t.userId===userId && !t.client && t.status===AaChatThread.STATUS_LIVE){
+							t.client=client;
+						}
+					}
 				}
 				res.json({ code: 200, clientId:client.id,hostId:client.hostClient?.id||null});
 			};
@@ -961,6 +966,11 @@ let AaChatServer,aaChatServer
 						}
 					}
 					await client.resume();
+					for(let t of self.threads){
+						if(t.userId===userId && !t.client && t.status===AaChatThread.STATUS_LIVE){
+							t.client=client;
+						}
+					}
 					res.json({ code: 200, info:`Client is ready for connect.`});
 					return;
 				}
@@ -979,6 +989,11 @@ let AaChatServer,aaChatServer
 					await client.newHostClient(clientId);
 					self.clientMap.set(client.id,client);
 					self.clients.push(client);
+					for(let t of self.threads){
+						if(t.userId===userId && !t.client && t.status===AaChatThread.STATUS_LIVE){
+							t.client=client;
+						}
+					}
 					res.json({ code: 200, info:`Client is ready for connect.`});
 					return;
 				}
