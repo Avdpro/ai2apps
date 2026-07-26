@@ -263,6 +263,60 @@
         }
       }
     },
+    "appearance.row.menubar_icon" : {
+      "comment" : "Appearance row label for the menu bar icon restore action",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menu Bar Icon"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Значок в строке меню"
+          }
+        }
+      }
+    },
+    "appearance.row.menubar_icon.restore" : {
+      "comment" : "Appearance button title that restores the menu bar icon",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Восстановить"
+          }
+        }
+      }
+    },
+    "appearance.row.menubar_icon.sub" : {
+      "comment" : "Appearance row sublabel for the menu bar icon restore action",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring the oMLX icon back if it was removed from the menu bar. Separate from the Dock icon."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вернуть значок oMLX, если он был удалён из строки меню. Не связано со значком в Dock."
+          }
+        }
+      }
+    },
     "appearance.row.refresh_interval" : {
       "comment" : "Appearance row label for the menubar refresh cadence picker",
       "extractionState" : "manual",

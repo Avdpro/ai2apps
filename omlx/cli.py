@@ -684,15 +684,15 @@ def diagnose_menubar() -> int:
     except (subprocess.SubprocessError, FileNotFoundError) as e:
         print(f"Menubar app:    check failed ({e})")
 
-    # The Swift app writes `server.log` (stdout/stderr of the Python child).
-    # No separate menubar.log — visibility-probe lines are logged into the
-    # same file via OSLog.
+    # `menubar.log` is the Swift app's own visibility-probe log — every line
+    # in it is relevant. `server.log` is the Python child's stdout/stderr, so
+    # only lines that mention the menubar are worth pulling out of it.
     log_dir = Path.home() / "Library" / "Application Support" / "oMLX" / "logs"
-    log_candidates = [log_dir / "server.log"]
+    log_candidates = [(log_dir / "menubar.log", False), (log_dir / "server.log", True)]
     print(f"Log dir:        {log_dir}")
 
     hits: list[tuple[str, str]] = []
-    for path in log_candidates:
+    for path, needs_filter in log_candidates:
         if not path.exists():
             continue
         try:
@@ -705,13 +705,16 @@ def diagnose_menubar() -> int:
             print(f"Could not read {path.name}: {e}")
             continue
         for ln in tail.splitlines():
-            if (
+            if not ln.strip():
+                continue
+            if needs_filter and not (
                 "menubar visibility probe" in ln
                 or "NSStatusItem" in ln
                 or "ControlCenter" in ln
                 or "Menu Bar" in ln
             ):
-                hits.append((path.name, ln))
+                continue
+            hits.append((path.name, ln))
 
     if hits:
         print("\nRecent visibility log entries (last 10):")
@@ -722,15 +725,15 @@ def diagnose_menubar() -> int:
 
     print()
     print("If the icon is missing on macOS Tahoe (26.x):")
-    print("  1. Open System Settings > Menu Bar")
+    print("  1. In the oMLX app: Settings > Appearance > Menu Bar Icon > Restore")
+    print("  2. Or turn it back on in System Settings > Menu Bar")
     print(
         "     open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension?MenuBar'"
     )
-    print("  2. Find 'oMLX' and set it to 'Show in Menu Bar'")
     print("  3. If oMLX isn't in the list, quit the app and relaunch oMLX.app")
     print()
-    print("Note: Apple's sandbox policy prevents third-party apps from")
-    print("programmatically re-enabling their own menubar visibility on Tahoe.")
+    print("Note: Restore edits ControlCenter's own StatusKit approval, which")
+    print("needs Full Disk Access. Without it, use the System Settings toggle.")
     return 0
 
 
