@@ -815,3 +815,19 @@ def test_laguna_tool_parser_preserves_schema_declared_string_arguments():
         "name": "set_feature",
         "arguments": {"enabled": "true"},
     }
+
+
+def test_laguna_attention_resolves_sdpa_through_module():
+    """The vendored model must not bind SDPA at import time (issue #2372).
+
+    This module is imported from maybe_apply_pre_load_patches, before the engine
+    installs the TurboQuant dispatcher, and the dispatcher's rebinding sweep only
+    covers mlx_lm/mlx_vlm model modules, so an import-time binding here would
+    never see TurboQuant at all.
+    """
+    from omlx.patches.laguna import laguna_model
+
+    assert not hasattr(laguna_model, "scaled_dot_product_attention")
+    code = laguna_model.Attention.__call__.__code__
+    assert "mlx_lm_base" in code.co_names
+    assert "scaled_dot_product_attention" in code.co_names

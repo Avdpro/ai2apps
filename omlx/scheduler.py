@@ -9476,14 +9476,74 @@ class Scheduler:
         request._model_cache_config = None
         request.think_prefix_sent = False
 
+    def _collect_corruption_retry_requests(self) -> list[Request]:
+        """Every live request that must be re-prefilled after a cache reset.
+
+        _recover_from_cache_error() drops the batch generator and clears the
+        block-aware cache, so anything holding cache state is stranded, not just
+        the decoding requests in self.running. Two other groups exist:
+
+        - self.prefilling: chunked prefills mid-flight.
+        - self.requests only: a request popped off self.waiting that is being
+          prefilled inside _schedule_waiting right now. It is in no queue at
+          all, which is exactly where the corruption tends to fire (issue
+          #2372). Such a request was never requeued, never failed, and never
+          logged, so the client hung until it timed out on its own.
+
+        Mirrors _reschedule_generation_overflow_requests. Requests still in
+        self.waiting are left alone (they hold no cache state), as are finished
+        ones and those with an in-flight store_cache future.
+        """
+        collected: list[Request] = []
+        seen: set[str] = set()
+        prefilling_ids = {request.request_id for request in self.prefilling}
+        waiting_ids = {request.request_id for request in self.waiting}
+
+        def collect(request: Request | None) -> None:
+            if request is None:
+                return
+            request_id = request.request_id
+            if request_id in seen or request_id in self._inflight_store_futures:
+                return
+            if request.is_finished():
+                return
+            seen.add(request_id)
+            collected.append(request)
+
+        for request in self.running.values():
+            collect(request)
+        for request in self.prefilling:
+            collect(request)
+        for request_id, request in self.requests.items():
+            if request_id in self.running or request_id in prefilling_ids:
+                continue
+            if request_id in waiting_ids:
+                continue
+            collect(request)
+
+        return collected
+
+    def _drop_from_prefill_queues(self, request_id: str) -> None:
+        """Remove a request from the chunked-prefill queue and its state."""
+        self._prefill_states.pop(request_id, None)
+        get_prefill_tracker().remove(request_id)
+        if any(request.request_id == request_id for request in self.prefilling):
+            self.prefilling = deque(
+                request
+                for request in self.prefilling
+                if request.request_id != request_id
+            )
+
     def _reschedule_running_requests(
         self, is_corruption: bool = False, max_corruption_retries: int = 3
     ) -> list[str]:
-        """Move running requests back to waiting queue for retry.
+        """Move active requests back to waiting queue for retry.
 
         Args:
             is_corruption: If True, increment corruption retry counter and
-                fail requests that exceed max_corruption_retries.
+                fail requests that exceed max_corruption_retries. Also drains
+                prefilling and in-flight requests, not just self.running,
+                because a cache reset strands those too.
             max_corruption_retries: Max corruption retries before failing a request.
 
         Returns:
@@ -9491,12 +9551,20 @@ class Scheduler:
         """
         failed_ids: list[str] = []
         count = 0
-        for request_id, request in list(self.running.items()):
+        if is_corruption:
+            candidates = [
+                (request.request_id, request)
+                for request in self._collect_corruption_retry_requests()
+            ]
+        else:
+            candidates = list(self.running.items())
+        for request_id, request in candidates:
             if is_corruption:
                 request.cache_corruption_retries += 1
                 if request.cache_corruption_retries > max_corruption_retries:
                     failed_ids.append(request_id)
-                    del self.running[request_id]
+                    self.running.pop(request_id, None)
+                    self._drop_from_prefill_queues(request_id)
                     # Clean up from requests dict (prevent memory leak)
                     req = self.requests.pop(request_id, None)
                     self._clear_request_admission_bookkeeping(request_id)
@@ -9504,12 +9572,13 @@ class Scheduler:
                         req._extracted_cache = None
                         req.prompt_cache = None
                     continue
+                self._drop_from_prefill_queues(request_id)
 
             self._reset_request_for_reprefill(request)
 
             # Move to waiting queue (at front for priority)
             self.waiting.appendleft(request)
-            del self.running[request_id]
+            self.running.pop(request_id, None)
             count += 1
 
         if count > 0:

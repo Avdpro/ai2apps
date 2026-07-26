@@ -3582,6 +3582,122 @@ class TestCacheCorruptionRecovery:
         for req in scheduler.waiting:
             assert req.cache_corruption_retries == 0
 
+    def _add_prefilling_request(self, scheduler, request_id="req-prefill"):
+        req = Request(
+            request_id=request_id,
+            prompt="chunked prompt",
+            sampling_params=SamplingParams(),
+            prompt_token_ids=[1, 2, 3, 4],
+            num_prompt_tokens=4,
+            status=RequestStatus.RUNNING,
+            remaining_tokens=[1, 2, 3, 4],
+        )
+        scheduler.requests[request_id] = req
+        scheduler.prefilling.append(req)
+        scheduler._prefill_states[request_id] = MagicMock()
+        return req
+
+    def _add_inflight_request(self, scheduler, request_id="req-inflight"):
+        """A request being prefilled inside _schedule_waiting: in no queue."""
+        req = Request(
+            request_id=request_id,
+            prompt="in-flight prompt",
+            sampling_params=SamplingParams(),
+            prompt_token_ids=[5, 6, 7],
+            num_prompt_tokens=3,
+            status=RequestStatus.RUNNING,
+            remaining_tokens=[5, 6, 7],
+        )
+        scheduler.requests[request_id] = req
+        return req
+
+    def test_corruption_reschedule_drains_prefilling(
+        self, mock_model, mock_tokenizer
+    ):
+        """Chunked prefills hold cache state and must be requeued (issue #2372)."""
+        scheduler = self._make_scheduler(mock_model, mock_tokenizer)
+        req = self._add_prefilling_request(scheduler)
+
+        failed = scheduler._reschedule_running_requests(is_corruption=True)
+
+        assert failed == []
+        assert not scheduler.prefilling
+        assert "req-prefill" not in scheduler._prefill_states
+        assert req in scheduler.waiting
+        assert req.status == RequestStatus.WAITING
+        assert req.cache_corruption_retries == 1
+
+    def test_corruption_reschedule_drains_inflight_request(
+        self, mock_model, mock_tokenizer
+    ):
+        """A request mid-prefill sits in no queue at all and was orphaned."""
+        scheduler = self._make_scheduler(mock_model, mock_tokenizer)
+        req = self._add_inflight_request(scheduler)
+
+        failed = scheduler._reschedule_running_requests(is_corruption=True)
+
+        assert failed == []
+        assert req in scheduler.waiting
+        assert req.status == RequestStatus.WAITING
+        assert req.cache_corruption_retries == 1
+
+    def test_corruption_reschedule_skips_waiting_and_inflight_store(
+        self, mock_model, mock_tokenizer
+    ):
+        """Waiting requests hold no cache state; store_cache futures own theirs."""
+        scheduler = self._make_scheduler(mock_model, mock_tokenizer)
+        waiting_req = Request(
+            request_id="req-waiting",
+            prompt="queued",
+            sampling_params=SamplingParams(),
+            prompt_token_ids=[1],
+            num_prompt_tokens=1,
+            status=RequestStatus.WAITING,
+            remaining_tokens=[1],
+        )
+        scheduler.requests["req-waiting"] = waiting_req
+        scheduler.waiting.append(waiting_req)
+        storing_req = self._add_inflight_request(scheduler, "req-storing")
+        scheduler._inflight_store_futures["req-storing"] = MagicMock()
+
+        scheduler._reschedule_running_requests(is_corruption=True)
+
+        assert waiting_req.cache_corruption_retries == 0
+        assert storing_req.cache_corruption_retries == 0
+        assert [r for r in scheduler.waiting if r.request_id == "req-waiting"] == [
+            waiting_req
+        ]
+
+    def test_corruption_reschedule_fails_prefilling_after_max_retries(
+        self, mock_model, mock_tokenizer
+    ):
+        """A prefilling request over the retry limit is failed, not left behind."""
+        scheduler = self._make_scheduler(mock_model, mock_tokenizer)
+        req = self._add_prefilling_request(scheduler)
+        req.cache_corruption_retries = 3
+
+        failed = scheduler._reschedule_running_requests(
+            is_corruption=True, max_corruption_retries=3
+        )
+
+        assert "req-prefill" in failed
+        assert not scheduler.prefilling
+        assert "req-prefill" not in scheduler._prefill_states
+        assert "req-prefill" not in scheduler.requests
+
+    def test_non_corruption_reschedule_leaves_prefilling_alone(
+        self, mock_model, mock_tokenizer
+    ):
+        """PrefillAborted recovery keeps its running-only scope."""
+        scheduler = self._make_scheduler(mock_model, mock_tokenizer)
+        req = self._add_prefilling_request(scheduler)
+
+        scheduler._reschedule_running_requests(is_corruption=False)
+
+        assert list(scheduler.prefilling) == [req]
+        assert "req-prefill" in scheduler._prefill_states
+        assert req not in scheduler.waiting
+
     def test_fail_all_requests_clears_everything(self, mock_model, mock_tokenizer):
         """fail_all_requests removes all running and waiting requests."""
         scheduler = self._make_scheduler(mock_model, mock_tokenizer)

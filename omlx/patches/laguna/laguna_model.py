@@ -16,12 +16,9 @@ from typing import Any
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx_lm.models import base as mlx_lm_base
 from mlx_lm.models.activations import swiglu
-from mlx_lm.models.base import (
-    BaseModelArgs,
-    create_attention_mask,
-    scaled_dot_product_attention,
-)
+from mlx_lm.models.base import BaseModelArgs, create_attention_mask
 from mlx_lm.models.cache import KVCache, RotatingKVCache
 from mlx_lm.models.rope_utils import initialize_rope
 from mlx_lm.models.switch_layers import SwitchGLU
@@ -338,7 +335,12 @@ class Attention(nn.Module):
             queries = self.rope(queries)
             keys = self.rope(keys)
 
-        output = scaled_dot_product_attention(
+        # Resolved through the module, not bound at import. This module is
+        # imported from maybe_apply_pre_load_patches, before the engine installs
+        # the TurboQuant dispatcher, and the dispatcher's rebinding sweep only
+        # covers mlx_lm/mlx_vlm model modules, so an import-time binding here
+        # would never see TurboQuant at all (issue #2372).
+        output = mlx_lm_base.scaled_dot_product_attention(
             queries,
             keys,
             values,
