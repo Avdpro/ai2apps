@@ -1059,12 +1059,21 @@ class GlobalSettings:
         ):
             self.scheduler.embedding_batch_size = args.embedding_batch_size
 
-        # Memory guard settings
+        # Memory guard settings. Naming a tier or a ceiling on the command
+        # line also turns the guard on. With a saved
+        # ``prefill_memory_guard: false`` these flags used to be a silent
+        # no-op — the enforcer reports a ceiling of 0 with the guard off, so
+        # the tier the user asked for governed nothing.
         if hasattr(args, "memory_guard") and args.memory_guard is not None:
-            self.memory.memory_guard_tier = args.memory_guard
+            if args.memory_guard == "off":
+                self.memory.prefill_memory_guard = False
+            else:
+                self.memory.memory_guard_tier = args.memory_guard
+                self.memory.prefill_memory_guard = True
         if hasattr(args, "memory_guard_gb") and args.memory_guard_gb is not None:
             self.memory.memory_guard_tier = "custom"
             self.memory.memory_guard_custom_ceiling_gb = float(args.memory_guard_gb)
+            self.memory.prefill_memory_guard = True
 
         # Cache settings
         if hasattr(args, "cache_enabled") and args.cache_enabled is not None:

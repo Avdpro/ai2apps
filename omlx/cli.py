@@ -239,7 +239,12 @@ def serve_command(args):
         model_dirs = settings.get_effective_model_dirs()
         print(f"Base path: {settings.base_path}")
         print(f"Model directories: {', '.join(str(d) for d in model_dirs)}")
-        print(f"Memory guard tier: {settings.memory.memory_guard_tier}")
+        # State first: a bare tier line reads as "this is enforced" even when
+        # the guard is off, and with it off the tier governs nothing.
+        if settings.memory.prefill_memory_guard:
+            print(f"Memory guard: on (tier: {settings.memory.memory_guard_tier})")
+        else:
+            print("Memory guard: off")
 
         # Store MCP config path for FastAPI startup
         # Priority: CLI arg > settings.json
@@ -859,15 +864,15 @@ Example directory structure:
     serve_parser.add_argument(
         "--memory-guard",
         type=str,
-        choices=["safe", "balanced", "aggressive"],
+        choices=["off", "safe", "balanced", "aggressive"],
         default=None,
-        help="Memory guard tier. safe reserves more system memory; aggressive allows more oMLX memory use. (default: balanced)",
+        help="Memory guard tier, or 'off' to disable the guard. safe reserves more system memory; aggressive allows more oMLX memory use. Passing a tier also turns the guard on. (default: balanced)",
     )
     serve_parser.add_argument(
         "--memory-guard-gb",
         type=_positive_float,
         default=None,
-        help="Custom memory guard ceiling in GB. Sets memory guard tier to custom.",
+        help="Custom memory guard ceiling in GB. Sets memory guard tier to custom and turns the guard on.",
     )
 
     # paged SSD cache options
@@ -1068,6 +1073,14 @@ Example directory structure:
         if extra_args:
             parser.error(f"unrecognized arguments: {' '.join(extra_args)}")
         if args.command == "serve":
+            if (
+                getattr(args, "memory_guard", None) == "off"
+                and getattr(args, "memory_guard_gb", None) is not None
+            ):
+                parser.error(
+                    "--memory-guard off cannot be combined with "
+                    "--memory-guard-gb (a custom ceiling needs the guard on)"
+                )
             serve_command(args)
         elif args.command in {"start", "stop", "restart"}:
             sys.exit(lifecycle_command(args))
