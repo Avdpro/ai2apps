@@ -4011,11 +4011,16 @@
                 const bold = (gb) => `<strong>${fmt(gb)} GB</strong>`;
 
                 // Static / metal cap for the final clamp shown to the user.
+                // The small-system threshold must track
+                // ProcessMemoryEnforcer._SMALL_SYSTEM_THRESHOLD (24 GB): under
+                // it the server reserves a flat 4 GB regardless of tier. This
+                // read 16 and so understated the static ceiling by up to 4 GB
+                // on every 16-23 GB Mac.
                 const totalGB = (sys.total_memory_bytes || 0) / GB;
                 const staticReserveGB =
                     tier === 'custom'
                         ? 2
-                        : totalGB < 16
+                        : totalGB < 24
                             ? 4
                             : { safe: 8, balanced: 6, aggressive: 4 }[tier] ?? 6;
                 const staticCeiling = Math.max(0, totalGB - staticReserveGB);
