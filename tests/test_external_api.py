@@ -341,6 +341,34 @@ class TestStreamChatCompletion:
             await client.aclose()
         assert stats.text == ""
         assert stats.first_content_time <= stats.last_content_time
+        assert stats.content_observed is True
+
+    async def test_stream_without_any_delta_marks_timing_unobserved(self):
+        """No content and no reasoning delta means nothing was timed. The
+        fallback timestamps have to be flagged so callers do not read TTFT
+        and the prefill rate off the end of the response."""
+
+        def handler(request):
+            return httpx.Response(
+                200,
+                content=_sse_body([
+                    {"choices": [{"delta": {"role": "assistant"}}]},
+                    _usage_chunk(),
+                ]),
+            )
+
+        client = _client(handler)
+        try:
+            stats = await client.stream_chat_completion(
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=8,
+                temperature=0.0,
+            )
+        finally:
+            await client.aclose()
+        assert stats.content_observed is False
+        assert stats.first_content_time == stats.end_time
+        assert stats.last_content_time == stats.end_time
 
     async def test_auth_error_message_without_key(self):
         def handler(request):

@@ -237,6 +237,7 @@ def _compute_single_metrics(
     prefill_duration_s: float | None = None,
     generation_duration_s: float | None = None,
     generation_measured: bool = True,
+    timing_observed: bool = True,
 ) -> dict:
     """Compute all metrics for a single request benchmark."""
     ttft_s = first_token_time - start_time
@@ -250,7 +251,7 @@ def _compute_single_metrics(
     )
     e2e_duration = end_time - start_time
 
-    ttft_ms = ttft_s * 1000
+    ttft_ms: float | None = ttft_s * 1000
     if generation_measured and completion_tokens > 1 and gen_duration > 0:
         tpot_ms: float | None = (gen_duration / (completion_tokens - 1)) * 1000
         gen_tps: float | None = completion_tokens / gen_duration
@@ -260,14 +261,24 @@ def _compute_single_metrics(
         # unmeasured rather than a misleading 0.0.
         tpot_ms = None
         gen_tps = None
-    processing_tps = prompt_tokens / max(prefill_duration, 1e-9)
+    processing_tps: float | None = prompt_tokens / max(prefill_duration, 1e-9)
     total_throughput = (prompt_tokens + completion_tokens) / max(e2e_duration, 1e-9)
 
+    if not timing_observed:
+        # The first-token timestamp was never observed and fell back to the
+        # end of the response, so TTFT covers the whole response and the
+        # prefill rate derived from it is not a prefill rate at all. Only
+        # e2e latency and total throughput survive.
+        ttft_ms = None
+        processing_tps = None
+
     return {
-        "ttft_ms": round(ttft_ms, 1),
+        "ttft_ms": round(ttft_ms, 1) if ttft_ms is not None else None,
         "tpot_ms": round(tpot_ms, 2) if tpot_ms is not None else None,
         "gen_tps": round(gen_tps, 1) if gen_tps is not None else None,
-        "processing_tps": round(processing_tps, 1),
+        "processing_tps": (
+            round(processing_tps, 1) if processing_tps is not None else None
+        ),
         "e2e_latency_s": round(e2e_duration, 3),
         "total_throughput": round(total_throughput, 1),
         "peak_memory_bytes": peak_memory,
@@ -532,6 +543,7 @@ async def _run_external_single_test(
         prefill_duration_s=None,
         generation_duration_s=gen_duration if gen_duration > 0 else None,
         generation_measured=gen_duration > 0,
+        timing_observed=stats.content_observed,
     )
     metrics["peak_memory_bytes"] = None
     return metrics
@@ -562,27 +574,40 @@ async def _run_external_batch_test(
     total_gen_tokens = sum(s.completion_tokens for s in stats_list)
     total_prompt_tokens = sum(s.prompt_tokens for s in stats_list)
     wall_time = wall_end - wall_start
-    avg_ttft_ms = (
-        sum(s.first_content_time - s.start_time for s in stats_list) / batch_size
-    ) * 1000
 
-    # pp TPS: total prompt tokens / time until ALL requests emit content
+    # Every aggregate below is derived from the per-request content
+    # timestamps, so a single stream that never reported content poisons all
+    # of them: its fallback timestamp sits at the end of the response and
+    # drags max_first_token along with it.
+    timing_observed = all(s.content_observed for s in stats_list)
+    decode_observed = all(
+        s.last_content_time > s.first_content_time for s in stats_list
+    )
+
     max_first_token = max(s.first_content_time for s in stats_list)
-    pp_tps = total_prompt_tokens / max(max_first_token - wall_start, 1e-9)
-
-    # tg TPS: total generated tokens / generation wall time. When the
-    # aggregate generation window collapses to zero or less (e.g. every
-    # request's content arrived at ~the same instant the batch finished),
-    # the rate is unmeasurable — report None instead of flooring the
-    # denominator, which would otherwise produce an inflated, meaningless
-    # tok/s figure.
     gen_window = wall_end - max_first_token
-    tg_tps = round(total_gen_tokens / gen_window, 1) if gen_window > 0 else None
+
+    avg_ttft_ms: float | None = None
+    pp_tps: float | None = None
+    tg_tps: float | None = None
+    if timing_observed:
+        total_ttft_s = sum(s.first_content_time - s.start_time for s in stats_list)
+        avg_ttft_ms = round((total_ttft_s / batch_size) * 1000, 1)
+        # pp TPS: total prompt tokens / time until ALL requests emit content
+        prefill_window = max(max_first_token - wall_start, 1e-9)
+        pp_tps = round(total_prompt_tokens / prefill_window, 1)
+        # tg TPS needs a real decode span. wall_end is sampled after
+        # asyncio.gather returns, so gen_window stays positive even when
+        # every per-request timestamp collapsed onto the end of the
+        # response, and the window alone cannot tell a genuine decode phase
+        # from a single-chunk dump.
+        if decode_observed and gen_window > 0:
+            tg_tps = round(total_gen_tokens / gen_window, 1)
 
     return {
-        "pp_tps": round(pp_tps, 1),
+        "pp_tps": pp_tps,
         "tg_tps": tg_tps,
-        "avg_ttft_ms": round(avg_ttft_ms, 1),
+        "avg_ttft_ms": avg_ttft_ms,
         "e2e_latency_s": round(wall_time, 3),
         "total_gen_tokens": total_gen_tokens,
         "batch_size": batch_size,

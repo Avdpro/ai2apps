@@ -2,6 +2,7 @@
 """Tests for the admin benchmark module."""
 
 import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1234,7 +1235,11 @@ class TestRunExternalBenchmark:
 
     async def test_single_result_unmeasurable_span_reports_none(self):
         """A true single-chunk dump (first_content_time == last_content_time
-        == end_time) must report tg TPS as unmeasured, not 0.0."""
+        == end_time) must report tg TPS as unmeasured, not 0.0.
+
+        Content was still observed, so TTFT and the prefill rate derived from
+        it remain real measurements and must keep their values.
+        """
         from omlx.admin.external_api import StreamStats
 
         collapsed_stats = StreamStats(
@@ -1246,6 +1251,7 @@ class TestRunExternalBenchmark:
             last_content_time=0.5,
             end_time=0.5,
             text="x" * 16,
+            content_observed=True,
         )
         run = self._make_run(prompt_lengths=[1024])
         client = self._mock_client(collapsed_stats)
@@ -1258,51 +1264,124 @@ class TestRunExternalBenchmark:
         result = run.results[0]
         assert result["gen_tps"] is None
         assert result["tpot_ms"] is None
+        assert result["ttft_ms"] == pytest.approx(500.0)
+        assert result["processing_tps"] == pytest.approx(2000.0)
 
-    async def test_batch_collapsed_window_reports_none_not_inflated(self):
-        """When every request's content collapses to ~the batch completion
-        instant, tg TPS must be unmeasured, not an astronomically inflated
-        number produced by flooring a near-zero denominator.
-
-        Exercises _run_external_batch_test directly with a patched
-        perf_counter so the aggregate window is deterministically <= 0,
-        independent of real wall-clock timing.
-        """
-        from omlx.admin.benchmark import _run_external_batch_test
+    async def test_single_result_without_content_reports_ttft_none(self):
+        """When no content or reasoning delta was ever seen, the fallback
+        timestamps make TTFT and pp TPS describe the whole response, so both
+        have to report unmeasured alongside the decode metrics."""
         from omlx.admin.external_api import StreamStats
 
-        collapsed = StreamStats(
+        unobserved_stats = StreamStats(
             prompt_tokens=1000,
             completion_tokens=128,
             cached_tokens=0,
             start_time=0.0,
-            # first_content_time lands *after* the wall_end the patched
-            # clock below will report, modeling the observed real-world
-            # collapse (content detected right at/after batch completion).
-            first_content_time=100.10,
-            last_content_time=100.10,
-            end_time=100.10,
-            text="x" * 16,
+            # stream_chat_completion falls both timestamps back to end_time
+            first_content_time=1.2,
+            last_content_time=1.2,
+            end_time=1.2,
+            text="",
+            content_observed=False,
         )
-        client = MagicMock()
-        client.stream_chat_completion = AsyncMock(return_value=collapsed)
+        run = self._make_run(prompt_lengths=[1024])
+        client = self._mock_client(unobserved_stats)
 
         with patch(
-            "omlx.admin.benchmark.time.perf_counter",
-            side_effect=[100.0, 100.05],  # wall_start, wall_end
+            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
         ):
-            result = await _run_external_batch_test(
-                client=client,
-                prompts=["p1", "p2"],
-                max_tokens=128,
-                batch_size=2,
+            await run_benchmark(run, MagicMock())
+
+        result = run.results[0]
+        assert result["ttft_ms"] is None
+        assert result["processing_tps"] is None
+        assert result["gen_tps"] is None
+        assert result["tpot_ms"] is None
+        # e2e still spans a real interval and stays measured
+        assert result["e2e_latency_s"] == pytest.approx(1.2)
+
+    async def test_batch_without_content_reports_none_not_inflated(self):
+        """Models the real collapse on the real clock: no field matched, so
+        every timestamp fell back to end_time, which stream_chat_completion
+        samples inside the request coroutine and therefore always before the
+        wall_end sampled after asyncio.gather.
+
+        The aggregate window stays a small positive number in that state, so
+        a sign check on it cannot detect the collapse and the batch reports
+        millions of tok/s. Measurability has to come from the stats.
+        """
+        from omlx.admin.benchmark import _run_external_batch_test
+        from omlx.admin.external_api import StreamStats
+
+        async def collapsed_stream(**kwargs):
+            await asyncio.sleep(0.01)
+            now = time.perf_counter()
+            return StreamStats(
+                prompt_tokens=1000,
+                completion_tokens=128,
+                cached_tokens=0,
+                start_time=now - 0.01,
+                first_content_time=now,
+                last_content_time=now,
+                end_time=now,
+                text="",
+                content_observed=False,
             )
 
+        client = MagicMock()
+        client.stream_chat_completion = collapsed_stream
+
+        result = await _run_external_batch_test(
+            client=client,
+            prompts=["p1", "p2"],
+            max_tokens=128,
+            batch_size=2,
+        )
+
         assert result["tg_tps"] is None
+        assert result["pp_tps"] is None
+        assert result["avg_ttft_ms"] is None
+        assert result["total_gen_tokens"] == 256
+
+    async def test_batch_single_chunk_dump_keeps_ttft_but_drops_tg(self):
+        """Content arrived, but all of it in one chunk: the decode span is
+        unmeasurable while TTFT and pp TPS are real measurements."""
+        from omlx.admin.benchmark import _run_external_batch_test
+        from omlx.admin.external_api import StreamStats
+
+        async def single_chunk_stream(**kwargs):
+            await asyncio.sleep(0.01)
+            now = time.perf_counter()
+            return StreamStats(
+                prompt_tokens=1000,
+                completion_tokens=128,
+                cached_tokens=0,
+                start_time=now - 0.01,
+                first_content_time=now,
+                last_content_time=now,
+                end_time=now,
+                text="x" * 16,
+                content_observed=True,
+            )
+
+        client = MagicMock()
+        client.stream_chat_completion = single_chunk_stream
+
+        result = await _run_external_batch_test(
+            client=client,
+            prompts=["p1", "p2"],
+            max_tokens=128,
+            batch_size=2,
+        )
+
+        assert result["tg_tps"] is None
+        assert result["pp_tps"] is not None
+        assert result["avg_ttft_ms"] is not None
 
     async def test_batch_measurable_window_computes_tg_tps(self):
-        """A real, positive aggregate generation window still computes a
-        normal tg_tps — no regression from the None-guard."""
+        """A real, observed decode span still computes a normal tg_tps, with
+        no regression from the None guard."""
         from omlx.admin.benchmark import _run_external_batch_test
         from omlx.admin.external_api import StreamStats
 
@@ -1315,13 +1394,18 @@ class TestRunExternalBenchmark:
             last_content_time=1.5,
             end_time=1.6,
             text="x" * 16,
+            content_observed=True,
         )
         client = MagicMock()
         client.stream_chat_completion = AsyncMock(return_value=measured)
 
+        # A plain two-element side_effect would raise StopIteration on any
+        # other perf_counter call in the process during this block, so fall
+        # back to the last value instead.
+        clock = iter([0.0, 1.6])  # wall_start, wall_end
         with patch(
             "omlx.admin.benchmark.time.perf_counter",
-            side_effect=[0.0, 1.6],  # wall_start, wall_end
+            side_effect=lambda: next(clock, 1.6),
         ):
             result = await _run_external_batch_test(
                 client=client,
@@ -1332,6 +1416,7 @@ class TestRunExternalBenchmark:
 
         # total_gen_tokens=256, gen window = wall_end(1.6) - max_first_token(0.5) = 1.1s
         assert result["tg_tps"] == pytest.approx(256 / 1.1, abs=0.1)
+        assert result["pp_tps"] == pytest.approx(2000 / 0.5, abs=0.1)
 
     async def test_missing_usage_fails_run(self):
         from omlx.admin.external_api import ExternalEndpointError
