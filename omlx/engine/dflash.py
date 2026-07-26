@@ -95,6 +95,12 @@ class _DFlashPrefillGuard:
         self._prefill_memory_guard: bool = False
         self._memory_hard_limit_bytes: int = 0
         self._memory_hot_cache_used_bytes: int = 0
+        # Component breakdown behind the ceiling above, so a rejection can
+        # name the binding constraint instead of generic tier advice.
+        self._memory_static_ceiling_bytes: int = 0
+        self._memory_dynamic_ceiling_bytes: int = 0
+        self._memory_metal_cap_bytes: int = 0
+        self._memory_guard_tier: str = ""
 
     def record_mlx_active_memory(self, active_bytes: int) -> None:
         self._last_mlx_active_memory_bytes = max(0, int(active_bytes))
@@ -127,6 +133,10 @@ class _DFlashPrefillGuard:
             prefill_step_size=self._prefill_step_size,
             num_prompt_tokens=num_prompt_tokens,
             request_id=request_id,
+            static_ceiling_bytes=self._memory_static_ceiling_bytes,
+            dynamic_ceiling_bytes=self._memory_dynamic_ceiling_bytes,
+            metal_cap_bytes=self._memory_metal_cap_bytes,
+            memory_guard_tier=self._memory_guard_tier,
         )
 
 

@@ -50,7 +50,11 @@ from mlx_lm.sample_utils import make_logits_processors
 from .cache.observability import CacheRateTracker
 from .cache.paged_cache import PagedCacheManager
 from .cache.prefix_cache import BlockAwarePrefixCache
-from .exceptions import PrefillMemoryExceededError, is_cache_corruption_error
+from .exceptions import (
+    PrefillMemoryExceededError,
+    describe_ceiling_binding,
+    is_cache_corruption_error,
+)
 from .patches.sdpa256_attention import set_unfused_headroom_provider
 from .prefill_progress import get_prefill_tracker
 from .prefill_transient_tracker import PrefillTransientTracker
@@ -58,6 +62,7 @@ from .request import Request, RequestOutput, RequestStatus, SamplingParams
 from .speculative.vlm_mtp import VLMMTPDrafter, run_vlm_mtp_decode
 from .utils.fatal import FATAL_TEARDOWN_TIMEOUT_S, fatal_exit
 from .utils.generation_config import load_generation_config_token_ids
+from .utils.hardware import format_bytes
 from .utils.proc_memory import get_phys_footprint
 from .utils.sampling import make_sampler as omlx_make_sampler
 from .utils.tokenizer import create_streaming_detokenizer
@@ -3511,13 +3516,28 @@ class Scheduler:
                 round(margin * 100),
                 base_cap / 1024**3,
             )
+            binding_str, advice = describe_ceiling_binding(
+                static=self._memory_static_ceiling_bytes,
+                # See _preflight_safety_rejection: the abort limit this cap
+                # derives from is min(static, metal_cap) by design.
+                dynamic=(
+                    0
+                    if self._memory_abort_limit_bytes
+                    else self._memory_dynamic_ceiling_bytes
+                ),
+                metal_cap=self._memory_metal_cap_bytes,
+                tier=self._memory_guard_tier,
+                current=current,
+                fmt=format_bytes,
+                tail="reduce context length",
+            )
             message = (
                 "Prefill context too large for available memory "
                 f"(pre-chunk guard at {progress} tokens, kv_len={kv_len}): "
                 "predicted peak would exceed prefill safety cap "
                 f"{cap / 1024**3:.1f}GB "
-                f"({round(margin * 100)}% of effective ceiling "
-                f"{base_cap / 1024**3:.1f}GB)"
+                f"({round(margin * 100)}% of {binding_str} ceiling "
+                f"{base_cap / 1024**3:.1f}GB). {advice}."
             )
             raise PrefillMemoryExceededError(
                 message=message,
@@ -3812,10 +3832,18 @@ class Scheduler:
         get_prefill_tracker().remove(request_id)
         self._clear_memory_admission_blocker(request_id)
 
+        _binding, advice = describe_ceiling_binding(
+            static=self._memory_static_ceiling_bytes,
+            dynamic=self._memory_dynamic_ceiling_bytes,
+            metal_cap=self._memory_metal_cap_bytes,
+            tier=self._memory_guard_tier,
+            current=self._current_usage_bytes(refresh_mlx_active=False),
+            fmt=format_bytes,
+            tail=["reduce context length", "lower hot_cache_max_size"],
+        )
         message = (
             "Request could not be admitted because memory pressure persisted "
-            f"for {stalled_for:.1f}s ({reason}). Reduce context length, free "
-            "memory, lower hot_cache_max_size, or loosen memory_guard_tier."
+            f"for {stalled_for:.1f}s ({reason}). {advice}."
         )
         logger.warning("Memory admission stalled for %s: %s", request_id, message)
         return RequestOutput(
@@ -7666,14 +7694,6 @@ class Scheduler:
             return safety_rejection
         return None
 
-    def _memory_component_limit_for_rejection(self, component_limit: int) -> int:
-        if component_limit <= 0:
-            return 0
-        hot_reserved = max(0, int(self._memory_hot_cache_reserved_bytes or 0))
-        if hot_reserved <= 0:
-            return component_limit
-        return max(1, component_limit - hot_reserved)
-
     def _format_rejection_message(
         self,
         *,
@@ -7691,68 +7711,23 @@ class Scheduler:
         ``ProcessMemoryEnforcer._propagate_memory_limit``; if a caller
         wired this scheduler outside that path the components stay 0 and
         we fall back to a generic message.
+
+        The ladder itself lives in ``exceptions.describe_ceiling_binding``
+        so engine-pool load refusals and DFlash's guard name the same
+        binding ceiling and the same knob. ``hard_limit`` here has the
+        hot-cache reservation already subtracted while the components are
+        raw; that offset shifts every component equally, so it does not
+        affect which one is binding.
         """
-        from .utils.hardware import format_bytes
-
-        static = self._memory_static_ceiling_bytes
-        dynamic = self._memory_dynamic_ceiling_bytes
-        metal_cap = self._memory_metal_cap_bytes
-
-        binding: list[str] = []
-        if static and self._memory_component_limit_for_rejection(static) == hard_limit:
-            binding.append("static")
-        if (
-            dynamic
-            and self._memory_component_limit_for_rejection(dynamic) == hard_limit
-        ):
-            binding.append("dynamic")
-        if (
-            metal_cap
-            and self._memory_component_limit_for_rejection(metal_cap) == hard_limit
-        ):
-            binding.append("metal_cap")
-        binding_str = "/".join(binding) if binding else "effective"
-
-        # Order remedies by likelihood of helping for the binding cause.
-        # Dynamic-bound on a reclaim tier (safe/balanced/aggressive) means
-        # reclaimable memory is low right now even though the static cap
-        # has room — closing apps raises ``free`` / ``inactive`` and a
-        # more aggressive ``memory_guard_tier`` raises the active-reclaim
-        # ratio. Dynamic-bound under ``custom`` means the user pinned the
-        # ceiling there; the only knob that helps is raising
-        # ``custom_ceiling_bytes`` itself. Metal-cap bound means the
-        # kernel sysctl is the ceiling, so raising ``iogpu.wired_limit_mb``
-        # is the only knob that helps. Static-bound (or no breakdown
-        # available) leaves ``memory_guard_tier`` / context length as the
-        # levers.
-        is_custom = self._memory_guard_tier == "custom"
-        if "dynamic" in binding and is_custom:
-            advice = (
-                f"raise custom_ceiling_bytes in admin Memory settings "
-                f"(currently pinned at {format_bytes(dynamic)}), "
-                f"or reduce context length"
-            )
-        elif "dynamic" in binding and static and static > dynamic:
-            headroom = max(0, dynamic - current)
-            advice = (
-                f"close other apps to free RAM "
-                f"(static cap is {format_bytes(static)} but only "
-                f"{format_bytes(headroom)} is reclaimable right now), "
-                f"raise memory_guard_tier (safe → balanced → aggressive), "
-                f"or reduce context length"
-            )
-        elif "metal_cap" in binding:
-            advice = (
-                f"raise kernel iogpu.wired_limit_mb in Terminal "
-                f"(currently caps Metal at {format_bytes(metal_cap)}), "
-                f"or reduce context length"
-            )
-        else:
-            advice = (
-                "reduce context length or raise memory_guard_tier "
-                "(safe → balanced → aggressive)"
-            )
-        advice = advice[:1].upper() + advice[1:]
+        binding_str, advice = describe_ceiling_binding(
+            static=self._memory_static_ceiling_bytes,
+            dynamic=self._memory_dynamic_ceiling_bytes,
+            metal_cap=self._memory_metal_cap_bytes,
+            tier=self._memory_guard_tier,
+            current=current,
+            fmt=format_bytes,
+            tail="reduce context length",
+        )
 
         return (
             f"Prefill would require ~{format_bytes(estimated)} peak "
@@ -7947,8 +7922,23 @@ class Scheduler:
         if estimated <= cap:
             return None
 
-        from .utils.hardware import format_bytes
-
+        binding_str, advice = describe_ceiling_binding(
+            static=self._memory_static_ceiling_bytes,
+            # The abort limit is min(static, metal_cap) by design — it must
+            # not jitter with other-app pressure — so the dynamic ceiling
+            # never shaped this cap and naming it would point at a knob that
+            # cannot move it.
+            dynamic=(
+                0
+                if self._memory_abort_limit_bytes
+                else self._memory_dynamic_ceiling_bytes
+            ),
+            metal_cap=self._memory_metal_cap_bytes,
+            tier=self._memory_guard_tier,
+            current=current_usage_bytes,
+            fmt=format_bytes,
+            tail="reduce context length",
+        )
         message = (
             "Prefill context too large for available memory "
             f"(preflight safety guard, kv_len={kv_len}, "
@@ -7958,9 +7948,8 @@ class Scheduler:
             f"KV {format_bytes(kv_growth)} + "
             f"min-chunk transient {format_bytes(min_transient)}) "
             f"but prefill safety cap is {format_bytes(cap)} "
-            f"({round(margin * 100)}% of effective ceiling "
-            f"{format_bytes(base_cap)}). Reduce context length, free system "
-            "memory, or loosen memory_guard_tier (safe → balanced → aggressive)."
+            f"({round(margin * 100)}% of {binding_str} ceiling "
+            f"{format_bytes(base_cap)}). {advice}."
         )
         return _PreflightRejection(
             message=message,

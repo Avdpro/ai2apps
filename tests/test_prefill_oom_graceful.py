@@ -104,6 +104,14 @@ def _throttle_ctx(
         _memory_limit_bytes=int(hard * 0.85),  # soft = ceiling*0.85
         _memory_hard_limit_bytes=int(hard),
         _memory_abort_limit_bytes=int(abort if abort is not None else hard),
+        # Component breakdown the enforcer propagates. Left at 0 here so the
+        # guard's diagnostic falls back to "effective ceiling" + generic
+        # advice; the binding-aware variants are covered in
+        # tests/test_engine_preflight.py.
+        _memory_static_ceiling_bytes=0,
+        _memory_dynamic_ceiling_bytes=0,
+        _memory_metal_cap_bytes=0,
+        _memory_guard_tier="balanced",
         _prefill_safe_zone_ratio=soft_ratio,
         _prefill_min_chunk_tokens=min_chunk,
         _prefill_abort_margin=abort_margin,
@@ -294,6 +302,11 @@ def test_guard_raises_clean_error_when_even_floor_cannot_fit():
     assert "Memory limit exceeded" not in str(exc.value)  # → fails fast, no requeue
     assert "prefill safety cap" in str(exc.value)
     assert "90% of effective ceiling 42.0GB" in str(exc.value)
+    # The abort has to leave the user a knob, and it must point up the tier
+    # ladder — "lower memory_guard_tier" shrinks the ceiling that just
+    # rejected them.
+    assert "Raise memory_guard_tier (safe → balanced → aggressive)" in str(exc.value)
+    assert "lower memory_guard_tier" not in str(exc.value)
     assert exc.value.estimated_bytes is not None
     assert exc.value.limit_bytes == int(hard * Scheduler._PREFILL_ABORT_MARGIN)
 

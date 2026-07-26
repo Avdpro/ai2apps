@@ -4039,6 +4039,13 @@ class TestStoreCacheAdmissionBackpressure:
         assert rejected[0].request_id == request.request_id
         assert rejected[0].finish_reason == "error"
         assert rejected[0].error_code == "memory_admission_stalled"
+        # The remedy has to point up the tier ladder; lowering the tier
+        # shrinks the ceiling that caused the stall.
+        assert "Raise memory_guard_tier (safe → balanced → aggressive)" in (
+            rejected[0].error
+        )
+        assert "lower hot_cache_max_size" in rejected[0].error
+        assert "lower memory_guard_tier" not in rejected[0].error
         assert request.request_id not in scheduler.requests
         assert list(scheduler.waiting) == []
         assert scheduler.running[running.request_id] is running

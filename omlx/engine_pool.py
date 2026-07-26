@@ -37,12 +37,14 @@ from .engine.tts import TTSEngine
 from .engine.vlm import VLMBatchedEngine
 from .engine_core import get_mlx_executor
 from .exceptions import (
+    DEFAULT_CEILING_ADVICE,
     InsufficientMemoryError,
     ModelBusyError,
     ModelLoadingError,
     ModelNotFoundError,
     ModelTooLargeError,
     ModelUnavailableError,
+    describe_ceiling_binding,
 )
 from .model_discovery import discover_models, format_size
 from .scheduler import SchedulerConfig
@@ -224,6 +226,49 @@ class EnginePool:
             return int(cb())
         except Exception:  # noqa: BLE001
             return 0
+
+    def _ceiling_binding_and_advice(
+        self, *, ceiling: int, current: int, tail: str
+    ) -> tuple[str | None, str | None]:
+        """Name the ceiling that refused this load and the knob that moves it.
+
+        A load refusal used to say "free system memory or lower
+        memory_guard_tier" with no breakdown, which is the wrong knob twice
+        over: the tier ladder runs safe → balanced → aggressive, so lowering
+        it shrinks the ceiling further, and on a dynamic-bound machine the
+        static / metal caps the user is likely to be shown elsewhere have
+        room to spare. Reuses the scheduler's advice ladder so both
+        rejection paths name the same constraint.
+
+        Returns ``(None, None)`` when the enforcer is not wired up or its
+        breakdown is unreadable; callers fall back to the generic advice.
+        """
+        enforcer = self._process_memory_enforcer
+        getter = (
+            getattr(enforcer, "get_ceiling_breakdown", None)
+            if enforcer is not None
+            else None
+        )
+        if not callable(getter):
+            return None, None
+        try:
+            breakdown = getter()
+            static = int(breakdown["static"])
+            dynamic = int(breakdown["dynamic"])
+            metal_cap = int(breakdown["metal_cap"])
+        except Exception:  # noqa: BLE001
+            return None, None
+        if max(static, dynamic, metal_cap) <= 0:
+            return None, None
+        return describe_ceiling_binding(
+            static=static,
+            dynamic=dynamic,
+            metal_cap=metal_cap,
+            tier=str(getattr(enforcer, "memory_guard_tier", "") or ""),
+            current=current,
+            fmt=format_size,
+            tail=tail,
+        )
 
     def _wake_process_memory_enforcer(self, *, active: bool = False) -> None:
         enforcer = self._process_memory_enforcer
@@ -959,19 +1004,34 @@ class EnginePool:
                     # ceiling (no chance of fitting), InsufficientMemoryError
                     # when current usage leaves no room.
                     if entry.estimated_size > ceiling:
-                        raise ModelTooLargeError(
-                            model_id, entry.estimated_size, ceiling
+                        binding, advice = self._ceiling_binding_and_advice(
+                            ceiling=ceiling,
+                            current=failure_current,
+                            tail="use a smaller model",
                         )
+                        raise ModelTooLargeError(
+                            model_id,
+                            entry.estimated_size,
+                            ceiling,
+                            binding=binding,
+                            advice=advice,
+                        )
+                    binding, advice = self._ceiling_binding_and_advice(
+                        ceiling=ceiling,
+                        current=failure_current,
+                        tail="unload another model",
+                    )
+                    label = f"{binding} memory ceiling" if binding else "memory ceiling"
                     raise InsufficientMemoryError(
                         required=entry.estimated_size,
                         current=failure_current,
                         message=(
                             f"Cannot load {model_id}: projected memory "
                             f"{format_size(failure_projected)} would exceed "
-                            f"the memory ceiling {format_size(ceiling)} "
+                            f"the {label} {format_size(ceiling)} "
                             f"({failure_label}: {format_size(failure_current)}, "
                             f"model: {format_size(entry.estimated_size)}). "
-                            "Free system memory or lower memory_guard_tier."
+                            f"{advice or DEFAULT_CEILING_ADVICE}."
                         ),
                     )
 

@@ -662,6 +662,15 @@ class ProcessMemoryEnforcer:
         """Public accessor used by engine_pool pre-load admission."""
         return self._get_hard_limit_bytes()
 
+    def get_ceiling_breakdown(self) -> dict[str, int]:
+        """Public accessor for the component ceilings.
+
+        The engine pool reads this when a load is refused so the error can
+        name the binding constraint, the same way the scheduler's
+        prefill-rejection message does from its propagated copies.
+        """
+        return self._get_ceiling_breakdown()
+
     def get_admission_ceiling(self) -> int:
         """Best-effort pre-load ceiling that survives disabling the guard.
 

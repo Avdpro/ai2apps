@@ -1233,6 +1233,44 @@ class TestEngineCoreAbortAllRequests:
                 engine.close()
 
     @pytest.mark.asyncio
+    async def test_abort_all_requests_names_binding_ceiling(
+        self, mock_model, mock_tokenizer
+    ):
+        """A user already on the most permissive tier needs to know which
+        ceiling aborted them; generic "loosen memory_guard_tier" advice
+        leaves them with nothing to turn (#2362)."""
+        with patch("omlx.engine_core.get_registry") as mock_registry:
+            mock_registry.return_value.acquire.return_value = True
+
+            engine = EngineCore(model=mock_model, tokenizer=mock_tokenizer)
+
+            try:
+                await engine.start()
+                engine.scheduler.has_requests = lambda: False
+                sched = engine.scheduler
+                sched._memory_hard_limit_bytes = 30 * 1024**3
+                sched._memory_hard_watermark_bytes = int(30 * 1024**3 * 0.95)
+                # Metal cap is the smallest of the three: only the kernel
+                # sysctl can move this abort.
+                sched._memory_static_ceiling_bytes = 120 * 1024**3
+                sched._memory_dynamic_ceiling_bytes = 64 * 1024**3
+                sched._memory_metal_cap_bytes = 30 * 1024**3
+                sched._memory_guard_tier = "aggressive"
+
+                rid = await engine.add_request(prompt="Hello")
+                await engine.abort_all_requests()
+
+                collector = engine._output_collectors.get(rid)
+                assert collector is not None
+                output = collector.get_nowait()
+                assert "metal_cap ceiling 30.0 GB" in output.error
+                assert "iogpu.wired_limit_mb" in output.error
+                assert "lower memory_guard_tier" not in output.error
+            finally:
+                await engine.stop()
+                engine.close()
+
+    @pytest.mark.asyncio
     async def test_abort_all_requests_empty(self, mock_model, mock_tokenizer):
         """Test abort_all_requests() with no active requests returns 0."""
         with patch("omlx.engine_core.get_registry") as mock_registry:

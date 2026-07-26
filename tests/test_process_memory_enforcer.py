@@ -2730,3 +2730,55 @@ class TestPressureCacheReclaim:
         with patch.object(pme.mx, "get_cache_memory", return_value=object()):
             enforcer._request_scheduler_cache_reclaim(0)
         schedulers[0].request_pressure_reclaim.assert_not_called()
+
+
+class TestPublicCeilingBreakdown:
+    """`get_ceiling_breakdown()` is what the engine pool reads to name the
+    ceiling that refused a load, so it has to describe the same computation
+    `get_final_ceiling()` returns."""
+
+    def _enforcer(self, tier: str) -> ProcessMemoryEnforcer:
+        pool = MagicMock()
+        pool._entries = {}
+        return ProcessMemoryEnforcer(engine_pool=pool, memory_guard_tier=tier)
+
+    def test_components_agree_with_the_final_ceiling(self):
+        """A 16 GB Mac on `safe` is dynamic-bound well below its static and
+        Metal caps — the case the load-refusal message has to explain."""
+        with (
+            patch("omlx.settings.get_system_memory", return_value=16 * 1024**3),
+            patch.object(pme, "get_phys_footprint", return_value=0),
+            patch.object(
+                pme.psutil_compat,
+                "get_macos_vm_stats",
+                return_value={
+                    "free": 1 * 1024**3,
+                    "inactive": 4 * 1024**3,
+                    "active": 7 * 1024**3,
+                    "wired": 4 * 1024**3,
+                },
+            ),
+            patch.object(
+                pme, "get_effective_metal_cap_bytes", return_value=12 * 1024**3
+            ),
+        ):
+            enforcer = self._enforcer("safe")
+            breakdown = enforcer.get_ceiling_breakdown()
+            ceiling = enforcer.get_final_ceiling()
+
+        # Small-system reserve is a flat 4 GB below 24 GB of RAM.
+        assert breakdown["static"] == 12 * 1024**3
+        assert breakdown["metal_cap"] == 12 * 1024**3
+        # free + inactive + active * 0.2 (safe tier reclaim ratio)
+        assert breakdown["dynamic"] == int(6.4 * 1024**3)
+        assert breakdown["hard_limit"] == breakdown["dynamic"] == ceiling
+
+    def test_disabled_guard_reports_zero_components(self):
+        enforcer = self._enforcer("balanced")
+        enforcer._prefill_memory_guard = False
+        assert enforcer.get_ceiling_breakdown() == {
+            "static": 0,
+            "dynamic": 0,
+            "metal_cap": 0,
+            "hard_limit": 0,
+        }

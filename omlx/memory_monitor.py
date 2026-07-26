@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from omlx.cache.paged_cache import PagedCacheManager
 
+from omlx.exceptions import PrefillMemoryExceededError, describe_ceiling_binding
 from omlx.utils.hardware import format_bytes, get_max_working_set_bytes
 
 logger = logging.getLogger(__name__)
@@ -920,6 +921,10 @@ def raise_if_prefill_exceeds(
     num_prompt_tokens: int,
     cached_tokens: int = 0,
     request_id: str | None = None,
+    static_ceiling_bytes: int = 0,
+    dynamic_ceiling_bytes: int = 0,
+    metal_cap_bytes: int = 0,
+    memory_guard_tier: str = "",
 ) -> None:
     """Raise ``PrefillMemoryExceededError`` if a prompt's prefill peak would
     push memory past ``hard_limit_bytes``.
@@ -937,6 +942,11 @@ def raise_if_prefill_exceeds(
     (e.g. the scheduler's paged prefix cache) — not merely "tokens that hit
     a cache". A cache whose hits re-allocate KV (DFlash prefix snapshots)
     must pass 0.
+
+    The component ceilings are optional: callers that receive the
+    enforcer's breakdown (the DFlash prefill guard) pass them so the
+    rejection names the binding constraint the same way the scheduler's
+    does. Callers that do not fall back to generic advice.
     """
     if not prefill_memory_guard:
         return
@@ -959,17 +969,23 @@ def raise_if_prefill_exceeds(
     if current + peak <= hard_limit_bytes:
         return
 
-    from omlx.exceptions import PrefillMemoryExceededError
-
     usage_gb = current / (1024**3)
     ceiling_gb = hard_limit_bytes / (1024**3)
+    binding, advice = describe_ceiling_binding(
+        static=static_ceiling_bytes,
+        dynamic=dynamic_ceiling_bytes,
+        metal_cap=metal_cap_bytes,
+        tier=memory_guard_tier,
+        current=current,
+        fmt=format_bytes,
+        tail="reduce context length",
+    )
     message = (
         f"Prefill would require ~{format_bytes(current + peak)} peak "
         f"(current {format_bytes(current)} + KV+SDPA {format_bytes(peak)}) "
-        f"but ceiling is {format_bytes(hard_limit_bytes)} "
+        f"but {binding} ceiling is {format_bytes(hard_limit_bytes)} "
         f"(usage {usage_gb:.1f} GB, ceiling {ceiling_gb:.1f} GB). "
-        f"Reduce context length, free system memory, or loosen "
-        f"memory_guard_tier (safe → balanced → aggressive)."
+        f"{advice}."
     )
 
     if not request_id:

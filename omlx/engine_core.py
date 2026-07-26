@@ -35,7 +35,7 @@ from typing import (
 
 import mlx.core as mx
 
-from .exceptions import PrefillMemoryExceededError
+from .exceptions import PrefillMemoryExceededError, describe_ceiling_binding
 from .model_registry import get_registry
 from .output_collector import RequestOutputCollector, RequestStreamState
 from .request import Request, RequestOutput, SamplingParams
@@ -45,6 +45,7 @@ from .utils.compile_cache import (
     compile_cache_clear_available,
 )
 from .utils.fatal import FATAL_TEARDOWN_TIMEOUT_S, fatal_exit
+from .utils.hardware import format_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -691,10 +692,22 @@ class EngineCore:
         usage_gb = usage / (1024**3)
         ceiling_gb = ceiling / (1024**3) if ceiling > 0 else 0.0
         watermark_gb = watermark / (1024**3) if watermark > 0 else 0.0
-        advice = (
-            "Reduce context length, free system memory, or loosen "
-            "memory_guard_tier (safe → balanced → aggressive)."
+        # Name the component ceiling that actually produced this abort. A
+        # generic "loosen memory_guard_tier" leaves users who are already on
+        # `aggressive` with nothing to try (#2362); the ladder points at the
+        # constraint that is really binding, or falls back to the same
+        # generic advice when the enforcer has not propagated a breakdown.
+        binding, advice = describe_ceiling_binding(
+            static=int(getattr(sched, "_memory_static_ceiling_bytes", 0) or 0),
+            dynamic=int(getattr(sched, "_memory_dynamic_ceiling_bytes", 0) or 0),
+            metal_cap=int(getattr(sched, "_memory_metal_cap_bytes", 0) or 0),
+            tier=str(getattr(sched, "_memory_guard_tier", "") or ""),
+            current=usage,
+            fmt=format_bytes,
+            tail="reduce context length",
         )
+        advice = f"{advice}."
+        ceiling_label = f"{binding} ceiling" if binding != "effective" else "ceiling"
         for rid in request_ids:
             self.scheduler.abort_request(rid)
             collector = self._output_collectors.get(rid)
@@ -706,13 +719,14 @@ class EngineCore:
                         f"Request aborted: process memory limit exceeded "
                         f"(usage {usage_gb:.1f} GB, abort threshold "
                         f"(hard watermark) {watermark_gb:.1f} GB, "
-                        f"ceiling {ceiling_gb:.1f} GB). "
+                        f"{ceiling_label} {ceiling_gb:.1f} GB). "
                         f"{advice}"
                     )
                 elif ceiling > 0:
                     error_msg = (
                         f"Request aborted: process memory limit exceeded "
-                        f"(usage {usage_gb:.1f} GB, ceiling {ceiling_gb:.1f} GB). "
+                        f"(usage {usage_gb:.1f} GB, "
+                        f"{ceiling_label} {ceiling_gb:.1f} GB). "
                         f"{advice}"
                     )
                 else:
