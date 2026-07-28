@@ -423,7 +423,7 @@ class TestDFlashEngineInit:
 
             from omlx.engine import dflash as dflash_mod
             from omlx.engine.dflash import DFlashEngine
-            from omlx.patches import dflash_lifecycle
+            from omlx.patches import dflash_lifecycle, qwen35_moe_gate_up
         except ImportError:
             pytest.skip("dflash-mlx not installed")
 
@@ -446,7 +446,13 @@ class TestDFlashEngineInit:
         def fake_load_draft_bundle(model_ref, **kwargs):
             captured["draft_model_ref"] = model_ref
             captured["draft_kwargs"] = kwargs
-            return SimpleNamespace(), {}
+
+            class FakeDraft:
+                def bind_target_model(self, target_model, *, target_ops):
+                    captured["bound_target"] = target_model
+                    captured["bound_target_ops"] = target_ops
+
+            return FakeDraft(), {}
 
         monkeypatch.setattr(
             dflash_loading, "load_target_bundle", fake_load_target_bundle
@@ -461,6 +467,11 @@ class TestDFlashEngineInit:
             dflash_lifecycle,
             "install_dflash_lifecycle_wrap",
             lambda: True,
+        )
+        monkeypatch.setattr(
+            qwen35_moe_gate_up,
+            "apply_qwen35_moe_gate_up_fusion",
+            lambda model: captured.setdefault("fused_target", model),
         )
         monkeypatch.setattr(
             dflash_mod,
@@ -485,6 +496,9 @@ class TestDFlashEngineInit:
             assert captured["draft_model_ref"] == "test-draft"
             assert verify_config.mode == "off"
             assert captured["quantize_kv_cache"] is False
+            assert captured["fused_target"] is engine._target_model
+            assert captured["bound_target"] is engine._target_model
+            assert captured["bound_target_ops"] is engine._target_ops
         finally:
             await engine.stop()
 
@@ -641,7 +655,7 @@ class TestDFlashEngineInit:
             ),
         )
         ctx = engine._build_runtime_context()
-        runtime = getattr(ctx, "runtime")
+        runtime = ctx.runtime
         assert runtime.draft_window_size == 512
         assert runtime.draft_sink_size == 16
         assert runtime.verify_mode == "dflash"
@@ -658,7 +672,7 @@ class TestDFlashEngineInit:
             draft_model_path="test-draft",
         )
         ctx = engine._build_runtime_context()
-        runtime = getattr(ctx, "runtime")
+        runtime = ctx.runtime
         assert runtime.draft_window_size == 1024
         assert runtime.draft_sink_size == 64
         assert runtime.verify_mode == "adaptive"
@@ -682,7 +696,7 @@ class TestDFlashEngineInit:
             omlx_ssd_cache_dir=tmp_path,
         )
         ctx = engine._build_runtime_context()
-        runtime = getattr(ctx, "runtime")
+        runtime = ctx.runtime
         assert runtime.prefix_cache_l2_max_bytes == 5 * 1024**3
 
     def test_l2_max_bytes_defaults_to_20gib(self, tmp_path):
@@ -702,7 +716,7 @@ class TestDFlashEngineInit:
             omlx_ssd_cache_dir=tmp_path,
         )
         ctx = engine._build_runtime_context()
-        runtime = getattr(ctx, "runtime")
+        runtime = ctx.runtime
         assert runtime.prefix_cache_l2_max_bytes == 20 * 1024**3
 
 
@@ -781,6 +795,17 @@ class TestDFlashCompatibility:
         assert compatible is True
         assert reason == ""
 
+    def test_laguna_is_compatible(self, tmp_path):
+        """oMLX supplies the target and gated-drafter adapters for Laguna."""
+        try:
+            from omlx.engine.dflash import is_dflash_compatible
+        except ImportError:
+            pytest.skip("dflash-mlx not installed")
+        self._write_config(tmp_path, "laguna")
+        compatible, reason = is_dflash_compatible(tmp_path)
+        assert compatible is True
+        assert reason == ""
+
     def test_gemma4_assistant_is_incompatible(self, tmp_path):
         """MTP -assistant variants declare gemma4_assistant at the top level
         even though their text_config.model_type is gemma4_text. The toggle
@@ -822,6 +847,7 @@ class TestDFlashCompatibility:
         assert compatible is False
         assert "Qwen" in reason
         assert "Gemma4" in reason
+        assert "Laguna" in reason
 
 
 class TestDFlashEnginePoolRouting:
