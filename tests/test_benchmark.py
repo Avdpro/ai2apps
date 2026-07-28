@@ -18,6 +18,7 @@ from omlx.admin.benchmark import (
     _detect_experimental_features,
     _detect_quantization,
     _generate_prompt,
+    _run_batch_test,
     _run_single_test,
     cleanup_old_runs,
     create_run,
@@ -112,7 +113,7 @@ class TestBenchmarkRequest:
 
 class TestGeneratePrompt:
     def test_exact_token_count(self):
-        """Verify prompt generates exact number of tokens."""
+        """Prompt IDs are exact without a decode/re-encode round trip."""
         tokenizer = MagicMock()
 
         # Simulate tokenizer behavior
@@ -120,33 +121,28 @@ class TestGeneratePrompt:
             # Return roughly 1 token per 4 chars
             return list(range(len(text) // 4))
 
-        def mock_decode(tokens):
-            return "x" * len(tokens) * 4
-
         tokenizer.encode = mock_encode
-        tokenizer.decode = mock_decode
 
         prompt = _generate_prompt(tokenizer, 1024)
 
-        # Verify encode was called and result was truncated
-        encoded = tokenizer.encode(prompt)
-        assert len(encoded) == 1024
+        assert isinstance(prompt, list)
+        assert len(prompt) == 1024
+        tokenizer.decode.assert_not_called()
+
+    def test_rejects_non_positive_target(self):
+        with pytest.raises(ValueError, match="must be positive"):
+            _generate_prompt(MagicMock(), 0)
 
     def test_uuid_prefix_uniqueness(self):
         """Verify each generated prompt has a unique UUID prefix."""
-        tokenizer = MagicMock()
-        tokenizer.encode = lambda text: list(range(2048))
-        tokenizer.decode = lambda tokens: f"decoded-{len(tokens)}"
+        tokenizer = _WordTokenizer()
 
         prompts = set()
         for _ in range(10):
-            # We can't easily verify uniqueness since decode is mocked,
-            # but we verify encode is called with text containing "BENCH-"
             prompt = _generate_prompt(tokenizer, 100)
-            prompts.add(prompt)
+            prompts.add(tuple(prompt))
 
-        # With mock decode they'll all be the same, but in real usage
-        # the UUID prefix ensures cache isolation
+        assert len(prompts) == 10
 
 
 class _WordTokenizer:
@@ -175,6 +171,7 @@ class TestPromptRealism:
 
         corpus = _load_bench_corpus()
         assert len(corpus) > 500_000
+        assert corpus.startswith("Call me Ishmael.")
         assert "quick brown fox jumps" not in corpus
 
     def test_prompt_is_not_repetitive(self):
@@ -182,7 +179,7 @@ class TestPromptRealism:
         repeated filler, inflating benchmark tg ~2x over real prompts; the
         prompt must be natural, non-looping text."""
         tokenizer = _WordTokenizer()
-        ids = tokenizer.encode(_generate_prompt(tokenizer, 2048))
+        ids = _generate_prompt(tokenizer, 2048)
         window = 16
         windows = {tuple(ids[i : i + window]) for i in range(len(ids) - window)}
         distinct_ratio = len(windows) / (len(ids) - window)
@@ -190,32 +187,32 @@ class TestPromptRealism:
 
     def test_prompt_deterministic_apart_from_uuid_prefix(self):
         tokenizer = _WordTokenizer()
-        first = _generate_prompt(tokenizer, 512).split(" ", 1)
-        second = _generate_prompt(tokenizer, 512).split(" ", 1)
+        first = _generate_prompt(tokenizer, 512)
+        second = _generate_prompt(tokenizer, 512)
         assert first[0] != second[0]
-        assert first[1] == second[1]
+        assert first[1:] == second[1:]
 
-    def test_corpus_tokenized_once_per_tokenizer(self):
-        from omlx.admin.benchmark import _load_bench_corpus
-
+    def test_prefix_and_corpus_are_encoded_together(self):
         tokenizer = _WordTokenizer()
-        corpus_len = len(_load_bench_corpus())
-        encoded_lengths = []
+        encoded_texts = []
         original_encode = tokenizer.encode
 
-        def counting_encode(text):
-            encoded_lengths.append(len(text))
+        def recording_encode(text):
+            encoded_texts.append(text)
             return original_encode(text)
 
-        tokenizer.encode = counting_encode
+        tokenizer.encode = recording_encode
         _generate_prompt(tokenizer, 256)
-        _generate_prompt(tokenizer, 512)
-        assert sum(1 for n in encoded_lengths if n == corpus_len) == 1
+        assert encoded_texts
+        assert all(text.startswith("BENCH-") for text in encoded_texts)
+        assert all("Call me Ishmael." in text for text in encoded_texts)
 
     def test_external_prompt_is_not_repetitive(self):
         from omlx.admin.benchmark import _generate_external_prompt
 
-        words = _generate_external_prompt(1024).split(" ")
+        prompt = _generate_external_prompt(1024)
+        assert "Call me Ishmael." in prompt[:100]
+        words = prompt.split(" ")
         window = 12
         windows = {
             tuple(words[i : i + window]) for i in range(len(words) - window)
@@ -318,6 +315,41 @@ class TestComputeMetrics:
 
 class TestRunSingleTest:
     @pytest.mark.asyncio
+    async def test_rejects_prompt_length_before_submission(self):
+        engine = MagicMock()
+
+        with pytest.raises(RuntimeError, match="before pp1024"):
+            await _run_single_test(
+                engine,
+                prompt=[0] * 1023,
+                max_tokens=1,
+                pp_len=1024,
+            )
+
+        engine.stream_generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_engine_reported_prompt_length(self):
+        class MismatchedEngine:
+            async def stream_generate(self, **kwargs):
+                yield SimpleNamespace(
+                    completion_tokens=1,
+                    prompt_tokens=1023,
+                    cached_tokens=0,
+                    new_text="x",
+                    finished=True,
+                    finish_reason="length",
+                )
+
+        with pytest.raises(RuntimeError, match="engine reported 1023 tokens"):
+            await _run_single_test(
+                MismatchedEngine(),
+                prompt=[0] * 1024,
+                max_tokens=1,
+                pp_len=1024,
+            )
+
+    @pytest.mark.asyncio
     async def test_uses_native_diffusion_metrics_for_chunked_stream(self):
         """Diffusion streams by canvas, so benchmark must not use chunk timing."""
 
@@ -336,7 +368,7 @@ class TestRunSingleTest:
 
         metrics = await _run_single_test(
             ChunkedDiffusionEngine(),
-            prompt="prompt",
+            prompt=[0] * 1024,
             max_tokens=128,
             pp_len=1024,
         )
@@ -366,7 +398,7 @@ class TestRunSingleTest:
 
         metrics = await _run_single_test(
             EarlyStopDiffusionEngine(),
-            prompt="prompt",
+            prompt=[0] * 1024,
             max_tokens=128,
             pp_len=1024,
         )
@@ -395,7 +427,7 @@ class TestRunSingleTest:
         with patch("omlx.admin.benchmark.time.perf_counter", side_effect=[0.0, 1.3]):
             metrics = await _run_single_test(
                 AggregatedEngine(),
-                prompt="prompt",
+                prompt=[0] * 1024,
                 max_tokens=128,
                 pp_len=1024,
             )
@@ -423,7 +455,7 @@ class TestRunSingleTest:
         with patch("omlx.admin.benchmark.time.perf_counter", side_effect=[0.0, 1.2]):
             metrics = await _run_single_test(
                 AggregatedEngine(),
-                prompt="prompt",
+                prompt=[0] * 1024,
                 max_tokens=128,
                 pp_len=1024,
             )
@@ -431,6 +463,58 @@ class TestRunSingleTest:
         assert metrics["ttft_ms"] == pytest.approx(200.0)
         assert metrics["gen_tps"] is None
         assert metrics["tpot_ms"] is None
+
+
+class TestRunBatchTest:
+    @pytest.mark.asyncio
+    async def test_submits_exact_token_ids(self):
+        class Core:
+            def __init__(self):
+                self.prompts = {}
+
+            async def add_request(self, prompt, sampling_params):
+                request_id = f"request-{len(self.prompts)}"
+                self.prompts[request_id] = prompt
+                return request_id
+
+            async def stream_outputs(self, request_id):
+                prompt = self.prompts[request_id]
+                yield SimpleNamespace(
+                    completion_tokens=2,
+                    prompt_tokens=len(prompt),
+                    finished=True,
+                )
+
+        core = Core()
+        engine = SimpleNamespace(_engine=core)
+        prompts = [[row] * 1024 for row in (1, 2)]
+
+        metrics = await _run_batch_test(
+            engine=engine,
+            prompts=prompts,
+            prompt_tokens=1024,
+            max_tokens=2,
+            batch_size=2,
+        )
+
+        assert list(core.prompts.values()) == prompts
+        assert metrics["batch_size"] == 2
+
+    @pytest.mark.asyncio
+    async def test_rejects_mismatched_prompt_before_submission(self):
+        core = MagicMock()
+        engine = SimpleNamespace(_engine=core)
+
+        with pytest.raises(RuntimeError, match="expected 1024"):
+            await _run_batch_test(
+                engine=engine,
+                prompts=[[0] * 1023, [1] * 1024],
+                prompt_tokens=1024,
+                max_tokens=1,
+                batch_size=2,
+            )
+
+        core.add_request.assert_not_called()
 
 
 # =============================================================================
@@ -1238,6 +1322,8 @@ class TestGenerateExternalPrompt:
 
         short = _generate_external_prompt(1024)
         long = _generate_external_prompt(4096)
+        assert len(short) == 1024 * 4
+        assert len(long) == 4096 * 4
         assert len(long) > len(short) * 3
 
     def test_unique_prefix(self):
@@ -1320,8 +1406,8 @@ class TestRunExternalBenchmark:
 
         result = run.results[0]
         assert result["test_type"] == "single"
-        assert result["pp"] == 4096
-        # Actual usage counts, not the nominal pp target
+        assert result["requested_pp"] == 4096
+        assert result["pp"] == 3900
         assert result["prompt_tokens"] == 3900
         assert result["completion_tokens"] == 128
         assert result["peak_memory_bytes"] is None
@@ -1340,6 +1426,11 @@ class TestRunExternalBenchmark:
 
         batch = [r for r in run.results if r["test_type"] == "batch"][0]
         assert batch["batch_size"] == 2
+        assert batch["requested_pp"] == 1024
+        assert batch["pp"] == 1000
+        assert batch["prompt_tokens_min"] == 1000
+        assert batch["prompt_tokens_max"] == 1000
+        assert batch["total_prompt_tokens"] == 2000
         assert batch["total_gen_tokens"] == 200
 
     async def test_single_result_unmeasurable_span_reports_none(self):

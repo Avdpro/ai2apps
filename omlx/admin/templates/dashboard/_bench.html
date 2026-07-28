@@ -287,9 +287,9 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <template x-for="r in benchSingleResults" :key="r.pp">
+                                    <template x-for="r in benchSingleResults" :key="benchRequestedPp(r)">
                                         <tr class="border-b border-neutral-100 hover:bg-neutral-50">
-                                            <td class="px-4 py-3 font-medium text-neutral-900" x-text="'pp' + r.pp + '/tg' + r.tg"></td>
+                                            <td class="px-4 py-3 font-medium text-neutral-900" x-text="benchSingleTestLabel(r)"></td>
                                             <td class="px-4 py-3 text-right tabular-nums text-neutral-700" x-text="benchFmtNum(r.ttft_ms, 1)"></td>
                                             <td class="px-4 py-3 text-right tabular-nums text-neutral-700" x-text="benchFmtNum(r.tpot_ms, 2)"></td>
                                             <td class="px-4 py-3 text-right tabular-nums text-neutral-700" x-text="benchFmtNum(r.processing_tps, 1, ' tok/s')"></td>
@@ -311,7 +311,7 @@
                                 <i data-lucide="layers" class="w-4 h-4 text-neutral-500"></i>
                                 <span class="text-xs font-bold uppercase tracking-wider text-neutral-600">{{ t('bench.results.batch.section_label') }}</span>
                             </div>
-                            <span class="text-xs text-neutral-400">{{ t('bench.results.batch.subtitle') }}</span>
+                            <span class="text-xs text-neutral-400" x-text="benchBatchPromptSummary()"></span>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
@@ -328,14 +328,14 @@
                                 </thead>
                                 <tbody>
                                     <!-- 1x baseline from single request -->
-                                    <tr x-show="benchSingleResults.some(r => r.pp === 1024)" class="border-b border-neutral-100 bg-neutral-50/50">
+                                    <tr x-show="benchFindSingle(1024)" class="border-b border-neutral-100 bg-neutral-50/50">
                                         <td class="px-4 py-3 font-medium text-neutral-500">{{ t('bench.results.batch.baseline') }}</td>
-                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchSingleResults.find(r => r.pp === 1024)?.gen_tps?.toFixed(1) || '-') + ' tok/s'"></td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchFindSingle(1024)?.gen_tps?.toFixed(1) || '-') + ' tok/s'"></td>
                                         <td class="px-4 py-3 text-right tabular-nums text-neutral-500">1.00x</td>
-                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchSingleResults.find(r => r.pp === 1024)?.processing_tps?.toFixed(1) || '-') + ' tok/s'"></td>
-                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchSingleResults.find(r => r.pp === 1024)?.processing_tps?.toFixed(1) || '-') + ' tok/s'"></td>
-                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="benchSingleResults.find(r => r.pp === 1024)?.ttft_ms?.toFixed(1) || '-'"></td>
-                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchSingleResults.find(r => r.pp === 1024)?.e2e_latency_s?.toFixed(3) || '-') + 's'"></td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchFindSingle(1024)?.processing_tps?.toFixed(1) || '-') + ' tok/s'"></td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchFindSingle(1024)?.processing_tps?.toFixed(1) || '-') + ' tok/s'"></td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="benchFindSingle(1024)?.ttft_ms?.toFixed(1) || '-'"></td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-neutral-500" x-text="(benchFindSingle(1024)?.e2e_latency_s?.toFixed(3) || '-') + 's'"></td>
                                     </tr>
                                     <template x-for="r in benchBatchResults" :key="r.batch_size">
                                         <tr class="border-b border-neutral-100 hover:bg-neutral-50">

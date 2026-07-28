@@ -1106,9 +1106,15 @@ class DFlashEngine(BaseEngine):
             )
             self._active_request = False
 
+    def _tokenize_prompt(self, prompt: str | list[int]) -> list[int]:
+        """Return prompt IDs without re-tokenizing an already-tokenized prompt."""
+        if isinstance(prompt, list):
+            return list(prompt)
+        return list(self._tokenizer_obj.encode(prompt))
+
     async def generate(
         self,
-        prompt: str,
+        prompt: str | list[int],
         max_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.9,
@@ -1122,7 +1128,7 @@ class DFlashEngine(BaseEngine):
         if not self._loaded:
             await self.start()
 
-        prompt_tokens = self._tokenizer_obj.encode(prompt)
+        prompt_tokens = self._tokenize_prompt(prompt)
 
         # Fallback: evict dflash models, start LLM/VLM engine
         if self._should_fallback(prompt_tokens):
@@ -1297,7 +1303,7 @@ class DFlashEngine(BaseEngine):
 
     async def stream_generate(
         self,
-        prompt: str,
+        prompt: str | list[int],
         max_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.9,
@@ -1311,7 +1317,7 @@ class DFlashEngine(BaseEngine):
         if not self._loaded:
             await self.start()
 
-        prompt_tokens = self._tokenizer_obj.encode(prompt)
+        prompt_tokens = self._tokenize_prompt(prompt)
 
         # Fallback: evict dflash models, start LLM/VLM engine
         if self._should_fallback(prompt_tokens):

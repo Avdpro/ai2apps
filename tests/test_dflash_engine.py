@@ -3,6 +3,7 @@
 
 import json
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -1184,3 +1185,28 @@ class TestDFlashCachedTokensWiring:
 
         out = await engine.generate("hello", max_tokens=4)
         assert out.cached_tokens == 4273
+
+
+class TestDFlashPretokenizedPrompt:
+    def test_token_ids_bypass_tokenizer(self):
+        from omlx.engine.dflash import DFlashEngine
+
+        engine = DFlashEngine.__new__(DFlashEngine)
+        engine._tokenizer_obj = MagicMock()
+
+        prompt = [11, 22, 33]
+        result = engine._tokenize_prompt(prompt)
+
+        assert result == prompt
+        assert result is not prompt
+        engine._tokenizer_obj.encode.assert_not_called()
+
+    def test_text_prompt_uses_tokenizer(self):
+        from omlx.engine.dflash import DFlashEngine
+
+        engine = DFlashEngine.__new__(DFlashEngine)
+        engine._tokenizer_obj = MagicMock()
+        engine._tokenizer_obj.encode.return_value = [1, 2, 3]
+
+        assert engine._tokenize_prompt("hello") == [1, 2, 3]
+        engine._tokenizer_obj.encode.assert_called_once_with("hello")
