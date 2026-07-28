@@ -9,6 +9,9 @@ final class ContextBenchScreenVM {
 
     // Server state
     private(set) var models: [ModelDTO] = []
+    /// Mirror of the global scheduler.prefill_priority setting shown as a
+    /// segmented control on this screen ("context" | "speed").
+    private(set) var prefillPriority: String = "context"
     private(set) var running: Bool = false
     private(set) var phase: String = ""
     private(set) var progress: Double = 0
@@ -39,6 +42,7 @@ final class ContextBenchScreenVM {
     func start(client: OMLXClient) async {
         self.client = client
         await loadModels()
+        await loadPrefillPriority()
     }
 
     /// Manual teardown hook for future disconnect flows — not wired to
@@ -64,6 +68,38 @@ final class ContextBenchScreenVM {
                 }
         } catch {
             self.lastError = error.omlxDescription
+        }
+    }
+
+    private func loadPrefillPriority() async {
+        guard let client else { return }
+        do {
+            let s = try await client.getGlobalSettings()
+            self.prefillPriority =
+                s.scheduler?.prefillPriority == "speed" ? "speed" : "context"
+        } catch {
+            // Non-fatal — the segment shows the default until the next load.
+        }
+    }
+
+    /// Save the global Prefill Priority setting immediately (the server
+    /// applies it live). Reverts the segment on failure.
+    func setPrefillPriority(_ value: String, client: OMLXClient) {
+        guard !running, value != prefillPriority else { return }
+        let previous = prefillPriority
+        prefillPriority = value
+        Task { [weak self] in
+            do {
+                var patch = GlobalSettingsPatch()
+                patch.prefillPriority = value
+                _ = try await client.updateGlobalSettings(patch)
+            } catch {
+                await MainActor.run {
+                    guard let self else { return }
+                    self.prefillPriority = previous
+                    self.lastError = error.omlxDescription
+                }
+            }
         }
     }
 

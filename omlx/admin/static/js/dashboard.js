@@ -94,7 +94,7 @@
                 server: { host: '127.0.0.1', port: 8000, log_level: 'info', sse_keepalive_mode: 'chunk', burst_decode_mode: 'balanced', preserve_mid_system_cache: true },
                 model: { model_dirs: [''], model_fallback: false, hide_helper_models: false },
                 memory: { prefill_memory_guard: true, memory_guard_tier: 'balanced', memory_guard_custom_ceiling_gb: 0 },
-                scheduler: { max_concurrent_requests: 8, embedding_batch_size: 32, chunked_prefill: false },
+                scheduler: { max_concurrent_requests: 8, embedding_batch_size: 32, chunked_prefill: false, prefill_priority: 'context' },
                 cache: { enabled: true, ssd_cache_dir: '', ssd_cache_max_size: 'auto', hot_cache_max_size: '0', initial_cache_blocks: 256, hot_cache_only: false },
                 sampling: { max_context_window: 32768, max_context_window_policy: null, max_tokens: 32768, temperature: 1.0, top_p: 0.95, top_k: 0, repetition_penalty: 1.0 },
                 mcp: { config_path: '' },
@@ -892,6 +892,7 @@
                             max_concurrent_requests: this.globalSettings.scheduler.max_concurrent_requests,
                             embedding_batch_size: this.globalSettings.scheduler.embedding_batch_size,
                             chunked_prefill: this.globalSettings.scheduler.chunked_prefill,
+                            prefill_priority: this.globalSettings.scheduler.prefill_priority,
                             cache_enabled: this.globalSettings.cache.enabled,
                             ssd_cache_dir: this.globalSettings.cache.ssd_cache_dir,
                             ssd_cache_max_size: this.globalSettings.cache.ssd_cache_max_size,
@@ -3214,6 +3215,27 @@
                 return window.t('ctx_bench.capped.memory');
             },
 
+            // Narrow-patch save of the global Prefill Priority setting from
+            // the bench tab (mirrors the Settings row; applied live server-side).
+            async saveCtxBenchPriority(value) {
+                if (this.ctxBenchRunning) return;
+                const prev = this.globalSettings.scheduler.prefill_priority;
+                if (prev === value) return;
+                this.globalSettings.scheduler.prefill_priority = value;
+                try {
+                    const resp = await fetch('/admin/api/global-settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prefill_priority: value }),
+                    });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                } catch (err) {
+                    console.error('Failed to save prefill priority:', err);
+                    this.globalSettings.scheduler.prefill_priority = prev;
+                    this.ctxBenchError = window.t('js.error.save_prefill_priority_failed');
+                }
+            },
+
             benchGetSpeedup(batchResult) {
                 const baseline = this.benchSingleResults.find(r => r.pp === 1024);
                 if (!baseline || !baseline.gen_tps || baseline.gen_tps <= 0) return null;
@@ -3472,6 +3494,10 @@
                 }
                 if (tab === 'context') {
                     this.loadCtxBenchState();
+                    // The priority segment mirrors the global setting —
+                    // refresh in case it changed on the Settings tab or in
+                    // another window.
+                    this.loadGlobalSettings();
                 }
             },
 

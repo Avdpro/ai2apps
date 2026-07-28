@@ -92,8 +92,14 @@ class TestNextVerifyCandidate:
         # abort point, floored to 2k.
         assert next_verify_candidate(131072, 45000, 0) == 38912
 
-    def test_re_measured_boundary_caps_evidence(self):
-        assert next_verify_candidate(65536, 64000, 40960) == 40960
+    def test_contaminated_boundary_ignored_with_evidence(self):
+        # 51,200 tokens physically prefilled; a re-bisect collapsed to 1,024
+        # by the dead prefill's residue must not drag the retry below the
+        # evidence: floor2k(0.9 * 51200 = 46080) = 45056.
+        assert next_verify_candidate(215040, 51200, 1024) == 45056
+
+    def test_no_evidence_honors_re_measured_boundary(self):
+        assert next_verify_candidate(65536, 0, 20480) == 20480
 
     def test_no_evidence_halves(self):
         assert next_verify_candidate(49152, 0, 0) == 24576
@@ -189,6 +195,7 @@ class _FakeEngine:
         yield SimpleNamespace(
             completion_tokens=1,
             prompt_tokens=self.prompt_tokens,
+            prompt_tps=1234.5,
             cached_tokens=0,
             new_text="x",
             finished=True,
@@ -264,6 +271,7 @@ class TestRunContextBenchmark:
         assert run.result["applied_tokens"] == 49152  # floor to 2k
         assert run.result["verified_tokens"] == 49152
         assert run.result["verified_prompt_tokens"] == 12345
+        assert run.result["prefill_tps"] == 1234.5
         assert run.result["capped_by"] == "memory"
         assert run.result["attempts"] == 1
         assert run.result["applied"] is True
@@ -333,6 +341,55 @@ class TestRunContextBenchmark:
         # 49152 aborted with no observed progress -> halve -> floor2k(24576)
         assert run.result["applied_tokens"] == 24576
         assert run.result["verified_tokens"] == 24576
+
+    @pytest.mark.asyncio
+    async def test_apply_rebisect_collapse_floored_by_verified_evidence(self):
+        """A post-verify re-bisect contaminated by the probe's own residue
+        must not drag the applied value below 90% of what completed."""
+        scheduler = _FakeScheduler(boundary=50000)
+
+        class _CollapsingEngine(_FakeEngine):
+            async def stream_generate(self, **kwargs):
+                async for out in super().stream_generate(**kwargs):
+                    yield out
+                # Probe 1 is calibration, probe 2 is the verify prefill —
+                # collapse the boundary only after the verify completes.
+                if len(self.probe_calls) >= 2:
+                    scheduler.boundary = 1024
+
+        engine = _CollapsingEngine(scheduler)
+        pool = _FakePool(engine)
+        run = _make_run()
+
+        await _run_bench(run, pool)
+
+        assert run.status == "completed"
+        assert run.result["verified_tokens"] == 49152
+        # floor2k(0.9 * 49152 = 44236) = 43008, not the collapsed 1024.
+        assert run.result["applied_tokens"] == 43008
+
+    @pytest.mark.asyncio
+    async def test_instant_reject_does_not_consume_an_attempt(self):
+        """A preflight rejection with nothing prefilled re-bisects and
+        retries for free; only real prefills count against the cap."""
+        scheduler = _FakeScheduler(boundary=50000)
+        reject = PrefillMemoryExceededError(
+            message="current drifted",
+            request_id="probe",
+            estimated_bytes=1,
+            limit_bytes=1,
+        )
+        # Calibration ok, first verify instant-rejects, retry succeeds.
+        engine = _FakeEngine(scheduler, probe_plan=[None, reject, None])
+        pool = _FakePool(engine)
+        run = _make_run()
+
+        await _run_bench(run, pool)
+
+        assert run.status == "completed"
+        assert run.result["attempts"] == 1
+        # Free retry: one grain below the re-measured boundary, not halved.
+        assert run.result["applied_tokens"] == 47104
 
     @pytest.mark.asyncio
     async def test_two_verify_failures_error_out(self):

@@ -241,6 +241,7 @@ class GlobalSettingsRequest(BaseModel):
     max_concurrent_requests: int | None = None
     embedding_batch_size: int | None = None
     chunked_prefill: bool | None = None
+    prefill_priority: str | None = None  # "context" | "speed"
 
     # Cache settings
     cache_enabled: bool | None = None
@@ -3188,6 +3189,7 @@ async def get_global_settings(is_admin: bool = Depends(require_admin)):
             "max_concurrent_requests": global_settings.scheduler.max_concurrent_requests,
             "embedding_batch_size": global_settings.scheduler.embedding_batch_size,
             "chunked_prefill": global_settings.scheduler.chunked_prefill,
+            "prefill_priority": global_settings.scheduler.prefill_priority,
         },
         "cache": {
             "enabled": global_settings.cache.enabled,
@@ -3526,6 +3528,47 @@ async def update_global_settings(
         logger.info(
             f"Chunked prefill {'enabled' if request.chunked_prefill else 'disabled'}"
         )
+
+    # Apply prefill priority setting (Live)
+    if request.prefill_priority is not None:
+        value = request.prefill_priority.strip().lower()
+        if value not in ("context", "speed"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid prefill_priority: '{request.prefill_priority}' "
+                    f"(must be 'context' or 'speed')"
+                ),
+            )
+        global_settings.scheduler.prefill_priority = value
+        from ..server import _server_state
+
+        pool = _server_state.engine_pool
+        if pool is not None:
+            # Engines loaded from now on build their Scheduler from the
+            # pool's stored config — without this, a bench/reload after the
+            # toggle would silently revert to the boot-time mode.
+            pool_config = getattr(pool, "_scheduler_config", None)
+            if pool_config is not None:
+                pool_config.prefill_speed_priority = value == "speed"
+            for mid, entry in pool._entries.items():
+                if entry is None or entry.engine is None:
+                    continue
+                async_core = getattr(entry.engine, "_engine", None)
+                core = (
+                    getattr(async_core, "engine", None)
+                    if async_core is not None
+                    else None
+                )
+                scheduler = (
+                    getattr(core, "scheduler", None) if core is not None else None
+                )
+                if scheduler is not None:
+                    scheduler._prefill_speed_priority = value == "speed"
+                    if hasattr(scheduler, "config"):
+                        scheduler.config.prefill_speed_priority = value == "speed"
+        runtime_applied.append("prefill_priority")
+        logger.info(f"Prefill priority set to '{value}'")
 
     if request.hot_cache_max_size is not None:
         try:

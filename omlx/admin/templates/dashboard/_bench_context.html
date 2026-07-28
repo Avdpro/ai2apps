@@ -49,6 +49,30 @@
                                 <p class="text-xs text-neutral-500 mt-2">{{ t('ctx_bench.config.target_hint') }}</p>
                             </div>
 
+                            <!-- Prefill priority (mirrors the global setting) -->
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('settings.resource.prefill_priority.label') }}</label>
+                                <div class="flex rounded-lg border border-neutral-200 overflow-hidden w-fit">
+                                    <button
+                                        @click="saveCtxBenchPriority('context')"
+                                        :disabled="ctxBenchRunning"
+                                        :class="globalSettings.scheduler.prefill_priority !== 'speed' ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-500 hover:bg-neutral-50'"
+                                        class="px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 disabled:opacity-50">
+                                        <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                                        {{ t('settings.resource.prefill_priority.max_context') }}
+                                    </button>
+                                    <button
+                                        @click="saveCtxBenchPriority('speed')"
+                                        :disabled="ctxBenchRunning"
+                                        :class="globalSettings.scheduler.prefill_priority === 'speed' ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-500 hover:bg-neutral-50'"
+                                        class="px-3 py-1.5 text-xs font-medium transition-all border-l border-neutral-200 flex items-center gap-1.5 disabled:opacity-50">
+                                        <i data-lucide="gauge" class="w-3.5 h-3.5"></i>
+                                        {{ t('settings.resource.prefill_priority.speed') }}
+                                    </button>
+                                </div>
+                                <p class="text-xs text-neutral-500 mt-2">{{ t('ctx_bench.config.priority_hint') }}</p>
+                            </div>
+
                             <!-- Warning callout -->
                             <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
                                 <div class="flex items-start gap-3">
@@ -126,6 +150,11 @@
                                 <div class="flex justify-between gap-4">
                                     <span class="text-neutral-500">{{ t('ctx_bench.result.verified') }}</span>
                                     <span class="font-medium text-neutral-900" x-text="(ctxBenchResult?.verified_tokens ?? 0).toLocaleString()"></span>
+                                </div>
+                                <div class="flex justify-between gap-4">
+                                    <span class="text-neutral-500">{{ t('ctx_bench.result.prefill_tps') }}</span>
+                                    <span class="font-medium text-neutral-900"
+                                          x-text="ctxBenchResult?.prefill_tps ? ctxBenchResult.prefill_tps.toLocaleString() + ' tok/s' : '—'"></span>
                                 </div>
                                 <div class="flex justify-between gap-4">
                                     <span class="text-neutral-500">{{ t('ctx_bench.result.capped_by') }}</span>

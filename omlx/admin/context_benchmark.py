@@ -52,10 +52,13 @@ _MIN_USEFUL_TOKENS = 2048
 # GDN/Mamba fixed-state measurement before the analytic search.
 _CALIBRATION_TOKENS = 4096
 
-# Two attempts total: the boundary try, then one conservative retry
-# informed by where the first prefill actually aborted. More rounds add
-# minutes of near-ceiling crawling for marginal precision.
+# Two real-prefill attempts total: the boundary try, then one
+# conservative retry informed by where the first prefill actually
+# aborted. More rounds add minutes of near-ceiling crawling for
+# marginal precision. Instant admission rejections (nothing prefilled)
+# do not consume an attempt; the spin cap bounds those instead.
 _MAX_VERIFY_ATTEMPTS = 2
+_MAX_VERIFY_SPINS = 6
 
 # Retry candidate = this fraction of the token count the aborted prefill
 # actually completed — physical evidence of what fits, with headroom.
@@ -272,12 +275,15 @@ async def _cleanup_between_probes(engine: Any, scheduler: Any) -> None:
         await asyncio.sleep(0.5)
 
 
-async def _run_probe_prefill(engine: Any, prompt: str) -> Any:
-    """Prefill the prompt with max_tokens=1; return the final output.
+async def _run_probe_prefill(engine: Any, prompt: str) -> tuple[Any, float]:
+    """Prefill the prompt with max_tokens=1; return (final output, seconds).
 
     Raises PrefillMemoryExceededError / PrefillMemoryAbortedError when the
-    memory guard refuses or aborts the probe.
+    memory guard refuses or aborts the probe. With max_tokens=1 the wall
+    clock is dominated by the prefill, so callers can derive a prefill
+    tok/s from it when the engine does not report prompt_tps.
     """
+    started = time.perf_counter()
     last_output = None
     async for output in engine.stream_generate(
         prompt=prompt,
@@ -287,7 +293,7 @@ async def _run_probe_prefill(engine: Any, prompt: str) -> Any:
         skip_cache_store=True,
     ):
         last_output = output
-    return last_output
+    return last_output, time.perf_counter() - started
 
 
 def next_verify_candidate(
@@ -297,17 +303,20 @@ def next_verify_candidate(
 
     Prefers physical evidence: the aborted prefill completed
     ``observed_processed`` tokens before dying, so 90% of that is very
-    likely to finish. Without evidence (instant rejection), halve. Either
-    way stay under the re-measured admission boundary and strictly below
-    the failed candidate.
+    likely to finish. The re-measured admission boundary is deliberately
+    ignored in that case — right after an abort it is often contaminated
+    by the dead prefill's still-resident KV/pool and can collapse far
+    below what physically ran; if it is genuinely lower, the retry just
+    costs a free instant-reject spin that re-bisects after more settling.
+    Without evidence (nothing prefilled), halve and honor the boundary.
     """
     if observed_processed > 0:
         evidence = int(observed_processed * _ABORT_EVIDENCE_SAFETY)
+        nxt = min(evidence, candidate - _APPLY_GRANULARITY)
     else:
-        evidence = candidate // 2
-    nxt = min(evidence, candidate - _APPLY_GRANULARITY)
-    if new_boundary > 0:
-        nxt = min(nxt, new_boundary)
+        nxt = min(candidate // 2, candidate - _APPLY_GRANULARITY)
+        if new_boundary > 0:
+            nxt = min(nxt, new_boundary)
     return floor_to_apply_granularity(nxt)
 
 
@@ -457,40 +466,53 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
 
         # Phase 4: verify — real prefill at the floored candidate. On a
         # mid-prefill abort, one conservative retry sized from where the
-        # first prefill actually died (90% of its processed tokens).
+        # first prefill actually died (90% of its processed tokens). An
+        # INSTANT admission rejection (0 tokens processed — current drifted
+        # between the bisection and the probe) costs no GPU time and does
+        # not consume a real-prefill attempt; it just re-bisects with the
+        # fresh usage and retries, bounded by the spin cap.
         candidate = floor_to_apply_granularity(min(boundary, cap))
         verified = 0
         verified_prompt_tokens = 0
+        verify_prefill_tps = 0.0
         attempts = 0
-        for attempt in range(1, _MAX_VERIFY_ATTEMPTS + 1):
-            attempts = attempt
+        spins = 0
+        while spins < _MAX_VERIFY_SPINS:
+            spins += 1
+            attempt_no = attempts + 1
             await _progress(
                 run,
                 "verify",
                 0.0,
-                f"Verify prefill {candidate:,} tokens (attempt {attempt})...",
+                f"Verify prefill {candidate:,} tokens (attempt {attempt_no})...",
             )
             progress_holder: dict = {}
             relay = asyncio.create_task(
                 _relay_prefill_progress(
-                    run, request.model_id, attempt, candidate, progress_holder
+                    run, request.model_id, attempt_no, candidate, progress_holder
                 )
             )
             try:
-                output = await _run_probe_prefill(
+                output, probe_seconds = await _run_probe_prefill(
                     engine, _generate_prompt(tokenizer, candidate)
                 )
             except (PrefillMemoryExceededError, PrefillMemoryAbortedError) as exc:
                 observed = int(progress_holder.get("processed", 0))
+                instant_reject = (
+                    not isinstance(exc, PrefillMemoryAbortedError) and observed == 0
+                )
+                if not instant_reject:
+                    attempts += 1
                 logger.info(
                     "Context bench: verify failed at %d tokens "
-                    "(attempt %d, %d processed): %s",
+                    "(attempt %d, %d processed%s): %s",
                     candidate,
-                    attempt,
+                    attempt_no,
                     observed,
+                    ", instant reject" if instant_reject else "",
                     exc,
                 )
-                if attempt >= _MAX_VERIFY_ATTEMPTS:
+                if attempts >= _MAX_VERIFY_ATTEMPTS:
                     raise RuntimeError(
                         f"Verification failed {_MAX_VERIFY_ATTEMPTS} times — "
                         f"the machine could not complete a prefill at the "
@@ -501,7 +523,14 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                 # The failed prefill taught the tracker its floor transient;
                 # honor the tighter re-measured boundary too.
                 new_boundary = bisect_admission(fits, 1024, candidate)
-                candidate = next_verify_candidate(candidate, observed, new_boundary)
+                if instant_reject:
+                    # Free retry: re-admit one grain below the freshly
+                    # measured boundary so the razor edge is not re-hit.
+                    candidate = floor_to_apply_granularity(
+                        min(new_boundary, candidate - _APPLY_GRANULARITY)
+                    )
+                else:
+                    candidate = next_verify_candidate(candidate, observed, new_boundary)
                 if candidate < _MIN_USEFUL_TOKENS:
                     raise RuntimeError(
                         "Verification kept failing above the 2k floor — "
@@ -510,11 +539,24 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                 continue
             finally:
                 relay.cancel()
+            attempts += 1
             verified = candidate
             verified_prompt_tokens = int(
                 getattr(output, "prompt_tokens", 0) or candidate
             )
+            # Prefill speed of the successful verify: prefer the engine's
+            # own figure, fall back to the probe wall clock (max_tokens=1,
+            # so it is essentially all prefill).
+            verify_prefill_tps = float(getattr(output, "prompt_tps", 0.0) or 0.0)
+            if verify_prefill_tps <= 0 and probe_seconds > 0:
+                verify_prefill_tps = verified_prompt_tokens / probe_seconds
             break
+        if verified == 0:
+            raise RuntimeError(
+                "Verification did not converge within the retry budget. "
+                "Raise the Memory Guard ceiling or pick a smaller target "
+                "and rerun."
+            )
 
         # Phase 5: apply — re-measure with the post-verify tracker state
         # (the near-ceiling prefill can raise the floor-chunk transient
@@ -524,7 +566,16 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
         post_boundary = bisect_admission(fits, 1024, verified)
         final = verified
         if post_boundary > 0:
-            final = min(final, floor_to_apply_granularity(post_boundary))
+            # The re-bisect can be contaminated by the verify prefill's own
+            # residue (buffer pool, last-chunk transient sample) — never
+            # tighten below 90% of what physically completed.
+            evidence_floor = floor_to_apply_granularity(
+                int(verified * _ABORT_EVIDENCE_SAFETY)
+            )
+            final = min(
+                final,
+                max(floor_to_apply_granularity(post_boundary), evidence_floor),
+            )
         if final < _MIN_USEFUL_TOKENS:
             final = _MIN_USEFUL_TOKENS
 
@@ -564,7 +615,17 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
             "applied": applied,
             "capped_by": capped_by,
             "attempts": attempts,
+            # Prefill tok/s of the successful verify run — what a prompt at
+            # the applied size actually prefills at in the current mode.
+            "prefill_tps": round(verify_prefill_tps, 1),
             "duration_s": round(time.perf_counter() - overall_start, 1),
+            # Mode the measurement ran under — the applied value only holds
+            # while serving keeps the same prefill priority.
+            "prefill_priority": (
+                "speed"
+                if getattr(scheduler, "_prefill_speed_priority", False)
+                else "context"
+            ),
         }
         run.result = result
         await _send_event(run, {"type": "result", "data": result})

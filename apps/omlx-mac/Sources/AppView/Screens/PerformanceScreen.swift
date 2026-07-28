@@ -94,11 +94,35 @@ private struct SchedulerSection: View {
                               comment: "Row label for chunked prefill toggle"),
                 sublabel: String(localized: "performance.scheduler.chunked_prefill.sub",
                                  defaultValue: "Split long prompts across scheduler ticks so other requests can interleave.",
-                                 comment: "Sublabel for chunked prefill toggle"),
-                isLast: true
+                                 comment: "Sublabel for chunked prefill toggle")
             ) {
                 Toggle("", isOn: $vm.chunkedPrefill)
                     .labelsHidden().toggleStyle(.switch)
+            }
+            Row(
+                label: String(localized: "performance.scheduler.prefill_priority",
+                              defaultValue: "Prefill Priority",
+                              comment: "Row label for the prefill priority segmented control"),
+                sublabel: String(localized: "performance.scheduler.prefill_priority.sub",
+                                 defaultValue: "Max Context trades prefill speed for larger prompts under memory pressure; Speed keeps full prefill speed and rejects prompts that would not fit.",
+                                 comment: "Sublabel for the prefill priority segmented control"),
+                isLast: true
+            ) {
+                Segmented(
+                    selection: $vm.prefillPriority,
+                    options: [
+                        (value: "context",
+                         label: String(localized: "prefill_priority.option.max_context",
+                                       defaultValue: "Max Context",
+                                       comment: "Prefill priority option that favors the largest context")),
+                        (value: "speed",
+                         label: String(localized: "prefill_priority.option.speed",
+                                       defaultValue: "Speed",
+                                       comment: "Prefill priority option that favors prefill speed")),
+                    ],
+                    icons: ["arrow.up.left.and.arrow.down.right", "speedometer"]
+                )
+                .frame(width: 240)
             }
         }
     }

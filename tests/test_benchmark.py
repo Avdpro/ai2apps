@@ -511,6 +511,40 @@ class TestBenchmarkEngineSelection:
         assert run.status == "completed"
 
     @pytest.mark.asyncio
+    async def test_run_benchmark_pins_speed_priority_and_restores(self):
+        """Throughput runs force prefill speed priority (no throttle
+        shrinking mid-measurement) and restore the previous mode after."""
+        pool = _FakeBenchEnginePool()
+        pool._scheduler_config = SimpleNamespace(prefill_speed_priority=False)
+        seen = []
+
+        class _Recorder(_FakeBenchEngine):
+            async def stream_generate(self, **kwargs):
+                seen.append(pool._scheduler_config.prefill_speed_priority)
+                yield SimpleNamespace(
+                    completion_tokens=1,
+                    prompt_tokens=1024,
+                    cached_tokens=0,
+                    new_text="x",
+                    finished=True,
+                    finish_reason="length",
+                )
+
+        pool._engine = _Recorder()
+        run = BenchmarkRun(
+            bench_id="bench-pin",
+            request=BenchmarkRequest(
+                model_id="m", prompt_lengths=[1024], generation_length=1
+            ),
+        )
+        with patch("omlx.admin.benchmark._upload_to_omlx_ai", AsyncMock()):
+            await run_benchmark(run, pool)
+
+        assert run.status == "completed"
+        assert seen and all(seen), "speed priority must be pinned during the run"
+        assert pool._scheduler_config.prefill_speed_priority is False
+
+    @pytest.mark.asyncio
     async def test_batch_request_skips_engine_with_none_scheduler_core(self):
         run = BenchmarkRun(
             bench_id="bench-test",

@@ -1388,6 +1388,10 @@ class SchedulerConfig:
     # interleaved with decode steps for already-running requests. This
     # reduces TTFT for concurrent requests but adds per-step overhead.
     chunked_prefill: bool = False
+    # When True, the memory guard never shrinks prefill chunks: admission
+    # charges the full prefill_step_size and prompts that would only fit
+    # via throttled floor-size chunks are rejected upfront instead.
+    prefill_speed_priority: bool = False
 
     # Paged cache settings (internal defaults)
     paged_cache_block_size: int = 256  # Tokens per block
@@ -1705,6 +1709,13 @@ class Scheduler:
         self._prefill_safe_zone_ratio: float = 0.80
         self._prefill_min_chunk_tokens: int = 256
         self._prefill_abort_margin: float = self._PREFILL_ABORT_MARGIN
+        # Prefill Priority (global setting, live-toggled by the admin API):
+        # False = "context" (default) — throttle shrinks chunks to fit the
+        # largest possible prompt; True = "speed" — never shrink, charge
+        # admission at full step size, abort what does not fit at speed.
+        self._prefill_speed_priority: bool = bool(
+            getattr(self.config, "prefill_speed_priority", False)
+        )
         # Requests that already emitted the INFO throttle notice. The per-chunk
         # shrink log is DEBUG, so a throttled prefill used to be silent at the
         # default level even while it ran an order of magnitude slower; one
@@ -3579,7 +3590,13 @@ class Scheduler:
         base_cap, cap, margin = self._prefill_abort_description()
         if cap <= 0:
             return n_tokens
-        min_chunk = max(1, self._prefill_min_chunk_tokens)
+        # Speed priority: no shrinking — the floor IS the full chunk, so the
+        # abort gate below charges the full-step transient and the shrink
+        # math degenerates to returning n_tokens unchanged.
+        if self._prefill_speed_priority:
+            min_chunk = n_tokens
+        else:
+            min_chunk = max(1, self._prefill_min_chunk_tokens)
         current = self._current_usage_bytes()
         if current + self._admission_transient_bound(n_tokens, kv_len) <= cap:
             return n_tokens
@@ -3773,6 +3790,8 @@ class Scheduler:
             # the legacy watermark gate so we never run unbounded.
             if current < soft_watermark:
                 return requested
+            if self._prefill_speed_priority:
+                return requested
             n_fit = requested
         else:
             # Predicted-peak gate: if the FULL requested chunk fits under the
@@ -3795,6 +3814,12 @@ class Scheduler:
                     requested_tokens=requested,
                     reason="adaptive_prefill_throttle",
                 )
+            if self._prefill_speed_priority:
+                # Speed priority: never shrink. Idle-model eviction above
+                # still gets its chance to free memory; beyond that, the
+                # pre-chunk guard and the post-chunk memory check abort
+                # cleanly instead of crawling at floor-size chunks.
+                return requested
             headroom = max(target - current, 0)
             n_fit = int(headroom / per_token)
 
@@ -7935,6 +7960,11 @@ class Scheduler:
         a 31.56GB ceiling, charging the full step rejected 80k tokens while
         60k ran to completion at 32-token chunks.
 
+        Under speed priority the throttle never shrinks, so the charge
+        chunk IS the full ``prefill_step_size`` — admission then only
+        admits what completes at full-speed chunks, matching the regime
+        the prefill will actually run in.
+
         Returns None when nothing can be estimated (no model info and no
         measurements yet); callers skip the check, as before.
         """
@@ -7944,7 +7974,11 @@ class Scheduler:
         new_tokens = max(int(num_prompt_tokens) - max(int(cached_tokens), 0), 0)
         if new_tokens == 0:
             return None
-        floor_chunk = min(max(1, self._prefill_min_chunk_tokens), new_tokens)
+        if self._prefill_speed_priority:
+            charge_tokens = max(1, int(self.config.prefill_step_size))
+        else:
+            charge_tokens = max(1, self._prefill_min_chunk_tokens)
+        floor_chunk = min(charge_tokens, new_tokens)
         kv_len = max(int(num_prompt_tokens) - 1, 1)
         kv_exact = int(
             monitor.estimate_resident_kv_bytes(new_tokens, chunk_tokens=floor_chunk)

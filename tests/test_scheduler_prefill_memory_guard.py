@@ -774,6 +774,55 @@ def test_admission_estimate_is_the_single_formula():
     assert est.estimated == est.kv_exact + est.transient
 
 
+def test_admission_charges_full_step_under_speed_priority():
+    """Speed priority prices the full prefill_step_size chunk instead of the
+    throttle floor, so admission only accepts what completes at full speed."""
+    scheduler = _make_scheduler()
+    scheduler._prefill_memory_guard = True
+    scheduler._memory_hard_limit_bytes = 10**18
+
+    patches = (
+        patch("omlx.scheduler.mx.get_active_memory", return_value=0),
+        patch("omlx.scheduler.get_phys_footprint", return_value=0),
+    )
+    with patches[0], patches[1]:
+        est_context = scheduler._admission_estimate(
+            num_prompt_tokens=32768, cached_tokens=0, current=0
+        )
+
+    scheduler._prefill_speed_priority = True
+    with patches[0], patches[1]:
+        est_speed = scheduler._admission_estimate(
+            num_prompt_tokens=32768, cached_tokens=0, current=0
+        )
+
+    assert est_context is not None and est_speed is not None
+    assert est_context.floor_chunk == min(
+        max(1, scheduler._prefill_min_chunk_tokens), 32768
+    )
+    assert est_speed.floor_chunk == scheduler.config.prefill_step_size
+    assert est_speed.kv_exact == int(
+        scheduler.memory_monitor.estimate_resident_kv_bytes(
+            32768, chunk_tokens=scheduler.config.prefill_step_size
+        )
+    )
+    assert est_speed.transient == int(
+        scheduler._admission_transient_bound(
+            scheduler.config.prefill_step_size, 32767
+        )
+    )
+    # The full-step charge is strictly more conservative.
+    assert est_speed.estimated > est_context.estimated
+
+    # Prompts shorter than the step are charged at their own size.
+    with patches[0], patches[1]:
+        est_small = scheduler._admission_estimate(
+            num_prompt_tokens=1024, cached_tokens=0, current=0
+        )
+    assert est_small is not None
+    assert est_small.floor_chunk == 1024
+
+
 def test_preflight_charges_observed_max_transient():
     """A session's observed max chunk transient converts a would-be
     mid-prefill abort into an upfront 400."""

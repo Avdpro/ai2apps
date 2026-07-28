@@ -257,6 +257,8 @@ struct ContextBenchResultDTO: Codable, Equatable, Sendable {
     /// "memory" | "target" | "native"
     let cappedBy: String
     let attempts: Int
+    /// Prefill tok/s of the successful verify run (0 when unmeasured).
+    let prefillTps: Double?
     let durationS: Double
 }
 

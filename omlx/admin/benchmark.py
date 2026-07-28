@@ -288,6 +288,33 @@ def _compute_single_metrics(
     }
 
 
+def _pin_speed_priority(engine_pool: Any) -> bool | None:
+    """Force prefill speed priority for the benchmark's duration.
+
+    Throughput numbers measured while the memory-guard throttle shrinks
+    prefill chunks are not comparable, so the bench always runs in speed
+    mode. The pin lands on the pool's stored scheduler config — the bench
+    model is loaded fresh after unload-all, so that is where its Scheduler
+    reads the flag from. Returns the previous value for restoration, or
+    None when the pool exposes no config (nothing to restore).
+    """
+    config = getattr(engine_pool, "_scheduler_config", None)
+    if config is None:
+        return None
+    previous = bool(getattr(config, "prefill_speed_priority", False))
+    config.prefill_speed_priority = True
+    return previous
+
+
+def _restore_speed_priority(engine_pool: Any, previous: bool | None) -> None:
+    """Undo _pin_speed_priority (no-op when the pin never landed)."""
+    if previous is None:
+        return
+    config = getattr(engine_pool, "_scheduler_config", None)
+    if config is not None:
+        config.prefill_speed_priority = previous
+
+
 def _get_batch_benchmark_core(engine: Any) -> Any | None:
     """Return the scheduler core when this engine supports batch benchmarks."""
     engine_core = getattr(engine, "_engine", None)
@@ -969,6 +996,10 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
     current_test = 0
     overall_start = time.perf_counter()
 
+    # Throughput measurements must not be skewed by the memory-guard
+    # throttle shrinking chunks; pin speed priority for the run.
+    previous_speed_priority = _pin_speed_priority(engine_pool)
+
     try:
         # Snapshot experimental flags at run start. Settings can change mid-run,
         # and the produced numbers are tied to whatever was active when
@@ -1200,6 +1231,9 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
             await engine_pool._unload_engine(request.model_id)
         except Exception:
             pass
+
+    finally:
+        _restore_speed_priority(engine_pool, previous_speed_priority)
 
 
 async def _run_external_benchmark(run: BenchmarkRun) -> None:

@@ -2441,6 +2441,18 @@
         }
       }
     },
+    "bench.context.result.prefill_tps" : {
+      "comment" : "Result row label for the verify prefill's tokens per second",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prefill speed"
+          }
+        }
+      }
+    },
     "bench.context.result.snapshot_note" : {
       "comment" : "Hint under the Context Bench result explaining the measurement is a snapshot",
       "extractionState" : "manual",
@@ -2497,6 +2509,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loaded or unloaded — server will load on demand"
+          }
+        }
+      }
+    },
+    "bench.context.row.priority.label" : {
+      "comment" : "Row label for the prefill priority segmented control on the Context Bench screen",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prefill Priority"
+          }
+        }
+      }
+    },
+    "bench.context.row.priority.sub" : {
+      "comment" : "Sublabel explaining the Context Bench prefill priority control mirrors the global setting",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mirrors the global setting and saves immediately — serving uses the same mode, so the measured value stays valid"
           }
         }
       }
@@ -7764,6 +7800,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Проверять память для префилла перед запуском движка. Отбрасывает запросы, которые привели бы к OOM."
+          }
+        }
+      }
+    },
+    "performance.scheduler.prefill_priority" : {
+      "comment" : "Row label for the prefill priority segmented control",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prefill Priority"
+          }
+        }
+      }
+    },
+    "performance.scheduler.prefill_priority.sub" : {
+      "comment" : "Sublabel for the prefill priority segmented control",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Max Context trades prefill speed for larger prompts under memory pressure; Speed keeps full prefill speed and rejects prompts that would not fit."
+          }
+        }
+      }
+    },
+    "prefill_priority.option.max_context" : {
+      "comment" : "Prefill priority option that favors the largest context",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Max Context"
+          }
+        }
+      }
+    },
+    "prefill_priority.option.speed" : {
+      "comment" : "Prefill priority option that favors prefill speed",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speed"
           }
         }
       }

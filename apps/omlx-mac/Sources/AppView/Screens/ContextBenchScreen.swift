@@ -47,10 +47,12 @@ struct ContextBenchScreen: View {
                 models: vm.models,
                 selectedModelId: $vm.selectedModelId,
                 targetTokens: $vm.targetTokens,
+                prefillPriority: vm.prefillPriority,
                 running: vm.running,
                 canRun: vm.canRun,
                 onRun: { vm.runBenchmark(client: services.client) },
-                onCancel: { vm.cancelBenchmark(client: services.client) }
+                onCancel: { vm.cancelBenchmark(client: services.client) },
+                onPriorityChange: { vm.setPrefillPriority($0, client: services.client) }
             )
 
             if vm.running {
@@ -79,10 +81,12 @@ private struct ConfigurationSection: View {
     let models: [ModelDTO]
     @Binding var selectedModelId: String
     @Binding var targetTokens: Int
+    let prefillPriority: String
     let running: Bool
     let canRun: Bool
     let onRun: () -> Void
     let onCancel: () -> Void
+    let onPriorityChange: (String) -> Void
 
     var body: some View {
         SectionHeader(
@@ -125,6 +129,33 @@ private struct ConfigurationSection: View {
                     }
                 )
                 .frame(width: 320)
+                .disabled(running)
+            }
+
+            Row(label: String(localized: "bench.context.row.priority.label",
+                              defaultValue: "Prefill Priority",
+                              comment: "Row label for the prefill priority segmented control on the Context Bench screen"),
+                sublabel: String(localized: "bench.context.row.priority.sub",
+                                 defaultValue: "Mirrors the global setting and saves immediately — serving uses the same mode, so the measured value stays valid",
+                                 comment: "Sublabel explaining the Context Bench prefill priority control mirrors the global setting")) {
+                Segmented(
+                    selection: Binding(
+                        get: { prefillPriority },
+                        set: { onPriorityChange($0) }
+                    ),
+                    options: [
+                        (value: "context",
+                         label: String(localized: "prefill_priority.option.max_context",
+                                       defaultValue: "Max Context",
+                                       comment: "Prefill priority option that favors the largest context")),
+                        (value: "speed",
+                         label: String(localized: "prefill_priority.option.speed",
+                                       defaultValue: "Speed",
+                                       comment: "Prefill priority option that favors prefill speed")),
+                    ],
+                    icons: ["arrow.up.left.and.arrow.down.right", "speedometer"]
+                )
+                .frame(width: 240)
                 .disabled(running)
             }
 
@@ -297,6 +328,14 @@ private struct ResultSection: View {
                     .monospacedDigit()
             }
 
+            Row(label: String(localized: "bench.context.result.prefill_tps",
+                              defaultValue: "Prefill speed",
+                              comment: "Result row label for the verify prefill's tokens per second")) {
+                Text(prefillTpsLabel)
+                    .font(.omlxText(12, weight: .medium))
+                    .monospacedDigit()
+            }
+
             Row(label: String(localized: "bench.context.result.capped_by",
                               defaultValue: "Limited by",
                               comment: "Result row label for what bounded the measurement")) {
@@ -342,6 +381,11 @@ private struct ResultSection: View {
                           defaultValue: "Available memory",
                           comment: "Limited-by value when free memory bounded the result")
         }
+    }
+
+    private var prefillTpsLabel: String {
+        guard let tps = result.prefillTps, tps > 0 else { return "—" }
+        return "\(Int(tps.rounded()).formatted()) tok/s"
     }
 
     private var durationLabel: String {

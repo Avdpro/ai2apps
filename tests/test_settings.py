@@ -322,7 +322,20 @@ class TestSchedulerSettings:
             "max_concurrent_requests": 8,
             "embedding_batch_size": 32,
             "chunked_prefill": False,
+            "prefill_priority": "context",
         }
+
+    def test_prefill_priority_from_dict(self):
+        """Valid values pass through; anything else falls back to context."""
+        assert SchedulerSettings.from_dict({}).prefill_priority == "context"
+        assert (
+            SchedulerSettings.from_dict({"prefill_priority": "speed"}).prefill_priority
+            == "speed"
+        )
+        assert (
+            SchedulerSettings.from_dict({"prefill_priority": "bogus"}).prefill_priority
+            == "context"
+        )
 
     def test_from_dict(self):
         """Test creation from dictionary."""

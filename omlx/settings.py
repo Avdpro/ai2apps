@@ -268,6 +268,12 @@ class SchedulerSettings:
     # When True, long prefills are interleaved with decode steps.
     # Reduces TTFT for concurrent requests at the cost of per-step overhead.
     chunked_prefill: bool = False
+    # What the prefill memory guard optimizes under pressure:
+    #   "context" (default) — shrink prefill steps down to the floor so the
+    #     largest possible prompt still completes (slower near the ceiling).
+    #   "speed" — never shrink; keep full-size steps and only admit prompts
+    #     that fit at full speed (smaller effective context limit).
+    prefill_priority: str = "context"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -285,10 +291,14 @@ class SchedulerSettings:
         if value is None:
             value = 8
         embedding_batch_size = data.get("embedding_batch_size", 32)
+        prefill_priority = data.get("prefill_priority", "context")
+        if prefill_priority not in ("context", "speed"):
+            prefill_priority = "context"
         return cls(
             max_concurrent_requests=value,
             embedding_batch_size=embedding_batch_size,
             chunked_prefill=bool(data.get("chunked_prefill", False)),
+            prefill_priority=prefill_priority,
         )
 
 
@@ -1432,6 +1442,7 @@ class GlobalSettings:
             completion_batch_size=self.scheduler.max_concurrent_requests,
             embedding_batch_size=self.scheduler.embedding_batch_size,
             chunked_prefill=self.scheduler.chunked_prefill,
+            prefill_speed_priority=(self.scheduler.prefill_priority == "speed"),
             initial_cache_blocks=self.cache.initial_cache_blocks,
             paged_ssd_cache_dir=str(ssd_dir) if ssd_dir else None,
             hot_cache_only=self.cache.hot_cache_only,

@@ -117,6 +117,7 @@ def _throttle_ctx(
         _prefill_min_chunk_tokens=min_chunk,
         _prefill_abort_margin=abort_margin,
         _prefill_headroom_safety=Scheduler._PREFILL_HEADROOM_SAFETY,
+        _prefill_speed_priority=False,
         # Dedupes the once-per-request INFO throttle notice.
         _throttle_notified_requests=set(),
         _prefill_transient_tracker=tracker,
@@ -812,3 +813,53 @@ class TestMaybeRecordFixedStateBytes:
         ns.memory_monitor.set_fixed_state_bytes.assert_not_called()
         assert ns._fixed_state_recorded is True
 
+
+
+# --------------------------------------------------------------------------
+# Prefill speed priority (never shrink)
+# --------------------------------------------------------------------------
+
+
+def test_speed_priority_throttle_keeps_full_chunk_under_pressure():
+    """Speed mode returns the requested chunk even when the predicted peak
+    misses the sizing target — the guard/abort path handles overruns."""
+    hard = 40 * _GB
+    current = int(hard * 0.5)
+    bpt = 18 * 1024 * 1024  # shrinks hard in context mode
+    ns = _throttle_ctx(current=current, hard=hard, samples_bpt=bpt)
+    ns._fake_current = current
+    ns._prefill_speed_priority = True
+    assert _call(ns, 2048, kv_len=5000) == 2048
+
+
+def test_speed_priority_context_mode_shrink_unchanged():
+    """Control: the same pressure with the default flag still shrinks."""
+    hard = 40 * _GB
+    current = int(hard * 0.5)
+    bpt = 18 * 1024 * 1024
+    ns = _throttle_ctx(current=current, hard=hard, samples_bpt=bpt)
+    ns._fake_current = current
+    assert _call(ns, 2048, kv_len=5000) < 2048
+
+
+def test_speed_priority_guard_aborts_at_full_step_instead_of_shrinking():
+    """The guard's abort gate charges the full chunk in speed mode: a chunk
+    that context mode would shrink aborts upfront instead."""
+    hard = 42 * _GB
+    current = 30 * _GB
+    bpt = 27 * 1024 * 1024
+    ns = _throttle_ctx(current=current, hard=hard, samples_bpt=bpt, reclaim_to=current)
+    ns._fake_current = current
+    # Context-mode control on the identical setup shrinks (guard test above).
+    assert _guard_call(ns, 2048, kv_len=122_000) < 2048
+    ns._prefill_speed_priority = True
+    with pytest.raises(PrefillMemoryExceededError):
+        _guard_call(ns, 2048, kv_len=122_000)
+
+
+def test_speed_priority_guard_passes_full_chunk_that_fits():
+    hard = 42 * _GB
+    ns = _throttle_ctx(current=10 * _GB, hard=hard, samples_bpt=1024 * 1024)
+    ns._fake_current = 10 * _GB
+    ns._prefill_speed_priority = True
+    assert _guard_call(ns, 2048, kv_len=5000) == 2048

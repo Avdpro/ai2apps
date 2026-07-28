@@ -7,6 +7,7 @@ final class PerformanceScreenVM {
     var maxConcurrentText: String = "8"
     var embeddingBatchSizeText: String = "32"
     var chunkedPrefill: Bool = false
+    var prefillPriority: String = "context"
 
     // Memory & Lifecycle
     var prefillMemoryGuard: Bool = false
@@ -27,6 +28,7 @@ final class PerformanceScreenVM {
     private(set) var loadedMaxConcurrent: Int = 8
     private(set) var loadedEmbeddingBatchSize: Int = 32
     private(set) var loadedChunkedPrefill: Bool = false
+    private(set) var loadedPrefillPriority: String = "context"
     private(set) var loadedPrefillMemoryGuard: Bool = false
     private(set) var loadedMemoryGuardTier: String = "balanced"
     private(set) var loadedMemoryGuardCustomCeilingGb: Double = 0
@@ -46,6 +48,7 @@ final class PerformanceScreenVM {
         parsedMaxConcurrent != loadedMaxConcurrent
             || parsedEmbeddingBatchSize != loadedEmbeddingBatchSize
             || chunkedPrefill != loadedChunkedPrefill
+            || prefillPriority != loadedPrefillPriority
             || prefillMemoryGuard != loadedPrefillMemoryGuard
             || canonicalMemoryGuardTier(memoryGuardTier) != loadedMemoryGuardTier
             || parsedMemoryGuardCustomCeiling != loadedMemoryGuardCustomCeilingGb
@@ -70,6 +73,9 @@ final class PerformanceScreenVM {
                 self.loadedEmbeddingBatchSize = embeddingBatchSize
                 self.chunkedPrefill = sched.chunkedPrefill ?? false
                 self.loadedChunkedPrefill = sched.chunkedPrefill ?? false
+                let priority = sched.prefillPriority == "speed" ? "speed" : "context"
+                self.prefillPriority = priority
+                self.loadedPrefillPriority = priority
             }
             if let mem = s.memory {
                 self.prefillMemoryGuard = mem.prefillMemoryGuard ?? false
@@ -166,6 +172,9 @@ final class PerformanceScreenVM {
             patch.embeddingBatchSize = embeddingBatchSize
         }
         if chunkedPrefill != loadedChunkedPrefill { patch.chunkedPrefill = chunkedPrefill }
+        if prefillPriority != loadedPrefillPriority {
+            patch.prefillPriority = prefillPriority
+        }
         // Memory & lifecycle
         if prefillMemoryGuard != loadedPrefillMemoryGuard {
             patch.memoryPrefillMemoryGuard = prefillMemoryGuard
@@ -201,6 +210,7 @@ final class PerformanceScreenVM {
             self.loadedMaxConcurrent = mc
             self.loadedEmbeddingBatchSize = embeddingBatchSize
             self.loadedChunkedPrefill = chunkedPrefill
+            self.loadedPrefillPriority = prefillPriority
             self.loadedPrefillMemoryGuard = prefillMemoryGuard
             self.loadedMemoryGuardTier = tier
             self.loadedMemoryGuardCustomCeilingGb = customCeiling

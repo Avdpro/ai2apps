@@ -51,6 +51,9 @@ struct GlobalSettingsDTO: Codable, Equatable, Sendable {
         let maxConcurrentRequests: Int
         let embeddingBatchSize: Int?
         let chunkedPrefill: Bool?
+        /// "context" (default) | "speed" — what the prefill memory guard
+        /// optimizes under pressure.
+        let prefillPriority: String?
     }
 
     struct CacheSettings: Codable, Equatable, Sendable {
@@ -258,6 +261,7 @@ struct GlobalSettingsPatch: Encodable, Equatable, Sendable {
 
     /// Multi-block prefill — splits long prompts across scheduler ticks.
     var chunkedPrefill: Bool? = nil
+    var prefillPriority: String? = nil
 
     var cacheEnabled: Bool? = nil
     var hotCacheOnly: Bool? = nil
