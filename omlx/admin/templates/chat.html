@@ -1475,7 +1475,7 @@
                                     x-text="msg._perfTotal"></p>
                             </div>
                             <!-- Thinking bubble (collapsed by default) -->
-                            <template x-if="msg._thinking">
+                            <template x-if="hasVisibleThinking(msg._thinking)">
                                 <div class="thinking-container mt-2">
                                     <div class="thinking-header" @click="msg._thinkingOpen = !msg._thinkingOpen">
                                         <svg class="thinking-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1585,7 +1585,8 @@
                         </div>
                         <!-- Streaming content (thinking block + final answer) -->
                         <!-- Live thinking bubble — shown while reasoning_content is arriving -->
-                        <div x-show="currentStream()?.streamingThinking" class="thinking-container mb-2">
+                        <div x-show="hasVisibleThinking(currentStream()?.streamingThinking)"
+                            class="thinking-container mb-2">
                             <div class="thinking-header" @click="toggleCurrentStreamThinking()">
                                 <svg class="thinking-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
@@ -3161,8 +3162,12 @@
                 return msg;
             },
 
+            hasVisibleThinking(thinking) {
+                return typeof thinking === 'string' && thinking.trim().length > 0;
+            },
+
             attachThinkingToAssistantMessage(msg, thinking) {
-                const content = thinking || null;
+                const content = this.hasVisibleThinking(thinking) ? thinking : null;
                 msg._thinking = content;
                 msg.reasoning_content = content;
                 return msg;
@@ -3323,10 +3328,11 @@
                     .filter(msg => ['user', 'assistant', 'tool', 'system'].includes(msg.role))
                     .map(msg => {
                         const m = { role: msg.role, content: this.buildContentForApi(msg.content) };
-                        if (msg.reasoning_content) {
+                        if (this.hasVisibleThinking(msg.reasoning_content)) {
                             m.reasoning_content = msg.reasoning_content;
                         }
-                        if (!m.reasoning_content && msg.role === 'assistant' && msg._thinking) {
+                        if (!m.reasoning_content && msg.role === 'assistant'
+                            && this.hasVisibleThinking(msg._thinking)) {
                             m.reasoning_content = msg._thinking;
                         }
                         if (msg.tool_calls) m.tool_calls = msg.tool_calls;
@@ -5237,13 +5243,15 @@
                                     stream._ttft = (Date.now() - stream._statusStart) / 1000;
                                     this.stopPrefillPolling(context.chatId);
                                 }
-                                if (!stream.thinkingState.isInThinking) {
+                                // Keep leading whitespace for real reasoning, but do not
+                                // treat a whitespace-only delta as a thinking phase.
+                                stream.streamingThinking += delta.reasoning_content;
+                                if (!stream.thinkingState.isInThinking
+                                    && this.hasVisibleThinking(stream.streamingThinking)) {
                                     stream.thinkingState.isInThinking = true;
                                     stream.thinkingState.thinkingStartTime = Date.now();
                                     this.setEngineStatus(context.chatId, { text: window.t('chat.thinking_label') });
                                 }
-                                // Accumulate into live thinking bubble
-                                stream.streamingThinking += delta.reasoning_content;
                             }
 
                             if (delta?.content) {
@@ -5331,7 +5339,8 @@
                     id: this.newMessageId(),
                     role: 'assistant',
                     content: stream.streamingContent || null,
-                    reasoning_content: stream.streamingThinking || null,
+                    reasoning_content: this.hasVisibleThinking(stream.streamingThinking)
+                        ? stream.streamingThinking : null,
                     model: requestModel,
                     tool_calls: toolCalls,
                     _profile: context._profile,
@@ -5424,7 +5433,8 @@
                 id: assistantId,
                 role: 'assistant',
                 content: stream.streamingContent || '',
-                reasoning_content: stream.streamingThinking || null,
+                reasoning_content: this.hasVisibleThinking(stream.streamingThinking)
+                    ? stream.streamingThinking : null,
                 model: requestModel,
                 meta: this.captureGenerationContext(
                     requestModel,
@@ -5460,7 +5470,8 @@
                         id: assistantId,
                         role: 'assistant',
                         content: stream.streamingContent,
-                        reasoning_content: stream.streamingThinking || null,
+                        reasoning_content: this.hasVisibleThinking(stream.streamingThinking)
+                            ? stream.streamingThinking : null,
                         model: requestModel,
                         meta: this.captureGenerationContext(
                             requestModel,
@@ -6043,11 +6054,14 @@
         let match;
 
         while ((match = thinkingRegex.exec(text)) !== null) {
-            thinkingBlocks.push({
-                content: match[1].trim(),
-                elapsed: match[2] ? parseInt(match[2]) : null,
-                placeholder: `THINKINGPLACEHOLDER${thinkingBlocks.length}`
-            });
+            const content = match[1].trim();
+            if (content) {
+                thinkingBlocks.push({
+                    content,
+                    elapsed: match[2] ? parseInt(match[2]) : null,
+                    placeholder: `THINKINGPLACEHOLDER${thinkingBlocks.length}`
+                });
+            }
         }
 
         // Remove thinking tags from the main text
@@ -6057,6 +6071,8 @@
     },
 
     renderThinkingBlock(content, index, messageId, elapsed) {
+        if (!this.hasVisibleThinking(content)) return '';
+
         let thinkingTime;
         if (elapsed != null) {
             thinkingTime = (elapsed / 1000).toFixed(1);
@@ -6131,7 +6147,10 @@
                     html += DOMPurify.sanitize(marked.parse(beforeContent));
                 }
                 const elapsed = match[2] ? parseInt(match[2]) : null;
-                html += this.renderThinkingBlock(match[1].trim(), blockIndex++, 'streaming', elapsed);
+                const thinkingContent = match[1].trim();
+                if (thinkingContent) {
+                    html += this.renderThinkingBlock(thinkingContent, blockIndex++, 'streaming', elapsed);
+                }
                 lastIndex = match.index + match[0].length;
             }
 
@@ -6145,9 +6164,10 @@
                 }
 
                 const thinkingContent = remaining.substring(incompleteThinkIndex + '<think>'.length);
-                const streamThinkId = `think_${++this._thinkingDomSeq}`;
+                if (this.hasVisibleThinking(thinkingContent)) {
+                    const streamThinkId = `think_${++this._thinkingDomSeq}`;
 
-                html += `
+                    html += `
                             <div class="thinking-container" id="streaming-thinking-container">
                                 <div class="thinking-header" onclick="document.getElementById('thinking-content-${streamThinkId}').classList.toggle('collapsed'); document.getElementById('thinking-toggle-${streamThinkId}').classList.toggle('collapsed');">
                                     <svg class="thinking-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -6164,6 +6184,7 @@
                                 </div>
                             </div>
                         `;
+                }
             } else if (remaining.trim()) {
                 html += DOMPurify.sanitize(marked.parse(remaining));
             }

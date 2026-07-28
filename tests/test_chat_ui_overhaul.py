@@ -99,3 +99,39 @@ def test_tailwind_contains_new_chat_ui_utilities():
 
     assert ".max-h-40{" in css
     assert ".z-\\[200\\]{" in css
+
+
+def test_empty_thinking_content_is_not_rendered_or_replayed():
+    html = _template()
+    helper = _section(
+        html,
+        "            hasVisibleThinking(thinking) {",
+        "            snapshotGenerationSettings()",
+    )
+    message_builder = _section(
+        html,
+        "            buildMessagesForApi(messages, systemPrompt, opts = {})",
+        "            buildChatCompletionBody(messages, context, depth)",
+    )
+    renderer = _section(
+        html,
+        "    extractThinking(text) {",
+        "    // Efficiently update streaming DOM",
+    )
+    stream = _section(
+        html,
+        "async streamResponse(streamContext = null, depth = 0)",
+        "stopStreaming()",
+    )
+
+    assert "thinking.trim().length > 0" in helper
+    assert "this.hasVisibleThinking(thinking) ? thinking : null" in helper
+    assert "this.hasVisibleThinking(msg.reasoning_content)" in message_builder
+    assert "this.hasVisibleThinking(msg._thinking)" in message_builder
+    assert "if (content)" in renderer
+    assert "if (!this.hasVisibleThinking(content)) return '';" in renderer
+    assert "if (this.hasVisibleThinking(thinkingContent))" in renderer
+    assert "&& this.hasVisibleThinking(stream.streamingThinking)" in stream
+    assert "reasoning_content: this.hasVisibleThinking(stream.streamingThinking)" in stream
+    assert 'x-if="hasVisibleThinking(msg._thinking)"' in html
+    assert 'x-show="hasVisibleThinking(currentStream()?.streamingThinking)"' in html
