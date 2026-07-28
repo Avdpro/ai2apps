@@ -455,6 +455,49 @@ class TestDetectModelType:
         (tmp_path / "config.json").write_text(json.dumps(config))
         assert detect_model_type(tmp_path) == "llm"
 
+    def test_detect_qwen3_5_moe_with_empty_vision_stub_as_llm(self, tmp_path):
+        """Vision-stripped quant keeping an empty ``vision_config: {}`` stub is LLM (#2385)."""
+        config = {
+            "model_type": "qwen3_5_moe",
+            "architectures": ["Qwen3_5MoeForConditionalGeneration"],
+            "text_config": {"hidden_size": 4096},
+            "vision_config": {},
+        }
+        (tmp_path / "config.json").write_text(json.dumps(config))
+        assert detect_model_type(tmp_path) == "llm"
+
+    def test_detect_dense_qwen3_5_with_empty_vision_stub_as_llm(self, tmp_path):
+        """Dense qwen3_5 is not in VLM_MODEL_TYPES — an empty stub must not trip the catch-all."""
+        config = {
+            "model_type": "qwen3_5",
+            "architectures": ["Qwen3_5ForConditionalGeneration"],
+            "text_config": {"hidden_size": 1024},
+            "vision_config": {},
+        }
+        (tmp_path / "config.json").write_text(json.dumps(config))
+        assert detect_model_type(tmp_path) == "llm"
+
+    def test_detect_dense_qwen3_5_stripped_as_llm(self, tmp_path):
+        """Vision-stripped dense qwen3_5 (no vision keys at all) stays LLM."""
+        config = {
+            "model_type": "qwen3_5",
+            "architectures": ["Qwen3_5ForConditionalGeneration"],
+            "text_config": {"hidden_size": 1024},
+        }
+        (tmp_path / "config.json").write_text(json.dumps(config))
+        assert detect_model_type(tmp_path) == "llm"
+
+    def test_detect_dense_qwen3_5_with_real_vision_as_vlm(self, tmp_path):
+        """Unified dense qwen3_5 with a populated vision_config classifies as VLM."""
+        config = {
+            "model_type": "qwen3_5",
+            "architectures": ["Qwen3_5ForConditionalGeneration"],
+            "text_config": {"hidden_size": 1024},
+            "vision_config": {"depth": 24, "hidden_size": 1152},
+        }
+        (tmp_path / "config.json").write_text(json.dumps(config))
+        assert detect_model_type(tmp_path) == "vlm"
+
     def test_detect_qwen3_causal_lm_is_llm(self, tmp_path):
         """Qwen3 with CausalLM architecture should be LLM, not embedding."""
         config = {

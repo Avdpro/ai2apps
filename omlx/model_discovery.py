@@ -536,16 +536,19 @@ def _has_vision_subconfig(config: dict) -> bool:
     - ``vision_config`` — most VLMs (Qwen2-VL, Gemma3, LLaVA-Next, ...).
     - ``vit_config`` — Molmo / Molmo2 family.
     - ``mm_vision_tower`` — older LLaVA family including FastVLM's
-      ``llava_qwen2``. The check is non-empty-only: a config-stub text-only
-      quant could in principle declare a tower path it doesn't ship weights
-      for, but in practice bf16 FastVLM ships a real path string.
+      ``llava_qwen2``.
+
+    All three are non-empty checks: text-only quants of VLM families can
+    leave an empty ``vision_config: {}`` stub behind after stripping the
+    vision tower (#2385), and key presence alone would misclassify them
+    as VLM.
 
     Used by the VLM classifier in :func:`detect_model_type` and by other
     paths (``oq``, admin model info) that need to ask "is this a VLM?".
     """
     return (
-        "vision_config" in config
-        or "vit_config" in config
+        bool(config.get("vision_config"))
+        or bool(config.get("vit_config"))
         or bool(config.get("mm_vision_tower"))
     )
 
