@@ -179,6 +179,14 @@ class _VLMMTPResponse:
     prompt_cache: Any = None
 
 
+@dataclass
+class _StopOutputState:
+    """Request-local output held while it can still match a stop string."""
+
+    strings: dict[tuple[int, ...], str]
+    pending: deque[tuple[int, RequestOutput]] = field(default_factory=deque)
+
+
 # Serializes Metal buffer-protocol access from the async store-cache worker
 # against inference-thread mx.clear_cache / mx.synchronize calls that can
 # invalidate the underlying buffer pool. Closes a SIGABRT path where
@@ -4778,6 +4786,7 @@ class Scheduler:
         transitions: dict[str, list] = {
             "normal": [([t], None) for t in stop_tokens_set]
         }
+        stop_sequence_strings: dict[tuple[int, ...], str] = {}
 
         # Tokenize stop strings into token sequences. mlx-lm's
         # SequenceStateMachine uses Aho-Corasick, so per-token match
@@ -4792,11 +4801,119 @@ class Scheduler:
             except TypeError:
                 seq = self.tokenizer.encode(stop_str)
             if seq:
-                transitions["normal"].append((list(seq), None))
+                token_sequence = tuple(int(token) for token in seq)
+                transitions["normal"].append((list(token_sequence), None))
+                stop_sequence_strings[token_sequence] = stop_str
+
+        # Response-side buffering is request-local so normal completion,
+        # retry, and cleanup paths do not need any new scheduler lifecycle.
+        request._stop_output_state = _StopOutputState(  # type: ignore[attr-defined]
+            strings=stop_sequence_strings
+        )
 
         if transitions["normal"]:
             return SequenceStateMachine(transitions, initial="normal")
         return SequenceStateMachine({}, initial="normal")
+
+    def _buffer_stop_sequence_output(
+        self,
+        request: "Request",
+        response: Any,
+        output: RequestOutput,
+    ) -> list[RequestOutput]:
+        """Suppress every output chunk belonging to a matched stop sequence.
+
+        mlx-lm reports the full ``match_sequence`` but marks only its final
+        token as ``finish_reason=stop``.  Keep only a suffix that is a token
+        prefix of a configured stop string, then discard that suffix when the
+        full sequence matches.  All other output is released immediately.
+        """
+        state = getattr(request, "_stop_output_state", None)
+        if state is None or not state.strings:
+            return [output]
+
+        pending = state.pending
+        pending.append((int(response.token), output))
+
+        pending_tokens = tuple(token for token, _ in pending)
+        reported_match = tuple(
+            int(token)
+            for token in (getattr(response, "match_sequence", None) or ())
+        )
+        matched_sequence = (
+            reported_match
+            if output.finish_reason == "stop" and reported_match in state.strings
+            else None
+        )
+        if matched_sequence is not None:
+            terminal_output = output
+            matched_outputs = []
+            for _ in matched_sequence:
+                _, matched_output = pending.pop()
+                matched_outputs.append(matched_output)
+            matched_outputs.reverse()
+
+            stop_string = state.strings[matched_sequence]
+
+            def strip_matched_prefix(text: str) -> str:
+                for prefix_len in range(len(stop_string), 0, -1):
+                    if text.endswith(stop_string[:prefix_len]):
+                        return text[:-prefix_len]
+                return text
+
+            matched_stream_text = "".join(
+                matched_output.new_text for matched_output in matched_outputs
+            )
+            safe_stream_text = strip_matched_prefix(matched_stream_text)
+            suppressed_stream_text = matched_stream_text[len(safe_stream_text) :]
+            if suppressed_stream_text and terminal_output.output_text.endswith(
+                suppressed_stream_text
+            ):
+                terminal_output.output_text = terminal_output.output_text[
+                    :-len(suppressed_stream_text)
+                ]
+            else:
+                matched_prefix_tokens = matched_sequence[:-1]
+                output_token_ids = terminal_output.output_token_ids
+                if (
+                    matched_prefix_tokens
+                    and len(output_token_ids) >= len(matched_prefix_tokens)
+                    and tuple(output_token_ids[-len(matched_prefix_tokens) :])
+                    == matched_prefix_tokens
+                    and request.request_id not in self._output_parser_sessions
+                ):
+                    terminal_output.output_text = self.tokenizer.decode(
+                        output_token_ids[:-len(matched_prefix_tokens)]
+                    )
+            request.output_text = terminal_output.output_text
+
+            terminal_output.new_text = safe_stream_text
+            terminal_output.new_token_ids = []
+            if safe_stream_text and matched_outputs:
+                terminal_output.generated_at = matched_outputs[0].generated_at
+            pending.append((int(response.token), terminal_output))
+            ready = [pending_output for _, pending_output in pending]
+            pending.clear()
+            return ready
+
+        if output.finished:
+            ready = [pending_output for _, pending_output in pending]
+            pending.clear()
+            return ready
+
+        keep = 0
+        for sequence in state.strings:
+            max_prefix = min(len(sequence), len(pending_tokens))
+            for prefix_len in range(max_prefix, keep, -1):
+                if pending_tokens[-prefix_len:] == sequence[:prefix_len]:
+                    keep = prefix_len
+                    break
+
+        ready = []
+        while len(pending) > keep:
+            _, pending_output = pending.popleft()
+            ready.append(pending_output)
+        return ready
 
     def _emit_prefill_boundary_snapshot(
         self,
@@ -9228,7 +9345,7 @@ class Scheduler:
                     5, "Request %s generated text:\n%s", request_id, output.output_text
                 )
 
-            outputs.append(output)
+            outputs.extend(self._buffer_stop_sequence_output(request, response, output))
 
         return outputs, finished_ids
 
