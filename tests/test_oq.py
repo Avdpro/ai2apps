@@ -4372,7 +4372,7 @@ class TestMeasureSensitivityVlmMtp:
 
         result = _measure_sensitivity(
             "/fake/vlm-mtp",
-            {"vision_config": {}},
+            {"vision_config": {"hidden_size": 1}},
             6,
         )
 
@@ -4387,7 +4387,7 @@ class TestMeasureSensitivityVlmMtp:
 
         _measure_sensitivity(
             "/fake/vlm-mtp",
-            {"vision_config": {}},
+            {"vision_config": {"hidden_size": 1}},
             6,
             trust_remote_code=True,
         )
@@ -4404,7 +4404,9 @@ class TestMeasureSensitivityVlmMtp:
             prev_active=prev_active,
         )
 
-        _measure_sensitivity("/fake/vlm-mtp", {"vision_config": {}}, 6)
+        _measure_sensitivity(
+            "/fake/vlm-mtp", {"vision_config": {"hidden_size": 1}}, 6
+        )
 
         assert mock_set_active.call_args_list[-1] == ((prev_active,),)
 
@@ -4415,7 +4417,9 @@ class TestMeasureSensitivityVlmMtp:
             has_mtp=False,
         )
 
-        _measure_sensitivity("/fake/vlm", {"vision_config": {}}, 6)
+        _measure_sensitivity(
+            "/fake/vlm", {"vision_config": {"hidden_size": 1}}, 6
+        )
 
         mock_apply_patch.assert_not_called()
         mock_apply_runtime.assert_not_called()
@@ -4429,7 +4433,11 @@ class TestMeasureSensitivityVlmMtp:
             has_mtp_weights=False,
         )
 
-        _measure_sensitivity("/fake/vlm-mtp-config-only", {"vision_config": {}}, 6)
+        _measure_sensitivity(
+            "/fake/vlm-mtp-config-only",
+            {"vision_config": {"hidden_size": 1}},
+            6,
+        )
 
         mock_apply_patch.assert_not_called()
         mock_apply_runtime.assert_not_called()
@@ -4539,7 +4547,10 @@ class TestMeasureSensitivityQuantizedVlm:
 
         result = _measure_sensitivity_from_quantized_model(
             "/fake/minimax-proxy",
-            {"vision_config": {}, "model_type": "minimax_m3_vl"},
+            {
+                "vision_config": {"hidden_size": 1},
+                "model_type": "minimax_m3_vl",
+            },
             3.5,
             trust_remote_code=True,
         )
