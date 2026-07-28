@@ -315,46 +315,42 @@ def next_verify_candidate(
 ) -> int:
     """Conservative retry candidate after a failed verify prefill.
 
-    Prefers physical evidence: the aborted prefill completed
-    ``observed_processed`` tokens before dying, so 90% of that is very
-    likely to finish. The re-measured admission boundary is deliberately
-    ignored in that case — right after an abort it is often contaminated
-    by the dead prefill's still-resident KV/pool and can collapse far
-    below what physically ran; if it is genuinely lower, the retry just
-    costs a free instant-reject spin that re-bisects after more settling.
-    Without evidence (nothing prefilled), halve and honor the boundary.
+    Physical evidence caps from above: the aborted prefill completed
+    ``observed_processed`` tokens before dying, so 90% of that is the
+    most a retry should attempt. The re-measured boundary caps too —
+    the failure-path cleanup resets the transient tracker first, so the
+    re-bisect reflects honest KV/static pricing at the current baseline
+    rather than the dead prefill's contaminated last-chunk delta.
+    Without evidence (nothing prefilled), halve.
     """
     if observed_processed > 0:
-        evidence = int(observed_processed * _ABORT_EVIDENCE_SAFETY)
-        nxt = min(evidence, candidate - _APPLY_GRANULARITY)
+        nxt = min(
+            int(observed_processed * _ABORT_EVIDENCE_SAFETY),
+            candidate - _APPLY_GRANULARITY,
+        )
     else:
         nxt = min(candidate // 2, candidate - _APPLY_GRANULARITY)
-        if new_boundary > 0:
-            nxt = min(nxt, new_boundary)
+    if new_boundary > 0:
+        nxt = min(nxt, new_boundary)
     return floor_to_apply_granularity(nxt)
 
 
-def next_free_retry_candidate(
-    candidate: int, new_boundary: int, best_evidence: int
-) -> int:
-    """Candidate after an INSTANT rejection (nothing prefilled).
+def _reset_transient_tracker(scheduler: Any) -> None:
+    """Drop the scheduler's chunk-transient measurements after a failed probe.
 
-    Normally one grain below the freshly re-measured boundary. When an
-    earlier real attempt left physical evidence, the collapsed re-bisect
-    (still contaminated by that attempt's residue) must not drag the
-    candidate below the evidence — step down one grain per spin instead
-    and let the settle time between spins drain the residue.
+    An enforcer-killed prefill leaves a giant last-chunk phys delta in the
+    tracker; under speed priority that poisons every subsequent admission
+    (a 2048-token charge of several GB), and since rejected probes never
+    run a chunk, the poison would never decay within the bench. Resetting
+    returns admission to the static + exact-KV estimate until real chunks
+    re-seed the EWMA.
     """
-    nxt = floor_to_apply_granularity(min(new_boundary, candidate - _APPLY_GRANULARITY))
-    if best_evidence > 0:
-        evidence_floor = floor_to_apply_granularity(
-            min(
-                int(best_evidence * _ABORT_EVIDENCE_SAFETY),
-                candidate - _APPLY_GRANULARITY,
-            )
-        )
-        nxt = max(nxt, evidence_floor)
-    return nxt
+    tracker = getattr(scheduler, "_prefill_transient_tracker", None)
+    if tracker is not None:
+        try:
+            tracker.reset()
+        except Exception as exc:
+            logger.debug("Context bench: tracker reset failed: %s", exc)
 
 
 async def _relay_prefill_progress(
@@ -514,7 +510,6 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
         verify_prefill_tps = 0.0
         attempts = 0
         spins = 0
-        best_evidence = 0
         had_abort = False
         while spins < _MAX_VERIFY_SPINS:
             spins += 1
@@ -540,7 +535,6 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                 instant_reject = (
                     not isinstance(exc, PrefillMemoryAbortedError) and observed == 0
                 )
-                best_evidence = max(best_evidence, observed)
                 if not instant_reject:
                     attempts += 1
                     had_abort = True
@@ -561,15 +555,15 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                         f"pick a smaller target and rerun."
                     ) from exc
                 await _cleanup_between_probes(engine, scheduler)
-                # The failed prefill taught the tracker its floor transient;
-                # honor the tighter re-measured boundary too.
+                # Drop the dead prefill's contaminated transient sample so
+                # the re-bisect prices the next candidate honestly.
+                _reset_transient_tracker(scheduler)
                 new_boundary = bisect_admission(fits, 1024, candidate)
                 if instant_reject:
                     # Free retry: one grain below the freshly measured
-                    # boundary, floored by earlier physical evidence so a
-                    # residue-collapsed re-bisect cannot kill the run.
-                    candidate = next_free_retry_candidate(
-                        candidate, new_boundary, best_evidence
+                    # boundary.
+                    candidate = floor_to_apply_granularity(
+                        min(new_boundary, candidate - _APPLY_GRANULARITY)
                     )
                 else:
                     candidate = next_verify_candidate(candidate, observed, new_boundary)
@@ -653,6 +647,7 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                     exc,
                 )
                 await _cleanup_between_probes(engine, scheduler)
+                _reset_transient_tracker(scheduler)
                 break
             else:
                 attempts += 1

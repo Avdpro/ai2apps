@@ -3,7 +3,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -17,7 +17,6 @@ from omlx.admin.context_benchmark import (
     floor_to_apply_granularity,
     get_active_run,
     get_run,
-    next_free_retry_candidate,
     next_verify_candidate,
     run_context_benchmark,
 )
@@ -93,27 +92,17 @@ class TestNextVerifyCandidate:
         # abort point, floored to 2k.
         assert next_verify_candidate(131072, 45000, 0) == 38912
 
-    def test_contaminated_boundary_ignored_with_evidence(self):
-        # 51,200 tokens physically prefilled; a re-bisect collapsed to 1,024
-        # by the dead prefill's residue must not drag the retry below the
-        # evidence: floor2k(0.9 * 51200 = 46080) = 45056.
-        assert next_verify_candidate(215040, 51200, 1024) == 45056
+    def test_re_measured_boundary_caps_evidence(self):
+        # The failure path resets the transient tracker before re-bisecting,
+        # so the boundary is honest and caps the evidence candidate:
+        # min(0.9 * 64000 = 57600, 63488, 40960) -> 40960.
+        assert next_verify_candidate(65536, 64000, 40960) == 40960
 
     def test_no_evidence_honors_re_measured_boundary(self):
         assert next_verify_candidate(65536, 0, 20480) == 20480
 
     def test_no_evidence_halves(self):
         assert next_verify_candidate(49152, 0, 0) == 24576
-
-    def test_free_retry_floored_by_prior_evidence(self):
-        # Real attempt died at 26,624; its evidence candidate 22,528 then
-        # instant-rejected and the residue-collapsed re-bisect said 1,024.
-        # The free retry must step down one grain, not collapse to zero:
-        # min(0.9 * 26624 = 23961, 22528 - 2048 = 20480) -> floor2k 20480.
-        assert next_free_retry_candidate(22528, 1024, 26624) == 20480
-
-    def test_free_retry_without_evidence_follows_boundary(self):
-        assert next_free_retry_candidate(241664, 200000, 0) == 198656
 
     def test_always_strictly_below_failed_candidate(self):
         # Evidence near the candidate still steps down at least one grain:
@@ -170,6 +159,7 @@ class _FakeScheduler:
         self.memory_monitor = object() if guard else None
         self.block_aware_cache = None
         self._stream = None
+        self._prefill_transient_tracker = MagicMock()
 
     def preflight_or_raise(
         self, *, num_prompt_tokens, cached_tokens=0, request_id=None
@@ -329,6 +319,8 @@ class TestRunContextBenchmark:
         assert run.result["extended"] is False
         # Target-capped runs never probe beyond the cap: calib + verify.
         assert len(engine.probe_calls) == 2
+        # No failure -> the tracker's measurements are kept.
+        scheduler._prefill_transient_tracker.reset.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_capped_by_native_context_length(self):
@@ -368,6 +360,8 @@ class TestRunContextBenchmark:
         # An abort happened, so no extension probe: calib + 2 verifies.
         assert run.result["extended"] is False
         assert len(engine.probe_calls) == 3
+        # The failure retry drops the dead prefill's transient poison.
+        scheduler._prefill_transient_tracker.reset.assert_called()
 
     @pytest.mark.asyncio
     async def test_apply_rebisect_collapse_floored_by_verified_evidence(self):
