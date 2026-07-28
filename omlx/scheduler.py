@@ -3295,7 +3295,15 @@ class Scheduler:
                         _abort / 1024**3,
                     )
                 elif current > self._memory_limit_bytes:
-                    logger.warning(
+                    # Speed priority runs full chunks through this caution
+                    # band by design — the per-chunk notice is DEBUG there,
+                    # not a warning about an unexpected state.
+                    _log = (
+                        logger.debug
+                        if self._prefill_speed_priority
+                        else logger.warning
+                    )
+                    _log(
                         f"Prefill above max_bytes at "
                         f"{processed_tokens} tokens: "
                         f"{current / 1024**3:.1f}GB > "
@@ -4514,7 +4522,13 @@ class Scheduler:
                     _abort / 1024**3,
                 )
             elif current > self._memory_limit_bytes:
-                logger.warning(
+                # Speed priority runs full chunks through this caution band
+                # by design — the per-chunk notice is DEBUG there, not a
+                # warning about an unexpected state.
+                _log = (
+                    logger.debug if self._prefill_speed_priority else logger.warning
+                )
+                _log(
                     f"Chunked prefill above max_bytes at "
                     f"{state.tokens_processed} tokens: "
                     f"{current / 1024**3:.1f}GB > "
