@@ -1,0 +1,101 @@
+"""Regression guards for the chat UI overhaul follow-up."""
+
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+CHAT_TEMPLATE = ROOT / "omlx/admin/templates/chat.html"
+I18N_DIR = ROOT / "omlx/admin/i18n"
+TAILWIND_CSS = ROOT / "omlx/admin/static/css/tailwind.css"
+
+NEW_I18N_KEYS = {
+    "chat.clear_search",
+    "chat.no_chats_match",
+    "chat.pin_chat",
+    "chat.unpin_chat",
+    "chat.regenerate_creative",
+    "chat.regenerate_with",
+    "chat.chat_tab",
+}
+
+
+def _template() -> str:
+    return CHAT_TEMPLATE.read_text()
+
+
+def _section(source: str, start: str, end: str) -> str:
+    return source.split(start, 1)[1].split(end, 1)[0]
+
+
+def test_regeneration_overrides_survive_stream_context():
+    stream = _section(
+        _template(),
+        "async streamResponse(streamContext = null, depth = 0)",
+        "stopStreaming()",
+    )
+
+    assert "_modelOverride: streamContext?._modelOverride ?? null" in stream
+    assert "_generationOverride: streamContext?._generationOverride ?? null" in stream
+    assert "context._modelOverride || context.model" in stream
+    assert "context._generationOverride" in stream
+
+
+def test_one_off_regeneration_does_not_replace_session_model():
+    html = _template()
+    stream = _section(
+        html,
+        "async streamResponse(streamContext = null, depth = 0)",
+        "stopStreaming()",
+    )
+    regenerate = _section(
+        html,
+        "async regenerateMessage(index, opts = {})",
+        "_copyFallback(text)",
+    )
+
+    assert "if (!context._modelOverride)" in stream
+    assert "model: this.currentModel" in regenerate
+    assert "_modelOverride: opts.model || null" in regenerate
+    assert "chatSession.messages, context.model" not in stream
+    assert "chatSession.messages, chatSession.model" in stream
+
+
+def test_wheel_listener_is_registered_only_during_scroll_setup():
+    html = _template()
+    setup = _section(html, "    setupScrollListener() {", "    async downloadChats()")
+    scroll = _section(
+        html,
+        "    scrollToBottom(force = false) {",
+        "    forceScrollToBottom() {",
+    )
+
+    assert "addEventListener('wheel'" in setup
+    assert "addEventListener('wheel'" not in scroll
+
+
+def test_chat_history_is_sorted_before_it_is_trimmed():
+    save = _section(
+        _template(),
+        "    saveCurrentChat(chatId = this.currentChatId",
+        "    startRenamingChat(chat)",
+    )
+
+    assert save.index("this.sortChatHistory()") < save.index(
+        "this.chatHistory.slice(0, MAX_CHAT_HISTORY_SIZE)"
+    )
+    assert "this.saveChatHistory()" in save
+
+
+def test_new_chat_strings_exist_in_every_locale():
+    for locale_path in I18N_DIR.glob("*.json"):
+        translations = json.loads(locale_path.read_text())
+        missing = NEW_I18N_KEYS - translations.keys()
+        assert not missing, f"{locale_path.name} is missing {sorted(missing)}"
+        assert "{max}" in translations["chat.error.image_too_large"]
+
+
+def test_tailwind_contains_new_chat_ui_utilities():
+    css = TAILWIND_CSS.read_text()
+
+    assert ".max-h-40{" in css
+    assert ".z-\\[200\\]{" in css
