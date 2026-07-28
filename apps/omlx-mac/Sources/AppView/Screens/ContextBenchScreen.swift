@@ -47,6 +47,7 @@ struct ContextBenchScreen: View {
                 models: vm.models,
                 selectedModelId: $vm.selectedModelId,
                 targetTokens: $vm.targetTokens,
+                targetOptions: vm.availableTargetOptions,
                 prefillPriority: vm.prefillPriority,
                 running: vm.running,
                 canRun: vm.canRun,
@@ -72,6 +73,11 @@ struct ContextBenchScreen: View {
         // the running-bench state alone, so navigation doesn't lose an
         // in-flight measurement.
         .task { await vm.start(client: services.client) }
+        // Picking a model with a smaller native context hides the larger
+        // target presets — snap the selection back into range.
+        .onChange(of: vm.selectedModelId) { _, _ in
+            vm.clampTargetToModel()
+        }
     }
 }
 
@@ -81,6 +87,7 @@ private struct ConfigurationSection: View {
     let models: [ModelDTO]
     @Binding var selectedModelId: String
     @Binding var targetTokens: Int
+    let targetOptions: [Int]
     let prefillPriority: String
     let running: Bool
     let canRun: Bool
@@ -124,7 +131,7 @@ private struct ConfigurationSection: View {
                                  comment: "Sublabel under the Context Bench target selector")) {
                 Segmented(
                     selection: $targetTokens,
-                    options: ContextBenchScreenVM.targetOptions.map {
+                    options: targetOptions.map {
                         (value: $0, label: "\($0 / 1024)k")
                     }
                 )

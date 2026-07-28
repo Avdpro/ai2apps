@@ -34,6 +34,26 @@ final class ContextBenchScreenVM {
         !selectedModelId.isEmpty && !running
     }
 
+    /// Target presets the selected model can actually reach. Unknown
+    /// native context -> full list; native below the smallest preset ->
+    /// keep the smallest (the server caps the search at native anyway).
+    var availableTargetOptions: [Int] {
+        guard let model = models.first(where: { $0.id == selectedModelId }),
+              let native = model.modelContextLength, native > 0 else {
+            return Self.targetOptions
+        }
+        let filtered = Self.targetOptions.filter { $0 <= native }
+        return filtered.isEmpty ? [Self.targetOptions[0]] : filtered
+    }
+
+    /// Keep the selected target inside the model's reachable presets.
+    func clampTargetToModel() {
+        let options = availableTargetOptions
+        if !options.contains(targetTokens) {
+            targetTokens = options.last ?? 131072
+        }
+    }
+
     // MARK: Lifecycle
 
     /// Idempotent: refreshes the model list every time the screen appears

@@ -22,6 +22,7 @@
                             <div>
                                 <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('ctx_bench.config.model') }}</label>
                                 <select x-model="ctxBenchModelId"
+                                        @change="ctxBenchClampTarget()"
                                         :disabled="ctxBenchRunning"
                                         class="w-full max-w-md px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white disabled:opacity-50">
                                     <option value="">{{ t('ctx_bench.config.model_placeholder') }}</option>
@@ -35,7 +36,7 @@
                             <div>
                                 <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('ctx_bench.config.target') }}</label>
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <template x-for="t in [16384, 32768, 65536, 131072, 262144, 524288]" :key="t">
+                                    <template x-for="t in ctxBenchTargetOptions()" :key="t">
                                         <button
                                             @click="ctxBenchTarget = t"
                                             :disabled="ctxBenchRunning"
