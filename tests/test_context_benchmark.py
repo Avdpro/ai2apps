@@ -17,6 +17,7 @@ from omlx.admin.context_benchmark import (
     floor_to_apply_granularity,
     get_active_run,
     get_run,
+    next_free_retry_candidate,
     next_verify_candidate,
     run_context_benchmark,
 )
@@ -103,6 +104,16 @@ class TestNextVerifyCandidate:
 
     def test_no_evidence_halves(self):
         assert next_verify_candidate(49152, 0, 0) == 24576
+
+    def test_free_retry_floored_by_prior_evidence(self):
+        # Real attempt died at 26,624; its evidence candidate 22,528 then
+        # instant-rejected and the residue-collapsed re-bisect said 1,024.
+        # The free retry must step down one grain, not collapse to zero:
+        # min(0.9 * 26624 = 23961, 22528 - 2048 = 20480) -> floor2k 20480.
+        assert next_free_retry_candidate(22528, 1024, 26624) == 20480
+
+    def test_free_retry_without_evidence_follows_boundary(self):
+        assert next_free_retry_candidate(241664, 200000, 0) == 198656
 
     def test_always_strictly_below_failed_candidate(self):
         # Evidence near the candidate still steps down at least one grain:
@@ -259,7 +270,15 @@ class TestRunContextBenchmark:
     @pytest.mark.asyncio
     async def test_happy_path_applies_floored_boundary(self):
         scheduler = _FakeScheduler(boundary=50000)
-        engine = _FakeEngine(scheduler)
+        abort = PrefillMemoryAbortedError(
+            message="climb over",
+            request_id="probe",
+            estimated_bytes=1,
+            limit_bytes=1,
+        )
+        # Calibration ok, verify at the boundary ok, extension 1
+        # (ceil2k(58982) = 59392) ok, extension 2 (71680) aborts.
+        engine = _FakeEngine(scheduler, probe_plan=[None, None, None, abort])
         pool = _FakePool(engine, loaded=["other-model"])
         run = _make_run()
 
@@ -268,14 +287,16 @@ class TestRunContextBenchmark:
         assert run.status == "completed"
         assert run.result is not None
         assert run.result["measured_tokens"] == 50000
-        assert run.result["applied_tokens"] == 49152  # floor to 2k
-        assert run.result["verified_tokens"] == 49152
+        # The last COMPLETED size wins; the aborted climb keeps it as-is.
+        assert run.result["verified_tokens"] == 59392
+        assert run.result["extended"] is True
+        assert run.result["applied_tokens"] == 59392
         assert run.result["verified_prompt_tokens"] == 12345
         assert run.result["prefill_tps"] == 1234.5
         assert run.result["capped_by"] == "memory"
-        assert run.result["attempts"] == 1
+        assert run.result["attempts"] == 3
         assert run.result["applied"] is True
-        assert pool._settings_manager.applied == [("test-model", 49152)]
+        assert pool._settings_manager.applied == [("test-model", 59392)]
         # Both the pre-bench sweep and the post-bench cleanup unload.
         assert pool.unloaded == ["other-model", "test-model"]
         assert run.events[-1]["type"] == "done"
@@ -305,6 +326,9 @@ class TestRunContextBenchmark:
         assert run.status == "completed"
         assert run.result["applied_tokens"] == 16384
         assert run.result["capped_by"] == "target"
+        assert run.result["extended"] is False
+        # Target-capped runs never probe beyond the cap: calib + verify.
+        assert len(engine.probe_calls) == 2
 
     @pytest.mark.asyncio
     async def test_capped_by_native_context_length(self):
@@ -341,12 +365,22 @@ class TestRunContextBenchmark:
         # 49152 aborted with no observed progress -> halve -> floor2k(24576)
         assert run.result["applied_tokens"] == 24576
         assert run.result["verified_tokens"] == 24576
+        # An abort happened, so no extension probe: calib + 2 verifies.
+        assert run.result["extended"] is False
+        assert len(engine.probe_calls) == 3
 
     @pytest.mark.asyncio
     async def test_apply_rebisect_collapse_floored_by_verified_evidence(self):
         """A post-verify re-bisect contaminated by the probe's own residue
         must not drag the applied value below 90% of what completed."""
         scheduler = _FakeScheduler(boundary=50000)
+
+        abort = PrefillMemoryAbortedError(
+            message="climb over",
+            request_id="probe",
+            estimated_bytes=1,
+            limit_bytes=1,
+        )
 
         class _CollapsingEngine(_FakeEngine):
             async def stream_generate(self, **kwargs):
@@ -357,16 +391,17 @@ class TestRunContextBenchmark:
                 if len(self.probe_calls) >= 2:
                     scheduler.boundary = 1024
 
-        engine = _CollapsingEngine(scheduler)
+        engine = _CollapsingEngine(scheduler, probe_plan=[None, None, abort])
         pool = _FakePool(engine)
         run = _make_run()
 
         await _run_bench(run, pool)
 
         assert run.status == "completed"
+        # The collapsed re-bisect (1024) must not drag the applied value
+        # below the size that physically completed moments ago.
         assert run.result["verified_tokens"] == 49152
-        # floor2k(0.9 * 49152 = 44236) = 43008, not the collapsed 1024.
-        assert run.result["applied_tokens"] == 43008
+        assert run.result["applied_tokens"] == 49152
 
     @pytest.mark.asyncio
     async def test_instant_reject_does_not_consume_an_attempt(self):
@@ -379,17 +414,70 @@ class TestRunContextBenchmark:
             estimated_bytes=1,
             limit_bytes=1,
         )
-        # Calibration ok, first verify instant-rejects, retry succeeds.
-        engine = _FakeEngine(scheduler, probe_plan=[None, reject, None])
+        abort = PrefillMemoryAbortedError(
+            message="climb over",
+            request_id="probe",
+            estimated_bytes=1,
+            limit_bytes=1,
+        )
+        # Calibration ok, first verify instant-rejects, the free retry
+        # succeeds, the extension climb aborts immediately.
+        engine = _FakeEngine(scheduler, probe_plan=[None, reject, None, abort])
         pool = _FakePool(engine)
         run = _make_run()
 
         await _run_bench(run, pool)
 
         assert run.status == "completed"
-        assert run.result["attempts"] == 1
-        # Free retry: one grain below the re-measured boundary, not halved.
+        # Free retry ran one grain below the re-measured boundary; the
+        # instant reject did not count as an attempt.
+        assert run.result["attempts"] == 2
+        assert run.result["verified_tokens"] == 47104
         assert run.result["applied_tokens"] == 47104
+
+    @pytest.mark.asyncio
+    async def test_extension_abort_keeps_verified_value(self):
+        """A failed extension probe keeps the already-completed verify
+        value; the fresh contamination must not shrink it either."""
+        scheduler = _FakeScheduler(boundary=50000)
+        abort = PrefillMemoryAbortedError(
+            message="extension died",
+            request_id="probe",
+            estimated_bytes=1,
+            limit_bytes=1,
+        )
+        # Calibration ok, verify at the boundary ok, extension aborts.
+        engine = _FakeEngine(scheduler, probe_plan=[None, None, abort])
+        pool = _FakePool(engine)
+        run = _make_run()
+
+        await _run_bench(run, pool)
+
+        assert run.status == "completed"
+        assert run.result["extended"] is False
+        assert run.result["verified_tokens"] == 49152
+        assert run.result["applied_tokens"] == 49152
+        assert run.result["attempts"] == 2
+
+    @pytest.mark.asyncio
+    async def test_extension_climbs_until_cap(self):
+        """Successful extensions keep multiplying by 1.2 until the cap
+        (min(target, native)) is reached."""
+        scheduler = _FakeScheduler(boundary=50000)
+        engine = _FakeEngine(scheduler)
+        pool = _FakePool(engine)
+        run = _make_run(target_tokens=65536)
+
+        await _run_bench(run, pool)
+
+        assert run.status == "completed"
+        assert run.result["extended"] is True
+        # 49152 -> ceil2k(58982) = 59392 -> min(ceil2k(71270), 65536) =
+        # 65536 = the cap; the climb stops there.
+        assert run.result["verified_tokens"] == 65536
+        assert run.result["attempts"] == 3
+        # calib + verify + 2 extensions, no probe beyond the cap.
+        assert len(engine.probe_calls) == 4
 
     @pytest.mark.asyncio
     async def test_two_verify_failures_error_out(self):

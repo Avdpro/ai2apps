@@ -12,9 +12,11 @@ tracker, then the deterministic admission boundary is found by bisecting
 GPU work. One real prefill at the (2k-floored) boundary verifies it end
 to end; on a mid-prefill abort a single conservative retry runs, sized
 from where the first prefill actually died (90% of its processed
-tokens). Probe requests carry ``skip_cache_store`` and the bench clears
-the model's paged cache between probes, so nothing leaks into the
-prefix/SSD cache tiers.
+tokens). A clean first-try completion instead climbs upward in 1.2x
+extension probes until the cap or the first failure, since a boundary
+that binds near the ceiling can be conservative. Probe requests carry
+``skip_cache_store`` and the bench clears the model's paged cache
+between probes, so nothing leaks into the prefix/SSD cache tiers.
 """
 
 import asyncio
@@ -63,6 +65,13 @@ _MAX_VERIFY_SPINS = 6
 # Retry candidate = this fraction of the token count the aborted prefill
 # actually completed — physical evidence of what fits, with headroom.
 _ABORT_EVIDENCE_SAFETY = 0.9
+
+# When the verify completed straight at the analytic boundary (no abort
+# evidence, memory-bound), extension probes climb in steps of this
+# factor until the cap or the first failure — a conservative boundary
+# gets the chance to prove more. Only COMPLETED extensions are ever
+# applied; a failed one keeps the last completed value.
+_EXTENSION_FACTOR = 1.2
 
 _CTX_TERMINAL_TYPES = frozenset({"done", "error"})
 
@@ -183,6 +192,11 @@ async def _progress(
 def floor_to_apply_granularity(tokens: int) -> int:
     """Floor a token count to the applied 2k granularity."""
     return (max(0, tokens) // _APPLY_GRANULARITY) * _APPLY_GRANULARITY
+
+
+def ceil_to_apply_granularity(tokens: int) -> int:
+    """Ceil a token count to the applied 2k granularity."""
+    return -(-max(0, tokens) // _APPLY_GRANULARITY) * _APPLY_GRANULARITY
 
 
 def bisect_admission(fits: Callable[[int], bool], lo: int, hi: int) -> int:
@@ -318,6 +332,29 @@ def next_verify_candidate(
         if new_boundary > 0:
             nxt = min(nxt, new_boundary)
     return floor_to_apply_granularity(nxt)
+
+
+def next_free_retry_candidate(
+    candidate: int, new_boundary: int, best_evidence: int
+) -> int:
+    """Candidate after an INSTANT rejection (nothing prefilled).
+
+    Normally one grain below the freshly re-measured boundary. When an
+    earlier real attempt left physical evidence, the collapsed re-bisect
+    (still contaminated by that attempt's residue) must not drag the
+    candidate below the evidence — step down one grain per spin instead
+    and let the settle time between spins drain the residue.
+    """
+    nxt = floor_to_apply_granularity(min(new_boundary, candidate - _APPLY_GRANULARITY))
+    if best_evidence > 0:
+        evidence_floor = floor_to_apply_granularity(
+            min(
+                int(best_evidence * _ABORT_EVIDENCE_SAFETY),
+                candidate - _APPLY_GRANULARITY,
+            )
+        )
+        nxt = max(nxt, evidence_floor)
+    return nxt
 
 
 async def _relay_prefill_progress(
@@ -477,6 +514,8 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
         verify_prefill_tps = 0.0
         attempts = 0
         spins = 0
+        best_evidence = 0
+        had_abort = False
         while spins < _MAX_VERIFY_SPINS:
             spins += 1
             attempt_no = attempts + 1
@@ -501,8 +540,10 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                 instant_reject = (
                     not isinstance(exc, PrefillMemoryAbortedError) and observed == 0
                 )
+                best_evidence = max(best_evidence, observed)
                 if not instant_reject:
                     attempts += 1
+                    had_abort = True
                 logger.info(
                     "Context bench: verify failed at %d tokens "
                     "(attempt %d, %d processed%s): %s",
@@ -524,10 +565,11 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                 # honor the tighter re-measured boundary too.
                 new_boundary = bisect_admission(fits, 1024, candidate)
                 if instant_reject:
-                    # Free retry: re-admit one grain below the freshly
-                    # measured boundary so the razor edge is not re-hit.
-                    candidate = floor_to_apply_granularity(
-                        min(new_boundary, candidate - _APPLY_GRANULARITY)
+                    # Free retry: one grain below the freshly measured
+                    # boundary, floored by earlier physical evidence so a
+                    # residue-collapsed re-bisect cannot kill the run.
+                    candidate = next_free_retry_candidate(
+                        candidate, new_boundary, best_evidence
                     )
                 else:
                     candidate = next_verify_candidate(candidate, observed, new_boundary)
@@ -558,6 +600,77 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
                 "and rerun."
             )
 
+        # Extension probes: the verified value came straight from the
+        # analytic boundary (clean first-try completion, memory-bound).
+        # Near the ceiling the boundary can be conservative, so keep
+        # probing at 1.2x steps until the cap is reached or a probe
+        # fails. Every probe re-passes the live admission gate at the
+        # settled baseline, and only COMPLETED prefills raise the value;
+        # the first rejection or abort ends the climb and keeps the last
+        # completed size.
+        extended = False
+        extension_aborted = False
+        while not had_abort and verified < floor_to_apply_granularity(cap):
+            ext_target = min(
+                ceil_to_apply_granularity(int(verified * _EXTENSION_FACTOR)), cap
+            )
+            if ext_target <= verified:
+                break
+            await _cleanup_between_probes(engine, scheduler)
+            await _progress(
+                run,
+                "verify",
+                0.98,
+                f"Extension probe {ext_target:,} tokens " f"({_EXTENSION_FACTOR}x)...",
+            )
+            progress_holder = {}
+            relay = asyncio.create_task(
+                _relay_prefill_progress(
+                    run,
+                    request.model_id,
+                    attempts + 1,
+                    ext_target,
+                    progress_holder,
+                )
+            )
+            try:
+                output, probe_seconds = await _run_probe_prefill(
+                    engine, _generate_prompt(tokenizer, ext_target)
+                )
+            except (
+                PrefillMemoryExceededError,
+                PrefillMemoryAbortedError,
+            ) as exc:
+                observed = int(progress_holder.get("processed", 0))
+                if observed > 0 or isinstance(exc, PrefillMemoryAbortedError):
+                    attempts += 1
+                    extension_aborted = True
+                logger.info(
+                    "Context bench: extension probe failed at %d tokens "
+                    "(%d processed): %s",
+                    ext_target,
+                    observed,
+                    exc,
+                )
+                await _cleanup_between_probes(engine, scheduler)
+                break
+            else:
+                attempts += 1
+                extended = True
+                verified = ext_target
+                verified_prompt_tokens = int(
+                    getattr(output, "prompt_tokens", 0) or ext_target
+                )
+                verify_prefill_tps = float(getattr(output, "prompt_tps", 0.0) or 0.0)
+                if verify_prefill_tps <= 0 and probe_seconds > 0:
+                    verify_prefill_tps = verified_prompt_tokens / probe_seconds
+                logger.info(
+                    "Context bench: extension probe completed at %d tokens",
+                    ext_target,
+                )
+            finally:
+                relay.cancel()
+
         # Phase 5: apply — re-measure with the post-verify tracker state
         # (the near-ceiling prefill can raise the floor-chunk transient
         # charge) and write the tighter of the two, floored to 2k.
@@ -568,14 +681,20 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
         if post_boundary > 0:
             # The re-bisect can be contaminated by the verify prefill's own
             # residue (buffer pool, last-chunk transient sample) — never
-            # tighten below 90% of what physically completed.
-            evidence_floor = floor_to_apply_granularity(
-                int(verified * _ABORT_EVIDENCE_SAFETY)
-            )
+            # tighten below 90% of what physically completed. After a
+            # FAILED extension probe the contamination is fresh and the
+            # verified size completed moments ago, so it stands as-is.
+            if extension_aborted:
+                evidence_floor = floor_to_apply_granularity(verified)
+            else:
+                evidence_floor = floor_to_apply_granularity(
+                    int(verified * _ABORT_EVIDENCE_SAFETY)
+                )
             final = min(
                 final,
                 max(floor_to_apply_granularity(post_boundary), evidence_floor),
             )
+        final = floor_to_apply_granularity(final)
         if final < _MIN_USEFUL_TOKENS:
             final = _MIN_USEFUL_TOKENS
 
@@ -615,6 +734,9 @@ async def run_context_benchmark(run: ContextBenchmarkRun, engine_pool: Any) -> N
             "applied": applied,
             "capped_by": capped_by,
             "attempts": attempts,
+            # True when the 1.2x extension probe completed and raised the
+            # verified value beyond the analytic boundary.
+            "extended": extended,
             # Prefill tok/s of the successful verify run — what a prompt at
             # the applied size actually prefills at in the current mode.
             "prefill_tps": round(verify_prefill_tps, 1),
