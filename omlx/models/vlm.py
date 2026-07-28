@@ -356,6 +356,8 @@ class VLMModelAdapter(nn.Module):
                         input_ids, cache=cache, position_ids=position_ids, **kwargs
                     )
                 else:
+                    if hasattr(self._vlm_model, "_set_position_state"):
+                        self._vlm_model._set_position_state(input_ids)
                     result = self._language_model(
                         input_ids, cache=cache, **kwargs
                     )
@@ -374,6 +376,13 @@ class VLMModelAdapter(nn.Module):
                         input_ids, cache=cache, position_ids=position_ids, **kwargs
                     )
                 else:
+                    # Models that reuse another architecture's LanguageModel
+                    # (MiniCPM-o/V on qwen3_vl) cannot run get_rope_index()
+                    # against their own VisionConfig; without position state
+                    # a text-only prefill with scalar cache offsets crashes
+                    # on spatial_merge_size (#241, #2387).
+                    if hasattr(self._vlm_model, "_set_position_state"):
+                        self._vlm_model._set_position_state(input_ids)
                     result = self._language_model(
                         input_ids, cache=cache, **kwargs
                     )

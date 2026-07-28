@@ -586,6 +586,54 @@ class TestPerRequestMRoPEDecode:
         vlm.language_model._rope_deltas = None
         assert adapter.get_last_rope_deltas() == 0.0
 
+    def test_mrope_scalar_offset_fallback_initializes_position_state(self):
+        """Regression #2387: MiniCPM-o text-only prefill with scalar cache offsets.
+
+        MiniCPM-o detects as mRoPE (mlx-vlm injects mrope_section into its
+        text config) but its SigLIP VisionConfig has no spatial_merge_size,
+        so the borrowed qwen3_vl LanguageModel crashes in get_rope_index()
+        unless position state is initialized first (#241). The mRoPE branch
+        fallback for scalar cache offsets must call _set_position_state.
+        """
+        import mlx.core as mx
+
+        from omlx.models.vlm import VLMModelAdapter
+
+        vlm = self._make_mrope_vlm_model()
+        adapter = VLMModelAdapter(vlm)
+        assert adapter._uses_mrope is True
+
+        input_ids = mx.zeros((1, 16), dtype=mx.int32)
+        cache_layer = MagicMock(spec=["offset"])
+        cache_layer.offset = 0
+        cache = [cache_layer]
+
+        adapter(input_ids, cache=cache)
+
+        vlm._set_position_state.assert_called_once_with(input_ids)
+        call_kwargs = vlm.language_model.call_args[1]
+        assert "position_ids" not in call_kwargs
+
+    def test_mrope_delta_fallback_initializes_position_state(self):
+        """Same as above for the batch-deltas branch with unusable offsets."""
+        import mlx.core as mx
+
+        from omlx.models.vlm import VLMModelAdapter
+
+        vlm = self._make_mrope_vlm_model()
+        adapter = VLMModelAdapter(vlm)
+        adapter.set_batch_rope_deltas(mx.array([0.0]))
+
+        input_ids = mx.zeros((1, 16), dtype=mx.int32)
+        cache_layer = MagicMock(spec=[])
+        cache = [cache_layer]
+
+        adapter(input_ids, cache=cache)
+
+        vlm._set_position_state.assert_called_once_with(input_ids)
+        call_kwargs = vlm.language_model.call_args[1]
+        assert "position_ids" not in call_kwargs
+
 
 class TestLogitsExtraction:
     """Tests for LanguageModelOutput.logits extraction."""
