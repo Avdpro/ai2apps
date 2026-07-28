@@ -13,6 +13,7 @@ All tests are unit-level: the throttle/requeue logic is exercised on a light
 fake object so no model load or GPU is required.
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -116,6 +117,8 @@ def _throttle_ctx(
         _prefill_min_chunk_tokens=min_chunk,
         _prefill_abort_margin=abort_margin,
         _prefill_headroom_safety=Scheduler._PREFILL_HEADROOM_SAFETY,
+        # Dedupes the once-per-request INFO throttle notice.
+        _throttle_notified_requests=set(),
         _prefill_transient_tracker=tracker,
         memory_monitor=monitor,
         _PREFILL_STEP_TIERS=Scheduler._PREFILL_STEP_TIERS,
@@ -125,8 +128,12 @@ def _throttle_ctx(
         _last_mlx_active_memory_bytes=0,
     )
     # Bind the real helper methods so the stand-in behaves like a Scheduler.
+    ns._snap_chunk_size = Scheduler._snap_chunk_size.__get__(ns, Scheduler)
     ns._current_usage_bytes = Scheduler._current_usage_bytes.__get__(ns, Scheduler)
     ns._predicted_chunk_transient = Scheduler._predicted_chunk_transient.__get__(
+        ns, Scheduler
+    )
+    ns._admission_transient_bound = Scheduler._admission_transient_bound.__get__(
         ns, Scheduler
     )
     ns._prefill_abort_cap = Scheduler._prefill_abort_cap.__get__(ns, Scheduler)
@@ -236,6 +243,54 @@ def test_throttle_floors_at_min_chunk_when_over_ceiling():
     )
     ns._fake_current = hard + _GB
     assert _call(ns, 2048, kv_len=5000) == 32
+
+
+def test_throttle_emits_one_info_notice_per_request(caplog):
+    """A throttled prefill has to be visible at the default log level.
+
+    The per-chunk shrink line is DEBUG, so a request running an order of
+    magnitude slower used to leave no trace in a normal server log — the
+    gap that made a measured 2.6x slowdown undiagnosable. One INFO line
+    per request, not per chunk: a 6k-token prompt floored at 32 tokens
+    submits ~190 chunks.
+    """
+    hard = 40 * _GB
+    ns = _throttle_ctx(
+        current=hard + _GB, hard=hard, samples_bpt=1_000_000, min_chunk=32
+    )
+    ns._fake_current = hard + _GB
+
+    with caplog.at_level(logging.INFO, logger="omlx.scheduler"):
+        for _ in range(5):
+            _call(ns, 2048, kv_len=5000)
+
+    notices = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.INFO and "Prefill throttled" in r.getMessage()
+    ]
+    assert len(notices) == 1
+    message = notices[0].getMessage()
+    assert "chunk 2048 -> 32" in message
+    assert "floor=32" in message
+
+
+def test_throttle_notice_repeats_for_a_new_request():
+    """The dedupe is per request id, not process-wide."""
+    hard = 40 * _GB
+    ns = _throttle_ctx(
+        current=hard + _GB, hard=hard, samples_bpt=1_000_000, min_chunk=32
+    )
+    ns._fake_current = hard + _GB
+    with (
+        patch.object(sched_mod.mx, "get_active_memory", return_value=0),
+        patch.object(sched_mod, "get_phys_footprint", return_value=ns._fake_current),
+    ):
+        for rid in ("r1", "r2"):
+            Scheduler._adaptive_chunk_size(
+                ns, 2048, request_id=rid, loop_label="test", kv_len=5000
+            )
+    assert ns._throttle_notified_requests == {"r1", "r2"}
 
 
 def test_throttle_predictor_anchors_on_recent_measurement():
@@ -445,6 +500,32 @@ def test_record_chunk_transient_skips_tail_samples():
     assert tracker.last_delta_bytes == 32 * 1024**2
 
 
+def test_record_chunk_transient_marks_floor_samples_only():
+    """Only floor-size chunks may feed the observed max the admission
+    charge uses; big-chunk transients stay EWMA-only."""
+    tracker = PrefillTransientTracker()
+    ns = SimpleNamespace(
+        _prefill_min_chunk_tokens=32,
+        _prefill_transient_tracker=tracker,
+    )
+    ns._record_chunk_transient = Scheduler._record_chunk_transient.__get__(
+        ns, Scheduler
+    )
+
+    # First sample is always excluded from the max (seed noise).
+    ns._record_chunk_transient(32, 0, 100, request_id="r", loop_label="unit")
+    # Big chunk: EWMA only, never the max.
+    ns._record_chunk_transient(
+        2048, 0, 3 * 1024**3, request_id="r", loop_label="unit"
+    )
+    assert tracker.observed_max_bytes == 0
+    # Floor chunk: enters the max.
+    ns._record_chunk_transient(
+        32, 0, 200 * 1024**2, request_id="r", loop_label="unit"
+    )
+    assert tracker.observed_max_bytes == 200 * 1024**2
+
+
 def test_step_prefill_reclaims_before_first_guard():
     events = []
     request = SimpleNamespace(request_id="req-prefill")
@@ -469,6 +550,7 @@ def test_step_prefill_reclaims_before_first_guard():
         _adaptive_chunk_size=lambda n, **kwargs: events.append("adaptive") or n,
         _guard_prefill_chunk=lambda n, **kwargs: events.append("guard") or n,
         _record_chunk_transient=MagicMock(),
+        _maybe_record_fixed_state_bytes=MagicMock(),
     )
     ns._prefill_step_size_for_progress = (
         Scheduler._prefill_step_size_for_progress.__get__(ns, Scheduler)
@@ -495,6 +577,7 @@ def test_step_prefill_reclaims_before_first_guard():
         300,
         request_id="req-prefill",
         loop_label="chunked_step",
+        kv_len=0,
     )
 
 
@@ -575,3 +658,157 @@ def test_requeue_budget_exhausts_to_clean_error():
     assert Scheduler._requeue_or_fail_prefill(ns, req, err) is True
     assert Scheduler._requeue_or_fail_prefill(ns, req, err) is False
     assert req.prefill_oom_retries == 2
+
+
+# --------------------------------------------------------------------------
+# Scheduler._snap_chunk_size
+# --------------------------------------------------------------------------
+
+
+class TestSnapChunkSize:
+    def _ns(self, min_chunk=32):
+        ns = SimpleNamespace(_prefill_min_chunk_tokens=min_chunk)
+        ns._snap_chunk_size = Scheduler._snap_chunk_size.__get__(ns, Scheduler)
+        return ns
+
+    def test_off_grid_sizes_snap_down_to_multiple(self):
+        ns = self._ns()
+        assert ns._snap_chunk_size(33, 2048) == 32
+        assert ns._snap_chunk_size(63, 2048) == 32
+        assert ns._snap_chunk_size(100, 2048) == 96
+        assert ns._snap_chunk_size(1023, 2048) == 992
+
+    def test_on_grid_sizes_unchanged(self):
+        ns = self._ns()
+        assert ns._snap_chunk_size(64, 2048) == 64
+        assert ns._snap_chunk_size(512, 2048) == 512
+
+    def test_at_or_below_floor_unchanged(self):
+        """A short tail before a block boundary keeps its exact size."""
+        ns = self._ns()
+        assert ns._snap_chunk_size(32, 2048) == 32
+        assert ns._snap_chunk_size(17, 2048) == 17
+
+    def test_unthrottled_chunk_untouched(self):
+        ns = self._ns()
+        assert ns._snap_chunk_size(2048, 2048) == 2048
+        assert ns._snap_chunk_size(2049, 2048) == 2049
+
+    def test_env_toggle_disables_snapping(self, monkeypatch):
+        monkeypatch.setenv("OMLX_CHUNK_SNAP", "0")
+        ns = self._ns()
+        assert ns._snap_chunk_size(33, 2048) == 33
+
+    def test_respects_min_chunk_grid(self):
+        ns = self._ns(min_chunk=256)
+        assert ns._snap_chunk_size(300, 2048) == 256
+        assert ns._snap_chunk_size(700, 2048) == 512
+
+
+# --------------------------------------------------------------------------
+# observed_max transient bound: guard/admission only, never chunk sizing
+# --------------------------------------------------------------------------
+
+
+def test_adaptive_chunk_size_ignores_observed_max():
+    """FROZEN policy pin: the throttle's sizing must not move when the
+    session records a large observed max transient."""
+    hard = 40 * _GB
+    ns = _throttle_ctx(current=int(hard * 0.9), hard=hard, samples_bpt=2 * 1024**2)
+    ns._fake_current = int(hard * 0.9)
+    before = _call(ns, 2048, kv_len=5000)
+    assert before < 2048, "precondition: the throttle must actually shrink"
+
+    ns._prefill_transient_tracker._observed_max_bytes = 8 * _GB
+    after = _call(ns, 2048, kv_len=5000)
+    assert after == before
+
+
+def test_guard_abort_gate_charges_observed_max():
+    """The pre-chunk guard's abort gate prices the flat observed max, so a
+    doomed prefill stops deterministically before the dangerous chunk."""
+    hard = 40 * _GB  # cap = 36GB (0.9 margin)
+    current = 35 * _GB
+    ns = _throttle_ctx(current=current, hard=hard, samples_bpt=1024 * 1024)
+    ns._fake_current = current
+
+    # Without the observed max: min-chunk transient (~42MB) fits, so the
+    # guard shrinks instead of aborting.
+    assert _guard_call(ns, 2048, kv_len=50_000) < 2048
+
+    # 2GB observed max no longer fits under the 1GB headroom: abort.
+    ns._prefill_transient_tracker._observed_max_bytes = 2 * _GB
+    with pytest.raises(PrefillMemoryExceededError):
+        _guard_call(ns, 2048, kv_len=50_000)
+
+
+def test_guard_shrink_math_unchanged_by_observed_max():
+    """When the observed max still fits, the shrink arithmetic stays on the
+    frozen per-token predictor and returns the same chunk."""
+    hard = 40 * _GB
+    current = 35 * _GB
+    ns = _throttle_ctx(current=current, hard=hard, samples_bpt=1024 * 1024)
+    ns._fake_current = current
+    before = _guard_call(ns, 2048, kv_len=50_000)
+    assert before < 2048
+
+    ns._prefill_transient_tracker._observed_max_bytes = 512 * 1024**2
+    after = _guard_call(ns, 2048, kv_len=50_000)
+    assert after == before
+
+
+# --------------------------------------------------------------------------
+# Fixed recurrent-state one-shot probe
+# --------------------------------------------------------------------------
+
+
+class TestMaybeRecordFixedStateBytes:
+    def _ns(self, armed=True):
+        ns = SimpleNamespace(
+            memory_monitor=MagicMock(),
+            _fixed_state_measure_armed=armed,
+            _fixed_state_recorded=False,
+        )
+        ns._maybe_record_fixed_state_bytes = (
+            Scheduler._maybe_record_fixed_state_bytes.__get__(ns, Scheduler)
+        )
+        return ns
+
+    def _arrays_cache(self, nbytes_list):
+        cls = type(
+            "ArraysCache",
+            (),
+            {"state": [SimpleNamespace(nbytes=n) for n in nbytes_list]},
+        )
+        return cls()
+
+    def test_measures_once_and_sums_state_nbytes(self):
+        ns = self._ns()
+        caches = [self._arrays_cache([100, 200]), self._arrays_cache([300])]
+        ns._maybe_record_fixed_state_bytes(caches)
+        ns.memory_monitor.set_fixed_state_bytes.assert_called_once_with(600)
+        assert ns._fixed_state_recorded is True
+        # Second call is a no-op flag check.
+        ns._maybe_record_fixed_state_bytes(caches)
+        ns.memory_monitor.set_fixed_state_bytes.assert_called_once()
+
+    def test_unarmed_never_measures(self):
+        ns = self._ns(armed=False)
+        ns._maybe_record_fixed_state_bytes([self._arrays_cache([100])])
+        ns.memory_monitor.set_fixed_state_bytes.assert_not_called()
+        assert ns._fixed_state_recorded is False
+
+    def test_non_arrays_caches_contribute_zero(self):
+        ns = self._ns()
+        plain = type("KVCache", (), {"state": [SimpleNamespace(nbytes=999)]})()
+        ns._maybe_record_fixed_state_bytes([plain, self._arrays_cache([50])])
+        ns.memory_monitor.set_fixed_state_bytes.assert_called_once_with(50)
+
+    def test_zero_total_marks_recorded_without_setting(self):
+        ns = self._ns()
+        ns._maybe_record_fixed_state_bytes(
+            [type("KVCache", (), {"state": []})()]
+        )
+        ns.memory_monitor.set_fixed_state_bytes.assert_not_called()
+        assert ns._fixed_state_recorded is True
+
