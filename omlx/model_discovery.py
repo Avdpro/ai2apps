@@ -75,6 +75,14 @@ VLM_NATIVE_TEXT_MODEL_TYPES = {
     "minimax_m3",
 }
 
+# Multimodal checkpoints whose currently vendored mlx-lm implementation only
+# exposes the text backbone. Route them directly to BatchedEngine instead of
+# deliberately failing an mlx-vlm load and relying on the engine-pool fallback.
+# Remove a family once mlx-vlm provides its multimodal implementation.
+MLX_LM_TEXT_ONLY_MODEL_TYPES = {
+    "mimo_v2",
+}
+
 # Speculative-decoding "helper" checkpoints (dFlash / MTP / assistant drafters)
 # are never meant to be served as standalone chat models. Some declare a
 # distinctive top-level model_type — an ``*_assistant`` (e.g. gemma4_assistant)
@@ -643,6 +651,15 @@ def detect_model_type(model_path: Path) -> ModelType:
             f"but architecture {architectures} is not an embedding architecture "
             "— treating as LLM"
         )
+
+    if normalized_type in MLX_LM_TEXT_ONLY_MODEL_TYPES:
+        if _has_vision_subconfig(config):
+            logger.warning(
+                "%s carries multimodal configuration, but the available mlx-lm "
+                "implementation is text-only; using the LLM engine",
+                model_type,
+            )
+        return "llm"
 
     if normalized_type in VLM_NATIVE_TEXT_MODEL_TYPES:
         logger.info(

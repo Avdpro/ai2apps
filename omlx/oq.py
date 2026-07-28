@@ -32,7 +32,10 @@ try:
 except ImportError:
     HAS_MLX = False
 
-from omlx.model_discovery import _has_vision_subconfig
+from omlx.model_discovery import (
+    MLX_LM_TEXT_ONLY_MODEL_TYPES,
+    _has_vision_subconfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2847,10 +2850,12 @@ def _build_model_sanitizer(config: dict, text_only: bool = False):
     # (DeepseekOCR2ForCausalLM) carry a vision_config but a ForCausalLM arch, so
     # the arch-only heuristic dropped them to the mlx-lm sanitize path (which
     # can't resolve their model_type) and shipped unsanitized vision weights.
+    model_type = str(config.get("model_type", "")).lower().replace("-", "_")
+    mlx_lm_text_only = model_type in MLX_LM_TEXT_ONLY_MODEL_TYPES
     is_vlm = (
         any("ForConditionalGeneration" in a for a in architectures)
         or _has_vision_subconfig(config)
-    ) and not text_only
+    ) and not (text_only or mlx_lm_text_only)
 
     if is_vlm:
         try:
@@ -3002,6 +3007,14 @@ def _build_model_sanitizer(config: dict, text_only: bool = False):
                 apply_laguna_patch()
             except Exception as patch_err:
                 logger.debug(f"laguna patch not applied: {patch_err}")
+
+        if config.get("model_type") == "mimo_v2":
+            try:
+                from omlx.patches.mimo_v2 import apply_mimo_v2_patch
+
+                apply_mimo_v2_patch()
+            except Exception as patch_err:
+                logger.debug(f"mimo_v2 patch not applied: {patch_err}")
 
         # Apply mlx-lm MTP patch so the patched __init__/sanitize handle
         # mtp.* tensors correctly. Idempotent — apply() is a no-op once
@@ -4334,6 +4347,19 @@ def quantize_oq_streaming(
     config_path = source / "config.json"
     with open(config_path) as f:
         config = json.load(f)
+    normalized_model_type = str(config.get("model_type", "")).lower().replace(
+        "-", "_"
+    )
+    if (
+        normalized_model_type in MLX_LM_TEXT_ONLY_MODEL_TYPES
+        and _has_vision_subconfig(config)
+        and not text_only
+    ):
+        logger.warning(
+            "oQ only supports the %s text backbone; enabling text-only output",
+            config.get("model_type"),
+        )
+        text_only = True
     _validate_oq_dtype_for_model(config, dtype)
     static_sensitivity_map = _normalize_sensitivity_map_override(
         config, sensitivity_map_override
