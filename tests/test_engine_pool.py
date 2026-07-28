@@ -365,6 +365,52 @@ class TestEnginePoolErrors:
         assert exc_info.value.model_id == "model-a"
         assert exc_info.value.ceiling == 100
 
+    def test_text_only_size_admits_force_lm(self, small_mock_model_dir):
+        """A VLM checkpoint too large by full size must admit by the
+        text-only estimate when force_lm serves it on the text engine, and
+        still refuse on the VLM engine (#2385)."""
+        pool = _make_pool(ceiling=1500)
+        pool.discover_models(str(small_mock_model_dir))
+        entry = pool.get_entry("model-a")
+        entry.model_type = "vlm"
+        entry.engine_type = "vlm"
+        entry.estimated_size = 2000
+        entry.text_only_size = 1200
+
+        with (
+            patch("omlx.engine_pool.mx.get_active_memory", return_value=0),
+            patch("omlx.engine_pool.get_phys_footprint", return_value=0),
+        ):
+            with pytest.raises(ModelTooLargeError):
+                asyncio.run(pool.get_engine("model-a"))
+
+            mock_engine = MagicMock()
+            mock_engine.start = AsyncMock()
+            with patch("omlx.engine_pool.BatchedEngine", return_value=mock_engine):
+                asyncio.run(pool.get_engine("model-a", force_lm=True))
+            assert pool._entries["model-a"].engine is mock_engine
+
+    def test_text_only_size_admits_override_to_batched(self, small_mock_model_dir):
+        """model_type_override flips engine_type to batched before admission;
+        the text-only estimate must drive the memory check then too."""
+        pool = _make_pool(ceiling=1500)
+        pool.discover_models(str(small_mock_model_dir))
+        entry = pool.get_entry("model-a")
+        entry.model_type = "llm"
+        entry.engine_type = "batched"
+        entry.estimated_size = 2000
+        entry.text_only_size = 1200
+
+        mock_engine = MagicMock()
+        mock_engine.start = AsyncMock()
+        with (
+            patch("omlx.engine_pool.mx.get_active_memory", return_value=0),
+            patch("omlx.engine_pool.get_phys_footprint", return_value=0),
+            patch("omlx.engine_pool.BatchedEngine", return_value=mock_engine),
+        ):
+            asyncio.run(pool.get_engine("model-a"))
+        assert pool._entries["model-a"].engine is mock_engine
+
     def test_missing_model_path_removes_unloaded_entry(self, small_mock_model_dir):
         """A deleted model directory is removed and reported as not found."""
         pool = _make_pool(ceiling=10 * 1024**3)
