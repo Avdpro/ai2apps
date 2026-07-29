@@ -1189,6 +1189,125 @@ def resolve_output_name(
     return f"{base}{suffix}"
 
 
+# ── Gemma 4 assistant MTP combine ───────────────────────────────────────
+
+GEMMA4_ASSISTANT_MTP_PREFIX = "language_model.mtp."
+GEMMA4_ASSISTANT_MTP_SHARD = "model-mtp.safetensors"
+
+
+def validate_gemma4_assistant_pair(
+    base_config: dict, assistant_config: dict
+) -> None:
+    """Validate that a gemma4_assistant checkpoint can be merged into a base.
+
+    Raises ValueError with an operator-readable message on any mismatch so
+    the combine option fails at task submission, not after a full
+    quantization run.
+    """
+    if base_config.get("model_type") != "gemma4":
+        raise ValueError(
+            "Assistant MTP combine requires a gemma4 base model, got "
+            f"model_type={base_config.get('model_type')!r}"
+        )
+    if assistant_config.get("model_type") != "gemma4_assistant":
+        raise ValueError(
+            "Assistant model must have model_type 'gemma4_assistant', got "
+            f"{assistant_config.get('model_type')!r}"
+        )
+    asst_layers = int(
+        (assistant_config.get("text_config") or {}).get("num_hidden_layers", 0) or 0
+    )
+    if asst_layers <= 0:
+        raise ValueError(
+            "Assistant model config declares no text_config.num_hidden_layers"
+        )
+    base_hidden = (base_config.get("text_config") or {}).get("hidden_size")
+    backbone_hidden = assistant_config.get("backbone_hidden_size")
+    if base_hidden and backbone_hidden and base_hidden != backbone_hidden:
+        raise ValueError(
+            "Assistant model does not match the base model: "
+            f"backbone_hidden_size={backbone_hidden} but the base "
+            f"hidden_size={base_hidden}. Use the assistant checkpoint "
+            "released for this exact model size."
+        )
+
+
+def combine_gemma4_assistant_mtp(
+    output_path: Union[str, Path],
+    assistant_path: Union[str, Path],
+) -> None:
+    """Merge a gemma4_assistant checkpoint into a quantized output directory.
+
+    Writes the assistant weights as one extra shard under
+    ``language_model.mtp.*`` (kept at their shipped dtype, bf16), merges the
+    safetensors index, and embeds the assistant config at
+    ``text_config.mtp_assistant_config`` plus ``mtp_num_hidden_layers`` so
+    the gemma4 Lightning MTP runtime patch detects and attaches the head at
+    load time. The base weights and quantization config are untouched.
+    """
+    output = Path(output_path)
+    assistant = Path(assistant_path)
+
+    with open(output / "config.json") as f:
+        config = json.load(f)
+    with open(assistant / "config.json") as f:
+        assistant_config = json.load(f)
+    validate_gemma4_assistant_pair(config, assistant_config)
+
+    # Assistant checkpoints ship as a single file today, but read through
+    # the index when present so sharded re-exports keep working.
+    index_path = assistant / "model.safetensors.index.json"
+    if index_path.exists():
+        with open(index_path) as f:
+            shards = sorted(set(json.load(f)["weight_map"].values()))
+    else:
+        shards = sorted(p.name for p in assistant.glob("*.safetensors"))
+    if not shards:
+        raise ValueError(f"No safetensors found in assistant model: {assistant}")
+
+    weights: dict = {}
+    for shard in shards:
+        weights.update(mx.load(str(assistant / shard)))
+    mtp_weights = {GEMMA4_ASSISTANT_MTP_PREFIX + k: v for k, v in weights.items()}
+
+    mx.save_safetensors(
+        str(output / GEMMA4_ASSISTANT_MTP_SHARD),
+        mtp_weights,
+        metadata={"format": "mlx"},
+    )
+    mtp_size = sum(v.nbytes for v in mtp_weights.values())
+
+    out_index_path = output / "model.safetensors.index.json"
+    if out_index_path.exists():
+        with open(out_index_path) as f:
+            index = json.load(f)
+        weight_map = index.setdefault("weight_map", {})
+        for key in mtp_weights:
+            weight_map[key] = GEMMA4_ASSISTANT_MTP_SHARD
+        metadata = index.get("metadata") or {}
+        metadata["total_size"] = int(metadata.get("total_size", 0) or 0) + mtp_size
+        index["metadata"] = metadata
+        with open(out_index_path, "w") as f:
+            json.dump(index, f, indent=2)
+
+    text_config = config.setdefault("text_config", {})
+    text_config["mtp_num_hidden_layers"] = int(
+        (assistant_config.get("text_config") or {}).get("num_hidden_layers", 0) or 0
+    )
+    text_config["mtp_assistant_config"] = assistant_config
+    with open(output / "config.json", "w") as f:
+        json.dump(config, f, indent=2)
+
+    logger.info(
+        "Merged gemma4 assistant MTP head into %s "
+        "(%d tensors, %.2f GB, source=%s)",
+        output.name,
+        len(mtp_weights),
+        mtp_size / 1e9,
+        assistant.name,
+    )
+
+
 # ── Auto-discovery streaming sanitizer ──────────────────────────────────
 
 
