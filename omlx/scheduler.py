@@ -88,6 +88,11 @@ def _make_suppress_logits_processor(
     def _suppress_logits(tokens: Any, logits: Any) -> Any:
         return _apply_suppress_token_ids(logits, suppress_tuple)
 
+    # Marker for _route_to_vlm_mtp: this model-level processor is the one
+    # kind the vlm_mtp path reproduces on its own (folded into the sampler
+    # via _make_suppressing_sampler), so it must not block routing.
+    _suppress_logits._omlx_suppress_processor = True  # type: ignore[attr-defined]
+
     return _suppress_logits
 
 
@@ -4598,7 +4603,12 @@ class Scheduler:
         # through to BatchGenerator, matching short-prompt behaviour.
         if self._vlm_mtp_drafter is not None and state.cache is not None:
             vlm_mtp_uid = self._route_to_vlm_mtp(
-                request, state.cache, state.last_token, state.sampler, state.sm
+                request,
+                state.cache,
+                state.last_token,
+                state.sampler,
+                state.sm,
+                logits_processors=state.per_row_lps,
             )
             if vlm_mtp_uid is not None:
                 self.request_id_to_uid[request.request_id] = vlm_mtp_uid
@@ -7084,6 +7094,7 @@ class Scheduler:
         last_tokens: list[int],
         sampler: Callable[[Any], Any],
         state_machine: Any,
+        logits_processors: list[Any] | None = None,
     ) -> int | None:
         """Bypass BatchGenerator and stand up a vlm_mtp generator instead.
 
@@ -7098,6 +7109,28 @@ class Scheduler:
         """
         drafter = self._vlm_mtp_drafter
         if drafter is None:
+            return None
+
+        # Per-request logits processors (grammar constraints, thinking
+        # budget, repetition/presence/frequency penalties) have no
+        # application point on this path: run_vlm_mtp_decode threads only a
+        # sampler into mlx-vlm's _mtp_rounds, and a sampler sees logits
+        # without the token history processors need. Model-level suppress
+        # tokens are the one exception, reproduced below via
+        # _make_suppressing_sampler. Same convention as Lightning MTP,
+        # which declines activation when grammar processors are present:
+        # fall back to BatchGenerator so every processor is enforced
+        # (#2399).
+        if logits_processors and any(
+            not getattr(proc, "_omlx_suppress_processor", False)
+            for proc in logits_processors
+        ):
+            logger.info(
+                "vlm_mtp routing skipped for %s: request carries per-request "
+                "logits processors (grammar / thinking budget / penalties); "
+                "falling back to BatchGenerator",
+                request.request_id,
+            )
             return None
 
         # Gemma4AssistantDraftModel keeps ``_shared_kv`` / ``_input_embed`` on
@@ -9034,7 +9067,12 @@ class Scheduler:
             # eligibility issue so other speculative paths stay intact.
             if self._vlm_mtp_drafter is not None and cache_to_use is not None:
                 vlm_mtp_uid = self._route_to_vlm_mtp(
-                    request, cache_to_use, tokens_to_process, sampler, sm
+                    request,
+                    cache_to_use,
+                    tokens_to_process,
+                    sampler,
+                    sm,
+                    logits_processors=logits_processors,
                 )
                 if vlm_mtp_uid is not None:
                     self.request_id_to_uid[request.request_id] = vlm_mtp_uid

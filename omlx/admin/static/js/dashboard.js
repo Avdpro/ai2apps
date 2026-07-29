@@ -1430,6 +1430,22 @@
                 );
             },
 
+            // Settings that materialize as per-request logits processors,
+            // which the VLM MTP decode path cannot apply (#2399). Mirrors
+            // vlm_mtp_processor_conflicts() in model_settings.py; neutral
+            // values (repetition 1.0, presence 0.0) do not conflict.
+            vlmMtpProcessorConflict() {
+                const ms = this.modelSettings;
+                if (!ms) return false;
+                const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+                const rep = num(ms.repetition_penalty);
+                const pres = num(ms.presence_penalty);
+                return (rep !== null && rep !== 1.0)
+                    || (pres !== null && pres !== 0.0)
+                    || !!ms.enableThinkingBudget
+                    || !!ms.guided_grammar_enabled;
+            },
+
             buildCtKwargEntries(chatTemplateKwargs, forcedCtKwargs, isDiffusion = false) {
                 const ctk = chatTemplateKwargs || {};
                 const forced = new Set(forcedCtKwargs || []);
