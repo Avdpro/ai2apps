@@ -137,11 +137,93 @@ def test_kv_sharing_backbones_stay_on_stock_path():
 
 def test_l_gate_routes_only_small_steps():
     lm = _language_model()
+    # head_dim 16 keeps the fused kernel out (not lane-splittable), so
     # L=4 is out of range -> stock multi-token update.
     assert _count_single_token_updates(lm, prompt_len=12, step_len=4) == 0
-    # L=2 routes: one single-token update per token per cached layer.
+    # L=2 routes: one single-token update per token per cached layer
+    # (sliding layers by design; full layers as the kernel fallback since
+    # head_dim 16 is not lane-splittable).
     n_layers = len(lm.make_cache())
     assert (
         _count_single_token_updates(lm, prompt_len=12, step_len=2)
         == 2 * n_layers
     )
+
+
+# --- fused kernel route (head_dim % 32 == 0 -> global layers) ---------------
+
+KERNEL_TEXT_CONFIG = dict(
+    TINY_TEXT_CONFIG,
+    head_dim=32,
+    global_head_dim=32,
+)
+
+
+def _count_fused_calls(monkeypatch, lm, prompt_len: int, step_len: int) -> int:
+    from omlx.patches import gemma4_verify_kernel as gvk
+
+    gvk.is_available()  # warm the probe (it calls fused_verify_sdpa itself)
+    calls = {"n": 0}
+    original = gvk.fused_verify_sdpa
+
+    def wrapper(*args, **kwargs):
+        calls["n"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(gvk, "fused_verify_sdpa", wrapper)
+    mx.random.seed(7)
+    tokens = mx.random.randint(0, 100, (1, prompt_len + step_len))
+    cache = lm.make_cache()
+    out = lm(tokens[:, :prompt_len], cache=cache)
+    mx.eval(out.logits)
+    result = lm(tokens[:, prompt_len:], cache=cache).logits
+    mx.eval(result)
+    return calls["n"]
+
+
+def _n_full_layers(lm) -> int:
+    return sum(
+        1 for layer in lm.model.layers if layer.layer_type == "full_attention"
+    )
+
+
+def test_kernel_routes_global_layers(monkeypatch):
+    pytest.importorskip("mlx.core").metal.is_available() or pytest.skip(
+        "requires Metal"
+    )
+    lm = _language_model(KERNEL_TEXT_CONFIG)
+    n_full = _n_full_layers(lm)
+    assert n_full > 0
+    # L=2: full layers take the fused kernel, sliding layers per-token.
+    assert _count_fused_calls(monkeypatch, lm, prompt_len=24, step_len=2) == n_full
+    # L=4: beyond the per-token ceiling, still fused on full layers.
+    assert _count_fused_calls(monkeypatch, lm, prompt_len=24, step_len=4) == n_full
+    # Past the kernel ceiling everything is stock.
+    assert (
+        _count_fused_calls(
+            monkeypatch, lm, prompt_len=24, step_len=_KERNEL_MAX_L_PLUS_ONE
+        )
+        == 0
+    )
+
+
+_KERNEL_MAX_L_PLUS_ONE = gemma4_verify_attention._KERNEL_MAX_L + 1
+
+
+@pytest.mark.parametrize("step_len", [2, 4, 5])
+def test_kernel_route_matches_stock_logits(step_len):
+    pytest.importorskip("mlx.core").metal.is_available() or pytest.skip(
+        "requires Metal"
+    )
+    lm = _language_model(KERNEL_TEXT_CONFIG)
+    got = _run(lm, prompt_len=24, step_len=step_len, patched=True)
+
+    old_min = gemma4_verify_attention._MIN_L
+    gemma4_verify_attention._MIN_L = 99
+    try:
+        ref = _run(lm, prompt_len=24, step_len=step_len, patched=False)
+    finally:
+        gemma4_verify_attention._MIN_L = old_min
+
+    assert mx.allclose(got, ref, atol=2e-2, rtol=2e-2)
+    assert mx.argmax(got[0, -1]).item() == mx.argmax(ref[0, -1]).item()
