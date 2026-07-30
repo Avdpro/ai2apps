@@ -206,6 +206,11 @@ _RPS = 2
 
 _kernels: dict = {}
 _availability: bool | None = None
+# Per-dtype threadgroup thread budget of the pass-1 pipeline. Metal caps
+# maxTotalThreadsPerThreadgroup per compiled pipeline by register usage,
+# so the value is device-dependent (M3 Ultra allows 1024; the virtualized
+# CI GPU allows 448) and must be probed, not assumed.
+_tg_thread_cap: dict = {}
 
 
 def _get_kernels(head_dim: int):
@@ -263,6 +268,40 @@ def _dispatch(q_rows, k_buf, v_buf, n_keys: int):
     return out
 
 
+def _probe_tg_cap(dtype) -> int:
+    """Largest working pass-1 threadgroup size (in threads) for ``dtype``.
+
+    Tries S in {4, 2, 1} row groups at gqa 8 (256 * S threads) with a tiny
+    dispatch; the Metal validator rejects oversized threadgroups at eval
+    time with a ValueError. Returns 0 when even 256 threads fail.
+    """
+    cap = _tg_thread_cap.get(dtype)
+    if cap is not None:
+        return cap
+    cap = 0
+    for s in (4, 2, 1):
+        try:
+            q = mx.zeros((1, 8, _RPS * s, 512), dtype=dtype)
+            kv = mx.zeros((1, 1, 8, 512), dtype=dtype)
+            mx.eval(_dispatch(q, kv, kv, 8))
+            cap = 32 * 8 * s
+            break
+        except ValueError:
+            continue
+        except Exception:
+            logger.warning("gemma4 verify kernel probe failed", exc_info=True)
+            break
+    _tg_thread_cap[dtype] = cap
+    return cap
+
+
+def kernel_max_rows(gqa: int, dtype) -> int:
+    """Rows a single dispatch can carry for this geometry (0 = infeasible)."""
+    cap = _probe_tg_cap(dtype)
+    row_groups = min(cap, 1024) // (32 * gqa)
+    return _RPS * row_groups
+
+
 def fused_verify_sdpa(queries, k_buf, v_buf, n_keys: int, scale: float):
     """Multi-row causal SDPA over a linear KV buffer.
 
@@ -272,7 +311,12 @@ def fused_verify_sdpa(queries, k_buf, v_buf, n_keys: int, scale: float):
     """
     B, hq, L, head_dim = queries.shape
     gqa = hq // k_buf.shape[1]
-    rows_cap = _RPS * max(1, 32 // gqa)  # 1024-thread threadgroup budget
+    rows_cap = kernel_max_rows(gqa, queries.dtype)
+    if rows_cap <= 0:
+        raise ValueError(
+            f"pass-1 threadgroup budget too small for gqa={gqa} "
+            f"(needs {32 * gqa} threads)"
+        )
     q = queries * scale if scale != 1.0 else queries
 
     outs = []

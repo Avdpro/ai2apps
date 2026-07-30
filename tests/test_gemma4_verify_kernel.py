@@ -74,3 +74,29 @@ def test_is_available_probe():
     assert gvk.is_available() is True
     # Cached: second call must not re-probe (same object identity semantics).
     assert gvk.is_available() is True
+
+
+def test_row_chunking_under_constrained_threadgroup_budget(monkeypatch):
+    # Virtualized/low-end GPUs cap the pass-1 pipeline below 32 * gqa * S
+    # threads (the CI runner allows 448). With the budget forced to one
+    # row group, the host must cover any L with 2-row dispatches and still
+    # match the reference.
+    monkeypatch.setitem(gvk._tg_thread_cap, mx.bfloat16, 256)
+    assert gvk.kernel_max_rows(8, mx.bfloat16) == 2
+
+    mx.random.seed(13)
+    q = (mx.random.normal((1, 32, 5, 512)) * 0.3).astype(mx.bfloat16)
+    k_buf = (mx.random.normal((1, 4, 256, 512)) * 0.3).astype(mx.bfloat16)
+    v_buf = (mx.random.normal((1, 4, 256, 512)) * 0.3).astype(mx.bfloat16)
+
+    got = gvk.fused_verify_sdpa(q, k_buf, v_buf, 200, 1.0)
+    want = _ref_attention(q, k_buf, v_buf, 200, 1.0)
+    mx.eval(got, want)
+    diff = mx.abs(got.astype(mx.float32) - want).max().item()
+    denom = max(mx.abs(want).max().item(), 1e-6)
+    assert diff / denom < 2e-2
+
+
+def test_infeasible_geometry_reports_zero_rows(monkeypatch):
+    monkeypatch.setitem(gvk._tg_thread_cap, mx.bfloat16, 0)
+    assert gvk.kernel_max_rows(8, mx.bfloat16) == 0

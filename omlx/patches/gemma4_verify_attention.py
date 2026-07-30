@@ -118,6 +118,13 @@ def apply() -> bool:
             and self.head_dim % 32 == 0  # kernel splits head_dim across lanes
             and _kernel_cache_ok(cache, x.dtype)
             and gemma4_verify_kernel.is_available()
+            # Device threadgroup budgets are pipeline-dependent (virtualized
+            # GPUs cap below 32 * gqa threads); infeasible geometry falls
+            # back before the batched cache update commits us to the route.
+            and gemma4_verify_kernel.kernel_max_rows(
+                self.n_heads // self.n_kv_heads, x.dtype
+            )
+            > 0
         )
         if not use_kernel and L > _MAX_L:
             return original_call(
