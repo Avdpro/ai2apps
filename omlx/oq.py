@@ -1289,6 +1289,36 @@ def combine_gemma4_assistant_mtp(
         weights.update(mx.load(str(assistant / shard)))
     mtp_weights = {GEMMA4_ASSISTANT_MTP_PREFIX + k: v for k, v in weights.items()}
 
+    mtp_size = _write_mtp_shard_and_merge_index(output, mtp_weights)
+
+    text_config = config.setdefault("text_config", {})
+    text_config["mtp_num_hidden_layers"] = int(
+        (assistant_config.get("text_config") or {}).get("num_hidden_layers", 0) or 0
+    )
+    text_config["mtp_assistant_config"] = assistant_config
+    with open(output / "config.json", "w") as f:
+        json.dump(config, f, indent=2)
+
+    logger.info(
+        "Merged gemma4 assistant MTP head into %s "
+        "(%d tensors, %.2f GB, source=%s)",
+        output.name,
+        len(mtp_weights),
+        mtp_size / 1e9,
+        assistant.name,
+    )
+
+
+# ── Native MTP head donor combine (Qwen3.5/3.6) ─────────────────────────
+
+
+def _write_mtp_shard_and_merge_index(output: Path, mtp_weights: dict) -> int:
+    """Write mtp weights as one extra shard and merge the safetensors index.
+
+    Shared by the gemma4 assistant combine and the native donor graft (the
+    shard name is historical). The index merge is a no-op when the output
+    has no ``model.safetensors.index.json``. Returns the shard byte size.
+    """
     mx.save_safetensors(
         str(output / GEMMA4_ASSISTANT_MTP_SHARD),
         mtp_weights,
@@ -1308,23 +1338,297 @@ def combine_gemma4_assistant_mtp(
         index["metadata"] = metadata
         with open(out_index_path, "w") as f:
             json.dump(index, f, indent=2)
+    return mtp_size
 
-    text_config = config.setdefault("text_config", {})
-    text_config["mtp_num_hidden_layers"] = int(
-        (assistant_config.get("text_config") or {}).get("num_hidden_layers", 0) or 0
+
+def _file_sha256(path: Path) -> str:
+    """Chunked sha256 of a file (tokenizer.json can be tens of MB)."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _mtp_family_token(config: dict) -> Optional[str]:
+    """Qwen family token ("qwen3_5" / "qwen3_6") for a config, else None."""
+    model_type = config.get("model_type") or (config.get("text_config") or {}).get(
+        "model_type"
     )
-    text_config["mtp_assistant_config"] = assistant_config
+    if not isinstance(model_type, str):
+        return None
+    for token in ("qwen3_6", "qwen3_5"):
+        if model_type.startswith(token):
+            return token
+    return None
+
+
+def _mtp_text_scope(config: dict) -> dict:
+    """The dict holding the text-model geometry (text_config for VLM wrappers)."""
+    text_config = config.get("text_config")
+    if isinstance(text_config, dict) and "num_hidden_layers" in text_config:
+        return text_config
+    return config
+
+
+_MTP_GEOMETRY_FIELDS = (
+    "vocab_size",
+    "hidden_size",
+    "num_attention_heads",
+    "num_key_value_heads",
+    "head_dim",
+    "intermediate_size",
+    "num_experts",
+    "moe_intermediate_size",
+    "shared_expert_intermediate_size",
+    "rms_norm_eps",
+    "rope_theta",
+)
+
+
+def _mtp_geometry(config: dict) -> dict:
+    """Geometry fields the MTP head build depends on (absent fields kept as
+    None so a dense donor cannot pair with a MoE recipient and vice versa)."""
+    scope = _mtp_text_scope(config)
+    geometry = {field: scope.get(field) for field in _MTP_GEOMETRY_FIELDS}
+    if geometry["rope_theta"] is None:
+        # VLM-wrapper configs nest it at text_config.rope_parameters.rope_theta.
+        rope_params = scope.get("rope_parameters")
+        if isinstance(rope_params, dict):
+            geometry["rope_theta"] = rope_params.get("rope_theta")
+    return geometry
+
+
+def _mtp_declared_layers(config: dict) -> int:
+    """Declared mtp_num_hidden_layers (top level or text_config)."""
+    top = int(config.get("mtp_num_hidden_layers", 0) or 0)
+    text = int((config.get("text_config") or {}).get("mtp_num_hidden_layers", 0) or 0)
+    return max(top, text)
+
+
+def _shard_key_map(model_dir: Path) -> dict:
+    """Map tensor key -> shard filename without loading tensor data.
+
+    Index-first; falls back to reading only the safetensors JSON headers.
+    """
+    index_path = model_dir / "model.safetensors.index.json"
+    if index_path.exists():
+        with open(index_path) as f:
+            return dict(json.load(f).get("weight_map") or {})
+    key_map: dict = {}
+    for shard in sorted(model_dir.glob("*.safetensors")):
+        with open(shard, "rb") as f:
+            header_len = int.from_bytes(f.read(8), "little")
+            header = json.loads(f.read(header_len))
+        for key in header:
+            if key != "__metadata__":
+                key_map[key] = shard.name
+    return key_map
+
+
+def _strip_mtp_key_prefix(key: str) -> Optional[str]:
+    """Normalize an mtp tensor key to its bare ``mtp.<rest>`` form."""
+    from omlx.utils.model_loading import _MTP_WEIGHT_PREFIXES
+
+    for prefix in _MTP_WEIGHT_PREFIXES:
+        if key.startswith(prefix):
+            return "mtp." + key[len(prefix) :]
+    return None
+
+
+def validate_mtp_donor_pair(
+    recipient_path: Union[str, Path],
+    donor_path: Union[str, Path],
+) -> None:
+    """Validate that a native MTP head can be grafted donor -> recipient.
+
+    The qwen MTP head has no embedding of its own: it reuses the
+    recipient's embed_tokens/lm_head and its decoder layer is built from
+    the recipient's config, so the tokenizer bytes and every geometry
+    field must match exactly (realistic pairing: a fine-tune without a
+    head + its base model). Raises ValueError with an operator-readable
+    message so the combine fails at task submission, not after a full
+    quantization run.
+    """
+    from omlx.utils.model_loading import _checkpoint_has_mtp_weights
+
+    recipient = Path(recipient_path)
+    donor = Path(donor_path)
+    with open(recipient / "config.json") as f:
+        recipient_config = json.load(f)
+    with open(donor / "config.json") as f:
+        donor_config = json.load(f)
+
+    recipient_family = _mtp_family_token(recipient_config)
+    if recipient_family is None:
+        raise ValueError(
+            "MTP head combine supports Qwen3.5/Qwen3.6 recipients, got "
+            f"model_type={recipient_config.get('model_type')!r}"
+        )
+    donor_family = _mtp_family_token(donor_config)
+    if donor_family != recipient_family:
+        raise ValueError(
+            "Donor model family "
+            f"({donor_family or donor_config.get('model_type')!r}) does not "
+            f"match the recipient ({recipient_family})"
+        )
+    if _mtp_declared_layers(donor_config) <= 0 or not _checkpoint_has_mtp_weights(
+        donor
+    ):
+        raise ValueError(
+            "Donor model has no MTP head (mtp_num_hidden_layers missing or "
+            "mtp.* weights stripped)"
+        )
+    donor_geometry = _mtp_geometry(donor_config)
+    recipient_geometry = _mtp_geometry(recipient_config)
+    for field in _MTP_GEOMETRY_FIELDS:
+        if donor_geometry[field] != recipient_geometry[field]:
+            raise ValueError(
+                f"Donor/recipient geometry mismatch: {field} "
+                f"{donor_geometry[field]} != {recipient_geometry[field]}"
+            )
+    for tok_path in (recipient / "tokenizer.json", donor / "tokenizer.json"):
+        if not tok_path.exists():
+            raise ValueError(
+                "Cannot verify tokenizer identity: tokenizer.json missing "
+                f"in {tok_path.parent}"
+            )
+    if _file_sha256(recipient / "tokenizer.json") != _file_sha256(
+        donor / "tokenizer.json"
+    ):
+        raise ValueError(
+            "Donor and recipient tokenizers differ; the MTP head reuses the "
+            "recipient's embedding and lm_head, so tokenizers must be "
+            "byte-identical"
+        )
+
+
+def combine_mtp_donor(
+    output_path: Union[str, Path],
+    donor_path: Union[str, Path],
+) -> None:
+    """Graft a native Qwen3.5/3.6 MTP head from a donor checkpoint.
+
+    Donor mtp.* tensors are written as one extra shard at their shipped
+    dtype: bf16 heads stay bf16 and pre-quantized heads pass through
+    packed, with explicit per-layer entries synthesized into the output's
+    quantization config (the donor's global bits may differ from the
+    recipient's). The norm +1 convention is left untouched on purpose —
+    the qwen sanitize decides the shift per-key by tensor mean and
+    norm_repair anchors the outliers, so raw-HF and MLX-convention donors
+    both load correctly.
+    """
+    output = Path(output_path)
+    donor = Path(donor_path)
+
+    validate_mtp_donor_pair(output, donor)
+
+    with open(output / "config.json") as f:
+        config = json.load(f)
+    with open(donor / "config.json") as f:
+        donor_config = json.load(f)
+
+    donor_key_map = _shard_key_map(donor)
+    mtp_key_shards = {
+        key: shard
+        for key, shard in donor_key_map.items()
+        if _strip_mtp_key_prefix(key) is not None
+    }
+    if not mtp_key_shards:
+        raise ValueError(f"No mtp.* tensors found in donor model: {donor}")
+
+    output_keys = _shard_key_map(output)
+    recipient_prefix = (
+        "language_model."
+        if any(k.startswith("language_model.") for k in output_keys)
+        else ""
+    )
+
+    # Load only the donor shards that contain mtp keys, one shard at a
+    # time, dropping non-mtp tensors immediately (peak memory = 1 shard).
+    mtp_weights: dict = {}
+    for shard in sorted(set(mtp_key_shards.values())):
+        shard_weights = mx.load(str(donor / shard))
+        for key, value in shard_weights.items():
+            bare = _strip_mtp_key_prefix(key)
+            if bare is not None:
+                mtp_weights[recipient_prefix + bare] = value
+        del shard_weights
+
+    mtp_size = _write_mtp_shard_and_merge_index(output, mtp_weights)
+
+    # Pre-quantized donor: every module shipping a .scales sibling needs an
+    # explicit per-layer entry under the recipient's key naming, otherwise
+    # mlx-lm's class_predicate applies the recipient's *global* bits to the
+    # donor-packed arrays and the strict load fails on shape mismatch.
+    donor_quant = donor_config.get("quantization") or {}
+    donor_global = {
+        k: donor_quant[k] for k in ("group_size", "bits", "mode") if k in donor_quant
+    }
+    quant_entries: dict = {}
+    for key in mtp_key_shards:
+        if not key.endswith(".scales"):
+            continue
+        base = key[: -len(".scales")]
+        bare_module = _strip_mtp_key_prefix(base)
+        if bare_module is None:
+            continue
+        candidates = (
+            base,
+            bare_module,
+            "language_model." + bare_module,
+            "model." + bare_module,
+            "model.language_model." + bare_module,
+        )
+        spec = None
+        for candidate in candidates:
+            value = donor_quant.get(candidate)
+            if isinstance(value, dict):
+                spec = value
+                break
+        if spec is None:
+            if not donor_global:
+                raise ValueError(
+                    "Donor MTP head is quantized but its config declares no "
+                    "global quantization parameters"
+                )
+            spec = donor_global
+        quant_entries[recipient_prefix + bare_module] = dict(spec)
+
+    if quant_entries:
+        for section in ("quantization", "quantization_config"):
+            section_cfg = config.get(section)
+            if isinstance(section_cfg, dict):
+                section_cfg.update(quant_entries)
+
+    # The combine runs after _normalize_mtp_in_config zeroed the gate;
+    # re-declare it where the recipient keeps its num_hidden_layers.
+    scope = _mtp_text_scope(config)
+    scope["mtp_num_hidden_layers"] = _mtp_declared_layers(donor_config)
     with open(output / "config.json", "w") as f:
         json.dump(config, f, indent=2)
 
     logger.info(
-        "Merged gemma4 assistant MTP head into %s "
-        "(%d tensors, %.2f GB, source=%s)",
+        "Grafted donor MTP head into %s (%d tensors, %.2f GB, source=%s)",
         output.name,
         len(mtp_weights),
         mtp_size / 1e9,
-        assistant.name,
+        donor.name,
     )
+
+
+def combine_mtp_into_output(
+    output_path: Union[str, Path],
+    donor_path: Union[str, Path],
+) -> None:
+    """Merge an MTP head into a quantized output, routed on donor type."""
+    donor = Path(donor_path)
+    with open(donor / "config.json") as f:
+        donor_config = json.load(f)
+    if donor_config.get("model_type") == "gemma4_assistant":
+        combine_gemma4_assistant_mtp(output_path, donor_path)
+    else:
+        combine_mtp_donor(output_path, donor_path)
 
 
 # ── Auto-discovery streaming sanitizer ──────────────────────────────────

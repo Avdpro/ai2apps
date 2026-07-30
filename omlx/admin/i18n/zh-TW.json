@@ -215,6 +215,8 @@
   "models.oq.combine_assistant": "合併 assistant 模型為 MTP 頭",
   "models.oq.combine_assistant_help": "將獨立的 gemma4_assistant 檢查點合併至輸出中作為 Lightning MTP 頭。輸出名稱會加上 -mtp 後綴，且 Lightning MTP 切換可作用於結果。",
   "models.oq.combine_assistant_none": "無",
+  "models.oq.combine_mtp_donor": "Combine other model's MTP head",
+  "models.oq.combine_mtp_donor_help": "Graft the MTP head from a same-architecture donor checkpoint (e.g. the base model of a fine-tune) into the quantized output. Tokenizer and geometry must match exactly; the output name gets a -mtp suffix.",
   "models.oq.enhanced_label": "增強量化（oQe）",
   "models.oq.enhanced_help": "使用 imatrix 校準，依啟動值重要性對仿射量化加權。",
   "models.oq.imatrix_reuse_cache": "重複使用 imatrix 快取",

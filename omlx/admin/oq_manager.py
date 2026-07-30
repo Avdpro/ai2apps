@@ -226,6 +226,9 @@ class OQManager:
                                 # mm_vision_tower). Same predicate as model_discovery.
                                 "is_vlm": _has_vision_subconfig(config),
                                 "has_mtp_heads": has_mtp,
+                                "hidden_size": tc.get("hidden_size")
+                                or config.get("hidden_size")
+                                or 0,
                             }
                             all_models.append(info)
                             if validate_quantizable(config):
@@ -269,10 +272,11 @@ class OQManager:
             oq_level: oQ level from OQ_LEVELS.
             dtype: Target fp dtype for non-quantized weights and quant
                 scales/biases. "bfloat16" (default) or "float16".
-            mtp_assistant_model_path: Optional gemma4_assistant checkpoint
-                to merge into the output as a Lightning MTP head
-                (language_model.mtp.*). Validated against the base config
-                at submission.
+            mtp_assistant_model_path: Optional checkpoint whose MTP head is
+                merged into the output. A gemma4_assistant donor uses the
+                assistant merge; any other donor grafts its native
+                Qwen3.5/3.6 mtp.* head (same-geometry, same-tokenizer
+                pairs only). Validated at submission.
 
         Returns:
             The created QuantTask.
@@ -286,6 +290,7 @@ class OQManager:
             _validate_oq_dtype_for_model,
             resolve_output_name,
             validate_gemma4_assistant_pair,
+            validate_mtp_donor_pair,
         )
         from ..utils.model_loading import _checkpoint_has_mtp_weights
 
@@ -312,6 +317,11 @@ class OQManager:
             )
             preserve_mtp = False
 
+        if preserve_mtp and mtp_assistant_model_path:
+            raise ValueError(
+                "Choose either 'Preserve MTP weights' or 'Combine MTP head', "
+                "not both"
+            )
         if mtp_assistant_model_path:
             assistant = Path(mtp_assistant_model_path)
             if not assistant.exists() or not (assistant / "config.json").exists():
@@ -320,7 +330,17 @@ class OQManager:
                 )
             with open(assistant / "config.json") as f:
                 assistant_config = json.load(f)
-            validate_gemma4_assistant_pair(config, assistant_config)
+            if assistant_config.get("model_type") == "gemma4_assistant":
+                validate_gemma4_assistant_pair(config, assistant_config)
+            else:
+                validate_mtp_donor_pair(source, assistant)
+                if _checkpoint_has_mtp_weights(source):
+                    logger.warning(
+                        "Recipient %s ships its own MTP head; it will be "
+                        "stripped and replaced by the donor head from %s",
+                        source.name,
+                        assistant.name,
+                    )
 
         model_name = source.name
         output_name = resolve_output_name(
@@ -582,11 +602,11 @@ class OQManager:
                     return
 
                 if task.mtp_assistant_model_path:
-                    from ..oq import combine_gemma4_assistant_mtp
+                    from ..oq import combine_mtp_into_output
 
-                    _progress_cb("saving", 97.0, "Merging assistant MTP head...")
+                    _progress_cb("saving", 97.0, "Merging MTP head...")
                     await asyncio.to_thread(
-                        combine_gemma4_assistant_mtp,
+                        combine_mtp_into_output,
                         task.output_path,
                         task.mtp_assistant_model_path,
                     )

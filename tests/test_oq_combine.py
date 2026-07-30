@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the gemma4 assistant MTP combine step in omlx.oq.
+"""Tests for the MTP combine steps in omlx.oq (gemma4 assistant merge and
+the native Qwen3.5/3.6 donor head graft).
 
 Uses tiny synthetic checkpoints on disk — no model loading, no GPU work
 beyond a few small mx arrays.
@@ -16,7 +17,10 @@ from omlx.oq import (
     GEMMA4_ASSISTANT_MTP_PREFIX,
     GEMMA4_ASSISTANT_MTP_SHARD,
     combine_gemma4_assistant_mtp,
+    combine_mtp_donor,
+    combine_mtp_into_output,
     validate_gemma4_assistant_pair,
+    validate_mtp_donor_pair,
 )
 
 BASE_CONFIG = {
@@ -126,3 +130,309 @@ def test_validate_rejects_headless_assistant():
     headless["text_config"] = {"model_type": "gemma4_text"}
     with pytest.raises(ValueError, match="num_hidden_layers"):
         validate_gemma4_assistant_pair(BASE_CONFIG, headless)
+
+
+# ── Native Qwen3.5/3.6 donor head graft ─────────────────────────────────
+
+QWEN_GEOMETRY = {
+    "vocab_size": 16,
+    "hidden_size": 8,
+    "num_attention_heads": 2,
+    "num_key_value_heads": 1,
+    "head_dim": 4,
+    "intermediate_size": 16,
+    "rms_norm_eps": 1e-06,
+    "rope_theta": 10000,
+}
+
+TOKENIZER_BYTES = b'{"version": "qwen-test-tokenizer"}'
+
+
+def _qwen_config(*, vlm: bool, **scope_overrides):
+    scope = {"num_hidden_layers": 2, **QWEN_GEOMETRY}
+    scope.update(scope_overrides)
+    if vlm:
+        scope.setdefault("model_type", "qwen3_5_text")
+        return {"model_type": "qwen3_5", "vision_config": {}, "text_config": scope}
+    scope.setdefault("model_type", "qwen3_5")
+    return scope
+
+
+def _write_qwen_output(tmp_path, *, vlm=False, rope_nested=False):
+    out = tmp_path / ("qwen-vlm-oQ6" if vlm else "qwen-oQ6")
+    out.mkdir()
+    config = _qwen_config(vlm=vlm)
+    scope = config["text_config"] if vlm else config
+    if rope_nested:
+        scope["rope_parameters"] = {"rope_theta": scope.pop("rope_theta")}
+    quant = {"group_size": 64, "bits": 6, "mode": "affine"}
+    config["quantization"] = dict(quant)
+    config["quantization_config"] = dict(quant)
+    (out / "config.json").write_text(json.dumps(config))
+    prefix = "language_model." if vlm else ""
+    weights = {prefix + "model.embed_tokens.weight": mx.zeros((16, 8))}
+    mx.save_safetensors(str(out / "model-00001-of-00001.safetensors"), weights)
+    index = {
+        "metadata": {"total_size": 100},
+        "weight_map": {k: "model-00001-of-00001.safetensors" for k in weights},
+    }
+    (out / "model.safetensors.index.json").write_text(json.dumps(index))
+    (out / "tokenizer.json").write_bytes(TOKENIZER_BYTES)
+    return out
+
+
+def _write_qwen_donor(
+    tmp_path,
+    *,
+    vlm=False,
+    quantized=False,
+    headless=False,
+    tokenizer=TOKENIZER_BYTES,
+    **scope_overrides,
+):
+    donor = tmp_path / ("qwen-donor-vlm" if vlm else "qwen-donor")
+    donor.mkdir()
+    scope_overrides.setdefault("mtp_num_hidden_layers", 1)
+    config = _qwen_config(vlm=vlm, **scope_overrides)
+    prefix = "language_model." if vlm else ""
+    bf16 = mx.bfloat16
+    weights = {
+        prefix + "model.embed_tokens.weight": mx.zeros((16, 8), dtype=bf16),
+    }
+    if not headless:
+        weights.update(
+            {
+                prefix + "mtp.fc.weight": mx.arange(128, dtype=mx.float32)
+                .reshape(8, 16)
+                .astype(bf16),
+                prefix + "mtp.norm.weight": mx.ones((8,), dtype=bf16),
+                prefix + "mtp.pre_fc_norm_embedding.weight": mx.ones((8,), dtype=bf16),
+                prefix + "mtp.pre_fc_norm_hidden.weight": mx.ones((8,), dtype=bf16),
+                prefix
+                + "mtp.layers.0.input_layernorm.weight": mx.ones((8,), dtype=bf16),
+            }
+        )
+        if quantized:
+            weights.update(
+                {
+                    prefix
+                    + "mtp.layers.0.self_attn.q_proj.weight": mx.full(
+                        (8, 1), 7, dtype=mx.uint32
+                    ),
+                    prefix
+                    + "mtp.layers.0.self_attn.q_proj.scales": mx.ones(
+                        (8, 1), dtype=bf16
+                    ),
+                    prefix
+                    + "mtp.layers.0.self_attn.q_proj.biases": mx.zeros(
+                        (8, 1), dtype=bf16
+                    ),
+                    prefix
+                    + "mtp.layers.0.mlp.gate_proj.weight": mx.full(
+                        (16, 1), 3, dtype=mx.uint32
+                    ),
+                    prefix
+                    + "mtp.layers.0.mlp.gate_proj.scales": mx.ones((16, 1), dtype=bf16),
+                    prefix
+                    + "mtp.layers.0.mlp.gate_proj.biases": mx.zeros(
+                        (16, 1), dtype=bf16
+                    ),
+                }
+            )
+            quant = {"group_size": 64, "bits": 4, "mode": "affine"}
+            # One module rides a per-layer override, the other the global.
+            quant[prefix + "mtp.layers.0.self_attn.q_proj"] = {
+                "group_size": 32,
+                "bits": 8,
+                "mode": "affine",
+            }
+            config["quantization"] = quant
+        else:
+            weights.update(
+                {
+                    prefix
+                    + "mtp.layers.0.self_attn.q_proj.weight": mx.ones(
+                        (8, 8), dtype=bf16
+                    ),
+                    prefix
+                    + "mtp.layers.0.mlp.gate_proj.weight": mx.ones((16, 8), dtype=bf16),
+                }
+            )
+    (donor / "config.json").write_text(json.dumps(config))
+    mx.save_safetensors(str(donor / "model.safetensors"), weights)
+    index = {
+        "metadata": {"total_size": sum(v.nbytes for v in weights.values())},
+        "weight_map": {k: "model.safetensors" for k in weights},
+    }
+    (donor / "model.safetensors.index.json").write_text(json.dumps(index))
+    (donor / "tokenizer.json").write_bytes(tokenizer)
+    return donor
+
+
+def test_graft_bf16_donor_writes_shard_index_config(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path)
+
+    combine_mtp_donor(out, donor)
+
+    shard = out / GEMMA4_ASSISTANT_MTP_SHARD
+    assert shard.exists()
+    merged = mx.load(str(shard))
+    assert merged, "no mtp tensors grafted"
+    assert all(k.startswith("mtp.") for k in merged)
+    assert "mtp.fc.weight" in merged
+
+    donor_weights = mx.load(str(donor / "model.safetensors"))
+    assert mx.array_equal(merged["mtp.fc.weight"], donor_weights["mtp.fc.weight"])
+    assert merged["mtp.fc.weight"].dtype == mx.bfloat16
+
+    index = json.loads((out / "model.safetensors.index.json").read_text())
+    for key in merged:
+        assert index["weight_map"][key] == GEMMA4_ASSISTANT_MTP_SHARD
+    mtp_bytes = sum(v.nbytes for v in merged.values())
+    assert index["metadata"]["total_size"] == 100 + mtp_bytes
+
+    config = json.loads((out / "config.json").read_text())
+    assert config["mtp_num_hidden_layers"] == 1
+    # bf16 donor adds zero quantization entries.
+    assert config["quantization"] == {"group_size": 64, "bits": 6, "mode": "affine"}
+    assert config["quantization_config"] == config["quantization"]
+
+
+def test_graft_quantized_donor_synthesizes_per_layer_entries(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, quantized=True)
+
+    combine_mtp_donor(out, donor)
+
+    config = json.loads((out / "config.json").read_text())
+    for section in ("quantization", "quantization_config"):
+        quant = config[section]
+        # Recipient global untouched.
+        assert quant["bits"] == 6
+        # Donor per-layer override wins for the overridden module.
+        assert quant["mtp.layers.0.self_attn.q_proj"] == {
+            "group_size": 32,
+            "bits": 8,
+            "mode": "affine",
+        }
+        # Global-riding donor modules get the donor global, explicitly.
+        assert quant["mtp.layers.0.mlp.gate_proj"] == {
+            "group_size": 64,
+            "bits": 4,
+            "mode": "affine",
+        }
+        # fc ships bf16 without scales — no entry, stays float on load.
+        assert "mtp.fc" not in quant
+
+    merged = mx.load(str(out / GEMMA4_ASSISTANT_MTP_SHARD))
+    donor_weights = mx.load(str(donor / "model.safetensors"))
+    key = "mtp.layers.0.self_attn.q_proj.weight"
+    assert mx.array_equal(merged[key], donor_weights[key])
+    assert merged[key].dtype == mx.uint32
+    assert mx.array_equal(
+        merged["mtp.layers.0.self_attn.q_proj.scales"],
+        donor_weights["mtp.layers.0.self_attn.q_proj.scales"],
+    )
+
+
+def test_graft_remaps_vlm_donor_prefix_into_text_recipient(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, vlm=True, quantized=True)
+
+    combine_mtp_donor(out, donor)
+
+    merged = mx.load(str(out / GEMMA4_ASSISTANT_MTP_SHARD))
+    assert all(k.startswith("mtp.") for k in merged)
+    config = json.loads((out / "config.json").read_text())
+    assert config["mtp_num_hidden_layers"] == 1
+    # Quant entries land under the recipient's bare naming.
+    assert "mtp.layers.0.self_attn.q_proj" in config["quantization"]
+    assert "language_model.mtp.layers.0.self_attn.q_proj" not in config["quantization"]
+
+
+def test_graft_remaps_text_donor_prefix_into_vlm_recipient(tmp_path):
+    out = _write_qwen_output(tmp_path, vlm=True, rope_nested=True)
+    donor = _write_qwen_donor(tmp_path, quantized=True)
+
+    combine_mtp_donor(out, donor)
+
+    merged = mx.load(str(out / GEMMA4_ASSISTANT_MTP_SHARD))
+    assert all(k.startswith("language_model.mtp.") for k in merged)
+    config = json.loads((out / "config.json").read_text())
+    assert config["text_config"]["mtp_num_hidden_layers"] == 1
+    assert "language_model.mtp.layers.0.self_attn.q_proj" in config["quantization"]
+
+
+def test_validate_rejects_tokenizer_mismatch(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, tokenizer=b'{"version": "other"}')
+    with pytest.raises(ValueError, match="byte-identical"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_missing_tokenizer(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path)
+    (donor / "tokenizer.json").unlink()
+    with pytest.raises(ValueError, match="tokenizer.json missing"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_geometry_mismatch(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, hidden_size=12)
+    with pytest.raises(ValueError, match="hidden_size"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_moe_donor_into_dense_recipient(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, num_experts=4, moe_intermediate_size=8)
+    with pytest.raises(ValueError, match="num_experts"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_family_mismatch(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, model_type="qwen3_6")
+    with pytest.raises(ValueError, match="does not match the recipient"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_non_qwen_recipient(tmp_path):
+    out = _write_base_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path)
+    with pytest.raises(ValueError, match="Qwen3.5/Qwen3.6 recipients"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_headless_donor(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, headless=True)
+    with pytest.raises(ValueError, match="no MTP head"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_validate_rejects_undeclared_donor(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path, mtp_num_hidden_layers=0)
+    with pytest.raises(ValueError, match="no MTP head"):
+        validate_mtp_donor_pair(out, donor)
+
+
+def test_combine_dispatch_routes_gemma4_assistant(tmp_path):
+    out = _write_base_output(tmp_path)
+    asst = _write_assistant(tmp_path)
+    combine_mtp_into_output(out, asst)
+    config = json.loads((out / "config.json").read_text())
+    assert config["text_config"]["mtp_assistant_config"] == ASSISTANT_CONFIG
+
+
+def test_combine_dispatch_routes_qwen_donor(tmp_path):
+    out = _write_qwen_output(tmp_path)
+    donor = _write_qwen_donor(tmp_path)
+    combine_mtp_into_output(out, donor)
+    config = json.loads((out / "config.json").read_text())
+    assert config["mtp_num_hidden_layers"] == 1
+    assert "mtp_assistant_config" not in config

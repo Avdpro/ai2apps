@@ -4984,10 +4984,38 @@
             oqMtpAssistantCandidates() {
                 // Gemma 4 ships its MTP head as a separate gemma4_assistant
                 // checkpoint; offer to merge it into the quantized output.
+                // Qwen3.5/3.6 recipients can instead graft the native mtp.*
+                // head out of a same-geometry donor checkpoint (e.g. the
+                // base model of a fine-tune). Loose filter here; strict
+                // tokenizer/geometry validation happens server-side at
+                // submit.
                 if (!this.oqSelectedModelPath) return [];
                 const source = this.oqModels.find(m => m.path === this.oqSelectedModelPath);
-                if (!source || source.model_type !== 'gemma4') return [];
-                return this.oqAllModels.filter(m => m.model_type === 'gemma4_assistant');
+                if (!source) return [];
+                if (source.model_type === 'gemma4') {
+                    return this.oqAllModels.filter(m => m.model_type === 'gemma4_assistant');
+                }
+                const family = this.oqMtpFamily(source.model_type);
+                if (!family) return [];
+                if (this.oqSelectedModelHasMtp() && this.oqPreserveMtp) return [];
+                return this.oqAllModels.filter(m =>
+                    m.path !== source.path &&
+                    m.has_mtp_heads &&
+                    this.oqMtpFamily(m.model_type) === family &&
+                    (!m.hidden_size || !source.hidden_size || m.hidden_size === source.hidden_size)
+                );
+            },
+
+            oqMtpFamily(modelType) {
+                if (!modelType) return null;
+                if (modelType.startsWith('qwen3_6')) return 'qwen3_6';
+                if (modelType.startsWith('qwen3_5')) return 'qwen3_5';
+                return null;
+            },
+
+            oqSelectedModelType() {
+                const model = this.oqModels.find(m => m.path === this.oqSelectedModelPath);
+                return model?.model_type || '';
             },
 
             oqLevelLabel(level) {
