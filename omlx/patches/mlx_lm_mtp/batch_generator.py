@@ -319,9 +319,14 @@ def _generation_batch_has_active_mtp(gen_batch: Any) -> bool:
 
 
 def _mtp_common_eligible(gen_batch: Any) -> bool:
-    if getattr(gen_batch, "_omlx_mtp_parked", False):
-        # This batch already proved speculation loses to plain decoding
-        # (depth controller parked and handed off); do not re-activate.
+    parked_uid = getattr(gen_batch, "_omlx_mtp_parked_uid", None)
+    if parked_uid is not None and parked_uid in (getattr(gen_batch, "uids", None) or ()):
+        # This sequence already proved speculation loses to plain decoding
+        # (depth controller parked and handed off); do not re-activate it.
+        # Keyed by uid, not the batch object: GenerationBatch instances are
+        # reused across requests via extend() merges, and a bare flag would
+        # leak the park to whichever request joins the batch next. Once the
+        # parked uid leaves the batch the marker is stale and ignored.
         return False
     if not hasattr(gen_batch, "model"):
         return False
@@ -1456,18 +1461,30 @@ _STD_TAX_EMA = 0.5
 _STD_TAX_MAX = 1.5
 
 
-def _arm_std_tax_probe(gen_batch: Any, t0_ms: Optional[float]) -> None:
+def _arm_std_tax_probe(
+    gen_batch: Any, t0_ms: Optional[float], uid: Any = None
+) -> None:
     if t0_ms and t0_ms > 0.0:
         gen_batch._omlx_mtp_tax_probe = {
             "t0": float(t0_ms),
             "skip": _STD_TAX_SKIP,
             "samples": [],
+            "uid": uid,
         }
 
 
 def _record_std_tax_sample(gen_batch: Any, duration_ms: float) -> None:
     probe = getattr(gen_batch, "_omlx_mtp_tax_probe", None)
     if probe is None:
+        return
+    uids = getattr(gen_batch, "uids", None)
+    if probe.get("uid") is not None and list(uids or ()) != [probe["uid"]]:
+        # The batch gained or swapped rows since the hand-off; multi-row
+        # step timings would contaminate the singleton loop-tax ratio.
+        try:
+            delattr(gen_batch, "_omlx_mtp_tax_probe")
+        except AttributeError:
+            pass
         return
     if probe["skip"] > 0:
         probe["skip"] -= 1
@@ -2277,9 +2294,9 @@ def _park_mtp_to_standard(gen_batch: Any, state: _MtpState) -> bool:
     except Exception as exc:
         logger.debug("MTP park-to-standard handoff failed: %s", exc)
         return False
-    gen_batch._omlx_mtp_parked = True
+    gen_batch._omlx_mtp_parked_uid = state.uid
     if state.controller is not None:
-        _arm_std_tax_probe(gen_batch, state.controller.t.get(0))
+        _arm_std_tax_probe(gen_batch, state.controller.t.get(0), state.uid)
     state._finish_reason = "parked"
     _drop_mtp_state(gen_batch, "parked-at-depth-0", log_stats=True)
     return True
