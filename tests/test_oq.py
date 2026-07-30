@@ -5267,6 +5267,180 @@ class TestQuantizeOqStreamingOq25:
         assert "model.layers.0.mlp.switch_mlp.up_proj.scales" in tensors
 
 
+class TestTextOnlyMultimodalMetadata:
+    """A text-only output must not advertise the modalities it dropped.
+
+    Text-only conversions strip the vision / audio / speech tensors, so the
+    output config and the copied sidecars must not keep claiming those
+    inputs. MiMo V2.5 spells two of them differently from the families oQ
+    saw first, carrying a top-level ``vision_model_type`` and
+    ``processor_config`` rather than only a nested ``vision_config``.
+    """
+
+    MIMO_LIKE_CONFIG = {
+        "model_type": "mimo_v2",
+        "hidden_size": 4096,
+        "num_hidden_layers": 48,
+        "vision_config": {"depth": 28},
+        "vision_model_type": "mimovl",
+        "processor_config": {"patch_size": 14},
+        "image_token_id": 151655,
+        "video_token_id": 151656,
+        "vision_start_token_id": 151652,
+        "vision_end_token_id": 151653,
+        "audio_config": {"num_layers": 24},
+    }
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "vision_config",
+            "vision_model_type",
+            "image_token_id",
+            "video_token_id",
+            "vision_start_token_id",
+            "vision_end_token_id",
+            "audio_config",
+            "processor_config",
+        ],
+    )
+    def test_multimodal_key_is_dropped(self, key):
+        from omlx.oq import _normalize_text_only_in_config
+
+        config = dict(self.MIMO_LIKE_CONFIG)
+        assert key in config, "fixture must actually carry the key under test"
+
+        _normalize_text_only_in_config(config)
+
+        assert key not in config
+
+    def test_text_keys_survive(self):
+        from omlx.oq import _normalize_text_only_in_config
+
+        config = dict(self.MIMO_LIKE_CONFIG)
+
+        _normalize_text_only_in_config(config)
+
+        assert config["model_type"] == "mimo_v2"
+        assert config["hidden_size"] == 4096
+        assert config["num_hidden_layers"] == 48
+
+    def test_absent_keys_are_not_an_error(self):
+        from omlx.oq import _normalize_text_only_in_config
+
+        config = {"model_type": "qwen3", "hidden_size": 1024}
+
+        _normalize_text_only_in_config(config)
+
+        assert config == {"model_type": "qwen3", "hidden_size": 1024}
+
+    @staticmethod
+    def _make_source(tmp_path, **contents):
+        """Build a source dir; ``contents`` overrides a file's body."""
+        src = tmp_path / "src"
+        src.mkdir()
+        files = {
+            "tokenizer.json": "{}",
+            "tokenizer_config.json": "{}",
+            "preprocessor_config.json": "{}",
+            "processor_config.json": "{}",
+        }
+        files.update(contents)
+        for name, body in files.items():
+            (src / name).write_text(body)
+        return src
+
+    def test_text_only_skips_processor_sidecars(self, tmp_path):
+        from omlx.oq import _copy_model_sidecars
+
+        src = self._make_source(tmp_path)
+        out = tmp_path / "out"
+        out.mkdir()
+
+        _copy_model_sidecars(src, out, text_only=True)
+
+        assert (out / "tokenizer.json").exists()
+        assert (out / "tokenizer_config.json").exists()
+        assert not (out / "preprocessor_config.json").exists()
+        assert not (out / "processor_config.json").exists()
+
+    def test_multimodal_keeps_processor_sidecars(self, tmp_path):
+        from omlx.oq import _copy_model_sidecars
+
+        src = self._make_source(tmp_path)
+        out = tmp_path / "out"
+        out.mkdir()
+
+        _copy_model_sidecars(src, out)
+
+        assert (out / "preprocessor_config.json").exists()
+        assert (out / "processor_config.json").exists()
+
+    def test_text_only_keeps_processor_config_holding_a_chat_template(
+        self, tmp_path
+    ):
+        """An inline chat template is not modality metadata.
+
+        Older processor repos store the template under a ``chat_template``
+        key inside ``processor_config.json`` and Transformers still honours
+        it on load, so dropping the file would silently take the model's
+        chat template with it.
+        """
+        from omlx.oq import _copy_model_sidecars
+
+        src = self._make_source(
+            tmp_path,
+            **{"processor_config.json": json.dumps({"chat_template": "{{ x }}"})},
+        )
+        out = tmp_path / "out"
+        out.mkdir()
+
+        _copy_model_sidecars(src, out, text_only=True)
+
+        assert (out / "processor_config.json").exists()
+        # The one carrying only modality settings is still dropped.
+        assert not (out / "preprocessor_config.json").exists()
+
+    def test_text_only_keeps_unparseable_processor_config(self, tmp_path):
+        """Preserving a file we cannot parse is the cheaper mistake."""
+        from omlx.oq import _copy_model_sidecars
+
+        src = self._make_source(
+            tmp_path, **{"preprocessor_config.json": "not json at all"}
+        )
+        out = tmp_path / "out"
+        out.mkdir()
+
+        _copy_model_sidecars(src, out, text_only=True)
+
+        assert (out / "preprocessor_config.json").exists()
+
+    @pytest.mark.parametrize("body", ["[]", "null", '"processor"'])
+    def test_text_only_keeps_non_mapping_processor_config(self, tmp_path, body):
+        """Valid JSON with a non-object root must be preserved, not crash."""
+        from omlx.oq import _copy_model_sidecars
+
+        src = self._make_source(tmp_path, **{"processor_config.json": body})
+        out = tmp_path / "out"
+        out.mkdir()
+
+        _copy_model_sidecars(src, out, text_only=True)
+
+        assert (out / "processor_config.json").exists()
+
+    def test_processor_configs_stay_out_of_the_base_pattern_list(self):
+        """The chat-template guard only runs for the multimodal patterns.
+
+        Moving either name back into the base list would bypass the guard and
+        the text-only skip together, with no test failing on the copy paths.
+        """
+        from omlx.oq import _MULTIMODAL_SIDECAR_PATTERNS, _SIDECAR_PATTERNS
+
+        assert not set(_SIDECAR_PATTERNS) & set(_MULTIMODAL_SIDECAR_PATTERNS)
+        assert "preprocessor_config.json" in _MULTIMODAL_SIDECAR_PATTERNS
+        assert "processor_config.json" in _MULTIMODAL_SIDECAR_PATTERNS
+
+
 class TestRecorderRefusesUnreplayableOps:
     """Discovery must refuse what replay cannot reproduce.
 
