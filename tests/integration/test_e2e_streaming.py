@@ -7,10 +7,10 @@ using mock AsyncIterator without loading actual models.
 """
 
 import json
-import pytest
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from omlx.engine.base import BaseEngine
 
@@ -582,25 +582,31 @@ class TestStreamingHelperFunctions:
         With several models loaded, interleaved summaries are otherwise
         unattributable.
         """
-        from omlx.server import stream_completion
         from omlx.api.openai_models import CompletionRequest
+        from omlx.server import stream_completion
 
         engine = MockBaseEngine()
-        request = CompletionRequest(model="test-model", prompt="Hello", stream=True)
+        request = CompletionRequest(model="my-alias", prompt="Hello", stream=True)
 
         with caplog.at_level("INFO", logger="omlx.server"):
-            async for _ in stream_completion(engine, "Hello", request):
+            async for _ in stream_completion(
+                engine,
+                "Hello",
+                request,
+                resolved_model="real-model-id",
+            ):
                 pass
 
         summaries = [r.message for r in caplog.records if "Completion: " in r.message]
         assert summaries, "no completion summary was logged"
-        assert "model=test-model" in summaries[-1]
+        assert "model=real-model-id" in summaries[-1]
+        assert "model=my-alias" not in summaries[-1]
 
     @pytest.mark.asyncio
     async def test_stream_chat_summary_log_names_resolved_model(self, caplog):
         """The summary reports the resolved model, not the requested alias."""
-        from omlx.server import stream_chat_completion
         from omlx.api.openai_models import ChatCompletionRequest, Message
+        from omlx.server import stream_chat_completion
 
         engine = MockBaseEngine()
         request = ChatCompletionRequest(

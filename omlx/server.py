@@ -1149,6 +1149,14 @@ async def get_engine_for_model(
     return engine
 
 
+def _serving_model_id(
+    lease: _LLMEngineLease,
+    requested_model: str | None,
+) -> str | None:
+    """Return the exact pool model selected for an LLM request."""
+    return lease.model_id or resolve_model_id(requested_model) or requested_model
+
+
 async def get_embedding_engine(model: str) -> EmbeddingEngine:
     """
     Get embedding engine for the specified model.
@@ -2987,6 +2995,7 @@ async def create_completion(
         load_start = time.perf_counter()
         engine = await get_engine_for_model(request.model, lease=lease)
         model_load_duration = time.perf_counter() - load_start
+        resolved_model = _serving_model_id(lease, request.model)
 
         # Handle single prompt or list of prompts
         prompts = (
@@ -3021,6 +3030,7 @@ async def create_completion(
                             request,
                             model_load_duration=model_load_duration,
                             prompt_token_ids=prompt_token_ids_by_prompt[0],
+                            resolved_model=resolved_model,
                         ),
                         http_request=http_request,
                         keepalive_chunk=_resolve_keepalive("openai_completion"),
@@ -3107,7 +3117,6 @@ async def create_completion(
 
             elapsed = time.perf_counter() - start_time
             tokens_per_sec = total_completion_tokens / elapsed if elapsed > 0 else 0
-            resolved_model = resolve_model_id(request.model) or request.model
             logger.info(
                 f"Completion: model={resolved_model}, "
                 f"{total_completion_tokens} tokens in {elapsed:.2f}s "
@@ -3216,8 +3225,8 @@ async def create_chat_completion(
         engine = await get_engine_for_model(request.model, lease=lease)
         model_load_duration = time.perf_counter() - load_start
 
-        # Resolve alias to real model ID for settings lookups
-        resolved_model = resolve_model_id(request.model) or request.model
+        # Use the exact model selected by the pool, including fallback.
+        resolved_model = _serving_model_id(lease, request.model)
 
         # Get per-model settings
         max_tool_result_tokens = None
@@ -4104,6 +4113,7 @@ async def stream_completion(
     request: CompletionRequest,
     model_load_duration: float = 0.0,
     prompt_token_ids: list[int] | None = None,
+    resolved_model: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream completion response."""
     start_time = time.perf_counter()
@@ -4209,14 +4219,16 @@ async def stream_completion(
             prefill_duration=ttft,
             generation_duration=gen_duration,
         )
-        resolved_model = resolve_model_id(request.model) or request.model
+        serving_model = (
+            resolved_model or resolve_model_id(request.model) or request.model
+        )
         get_server_metrics().record_request_complete(
             prompt_tokens=last_output.prompt_tokens,
             completion_tokens=last_output.completion_tokens,
             cached_tokens=last_output.cached_tokens,
             prefill_duration=metric_prefill_duration,
             generation_duration=metric_gen_duration,
-            model_id=resolved_model,
+            model_id=serving_model,
         )
         speed_duration = total_duration if is_diffusion else gen_duration
         tokens_per_sec = (
@@ -4228,7 +4240,7 @@ async def stream_completion(
             is_diffusion=is_diffusion,
         )
         logger.info(
-            f"Completion: model={resolved_model}, "
+            f"Completion: model={serving_model}, "
             f"{last_output.completion_tokens} tokens in "
             f"{total_duration:.2f}s ({speed_text}), "
             f"prompt: {last_output.prompt_tokens}"
@@ -5079,13 +5091,22 @@ async def stream_anthropic_messages(
             gen_duration = total_duration
         else:
             gen_duration = end_time - (first_token_time or start_time)
+        serving_model = resolved_model or request.model
         get_server_metrics().record_request_complete(
             prompt_tokens=last_output.prompt_tokens,
             completion_tokens=last_output.completion_tokens,
             cached_tokens=last_output.cached_tokens,
             prefill_duration=ttft,
             generation_duration=gen_duration,
-            model_id=resolved_model or request.model,
+            model_id=serving_model,
+        )
+        tokens_per_sec = (
+            last_output.completion_tokens / total_duration if total_duration > 0 else 0
+        )
+        logger.info(
+            f"Anthropic message: model={serving_model}, "
+            f"{last_output.completion_tokens} tokens in {total_duration:.2f}s "
+            f"({tokens_per_sec:.1f} tok/s)"
         )
 
     # 7. Send message_stop
@@ -5133,8 +5154,8 @@ async def create_anthropic_message(
     try:
         engine = await get_engine_for_model(request.model, lease=lease)
 
-        # Resolve alias to real model ID for settings lookups
-        resolved_model = resolve_model_id(request.model) or request.model
+        # Use the exact model selected by the pool, including fallback.
+        resolved_model = _serving_model_id(lease, request.model)
 
         # Get per-model settings
         max_tool_result_tokens = None
@@ -5632,7 +5653,7 @@ async def create_response(
         engine = await get_engine_for_model(request.model, lease=lease)
         model_load_duration = time.perf_counter() - load_start
 
-        resolved_model = resolve_model_id(request.model) or request.model
+        resolved_model = _serving_model_id(lease, request.model)
 
         current_input_messages = convert_responses_input_to_messages(
             request.input,
@@ -6628,13 +6649,22 @@ async def stream_responses_api(
             gen_duration = total_duration
         else:
             gen_duration = end_time - (first_token_time or start_time)
+        serving_model = resolved_model or request.model
         get_server_metrics().record_request_complete(
             prompt_tokens=last_output.prompt_tokens,
             completion_tokens=last_output.completion_tokens,
             cached_tokens=last_output.cached_tokens,
             prefill_duration=ttft,
             generation_duration=gen_duration,
-            model_id=resolved_model or request.model,
+            model_id=serving_model,
+        )
+        tokens_per_sec = (
+            last_output.completion_tokens / total_duration if total_duration > 0 else 0
+        )
+        logger.info(
+            f"Responses API: model={serving_model}, "
+            f"{last_output.completion_tokens} tokens in {total_duration:.2f}s "
+            f"({tokens_per_sec:.1f} tok/s)"
         )
         reasoning_token_count = (
             len(engine.tokenizer.encode(reasoning_text)) if reasoning_text else 0
