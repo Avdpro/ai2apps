@@ -4570,6 +4570,41 @@ async def stream_chat_completion(
                 )
                 yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
+    # Surface an unterminated paired envelope only when final parsing could not
+    # recover a structured tool call. The candidate begins at the opening marker,
+    # so prose already streamed before it is never duplicated.
+    recovered_thinking = (
+        thinking_filter.take_recovery_candidate() if thinking_filter else ""
+    )
+    recovered_content = tool_filter.take_recovery_candidate() if tool_filter else ""
+    if not tool_calls:
+        if recovered_thinking:
+            chunk = ChatCompletionChunk(
+                id=response_id,
+                model=request.model,
+                choices=[
+                    ChatCompletionChunkChoice(
+                        delta=ChatCompletionChunkDelta(
+                            reasoning_content=recovered_thinking
+                        ),
+                        finish_reason=None,
+                    )
+                ],
+            )
+            yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
+        if recovered_content:
+            chunk = ChatCompletionChunk(
+                id=response_id,
+                model=request.model,
+                choices=[
+                    ChatCompletionChunkChoice(
+                        delta=ChatCompletionChunkDelta(content=recovered_content),
+                        finish_reason=None,
+                    )
+                ],
+            )
+            yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
+
     # Reverse Gemma 4 parameter renaming for streaming path
     if tool_calls and "gemma" in (resolved_model or request.model or "").lower():
         for tc in tool_calls:
@@ -4971,6 +5006,36 @@ async def stream_anthropic_messages(
             tools=kwargs.get("tools"),
         )
         tool_calls = extraction.tool_calls
+
+    recovered_thinking = (
+        thinking_filter.take_recovery_candidate() if thinking_filter else ""
+    )
+    recovered_content = tool_filter.take_recovery_candidate() if tool_filter else ""
+    if not tool_calls:
+        if recovered_thinking:
+            if text_block_started:
+                yield create_content_block_stop_event(index=block_index)
+                block_index += 1
+                text_block_started = False
+            if not thinking_block_started:
+                yield create_content_block_start_event(
+                    index=block_index, block_type="thinking"
+                )
+                thinking_block_started = True
+            yield create_thinking_delta_event(
+                index=block_index, thinking=recovered_thinking
+            )
+        if recovered_content:
+            if thinking_block_started and not text_block_started:
+                yield create_content_block_stop_event(index=block_index)
+                block_index += 1
+                thinking_block_started = False
+            if not text_block_started:
+                yield create_content_block_start_event(
+                    index=block_index, block_type="text"
+                )
+                text_block_started = True
+            yield create_text_delta_event(index=block_index, text=recovered_content)
 
     # 4. Close open blocks
     if thinking_block_started and not text_block_started:
@@ -6401,6 +6466,32 @@ async def stream_responses_api(
         # No tools — use raw accumulated text minus thinking.
         thinking_content, regular_content = extract_thinking(accumulated_text)
         cleaned_text = clean_special_tokens(regular_content) if regular_content else ""
+
+    recovered_thinking = (
+        thinking_filter.take_recovery_candidate() if thinking_filter else ""
+    )
+    recovered_content = tool_filter.take_recovery_candidate() if tool_filter else ""
+    if not tool_calls:
+        for ev in _emit_reasoning_delta(recovered_thinking):
+            yield ev
+        if recovered_content:
+            if reasoning_opened and not reasoning_closed:
+                for ev in _close_reasoning():
+                    yield ev
+            for ev in _open_message():
+                yield ev
+            seq += 1
+            yield format_sse_event(
+                "response.output_text.delta",
+                {
+                    "type": "response.output_text.delta",
+                    "item_id": msg_id,
+                    "output_index": msg_output_index,
+                    "content_index": 0,
+                    "delta": recovered_content,
+                    "sequence_number": seq,
+                },
+            )
 
     # Reverse Gemma 4 parameter renaming
     if tool_calls and "gemma" in (resolved_model or request.model or "").lower():
