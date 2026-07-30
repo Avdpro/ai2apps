@@ -4733,7 +4733,7 @@ class Scheduler:
                 self.requests.pop(rid, None)
                 self._clear_request_admission_bookkeeping(rid)
                 get_prefill_tracker().remove(rid)
-                _sync_and_clear_cache()
+                _sync_and_clear_cache(self._stream)
                 rejected.append(_prefill_memory_exception_output(rid, e))
                 continue
             except RuntimeError as e:
@@ -4746,7 +4746,7 @@ class Scheduler:
                 # Drop Metal cache pool buffers held by the aborted chunk's
                 # forward / mx.eval transients. Without this, enforcer keeps
                 # seeing the burst footprint until the next mx.clear_cache().
-                _sync_and_clear_cache()
+                _sync_and_clear_cache(self._stream)
                 # Try a bounded requeue before surfacing the failure: a
                 # memory-pressure prefill gets a fresh, better-throttled
                 # attempt. Only after the retry budget is exhausted (or for
@@ -8903,7 +8903,7 @@ class Scheduler:
                         self.requests.pop(request.request_id, None)
                         self._clear_request_admission_bookkeeping(request.request_id)
                         get_prefill_tracker().remove(request.request_id)
-                        _sync_and_clear_cache()
+                        _sync_and_clear_cache(self._stream)
                         rejected_outputs.append(
                             _prefill_memory_exception_output(request.request_id, e)
                         )
@@ -8926,7 +8926,7 @@ class Scheduler:
                         get_prefill_tracker().remove(request.request_id)
                         # Drop Metal cache pool buffers held by the aborted
                         # first chunk's forward / mx.eval transients.
-                        _sync_and_clear_cache()
+                        _sync_and_clear_cache(self._stream)
                         if self._requeue_or_fail_prefill(request, e):
                             continue
                         rejected_outputs.append(
@@ -8986,7 +8986,7 @@ class Scheduler:
                     self.requests.pop(request.request_id, None)
                     self._clear_request_admission_bookkeeping(request.request_id)
                     get_prefill_tracker().remove(request.request_id)
-                    _sync_and_clear_cache()
+                    _sync_and_clear_cache(self._stream)
                     rejected_outputs.append(
                         _prefill_memory_exception_output(request.request_id, e)
                     )
@@ -9008,7 +9008,7 @@ class Scheduler:
                     get_prefill_tracker().remove(request.request_id)
                     # Drop Metal cache pool buffers held by the aborted
                     # chunk's forward / mx.eval transients.
-                    _sync_and_clear_cache()
+                    _sync_and_clear_cache(self._stream)
                     if self._requeue_or_fail_prefill(request, e):
                         continue
                     rejected_outputs.append(
