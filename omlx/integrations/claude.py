@@ -64,6 +64,18 @@ class ClaudeCodeIntegration(Integration):
 
         if ctx.context_window:
             env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(ctx.context_window)
+            # Claude Code (2.1.220+) reads CLAUDE_CODE_MAX_CONTEXT_TOKENS to
+            # set the *detected* context window for custom model IDs that
+            # don't canonicalize to "claude-*"; auto-compact then fires at
+            # min(detected_window, CLAUDE_CODE_AUTO_COMPACT_WINDOW). Setting
+            # both to the same real, operator-configured max_context_window
+            # keeps reported usage and the auto-compact denominator on the
+            # same scale with no scaling math and no reliance on the
+            # internal/undocumented CLAUDE_AUTOCOMPACT_PCT_OVERRIDE test hook.
+            # Caveat (confirmed live): this is ignored for model IDs that
+            # canonicalize to "claude-*" — Claude Code trusts its own
+            # built-in context window for those regardless of this variable.
+            env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(ctx.context_window)
 
         binary = self._find_claude_binary()
         # Deny the LSP tool. Claude Code attaches its full schema to the tools
