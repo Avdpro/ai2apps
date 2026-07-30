@@ -2801,8 +2801,10 @@ async def create_embeddings(
             raise HTTPException(status_code=400, detail=str(e))
 
         elapsed = time.perf_counter() - start_time
+        resolved_model = resolve_model_id(request.model) or request.model
         logger.info(
-            f"Embedding: {len(embedding_inputs)} inputs, {output.dimensions} dims, "
+            f"Embedding: model={resolved_model}, "
+            f"{len(embedding_inputs)} inputs, {output.dimensions} dims, "
             f"{output.total_tokens} tokens, max_length={max_length}, "
             f"truncation={request.truncation} in {elapsed:.3f}s"
         )
@@ -2811,7 +2813,7 @@ async def create_embeddings(
             completion_tokens=0,
             cached_tokens=0,
             prefill_duration=elapsed,
-            model_id=resolve_model_id(request.model) or request.model,
+            model_id=resolved_model,
         )
 
         data = []
@@ -2926,8 +2928,9 @@ async def create_rerank(
         )
 
     elapsed = time.perf_counter() - start_time
+    resolved_model = resolve_model_id(request.model) or request.model
     logger.info(
-        f"Rerank: {len(documents_raw)} docs, "
+        f"Rerank: model={resolved_model}, {len(documents_raw)} docs, "
         f"{output.total_tokens} tokens in {elapsed:.3f}s"
     )
     get_server_metrics().record_request_complete(
@@ -2935,7 +2938,7 @@ async def create_rerank(
         completion_tokens=0,
         cached_tokens=0,
         prefill_duration=elapsed,
-        model_id=resolve_model_id(request.model) or request.model,
+        model_id=resolved_model,
     )
 
     # Format response - results sorted by score (descending). Strings wrap
@@ -3104,8 +3107,11 @@ async def create_completion(
 
             elapsed = time.perf_counter() - start_time
             tokens_per_sec = total_completion_tokens / elapsed if elapsed > 0 else 0
+            resolved_model = resolve_model_id(request.model) or request.model
             logger.info(
-                f"Completion: {total_completion_tokens} tokens in {elapsed:.2f}s ({tokens_per_sec:.1f} tok/s), prompt: {total_prompt_tokens}"
+                f"Completion: model={resolved_model}, "
+                f"{total_completion_tokens} tokens in {elapsed:.2f}s "
+                f"({tokens_per_sec:.1f} tok/s), prompt: {total_prompt_tokens}"
             )
 
             prefill_duration = (
@@ -3120,7 +3126,7 @@ async def create_completion(
                 cached_tokens=total_cached_tokens,
                 prefill_duration=prefill_duration,
                 generation_duration=gen_duration,
-                model_id=resolve_model_id(request.model) or request.model,
+                model_id=resolved_model,
             )
 
             return CompletionResponse(
@@ -3564,7 +3570,8 @@ async def create_chat_completion(
                 is_diffusion=is_diffusion,
             )
             logger.info(
-                f"Chat completion: {output.completion_tokens} tokens in {elapsed:.2f}s "
+                f"Chat completion: model={resolved_model}, "
+                f"{output.completion_tokens} tokens in {elapsed:.2f}s "
                 f"({speed_text}), prompt: {output.prompt_tokens}, "
                 f"finish_reason={output.finish_reason}, max_tokens={max_tokens}, "
                 f"request_max_tokens={request.max_tokens}"
@@ -4202,13 +4209,14 @@ async def stream_completion(
             prefill_duration=ttft,
             generation_duration=gen_duration,
         )
+        resolved_model = resolve_model_id(request.model) or request.model
         get_server_metrics().record_request_complete(
             prompt_tokens=last_output.prompt_tokens,
             completion_tokens=last_output.completion_tokens,
             cached_tokens=last_output.cached_tokens,
             prefill_duration=metric_prefill_duration,
             generation_duration=metric_gen_duration,
-            model_id=resolve_model_id(request.model) or request.model,
+            model_id=resolved_model,
         )
         speed_duration = total_duration if is_diffusion else gen_duration
         tokens_per_sec = (
@@ -4220,7 +4228,8 @@ async def stream_completion(
             is_diffusion=is_diffusion,
         )
         logger.info(
-            f"Completion: {last_output.completion_tokens} tokens in "
+            f"Completion: model={resolved_model}, "
+            f"{last_output.completion_tokens} tokens in "
             f"{total_duration:.2f}s ({speed_text}), "
             f"prompt: {last_output.prompt_tokens}"
         )
@@ -4670,7 +4679,8 @@ async def stream_chat_completion(
             is_diffusion=is_diffusion,
         )
         logger.info(
-            f"Chat completion: {last_output.completion_tokens} tokens in "
+            f"Chat completion: model={resolved_model or request.model}, "
+            f"{last_output.completion_tokens} tokens in "
             f"{total_duration:.2f}s ({speed_text}), "
             f"prompt: {last_output.prompt_tokens}, finish_reason={finish_reason}, "
             f"max_tokens={kwargs.get('max_tokens')}, "
@@ -5386,7 +5396,8 @@ async def create_anthropic_message(
             elapsed = time.perf_counter() - start_time
             tokens_per_sec = output.completion_tokens / elapsed if elapsed > 0 else 0
             logger.info(
-                f"Anthropic message: {output.completion_tokens} tokens in {elapsed:.2f}s "
+                f"Anthropic message: model={resolved_model}, "
+                f"{output.completion_tokens} tokens in {elapsed:.2f}s "
                 f"({tokens_per_sec:.1f} tok/s)"
             )
 
@@ -5877,7 +5888,8 @@ async def create_response(
             elapsed = time.perf_counter() - start_time
             tokens_per_sec = output.completion_tokens / elapsed if elapsed > 0 else 0
             logger.info(
-                f"Responses API: {output.completion_tokens} tokens in {elapsed:.2f}s "
+                f"Responses API: model={resolved_model}, "
+                f"{output.completion_tokens} tokens in {elapsed:.2f}s "
                 f"({tokens_per_sec:.1f} tok/s)"
             )
 

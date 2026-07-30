@@ -968,6 +968,28 @@ class TestChatCompletionEndpoint:
         assert mock_engine_pool.get_engine_calls[-1]["_lease"] is True
         assert mock_engine_pool.release_calls == ["test-model"]
 
+    def test_chat_completion_summary_log_names_the_model(self, client, caplog):
+        """The per-request summary must identify the serving model.
+
+        With several models loaded, interleaved summaries are otherwise
+        unattributable.
+        """
+        with caplog.at_level("INFO", logger="omlx.server"):
+            response = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "test-model",
+                    "messages": [{"role": "user", "content": "Hello"}],
+                },
+            )
+
+        assert response.status_code == 200
+        summaries = [
+            r.message for r in caplog.records if "Chat completion: " in r.message
+        ]
+        assert summaries, "no chat completion summary was logged"
+        assert "model=test-model" in summaries[-1]
+
     def test_chat_completion_basic(self, client):
         """Test basic chat completion request."""
         response = client.post(
