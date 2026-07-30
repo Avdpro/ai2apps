@@ -5,6 +5,7 @@ import plistlib
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 import yaml
 
 from omlx.integrations import get_integration, list_integrations
@@ -1348,7 +1349,66 @@ class TestClaudeCodeIntegration:
         assert "PYTHONPATH" not in env
         assert "PYTHONDONTWRITEBYTECODE" not in env
 
-    def test_launch_sets_max_context_tokens_32k(self):
+    def test_model_disabled_reason_below_48k(self):
+        cc = ClaudeCodeIntegration()
+
+        reason = cc.model_disabled_reason(
+            {"id": "small-model", "max_context_window": 32768}
+        )
+
+        assert reason is not None
+        assert "at least 48K" in reason
+        assert "32,768" in reason
+
+    def test_model_disabled_reason_allows_48k(self):
+        cc = ClaudeCodeIntegration()
+
+        assert (
+            cc.model_disabled_reason(
+                {"id": "supported-model", "max_context_window": 49152}
+            )
+            is None
+        )
+
+    def test_select_model_rejects_disabled_choice(self, capsys):
+        cc = ClaudeCodeIntegration()
+
+        with (
+            patch("omlx.integrations.base.sys.stdout.isatty", return_value=False),
+            patch("builtins.input", side_effect=["1", "2"]),
+        ):
+            selected = cc.select_model(
+                [
+                    {"id": "small-model", "max_context_window": 32768},
+                    {"id": "supported-model", "max_context_window": 49152},
+                ]
+            )
+
+        assert selected == "supported-model"
+        output = capsys.readouterr().out
+        assert "small-model" in output
+        assert "unavailable" in output
+        assert "Cannot select small-model" in output
+
+    def test_launch_rejects_max_context_tokens_below_48k(self, capsys):
+        cc = ClaudeCodeIntegration()
+
+        with pytest.raises(SystemExit) as exc:
+            cc.launch(
+                ctx(
+                    port=8000,
+                    api_key="secret",
+                    model="qwen3.5-32k",
+                    context_window=32768,
+                )
+            )
+
+        assert exc.value.code == 1
+        output = capsys.readouterr().out
+        assert "Cannot launch Claude Code" in output
+        assert "at least 48K" in output
+
+    def test_launch_sets_max_context_tokens_48k(self):
         cc = ClaudeCodeIntegration()
         captured = {}
 
@@ -1367,13 +1427,13 @@ class TestClaudeCodeIntegration:
                     api_key="secret",
                     model="qwen3.5",
                     sonnet_model="mlx-community/Qwen3-30B-A3B-4bit",
-                    context_window=32768,
+                    context_window=49152,
                 )
             )
 
         env = captured["env"]
-        assert env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "32768"
-        assert env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "32768"
+        assert env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "49152"
+        assert env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "49152"
 
     def test_launch_sets_max_context_tokens_64k(self):
         cc = ClaudeCodeIntegration()
