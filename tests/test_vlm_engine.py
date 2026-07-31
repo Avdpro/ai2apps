@@ -1048,6 +1048,7 @@ class TestProcessChatMessages:
             audio=None,
             chat_template_kwargs=None,
             tools=None,
+            is_partial=None,
         )
 
     @patch("omlx.engine.vlm.extract_images_from_messages")
@@ -1764,29 +1765,230 @@ class TestCountChatTokens:
 
 
 class TestPartialModeVLM:
-    """Tests for partial mode in VLM engine — always ignored."""
+    """Partial mode must continue the final assistant message on VLM engines.
 
-    def test_apply_chat_template_partial_ignored(self):
-        """VLM _apply_chat_template strips partial but always uses add_generation_prompt=True."""
+    ``VLMBatchedEngine`` renders chat prompts in two places on the
+    chat-completions path — the generation path (``_process_chat_messages``
+    → ``_prepare_vision_inputs``) and the token-counting path
+    (``count_chat_tokens`` / ``preflight_chat`` → ``_apply_chat_template``).
+    Both used to hardcode
+    ``add_generation_prompt=True``, so a request whose final assistant message
+    carries ``partial: true`` rendered byte-identically to one without it.
+    """
+
+    _PARTIAL_MESSAGES = [
+        {"role": "user", "content": "Count from 1 to 10."},
+        {"role": "assistant", "content": "1, 2, 3, 4,", "partial": True},
+    ]
+
+    @staticmethod
+    def _plain_messages():
+        return [
+            {"role": "user", "content": "Count from 1 to 10."},
+            {"role": "assistant", "content": "1, 2, 3, 4,"},
+        ]
+
+    def test_apply_chat_template_honours_explicit_partial(self):
+        """is_partial=True → continue the final message instead of a new turn."""
         mock_tokenizer = MagicMock()
         mock_tokenizer.apply_chat_template.return_value = "<formatted>"
         engine = _make_loaded_engine(tokenizer=mock_tokenizer)
 
-        messages = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "{", "partial": True},
-        ]
+        # The server strips `partial` at the API boundary and forwards the
+        # resolved decision, so the messages here carry no `partial` key.
+        engine._apply_chat_template(self._plain_messages(), is_partial=True)
 
-        engine._apply_chat_template(messages)
+        call_kwargs = mock_tokenizer.apply_chat_template.call_args[1]
+        assert call_kwargs["add_generation_prompt"] is False
+        assert call_kwargs["continue_final_message"] is True
+
+    def test_apply_chat_template_autodetects_partial(self):
+        """Direct engine callers still get detection from the message key."""
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "<formatted>"
+        engine = _make_loaded_engine(tokenizer=mock_tokenizer)
+
+        engine._apply_chat_template([dict(m) for m in self._PARTIAL_MESSAGES])
+
+        call_kwargs = mock_tokenizer.apply_chat_template.call_args[1]
+        assert call_kwargs["add_generation_prompt"] is False
+        assert call_kwargs["continue_final_message"] is True
+
+        # partial field is never handed to the chat template
+        call_msgs = mock_tokenizer.apply_chat_template.call_args[0][0]
+        for msg in call_msgs:
+            assert "partial" not in msg
+
+    def test_apply_chat_template_without_partial_starts_new_turn(self):
+        """No partial signal → unchanged behavior."""
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "<formatted>"
+        engine = _make_loaded_engine(tokenizer=mock_tokenizer)
+
+        engine._apply_chat_template(self._plain_messages(), is_partial=False)
 
         call_kwargs = mock_tokenizer.apply_chat_template.call_args[1]
         assert call_kwargs["add_generation_prompt"] is True
         assert "continue_final_message" not in call_kwargs
 
-        # partial field should be stripped from messages
-        call_msgs = mock_tokenizer.apply_chat_template.call_args[0][0]
-        for msg in call_msgs:
-            assert "partial" not in msg
+    @staticmethod
+    def _vision_engine():
+        """Engine whose processor renders the prompt, as on the real chat path."""
+        engine = _make_loaded_engine(model_type="qwen2_5_vl")
+        mock_processor = MagicMock()
+        mock_processor.apply_chat_template.return_value = "<vision prompt>"
+        mock_processor.tokenizer = engine._tokenizer
+        engine._processor = mock_processor
+        return engine
+
+    @pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+    @patch("mlx_vlm.utils.prepare_inputs")
+    def test_generation_path_honours_partial(self, mock_prepare):
+        """_process_chat_messages forwards partial into the real VLM render.
+
+        This is the path a text-only /v1/chat/completions request takes on a
+        VLM-capable checkpoint: chat()/stream_chat() hand their kwargs to
+        _process_chat_messages, which renders via _prepare_vision_inputs.
+        """
+        engine = self._vision_engine()
+        mock_prepare.return_value = {
+            "input_ids": mx.array([[1, 2, 3]]),
+            "pixel_values": None,
+        }
+
+        engine._process_chat_messages(
+            self._plain_messages(), tools=None, kwargs={"is_partial": True}
+        )
+
+        call_kwargs = engine._processor.apply_chat_template.call_args[1]
+        assert call_kwargs["add_generation_prompt"] is False
+        assert call_kwargs["continue_final_message"] is True
+
+    @pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+    @patch("mlx_vlm.utils.prepare_inputs")
+    def test_generation_path_without_partial_starts_new_turn(self, mock_prepare):
+        """The same request without the flag keeps opening a new turn."""
+        engine = self._vision_engine()
+        mock_prepare.return_value = {
+            "input_ids": mx.array([[1, 2, 3]]),
+            "pixel_values": None,
+        }
+
+        engine._process_chat_messages(
+            self._plain_messages(), tools=None, kwargs={"is_partial": False}
+        )
+
+        call_kwargs = engine._processor.apply_chat_template.call_args[1]
+        assert call_kwargs["add_generation_prompt"] is True
+        assert "continue_final_message" not in call_kwargs
+
+    @pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+    @patch("mlx_vlm.utils.prepare_inputs")
+    def test_no_chat_template_fallback_drops_continue_final_message(
+        self, mock_prepare
+    ):
+        """Checkpoints with no chat template cannot continue a message.
+
+        mlx-vlm's get_chat_template() has no continue_final_message
+        equivalent, so the kwarg must be dropped rather than forwarded as an
+        unknown argument (which would raise TypeError).
+        """
+        engine = self._vision_engine()
+        engine._processor.apply_chat_template.side_effect = ValueError(
+            "Cannot use apply_chat_template because this processor does not "
+            "have a chat template."
+        )
+        mock_prepare.return_value = {
+            "input_ids": mx.array([[1, 2, 3]]),
+            "pixel_values": None,
+        }
+
+        with patch(
+            "mlx_vlm.prompt_utils.get_chat_template",
+            return_value="<plain prompt>",
+        ) as mock_gct:
+            engine._process_chat_messages(
+                self._plain_messages(), tools=None, kwargs={"is_partial": True}
+            )
+
+        assert "continue_final_message" not in mock_gct.call_args[1]
+        assert mock_gct.call_args[1]["add_generation_prompt"] is True
+
+    def test_missing_template_error_signatures(self):
+        """The fallback guard matches every real missing-template spelling.
+
+        The tokenizer (transformers PreTrainedTokenizerBase), the processor
+        (transformers ProcessorMixin), and mlx-vlm processors that render
+        their own template (phi3_v) each spell the error differently; all of
+        them must fall back, and real render errors must not.
+        """
+        from omlx.engine.vlm import _is_missing_chat_template_error
+
+        missing = [
+            "Cannot use chat template functions because "
+            "tokenizer.chat_template is not set and no template argument "
+            "was passed!",
+            "Cannot use apply_chat_template because this processor does not "
+            "have a chat template.",
+            "No chat template found. Please provide a chat_template argument "
+            "or ensure the tokenizer has a chat_template attribute.",
+        ]
+        for message in missing:
+            assert _is_missing_chat_template_error(ValueError(message))
+        assert not _is_missing_chat_template_error(
+            ValueError(
+                "continue_final_message and add_generation_prompt "
+                "are not compatible"
+            )
+        )
+
+    @pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+    @patch("mlx_vlm.utils.prepare_inputs")
+    def test_generation_path_render_value_error_propagates(self, mock_prepare):
+        """A ValueError that is not the missing-template signature must raise.
+
+        transformers raises ValueError when continue_final_message meets
+        add_generation_prompt (e.g. a request combining partial mode with
+        chat_template_kwargs). Falling back would silently return a
+        non-partial render under a misleading no-chat-template warning.
+        """
+        engine = self._vision_engine()
+        engine._processor.apply_chat_template.side_effect = ValueError(
+            "continue_final_message and add_generation_prompt are not compatible"
+        )
+        mock_prepare.return_value = {
+            "input_ids": mx.array([[1, 2, 3]]),
+            "pixel_values": None,
+        }
+
+        with patch(
+            "mlx_vlm.prompt_utils.get_chat_template",
+            return_value="<plain prompt>",
+        ) as mock_gct:
+            with pytest.raises(ValueError, match="not compatible"):
+                engine._process_chat_messages(
+                    self._plain_messages(), tools=None, kwargs={"is_partial": True}
+                )
+        mock_gct.assert_not_called()
+
+    def test_count_path_render_value_error_propagates(self):
+        """The token-counting render applies the same narrow fallback."""
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.side_effect = ValueError(
+            "continue_final_message and add_generation_prompt are not compatible"
+        )
+        engine = _make_loaded_engine(tokenizer=mock_tokenizer)
+        engine._processor = MagicMock()
+
+        with patch(
+            "mlx_vlm.prompt_utils.get_chat_template",
+            return_value="<plain>",
+        ) as mock_gct:
+            with pytest.raises(ValueError, match="not compatible"):
+                engine._apply_chat_template(
+                    self._plain_messages(), is_partial=True
+                )
+        mock_gct.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

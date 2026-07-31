@@ -144,6 +144,30 @@ def _read_config_model_type(model_path: str | Path) -> str | None:
     return model_type if isinstance(model_type, str) else None
 
 
+def _is_missing_chat_template_error(exc: ValueError) -> bool:
+    """True when apply_chat_template failed because no chat template is set.
+
+    transformers raises ValueError both for a missing template and for real
+    render errors (e.g. continue_final_message combined with
+    add_generation_prompt). Only the missing-template case may fall back to
+    mlx-vlm's plain rendering; anything else must propagate. Both the
+    tokenizer and the processor spellings must match: the vision render
+    prefers the processor's apply_chat_template, the counting render uses
+    the tokenizer.
+    """
+    message = str(exc)
+    return (
+        # tokenizer wording (transformers tokenizers; the pair mlx-vlm's
+        # prompt_utils._missing_template_error also matches)
+        "chat_template is not set" in message
+        or "no template argument was passed" in message
+        # processor wording (transformers ProcessorMixin; mlx-vlm processors
+        # that render their own template, e.g. phi3_v)
+        or "does not have a chat template" in message
+        or "No chat template found" in message
+    )
+
+
 def _apply_minimax_m3_thinking_mode(
     model_type: str | None,
     template_kwargs: dict[str, Any],
@@ -2441,6 +2465,7 @@ class VLMBatchedEngine(BaseEngine):
         audio: list | None = None,
         chat_template_kwargs: dict[str, Any] | None = None,
         tools: list[dict] | None = None,
+        is_partial: bool | None = None,
     ) -> Tuple[
         List[int],
         Optional[mx.array],
@@ -2460,6 +2485,10 @@ class VLMBatchedEngine(BaseEngine):
             messages: Chat messages (text-only, media already extracted)
             images: List of PIL Image objects
             audio: List of audio data (BytesIO buffers, tuples, or numpy arrays)
+            is_partial: Explicit partial-mode signal from the API server.
+                ``True``/``False`` — the server has already decided.  ``None``
+                (default) — auto-detect from ``messages`` for direct engine
+                callers.
 
         Returns:
             Tuple of (
@@ -2546,12 +2575,20 @@ class VLMBatchedEngine(BaseEngine):
                 if image_count > 0:
                     image_message_ranges.append((idx, image_count))
 
-        # Strip partial field from messages (VLM always uses add_generation_prompt=True)
+        if is_partial is None:
+            # get_message_json() keeps only (role, content), so the flag has to
+            # be read from the pre-format messages for direct engine callers.
+            is_partial = detect_and_strip_partial(messages)
+        # Tool and reasoning_content turns are appended verbatim by
+        # _format_messages_for_vlm_template(), so a residual key can survive
+        # formatting; the chat template must never see the non-standard field.
         detect_and_strip_partial(formatted_messages)
         template_kwargs = {
             "tokenize": False,
-            "add_generation_prompt": True,
+            "add_generation_prompt": not is_partial,
         }
+        if is_partial:
+            template_kwargs["continue_final_message"] = True
         if self._enable_thinking is not None:
             template_kwargs["enable_thinking"] = self._enable_thinking
         # Per-model/request kwargs override global defaults (e.g. enable_thinking,
@@ -2579,7 +2616,9 @@ class VLMBatchedEngine(BaseEngine):
             prompt = template_target.apply_chat_template(
                 formatted_messages, **template_kwargs
             )
-        except ValueError:
+        except ValueError as exc:
+            if not _is_missing_chat_template_error(exc):
+                raise
             # Processor/tokenizer has apply_chat_template but no chat_template
             # set. Some OCR checkpoints (e.g. raw baidu/Unlimited-OCR) ship no
             # chat template at all. mlx-vlm's get_chat_template handles this by
@@ -2589,6 +2628,17 @@ class VLMBatchedEngine(BaseEngine):
             # plain rendering, so it subsumes the tokenizer fallback too.
             template_kwargs.pop("tokenize", None)
             template_kwargs.pop("add_generation_prompt", None)
+            # get_chat_template() has no continue_final_message equivalent, so
+            # partial mode cannot be honoured on this fallback. Drop the kwarg
+            # and say so rather than passing it through as an unknown argument.
+            template_kwargs.pop("continue_final_message", None)
+            if is_partial:
+                logger.warning(
+                    "Partial mode requested but %s exposes no chat template; "
+                    "mlx-vlm plain rendering always starts a new assistant "
+                    "turn, so the final message will not be continued.",
+                    self._model_name,
+                )
             prompt = get_chat_template(
                 self._processor,
                 formatted_messages,
@@ -2859,21 +2909,26 @@ class VLMBatchedEngine(BaseEngine):
         """Apply chat template for text-only messages (no images).
 
         Args:
-            is_partial: Accepted for API parity with BatchedEngine but not
-                acted upon — VLM always uses ``add_generation_prompt=True``.
-                The ``partial`` key is still cleaned from message dicts.
+            is_partial: Explicit partial-mode signal from the API server.
+                ``True``/``False`` — the server has already decided; the
+                ``partial`` key is cleaned from message dicts but no detection
+                is performed.  ``None`` (default) — auto-detect from messages
+                for direct engine callers.
         """
         if hasattr(self._tokenizer, "apply_chat_template"):
-            # Strip partial field (VLM always uses add_generation_prompt=True)
             if is_partial is None:
-                detect_and_strip_partial(messages)
+                is_partial = detect_and_strip_partial(messages)
             else:
+                # Server already resolved partial; just clean residual keys
+                # so the chat template never sees the non-standard field.
                 for msg in messages:
                     msg.pop("partial", None)
             template_kwargs = {
                 "tokenize": False,
-                "add_generation_prompt": True,
+                "add_generation_prompt": not is_partial,
             }
+            if is_partial:
+                template_kwargs["continue_final_message"] = True
             if tools:
                 template_kwargs["tools"] = tools
             if self._enable_thinking is not None:
@@ -2891,12 +2946,22 @@ class VLMBatchedEngine(BaseEngine):
                 template_kwargs.pop("tools", None)
                 template_kwargs.pop("enable_thinking", None)
                 return self._tokenizer.apply_chat_template(messages, **template_kwargs)
-            except ValueError:
+            except ValueError as exc:
+                if not _is_missing_chat_template_error(exc):
+                    raise
                 # Tokenizer exposes apply_chat_template but has no chat_template
                 # set (e.g. raw baidu/Unlimited-OCR ships none). Fall back to
                 # mlx-vlm's plain-message rendering, matching the vision path.
                 from mlx_vlm.prompt_utils import get_chat_template
 
+                if is_partial:
+                    logger.warning(
+                        "Partial mode requested but %s exposes no chat "
+                        "template; mlx-vlm plain rendering always starts a "
+                        "new assistant turn, so the final message will not "
+                        "be continued.",
+                        self._model_name,
+                    )
                 return get_chat_template(
                     self._processor,
                     messages,
@@ -3573,6 +3638,7 @@ class VLMBatchedEngine(BaseEngine):
         text_messages, images, audio = extract_images_from_messages(messages)
 
         ct_kwargs = kwargs.pop("chat_template_kwargs", None)
+        partial = kwargs.pop("is_partial", None)
 
         # Keep VLM-capable models on one prompt-rendering path, even before the
         # first image arrives. Otherwise the conversation switches prompt families
@@ -3592,6 +3658,7 @@ class VLMBatchedEngine(BaseEngine):
             audio=audio if audio else None,
             chat_template_kwargs=ct_kwargs,
             tools=template_tools,
+            is_partial=partial,
         )
 
         if images:
