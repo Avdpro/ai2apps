@@ -3181,6 +3181,7 @@ class Scheduler:
                 request_id=request.request_id,
                 loop_label="external",
                 kv_len=base_size + processed_tokens,
+                requested_step=prefill_step_size,
             )
             self._maybe_record_fixed_state_bytes(prompt_cache)
             # Enforcer-requested hard-pressure drain. The flag's normal
@@ -4127,6 +4128,7 @@ class Scheduler:
         request_id: str,
         loop_label: str,
         kv_len: int = 0,
+        requested_step: int | None = None,
     ) -> None:
         """Feed one chunk's measured transient into the EWMA tracker.
 
@@ -4140,6 +4142,13 @@ class Scheduler:
         better per-chunk signal was found, and anything sized from this number
         has to stay conservative. Keeping kv_len in the log is what made that
         analysis possible.
+
+        Under speed priority, only a complete requested step is representative
+        of the full-size chunks used for admission. A shorter tail or
+        boundary-alignment chunk must not replace the last full-step sample:
+        scaling its fixed/pool-heavy delta up to ``prefill_step_size`` can turn
+        a small residual allocation into a false multi-gigabyte admission
+        charge.
         """
         delta = post_bytes - pre_bytes
         min_chunk = max(1, self._prefill_min_chunk_tokens)
@@ -4161,6 +4170,21 @@ class Scheduler:
                 request_id,
                 n_tokens,
                 delta,
+            )
+            return
+        if (
+            getattr(self, "_prefill_speed_priority", False)
+            and requested_step is not None
+            and n_tokens < requested_step
+        ):
+            logger.debug(
+                "[throttle:%s] measure rid=%s n=%d delta=%.2fMB "
+                "(skipped: speed partial < requested_step=%d)",
+                loop_label,
+                request_id,
+                n_tokens,
+                delta / 1024**2,
+                requested_step,
             )
             return
         self._prefill_transient_tracker.update(
@@ -4408,6 +4432,7 @@ class Scheduler:
             request_id=state.request.request_id,
             loop_label="chunked_step",
             kv_len=state.base_size + state.tokens_processed,
+            requested_step=prefill_step_size,
         )
         self._maybe_record_fixed_state_bytes(state.cache)
         state.tokens_processed += n

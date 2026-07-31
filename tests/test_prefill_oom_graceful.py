@@ -527,6 +527,112 @@ def test_record_chunk_transient_marks_floor_samples_only():
     assert tracker.observed_max_bytes == 200 * 1024**2
 
 
+def test_record_chunk_transient_skips_partial_speed_sample():
+    """A speed tail must not replace the last representative full step."""
+    tracker = PrefillTransientTracker()
+    ns = SimpleNamespace(
+        _prefill_min_chunk_tokens=32,
+        _prefill_speed_priority=True,
+        _prefill_transient_tracker=tracker,
+        _PREFILL_TRANSIENT_SAFETY=Scheduler._PREFILL_TRANSIENT_SAFETY,
+        memory_monitor=None,
+    )
+    ns._record_chunk_transient = Scheduler._record_chunk_transient.__get__(
+        ns, Scheduler
+    )
+
+    full_delta = 512 * 1024**2
+    ns._record_chunk_transient(
+        2048,
+        0,
+        full_delta,
+        request_id="req-full",
+        loop_label="unit",
+        requested_step=2048,
+    )
+    baseline_ewma = tracker.bytes_per_token
+
+    ns._record_chunk_transient(
+        185,
+        0,
+        int(10497.1 * 1024 * 185),
+        request_id="req-tail",
+        loop_label="unit",
+        requested_step=2048,
+    )
+
+    assert tracker.samples == 1
+    assert tracker.bytes_per_token == baseline_ewma
+    assert tracker.last_n_tokens == 2048
+    assert tracker.last_delta_bytes == full_delta
+    predicted = Scheduler._predicted_chunk_transient(ns, 2048, 65_000)
+    assert predicted == pytest.approx(
+        full_delta * Scheduler._PREFILL_TRANSIENT_SAFETY
+    )
+
+
+def test_record_chunk_transient_keeps_full_speed_spike_as_last_sample():
+    """A same-size spike remains available to protect the next full step."""
+    tracker = PrefillTransientTracker()
+    ns = SimpleNamespace(
+        _prefill_min_chunk_tokens=32,
+        _prefill_speed_priority=True,
+        _prefill_transient_tracker=tracker,
+    )
+    ns._record_chunk_transient = Scheduler._record_chunk_transient.__get__(
+        ns, Scheduler
+    )
+
+    ns._record_chunk_transient(
+        2048,
+        0,
+        256 * 1024**2,
+        request_id="req-baseline",
+        loop_label="unit",
+        requested_step=2048,
+    )
+    spike = 3 * 1024**3
+    ns._record_chunk_transient(
+        2048,
+        0,
+        spike,
+        request_id="req-spike",
+        loop_label="unit",
+        requested_step=2048,
+    )
+
+    assert tracker.samples == 2
+    assert tracker.last_n_tokens == 2048
+    assert tracker.last_delta_bytes == spike
+
+
+def test_record_chunk_transient_keeps_partial_context_sample():
+    """Context priority still learns from adaptively reduced chunks."""
+    tracker = PrefillTransientTracker()
+    ns = SimpleNamespace(
+        _prefill_min_chunk_tokens=32,
+        _prefill_speed_priority=False,
+        _prefill_transient_tracker=tracker,
+    )
+    ns._record_chunk_transient = Scheduler._record_chunk_transient.__get__(
+        ns, Scheduler
+    )
+
+    partial_delta = 128 * 1024**2
+    ns._record_chunk_transient(
+        512,
+        0,
+        partial_delta,
+        request_id="req-context",
+        loop_label="unit",
+        requested_step=2048,
+    )
+
+    assert tracker.samples == 1
+    assert tracker.last_n_tokens == 512
+    assert tracker.last_delta_bytes == partial_delta
+
+
 def test_step_prefill_reclaims_before_first_guard():
     events = []
     request = SimpleNamespace(request_id="req-prefill")
@@ -579,6 +685,7 @@ def test_step_prefill_reclaims_before_first_guard():
         request_id="req-prefill",
         loop_label="chunked_step",
         kv_len=0,
+        requested_step=2,
     )
 
 
