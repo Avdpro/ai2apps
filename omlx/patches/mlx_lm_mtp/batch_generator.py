@@ -1654,7 +1654,13 @@ class _DepthController:
         if self.max_depth > 1:
             self._warmup.extend([0, 0, 0])
 
-    def observe(self, used: int, accepted: int, cycle_ms: float) -> None:
+    def observe(
+        self,
+        used: int,
+        accepted: int,
+        cycle_ms: float,
+        time_sample: bool = True,
+    ) -> None:
         self.cycles += 1
         used = max(0, min(int(used), self.max_depth))
         accepted = max(0, min(int(accepted), used))
@@ -1667,11 +1673,16 @@ class _DepthController:
                 break
         # Cost: wall-time-domain EMA with a one-off-spike guard, plus per-depth
         # ages so probes can target the estimate that is most stale.
+        # ``time_sample=False`` marks cycles carrying a one-off maintenance
+        # cost (a multi-block head keepalive refold) whose spike would bias
+        # this depth's estimate; the acceptance update above still applies.
         cycle_ms = max(0.0, float(cycle_ms))
-        self._update_time(used, cycle_ms)
+        if time_sample:
+            self._update_time(used, cycle_ms)
         for d in list(self.t_age):
             self.t_age[d] += cycle_ms
-        self.t_age[used] = 0.0
+        if time_sample:
+            self.t_age[used] = 0.0
         self._ms_probe += cycle_ms
         self._ms_explore += cycle_ms
 
@@ -2640,8 +2651,14 @@ def _run_verify_cycle_chain(gen_batch: Any, state: _MtpState) -> None:
     state.next_main = next_main
     state.stats.mtp_head_ms += (time.perf_counter() - t0) * 1000
     if state.controller is not None:
+        keepalive = bool(getattr(state.mtp_cache, "fold_keepalive", False))
+        if keepalive:
+            state.mtp_cache.fold_keepalive = False
         state.controller.observe(
-            k, m, (time.perf_counter() - cycle_t0) * 1000
+            k,
+            m,
+            (time.perf_counter() - cycle_t0) * 1000,
+            time_sample=not keepalive,
         )
 
 

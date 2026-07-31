@@ -324,7 +324,7 @@ def test_prompt_priming_capture_and_take(runtime):
     head_cache, hist = primed
     assert hist == 12  # 11 prompt pairs + seam pair
     assert head_cache.frontier == 12
-    assert head_cache.pos_base == 0
+    assert head_cache.base == [0] * len(head_cache)
     for j in range(model._omlx_mtp_depth):
         assert head_cache[j][0].offset == 12 - j, f"block {j} lag broken"
 
@@ -361,6 +361,99 @@ def test_prompt_priming_window_slides(runtime, monkeypatch):
     head_cache, hist = primed
     w_eff = 8
     assert hist == ctx.total + 1
-    assert head_cache.pos_base == hist - w_eff
+    assert all(b == hist - w_eff for b in head_cache.base)
     for j in range(model._omlx_mtp_depth):
         assert head_cache[j][0].offset == w_eff - j
+
+
+def test_keepalive_refolds_lagging_blocks(runtime):
+    """A shallow cruise lets deep blocks lag; once the lag crosses the
+    threshold the next fold refolds every reachable block from the ring
+    (no clamp, honest deep probes afterwards)."""
+    from omlx.patches.mlx_vlm_mtp.inkling_vlm_runtime import _KEEPALIVE_LAG
+
+    model = _mtp_language_model()
+    cache = model.make_mtp_cache()
+    assert cache.active_max == 3
+    table = _hidden_table(64, seed=13)
+    fired_at = None
+    for i in range(_KEEPALIVE_LAG + 6):
+        model.mtp_begin_cycle(cache, 1)
+        model.mtp_forward(
+            table[:, i : i + 1],
+            mx.array([[(i * 3 + 1) % 128]], dtype=mx.uint32),
+            cache,
+            return_hidden=True,
+            logits_keep=1,
+        )
+        if cache.fold_keepalive and fired_at is None:
+            fired_at = i
+            cache.fold_keepalive = False
+    assert fired_at is not None, "keepalive never fired"
+    f = cache.frontier
+    for j in range(3):
+        lag = (f - 1 - j) - cache.valid_rows[j]
+        assert lag < _KEEPALIVE_LAG, f"block {j} lag {lag} not bounded"
+    assert not cache.clamp_logged
+
+    # A deep cycle right after must run without any clamp and land all
+    # blocks aligned at the new frontier.
+    model.mtp_begin_cycle(cache, 3)
+    model.mtp_forward(
+        table[:, 40:41], mx.array([[9]], dtype=mx.uint32), cache,
+        return_hidden=True, logits_keep=1,
+    )
+    for j in range(1, 3):
+        model.mtp_forward(
+            cache.win_hid[:, -1:], mx.array([[5]], dtype=mx.uint32), cache,
+            return_hidden=True,
+        )
+    assert not cache.clamp_logged
+    assert [cache.base[j] + cache[j][0].offset for j in range(3)] == [
+        cache.frontier
+    ] * 3
+
+
+def test_keepalive_resets_unreachable_block(runtime):
+    """A block whose committed rows sit below the ring window restarts
+    fresh at the window start in its own base frame."""
+    model = _mtp_language_model()
+    cache = model.make_mtp_cache()
+    cache.active_max = 1  # suppress keepalive during the cruise
+    table = _hidden_table(96, seed=17)
+    for i in range(80):
+        model.mtp_begin_cycle(cache, 1)
+        model.mtp_forward(
+            table[:, i : i + 1],
+            mx.array([[(i * 5 + 2) % 128]], dtype=mx.uint32),
+            cache,
+            return_hidden=True,
+            logits_keep=1,
+        )
+    assert cache.frontier == 80
+    cache.active_max = 3
+    model.mtp_begin_cycle(cache, 1)
+    model.mtp_forward(
+        table[:, 80:81], mx.array([[7]], dtype=mx.uint32), cache,
+        return_hidden=True, logits_keep=1,
+    )
+    assert cache.fold_keepalive
+    # Blocks 1 and 2 could not reach back past the ring: fresh base at the
+    # window start, rows covering [w0, F_prev - j).
+    for j in (1, 2):
+        assert cache.base[j] > 0, f"block {j} was not reset"
+        assert cache.base[j] + cache[j][0].offset == 80 - j
+        assert cache.valid_rows[j] >= 80 - 2 - j
+
+
+def test_controller_observe_time_sample_gate():
+    from omlx.patches.mlx_lm_mtp.batch_generator import _DepthController
+
+    c = _DepthController(4)
+    c._warmup = []
+    c.observe(2, 1, 40.0)
+    t_before = dict(c.t)
+    c.observe(2, 1, 400.0, time_sample=False)
+    assert c.t == t_before, "keepalive cycle time leaked into t_est"
+    c.observe(2, 1, 40.0)
+    assert c.t != t_before or c.t[2] == t_before[2]

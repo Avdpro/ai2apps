@@ -80,6 +80,13 @@ _RING = 64
 # Rolling conv-input stash coverage for head blocks: max rewind = ring
 # + max chain depth margin (K-1 state rows are added at cache creation).
 _STASH_ROWS = _RING + 16
+# Keepalive: when any reachable block's committed rows lag the frontier
+# by this many pairs, the next fold refolds ALL reachable blocks over the
+# ring window (committed-only chained passes). Bounds reactivation cost
+# and keeps the controller's deep-depth probes honest — without it a
+# depth probe after a shallow cruise pays the whole gap refold (polluting
+# t_est) and drafts from stale rows (polluting the accept estimates).
+_KEEPALIVE_LAG = 32
 
 _ATTN = {
     "wq_du": "q_proj",
@@ -108,12 +115,18 @@ class _InklingMTPCacheList(list):
     """
 
     frontier: int = 0
-    pos_base: int = 0
+    # Per-block logical index of buffer row 0. Blocks usually share one
+    # origin, but a keepalive RESET restarts a hopelessly lagging block
+    # at the current window start, moving only its base — attention is
+    # buffer-relative (shift-invariant distances), so bases may diverge.
+    base = None  # list[int]
     # -1 => the next mtp_forward call is the cycle fold (pass 0);
     # mtp_begin_cycle resets it, chain calls increment it.
     chain_step: int = -1
     cycle_depth: int = 1
+    active_max: int = 1
     sconv_k: int = 4
+    fold_keepalive: bool = False
     # Per-block committed-valid row counts (logical). Rows past this were
     # written from draft tokens and stay provisional until refolded —
     # tracked explicitly because a block skipped by lower-depth cycles
@@ -480,10 +493,84 @@ def _patch_language_model(inkling_lang: Any) -> None:
         mtp_cache.cycle_depth = max(1, min(int(depth), len(self.mtp.blocks)))
         mtp_cache.chain_step = -1
 
+    def _mtp_chained_fold(self, cache, hid_win, tok_win, blocks_n):
+        """Committed-only chained fold (the priming shape): pass j covers
+        the window minus its last j slots, token stream shifted by j."""
+        win = hid_win
+        length = int(tok_win.shape[1])
+        for j in range(blocks_n):
+            cols = length - j
+            if cols <= 0:
+                break
+            win = self._mtp_run_block(j, cache[j], win[:, :cols], tok_win[:, j:])
+        return win
+
+    def _mtp_keepalive(self, cache, blocks_n):
+        """Refold every reachable block over the ring window so none lags
+        the frontier. Blocks whose committed rows cannot reach the window
+        start (stale below it, unrewindable, or holed) are RESET: their
+        cache restarts fresh at the window start with its own base."""
+        f = cache.frontier
+        k = cache.sconv_k
+        ring_len = int(cache.ring_tok.shape[1])
+        w0 = max(min(cache.valid_rows[:blocks_n]), f - ring_len, 0)
+        for j in range(blocks_n):
+            kv, conv = cache[j][0], cache[j][1]
+            end_j = cache.base[j] + kv.offset
+            r = end_j - w0
+            stash = getattr(conv, "_omlx_verify_xp", None)
+            cap = 0
+            if stash:
+                cap = min(int(x.shape[1]) for x in stash.values()) - (k - 1)
+            if r == 0 and cache.valid_rows[j] >= w0:
+                continue
+            if r > 0 and r <= cap and cache.valid_rows[j] >= w0:
+                for idx, roll in stash.items():
+                    trimmed = roll[:, : roll.shape[1] - r, :]
+                    conv[idx] = trimmed[:, -(k - 1) :, :]
+                    stash[idx] = trimmed
+                kv.trim(r)
+                continue
+            # Reset: stale rows below the window, a hole, or an
+            # unrewindable gap. Fresh start at w0 in this block's own
+            # base frame (draft quality only — verify stays exact).
+            if kv.offset:
+                kv.trim(kv.offset)
+            for idx in range(len(getattr(conv, "cache", []) or [])):
+                conv[idx] = None
+            if stash:
+                stash.clear()
+            cache.base[j] = w0
+        length = f - w0
+        self._mtp_chained_fold(
+            cache,
+            cache.ring_hid[:, -length:],
+            cache.ring_tok[:, -length:],
+            blocks_n,
+        )
+        for j in range(blocks_n):
+            cache.valid_rows[j] = max(cache.valid_rows[j], f - 1 - j)
+        cache.fold_keepalive = True
+
     def _mtp_fold(self, cache, hidden_states, next_token_ids):
         """Cycle pass 0: trim provisional rows, refold the gap, run block 0
         over the uniform window ``[w0, F_new)``."""
         n = int(next_token_ids.shape[1])
+        if cache.valid_rows is None:
+            cache.valid_rows = [0] * len(cache)
+        if cache.base is None:
+            cache.base = [0] * len(cache)
+
+        # Keepalive check on the OLD frontier, before the ring moves.
+        reach = max(1, min(int(cache.active_max), len(cache)))
+        if reach > 1 and cache.frontier > 0 and cache.ring_tok is not None:
+            lag = max(
+                (cache.frontier - 1 - j) - cache.valid_rows[j]
+                for j in range(reach)
+            )
+            if lag >= _KEEPALIVE_LAG:
+                self._mtp_keepalive(cache, reach)
+
         tok_row = next_token_ids.reshape(1, n)
         if cache.ring_tok is None:
             cache.ring_tok = tok_row
@@ -500,8 +587,6 @@ def _patch_language_model(inkling_lang: Any) -> None:
         f_new = cache.frontier + n
         active = max(1, min(cache.cycle_depth, len(cache)))
         k = cache.sconv_k
-        if cache.valid_rows is None:
-            cache.valid_rows = [0] * len(cache)
         w0 = f_new - 1
         floor = f_new - int(cache.ring_tok.shape[1])
         for j in range(active):
@@ -512,10 +597,11 @@ def _patch_language_model(inkling_lang: Any) -> None:
                 cap = 0
                 if stash:
                     cap = min(int(x.shape[1]) for x in stash.values()) - (k - 1)
-                floor = max(floor, cache.pos_base + kv.offset - cap)
+                floor = max(floor, cache.base[j] + kv.offset - cap)
         if floor > w0:
             # Ring/stash-bounded clamp: deep blocks keep some stale
             # provisional rows. Draft quality only — verify stays exact.
+            # Rare with keepalive bounding the lags.
             if not cache.clamp_logged:
                 logger.debug(
                     "inkling MTP fold clamped: w0 %d -> %d", w0, floor
@@ -524,7 +610,7 @@ def _patch_language_model(inkling_lang: Any) -> None:
             w0 = floor
         for j in range(active):
             kv, conv = cache[j][0], cache[j][1]
-            r = cache.pos_base + kv.offset - w0
+            r = cache.base[j] + kv.offset - w0
             if r <= 0:
                 continue
             stash = conv._omlx_verify_xp
@@ -611,6 +697,11 @@ def _patch_language_model(inkling_lang: Any) -> None:
         k = int(getattr(self.config, "sconv_kernel_size", 4) or 4)
         cache.sconv_k = k
         cache.valid_rows = [0] * len(cache)
+        cache.base = [0] * len(cache)
+        # Keepalive reach: the deepest block the controller can ever use.
+        cache.active_max = max(
+            1, min(int(getattr(self, "_omlx_mtp_depth", 1)), len(cache))
+        )
         for cl in cache:
             # Rolling conv-input stash (vendored conv honors this) so the
             # fold prologue can rewind provisional rows across cycles.
@@ -684,17 +775,10 @@ def _patch_language_model(inkling_lang: Any) -> None:
             head_cache = self.make_mtp_cache()
             if not len(head_cache):
                 return None
-            active = max(1, min(int(getattr(self, "_omlx_mtp_depth", 1)), len(head_cache)))
-            win_hid = hid
-            for j in range(active):
-                cols = w_eff - j
-                if cols <= 0:
-                    break
-                win_hid = self._mtp_run_block(
-                    j, head_cache[j], win_hid[:, :cols], tok[:, j:]
-                )
+            active = head_cache.active_max
+            self._mtp_chained_fold(head_cache, hid, tok, active)
             head_cache.frontier = f
-            head_cache.pos_base = f - w_eff
+            head_cache.base = [f - w_eff] * len(head_cache)
             head_cache.valid_rows = [
                 max(0, f - 1 - j) if j < active else 0
                 for j in range(len(head_cache))
@@ -717,6 +801,8 @@ def _patch_language_model(inkling_lang: Any) -> None:
     cls.__call__ = __call__
     cls._mtp_readout = _mtp_readout
     cls._mtp_run_block = _mtp_run_block
+    cls._mtp_chained_fold = _mtp_chained_fold
+    cls._mtp_keepalive = _mtp_keepalive
     cls._mtp_fold = _mtp_fold
     cls._mtp_chain = _mtp_chain
     cls.mtp_begin_cycle = mtp_begin_cycle
