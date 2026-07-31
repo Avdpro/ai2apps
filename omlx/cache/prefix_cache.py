@@ -1239,6 +1239,17 @@ class BlockAwarePrefixCache(CacheManager):
                 elif cache_type_name == "CacheList":
                     state = layer_state["state"]  # List[sub_state]
                     sub_class_names = layer_state.get("sub_class_names") or []
+                    if not sub_class_names:
+                        # Snapshot entries and older extract paths carry the
+                        # sub class names only inside the composite
+                        # meta_state ([class_names], [sub_meta_states]).
+                        meta = layer_state.get("meta_state")
+                        if (
+                            isinstance(meta, (list, tuple))
+                            and len(meta) >= 2
+                            and isinstance(meta[0], (list, tuple))
+                        ):
+                            sub_class_names = [str(n) for n in meta[0]]
                     if not isinstance(state, list) or len(state) == 0:
                         block_slices.append((mx.zeros((1,)), mx.zeros((1,))))
                         continue
@@ -1881,6 +1892,27 @@ class BlockAwarePrefixCache(CacheManager):
                         )
                         break
 
+                    # Expectation-gated signature fields (TurboQuant depth,
+                    # CacheList sub composition). Hot-cache / pending-write
+                    # loads bypass the manager's index-scan compatibility
+                    # check, so the restore loop must gate them here.
+                    signature_gate = getattr(
+                        self.paged_ssd_cache, "is_signature_compatible", None
+                    )
+                    if callable(signature_gate) and not signature_gate(
+                        block_metadata.get("cache_signature", "")
+                    ):
+                        logger.warning(
+                            "Cache signature mismatch at block %s "
+                            "(TurboQuant depth or CacheList sub composition). "
+                            "Truncating cached prefix before this block.",
+                            block_id,
+                        )
+                        self._forget_incompatible_ssd_block(
+                            block.block_hash, block.block_id
+                        )
+                        break
+
                     # Track meta_states from first and last blocks
                     # Non-sliceable caches (RotatingKVCache) need last block's meta_state
                     block_layer_meta_states = block_metadata.get("layer_meta_states")
@@ -2079,6 +2111,7 @@ class BlockAwarePrefixCache(CacheManager):
                     non_sliceable_sub_classes = {
                         "PoolingCache",
                         "ArraysCache",
+                        "SizedArraysCache",
                         "BatchPoolingCache",
                     }
 
@@ -2088,25 +2121,42 @@ class BlockAwarePrefixCache(CacheManager):
                             or CacheTypeRegistry.is_rotating_family(class_name)
                         )
 
-                    if len(cl_block_data) > 1:
-                        # Per-block storage: concatenate sliceable sub-caches
-                        # element-wise; pick last block for non-sliceable.
+                    # The store path (_extract_block_tensor_slice) picks ONE
+                    # storage mode for the whole layer: per-block slices only
+                    # when every sub-state is a >=2-element tuple of 4D
+                    # sequence tensors and no sub is a known non-sliceable
+                    # class; otherwise EVERY block stores the full cumulative
+                    # state of ALL subs at that block's boundary. Restore
+                    # mirrors that layer-level decision here. Dispatching per
+                    # sub (concat KVCache subs, last-block the rest) silently
+                    # concatenated a mixed CacheList's cumulative KV snapshots
+                    # into a duplicated sequence (e.g. inkling-style
+                    # CacheList(KVCache, ArraysCache): 4+8+12 tokens instead
+                    # of 12).
+                    any_non_sliceable_sub = any(
+                        _is_non_sliceable_sub_class(
+                            sub_class_names_for_layer[j]
+                            if j < len(sub_class_names_for_layer)
+                            else ""
+                        )
+                        for j in range(num_sub_caches)
+                    )
+                    last_block_elements = [
+                        _sub_state_elements(s) for s in cl_block_data[-1]
+                    ]
+                    stored_slice_mode = not any_non_sliceable_sub and all(
+                        elems is not None
+                        and len(elems) >= 2
+                        and hasattr(elems[0], "shape")
+                        and len(elems[0].shape) == 4
+                        for elems in last_block_elements
+                    )
+
+                    if len(cl_block_data) > 1 and stored_slice_mode:
+                        # Per-block slices: concatenate every sub along the
+                        # sequence axis into the full sequence.
                         concatenated_sub_states = []
                         for j in range(num_sub_caches):
-                            sub_class = (
-                                sub_class_names_for_layer[j]
-                                if j < len(sub_class_names_for_layer)
-                                else ""
-                            )
-                            if _is_non_sliceable_sub_class(sub_class):
-                                # Each saved block already snapshots the
-                                # full state at its boundary — pick the
-                                # last block, which corresponds to the
-                                # latest boundary of the matched prefix.
-                                concatenated_sub_states.append(
-                                    tuple(_sub_state_elements(cl_block_data[-1][j]))
-                                )
-                                continue
                             per_block_elements = [
                                 _sub_state_elements(bd[j]) for bd in cl_block_data
                             ]
@@ -2139,11 +2189,15 @@ class BlockAwarePrefixCache(CacheManager):
                                     cat_elements.append(column[-1])
                             concatenated_sub_states.append(tuple(cat_elements))
                     else:
-                        # Single block: unwrap markers to raw tuples so the
-                        # downstream handler.reconstruct_cache → sub_handler.
+                        # Cumulative snapshots (or a single block): the last
+                        # matched block already holds the complete state of
+                        # every sub at its boundary — a partial prefix match
+                        # restores that boundary's state exactly. Markers are
+                        # unwrapped to raw tuples so the downstream
+                        # handler.reconstruct_cache → sub_handler.
                         # deserialize_state pipeline sees uniform N-tuples.
                         concatenated_sub_states = [
-                            tuple(_sub_state_elements(s)) for s in cl_block_data[0]
+                            tuple(elems) for elems in last_block_elements
                         ]
 
                     # Build meta_state with correct offsets for reconstructed

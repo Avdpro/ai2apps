@@ -344,6 +344,12 @@ def take_primed(
     ``(mtp_cache, hist_offset)`` — or None, in which case the caller keeps
     the current unprimed behaviour.
     """
+    # Hosts with their own priming shape (inkling's sliding-window
+    # multi-block fold) own the whole activation seam.
+    for host in _host_candidates(model):
+        hook = getattr(host, "mtp_take_primed", None)
+        if callable(hook):
+            return hook(cache, main_tok)
     ctx = _find_ctx(model)
     if ctx is None:
         return None

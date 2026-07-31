@@ -75,6 +75,26 @@ def register_tiled_prefill_head_dim(
     _SDPA_TILED_MIN_KV_LEN = int(min_kv_len)
 
 
+# Bytes/elem of a model-built additive attention bias materialized as a
+# full [n_q_heads, query_tokens, kv_len] tensor per attention call (e.g.
+# inkling's banded relative-position mask). None when the loaded model
+# builds no such tensor. The fused-SDPA head_dim check cannot see this
+# allocation — it happens in model code before SDPA — so admission would
+# otherwise under-count exactly the long-context prefills that OOM.
+_ATTENTION_BIAS_TRANSIENT_DTYPE_SIZE: float | None = None
+
+
+def register_attention_bias_transient(dtype_size: float | None) -> None:
+    """Register (or clear with ``None``) a per-call additive attention-bias
+    materialization so prefill admission prices it. Call in lockstep with
+    model load/swap: the setting is process-wide, like the tiled head_dim
+    registry above."""
+    global _ATTENTION_BIAS_TRANSIENT_DTYPE_SIZE
+    _ATTENTION_BIAS_TRANSIENT_DTYPE_SIZE = (
+        float(dtype_size) if dtype_size else None
+    )
+
+
 def estimate_unfused_sdpa_call_bytes(
     n_q_heads: int,
     query_tokens: int,
@@ -622,9 +642,17 @@ class MemoryMonitor:
         query_tokens = int(query_tokens)
         kv_len = max(int(kv_len), 0)
 
+        # Model-built additive bias (e.g. inkling's banded mask) is
+        # materialized regardless of which SDPA route runs.
+        bias = 0
+        if _ATTENTION_BIAS_TRANSIENT_DTYPE_SIZE is not None:
+            bias = int(
+                n_q * query_tokens * kv_len * _ATTENTION_BIAS_TRANSIENT_DTYPE_SIZE
+            )
+
         output = n_q * query_tokens * hd * 4
         if self._uses_fused_sdpa(query_tokens, kv_len):
-            return output
+            return output + bias
 
         # O(L) tiled-prefill kernel active for this head_dim (e.g. the head_dim
         # 256 sdpa256 patch): the score matrix is never materialized. The peak
@@ -639,10 +667,13 @@ class MemoryMonitor:
             and kv_len >= _SDPA_TILED_MIN_KV_LEN
         ):
             tile_scores = n_q * query_tokens * min(kv_tile, kv_len) * self._score_dtype_size
-            return output + tile_scores
+            return output + tile_scores + bias
 
-        return estimate_unfused_sdpa_call_bytes(
-            n_q, query_tokens, kv_len, hd, self._score_dtype_size
+        return (
+            estimate_unfused_sdpa_call_bytes(
+                n_q, query_tokens, kv_len, hd, self._score_dtype_size
+            )
+            + bias
         )
 
     def estimate_prefill_peak_bytes(

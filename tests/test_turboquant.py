@@ -937,10 +937,16 @@ def test_turboquant_eligible_gate():
     assert elig([KVCache(), ChunkedKVCache(8192)]) is False
     assert elig([KVCache(), RotatingKVCache(32)]) is True
     assert elig([QuantizedKVCache()]) is False
-    assert elig([CacheList(KVCache(), KVCache())]) is True
     assert elig([ArraysCache(size=2), KVCache()]) is True
-    assert elig([CacheList(ArraysCache(size=2), KVCache())]) is True
-    assert elig([CacheList(KVCache(), RotatingKVCache(32))]) is True
+    # A KVCache member inside a CacheList would convert to a TQ cache the
+    # prefix/SSD store paths cannot serialize (layer dispatches on
+    # "CacheList", no TQ sub-state path) — such layers are excluded until
+    # CacheList-level TQ serialization exists. Members without a KVCache
+    # stay eligible (nothing converts, harmless).
+    assert elig([CacheList(KVCache(), KVCache())]) is False
+    assert elig([CacheList(ArraysCache(size=2), KVCache())]) is False
+    assert elig([CacheList(KVCache(), RotatingKVCache(32))]) is False
+    assert elig([CacheList(RotatingKVCache(32))]) is True
 
 
 def test_turboquant_convert_hybrid_cache_keeps_rotating_passthrough():

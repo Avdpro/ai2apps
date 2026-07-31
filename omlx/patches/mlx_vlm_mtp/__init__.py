@@ -65,12 +65,14 @@ def apply_mlx_vlm_mtp_patch() -> bool:
     handled by each sub-patcher via class-level flags — no module-wide
     cache flag, keeping behavior consistent with mlx_lm_mtp.
     """
-    from . import qwen35_moe_vlm_model, qwen35_vlm_model
+    from . import inkling_vlm_runtime, qwen35_moe_vlm_model, qwen35_vlm_model
 
     if not qwen35_vlm_model.apply():
         logger.debug("Qwen3.5 VLM MTP sanitize patch did not apply")
     if not qwen35_moe_vlm_model.apply():
         logger.debug("Qwen3.5 MoE VLM MTP sanitize patch did not apply")
+    if not inkling_vlm_runtime.apply_sanitize():
+        logger.debug("Inkling MTP sanitize hook did not apply")
 
     return True
 
@@ -93,7 +95,12 @@ def apply_mlx_vlm_mtp_runtime_patch() -> bool:
     Should be called *before* ``mlx_vlm.utils.load(...)`` so the
     instantiated LanguageModel picks up the patched ``__init__``.
     """
-    from . import gemma4_vlm_runtime, qwen35_moe_vlm_runtime, qwen35_vlm_runtime
+    from . import (
+        gemma4_vlm_runtime,
+        inkling_vlm_runtime,
+        qwen35_moe_vlm_runtime,
+        qwen35_vlm_runtime,
+    )
 
     moe_ok = qwen35_moe_vlm_runtime.apply()
     if not moe_ok:
@@ -104,5 +111,8 @@ def apply_mlx_vlm_mtp_runtime_patch() -> bool:
     gemma4_ok = gemma4_vlm_runtime.apply()
     if not gemma4_ok:
         logger.debug("Gemma 4 VLM runtime MTP patch did not apply")
+    inkling_ok = inkling_vlm_runtime.apply()
+    if not inkling_ok:
+        logger.debug("Inkling VLM runtime MTP patch did not apply")
 
-    return moe_ok or dense_ok or gemma4_ok
+    return moe_ok or dense_ok or gemma4_ok or inkling_ok

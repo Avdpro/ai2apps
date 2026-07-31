@@ -65,6 +65,8 @@ VLM_MODEL_TYPES = {
     "phi4_siglip",
     "phi4mm",
     "youtu_vl",
+    "inkling",
+    "inkling_mm_model",  # config model_type of Inkling Small checkpoints
 }
 
 # Text-only model families that are implemented in mlx-vlm rather than
@@ -157,6 +159,7 @@ VLM_ARCHITECTURES = {
     "LlavaQwen2ForCausalLM",  # apple/FastVLM (all sizes)
     "Florence2ForConditionalGeneration",
     "UnlimitedOCRForCausalLM",  # baidu/Unlimited-OCR
+    "InklingForConditionalGeneration",  # thinkingmachines/Inkling-Small
 }
 
 # Known embedding model types from mlx-embeddings

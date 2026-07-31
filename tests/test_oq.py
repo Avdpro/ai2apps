@@ -5629,3 +5629,367 @@ class TestCalibrationFootprint:
         }
 
         assert _calibration_footprint_bytes(index, 100, config) == 400
+
+
+# =============================================================================
+# Inkling (Thinking Machines) support
+# =============================================================================
+
+
+@pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+class TestInklingQuantPredicate:
+    """Predicate behavior on inkling's sanitized tensor names."""
+
+    @pytest.fixture
+    def inkling_config(self):
+        return {
+            "model_type": "inkling_mm_model",
+            "vision_config": {"patch_size": 40},
+            "audio_config": {"n_mel_bins": 80},
+            "text_config": {
+                "hidden_size": 4096,
+                "num_hidden_layers": 42,
+                "n_routed_experts": 256,
+            },
+        }
+
+    @pytest.fixture
+    def module(self):
+        return MagicMock(spec=[])
+
+    def test_sconv_conv_weights_skipped(self, inkling_config, module):
+        # nn.Conv1d has no to_quantized(); a quantized emission would break
+        # the mlx-vlm load-time class_predicate.
+        for name in (
+            "language_model.model.layers.3.self_attn.k_sconv.conv.weight",
+            "language_model.model.layers.3.self_attn.v_sconv.conv.weight",
+            "language_model.model.layers.3.attn_sconv.conv.weight",
+            "language_model.model.layers.3.mlp_sconv.conv.weight",
+        ):
+            assert (
+                universal_quant_predicate(name, module, inkling_config) is False
+            ), name
+
+    def test_routed_experts_quantized(self, inkling_config, module):
+        result = universal_quant_predicate(
+            "language_model.model.layers.3.mlp.switch_mlp.gate_proj.weight",
+            module,
+            inkling_config,
+        )
+        assert result is not False
+
+    def test_shared_experts_q8(self, inkling_config, module):
+        result = universal_quant_predicate(
+            "language_model.model.layers.3.mlp.shared_experts.gate_proj.weight",
+            module,
+            inkling_config,
+        )
+        assert isinstance(result, dict) and result["bits"] == 8
+
+    def test_towers_skipped(self, inkling_config, module):
+        assert (
+            universal_quant_predicate(
+                "vision_tower.encoder_layers.0.projection.weight",
+                module,
+                inkling_config,
+            )
+            is False
+        )
+        assert (
+            universal_quant_predicate(
+                "audio_tower.embed_audio_tokens.weight", module, inkling_config
+            )
+            is False
+        )
+
+    def test_router_and_scales_not_tensor_candidates(self):
+        # gate_weight / rel_proj / gate_scale lack the ".weight" suffix and
+        # never reach the predicate.
+        assert not _should_quantize_tensor(
+            "language_model.model.layers.3.mlp.gate_weight", (258, 4096)
+        )
+        assert not _should_quantize_tensor(
+            "language_model.model.layers.3.self_attn.rel_proj", (16, 1024)
+        )
+        assert not _should_quantize_tensor(
+            "language_model.model.layers.3.mlp.switch_mlp.gate_scale", (256,)
+        )
+
+
+@pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+class TestInklingSanitizeDiscovery:
+    """The vendored inkling sanitize must be replayable by the streaming
+    sanitize-plan discovery (expert buffering + interleaved w13 split +
+    synthesized identity scales + sconv transpose)."""
+
+    def _plan(self, tmp_path):
+        import importlib
+
+        from omlx.patches.mlx_vlm_inkling_compat import (
+            apply_mlx_vlm_inkling_compat_patch,
+        )
+
+        apply_mlx_vlm_inkling_compat_patch()
+        inkling_mod = importlib.import_module("mlx_vlm.models.inkling.inkling")
+        model = inkling_mod.Model.__new__(inkling_mod.Model)
+
+        hidden, inter, n_experts = 8, 4, 2
+        tensors = {
+            "model.llm.layers.1.mlp.experts.w13_weight": np.zeros(
+                (n_experts, 2 * inter, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.mlp.experts.w2_weight": np.zeros(
+                (n_experts, hidden, inter), dtype=np.float16
+            ),
+            "model.llm.layers.1.mlp.shared_experts.shared_w13_weight": np.zeros(
+                (2 * inter, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.mlp.gate.weight": np.zeros(
+                (n_experts + 1, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.attn.wq_du.weight": np.zeros(
+                (hidden, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.attn.k_sconv.weight": np.zeros(
+                (hidden, 4, 1), dtype=np.float16
+            ),
+            "model.llm.embed.weight": np.zeros((16, hidden), dtype=np.float16),
+            "model.mtp.layers.0.input_proj.weight": np.zeros(
+                (4, 4), dtype=np.float16
+            ),
+        }
+        path = tmp_path / "weights.safetensors"
+        _write_safetensors(str(path), tensors)
+        idx = _LazyTensorIndex([str(path)])
+
+        def sanitize_fn(weights):
+            return inkling_mod.Model.sanitize(model, weights)
+
+        return _discover_sanitize_plan(sanitize_fn, idx)
+
+    def test_plan_is_replayable(self, tmp_path):
+        plan = self._plan(tmp_path)
+        assert plan is not None
+
+        prefix = "language_model.model.layers.1."
+        gate = plan[prefix + "mlp.switch_mlp.gate_proj.weight"]
+        assert gate["sources"] == ["model.llm.layers.1.mlp.experts.w13_weight"]
+        assert tuple(gate["shape"]) == (2, 4, 8)
+
+        down = plan[prefix + "mlp.switch_mlp.down_proj.weight"]
+        assert down["transform"] == "passthrough"
+
+        # Synthesized identity scales become literal plan entries.
+        assert plan[prefix + "mlp.switch_mlp.gate_scale"]["transform"] == "literal"
+        assert plan[prefix + "mlp.switch_mlp.out_scale"]["transform"] == "literal"
+
+        sconv = plan[prefix + "self_attn.k_sconv.conv.weight"]
+        assert tuple(sconv["shape"]) == (8, 1, 4)
+
+        assert plan["language_model.model.embed_tokens.weight"]["transform"] == (
+            "passthrough"
+        )
+        # MTP keys are either dropped (no Lightning MTP hook installed) or
+        # mapped to language_model.mtp.* (hook active, process-wide once any
+        # MTP-aware sanitize ran); raw model.mtp.* names must never leak.
+        assert not any(k.startswith("model.mtp") for k in plan)
+
+    def test_plan_materializes_interleaved_split(self, tmp_path):
+        """Replaying the discovered plan must reproduce the de-interleave
+        exactly (gate = even rows, up = odd rows of w13)."""
+        import importlib
+
+        from omlx.patches.mlx_vlm_inkling_compat import (
+            apply_mlx_vlm_inkling_compat_patch,
+        )
+
+        apply_mlx_vlm_inkling_compat_patch()
+        inkling_mod = importlib.import_module("mlx_vlm.models.inkling.inkling")
+        model = inkling_mod.Model.__new__(inkling_mod.Model)
+
+        hidden, inter, n_experts = 8, 4, 2
+        w13 = (
+            np.arange(n_experts * 2 * inter * hidden)
+            .reshape(n_experts, 2 * inter, hidden)
+            .astype(np.float16)
+        )
+        tensors = {
+            "model.llm.layers.1.mlp.experts.w13_weight": w13,
+            "model.llm.layers.1.mlp.experts.w2_weight": np.ones(
+                (n_experts, hidden, inter), dtype=np.float16
+            ),
+        }
+        path = tmp_path / "weights.safetensors"
+        _write_safetensors(str(path), tensors)
+        idx = _LazyTensorIndex([str(path)])
+
+        def sanitize_fn(weights):
+            return inkling_mod.Model.sanitize(model, weights)
+
+        plan = _discover_sanitize_plan(sanitize_fn, idx)
+        materialized = _DiscoveredPlan(plan, idx)
+
+        prefix = "language_model.model.layers.1.mlp.switch_mlp."
+        gate = np.asarray(materialized.pop(prefix + "gate_proj.weight"))
+        up = np.asarray(materialized.pop(prefix + "up_proj.weight"))
+        ref = w13.reshape(n_experts, inter, 2, hidden)
+        np.testing.assert_array_equal(gate, ref[:, :, 0, :])
+        np.testing.assert_array_equal(up, ref[:, :, 1, :])
+        scale = np.asarray(materialized.pop(prefix + "gate_scale"))
+        np.testing.assert_array_equal(scale, np.ones(n_experts, dtype=np.float32))
+
+
+@pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+class TestInklingLayerWalk:
+    """Calibration layer-walk wiring for inkling."""
+
+    def _model(self):
+        import importlib
+
+        from omlx.patches.mlx_vlm_inkling_compat import (
+            apply_mlx_vlm_inkling_compat_patch,
+        )
+
+        apply_mlx_vlm_inkling_compat_patch()
+        compat = importlib.import_module("tests.test_mlx_vlm_inkling_compat")
+        return compat._tiny_language_model()
+
+    def test_prepare_layer_inputs_uses_inkling_branch(self):
+        from types import SimpleNamespace
+
+        from omlx.oq import _prepare_layer_inputs
+
+        lm = self._model()
+        wrapper = SimpleNamespace(model_type="inkling_mm_model")
+        inputs = mx.random.normal((1, 6, 32))
+        calib = mx.zeros((1, 6), dtype=mx.int32)
+        out_inputs, masks, state = _prepare_layer_inputs(
+            wrapper, lm.model.layers, calib, inputs
+        )
+        assert out_inputs is inputs
+        assert masks == [None, None]
+        assert isinstance(state, dict) and state.get("kind") == "inkling"
+
+    def test_forward_layer_result_runs_block(self):
+        from omlx.oq import _forward_layer_result
+
+        lm = self._model()
+        inputs = mx.random.normal((1, 6, 32))
+        out, aux = _forward_layer_result(
+            lm.model.layers[0], inputs, None, {"kind": "inkling"}
+        )
+        assert out is not None
+        assert out.shape == (1, 6, 32)
+
+    def test_find_model_layers_routes_through_embed_norm(self):
+        from types import SimpleNamespace
+
+        from omlx.oq import _find_model_layers
+
+        lm = self._model()
+        vlm = SimpleNamespace(language_model=lm)
+        embed_fn, layers = _find_model_layers(vlm)
+        assert layers is lm.model.layers
+        # use_embed_norm=True checkpoints must calibrate through
+        # InklingModel.embed(), not raw embed_tokens.
+        assert embed_fn == lm.model.embed
+        tokens = mx.array([[1, 2, 3]])
+        normed = embed_fn(tokens)
+        raw = lm.model.embed_tokens(tokens)
+        assert float(mx.max(mx.abs(normed - raw))) > 0.0
+
+    def test_oqe_capture_matches_vendored_switch_children(self):
+        from omlx.oq import _OQE_SWITCH_LINEAR_CLASSES
+
+        lm = self._model()
+        sparse = lm.model.layers[1].mlp
+        assert type(sparse.switch_mlp.gate_proj).__name__ in (
+            _OQE_SWITCH_LINEAR_CLASSES
+        )
+        assert type(sparse.shared_experts.down_proj).__name__ in (
+            _OQE_SWITCH_LINEAR_CLASSES
+        )
+
+
+@pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+class TestInklingModelSanitizer:
+    def test_vlm_sanitize_chain_handles_helper_methods(self):
+        """The oQ VLM sanitize chain runs Model.sanitize on a _Proxy, and
+        inkling's sanitize calls sibling instance methods — the proxy must
+        resolve them from the model class (regression: proxy AttributeError
+        aborted proxy builds for sensitivity/imatrix)."""
+        from omlx.oq import _build_model_sanitizer
+
+        config = {
+            "model_type": "inkling_mm_model",
+            "architectures": ["InklingForConditionalGeneration"],
+            "vision_config": {"patch_size": 40},
+            "audio_config": {"n_mel_bins": 80},
+            "text_config": {"hidden_size": 8, "num_hidden_layers": 2},
+        }
+        sanitize_fn = _build_model_sanitizer(config)
+        assert sanitize_fn is not None
+
+        hidden, inter, n_experts = 8, 4, 2
+        weights = {
+            "model.llm.layers.1.mlp.experts.w13_weight": mx.zeros(
+                (n_experts, 2 * inter, hidden)
+            ),
+            "model.llm.layers.1.mlp.experts.w2_weight": mx.zeros(
+                (n_experts, hidden, inter)
+            ),
+            "model.llm.layers.1.attn.wq_du.weight": mx.zeros((hidden, hidden)),
+            "model.llm.embed.weight": mx.zeros((16, hidden)),
+        }
+        out = sanitize_fn(weights)
+        prefix = "language_model.model.layers.1."
+        assert prefix + "mlp.switch_mlp.gate_proj.weight" in out
+        assert prefix + "self_attn.q_proj.weight" in out
+        assert "language_model.model.embed_tokens.weight" in out
+
+
+@pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
+class TestEstimateBpwPostSanitizeNames:
+    def test_inkling_style_fused_source_names_are_priced(self, tmp_path):
+        """Source names without a .weight suffix (experts.w13_weight) must
+        be priced through the sanitize plan — the raw scan treated ~97% of
+        an inkling checkpoint as fp16 passthrough (15.8 bpw)."""
+        from omlx.patches.mlx_vlm_inkling_compat import (
+            apply_mlx_vlm_inkling_compat_patch,
+        )
+
+        apply_mlx_vlm_inkling_compat_patch()
+
+        src = tmp_path / "Inkling-Tiny"
+        src.mkdir()
+        hidden, inter, n_experts = 64, 64, 4
+        tensors = {
+            "model.llm.layers.1.mlp.experts.w13_weight": np.zeros(
+                (n_experts, 2 * inter, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.mlp.experts.w2_weight": np.zeros(
+                (n_experts, hidden, inter), dtype=np.float16
+            ),
+            "model.llm.embed.weight": np.zeros((256, hidden), dtype=np.float16),
+        }
+        _write_safetensors(str(src / "weights.safetensors"), tensors)
+        (src / "config.json").write_text(
+            json.dumps(
+                {
+                    "model_type": "inkling_mm_model",
+                    "architectures": ["InklingForConditionalGeneration"],
+                    "vision_config": {"patch_size": 40},
+                    "audio_config": {"n_mel_bins": 80},
+                    "text_config": {
+                        "hidden_size": hidden,
+                        "num_hidden_layers": 2,
+                        "n_routed_experts": n_experts,
+                    },
+                }
+            )
+        )
+
+        est = estimate_bpw_and_size(str(src), 4)
+        # Experts dominate the parameter count; a raw-name scan reports
+        # ~15-16 bpw because none of them end in ".weight".
+        assert est["effective_bpw"] < 8.0, est

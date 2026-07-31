@@ -264,6 +264,13 @@ def maybe_apply_pre_load_patches(
     if apply_m5_gather_qmm_workaround():
         logger.info("M5 sorted gather_qmm reroute installed (issue #2267)")
 
+    # Model-independent: ArraysCache.extract lacks the None-slot guard its
+    # filter/extend/merge siblings have; early-aborted requests on
+    # CacheList(KVCache, ArraysCache) models crash without it.
+    from ..patches.arrays_cache_extract import apply_arrays_cache_extract_guard
+
+    apply_arrays_cache_extract_guard()
+
     config_path = Path(model_name) / "config.json"
     if not config_path.exists():
         return
@@ -397,6 +404,17 @@ def maybe_apply_pre_load_patches(
                 model_name,
             )
 
+    if for_vlm and model_type in ("inkling", "inkling_mm_model"):
+        from ..patches.mlx_vlm_inkling_compat import (
+            apply_mlx_vlm_inkling_compat_patch,
+        )
+
+        if apply_mlx_vlm_inkling_compat_patch():
+            logger.info(
+                "Inkling mlx-vlm compatibility patch applied for %s",
+                model_name,
+            )
+
     # Apply the MTP patch whenever the model has MTP heads on a compatible
     # model_type — even when mtp_enabled is False. The patch is required
     # for *sanitize correctness*: stock mlx-lm Model.sanitize triggers a
@@ -446,6 +464,13 @@ def maybe_apply_pre_load_patches(
                 # vs 1.53x capped at 3); the controller still settles shallow
                 # on low-accept content.
                 set_mtp_depth(8)
+            elif model_type in ("inkling", "inkling_mm_model"):
+                # The checkpoint ships one MTP block per draft depth; cap
+                # the chain at the shipped depth (8 on Inkling Small).
+                mtp_cfg = config.get("mtp_config") or {}
+                set_mtp_depth(
+                    int(mtp_cfg.get("num_nextn_predict_layers", 0) or 0) or 3
+                )
             else:
                 set_mtp_depth(3)
             if mtp_enabled:
@@ -635,6 +660,10 @@ def _has_mtp_heads(config: dict) -> bool:
         return True
     if int(text_cfg.get("num_nextn_predict_layers", 0) or 0) > 0:
         return True
+    # Inkling nests the head declaration under a top-level mtp_config.
+    mtp_cfg = config.get("mtp_config") or {}
+    if int(mtp_cfg.get("num_nextn_predict_layers", 0) or 0) > 0:
+        return True
     return False
 
 
@@ -741,6 +770,7 @@ def _is_mtp_compatible(config: dict, model_type: str | None) -> bool:
         or model_type.startswith("nemotron_h")
         or model_type == "glm_moe_dsa"
         or model_type == "gemma4"
+        or model_type in ("inkling", "inkling_mm_model")
     )
 
 

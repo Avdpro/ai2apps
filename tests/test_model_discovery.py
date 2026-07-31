@@ -365,6 +365,18 @@ class TestDetectModelType:
         (tmp_path / "config.json").write_text(json.dumps(config))
         assert detect_model_type(tmp_path) == "vlm"
 
+    def test_detect_inkling_as_vlm(self, tmp_path):
+        """Inkling Small (thinkingmachines) is served by mlx-vlm."""
+        config = {
+            "model_type": "inkling_mm_model",
+            "architectures": ["InklingForConditionalGeneration"],
+            "vision_config": {"patch_size": 40},
+            "audio_config": {"n_mel_bins": 80},
+            "text_config": {"hidden_size": 4096},
+        }
+        (tmp_path / "config.json").write_text(json.dumps(config))
+        assert detect_model_type(tmp_path) == "vlm"
+
     def test_detect_minimax_m3_vl_as_vlm(self, tmp_path):
         """MiniMax M3 VL is served by mlx-vlm."""
         config = {

@@ -2877,6 +2877,24 @@ class Scheduler:
             if class_name in ("MiniMaxM3KVCache", "MiniMaxM3BatchKVCache"):
                 return False
             if isinstance(c, CacheList):
+                # A KVCache member inside a CacheList converts fine at
+                # runtime, but the prefix/SSD store paths dispatch on the
+                # layer class ("CacheList") and have no TurboQuant
+                # sub-state serialization: the converted member's
+                # NamedTuple state is flattened to an anonymous tuple on
+                # store and rebuilt as a corrupt dense cache on restore.
+                # Until CacheList-level TQ serialization exists, exclude
+                # composite layers that contain a convertible KVCache
+                # (e.g. inkling's CacheList(KVCache, ArraysCache)).
+                if any(type(inner) is KVCache for inner in c.caches):
+                    if not getattr(self, "_tq_cachelist_guard_logged", False):
+                        self._tq_cachelist_guard_logged = True
+                        logger.info(
+                            "TurboQuant KV disabled: composite CacheList "
+                            "layers with KVCache members have no TQ "
+                            "store/restore path yet"
+                        )
+                    return False
                 return all(_ok(inner) for inner in c.caches)
             return False
 
@@ -5488,17 +5506,13 @@ class Scheduler:
             if saved:
                 self._boundary_cache_snapshots[request_id][token_count] = None
             else:
-                # In-memory fallback: this snapshot will be sliced later on the
-                # store-cache worker thread (via _BoundarySnapshotProvider ->
-                # _extract_cache_states). MLX streams are thread-local, so the
-                # worker cannot materialize a lazy op bound to THIS (owner) thread's
-                # stream. Force it concrete now, on the capturing thread, so the
-                # worker only ever slices already-evaluated buffers.
-                self._eval_snapshot_cache(snapshot_cache)
-                self._boundary_cache_snapshots[request_id][token_count] = snapshot_cache
+                self._boundary_cache_snapshots[request_id][token_count] = (
+                    self._prefill_snapshot_value(snapshot_cache)
+                )
         else:
-            self._eval_snapshot_cache(snapshot_cache)
-            self._boundary_cache_snapshots[request_id][token_count] = snapshot_cache
+            self._boundary_cache_snapshots[request_id][token_count] = (
+                self._prefill_snapshot_value(snapshot_cache)
+            )
 
         self._boundary_snapshot_required = True
         logger.debug(
@@ -5506,6 +5520,85 @@ class Scheduler:
             request_id,
             token_count,
         )
+
+    _PREFILL_SNAPSHOT_MARKER = "__prefill_extracted__"
+
+    def _prefill_snapshot_value(self, snapshot_cache: list[Any]) -> Any:
+        """In-memory snapshot value: pre-extracted states when possible.
+
+        Falls back to the raw cache objects when extraction fails (stub or
+        unknown cache classes). The raw fallback cannot alias-corrupt: the
+        consumer runs the same extraction and skips the snapshot on the
+        same failure, while every extractable cache is decoupled here.
+        """
+        extracted = self._extract_prefill_snapshot_states(snapshot_cache)
+        if extracted is not None:
+            return extracted
+        self._eval_snapshot_cache(snapshot_cache)
+        return snapshot_cache
+
+    def _extract_prefill_snapshot_states(
+        self, snapshot_cache: list[Any]
+    ) -> tuple[str, list[dict[str, Any]]] | None:
+        """Extract-and-eval boundary states captured mid-prefill.
+
+        The prefill path snapshots the request's LIVE per-layer cache
+        objects (the request has no BatchGenerator uid yet, so there is no
+        ``extract_cache`` copy to take). Storing those objects aliases
+        every boundary to the prefill's final state — KVCache mutates its
+        preallocated buffer in place, so a later ``.state`` read returns
+        the newest content for every recorded boundary. Extract the state
+        eagerly on the capturing thread instead, and evaluate the leaves
+        so the async store-cache worker never re-dispatches a lazy op to
+        this thread's stream (#1568). Consumers accept the resulting
+        pre-extracted marker alongside raw decode-path snapshots (those
+        are already decoupled copies from ``extract_cache``).
+        """
+        def _copy_containers(value: Any) -> Any:
+            # ArraysCache.state returns its live slot LIST (not a copy);
+            # the model rebinds slots in place, so container structure
+            # must be copied at the boundary. The arrays themselves are
+            # safe to share: slot updates rebind, and buffer setitem
+            # copies on write once a second reference exists.
+            if isinstance(value, list):
+                return [_copy_containers(v) for v in value]
+            if isinstance(value, tuple):
+                return tuple(_copy_containers(v) for v in value)
+            return value
+
+        try:
+            stream = getattr(self, "_stream", None) or mx.default_stream(
+                mx.default_device()
+            )
+            with mx.stream(stream):
+                extracted, _ = self._extract_cache_states(snapshot_cache)
+                if not extracted:
+                    return None
+                for layer_state in extracted:
+                    layer_state["state"] = _copy_containers(layer_state.get("state"))
+                    layer_state["meta_state"] = _copy_containers(
+                        layer_state.get("meta_state")
+                    )
+                leaves: list[Any] = []
+
+                def _collect(value: Any) -> None:
+                    if isinstance(value, mx.array):
+                        leaves.append(value)
+                    elif isinstance(value, (list, tuple)):
+                        for item in value:
+                            _collect(item)
+                    elif isinstance(value, dict):
+                        for item in value.values():
+                            _collect(item)
+
+                for layer_state in extracted:
+                    _collect(layer_state.get("state"))
+                if leaves:
+                    mx.eval(leaves)
+            return (self._PREFILL_SNAPSHOT_MARKER, extracted)
+        except Exception as e:
+            logger.debug("Failed to extract prefill boundary snapshot: %s", e)
+            return None
 
     def _detect_boundary_snapshot_need(self) -> bool:
         """
@@ -5762,9 +5855,21 @@ class Scheduler:
                 self.requests.get(request_id), "_model_cache_config", None
             )
         elif latest_snapshot is not None:
-            extracted_cache, model_cache_config = self._extract_cache_states(
-                latest_snapshot
-            )
+            if (
+                isinstance(latest_snapshot, tuple)
+                and len(latest_snapshot) == 2
+                and latest_snapshot[0] == self._PREFILL_SNAPSHOT_MARKER
+            ):
+                # Pre-extracted prefill snapshot (states were captured and
+                # evaluated at the boundary; the live caches have moved on).
+                extracted_cache = latest_snapshot[1]
+                model_cache_config = getattr(
+                    self.requests.get(request_id), "_model_cache_config", None
+                )
+            else:
+                extracted_cache, model_cache_config = self._extract_cache_states(
+                    latest_snapshot
+                )
             if not extracted_cache:
                 return None
         else:
@@ -5781,6 +5886,15 @@ class Scheduler:
             if snap is None:
                 if self._boundary_snapshot_store is not None:
                     provider_tcs.append(tc)
+                continue
+
+            if (
+                isinstance(snap, tuple)
+                and len(snap) == 2
+                and snap[0] == self._PREFILL_SNAPSHOT_MARKER
+            ):
+                extracted_in_memory[tc] = snap[1]
+                provider_tcs.append(tc)
                 continue
 
             extracted_snapshot, _ = self._extract_cache_states(snap)
@@ -6376,6 +6490,11 @@ class Scheduler:
                                         sub_class_names,
                                         sub_meta_states,
                                     ),
+                                    # prefix_cache's store path reads this to
+                                    # tag __nstate__ markers and to record
+                                    # per-sub class names in SSD metadata;
+                                    # without it both stay unnamed.
+                                    "sub_class_names": sub_class_names,
                                     "class_name": "CacheList",
                                     "cache_type": "CacheList",
                                 }
@@ -6405,6 +6524,7 @@ class Scheduler:
                             {
                                 "state": sub_states,
                                 "meta_state": (sub_class_names, sub_meta_states),
+                                "sub_class_names": sub_class_names,
                                 "class_name": "CacheList",
                                 "cache_type": "CacheList",
                             }
@@ -10908,6 +11028,25 @@ class Scheduler:
                 # Fixed recurrent state (GDN/Mamba) can only be measured from
                 # a live cache after the first forward; arm a one-shot probe.
                 self._fixed_state_measure_armed = arrays_cache_layers > 0
+
+                # Inkling builds its banded relative-position bias as a full
+                # [H, LQ, S] tensor before SDPA; register the transient so
+                # prefill admission prices it (cleared for other models —
+                # the registry is process-wide across model swaps).
+                try:
+                    from .memory_monitor import register_attention_bias_transient
+
+                    model_type = str(getattr(self.model, "model_type", "") or "")
+                    register_attention_bias_transient(
+                        base_dtype_size
+                        if model_type in ("inkling", "inkling_mm_model")
+                        else None
+                    )
+                except Exception:
+                    logger.debug(
+                        "attention-bias transient registration failed",
+                        exc_info=True,
+                    )
                 logger.debug(
                     f"Model info for memory estimation: "
                     f"layers={num_layers} ({num_kv_cache_layers} KVCache, "
@@ -10927,13 +11066,15 @@ class Scheduler:
 
     def _infer_live_layer_cache_types(
         self,
-    ) -> tuple[list[str], float | None] | None:
+    ) -> tuple[list[str], float | None, dict[str, list[str]] | None] | None:
         """Infer the layer-cache signature that future SSD saves will use.
 
-        Returns ``(layer_cache_types, turboquant_kv_bits)`` — the predicted
-        per-layer type names plus the depth requests will quantize at (None
-        when TurboQuant is inactive or ineligible) — or None when no
-        signature can be inferred.
+        Returns ``(layer_cache_types, turboquant_kv_bits,
+        cachelist_subtypes)`` — the predicted per-layer type names, the
+        depth requests will quantize at (None when TurboQuant is inactive
+        or ineligible), and the sub composition of mixed CacheList layers
+        (None when the model has none) — or None when no signature can be
+        inferred.
         """
         if not HAS_CACHE_TYPE_HANDLERS or ModelCacheConfig is None:
             return None
@@ -10967,8 +11108,16 @@ class Scheduler:
         if not layer_cache_types:
             return None
 
+        try:
+            from .cache.paged_ssd_cache import cachelist_subtypes_from_cache_list
+
+            cachelist_subtypes = cachelist_subtypes_from_cache_list(cache_list)
+        except Exception as e:
+            logger.debug("Failed to infer CacheList sub composition: %s", e)
+            cachelist_subtypes = None
+
         if self._turboquant_kv_bits is None:
-            return layer_cache_types, None
+            return layer_cache_types, None, cachelist_subtypes
 
         try:
             eligible = self._turboquant_eligible(cache_list)
@@ -10979,7 +11128,7 @@ class Scheduler:
             logger.debug("Failed to evaluate TurboQuant SSD signature: %s", e)
             return None
         if not eligible:
-            return layer_cache_types, None
+            return layer_cache_types, None, cachelist_subtypes
 
         kv_indices = [
             i for i, c in enumerate(cache_list) if _is_turboquant_kv_family_cache(c)
@@ -10995,7 +11144,7 @@ class Scheduler:
         # inside CacheList layers report bare "CacheList" names at every
         # depth, so the bits field is the only signature discriminator for
         # them (#2045).
-        return layer_cache_types, float(self._turboquant_kv_bits)
+        return layer_cache_types, float(self._turboquant_kv_bits), cachelist_subtypes
 
     def refresh_ssd_layer_signature(self) -> list[str] | None:
         """Set the SSD manager's live layer signature before prefix lookup."""
@@ -11012,7 +11161,7 @@ class Scheduler:
                     "for this session (stale-depth blocks are not swept)."
                 )
             return None
-        layer_cache_types, turboquant_kv_bits = inferred
+        layer_cache_types, turboquant_kv_bits, cachelist_subtypes = inferred
 
         try:
             set_signature = getattr(manager, "set_expected_layer_signature", None)
@@ -11020,6 +11169,7 @@ class Scheduler:
                 set_signature(
                     layer_cache_types,
                     turboquant_kv_bits=turboquant_kv_bits,
+                    cachelist_subtypes=cachelist_subtypes,
                 )
             else:
                 manager.adopt_layer_signature_if_unset(layer_cache_types)

@@ -671,7 +671,17 @@ class BoundarySnapshotSSDStore:
                 # tuples (one per sub-cache, e.g. RotatingKVCache +
                 # PoolingCache for DeepSeek V4). Flatten as
                 # ``layer_{i}_sub_{j}_state_{k}`` keys so reconstruction
-                # can rebuild the nested shape.
+                # can rebuild the nested shape. Mirror the flat branch's
+                # has_tensors gate: a CacheList whose subs hold no tensor
+                # at all (empty KV + untouched conv slots) carries no
+                # restorable state.
+                has_tensors = any(
+                    hasattr(elem, "shape") for sub in state for elem in sub
+                )
+                if not has_tensors:
+                    info["has_state"] = "false"
+                    layer_info.append(info)
+                    continue
                 info["has_state"] = "true"
                 info["sub_count"] = str(len(state))
                 for j, sub_state in enumerate(state):

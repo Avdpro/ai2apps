@@ -833,3 +833,132 @@ class TestOutputParserFactory:
         thinking, content = extract_thinking(output_text)
         assert thinking == "Let me think about this"
         assert content == "Four"
+
+
+class InklingTokenizer:
+    def __init__(self, token_map: dict[int, str]):
+        self._token_map = token_map
+        self._reverse = {v: k for k, v in token_map.items()}
+
+    def convert_tokens_to_ids(self, token: str) -> int | None:
+        return self._reverse.get(token)
+
+    def encode(self, text: str, add_special_tokens: bool = False):
+        return [self._reverse[text]] if text in self._reverse else [0, 1]
+
+    def decode(self, token_ids, skip_special_tokens: bool = True):
+        return "".join(self._token_map[token_id] for token_id in token_ids)
+
+    @property
+    def detokenizer(self):
+        return FakeDetokenizer(lambda token_id: self._token_map[token_id])
+
+
+class TestInklingOutputParserSession:
+    def _factory(self, token_map):
+        tokenizer = InklingTokenizer(token_map)
+        factory = detect_output_parser(
+            "inkling-small",
+            tokenizer,
+            {"model_type": "inkling_mm_model"},
+        )
+        assert factory is not None
+        assert factory.kind == "inkling"
+        return tokenizer, factory
+
+    def _run(self, session, token_ids):
+        stream, visible, stopped = [], [], False
+        for token_id in token_ids:
+            result = session.process_token(token_id)
+            stream.append(result.stream_text)
+            visible.append(result.visible_text)
+            if result.is_stop:
+                stopped = True
+                break
+        final = session.finalize()
+        stream.append(final.stream_text)
+        visible.append(final.visible_text)
+        return "".join(stream), "".join(visible), stopped, final
+
+    def test_thinking_then_text(self):
+        token_map = {
+            1: "<|content_thinking|>",
+            2: "let me ",
+            3: "reason",
+            4: "<|end_message|>",
+            5: "<|message_model|>",
+            6: "<|content_text|>",
+            7: "Answer",
+            8: "<|content_model_end_sampling|>",
+        }
+        tokenizer, factory = self._factory(token_map)
+        session = factory.create_session(tokenizer)
+        stream, visible, stopped, final = self._run(session, [1, 2, 3, 4, 5, 6, 7, 8])
+
+        assert stream == "<think>let me reason</think>Answer"
+        assert visible == stream
+        assert stopped
+        assert final.tool_calls == []
+        assert 8 in factory.stop_token_ids
+
+    def test_tool_call_suppressed_and_parsed(self):
+        token_map = {
+            1: "<|content_thinking|>",
+            2: "need weather",
+            3: "<|end_message|>",
+            4: "<|message_model|>",
+            5: "get_weather",
+            6: "<|content_invoke_tool_json|>",
+            7: '{"name":"get_weather","args":{"city":"Seoul"}}',
+            8: "<|end_message|>",
+            9: "<|content_model_end_sampling|>",
+        }
+        tokenizer, factory = self._factory(token_map)
+        session = factory.create_session(tokenizer)
+        stream, visible, stopped, final = self._run(
+            session, [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        )
+
+        assert stream == "<think>need weather</think>"
+        assert visible == stream
+        assert stopped
+        assert len(final.tool_calls) == 1
+        assert final.tool_calls[0]["name"] == "get_weather"
+        assert json.loads(final.tool_calls[0]["arguments"]) == {"city": "Seoul"}
+        assert final.finish_reason == "tool_calls"
+
+    def test_partial_marker_across_tokens(self):
+        token_map = {
+            1: "<|content_",
+            2: "text|>an",
+            3: "swer<|end_",
+            4: "message|>",
+        }
+        tokenizer, factory = self._factory(token_map)
+        session = factory.create_session(tokenizer)
+        stream, visible, stopped, final = self._run(session, [1, 2, 3, 4])
+
+        assert visible == "answer"
+        assert "<|content_text|>" not in stream
+        assert not stopped
+
+    def test_unterminated_thinking_closed_at_finalize(self):
+        token_map = {
+            1: "<|content_thinking|>",
+            2: "half a thought",
+        }
+        tokenizer, factory = self._factory(token_map)
+        session = factory.create_session(tokenizer)
+        stream, visible, stopped, final = self._run(session, [1, 2])
+
+        assert stream == "<think>half a thought</think>"
+        assert visible == stream
+
+    def test_non_inkling_models_unaffected(self):
+        tokenizer = InklingTokenizer({0: "a", 1: "b"})
+        factory = detect_output_parser(
+            "llama-3-8b",
+            tokenizer,
+            {"model_type": "llama"},
+        )
+        assert factory is None

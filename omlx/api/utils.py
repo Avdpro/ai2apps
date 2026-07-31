@@ -11,7 +11,14 @@ from typing import Any, List
 from .openai_models import Message
 
 # Model families whose chat templates consume message.reasoning_content directly.
-_NATIVE_REASONING_MODEL_TYPES = {"minimax_m3", "minimax_m3_vl"}
+_NATIVE_REASONING_MODEL_TYPES = {
+    "minimax_m3",
+    "minimax_m3_vl",
+    # Inkling's chat template renders history reasoning_content back into
+    # <|content_thinking|> blocks.
+    "inkling",
+    "inkling_mm_model",
+}
 
 
 def uses_native_reasoning_content(
