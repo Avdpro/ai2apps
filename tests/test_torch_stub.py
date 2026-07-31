@@ -561,16 +561,32 @@ def test_warn_silent_when_distributions_missing(stub_module, caplog):
     assert not caplog.records, [rec.getMessage() for rec in caplog.records]
 
 
-def _pyproject_dev_pins(package):
-    """Collect ``package==X`` pins from both dev dependency lists in
-    pyproject.toml (the [dev] extra and the PEP 735 dependency group)."""
-    root = Path(__file__).resolve().parents[1]
-    with open(root / "pyproject.toml", "rb") as f:
-        data = tomllib.load(f)
-    specs = list(data["project"]["optional-dependencies"]["dev"])
-    specs += [s for s in data["dependency-groups"]["dev"] if isinstance(s, str)]
+def _package_pins(specs, package):
+    """Collect ``package==X`` pins from a requirement list."""
     prefix = f"{package}=="
     return {s[len(prefix) :] for s in specs if s.startswith(prefix)}
+
+
+def _load_pyproject():
+    """Load the repository's pyproject data."""
+    root = Path(__file__).resolve().parents[1]
+    with open(root / "pyproject.toml", "rb") as f:
+        return tomllib.load(f)
+
+
+def _pyproject_dev_pins(package):
+    """Collect pins from the [dev] extra and PEP 735 dependency group."""
+    data = _load_pyproject()
+    specs = list(data["project"]["optional-dependencies"]["dev"])
+    specs += [s for s in data["dependency-groups"]["dev"] if isinstance(s, str)]
+    return _package_pins(specs, package)
+
+
+def _pyproject_grammar_pins(package):
+    """Collect pins from the grammar extra used by Homebrew."""
+    data = _load_pyproject()
+    specs = data["project"]["optional-dependencies"]["grammar"]
+    return _package_pins(specs, package)
 
 
 def test_pyproject_dev_pins_match_stub_targets(stub_module):
@@ -592,4 +608,23 @@ def test_pyproject_dev_pins_match_stub_targets(stub_module):
         assert pins == {targets[0]}, (
             f"{package}: pyproject dev pin {sorted(pins)} != stub target "
             f"{targets[0]} — update _TARGET_*_VERSIONS in omlx/_torch_stub.py"
+        )
+
+
+def test_pyproject_grammar_pins_match_stub_targets(stub_module):
+    """Homebrew grammar installs must use the native pair tested by the DMG.
+
+    xgrammar links dynamically against apache-tvm-ffi, so allowing either
+    package to resolve independently can produce an import-time segfault even
+    when the oMLX source and formula have not changed (issue #2428).
+    """
+    for package, targets in (
+        ("xgrammar", stub_module._TARGET_XGRAMMAR_VERSIONS),
+        ("apache-tvm-ffi", stub_module._TARGET_TVM_FFI_VERSIONS),
+    ):
+        pins = _pyproject_grammar_pins(package)
+        assert pins == {targets[0]}, (
+            f"{package}: grammar extra pin {sorted(pins) or 'none'} != "
+            f"stub target {targets[0]} — keep the Homebrew, DMG, and dev "
+            "native dependency pair aligned"
         )

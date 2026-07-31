@@ -127,7 +127,12 @@ dependencies = [
 [project.optional-dependencies]
 grammar = [
     # Grammar-constrained decoding for structured output (requires torch ~2GB)
-    "xgrammar>=0.1.32",
+    # Keep this native pair aligned with omlx/_torch_stub.py and the DMG
+    # build. xgrammar 0.2.3 crashes at import with apache-tvm-ffi 0.1.13
+    # on macOS arm64, so an open-ended resolver can break Homebrew installs
+    # without any oMLX source change (#2428).
+    "xgrammar==0.2.3",
+    "apache-tvm-ffi==0.1.11",
 ]
 mcp = [
     "mcp>=1.5.0",
