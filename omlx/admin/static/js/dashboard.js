@@ -2712,6 +2712,31 @@
                 return String(n);
             },
 
+            formatDFlashSessionStats(totals) {
+                if (!totals || totals.requests <= 1) return '';
+
+                const parts = [];
+                if (totals.speculative_requests > 0) {
+                    parts.push(
+                        Math.round((totals.acceptance_ratio || 0) * 100) + '% ' +
+                        window.t('status.active_models.dflash_draft_share'),
+                        (totals.accepted_draft_tokens_per_cycle || 0).toFixed(2) + ' ' +
+                        window.t('status.active_models.dflash_accepted_draft_per_cycle'),
+                        (totals.tokens_per_cycle || 0).toFixed(2) + ' ' +
+                        window.t('status.active_models.dflash_output_per_cycle'),
+                        totals.speculative_requests + ' ' +
+                        window.t('status.active_models.dflash_speculative_requests'),
+                    );
+                }
+                if (totals.fallback_requests > 0) {
+                    parts.push(
+                        totals.fallback_requests + ' ' +
+                        window.t('status.active_models.dflash_fallback_requests'),
+                    );
+                }
+                return window.t('status.active_models.dflash_session') + ': ' + parts.join(' · ');
+            },
+
             formatDurationShort(seconds) {
                 if (seconds == null || !Number.isFinite(seconds)) return '—';
                 if (seconds < 1) return seconds.toFixed(1) + 's';

@@ -1666,6 +1666,37 @@ class TestSpeculationStats:
         assert stats["totals"]["acceptance_ratio"] is None
         assert stats["totals"]["accepted_draft_tokens_per_cycle"] is None
 
+    def test_fallback_count_survives_a_later_speculative_request(self):
+        engine = self._engine()
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=32,
+                cycles_completed=0,
+                acceptance_ratio=0.0,
+                accepted_from_draft=0,
+                tokens_per_cycle=0.0,
+                fallback_ar=True,
+                fallback_reason="adaptive guard",
+            )
+        )
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=10,
+                cycles_completed=4,
+                acceptance_ratio=0.6,
+                accepted_from_draft=6,
+                tokens_per_cycle=2.5,
+                fallback_ar=False,
+                fallback_reason=None,
+            )
+        )
+
+        stats = engine.get_speculation_stats()
+        assert stats["last"]["fallback_ar"] is False
+        assert stats["totals"]["requests"] == 2
+        assert stats["totals"]["speculative_requests"] == 1
+        assert stats["totals"]["fallback_requests"] == 1
+
     def test_malformed_summary_is_dropped(self):
         engine = self._engine()
         engine._record_speculation_summary(SimpleNamespace())
