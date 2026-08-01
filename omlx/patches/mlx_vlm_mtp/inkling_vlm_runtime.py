@@ -348,16 +348,19 @@ def _register_mtp_classes(inkling_lang: Any) -> None:
     from dataclasses import replace
 
     InklingDecoderLayer = inkling_lang.InklingDecoderLayer
+    qkvr_fusion_enabled = inkling_lang.qkvr_fusion_enabled
 
     class InklingMTPBlock(nn.Module):
-        def __init__(self, config, layer_idx: int):
+        def __init__(self, config, layer_idx: int, *, qkvr_fused: bool):
             super().__init__()
             self.embed_norm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.hidden_norm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.input_proj = nn.Linear(
                 2 * config.hidden_size, config.hidden_size, bias=False
             )
-            self.transformer_block = InklingDecoderLayer(config, layer_idx)
+            self.transformer_block = InklingDecoderLayer(
+                config, layer_idx, qkvr_fused=qkvr_fused
+            )
 
     class InklingMTPModule(nn.Module):
         """Per-depth MTP blocks (upstream drafter layout, trunk-bound)."""
@@ -375,7 +378,14 @@ def _register_mtp_classes(inkling_lang: Any) -> None:
                 mlp_layer_types=["dense"] * n,
                 local_layer_ids=None,
             )
-            self.blocks = [InklingMTPBlock(layer_config, i) for i in range(n)]
+            self.blocks = [
+                InklingMTPBlock(
+                    layer_config,
+                    i,
+                    qkvr_fused=qkvr_fusion_enabled(text_config, i, mtp=True),
+                )
+                for i in range(n)
+            ]
 
         def __call__(
             self,

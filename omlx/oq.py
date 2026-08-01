@@ -508,6 +508,16 @@ def universal_quant_predicate(
             layer_idx < num_layers // 8 or layer_idx >= 7 * num_layers // 8
         )
 
+    # Inkling stacks Q/K/V/R at load when their formats are compatible.
+    # Attention is under 1% of this fine-grained MoE model, and existing
+    # Inkling oQe checkpoints already keep every trunk Q/K/V/R projection at
+    # Q8. Preserve that floor for the fused trunk and MTP layouts: the small
+    # size cost protects both target logits and draft acceptance.
+    if config.get("model_type") in ("inkling", "inkling_mm_model") and (
+        "qkvr_proj" in path
+    ):
+        return bits(8)
+
     if any(p in path for p in ("v_proj", "v_a_proj", "v_b_proj")):
         if sensitive:
             return bits(6)

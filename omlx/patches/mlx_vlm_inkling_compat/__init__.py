@@ -179,10 +179,12 @@ def _patch_load_config(vlm_utils: Any) -> None:
         config = original(model_path, **kwargs)
         try:
             if (
-                isinstance(config, dict)
-                and config.get("model_type") in _MODEL_TYPES
-                and not config.get("quantization")
-                and not config.get("quantization_config")
+                not isinstance(config, dict)
+                or config.get("model_type") not in _MODEL_TYPES
+            ):
+                return config
+            if not config.get("quantization") and not config.get(
+                "quantization_config"
             ):
                 hf_quant_path = Path(model_path) / "hf_quant_config.json"
                 if hf_quant_path.exists():
@@ -197,6 +199,32 @@ def _patch_load_config(vlm_utils: Any) -> None:
                             "bits": 4,
                             "mode": "nvfp4",
                         }
+
+            from mlx_vlm.models.inkling.config import build_qkvr_fusion_policy
+
+            text_config = config.setdefault("text_config", {})
+            quantization = config.get("quantization")
+            if not isinstance(quantization, dict):
+                quantization = config.get("quantization_config")
+            mtp_config = config.get("mtp_config") or {}
+            mtp_layers = int(
+                text_config.get("mtp_num_hidden_layers")
+                or mtp_config.get("num_nextn_predict_layers")
+                or mtp_config.get("num_mtp_layers")
+                or 0
+            )
+            trunk_policy = build_qkvr_fusion_policy(
+                quantization,
+                int(text_config.get("num_hidden_layers") or 0),
+                "language_model.model.layers.{layer_idx}.self_attn.",
+            )
+            mtp_policy = build_qkvr_fusion_policy(
+                quantization,
+                mtp_layers,
+                "language_model.mtp.blocks.{layer_idx}.transformer_block.self_attn.",
+            )
+            text_config["qkvr_fused_layers"] = trunk_policy
+            text_config["mtp_qkvr_fused_layers"] = mtp_policy
         except Exception as exc:  # noqa: BLE001
             logger.debug("Inkling hf_quant_config translation failed: %s", exc)
         return config

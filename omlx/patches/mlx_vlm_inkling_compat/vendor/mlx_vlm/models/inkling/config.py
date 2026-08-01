@@ -1,7 +1,65 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from ..base import BaseModelConfig
+
+_QUANT_FIELDS = ("bits", "group_size", "mode")
+
+
+def _quant_path_candidates(path: str):
+    yield path
+    if path.startswith("language_model."):
+        yield path[len("language_model.") :]
+    else:
+        yield "language_model." + path
+
+
+def _quant_spec(quantization, path: str):
+    """Resolve one projection's effective MLX quantization format."""
+    if not isinstance(quantization, dict):
+        return None
+    values = {field: quantization.get(field) for field in _QUANT_FIELDS}
+    override = None
+    for candidate in _quant_path_candidates(path):
+        value = quantization.get(candidate)
+        if isinstance(value, dict):
+            override = value
+            break
+    if override is not None:
+        for field in _QUANT_FIELDS:
+            if field in override:
+                values[field] = override[field]
+    if all(value is None for value in values.values()):
+        return None
+    return tuple(values[field] for field in _QUANT_FIELDS)
+
+
+def _qkvr_specs(quantization, prefix: str):
+    return tuple(_quant_spec(quantization, f"{prefix}{name}_proj") for name in "qkvr")
+
+
+def build_qkvr_fusion_policy(quantization, count: int, prefix: str):
+    """Fuse only layers whose four projections have the same effective format."""
+    policy = []
+    for layer_idx in range(count):
+        specs = _qkvr_specs(quantization, prefix.format(layer_idx=layer_idx))
+        policy.append(all(spec == specs[0] for spec in specs[1:]))
+    return policy
+
+
+def sanitize_quantization_config(quantization):
+    """Alias legacy per-projection entries only when Q/K/V/R are compatible."""
+    if not isinstance(quantization, dict):
+        return quantization
+    out = dict(quantization)
+    for key, value in quantization.items():
+        if not key.endswith(".self_attn.q_proj"):
+            continue
+        prefix = key[: -len("q_proj")]
+        specs = _qkvr_specs(quantization, prefix)
+        if all(spec == specs[0] for spec in specs[1:]):
+            out.setdefault(prefix + "qkvr_proj", value)
+    return out
 
 
 @dataclass
@@ -39,6 +97,8 @@ class TextConfig(BaseModelConfig):
     num_experts_per_tok: int = 6
     n_shared_experts: int = 2
     route_scale: float = 8.0
+    qkvr_fused_layers: Optional[List[bool]] = None
+    mtp_qkvr_fused_layers: Optional[List[bool]] = None
 
     def layer_is_sliding(self, i: int) -> bool:
         """Sliding-window (local) vs global full-attention layer. Real checkpoints set
@@ -86,6 +146,8 @@ class ModelConfig(BaseModelConfig):
     audio_token_id: int = 200053
     vocab_size: int = 201024
     eos_token_id: Optional[List[int]] = None
+    quantization: Optional[Dict] = None
+    quantization_config: Optional[Dict] = None
 
     def __post_init__(self):
         # Coerce dict sub-configs (from config.json) into typed dataclasses, and wire the
@@ -104,3 +166,29 @@ class ModelConfig(BaseModelConfig):
             self.audio_config = AudioConfig.from_dict(self.audio_config)
         self.vision_config.text_hidden_size = self.text_config.hidden_size
         self.audio_config.text_hidden_size = self.text_config.hidden_size
+        quantization = (
+            self.quantization
+            if isinstance(self.quantization, dict)
+            else self.quantization_config
+        )
+        if self.text_config.qkvr_fused_layers is None:
+            self.text_config.qkvr_fused_layers = build_qkvr_fusion_policy(
+                quantization,
+                self.text_config.num_hidden_layers,
+                "language_model.model.layers.{layer_idx}.self_attn.",
+            )
+        mtp_layers = int(getattr(self.text_config, "mtp_num_hidden_layers", 0) or 0)
+        if self.text_config.mtp_qkvr_fused_layers is None:
+            self.text_config.mtp_qkvr_fused_layers = build_qkvr_fusion_policy(
+                quantization,
+                mtp_layers,
+                "language_model.mtp.blocks.{layer_idx}.transformer_block.self_attn.",
+            )
+        original_quantization = self.quantization
+        self.quantization = sanitize_quantization_config(self.quantization)
+        if self.quantization_config == original_quantization:
+            self.quantization_config = self.quantization
+        else:
+            self.quantization_config = sanitize_quantization_config(
+                self.quantization_config
+            )

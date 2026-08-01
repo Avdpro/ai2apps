@@ -110,6 +110,47 @@ def test_load_config_translates_nvfp4(applied, tmp_path):
     assert "quantization" not in config
 
 
+def test_model_load_weights_remaps_legacy_mlx_layouts(applied, monkeypatch):
+    from types import SimpleNamespace
+
+    import mlx.nn as nn
+    from mlx_vlm.models.inkling.inkling import Model
+
+    prefix = "language_model.model.layers.0.self_attn."
+    weights = {
+        **{
+            f"{prefix}{name}_proj.weight": mx.full((2, 4), index + 1)
+            for index, name in enumerate("qkvr")
+        },
+        "language_model.model.layers.0.mlp.shared_experts.gate_proj.weight": (
+            mx.zeros((2, 4, 8))
+        ),
+        "language_model.model.layers.0.mlp.shared_experts.down_proj.weight": (
+            mx.zeros((2, 8, 4))
+        ),
+    }
+    loaded = {}
+
+    def capture_load_weights(_self, transformed, strict=True):
+        assert strict
+        loaded.update(dict(transformed))
+        return _self
+
+    monkeypatch.setattr(nn.Module, "load_weights", capture_load_weights)
+    model = Model.__new__(Model)
+    model.config = SimpleNamespace(text_config=_tiny_text_config())
+    model.load_weights(list(weights.items()))
+
+    assert loaded[prefix + "qkvr_proj.weight"].shape == (8, 4)
+    assert not any(f"{prefix}{name}_proj.weight" in loaded for name in "qkvr")
+    assert loaded[
+        "language_model.model.layers.0.mlp.shared_experts.gate_proj.weight"
+    ].shape == (8, 8)
+    assert loaded[
+        "language_model.model.layers.0.mlp.shared_experts.down_proj.weight"
+    ].shape == (8, 8)
+
+
 def test_image_processor_patch_grid(applied):
     import importlib
 
@@ -297,6 +338,9 @@ def test_sanitize_maps_bf16_checkpoint_keys(applied):
     sconv = mx.arange(hidden * 4, dtype=mx.float32).reshape(hidden, 4, 1)
     weights = {
         "model.llm.layers.1.attn.wq_du.weight": mx.zeros((hidden, hidden)),
+        "model.llm.layers.1.attn.wk_dv.weight": mx.zeros((hidden, hidden)),
+        "model.llm.layers.1.attn.wv_dv.weight": mx.zeros((hidden, hidden)),
+        "model.llm.layers.1.attn.wr_du.weight": mx.zeros((hidden, hidden)),
         "model.llm.layers.1.attn.rel_logits_proj.proj": mx.zeros((4, 8)),
         "model.llm.layers.1.attn.k_sconv.weight": sconv,
         "model.llm.layers.1.attn_sconv.weight": sconv,
@@ -312,7 +356,9 @@ def test_sanitize_maps_bf16_checkpoint_keys(applied):
     out = inkling_mod.Model.sanitize(model, weights)
 
     prefix = "language_model.model.layers.1."
-    assert prefix + "self_attn.q_proj.weight" in out
+    qkvr = out[prefix + "self_attn.qkvr_proj.weight"]
+    assert qkvr.shape == (4 * hidden, hidden)
+    assert prefix + "self_attn.q_proj.weight" not in out
     assert prefix + "self_attn.rel_proj" in out
     assert out[prefix + "self_attn.k_sconv.conv.weight"].shape == (hidden, 1, 4)
     assert out[prefix + "attn_sconv.conv.weight"].shape == (hidden, 1, 4)
@@ -338,6 +384,215 @@ def test_sanitize_maps_bf16_checkpoint_keys(applied):
     assert mx.array_equal(
         out[prefix + "mlp.switch_mlp.gate_scale"], mx.ones((n_experts,))
     )
+
+
+def test_qkvr_fusion_policy_preserves_mixed_quant_layers(applied):
+    from mlx_vlm.models.inkling.config import ModelConfig
+    from mlx_vlm.models.inkling.language import InklingAttention
+
+    base = {"bits": 4, "group_size": 64, "mode": "affine"}
+    quantization = {
+        **base,
+        "language_model.model.layers.0.self_attn.v_proj": {
+            "bits": 6,
+            "group_size": 64,
+            "mode": "affine",
+        },
+    }
+    config = ModelConfig.from_dict(
+        {
+            "text_config": {
+                "hidden_size": 64,
+                "num_hidden_layers": 2,
+                "num_attention_heads": 4,
+                "num_key_value_heads": 2,
+                "head_dim": 16,
+                "swa_num_attention_heads": 4,
+                "swa_num_key_value_heads": 2,
+                "swa_head_dim": 16,
+            },
+            "quantization": quantization,
+            "quantization_config": quantization,
+        }
+    )
+
+    assert config.text_config.qkvr_fused_layers == [False, True]
+    assert not any(key.endswith("qkvr_proj") for key in config.quantization)
+    split = InklingAttention(config.text_config, 0)
+    fused = InklingAttention(config.text_config, 1)
+    assert hasattr(split, "q_proj") and not hasattr(split, "qkvr_proj")
+    assert hasattr(fused, "qkvr_proj") and not hasattr(fused, "q_proj")
+
+
+def test_fuse_qkvr_only_stacks_compatible_layers(applied):
+    from mlx_vlm.models.inkling.language import fuse_qkvr
+
+    config = _tiny_text_config()
+    config.qkvr_fused_layers = [False, True]
+    weights = {}
+    for layer_idx in range(2):
+        prefix = f"language_model.model.layers.{layer_idx}.self_attn."
+        for proj_idx, name in enumerate("qkvr"):
+            weights[f"{prefix}{name}_proj.weight"] = mx.full(
+                (2, 4), proj_idx + 1
+            )
+
+    out = fuse_qkvr(weights, config)
+    split_prefix = "language_model.model.layers.0.self_attn."
+    fused_prefix = "language_model.model.layers.1.self_attn."
+    assert all(f"{split_prefix}{name}_proj.weight" in out for name in "qkvr")
+    assert f"{split_prefix}qkvr_proj.weight" not in out
+    fused = out[f"{fused_prefix}qkvr_proj.weight"]
+    assert fused.shape == (8, 4)
+    assert not any(f"{fused_prefix}{name}_proj.weight" in out for name in "qkvr")
+
+
+def test_shared_experts_dense_weight_remap(applied):
+    from mlx_vlm.models.inkling.language import shared_experts_to_dense
+
+    weights = {
+        "layer.mlp.shared_experts.gate_proj.weight": mx.zeros((2, 4, 8)),
+        "layer.mlp.shared_experts.up_proj.scales": mx.zeros((2, 4, 1)),
+        "layer.mlp.shared_experts.down_proj.weight": mx.zeros((2, 8, 4)),
+    }
+    out = shared_experts_to_dense(weights)
+    assert out["layer.mlp.shared_experts.gate_proj.weight"].shape == (8, 8)
+    assert out["layer.mlp.shared_experts.up_proj.scales"].shape == (8, 1)
+    assert out["layer.mlp.shared_experts.down_proj.weight"].shape == (8, 8)
+
+
+def test_moe_route_kernel_matches_reference(applied):
+    from mlx_vlm.models.inkling.language import InklingSparseMoE
+
+    moe = InklingSparseMoE(_tiny_text_config())
+    logits = mx.array(
+        [[0.4, -0.2, 1.1, 0.7, -0.3], [-0.6, 0.8, 0.2, 1.3, 0.1]],
+        dtype=mx.float32,
+    )
+    moe.e_score_correction_bias = mx.array([0.03, -0.01, 0.02, 0.0])
+    idx, topk_w, gamma = moe._route(logits)
+
+    scores = mx.sigmoid(logits[:, :4]) + moe.e_score_correction_bias
+    expected_idx = mx.argsort(-scores, axis=-1)[:, :2]
+    selected = mx.take_along_axis(logits[:, :4], expected_idx, axis=-1)
+    combined = mx.concatenate([selected, logits[:, 4:]], axis=-1)
+    log_weights = -mx.logaddexp(mx.zeros_like(combined), -combined)
+    weights = mx.exp(
+        log_weights - mx.logsumexp(log_weights, axis=-1, keepdims=True)
+    ) * moe.route_scale
+    expected_gamma = mx.repeat(weights[:, 2:], moe.intermediate_size, axis=-1)
+    mx.eval(idx, topk_w, gamma, expected_idx, weights, expected_gamma)
+
+    assert mx.array_equal(idx, expected_idx.astype(mx.uint32))
+    assert mx.max(mx.abs(topk_w - weights[:, :2])).item() < 1e-5
+    assert mx.max(mx.abs(gamma - expected_gamma)).item() < 1e-5
+
+
+def test_sconv_decode_kernel_matches_masked_fallback(applied):
+    from mlx_lm.models.cache import ArraysCache
+    from mlx_vlm.models.inkling.language import InklingShortConvolution
+
+    mx.random.seed(13)
+    conv = InklingShortConvolution(32, 4, 0)
+    x = mx.random.normal((2, 3, 32)).astype(mx.bfloat16)
+    residual = mx.random.normal((2, 3, 32)).astype(mx.bfloat16)
+    fused_cache = ArraysCache(1)
+    fallback_cache = ArraysCache(1)
+
+    fused = conv(x, cache=fused_cache, residual=residual)
+    fallback = conv(
+        x,
+        cache=fallback_cache,
+        mask=mx.ones((2, 3), dtype=mx.bool_),
+        residual=residual,
+    )
+    mx.eval(fused, fallback, fused_cache[0], fallback_cache[0])
+    # The fused accumulation can move by one bfloat16 ULP versus Conv1d.
+    assert mx.max(mx.abs(fused - fallback)).item() <= 0.0078125
+    assert mx.max(mx.abs(fused_cache[0] - fallback_cache[0])).item() == 0
+
+
+def test_quantized_down_combine_kernel_matches_dequantized_reference(applied):
+    from mlx_vlm.models.inkling.language import _down_combine_kernel
+
+    mx.random.seed(17)
+    n_tokens, top_k, n_experts = 2, 6, 8
+    input_dims, output_dims = 2048, 64
+    weights = mx.random.normal((n_experts, output_dims, input_dims)).astype(
+        mx.bfloat16
+    )
+    packed, scales, biases = mx.quantize(
+        weights, group_size=64, bits=4, mode="affine"
+    )
+    inputs = (
+        mx.random.normal((n_tokens, top_k, input_dims)) * 0.01
+    ).astype(mx.bfloat16)
+    indices = mx.array(
+        [[0, 2, 3, 5, 6, 7], [1, 2, 4, 5, 6, 7]], dtype=mx.uint32
+    )
+    route_weights = mx.softmax(
+        mx.random.normal((n_tokens, top_k)).astype(mx.float32), axis=-1
+    ).astype(mx.bfloat16)
+
+    fused = _down_combine_kernel(
+        inputs=[inputs, packed, scales, biases, indices, route_weights],
+        template=[
+            ("T", mx.bfloat16),
+            ("OUT", output_dims),
+            ("IN", input_dims),
+            ("GROUPS", input_dims // 64),
+            ("K", top_k),
+        ],
+        grid=(256, output_dims, n_tokens),
+        threadgroup=(256, 1, 1),
+        output_shapes=[(n_tokens, output_dims)],
+        output_dtypes=[mx.bfloat16],
+    )[0]
+
+    reference_rows = []
+    for token_idx in range(n_tokens):
+        expert_rows = []
+        for route_idx in range(top_k):
+            expert_idx = int(indices[token_idx, route_idx].item())
+            weight = mx.dequantize(
+                packed[expert_idx],
+                scales[expert_idx],
+                biases[expert_idx],
+                group_size=64,
+                bits=4,
+                mode="affine",
+            )
+            expert_rows.append(inputs[token_idx, route_idx] @ weight.T)
+        expert_rows = mx.stack(expert_rows).astype(mx.bfloat16)
+        reference_rows.append(
+            (expert_rows * route_weights[token_idx, :, None])
+            .astype(mx.bfloat16)
+            .astype(mx.float32)
+            .sum(axis=0)
+            .astype(mx.bfloat16)
+        )
+    reference = mx.stack(reference_rows)
+    mx.eval(fused, reference)
+
+    assert mx.max(mx.abs(fused - reference)).item() <= 0.03125
+
+
+def test_cache_snapshot_restores_empty_composite_cache(applied):
+    from mlx_vlm.models.inkling.language import (
+        _restore_cache_state,
+        _snapshot_cache_state,
+    )
+
+    model = _tiny_language_model()
+    cache = model.make_cache()
+    snapshot = _snapshot_cache_state(cache)
+    model(mx.array([[1, 2, 3]]), cache=cache)
+    assert cache[0][0].keys is not None
+    assert cache[0][1][0] is not None
+
+    _restore_cache_state(cache, snapshot)
+    assert cache[0][0].keys is None
+    assert all(cache[0][1][slot] is None for slot in range(4))
 
 
 def test_sliding_window_slice_parity(applied, monkeypatch):

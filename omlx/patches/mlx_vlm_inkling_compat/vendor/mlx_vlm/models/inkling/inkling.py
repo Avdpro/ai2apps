@@ -7,7 +7,7 @@ import numpy as np
 from ..base import InputEmbeddingsFeatures
 from .audio import AudioModel
 from .config import ModelConfig
-from .language import LanguageModel
+from .language import LanguageModel, fuse_qkvr, shared_experts_to_dense
 from .vision import VisionModel
 
 
@@ -254,7 +254,25 @@ class Model(nn.Module):
                 out[k] = v
         for i, buf in experts.items():
             out.update(self._map_experts(i, buf))
-        return out
+        model_config = getattr(self, "config", None)
+        return fuse_qkvr(
+            shared_experts_to_dense(out),
+            getattr(model_config, "text_config", None),
+        )
+
+    def load_weights(self, weights, strict=True):
+        """Apply load-time layout fusions to both raw and existing MLX weights.
+
+        mlx-vlm skips ``sanitize()`` for safetensors already marked as MLX.
+        Transforming the fully aggregated weight list here also handles legacy
+        oQ shards where Q/K/V/R tensors for one layer live in different files.
+        """
+        if isinstance(weights, str):
+            return super().load_weights(weights, strict=strict)
+        transformed = fuse_qkvr(
+            shared_experts_to_dense(dict(weights)), self.config.text_config
+        )
+        return super().load_weights(list(transformed.items()), strict=strict)
 
     def make_cache(self):
         return self.language_model.make_cache()

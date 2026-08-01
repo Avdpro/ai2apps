@@ -1,4 +1,5 @@
-# Vendored from mlx-vlm PR #1756 (pcuenca/mlx-vlm@73e4cb6, models/inkling).
+# Vendored from mlx-vlm PR #1756 (pcuenca/mlx-vlm@73e4cb6, models/inkling),
+# with the batching fixes from PR #1763 and decode fast paths from PR #1759.
 # oMLX modifications, each marked with an "OMLX:" comment at the site:
 # - batched right-padded prefill support: conv_mask wiring from
 #   ArraysCache.make_mask, lengths-aware conv state writes, per-sequence
@@ -9,6 +10,7 @@
 # - explicit error when a config with dense MLP layers lacks
 #   dense_intermediate_size (upstream crashes with an opaque TypeError).
 import os  # OMLX: sliding-window slice kill switch
+from functools import partial
 from typing import Optional
 
 import mlx.core as mx
@@ -43,11 +45,30 @@ def _clone_cache_tree(value):
     return value
 
 
+_CACHE_DICT_STATE = object()
+
+
+def _subcaches(cache):
+    return getattr(cache, "caches", None) or (cache,)
+
+
 def _snapshot_cache_state(caches):
-    """Deep-copy the full state of every cache so a speculative block can be
-    rolled back by replay. Inkling's short-conv slots keep only the last K-1
-    inputs and cannot be trimmed, so we restore-and-replay instead."""
-    snapshot = [None if c is None else _clone_cache_tree(c.state) for c in caches]
+    """Copy cache state, including empty KV and ArraysCache metadata."""
+    snapshot = []
+    for cache in caches:
+        if cache is None:
+            snapshot.append(None)
+            continue
+        states = []
+        for subcache in _subcaches(cache):
+            if (
+                isinstance(subcache, ArraysCache)
+                or getattr(subcache, "keys", False) is None
+            ):
+                states.append((_CACHE_DICT_STATE, _clone_cache_tree(vars(subcache))))
+            else:
+                states.append(_clone_cache_tree(subcache.state))
+        snapshot.append(states)
     arrays = [v for _, v in tree_flatten(snapshot) if isinstance(v, mx.array)]
     if arrays:
         mx.eval(arrays)
@@ -55,9 +76,15 @@ def _snapshot_cache_state(caches):
 
 
 def _restore_cache_state(caches, snapshot):
-    for c, s in zip(caches, snapshot):
-        if c is not None and s is not None:
-            c.state = _clone_cache_tree(s)
+    for cache, states in zip(caches, snapshot):
+        if cache is None or states is None:
+            continue
+        for subcache, state in zip(_subcaches(cache), states):
+            if isinstance(state, tuple) and state and state[0] is _CACHE_DICT_STATE:
+                subcache.__dict__.clear()
+                subcache.__dict__.update(_clone_cache_tree(state[1]))
+            else:
+                subcache.state = _clone_cache_tree(state)
 
 
 # OMLX: S / LQ / Q_OFF / B are RUNTIME params (uint32 buffer), not template
@@ -137,6 +164,100 @@ def banded_additive_mask(rel, proj, q_offset, S, sliding, rel_extent):
     return mx.where(neg[None, None], mx.array(-1e30, dtype), pb).astype(dtype)
 
 
+def _next_conv_state(state, inputs, mask):
+    state_size = state.shape[1]
+    if state_size == 0:
+        return state
+    if mask is None:
+        return mx.concatenate([state, inputs], axis=1)[:, -state_size:]
+
+    valid_count = mx.sum(mask, axis=1).astype(mx.int32)
+    valid_start = mx.argmax(mask.astype(mx.int32), axis=1)
+    logical = mx.arange(state_size)[None, :] + valid_count[:, None] - state_size
+    state_indices = state_size + logical
+    input_indices = state_size + valid_start[:, None] + mx.maximum(logical, 0)
+    indices = mx.where(logical >= 0, input_indices, state_indices)
+    combined = mx.concatenate([state, inputs], axis=1)
+    indices = mx.broadcast_to(indices[..., None], (*indices.shape, inputs.shape[-1]))
+    return mx.take_along_axis(combined, indices, axis=1)
+
+
+def _cache_padding_mask(cache, length):
+    """Combine left- and right-padding metadata for short convolution."""
+    if cache is None:
+        return None
+    positions = mx.arange(length)[None, :]
+    mask = None
+    left_padding = getattr(cache, "left_padding", None)
+    if left_padding is not None:
+        mask = positions >= left_padding[:, None]
+    lengths = getattr(cache, "lengths", None)
+    if lengths is not None:
+        length_mask = positions < lengths[:, None]
+        mask = length_mask if mask is None else mask & length_mask
+    return mask
+
+
+def _record_conv_stash(cache, conv_idx, state, inputs):
+    """Preserve the virtual padded input used by oMLX MTP rewinds."""
+    stash = getattr(cache, "_omlx_verify_xp", None)
+    if stash is None:
+        stash = {}
+        cache._omlx_verify_xp = stash
+    xp = mx.concatenate([state, inputs], axis=1)
+    rows = getattr(cache, "_omlx_stash_rows", 0)
+    if rows:
+        prev = stash.get(conv_idx)
+        roll = xp if prev is None else mx.concatenate([prev, inputs], axis=1)
+        if roll.shape[1] > rows:
+            roll = roll[:, -rows:, :]
+        stash[conv_idx] = roll
+    else:
+        stash[conv_idx] = xp
+
+
+_SCONV_SRC = r"""
+    uint c = thread_position_in_grid.x;
+    uint b = thread_position_in_grid.y;
+    if (c >= C || b >= B) return;
+    float w0 = (float)w[c * K + 0];
+    float w1 = (float)w[c * K + 1];
+    float w2 = (float)w[c * K + 2];
+    float w3 = (float)w[c * K + 3];
+    for (uint i = 0; i < L; ++i) {
+        float acc = 0.0f;
+        for (uint k = 0; k < K; ++k) {
+            int r = (int)(i + k) - (int)(K - 1);
+            float v = (r < 0)
+                ? state[(b * (K - 1) + (uint)(r + (int)(K - 1))) * C + c]
+                : (float)x[(b * L + (uint)r) * C + c];
+            float wk = (k == 0) ? w0 : (k == 1) ? w1 : (k == 2) ? w2 : w3;
+            acc += wk * v;
+        }
+        float conv_r = (float)((T)acc);
+        T inner = (T)(conv_r + (float)x[(b * L + i) * C + c]);
+        if (HAS_RES) {
+            out[(b * L + i) * C + c] =
+                (T)((float)inner + (float)res[(b * L + i) * C + c]);
+        } else {
+            out[(b * L + i) * C + c] = inner;
+        }
+    }
+    for (uint s = 0; s < K - 1; ++s) {
+        int r = (int)(L + s) - (int)(K - 1);
+        nstate[(b * (K - 1) + s) * C + c] = (r < 0)
+            ? state[(b * (K - 1) + (uint)(r + (int)(K - 1))) * C + c]
+            : (float)x[(b * L + (uint)r) * C + c];
+    }
+"""
+_sconv_kernel = mx.fast.metal_kernel(
+    name="omlx_inkling_sconv_decode",
+    input_names=["x", "state", "w", "res"],
+    output_names=["out", "nstate"],
+    source=_SCONV_SRC,
+)
+
+
 class InklingShortConvolution(nn.Module):
     """Depthwise causal 1-D conv over the previous ``kernel_size - 1`` states, plus a
     residual add. Kept in fp32 for stability (matches the reference). ``conv_idx`` selects
@@ -150,64 +271,85 @@ class InklingShortConvolution(nn.Module):
             channels, channels, kernel_size, groups=channels, bias=False
         )
 
-    def __call__(self, x: mx.array, cache=None, mask: Optional[mx.array] = None):
+    def __call__(
+        self,
+        x: mx.array,
+        cache=None,
+        mask: Optional[mx.array] = None,
+        residual: Optional[mx.array] = None,
+    ):
         dt = x.dtype
+        K = self.kernel_size
+        if (
+            cache is not None
+            and mask is None
+            and K == 4
+            and x.shape[1] <= 8
+            and mx.default_device() == mx.gpu
+        ):
+            B, L, C = x.shape
+            state = cache[self.conv_idx]
+            if state is None:
+                state = mx.zeros((B, K - 1, C), dtype=mx.float32)
+            out, nstate = _sconv_kernel(
+                inputs=[
+                    x,
+                    state,
+                    self.conv.weight.reshape(-1),
+                    residual if residual is not None else x,
+                ],
+                template=[
+                    ("T", dt),
+                    ("B", B),
+                    ("L", L),
+                    ("C", C),
+                    ("K", K),
+                    ("HAS_RES", residual is not None),
+                ],
+                grid=(_rup(C, 32), B, 1),
+                threadgroup=(32, 1, 1),
+                output_shapes=[(B, L, C), (B, K - 1, C)],
+                output_dtypes=[dt, mx.float32],
+            )
+            cache[self.conv_idx] = nstate
+            _record_conv_stash(cache, self.conv_idx, state, x.astype(mx.float32))
+            return out
+
         xf = x.astype(mx.float32)
         res = xf
         if mask is not None:
             xf = mx.where(mask[..., None], xf, 0)
-        K = self.kernel_size
         if cache is not None:
             state = cache[self.conv_idx]
             if state is None:
                 state = mx.zeros((xf.shape[0], K - 1, xf.shape[-1]), dtype=xf.dtype)
             xp = mx.concatenate([state, xf], axis=1)
-            # OMLX: right-padded batch prefill writes the last K-1 VALID
-            # rows per sequence, not the padded tail (mlx-lm qwen3_5's
-            # lengths-aware conv state gather). ``lengths`` counts the
-            # remaining valid tokens for the current chunk; a sequence
-            # already fully consumed keeps its carried state (ends=0
-            # selects the first K-1 rows of xp, which ARE the state).
-            lengths = getattr(cache, "lengths", None)
-            if lengths is not None:
-                ends = mx.clip(lengths, 0, xf.shape[1])
-                positions = (ends[:, None] + mx.arange(K - 1))[..., None]
-                cache[self.conv_idx] = mx.take_along_axis(xp, positions, axis=1)
-            else:
-                cache[self.conv_idx] = xp[:, -(K - 1) :, :]
-            # OMLX: keep the padded conv input of the LAST forward so an
-            # MTP verify rollback can reslice the state at any accepted
-            # boundary (state after keeping j tokens = xp[:, j : j+K-1]).
-            # Conv states cannot be trimmed like KV; without this, rejected
-            # draft tokens would stay baked into the sliding window. A lazy
-            # array reference, overwritten every forward — no extra compute.
-            stash = getattr(cache, "_omlx_verify_xp", None)
-            if stash is None:
-                stash = {}
-                cache._omlx_verify_xp = stash
-            # OMLX: MTP head-block conv caches set ``_omlx_stash_rows`` so
-            # the stash keeps a ROLLING input window instead of just the
-            # last forward — the multi-block head cycle rewinds provisional
-            # rows across cycles whose windows can be longer than the last
-            # forward. Trunk caches leave it unset and keep the exact
-            # last-forward stash (byte-identical path).
-            rows = getattr(cache, "_omlx_stash_rows", 0)
-            if rows:
-                prev = stash.get(self.conv_idx)
-                roll = xp if prev is None else mx.concatenate([prev, xf], axis=1)
-                if roll.shape[1] > rows:
-                    roll = roll[:, -rows:, :]
-                stash[self.conv_idx] = roll
-            else:
-                stash[self.conv_idx] = xp
+            cache[self.conv_idx] = _next_conv_state(state, xf, mask)
+            _record_conv_stash(cache, self.conv_idx, state, xf)
         else:
             xp = mx.pad(xf, [(0, 0), (K - 1, 0), (0, 0)])
         out = self.conv(xp.astype(self.conv.weight.dtype)).astype(mx.float32)
-        return (out + res).astype(dt)
+        out = (out + res).astype(dt)
+        return out if residual is None else residual + out
+
+
+def qkvr_fusion_enabled(config, layer_idx: int, *, mtp: bool = False) -> bool:
+    """Return whether one layer can use the load-time stacked projection."""
+    attr = "mtp_qkvr_fused_layers" if mtp else "qkvr_fused_layers"
+    policy = getattr(config, attr, None)
+    if policy is None or layer_idx >= len(policy):
+        return True
+    return bool(policy[layer_idx])
 
 
 class InklingAttention(nn.Module):
-    def __init__(self, config: ModelConfig, layer_idx: int):
+    def __init__(
+        self,
+        config: ModelConfig,
+        layer_idx: int,
+        *,
+        qkvr_fused: Optional[bool] = None,
+    ):
         super().__init__()
         self.is_sliding = config.layer_is_sliding(layer_idx)
         self.head_dim = config.swa_head_dim if self.is_sliding else config.head_dim
@@ -230,18 +372,27 @@ class InklingAttention(nn.Module):
         self.log_floor = None if self.is_sliding else config.log_scaling_n_floor
         self.log_alpha = config.log_scaling_alpha
 
-        self.q_proj = nn.Linear(
-            config.hidden_size, self.n_heads * self.head_dim, bias=False
+        self.qkvr_fused = (
+            qkvr_fusion_enabled(config, layer_idx)
+            if qkvr_fused is None
+            else bool(qkvr_fused)
         )
-        self.k_proj = nn.Linear(
-            config.hidden_size, self.n_kv * self.head_dim, bias=False
+        self.qkvr_dims = (
+            self.n_heads * self.head_dim,
+            self.n_kv * self.head_dim,
+            self.n_kv * self.head_dim,
+            self.n_heads * self.d_rel,
         )
-        self.v_proj = nn.Linear(
-            config.hidden_size, self.n_kv * self.head_dim, bias=False
-        )
-        self.r_proj = nn.Linear(
-            config.hidden_size, self.n_heads * self.d_rel, bias=False
-        )
+        if self.qkvr_fused:
+            self.qkvr_proj = nn.Linear(
+                config.hidden_size, sum(self.qkvr_dims), bias=False
+            )
+        else:
+            dq, dk, dv, dr = self.qkvr_dims
+            self.q_proj = nn.Linear(config.hidden_size, dq, bias=False)
+            self.k_proj = nn.Linear(config.hidden_size, dk, bias=False)
+            self.v_proj = nn.Linear(config.hidden_size, dv, bias=False)
+            self.r_proj = nn.Linear(config.hidden_size, dr, bias=False)
         self.o_proj = nn.Linear(
             self.n_heads * self.head_dim, config.hidden_size, bias=False
         )
@@ -260,10 +411,21 @@ class InklingAttention(nn.Module):
         kv = cache[0] if cache is not None else None
         conv = cache[1] if cache is not None else None
 
-        q = self.q_proj(x)
-        k = self.k_sconv(self.k_proj(x), cache=conv, mask=conv_mask)
-        v = self.v_sconv(self.v_proj(x), cache=conv, mask=conv_mask)
-        r = self.r_proj(x).reshape(B, L, self.n_heads, self.d_rel)
+        dq, dk, dv, _ = self.qkvr_dims
+        if self.qkvr_fused:
+            qkvr = self.qkvr_proj(x)
+            q = qkvr[..., :dq]
+            k = qkvr[..., dq : dq + dk]
+            v = qkvr[..., dq + dk : dq + dk + dv]
+            r = qkvr[..., dq + dk + dv :]
+        else:
+            q = self.q_proj(x)
+            k = self.k_proj(x)
+            v = self.v_proj(x)
+            r = self.r_proj(x)
+        k = self.k_sconv(k, cache=conv, mask=conv_mask)
+        v = self.v_sconv(v, cache=conv, mask=conv_mask)
+        r = r.reshape(B, L, self.n_heads, self.d_rel)
 
         q = self.q_norm(q.reshape(B, L, self.n_heads, self.head_dim)).transpose(
             0, 2, 1, 3
@@ -289,11 +451,7 @@ class InklingAttention(nn.Module):
         # cut; log-tau never applies here (log_floor is None on sliding
         # layers), and the padding bounds below shift with ``cut``.
         cut = 0
-        if (
-            _SLIDING_WINDOW_SLICE
-            and self.sliding > 0
-            and S > self.sliding + L - 1
-        ):
+        if _SLIDING_WINDOW_SLICE and self.sliding > 0 and S > self.sliding + L - 1:
             cut = S - (self.sliding + L - 1)
             k = k[:, :, cut:, :]
             v = v[:, :, cut:, :]
@@ -372,12 +530,22 @@ class InklingSwitchGLU(SwitchGLU):
         super().__init__(input_dims, hidden_dims, num_experts, **kwargs)
         self.gate_scale = mx.ones((num_experts,))  # s13 (fused gate/up scale2)
         self.out_scale = mx.ones((num_experts,))  # s13 * s2
+        self._scales_trivial = None
 
     def _per_expert(self, scale, idx, like):
         s = scale[idx].astype(like.dtype)
         return s.reshape(s.shape + (1,) * (like.ndim - s.ndim))
 
+    def scales_trivial(self):
+        if self._scales_trivial is None:
+            self._scales_trivial = bool(
+                (mx.all(self.gate_scale == 1) & mx.all(self.out_scale == 1)).item()
+            )
+        return self._scales_trivial
+
     def __call__(self, x, indices) -> mx.array:
+        if self.scales_trivial():
+            return super().__call__(x, indices)
         x = mx.expand_dims(x, (-2, -3))
         do_sort = indices.size >= 64
         idx = indices
@@ -394,6 +562,177 @@ class InklingSwitchGLU(SwitchGLU):
         return x.squeeze(-2)
 
 
+_ROUTE_SRC = r"""
+    uint lane = thread_position_in_grid.x;
+    uint n = thread_position_in_grid.y;
+    if (n >= N) return;
+    auto lg = logits + (size_t)n * (R + SH);
+    float ws = wscale[0];
+    constexpr int PER = (R + 31) / 32;
+    float sc[PER];
+    float tl_[PER];
+    bool taken[PER];
+    for (int t = 0; t < PER; ++t) {
+        uint j = lane + (uint)t * 32u;
+        taken[t] = false;
+        if (j < R) {
+            float l = (float)lg[j];
+            tl_[t] = l;
+            sc[t] = 1.0f / (1.0f + metal::exp(-l)) + (float)corr[j];
+        } else {
+            sc[t] = -INFINITY;
+        }
+    }
+    uint bidx[K];
+    float btl[K];
+    for (uint kk = 0; kk < K; ++kk) {
+        float lb = -INFINITY; int lt = -1;
+        for (int t = 0; t < PER; ++t)
+            if (!taken[t] && sc[t] > lb) { lb = sc[t]; lt = t; }
+        float gb = simd_max(lb);
+        ushort wl = (ushort)simd_min(lb == gb ? lane : 32u);
+        uint wj = simd_shuffle(lt >= 0 ? lane + (uint)lt * 32u : 0u, wl);
+        float wtl = simd_shuffle(lt >= 0 ? tl_[lt] : 0.0f, wl);
+        if (lane == (uint)wl && lt >= 0 && sc[lt] == gb) taken[lt] = true;
+        bidx[kk] = wj; btl[kk] = wtl;
+    }
+    float lp[K + SH];
+    float m = -INFINITY;
+    for (uint t = 0; t < K + SH; ++t) {
+        float tv = (t < K) ? btl[t] : (float)lg[R + (t - K)];
+        float a = -tv;
+        float lad = metal::max(a, 0.0f)
+                  + metal::log(1.0f + metal::exp(-metal::fabs(a)));
+        lp[t] = -lad;
+        m = metal::max(m, lp[t]);
+    }
+    float se = 0.0f;
+    for (uint t = 0; t < K + SH; ++t) se += metal::exp(lp[t] - m);
+    float lse = m + metal::log(se);
+    if (lane < K) {
+        idx[(size_t)n * K + lane] = bidx[lane];
+        wk[(size_t)n * K + lane] = (T)(metal::exp(lp[lane] - lse) * ws);
+    }
+    T gv[SH];
+    for (uint s = 0; s < SH; ++s) gv[s] = (T)(metal::exp(lp[K + s] - lse) * ws);
+    device T* gp = gamma + (size_t)n * SH * I;
+    for (uint t = lane; t < SH * I; t += 32u) gp[t] = gv[t / I];
+"""
+_route_kernel = mx.fast.metal_kernel(
+    name="omlx_inkling_moe_route",
+    input_names=["logits", "corr", "wscale"],
+    output_names=["idx", "wk", "gamma"],
+    source=_ROUTE_SRC,
+)
+
+
+_DOWN_COMBINE = True
+
+_DOWN_COMBINE_SRC = r"""
+    uint lane = thread_index_in_simdgroup;
+    uint sg   = simdgroup_index_in_threadgroup;
+    uint row  = threadgroup_position_in_grid.y;
+    uint n    = threadgroup_position_in_grid.z;
+    threadgroup float partial[8];
+    if (sg < K) {
+        uint e = idx[(size_t)n * K + sg];
+        const device uint* wr = wq + ((size_t)e * OUT + row) * (IN / 8u);
+        const device T* sr = sc + ((size_t)e * OUT + row) * GROUPS;
+        const device T* br = bi + ((size_t)e * OUT + row) * GROUPS;
+        const device T* xr = xin + ((size_t)n * K + sg) * IN;
+        float s = (float)sr[lane];
+        float b = (float)br[lane];
+        float accq = 0.0f, accx = 0.0f;
+        uint base = lane * 8u;
+        uint xbase = lane * 64u;
+        for (uint u = 0; u < 8u; ++u) {
+            uint w8 = wr[base + u];
+            for (uint t = 0; t < 8u; ++t) {
+                float xv = (float)xr[xbase + u * 8u + t];
+                accq += (float)((w8 >> (4u * t)) & 0xFu) * xv;
+                accx += xv;
+            }
+        }
+        float dot = simd_sum(s * accq + b * accx);
+        if (lane == 0) {
+            float dv = (float)((T)dot);
+            partial[sg] = (float)((T)(dv * (float)wk[(size_t)n * K + sg]));
+        }
+    } else if (lane == 0) {
+        partial[sg] = 0.0f;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sg == 0 && lane == 0) {
+        float tot = 0.0f;
+        for (uint t = 0; t < 8u; ++t) tot += partial[t];
+        out[(size_t)n * OUT + row] = (T)tot;
+    }
+"""
+_down_combine_kernel = mx.fast.metal_kernel(
+    name="omlx_inkling_moe_down_combine",
+    input_names=["xin", "wq", "sc", "bi", "idx", "wk"],
+    output_names=["out"],
+    source=_DOWN_COMBINE_SRC,
+)
+
+
+@partial(mx.compile, shapeless=True)
+def _swiglu_scaled(gate, up, scale):
+    return nn.silu(gate) * up * scale
+
+
+class InklingSharedExpertsDense(nn.Module):
+    """Concatenate always-on shared experts into three dense projections."""
+
+    def __init__(self, input_dims: int, hidden_dims: int, num_experts: int):
+        super().__init__()
+        self.gate_proj = nn.Linear(input_dims, num_experts * hidden_dims, bias=False)
+        self.up_proj = nn.Linear(input_dims, num_experts * hidden_dims, bias=False)
+        self.down_proj = nn.Linear(num_experts * hidden_dims, input_dims, bias=False)
+
+    def __call__(self, x, gamma):
+        return self.down_proj(_swiglu_scaled(self.gate_proj(x), self.up_proj(x), gamma))
+
+
+def fuse_qkvr(weights, config=None):
+    """Stack compatible q/k/v/r tensors while preserving mixed-quant layers."""
+    out = dict(weights)
+    prefixes = {
+        key[: -len("q_proj.weight")]
+        for key in weights
+        if key.endswith(".self_attn.q_proj.weight")
+    }
+    for prefix in prefixes:
+        mtp = ".mtp.blocks." in prefix
+        marker = ".mtp.blocks." if mtp else ".model.layers."
+        try:
+            layer_idx = int(prefix.split(marker, 1)[1].split(".", 1)[0])
+        except (IndexError, ValueError):
+            layer_idx = 0
+        if config is not None and not qkvr_fusion_enabled(config, layer_idx, mtp=mtp):
+            continue
+        for leaf in ("weight", "scales", "biases"):
+            parts = [out.pop(f"{prefix}{name}_proj.{leaf}", None) for name in "qkvr"]
+            if all(value is not None for value in parts):
+                out[f"{prefix}qkvr_proj.{leaf}"] = mx.concatenate(parts, axis=0)
+            elif any(value is not None for value in parts):
+                raise ValueError(f"partial q/k/v/r {leaf} set under {prefix}")
+    return out
+
+
+def shared_experts_to_dense(weights):
+    """Reshape shared SwitchGLU tensors into the dense concatenated layout."""
+    out = {}
+    for key, value in weights.items():
+        if ".shared_experts." in key and getattr(value, "ndim", 0) == 3:
+            if ".down_proj." in key:
+                value = value.transpose(1, 0, 2).reshape(value.shape[1], -1)
+            else:
+                value = value.reshape(-1, value.shape[2])
+        out[key] = value
+    return out
+
+
 class InklingSparseMoE(nn.Module):
     """Sigmoid-gated fine-grained MoE: top-k routed experts (+ correction-bias selection)
     plus always-on shared experts, weighted by a logsigmoid/logsumexp softmax."""
@@ -404,24 +743,49 @@ class InklingSparseMoE(nn.Module):
         self.n_shared = config.n_shared_experts
         self.top_k = config.num_experts_per_tok
         self.route_scale = config.route_scale
+        self.intermediate_size = config.intermediate_size
         self.gate_weight = mx.zeros((self.n_routed + self.n_shared, config.hidden_size))
         self.e_score_correction_bias = mx.zeros((self.n_routed,))
         self.global_scale = mx.ones((1,))
         self.switch_mlp = InklingSwitchGLU(
             config.hidden_size, config.intermediate_size, self.n_routed
         )
-        self.shared_experts = SwitchGLU(
+        self.shared_experts = InklingSharedExpertsDense(
             config.hidden_size, config.intermediate_size, self.n_shared
         )
+        self._wscale = None
 
-    def __call__(self, x):
-        B, L, D = x.shape
-        xf = x.reshape(-1, D)
-        logits = xf @ self.gate_weight.astype(x.dtype).T
+    def _route(self, logits):
+        """Select experts and compute routed/shared weights."""
+        n_tokens = logits.shape[0]
+        if self._wscale is None:
+            self._wscale = mx.array(
+                [self.route_scale], dtype=mx.float32
+            ) * self.global_scale.astype(mx.float32)
+        if mx.default_device() == mx.gpu:
+            return _route_kernel(
+                inputs=[logits, self.e_score_correction_bias, self._wscale],
+                template=[
+                    ("T", logits.dtype),
+                    ("N", n_tokens),
+                    ("R", self.n_routed),
+                    ("SH", self.n_shared),
+                    ("K", self.top_k),
+                    ("I", self.intermediate_size),
+                ],
+                grid=(32, n_tokens, 1),
+                threadgroup=(32, 1, 1),
+                output_shapes=[
+                    (n_tokens, self.top_k),
+                    (n_tokens, self.top_k),
+                    (n_tokens, self.n_shared * self.intermediate_size),
+                ],
+                output_dtypes=[mx.uint32, logits.dtype, logits.dtype],
+            )
+
         scores = mx.sigmoid(logits.astype(mx.float32))
         sfc = scores[:, : self.n_routed] + self.e_score_correction_bias
         idx = mx.argpartition(-sfc, self.top_k - 1, axis=-1)[:, : self.top_k]
-
         routed_logits = logits[:, : self.n_routed]
         shared_logits = logits[:, -self.n_shared :]
         tl = mx.concatenate(
@@ -433,23 +797,79 @@ class InklingSparseMoE(nn.Module):
             * self.route_scale
             * self.global_scale
         )
-        shared_gammas = w[:, -self.n_shared :]
-        topk_w = w[:, : self.top_k]
-
-        yr = (self.switch_mlp(xf, idx) * topk_w[..., None].astype(x.dtype)).sum(axis=-2)
-        sh_idx = mx.broadcast_to(
-            mx.arange(self.n_shared)[None], (xf.shape[0], self.n_shared)
+        topk_w = w[:, : self.top_k].astype(logits.dtype)
+        gamma = mx.repeat(
+            w[:, -self.n_shared :].astype(logits.dtype),
+            self.intermediate_size,
+            axis=-1,
         )
-        ys = (
-            self.shared_experts(xf, sh_idx) * shared_gammas[..., None].astype(x.dtype)
-        ).sum(axis=-2)
+        return idx.astype(mx.uint32), topk_w, gamma
+
+    def __call__(self, x):
+        B, L, D = x.shape
+        xf = x.reshape(-1, D)
+        gate_weight = self.gate_weight
+        if gate_weight.dtype != x.dtype:
+            gate_weight = gate_weight.astype(x.dtype)
+        logits = xf @ gate_weight.T
+        idx, topk_w, gamma = self._route(logits)
+
+        switch_mlp = self.switch_mlp
+        down_proj = switch_mlp.down_proj
+        if (
+            _DOWN_COMBINE
+            and self.top_k <= 8
+            and xf.shape[0] <= 8
+            and mx.default_device() == mx.gpu
+            and getattr(down_proj, "bits", None) == 4
+            and getattr(down_proj, "group_size", None) == 64
+            and getattr(down_proj, "mode", "affine") == "affine"
+            and getattr(down_proj, "biases", None) is not None
+            and down_proj.input_dims == 2048
+            and down_proj.scales.dtype == x.dtype
+            and switch_mlp.scales_trivial()
+        ):
+            xe = mx.expand_dims(xf, (-2, -3))
+            act = switch_mlp.activation(
+                switch_mlp.up_proj(xe, idx), switch_mlp.gate_proj(xe, idx)
+            )
+            yr = _down_combine_kernel(
+                inputs=[
+                    act,
+                    down_proj.weight,
+                    down_proj.scales,
+                    down_proj.biases,
+                    idx,
+                    topk_w,
+                ],
+                template=[
+                    ("T", x.dtype),
+                    ("OUT", down_proj.output_dims),
+                    ("IN", down_proj.input_dims),
+                    ("GROUPS", down_proj.input_dims // 64),
+                    ("K", self.top_k),
+                ],
+                grid=(256, down_proj.output_dims, xf.shape[0]),
+                threadgroup=(256, 1, 1),
+                output_shapes=[(xf.shape[0], down_proj.output_dims)],
+                output_dtypes=[x.dtype],
+            )[0]
+        else:
+            yr = (switch_mlp(xf, idx) * topk_w[..., None]).sum(axis=-2)
+        ys = self.shared_experts(xf, gamma)
         return (yr + ys).reshape(B, L, D).astype(x.dtype)
 
 
 class InklingDecoderLayer(nn.Module):
-    def __init__(self, config: ModelConfig, layer_idx: int):
+    def __init__(
+        self,
+        config: ModelConfig,
+        layer_idx: int,
+        *,
+        qkvr_fused: Optional[bool] = None,
+    ):
         super().__init__()
-        self.self_attn = InklingAttention(config, layer_idx)
+        self.self_attn = InklingAttention(config, layer_idx, qkvr_fused=qkvr_fused)
         self.mlp = (
             InklingDenseMLP(config)
             if config.layer_is_dense(layer_idx)
@@ -468,10 +888,12 @@ class InklingDecoderLayer(nn.Module):
 
     def __call__(self, x, cache=None, conv_mask=None):
         conv = cache[1] if cache is not None else None
+        if conv_mask is None:
+            conv_mask = _cache_padding_mask(conv, x.shape[1])
         r = self.self_attn(self.input_layernorm(x), cache=cache, conv_mask=conv_mask)
-        h = x + self.attn_sconv(r, cache=conv, mask=conv_mask)
+        h = self.attn_sconv(r, cache=conv, mask=conv_mask, residual=x)
         r = self.mlp(self.post_attention_layernorm(h))
-        out = h + self.mlp_sconv(r, cache=conv, mask=conv_mask)
+        out = self.mlp_sconv(r, cache=conv, mask=conv_mask, residual=h)
         # OMLX: advance the shared conv cache once per consumed chunk so
         # lengths/left_padding track the remaining sequence across chunked
         # prefill (qwen3_5 pattern; no-op without padding bookkeeping).
@@ -519,8 +941,7 @@ class InklingModel(nn.Module):
         first = cache[0] if cache else None
         if first is not None:
             conv0 = first[1]
-            if conv0 is not None and hasattr(conv0, "make_mask"):
-                conv_mask = conv0.make_mask(h.shape[1])
+            conv_mask = _cache_padding_mask(conv0, h.shape[1])
         for layer, c in zip(self.layers, cache):
             h = layer(h, cache=c, conv_mask=conv_mask)
         return h if skip_final_norm else self.norm(h)

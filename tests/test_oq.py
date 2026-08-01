@@ -5700,6 +5700,16 @@ class TestInklingQuantPredicate:
         )
         assert isinstance(result, dict) and result["bits"] == 8
 
+    def test_fused_qkvr_keeps_inkling_attention_at_q8(
+        self, inkling_config, module
+    ):
+        result = universal_quant_predicate(
+            "language_model.model.layers.3.self_attn.qkvr_proj.weight",
+            module,
+            inkling_config,
+        )
+        assert isinstance(result, dict) and result["bits"] == 8
+
     def test_towers_skipped(self, inkling_config, module):
         assert (
             universal_quant_predicate(
@@ -5756,12 +5766,24 @@ class TestInklingSanitizeDiscovery:
                 (n_experts, hidden, inter), dtype=np.float16
             ),
             "model.llm.layers.1.mlp.shared_experts.shared_w13_weight": np.zeros(
-                (2 * inter, hidden), dtype=np.float16
+                (2, 2 * inter, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.mlp.shared_experts.shared_w2_weight": np.zeros(
+                (2, hidden, inter), dtype=np.float16
             ),
             "model.llm.layers.1.mlp.gate.weight": np.zeros(
                 (n_experts + 1, hidden), dtype=np.float16
             ),
             "model.llm.layers.1.attn.wq_du.weight": np.zeros(
+                (hidden, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.attn.wk_dv.weight": np.zeros(
+                (hidden, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.attn.wv_dv.weight": np.zeros(
+                (hidden, hidden), dtype=np.float16
+            ),
+            "model.llm.layers.1.attn.wr_du.weight": np.zeros(
                 (hidden, hidden), dtype=np.float16
             ),
             "model.llm.layers.1.attn.k_sconv.weight": np.zeros(
@@ -5793,12 +5815,26 @@ class TestInklingSanitizeDiscovery:
         down = plan[prefix + "mlp.switch_mlp.down_proj.weight"]
         assert down["transform"] == "passthrough"
 
+        shared_gate = plan[prefix + "mlp.shared_experts.gate_proj.weight"]
+        shared_down = plan[prefix + "mlp.shared_experts.down_proj.weight"]
+        assert tuple(shared_gate["shape"]) == (8, 8)
+        assert tuple(shared_down["shape"]) == (8, 8)
+
         # Synthesized identity scales become literal plan entries.
         assert plan[prefix + "mlp.switch_mlp.gate_scale"]["transform"] == "literal"
         assert plan[prefix + "mlp.switch_mlp.out_scale"]["transform"] == "literal"
 
         sconv = plan[prefix + "self_attn.k_sconv.conv.weight"]
         assert tuple(sconv["shape"]) == (8, 1, 4)
+
+        qkvr = plan[prefix + "self_attn.qkvr_proj.weight"]
+        assert qkvr["sources"] == [
+            "model.llm.layers.1.attn.wq_du.weight",
+            "model.llm.layers.1.attn.wk_dv.weight",
+            "model.llm.layers.1.attn.wv_dv.weight",
+            "model.llm.layers.1.attn.wr_du.weight",
+        ]
+        assert tuple(qkvr["shape"]) == (32, 8)
 
         assert plan["language_model.model.embed_tokens.weight"]["transform"] == (
             "passthrough"
@@ -5920,9 +5956,7 @@ class TestInklingLayerWalk:
         assert type(sparse.switch_mlp.gate_proj).__name__ in (
             _OQE_SWITCH_LINEAR_CLASSES
         )
-        assert type(sparse.shared_experts.down_proj).__name__ in (
-            _OQE_SWITCH_LINEAR_CLASSES
-        )
+        assert type(sparse.shared_experts.down_proj).__name__ == "Linear"
 
 
 @pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
@@ -5953,12 +5987,15 @@ class TestInklingModelSanitizer:
                 (n_experts, hidden, inter)
             ),
             "model.llm.layers.1.attn.wq_du.weight": mx.zeros((hidden, hidden)),
+            "model.llm.layers.1.attn.wk_dv.weight": mx.zeros((hidden, hidden)),
+            "model.llm.layers.1.attn.wv_dv.weight": mx.zeros((hidden, hidden)),
+            "model.llm.layers.1.attn.wr_du.weight": mx.zeros((hidden, hidden)),
             "model.llm.embed.weight": mx.zeros((16, hidden)),
         }
         out = sanitize_fn(weights)
         prefix = "language_model.model.layers.1."
         assert prefix + "mlp.switch_mlp.gate_proj.weight" in out
-        assert prefix + "self_attn.q_proj.weight" in out
+        assert prefix + "self_attn.qkvr_proj.weight" in out
         assert "language_model.model.embed_tokens.weight" in out
 
 
