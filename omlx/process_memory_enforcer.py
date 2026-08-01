@@ -124,10 +124,11 @@ def get_macos_vm_stats() -> dict[str, int] | None:
     call so this is safe inside the enforcer poll loop and inside
     per-chunk memcheck.
 
-    The dict exposes only the first four page counters we use for the
-    dynamic ceiling math. Those counters are stable at the front of
-    `vm_statistics64`; using a max-sized `host_info64_t` buffer avoids
-    pinning oMLX to an SDK-specific tail layout.
+    The dict always exposes the first four page counters used by the dynamic
+    ceiling math. Those counters are stable at the front of `vm_statistics64`;
+    speculative and compressed counters are included when the kernel fills the
+    relevant tail fields. A max-sized `host_info64_t` buffer avoids pinning
+    oMLX to an SDK-specific tail layout.
     """
     return psutil_compat.get_macos_vm_stats()
 

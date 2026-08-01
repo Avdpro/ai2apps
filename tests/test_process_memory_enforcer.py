@@ -120,6 +120,8 @@ class TestMacOSVMStats:
                 stats[1] = 20
                 stats[2] = 30
                 stats[3] = 40
+                stats[psutil_compat._VM_SPECULATIVE_INDEX] = 50
+                stats[psutil_compat._VM_COMPRESSOR_INDEX] = 60
                 count._obj.value = 104
                 return 0
 
@@ -135,6 +137,8 @@ class TestMacOSVMStats:
             "active": 20 * 4096,
             "inactive": 30 * 4096,
             "wired": 40 * 4096,
+            "speculative": 50 * 4096,
+            "compressed": 60 * 4096,
         }
 
     def test_short_host_info64_response_returns_none(self):
