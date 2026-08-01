@@ -499,7 +499,17 @@ class MLXEmbeddingModel:
 
             self._compiled_embed = mx.compile(_compiled_embed)
 
-            test_inputs = {"input_ids": mx.zeros((1, 4), dtype=mx.int32)}
+            # Real requests arrive with a traced attention_mask (the tokenizer
+            # path always emits one). A mask-less probe lets a model whose
+            # forward branches on the mask pass here — its internally-built
+            # default mask is a tracing constant — and then the first real
+            # request trips the traced-mask branch and silently disables
+            # compile for the rest of the process (issue #2447). The reranker
+            # probe already includes the mask.
+            test_inputs = {
+                "input_ids": mx.zeros((1, 4), dtype=mx.int32),
+                "attention_mask": mx.ones((1, 4), dtype=mx.int32),
+            }
             _ = self._compiled_embed(test_inputs)
 
             logger.info(
