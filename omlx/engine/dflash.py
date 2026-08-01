@@ -14,6 +14,8 @@ import copy
 import gc
 import json
 import logging
+import math
+import re
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -111,6 +113,98 @@ def _format_phase_timings(phase_timings_us: object) -> str:
         f" verify={_ms('verify')}ms"
         f" replay={_ms('replay')}ms"
         f" commit={_ms('commit')}ms]"
+    )
+
+
+# Precision suffixes Poolside uses for drafts trained against a quantized
+# target ("Laguna-S-2.1-DFlash-NVFP4" etc.). Anything else after "-DFlash-"
+# (e.g. z-lab's "-b16" block-size suffix) makes no precision claim.
+_DRAFT_PRECISION_TAGS = frozenset(
+    {"NVFP4", "INT4", "INT8", "FP8", "FP4", "MXFP4"}
+)
+
+
+def _canonical_precision_tag(value: object) -> str | None:
+    """Normalize an explicit precision label from a name or config value."""
+    text = str(value or "").upper().replace("_", "-")
+    for tag in ("NVFP4", "MXFP4", "INT4", "INT8", "FP8", "FP4"):
+        if tag in text.replace("-", ""):
+            return tag
+    if re.search(r"(?:^|[-/])OQ\d", text):
+        return "OQ"
+    if "BFLOAT16" in text or "BF16" in text:
+        return "BF16"
+    if "FLOAT16" in text or re.search(r"(?:^|[-/])FP16(?:$|[-/])", text):
+        return "FP16"
+    return None
+
+
+def _target_precision_tag(
+    target_name: str,
+    target_config: dict | None,
+) -> str | None:
+    """Best-effort target precision, preferring checkpoint metadata to paths."""
+    if isinstance(target_config, dict):
+        for section_name in ("quantization", "quantization_config"):
+            section = target_config.get(section_name)
+            if not isinstance(section, dict):
+                continue
+            for key in ("mode", "format", "quant_method", "method"):
+                tag = _canonical_precision_tag(section.get(key))
+                if tag is not None:
+                    return tag
+
+        # An explicit floating dtype plus no quantization metadata is a useful
+        # signal for base checkpoints. Do not infer INT4 from `bits: 4` alone:
+        # oQ4, NVFP4, and several other formats share that width.
+        if not target_config.get("quantization") and not target_config.get(
+            "quantization_config"
+        ):
+            tag = _canonical_precision_tag(target_config.get("torch_dtype"))
+            if tag is not None:
+                return tag
+
+    # Local model directories normally retain their Hub basename, but this is
+    # deliberately only a fallback because users can rename them.
+    return _canonical_precision_tag(Path(str(target_name).rstrip("/")).name)
+
+
+def check_draft_target_precision_pairing(
+    target_name: str,
+    target_config: dict | None,
+    draft_path: str,
+) -> str | None:
+    """Heuristic precision-pairing check between a DFlash draft and its target.
+
+    Some Poolside drafts declare a target precision in their suffix, for
+    example ``*-DFlash-NVFP4``. Draft checkpoints do not otherwise record the
+    target they were trained against, so only warn when both sides make an
+    explicit, contradictory precision claim. A generic ``*-DFlash`` name is
+    intentionally treated as unknown rather than assumed to be BF16-only.
+
+    Returns a warning message, or None when the pair looks matched or either
+    side carries no reliable precision claim.
+    """
+    draft_base = Path(str(draft_path).rstrip("/")).name
+    match = re.search(r"-DFlash(?:-([A-Za-z0-9]+))?$", draft_base, re.IGNORECASE)
+    if match is None:
+        return None
+    suffix = (match.group(1) or "").upper()
+    draft_tag = suffix if suffix in _DRAFT_PRECISION_TAGS else ""
+
+    if not draft_tag:
+        return None
+
+    target_tag = _target_precision_tag(target_name, target_config)
+    if target_tag is None or target_tag == draft_tag:
+        return None
+
+    target_base = Path(str(target_name).rstrip("/")).name
+    return (
+        f"Possible DFlash precision mismatch: draft '{draft_base}' declares "
+        f"{draft_tag}, while target '{target_base}' appears to be {target_tag}. "
+        "This may reduce acceptance and make speculative decoding slower. "
+        "Use a target/draft pair recommended by the checkpoint's model card."
     )
 
 
@@ -250,6 +344,20 @@ class DFlashEngine(ActivityTrackingMixin, BaseEngine):
         # Session-scope hit/eviction rates for the admin cache observability
         # panel, fed from the dflash-mlx runtime cache manager counters.
         self._cache_rate_tracker = CacheRateTracker()
+        # Draft/target precision pairing warning (set in start(), surfaced in
+        # the dashboard) and per-session speculation counters fed from each
+        # request's SummaryEvent.
+        self._pairing_warning: str | None = None
+        self._spec_stats_lock = threading.Lock()
+        self._spec_last: dict[str, Any] | None = None
+        self._spec_totals = {
+            "requests": 0,
+            "speculative_requests": 0,
+            "fallback_requests": 0,
+            "generation_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "cycles": 0,
+        }
 
         self._max_dflash_ctx = (
             getattr(model_settings, "dflash_max_ctx", None) if model_settings else None
@@ -497,6 +605,14 @@ class DFlashEngine(ActivityTrackingMixin, BaseEngine):
             self._model_type_str = config.get("model_type")
         elif hasattr(config, "model_type"):
             self._model_type_str = config.model_type
+
+        self._pairing_warning = check_draft_target_precision_pairing(
+            self._model_name,
+            config if isinstance(config, dict) else None,
+            self._draft_model_path,
+        )
+        if self._pairing_warning:
+            logger.warning(self._pairing_warning)
 
         suppress_ref = (
             getattr(self._executor_tokenizer, "name_or_path", None) or self._model_name
@@ -1127,6 +1243,7 @@ class DFlashEngine(ActivityTrackingMixin, BaseEngine):
                     )
 
                 elif isinstance(event, SummaryEvent):
+                    self._record_speculation_summary(event)
                     # Flush any buffered tail from the parser (e.g. close an
                     # unterminated <think> block) before the metrics chunk so
                     # the client sees a well-formed final delta.
@@ -1312,6 +1429,7 @@ class DFlashEngine(ActivityTrackingMixin, BaseEngine):
                                 parsed_visible_parts.append(result.visible_text)
                     elif isinstance(event, SummaryEvent):
                         summary = event
+                        self._record_speculation_summary(event)
                 if parser_session is not None:
                     final = parser_session.finalize()
                     if final.visible_text:
@@ -1753,7 +1871,91 @@ class DFlashEngine(ActivityTrackingMixin, BaseEngine):
             "loaded": self._loaded,
             "in_memory_cache": self._in_memory_cache_enabled,
             "ssd_cache": self._resolve_dflash_l2_dir() is not None,
+            "pairing_warning": self._pairing_warning,
+            "speculation": self.get_speculation_stats(),
         }
+
+    @property
+    def pairing_warning(self) -> str | None:
+        """Draft/target precision pairing warning from load time, if any."""
+        return self._pairing_warning
+
+    def _record_speculation_summary(self, summary: Any) -> None:
+        """Fold one request's SummaryEvent into the session speculation stats.
+
+        Called from the MLX executor thread in both generate paths, hence the
+        lock. Best-effort: a malformed event is dropped, never raised.
+        """
+        try:
+            gen_tokens = int(summary.generation_tokens)
+            cycles = int(summary.cycles_completed)
+            ratio = float(summary.acceptance_ratio)
+            accepted = int(summary.accepted_from_draft)
+            tokens_per_cycle = float(summary.tokens_per_cycle)
+        except (AttributeError, OverflowError, TypeError, ValueError):
+            return
+        fallback_ar = bool(getattr(summary, "fallback_ar", False))
+        if (
+            gen_tokens <= 0
+            or cycles < 0
+            or accepted < 0
+            or accepted > gen_tokens
+            or not math.isfinite(ratio)
+            or not 0.0 <= ratio <= 1.0
+            or not math.isfinite(tokens_per_cycle)
+            or tokens_per_cycle < 0.0
+        ):
+            return
+        last = {
+            "generation_tokens": gen_tokens,
+            "cycles": cycles,
+            "acceptance_ratio": ratio,
+            "accepted_draft_tokens": accepted,
+            "tokens_per_cycle": tokens_per_cycle if cycles > 0 else None,
+            "accepted_draft_tokens_per_cycle": (
+                accepted / cycles if cycles > 0 else None
+            ),
+            "fallback_ar": fallback_ar,
+            "fallback_reason": getattr(summary, "fallback_reason", None),
+        }
+        with self._spec_stats_lock:
+            self._spec_last = last
+            self._spec_totals["requests"] += 1
+            if fallback_ar:
+                self._spec_totals["fallback_requests"] += 1
+                return
+            if cycles <= 0:
+                # A non-fallback summary without speculative cycles is not a
+                # valid contribution to acceptance/tokens-per-cycle totals.
+                return
+            self._spec_totals["speculative_requests"] += 1
+            self._spec_totals["generation_tokens"] += gen_tokens
+            self._spec_totals["accepted_draft_tokens"] += accepted
+            self._spec_totals["cycles"] += cycles
+
+    def get_speculation_stats(self) -> dict[str, Any] | None:
+        """Session speculation counters for the admin dashboard.
+
+        The runtime's acceptance ratio is the share of output tokens supplied
+        by the draft, while tokens_per_cycle includes the target-owned token.
+        Expose accepted_draft_tokens_per_cycle separately so the dashboard does
+        not conflate those two quantities (issue #2398).
+        """
+        with self._spec_stats_lock:
+            if self._spec_totals["requests"] == 0:
+                return None
+            totals = dict(self._spec_totals)
+            last = dict(self._spec_last) if self._spec_last else None
+        gen_tokens = totals["generation_tokens"]
+        cycles = totals["cycles"]
+        totals["acceptance_ratio"] = (
+            totals["accepted_draft_tokens"] / gen_tokens if gen_tokens > 0 else None
+        )
+        totals["tokens_per_cycle"] = gen_tokens / cycles if cycles > 0 else None
+        totals["accepted_draft_tokens_per_cycle"] = (
+            totals["accepted_draft_tokens"] / cycles if cycles > 0 else None
+        )
+        return {"last": last, "totals": totals}
 
     def get_cache_stats(self) -> dict[str, Any] | None:
         if self._fallback_engine is not None:

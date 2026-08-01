@@ -1460,3 +1460,247 @@ class TestFormatPhaseTimings:
         out = _format_phase_timings({"verify": 1000.0})
         assert "verify=1.0ms" in out
         assert "prefill=0.0ms" in out
+
+
+class TestDraftTargetPrecisionPairing:
+    """check_draft_target_precision_pairing heuristics (issue #2398)."""
+
+    OQ_CFG = {
+        "model_type": "laguna",
+        "quantization": {"bits": 4, "group_size": 64, "mode": "oQ4e"},
+    }
+    NVFP4_CFG = {
+        "model_type": "laguna",
+        "quantization": {"bits": 4, "group_size": 16, "mode": "nvfp4"},
+    }
+    BF16_CFG = {"model_type": "laguna", "torch_dtype": "bfloat16"}
+
+    def _check(self, target, config, draft):
+        from omlx.engine.dflash import check_draft_target_precision_pairing
+
+        return check_draft_target_precision_pairing(target, config, draft)
+
+    def test_generic_draft_on_quantized_target_is_unknown_not_mismatch(self):
+        """A generic suffix does not prove BF16-only compatibility."""
+        msg = self._check(
+            "mlx-community/Laguna-S-2.1-oQ3e-fast",
+            self.OQ_CFG,
+            "/models/poolside/Laguna-S-2.1-DFlash",
+        )
+        assert msg is None
+
+    def test_laguna_bf16_draft_on_bf16_target_is_silent(self):
+        msg = self._check(
+            "poolside/Laguna-S-2.1",
+            self.BF16_CFG,
+            "/models/poolside/Laguna-S-2.1-DFlash",
+        )
+        assert msg is None
+
+    def test_nvfp4_config_matches_even_if_local_target_was_renamed(self):
+        msg = self._check(
+            "/models/renamed-laguna-xs",
+            self.NVFP4_CFG,
+            "/models/poolside/Laguna-XS-2.1-DFlash-NVFP4",
+        )
+        assert msg is None
+
+    def test_nvfp4_draft_on_oq_config_warns_even_if_target_was_renamed(self):
+        msg = self._check(
+            "/models/renamed-laguna-s",
+            self.OQ_CFG,
+            "/models/poolside/Laguna-S-2.1-DFlash-NVFP4",
+        )
+        assert msg is not None
+        assert "NVFP4" in msg
+        assert "appears to be OQ" in msg
+        assert "may reduce acceptance" in msg
+
+    def test_nvfp4_draft_on_unquantized_target_warns(self):
+        msg = self._check(
+            "poolside/Laguna-S-2.1",
+            self.BF16_CFG,
+            "/models/poolside/Laguna-S-2.1-DFlash-NVFP4",
+        )
+        assert msg is not None
+
+    def test_qwen_generic_draft_on_quantized_target_is_silent(self):
+        """The supported-pairs table endorses quantized Qwen targets with the
+        generic z-lab drafts — no warning there."""
+        msg = self._check(
+            "mlx-community/Qwen3.5-27B-8bit",
+            {"model_type": "qwen3_5", "quantization": {"bits": 8}},
+            "/models/z-lab/Qwen3.5-27B-DFlash",
+        )
+        assert msg is None
+
+    def test_b16_suffix_is_not_a_precision_tag(self):
+        """z-lab's -b16 suffix is a block-size marker, not a precision claim."""
+        msg = self._check(
+            "Qwen/Qwen3-4B",
+            {"model_type": "qwen3"},
+            "/models/z-lab/Qwen3-4B-DFlash-b16",
+        )
+        assert msg is None
+
+    def test_unrecognized_draft_name_is_silent(self):
+        msg = self._check(
+            "mlx-community/Laguna-S-2.1-oQ3e-fast",
+            self.OQ_CFG,
+            "/models/some/custom-draft",
+        )
+        assert msg is None
+
+    def test_explicit_draft_is_silent_when_target_precision_is_unknown(self):
+        msg = self._check(
+            "/models/renamed-target",
+            {"model_type": "laguna", "quantization": {"bits": 4}},
+            "/models/poolside/Laguna-S-2.1-DFlash-NVFP4",
+        )
+        assert msg is None
+
+
+class TestSpeculationStats:
+    """Session speculation counters exposed for the dashboard (issue #2398)."""
+
+    def _engine(self):
+        from omlx.engine.dflash import DFlashEngine
+
+        return DFlashEngine(
+            model_name="test-model",
+            draft_model_path="test-draft",
+        )
+
+    def test_empty_stats_are_none(self):
+        engine = self._engine()
+        assert engine.get_speculation_stats() is None
+        assert engine.get_stats()["speculation"] is None
+        assert engine.get_stats()["pairing_warning"] is None
+
+    def test_records_issue_2398_shape(self):
+        """The S run from issue #2398: 768 tokens, 377 cycles, acceptance 50.9%."""
+        engine = self._engine()
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=768,
+                cycles_completed=377,
+                acceptance_ratio=0.509,
+                accepted_from_draft=391,
+                tokens_per_cycle=768 / 377,
+                fallback_ar=False,
+            )
+        )
+        stats = engine.get_speculation_stats()
+        assert stats is not None
+        last = stats["last"]
+        assert last["accepted_draft_tokens"] == 391
+        assert last["cycles"] == 377
+        assert abs(last["tokens_per_cycle"] - 768 / 377) < 1e-9
+        assert abs(last["accepted_draft_tokens_per_cycle"] - 391 / 377) < 1e-9
+        assert last["fallback_ar"] is False
+        assert stats["totals"]["speculative_requests"] == 1
+        assert stats["totals"]["fallback_requests"] == 0
+
+    def test_totals_accumulate_across_requests(self):
+        engine = self._engine()
+        for gen, cycles, ratio in ((768, 377, 0.509), (1371, 666, 0.514)):
+            engine._record_speculation_summary(
+                SimpleNamespace(
+                    generation_tokens=gen,
+                    cycles_completed=cycles,
+                    acceptance_ratio=ratio,
+                    accepted_from_draft=round(gen * ratio),
+                    tokens_per_cycle=gen / cycles,
+                    fallback_ar=False,
+                )
+            )
+        totals = engine.get_speculation_stats()["totals"]
+        assert totals["requests"] == 2
+        assert totals["generation_tokens"] == 768 + 1371
+        assert totals["accepted_draft_tokens"] == 391 + 705
+        assert totals["cycles"] == 377 + 666
+        assert totals["speculative_requests"] == 2
+        assert 0.0 < totals["acceptance_ratio"] < 1.0
+        assert totals["tokens_per_cycle"] == (768 + 1371) / (377 + 666)
+        assert totals["accepted_draft_tokens_per_cycle"] == (391 + 705) / (
+            377 + 666
+        )
+
+    def test_uses_runtime_exact_counters_not_reconstructed_values(self):
+        engine = self._engine()
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=10,
+                cycles_completed=4,
+                acceptance_ratio=0.61,
+                accepted_from_draft=6,
+                tokens_per_cycle=2.5,
+                fallback_ar=False,
+            )
+        )
+        last = engine.get_speculation_stats()["last"]
+        assert last["accepted_draft_tokens"] == 6
+        assert last["tokens_per_cycle"] == 2.5
+        assert last["accepted_draft_tokens_per_cycle"] == 1.5
+
+    def test_fallback_is_visible_but_excluded_from_speculative_totals(self):
+        engine = self._engine()
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=32,
+                cycles_completed=0,
+                acceptance_ratio=0.0,
+                accepted_from_draft=0,
+                tokens_per_cycle=0.0,
+                fallback_ar=True,
+                fallback_reason="adaptive guard",
+            )
+        )
+        stats = engine.get_speculation_stats()
+        assert stats["last"]["fallback_ar"] is True
+        assert stats["last"]["fallback_reason"] == "adaptive guard"
+        assert stats["totals"]["requests"] == 1
+        assert stats["totals"]["fallback_requests"] == 1
+        assert stats["totals"]["speculative_requests"] == 0
+        assert stats["totals"]["generation_tokens"] == 0
+        assert stats["totals"]["acceptance_ratio"] is None
+        assert stats["totals"]["accepted_draft_tokens_per_cycle"] is None
+
+    def test_malformed_summary_is_dropped(self):
+        engine = self._engine()
+        engine._record_speculation_summary(SimpleNamespace())
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens="nope", cycles_completed=1, acceptance_ratio=0.5
+            )
+        )
+        assert engine.get_speculation_stats() is None
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), -0.1, 1.1])
+    def test_invalid_acceptance_ratio_is_dropped(self, value):
+        engine = self._engine()
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=10,
+                cycles_completed=4,
+                acceptance_ratio=value,
+                accepted_from_draft=5,
+                tokens_per_cycle=2.5,
+                fallback_ar=False,
+            )
+        )
+        assert engine.get_speculation_stats() is None
+
+    def test_empty_generation_is_dropped(self):
+        engine = self._engine()
+        engine._record_speculation_summary(
+            SimpleNamespace(
+                generation_tokens=0,
+                cycles_completed=0,
+                acceptance_ratio=0.0,
+                accepted_from_draft=0,
+                tokens_per_cycle=0.0,
+                fallback_ar=False,
+            )
+        )
+        assert engine.get_speculation_stats() is None
