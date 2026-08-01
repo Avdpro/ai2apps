@@ -123,6 +123,7 @@
 		DBB000000000000000000101 /* ModelCardDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000101 /* ModelCardDTO.swift */; };
 		DBB000000000000000000102 /* ModelCardSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000102 /* ModelCardSheet.swift */; };
 		DBB000000000000000000103 /* ModelCardDTODecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000103 /* ModelCardDTODecodeTests.swift */; };
+		DBB000000000000000000901 /* BenchDTODecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000901 /* BenchDTODecodeTests.swift */; };
 		DBB000000000000000000104 /* ShellEnvWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000104 /* ShellEnvWriterTests.swift */; };
 		DBB000000000000000000105 /* ThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000105 /* ThemeTests.swift */; };
 		DBB000000000000000000106 /* ReleasesCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC000000000000000000106 /* ReleasesCheckerTests.swift */; };
@@ -264,6 +265,7 @@
 		DCC000000000000000000101 /* ModelCardDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCardDTO.swift; sourceTree = "<group>"; };
 		DCC000000000000000000102 /* ModelCardSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCardSheet.swift; sourceTree = "<group>"; };
 		DCC000000000000000000103 /* ModelCardDTODecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCardDTODecodeTests.swift; sourceTree = "<group>"; };
+		DCC000000000000000000901 /* BenchDTODecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchDTODecodeTests.swift; sourceTree = "<group>"; };
 		DCC000000000000000000104 /* ShellEnvWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellEnvWriterTests.swift; sourceTree = "<group>"; };
 		DCC000000000000000000105 /* ThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeTests.swift; sourceTree = "<group>"; };
 		DCC000000000000000000106 /* ReleasesCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleasesCheckerTests.swift; sourceTree = "<group>"; };
@@ -332,6 +334,7 @@
 				DCC000000000000000000111 /* MenubarMetricTests.swift */,
 				DCC000000000000000000112 /* SystemStatsTests.swift */,
 				DCC000000000000000000103 /* ModelCardDTODecodeTests.swift */,
+				DCC000000000000000000901 /* BenchDTODecodeTests.swift */,
 				DCC000000000000000000104 /* ShellEnvWriterTests.swift */,
 				DCC000000000000000000105 /* ThemeTests.swift */,
 				DCC000000000000000000106 /* ReleasesCheckerTests.swift */,
@@ -796,6 +799,7 @@
 				DBB000000000000000000111 /* MenubarMetricTests.swift in Sources */,
 				DBB000000000000000000112 /* SystemStatsTests.swift in Sources */,
 				DBB000000000000000000103 /* ModelCardDTODecodeTests.swift in Sources */,
+				DBB000000000000000000901 /* BenchDTODecodeTests.swift in Sources */,
 				DBB000000000000000000104 /* ShellEnvWriterTests.swift in Sources */,
 				DBB000000000000000000105 /* ThemeTests.swift in Sources */,
 				DBB000000000000000000106 /* ReleasesCheckerTests.swift in Sources */,

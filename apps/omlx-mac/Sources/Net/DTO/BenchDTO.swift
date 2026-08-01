@@ -76,6 +76,63 @@ struct BenchResultDTO: Codable, Equatable, Sendable {
     let tgTps: Double?
     let ppTps: Double?
     let avgTtftMs: Double?
+
+    /// Host load during this test's window. Optional so results from a server
+    /// that predates host sampling still decode.
+    let systemMetrics: BenchSystemMetricsDTO?
+}
+
+/// Aggregated host telemetry for one test. Every field is optional: the server
+/// adds and renames nested keys over time, and a missing reading has to render
+/// as "unknown" rather than break decoding.
+struct BenchSystemMetricsDTO: Codable, Equatable, Sendable {
+    struct CPU: Codable, Equatable, Sendable {
+        let totalAvg: Double?
+        let totalMax: Double?
+        let pAvg: Double?
+        let eAvg: Double?
+    }
+
+    struct GPU: Codable, Equatable, Sendable {
+        let utilAvg: Double?
+        let utilMax: Double?
+    }
+
+    /// Raw OSThermalPressureLevel: 0 nominal, 1 moderate, 2 heavy,
+    /// 3 trapping, 4 sleeping. Five-valued — Foundation's
+    /// ProcessInfo.ThermalState collapses the last two into `.critical`.
+    struct Thermal: Codable, Equatable, Sendable {
+        let start: Int?
+        let max: Int?
+    }
+
+    /// All values are GiB, matching the leaderboard's other memory fields.
+    struct Memory: Codable, Equatable, Sendable {
+        let physFootprintPeak: Double?
+        let mlxActivePeak: Double?
+        let mlxCachePeak: Double?
+        let systemUsedPeak: Double?
+        let systemWiredPeak: Double?
+        let totalRam: Double?
+    }
+
+    let sampleCount: Int?
+    let intervalS: Double?
+    let cpu: CPU?
+    let gpu: GPU?
+    let thermal: Thermal?
+    let memory: Memory?
+}
+
+/// One acceleration feature that was active during the run. The server ships
+/// the display label so a newly added feature renders correctly without an app
+/// update.
+struct BenchFeatureFlagDTO: Codable, Equatable, Sendable, Identifiable {
+    let key: String
+    let label: String
+    let detail: String?
+
+    var id: String { key }
 }
 
 struct BenchResultsResponse: Codable, Sendable {
@@ -100,10 +157,14 @@ struct BenchUploadStateDTO: Codable, Equatable, Sendable {
     let failedCount: Int
     /// Display owner hash (verify char stripped). Populated on phase=done.
     let ownerHash: String?
-    /// Set when phase=skipped. Today the only reason is
-    /// "experimental_features".
+    /// Set when phase=skipped. Only external-endpoint runs skip now —
+    /// accelerated runs upload and are tagged instead.
     let skippedReason: String?
+    /// Retained for wire compatibility; the server always sends it empty.
     let skippedFeatures: [String]
+    /// Acceleration active during the run. Optional so an older server that
+    /// does not send the key still decodes.
+    let featureFlags: [BenchFeatureFlagDTO]?
 }
 
 /// One context-length's upload outcome. Exactly one of `url` / `error`

@@ -67,6 +67,7 @@ struct ThroughputBenchScreen: View {
                 batchSizes: $vm.batchSizes,
                 running: vm.running,
                 canRun: vm.canRun,
+                pendingFlags: vm.pendingFeatureFlags,
                 onRun: { vm.runBenchmark(client: services.client) },
                 onCancel: { vm.cancelBenchmark(client: services.client) }
             )
@@ -161,8 +162,11 @@ private struct ConfigurationSection: View {
     @Binding var batchSizes: Set<Int>
     let running: Bool
     let canRun: Bool
+    let pendingFlags: [String]
     let onRun: () -> Void
     let onCancel: () -> Void
+
+    @Environment(\.omlxTheme) private var theme
 
     var body: some View {
         SectionHeader(
@@ -261,6 +265,16 @@ private struct ConfigurationSection: View {
                         .buttonStyle(.omlx(.primary))
                         .disabled(!canRun)
                     }
+                }
+
+                if !pendingFlags.isEmpty && !running {
+                    Text(String(localized: "bench.throughput.config.pending_flags",
+                                defaultValue: "This run will be tagged on the leaderboard: \(pendingFlags.joined(separator: ", "))",
+                                comment: "Inline note warning that acceleration features are on; placeholder is the comma-joined feature list"))
+                        .font(.omlxText(11))
+                        .foregroundStyle(theme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -663,9 +677,12 @@ private struct TextExportSection: View {
 /// run (omlx/admin/benchmark.py:_upload_to_omlx_ai); we just surface the
 /// state. Three modes:
 ///   • uploading: progress row + spinner
-///   • skipped:   amber banner explaining why (experimental features)
+///   • skipped:   amber banner (external-endpoint runs only — accelerated
+///                runs upload and are tagged instead)
 ///   • done:      per-context-length rows with link or error, plus a
 ///                summary footer showing the owner hash
+/// Acceleration flags active during the run are shown as chips above the
+/// rows in both the uploading and done phases.
 private struct UploadSection: View {
     let state: BenchUploadStateDTO
 
@@ -681,6 +698,7 @@ private struct UploadSection: View {
 
         switch state.phase {
         case "uploading":
+            FeatureFlagChips(flags: state.featureFlags ?? [])
             ListGroup {
                 FreeRow(isLast: true) {
                     HStack(spacing: 10) {
@@ -703,9 +721,10 @@ private struct UploadSection: View {
             }
 
         case "skipped":
-            SkippedBanner(reason: state.skippedReason, features: state.skippedFeatures)
+            SkippedBanner(reason: state.skippedReason)
 
         case "done":
+            FeatureFlagChips(flags: state.featureFlags ?? [])
             ListGroup {
                 let rows = state.results
                 ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
@@ -732,6 +751,12 @@ private struct UploadSection: View {
                                         defaultValue: "Skipped",
                                         comment: "Community-leaderboard subtitle when the server skipped uploading")
         case "done":
+            let flagCount = state.featureFlags?.count ?? 0
+            if state.failedCount == 0 && flagCount > 0 {
+                return String(localized: "bench.throughput.upload.subtitle.done_flagged",
+                              defaultValue: "\(state.successCount) of \(state.total) submitted · \(flagCount) flags",
+                              comment: "Community-leaderboard subtitle when the run was tagged with acceleration flags; placeholders are success count, total, and flag count")
+            }
             if state.failedCount == 0 {
                 return String(localized: "bench.throughput.upload.subtitle.done_all",
                               defaultValue: "\(state.successCount) of \(state.total) submitted",
@@ -846,9 +871,11 @@ private struct OwnerHashRow: View {
     }
 }
 
+/// Kept for the external-endpoint case, which still skips. Not reachable from
+/// this screen today (BenchStartRequest has no `external` field), but the
+/// server state exists and a silent EmptyView would be worse.
 private struct SkippedBanner: View {
     let reason: String?
-    let features: [String]
 
     @Environment(\.omlxTheme) private var theme
 
@@ -864,7 +891,7 @@ private struct SkippedBanner: View {
                             comment: "Banner heading shown when the server skipped uploading bench results"))
                     .font(.omlxText(12, weight: .semibold))
                     .foregroundStyle(theme.text)
-                Text(body(reason: reason, features: features))
+                Text(body(reason: reason))
                     .font(.omlxText(11))
                     .foregroundStyle(theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -878,21 +905,88 @@ private struct SkippedBanner: View {
         .padding(.bottom, 10)
     }
 
-    private func body(reason: String?, features: [String]) -> String {
+    private func body(reason: String?) -> String {
         switch reason {
-        case "experimental_features":
-            let list = features.isEmpty
-                ? String(localized: "bench.throughput.upload.skipped.experimental_default",
-                         defaultValue: "experimental features",
-                         comment: "Fallback noun phrase listed in the skipped-upload reason when the server returned no feature names")
-                : features.joined(separator: ", ")
-            return String(localized: "bench.throughput.upload.skipped.experimental",
-                          defaultValue: "Results were not submitted because \(list) were active during the run. These features skew throughput and would pollute the leaderboard.",
-                          comment: "Skipped-upload reason when experimental features were active; placeholder is the comma-joined feature list")
+        case "external_endpoint":
+            return String(localized: "bench.throughput.upload.skipped.external",
+                          defaultValue: "External endpoint results are not submitted because they measure remote hardware.",
+                          comment: "Skipped-upload reason when the benchmark ran against an external endpoint")
         default:
             return String(localized: "bench.throughput.upload.skipped.default",
                           defaultValue: "The server skipped uploading these results.",
                           comment: "Fallback skipped-upload reason when the server didn't provide one")
+        }
+    }
+}
+
+/// Acceleration features active during the run, rendered verbatim from the
+/// server-supplied labels. Deliberately not localized: these are product names
+/// and a local label table would drift from the server's.
+private struct FeatureFlagChips: View {
+    let flags: [BenchFeatureFlagDTO]
+
+    @Environment(\.omlxTheme) private var theme
+
+    var body: some View {
+        if !flags.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(String(localized: "bench.throughput.upload.flags.title",
+                            defaultValue: "Acceleration flags",
+                            comment: "Heading above the acceleration-feature chips in the community upload block"))
+                    .font(.omlxText(11))
+                    .foregroundStyle(theme.textTertiary)
+                FlowRow(spacing: 6) {
+                    ForEach(flags) { flag in
+                        Text(flag.detail.map { "\(flag.label) · \($0)" } ?? flag.label)
+                            .font(.omlxMono(10.5))
+                            .foregroundStyle(theme.greenDot)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(theme.greenDot.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
+        }
+    }
+}
+
+/// Minimal wrapping HStack. SwiftUI has no first-party flow layout below
+/// macOS 13's Layout protocol usage, and the chip count here is small.
+private struct FlowRow: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth == .infinity ? x : maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
         }
     }
 }

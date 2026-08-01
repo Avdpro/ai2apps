@@ -3515,42 +3515,6 @@
         }
       }
     },
-    "bench.throughput.upload.skipped.experimental" : {
-      "comment" : "Skipped-upload reason when experimental features were active; placeholder is the comma-joined feature list",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Results were not submitted because %@ were active during the run. These features skew throughput and would pollute the leaderboard."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Результаты не отправлены, потому что во время запуска были активны %@. Эти функции искажают пропускную способность и загрязнили бы лидерборд."
-          }
-        }
-      }
-    },
-    "bench.throughput.upload.skipped.experimental_default" : {
-      "comment" : "Fallback noun phrase listed in the skipped-upload reason when the server returned no feature names",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "experimental features"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "экспериментальные функции"
-          }
-        }
-      }
-    },
     "bench.throughput.upload.skipped.title" : {
       "comment" : "Banner heading shown when the server skipped uploading bench results",
       "extractionState" : "manual",
@@ -3675,6 +3639,78 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Закрыть окно"
+          }
+        }
+      }
+    },
+    "bench.throughput.config.pending_flags" : {
+      "comment" : "Inline note warning that acceleration features are on; placeholder is the comma-joined feature list",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This run will be tagged on the leaderboard: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот запуск будет отмечен в таблице лидеров: %@"
+          }
+        }
+      }
+    },
+    "bench.throughput.upload.flags.title" : {
+      "comment" : "Heading above the acceleration-feature chips in the community upload block",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Acceleration flags"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Флаги ускорения"
+          }
+        }
+      }
+    },
+    "bench.throughput.upload.skipped.external" : {
+      "comment" : "Skipped-upload reason when the benchmark ran against an external endpoint",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "External endpoint results are not submitted because they measure remote hardware."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Результаты внешнего эндпоинта не отправляются, так как измеряют удалённое оборудование."
+          }
+        }
+      }
+    },
+    "bench.throughput.upload.subtitle.done_flagged" : {
+      "comment" : "Community-leaderboard subtitle when the run was tagged with acceleration flags; placeholders are success count, total, and flag count",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld submitted · %3$lld flags"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправлено %1$lld из %2$lld · флагов: %3$lld"
           }
         }
       }

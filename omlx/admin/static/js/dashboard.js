@@ -476,7 +476,8 @@
             benchUploadResults: [],
             benchUploadDone: null,
             benchUploading: false,
-            benchUploadSkipped: null,  // { features: [...] } when upload was skipped due to experimental features
+            benchUploadSkipped: null,  // { reason } — only external-endpoint runs skip now
+            benchUploadFlags: [],      // [{key, label}] acceleration active during the run
             // { bench_id, model_id } when the server reports a running bench
             // that is NOT the one this tab is displaying. Drives the "another
             // bench is running" banner + disables Start so the user doesn't
@@ -2973,6 +2974,7 @@
                 this.benchUploadDone = null;
                 this.benchUploading = false;
                 this.benchUploadSkipped = null;
+                this.benchUploadFlags = [];
                 this.benchRunExternal = this.benchExternalEnabled
                     ? { base_url: this.externalBaseUrl.trim(), model: this.externalModel.trim() }
                     : null;
@@ -3073,6 +3075,7 @@
                             }
                         } else if (data.type === 'upload_done') {
                             this.benchUploadDone = data.data;
+                            this.benchUploadFlags = data.data.feature_flags || [];
                             this.benchUploading = false;
                             this.benchRunning = false;
                             this.benchProgress = null;
@@ -3080,7 +3083,7 @@
                             this.benchEventSource = null;
                         } else if (data.type === 'upload_skipped') {
                             this.benchUploadSkipped = {
-                                reason: data.reason || 'experimental_features',
+                                reason: data.reason || 'external_endpoint',
                                 features: data.features || [],
                             };
                             this.benchUploading = false;
@@ -3569,6 +3572,7 @@
                 this.benchUploadResults = [];
                 this.benchUploadDone = null;
                 this.benchUploadSkipped = null;
+                this.benchUploadFlags = [];
                 this.benchProgress = null;
                 this.benchError = '';
                 this.connectBenchSSE(other.bench_id);

@@ -397,6 +397,13 @@
                             </div>
                         </div>
                         <div class="px-6 py-4 space-y-2">
+                            <div x-show="benchUploadFlags.length" x-cloak class="flex flex-wrap items-center gap-2 pb-2">
+                                <span class="text-xs text-neutral-500" x-text="t('bench.upload.flags_label')"></span>
+                                <template x-for="f in benchUploadFlags" :key="f.key">
+                                    <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium"
+                                          x-text="f.label"></span>
+                                </template>
+                            </div>
                             <template x-for="r in benchUploadResults" :key="r.context_length">
                                 <div class="flex items-center justify-between py-2 border-b border-neutral-100 last:border-0">
                                     <span class="text-sm font-medium text-neutral-700" x-text="'pp' + r.context_length"></span>
@@ -444,7 +451,7 @@
                         </div>
                     </div>
 
-                    <!-- Community Benchmark Upload Skipped (experimental features) -->
+                    <!-- Community Benchmark Upload Skipped (external endpoint) -->
                     <div x-show="benchUploadSkipped" x-cloak
                          class="bg-amber-50 rounded-2xl border border-amber-200 overflow-hidden mb-6">
                         <div class="flex items-center gap-3 px-6 py-4 border-b border-amber-200">
@@ -454,12 +461,7 @@
                         </div>
                         <div class="px-6 py-4 space-y-2">
                             <p class="text-sm text-amber-600"
-                               x-text="benchUploadSkipped?.reason === 'external_endpoint' ? t('bench.upload_skipped.reason_external') : t('bench.upload_skipped.reason')"></p>
-                            <ul class="text-sm text-amber-600 list-disc list-inside">
-                                <template x-for="f in (benchUploadSkipped?.features || [])" :key="f">
-                                    <li x-text="t('bench.upload_skipped.features.' + f)"></li>
-                                </template>
-                            </ul>
+                               x-text="t('bench.upload_skipped.reason_external')"></p>
                         </div>
                     </div>
 

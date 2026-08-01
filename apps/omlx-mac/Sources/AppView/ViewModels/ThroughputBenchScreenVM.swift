@@ -18,9 +18,10 @@ final class ThroughputBenchScreenVM {
     private(set) var batchResults: [BenchResultDTO] = []
     private(set) var currentBenchId: String?
     /// Server-side upload-to-leaderboard state, populated after the
-    /// bench completes. Phases: "idle" (not yet started, or no upload
-    /// because of experimental features detected later in the run) →
-    /// "uploading" → "done" | "skipped". The poll loop keeps running
+    /// bench completes. Phases: "idle" (not yet started) → "uploading" →
+    /// "done" | "skipped". Only external-endpoint runs skip now;
+    /// accelerated runs upload with their flags attached. The poll loop
+    /// keeps running
     /// past `status=completed` until this reaches a terminal phase so
     /// the user sees the leaderboard URL light up without manually
     /// refreshing.
@@ -46,6 +47,32 @@ final class ThroughputBenchScreenVM {
             && !promptLengths.isEmpty
             && !batchSizes.isEmpty
             && (Int(genLength) ?? 0) > 0
+    }
+
+    /// Acceleration features the selected model has enabled, so the user knows
+    /// before starting that the run will be tagged on the leaderboard.
+    /// Derived from settings already fetched by `loadModels()` — no extra
+    /// request. Mirrors `_FEATURE_FLAG_SPECS` in omlx/admin/benchmark.py.
+    var pendingFeatureFlags: [String] {
+        guard let s = models.first(where: { $0.id == selectedModelId })?.settings else {
+            return []
+        }
+        var flags: [String] = []
+        if s.dflashEnabled == true { flags.append("DFlash") }
+        if s.specprefillEnabled == true { flags.append("SpecPrefill") }
+        if s.turboquantKvEnabled == true {
+            if let bits = s.turboquantKvBits {
+                let text = bits == bits.rounded()
+                    ? String(Int(bits))
+                    : String(format: "%g", bits)
+                flags.append("TurboQuant KV \(text)-bit")
+            } else {
+                flags.append("TurboQuant KV")
+            }
+        }
+        if s.mtpEnabled == true { flags.append("Lightning MTP") }
+        if s.vlmMtpEnabled == true { flags.append("VLM MTP") }
+        return flags
     }
 
     /// Synthetic 1× baseline for the Batch Results table: the first single

@@ -141,6 +141,28 @@ class TestBenchmarkSSEReplay:
         assert elapsed < 0.5, "stream blocked after terminal event"
 
     @pytest.mark.asyncio
+    async def test_upload_skipped_is_also_terminal(self):
+        """External-endpoint runs end on upload_skipped, never upload_done.
+
+        Before upload_skipped joined the terminal set, a subscriber to an
+        external run waited for an upload_done that was never coming and hung
+        until the client timed out.
+        """
+        run = _bench_run()
+        await bench_send_event(run, {"type": "progress", "n": 1})
+        await bench_send_event(
+            run, {"type": "upload_skipped", "reason": "external_endpoint"}
+        )
+
+        start = asyncio.get_event_loop().time()
+        events = await _drain(run, timeout=5.0)
+        elapsed = asyncio.get_event_loop().time() - start
+
+        assert events[-1]["type"] == "upload_skipped"
+        assert run.terminal is True
+        assert elapsed < 0.5, "stream blocked after upload_skipped"
+
+    @pytest.mark.asyncio
     async def test_error_is_also_terminal(self):
         run = _bench_run()
         await bench_send_event(run, {"type": "error", "message": "boom"})
