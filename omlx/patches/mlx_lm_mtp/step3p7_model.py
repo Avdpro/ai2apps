@@ -98,7 +98,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +197,8 @@ def _register_mtp_block(step3p5: Any) -> None:
     import mlx.core as mx
     import mlx.nn as nn
 
-    Step3p5DecoderLayer = step3p5.Step3p5DecoderLayer
-    ZeroCenteredRMSNorm = step3p5.ZeroCenteredRMSNorm
+    decoder_layer_cls = step3p5.Step3p5DecoderLayer
+    norm_cls = step3p5.ZeroCenteredRMSNorm
 
     class MTPBlock(nn.Module):
         """Step-3.7's single MTP draft layer (index == num_hidden_layers).
@@ -213,14 +213,14 @@ def _register_mtp_block(step3p5: Any) -> None:
         def __init__(self, args, layer_idx: int):
             super().__init__()
             dim = args.hidden_size
-            self.enorm = ZeroCenteredRMSNorm(dim, eps=args.rms_norm_eps)
-            self.hnorm = ZeroCenteredRMSNorm(dim, eps=args.rms_norm_eps)
+            self.enorm = norm_cls(dim, eps=args.rms_norm_eps)
+            self.hnorm = norm_cls(dim, eps=args.rms_norm_eps)
             self.eh_proj = nn.Linear(2 * dim, dim, bias=False)
             # layer_idx == num_hidden_layers, outside moe_layers_idx's
             # range(1, num_hidden_layers) exactly as layer 0 is -- dense
             # Step3p5MLP, matching the actual extracted checkpoint.
-            self.block = Step3p5DecoderLayer(args, layer_idx)
-            self.shared_head_norm = ZeroCenteredRMSNorm(dim, eps=args.rms_norm_eps)
+            self.block = decoder_layer_cls(args, layer_idx)
+            self.shared_head_norm = norm_cls(dim, eps=args.rms_norm_eps)
             self.shared_head_head = nn.Linear(dim, args.vocab_size, bias=False)
 
         def __call__(self, prev_hidden, embed_tokens, input_ids, mask, cache):
@@ -256,7 +256,7 @@ def _patch_step3p5_model(step3p5: Any) -> None:
 
     original_init = cls.__init__
 
-    def __init__(self, args):
+    def patched_init(self, args):
         original_init(self, args)
         n_mtp = 1 if int(getattr(args, "num_nextn_predict_layers", 0) or 0) > 0 else 0
         from . import is_mtp_active  # patches/mlx_lm_mtp package
@@ -272,13 +272,20 @@ def _patch_step3p5_model(step3p5: Any) -> None:
             self._omlx_mtp_depth = 1
             self._omlx_mtp_head_clone = False
 
-    def __call__(self, inputs, cache=None, return_hidden: bool = False, n_confirmed: int = 0):
+    def patched_call(
+        self,
+        inputs,
+        cache=None,
+        return_hidden: bool = False,
+        n_confirmed: int = 0,
+    ):
         # n_confirmed: part of the patched-backbone interface batch_generator
         # expects (see deepseek_v4_model.__call__ for the same parameter).
         # Step-3.7 keeps all decode state in per-layer KVCache/RotatingKVCache
         # objects; draft rejection rolls back via cache.trim, so this is
         # accepted and unused, matching DeepSeek-V4's own comment.
-        h = self.model(inputs, cache)  # already post-final-norm (Step3p5Model.__call__ returns self.norm(h))
+        # Step3p5Model.__call__ already returns post-final-norm hidden states.
+        h = self.model(inputs, cache)
         logits = self.lm_head(h)
         if return_hidden:
             return logits, h
@@ -293,10 +300,21 @@ def _patch_step3p5_model(step3p5: Any) -> None:
         # mirror that here rather than assuming one cache type.
         is_sliding = self.mtp.block.is_sliding
         return [
-            RotatingKVCache(max_size=self.args.sliding_window) if is_sliding else KVCache()
+            (
+                RotatingKVCache(max_size=self.args.sliding_window)
+                if is_sliding
+                else KVCache()
+            )
         ]
 
-    def mtp_forward(self, h, input_ids, cache=None, return_hidden: bool = False, logits_keep: int = 0):
+    def mtp_forward(
+        self,
+        h,
+        input_ids,
+        cache=None,
+        return_hidden: bool = False,
+        logits_keep: int = 0,
+    ):
         """Run the single MTP block + its own head on the trunk's hidden state.
 
         `h` is the trunk's post-final-norm hidden (same convention
@@ -340,15 +358,36 @@ def _patch_step3p5_model(step3p5: Any) -> None:
             return True
         for c in cache:
             if c.trim(n) != n:
-                logger.warning("Step-3.7 MTP rollback trim shortfall on %s", type(c).__name__)
+                logger.warning(
+                    "Step-3.7 MTP rollback trim shortfall on %s",
+                    type(c).__name__,
+                )
                 return False
         return True
 
     original_sanitize = cls.sanitize
 
-    def sanitize(self, weights: Dict[str, Any]) -> Dict[str, Any]:
+    def sanitize(self, weights: dict[str, Any]) -> dict[str, Any]:
         n_main = self.args.num_hidden_layers
         has_mtp = hasattr(self, "mtp")
+
+        # Keep this raw-HF discriminator aligned with step3p5.Model.sanitize.
+        # The original sanitizer shifts every zero-centered RMSNorm by +1 when
+        # it sees the upstream MoE names. MTP tensors are extracted before that
+        # call, so they need the same decision applied explicitly below.
+        vanilla_remappings = (
+            (".moe.gate_proj.", ".mlp.switch_mlp.gate_proj."),
+            (".moe.up_proj.", ".mlp.switch_mlp.up_proj."),
+            (".moe.down_proj.", ".mlp.switch_mlp.down_proj."),
+            (".moe.gate.", ".mlp.gate.gate."),
+            (".moe.router_bias", ".mlp.gate.router_bias"),
+            (".share_expert.", ".mlp.share_expert."),
+        )
+        is_raw_hf = any(
+            source in key and target not in key
+            for key in weights
+            for source, target in vanilla_remappings
+        )
 
         # Pull out this checkpoint's layer-45 (== n_main) keys before the
         # original sanitize runs -- its own layer-index filter does not
@@ -358,6 +397,7 @@ def _patch_step3p5_model(step3p5: Any) -> None:
         mtp_prefix_candidates = (
             f"model.layers.{n_main}.",
             f"language_model.model.layers.{n_main}.",
+            f"model.language_model.layers.{n_main}.",
         )
         # StepFun's own runtime is depth-1 (see module docstring): only
         # layer n_main is ever attached/used. The upstream shard our
@@ -371,14 +411,17 @@ def _patch_step3p5_model(step3p5: Any) -> None:
         # rather than trusted to that filter.
         import re
 
-        extra_layer_re = re.compile(r"(?:language_model\.)?model\.layers\.(\d+)\.")
+        extra_layer_re = re.compile(
+            r"(?:model|language_model\.model|model\.language_model)"
+            r"\.layers\.(\d+)\."
+        )
 
-        mtp_weights: Dict[str, Any] = {}
-        rest: Dict[str, Any] = {}
+        mtp_weights: dict[str, Any] = {}
+        rest: dict[str, Any] = {}
         for k, v in weights.items():
             matched = next((p for p in mtp_prefix_candidates if k.startswith(p)), None)
             if matched is not None:
-                mtp_weights[k[len(matched):]] = v
+                mtp_weights[k[len(matched) :]] = v
                 continue
             m = extra_layer_re.match(k)
             if m is not None and int(m.group(1)) > n_main:
@@ -401,10 +444,31 @@ def _patch_step3p5_model(step3p5: Any) -> None:
             "self_attn.": "mtp.block.self_attn.",
             "mlp.": "mtp.block.mlp.",
         }
+
+        def normalize_mtp_norm(key: str, weight: Any) -> Any:
+            if not (
+                getattr(weight, "ndim", 0) == 1
+                and key.endswith(".weight")
+                and "norm" in key
+            ):
+                return weight
+            if is_raw_hf:
+                return weight + 1.0
+            if weight.__class__.__name__ == "_TrackedTensor" and hasattr(
+                weight, "_clone"
+            ):
+                return weight._clone(transform="add_if_mean_lt_0_5")
+            try:
+                mean = float(mx.mean(weight.astype(mx.float32)).item())
+            except Exception:
+                return weight
+            return weight + 1.0 if mean < 0.5 else weight
+
         for k, v in mtp_weights.items():
+            v = normalize_mtp_norm(k, v)
             for old, new in rename.items():
                 if k.startswith(old):
-                    new_weights[new + k[len(old):]] = v
+                    new_weights[new + k[len(old) :]] = v
                     break
             else:
                 logger.warning("Step-3.7 MTP: unmapped weight key %r, dropped", k)
@@ -412,10 +476,10 @@ def _patch_step3p5_model(step3p5: Any) -> None:
         return new_weights
 
     if not init_wrapped:
-        cls.__init__ = __init__
+        cls.__init__ = patched_init
         cls._omlx_mtp_init_wrapped = True
-    __call__._omlx_mtp_call_marker = True
-    cls.__call__ = __call__
+    patched_call._omlx_mtp_call_marker = True
+    cls.__call__ = patched_call
     cls.make_mtp_cache = make_mtp_cache
     cls.mtp_forward = mtp_forward
     cls.mtp_clamp_accept = mtp_clamp_accept
@@ -433,15 +497,37 @@ def _patch_step3p7_wrapper(step3p7: Any) -> None:
     if _is_our_method(cls, "__call__", "_omlx_mtp_call_marker"):
         return
 
-    def __call__(self, inputs, cache=None, return_hidden: bool = False, n_confirmed: int = 0):
-        return self.language_model(inputs, cache, return_hidden=return_hidden, n_confirmed=n_confirmed)
+    def patched_call(
+        self,
+        inputs,
+        cache=None,
+        return_hidden: bool = False,
+        n_confirmed: int = 0,
+    ):
+        return self.language_model(
+            inputs,
+            cache,
+            return_hidden=return_hidden,
+            n_confirmed=n_confirmed,
+        )
 
     def make_mtp_cache(self):
         return self.language_model.make_mtp_cache()
 
-    def mtp_forward(self, h, input_ids, cache=None, return_hidden: bool = False, logits_keep: int = 0):
+    def mtp_forward(
+        self,
+        h,
+        input_ids,
+        cache=None,
+        return_hidden: bool = False,
+        logits_keep: int = 0,
+    ):
         return self.language_model.mtp_forward(
-            h, input_ids, cache=cache, return_hidden=return_hidden, logits_keep=logits_keep
+            h,
+            input_ids,
+            cache=cache,
+            return_hidden=return_hidden,
+            logits_keep=logits_keep,
         )
 
     def mtp_clamp_accept(self, cache, accepted: int, num_drafts: int) -> int:
@@ -454,8 +540,8 @@ def _patch_step3p7_wrapper(step3p7: Any) -> None:
     def _omlx_mtp_decode_enabled(self):
         return getattr(self.language_model, "_omlx_mtp_decode_enabled", False)
 
-    __call__._omlx_mtp_call_marker = True
-    cls.__call__ = __call__
+    patched_call._omlx_mtp_call_marker = True
+    cls.__call__ = patched_call
     cls.make_mtp_cache = make_mtp_cache
     cls.mtp_forward = mtp_forward
     cls.mtp_clamp_accept = mtp_clamp_accept

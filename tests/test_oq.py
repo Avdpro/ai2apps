@@ -67,6 +67,7 @@ from omlx.oq import (
     _sensitivity_lm_config_override,
     _should_quantize_tensor,
     _source_imatrix_signature,
+    _source_has_nextn_tensors,
     _TrackedTensor,
     _validate_oq_dtype_for_model,
     _uses_minimax_mxfp8_scale_inv_source,
@@ -811,6 +812,44 @@ class TestNormalizeMtpInConfig:
         cfg = {"model_type": "llama"}
         _normalize_mtp_in_config(cfg)
         assert cfg == {"model_type": "llama"}
+
+
+class TestSourceHasNextnTensors:
+    @pytest.mark.parametrize(
+        "prefix",
+        (
+            "model.layers.45",
+            "language_model.model.layers.45",
+            "model.language_model.layers.45",
+        ),
+    )
+    def test_accepts_runtime_and_vlm_prefixes(self, prefix):
+        config = {
+            "model_type": "step3p7",
+            "text_config": {
+                "model_type": "step3p5",
+                "num_hidden_layers": 45,
+                "num_nextn_predict_layers": 3,
+            },
+        }
+
+        assert _source_has_nextn_tensors(
+            [f"{prefix}.eh_proj.weight"], config
+        ) is True
+
+    def test_rejects_backbone_only_weights(self):
+        config = {
+            "num_hidden_layers": 45,
+            "num_nextn_predict_layers": 3,
+        }
+
+        assert (
+            _source_has_nextn_tensors(
+                ["language_model.model.layers.44.self_attn.q_proj.weight"],
+                config,
+            )
+            is False
+        )
 
 
 # =============================================================================

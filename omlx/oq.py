@@ -3373,16 +3373,9 @@ def _source_has_nextn_tensors(keys, config: dict) -> bool:
     they count as MTP tensors even though ``_is_mtp_tensor`` (which sees
     post-sanitize names) doesn't match them.
     """
-    cfgs = (config, config.get("text_config") or {})
-    n_mtp = max(int(c.get("num_nextn_predict_layers", 0) or 0) for c in cfgs)
-    if n_mtp <= 0:
-        return False
-    n_main = 0
-    for c in cfgs:
-        n_main = max(n_main, int(c.get("num_hidden_layers", 0) or 0))
-    if n_main <= 0:
-        return False
-    prefixes = tuple(f"model.layers.{n_main + i}." for i in range(n_mtp))
+    from omlx.utils.model_loading import _nextn_weight_prefixes_from_config
+
+    prefixes = _nextn_weight_prefixes_from_config(config)
     return any(k.startswith(prefixes) for k in keys)
 
 

@@ -557,7 +557,15 @@ class TestCheckpointHasMtpWeights:
         )
         assert model_loading._checkpoint_has_mtp_weights(str(tmp_path)) is False
 
-    def test_returns_true_for_nextn_layout(self, tmp_path):
+    @pytest.mark.parametrize(
+        "prefix",
+        (
+            "model.layers.78",
+            "language_model.model.layers.78",
+            "model.language_model.layers.78",
+        ),
+    )
+    def test_returns_true_for_nextn_layout(self, tmp_path, prefix):
         # DeepSeek-V3-style checkpoints (GLM-5.2) keep the MTP head as an
         # extra decoder layer past num_hidden_layers, not under mtp.*.
         import json as _json
@@ -569,7 +577,7 @@ class TestCheckpointHasMtpWeights:
             tmp_path,
             {
                 "model.layers.0.self_attn.q_a_proj.weight": "model.safetensors",
-                "model.layers.78.eh_proj.weight": "model.safetensors",
+                f"{prefix}.eh_proj.weight": "model.safetensors",
             },
         )
         assert model_loading._checkpoint_has_mtp_weights(str(tmp_path)) is True

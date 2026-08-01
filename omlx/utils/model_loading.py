@@ -694,18 +694,8 @@ _MTP_WEIGHT_PREFIXES = (
 )
 
 
-def _nextn_weight_prefixes(model_path: str | Path) -> tuple[str, ...]:
-    """Weight-key prefixes for MTP layers stored as extra decoder layers.
-
-    DeepSeek-V3-style checkpoints (GLM-5.2 among them) keep their MTP head
-    as ``model.layers.<num_hidden_layers + i>.*`` rather than ``mtp.*``;
-    the model patch's sanitize remaps them at load/convert time, so for
-    detection purposes those layers count as MTP weights.
-    """
-    try:
-        config = json.loads((Path(model_path) / "config.json").read_text())
-    except Exception:
-        return ()
+def _nextn_weight_prefixes_from_config(config: dict) -> tuple[str, ...]:
+    """Return every supported weight prefix for native nextn layers."""
     cfgs = (config, config.get("text_config") or {})
     n_mtp = max(int(c.get("num_nextn_predict_layers", 0) or 0) for c in cfgs)
     if n_mtp <= 0:
@@ -722,6 +712,21 @@ def _nextn_weight_prefixes(model_path: str | Path) -> tuple[str, ...]:
             f"model.language_model.layers.{n_main + i}.",
         )
     )
+
+
+def _nextn_weight_prefixes(model_path: str | Path) -> tuple[str, ...]:
+    """Weight-key prefixes for MTP layers stored as extra decoder layers.
+
+    DeepSeek-V3-style checkpoints (GLM-5.2 among them) keep their MTP head
+    as ``model.layers.<num_hidden_layers + i>.*`` rather than ``mtp.*``;
+    the model patch's sanitize remaps them at load/convert time, so for
+    detection purposes those layers count as MTP weights.
+    """
+    try:
+        config = json.loads((Path(model_path) / "config.json").read_text())
+    except Exception:
+        return ()
+    return _nextn_weight_prefixes_from_config(config)
 
 
 def _checkpoint_has_mtp_weights(model_path: str | Path) -> bool:
