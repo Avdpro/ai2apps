@@ -36,6 +36,13 @@ def _split_gate_up(v):
     return mx.contiguous(w[..., 0, :]), mx.contiguous(w[..., 1, :])
 
 
+def _to_mlx_sconv_weight(v):
+    """Convert PyTorch Conv1d weights while keeping MLX weights idempotent."""
+    if getattr(v, "ndim", 0) == 3 and v.shape[1] == 1 and v.shape[2] != 1:
+        return v.transpose(0, 2, 1)
+    return v
+
+
 class Model(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
@@ -113,11 +120,13 @@ class Model(nn.Module):
         if sub.startswith("attn."):
             name, leaf = sub[len("attn.") :].rsplit(".", 1)
             if name in self._ATTN:
-                out[base + f"self_attn.{self._ATTN[name]}.weight"] = v
+                out[base + f"self_attn.{self._ATTN[name]}.{leaf}"] = v
             elif name in ("q_norm", "k_norm"):
-                out[base + f"self_attn.{name}.weight"] = v
+                out[base + f"self_attn.{name}.{leaf}"] = v
             elif name in ("k_sconv", "v_sconv"):
-                out[base + f"self_attn.{name}.conv.weight"] = v.transpose(0, 2, 1)
+                if leaf == "weight":
+                    v = _to_mlx_sconv_weight(v)
+                out[base + f"self_attn.{name}.conv.{leaf}"] = v
             elif name == "rel_logits_proj":
                 out[base + "self_attn.rel_proj"] = v
             else:
@@ -127,9 +136,9 @@ class Model(nn.Module):
         elif sub == "mlp_norm.weight":
             out[base + "post_attention_layernorm.weight"] = v
         elif sub == "attn_sconv.weight":
-            out[base + "attn_sconv.conv.weight"] = v.transpose(0, 2, 1)
+            out[base + "attn_sconv.conv.weight"] = _to_mlx_sconv_weight(v)
         elif sub == "mlp_sconv.weight":
-            out[base + "mlp_sconv.conv.weight"] = v.transpose(0, 2, 1)
+            out[base + "mlp_sconv.conv.weight"] = _to_mlx_sconv_weight(v)
         elif sub.startswith("mlp."):
             m = sub[len("mlp.") :]
             p = base + "mlp."
@@ -151,6 +160,8 @@ class Model(nn.Module):
                 out[p + "up_proj.weight"] = u
             elif m == "w2_md.weight":
                 out[p + "down_proj.weight"] = v
+            elif m.startswith("experts."):
+                out[p + "switch_mlp." + m[len("experts.") :]] = v
             else:
                 out[p + m] = v
         else:
@@ -200,6 +211,7 @@ class Model(nn.Module):
     def sanitize(self, weights):
         out = {}
         experts = {}  # layer index -> {"w13"|"w2": {"weight"|"scale"|"scale2": array}}
+        split_experts = set()
         for k, v in weights.items():
             if ".mtp" in k or k.startswith("model.mtp") or k.endswith("training_args"):
                 # OMLX: single-checkpoint Lightning MTP keeps and remaps
@@ -221,31 +233,36 @@ class Model(nn.Module):
                     continue
                 experts.setdefault(i, {}).setdefault(which, {})[leaf] = v
                 continue
-            if k == "model.llm.embed.weight":
-                out["language_model.model.embed_tokens.weight"] = v
-            elif k == "model.llm.unembed.weight":
-                out["language_model.lm_head.weight"] = v
+            if k.startswith("model.llm.embed."):
+                leaf = k[len("model.llm.embed.") :]
+                out["language_model.model.embed_tokens." + leaf] = v
+            elif k.startswith("model.llm.unembed."):
+                leaf = k[len("model.llm.unembed.") :]
+                out["language_model.lm_head." + leaf] = v
             elif k in ("model.llm.embed_norm.weight", "model.llm.norm.weight"):
                 out["language_model.model." + k[len("model.llm.") :]] = v
             elif k.startswith("model.llm.layers."):
                 i, sub = k[len("model.llm.layers.") :].split(".", 1)
+                if sub.startswith("mlp.experts."):
+                    split_experts.add(i)
                 out.update(
                     self._map_llm_layer(f"language_model.model.layers.{i}.", sub, v)
                 )
             elif k.startswith("model.visual."):
                 sub = k[len("model.visual.") :]
                 if sub.startswith("layers.linear_"):
-                    j = sub[len("layers.linear_") :].split(".")[0]
-                    out[f"vision_tower.encoder_layers.{j}.projection.weight"] = v
+                    j, leaf = sub[len("layers.linear_") :].split(".", 1)
+                    out[f"vision_tower.encoder_layers.{j}.projection.{leaf}"] = v
                 elif sub.startswith("layers.norm_"):
-                    j = sub[len("layers.norm_") :].split(".")[0]
-                    out[f"vision_tower.encoder_layers.{j}.layer_norm.weight"] = v
+                    j, leaf = sub[len("layers.norm_") :].split(".", 1)
+                    out[f"vision_tower.encoder_layers.{j}.layer_norm.{leaf}"] = v
                 else:
                     out["vision_tower." + sub] = v
             elif k.startswith("model.audio."):
                 sub = k[len("model.audio.") :]
-                if sub == "encoder.weight":
-                    out["audio_tower.embed_audio_tokens.weight"] = v
+                if sub.startswith("encoder."):
+                    leaf = sub[len("encoder.") :]
+                    out["audio_tower.embed_audio_tokens." + leaf] = v
                 elif sub == "final_norm.weight":
                     out["audio_tower.norm.weight"] = v
                 else:
@@ -254,6 +271,14 @@ class Model(nn.Module):
                 out[k] = v
         for i, buf in experts.items():
             out.update(self._map_experts(i, buf))
+        for i in split_experts:
+            p = f"language_model.model.layers.{i}.mlp.switch_mlp."
+            gate = out.get(p + "gate_proj.weight")
+            if gate is None:
+                continue
+            n = gate.shape[0]
+            out.setdefault(p + "gate_scale", mx.ones((n,)))
+            out.setdefault(p + "out_scale", mx.ones((n,)))
         model_config = getattr(self, "config", None)
         return fuse_qkvr(
             shared_experts_to_dense(out),
@@ -261,7 +286,7 @@ class Model(nn.Module):
         )
 
     def load_weights(self, weights, strict=True):
-        """Apply load-time layout fusions to both raw and existing MLX weights.
+        """Apply load-time fusions to already-mapped MLX weights.
 
         mlx-vlm skips ``sanitize()`` for safetensors already marked as MLX.
         Transforming the fully aggregated weight list here also handles legacy

@@ -5826,7 +5826,7 @@ class TestInklingSanitizeDiscovery:
                 (hidden, hidden), dtype=np.float16
             ),
             "model.llm.layers.1.attn.k_sconv.weight": np.zeros(
-                (hidden, 4, 1), dtype=np.float16
+                (hidden, 1, 4), dtype=np.float16
             ),
             "model.llm.embed.weight": np.zeros((16, hidden), dtype=np.float16),
             "model.mtp.layers.0.input_proj.weight": np.zeros(
@@ -5864,7 +5864,7 @@ class TestInklingSanitizeDiscovery:
         assert plan[prefix + "mlp.switch_mlp.out_scale"]["transform"] == "literal"
 
         sconv = plan[prefix + "self_attn.k_sconv.conv.weight"]
-        assert tuple(sconv["shape"]) == (8, 1, 4)
+        assert tuple(sconv["shape"]) == (8, 4, 1)
 
         qkvr = plan[prefix + "self_attn.qkvr_proj.weight"]
         assert qkvr["sources"] == [

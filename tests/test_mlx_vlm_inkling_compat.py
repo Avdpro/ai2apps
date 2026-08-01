@@ -110,6 +110,109 @@ def test_load_config_translates_nvfp4(applied, tmp_path):
     assert "quantization" not in config
 
 
+def test_raw_inkling_layout_detection_uses_weight_index(applied, tmp_path):
+    from omlx.patches.mlx_vlm_inkling_compat import _has_raw_inkling_weights
+
+    (tmp_path / "config.json").write_text(
+        json.dumps({"model_type": "inkling_mm_model"})
+    )
+    index_path = tmp_path / "model.safetensors.index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "weight_map": {
+                    "model.llm.layers.0.attn.wq_du.weight": "model-1.safetensors"
+                }
+            }
+        )
+    )
+    assert _has_raw_inkling_weights(tmp_path)
+
+    index_path.write_text(
+        json.dumps(
+            {
+                "weight_map": {
+                    "language_model.model.layers.0.self_attn.qkvr_proj.weight": (
+                        "model-1.safetensors"
+                    )
+                }
+            }
+        )
+    )
+    assert not _has_raw_inkling_weights(tmp_path)
+
+
+@pytest.mark.parametrize(("raw_layout", "sanitize_calls"), [(True, 1), (False, 0)])
+def test_load_model_forces_sanitize_only_for_raw_inkling(
+    applied, tmp_path, monkeypatch, raw_layout, sanitize_calls
+):
+    from types import SimpleNamespace
+
+    import mlx.nn as nn
+    import mlx_vlm.utils as vlm_utils
+    import numpy as np
+    from safetensors.numpy import save_file
+
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "inkling_mm_model",
+                "text_config": {},
+                "quantization": {"group_size": 64, "bits": 4},
+            }
+        )
+    )
+    prefix = "model.llm." if raw_layout else ""
+    save_file(
+        {
+            prefix + "linear.weight": np.zeros((64, 8), dtype=np.uint32),
+            prefix + "linear.scales": np.ones((64, 1), dtype=np.float16),
+            prefix + "linear.biases": np.zeros((64, 1), dtype=np.float16),
+        },
+        tmp_path / "model.safetensors",
+        metadata={"format": "mlx"},
+    )
+
+    class FakeModelConfig:
+        @classmethod
+        def from_dict(cls, _config):
+            return SimpleNamespace()
+
+    class FakeModel(nn.Module):
+        calls = 0
+
+        def __init__(self, _config):
+            super().__init__()
+            self.linear = nn.Linear(64, 64, bias=False)
+
+        def sanitize(self, weights):
+            type(self).calls += 1
+            return {
+                key.removeprefix("model.llm."): value for key, value in weights.items()
+            }
+
+    arch = SimpleNamespace(ModelConfig=FakeModelConfig, Model=FakeModel)
+    monkeypatch.setattr(
+        vlm_utils, "get_model_and_args", lambda config: (arch, "inkling")
+    )
+    monkeypatch.setattr(
+        vlm_utils,
+        "update_module_configs",
+        lambda model_config, *_args: model_config,
+    )
+    monkeypatch.setattr(
+        vlm_utils,
+        "apply_generation_config_defaults",
+        lambda model_config, _config: model_config,
+    )
+
+    FakeModel.calls = 0
+    model = vlm_utils.load_model(tmp_path, lazy=True)
+
+    assert FakeModel.calls == sanitize_calls
+    assert isinstance(model.linear, nn.QuantizedLinear)
+
+
 def test_model_load_weights_remaps_legacy_mlx_layouts(applied, monkeypatch):
     from types import SimpleNamespace
 
@@ -335,7 +438,7 @@ def test_sanitize_maps_bf16_checkpoint_keys(applied):
         n_experts, 2 * inter, hidden
     )
     w2 = mx.ones((n_experts, hidden, inter))
-    sconv = mx.arange(hidden * 4, dtype=mx.float32).reshape(hidden, 4, 1)
+    sconv = mx.arange(hidden * 4, dtype=mx.float32).reshape(hidden, 1, 4)
     weights = {
         "model.llm.layers.1.attn.wq_du.weight": mx.zeros((hidden, hidden)),
         "model.llm.layers.1.attn.wk_dv.weight": mx.zeros((hidden, hidden)),
@@ -360,8 +463,8 @@ def test_sanitize_maps_bf16_checkpoint_keys(applied):
     assert qkvr.shape == (4 * hidden, hidden)
     assert prefix + "self_attn.q_proj.weight" not in out
     assert prefix + "self_attn.rel_proj" in out
-    assert out[prefix + "self_attn.k_sconv.conv.weight"].shape == (hidden, 1, 4)
-    assert out[prefix + "attn_sconv.conv.weight"].shape == (hidden, 1, 4)
+    assert out[prefix + "self_attn.k_sconv.conv.weight"].shape == (hidden, 4, 1)
+    assert out[prefix + "attn_sconv.conv.weight"].shape == (hidden, 4, 1)
     assert prefix + "mlp.gate_weight" in out
     assert prefix + "mlp.e_score_correction_bias" in out
     assert prefix + "mlp.global_scale" in out
@@ -384,6 +487,108 @@ def test_sanitize_maps_bf16_checkpoint_keys(applied):
     assert mx.array_equal(
         out[prefix + "mlp.switch_mlp.gate_scale"], mx.ones((n_experts,))
     )
+
+
+def test_sanitize_maps_community_experts_only_layout(applied):
+    from types import SimpleNamespace
+
+    from mlx_vlm.models.inkling.inkling import Model
+
+    model = Model.__new__(Model)
+    model.config = SimpleNamespace(text_config=_tiny_text_config())
+    hidden, inter, n_experts = 8, 4, 2
+    sconv = mx.arange(hidden * 4, dtype=mx.float32).reshape(hidden, 4, 1)
+    weights = {
+        **{
+            f"model.llm.layers.1.attn.{name}.weight": mx.full(
+                (hidden, hidden), index + 1
+            )
+            for index, name in enumerate(("wq_du", "wk_dv", "wv_dv", "wr_du"))
+        },
+        "model.llm.layers.0.mlp.gate_proj.weight": mx.zeros((inter, hidden)),
+        "model.llm.layers.0.mlp.gate_proj.scales": mx.ones((inter, 1)),
+        "model.llm.layers.0.mlp.gate_proj.biases": mx.zeros((inter, 1)),
+        "model.llm.layers.1.mlp.experts.gate_proj.weight": mx.zeros(
+            (n_experts, inter, 2), dtype=mx.uint32
+        ),
+        "model.llm.layers.1.mlp.experts.gate_proj.scales": mx.ones(
+            (n_experts, inter, 1)
+        ),
+        "model.llm.layers.1.mlp.experts.gate_proj.biases": mx.zeros(
+            (n_experts, inter, 1)
+        ),
+        "model.llm.layers.1.mlp.experts.up_proj.weight": mx.zeros(
+            (n_experts, inter, 2), dtype=mx.uint32
+        ),
+        "model.llm.layers.1.mlp.experts.down_proj.weight": mx.zeros(
+            (n_experts, hidden, 1), dtype=mx.uint32
+        ),
+        "model.llm.layers.1.attn.k_sconv.weight": sconv,
+    }
+
+    out = Model.sanitize(model, weights)
+
+    dense = "language_model.model.layers.0.mlp.gate_proj."
+    assert all(dense + leaf in out for leaf in ("weight", "scales", "biases"))
+    prefix = "language_model.model.layers.1."
+    assert out[prefix + "self_attn.qkvr_proj.weight"].shape == (
+        4 * hidden,
+        hidden,
+    )
+    assert prefix + "self_attn.qkvr_proj.scales" not in out
+    assert mx.array_equal(out[prefix + "self_attn.k_sconv.conv.weight"], sconv)
+    switch = prefix + "mlp.switch_mlp."
+    assert all(
+        switch + "gate_proj." + leaf in out for leaf in ("weight", "scales", "biases")
+    )
+    assert mx.array_equal(out[switch + "gate_scale"], mx.ones((n_experts,)))
+    assert mx.array_equal(out[switch + "out_scale"], mx.ones((n_experts,)))
+
+
+def test_sanitize_maps_community_uniform_affine_qkvr_sidecars(applied):
+    from types import SimpleNamespace
+
+    from mlx_vlm.models.inkling.inkling import Model
+
+    model = Model.__new__(Model)
+    model.config = SimpleNamespace(text_config=_tiny_text_config())
+    rows = {"wq_du": 4, "wk_dv": 2, "wv_dv": 2, "wr_du": 4}
+    weights = {}
+    expected = {leaf: [] for leaf in ("weight", "scales", "biases")}
+    for index, (name, out_rows) in enumerate(rows.items(), start=1):
+        parts = {
+            "weight": mx.full((out_rows, 2), index, dtype=mx.uint32),
+            "scales": mx.full((out_rows, 1), index, dtype=mx.float16),
+            "biases": mx.full((out_rows, 1), -index, dtype=mx.float16),
+        }
+        for leaf, value in parts.items():
+            weights[f"model.llm.layers.0.attn.{name}.{leaf}"] = value
+            expected[leaf].append(value)
+
+    for leaf, value in {
+        "weight": mx.zeros((8, 2), dtype=mx.uint32),
+        "scales": mx.ones((8, 1)),
+        "biases": mx.zeros((8, 1)),
+    }.items():
+        weights[f"model.llm.layers.0.attn.wo_ud.{leaf}"] = value
+        weights[f"model.visual.layers.linear_1.{leaf}"] = value
+        weights[f"model.llm.embed.{leaf}"] = value
+        weights[f"model.llm.unembed.{leaf}"] = value
+        weights[f"model.audio.encoder.{leaf}"] = value
+
+    out = Model.sanitize(model, weights)
+
+    attn = "language_model.model.layers.0.self_attn."
+    for leaf, parts in expected.items():
+        key = attn + "qkvr_proj." + leaf
+        assert mx.array_equal(out[key], mx.concatenate(parts, axis=0))
+        assert all(attn + name + "_proj." + leaf not in out for name in "qkvr")
+    for leaf in ("weight", "scales", "biases"):
+        assert attn + "o_proj." + leaf in out
+        assert f"vision_tower.encoder_layers.1.projection.{leaf}" in out
+        assert "language_model.model.embed_tokens." + leaf in out
+        assert "language_model.lm_head." + leaf in out
+        assert "audio_tower.embed_audio_tokens." + leaf in out
 
 
 def test_qkvr_fusion_policy_preserves_mixed_quant_layers(applied):

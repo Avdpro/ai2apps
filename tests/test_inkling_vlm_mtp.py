@@ -287,7 +287,7 @@ def test_sanitize_hook_maps_mtp_keys(runtime):
             (hidden, hidden)
         ),
         "model.mtp.layers.0.transformer_block.attn.k_sconv.weight": mx.zeros(
-            (hidden, 4, 1)
+            (hidden, 1, 4)
         ),
         "model.mtp.layers.0.transformer_block.mlp.w13_dn.weight": w13,
         "model.llm.embed.weight": mx.zeros((16, hidden)),
@@ -299,8 +299,8 @@ def test_sanitize_hook_maps_mtp_keys(runtime):
     assert base + "transformer_block.self_attn.qkvr_proj.weight" in out
     assert out[base + "transformer_block.self_attn.k_sconv.conv.weight"].shape == (
         hidden,
-        1,
         4,
+        1,
     )
     gate = out[base + "transformer_block.mlp.gate_proj.weight"]
     ref = w13.reshape(inter, 2, hidden)
