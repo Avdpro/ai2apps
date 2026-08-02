@@ -792,6 +792,56 @@ class TestCacheMaterialization:
 class TestDeepseekV4SwitchGLU:
     """DeepSeek-V4 SwitchGLU execution guards."""
 
+    def test_short_affine_route_restores_bfloat16_output(
+        self, applied_patch, monkeypatch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        from omlx.patches.deepseek_v4 import switch_layers
+
+        mx.random.seed(17)
+        layer = switch_layers.SwitchGLU(
+            input_dims=64,
+            hidden_dims=64,
+            num_experts=4,
+            bias=False,
+        )
+        for name in ("up_proj", "gate_proj", "down_proj"):
+            projection = getattr(layer, name).to_quantized(
+                group_size=64,
+                bits=2,
+                mode="affine",
+            )
+            projection.scales = projection.scales.astype(mx.float16)
+            projection.biases = projection.biases.astype(mx.float16)
+            setattr(layer, name, projection)
+
+        projection_input_dtypes = []
+        original_call = switch_layers.QuantizedSwitchLinear.__call__
+
+        def record_projection_input(projection, value, *args, **kwargs):
+            projection_input_dtypes.append(value.dtype)
+            return original_call(projection, value, *args, **kwargs)
+
+        monkeypatch.setattr(
+            switch_layers.QuantizedSwitchLinear,
+            "__call__",
+            record_projection_input,
+        )
+
+        x = mx.random.normal((1, 7, 64), dtype=mx.bfloat16)
+        indices = mx.array(
+            [[[0, 1, 2, 3, 0, 1]] * 7],
+            dtype=mx.int32,
+        )
+
+        assert indices.size < 64
+        y = layer(x, indices)
+        mx.eval(y)
+
+        assert y.shape == (1, 7, 6, 64)
+        assert y.dtype == mx.bfloat16
+        assert projection_input_dtypes == [mx.float16, mx.float16, mx.float16]
+
     def test_shared_expert_uses_configured_swiglu_limit(self, applied_patch):
         dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
 

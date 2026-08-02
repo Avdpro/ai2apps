@@ -243,6 +243,18 @@ class QuantizedSwitchLinear(nn.Module):
             and glm_fast.has_symbol("deepseek_affine_gather_qmm_blocks")
         )
 
+    def _has_affine_metadata_dtype(self, dtype) -> bool:
+        """Return whether affine quantization metadata uses ``dtype``."""
+        biases = self.get("biases")
+        return (
+            self.mode == "affine"
+            and biases is not None
+            and "bias" not in self
+            and self["weight"].dtype == mx.uint32
+            and self["scales"].dtype == dtype
+            and biases.dtype == dtype
+        )
+
     def _native_block_kind(self, x, sorted_indices: bool, dtype=None) -> str | None:
         if x.ndim == 3 and _nax_prefers_stock(int(x.shape[0])):
             return None
@@ -403,8 +415,12 @@ class SwitchGLU(nn.Module):
 
         block_plan = None
         native_kinds = None
-        use_f16_moe = False
         projections = (self.up_proj, self.gate_proj, self.down_proj)
+        use_f16_moe = original_dtype == mx.bfloat16 and all(
+            isinstance(p, QuantizedSwitchLinear)
+            and p._has_affine_metadata_dtype(mx.float16)
+            for p in projections
+        )
         if do_sort and all(isinstance(p, QuantizedSwitchLinear) for p in projections):
             native_kinds = tuple(p._native_block_kind(x, do_sort) for p in projections)
             if x.dtype == mx.bfloat16:
