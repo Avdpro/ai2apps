@@ -165,8 +165,11 @@ class OQManager:
         """Scan all model dirs. Returns (source_models, all_models)."""
 
         def _scan() -> tuple[list[dict], list[dict]]:
-            from ..oq import validate_quantizable, estimate_memory
-            from ..utils.model_loading import _checkpoint_has_mtp_weights
+            from ..oq import estimate_memory, validate_quantizable
+            from ..utils.model_loading import (
+                _checkpoint_has_mtp_weights,
+                _has_mtp_heads,
+            )
 
             source_models = []
             all_models = []
@@ -201,18 +204,9 @@ class OQManager:
                             if size == 0:
                                 continue
                             tc = config.get("text_config", {})
-                            # has_mtp_heads: top-level OR text_config nested
-                            config_declares_mtp = (
-                                int(config.get("mtp_num_hidden_layers", 0) or 0) > 0
-                                or int(config.get("num_nextn_predict_layers", 0) or 0)
-                                > 0
-                                or int(tc.get("mtp_num_hidden_layers", 0) or 0) > 0
-                                or int(tc.get("num_nextn_predict_layers", 0) or 0) > 0
-                            )
-                            has_mtp = (
-                                config_declares_mtp
-                                and _checkpoint_has_mtp_weights(path)
-                            )
+                            has_mtp = _has_mtp_heads(
+                                config
+                            ) and _checkpoint_has_mtp_weights(path)
                             info = {
                                 "name": path.name,
                                 "path": str(path),

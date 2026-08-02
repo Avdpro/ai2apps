@@ -176,6 +176,44 @@ class TestOQManagerMtpDetection:
         assert model["has_mtp_heads"] is True
 
     @pytest.mark.asyncio
+    async def test_inkling_mtp_config_is_reported_as_preservable(self, tmp_path):
+        root = tmp_path / "models"
+        root.mkdir()
+        model = root / "Inkling-Small"
+        model.mkdir()
+        (model / "config.json").write_text(
+            json.dumps(
+                {
+                    "model_type": "inkling_mm_model",
+                    "text_config": {
+                        "hidden_size": 4096,
+                        "num_hidden_layers": 42,
+                    },
+                    "vision_config": {},
+                    "mtp_config": {"num_nextn_predict_layers": 8},
+                }
+            )
+        )
+        (model / "model.safetensors").write_bytes(b"\x00" * 4096)
+        (model / "mtp.safetensors").write_bytes(b"\x00" * 4096)
+        (model / "model.safetensors.index.json").write_text(
+            json.dumps(
+                {
+                    "metadata": {},
+                    "weight_map": {
+                        "model.mtp.layers.0.input_proj.weight": "mtp.safetensors",
+                    },
+                }
+            )
+        )
+
+        manager = OQManager(model_dirs=[str(root)])
+        source_models, _ = await manager.list_quantizable_models()
+
+        [model_info] = source_models
+        assert model_info["has_mtp_heads"] is True
+
+    @pytest.mark.asyncio
     async def test_start_quantization_disables_preserve_mtp_without_weights(
         self, tmp_path, monkeypatch
     ):
