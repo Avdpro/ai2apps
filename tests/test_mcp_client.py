@@ -7,6 +7,7 @@ requiring actual MCP server connections.
 """
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -169,6 +170,54 @@ class TestMCPClientStatus:
 
         assert status.state == MCPServerState.ERROR
         assert status.error == "Connection failed"
+
+
+class TestMCPClientSDKFieldCompatibility:
+    """Tests for MCP SDK 1.x and 2.x field names."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("protocol_attr", "server_attr", "schema_attr"),
+        [
+            ("protocol_version", "server_info", "input_schema"),
+            ("protocolVersion", "serverInfo", "inputSchema"),
+        ],
+    )
+    async def test_session_metadata_and_tools_support_both_field_styles(
+        self,
+        protocol_attr: str,
+        server_attr: str,
+        schema_attr: str,
+    ):
+        config = MCPServerConfig(
+            name="compat-test",
+            transport=MCPTransport.STDIO,
+            command="python",
+        )
+        client = MCPClient(config)
+        client._session = AsyncMock()
+        client._session.initialize.return_value = SimpleNamespace(
+            **{
+                protocol_attr: "2025-11-25",
+                server_attr: SimpleNamespace(name="test-server"),
+            }
+        )
+        schema = {
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+        }
+        tool = SimpleNamespace(
+            name="echo",
+            description="Echo a value",
+            **{schema_attr: schema},
+        )
+        client._session.list_tools.return_value = SimpleNamespace(tools=[tool])
+
+        await client._initialize_session()
+        await client._discover_tools()
+
+        client._session.initialize.assert_awaited_once()
+        assert client.tools[0].input_schema == schema
 
 
 class TestMCPClientConnect:
@@ -560,9 +609,10 @@ class TestMCPClientCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_success(self, connected_client: MCPClient):
         """Test successful tool call."""
-        mock_result = MagicMock()
-        mock_result.content = [MagicMock(text="Tool output")]
-        mock_result.isError = False
+        mock_result = SimpleNamespace(
+            content=[SimpleNamespace(text="Tool output")],
+            isError=False,
+        )
         connected_client._session.call_tool.return_value = mock_result
 
         result = await connected_client.call_tool("get_data", {"id": 123})
@@ -588,9 +638,7 @@ class TestMCPClientCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_uses_config_timeout(self, connected_client: MCPClient):
         """Test tool call uses config timeout when not specified."""
-        mock_result = MagicMock()
-        mock_result.content = []
-        mock_result.isError = False
+        mock_result = SimpleNamespace(content=[], isError=False)
         connected_client._session.call_tool.return_value = mock_result
 
         await connected_client.call_tool("tool", {})
@@ -611,12 +659,13 @@ class TestMCPClientCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_multiple_content_items(self, connected_client: MCPClient):
         """Test tool call with multiple content items."""
-        mock_result = MagicMock()
-        mock_result.content = [
-            MagicMock(text="Line 1"),
-            MagicMock(text="Line 2"),
-        ]
-        mock_result.isError = False
+        mock_result = SimpleNamespace(
+            content=[
+                SimpleNamespace(text="Line 1"),
+                SimpleNamespace(text="Line 2"),
+            ],
+            isError=False,
+        )
         connected_client._session.call_tool.return_value = mock_result
 
         result = await connected_client.call_tool("multi_tool", {})
@@ -627,12 +676,10 @@ class TestMCPClientCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_data_content(self, connected_client: MCPClient):
         """Test tool call with data content."""
-        mock_result = MagicMock()
-        mock_item = MagicMock(spec=["data"])
-        mock_item.data = {"key": "value"}
-        del mock_item.text  # Remove text attribute
-        mock_result.content = [mock_item]
-        mock_result.isError = False
+        mock_result = SimpleNamespace(
+            content=[SimpleNamespace(data={"key": "value"})],
+            isError=False,
+        )
         connected_client._session.call_tool.return_value = mock_result
 
         result = await connected_client.call_tool("data_tool", {})
@@ -642,10 +689,11 @@ class TestMCPClientCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_structured_content(self, connected_client: MCPClient):
         """Test tool call with structuredContent fallback."""
-        mock_result = MagicMock(spec=[])
-        mock_result.content = []
-        mock_result.structuredContent = {"results": ["Result 1", "Result 2"]}
-        mock_result.isError = False
+        mock_result = SimpleNamespace(
+            content=[],
+            structuredContent={"results": ["Result 1", "Result 2"]},
+            isError=False,
+        )
         connected_client._session.call_tool.return_value = mock_result
 
         result = await connected_client.call_tool("web_search", {"query": "test"})
@@ -655,6 +703,21 @@ class TestMCPClientCallTool:
         connected_client._session.call_tool.assert_called_with(
             "web_search", {"query": "test"}
         )
+
+    @pytest.mark.asyncio
+    async def test_call_tool_snake_case_result(self, connected_client: MCPClient):
+        """Test SDK 2.x error and structured content fields."""
+        mock_result = SimpleNamespace(
+            content=[],
+            structured_content={"answer": 42},
+            is_error=True,
+        )
+        connected_client._session.call_tool.return_value = mock_result
+
+        result = await connected_client.call_tool("calculate", {"value": 42})
+
+        assert result.is_error is True
+        assert result.content == {"answer": 42}
 
 
 class TestMCPClientRefreshTools:
@@ -688,14 +751,12 @@ class TestMCPClientRefreshTools:
         client._state = MCPServerState.CONNECTED
         client._session = AsyncMock()
 
-        # Create a proper mock tool object with correct attributes
-        mock_tool = MagicMock()
-        mock_tool.name = "new_tool"  # Set name explicitly, not as MagicMock
-        mock_tool.description = "New"
-        mock_tool.inputSchema = {}
-
-        mock_result = MagicMock()
-        mock_result.tools = [mock_tool]
+        mock_tool = SimpleNamespace(
+            name="new_tool",
+            description="New",
+            inputSchema={},
+        )
+        mock_result = SimpleNamespace(tools=[mock_tool])
         client._session.list_tools.return_value = mock_result
 
         await client.refresh_tools()
