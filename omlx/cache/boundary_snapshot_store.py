@@ -33,6 +33,7 @@ from .paged_ssd_cache import (
     _restore_tensor_from_bytes,
     _write_safetensors_no_mx,
 )
+from .pooling_delta import compact_pooling_cache_snapshot
 
 if HAS_MLX:
     import mlx.core as mx
@@ -130,6 +131,8 @@ class BoundarySnapshotSSDStore:
         token_count: int,
         snapshot_cache: list[Any],
         extract_cache_states_fn: Callable,
+        *,
+        block_size: int | None = None,
     ) -> bool:
         """Serialize snapshot to SSD (non-blocking).
 
@@ -146,6 +149,9 @@ class BoundarySnapshotSSDStore:
         extract_cache_states_fn : callable
             ``Scheduler._extract_cache_states`` — converts raw cache objects
             to ``List[Dict[str, Any]]``.
+        block_size : int, optional
+            When provided, compact append-only PoolingCache state to the
+            current block's delta before buffering or writing it.
 
         Returns
         -------
@@ -160,6 +166,8 @@ class BoundarySnapshotSSDStore:
             extracted, model_cache_config = extract_cache_states_fn(snapshot_cache)
             if not extracted:
                 return False
+            if block_size is not None:
+                compact_pooling_cache_snapshot(extracted, token_count, block_size)
 
             # 2. Flatten tensors + metadata for safetensors serialization.
             tensors_raw, metadata = self._serialize_extracted(
@@ -661,6 +669,9 @@ class BoundarySnapshotSSDStore:
                 "cache_type": cache_type,
                 "meta_state": json.dumps(list(meta_state) if meta_state else []),
             }
+            pooling_delta_ranges = layer_state.get("pooling_delta_ranges")
+            if pooling_delta_ranges:
+                info["pooling_delta_ranges"] = json.dumps(pooling_delta_ranges)
 
             if (
                 isinstance(state, list)
@@ -785,6 +796,14 @@ class BoundarySnapshotSSDStore:
                         "cache_type": cache_type,
                     }
                 )
+
+            if "pooling_delta_ranges" in info:
+                try:
+                    result[-1]["pooling_delta_ranges"] = json.loads(
+                        info["pooling_delta_ranges"]
+                    )
+                except (TypeError, json.JSONDecodeError):
+                    return None
 
         return result
 
@@ -928,6 +947,14 @@ class BoundarySnapshotSSDStore:
                         "cache_type": cache_type,
                     }
                 )
+
+            if "pooling_delta_ranges" in info:
+                try:
+                    result[-1]["pooling_delta_ranges"] = json.loads(
+                        info["pooling_delta_ranges"]
+                    )
+                except (TypeError, json.JSONDecodeError):
+                    return None
 
         return result
 

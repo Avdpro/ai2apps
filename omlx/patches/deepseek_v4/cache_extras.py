@@ -190,11 +190,25 @@ class PoolingCache(_BaseCache):
     def state(self):
         buf_kv = self.buf_kv[:, : self.remainder] if self.remainder > 0 else None
         buf_gate = self.buf_gate[:, : self.remainder] if self.remainder > 0 else None
-        return (buf_kv, buf_gate, self.pooled)
+        return (
+            buf_kv,
+            buf_gate,
+            self.pooled,
+            self.prev_win_kv,
+            self.prev_win_gate,
+        )
 
     @state.setter
     def state(self, v):
-        buf_kv, buf_gate, pooled = v
+        if len(v) == 3:
+            buf_kv, buf_gate, pooled = v
+            prev_win_kv = prev_win_gate = None
+        elif len(v) == 5:
+            buf_kv, buf_gate, pooled, prev_win_kv, prev_win_gate = v
+        else:
+            raise ValueError(
+                f"PoolingCache state must have 3 or 5 elements, got {len(v)}"
+            )
         self.remainder = 0
         self.buf_kv = self.buf_gate = None
         if buf_kv is not None:
@@ -202,13 +216,8 @@ class PoolingCache(_BaseCache):
         self.pooled = pooled
         self._undo = None
         self._undo_chain = False
-        # prev_win is runtime-only and not part of the persisted 3-tuple, so
-        # a state restore (SSD eviction/recovery) cannot rebuild it. The next
-        # window completed after restore pools with a zero lane-A once, then
-        # prev_win repopulates — a single-window overlap loss, not the
-        # persistent per-window loss the original decode bug caused.
-        self.prev_win_kv = None
-        self.prev_win_gate = None
+        self.prev_win_kv = prev_win_kv
+        self.prev_win_gate = prev_win_gate
 
     @property
     def meta_state(self):
@@ -309,6 +318,8 @@ class PoolingCache(_BaseCache):
             total += self.buf_kv.nbytes + self.buf_gate.nbytes
         if self.pooled is not None:
             total += self.pooled.nbytes
+        if self.prev_win_kv is not None:
+            total += self.prev_win_kv.nbytes + self.prev_win_gate.nbytes
         return total
 
     @classmethod
@@ -995,4 +1006,3 @@ class BatchPoolingCache(_BaseCache):
             batch_cache._prev_valid = [c.prev_win_kv is not None for c in caches]
 
         return batch_cache
-

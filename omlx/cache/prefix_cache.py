@@ -31,6 +31,7 @@ from .paged_cache import (
     resolve_block_extra_keys,
 )
 from .paged_ssd_cache import PagedSSDCacheManager
+from .pooling_delta import POOLING_CACHE_DELTA_CLASS
 from .stats import PrefixCacheStats
 from .type_registry import CacheTypeRegistry
 
@@ -204,9 +205,7 @@ class BlockAwarePrefixCache(CacheManager):
             try:
                 paged_ssd_cache_manager.invalidate_stale_layer_signature()
             except Exception as e:
-                logger.warning(
-                    "Stale-signature sweep on manager attach failed: %s", e
-                )
+                logger.warning("Stale-signature sweep on manager attach failed: %s", e)
             logger.info("PagedSSDCacheManager connected to BlockAwarePrefixCache")
 
     def _forget_incompatible_ssd_block(
@@ -393,9 +392,7 @@ class BlockAwarePrefixCache(CacheManager):
             for block_id, expected_hash in zip(
                 matched_block_ids[:num_blocks], chain_hashes
             ):
-                block = self.paged_cache.acquire_cached_block(
-                    block_id, expected_hash
-                )
+                block = self.paged_cache.acquire_cached_block(block_id, expected_hash)
                 if block is None:
                     # Chain broken: self-heal the stale index entry so the
                     # next lookup does not walk the same dead chain.
@@ -1271,7 +1268,7 @@ class BlockAwarePrefixCache(CacheManager):
                             return sub_class_names[sub_idx]
                         return None
 
-                    def _wrap_sub_marker(sub_idx, elements):
+                    def _wrap_sub_marker(sub_idx, elements, storage_class_name=None):
                         # Length-2 element lists round-trip as legacy
                         # ``(keys, values)`` so existing callers (prefix
                         # cache reconstruct, tests) keep their shape. Real
@@ -1281,7 +1278,7 @@ class BlockAwarePrefixCache(CacheManager):
                             return (elements[0], elements[1])
                         return (
                             "__nstate__",
-                            _sub_class_for(sub_idx),
+                            storage_class_name or _sub_class_for(sub_idx),
                             list(elements),
                         )
 
@@ -1343,9 +1340,14 @@ class BlockAwarePrefixCache(CacheManager):
                                 and layer_idx < len(snapshot_cache_data)
                                 and "state" in snapshot_cache_data[layer_idx]
                             ):
-                                source_state = snapshot_cache_data[layer_idx]["state"]
+                                source_layer = snapshot_cache_data[layer_idx]
+                                source_state = source_layer["state"]
                             else:
+                                source_layer = layer_state
                                 source_state = state
+                            pooling_delta_ranges = source_layer.get(
+                                "pooling_delta_ranges", {}
+                            )
                             if isinstance(source_state, list):
                                 sub_tensors = []
                                 for sub_idx, sub_state in enumerate(source_state):
@@ -1361,9 +1363,28 @@ class BlockAwarePrefixCache(CacheManager):
                                             )
                                             for elem in sub_state
                                         ]
-                                        sub_tensors.append(
-                                            _wrap_sub_marker(sub_idx, cloned)
+                                        delta_range = pooling_delta_ranges.get(
+                                            str(sub_idx)
                                         )
+                                        if (
+                                            _sub_class_for(sub_idx) == "PoolingCache"
+                                            and isinstance(delta_range, (list, tuple))
+                                            and len(delta_range) == 2
+                                        ):
+                                            cloned.append(
+                                                mx.array(delta_range, dtype=mx.int64)
+                                            )
+                                            sub_tensors.append(
+                                                _wrap_sub_marker(
+                                                    sub_idx,
+                                                    cloned,
+                                                    POOLING_CACHE_DELTA_CLASS,
+                                                )
+                                            )
+                                        else:
+                                            sub_tensors.append(
+                                                _wrap_sub_marker(sub_idx, cloned)
+                                            )
                                 block_slices.append(("__cache_list__", sub_tensors))
                             else:
                                 block_slices.append((mx.zeros((1,)), mx.zeros((1,))))
@@ -1790,9 +1811,7 @@ class BlockAwarePrefixCache(CacheManager):
                 # Load with metadata for type information
                 if promote_to_hot_cache:
                     block_data, block_metadata = (
-                        self.paged_ssd_cache.load_block_with_metadata(
-                            block.block_hash
-                        )
+                        self.paged_ssd_cache.load_block_with_metadata(block.block_hash)
                     )
                 else:
                     block_data, block_metadata = (
@@ -2070,6 +2089,15 @@ class BlockAwarePrefixCache(CacheManager):
                             return list(sub_state)
                         return None
 
+                    def _sub_state_class(sub_state):
+                        if (
+                            isinstance(sub_state, tuple)
+                            and len(sub_state) >= 3
+                            and sub_state[0] == "__nstate__"
+                        ):
+                            return sub_state[1]
+                        return None
+
                     # Collect CacheList data from all blocks that have List[sub_state]
                     cl_block_data = []
                     for block_data in all_block_data:
@@ -2191,14 +2219,102 @@ class BlockAwarePrefixCache(CacheManager):
                     else:
                         # Cumulative snapshots (or a single block): the last
                         # matched block already holds the complete state of
-                        # every sub at its boundary — a partial prefix match
-                        # restores that boundary's state exactly. Markers are
-                        # unwrapped to raw tuples so the downstream
-                        # handler.reconstruct_cache → sub_handler.
-                        # deserialize_state pipeline sees uniform N-tuples.
-                        concatenated_sub_states = [
-                            tuple(elems) for elems in last_block_elements
-                        ]
+                        # every sub at its boundary. PoolingCache V4 markers
+                        # are the exception: their append-only pooled tensor
+                        # is stored as an absolute-range delta per block and
+                        # must be rebuilt in order. A legacy full snapshot may
+                        # appear before V4 deltas in an existing cache chain;
+                        # it becomes the reconstruction base.
+                        concatenated_sub_states = []
+                        for j, last_elements in enumerate(last_block_elements):
+                            has_pooling_deltas = any(
+                                _sub_state_class(bd[j]) == POOLING_CACHE_DELTA_CLASS
+                                for bd in cl_block_data
+                            )
+                            if not has_pooling_deltas:
+                                concatenated_sub_states.append(tuple(last_elements))
+                                continue
+
+                            pooled_parts = []
+                            pooled_length = 0
+                            last_pooling_state = None
+                            valid_pooling_chain = True
+                            for block_cache_list in cl_block_data:
+                                sub_state = block_cache_list[j]
+                                elements = _sub_state_elements(sub_state)
+                                marker_class = _sub_state_class(sub_state)
+                                if elements is None:
+                                    valid_pooling_chain = False
+                                    break
+
+                                if marker_class != POOLING_CACHE_DELTA_CLASS:
+                                    if len(elements) < 3:
+                                        valid_pooling_chain = False
+                                        break
+                                    if elements[2] is None:
+                                        pooled_parts = []
+                                        pooled_length = 0
+                                    elif (
+                                        hasattr(elements[2], "shape")
+                                        and len(elements[2].shape) >= 2
+                                    ):
+                                        pooled_parts = [elements[2]]
+                                        pooled_length = int(elements[2].shape[1])
+                                    else:
+                                        valid_pooling_chain = False
+                                        break
+                                    last_pooling_state = list(elements)
+                                    continue
+
+                                if (
+                                    len(elements) not in (4, 6)
+                                    or not hasattr(elements[2], "shape")
+                                    or len(elements[2].shape) < 2
+                                    or not hasattr(elements[-1], "tolist")
+                                ):
+                                    valid_pooling_chain = False
+                                    break
+                                try:
+                                    delta_range = elements[-1].tolist()
+                                    delta_start, delta_end = (
+                                        int(delta_range[0]),
+                                        int(delta_range[1]),
+                                    )
+                                except (IndexError, TypeError, ValueError):
+                                    valid_pooling_chain = False
+                                    break
+                                if (
+                                    delta_start != pooled_length
+                                    or delta_end < delta_start
+                                    or int(elements[2].shape[1])
+                                    != delta_end - delta_start
+                                ):
+                                    valid_pooling_chain = False
+                                    break
+                                pooled_parts.append(elements[2])
+                                pooled_length = delta_end
+                                last_pooling_state = list(elements[:-1])
+
+                            if (
+                                not valid_pooling_chain
+                                or not pooled_parts
+                                or last_pooling_state is None
+                            ):
+                                logger.info(
+                                    "CacheList layer %d sub-cache %d: invalid "
+                                    "PoolingCache delta chain. Rejecting cache.",
+                                    layer_idx,
+                                    j,
+                                )
+                                return None
+
+                            pooled = (
+                                pooled_parts[0]
+                                if len(pooled_parts) == 1
+                                else mx.concatenate(pooled_parts, axis=1)
+                            )
+                            last_pooling_state[2] = pooled
+                            concatenated_sub_states.append(tuple(last_pooling_state))
 
                     # Build meta_state with correct offsets for reconstructed
                     # sequence length (may differ from original if partial match)

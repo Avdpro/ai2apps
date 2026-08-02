@@ -37,6 +37,10 @@ import numpy as np
 from omlx.utils.formatting import format_bytes
 
 from .interface import CacheManager
+from .pooling_delta import (
+    POOLING_CACHE_DELTA_CLASS,
+    POOLING_CACHE_DELTA_FORMAT_VERSION,
+)
 from .stats import PagedSSDCacheStats
 
 logger = logging.getLogger(__name__)
@@ -155,8 +159,11 @@ _CACHE_FORMAT_VERSION = "3"
 # Versions whose blocks the current code can read. V3 polyfills V2 blocks
 # whose layer data was stored as the legacy 2-tuple `(keys, values)` —
 # they are upgraded to N-tuple markers on read so the rest of omlx core
-# sees a uniform shape. New writes always use V3.
-_READABLE_CACHE_FORMAT_VERSIONS = frozenset({"2", "3"})
+# sees a uniform shape. New writes use V3 unless a PoolingCache block carries
+# the V4 append-only delta representation.
+_READABLE_CACHE_FORMAT_VERSIONS = frozenset(
+    {"2", "3", POOLING_CACHE_DELTA_FORMAT_VERSION}
+)
 
 
 # Layer cache type names whose meta_state should be clamped on save so the
@@ -204,6 +211,7 @@ def _canonicalize_layer_cache_types(
     wrapper_to_canonical = {
         "SizedArraysCache": "ArraysCache",
         "PrefillReadyRotatingKVCache": "RotatingKVCache",
+        POOLING_CACHE_DELTA_CLASS: "PoolingCache",
         # Batch and single-request TurboQuant caches persist the same packed
         # per-request state (the save path records whichever class name it
         # extracted; the restore path rebuilds a TurboQuantKVCache from
@@ -315,6 +323,7 @@ _CACHELIST_NON_SLICEABLE_SUB_CLASSES = frozenset(
 )
 
 _ARRAYS_SUB_CLASSES = frozenset({"ArraysCache", "SizedArraysCache"})
+_POOLING_SUB_CLASSES = frozenset({"PoolingCache", "BatchPoolingCache"})
 
 
 def _canonical_sub_name(name: Any) -> str:
@@ -347,10 +356,9 @@ def _block_cachelist_subtypes(
     Only layers whose composition contains a non-sliceable sub class are
     stamped, so signatures of KVCache-only CacheList models (GLM /
     deepseek_v32) stay byte-identical to the previous format. ArraysCache
-    descriptors carry the slot count (``"ArraysCache:4"``) read from the
-    block's own stored state: restoring a block with a different slot
-    count IndexErrors inside the model's ``cache[slot]`` access, so the
-    count is part of the layout identity.
+    descriptors carry the slot count (``"ArraysCache:4"``), while pooling
+    descriptors carry the logical state arity (``"PoolingCache:5"``).
+    Both values are part of the persisted layout identity.
     """
     if not cache_data or not layer_cache_types:
         return None
@@ -380,6 +388,7 @@ def _block_cachelist_subtypes(
         for j, sub_tensor in enumerate(layer_data[1]):
             name = _canonical_sub_name(meta_names[j] if j < len(meta_names) else "")
             element_count = None
+            is_pooling_delta = False
             if (
                 isinstance(sub_tensor, tuple)
                 and len(sub_tensor) >= 3
@@ -389,12 +398,16 @@ def _block_cachelist_subtypes(
                     name = _canonical_sub_name(sub_tensor[1])
                 if isinstance(sub_tensor[2], (list, tuple)):
                     element_count = len(sub_tensor[2])
+                    is_pooling_delta = sub_tensor[1] == POOLING_CACHE_DELTA_CLASS
             elif isinstance(sub_tensor, (list, tuple)):
                 element_count = len(sub_tensor)
             if name in _CACHELIST_NON_SLICEABLE_SUB_CLASSES:
                 has_non_sliceable = True
             if name in _ARRAYS_SUB_CLASSES and element_count is not None:
                 descriptors.append(f"ArraysCache:{element_count}")
+            elif name in _POOLING_SUB_CLASSES and element_count is not None:
+                logical_count = element_count - 1 if is_pooling_delta else element_count
+                descriptors.append(f"{name}:{logical_count}")
             else:
                 descriptors.append(name or "?")
         if descriptors and has_non_sliceable:
@@ -429,6 +442,10 @@ def cachelist_subtypes_from_cache_list(
                 slots = getattr(sub, "cache", None)
                 slot_count = len(slots) if isinstance(slots, list) else 0
                 descriptors.append(f"ArraysCache:{slot_count}")
+            elif name in _POOLING_SUB_CLASSES:
+                state = getattr(sub, "state", ())
+                state_count = len(state) if isinstance(state, (list, tuple)) else 0
+                descriptors.append(f"{name}:{state_count}")
             else:
                 descriptors.append(name or "?")
         if descriptors and has_non_sliceable:
@@ -2224,6 +2241,7 @@ class PagedSSDCacheManager(CacheManager):
             #   is uniform regardless of whether the producer (prefix_cache,
             #   etc.) has been migrated to emit ``__nstate__`` markers yet.
             arrays = {}
+            has_pooling_cache_delta = False
             cache_list_meta = (
                 {}
             )  # Per-layer sidecar metadata (sub_count, state_count, etc.)
@@ -2245,6 +2263,8 @@ class PagedSSDCacheManager(CacheManager):
                     elements = layer_data[2] if len(layer_data) >= 3 else []
                     if class_name:
                         cache_list_meta[f"layer_{i}_state_class_name"] = class_name
+                    if class_name == POOLING_CACHE_DELTA_CLASS:
+                        has_pooling_cache_delta = True
                     _store_nstate_elements(f"layer_{i}", elements)
                 elif (
                     isinstance(layer_data, tuple)
@@ -2272,6 +2292,8 @@ class PagedSSDCacheManager(CacheManager):
                                 cache_list_meta[f"{sub_prefix}_state_class_name"] = (
                                     sub_class_name
                                 )
+                            if sub_class_name == POOLING_CACHE_DELTA_CLASS:
+                                has_pooling_cache_delta = True
                             _store_nstate_elements(sub_prefix, sub_elements)
                         elif (
                             isinstance(sub_tensor, (list, tuple))
@@ -2344,7 +2366,11 @@ class PagedSSDCacheManager(CacheManager):
 
             # Prepare metadata
             metadata = {
-                "omlx_cache_format_version": _CACHE_FORMAT_VERSION,
+                "omlx_cache_format_version": (
+                    POOLING_CACHE_DELTA_FORMAT_VERSION
+                    if has_pooling_cache_delta
+                    else _CACHE_FORMAT_VERSION
+                ),
                 "block_hash": block_hash.hex(),
                 "token_count": str(token_count),
                 "num_layers": str(len(cache_data)),
