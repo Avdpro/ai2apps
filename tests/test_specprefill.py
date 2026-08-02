@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for SpecPrefill (attention-based sparse prefill)."""
 
-import math
-
 import pytest
 
 try:
@@ -16,20 +14,20 @@ pytestmark = pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
 
 
 class TestSelectChunks:
-    """Tests for select_chunks() — chunk-based top-K% selection."""
+    """Tests for select_chunks() — top-K% selection with a mandatory tail."""
 
     def test_basic_selection(self):
         from omlx.patches.specprefill import select_chunks
 
-        # 128 tokens, importance peaks in the first 32 tokens
-        importance = mx.zeros(128)
+        # 4096 tokens (128 chunks), importance peaks in the first chunk.
+        importance = mx.zeros(4096)
         importance = importance.at[:32].add(1.0)
         selected = select_chunks(importance, keep_pct=0.25, chunk_size=32)
-        # Should keep 1 chunk (25% of 4 chunks)
-        assert selected.shape[0] == 32
-        # Should be the first chunk (indices 0-31)
-        assert selected[0].item() == 0
-        assert selected[-1].item() == 31
+        # Keeps 32 chunks (25% of 128): the tail window plus top-ranked ones.
+        assert selected.shape[0] == 32 * 32
+        indices = set(selected.tolist())
+        # The high-importance first chunk wins a ranked slot.
+        assert set(range(32)) <= indices
 
     def test_keep_100_percent(self):
         from omlx.patches.specprefill import select_chunks
@@ -41,12 +39,11 @@ class TestSelectChunks:
     def test_sorted_output(self):
         from omlx.patches.specprefill import select_chunks
 
-        # Make middle and end chunks important
-        importance = mx.zeros(128)
+        # Make two early chunks important; 4096 tokens total.
+        importance = mx.zeros(4096)
         importance = importance.at[32:64].add(2.0)
         importance = importance.at[96:128].add(1.0)
-        selected = select_chunks(importance, keep_pct=0.5, chunk_size=32)
-        # Should select 2 chunks, sorted by position
+        selected = select_chunks(importance, keep_pct=0.25, chunk_size=32)
         indices = selected.tolist()
         assert indices == sorted(indices)
         assert 32 in indices
@@ -63,14 +60,70 @@ class TestSelectChunks:
     def test_non_divisible_chunks(self):
         from omlx.patches.specprefill import select_chunks
 
-        # 100 tokens with chunk_size=32 → 4 chunks (last has 4 tokens)
-        importance = mx.ones(100)
+        # 4100 tokens with chunk_size=32 → 129 chunks (last has 4 tokens).
+        # keep_n = 65 chunks; 64 full chunks + the 4-token final chunk.
+        importance = mx.ones(4100)
         selected = select_chunks(importance, keep_pct=0.5, chunk_size=32)
-        n_chunks = math.ceil(100 / 32)
-        keep_n = math.ceil(n_chunks * 0.5)
-        expected_tokens = min(keep_n * 32, 100)
-        # Allow for last chunk being smaller
-        assert selected.shape[0] <= expected_tokens + 32
+        assert selected.shape[0] == 64 * 32 + 4
+
+    def test_tail_floor_kept_when_unimportant(self):
+        from omlx.patches.specprefill import select_chunks
+
+        # Importance mass entirely in the front half; the tail scores zero.
+        # Without the mandatory tail window the final chunks (chat-template
+        # closers + generation prompt) would be dropped — the 2439 failure.
+        importance = mx.zeros(8192)
+        importance = importance.at[:2048].add(1.0)
+        selected = select_chunks(importance, keep_pct=0.2, chunk_size=32)
+        indices = set(selected.tolist())
+        assert set(range(8192 - 512, 8192)) <= indices
+
+    def test_tail_floor_within_budget_at_scale(self):
+        from omlx.patches.specprefill import select_chunks
+
+        # When the keep budget covers the tail, the tail comes out of the
+        # budget and the selected-token count matches the plain top-K
+        # formula: 8192 tokens → 256 chunks, keep 20% → 52 chunks → 1664.
+        importance = (mx.arange(8192) % 97).astype(mx.float32)
+        selected = select_chunks(importance, keep_pct=0.2, chunk_size=32)
+        assert selected.shape[0] == 1664
+
+    def test_tail_floor_dominates_small_input(self):
+        from omlx.patches.specprefill import select_chunks
+
+        # Just above the admission threshold with a small keep budget the
+        # floor wins over keep_pct: exactly the 16 tail chunks (512 tokens,
+        # indices 544..1055) are selected — keep_n (4) is below the tail.
+        importance = mx.zeros(1056)
+        selected = select_chunks(importance, keep_pct=0.1, chunk_size=32)
+        indices = set(selected.tolist())
+        assert indices == set(range(1056 - 512, 1056))
+
+    def test_tail_floor_non_aligned_input(self):
+        from omlx.patches.specprefill import select_chunks
+
+        # Non-chunk-aligned M: the tail window is chunk-aligned, so it
+        # covers the final partial chunk plus the 15 full chunks before it
+        # (481 trailing tokens here — at least tail_tokens - chunk_size + 1).
+        importance = mx.zeros(8193)
+        importance = importance.at[:2048].add(1.0)
+        selected = select_chunks(importance, keep_pct=0.2, chunk_size=32)
+        indices = set(selected.tolist())
+        assert set(range(241 * 32, 8193)) <= indices
+
+    def test_tail_floor_disabled(self):
+        from omlx.patches.specprefill import select_chunks
+
+        # tail_tokens=0 restores pure top-K: an unimportant tail is dropped
+        # and the budget is exactly keep_n chunks (32 of 128 → 1024 tokens).
+        importance = mx.zeros(4096)
+        importance = importance.at[:2048].add(1.0)
+        selected = select_chunks(
+            importance, keep_pct=0.25, chunk_size=32, tail_tokens=0
+        )
+        indices = set(selected.tolist())
+        assert (4096 - 1) not in indices
+        assert selected.shape[0] == 32 * 32
 
 
 class TestManualRoPE:

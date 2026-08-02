@@ -9,7 +9,7 @@ Based on arxiv.org/abs/2502.02789 and waybarrios/vllm-mlx PR #180.
 
 Pipeline:
   1. score_tokens()  — draft model scores token importance via attention
-  2. select_chunks() — chunk-based top-K% selection
+  2. select_chunks() — chunk-based top-K% selection + mandatory tail window
   3. sparse_prefill() — target prefill with manual RoPE at original positions
   4. cleanup_rope()  — restore original RoPE after generation
 
@@ -588,14 +588,32 @@ def score_tokens(
 
 
 def select_chunks(
-    importance: mx.array, keep_pct: float = 0.3, chunk_size: int = 32
+    importance: mx.array,
+    keep_pct: float = 0.3,
+    chunk_size: int = 32,
+    tail_tokens: int = 512,
 ) -> mx.array:
     """Select top-K% token chunks by average importance.
+
+    The final ``ceil(tail_tokens / chunk_size)`` chunks are always selected
+    (covering at least ``tail_tokens - chunk_size + 1`` trailing tokens).
+    Chat templates end with structural markers (tool-result closers,
+    end-of-turn, the generation prompt) whose chunks can lose the
+    importance ranking; when they do, the target model is left
+    mid-structure and emits malformed output (e.g. a bare </tool_response>
+    then EOS) instead of an answer. The mandatory tail chunks are drawn
+    from the normal keep budget first: when the budget covers the tail
+    (keep_n >= 16 chunks at the defaults, i.e. scored regions >= 2,401
+    tokens at keep_pct=0.2) the selected count is unchanged and only the
+    composition shifts; on smaller inputs the floor takes precedence over
+    ``keep_pct``.
 
     Args:
         importance: (M,) per-token importance scores
         keep_pct: fraction of chunks to keep (default 0.3)
         chunk_size: tokens per chunk (default 32)
+        tail_tokens: trailing-token window always selected, rounded up to
+            whole chunks (default 512, 0 disables the floor)
 
     Returns:
         sorted mx.array of kept token indices
@@ -606,16 +624,22 @@ def select_chunks(
 
     n_chunks = math.ceil(M / chunk_size)
     keep_n = max(1, math.ceil(n_chunks * keep_pct))
+    n_tail_chunks = (
+        min(n_chunks, math.ceil(tail_tokens / chunk_size)) if tail_tokens > 0 else 0
+    )
+    ranked_end = n_chunks - n_tail_chunks
 
     chunk_scores = []
-    for i in range(n_chunks):
+    for i in range(ranked_end):
         start = i * chunk_size
         end = min(start + chunk_size, M)
         chunk_scores.append(mx.mean(importance[start:end]).item())
 
-    top_chunks = sorted(range(n_chunks), key=lambda i: chunk_scores[i], reverse=True)[
-        :keep_n
+    budget = max(0, keep_n - n_tail_chunks)
+    top_chunks = sorted(range(ranked_end), key=lambda i: chunk_scores[i], reverse=True)[
+        :budget
     ]
+    top_chunks.extend(range(ranked_end, n_chunks))
     top_chunks.sort()
 
     indices = []
