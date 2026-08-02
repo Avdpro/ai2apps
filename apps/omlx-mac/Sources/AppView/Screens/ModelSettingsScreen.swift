@@ -997,7 +997,12 @@ private struct EntryEditor: View {
                 Popup(
                     selection: vm.bindProfile(binding.value),
                     width: 130,
-                    options: [("low", "low"), ("medium", "medium"), ("high", "high")]
+                    options: [
+                        ("low", "low"),
+                        ("medium", "medium"),
+                        ("high", "high"),
+                        ("max", "max"),
+                    ]
                 )
                 forceCheckbox
             }

@@ -41,3 +41,14 @@ def test_vlm_mtp_still_conflicts_with_turboquant():
     )
 
     assert "modelSettings.turboquant_kv_enabled" in vlm_mtp
+
+
+def test_reasoning_effort_offers_max_after_high():
+    html = _model_settings_template()
+
+    high_option = '<option value="high">'
+    max_option = '<option value="max">max</option>'
+
+    assert high_option in html
+    assert max_option in html
+    assert html.index(high_option) < html.index(max_option)

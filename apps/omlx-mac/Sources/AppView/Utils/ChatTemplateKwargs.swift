@@ -11,7 +11,7 @@
 // as a flat list of entries, each one of three kinds:
 //
 //   • enable_thinking   — bool, dropdown true/false
-//   • reasoning_effort  — string, dropdown low/medium/high
+//   • reasoning_effort  — string, dropdown low/medium/high/max
 //   • custom            — free-form key + value with light auto-coercion
 //                         ("true"/"false" → Bool, numeric strings → Number,
 //                         otherwise string)

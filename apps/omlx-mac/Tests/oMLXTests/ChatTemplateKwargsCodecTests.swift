@@ -36,10 +36,10 @@ final class ChatTemplateKwargsCodecTests: XCTestCase {
 
     func testReasoningEffortEncodesAsString() {
         let entries = [
-            ChatTemplateKwargEntry(kind: .reasoningEffort, value: "medium", force: false),
+            ChatTemplateKwargEntry(kind: .reasoningEffort, value: "max", force: false),
         ]
         let (kwargs, _) = ChatTemplateKwargsCodec.encode(entries)
-        XCTAssertEqual(kwargs?["reasoning_effort"]?.value as? String, "medium")
+        XCTAssertEqual(kwargs?["reasoning_effort"]?.value as? String, "max")
     }
 
     func testCustomBoolCoercion() {
