@@ -9027,7 +9027,12 @@ class Scheduler:
                         ),
                     )
 
-                    cache_to_use = target_result.prompt_cache
+                    # An exact static-prefix restore can supersede a shorter
+                    # ordinary prefix cache. Transfer the successful target
+                    # result to the request so the old target KV is released
+                    # before decode.
+                    request.prompt_cache = target_result.prompt_cache
+                    cache_to_use = request.prompt_cache
                     tokens_to_process = target_result.tokens_to_process
                     self._specprefill_active_request_id = request.request_id
 

@@ -3387,6 +3387,61 @@ class TestSchedulerSSDLayerSignature:
 class TestSpecPrefillCaches:
     """Regression coverage for target-prefix reuse and draft-cache isolation."""
 
+    def test_target_prefill_replaces_request_owned_ordinary_cache(
+        self, mock_model, mock_tokenizer
+    ):
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        old_cache = [object()]
+        restored_cache = [object()]
+        request = Request(
+            request_id="specprefill-cache-owner",
+            prompt="prompt",
+            sampling_params=SamplingParams(max_tokens=4),
+            prompt_token_ids=[1, 2, 3, 4],
+            num_prompt_tokens=4,
+            cached_tokens=2,
+            remaining_tokens=[3, 4],
+            prompt_cache=old_cache,
+            specprefill_indices=mx.array([0]),
+            specprefill_position_offset=1,
+            specprefill_system_end=3,
+        )
+        request._specprefill_system_tokens = 1
+        scheduler.waiting.append(request)
+        scheduler.requests[request.request_id] = request
+
+        batch_generator = MagicMock()
+        batch_generator.insert.return_value = [42]
+        scheduler.batch_generator = batch_generator
+        scheduler._ensure_batch_generator = MagicMock()
+        scheduler._validate_cache = MagicMock(return_value=True)
+        scheduler._build_sampler_and_processors = MagicMock(
+            return_value=(MagicMock(), [])
+        )
+        scheduler._build_state_machine = MagicMock(return_value=MagicMock())
+        scheduler._preflight_memory_check = MagicMock(return_value=None)
+
+        target_result = SimpleNamespace(
+            prompt_cache=restored_cache,
+            tokens_to_process=[4],
+        )
+        try:
+            with patch(
+                "omlx.specprefill.target.run_specprefill_target_prefill",
+                return_value=target_result,
+            ):
+                scheduled, rejected = scheduler._schedule_waiting()
+
+            assert rejected == []
+            assert scheduled == [request]
+            assert request.prompt_cache is restored_cache
+            assert request.prompt_cache is not old_cache
+            assert batch_generator.insert.call_args.kwargs["caches"] == [
+                restored_cache
+            ]
+        finally:
+            scheduler.shutdown()
+
     def test_cache_counters_work_before_a_draft_model_is_configured(
         self, mock_model, mock_tokenizer
     ):
