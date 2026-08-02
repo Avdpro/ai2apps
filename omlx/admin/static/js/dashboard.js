@@ -448,6 +448,7 @@
 
             // Benchmark state
             benchModelId: '',
+            benchContextProfile: 'code_python',
             benchPromptLengths: { 1024: true, 4096: true, 8192: false, 16384: false, 32768: false, 65536: false, 131072: false, 200000: false },
             benchBatchSizes: { 2: true, 4: true, 8: false },
             benchForceLmEngine: false,
@@ -2985,6 +2986,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             model_id: this.benchExternalEnabled ? this.externalModel.trim() : this.benchModelId,
+                            context_profile: this.benchContextProfile,
                             prompt_lengths: promptLengths,
                             generation_length: 128,
                             batch_sizes: batchSizes,
@@ -3382,6 +3384,7 @@
                     lines.push(`Benchmark Model: ${this.benchModelId}`);
                     lines.push(`Engine: ${this.benchForceLmEngine ? 'Force mlx-lm' : 'Auto'}`);
                 }
+                lines.push(`Context: ${this.benchContextLabel(this.benchContextProfile)}`);
                 lines.push('='.repeat(80));
 
                 // Single Request Results
@@ -3519,6 +3522,7 @@
                         this.benchOtherActive = {
                             bench_id: data.bench_id,
                             model_id: data.model_id,
+                            context_profile: data.context_profile || 'code_python',
                             force_lm_engine: !!data.force_lm_engine,
                             external: !!data.external,
                         };
@@ -3540,6 +3544,7 @@
             // /api/bench/active. External model ids aren't in the local
             // dropdown, so the external flag drives which controls light up.
             _restoreBenchRunSource(data) {
+                this.benchContextProfile = data.context_profile || 'code_python';
                 if (data.external) {
                     this.benchExternalEnabled = true;
                     this.benchRunExternal = {
@@ -3554,6 +3559,17 @@
                     this.benchExternalEnabled = false;
                     this.benchRunExternal = null;
                 }
+            },
+
+            benchContextLabel(profile) {
+                const keys = {
+                    code_python: 'bench.config.context.code_python',
+                    code_mixed: 'bench.config.context.code_mixed',
+                    novel_ko: 'bench.config.context.novel_ko',
+                    novel_en: 'bench.config.context.novel_en',
+                    novel_ja: 'bench.config.context.novel_ja',
+                };
+                return window.t(keys[profile] || keys.code_python);
             },
 
             // User clicked "View live" on the banner — clear the stale

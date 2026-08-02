@@ -34,7 +34,6 @@ from omlx.admin.accuracy_benchmark import (
     _send_event as acc_send_event,
 )
 
-
 # --- Test helpers -----------------------------------------------------------
 
 
@@ -336,7 +335,12 @@ class TestActiveBenchEndpoint:
     def test_returns_not_running_when_idle(self, bench_client):
         r = bench_client.get("/admin/api/bench/active")
         assert r.status_code == 200
-        assert r.json() == {"running": False, "bench_id": None, "model_id": None}
+        assert r.json() == {
+            "running": False,
+            "bench_id": None,
+            "model_id": None,
+            "context_profile": None,
+        }
 
     def test_returns_running_run_payload(self, bench_client):
         run = BenchmarkRun(
@@ -352,6 +356,7 @@ class TestActiveBenchEndpoint:
             "running": True,
             "bench_id": "bench-abc",
             "model_id": "model-x",
+            "context_profile": "code_python",
             "force_lm_engine": False,
             "external": False,
         }
@@ -371,10 +376,13 @@ class TestConcurrentStartRejection:
         existing.status = "running"
         _benchmark_runs[existing.bench_id] = existing
 
-        r = bench_client.post("/admin/api/bench/start", json={
-            "model_id": "model-x",
-            "prompt_lengths": [1024],
-        })
+        r = bench_client.post(
+            "/admin/api/bench/start",
+            json={
+                "model_id": "model-x",
+                "prompt_lengths": [1024],
+            },
+        )
         assert r.status_code == 409
         body = r.json()
         assert "already running" in body["detail"].lower()
@@ -401,8 +409,11 @@ class TestConcurrentStartRejection:
 
         monkeypatch.setattr(bench_module, "run_benchmark", _noop)
 
-        r = bench_client.post("/admin/api/bench/start", json={
-            "model_id": "model-x",
-            "prompt_lengths": [1024],
-        })
+        r = bench_client.post(
+            "/admin/api/bench/start",
+            json={
+                "model_id": "model-x",
+                "prompt_lengths": [1024],
+            },
+        )
         assert r.status_code == 200, r.text

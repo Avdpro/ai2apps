@@ -2,32 +2,34 @@
 """Tests for the admin benchmark module."""
 
 import asyncio
+import json
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from omlx.admin.benchmark import (
-    VALID_BATCH_SIZES,
-    VALID_PROMPT_LENGTHS,
+    BENCHMARK_CONTEXT_PROFILES,
+    BenchmarkContextProfile,
     BenchmarkRequest,
     BenchmarkRun,
     _compute_single_metrics,
     _derive_feature_flags,
-    _filter_uploaded_settings,
-    _upload_model_name,
     _detect_experimental_features,
     _detect_quantization,
+    _filter_uploaded_settings,
     _generate_prompt,
+    _load_bench_corpus,
     _run_batch_test,
     _run_single_test,
+    _upload_model_name,
     cleanup_old_runs,
     create_run,
     get_run,
     run_benchmark,
 )
-
 
 # =============================================================================
 # BenchmarkRequest validation tests
@@ -107,6 +109,27 @@ class TestBenchmarkRequest:
         )
         assert req.force_lm_engine is True
 
+    def test_context_profile_defaults_to_python_code(self):
+        req = BenchmarkRequest(model_id="test-model", prompt_lengths=[1024])
+        assert req.context_profile is BenchmarkContextProfile.CODE_PYTHON
+
+    @pytest.mark.parametrize("profile", list(BenchmarkContextProfile))
+    def test_all_context_profiles_are_accepted(self, profile):
+        req = BenchmarkRequest(
+            model_id="test-model",
+            prompt_lengths=[1024],
+            context_profile=profile.value,
+        )
+        assert req.context_profile is profile
+
+    def test_unknown_context_profile_is_rejected(self):
+        with pytest.raises(ValueError, match="context_profile"):
+            BenchmarkRequest(
+                model_id="test-model",
+                prompt_lengths=[1024],
+                context_profile="unknown",
+            )
+
 
 # =============================================================================
 # Prompt generation tests
@@ -168,20 +191,37 @@ class _WordTokenizer:
 
 
 class TestPromptRealism:
-    def test_corpus_file_ships_and_is_natural_text(self):
-        from omlx.admin.benchmark import _load_bench_corpus
-
-        corpus = _load_bench_corpus()
-        assert len(corpus) > 500_000
-        assert corpus.startswith("Call me Ishmael.")
+    @pytest.mark.parametrize("profile", list(BenchmarkContextProfile))
+    def test_all_corpus_files_ship_with_long_form_content(self, profile):
+        corpus = _load_bench_corpus(profile)
+        assert len(corpus) > 400_000
         assert "quick brown fox jumps" not in corpus
+
+    def test_english_corpus_keeps_moby_dick_content(self):
+        corpus = _load_bench_corpus(BenchmarkContextProfile.NOVEL_EN)
+        assert corpus.startswith("Call me Ishmael.")
+
+    def test_manifest_records_representative_250k_token_headroom(self):
+        manifest_path = (
+            Path(__file__).parents[1]
+            / "omlx"
+            / "admin"
+            / "bench_corpora"
+            / "manifest.json"
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for counts in manifest["representative_token_counts"].values():
+            assert set(counts) == {
+                spec.filename for spec in BENCHMARK_CONTEXT_PROFILES.values()
+            }
+            assert min(counts.values()) >= 250_000
 
     def test_prompt_is_not_repetitive(self):
         """Speculative decoders (MTP/DFlash) hit ~99% draft acceptance on
         repeated filler, inflating benchmark tg ~2x over real prompts; the
         prompt must be natural, non-looping text."""
         tokenizer = _WordTokenizer()
-        ids = _generate_prompt(tokenizer, 2048)
+        ids = _generate_prompt(tokenizer, 2048, BenchmarkContextProfile.NOVEL_EN)
         window = 16
         windows = {tuple(ids[i : i + window]) for i in range(len(ids) - window)}
         distinct_ratio = len(windows) / (len(ids) - window)
@@ -189,8 +229,8 @@ class TestPromptRealism:
 
     def test_prompt_deterministic_apart_from_uuid_prefix(self):
         tokenizer = _WordTokenizer()
-        first = _generate_prompt(tokenizer, 512)
-        second = _generate_prompt(tokenizer, 512)
+        first = _generate_prompt(tokenizer, 512, BenchmarkContextProfile.NOVEL_EN)
+        second = _generate_prompt(tokenizer, 512, BenchmarkContextProfile.NOVEL_EN)
         assert first[0] != second[0]
         assert first[1:] == second[1:]
 
@@ -204,7 +244,7 @@ class TestPromptRealism:
             return original_encode(text)
 
         tokenizer.encode = recording_encode
-        _generate_prompt(tokenizer, 256)
+        _generate_prompt(tokenizer, 256, BenchmarkContextProfile.NOVEL_EN)
         assert encoded_texts
         assert all(text.startswith("BENCH-") for text in encoded_texts)
         assert all("Call me Ishmael." in text for text in encoded_texts)
@@ -212,15 +252,28 @@ class TestPromptRealism:
     def test_external_prompt_is_not_repetitive(self):
         from omlx.admin.benchmark import _generate_external_prompt
 
-        prompt = _generate_external_prompt(1024)
+        prompt = _generate_external_prompt(1024, BenchmarkContextProfile.NOVEL_EN)
         assert "Call me Ishmael." in prompt[:100]
         words = prompt.split(" ")
         window = 12
-        windows = {
-            tuple(words[i : i + window]) for i in range(len(words) - window)
-        }
+        windows = {tuple(words[i : i + window]) for i in range(len(words) - window)}
         distinct_ratio = len(windows) / (len(words) - window)
         assert distinct_ratio > 0.5
+
+    def test_whole_corpus_repeats_when_tokenizer_needs_more_content(self):
+        tokenizer = MagicMock()
+        encoded_texts = []
+
+        def encode(text):
+            encoded_texts.append(text)
+            return list(range(len(text)))
+
+        tokenizer.encode = encode
+        with patch("omlx.admin.benchmark._load_bench_corpus", return_value="abcdef"):
+            ids = _generate_prompt(tokenizer, 100)
+
+        assert len(ids) == 100
+        assert encoded_texts[-1].count("abcdef") > 1
 
 
 # =============================================================================
@@ -848,61 +901,78 @@ class TestFilterUploadedSettings:
         return ModelSettings(**overrides)
 
     def test_performance_fields_are_kept(self):
-        out = _filter_uploaded_settings(self._settings(
-            turboquant_kv_enabled=True,
-            turboquant_kv_bits=4,
-            mtp_enabled=True,
-            mtp_num_draft_tokens=3,
-            index_cache_freq=4,
-            guided_grammar_enabled=True,
-        ))
+        out = _filter_uploaded_settings(
+            self._settings(
+                turboquant_kv_enabled=True,
+                turboquant_kv_bits=4,
+                mtp_enabled=True,
+                mtp_num_draft_tokens=3,
+                index_cache_freq=4,
+                guided_grammar_enabled=True,
+            )
+        )
         assert out["turboquant_kv_bits"] == 4
         assert out["mtp_num_draft_tokens"] == 3
         assert out["index_cache_freq"] == 4
         assert out["guided_grammar_enabled"] is True
 
     def test_free_text_and_organization_fields_are_dropped(self):
-        out = _filter_uploaded_settings(self._settings(
-            display_name="my private name",
-            description="notes only I should see",
-            model_alias="alias",
-            is_favorite=True,
-            is_pinned=True,
-            is_default=True,
-            is_hidden=True,
-            active_profile_name="profile",
-            trust_remote_code=True,
-            ttl_seconds=60,
-        ))
+        out = _filter_uploaded_settings(
+            self._settings(
+                display_name="my private name",
+                description="notes only I should see",
+                model_alias="alias",
+                is_favorite=True,
+                is_pinned=True,
+                is_default=True,
+                is_hidden=True,
+                active_profile_name="profile",
+                trust_remote_code=True,
+                ttl_seconds=60,
+            )
+        )
         for key in (
-            "display_name", "description", "model_alias", "is_favorite",
-            "is_pinned", "is_default", "is_hidden", "active_profile_name",
-            "trust_remote_code", "ttl_seconds",
+            "display_name",
+            "description",
+            "model_alias",
+            "is_favorite",
+            "is_pinned",
+            "is_default",
+            "is_hidden",
+            "active_profile_name",
+            "trust_remote_code",
+            "ttl_seconds",
         ):
             assert key not in out
 
     def test_grammar_body_is_dropped_but_the_toggle_is_kept(self):
-        out = _filter_uploaded_settings(self._settings(
-            guided_grammar_enabled=True,
-            guided_grammar="root ::= " + "x" * 5000,
-        ))
+        out = _filter_uploaded_settings(
+            self._settings(
+                guided_grammar_enabled=True,
+                guided_grammar="root ::= " + "x" * 5000,
+            )
+        )
         assert "guided_grammar" not in out
         assert out["guided_grammar_enabled"] is True
 
     def test_draft_model_paths_are_reduced_to_a_basename(self):
         # The drafter's identity explains an MTP/DFlash result; the full path
         # would leak the local filesystem layout and the OS username.
-        out = _filter_uploaded_settings(self._settings(
-            dflash_enabled=True,
-            dflash_draft_model="/Users/someone/Workspace/models/Qwen3-0.6B-4bit",
-        ))
+        out = _filter_uploaded_settings(
+            self._settings(
+                dflash_enabled=True,
+                dflash_draft_model="/Users/someone/Workspace/models/Qwen3-0.6B-4bit",
+            )
+        )
         assert out["dflash_draft_model"] == "Qwen3-0.6B-4bit"
 
     def test_bare_draft_model_name_is_unchanged(self):
-        out = _filter_uploaded_settings(self._settings(
-            dflash_enabled=True,
-            dflash_draft_model="Qwen3-0.6B-4bit",
-        ))
+        out = _filter_uploaded_settings(
+            self._settings(
+                dflash_enabled=True,
+                dflash_draft_model="Qwen3-0.6B-4bit",
+            )
+        )
         assert out["dflash_draft_model"] == "Qwen3-0.6B-4bit"
 
     def test_non_settings_object_returns_none(self):
@@ -945,13 +1015,16 @@ class TestSSEEventFormat:
             ),
         )
 
-        await _send_event(run, {
-            "type": "progress",
-            "phase": "single",
-            "message": "Testing",
-            "current": 1,
-            "total": 3,
-        })
+        await _send_event(
+            run,
+            {
+                "type": "progress",
+                "phase": "single",
+                "message": "Testing",
+                "current": 1,
+                "total": 3,
+            },
+        )
 
         # SSE delivery: events are appended to `run.events` (replay log).
         assert len(run.events) == 1
@@ -997,16 +1070,12 @@ class TestSSEEventFormat:
 class TestDetectQuantization:
     def test_from_config_json(self, tmp_path):
         config = {"quantization_config": {"quant_method": "awq", "bits": 4}}
-        (tmp_path / "config.json").write_text(
-            __import__("json").dumps(config)
-        )
+        (tmp_path / "config.json").write_text(__import__("json").dumps(config))
         assert _detect_quantization(str(tmp_path)) == "4bit"
 
     def test_from_config_json_8bit(self, tmp_path):
         config = {"quantization_config": {"bits": 8}}
-        (tmp_path / "config.json").write_text(
-            __import__("json").dumps(config)
-        )
+        (tmp_path / "config.json").write_text(__import__("json").dumps(config))
         assert _detect_quantization(str(tmp_path)) == "8bit"
 
     def test_from_dirname_4bit(self, tmp_path):
@@ -1043,9 +1112,7 @@ class TestDetectQuantization:
         model_dir = tmp_path / "Model-4bit"
         model_dir.mkdir()
         config = {"quantization_config": {"bits": 8}}
-        (model_dir / "config.json").write_text(
-            __import__("json").dumps(config)
-        )
+        (model_dir / "config.json").write_text(__import__("json").dumps(config))
         assert _detect_quantization(str(model_dir)) == "8bit"
 
 
@@ -1066,8 +1133,7 @@ class TestUploadModelName:
 
     def test_keeps_mlx_marker(self):
         assert (
-            _upload_model_name("qwen3.6-35b-a3b-8bit-mlx")
-            == "qwen3.6-35b-a3b-8bit-mlx"
+            _upload_model_name("qwen3.6-35b-a3b-8bit-mlx") == "qwen3.6-35b-a3b-8bit-mlx"
         )
 
     def test_keeps_mixed_case_and_dwq_style_suffixes(self):
@@ -1310,7 +1376,11 @@ class TestUploadToOmlxAi:
             {"key": "dflash", "label": "DFlash"},
             {"key": "turboquant_kv_4bit", "label": "TurboQuant KV 4-bit"},
         ]
-        assert payload["model_settings"] == {"dflash_enabled": True}
+        assert payload["context_profile"] == "code_python"
+        assert payload["model_settings"] == {
+            "benchmark_context": "Code (Python)",
+            "dflash_enabled": True,
+        }
         assert payload["system_metrics"] == {"sample_count": 4, "interval_s": 1.0}
 
         event_types = [e["type"] for e in run.events]
@@ -1361,7 +1431,8 @@ class TestUploadToOmlxAi:
         # The full id reaches the leaderboard, suffixes intact.
         assert payload["model_name"] == "qwen3.6-35b-a3b-8bit-mlx"
         assert payload["feature_flags"] == []
-        assert payload["model_settings"] is None
+        assert payload["context_profile"] == "code_python"
+        assert payload["model_settings"] == {"benchmark_context": "Code (Python)"}
         # Null rather than a zero-filled object, so the site does not average
         # fabricated measurements.
         assert payload["system_metrics"] is None
@@ -1382,8 +1453,11 @@ class TestSanitizeUploadError:
     sanitizer must detect that case and surface an actionable message
     without dumping the full 5KB HTML body."""
 
-    def _resp(self, status=403, headers=None, text="", json_raises=True, json_data=None):
+    def _resp(
+        self, status=403, headers=None, text="", json_raises=True, json_data=None
+    ):
         from unittest.mock import MagicMock
+
         resp = MagicMock()
         resp.status_code = status
         resp.headers = headers or {}
@@ -1396,6 +1470,7 @@ class TestSanitizeUploadError:
 
     def test_cloudflare_challenge_via_header(self):
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(
             status=403,
             headers={"cf-mitigated": "challenge"},
@@ -1413,6 +1488,7 @@ class TestSanitizeUploadError:
         """Header missing but body still contains the interstitial — covers
         edge transports / proxies that strip cf-mitigated."""
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(status=403, headers={}, text=_CF_INTERSTITIAL)
         msg = _sanitize_upload_error(resp)
         assert "Cloudflare" in msg
@@ -1420,6 +1496,7 @@ class TestSanitizeUploadError:
 
     def test_json_error_field_extracted(self):
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(
             status=400,
             json_raises=False,
@@ -1430,6 +1507,7 @@ class TestSanitizeUploadError:
 
     def test_json_detail_field_extracted(self):
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(
             status=422,
             json_raises=False,
@@ -1441,6 +1519,7 @@ class TestSanitizeUploadError:
     def test_html_body_without_cf_signals_collapses_to_hint(self):
         """Non-CF HTML body (e.g. nginx 502 page) should not be dumped raw."""
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(
             status=502,
             text="<html><body>502 Bad Gateway</body></html>",
@@ -1451,11 +1530,13 @@ class TestSanitizeUploadError:
 
     def test_plain_text_short_body_passes_through(self):
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(status=500, text="upstream connection refused")
         assert _sanitize_upload_error(resp) == "upstream connection refused"
 
     def test_empty_body_falls_back_to_status(self):
         from omlx.admin.benchmark import _sanitize_upload_error
+
         resp = self._resp(status=503, text="")
         assert _sanitize_upload_error(resp) == "HTTP 503"
 
@@ -1546,9 +1627,7 @@ class TestRunExternalBenchmark:
 
     def _mock_client(self, stats=None):
         client = MagicMock()
-        client.stream_chat_completion = AsyncMock(
-            return_value=stats or _stream_stats()
-        )
+        client.stream_chat_completion = AsyncMock(return_value=stats or _stream_stats())
         client.aclose = AsyncMock()
         return client
 
@@ -1557,9 +1636,7 @@ class TestRunExternalBenchmark:
         pool = MagicMock()
         client = self._mock_client()
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, pool)
 
         assert run.status == "completed"
@@ -1571,9 +1648,7 @@ class TestRunExternalBenchmark:
         run = self._make_run(prompt_lengths=[1024], batch_sizes=[2])
         client = self._mock_client()
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, MagicMock())
 
         event_types = [e["type"] for e in run.events]
@@ -1596,9 +1671,7 @@ class TestRunExternalBenchmark:
         run = self._make_run(prompt_lengths=[4096])
         client = self._mock_client(_stream_stats(prompt=3900, completion=128))
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, MagicMock())
 
         result = run.results[0]
@@ -1616,9 +1689,7 @@ class TestRunExternalBenchmark:
         run = self._make_run(prompt_lengths=[1024], batch_sizes=[2])
         client = self._mock_client(_stream_stats(prompt=1000, completion=100))
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, MagicMock())
 
         batch = [r for r in run.results if r["test_type"] == "batch"][0]
@@ -1653,9 +1724,7 @@ class TestRunExternalBenchmark:
         run = self._make_run(prompt_lengths=[1024])
         client = self._mock_client(collapsed_stats)
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, MagicMock())
 
         result = run.results[0]
@@ -1685,9 +1754,7 @@ class TestRunExternalBenchmark:
         run = self._make_run(prompt_lengths=[1024])
         client = self._mock_client(unobserved_stats)
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, MagicMock())
 
         result = run.results[0]
@@ -1827,9 +1894,7 @@ class TestRunExternalBenchmark:
         )
         client.aclose = AsyncMock()
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             await run_benchmark(run, MagicMock())
 
         assert run.status == "error"
@@ -1849,9 +1914,7 @@ class TestRunExternalBenchmark:
         client.stream_chat_completion = AsyncMock(side_effect=hang)
         client.aclose = AsyncMock()
 
-        with patch(
-            "omlx.admin.benchmark.ExternalAPIClient", return_value=client
-        ):
+        with patch("omlx.admin.benchmark.ExternalAPIClient", return_value=client):
             task = asyncio.create_task(run_benchmark(run, MagicMock()))
             await started.wait()
             task.cancel()

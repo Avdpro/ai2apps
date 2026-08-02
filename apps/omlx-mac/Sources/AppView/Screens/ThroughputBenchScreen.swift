@@ -62,6 +62,7 @@ struct ThroughputBenchScreen: View {
             ConfigurationSection(
                 models: vm.models,
                 selectedModelId: $vm.selectedModelId,
+                contextProfile: $vm.contextProfile,
                 promptLengths: $vm.promptLengths,
                 genLength: $vm.genLength,
                 batchSizes: $vm.batchSizes,
@@ -157,6 +158,7 @@ private struct DeviceChip: View {
 private struct ConfigurationSection: View {
     let models: [ModelDTO]
     @Binding var selectedModelId: String
+    @Binding var contextProfile: BenchmarkContextProfile
     @Binding var promptLengths: Set<Int>
     @Binding var genLength: String
     @Binding var batchSizes: Set<Int>
@@ -194,6 +196,22 @@ private struct ConfigurationSection: View {
                     width: 320,
                     options: modelOptions
                 )
+            }
+
+            Row(label: String(localized: "bench.throughput.row.context.label",
+                              defaultValue: "Benchmark Context",
+                              comment: "Row label for the Throughput Bench context picker"),
+                sublabel: String(localized: "bench.throughput.row.context.sub",
+                                 defaultValue: "It only affects results when acceleration features such as MTP or DFlash are enabled.",
+                                 comment: "Sublabel under the Throughput Bench context picker")) {
+                Popup(
+                    selection: $contextProfile,
+                    width: 220,
+                    options: BenchmarkContextProfile.allCases.map {
+                        PopupOption(value: $0, label: $0.localizedLabel)
+                    }
+                )
+                .disabled(running)
             }
 
             FreeRow {

@@ -110,6 +110,21 @@
                                 </select>
                             </div>
 
+                            <!-- Context Profile -->
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('bench.config.context_profile') }}</label>
+                                <select x-model="benchContextProfile"
+                                        :disabled="benchRunning"
+                                        class="w-full max-w-md px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white disabled:opacity-50">
+                                    <option value="code_python">{{ t('bench.config.context.code_python') }}</option>
+                                    <option value="code_mixed">{{ t('bench.config.context.code_mixed') }}</option>
+                                    <option value="novel_ko">{{ t('bench.config.context.novel_ko') }}</option>
+                                    <option value="novel_en">{{ t('bench.config.context.novel_en') }}</option>
+                                    <option value="novel_ja">{{ t('bench.config.context.novel_ja') }}</option>
+                                </select>
+                                <p class="text-xs text-neutral-400 mt-1.5">{{ t('bench.config.context_hint') }}</p>
+                            </div>
+
                             <!-- Single Request Config -->
                             <div>
                                 <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('bench.config.single_request') }}</label>

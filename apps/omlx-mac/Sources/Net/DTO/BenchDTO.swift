@@ -32,6 +32,14 @@ struct DeviceInfoDTO: Codable, Sendable {
 // MARK: - Throughput bench
 // =============================================================================
 
+enum BenchmarkContextProfile: String, Codable, CaseIterable, Sendable {
+    case codePython = "code_python"
+    case codeMixed = "code_mixed"
+    case novelKorean = "novel_ko"
+    case novelEnglish = "novel_en"
+    case novelJapanese = "novel_ja"
+}
+
 /// Body for `POST /admin/api/bench/start`. `prompt_lengths` and
 /// `batch_sizes` are server-validated against a known whitelist
 /// (1024…200000 / 2…8). `generation_length` is free-form int.
@@ -42,6 +50,7 @@ struct DeviceInfoDTO: Codable, Sendable {
 /// owner_hash derived from hardware fingerprint, not user identity.
 struct BenchStartRequest: Encodable, Sendable {
     let modelId: String
+    let contextProfile: BenchmarkContextProfile
     let promptLengths: [Int]
     let generationLength: Int
     let batchSizes: [Int]
@@ -138,6 +147,7 @@ struct BenchFeatureFlagDTO: Codable, Equatable, Sendable, Identifiable {
 struct BenchResultsResponse: Codable, Sendable {
     let benchId: String
     let status: String
+    let contextProfile: BenchmarkContextProfile?
     let results: [BenchResultDTO]
     let error: String?
     /// Mirror of the SSE `upload` / `upload_done` / `upload_skipped` events

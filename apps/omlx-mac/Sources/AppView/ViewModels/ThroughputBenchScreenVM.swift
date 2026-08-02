@@ -1,10 +1,38 @@
 import SwiftUI
 
+extension BenchmarkContextProfile {
+    var localizedLabel: String {
+        switch self {
+        case .codePython:
+            String(localized: "bench.throughput.context.code_python",
+                   defaultValue: "Code (Python)",
+                   comment: "Python code context profile for the throughput benchmark")
+        case .codeMixed:
+            String(localized: "bench.throughput.context.code_mixed",
+                   defaultValue: "Code (Mixed)",
+                   comment: "Mixed-language code context profile for the throughput benchmark")
+        case .novelKorean:
+            String(localized: "bench.throughput.context.novel_ko",
+                   defaultValue: "Novel (Korean)",
+                   comment: "Korean novel context profile for the throughput benchmark")
+        case .novelEnglish:
+            String(localized: "bench.throughput.context.novel_en",
+                   defaultValue: "Novel (English)",
+                   comment: "English novel context profile for the throughput benchmark")
+        case .novelJapanese:
+            String(localized: "bench.throughput.context.novel_ja",
+                   defaultValue: "Novel (Japanese)",
+                   comment: "Japanese novel context profile for the throughput benchmark")
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ThroughputBenchScreenVM {
     // Form state — defaults mirror the HTML admin panel's pre-ticked options.
     var selectedModelId: String = ""
+    var contextProfile: BenchmarkContextProfile = .codePython
     var promptLengths: Set<Int> = [4096, 16384]
     var genLength: String = "128"
     var batchSizes: Set<Int> = [2, 4]
@@ -84,7 +112,7 @@ final class ThroughputBenchScreenVM {
 
     /// Monospaced two-table dump used by the Text export card.
     var exportText: String {
-        var lines: [String] = []
+        var lines = ["# Context: \(contextProfile.localizedLabel)", ""]
         if !singleResults.isEmpty {
             lines.append("# Single request results")
             lines.append(
@@ -194,6 +222,7 @@ final class ThroughputBenchScreenVM {
         guard canRun else { return }
         let body = BenchStartRequest(
             modelId: selectedModelId,
+            contextProfile: contextProfile,
             promptLengths: promptLengths.sorted(),
             generationLength: Int(genLength) ?? 128,
             batchSizes: batchSizes.sorted()
@@ -260,6 +289,9 @@ final class ThroughputBenchScreenVM {
                 do {
                     let resp = try await client.getBenchResults(benchId: benchId)
                     await MainActor.run {
+                        if let profile = resp.contextProfile {
+                            self.contextProfile = profile
+                        }
                         self.absorb(results: resp.results)
                         if let err = resp.error, !err.isEmpty {
                             self.lastError = err

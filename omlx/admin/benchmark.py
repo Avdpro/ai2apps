@@ -13,6 +13,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -42,6 +43,45 @@ VALID_PROMPT_LENGTHS = [1024, 4096, 8192, 16384, 32768, 65536, 131072, 200000]
 VALID_BATCH_SIZES = [2, 4, 8]
 
 
+class BenchmarkContextProfile(StrEnum):
+    """Stable identifiers for the bundled throughput-benchmark corpora."""
+
+    CODE_PYTHON = "code_python"
+    CODE_MIXED = "code_mixed"
+    NOVEL_KO = "novel_ko"
+    NOVEL_EN = "novel_en"
+    NOVEL_JA = "novel_ja"
+
+
+@dataclass(frozen=True)
+class BenchmarkCorpusSpec:
+    """Metadata needed to build local and tokenizer-less prompts."""
+
+    filename: str
+    label: str
+    chars_per_token: float
+    start_marker: str | None = None
+
+
+BENCHMARK_CONTEXT_PROFILES: dict[BenchmarkContextProfile, BenchmarkCorpusSpec] = {
+    BenchmarkContextProfile.CODE_PYTHON: BenchmarkCorpusSpec(
+        "code_python.txt", "Code (Python)", 4.0
+    ),
+    BenchmarkContextProfile.CODE_MIXED: BenchmarkCorpusSpec(
+        "code_mixed.txt", "Code (Mixed)", 3.5
+    ),
+    BenchmarkContextProfile.NOVEL_KO: BenchmarkCorpusSpec(
+        "novel_ko.txt", "Novel (Korean)", 1.35
+    ),
+    BenchmarkContextProfile.NOVEL_EN: BenchmarkCorpusSpec(
+        "novel_en.txt", "Novel (English)", 4.0, "Call me Ishmael."
+    ),
+    BenchmarkContextProfile.NOVEL_JA: BenchmarkCorpusSpec(
+        "novel_ja.txt", "Novel (Japanese)", 1.6
+    ),
+}
+
+
 class BenchmarkRequest(BaseModel):
     """Request model for starting a benchmark."""
 
@@ -49,6 +89,7 @@ class BenchmarkRequest(BaseModel):
     prompt_lengths: list[int]
     generation_length: int = 128
     batch_sizes: list[int] = []
+    context_profile: BenchmarkContextProfile = BenchmarkContextProfile.CODE_PYTHON
     force_lm_engine: bool = False
     # When set, the benchmark runs against a remote OpenAI-compatible
     # endpoint instead of a local engine and model_id is the remote
@@ -116,21 +157,23 @@ class BenchmarkRun:
     # the stream. Phases: "idle" → "uploading" → "done" | "skipped". The
     # browser HTML still consumes the SSE stream directly; this is purely
     # additive state that lives alongside it.
-    upload_state: dict = field(default_factory=lambda: {
-        "phase": "idle",
-        "results": [],          # per-context-length: {context_length, id?, url?, duplicate?, error?}
-        "total": 0,
-        "success_count": 0,
-        "failed_count": 0,
-        "owner_hash": None,     # display hash, populated on upload_done
-        "skipped_reason": None, # only "external_endpoint" reaches this now
-        # Always empty. Kept because BenchDTO.swift declares it non-optional,
-        # so dropping the key would fail decoding on every app build that has
-        # not been updated — which turns into a per-second error loop while the
-        # results poller runs.
-        "skipped_features": [],
-        "feature_flags": [],    # [{key, label, detail?}]
-    })
+    upload_state: dict = field(
+        default_factory=lambda: {
+            "phase": "idle",
+            "results": [],  # per-context-length: {context_length, id?, url?, duplicate?, error?}
+            "total": 0,
+            "success_count": 0,
+            "failed_count": 0,
+            "owner_hash": None,  # display hash, populated on upload_done
+            "skipped_reason": None,  # only "external_endpoint" reaches this now
+            # Always empty. Kept because BenchDTO.swift declares it non-optional,
+            # so dropping the key would fail decoding on every app build that has
+            # not been updated — which turns into a per-second error loop while the
+            # results poller runs.
+            "skipped_features": [],
+            "feature_flags": [],  # [{key, label, detail?}]
+        }
+    )
 
 
 # Event types that close the SSE stream for a bench run. `done` is NOT
@@ -158,7 +201,9 @@ class _FeatureFlagSpec:
 # upload key follows the user-facing name rather than the settings field.
 _FEATURE_FLAG_SPECS = (
     _FeatureFlagSpec("dflash_enabled", "dflash", "dflash", "DFlash"),
-    _FeatureFlagSpec("specprefill_enabled", "specprefill", "specprefill", "SpecPrefill"),
+    _FeatureFlagSpec(
+        "specprefill_enabled", "specprefill", "specprefill", "SpecPrefill"
+    ),
     _FeatureFlagSpec(
         "turboquant_kv_enabled",
         "turboquant",
@@ -282,11 +327,13 @@ _UPLOADED_SETTING_FIELDS = (
     "vlm_mtp_draft_block_size",
 )
 
-_PATH_VALUED_SETTING_FIELDS = frozenset({
-    "specprefill_draft_model",
-    "dflash_draft_model",
-    "vlm_mtp_draft_model",
-})
+_PATH_VALUED_SETTING_FIELDS = frozenset(
+    {
+        "specprefill_draft_model",
+        "dflash_draft_model",
+        "vlm_mtp_draft_model",
+    }
+)
 
 _MAX_UPLOADED_SETTINGS_BYTES = 4096
 
@@ -322,6 +369,19 @@ def _filter_uploaded_settings(model_settings: Any) -> Optional[dict]:
             if spec.attr in filtered
         }
     return filtered
+
+
+def _with_benchmark_context(
+    context_profile: BenchmarkContextProfile | str,
+    model_settings: dict | None,
+) -> dict:
+    """Prepend the benchmark context to the uploaded settings snapshot."""
+    settings = dict(model_settings or {})
+    settings.pop("benchmark_context", None)
+    return {
+        "benchmark_context": benchmark_context_label(context_profile),
+        **settings,
+    }
 
 
 def get_run(bench_id: str) -> Optional[BenchmarkRun]:
@@ -363,37 +423,50 @@ def cleanup_old_runs(max_runs: int = 10) -> None:
             del _benchmark_runs[bid]
 
 
-
-# Natural-language corpus for benchmark prompts (public-domain text of
-# Project Gutenberg eBook #2701, boilerplate stripped). Prompts must not be
-# built from repeated filler: speculative decoders (Lightning MTP, DFlash)
-# reach ~99% draft acceptance on repetitive text versus ~55-80% on natural
-# text, which inflates benchmark tg by roughly 2x over anything real
-# requests can achieve on those models.
-_BENCH_CORPUS_PATH = Path(__file__).parent / "bench_corpus.txt"
-_BENCH_CORPUS_START = "Call me Ishmael."
-
-# Approximate characters per token for natural English prose in common BPE
-# vocabularies; used only by the tokenizer-less external path, which reports
-# the endpoint's actual usage.prompt_tokens anyway.
-_CORPUS_CHARS_PER_TOKEN = 4
+# Bundled corpora for benchmark prompts. They contain long-form code or prose,
+# never a short filler sentence. A whole corpus may repeat for a tokenizer that
+# compresses it unusually well, but the repeated unit is hundreds of thousands
+# of natural tokens rather than a predictable one-line loop.
+_BENCH_CORPUS_DIR = Path(__file__).parent / "bench_corpora"
 _PROMPT_BUILD_MAX_ATTEMPTS = 16
 
 
-@lru_cache(maxsize=1)
-def _load_bench_corpus() -> str:
-    corpus = _BENCH_CORPUS_PATH.read_text(encoding="utf-8")
-    start = corpus.find(_BENCH_CORPUS_START)
-    if start < 0:
-        raise RuntimeError(
-            f"Benchmark corpus at {_BENCH_CORPUS_PATH} is missing "
-            f"the prose start marker"
-        )
-    return corpus[start:]
+def benchmark_context_label(profile: BenchmarkContextProfile | str) -> str:
+    """Return the user-facing label for a benchmark context profile."""
+    normalized = BenchmarkContextProfile(profile)
+    return BENCHMARK_CONTEXT_PROFILES[normalized].label
 
 
-def _generate_prompt(tokenizer: Any, target_tokens: int) -> list[int]:
-    """Generate exactly ``target_tokens`` natural-text token IDs.
+@lru_cache(maxsize=len(BENCHMARK_CONTEXT_PROFILES))
+def _load_bench_corpus(
+    context_profile: (
+        BenchmarkContextProfile | str
+    ) = BenchmarkContextProfile.CODE_PYTHON,
+) -> str:
+    profile = BenchmarkContextProfile(context_profile)
+    spec = BENCHMARK_CONTEXT_PROFILES[profile]
+    path = _BENCH_CORPUS_DIR / spec.filename
+    corpus = path.read_text(encoding="utf-8")
+    if spec.start_marker:
+        start = corpus.find(spec.start_marker)
+        if start < 0:
+            raise RuntimeError(
+                f"Benchmark corpus at {path} is missing the content start marker"
+            )
+        corpus = corpus[start:]
+    if not corpus:
+        raise RuntimeError(f"Benchmark corpus at {path} is empty")
+    return corpus
+
+
+def _generate_prompt(
+    tokenizer: Any,
+    target_tokens: int,
+    context_profile: (
+        BenchmarkContextProfile | str
+    ) = BenchmarkContextProfile.CODE_PYTHON,
+) -> list[int]:
+    """Generate exactly ``target_tokens`` benchmark-corpus token IDs.
 
     Uses a unique UUID prefix to prevent SSD cache hits from previous sessions.
     The prefix and corpus are encoded together so tokenizer boundary merges and
@@ -405,11 +478,11 @@ def _generate_prompt(tokenizer: Any, target_tokens: int) -> list[int]:
         raise ValueError("target_tokens must be positive")
 
     unique_prefix = f"BENCH-{uuid.uuid4().hex} "
-    corpus = _load_bench_corpus()
-    if not corpus:
-        raise RuntimeError(f"Benchmark corpus at {_BENCH_CORPUS_PATH} is empty")
+    profile = BenchmarkContextProfile(context_profile)
+    spec = BENCHMARK_CONTEXT_PROFILES[profile]
+    corpus = _load_bench_corpus(profile)
 
-    target_chars = max(target_tokens * _CORPUS_CHARS_PER_TOKEN, 1)
+    target_chars = max(round(target_tokens * spec.chars_per_token), 1)
     for _ in range(_PROMPT_BUILD_MAX_ATTEMPTS):
         repeats = (target_chars + len(corpus) - 1) // len(corpus)
         body = (corpus * repeats)[:target_chars]
@@ -418,7 +491,7 @@ def _generate_prompt(tokenizer: Any, target_tokens: int) -> list[int]:
             return tokens[:target_tokens]
         if not tokens:
             raise RuntimeError(
-                f"Benchmark corpus at {_BENCH_CORPUS_PATH} tokenized to 0 tokens"
+                f"Benchmark corpus {profile.value} tokenized to 0 tokens"
             )
 
         # Scale by the observed tokenizer ratio, rounding up. The +1 guarantees
@@ -434,18 +507,23 @@ def _generate_prompt(tokenizer: Any, target_tokens: int) -> list[int]:
     )
 
 
-def _generate_external_prompt(target_tokens: int) -> str:
+def _generate_external_prompt(
+    target_tokens: int,
+    context_profile: (
+        BenchmarkContextProfile | str
+    ) = BenchmarkContextProfile.CODE_PYTHON,
+) -> str:
     """Generate an approximately target_tokens-long prompt without a tokenizer.
 
     Uses a unique UUID prefix so remote prefix caches cannot skew results.
     """
     unique_prefix = f"BENCH-{uuid.uuid4().hex} "
-    corpus = _load_bench_corpus()
-    if not corpus:
-        raise RuntimeError(f"Benchmark corpus at {_BENCH_CORPUS_PATH} is empty")
+    profile = BenchmarkContextProfile(context_profile)
+    spec = BENCHMARK_CONTEXT_PROFILES[profile]
+    corpus = _load_bench_corpus(profile)
     target_chars = max(
         0,
-        target_tokens * _CORPUS_CHARS_PER_TOKEN - len(unique_prefix),
+        round(target_tokens * spec.chars_per_token) - len(unique_prefix),
     )
     repeats = (target_chars + len(corpus) - 1) // len(corpus)
     return unique_prefix + (corpus * repeats)[:target_chars]
@@ -466,9 +544,7 @@ def _compute_single_metrics(
 ) -> dict:
     """Compute all metrics for a single request benchmark."""
     ttft_s = first_token_time - start_time
-    prefill_duration = (
-        prefill_duration_s if prefill_duration_s is not None else ttft_s
-    )
+    prefill_duration = prefill_duration_s if prefill_duration_s is not None else ttft_s
     gen_duration = (
         generation_duration_s
         if generation_duration_s is not None
@@ -715,9 +791,7 @@ async def _run_batch_test(
             f"Benchmark batch requires {batch_size} prompts, got {len(prompts)}"
         )
     invalid_lengths = [
-        len(prompt)
-        for prompt in prompts[:batch_size]
-        if len(prompt) != prompt_tokens
+        len(prompt) for prompt in prompts[:batch_size] if len(prompt) != prompt_tokens
     ]
     if invalid_lengths:
         raise RuntimeError(
@@ -863,14 +937,16 @@ async def _run_external_batch_test(
     counts taken from each stream's usage payload.
     """
     wall_start = time.perf_counter()
-    stats_list = await asyncio.gather(*[
-        client.stream_chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=0.0,
-        )
-        for prompt in prompts
-    ])
+    stats_list = await asyncio.gather(
+        *[
+            client.stream_chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+            for prompt in prompts
+        ]
+    )
     wall_end = time.perf_counter()
 
     total_gen_tokens = sum(s.completion_tokens for s in stats_list)
@@ -991,7 +1067,11 @@ def _sanitize_upload_error(resp: Any) -> str:
     status = getattr(resp, "status_code", "?")
 
     body_head = body[:512].lower()
-    if cf_mitigated == "challenge" or "just a moment" in body_head or "cf-chl" in body_head:
+    if (
+        cf_mitigated == "challenge"
+        or "just a moment" in body_head
+        or "cf-chl" in body_head
+    ):
         return (
             f"Upload blocked by Cloudflare (HTTP {status}). "
             f"This is a server-side issue with omlx.ai — retry later or "
@@ -1043,13 +1123,16 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
         )
 
     run.upload_state["phase"] = "uploading"
-    await _send_event(run, {
-        "type": "progress",
-        "phase": "upload",
-        "message": "Uploading to community benchmarks...",
-        "current": 0,
-        "total": 0,
-    })
+    await _send_event(
+        run,
+        {
+            "type": "progress",
+            "phase": "upload",
+            "message": "Uploading to community benchmarks...",
+            "current": 0,
+            "total": 0,
+        },
+    )
 
     # Collect hardware info
     chip_string = get_chip_name()
@@ -1102,27 +1185,29 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
 
     # Build batching_results from batch data
     batching_results = []
-    pp1024_single = next(
-        (r for r in single_results if r.get("pp") == 1024), None
-    )
+    pp1024_single = next((r for r in single_results if r.get("pp") == 1024), None)
     if (
         pp1024_single
         and float(pp1024_single.get("gen_tps", 0.0) or 0.0) > 0.0
         and batch_results
     ):
         baseline_tps = pp1024_single["gen_tps"]
-        batching_results.append({
-            "batch_size": 1,
-            "tg_tps": baseline_tps,
-            "speedup": 1.0,
-        })
+        batching_results.append(
+            {
+                "batch_size": 1,
+                "tg_tps": baseline_tps,
+                "speedup": 1.0,
+            }
+        )
         for br in batch_results:
             speedup = round(br["tg_tps"] / baseline_tps, 2) if baseline_tps > 0 else 1.0
-            batching_results.append({
-                "batch_size": br["batch_size"],
-                "tg_tps": br["tg_tps"],
-                "speedup": speedup,
-            })
+            batching_results.append(
+                {
+                    "batch_size": br["batch_size"],
+                    "tg_tps": br["tg_tps"],
+                    "speedup": speedup,
+                }
+            )
 
     success_count = 0
     failed_count = 0
@@ -1149,6 +1234,7 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
             "model_name": model_name,
             "quantization": quantization,
             "context_length": context_length,
+            "context_profile": run.request.context_profile.value,
             "pp_tps": result["processing_tps"],
             "tg_tps": result["gen_tps"],
             "ttft_ms": result.get("ttft_ms"),
@@ -1156,7 +1242,10 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
             "submission_group": submission_group,
             "peak_footprint_gb": peak_footprint_gb,
             "feature_flags": run.feature_flags,
-            "model_settings": run.model_settings_snapshot,
+            "model_settings": _with_benchmark_context(
+                run.request.context_profile,
+                run.model_settings_snapshot,
+            ),
             # Per-row: each context length has its own load window. Stays None
             # when sampling was unavailable, so the site does not average
             # fabricated zeros in as measurements.
@@ -1167,10 +1256,7 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
             payload["owner_hash"] = owner_hash_full
 
         # Attach batching_results only to the first submission (lowest context_length)
-        if (
-            context_length == uploadable_single_results[0]["pp"]
-            and batching_results
-        ):
+        if context_length == uploadable_single_results[0]["pp"] and batching_results:
             payload["batching_results"] = batching_results
 
         try:
@@ -1190,10 +1276,13 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
                     "url": data.get("url"),
                 }
                 run.upload_state["results"].append(result_dict)
-                await _send_event(run, {
-                    "type": "upload",
-                    "data": result_dict,
-                })
+                await _send_event(
+                    run,
+                    {
+                        "type": "upload",
+                        "data": result_dict,
+                    },
+                )
             elif resp.status_code == 409:
                 data = resp.json()
                 success_count += 1  # Duplicate is still ok
@@ -1204,10 +1293,13 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
                     "duplicate": True,
                 }
                 run.upload_state["results"].append(result_dict)
-                await _send_event(run, {
-                    "type": "upload",
-                    "data": result_dict,
-                })
+                await _send_event(
+                    run,
+                    {
+                        "type": "upload",
+                        "data": result_dict,
+                    },
+                )
             else:
                 failed_count += 1
                 error_msg = _sanitize_upload_error(resp)
@@ -1216,10 +1308,13 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
                     "error": error_msg,
                 }
                 run.upload_state["results"].append(result_dict)
-                await _send_event(run, {
-                    "type": "upload",
-                    "data": result_dict,
-                })
+                await _send_event(
+                    run,
+                    {
+                        "type": "upload",
+                        "data": result_dict,
+                    },
+                )
                 # Surface the sanitized message to ops; the full body
                 # (truncated) goes to debug so it can still be retrieved
                 # from the log file if needed.
@@ -1240,10 +1335,13 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
                 "error": str(e),
             }
             run.upload_state["results"].append(result_dict)
-            await _send_event(run, {
-                "type": "upload",
-                "data": result_dict,
-            })
+            await _send_event(
+                run,
+                {
+                    "type": "upload",
+                    "data": result_dict,
+                },
+            )
             logger.warning(f"Benchmark upload error for pp{context_length}: {e}")
 
     run.upload_state["phase"] = "done"
@@ -1252,19 +1350,22 @@ async def _upload_to_omlx_ai(run: BenchmarkRun, engine_pool: Any) -> None:
     run.upload_state["failed_count"] = failed_count
     run.upload_state["skipped_count"] = skipped_count
     run.upload_state["owner_hash"] = owner_hash_display
-    await _send_event(run, {
-        "type": "upload_done",
-        "data": {
-            "owner_hash": owner_hash_display,
-            "total": len(uploadable_single_results),
-            "success": success_count,
-            "failed": failed_count,
-            "skipped": skipped_count,
-            # Also on the event so SSE-only consumers (the HTML dashboard) get
-            # the flags without polling /results.
-            "feature_flags": run.feature_flags,
+    await _send_event(
+        run,
+        {
+            "type": "upload_done",
+            "data": {
+                "owner_hash": owner_hash_display,
+                "total": len(uploadable_single_results),
+                "success": success_count,
+                "failed": failed_count,
+                "skipped": skipped_count,
+                # Also on the event so SSE-only consumers (the HTML dashboard) get
+                # the flags without polling /results.
+                "feature_flags": run.feature_flags,
+            },
         },
-    })
+    )
 
     logger.info(
         f"Benchmark upload complete: {success_count}/"
@@ -1295,6 +1396,10 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
     previous_speed_priority = _pin_speed_priority(engine_pool)
 
     try:
+        run.model_settings_snapshot = _with_benchmark_context(
+            request.context_profile,
+            None,
+        )
         # Snapshot experimental flags at run start. Settings can change mid-run,
         # and the produced numbers are tied to whatever was active when
         # generation actually ran.
@@ -1307,7 +1412,10 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
                     _detect_experimental_features(model_settings)
                 )
                 run.feature_flags = _derive_feature_flags(model_settings)
-                run.model_settings_snapshot = _filter_uploaded_settings(model_settings)
+                run.model_settings_snapshot = _with_benchmark_context(
+                    request.context_profile,
+                    _filter_uploaded_settings(model_settings),
+                )
             except Exception as e:
                 logger.warning(
                     f"Benchmark: failed to read experimental flags for "
@@ -1317,13 +1425,16 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
         # Phase 1: Unload all loaded models
         loaded_ids = engine_pool.get_loaded_model_ids()
         if loaded_ids:
-            await _send_event(run, {
-                "type": "progress",
-                "phase": "unload",
-                "message": f"Unloading {len(loaded_ids)} model(s)...",
-                "current": 0,
-                "total": total_tests,
-            })
+            await _send_event(
+                run,
+                {
+                    "type": "progress",
+                    "phase": "unload",
+                    "message": f"Unloading {len(loaded_ids)} model(s)...",
+                    "current": 0,
+                    "total": total_tests,
+                },
+            )
             for model_id in loaded_ids:
                 try:
                     await engine_pool._unload_engine(model_id)
@@ -1332,13 +1443,16 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
                     logger.warning(f"Benchmark: failed to unload {model_id}: {e}")
 
         # Phase 2: Load the target model
-        await _send_event(run, {
-            "type": "progress",
-            "phase": "load",
-            "message": f"Loading {request.model_id}...",
-            "current": 0,
-            "total": total_tests,
-        })
+        await _send_event(
+            run,
+            {
+                "type": "progress",
+                "phase": "load",
+                "message": f"Loading {request.model_id}...",
+                "current": 0,
+                "total": total_tests,
+            },
+        )
         # VLM MTP requires VLMBatchedEngine (which has set_vlm_mtp_drafter),
         # so don't force LM-only loading when VLM MTP is enabled.
         vlm_mtp_active = (
@@ -1357,24 +1471,35 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
         tokenizer = engine.tokenizer
         prompts: dict[int, list[int]] = {}
         for pp_len in request.prompt_lengths:
-            prompts[pp_len] = _generate_prompt(tokenizer, pp_len)
+            prompts[pp_len] = _generate_prompt(
+                tokenizer,
+                pp_len,
+                request.context_profile,
+            )
 
         # Ensure pp1024 prompt exists for batch tests
         if request.batch_sizes and 1024 not in prompts:
-            prompts[1024] = _generate_prompt(tokenizer, 1024)
+            prompts[1024] = _generate_prompt(
+                tokenizer,
+                1024,
+                request.context_profile,
+            )
 
         # Warmup: run a short request to trigger JIT compilation,
         # Metal shader compilation, and KV cache initialization.
         # Without this, the first real benchmark test absorbs all
         # one-time overhead and shows artificially low pp TPS.
-        await _send_event(run, {
-            "type": "progress",
-            "phase": "warmup",
-            "message": "Warming up (JIT compile)...",
-            "current": 0,
-            "total": total_tests,
-        })
-        warmup_prompt = _generate_prompt(tokenizer, 32)
+        await _send_event(
+            run,
+            {
+                "type": "progress",
+                "phase": "warmup",
+                "message": "Warming up (JIT compile)...",
+                "current": 0,
+                "total": total_tests,
+            },
+        )
+        warmup_prompt = _generate_prompt(tokenizer, 32, request.context_profile)
         warmup_max_tokens = (
             request.generation_length
             if getattr(engine, "is_diffusion_model", False)
@@ -1401,13 +1526,16 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
 
         for pp_len in request.prompt_lengths:
             current_test += 1
-            await _send_event(run, {
-                "type": "progress",
-                "phase": "single",
-                "message": f"Single: pp{pp_len}/tg{request.generation_length}",
-                "current": current_test,
-                "total": total_tests,
-            })
+            await _send_event(
+                run,
+                {
+                    "type": "progress",
+                    "phase": "single",
+                    "message": f"Single: pp{pp_len}/tg{request.generation_length}",
+                    "current": current_test,
+                    "total": total_tests,
+                },
+            )
 
             # time.monotonic only — the test internals use perf_counter, and
             # the two clocks have different epochs.
@@ -1437,7 +1565,10 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
         # Phase 4: Batch tests
         # Each request has a unique UUID prefix (no cache hits)
         max_batch = max(request.batch_sizes) if request.batch_sizes else 0
-        batch_prompts = [_generate_prompt(tokenizer, 1024) for _ in range(max_batch)]
+        batch_prompts = [
+            _generate_prompt(tokenizer, 1024, request.context_profile)
+            for _ in range(max_batch)
+        ]
 
         # Skip batch tests for engines without scheduler core (e.g. VLM/Diffusion)
         batch_core = _get_batch_benchmark_core(engine)
@@ -1449,13 +1580,16 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
 
         for batch_size in request.batch_sizes if batch_core is not None else []:
             current_test += 1
-            await _send_event(run, {
-                "type": "progress",
-                "phase": "batch",
-                "message": f"Batch {batch_size}x: pp1024/tg{request.generation_length}",
-                "current": current_test,
-                "total": total_tests,
-            })
+            await _send_event(
+                run,
+                {
+                    "type": "progress",
+                    "phase": "batch",
+                    "message": f"Batch {batch_size}x: pp1024/tg{request.generation_length}",
+                    "current": current_test,
+                    "total": total_tests,
+                },
+            )
 
             window_start = time.monotonic()
             batch_metrics = await _run_batch_test(
@@ -1477,13 +1611,16 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
             await _send_event(run, {"type": "result", "data": result})
 
         # Phase 5: Unload benchmark model
-        await _send_event(run, {
-            "type": "progress",
-            "phase": "cleanup",
-            "message": f"Unloading {request.model_id}...",
-            "current": total_tests,
-            "total": total_tests,
-        })
+        await _send_event(
+            run,
+            {
+                "type": "progress",
+                "phase": "cleanup",
+                "message": f"Unloading {request.model_id}...",
+                "current": total_tests,
+                "total": total_tests,
+            },
+        )
         try:
             await engine_pool._unload_engine(request.model_id)
             logger.info(f"Benchmark: unloaded {request.model_id} after benchmark")
@@ -1493,37 +1630,47 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
         # Done
         overall_duration = time.perf_counter() - overall_start
         run.status = "completed"
-        await _send_event(run, {
-            "type": "done",
-            "summary": {
-                "model_id": request.model_id,
-                "total_time": round(overall_duration, 1),
-                "total_tests": total_tests,
+        await _send_event(
+            run,
+            {
+                "type": "done",
+                "summary": {
+                    "model_id": request.model_id,
+                    "context_profile": request.context_profile.value,
+                    "total_time": round(overall_duration, 1),
+                    "total_tests": total_tests,
+                },
             },
-        })
+        )
 
         # Upload results to omlx.ai (failures don't affect benchmark status)
         try:
             await _upload_to_omlx_ai(run, engine_pool)
         except Exception as e:
             logger.warning(f"Benchmark upload to omlx.ai failed: {e}")
-            await _send_event(run, {
-                "type": "upload_done",
-                "data": {
-                    "owner_hash": None,
-                    "total": 0,
-                    "success": 0,
-                    "failed": 0,
-                    "error": str(e),
+            await _send_event(
+                run,
+                {
+                    "type": "upload_done",
+                    "data": {
+                        "owner_hash": None,
+                        "total": 0,
+                        "success": 0,
+                        "failed": 0,
+                        "error": str(e),
+                    },
                 },
-            })
+            )
 
     except asyncio.CancelledError:
         run.status = "cancelled"
-        await _send_event(run, {
-            "type": "error",
-            "message": "Benchmark cancelled by user",
-        })
+        await _send_event(
+            run,
+            {
+                "type": "error",
+                "message": "Benchmark cancelled by user",
+            },
+        )
         # Try to unload the model on cancellation
         try:
             await engine_pool._unload_engine(request.model_id)
@@ -1534,10 +1681,13 @@ async def run_benchmark(run: BenchmarkRun, engine_pool: Any) -> None:
         logger.error(f"Benchmark error: {e}", exc_info=True)
         run.status = "error"
         run.error_message = str(e)
-        await _send_event(run, {
-            "type": "error",
-            "message": str(e),
-        })
+        await _send_event(
+            run,
+            {
+                "type": "error",
+                "message": str(e),
+            },
+        )
         # Try to unload the model on error
         try:
             await engine_pool._unload_engine(request.model_id)
@@ -1569,15 +1719,23 @@ async def _run_external_benchmark(run: BenchmarkRun) -> None:
         # Warmup doubles as preflight: fail fast on bad URL/key and on
         # endpoints that do not return streamed usage (hard requirement
         # for accurate token counts) before any long test runs.
-        await _send_event(run, {
-            "type": "progress",
-            "phase": "warmup",
-            "message": "Warming up external endpoint...",
-            "current": 0,
-            "total": total_tests,
-        })
+        await _send_event(
+            run,
+            {
+                "type": "progress",
+                "phase": "warmup",
+                "message": "Warming up external endpoint...",
+                "current": 0,
+                "total": total_tests,
+            },
+        )
         await client.stream_chat_completion(
-            messages=[{"role": "user", "content": _generate_external_prompt(32)}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": _generate_external_prompt(32, request.context_profile),
+                }
+            ],
             max_tokens=8,
             temperature=0.0,
         )
@@ -1586,17 +1744,20 @@ async def _run_external_benchmark(run: BenchmarkRun) -> None:
         # Single request tests
         for pp_len in request.prompt_lengths:
             current_test += 1
-            await _send_event(run, {
-                "type": "progress",
-                "phase": "single",
-                "message": f"Single: pp{pp_len}/tg{request.generation_length}",
-                "current": current_test,
-                "total": total_tests,
-            })
+            await _send_event(
+                run,
+                {
+                    "type": "progress",
+                    "phase": "single",
+                    "message": f"Single: pp{pp_len}/tg{request.generation_length}",
+                    "current": current_test,
+                    "total": total_tests,
+                },
+            )
 
             metrics = await _run_external_single_test(
                 client=client,
-                prompt=_generate_external_prompt(pp_len),
+                prompt=_generate_external_prompt(pp_len, request.context_profile),
                 max_tokens=request.generation_length,
             )
 
@@ -1613,17 +1774,23 @@ async def _run_external_benchmark(run: BenchmarkRun) -> None:
         # Batch tests: concurrent requests with unique pp1024 prompts
         for batch_size in request.batch_sizes:
             current_test += 1
-            await _send_event(run, {
-                "type": "progress",
-                "phase": "batch",
-                "message": f"Batch {batch_size}x: pp1024/tg{request.generation_length}",
-                "current": current_test,
-                "total": total_tests,
-            })
+            await _send_event(
+                run,
+                {
+                    "type": "progress",
+                    "phase": "batch",
+                    "message": f"Batch {batch_size}x: pp1024/tg{request.generation_length}",
+                    "current": current_test,
+                    "total": total_tests,
+                },
+            )
 
             batch_metrics = await _run_external_batch_test(
                 client=client,
-                prompts=[_generate_external_prompt(1024) for _ in range(batch_size)],
+                prompts=[
+                    _generate_external_prompt(1024, request.context_profile)
+                    for _ in range(batch_size)
+                ],
                 max_tokens=request.generation_length,
                 batch_size=batch_size,
             )
@@ -1641,39 +1808,52 @@ async def _run_external_benchmark(run: BenchmarkRun) -> None:
         # Done
         overall_duration = time.perf_counter() - overall_start
         run.status = "completed"
-        await _send_event(run, {
-            "type": "done",
-            "summary": {
-                "model_id": request.model_id,
-                "total_time": round(overall_duration, 1),
-                "total_tests": total_tests,
+        await _send_event(
+            run,
+            {
+                "type": "done",
+                "summary": {
+                    "model_id": request.model_id,
+                    "context_profile": request.context_profile.value,
+                    "total_time": round(overall_duration, 1),
+                    "total_tests": total_tests,
+                },
             },
-        })
+        )
 
         # External results measure remote hardware — never upload them to
         # the omlx.ai community leaderboard. Mirrors the experimental-
         # features skip so REST pollers see the same upload_state shape.
         run.upload_state["phase"] = "skipped"
         run.upload_state["skipped_reason"] = "external_endpoint"
-        await _send_event(run, {
-            "type": "upload_skipped",
-            "reason": "external_endpoint",
-            "features": [],
-        })
+        await _send_event(
+            run,
+            {
+                "type": "upload_skipped",
+                "reason": "external_endpoint",
+                "features": [],
+            },
+        )
 
     except asyncio.CancelledError:
         run.status = "cancelled"
-        await _send_event(run, {
-            "type": "error",
-            "message": "Benchmark cancelled by user",
-        })
+        await _send_event(
+            run,
+            {
+                "type": "error",
+                "message": "Benchmark cancelled by user",
+            },
+        )
     except Exception as e:
         logger.error(f"External benchmark error: {e}", exc_info=True)
         run.status = "error"
         run.error_message = str(e)
-        await _send_event(run, {
-            "type": "error",
-            "message": str(e),
-        })
+        await _send_event(
+            run,
+            {
+                "type": "error",
+                "message": str(e),
+            },
+        )
     finally:
         await client.aclose()

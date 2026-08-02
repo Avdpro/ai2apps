@@ -103,6 +103,7 @@ class TestExternalThroughputRoutes:
         assert active["running"] is True
         assert active["external"] is True
         assert active["model_id"] == "remote-model"
+        assert active["context_profile"] == "code_python"
         # The endpoint must never leak connection details
         assert "base_url" not in active
         assert "api_key" not in active
@@ -117,6 +118,36 @@ class TestExternalThroughputRoutes:
 
         active = client.get("/admin/api/bench/active").json()
         assert active["external"] is False
+
+    def test_context_profile_round_trips_through_active_and_results(self, client):
+        with patch("omlx.admin.benchmark.run_benchmark", AsyncMock()):
+            started = client.post(
+                "/admin/api/bench/start",
+                json={
+                    "model_id": "local-model",
+                    "prompt_lengths": [1024],
+                    "context_profile": "novel_ko",
+                },
+            )
+        assert started.status_code == 200, started.text
+        bench_id = started.json()["bench_id"]
+        assert (
+            client.get("/admin/api/bench/active").json()["context_profile"]
+            == "novel_ko"
+        )
+        results = client.get(f"/admin/api/bench/{bench_id}/results").json()
+        assert results["context_profile"] == "novel_ko"
+
+    def test_invalid_context_profile_is_rejected(self, client):
+        response = client.post(
+            "/admin/api/bench/start",
+            json={
+                "model_id": "local-model",
+                "prompt_lengths": [1024],
+                "context_profile": "not_a_context",
+            },
+        )
+        assert response.status_code == 400
 
 
 class TestExternalAccuracyRoutes:

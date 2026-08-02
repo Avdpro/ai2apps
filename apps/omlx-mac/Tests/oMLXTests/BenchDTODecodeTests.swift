@@ -35,6 +35,43 @@ final class BenchDTODecodeTests: XCTestCase {
 
     // MARK: Current server
 
+    func testEncodeBenchmarkContextProfile() throws {
+        let request = BenchStartRequest(
+            modelId: "model",
+            contextProfile: .novelKorean,
+            promptLengths: [1024],
+            generationLength: 128,
+            batchSizes: [2]
+        )
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(request))
+                as? [String: Any]
+        )
+        XCTAssertEqual(object["context_profile"] as? String, "novel_ko")
+    }
+
+    @MainActor
+    func testThroughputContextDefaultsToPythonCode() {
+        let vm = ThroughputBenchScreenVM()
+        XCTAssertEqual(vm.contextProfile, .codePython)
+        XCTAssertTrue(vm.exportText.hasPrefix("# Context: Code (Python)"))
+    }
+
+    func testDecodeResultsContextProfile() throws {
+        let json = """
+        {
+            "bench_id": "b-1",
+            "status": "completed",
+            "context_profile": "code_mixed",
+            "results": []
+        }
+        """.data(using: .utf8)!
+        let response = try decoder.decode(BenchResultsResponse.self, from: json)
+        XCTAssertEqual(response.contextProfile, .codeMixed)
+    }
+
     func testDecodeAcceleratedRun() throws {
         let response = try decoder.decode(
             BenchResultsResponse.self, from: try loadFixture("bench-results")

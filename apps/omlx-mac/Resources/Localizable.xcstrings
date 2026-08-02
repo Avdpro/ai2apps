@@ -2795,6 +2795,66 @@
         }
       }
     },
+    "bench.throughput.context.code_mixed" : {
+      "comment" : "Mixed-language code context profile for the throughput benchmark",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code (Mixed)"
+          }
+        }
+      }
+    },
+    "bench.throughput.context.code_python" : {
+      "comment" : "Python code context profile for the throughput benchmark",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code (Python)"
+          }
+        }
+      }
+    },
+    "bench.throughput.context.novel_en" : {
+      "comment" : "English novel context profile for the throughput benchmark",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novel (English)"
+          }
+        }
+      }
+    },
+    "bench.throughput.context.novel_ja" : {
+      "comment" : "Japanese novel context profile for the throughput benchmark",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novel (Japanese)"
+          }
+        }
+      }
+    },
+    "bench.throughput.context.novel_ko" : {
+      "comment" : "Korean novel context profile for the throughput benchmark",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novel (Korean)"
+          }
+        }
+      }
+    },
     "bench.throughput.device.gpu_cores" : {
       "comment" : "Device chip GPU-cores fragment; placeholder is the core count",
       "extractionState" : "extracted_with_value",
@@ -2971,6 +3031,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Размеры батча"
+          }
+        }
+      }
+    },
+    "bench.throughput.row.context.label" : {
+      "comment" : "Row label for the Throughput Bench context picker",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benchmark Context"
+          }
+        }
+      }
+    },
+    "bench.throughput.row.context.sub" : {
+      "comment" : "Sublabel under the Throughput Bench context picker",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It only affects results when acceleration features such as MTP or DFlash are enabled."
           }
         }
       }
