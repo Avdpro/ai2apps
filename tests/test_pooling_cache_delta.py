@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -72,7 +73,7 @@ def _delta_pooling_layer(
     return layers
 
 
-def _make_cache(tmp_path):
+def _make_cache(tmp_path, *, hot_cache_only: bool = True):
     from omlx.patches.deepseek_v4 import apply_deepseek_v4_patch
 
     apply_deepseek_v4_patch()
@@ -86,7 +87,7 @@ def _make_cache(tmp_path):
         cache_dir=tmp_path / "ssd",
         max_size_bytes=100 * 1024**2,
         hot_cache_max_bytes=10 * 1024**2,
-        hot_cache_only=True,
+        hot_cache_only=hot_cache_only,
         expected_model_name="pooling-delta-test",
     )
     return (
@@ -97,6 +98,16 @@ def _make_cache(tmp_path):
         ),
         ssd,
     )
+
+
+def _wait_for_pending_writes(ssd: PagedSSDCacheManager) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        with ssd._pending_write_hashes_lock:
+            if not ssd._pending_write_hashes:
+                return
+        time.sleep(0.01)
+    pytest.fail("Timed out waiting for SSD cache writes")
 
 
 def test_compaction_is_linear_and_preserves_absolute_ranges():
@@ -301,3 +312,78 @@ def test_legacy_pooling_state_arity_is_rejected(tmp_path):
     )
     assert changed is True
     assert cache.reconstruct_cache(table) is None
+
+
+@pytest.mark.parametrize("hot_cache_only", [True, False], ids=["hot-cache", "ssd"])
+def test_stale_pooling_tail_is_replaced_in_one_refill(tmp_path, caplog, hot_cache_only):
+    from omlx.cache.paged_ssd_cache import _signature_cachelist_subtypes
+
+    cache, ssd = _make_cache(tmp_path, hot_cache_only=hot_cache_only)
+    tokens = list(range(4 * BLOCK_SIZE))
+    final_boundary = len(tokens)
+    snapshots = {
+        BLOCK_SIZE: _delta_pooling_layer(BLOCK_SIZE, include_overlap_state=True),
+        2 * BLOCK_SIZE: _delta_pooling_layer(2 * BLOCK_SIZE),
+        3 * BLOCK_SIZE: _delta_pooling_layer(3 * BLOCK_SIZE),
+        final_boundary: _delta_pooling_layer(
+            final_boundary, include_overlap_state=True
+        ),
+    }
+
+    try:
+        table = cache.store_cache(
+            "req-stale-tail",
+            tokens,
+            [_pooling_layer(len(tokens), include_overlap_state=True)],
+            boundary_snapshots=snapshots,
+            hot_cache_write_back=hot_cache_only,
+        )
+        assert table is not None
+        _wait_for_pending_writes(ssd)
+
+        changed = ssd.set_expected_layer_signature(
+            ["CacheList"],
+            cachelist_subtypes={"0": ["PoolingCache:5"]},
+        )
+        assert changed is True
+
+        # The first block is compatible and the second block is stale. The
+        # restore path forgets that first mismatch, leaving the stale tail
+        # present so the next store must actively replace it.
+        truncated = cache.reconstruct_cache(table)
+        assert truncated is not None
+        assert table.num_tokens == BLOCK_SIZE
+        assert len(table.block_ids) == 1
+        assert "CacheList sub composition at layer 0" in caplog.text
+
+        good_snapshots = {
+            boundary: _delta_pooling_layer(boundary, include_overlap_state=True)
+            for boundary in range(BLOCK_SIZE, len(tokens) + 1, BLOCK_SIZE)
+        }
+        repaired = cache.store_cache(
+            "req-stale-tail-repair",
+            tokens,
+            [_pooling_layer(len(tokens), include_overlap_state=True)],
+            boundary_snapshots=good_snapshots,
+            hot_cache_write_back=hot_cache_only,
+        )
+        assert repaired is not None
+        _wait_for_pending_writes(ssd)
+
+        signatures = []
+        for block_id in repaired.block_ids:
+            block = cache.paged_cache.allocated_blocks[block_id]
+            _, metadata = ssd.load_block_with_metadata(block.block_hash)
+            assert metadata is not None
+            signatures.append(
+                _signature_cachelist_subtypes(metadata.get("cache_signature", ""))
+            )
+        assert signatures == [
+            {"0": ["PoolingCache:5"]},
+            {"0": ["PoolingCache:5"]},
+            {"0": ["PoolingCache:5"]},
+            {"0": ["PoolingCache:5"]},
+        ]
+        assert cache.reconstruct_cache(repaired) is not None
+    finally:
+        ssd.close()

@@ -2099,11 +2099,25 @@ class BlockAwarePrefixCache(CacheManager):
                     if callable(signature_gate) and not signature_gate(
                         block_metadata.get("cache_signature", "")
                     ):
+                        mismatch_reason = (
+                            "TurboQuant depth or CacheList sub composition"
+                        )
+                        reason_getter = getattr(
+                            self.paged_ssd_cache,
+                            "signature_mismatch_reason",
+                            None,
+                        )
+                        if callable(reason_getter):
+                            candidate = reason_getter(
+                                block_metadata.get("cache_signature", "")
+                            )
+                            if isinstance(candidate, str) and candidate:
+                                mismatch_reason = candidate
                         logger.warning(
-                            "Cache signature mismatch at block %s "
-                            "(TurboQuant depth or CacheList sub composition). "
+                            "Cache signature mismatch at block %s: %s. "
                             "Truncating cached prefix before this block.",
                             block_id,
+                            mismatch_reason,
                         )
                         self._forget_incompatible_ssd_block(
                             block.block_hash, block.block_id

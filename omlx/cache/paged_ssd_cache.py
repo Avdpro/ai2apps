@@ -1901,15 +1901,47 @@ class PagedSSDCacheManager(CacheManager):
         ``_is_compatible_block``). Checks the expectation-gated signature
         fields: TurboQuant depth and CacheList sub composition.
         """
-        if not self._signature_bits_match(cache_signature or ""):
-            return False
-        if (
-            self._expected_cachelist_subtypes is not None
-            and _signature_cachelist_subtypes(cache_signature or "")
-            != self._expected_cachelist_subtypes
+        return self.signature_mismatch_reason(cache_signature) is None
+
+    def signature_mismatch_reason(self, cache_signature: str) -> str | None:
+        """Describe the first expectation-gated signature mismatch."""
+        cache_signature = cache_signature or ""
+        if not self._signature_bits_match(cache_signature):
+            actual_bits = _signature_turboquant_bits(cache_signature)
+            actual = "missing" if actual_bits is None else str(actual_bits)
+            return (
+                "TurboQuant depth: expected "
+                f"{self._expected_turboquant_kv_bits}, got {actual}"
+            )
+
+        expected_subtypes = self._expected_cachelist_subtypes
+        if expected_subtypes is None:
+            return None
+
+        actual_subtypes = _signature_cachelist_subtypes(cache_signature)
+        if actual_subtypes == expected_subtypes:
+            return None
+
+        actual_layers = actual_subtypes or {}
+
+        def _layer_sort_key(layer: str) -> tuple[int, int | str]:
+            try:
+                return (0, int(layer))
+            except (TypeError, ValueError):
+                return (1, str(layer))
+
+        for layer in sorted(
+            set(expected_subtypes) | set(actual_layers), key=_layer_sort_key
         ):
-            return False
-        return True
+            expected = expected_subtypes.get(layer)
+            actual = actual_layers.get(layer)
+            if expected != actual:
+                return (
+                    f"CacheList sub composition at layer {layer}: "
+                    f"expected {expected}, got {actual}"
+                )
+
+        return "CacheList sub composition mismatch"
 
     def _expected_cache_signature(self) -> str:
         if (
@@ -2195,17 +2227,48 @@ class PagedSSDCacheManager(CacheManager):
             except Exception as e:
                 logger.warning("Stale-signature sweep failed: %s", e)
 
-        # Check if already exists in index (thread-safe)
-        if self._index.contains(block_hash):
+        # A matching content hash does not guarantee a matching serialized
+        # layout. Replace an indexed block written by an older cache schema
+        # instead of treating it as an unconditional hit (#2487).
+        indexed_metadata = self._index.get(block_hash)
+        if indexed_metadata is not None and self._is_compatible_block(indexed_metadata):
             self._index.touch(block_hash)
             self._stats["hits"] += 1
             return True
+        if indexed_metadata is not None:
+            reason = (
+                self.signature_mismatch_reason(indexed_metadata.cache_signature)
+                or "cache layout mismatch"
+            )
+            logger.info(
+                "Replacing incompatible indexed cache block %s: %s",
+                block_hash.hex()[:16],
+                reason,
+            )
+            self.forget_block(block_hash)
 
         # Also check hot cache / pending writes buffer
         hot_entry = None
         with self._hot_cache_lock:
             if block_hash in self._hot_cache:
                 hot_entry = self._hot_cache[block_hash]
+
+        if hot_entry is not None:
+            hot_metadata = hot_entry.get("block_metadata")
+            if isinstance(
+                hot_metadata, PagedSSDBlockMetadata
+            ) and not self._is_compatible_block(hot_metadata):
+                reason = (
+                    self.signature_mismatch_reason(hot_metadata.cache_signature)
+                    or "cache layout mismatch"
+                )
+                logger.info(
+                    "Replacing incompatible hot cache block %s: %s",
+                    block_hash.hex()[:16],
+                    reason,
+                )
+                self.forget_block(block_hash)
+                hot_entry = None
 
         if hot_entry is not None:
             if hot_cache_write_back or self._hot_cache_only:
