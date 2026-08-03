@@ -640,6 +640,41 @@ def test_dspark_ring_sparse_attention_matches_materialized_path(dsv4, rows):
     assert mx.array_equal(actual, expected).item()
 
 
+def test_dspark_multitoken_prefill_uses_vectorized_sparse_attention(dsv4):
+    mx.random.seed(2490)
+    q = mx.random.normal((1, 2, 3, 4))
+    local_kv = mx.random.normal((1, 1, 5, 4))
+    pooled = mx.random.normal((1, 6, 4))
+    topk = mx.array([[[0, 1], [2, 3], [4, 5]]], dtype=mx.uint32)
+    sinks = mx.random.normal((2,))
+
+    expected = dsv4._sparse_pooled_attention(
+        q,
+        local_kv,
+        pooled,
+        topk,
+        None,
+        None,
+        4**-0.5,
+        sinks,
+        decode_consistent=False,
+    )
+    actual = dsv4._sparse_pooled_attention(
+        q,
+        local_kv,
+        pooled,
+        topk,
+        None,
+        None,
+        4**-0.5,
+        sinks,
+        decode_consistent=True,
+    )
+    mx.eval(expected, actual)
+
+    assert mx.array_equal(actual, expected).item()
+
+
 def test_dspark_attention_keeps_pool_boundary_lengths_separate():
     from omlx.patches.deepseek_v4.verify_attention import exact_attention
 

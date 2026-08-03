@@ -667,7 +667,7 @@ def _sparse_pooled_attention(
     normalizer = mx.logsumexp(local_scores, -1, keepdims=True)
 
     q_bl = q_scaled.transpose(0, 2, 1, 3)
-    if decode_consistent:
+    if decode_consistent and L == 1:
         pooled_scores = _dspark_rowwise_mm(q_bl, pooled_sq, True)
     else:
         pooled_scores = q_bl @ pooled_sq.swapaxes(-1, -2)
@@ -693,7 +693,7 @@ def _sparse_pooled_attention(
     else:
         out = local_weights @ local_kv
     pw_bl = pooled_weights.transpose(0, 2, 1, 3)
-    if decode_consistent:
+    if decode_consistent and L == 1:
         pooled_out = _dspark_rowwise_mm(pw_bl, pooled_sq, False)
     else:
         pooled_out = pw_bl @ pooled_sq
