@@ -189,7 +189,7 @@ class CacheTypeHandler(ABC):
     #
     # The legacy interface (extract_state/reconstruct_cache with a dict
     # of "keys"/"values") only models 2-tuple state. mlx-lm caches like
-    # BatchKVCache (4-tuple) and DeepSeek V4's PoolingCache (3-tuple)
+    # BatchKVCache (4-tuple) and DeepSeek V4's PoolingCache (5-tuple)
     # carry more elements that omlx core needs to preserve through the
     # prefix-cache, boundary-snapshot, and SSD round-trip without
     # silently dropping elements past index 1.
@@ -254,7 +254,7 @@ class CacheTypeHandler(ABC):
         Default behavior maps elements to the legacy ``keys``/``values``
         dict by zipping with ``get_state_axis_info()`` names, then calls
         ``reconstruct_cache``. Handlers whose state cannot be expressed
-        as ``(keys, values)`` (e.g. PoolingCacheHandler with 3 elements)
+        as ``(keys, values)`` (e.g. PoolingCacheHandler with 5 elements)
         should override this method.
         """
         axis_info = self.get_state_axis_info()

@@ -97,7 +97,7 @@ class PoolingCacheHandler(CacheTypeHandler):
         # buf_kv / buf_gate are remainder windows of shape (B, ratio, D);
         # pooled is the accumulated compressed sequence (B, P, D). The
         # quantization at ``ratio`` makes per-token slicing unsafe — keep
-        # all three elements non-sliceable so omlx core takes the
+        # all five elements non-sliceable so omlx core takes the
         # last-block-only / boundary-snapshot path.
         return (
             CacheStateAxisInfo(name="buf_kv", sequence_axis=1, sliceable=False),
@@ -115,7 +115,7 @@ class PoolingCacheHandler(CacheTypeHandler):
         """Reconstruct PoolingCache from its persisted N-tuple state.
 
         omlx core dispatches handlers via ``deserialize_state`` instead of
-        the legacy keys/values dict so 3-tuple state survives without
+        the legacy keys/values dict so the 5-tuple state survives without
         getting truncated by the default 2-tuple mapping.
         """
         if not isinstance(elements, (list, tuple)):
