@@ -367,17 +367,14 @@ class TestDSMLToolParser:
 
 
 class TestChatTemplateV4:
-    """chat_template_v4 — DSML system prompt + tool_calls render."""
+    """Official DeepSeek V4 0731 encoding plus the mlx-lm adapter."""
 
     def test_outer_marker_uses_tool_calls_not_function_calls(self, applied_patch):
         from omlx.patches.deepseek_v4 import chat_template_v4 as ct
 
-        # vllm's DeepSeekV4ToolParser overrides only the outer marker
-        # name (tool_calls vs V3.2's function_calls). Verify our copy
-        # made that one edit.
         assert "function_calls" not in ct.tool_calls_template
         assert "tool_calls" in ct.tool_calls_template
-        assert "function_calls" not in ct.TOOLS_SYSTEM_TEMPLATE
+        assert "function_calls" not in ct.TOOLS_TEMPLATE
 
     def test_inner_grammar_unchanged_from_v32(self, applied_patch):
         from omlx.patches.deepseek_v4 import chat_template_v4 as ct
@@ -400,7 +397,9 @@ class TestChatTemplateV4:
             dsml_token=ct.dsml_token, name="f", arguments=encoded_args
         )
         block = ct.tool_calls_template.format(
-            dsml_token=ct.dsml_token, tool_calls=invoke
+            dsml_token=ct.dsml_token,
+            tool_calls=invoke,
+            tc_block_name=ct.tool_calls_block_name,
         )
         # Strip the outer markers as TokenizerWrapper would.
         inner = (
@@ -441,7 +440,7 @@ class TestChatTemplateV4:
             tools=tools,
             add_generation_prompt=True,
         )
-        assert "<functions>" in prompt
+        assert "### Available Tool Schemas" in prompt
         assert "get_weather" in prompt
         assert ct.dsml_token in prompt
 
@@ -476,7 +475,7 @@ class TestChatTemplateV4:
         )
         assert "You are a helpful assistant." in prompt
         # Only one tools block — no double-injection from synthetic prepend.
-        assert prompt.count("<functions>") == 1
+        assert prompt.count("### Available Tool Schemas") == 1
 
     def test_user_only_no_tools_no_prepend(self, applied_patch):
         """No tools → no synthetic system. Plain user-only request renders
@@ -487,8 +486,138 @@ class TestChatTemplateV4:
             [{"role": "user", "content": "Hi"}],
             add_generation_prompt=True,
         )
-        assert "<functions>" not in prompt
+        assert "### Available Tool Schemas" not in prompt
         assert "## Tools" not in prompt
+
+    def test_official_basic_thinking_prompt(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        prompt = ct.apply_chat_template(
+            [
+                {"role": "system", "content": "Be helpful."},
+                {"role": "user", "content": "Hello"},
+            ],
+            add_generation_prompt=True,
+        )
+
+        assert prompt == (
+            "<｜begin▁of▁sentence｜>Be helpful." "<｜User｜>Hello<｜Assistant｜><think>"
+        )
+
+    def test_official_latest_reminder_before_user(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        prompt = ct.apply_chat_template(
+            [
+                {"role": "system", "content": "Be helpful."},
+                {"role": "latest_reminder", "content": "2026-08-04,Seoul"},
+                {"role": "user", "content": "Hello"},
+            ],
+            add_generation_prompt=True,
+        )
+
+        assert prompt == (
+            "<｜begin▁of▁sentence｜>Be helpful."
+            "<｜latest_reminder｜>2026-08-04,Seoul"
+            "<｜User｜>Hello<｜Assistant｜><think>"
+        )
+
+    def test_official_tool_result_is_merged_into_user_turn(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        prompt = ct.apply_chat_template(
+            [
+                {"role": "user", "content": "Look it up"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "lookup",
+                                "arguments": {"query": "oMLX"},
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "content": "result",
+                },
+            ],
+            add_generation_prompt=True,
+        )
+
+        assert "<｜User｜><tool_result>result</tool_result>" in prompt
+        assert prompt.endswith("<｜Assistant｜><think>")
+
+    def test_declares_generic_mid_system_unsupported(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        assert ct.supports_mid_system_messages is False
+        assert ct.apply_chat_template.supports_mid_system_messages is False
+
+    def test_relocates_claude_tail_system_before_its_user(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        messages = [
+            {"role": "system", "content": "Be helpful."},
+            {"role": "user", "content": "Hello"},
+            {"role": "system", "content": "Plan mode"},
+        ]
+
+        relocated = ct.relocate_mid_system_messages(messages)
+
+        assert relocated == [
+            {"role": "system", "content": "Be helpful."},
+            {"role": "latest_reminder", "content": "Plan mode"},
+            {"role": "user", "content": "Hello"},
+        ]
+        assert messages[1]["role"] == "user"
+        prompt = ct.apply_chat_template(relocated, add_generation_prompt=True)
+        assert prompt == (
+            "<｜begin▁of▁sentence｜>Be helpful."
+            "<｜latest_reminder｜>Plan mode"
+            "<｜User｜>Hello<｜Assistant｜><think>"
+        )
+
+    def test_relocation_merges_system_run_before_same_user(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        relocated = ct.relocate_mid_system_messages(
+            [
+                {"role": "user", "content": "Hello"},
+                {"role": "system", "content": "Plan mode"},
+                {"role": "system", "content": "Hook context"},
+                {"role": "assistant", "content": "OK"},
+            ]
+        )
+
+        assert relocated == [
+            {
+                "role": "latest_reminder",
+                "content": "Plan mode\n\nHook context",
+            },
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "OK"},
+        ]
+
+    def test_relocation_refuses_ambiguous_system_placement(self, applied_patch):
+        from omlx.patches.deepseek_v4 import chat_template_v4 as ct
+
+        assert (
+            ct.relocate_mid_system_messages(
+                [
+                    {"role": "user", "content": "First"},
+                    {"role": "system", "content": "Ambiguous"},
+                    {"role": "user", "content": "Second"},
+                ]
+            )
+            is None
+        )
 
     def test_encode_arguments_accepts_dict(self, applied_patch):
         """Anthropic /v1/messages history stores tool_call arguments as

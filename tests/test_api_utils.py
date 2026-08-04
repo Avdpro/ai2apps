@@ -2178,6 +2178,17 @@ class TestPrepareSystemMessagesForTemplate:
                 )
             return "user:__OMLX_MID_SYSTEM_PROBE_USER__"
 
+    class ExplicitlyUnsupportedTokenizer(PreserveTokenizer):
+        _omlx_supports_mid_system_messages = False
+
+    class RelocatingTokenizer(ExplicitlyUnsupportedTokenizer):
+        @staticmethod
+        def _omlx_relocate_mid_system_messages(messages):
+            return [
+                {"role": "latest_reminder", "content": messages[1]["content"]},
+                messages[0],
+            ]
+
     def test_preserves_tail_system_when_template_keeps_position(self):
         messages = [
             {"role": "user", "content": "Hello"},
@@ -2190,6 +2201,56 @@ class TestPrepareSystemMessagesForTemplate:
 
         assert [m["role"] for m in result] == ["user", "system"]
         assert result[1]["content"] == "Plan mode"
+
+    def test_explicit_capability_overrides_marker_order_false_positive(self):
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "system", "content": "Plan mode"},
+        ]
+
+        result = prepare_system_messages_for_template(
+            messages,
+            self.ExplicitlyUnsupportedTokenizer(),
+            unsupported_mid_system_policy="user_note_safe",
+        )
+
+        assert [message["role"] for message in result] == ["user"]
+        assert result[0]["content"].endswith("[System note]\nPlan mode\n[/System note]")
+
+    def test_model_specific_relocation_precedes_capability_fallback(self):
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "system", "content": "Plan mode"},
+        ]
+
+        result = prepare_system_messages_for_template(
+            messages,
+            self.RelocatingTokenizer(),
+            unsupported_mid_system_policy="user_note_safe",
+        )
+
+        assert result == [
+            {"role": "latest_reminder", "content": "Plan mode"},
+            {"role": "user", "content": "Hello"},
+        ]
+
+    def test_partial_mode_does_not_use_model_specific_relocation(self):
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "system", "content": "Plan mode"},
+        ]
+
+        result = prepare_system_messages_for_template(
+            messages,
+            self.RelocatingTokenizer(),
+            is_partial=True,
+            unsupported_mid_system_policy="user_note_safe",
+        )
+
+        assert result == [
+            {"role": "system", "content": "Plan mode"},
+            {"role": "user", "content": "Hello"},
+        ]
 
     def test_preserves_between_turn_system_when_template_keeps_position(self):
         messages = [
