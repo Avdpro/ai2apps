@@ -40,6 +40,7 @@ import pytest
 from omlx.cache._rotating_subclass import PrefillReadyRotatingKVCache
 from omlx.cache.paged_cache import BlockTable, PagedCacheManager
 from omlx.cache.paged_ssd_cache import PagedSSDCacheManager, SharedHotCacheBudget
+from omlx.cache.pooling_delta import POOLING_CACHE_DELTA_CLASS
 from omlx.cache.prefix_cache import BlockAwarePrefixCache
 from omlx.cache.type_registry import CacheTypeRegistry
 
@@ -128,6 +129,37 @@ def _kvcache_only_data(seq_len):
         }
         for _ in range(2)
     ]
+
+
+def _v4_shaped_storage_data():
+    """Serialized V4 shape: top-level rotating plus mixed CacheList."""
+    rotating = (
+        mx.ones((1, 1, WINDOW, 2), dtype=mx.float32),
+        mx.ones((1, 1, WINDOW, 2), dtype=mx.float32),
+    )
+    pooling = (
+        "__nstate__",
+        POOLING_CACHE_DELTA_CLASS,
+        [
+            None,
+            None,
+            mx.ones((1, 1, 2), dtype=mx.float32),
+            mx.ones((1, 1, 2), dtype=mx.float32),
+            mx.ones((1, 1, 2), dtype=mx.float32),
+            mx.array([0, 1], dtype=mx.int64),
+        ],
+    )
+    return (
+        [rotating, ("__cache_list__", [rotating, pooling, pooling])],
+        ["RotatingKVCache", "CacheList"],
+        [
+            (0, WINDOW, WINDOW, WINDOW),
+            (
+                ["RotatingKVCache", "PoolingCache", "PoolingCache"],
+                [None, 4, 4],
+            ),
+        ],
+    )
 
 
 def _store_turn(cache, turn, num_blocks, data_fn=_hybrid_cache_data):
@@ -227,6 +259,39 @@ def test_stripped_block_keeps_sliceable_layers(tmp_path):
         if CacheTypeRegistry.is_rotating_family(t)
     )
     assert cache._is_placeholder_state(data[rotating_idx])
+
+
+def test_stripped_block_preserves_v4_cachelist_signature(tmp_path):
+    """Re-saving a stripped V4 tip must preserve CacheList composition."""
+    from omlx.cache.paged_ssd_cache import _signature_cachelist_subtypes
+
+    cache, ssd = _make_cache(tmp_path)
+    block_hash = b"\x24" * 32
+    data, layer_types, layer_meta = _v4_shaped_storage_data()
+    expected = {"1": ["RotatingKVCache", "PoolingCache:5", "PoolingCache:5"]}
+
+    assert ssd.save_block(
+        block_hash=block_hash,
+        cache_data=data,
+        token_count=BLOCK_SIZE,
+        model_name="test-model",
+        layer_cache_types=layer_types,
+        layer_meta_states=layer_meta,
+    )
+    _, before_meta = ssd.load_block_with_metadata(block_hash)
+    assert before_meta is not None
+    before_signature = before_meta["cache_signature"]
+    assert _signature_cachelist_subtypes(before_signature) == expected
+
+    assert cache._strip_rotating_payload(block_hash)
+
+    after_data, after_meta = ssd.load_block_with_metadata(block_hash)
+    assert after_data is not None and after_meta is not None
+    assert after_meta["cache_signature"] == before_signature
+    assert _signature_cachelist_subtypes(after_meta["cache_signature"]) == expected
+    assert cache._is_placeholder_state(after_data[0])
+    assert isinstance(after_data[1], list)
+    assert len(after_data[1]) == 3
 
 
 def test_hot_cache_byte_counter_consistent(tmp_path):

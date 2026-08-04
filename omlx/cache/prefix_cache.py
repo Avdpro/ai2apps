@@ -1225,6 +1225,12 @@ class BlockAwarePrefixCache(CacheManager):
                 ):
                     new_data.append((mx.zeros((1,)), mx.zeros((1,))))
                     stripped += 1
+                elif type_name == "CacheList" and isinstance(layer, list):
+                    # load_block_with_metadata() exposes CacheList payloads as
+                    # their legacy list shape.  Restore the storage marker
+                    # before re-saving so save_block keeps sub_count metadata
+                    # and can stamp the same cachelist_subtypes signature.
+                    new_data.append(("__cache_list__", layer))
                 else:
                     new_data.append(layer)
             if stripped == 0:
