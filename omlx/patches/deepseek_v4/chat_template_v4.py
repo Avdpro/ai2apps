@@ -178,11 +178,38 @@ def find_last_user_index(messages: List[Dict[str, Any]]) -> int:
     return last_user_index
 
 
+def _user_thinking_suffix(
+    index: int,
+    last_user_idx: int,
+    thinking_mode: str,
+    drop_thinking: bool,
+) -> str:
+    """Marker that follows a user/developer message.
+
+    The current turn opens thinking. Historical turns normally close it,
+    because their reasoning is dropped from the transcript — but that makes
+    rendering position-dependent: when a new user message arrives, the
+    previous user message's suffix flips from ``<think>`` to ``</think>``
+    and every cached prefix from that point on is invalidated.
+
+    When reasoning is retained (``drop_thinking=False``), the historical
+    turn still carries its reasoning block, so keeping ``<think>`` here
+    reproduces exactly what was rendered while that turn was current and
+    the transcript grows append-only — which is what a prefix cache needs.
+    """
+    if thinking_mode != "thinking":
+        return thinking_end_token
+    if index == last_user_idx or not drop_thinking:
+        return thinking_start_token
+    return thinking_end_token
+
+
 def render_message(
     index: int,
     messages: List[Dict[str, Any]],
     thinking_mode: str,
     tools: Any = None,
+    drop_thinking: bool = True,
 ) -> str:
     assert 0 <= index < len(messages)
     assert thinking_mode in [
@@ -228,18 +255,16 @@ def render_message(
         content_developer += "\n\n# The user's message is: {}".format(content)
 
         prompt += user_msg_template.format(content=content_developer)
-        if index == last_user_idx and thinking_mode == "thinking":
-            prompt += thinking_start_token
-        else:
-            prompt += thinking_end_token
+        prompt += _user_thinking_suffix(
+            index, last_user_idx, thinking_mode, drop_thinking
+        )
 
     elif role == "user":
         prompt += user_msg_template.format(content=content)
 
-        if index == last_user_idx and thinking_mode == "thinking":
-            prompt += thinking_start_token
-        else:
-            prompt += thinking_end_token
+        prompt += _user_thinking_suffix(
+            index, last_user_idx, thinking_mode, drop_thinking
+        )
 
     elif role == "tool":
         prev_assistant_idx = index - 1
@@ -268,7 +293,14 @@ def render_message(
         if tool_call_order == len(assistant_tool_calls):
             prompt += "\n</function_results>"
 
-            if index >= last_user_idx and thinking_mode == "thinking":
+            # Same append-only rule as the user/developer suffix: when
+            # reasoning is retained, a historical tool result keeps the
+            # <think> opener it was rendered with at generation time (the
+            # following assistant message renders `reasoning</think>...`
+            # with no opener of its own, so the pair stays consistent).
+            if thinking_mode == "thinking" and (
+                index >= last_user_idx or not drop_thinking
+            ):
                 prompt += "\n\n" + thinking_start_token
             else:
                 prompt += "\n\n" + thinking_end_token
@@ -293,10 +325,17 @@ def render_message(
 
         summary_content = content or ""
 
-        if thinking_mode == "thinking" and index > last_user_idx:
-            assert (
-                reasoning_content or tool_calls
-            ), f"ThinkingMode: {thinking_mode}, invalid message without reasoning_content/tool_calls `{msg}` after last user message"
+        # Historical assistant turns render their reasoning too when it is
+        # retained, so the transcript stays byte-identical to what was
+        # rendered while that turn was current (append-only prefix).
+        render_thinking = thinking_mode == "thinking" and (
+            index > last_user_idx or not drop_thinking
+        )
+        if render_thinking:
+            if index > last_user_idx:
+                assert (
+                    reasoning_content or tool_calls
+                ), f"ThinkingMode: {thinking_mode}, invalid message without reasoning_content/tool_calls `{msg}` after last user message"
             thinking_part = (
                 thinking_template.format(reasoning_content=reasoning_content or "")
                 + thinking_end_token
@@ -371,6 +410,7 @@ def encode_messages(
             full_messages,
             thinking_mode=thinking_mode,
             tools=tools,
+            drop_thinking=drop_thinking,
         )
 
     return prompt
