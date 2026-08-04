@@ -2686,36 +2686,39 @@ def _run_verify_cycle_chain(gen_batch: Any, state: _MtpState) -> None:
             emit_last_id = bonus_id
             emit_last_lp = combined_lp[k]
 
-    # Boundary-aligned commit: when the scheduler needs block-boundary
-    # cache snapshots (hybrid models), land the committed run exactly on
-    # the next block boundary whenever it falls inside the accepted
-    # drafts. The emit-time snapshot capture can then observe the boundary
-    # state (cache offset == emitted count), which the emit queue's
-    # run-ahead otherwise makes rare. Emitting fewer verified drafts is
-    # distribution-exact; the cost is at most depth-1 verified tokens once
-    # per block.
-    align = int(getattr(gen_batch.model, "_omlx_mtp_commit_align", 0) or 0)
-    if align > 0 and m > 0:
-        emitted = len(gen_batch.tokens[0])
-        aligned = ((emitted // align) + 1) * align - emitted
-        if 0 < aligned < m:
-            m = aligned
-            emit_last_id = draft_ids[m]
-            emit_last_lp = combined_lp[m]
-
     # Clamp the accepted count to what every cache layer can roll back
     # (optional model hook — DeepSeek-V4 PoolingCache replay windows are
     # bounded). Emitting fewer verified drafts is always correct; position
     # ``m`` was itself accepted when the clamp lowers it, so its draft
     # token is a fair emit for the correction slot.
+    clamp = getattr(gen_batch.model, "mtp_clamp_accept", None)
     if m < k:
-        clamp = getattr(gen_batch.model, "mtp_clamp_accept", None)
         if callable(clamp):
             clamped = int(clamp(gen_batch.prompt_cache, m, k))
             if clamped < m:
                 m = clamped
                 emit_last_id = draft_ids[m]
                 emit_last_lp = combined_lp[m]
+
+    # Apply boundary alignment after the rollback clamp so its final accepted
+    # count remains authoritative. If alignment itself requires more rollback,
+    # re-run the model clamp against the shorter accepted prefix.
+    align = int(getattr(gen_batch.model, "_omlx_mtp_commit_align", 0) or 0)
+    emitted = len(gen_batch.tokens[0])
+    to_boundary = ((emitted // align) + 1) * align - emitted if align > 0 else 0
+    if 0 < to_boundary < m:
+        m = to_boundary
+        if callable(clamp):
+            clamped = int(clamp(gen_batch.prompt_cache, m, k))
+            if clamped < m:
+                m = clamped
+        emit_last_id = draft_ids[m]
+        emit_last_lp = combined_lp[m]
+
+    # A clamp can put the final verify token on the boundary, while a full
+    # accept can put its bonus token there. Neither token is present in the
+    # backbone cache yet, so materialize it before the queue reaches it.
+    materialize_boundary_emit = align > 0 and to_boundary > 0 and to_boundary == m + 1
 
     # --- stats ---
     state.stats.cycles += 1
@@ -2768,6 +2771,8 @@ def _run_verify_cycle_chain(gen_batch: Any, state: _MtpState) -> None:
     _chain_next_drafts(gen_batch, state, hidden_rows, committed, prev_buf)
     state.next_main = next_main
     state.stats.mtp_head_ms += (time.perf_counter() - t0) * 1000
+    if materialize_boundary_emit:
+        _materialize_mtp_boundary_emit(gen_batch, state)
     if state.controller is not None:
         keepalive = bool(getattr(state.mtp_cache, "fold_keepalive", False))
         if keepalive:
@@ -2778,6 +2783,56 @@ def _run_verify_cycle_chain(gen_batch: Any, state: _MtpState) -> None:
             (time.perf_counter() - cycle_t0) * 1000,
             time_sample=not keepalive,
         )
+
+
+def _materialize_mtp_boundary_emit(gen_batch: Any, state: _MtpState) -> None:
+    """Commit a queued verify/bonus boundary token before it is emitted.
+
+    MTP normally leaves the final token of a cycle one position ahead of the
+    backbone cache. If that token is the next block boundary, process it with a
+    confirmed one-token forward and seed the following target token. The queue
+    then reaches the boundary with an exactly aligned cache snapshot and keeps
+    the usual one-token pipeline skew after the following token is emitted.
+    """
+    import time
+
+    import mlx.core as mx
+
+    if not state.queue:
+        raise _MtpStepFallback("boundary materialization has no queued token")
+
+    boundary_id = int(state.queue[-1][0])
+    boundary_tok = mx.array([boundary_id], dtype=mx.uint32)
+    procs = _proc_list(gen_batch)
+    prev_buf = None
+    if procs is not None:
+        prev_buf = gen_batch._token_context[0].update_and_fetch(boundary_tok)
+
+    t0 = time.perf_counter()
+    logits, hidden, _ = _call_backbone(
+        gen_batch.model,
+        boundary_tok[:, None],
+        gen_batch.prompt_cache,
+    )
+    _clear_rollback(gen_batch.prompt_cache)
+    next_logits = _apply_processors(procs, prev_buf, logits[:, -1, :])
+    next_lp_2d = _logprobs(next_logits)
+    next_tok = _ensure_uint32(_resolve_sampler(gen_batch)(next_lp_2d))
+    mx.eval(next_tok)
+    state.stats.backbone_ms += (time.perf_counter() - t0) * 1000
+
+    t0 = time.perf_counter()
+    _chain_next_drafts(
+        gen_batch,
+        state,
+        hidden[:, -1:],
+        next_tok,
+        prev_buf,
+    )
+    state.stats.mtp_head_ms += (time.perf_counter() - t0) * 1000
+    next_id = int(next_tok.tolist()[0])
+    state.next_main = next_tok
+    state.queue.append((next_id, next_lp_2d.squeeze(0), "bonus"))
 
 
 def _chain_rollback(

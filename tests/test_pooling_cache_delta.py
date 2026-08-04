@@ -238,6 +238,38 @@ def test_v4_delta_blocks_restore_full_and_partial_prefix(tmp_path):
     assert cache.reconstruct_cache(gapped) is None
 
 
+def test_missing_intermediate_snapshot_stops_before_pooling_delta_gap(tmp_path):
+    from omlx.cache.paged_ssd_cache import _signature_cachelist_subtypes
+
+    cache, ssd = _make_cache(tmp_path)
+    tokens = list(range(3 * BLOCK_SIZE))
+    final_boundary = 3 * BLOCK_SIZE
+    snapshots = {
+        BLOCK_SIZE: _delta_pooling_layer(BLOCK_SIZE, include_overlap_state=True),
+        final_boundary: _delta_pooling_layer(
+            final_boundary, include_overlap_state=True
+        ),
+    }
+
+    table = cache.store_cache(
+        "req-delta-gap",
+        tokens,
+        [_pooling_layer(len(tokens), include_overlap_state=True)],
+        boundary_snapshots=snapshots,
+    )
+
+    assert table is not None
+    assert table.num_tokens == BLOCK_SIZE
+    assert len(table.block_ids) == 1
+    block = cache.paged_cache.allocated_blocks[table.block_ids[0]]
+    _, metadata = ssd.load_block_with_metadata(block.block_hash)
+    assert metadata is not None
+    assert _signature_cachelist_subtypes(metadata.get("cache_signature", "")) == {
+        "0": ["PoolingCache:5"]
+    }
+    assert cache.reconstruct_cache(table) is not None
+
+
 def test_legacy_full_block_can_anchor_v4_delta_chain(tmp_path):
     cache, ssd = _make_cache(tmp_path)
 

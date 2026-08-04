@@ -2683,6 +2683,7 @@ class TestSchedulerBoundarySnapshots:
             scheduler._boundary_cache_snapshots[request.request_id][4] == snapshot_cache
         )
         assert scheduler._boundary_snapshot_required is True
+        assert mock_model._omlx_mtp_commit_align == 4
 
     def test_prefill_boundary_snapshot_ignores_non_boundary_token_count(
         self, mock_model, mock_tokenizer

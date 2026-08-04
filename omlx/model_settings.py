@@ -239,10 +239,9 @@ class ModelSettings:
     # with dflash.
     mtp_enabled: bool = False
     # Maximum chained MTP draft tokens per verify cycle (speculative depth).
-    # None = default (3). Effective for Qwen3.5/3.6 native MTP only;
-    # DeepSeek-V4 native MTP always runs depth 1. An adaptive controller
-    # picks 1..max per sequence from rolling acceptance/latency estimates;
-    # set to 1 for a fixed depth-1 cycle.
+    # None = model-specific default (3 for DeepSeek-V4 and Qwen3.5/3.6).
+    # An adaptive controller picks 1..max per sequence from rolling
+    # acceptance/latency estimates; set to 1 for a fixed depth-1 cycle.
     mtp_num_draft_tokens: Optional[int] = None
 
     # VLM MTP speculative decoding via external MTP drafter (mlx-vlm f96138e+).

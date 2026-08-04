@@ -43,6 +43,31 @@ logger = logging.getLogger(__name__)
 # growth from many distinct conversation chains over a long-lived process.
 _TIP_LINEAGE_MAX_ENTRIES = 4096
 _EXACT_PREFIX_TERMINAL_KEY = "specprefill-static-exact-v1"
+_POOLING_CACHE_SUB_CLASSES = frozenset({"PoolingCache", "BatchPoolingCache"})
+
+
+def _contains_pooling_cache_state(cache_data: list[Any]) -> bool:
+    """Return whether extracted cache data contains a pooling CacheList sub-cache."""
+    for layer_state in cache_data:
+        if not isinstance(layer_state, dict):
+            continue
+        if (
+            layer_state.get("cache_type") != "CacheList"
+            and layer_state.get("class_name") != "CacheList"
+        ):
+            continue
+        sub_class_names = layer_state.get("sub_class_names") or []
+        if not sub_class_names:
+            meta_state = layer_state.get("meta_state")
+            if (
+                isinstance(meta_state, (list, tuple))
+                and meta_state
+                and isinstance(meta_state[0], (list, tuple))
+            ):
+                sub_class_names = meta_state[0]
+        if any(str(name) in _POOLING_CACHE_SUB_CLASSES for name in sub_class_names):
+            return True
+    return False
 
 
 @dataclass
@@ -563,6 +588,9 @@ class BlockAwarePrefixCache(CacheManager):
             )
 
         blocks_saved_to_ssd = 0
+        require_contiguous_pooling_snapshots = bool(
+            boundary_snapshots
+        ) and _contains_pooling_cache_state(cache_data)
         # Supersede-on-extend tracking (rotating models only, see below).
         first_new_block_idx: int | None = None
         tip_block_saved = False
@@ -575,6 +603,30 @@ class BlockAwarePrefixCache(CacheManager):
             # Token range in the original sequence (accounting for existing tokens)
             global_start = existing_tokens + start_idx
             global_end = existing_tokens + end_idx
+            is_last_block = i == num_new_blocks - 1
+            has_boundary_snapshot = (
+                boundary_snapshots is not None and global_end in boundary_snapshots
+            )
+
+            # PoolingCache boundary snapshots form an absolute-range delta
+            # chain. Publishing a placeholder for a missing middle boundary
+            # makes every later block unreconstructable and surfaces as a
+            # CacheList signature mismatch on the next restore. Keep the valid
+            # prefix only; the MTP boundary path should normally provide every
+            # intermediate snapshot.
+            if (
+                require_contiguous_pooling_snapshots
+                and not is_last_block
+                and not has_boundary_snapshot
+            ):
+                logger.warning(
+                    "Stopping PoolingCache prefix store for %s at %d tokens: "
+                    "missing boundary snapshot at %d",
+                    request_id,
+                    global_start,
+                    global_end,
+                )
+                break
 
             # Compute parent hash for chain-based lookup
             parent_hash = None
@@ -669,8 +721,6 @@ class BlockAwarePrefixCache(CacheManager):
                 else:
                     cache_start = start_idx
                     cache_end = end_idx
-
-                is_last_block = i == num_new_blocks - 1
 
                 # Look up boundary snapshot BEFORE the continuity check.
                 # Snapshots are self-contained — they carry the full cache

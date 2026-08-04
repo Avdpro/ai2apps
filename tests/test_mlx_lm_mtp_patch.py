@@ -69,6 +69,105 @@ class TestCacheRollback:
         assert pool._undo_chain is False
 
 
+class TestMtpBoundaryCommit:
+    @staticmethod
+    def _run_full_accept_cycle(monkeypatch, *, emitted, drafts, clamp=None):
+        import mlx.core as mx
+
+        from omlx.patches.mlx_lm_mtp import batch_generator as bg
+
+        cache = SimpleNamespace(offset=emitted - 1)
+        model = SimpleNamespace(_omlx_mtp_commit_align=4)
+        if clamp is not None:
+            model.mtp_clamp_accept = lambda _cache, accepted, _drafts: min(
+                accepted, clamp
+            )
+
+        draft_ids = list(range(1, drafts + 1))
+        state = bg._MtpState(
+            uid=1,
+            chain=True,
+            depth=drafts,
+            mtp_cache=[],
+            next_main=mx.array([15], dtype=mx.uint32),
+            drafts=mx.array(draft_ids, dtype=mx.uint32),
+            draft_lps=[mx.zeros((32,)) for _ in draft_ids],
+        )
+
+        def logits_for(targets):
+            rows = []
+            for target in targets:
+                row = [-100.0] * 32
+                row[target] = 0.0
+                rows.append(row)
+            return mx.array([rows], dtype=mx.float32)
+
+        def fake_backbone(_model, inputs, _cache, **_kwargs):
+            width = int(inputs.shape[1])
+            cache.offset += width
+            targets = draft_ids + [20] if width > 1 else [21]
+            return (
+                logits_for(targets),
+                mx.zeros((1, width, 8), dtype=mx.float32),
+                None,
+            )
+
+        def fake_rollback(_model, _cache, accepted, num_drafts, _gdn_states):
+            cache.offset -= num_drafts - accepted
+            return True
+
+        def greedy(logprobs):
+            return mx.argmax(logprobs, axis=-1).astype(mx.uint32)
+
+        batch = SimpleNamespace(
+            model=model,
+            prompt_cache=[cache],
+            tokens=[list(range(emitted))],
+            samplers=[None],
+            fallback_sampler=greedy,
+            logits_processors=[],
+            _token_context=[],
+        )
+
+        monkeypatch.setattr(bg, "_call_backbone", fake_backbone)
+        monkeypatch.setattr(bg, "_chain_rollback", fake_rollback)
+        monkeypatch.setattr(bg, "_chain_next_drafts", lambda *args, **kwargs: None)
+        monkeypatch.setattr(bg, "_clear_rollback", lambda _cache: None)
+
+        bg._run_verify_cycle_chain(batch, state)
+        return batch, state, cache
+
+    @pytest.mark.parametrize(
+        ("drafts", "clamp", "boundary_source"),
+        [
+            (1, None, "bonus"),
+            (2, None, "draft"),
+            (3, 1, "verify"),
+            (4, None, "draft"),
+        ],
+    )
+    def test_boundary_emit_matches_backbone_offset(
+        self, monkeypatch, drafts, clamp, boundary_source
+    ):
+        batch, state, cache = self._run_full_accept_cycle(
+            monkeypatch,
+            emitted=2,
+            drafts=drafts,
+            clamp=clamp,
+        )
+
+        distance = 4 - len(batch.tokens[0])
+        emitted_sources = []
+        for _ in range(distance):
+            token_id, _logprobs, source = state.queue.popleft()
+            batch.tokens[0].append(token_id)
+            emitted_sources.append(source)
+
+        assert emitted_sources[-1] == boundary_source
+        assert len(batch.tokens[0]) == 4
+        assert cache.offset == 4
+
+
 class TestQwen35Model:
     @pytest.fixture(autouse=True)
     def _apply(self):

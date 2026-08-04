@@ -5564,6 +5564,7 @@ class Scheduler:
             )
 
         self._boundary_snapshot_required = True
+        self._enable_mtp_boundary_alignment()
         logger.debug(
             "Captured prefill boundary cache snapshot for %s at %s tokens",
             request_id,
@@ -5716,12 +5717,7 @@ class Scheduler:
             # few tokens ahead of the emitted count when a boundary token
             # surfaces, which forces the consistency guard in
             # _extract_boundary_snapshot to skip most captures.
-            block = int(self.config.paged_cache_block_size or 0)
-            if block > 0:
-                try:
-                    self.model._omlx_mtp_commit_align = block
-                except Exception:
-                    pass
+            self._enable_mtp_boundary_alignment()
         else:
             logger.debug(
                 "Boundary cache snapshots disabled (no stateful non-sliceable "
@@ -5729,6 +5725,16 @@ class Scheduler:
             )
 
         return self._boundary_snapshot_required
+
+    def _enable_mtp_boundary_alignment(self) -> None:
+        """Tell MTP decode to expose exact cache state at paged boundaries."""
+        block = int(self.config.paged_cache_block_size or 0)
+        if block <= 0:
+            return
+        try:
+            self.model._omlx_mtp_commit_align = block
+        except Exception:
+            pass
 
     def _extract_boundary_snapshot(
         self, uid: int, expected_tokens: int | None = None
