@@ -6,6 +6,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+try:
+    import mlx.core as mx
+
+    HAS_MLX = True
+except ImportError:
+    HAS_MLX = False
+
 logger = logging.getLogger(__name__)
 
 POOLING_CACHE_DELTA_CLASS = "PoolingCacheDelta"
@@ -88,7 +95,16 @@ def compact_pooling_cache_snapshot(
                 )
                 continue
 
+            # mx.contiguous, not a bare slice: a retained view keeps its
+            # whole parent buffer alive, so an in-memory snapshot would pin
+            # the entire cumulative pooled tensor instead of this block's
+            # delta -- the compaction saves nothing and total retention goes
+            # quadratic in context length. The SSD path escapes this only
+            # because serialization copies the bytes out. (PoolingCache
+            # .extract() copies for the same reason, cache_extras.py:930.)
             delta = pooled[:, expected_start:expected_end]
+            if HAS_MLX and hasattr(mx, "contiguous"):
+                delta = mx.contiguous(delta)
             compacted_states[sub_idx] = (
                 state[0],
                 state[1],
