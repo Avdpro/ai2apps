@@ -1489,46 +1489,108 @@ class TestIndexerFallbackTiling:
         ref = (mx.maximum(scores, 0) * 0.125 * weights).sum(axis=1)
         assert float(mx.abs(got - ref).max()) < 1e-5
 
+    def test_missing_native_warning_fires_once(
+        self, applied_patch, caplog, monkeypatch
+    ):
+        import logging
+        import sys
+
+        import mlx.core as mx
+
+        from omlx.custom_kernels.glm_moe_dsa import fast as glm_fast
+
+        dm = sys.modules["mlx_lm.models.deepseek_v4"]
+        config = dm.ModelArgs(
+            hidden_size=16,
+            q_lora_rank=16,
+            qk_rope_head_dim=2,
+            num_hidden_layers=1,
+            compress_ratios=[4],
+            index_n_heads=32,
+            index_head_dim=128,
+            index_topk=8,
+        )
+        indexer = dm.Indexer(config, compress_ratio=4)
+        pooled = mx.zeros((1, 64, 128), dtype=mx.float16)
+        monkeypatch.setattr(
+            dm.Compressor,
+            "__call__",
+            lambda self, x, pool_cache, offset: pooled,
+        )
+        monkeypatch.setattr(glm_fast, "has_symbol", lambda name: False)
+        monkeypatch.setattr(dm, "_DEEPSEEK_V4_INDEXER_NATIVE_DISABLED", False)
+        monkeypatch.setattr(dm, "_DEEPSEEK_V4_INDEXER_FALLBACK_WARNED", False)
+
+        x = mx.zeros((1, 64, 16), dtype=mx.float16)
+        projected_q = mx.zeros((1, 32, 64, 128), dtype=mx.float16)
+        projected_weights = mx.zeros((1, 64, 32), dtype=mx.float16)
+        with caplog.at_level(logging.WARNING, logger=dm.__name__):
+            for _ in range(2):
+                result = indexer(
+                    x,
+                    q_residual=x,
+                    position_rope=None,
+                    pool_cache=None,
+                    offset=0,
+                    projected_q=projected_q,
+                    projected_weights=projected_weights,
+                )
+                mx.eval(result)
+
+        fallback_warnings = [
+            record
+            for record in caplog.records
+            if "native dsa_indexer_scores/dsa_topk_indices unavailable"
+            in record.getMessage()
+        ]
+        assert len(fallback_warnings) == 1
+
     def test_tiling_selects_identical_topk(self, applied_patch):
         # Split a non-reduced axis: the top-k indices must be bit-stable
         # regardless of tile size, at pooled counts that straddle the tile.
         mx, dm = self._reduce_and_ref()
         mx.random.seed(1)
-        H, L, Dh, topk = 64, 32, 128, 64
-        scale = Dh ** -0.5
+        heads, length, head_dim, topk = 64, 32, 128, 64
+        scale = head_dim**-0.5
 
         def untiled(q, pooled, w):
             wf = (w.astype(mx.float32)).swapaxes(-1, -2)[..., None]
-            s = q.astype(mx.float32) @ pooled[:, None].swapaxes(-1, -2).astype(mx.float32)
+            s = q.astype(mx.float32) @ pooled[:, None].swapaxes(-1, -2).astype(
+                mx.float32
+            )
             return dm._indexer_head_reduce(s, wf, scale)
 
         def tiled(q, pooled, w, tile):
             wf = (w.astype(mx.float32)).swapaxes(-1, -2)[..., None]
             qf = q.astype(mx.float32)
             kf = pooled[:, None].swapaxes(-1, -2).astype(mx.float32)
-            P = pooled.shape[1]
-            if P <= tile:
+            pool_count = pooled.shape[1]
+            if pool_count <= tile:
                 return dm._indexer_head_reduce(qf @ kf, wf, scale)
             return mx.concatenate(
-                [dm._indexer_head_reduce(qf @ kf[..., s:s + tile], wf, scale)
-                 for s in range(0, P, tile)],
+                [
+                    dm._indexer_head_reduce(qf @ kf[..., s : s + tile], wf, scale)
+                    for s in range(0, pool_count, tile)
+                ],
                 axis=-1,
             )
 
-        for P in (255, 256, 257, 800):
-            q = mx.random.normal((1, H, L, Dh))
-            pooled = mx.random.normal((1, P, Dh))
-            w = mx.random.normal((1, L, H))
+        for pool_count in (255, 256, 257, 800):
+            q = mx.random.normal((1, heads, length, head_dim))
+            pooled = mx.random.normal((1, pool_count, head_dim))
+            w = mx.random.normal((1, length, heads))
             a = untiled(q, pooled, w)
             b = tiled(q, pooled, w, tile=256)
-            k = min(topk, P)
+            k = min(topk, pool_count)
             ia = mx.sort(mx.argpartition(-a, k - 1, axis=-1)[..., :k], axis=-1)
             ib = mx.sort(mx.argpartition(-b, k - 1, axis=-1)[..., :k], axis=-1)
-            assert int((ia != ib).sum()) == 0, f"top-k differs at P={P}"
+            assert (
+                int((ia != ib).sum()) == 0
+            ), f"top-k differs at pool_count={pool_count}"
 
     def test_tile_stays_under_int32_index_limit(self, applied_patch):
         # The prefill chunk is 512 and index heads are 64; the tiled matmul
         # output must stay below 2**31 elements at any context length.
         _, dm = self._reduce_and_ref()
-        assert 64 * 512 * dm._INDEXER_POOL_TILE < 2 ** 31
-        assert dm._INDEXER_MAX_ELEMS < 2 ** 31
+        assert 64 * 512 * dm._INDEXER_POOL_TILE < 2**31
+        assert dm._INDEXER_MAX_ELEMS < 2**31

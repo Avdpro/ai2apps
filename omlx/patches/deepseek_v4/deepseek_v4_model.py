@@ -1275,7 +1275,9 @@ class Indexer(nn.Module):
             tile = max(1024, min(_INDEXER_POOL_TILE, _INDEXER_MAX_ELEMS // per_pool))
             scores = mx.concatenate(
                 [
-                    _indexer_head_reduce(qf @ kf[..., s : s + tile], weights, self.scale)
+                    _indexer_head_reduce(
+                        qf @ kf[..., s : s + tile], weights, self.scale
+                    )
                     for s in range(0, n_pool, tile)
                 ],
                 axis=-1,
