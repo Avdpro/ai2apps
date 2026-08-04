@@ -1460,3 +1460,75 @@ class TestNaxMoEStockRouting:
         gated = linear._native_block_kind(decode_x, True)
         monkeypatch.setattr(sl, "_nax_prefers_stock", lambda n: False)
         assert gated == linear._native_block_kind(decode_x, True)
+
+
+class TestIndexerFallbackTiling:
+    """The MLX indexer fallback (used when the native glm_moe_dsa kernel is
+    not built) tiles the pooled axis so its (B, heads, L, P) intermediate
+    never crosses 2**31 elements — the boundary where mlx int32 kernel
+    indexing silently zeroes the tail and corrupts top-k selection at
+    >256k context — while keeping top-k selection identical to the untiled
+    reduction."""
+
+    def _reduce_and_ref(self):
+        # The patch registers deepseek_v4_model.py as mlx_lm.models.deepseek_v4
+        # (its relative `.base` import resolves there); import it by that name.
+        import sys
+
+        import mlx.core as mx
+
+        dm = sys.modules["mlx_lm.models.deepseek_v4"]
+        return mx, dm
+
+    def test_head_reduce_matches_naive(self, applied_patch):
+        mx, dm = self._reduce_and_ref()
+        mx.random.seed(0)
+        scores = mx.random.normal((1, 8, 16, 64))
+        weights = mx.random.normal((1, 8, 16, 1))
+        got = dm._indexer_head_reduce(scores, weights, 0.125)
+        ref = (mx.maximum(scores, 0) * 0.125 * weights).sum(axis=1)
+        assert float(mx.abs(got - ref).max()) < 1e-5
+
+    def test_tiling_selects_identical_topk(self, applied_patch):
+        # Split a non-reduced axis: the top-k indices must be bit-stable
+        # regardless of tile size, at pooled counts that straddle the tile.
+        mx, dm = self._reduce_and_ref()
+        mx.random.seed(1)
+        H, L, Dh, topk = 64, 32, 128, 64
+        scale = Dh ** -0.5
+
+        def untiled(q, pooled, w):
+            wf = (w.astype(mx.float32)).swapaxes(-1, -2)[..., None]
+            s = q.astype(mx.float32) @ pooled[:, None].swapaxes(-1, -2).astype(mx.float32)
+            return dm._indexer_head_reduce(s, wf, scale)
+
+        def tiled(q, pooled, w, tile):
+            wf = (w.astype(mx.float32)).swapaxes(-1, -2)[..., None]
+            qf = q.astype(mx.float32)
+            kf = pooled[:, None].swapaxes(-1, -2).astype(mx.float32)
+            P = pooled.shape[1]
+            if P <= tile:
+                return dm._indexer_head_reduce(qf @ kf, wf, scale)
+            return mx.concatenate(
+                [dm._indexer_head_reduce(qf @ kf[..., s:s + tile], wf, scale)
+                 for s in range(0, P, tile)],
+                axis=-1,
+            )
+
+        for P in (255, 256, 257, 800):
+            q = mx.random.normal((1, H, L, Dh))
+            pooled = mx.random.normal((1, P, Dh))
+            w = mx.random.normal((1, L, H))
+            a = untiled(q, pooled, w)
+            b = tiled(q, pooled, w, tile=256)
+            k = min(topk, P)
+            ia = mx.sort(mx.argpartition(-a, k - 1, axis=-1)[..., :k], axis=-1)
+            ib = mx.sort(mx.argpartition(-b, k - 1, axis=-1)[..., :k], axis=-1)
+            assert int((ia != ib).sum()) == 0, f"top-k differs at P={P}"
+
+    def test_tile_stays_under_int32_index_limit(self, applied_patch):
+        # The prefill chunk is 512 and index heads are 64; the tiled matmul
+        # output must stay below 2**31 elements at any context length.
+        _, dm = self._reduce_and_ref()
+        assert 64 * 512 * dm._INDEXER_POOL_TILE < 2 ** 31
+        assert dm._INDEXER_MAX_ELEMS < 2 ** 31

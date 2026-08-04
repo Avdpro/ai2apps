@@ -1,5 +1,6 @@
 # Copyright © 2026 Apple Inc.
 
+import logging
 import math
 from dataclasses import dataclass, field
 from functools import lru_cache, partial
@@ -457,6 +458,33 @@ def _overlap_compress_kv(kv, gate, ape, head_dim):
 
     weights = mx.softmax(gate, axis=-2, precise=True)
     return (kv * weights).sum(axis=-2)
+
+
+# Pooled-axis tile for the MLX indexer fallback (used when the native
+# glm_moe_dsa extension is not built). The native dsa_indexer_scores kernel
+# keeps the (heads, L, P) score tensor in registers; the fallback has to
+# materialize it, and at ratio 4 with a 512-token chunk P = ctx/4, so the
+# intermediate is (1, 64, 512, ctx/4) fp32 — 8.3 GiB at 273k context, read
+# five more times. Worse, 64*512*P crosses 2**31 elements at ctx = 256k, the
+# boundary where mlx's int32 kernel indexing silently zeros the tail and
+# corrupts top-k selection. Tiling the pooled axis bounds the live
+# intermediate at 64*512*TILE and keeps every matmul under 2**31.
+_INDEXER_POOL_TILE = 16384
+# mlx kernels index with int32, so a tensor at or past 2**31 elements has its
+# tail silently zeroed. Stay a factor of 2 below that. For a 512-token chunk
+# with 64 index heads this is reached at P = ctx/4 ~= 32768, i.e. ctx ~= 128k.
+_INDEXER_MAX_ELEMS = 2**30
+_DEEPSEEK_V4_INDEXER_FALLBACK_WARNED = False
+
+
+@partial(mx.compile, shapeless=True)
+def _indexer_head_reduce(scores, weights, scale):
+    """relu -> scale -> head-weight -> head-sum, fused over `scores`.
+
+    `scores` is (B, H, L, P_tile); the reduction is over the head axis (1),
+    entirely within each pooled tile, so tiling P never crosses the reduce.
+    """
+    return (mx.maximum(scores, 0) * scale * weights).sum(axis=1)
 
 
 @partial(mx.compile, shapeless=True)
@@ -1173,9 +1201,26 @@ class Indexer(nn.Module):
             try:
                 from omlx.custom_kernels.glm_moe_dsa import fast as glm_fast
 
-                if glm_fast.has_symbol("dsa_indexer_scores") and glm_fast.has_symbol(
-                    "dsa_topk_indices"
-                ):
+                _have_native = glm_fast.has_symbol(
+                    "dsa_indexer_scores"
+                ) and glm_fast.has_symbol("dsa_topk_indices")
+                if not _have_native:
+                    # Warn only when the kernels are genuinely missing -- the
+                    # shape predicates above legitimately skip small/early
+                    # chunks, so warning outside this branch cries wolf. The
+                    # miss is otherwise completely silent, and the MLX
+                    # fallback's prefill slope is ~4x worse at long context.
+                    global _DEEPSEEK_V4_INDEXER_FALLBACK_WARNED
+                    if not _DEEPSEEK_V4_INDEXER_FALLBACK_WARNED:
+                        _DEEPSEEK_V4_INDEXER_FALLBACK_WARNED = True
+                        logging.getLogger(__name__).warning(
+                            "deepseek_v4: native dsa_indexer_scores/"
+                            "dsa_topk_indices unavailable (glm_moe_dsa "
+                            "extension not built); falling back to MLX. "
+                            "Long-context prefill is several times slower "
+                            "(rebuild with OMLX_WITH_CUSTOM_KERNEL=1)."
+                        )
+                if _have_native:
                     weights = (
                         self.weights_proj(x)
                         if projected_weights is None
@@ -1207,14 +1252,34 @@ class Indexer(nn.Module):
             except Exception:
                 _DEEPSEEK_V4_INDEXER_NATIVE_DISABLED = True
 
-        scores = q.astype(mx.float32) @ pooled[:, None].swapaxes(-1, -2).astype(
-            mx.float32
-        )
-        scores = mx.maximum(scores, 0) * self.scale
         weights = (
             self.weights_proj(x) if projected_weights is None else projected_weights
         ).astype(mx.float32) * (self.n_heads**-0.5)
-        scores = (scores * weights.swapaxes(-1, -2)[..., None]).sum(axis=1)
+        weights = weights.swapaxes(-1, -2)[..., None]  # (B, H, L, 1)
+        qf = q.astype(mx.float32)
+        kf = pooled[:, None].swapaxes(-1, -2).astype(mx.float32)  # (B, 1, Dh, P)
+        n_pool = pooled.shape[1]
+        n_elems = qf.shape[0] * qf.shape[1] * qf.shape[2] * n_pool
+        if n_elems < _INDEXER_MAX_ELEMS:
+            # Single matmul: fastest, and the intermediate is safely indexable.
+            scores = _indexer_head_reduce(qf @ kf, weights, self.scale)
+        else:
+            # Only past the int32 indexing limit is tiling worth its cost:
+            # splitting the pooled axis adds matmul launches and a full-width
+            # concatenate (measured: ~1.2x slower slope at 273k), but an
+            # intermediate over 2**31 elements is silently zeroed by mlx's
+            # int32 kernel indexing, which corrupts top-k selection. Choose
+            # the largest tile that stays under the limit so the split is as
+            # coarse as correctness allows.
+            per_pool = max(1, qf.shape[0] * qf.shape[1] * qf.shape[2])
+            tile = max(1024, min(_INDEXER_POOL_TILE, _INDEXER_MAX_ELEMS // per_pool))
+            scores = mx.concatenate(
+                [
+                    _indexer_head_reduce(qf @ kf[..., s : s + tile], weights, self.scale)
+                    for s in range(0, n_pool, tile)
+                ],
+                axis=-1,
+            )
         if pmask is not None:
             scores = mx.where(
                 pmask if pmask.ndim == 3 else pmask[None],
