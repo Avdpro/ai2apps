@@ -267,9 +267,10 @@ final class PerformanceScreenVM {
         Int(embeddingBatchSizeText.trimmingCharacters(in: .whitespaces))
     }
 
-    private var parsedIdleTimeout: Int? {
+    var parsedIdleTimeout: Int? {
         let t = idleTimeoutText.trimmingCharacters(in: .whitespaces)
-        return t.isEmpty ? nil : Int(t)
+        guard !t.isEmpty, let value = Int(t) else { return nil }
+        return value == 0 ? nil : value
     }
 
     private var parsedInitialCacheBlocks: Int? {

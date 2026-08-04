@@ -302,7 +302,7 @@ class GlobalSettingsRequest(BaseModel):
     ui_language: str | None = None
 
     # Idle timeout settings. null/0/"" disables the global fallback.
-    idle_timeout_seconds: int | None = None
+    idle_timeout_seconds: int | None = Field(default=None, ge=60)
 
     # Auth settings
     api_key: str | None = None
@@ -311,11 +311,11 @@ class GlobalSettingsRequest(BaseModel):
     @field_validator("idle_timeout_seconds", mode="before")
     @classmethod
     def _normalize_idle_timeout(cls, v):
-        if v is None or v == "" or v == 0:
+        if v == "":
             return None
-        if isinstance(v, int) and v >= 60:
-            return v
-        raise ValueError("idle_timeout_seconds must be >= 60, or 0/null to disable")
+        if isinstance(v, int) and not isinstance(v, bool) and v == 0:
+            return None
+        return v
 
 
 class HFDownloadRequest(BaseModel):

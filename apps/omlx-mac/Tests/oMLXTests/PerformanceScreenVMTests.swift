@@ -127,6 +127,17 @@ final class PerformanceScreenVMTests: XCTestCase {
         XCTAssertNil(noSnapshot.wiredLimitWarningText)
     }
 
+    func testIdleTimeoutParsingCanonicalizesZeroAsDisabled() {
+        let vm = PerformanceScreenVM()
+        XCTAssertNil(vm.parsedIdleTimeout)
+
+        vm.idleTimeoutText = "0"
+        XCTAssertNil(vm.parsedIdleTimeout)
+
+        vm.idleTimeoutText = "60"
+        XCTAssertEqual(vm.parsedIdleTimeout, 60)
+    }
+
     func testSystemInfoDecodesSnakeCaseMemoryFields() throws {
         let json = """
         {

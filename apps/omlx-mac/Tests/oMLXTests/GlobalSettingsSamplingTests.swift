@@ -121,6 +121,30 @@ final class GlobalSettingsSamplingTests: XCTestCase {
         XCTAssertEqual(json["hot_cache_max_size"] as? String, "8GB")
     }
 
+    func testPatchDistinguishesIdleTimeoutOmittedNullAndValue() throws {
+        let omittedData = try encoder.encode(GlobalSettingsPatch())
+        let omitted = try JSONSerialization.jsonObject(
+            with: omittedData
+        ) as! [String: Any]
+        XCTAssertNil(omitted["idle_timeout_seconds"])
+
+        var disabledPatch = GlobalSettingsPatch()
+        disabledPatch.idleTimeoutSeconds = .null
+        let disabledData = try encoder.encode(disabledPatch)
+        let disabled = try JSONSerialization.jsonObject(
+            with: disabledData
+        ) as! [String: Any]
+        XCTAssertTrue(disabled["idle_timeout_seconds"] is NSNull)
+
+        var enabledPatch = GlobalSettingsPatch()
+        enabledPatch.idleTimeoutSeconds = .value(120)
+        let enabledData = try encoder.encode(enabledPatch)
+        let enabled = try JSONSerialization.jsonObject(
+            with: enabledData
+        ) as! [String: Any]
+        XCTAssertEqual(enabled["idle_timeout_seconds"] as? Int, 120)
+    }
+
     func testPatchEncodesSamplingFieldsAsSnakeCaseFlatKeys() throws {
         // The Python `GlobalSettingsRequest` accepts the sampling defaults
         // as flat `sampling_*` keys (omlx/admin/routes.py:229-234), not

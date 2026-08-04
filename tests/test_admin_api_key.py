@@ -1149,6 +1149,16 @@ class TestGlobalSettingsValidation:
         req = admin_routes.GlobalSettingsRequest(idle_timeout_seconds=1800)
         assert req.idle_timeout_seconds == 1800
 
+    @pytest.mark.parametrize("value", ["60", 60.0])
+    def test_idle_timeout_preserves_integer_coercion(self, value):
+        req = admin_routes.GlobalSettingsRequest(idle_timeout_seconds=value)
+        assert req.idle_timeout_seconds == 60
+
+    @pytest.mark.parametrize("value", [False, True])
+    def test_idle_timeout_rejects_boolean(self, value):
+        with pytest.raises(ValidationError):
+            admin_routes.GlobalSettingsRequest(idle_timeout_seconds=value)
+
     def test_context_window_policy_rejects_negative(self):
         with pytest.raises(ValidationError):
             admin_routes.GlobalSettingsRequest(sampling_max_context_window_policy=-1)
