@@ -59,7 +59,15 @@ from .patches.sdpa256_attention import set_unfused_headroom_provider
 from .prefill_progress import get_prefill_tracker
 from .prefill_transient_tracker import PrefillTransientTracker
 from .request import Request, RequestOutput, RequestStatus, SamplingParams
-from .speculative.vlm_mtp import VLMMTPDrafter, run_vlm_mtp_decode
+from .speculative.processing_sampler import (
+    MTPProcessingSampler,
+    supports_vlm_mtp_processing,
+)
+from .speculative.vlm_mtp import (
+    VLMMTPDrafter,
+    run_vlm_mtp_decode,
+    vlm_mtp_positioned_sampling_available,
+)
 from .utils.fatal import FATAL_TEARDOWN_TIMEOUT_S, fatal_exit
 from .utils.generation_config import load_generation_config_token_ids
 from .utils.hardware import format_bytes
@@ -7326,25 +7334,35 @@ class Scheduler:
         if drafter is None:
             return None
 
-        # Per-request logits processors (grammar constraints, thinking
-        # budget, repetition/presence/frequency penalties) have no
-        # application point on this path: run_vlm_mtp_decode threads only a
-        # sampler into mlx-vlm's _mtp_rounds, and a sampler sees logits
-        # without the token history processors need. Model-level suppress
-        # tokens are the one exception, reproduced below via
-        # _make_suppressing_sampler. Same convention as Lightning MTP,
-        # which declines activation when grammar processors are present:
-        # fall back to BatchGenerator so every processor is enforced
-        # (#2399).
-        if logits_processors and any(
-            not getattr(proc, "_omlx_suppress_processor", False)
-            for proc in logits_processors
-        ):
+        # Per-request logits processors that implement the snapshot/restore
+        # protocol (today: ThinkingBudgetProcessor) ARE applied on this
+        # path: MTPProcessingSampler threads them into mlx-vlm's verify
+        # walk through the positioned ``sample_target`` hook, with
+        # position-keyed state checkpoints so draft rejections rewind them
+        # correctly (see omlx/speculative/processing_sampler.py). Model
+        # level suppress tokens are reproduced via _make_suppressing_sampler.
+        # Everything else (grammar constraints, repetition/presence/
+        # frequency penalties) still has no application point here — same
+        # convention as Lightning MTP: fall back to BatchGenerator so every
+        # processor stays enforced (#2399).
+        mtp_processors: list[Any] = []
+        unsupported_processors: list[Any] = []
+        for proc in logits_processors or []:
+            if getattr(proc, "_omlx_suppress_processor", False):
+                continue
+            if supports_vlm_mtp_processing(proc):
+                mtp_processors.append(proc)
+            else:
+                unsupported_processors.append(proc)
+        if unsupported_processors:
             logger.info(
                 "vlm_mtp routing skipped for %s: request carries per-request "
-                "logits processors (grammar / thinking budget / penalties); "
-                "falling back to BatchGenerator",
+                "logits processors without vlm_mtp support (%s); falling "
+                "back to BatchGenerator",
                 request.request_id,
+                ", ".join(
+                    type(proc).__name__ for proc in unsupported_processors
+                ),
             )
             return None
 
@@ -7382,6 +7400,28 @@ class Scheduler:
                 request.request_id,
             )
             return None
+
+        if mtp_processors and not vlm_mtp_positioned_sampling_available(self.model):
+            # Without speculative_logits_from_hidden visible to the round
+            # loop, mlx-vlm's verify step samples target tokens from raw
+            # logits in one vectorized call and never consults the
+            # positioned ``sample_target`` hook — processors would be
+            # silently dropped again (#2399). The check must look at what
+            # the round loop will actually see: for mRoPE adapters (Qwen
+            # VLMs) _VLMAdapterMTPProxy hides the inner model's
+            # speculative_* fast paths, so probing the inner model
+            # directly would pass the gate and then silently skip the
+            # budget. Decline instead.
+            logger.info(
+                "vlm_mtp routing skipped for %s: request carries logits "
+                "processors but positioned verify sampling is unavailable "
+                "on %s (speculative_logits_from_hidden hidden or missing "
+                "on the round-loop view, e.g. mRoPE adapters); falling "
+                "back to BatchGenerator",
+                request.request_id,
+                type(self.model).__name__,
+            )
+            return None
         target_model = self.model
 
         if not last_tokens:
@@ -7392,6 +7432,14 @@ class Scheduler:
             return None
 
         mtp_sampler = _make_suppressing_sampler(sampler, self._model_suppress_tokens)
+        proc_sampler: MTPProcessingSampler | None = None
+        if mtp_processors:
+            proc_sampler = MTPProcessingSampler(
+                mtp_sampler,
+                mtp_processors,
+                request.prompt_token_ids or [],
+            )
+            mtp_sampler = proc_sampler
         last_arr = mx.array(last_tokens)[None]  # (1, len_last)
         try:
             with mx.stream(self._stream):
@@ -7423,8 +7471,15 @@ class Scheduler:
             logits = out.logits[:, -1, :]
             hidden_raw = out.hidden_states
 
+        if proc_sampler is not None:
+            # Apply processors to the post-prefill logits (history=prompt)
+            # so the first bonus honours them too, then checkpoint the
+            # round loop's starting position (mlx-vlm bakes in emitted=1).
+            logits = proc_sampler.process_first_logits(logits)
         first_bonus_arr = mtp_sampler(logits)  # mx.array shape [1]
         mx.eval(first_bonus_arr)
+        if proc_sampler is not None:
+            proc_sampler.note_first_bonus(int(first_bonus_arr.item()))
 
         if isinstance(hidden_raw, list):
             hidden = hidden_raw[-1]
@@ -7465,6 +7520,10 @@ class Scheduler:
                 e,
                 request.request_id,
             )
+            if proc_sampler is not None:
+                # The BatchGenerator fallback reuses these processors —
+                # rewind the state mutated by process_first_logits above.
+                proc_sampler.reset_processors()
             return None
 
         uid = self._vlm_mtp_next_uid
