@@ -26,6 +26,7 @@ from ..model_discovery import (
     SUPPORTED_RERANKER_ARCHITECTURES,
     _is_causal_lm_reranker,
 )
+from ..patches.qwen3_sliding_window import apply_qwen3_sliding_window_patch
 from ..utils.compile_cache import clear_thread_compile_cache
 from ..utils.image import load_image
 from .mlx_embeddings_compat import (
@@ -117,6 +118,7 @@ class MLXRerankerModel:
         self._doc_embed_token_id: int | None = None
         self._query_embed_token_id: int | None = None
         self._jina_projector = None
+        self._is_jina_v35 = False
         self._prefix_tokens: list[int] | None = None
         self._suffix_tokens: list[int] | None = None
         self._is_compiled = False
@@ -135,6 +137,48 @@ class MLXRerankerModel:
             return architectures[0] if architectures else None
         except (json.JSONDecodeError, IOError):
             return None
+
+    def _detect_jina_v35(self) -> bool:
+        """Detect and validate the config features required by Jina v3.5."""
+        config_path = Path(self.model_name) / "config.json"
+        try:
+            config = json.loads(config_path.read_text())
+        except (json.JSONDecodeError, OSError) as error:
+            raise ValueError(
+                f"Could not read Jina reranker config: {config_path}"
+            ) from error
+
+        layer_types = config.get("layer_types")
+        if layer_types is None:
+            return False
+        if not isinstance(layer_types, list) or not layer_types:
+            raise ValueError("Jina layer_types must be a non-empty list when present.")
+
+        num_hidden_layers = config.get("num_hidden_layers")
+        if not isinstance(num_hidden_layers, int) or num_hidden_layers <= 0:
+            raise ValueError("Jina layer_types require a positive num_hidden_layers.")
+        if len(layer_types) != num_hidden_layers:
+            raise ValueError(
+                f"len(layer_types)={len(layer_types)} != "
+                f"num_hidden_layers={num_hidden_layers}"
+            )
+
+        supported_types = {"full_attention", "sliding_attention"}
+        unsupported_types = sorted(set(layer_types) - supported_types)
+        if unsupported_types:
+            raise ValueError(
+                f"Unsupported Jina attention layer types: {unsupported_types}"
+            )
+
+        if "sliding_attention" in layer_types:
+            sliding_window = config.get("sliding_window")
+            if not isinstance(sliding_window, int) or sliding_window <= 0:
+                raise ValueError(
+                    "Jina sliding_attention layers require a positive "
+                    "sliding_window."
+                )
+
+        return True
 
     def _load_xlm_roberta(self) -> Tuple[Any, Any]:
         """Load XLMRoberta model using omlx native implementation."""
@@ -441,18 +485,17 @@ class MLXRerankerModel:
         Jina v3 reranker uses special-token hidden states + projector + cosine
         similarity for listwise scoring.
         """
-        from ..patches.qwen3_sliding_window import apply_qwen3_sliding_window_patch
         from ..utils.model_loading import (
             lm_load_compat as mlx_lm_load,
             maybe_load_custom_quantization,
         )
 
-        # Some Qwen3-backbone rerankers (e.g. jina-reranker-v3.5-mlx) declare
-        # per-layer sliding/full attention via layer_types/sliding_window,
-        # which the pinned mlx-lm Qwen3 loader otherwise silently ignores.
-        # Backward-compatible for every other Qwen3 model - see the patch
-        # module's docstring.
-        if apply_qwen3_sliding_window_patch():
+        self._is_jina_v35 = self._detect_jina_v35()
+
+        # Jina v3.5 declares per-layer sliding/full attention, which the pinned
+        # mlx-lm Qwen3 loader otherwise silently ignores. Jina v3 has neither
+        # layer_types nor sliding-window attention and keeps its stock path.
+        if self._is_jina_v35 and apply_qwen3_sliding_window_patch():
             logger.info("Qwen3 sliding-window patch applied for %s", self.model_name)
 
         model_path = str(self.model_name)
@@ -492,7 +535,8 @@ class MLXRerankerModel:
 
         logger.info(
             f"Jina reranker tokens: embed_token={doc_embed_token_id}, "
-            f"rerank_token={query_embed_token_id}"
+            f"rerank_token={query_embed_token_id}, "
+            f"scoring={'v3.5' if self._is_jina_v35 else 'v3'}"
         )
 
         return model, tokenizer
@@ -658,10 +702,11 @@ class MLXRerankerModel:
             self._sanitize_jina_text(instruction) if instruction is not None else None
         )
 
+        early_query_anchor = "<|rerank_token|>" if self._is_jina_v35 else ""
         user_content = (
             f"I will provide you with {len(sanitized_docs)} passages, each indicated "
             f"by a numerical identifier. Rank the passages based on their relevance "
-            f"to query: {sanitized_query}<|rerank_token|>\n"
+            f"to query: {sanitized_query}{early_query_anchor}\n"
         )
         if sanitized_instruction:
             user_content += f"<instruct>\n{sanitized_instruction}\n</instruct>\n"
@@ -734,9 +779,7 @@ class MLXRerankerModel:
         numer = mx.sum(doc_vecs * query_vec, axis=-1)
         return numer / denom
 
-    def _fuse_query_vectors(
-        self, query_vecs: list, weights: list[float]
-    ) -> mx.array:
+    def _fuse_query_vectors(self, query_vecs: list, weights: list[float]) -> mx.array:
         """Weighted-average fusion of per-chunk query vectors.
 
         Weight is each chunk's block_weight (max normalized cosine score) -
@@ -893,6 +936,7 @@ class MLXRerankerModel:
         self._doc_embed_token_id = None
         self._query_embed_token_id = None
         self._jina_projector = None
+        self._is_jina_v35 = False
         self._prefix_tokens = None
         self._suffix_tokens = None
 
@@ -1063,16 +1107,12 @@ class MLXRerankerModel:
         max_length: int = 8192,
     ) -> RerankOutput:
         """
-        Rerank using Jina v3.5 dual-matching + block-fusion listwise scoring.
+        Rerank using the config-selected Jina v3 or v3.5 scoring strategy.
 
-        Builds multi-document prompts (dual rerank tokens: early header +
-        late query block), extracts hidden states at special token positions,
-        applies the projector, and scores each chunk against its own query
-        vector. Chunk scores are provisional: after every chunk is scored,
-        their query vectors are fused into one (weighted by each chunk's
-        strongest match) and every document is re-scored against that fused
-        vector for the final result. Uses deterministic greedy chunking under
-        max_length.
+        Jina v3 uses one late query token and scores each chunk independently.
+        Jina v3.5 uses dual query tokens, reads the late position, and fuses
+        per-chunk query vectors before final scoring. Both use deterministic
+        greedy chunking under max_length.
         """
         tokenizer = self.processor
         doc_embed_token_id = self._doc_embed_token_id
@@ -1145,6 +1185,7 @@ class MLXRerankerModel:
         sanitized_query = self._sanitize_jina_text(query)
         sanitized_docs = [self._sanitize_jina_text(doc) for doc in documents]
 
+        scores = [0.0] * len(documents)
         total_tokens = 0
         start = 0
         # Accumulated across all chunks for the block-fusion pass below: each
@@ -1198,11 +1239,13 @@ class MLXRerankerModel:
                 for pos, token_id in enumerate(chunk_input_ids)
                 if token_id == query_embed_token_id
             ]
-            if len(query_positions) != 2:
+            expected_query_positions = 2 if self._is_jina_v35 else 1
+            if len(query_positions) != expected_query_positions:
+                scoring_version = "v3.5" if self._is_jina_v35 else "v3"
                 raise ValueError(
-                    "Jina dual-matching prompt must contain two "
-                    "'<|rerank_token|>' positions (early header + late query "
-                    f"block); found {len(query_positions)} in tokenized input."
+                    f"Jina {scoring_version} prompt must contain "
+                    f"{expected_query_positions} '<|rerank_token|>' position(s); "
+                    f"found {len(query_positions)} in tokenized input."
                 )
 
             doc_positions = [
@@ -1217,52 +1260,47 @@ class MLXRerankerModel:
                 )
 
             selected_doc_positions = doc_positions[: len(chunk_docs)]
-            # Dual matching: score from the LATE rerank-token position. The
-            # early one is an anchor the late position can attend back to,
-            # not a second read-out point. Matches the reference
-            # _score_block, which reads rerank_pos[1].
-            late_query_position = query_positions[1]
-            query_hidden = hidden_states[0, late_query_position, :]
+            # v3 reads its only query position. v3.5 dual matching reads the
+            # late position; the early position is an attention anchor.
+            query_position = query_positions[-1]
+            query_hidden = hidden_states[0, query_position, :]
             doc_hidden = hidden_states[0, selected_doc_positions, :]
 
-            # Upcast to float32 before any scoring math: the checkpoint's
-            # hidden states/projector output are bf16, whose ~3 significant
-            # digits are coarse enough to measurably shift cosine-similarity
-            # results. Matches the reference _score_block, which does the
-            # same upcast (Q_emb_mlx.astype(mx.float32)) immediately after
-            # its own projector call, before any normalization/dot-product
-            # math.
-            query_vec = projector(query_hidden).astype(mx.float32)
-            doc_vecs = projector(doc_hidden).astype(mx.float32)
+            query_vec = projector(query_hidden)
+            doc_vecs = projector(doc_hidden)
+            if self._is_jina_v35:
+                # v3.5 reference scoring upcasts projector output before
+                # cosine and fusion math. Preserve v3's original dtype path.
+                query_vec = query_vec.astype(mx.float32)
+                doc_vecs = doc_vecs.astype(mx.float32)
             cos_scores = self._cosine_similarity(query_vec, doc_vecs)
             mx.eval(cos_scores)
 
-            # Block weight: how strongly this chunk's best match stood out.
-            # Blocks fused below are weighted by this, not scored directly.
-            # Matches the reference _score_block's block_weight.
-            block_weight = float(((1.0 + cos_scores) / 2.0).max())
-
-            chunk_query_vecs.append(query_vec)
-            chunk_weights.append(block_weight)
-            all_doc_indices.extend(chunk_doc_indices)
-            all_doc_vecs.append(doc_vecs)
+            if self._is_jina_v35:
+                block_weight = float(((1.0 + cos_scores) / 2.0).max())
+                chunk_query_vecs.append(query_vec)
+                chunk_weights.append(block_weight)
+                all_doc_indices.extend(chunk_doc_indices)
+                all_doc_vecs.append(doc_vecs)
+            else:
+                for original_idx, score in zip(chunk_doc_indices, cos_scores.tolist()):
+                    scores[original_idx] = float(score)
 
             total_tokens += len(chunk_input_ids)
             start = cursor
 
-        # Block fusion: combine every chunk's query vector into one, weighted
-        # by each chunk's block_weight, then re-score every accumulated
-        # document vector against that single fused vector. Matches the
-        # reference rerank()'s fusion step, rather than treating each chunk's
-        # provisional scores as final.
-        fused_query_vec = self._fuse_query_vectors(chunk_query_vecs, chunk_weights)
-        stacked_doc_vecs = mx.concatenate(all_doc_vecs, axis=0)
-        final_similarities = self._cosine_similarity(fused_query_vec, stacked_doc_vecs)
-        mx.eval(final_similarities)
+        if self._is_jina_v35:
+            fused_query_vec = self._fuse_query_vectors(chunk_query_vecs, chunk_weights)
+            stacked_doc_vecs = mx.concatenate(all_doc_vecs, axis=0)
+            final_similarities = self._cosine_similarity(
+                fused_query_vec, stacked_doc_vecs
+            )
+            mx.eval(final_similarities)
 
-        scores = [0.0] * len(documents)
-        for original_idx, score in zip(all_doc_indices, final_similarities.tolist()):
-            scores[original_idx] = float(score)
+            for original_idx, score in zip(
+                all_doc_indices, final_similarities.tolist()
+            ):
+                scores[original_idx] = float(score)
 
         # Sort by score descending
         indexed_scores = list(enumerate(scores))

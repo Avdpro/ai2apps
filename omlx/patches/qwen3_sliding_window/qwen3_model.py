@@ -25,7 +25,7 @@ See jundot/omlx#2422.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from mlx_lm.models import qwen3 as _qwen3
 from mlx_lm.models.base import create_attention_mask
@@ -33,8 +33,8 @@ from mlx_lm.models.base import create_attention_mask
 
 @dataclass
 class ModelArgs(_qwen3.ModelArgs):
-    layer_types: Optional[List[str]] = None
-    sliding_window: Optional[int] = None
+    layer_types: list[str] | None = None
+    sliding_window: int | None = None
 
 
 class Qwen3Model(_qwen3.Qwen3Model):
@@ -48,13 +48,13 @@ class Qwen3Model(_qwen3.Qwen3Model):
                 f"num_hidden_layers={args.num_hidden_layers}"
             )
         # Boolean list: True -> sliding_attention, False -> full_attention
-        self.is_sliding: List[bool] = [lt == "sliding_attention" for lt in layer_types]
-        self.window_size: Optional[int] = args.sliding_window
+        self.is_sliding: list[bool] = [lt == "sliding_attention" for lt in layer_types]
+        self.window_size: int | None = args.sliding_window
 
     def __call__(
         self,
         inputs,
-        cache: Optional[List[Any]] = None,
+        cache: list[Any] | None = None,
         input_embeddings=None,
     ):
         h = self.embed_tokens(inputs) if input_embeddings is None else input_embeddings

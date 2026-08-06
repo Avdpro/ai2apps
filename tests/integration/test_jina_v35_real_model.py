@@ -83,9 +83,10 @@ def _model_path_from_environment() -> Path:
         f"not architectures={architectures!r}."
     )
 
-    if not (model_path / "rerank.py").is_file() or not (
-        model_path / "modeling.py"
-    ).is_file():
+    if (
+        not (model_path / "rerank.py").is_file()
+        or not (model_path / "modeling.py").is_file()
+    ):
         pytest.skip(
             f"Reference rerank.py/modeling.py not found alongside {model_path} "
             "- needed to compare against oMLX's implementation."
@@ -128,9 +129,9 @@ def _assert_parity(omlx_scores: list[float], reference_results: list[dict]):
     reference_ranking = sorted(
         reference_by_index, key=lambda i: reference_by_index[i], reverse=True
     )
-    assert omlx_ranking == reference_ranking, (
-        f"Ranking mismatch: oMLX={omlx_ranking}, reference={reference_ranking}"
-    )
+    assert (
+        omlx_ranking == reference_ranking
+    ), f"Ranking mismatch: oMLX={omlx_ranking}, reference={reference_ranking}"
 
     for idx in range(len(omlx_scores)):
         assert omlx_scores[idx] == pytest.approx(reference_by_index[idx], abs=1e-3), (
@@ -147,12 +148,14 @@ def test_jina_v35_matches_reference_single_chunk():
 
     model = MLXRerankerModel(str(model_path))
     model.load()
+    assert model._is_jina_v35 is True
     omlx_result = model.rerank(_QUERY, _DOCUMENTS, max_length=8192)
 
     reference = _load_reference_reranker(model_path, max_length=131072)
     reference_results = reference.rerank(_QUERY, _DOCUMENTS)
 
     _assert_parity(omlx_result.scores, reference_results)
+    model.close()
 
 
 def test_jina_v35_matches_reference_forced_multi_chunk():
@@ -164,9 +167,8 @@ def test_jina_v35_matches_reference_forced_multi_chunk():
 
     model = MLXRerankerModel(str(model_path))
     model.load()
-    omlx_result = model.rerank(
-        _QUERY, _DOCUMENTS, max_length=_FORCED_CHUNK_MAX_LENGTH
-    )
+    assert model._is_jina_v35 is True
+    omlx_result = model.rerank(_QUERY, _DOCUMENTS, max_length=_FORCED_CHUNK_MAX_LENGTH)
 
     reference = _load_reference_reranker(
         model_path, max_length=_FORCED_CHUNK_MAX_LENGTH
@@ -174,3 +176,4 @@ def test_jina_v35_matches_reference_forced_multi_chunk():
     reference_results = reference.rerank(_QUERY, _DOCUMENTS)
 
     _assert_parity(omlx_result.scores, reference_results)
+    model.close()

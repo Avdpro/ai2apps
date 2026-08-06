@@ -10,6 +10,7 @@ from safetensors.numpy import save_file
 
 try:
     import mlx.core as mx
+
     HAS_MLX = True
 except ImportError:
     HAS_MLX = False
@@ -133,7 +134,9 @@ class TestCausalLMReranker:
 
         model.model = MagicMock(side_effect=mock_forward)
 
-        result = model._rerank_causal_lm("test query", ["relevant doc", "irrelevant doc"])
+        result = model._rerank_causal_lm(
+            "test query", ["relevant doc", "irrelevant doc"]
+        )
 
         assert isinstance(result, RerankOutput)
         assert len(result.scores) == 2
@@ -165,7 +168,9 @@ class TestCausalLMReranker:
         model._loaded = True
 
         mock_result = RerankOutput(scores=[0.9], indices=[0], total_tokens=10)
-        with patch.object(model, "_rerank_causal_lm", return_value=mock_result) as mock_method:
+        with patch.object(
+            model, "_rerank_causal_lm", return_value=mock_result
+        ) as mock_method:
             result = model.rerank("query", ["doc"])
             mock_method.assert_called_once()
             assert result.scores == [0.9]
@@ -178,7 +183,9 @@ class TestCausalLMReranker:
         model._loaded = True
 
         mock_result = RerankOutput(scores=[0.5], indices=[0], total_tokens=10)
-        with patch.object(model, "_rerank_causal_lm", return_value=mock_result) as mock_method:
+        with patch.object(
+            model, "_rerank_causal_lm", return_value=mock_result
+        ) as mock_method:
             model.rerank("query", ["doc"])
             # max_length=None should use default 8192 for CausalLM
             args, _ = mock_method.call_args
@@ -192,7 +199,9 @@ class TestCausalLMReranker:
         model._loaded = True
 
         mock_result = RerankOutput(scores=[0.5], indices=[0], total_tokens=10)
-        with patch.object(model, "_rerank_causal_lm", return_value=mock_result) as mock_method:
+        with patch.object(
+            model, "_rerank_causal_lm", return_value=mock_result
+        ) as mock_method:
             model.rerank("query", ["doc"], max_length=1024)
             args, _ = mock_method.call_args
             assert args[2] == 1024
@@ -205,7 +214,9 @@ class TestCausalLMReranker:
         model._loaded = True
 
         mock_result = RerankOutput(scores=[0.5], indices=[0], total_tokens=10)
-        with patch.object(model, "_rerank_causal_lm", return_value=mock_result) as mock_method:
+        with patch.object(
+            model, "_rerank_causal_lm", return_value=mock_result
+        ) as mock_method:
             model.rerank("query", ["doc"], max_length=512)
             args, _ = mock_method.call_args
             assert args[2] == 512
@@ -380,7 +391,7 @@ class TestCausalLMPromptAffixes:
 class TestJinaReranker:
     """Focused tests for Jina listwise reranker internals."""
 
-    def _make_jina_model_dir(self, tmp_path, name="jina-reranker-v3-mlx"):
+    def _make_jina_model_dir(self, tmp_path, name="jina-reranker-v3-mlx", *, v35=False):
         """Create a mock model directory with Jina architecture config."""
         model_dir = tmp_path / name
         model_dir.mkdir()
@@ -388,8 +399,41 @@ class TestJinaReranker:
             "model_type": "qwen3",
             "architectures": ["JinaForRanking"],
         }
+        if v35:
+            config.update(
+                {
+                    "num_hidden_layers": 4,
+                    "layer_types": [
+                        "sliding_attention",
+                        "full_attention",
+                        "sliding_attention",
+                        "full_attention",
+                    ],
+                    "sliding_window": 1024,
+                    "use_sliding_window": True,
+                }
+            )
         (model_dir / "config.json").write_text(json.dumps(config))
         return model_dir
+
+    def test_detect_jina_v35_from_attention_config(self, tmp_path):
+        """Only configs with explicit layer_types use v3.5 scoring."""
+        v3_dir = self._make_jina_model_dir(tmp_path, name="v3")
+        v35_dir = self._make_jina_model_dir(tmp_path, name="v35", v35=True)
+
+        assert MLXRerankerModel(str(v3_dir))._detect_jina_v35() is False
+        assert MLXRerankerModel(str(v35_dir))._detect_jina_v35() is True
+
+    def test_detect_jina_v35_rejects_missing_sliding_window(self, tmp_path):
+        """A partial v3.5 config must fail instead of silently using full attention."""
+        model_dir = self._make_jina_model_dir(tmp_path, name="v35", v35=True)
+        config_path = model_dir / "config.json"
+        config = json.loads(config_path.read_text())
+        config["sliding_window"] = None
+        config_path.write_text(json.dumps(config))
+
+        with pytest.raises(ValueError, match="positive sliding_window"):
+            MLXRerankerModel(str(model_dir))._detect_jina_v35()
 
     def test_resolve_token_id_uses_fallback_paths(self):
         """_resolve_token_id should resolve IDs from decoder and convert fallback."""
@@ -461,6 +505,7 @@ class TestJinaReranker:
 
         prompt_without_instruction = model._format_jina_prompt(query, docs)
         assert "<instruct>" not in prompt_without_instruction
+        assert prompt_without_instruction.count("<|rerank_token|>") == 1
 
     def test_format_jina_prompt_emits_dual_rerank_tokens(self):
         """v3.5 dual matching: exactly two '<|rerank_token|>' markers, an
@@ -468,6 +513,7 @@ class TestJinaReranker:
         closing <query> block. Regression test for jundot/omlx#2422 follow-up
         (dual matching / block fusion)."""
         model = MLXRerankerModel("unused")
+        model._is_jina_v35 = True
 
         query = "what is green tea"
         docs = ["green tea health benefits", "coffee market prices"]
@@ -603,7 +649,9 @@ class TestJinaReranker:
         are index-named ("projector.0"/"projector.2") instead of v3's
         "linear1"/"linear2". Same architecture, same math -- should load
         identically. Regression test for jundot/omlx#2422."""
-        model_dir = self._make_jina_model_dir(tmp_path, name="jina-reranker-v3.5-mlx")
+        model_dir = self._make_jina_model_dir(
+            tmp_path, name="jina-reranker-v3.5-mlx", v35=True
+        )
         model = MLXRerankerModel(str(model_dir))
 
         w1 = np.zeros((512, 1024), dtype=np.float32)
@@ -729,6 +777,7 @@ class TestJinaReranker:
         model_dir = self._make_jina_model_dir(tmp_path)
         model = MLXRerankerModel(str(model_dir))
         model._is_jina_reranker = True
+        model._is_jina_v35 = True
         model._doc_embed_token_id = 2001
         model._query_embed_token_id = 2002
         model._jina_projector = lambda x: x
@@ -805,6 +854,7 @@ class TestJinaReranker:
         model_dir = self._make_jina_model_dir(tmp_path)
         model = MLXRerankerModel(str(model_dir))
         model._is_jina_reranker = True
+        model._is_jina_v35 = True
         model._doc_embed_token_id = 2001
         model._query_embed_token_id = 2002
         model._jina_projector = lambda x: x
@@ -826,13 +876,15 @@ class TestJinaReranker:
 
         for bad_count in (1, 3):
             model.processor = _FixedCountTokenizer(bad_count)
-            with patch.object(
-                model,
-                "_get_jina_hidden_states",
-                return_value=mx.zeros((1, bad_count + 1, 2)),
+            with (
+                patch.object(
+                    model,
+                    "_get_jina_hidden_states",
+                    return_value=mx.zeros((1, bad_count + 1, 2)),
+                ),
+                pytest.raises(ValueError, match="must contain 2"),
             ):
-                with pytest.raises(ValueError, match="must contain two"):
-                    model._rerank_jina("query", ["doc a"], max_length=256)
+                model._rerank_jina("query", ["doc a"], max_length=256)
 
     @pytest.mark.skipif(not HAS_MLX, reason="MLX not available")
     def test_fuse_query_vectors_weighted_average(self):
@@ -883,6 +935,7 @@ class TestJinaReranker:
         model_dir = self._make_jina_model_dir(tmp_path)
         model = MLXRerankerModel(str(model_dir))
         model._is_jina_reranker = True
+        model._is_jina_v35 = True
         model._doc_embed_token_id = 2001
         model._query_embed_token_id = 2002
         model._jina_projector = lambda x: x
@@ -964,6 +1017,20 @@ class TestJinaReranker:
         # preserving original order [0, 1, 2] - confirm we do NOT get that.
         assert result.indices != [0, 1, 2]
 
+        # The same per-chunk vectors on v3 must keep the original independent
+        # scoring path instead of applying v3.5 block fusion.
+        call_count[0] = 0
+        model._is_jina_v35 = False
+        with patch.object(
+            model, "_get_jina_hidden_states", side_effect=_fake_hidden_states
+        ):
+            v3_result = model._rerank_jina(
+                "query", ["doc a", "doc b", "doc c"], max_length=115
+            )
+
+        assert v3_result.scores == pytest.approx([1.0, 1.0, 1.0], abs=1e-6)
+        assert v3_result.indices == [0, 1, 2]
+
     def test_rerank_dispatch_and_max_length_for_jina(self, tmp_path):
         """rerank() should dispatch to _rerank_jina and honor max_length semantics."""
         model_dir = self._make_jina_model_dir(tmp_path)
@@ -1009,9 +1076,7 @@ class TestRerankerCompileFallback:
         model._loaded = True
         model._is_causal_lm = False
         model._is_compiled = True
-        model._compiled_seq_logits = MagicMock(
-            side_effect=RuntimeError("compile fail")
-        )
+        model._compiled_seq_logits = MagicMock(side_effect=RuntimeError("compile fail"))
 
         # Mock processor
         mock_processor = MagicMock()
@@ -1096,6 +1161,7 @@ class TestRerankerClose:
         model._doc_embed_token_id = 3
         model._query_embed_token_id = 4
         model._jina_projector = MagicMock()
+        model._is_jina_v35 = True
         model._prefix_tokens = [5]
         model._suffix_tokens = [6]
         model._is_compiled = True
@@ -1123,6 +1189,7 @@ class TestRerankerClose:
         assert model._doc_embed_token_id is None
         assert model._query_embed_token_id is None
         assert model._jina_projector is None
+        assert model._is_jina_v35 is False
         assert model._prefix_tokens is None
         assert model._suffix_tokens is None
         assert model._is_compiled is False
