@@ -53,7 +53,8 @@ speculative path would buy nothing there anyway.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, List, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 import mlx.core as mx
 
@@ -91,10 +92,10 @@ class MTPProcessingSampler:
         prompt_token_ids: Sequence[int],
     ) -> None:
         self._base = base_sampler
-        self._processors: List[Any] = list(logits_processors)
-        self._history: List[int] = [int(t) for t in prompt_token_ids]
+        self._processors: list[Any] = list(logits_processors)
+        self._history: list[int] = [int(t) for t in prompt_token_ids]
         self._prompt_len = len(self._history)
-        self._snapshots: dict[int, List[dict]] = {}
+        self._snapshots: dict[int, list[dict]] = {}
         self._initial_snapshot = self._snap()
         self._degraded = False
 
@@ -132,8 +133,8 @@ class MTPProcessingSampler:
     def sample_target(
         self,
         logprobs: Any,
-        row_ids: Optional[Sequence[int]] = None,
-        positions: Optional[Sequence[int]] = None,
+        row_ids: Sequence[int] | None = None,
+        positions: Sequence[int] | None = None,
     ) -> Any:
         """Process-then-sample every candidate slot of a verify walk.
 
@@ -175,13 +176,11 @@ class MTPProcessingSampler:
             del self._snapshots[key]
 
         mx.eval(logprobs)
-        sampled: List[int] = []
+        sampled: list[int] = []
         for i in range(n_slots):
             pos = int(positions[i])
             if pos != base_pos + i:
-                self._degrade(
-                    f"non-contiguous positions ({positions!r})"
-                )
+                self._degrade(f"non-contiguous positions ({positions!r})")
                 # Finish this call unprocessed for the remaining slots.
                 rest = self._base(logprobs[i:])
                 rest_list = [int(t) for t in mx.reshape(rest, (-1,)).tolist()]
@@ -198,10 +197,10 @@ class MTPProcessingSampler:
 
     # -- internals ----------------------------------------------------------
 
-    def _snap(self) -> List[dict]:
+    def _snap(self) -> list[dict]:
         return [proc.snapshot_state() for proc in self._processors]
 
-    def _restore(self, snapshot: List[dict]) -> None:
+    def _restore(self, snapshot: list[dict]) -> None:
         for proc, state in zip(self._processors, snapshot):
             proc.restore_state(state)
 
