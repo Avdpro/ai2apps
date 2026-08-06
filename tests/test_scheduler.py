@@ -33,6 +33,7 @@ from omlx.scheduler import (
     SchedulerOutput,
     SchedulingPolicy,
     _PrefillState,
+    _PreflightRejection,
     _StoreCacheGate,
     _VLMMTPDecodeState,
 )
@@ -5047,7 +5048,6 @@ class TestOutputParserSmoke:
         )
         assert scheduler._detect_needs_think_prefix(request) is True
         request.needs_think_prefix = True
-        scheduler._notify_output_parser_prefilled_thought(request.request_id)
 
         scheduler.running[request.request_id] = request
         scheduler.requests[request.request_id] = request
@@ -5077,6 +5077,45 @@ class TestOutputParserSmoke:
             num_prompt_tokens=4,
         )
         assert scheduler._detect_needs_think_prefix(disabled) is False
+
+    def test_gemma4_prefilled_thought_rejection_does_not_create_session(
+        self, mock_model
+    ):
+        """A request rejected before admission must not retain a parser session."""
+        mock_model.config.model_type = "gemma4"
+        scheduler = Scheduler(
+            model=mock_model,
+            tokenizer=self._GemmaTokenizer({}),
+            config=SchedulerConfig(model_name="google/gemma-4b"),
+        )
+        request = Request(
+            request_id="gemma-prefilled-rejected",
+            prompt="prompt",
+            sampling_params=SamplingParams(max_tokens=4),
+            prompt_token_ids=[9, 100, 45518, 198],
+            num_prompt_tokens=4,
+            status=RequestStatus.WAITING,
+        )
+        scheduler.waiting.append(request)
+        scheduler.requests[request.request_id] = request
+        scheduler._preflight_memory_check = MagicMock(
+            return_value=_PreflightRejection(
+                message="too large",
+                estimated_bytes=100,
+                limit_bytes=50,
+            )
+        )
+        scheduler._build_sampler_and_processors = MagicMock(
+            return_value=(MagicMock(), [])
+        )
+
+        scheduled, rejected = scheduler._schedule_waiting()
+
+        assert request.needs_think_prefix is True
+        assert scheduled == []
+        assert len(rejected) == 1
+        assert request.request_id not in scheduler.requests
+        assert request.request_id not in scheduler._output_parser_sessions
 
     def test_gemma4_batch_stop_token_not_streamed(self, mock_model):
         mock_model.config.model_type = "gemma4"

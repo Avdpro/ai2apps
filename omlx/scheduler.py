@@ -2643,21 +2643,18 @@ class Scheduler:
             return None
 
         if request_id not in self._output_parser_sessions:
-            self._output_parser_sessions[request_id] = (
-                self._output_parser_factory.create_session(self.tokenizer)
-            )
+            parser_session = self._output_parser_factory.create_session(self.tokenizer)
+            request = self.requests.get(request_id)
+            if request is not None and getattr(request, "needs_think_prefix", False):
+                notify = getattr(parser_session, "notify_prefilled_thought", None)
+                if callable(notify):
+                    notify()
+            self._output_parser_sessions[request_id] = parser_session
         return self._output_parser_sessions[request_id]
 
     def _cleanup_output_parser_session(self, request_id: str):
         """Remove any per-request protocol parser session."""
         self._output_parser_sessions.pop(request_id, None)
-
-    def _notify_output_parser_prefilled_thought(self, request_id: str) -> None:
-        """Seed a parser session when the prompt already opened thinking."""
-        parser_session = self._get_output_parser_session(request_id)
-        notify = getattr(parser_session, "notify_prefilled_thought", None)
-        if callable(notify):
-            notify()
 
     def _get_xtc_special_tokens(self) -> list[int]:
         """Get special tokens to exclude from XTC sampling.
@@ -8958,7 +8955,6 @@ class Scheduler:
             # budget processor can check needs_think_prefix.
             if self._detect_needs_think_prefix(request):
                 request.needs_think_prefix = True
-                self._notify_output_parser_prefilled_thought(request.request_id)
 
             # Per-request sampler/logits processors to avoid BatchGenerator recreation.
             sampler, logits_processors = self._build_sampler_and_processors(
