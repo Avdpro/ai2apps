@@ -2294,6 +2294,14 @@ class Scheduler:
                     gate.note_done()
                 drained = True
         self._pending_async_removes = pending
+        if drained:
+            # The completion-time deferred clear may have already fired while
+            # the async store worker still owned extracted KV buffers. Anchor
+            # another ordinary deferred clear to the point where those final
+            # references are actually released; clearing earlier cannot
+            # reclaim them and leaves the next route preflight charging both
+            # requests until macOS eventually settles the footprint.
+            self._schedule_deferred_metal_clear()
         return drained
 
     def _calculate_max_blocks(self) -> int:
@@ -8183,6 +8191,27 @@ class Scheduler:
             or self._pending_pressure_clear
         )
 
+    def has_pending_route_preflight_cleanup(self) -> bool:
+        """Return whether finished-request memory is still being reclaimed.
+
+        Route-level preflight uses this read-only signal to avoid turning a
+        temporary footprint into a final HTTP 400. The engine loop remains the
+        sole owner of async-remove draining and deferred Metal cache clearing.
+        Active requests are intentionally not included: their memory is live
+        and must remain charged to a concurrent admission.
+        """
+        return bool(
+            self._pending_async_removes or self._deferred_clear_at is not None
+        )
+
+    def refresh_route_preflight_usage(self) -> int:
+        """Publish a fresh MLX memory sample for route-level retry.
+
+        The engine wrapper dispatches this method to the owning MLX executor;
+        it must not be called directly from the asyncio event-loop thread.
+        """
+        return self._current_usage_bytes()
+
     def _refresh_generation_overflow_recovery_ids(self) -> None:
         """Drop serial-retry markers once the affected requests leave the scheduler."""
         if not self._generation_overflow_recovery_ids:
@@ -10816,6 +10845,10 @@ class Scheduler:
             should_clear = True
         if should_clear:
             _sync_and_clear_cache(self._stream)
+            # Route preflight cannot call mx.get_active_memory() from the
+            # event-loop thread, so publish a fresh executor-owned sample once
+            # the deferred pool reclaim has completed.
+            self._current_usage_bytes()
         if (
             self.config.gc_cleanup_interval > 0
             and self._step_counter % self.config.gc_cleanup_interval == 0
