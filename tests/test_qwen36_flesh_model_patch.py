@@ -11,6 +11,8 @@ from omlx.patches.qwen3_6_flesh.model_patch import (
     _exact_scope_moe,
     _lossy_replace_routes,
     apply_qwen36_flesh_model_patch,
+    begin_qwen36_strict_arena_run,
+    validate_qwen36_strict_arena_run,
 )
 from omlx.patches.qwen3_6_flesh.boost import (
     Qwen36BoostController,
@@ -309,6 +311,22 @@ def test_arena_resolve_does_not_evict_a_requested_hit(tmp_path, monkeypatch):
 
     assert lookup[3] == 3
     assert lookup[5] == 2
+
+
+def test_strict_arena_run_validates_once_and_fails_closed():
+    from omlx.patches.qwen3_6_flesh import model_patch
+
+    begin_qwen36_strict_arena_run()
+    model_patch._STRICT_ARENA_RECORDS.extend(
+        [
+            (0, mx.array([0]), mx.array([0])),
+            (1, mx.array([9]), mx.array([-1])),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="discard its output"):
+        validate_qwen36_strict_arena_run()
+    with pytest.raises(RuntimeError, match="is not active"):
+        validate_qwen36_strict_arena_run()
 
 
 def test_tiered_cache_bypasses_l1_without_copying_to_tail(tmp_path, monkeypatch):

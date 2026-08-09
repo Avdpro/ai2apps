@@ -19,8 +19,29 @@ from .boost import Qwen36LossyPolicy
 logger = logging.getLogger(__name__)
 _PATCHED = False
 _TIERED_TXN = threading.local()
+_STRICT_ARENA_RECORDS: list[tuple[int, mx.array, mx.array]] | None = None
 _ROUTE_OBSERVER = None
 _PARITY_OBSERVER = None
+
+
+class Qwen36StrictArenaMiss(RuntimeError):
+    """Fail-closed oracle miss carrying only the first trustworthy layer."""
+
+    def __init__(
+        self,
+        misses: int,
+        layer: int,
+        expert_ids: tuple[int, ...],
+        requested_ids: tuple[int, ...],
+    ):
+        self.misses = misses
+        self.layer = layer
+        self.expert_ids = expert_ids
+        self.requested_ids = requested_ids
+        super().__init__(
+            f"Qwen strict Arena run had {misses} unresolved expert routes; "
+            f"discard its output; first miss layer={layer}, ids={expert_ids}"
+        )
 
 
 def set_qwen36_route_observer(observer) -> None:
@@ -41,6 +62,60 @@ def qwen36_parity_observer_active() -> bool:
     """Return whether an exact route diagnostic must see every MoE layer."""
 
     return _PARITY_OBSERVER is not None
+
+
+def begin_qwen36_strict_arena_run() -> None:
+    """Start a fail-closed all-device Arena miss transaction."""
+
+    global _STRICT_ARENA_RECORDS
+    if _STRICT_ARENA_RECORDS is not None:
+        raise RuntimeError("Qwen strict Arena transaction is already active")
+    _STRICT_ARENA_RECORDS = []
+
+
+def validate_qwen36_strict_arena_run() -> int:
+    """Synchronize once, rejecting any speculative run that touched a miss."""
+
+    global _STRICT_ARENA_RECORDS
+    records = _STRICT_ARENA_RECORDS
+    if records is None:
+        raise RuntimeError("Qwen strict Arena transaction is not active")
+    try:
+        if not records:
+            return 0
+        all_mapped = mx.concatenate([record[2].reshape(-1) for record in records])
+        total = mx.sum((all_mapped < 0).astype(mx.int32))
+        mx.eval(total)
+        misses = int(total.item())
+        if misses:
+            mx.eval(*(array for _, inds, mapped in records for array in (inds, mapped)))
+            details = []
+            for layer, inds, mapped in records:
+                host_ids = [int(value) for value in inds.reshape(-1).tolist()]
+                host_slots = [int(value) for value in mapped.reshape(-1).tolist()]
+                if min(host_slots) >= 0:
+                    continue
+                details.append(
+                    {
+                        "layer": layer,
+                        "requested": sorted(set(host_ids)),
+                        "ids": [
+                            expert_id
+                            for expert_id, slot in zip(host_ids, host_slots, strict=True)
+                            if slot < 0
+                        ],
+                    }
+                )
+            first = details[0]
+            raise Qwen36StrictArenaMiss(
+                misses,
+                int(first["layer"]),
+                tuple(int(value) for value in first["ids"]),
+                tuple(int(value) for value in first["requested"]),
+            )
+        return 0
+    finally:
+        _STRICT_ARENA_RECORDS = None
 
 
 def _observe_host_routes(block: Any, host_ids: list[int]) -> None:
@@ -173,8 +248,23 @@ def _arena_scope_moe(
 
     # Arena mappings change after replacement; do not retain every historical
     # tuple in the static lookup cache during long generations.
-    expert_to_slot = mx.array(block.scope_expert_to_slot_values, dtype=mx.int32)
+    strict_records = _STRICT_ARENA_RECORDS
+    expert_to_slot = (
+        getattr(block, "scope_expert_to_slot_device")
+        if strict_records is not None
+        and getattr(block, "scope_expert_to_slot_device", None) is not None
+        else mx.array(block.scope_expert_to_slot_values, dtype=mx.int32)
+    )
     mapped = expert_to_slot[inds]
+    if strict_records is not None:
+        # Oracle-only optimistic execution. A safe placeholder keeps a missed
+        # graph executable, but validation rejects the complete output.
+        strict_records.append((block.scope_layer, inds, mapped))
+        # Strict-oracle layouts are validated before their output is accepted.
+        # Using the mapped vector directly keeps the all-hit compute graph
+        # identical to the ordinary compact SwitchGLU path; -1 is only a
+        # temporary last-slot placeholder in a run that will be discarded.
+        return _weighted_switch(block.switch_mlp, x, mapped, scores)
     missing = mapped < 0
     missing_count = mx.sum(missing.astype(mx.int32))
     mx.eval(missing_count, *(lossy_counters or ()))
@@ -896,7 +986,10 @@ def apply_qwen36_flesh_model_patch() -> bool:
 
 __all__ = [
     "apply_qwen36_flesh_model_patch",
+    "begin_qwen36_strict_arena_run",
     "set_qwen36_parity_observer",
     "qwen36_parity_observer_active",
+    "Qwen36StrictArenaMiss",
     "set_qwen36_route_observer",
+    "validate_qwen36_strict_arena_run",
 ]

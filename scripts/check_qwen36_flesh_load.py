@@ -84,11 +84,15 @@ async def run(args: argparse.Namespace) -> None:
             "physical_experts": sorted(set(physical)),
             "all_layers_match": all(
                 value
-                == args.experts
-                + (
-                    args.arena_tail_slots
-                    if args.backend == "arena" and not args.full_resident
-                    else 0
+                == (
+                    256
+                    if args.full_resident
+                    else args.experts
+                    + (
+                        args.arena_tail_slots
+                        if args.backend == "arena"
+                        else 0
+                    )
                 )
                 for value in physical
             ),
