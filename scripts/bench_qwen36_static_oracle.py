@@ -11,6 +11,8 @@ import json
 import time
 from pathlib import Path
 
+import numpy as np
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -25,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--warmup-rounds", type=int, default=3)
     parser.add_argument("--max-prime-attempts", type=int, default=512)
+    parser.add_argument("--logits-reference", type=Path)
     parser.add_argument(
         "--compact-slab",
         action=argparse.BooleanOptionalAction,
@@ -66,6 +69,19 @@ async def run(args: argparse.Namespace) -> None:
         arena = get_qwen36_decode_arena(str(Path(args.store).resolve()))
         capacity = args.experts + args.tail
         oracle_required = [set() for _ in range(40)]
+        cache_nonce = f"qwen36-static-oracle-{time.time_ns()}"
+        original_prepare = engine._prepare_request
+
+        async def isolated_prepare(prompt, kwargs):
+            await original_prepare(prompt, kwargs)
+            kwargs["cache_extra_keys"] = (
+                *tuple(kwargs.get("cache_extra_keys") or ()),
+                cache_nonce,
+            )
+
+        # Benchmark runs must never restore a persistent KV generated with a
+        # different physical expert layout.
+        engine._prepare_request = isolated_prepare
 
         def activate_oracle() -> int:
             l1_layout: list[tuple[int, ...]] = []
@@ -170,7 +186,7 @@ async def run(args: argparse.Namespace) -> None:
             async def fixed_oracle_prepare(_prompt, kwargs):
                 for key in ("flesh_scope", "flesh_l1_mode", "flesh_session_id"):
                     kwargs.pop(key, None)
-                kwargs["cache_extra_keys"] = ("qwen36-static-oracle",)
+                kwargs["cache_extra_keys"] = (cache_nonce,)
 
             engine._prepare_request = fixed_oracle_prepare
             gc.collect()
@@ -219,7 +235,6 @@ async def run(args: argparse.Namespace) -> None:
 
         baseline = arena.stats()
         runs = []
-        warmup_ids = tuple(warmup.tokens or ())[: args.max_tokens]
         for index in range(args.repeat):
             begin_qwen36_strict_arena_run()
             started = time.perf_counter()
@@ -246,7 +261,6 @@ async def run(args: argparse.Namespace) -> None:
                     pass
                 raise
             finished = time.perf_counter()
-            ids = tuple(output.tokens or ())
             decode_seconds = (
                 generation_finished - output.first_token_at
                 if output.first_token_at is not None
@@ -266,10 +280,96 @@ async def run(args: argparse.Namespace) -> None:
                         else None
                     ),
                     "zero_runtime_misses": misses == 0,
-                    "warmup_token_parity": ids == warmup_ids,
                     "text_sha256": hashlib.sha256(output.text.encode()).hexdigest(),
                 }
             )
+
+        top10_parity = None
+        if args.logits_reference is not None:
+            reference = np.load(args.logits_reference)
+            reference_keys = sorted(reference.files)
+            scheduler = engine._engine.engine.scheduler
+            original_build = scheduler._build_sampler_and_processors
+            oracle_logits: list[np.ndarray] = []
+
+            def capture_build(sampling_params, request=None):
+                sampler, processors = original_build(sampling_params, request)
+
+                def capture_sampler(logits):
+                    current = logits.astype(mx.float32)
+                    mx.eval(current)
+                    oracle_logits.append(np.asarray(current))
+                    return sampler(logits)
+
+                return capture_sampler, processors
+
+            scheduler._build_sampler_and_processors = capture_build
+            begin_qwen36_strict_arena_run()
+            try:
+                parity_output = await engine.generate(
+                    args.prompt,
+                    max_tokens=args.max_tokens,
+                    temperature=0.0,
+                    top_p=1.0,
+                    skip_cache_store=True,
+                    flesh_scope=args.scope,
+                    flesh_l1_mode="off",
+                )
+                replay_misses = await loop.run_in_executor(
+                    mlx_executor, validate_qwen36_strict_arena_run
+                )
+            except BaseException:
+                try:
+                    await loop.run_in_executor(
+                        mlx_executor, validate_qwen36_strict_arena_run
+                    )
+                except RuntimeError:
+                    pass
+                raise
+            finally:
+                scheduler._build_sampler_and_processors = original_build
+
+            if len(reference_keys) != len(oracle_logits):
+                raise RuntimeError(
+                    "logits reference length does not match oracle decode: "
+                    f"{len(reference_keys)} != {len(oracle_logits)}"
+                )
+
+            step_results = []
+            for index, (key, actual) in enumerate(
+                zip(reference_keys, oracle_logits, strict=True)
+            ):
+                expected = reference[key]
+                expected_order = np.argsort(expected[0])[-10:][::-1]
+                actual_order = np.argsort(actual[0])[-10:][::-1]
+                step_results.append(
+                    {
+                        "step": index,
+                        "ordered_equal": bool(
+                            np.array_equal(expected_order, actual_order)
+                        ),
+                        "expected": expected_order.tolist(),
+                        "actual": actual_order.tolist(),
+                        "max_abs_logit_error": float(
+                            np.max(np.abs(expected - actual))
+                        ),
+                    }
+                )
+            top10_parity = {
+                "reference": str(args.logits_reference),
+                "steps": len(step_results),
+                "zero_runtime_misses": replay_misses == 0,
+                "text_sha256": hashlib.sha256(
+                    parity_output.text.encode()
+                ).hexdigest(),
+                "ordered_top10_equal": all(
+                    step["ordered_equal"] for step in step_results
+                ),
+                "max_abs_logit_error": max(
+                    step["max_abs_logit_error"] for step in step_results
+                ),
+                "step_results": step_results,
+            }
         final = arena.stats()
         report = {
             "format": "dynamoe-qwen36-static-oracle",
@@ -288,6 +388,7 @@ async def run(args: argparse.Namespace) -> None:
             "prime_attempts": prime_attempts,
             "warmup_text_sha256": hashlib.sha256(warmup.text.encode()).hexdigest(),
             "runs": runs,
+            "top10_parity": top10_parity,
             "arena_delta": {
                 key: final[key] - baseline[key]
                 for key in ("patch_calls", "experts_loaded", "bytes_loaded")
