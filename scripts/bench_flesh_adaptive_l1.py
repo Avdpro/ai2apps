@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
+import resource
 import time
 from pathlib import Path
 
@@ -78,6 +80,8 @@ async def _consume(
 
 
 async def _run(args: argparse.Namespace) -> None:
+    import mlx.core as mx
+
     from omlx.engine.flesh import DeepseekV4FleshEngine
     from omlx.scheduler import SchedulerConfig
 
@@ -89,10 +93,28 @@ async def _run(args: argparse.Namespace) -> None:
         model_path=str(model),
     )
     engine = DeepseekV4FleshEngine(str(model), scheduler_config=config)
+
+    def memory_snapshot() -> dict[str, float | None]:
+        mx.synchronize()
+        gib = 1024**3
+        return {
+            "mlx_active_gb": mx.get_active_memory() / gib,
+            "mlx_peak_gb": mx.get_peak_memory() / gib,
+            "mlx_cache_gb": mx.get_cache_memory() / gib,
+            # ru_maxrss is bytes on macOS (KiB on Linux). This benchmark is
+            # specifically for the local Apple-Silicon release gate.
+            "process_peak_rss_gb": resource.getrusage(
+                resource.RUSAGE_SELF
+            ).ru_maxrss
+            / gib,
+        }
+
+    mx.reset_peak_memory()
     load_started = time.perf_counter()
     try:
         await engine.start()
         load_seconds = time.perf_counter() - load_started
+        after_load_memory = memory_snapshot()
         warmup = await _consume(
             engine,
             prompt=args.prompt,
@@ -100,6 +122,7 @@ async def _run(args: argparse.Namespace) -> None:
             mode="off",
             session_id=f"bench-{args.mode}-warmup",
         )
+        after_warmup_memory = memory_snapshot()
         benchmark = await _consume(
             engine,
             prompt=args.prompt,
@@ -107,6 +130,7 @@ async def _run(args: argparse.Namespace) -> None:
             mode=args.mode,
             session_id=f"bench-html-{args.mode}",
         )
+        after_benchmark_memory = memory_snapshot()
         response_stats = engine.get_stats().get("flesh", {})
         tail = response_stats.get("last_decode_tail")
         # Turn-end optimization is intentionally outside response latency, but
@@ -125,7 +149,15 @@ async def _run(args: argparse.Namespace) -> None:
             "load_seconds": load_seconds,
             "warmup": {k: v for k, v in warmup.items() if k != "text"},
             "benchmark": benchmark,
+            "text_sha256": hashlib.sha256(
+                benchmark["text"].encode()
+            ).hexdigest(),
             "tail": tail,
+            "memory": {
+                "after_load": after_load_memory,
+                "after_warmup": after_warmup_memory,
+                "after_benchmark": after_benchmark_memory,
+            },
             "maintenance_wait_seconds": maintenance_seconds,
             "adaptive_l1": final_stats.get("adaptive_l1"),
             "bank": final_stats.get("bank"),
