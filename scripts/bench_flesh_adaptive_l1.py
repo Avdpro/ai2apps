@@ -20,6 +20,11 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--tail-tokens", type=int, default=128)
     parser.add_argument("--warmup-tokens", type=int, default=1)
+    parser.add_argument(
+        "--trigger-token",
+        type=int,
+        help="request one manual L1 optimization after this generated token",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -31,12 +36,14 @@ async def _consume(
     max_tokens: int,
     mode: str,
     session_id: str,
+    trigger_token: int | None = None,
 ) -> dict:
     started = time.perf_counter()
     first_generated_at = None
     last_generated_at = None
     last_output = None
     text = ""
+    triggered = False
     async for output in engine.stream_chat(
         [{"role": "user", "content": prompt}],
         max_tokens=max_tokens,
@@ -52,6 +59,13 @@ async def _consume(
             if first_generated_at is None:
                 first_generated_at = generated_at
             last_generated_at = generated_at
+        if (
+            trigger_token is not None
+            and not triggered
+            and output.completion_tokens >= trigger_token
+        ):
+            engine.request_l1_optimization(session_id)
+            triggered = True
     response_done = time.perf_counter()
     if last_output is None:
         raise RuntimeError("engine produced no output")
@@ -75,6 +89,7 @@ async def _consume(
             else None
         ),
         "response_wall_seconds": response_done - started,
+        "manual_triggered": triggered,
         "text": text,
     }
 
@@ -129,6 +144,7 @@ async def _run(args: argparse.Namespace) -> None:
             max_tokens=args.max_tokens,
             mode=args.mode,
             session_id=f"bench-html-{args.mode}",
+            trigger_token=args.trigger_token,
         )
         after_benchmark_memory = memory_snapshot()
         response_stats = engine.get_stats().get("flesh", {})
@@ -146,6 +162,7 @@ async def _run(args: argparse.Namespace) -> None:
             "prompt": args.prompt,
             "max_tokens": args.max_tokens,
             "tail_tokens_requested": args.tail_tokens,
+            "trigger_token": args.trigger_token,
             "load_seconds": load_seconds,
             "warmup": {k: v for k, v in warmup.items() if k != "text"},
             "benchmark": benchmark,

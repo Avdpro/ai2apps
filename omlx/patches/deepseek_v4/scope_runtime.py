@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -281,6 +282,19 @@ class DeepseekV4ScopeBank:
         self.adaptive_commits = 0
         self.adaptive_layers_rebuilt = 0
         self.adaptive_seconds = 0.0
+        self.adaptive_sync_seconds = 0.0
+        self.adaptive_backend = os.environ.get(
+            "OMLX_DEEPSEEK_V4_L1_UPDATE_BACKEND", "patch"
+        ).strip().lower()
+        if self.adaptive_backend not in ("atomic", "stream", "patch"):
+            raise ValueError(
+                "OMLX_DEEPSEEK_V4_L1_UPDATE_BACKEND must be atomic, stream, or patch"
+            )
+        self.adaptive_stream_layers = int(os.environ.get(
+            "OMLX_DEEPSEEK_V4_L1_STREAM_LAYERS", "4"
+        ))
+        if not 1 <= self.adaptive_stream_layers <= 40:
+            raise ValueError("OMLX_DEEPSEEK_V4_L1_STREAM_LAYERS must be 1..40")
 
     @staticmethod
     def _publish_layer(ffn: Any, switch: Any, expert_ids: tuple[int, ...]) -> None:
@@ -341,38 +355,150 @@ class DeepseekV4ScopeBank:
         if len(experts_by_layer) != 43:
             raise ValueError("adaptive L1 layout must contain 43 layers")
         target = getattr(self.model, "model", self.model)
-        prepared: list[tuple[Any, Any, tuple[int, ...]]] = []
+        changed: list[tuple[int, Any, tuple[int, ...], tuple[int, ...]]] = []
         started = time.perf_counter()
         for layer, block in enumerate(target.layers):
             if layer < 3:
                 continue
             ffn = block.ffn
             desired = tuple(experts_by_layer[layer])
-            if tuple(ffn.scope_expert_ids or ()) == desired:
+            current = tuple(ffn.scope_expert_ids or ())
+            if current == desired:
                 continue
-            switch, loaded_ids = self.loader.rebuild_resident_switch(
-                layer, list(desired), ffn.switch_mlp
-            )
-            if loaded_ids != desired:
-                raise RuntimeError(f"adaptive L1 load mismatch at layer {layer}")
-            prepared.append((ffn, switch, loaded_ids))
-        # All reads and Metal copies succeeded. Commit mappings as one quiescent
-        # transaction; failures above leave every old layer live.
-        for ffn, switch, expert_ids in prepared:
-            self._publish_layer(ffn, switch, expert_ids)
-        if prepared:
+            changed.append((layer, ffn, current, desired))
+
+        if self.adaptive_backend == "atomic":
+            prepared: list[tuple[Any, Any, tuple[int, ...]]] = []
+            for layer, ffn, _, desired in changed:
+                switch, loaded_ids = self.loader.rebuild_resident_switch(
+                    layer, list(desired), ffn.switch_mlp
+                )
+                if loaded_ids != desired:
+                    raise RuntimeError(
+                        f"adaptive L1 load mismatch at layer {layer}"
+                    )
+                prepared.append((ffn, switch, loaded_ids))
+            # The baseline backend preserves the original all-layer transaction.
+            for ffn, switch, expert_ids in prepared:
+                self._publish_layer(ffn, switch, expert_ids)
+        elif changed:
+            sync_started = time.perf_counter()
+            mx.synchronize()
+            self.adaptive_sync_seconds += time.perf_counter() - sync_started
+            self.loader.clear_hot()
+            mx.clear_cache()
+            if self.adaptive_backend == "stream":
+                self._activate_layout_stream(changed)
+            else:
+                self._activate_layout_patch(changed)
+
+        if changed:
             self.loader.clear_hot()
             mx.clear_cache()
         elapsed = time.perf_counter() - started
         self.current_scope = scope_id
-        if adaptive and prepared:
+        if adaptive and changed:
             self.adaptive_commits += 1
-            self.adaptive_layers_rebuilt += len(prepared)
+            self.adaptive_layers_rebuilt += len(changed)
             self.adaptive_seconds += elapsed
-        elif prepared:
+        elif changed:
             self.switches += 1
             self.total_seconds += elapsed
-        return len(prepared)
+        return len(changed)
+
+    def _activate_layout_stream(
+        self,
+        changed: list[tuple[int, Any, tuple[int, ...], tuple[int, ...]]],
+    ) -> None:
+        """Bound replacement memory by publishing a few complete layers at once."""
+
+        import mlx.core as mx
+
+        published: list[tuple[int, Any, tuple[int, ...]]] = []
+        try:
+            size = self.adaptive_stream_layers
+            for offset in range(0, len(changed), size):
+                prepared: list[tuple[int, Any, Any, tuple[int, ...], tuple[int, ...]]] = []
+                for layer, ffn, current, desired in changed[offset : offset + size]:
+                    switch, loaded_ids = self.loader.rebuild_resident_switch(
+                        layer, list(desired), ffn.switch_mlp
+                    )
+                    if loaded_ids != desired:
+                        raise RuntimeError(
+                            f"adaptive L1 load mismatch at layer {layer}"
+                        )
+                    prepared.append((layer, ffn, switch, current, loaded_ids))
+                for layer, ffn, switch, current, expert_ids in prepared:
+                    self._publish_layer(ffn, switch, expert_ids)
+                    published.append((layer, ffn, current))
+                prepared.clear()
+                mx.synchronize()
+                mx.clear_cache()
+        except Exception:
+            self._rollback_rebuilt_layers(published)
+            raise
+
+    def _activate_layout_patch(
+        self,
+        changed: list[tuple[int, Any, tuple[int, ...], tuple[int, ...]]],
+    ) -> None:
+        """Rewrite only changed slots while keeping each SwitchGLU allocation."""
+
+        attempted: list[tuple[int, Any, tuple[int, ...], list[int]]] = []
+        try:
+            for layer, ffn, current, desired in changed:
+                slots = [
+                    slot
+                    for slot, (old, new) in enumerate(
+                        zip(current, desired, strict=True)
+                    )
+                    if old != new
+                ]
+                attempted.append((layer, ffn, current, slots))
+                switch, loaded_ids = self.loader.patch_resident_switch(
+                    layer,
+                    slots,
+                    [desired[slot] for slot in slots],
+                    ffn.switch_mlp,
+                )
+                if loaded_ids != tuple(desired[slot] for slot in slots):
+                    raise RuntimeError(
+                        f"adaptive L1 patch mismatch at layer {layer}"
+                    )
+                self._publish_layer(ffn, switch, desired)
+        except Exception:
+            self._rollback_patched_layers(attempted)
+            raise
+
+    def _rollback_rebuilt_layers(
+        self, published: list[tuple[int, Any, tuple[int, ...]]]
+    ) -> None:
+        import mlx.core as mx
+
+        for layer, ffn, original in reversed(published):
+            switch, loaded_ids = self.loader.rebuild_resident_switch(
+                layer, list(original), ffn.switch_mlp
+            )
+            self._publish_layer(ffn, switch, loaded_ids)
+            mx.synchronize()
+            mx.clear_cache()
+
+    def _rollback_patched_layers(
+        self,
+        attempted: list[tuple[int, Any, tuple[int, ...], list[int]]],
+    ) -> None:
+        import mlx.core as mx
+
+        for layer, ffn, original, slots in reversed(attempted):
+            switch, _ = self.loader.patch_resident_switch(
+                layer,
+                slots,
+                [original[slot] for slot in slots],
+                ffn.switch_mlp,
+            )
+            self._publish_layer(ffn, switch, original)
+        mx.synchronize()
+        mx.clear_cache()
 
     def stats(self) -> dict[str, Any]:
         return {
@@ -382,4 +508,7 @@ class DeepseekV4ScopeBank:
             "adaptive_commits": self.adaptive_commits,
             "adaptive_layers_rebuilt": self.adaptive_layers_rebuilt,
             "adaptive_seconds": self.adaptive_seconds,
+            "adaptive_backend": self.adaptive_backend,
+            "adaptive_stream_layers": self.adaptive_stream_layers,
+            "adaptive_sync_seconds": self.adaptive_sync_seconds,
         }

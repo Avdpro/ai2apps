@@ -79,6 +79,12 @@ class ScopeFallbackLoader:
         self.l1_rebuild_experts_loaded = 0
         self.l1_rebuild_bytes = 0
         self.l1_rebuild_seconds = 0.0
+        self.l1_patch_calls = 0
+        self.l1_patch_slots = 0
+        self.l1_patch_bytes = 0
+        self.l1_patch_seconds = 0.0
+        self.l1_patch_prepare_layers = 0
+        self.l1_patch_prepare_seconds = 0.0
 
     def set_decode_miss_observer(
         self, observer: Callable[[int, list[int]], None] | None
@@ -361,6 +367,101 @@ class ScopeFallbackLoader:
         self.l1_rebuild_seconds += elapsed
         return replacement, ids
 
+    def _prepare_mutable_switch(self, resident: SwitchGLU) -> None:
+        """Detach one resident bank from checkpoint/concat graphs for slot writes."""
+
+        if getattr(resident, "_dynamoe_mutable_backing", False):
+            return
+        started = time.perf_counter()
+        replacements: list[tuple[Any, str, mx.array]] = []
+        arrays: list[mx.array] = []
+        for projection_name in ("gate_proj", "down_proj", "up_proj"):
+            projection = getattr(resident, projection_name)
+            for tensor_name in ("weight", "scales", "biases"):
+                value = projection.get(tensor_name)
+                if value is None:
+                    continue
+                backing = mx.zeros_like(value)
+                backing[:] = value
+                replacements.append((projection, tensor_name, backing))
+                arrays.append(backing)
+        if arrays:
+            mx.eval(*arrays)
+        for projection, tensor_name, backing in replacements:
+            setattr(projection, tensor_name, backing)
+        resident._dynamoe_mutable_backing = True
+        self.l1_patch_prepare_layers += 1
+        self.l1_patch_prepare_seconds += time.perf_counter() - started
+
+    def patch_resident_switch(
+        self,
+        layer: int,
+        slots: list[int],
+        expert_ids: list[int],
+        resident: SwitchGLU,
+    ) -> tuple[SwitchGLU, tuple[int, ...]]:
+        """Overwrite only changed physical L1 slots in one quiescent layer."""
+
+        if not slots or len(slots) != len(expert_ids):
+            raise ValueError("adaptive L1 slot patch has mismatched inputs")
+        expected = int(resident.up_proj.num_experts)
+        if (
+            len(set(slots)) != len(slots)
+            or min(slots) < 0
+            or max(slots) >= expected
+        ):
+            raise ValueError("adaptive L1 slot patch contains invalid slots")
+        if (
+            len(set(expert_ids)) != len(expert_ids)
+            or min(expert_ids) < 0
+            or max(expert_ids) >= 256
+        ):
+            raise ValueError("adaptive L1 slot patch contains invalid expert IDs")
+        started = time.perf_counter()
+        with self._lock:
+            self._prepare_mutable_switch(resident)
+            ids = tuple(expert_ids)
+            records, record_bytes = self._read_records(layer, expert_ids)
+            stacked = self._stack_records(ids, records)
+            slot_array = mx.array(slots, dtype=mx.int32)
+            arrays: list[mx.array] = []
+            checks: list[mx.array] = []
+            validate = os.environ.get(
+                "OMLX_DEEPSEEK_V4_L1_PATCH_VALIDATE", ""
+            ).strip().lower() in ("1", "true", "yes", "on")
+            for projection_name in ("gate_proj", "down_proj", "up_proj"):
+                projection = getattr(resident, projection_name)
+                for tensor_name in ("weight", "scales", "biases"):
+                    current = projection.get(tensor_name)
+                    replacement = stacked.get(
+                        f"{projection_name}.{tensor_name}"
+                    )
+                    if current is None or replacement is None:
+                        continue
+                    if replacement.dtype != current.dtype:
+                        replacement = replacement.astype(current.dtype)
+                    current[slot_array] = replacement
+                    arrays.append(current)
+                    if validate:
+                        checks.append(mx.all(current[slot_array] == replacement))
+            mx.eval(*arrays, *checks)
+            if checks and not all(bool(value.item()) for value in checks):
+                raise RuntimeError("DeepSeek adaptive L1 slot validation failed")
+        elapsed = time.perf_counter() - started
+        loaded_bytes = len(ids) * record_bytes
+        self.experts_loaded += len(ids)
+        self.bytes_loaded += loaded_bytes
+        self.load_seconds += elapsed
+        self.l1_rebuilds += 1
+        self.l1_rebuild_experts_loaded += len(ids)
+        self.l1_rebuild_bytes += loaded_bytes
+        self.l1_rebuild_seconds += elapsed
+        self.l1_patch_calls += 1
+        self.l1_patch_slots += len(slots)
+        self.l1_patch_bytes += loaded_bytes
+        self.l1_patch_seconds += elapsed
+        return resident, ids
+
     def resolve_hot_switch(
         self,
         layer: int,
@@ -460,6 +561,12 @@ class ScopeFallbackLoader:
             "l1_rebuild_experts_loaded": self.l1_rebuild_experts_loaded,
             "l1_rebuild_bytes": self.l1_rebuild_bytes,
             "l1_rebuild_seconds": self.l1_rebuild_seconds,
+            "l1_patch_calls": self.l1_patch_calls,
+            "l1_patch_slots": self.l1_patch_slots,
+            "l1_patch_bytes": self.l1_patch_bytes,
+            "l1_patch_seconds": self.l1_patch_seconds,
+            "l1_patch_prepare_layers": self.l1_patch_prepare_layers,
+            "l1_patch_prepare_seconds": self.l1_patch_prepare_seconds,
             "route_telemetry_records": self.route_telemetry_records,
             "route_telemetry_drains": self.route_telemetry_drains,
             "route_telemetry_bytes_read": self.route_telemetry_bytes_read,
