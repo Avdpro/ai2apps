@@ -300,7 +300,7 @@ def build_deepseek_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
     layers: dict[str, Any] = {}
     for layer in range(first_routed_layer, num_layers):
         records = []
-        layer_shard: Path | None = None
+        layer_shards: set[Path] = set()
         expert_bytes: int | None = None
         for expert in range(num_experts):
             if raw_layout:
@@ -319,10 +319,7 @@ def build_deepseek_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
             for projection, part in sorted(expected_parts):
                 source_name, tensor = parts[(projection, part)]
                 shard = tensor["shard"]
-                if layer_shard is None:
-                    layer_shard = shard
-                elif layer_shard != shard:
-                    raise ValueError(f"layer {layer} experts span checkpoint shards")
+                layer_shards.add(shard)
                 shape = tensor["shape"]
                 dtype = tensor["dtype"]
                 absolute_offset = tensor["absolute_offset"]
@@ -356,6 +353,7 @@ def build_deepseek_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
                     {
                         "name": f"{_PROJECTIONS.get(projection, projection)}.{runtime_part}",
                         "source_tensor": source_name,
+                        "file": os.path.relpath(shard, output_dir),
                         "absolute_offset": absolute_offset,
                         "nbytes": nbytes,
                         "dtype": runtime_dtype,
@@ -368,10 +366,13 @@ def build_deepseek_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
             elif size != expert_bytes:
                 raise ValueError("routed experts do not have a uniform record size")
             records.append({"expert_bytes": size, "tensors": record})
-        assert layer_shard is not None and expert_bytes is not None
+        assert layer_shards and expert_bytes is not None
         layers[str(layer)] = {
-            "storage": "direct-safetensors",
-            "file": os.path.relpath(layer_shard, output_dir),
+            "storage": (
+                "direct-safetensors"
+                if len(layer_shards) == 1
+                else "direct-safetensors-multifile"
+            ),
             "expert_count": num_experts,
             "expert_bytes": expert_bytes,
             "experts": records,

@@ -67,27 +67,39 @@ def _write_fake_stacked_checkpoint(root: Path) -> None:
             }
         )
     )
-    header = {}
+    headers = {
+        "model-00001-of-00002.safetensors": {},
+        "model-00002-of-00002.safetensors": {},
+    }
     weight_map = {}
-    cursor = 0
+    cursors = {name: 0 for name in headers}
     for projection in ("gate_proj", "down_proj", "up_proj"):
+        shard = (
+            "model-00002-of-00002.safetensors"
+            if projection == "down_proj"
+            else "model-00001-of-00002.safetensors"
+        )
         for part, dtype, shape, size in (
             ("weight", "U32", [2, 1, 2], 16),
             ("scales", "BF16", [2, 1, 1], 4),
             ("biases", "BF16", [2, 1, 1], 4),
         ):
             name = f"model.layers.0.ffn.switch_mlp.{projection}.{part}"
-            header[name] = {
+            cursor = cursors[shard]
+            headers[shard][name] = {
                 "dtype": dtype,
                 "shape": shape,
                 "data_offsets": [cursor, cursor + size],
             }
-            weight_map[name] = "model-00001-of-00001.safetensors"
-            cursor += size
-    encoded = json.dumps(header, separators=(",", ":")).encode()
-    (root / "model-00001-of-00001.safetensors").write_bytes(
-        struct.pack("<Q", len(encoded)) + encoded + bytes(cursor)
-    )
+            weight_map[name] = shard
+            cursors[shard] += size
+    for shard, header in headers.items():
+        encoded = json.dumps(header, separators=(",", ":")).encode()
+        (root / shard).write_bytes(
+            struct.pack("<Q", len(encoded))
+            + encoded
+            + bytes(cursors[shard])
+        )
     (root / "model.safetensors.index.json").write_text(
         json.dumps({"weight_map": weight_map})
     )
@@ -188,6 +200,14 @@ def test_build_stacked_affine_2bit_offset_manifest(tmp_path: Path):
     assert first["gate_proj.weight"]["dtype"] == "U32"
     assert first["gate_proj.scales"]["dtype"] == "BF16"
     assert first["gate_proj.biases"]["shape"] == [1, 1]
+    assert layer["storage"] == "direct-safetensors-multifile"
+    assert len(
+        {
+            tensor["file"]
+            for expert in layer["experts"]
+            for tensor in expert["tensors"]
+        }
+    ) == 2
     assert (
         second["gate_proj.weight"]["absolute_offset"]
         - first["gate_proj.weight"]["absolute_offset"]

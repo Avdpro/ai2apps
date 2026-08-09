@@ -248,6 +248,14 @@ class ScopeFallbackLoader:
         while len(self._staging_buffers) < len(expert_ids):
             self._staging_buffers.append(store.allocate_staging())
 
+        # Quantized DeepSeek checkpoints may use different bit widths across
+        # layers, so one expert record is not necessarily a model-wide
+        # constant. Reuse staging storage only when its exact byte size matches
+        # the current layer's store.
+        for index in range(len(expert_ids)):
+            if len(self._staging_buffers[index]) != store.record_bytes:
+                self._staging_buffers[index] = store.allocate_staging()
+
         buffers = self._staging_buffers[: len(expert_ids)]
         if self._io_pool is not None and len(expert_ids) > 1:
             futures = [
