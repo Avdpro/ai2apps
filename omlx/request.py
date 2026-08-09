@@ -141,6 +141,11 @@ class Request:
     # pollute the shared cache tiers or trigger the completion-time
     # host memcpy + disk write.
     skip_cache_store: bool = False
+    # Model-runtime namespace for content-addressed KV reuse. This lets
+    # backends whose effective weights vary per request (for example a lossy
+    # MoE scope bank) prevent cross-variant cache reuse without inventing fake
+    # prompt tokens. Identical namespaces still share prefixes across sessions.
+    cache_extra_keys: Optional[Tuple[Any, ...]] = None
 
     # Multimodal content (images, video)
     images: Optional[List[Any]] = None
@@ -166,6 +171,15 @@ class Request:
         if self.vlm_image_hash:
             return (self.vlm_image_hash,)
         return None
+
+    @property
+    def extra_keys_for_cache(self) -> Optional[Tuple[Any, ...]]:
+        """Return the complete model/runtime namespace for prefix caching."""
+
+        runtime = tuple(self.cache_extra_keys or ())
+        vlm = tuple(self.vlm_extra_keys_for_cache or ())
+        combined = runtime + vlm
+        return combined or None
 
     @property
     def vlm_extra_key_token_start_for_cache(self) -> Optional[int]:

@@ -113,4 +113,19 @@ NB_MODULE(_ext, m) {
       "inv_order"_a,
       "scores"_a,
       "stream"_a = nb::none());
+  m.def(
+      "qwen35_q4_dual_gather_qmm_t",
+      &omlx::qwen35_prefill_kernels::qwen35_q4_dual_gather_qmm_t,
+      "x"_a,
+      "segment_ids"_a,
+      "segment_starts"_a,
+      "segment_counts"_a,
+      "max_rows"_a,
+      "resident_weight"_a,
+      "resident_scales"_a,
+      "resident_biases"_a,
+      "staging_weight"_a,
+      "staging_scales"_a,
+      "staging_biases"_a,
+      "stream"_a = nb::none());
 }

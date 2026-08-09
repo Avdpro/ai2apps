@@ -211,6 +211,7 @@ class DownloadTask:
     started_at: float = 0.0
     completed_at: float = 0.0
     retry_count: int = 0
+    notify_complete: bool = True
 
     def to_dict(self) -> dict:
         """Serialize task to a JSON-compatible dict."""
@@ -618,7 +619,7 @@ class HFDownloader:
         self._model_dir = Path(new_dir)
 
     async def start_download(
-        self, repo_id: str, hf_token: str = ""
+        self, repo_id: str, hf_token: str = "", *, notify_complete: bool = True
     ) -> DownloadTask:
         """Start downloading a model from HuggingFace.
 
@@ -650,7 +651,11 @@ class HFDownloader:
                 )
 
         task_id = str(uuid.uuid4())
-        task = DownloadTask(task_id=task_id, repo_id=repo_id)
+        task = DownloadTask(
+            task_id=task_id,
+            repo_id=repo_id,
+            notify_complete=notify_complete,
+        )
         self._tasks[task_id] = task
 
         # Start download in background
@@ -926,7 +931,7 @@ class HFDownloader:
                 )
 
                 # Trigger model pool refresh
-                if self._on_complete:
+                if task.notify_complete and self._on_complete:
                     try:
                         await self._on_complete()
                     except Exception as e:

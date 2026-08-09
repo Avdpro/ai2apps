@@ -8,6 +8,8 @@ for better throughput when serving multiple concurrent requests.
 
 import copy
 import logging
+import os
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -23,6 +25,38 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_DEEPSEEK_SCOPE_WARMUP_TEXT = {
+    "business_finance": "分析企业现金流、估值和财务风险。",
+    "coding": "分析 Python、TypeScript 和 Kubernetes 工程问题。",
+    "data_ai": "分析机器学习模型、数据管道和人工智能系统。",
+    "general": "清楚准确地分析这个问题并给出建议。",
+    "humanities_social": "分析历史、社会与人文学科中的核心问题。",
+    "legal_policy": "分析法律规则、政策依据和潜在风险。",
+    "math_logic": "分析数学推理、逻辑条件和验证步骤。",
+    "medical_health": "分析医学健康问题、证据和注意事项。",
+    "science_engineering": "分析科学原理、工程约束和实验方法。",
+    "writing_creative": "分析写作目标、叙事结构和表达方式。",
+}
+
+
+def _deepseek_scope_warmup_ids(tokenizer: Any, scope: str, length: int) -> list[int]:
+    """Build an exact-length, scope-affine prompt for one-time JIT warmup."""
+
+    if length <= 0:
+        return []
+    text = _DEEPSEEK_SCOPE_WARMUP_TEXT.get(
+        scope, _DEEPSEEK_SCOPE_WARMUP_TEXT["general"]
+    )
+    encoded = list(tokenizer.encode(text, add_special_tokens=False))
+    if not encoded:
+        fallback_id = getattr(tokenizer, "bos_token_id", None)
+        if fallback_id is None:
+            fallback_id = getattr(tokenizer, "eos_token_id", 0)
+        encoded = [int(fallback_id)]
+    repeats = (length + len(encoded) - 1) // len(encoded)
+    return (encoded * repeats)[:length]
 
 
 # Optional Harmony adapter import
@@ -222,6 +256,67 @@ class BatchedEngine(BaseEngine):
         if self.model_type == "gpt_oss" and HAS_HARMONY_ADAPTER:
             return preprocess_harmony_messages(messages)
         return messages
+
+    async def _warm_deepseek_scope_cache(self) -> None:
+        """Move one-time scope-cache Prefill compilation into model startup."""
+
+        if self.model_type not in ("deepseek_v4", "deepseek_v4_mtp"):
+            return
+        store = os.environ.get("OMLX_DEEPSEEK_V4_EXPERT_STORE", "").strip()
+        profile = os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", "").strip()
+        scope = os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_NAME", "").strip()
+        if not (store and profile and scope):
+            return
+
+        raw_length = os.environ.get(
+            "OMLX_DEEPSEEK_V4_SCOPE_WARMUP_TOKENS", "32"
+        ).strip().lower()
+        if raw_length in ("", "0", "off", "false", "none"):
+            return
+        try:
+            length = int(raw_length)
+        except ValueError as exc:
+            raise ValueError(
+                "OMLX_DEEPSEEK_V4_SCOPE_WARMUP_TOKENS must be an integer"
+            ) from exc
+        if not 1 <= length <= 512:
+            raise ValueError(
+                "OMLX_DEEPSEEK_V4_SCOPE_WARMUP_TOKENS must be 1..512"
+            )
+
+        from ..patches.deepseek_v4.scope_cache import get_scope_fallback_loader
+        from ..request import SamplingParams
+
+        prompt = _deepseek_scope_warmup_ids(self._tokenizer, scope, length)
+        params = SamplingParams(
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+        )
+        started = time.perf_counter()
+        loader = get_scope_fallback_loader(store)
+        try:
+            request_id = await self._engine.add_request(
+                prompt=prompt,
+                sampling_params=params,
+                skip_cache_store=True,
+            )
+            async for _ in self._engine.stream_outputs(request_id):
+                pass
+        finally:
+            # The warmup must not choose Decode's initial rolling Top8 or leave
+            # allocator pages charged to the first user request.
+            loader.clear_hot()
+            import mlx.core as mx
+
+            mx.clear_cache()
+        logger.info(
+            "DeepSeek V4 scope-cache warmup complete: scope=%s tokens=%d "
+            "elapsed=%.3fs",
+            scope,
+            length,
+            time.perf_counter() - started,
+        )
 
     async def start(self) -> None:
         """Start the engine (load model if not loaded)."""
@@ -504,6 +599,15 @@ class BatchedEngine(BaseEngine):
                 except Exception as e:
                     logger.error(f"SpecPrefill: draft model load failed: {e}")
 
+        try:
+            await self._warm_deepseek_scope_cache()
+        except Exception:
+            # Warmup is a latency optimization, never a model-load dependency.
+            logger.warning(
+                "DeepSeek V4 scope-cache warmup failed; continuing cold",
+                exc_info=True,
+            )
+
         self._loaded = True
         logger.info(f"BatchedEngine loaded: {self._model_name}")
 
@@ -740,6 +844,7 @@ class BatchedEngine(BaseEngine):
         output = await self._engine.generate(
             prompt=prompt,
             sampling_params=sampling_params,
+            cache_extra_keys=kwargs.get("cache_extra_keys"),
             **specprefill_kwargs,
         )
 
@@ -816,6 +921,7 @@ class BatchedEngine(BaseEngine):
             prompt=prompt,
             sampling_params=sampling_params,
             skip_cache_store=bool(kwargs.get("skip_cache_store", False)),
+            cache_extra_keys=kwargs.get("cache_extra_keys"),
             **specprefill_kwargs,
         )
 

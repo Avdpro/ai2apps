@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """
-CLI for oMLX.
+CLI runtime for DynaMoe.
 
 Commands:
-    omlx serve --model-dir /path/to/models    Start multi-model server
+    dynamoe serve --model-dir /path/to/models    Start multi-model server
 
 Usage:
     # Multi-model serving
-    omlx serve --model-dir /path/to/models
+    dynamoe serve --model-dir /path/to/models
 
     # With pinned models
-    omlx serve --model-dir /path/to/models --pin llama-3b,qwen-7b
+    dynamoe serve --model-dir /path/to/models --pin llama-3b,qwen-7b
 """
 
 import argparse
 import faulthandler
 import math
+import os
 import sys
 
-from ._version import __version__
+from dynamoe._version import __version__
+
+from ._version import __version__ as _runtime_version
 
 
 def _positive_float(value: str) -> float:
@@ -30,6 +33,23 @@ def _positive_float(value: str) -> float:
     if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be a finite number greater than 0")
     return parsed
+
+
+def info_command() -> None:
+    """Print product, runtime, endpoints, and effective MoE scope controls."""
+    values = {
+        "Product": f"DynaMoe {__version__}",
+        "Runtime": f"oMLX {_runtime_version}",
+        "OpenAI API": "http://127.0.0.1:8000/v1",
+        "WebUI": "http://127.0.0.1:8000/admin/chat",
+        "Scope profile": os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", "off"),
+        "Initial scope": os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_NAME", "auto"),
+        "Probe depth": os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_PROBE_DEPTH", "16"),
+        "Lossy mode": os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_LOSSY_MODE", "exact"),
+    }
+    for label, value in values.items():
+        print(f"{label:14s} {value}")
+    print("Attribution    Independent project built on oMLX (Apache-2.0)")
 
 
 def _has_cli_overrides(args) -> bool:
@@ -72,12 +92,12 @@ def serve_command(args):
     """Start the OpenAI-compatible multi-model server."""
     import logging
     import os
+
     import uvicorn
 
-    from ._version import __version__
     from . import process_title
+    from .logging_config import AdminStatsAccessFilter, configure_file_logging
     from .settings import burst_decode_env, init_settings
-    from .logging_config import configure_file_logging, AdminStatsAccessFilter
 
     process_title.set_process_title()
 
@@ -87,8 +107,9 @@ def serve_command(args):
         build_number = None
 
     # Print version banner
-    print(f"\033[33moMLX - LLM inference, optimized for your Mac\033[0m")
-    print(f"\033[33m├─ https://github.com/jundot/omlx\033[0m")
+    print("\033[33mDynaMoe - Dynamic MoE inference for Apple Silicon\033[0m")
+    print("\033[33m├─ Independent project built on oMLX\033[0m")
+    print(f"\033[33m├─ Runtime: oMLX {_runtime_version}\033[0m")
     if build_number:
         print(f"\033[33m├─ Version: {__version__}\033[0m")
         print(f"\033[33m└─ Build: {build_number}\033[0m")
@@ -230,8 +251,8 @@ def serve_command(args):
 
     try:
         # Import server and config after the port is known to be available.
-        from .server import init_server
         from .config import parse_size
+        from .server import init_server
 
         model_dirs = settings.get_effective_model_dirs()
         print(f"Base path: {settings.base_path}")
@@ -297,7 +318,7 @@ def serve_command(args):
 
         if args.no_cache:
             print(
-                "Mode: Multi-model serving (no oMLX cache, mlx-lm BatchGenerator only)"
+            "Mode: Multi-model serving (no DynaMoe cache, mlx-lm BatchGenerator only)"
             )
         elif paged_ssd_cache_dir:
             print("Mode: Multi-model serving (continuous batching + paged SSD cache)")
@@ -396,8 +417,8 @@ def launch_command(args, extra_args: list[str] | None = None):
         resp = requests.get(f"{base_url}/health", timeout=3)
         resp.raise_for_status()
     except Exception:
-        print(f"oMLX server is not running at {base_url}")
-        print("Start the server first: omlx start")
+        print(f"DynaMoe server is not running at {base_url}")
+        print("Start the server first: dynamoe serve")
         sys.exit(1)
 
     # Get API key: CLI args > settings.json > empty
@@ -679,7 +700,7 @@ def lifecycle_command(args) -> int:
 
     if command == "start":
         print("Background start is available for the macOS app and Homebrew installs.")
-        print("For this install, run foreground server mode with: omlx serve")
+        print("For this install, run foreground server mode with: dynamoe serve")
     else:
         print("Background stop/restart requires the macOS app or Homebrew service.")
     return 1
@@ -702,7 +723,7 @@ def diagnose_menubar() -> int:
 
     mac_ver = platform.mac_ver()[0] or "unknown"
     print(f"macOS:          {mac_ver}")
-    print(f"Bundle ID:      app.omlx")
+    print("Bundle ID:      app.omlx")
 
     app_path = Path("/Applications/oMLX.app")
     print(f"App installed:  {'yes' if app_path.exists() else 'NO (install DMG first)'}")
@@ -788,26 +809,32 @@ def diagnose_command(args) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="omlx: Production-ready LLM server for Apple Silicon",
+        prog="dynamoe",
+        description="DynaMoe: scope-aware dynamic MoE inference for Apple Silicon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  omlx serve mlx-community/Llama-3.2-3B-Instruct-4bit --port 8000
-  omlx launch codex --model qwen3.5
+  dynamoe serve --model-dir ~/models --port 8000
+  dynamoe launch codex --model qwen3.5
         """,
     )
     parser.add_argument(
         "--version",
         action="version",
         version=__version__,
-        help="Print the oMLX version and exit",
+        help="Print the DynaMoe version and exit",
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
+    subparsers.add_parser(
+        "info",
+        help="Show DynaMoe, runtime, API, scope, and lossy-mode information",
+    )
+
     for name, help_text in (
-        ("start", "Start oMLX as a managed background server"),
-        ("stop", "Stop the managed background oMLX server"),
-        ("restart", "Restart the managed background oMLX server"),
+        ("start", "Start DynaMoe as a managed background server"),
+        ("stop", "Stop the managed background DynaMoe server"),
+        ("restart", "Restart the managed background DynaMoe server"),
     ):
         lifecycle_parser = subparsers.add_parser(
             name,
@@ -914,7 +941,7 @@ Example directory structure:
         "--paged-ssd-cache-dir",
         type=str,
         default=None,
-        help="Directory for paged SSD cache storage (enables oMLX prefix cache)",
+        help="Directory for paged SSD cache storage (enables DynaMoe prefix cache)",
     )
     serve_parser.add_argument(
         "--paged-ssd-cache-max-size",
@@ -931,7 +958,7 @@ Example directory structure:
     serve_parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Disable oMLX paged SSD cache. mlx-lm BatchGenerator still manages KV states internally.",
+        help="Disable DynaMoe paged SSD cache. mlx-lm BatchGenerator still manages KV states internally.",
     )
     serve_parser.add_argument(
         "--initial-cache-blocks",
@@ -1003,7 +1030,7 @@ Example directory structure:
         "--base-path",
         type=str,
         default=None,
-        help="Base directory for oMLX data (default: ~/.omlx)",
+        help="Base directory for DynaMoe data (compatibility default: ~/.omlx)",
     )
     serve_parser.add_argument(
         "--api-key",
@@ -1015,11 +1042,11 @@ Example directory structure:
     # Launch command
     launch_parser = subparsers.add_parser(
         "launch",
-        help="Launch an external tool with oMLX integration",
+        help="Launch an external tool with DynaMoe integration",
         description=(
             "Configure and launch external coding tools (Claude Code, Copilot, "
             "Codex, Codex App, OpenCode, OpenClaw, Hermes Agent, Pi) to use "
-            "the running oMLX server."
+            "the running DynaMoe server."
         ),
     )
     launch_parser.add_argument(
@@ -1040,19 +1067,19 @@ Example directory structure:
         "--host",
         type=str,
         default=None,
-        help="oMLX server host (default: from settings or 127.0.0.1)",
+        help="DynaMoe server host (default: from settings or 127.0.0.1)",
     )
     launch_parser.add_argument(
         "--port",
         type=int,
         default=None,
-        help="oMLX server port (default: from settings or 8000)",
+        help="DynaMoe server port (default: from settings or 8000)",
     )
     launch_parser.add_argument(
         "--api-key",
         type=str,
         default=None,
-        help="API key for oMLX server authentication",
+        help="API key for DynaMoe server authentication",
     )
     launch_parser.add_argument(
         "--tools-profile",
@@ -1120,6 +1147,8 @@ Example directory structure:
             sys.exit(lifecycle_command(args))
         elif args.command == "diagnose":
             sys.exit(diagnose_command(args))
+        elif args.command == "info":
+            info_command()
         else:
             parser.print_help()
             sys.exit(1)

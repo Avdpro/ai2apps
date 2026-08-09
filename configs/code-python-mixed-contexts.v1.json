@@ -1,0 +1,105 @@
+{
+  "format": "omlx-code-python-contexts",
+  "version": 1,
+  "excludes_evaluation_topics": [
+    "Python asynchronous job queue"
+  ],
+  "prompts": [
+    {
+      "id": "en-generate-config-loader",
+      "language": "en",
+      "category": "generation",
+      "content": "Write a typed Python 3.12 configuration loader for a CLI. It must merge defaults, a TOML file, environment variables, and command-line overrides in that precedence order. Use dataclasses, pathlib, and dependency injection so it is easy to test. Include the implementation and a short usage example."
+    },
+    {
+      "id": "zh-generate-cli",
+      "language": "zh",
+      "category": "generation",
+      "content": "请用 Python 编写一个可维护的命令行工具：递归扫描目录中的 JSONL 文件，校验每行结构并输出汇总报告。要求使用 argparse、pathlib、类型标注和结构化日志；坏行不能中断整个任务。给出完整实现。"
+    },
+    {
+      "id": "en-refactor-dataclass",
+      "language": "en",
+      "category": "modification",
+      "content": "Refactor this Python code to remove shared mutable state, make validation explicit, and preserve the public API. Explain the important changes.\n\nclass Batch:\n    rows = []\n    def __init__(self, name):\n        self.name = name\n    def add(self, value):\n        if value:\n            self.rows.append({'name': self.name, 'value': value})"
+    },
+    {
+      "id": "zh-refactor-requests",
+      "language": "zh",
+      "category": "modification",
+      "content": "下面的 Python 函数串行请求很多 URL。请在保持返回顺序、超时和最多 8 个并发的前提下改造成 asyncio 版本，并说明如何处理取消。\n\ndef fetch_all(urls):\n    result = []\n    for url in urls:\n        result.append(requests.get(url, timeout=10).json())\n    return result"
+    },
+    {
+      "id": "en-debug-context-manager",
+      "language": "en",
+      "category": "debugging",
+      "content": "A Python service intermittently leaks database connections after exceptions. Review this context manager, identify the lifecycle bug, and provide a corrected implementation plus a regression test.\n\n@contextmanager\ndef transaction(pool):\n    conn = pool.acquire()\n    yield conn\n    conn.commit()\n    pool.release(conn)"
+    },
+    {
+      "id": "zh-debug-unicode",
+      "language": "zh",
+      "category": "debugging",
+      "content": "一个 Python ETL 程序只在部分中文 CSV 文件上报 UnicodeDecodeError，而且文件可能带 BOM，也可能混有坏字节。请给出分层排查方法和稳健的读取函数；必须记录替换发生的位置，不能静默丢数据。"
+    },
+    {
+      "id": "en-debug-async-cancel",
+      "language": "en",
+      "category": "debugging",
+      "content": "Explain why this coroutine sometimes leaves child tasks running after the caller is cancelled, then fix it using modern Python structured concurrency.\n\nasync def collect(items):\n    tasks = [asyncio.create_task(load(x)) for x in items]\n    return [await task for task in tasks]"
+    },
+    {
+      "id": "zh-test-property",
+      "language": "zh",
+      "category": "testing",
+      "content": "为一个 Python 区间合并函数设计 pytest 测试。除了普通 example-based tests，还要使用 Hypothesis 验证结果有序、区间互不重叠、覆盖集合不变。请给出测试代码并解释生成策略。"
+    },
+    {
+      "id": "en-test-fixture",
+      "language": "en",
+      "category": "testing",
+      "content": "Design pytest fixtures for a Python repository layer backed by SQLite. Each test needs isolation, migrations should run once per session, and tests must be parallel-safe under pytest-xdist. Show the fixture code and discuss transaction rollback limitations."
+    },
+    {
+      "id": "zh-explain-protocol",
+      "language": "zh",
+      "category": "explanation",
+      "content": "解释 Python typing.Protocol 与 ABC 的差异。请结合一个可替换存储后端的例子，说明结构化子类型、运行时检查、泛型和 mypy/pyright 中常见的协变问题。"
+    },
+    {
+      "id": "en-explain-descriptor",
+      "language": "en",
+      "category": "explanation",
+      "content": "Explain Python's descriptor protocol to an experienced developer. Connect __get__, __set__, functions becoming bound methods, property, and attribute lookup precedence. Include one small validating descriptor and identify a common __set_name__ mistake."
+    },
+    {
+      "id": "zh-performance-generator",
+      "language": "zh",
+      "category": "performance",
+      "content": "一个 Python 数据管道需要处理 200GB 日志，当前代码先 readlines() 再创建多个列表。请改造成流式生成器管道，讨论背压、批量大小、内存测量方法，并给出能够处理压缩输入的核心代码。"
+    },
+    {
+      "id": "en-performance-profile",
+      "language": "en",
+      "category": "performance",
+      "content": "A Python API spends most of its latency serializing nested dataclasses. Propose a measurement-first optimization plan using py-spy or cProfile, explain allocation versus CPU tradeoffs, and show one careful optimization that preserves validation and output compatibility."
+    },
+    {
+      "id": "zh-packaging-pyproject",
+      "language": "zh",
+      "category": "tooling",
+      "content": "设计一个 Python 库的 pyproject.toml：使用 src 布局，支持可选的 postgres 和 redis extras，包含 ruff、pytest、mypy 配置，并通过 console_scripts 暴露 CLI。解释构建隔离、版本号来源和 editable install 的注意事项。"
+    },
+    {
+      "id": "en-review-fastapi",
+      "language": "en",
+      "category": "code-review",
+      "content": "Review this FastAPI endpoint for correctness, security, and concurrency. Return a revised version with explicit dependency lifetimes and error handling.\n\n@app.post('/files')\nasync def upload(file: UploadFile):\n    data = await file.read()\n    open('/tmp/' + file.filename, 'wb').write(data)\n    return {'size': len(data)}"
+    },
+    {
+      "id": "zh-project-architecture",
+      "language": "zh",
+      "category": "project-context",
+      "content": "一个中型 Python 项目同时有 Django Web、Celery worker 和定时数据任务。请设计包结构和依赖方向，避免 settings、ORM model 与领域逻辑循环导入；给出目录树、关键接口以及渐进迁移方案。"
+    }
+  ]
+}

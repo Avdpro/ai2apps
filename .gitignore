@@ -80,11 +80,13 @@ venv.bak/
 .LSOverride
 
 
-# Model files (too large for git)
+# Local models and benchmark artifacts (never publish)
+/artifacts/
 *.bin
 *.safetensors
 *.gguf
 *.ggml
+*.moe
 
 # Logs
 *.log

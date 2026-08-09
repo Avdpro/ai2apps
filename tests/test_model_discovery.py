@@ -20,6 +20,7 @@ from omlx.model_discovery import (
     detect_model_type,
     discover_models,
     discover_models_from_dirs,
+    estimate_deepseek_scope_model_size,
     estimate_model_size,
     estimate_text_only_model_size,
     format_size,
@@ -795,6 +796,54 @@ class TestEstimateModelSize:
         size = estimate_model_size(tmp_path)
         # Should use safetensors size only
         assert size == int(1000 * 1.05)
+
+    def test_deepseek_scope_estimate_subtracts_nonresident_experts(
+        self, tmp_path, monkeypatch
+    ):
+        model = tmp_path / "model"
+        store = tmp_path / "store"
+        model.mkdir()
+        store.mkdir()
+        (model / "model.safetensors").write_bytes(b"0" * 10_000)
+        profile = tmp_path / "profile.json"
+        profile.write_text(
+            json.dumps(
+                {
+                    "scopes": {
+                        "coding": {"3": list(range(60))},
+                    }
+                }
+            )
+        )
+        (store / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "layers": {
+                        str(layer): {"record_bytes": 10, "num_experts": 100}
+                        for layer in range(4)
+                    }
+                }
+            )
+        )
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", str(profile))
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_SCOPE_NAME", "coding")
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_EXPERT_STORE", str(store))
+
+        full = estimate_model_size(model)
+        # raw 10,000 - full experts 4,000 + resident experts 3,600
+        assert estimate_deepseek_scope_model_size(model, full) == int(9_600 * 1.05)
+        # Explicit Top20 keeps hash layers full and trims only score layers.
+        assert estimate_deepseek_scope_model_size(
+            model, full, resident_experts=20
+        ) == int(9_200 * 1.05)
+
+    def test_deepseek_scope_estimate_falls_back_without_configuration(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", raising=False)
+        monkeypatch.delenv("OMLX_DEEPSEEK_V4_SCOPE_NAME", raising=False)
+        monkeypatch.delenv("OMLX_DEEPSEEK_V4_EXPERT_STORE", raising=False)
+        assert estimate_deepseek_scope_model_size(tmp_path, 1234) == 1234
 
 
 class TestDiscoverModels:

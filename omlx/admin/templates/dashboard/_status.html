@@ -80,6 +80,42 @@
                         </div>
                     </div>
 
+                    <!-- DynaMoe scope-aware MoE state -->
+                    <div class="bg-white rounded-2xl border border-blue-200 overflow-hidden mb-8"
+                         x-show="stats.dynamoe" x-cloak>
+                        <div class="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-50 to-violet-50 border-b border-blue-100">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="network" class="w-4 h-4 text-blue-600"></i>
+                                <span class="text-xs font-bold uppercase tracking-wider text-blue-800">DynaMoe Scope Cache</span>
+                            </div>
+                            <span class="text-[10px] text-neutral-500"
+                                  x-text="'runtime: oMLX ' + (stats.dynamoe?.runtime?.version || '')"></span>
+                        </div>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-px bg-neutral-100">
+                            <div class="bg-white p-5">
+                                <p class="text-xs text-neutral-500 mb-1">Current scope</p>
+                                <p class="text-base font-bold text-neutral-900 truncate"
+                                   x-text="stats.dynamoe?.models?.[0]?.bank?.current_scope || stats.dynamoe?.initial_scope || 'not configured'"></p>
+                            </div>
+                            <div class="bg-white p-5">
+                                <p class="text-xs text-neutral-500 mb-1">Scope probe</p>
+                                <p class="text-base font-bold text-neutral-900"
+                                   x-text="(stats.dynamoe?.models?.[0]?.selector?.depth || stats.dynamoe?.probe_depth || 16) + ' layers'"></p>
+                            </div>
+                            <div class="bg-white p-5">
+                                <p class="text-xs text-neutral-500 mb-1">Lossy acceleration</p>
+                                <p class="text-base font-bold"
+                                   :class="(stats.dynamoe?.lossy_mode || 'exact') === 'exact' ? 'text-emerald-700' : 'text-amber-700'"
+                                   x-text="stats.dynamoe?.lossy_mode || 'exact'"></p>
+                            </div>
+                            <div class="bg-white p-5">
+                                <p class="text-xs text-neutral-500 mb-1">Scope switches / fallbacks</p>
+                                <p class="text-base font-bold text-neutral-900"
+                                   x-text="(stats.dynamoe?.models?.[0]?.bank?.switches || 0) + ' / ' + (stats.dynamoe?.models?.[0]?.expert_store?.fallback_calls || 0)"></p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Speed Stats -->
                     <div class="bg-white rounded-2xl border border-neutral-200 overflow-hidden mb-8">
                         <div class="flex items-center justify-between px-6 py-4 bg-neutral-100 border-b border-neutral-200">

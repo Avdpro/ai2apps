@@ -80,6 +80,7 @@ NATIVE_SYMBOLS = (
     "qwen35_q6_affine_qmm_t",
     "qwen35_q8_affine_qmm_t",
     "qwen35_moe_weighted_sum",
+    "qwen35_q4_dual_gather_qmm_t",
 )
 
 # Extensions built before the NAX split reject the use_nax/nax_variant kwargs,
@@ -368,6 +369,39 @@ def qwen35_q4_affine_qmm_t(
             **_native_stream_kwargs(stream),
         )
     raise RuntimeError("qwen35_q4_affine_qmm_t native kernel is unavailable")
+
+
+def qwen35_q4_dual_gather_qmm_t(
+    x: mx.array,
+    segment_ids: mx.array,
+    segment_starts: mx.array,
+    segment_counts: mx.array,
+    max_rows: int,
+    resident_weight: mx.array,
+    resident_scales: mx.array,
+    resident_biases: mx.array,
+    staging_weight: mx.array,
+    staging_scales: mx.array,
+    staging_biases: mx.array,
+    *,
+    stream=None,
+) -> mx.array:
+    if _ext is not None and hasattr(_ext, "qwen35_q4_dual_gather_qmm_t"):
+        return _ext.qwen35_q4_dual_gather_qmm_t(
+            x,
+            segment_ids,
+            segment_starts,
+            segment_counts,
+            max_rows,
+            resident_weight,
+            resident_scales,
+            resident_biases,
+            staging_weight,
+            staging_scales,
+            staging_biases,
+            **_native_stream_kwargs(stream),
+        )
+    raise RuntimeError("qwen35_q4_dual_gather_qmm_t is unavailable")
 
 
 def qwen35_q5_affine_qmm_t(

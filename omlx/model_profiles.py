@@ -83,6 +83,9 @@ EXCLUDED_FROM_PROFILES = frozenset(
         "description",
         "model_alias",
         "model_type_override",
+        # Device-specific physical expert-bank sizing must never travel with
+        # a generation profile to another machine.
+        "cache_moe_memory_tier",
         "active_profile_name",
         "ttl_seconds",
         # Security flag must be explicit per model — never propagated via profiles.

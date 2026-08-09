@@ -167,6 +167,7 @@
             modelSettings: {
                 model_alias: '',
                 model_type_override: '',
+                cache_moe_memory_tier: '',
                 max_context_window: null,
                 max_tokens: null,
                 temperature: null,
@@ -183,6 +184,7 @@
                 trust_remote_code: false,
             },
             savingModelSettings: false,
+            _modelSettingsBusyTimer: null,
             loadingGenDefaults: false,
             reasoningParsers: [],
 
@@ -364,6 +366,17 @@
 
             // ModelScope Downloader state
             downloaderSource: 'hf',
+            dynaCatalog: [],
+            dynaCatalogLoading: false,
+            dynaSelectedModelId: '',
+            dynaWeightSource: 'huggingface',
+            dynaMemoryTier: 'auto',
+            dynaToken: '',
+            dynaInstalling: false,
+            dynaTasks: [],
+            dynaError: '',
+            dynaSuccess: '',
+            _dynaRefreshTimer: null,
             msAvailable: false,
             msInitialized: false,
             msRepoId: '',
@@ -586,6 +599,10 @@
                 this.$watch('mainTab', (value) => {
                     this.handleMainTabChange(value);
                 });
+                this.$watch('showModelSettingsModal', (visible) => {
+                    if (visible) this.startModelSettingsBusyRefresh();
+                    else this.stopModelSettingsBusyRefresh();
+                });
 
                 // When the user returns to this browser tab after looking
                 // elsewhere, re-check whether a different bench just started
@@ -653,6 +670,9 @@
                     if (this.modelsTab === 'downloader' && !this.hfRecommendedLoaded) {
                         loads.push(this.loadRecommendedModels());
                     }
+                    if (this.modelsTab === 'downloader' && this.downloaderSource === 'dynamoe') {
+                        loads.push(this.loadDynaCatalog(), this.loadDynaTasks());
+                    }
                     if (this.modelsTab === 'quantizer') {
                         loads.push(this.loadOQModels());
                     }
@@ -666,12 +686,16 @@
                     const hasMsActive = this.msTasks.some(t =>
                         t.status === 'pending' || t.status === 'downloading');
                     if (hasMsActive) this.startMSRefresh();
+                    const hasDynaActive = this.dynaTasks.some(t =>
+                        !['completed', 'failed', 'cancelled'].includes(t.status));
+                    if (hasDynaActive) this.startDynaRefresh();
                     const hasOqActive = this.oqTasks.some(t =>
                         ['pending', 'loading', 'quantizing', 'saving'].includes(t.status));
                     if (hasOqActive) this.startOQRefresh();
                 } else {
                     this.stopHFRefresh();
                     this.stopMSRefresh();
+                    this.stopDynaRefresh();
                     this.stopOQRefresh();
                 }
                 if (value === 'bench') {
@@ -1491,9 +1515,15 @@
                     isDiffusion,
                 );
                 const isOcr = OCR_CONFIG_MODEL_TYPES.has(model?.config_model_type || '');
+                const memoryProfile = model?.cache_moe_memory || null;
                 return {
                     model_alias: s.model_alias || '',
                     model_type_override: s.model_type_override || '',
+                    cache_moe_memory_tier: s.cache_moe_memory_tier
+                        || memoryProfile?.recommended
+                        || '',
+                    cache_moe_memory_profile: memoryProfile,
+                    cache_moe_memory_locked: false,
                     max_context_window: s.max_context_window || null,
                     max_tokens: s.max_tokens || null,
                     temperature: isOcr ? 0.0 : (s.temperature ?? null),
@@ -1964,6 +1994,39 @@
                 this.showModelSettingsModal = true;
             },
 
+            async refreshModelSettingsBusy() {
+                if (!this.showModelSettingsModal || !this.selectedModel) return;
+                try {
+                    const response = await fetch('/admin/api/activity');
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    const active = (data.active_models?.models || []).find(
+                        model => model.id === this.selectedModel.id
+                    );
+                    this.modelSettings.cache_moe_memory_locked = !!active && (
+                        !!active.is_loading
+                        || (active.active_requests || 0) > 0
+                        || (active.waiting_requests || 0) > 0
+                    );
+                } catch (_) { /* best-effort UI lock; server also enforces it */ }
+            },
+
+            startModelSettingsBusyRefresh() {
+                this.stopModelSettingsBusyRefresh();
+                this.refreshModelSettingsBusy();
+                this._modelSettingsBusyTimer = setInterval(
+                    () => this.refreshModelSettingsBusy(),
+                    500,
+                );
+            },
+
+            stopModelSettingsBusyRefresh() {
+                if (this._modelSettingsBusyTimer) {
+                    clearInterval(this._modelSettingsBusyTimer);
+                    this._modelSettingsBusyTimer = null;
+                }
+            },
+
             async saveModelSettings() {
                 if (!this.selectedModel) return;
 
@@ -2002,6 +2065,7 @@
                             const payload = {
                                 model_alias: this.modelSettings.model_alias?.trim() || null,
                                 model_type_override: this.modelSettings.model_type_override || null,
+                                cache_moe_memory_tier: this.modelSettings.cache_moe_memory_tier || null,
                                 max_context_window: this.modelSettings.max_context_window || null,
                                 max_tokens: this.modelSettings.max_tokens || null,
                                 temperature: Number.isFinite(this.modelSettings.temperature) ? this.modelSettings.temperature : null,
@@ -2467,8 +2531,8 @@
             },
 
             _launchCmd(tool) {
-                const raw = this.stats.cli_prefix || 'omlx';
-                const cli = raw === 'omlx' ? raw : this.shellQuote(raw);
+                const raw = this.stats.cli_prefix || 'dynamoe';
+                const cli = raw === 'dynamoe' ? raw : this.shellQuote(raw);
                 return `${cli} launch ${tool}`;
             },
 
@@ -3376,8 +3440,8 @@
                 const rpad = (s, w) => s.toString().padEnd(w);
                 let lines = [];
 
-                lines.push('oMLX - LLM inference, optimized for your Mac');
-                lines.push('https://github.com/jundot/omlx');
+                lines.push('DynaMoe - Dynamic MoE inference for Apple Silicon');
+                lines.push('Independent project built on oMLX (Apache-2.0)');
                 if (this.benchRunExternal) {
                     lines.push(`Benchmark Model: ${this.benchRunExternal.model} @ ${this.benchRunExternal.base_url}`);
                     lines.push('Engine: External OpenAI-compatible endpoint');
@@ -4701,6 +4765,113 @@
                 } finally {
                     this.hfMirrorSaving = false;
                 }
+            },
+
+            // =================================================================
+            // DynaMoe verified model installer
+            // =================================================================
+
+            selectedDynaModel() {
+                return this.dynaCatalog.find(model => model.id === this.dynaSelectedModelId) || null;
+            },
+
+            async initDynaMoeDownloader() {
+                if (!this.dynaCatalog.length) await this.loadDynaCatalog();
+                await this.loadDynaTasks();
+            },
+
+            async loadDynaCatalog() {
+                this.dynaCatalogLoading = true;
+                this.dynaError = '';
+                try {
+                    const response = await fetch('/admin/api/dynamoe/catalog');
+                    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || 'Could not load the DynaMoe catalog');
+                    const data = await response.json();
+                    this.dynaCatalog = data.models || [];
+                    if (!this.dynaSelectedModelId && this.dynaCatalog.length) {
+                        this.dynaSelectedModelId = this.dynaCatalog[0].id;
+                        this.dynaWeightSource = this.dynaCatalog[0].sources?.[0]?.id || 'huggingface';
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                } catch (err) {
+                    this.dynaError = err.message || 'Could not load the DynaMoe catalog';
+                } finally {
+                    this.dynaCatalogLoading = false;
+                }
+            },
+
+            async startDynaInstall() {
+                const model = this.selectedDynaModel();
+                if (!model) return;
+                this.dynaInstalling = true;
+                this.dynaError = '';
+                this.dynaSuccess = '';
+                try {
+                    const response = await fetch('/admin/api/dynamoe/install', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model_id: model.id,
+                            weight_source: this.dynaWeightSource,
+                            memory_tier: this.dynaMemoryTier,
+                            token: this.dynaToken,
+                        }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.detail || 'Could not start installation');
+                    this.dynaSuccess = `Installing ${model.name}`;
+                    await this.loadDynaTasks();
+                    this.startDynaRefresh();
+                } catch (err) {
+                    this.dynaError = err.message || 'Could not start installation';
+                } finally {
+                    this.dynaInstalling = false;
+                }
+            },
+
+            async loadDynaTasks() {
+                try {
+                    const response = await fetch('/admin/api/dynamoe/tasks');
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    this.dynaTasks = data.tasks || [];
+                    const active = this.dynaTasks.some(task => !['completed', 'failed', 'cancelled'].includes(task.status));
+                    if (!active) {
+                        this.stopDynaRefresh();
+                        if (this.dynaTasks.some(task => task.status === 'completed')) {
+                            await this.loadHFModels();
+                            await this.loadModels();
+                        }
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                } catch (err) {
+                    console.error('Failed to load DynaMoe tasks:', err);
+                }
+            },
+
+            startDynaRefresh() {
+                if (this._dynaRefreshTimer) return;
+                this._dynaRefreshTimer = setInterval(() => this.loadDynaTasks(), 1000);
+            },
+
+            stopDynaRefresh() {
+                if (this._dynaRefreshTimer) clearInterval(this._dynaRefreshTimer);
+                this._dynaRefreshTimer = null;
+            },
+
+            async cancelDynaInstall(taskId) {
+                await fetch(`/admin/api/dynamoe/tasks/${taskId}/cancel`, { method: 'POST' });
+                await this.loadDynaTasks();
+            },
+
+            async retryDynaInstall(taskId) {
+                const response = await fetch(`/admin/api/dynamoe/tasks/${taskId}/retry`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: this.dynaToken }),
+                });
+                if (response.ok) this.startDynaRefresh();
+                await this.loadDynaTasks();
             },
 
             // =================================================================

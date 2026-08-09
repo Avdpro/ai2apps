@@ -30,13 +30,15 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
+from dynamoe._version import __version__ as _dynamoe_version
+from omlx._version import __version__ as _omlx_version
+
 from ..api.markitdown import MARKITDOWN_MODEL_ID, markitdown_model_visible
 from ..api.openai_models import _coerce_tool_call_arguments
 from ..api.utils import _try_parse_json
 from ..model_profiles import EXCLUDED_FROM_PROFILES
 from ..model_settings import merge_chat_template_kwargs
 from ..settings import BURST_DECODE_MODES, SubKeyEntry, burst_decode_env
-from ..utils.release_check import normalize_update_channel, select_latest_release
 from .auth import (
     REMEMBER_ME_MAX_AGE,
     SESSION_MAX_AGE,
@@ -108,6 +110,7 @@ class ModelSettingsRequest(BaseModel):
     model_alias: str | None = None
     model_type_override: str | None = None
     max_context_window: int | None = None
+    cache_moe_memory_tier: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -329,6 +332,19 @@ class HFRetryRequest(BaseModel):
     """Request model for retrying a HuggingFace model download."""
 
     hf_token: str = ""
+
+
+class DynaMoeInstallRequest(BaseModel):
+    """Start a verified Cache-MoE model installation."""
+
+    model_id: str
+    weight_source: str = "huggingface"
+    memory_tier: str = "auto"
+    token: str = ""
+
+
+class DynaMoeRetryRequest(BaseModel):
+    token: str = ""
 
 
 class MSDownloadRequest(BaseModel):
@@ -1054,9 +1070,8 @@ def _static_version(path: str) -> str:
 
 templates.env.globals["static"] = _static_version
 
-from omlx._version import __version__ as _omlx_version
-
-templates.env.globals["version"] = _omlx_version
+templates.env.globals["version"] = _dynamoe_version
+templates.env.globals["runtime_version"] = _omlx_version
 
 # i18n defaults (English) — overridden once set_admin_getters is called
 _i18n_dir = Path(__file__).parent / "i18n"
@@ -1121,6 +1136,7 @@ _get_settings_manager = None
 _get_global_settings = None
 _hf_downloader = None
 _ms_downloader = None
+_dynamoe_installer = None
 _oq_manager = None
 _hf_uploader = None
 
@@ -1159,6 +1175,17 @@ def set_hf_downloader(downloader):
     """
     global _hf_downloader
     _hf_downloader = downloader
+
+
+def _get_dynamoe_installer():
+    global _dynamoe_installer
+    if _hf_downloader is None:
+        raise HTTPException(status_code=503, detail="Downloader not initialized")
+    if _dynamoe_installer is None:
+        from dynamoe.model_installer import DynaMoeInstaller
+
+        _dynamoe_installer = DynaMoeInstaller(_hf_downloader)
+    return _dynamoe_installer
 
 
 def set_ms_downloader(downloader):
@@ -1914,6 +1941,7 @@ async def list_models(is_admin: bool = Depends(require_admin)):
             "engine_type": model_info.get("engine_type", "batched"),
             "model_type": model_info.get("model_type", "llm"),
             "config_model_type": model_info.get("config_model_type", ""),
+            "cache_moe": bool(model_info.get("cache_moe", False)),
             # Native context window from the model's config.json — used by
             # the context bench UI to hide targets the model cannot reach.
             "model_context_length": model_info.get("model_context_length"),
@@ -1930,6 +1958,26 @@ async def list_models(is_admin: bool = Depends(require_admin)):
             "is_paroquant": is_paroquant,
             "paroquant_reason": paroquant_reason,
         }
+
+        if model_data["cache_moe"]:
+            from ..model_discovery import (
+                deepseek_cache_moe_memory_profile,
+                qwen36_cache_moe_memory_profile,
+            )
+
+            cache_config = getattr(
+                engine_pool._entries.get(model_id), "cache_moe_config", None
+            )
+            profile_fn = (
+                qwen36_cache_moe_memory_profile
+                if model_data["config_model_type"] == "qwen3_5_moe"
+                and (cache_config or {}).get("engine")
+                in ("qwen3.6-flesh", "qwen3.6-arena", "qwen3.6-tiered")
+                else deepseek_cache_moe_memory_profile
+            )
+            model_data["cache_moe_memory"] = profile_fn(
+                model_info.get("model_path", ""), cache_config
+            )
 
         # Add settings if available
         if settings:
@@ -2187,6 +2235,25 @@ async def update_model_settings(
             entry.engine_type = type_to_engine.get(detected_type, "batched")
     if "max_context_window" in sent:
         current_settings.max_context_window = request.max_context_window
+    if "cache_moe_memory_tier" in sent:
+        memory_tier = (request.cache_moe_memory_tier or "auto").strip().lower()
+        if memory_tier not in {"auto", "lean", "compact", "optimal"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid Cache-MoE memory tier: {memory_tier}",
+            )
+        current_tier = current_settings.cache_moe_memory_tier or "auto"
+        if memory_tier != current_tier and engine_pool._entry_is_busy(entry):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Cache-MoE memory profile cannot be changed while the "
+                    "model has active requests"
+                ),
+            )
+        current_settings.cache_moe_memory_tier = (
+            None if memory_tier == "auto" else memory_tier
+        )
     if "max_tokens" in sent:
         current_settings.max_tokens = request.max_tokens
     if "temperature" in sent:
@@ -2571,6 +2638,7 @@ async def update_model_settings(
     requires_reload = entry.engine is not None and (
         ("model_type_override" in sent and entry.engine_type != prev_engine_type)
         or "index_cache_freq" in sent
+        or "cache_moe_memory_tier" in sent
         or "dflash_enabled" in sent
         or "dflash_draft_model" in sent
         or "dflash_draft_quant_enabled" in sent
@@ -4273,7 +4341,10 @@ def _build_runtime_cache_observability(
         "hot_cache_entries": 0,
     }
 
-    engine_pool = _get_engine_pool()
+    try:
+        engine_pool = _get_engine_pool()
+    except Exception:  # Server startup has not initialized the pool yet.
+        engine_pool = None
     if engine_pool is None:
         return payload
 
@@ -4460,6 +4531,53 @@ def _build_runtime_cache_observability(
     return payload
 
 
+def _build_dynamoe_observability(model_filter: str = "") -> dict:
+    """Return product-specific scope/cache state without synchronizing Metal."""
+    raw_probe_depth = os.environ.get(
+        "OMLX_DEEPSEEK_V4_SCOPE_PROBE_DEPTH", "16"
+    ).strip()
+    try:
+        probe_depth = int(raw_probe_depth)
+    except ValueError:
+        probe_depth = 16
+    payload = {
+        "version": _dynamoe_version,
+        "runtime": {"name": "oMLX", "version": _omlx_version},
+        "scope_configured": bool(
+            os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", "").strip()
+        ),
+        "initial_scope": os.environ.get(
+            "OMLX_DEEPSEEK_V4_SCOPE_NAME", ""
+        ).strip(),
+        "probe_depth": probe_depth,
+        "lossy_mode": os.environ.get(
+            "OMLX_DEEPSEEK_V4_SCOPE_LOSSY_MODE", "exact"
+        ).strip()
+        or "exact",
+        "models": [],
+    }
+    try:
+        engine_pool = _get_engine_pool()
+    except Exception:  # Server startup has not initialized the pool yet.
+        engine_pool = None
+    if engine_pool is None:
+        return payload
+    for model_id, entry in engine_pool._entries.items():
+        if model_filter and model_id != model_filter:
+            continue
+        engine = entry.engine
+        if engine is None or not hasattr(engine, "get_stats"):
+            continue
+        try:
+            flesh = engine.get_stats().get("flesh")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not collect DynaMoe stats for %s: %s", model_id, exc)
+            continue
+        if flesh:
+            payload["models"].append({"id": model_id, **flesh})
+    return payload
+
+
 @router.get("/api/stats")
 async def get_server_stats(
     model: str = "",
@@ -4502,6 +4620,7 @@ async def get_server_stats(
         "engines": _get_engine_info(),
         "active_models": active_models_data,
         "runtime_cache": runtime_cache_data,
+        "dynamoe": _build_dynamoe_observability(model_filter=model),
     }
 
 
@@ -5262,6 +5381,58 @@ async def probe_cache(
 # =============================================================================
 # HuggingFace Downloader API Routes
 # =============================================================================
+
+
+@router.get("/api/dynamoe/catalog")
+async def get_dynamoe_catalog(is_admin: bool = Depends(require_admin)):
+    """List DynaMoe-verified Cache-MoE installation recipes."""
+
+    return {"models": _get_dynamoe_installer().catalog()}
+
+
+@router.post("/api/dynamoe/install")
+async def start_dynamoe_install(
+    request: DynaMoeInstallRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        task = await _get_dynamoe_installer().start(
+            request.model_id,
+            request.weight_source,
+            request.memory_tier,
+            request.token,
+        )
+        return {"success": True, "task": task.to_dict()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/dynamoe/tasks")
+async def list_dynamoe_tasks(is_admin: bool = Depends(require_admin)):
+    return {"tasks": _get_dynamoe_installer().get_tasks()}
+
+
+@router.post("/api/dynamoe/tasks/{task_id}/cancel")
+async def cancel_dynamoe_install(
+    task_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    if not await _get_dynamoe_installer().cancel(task_id):
+        raise HTTPException(status_code=404, detail="Task not found or not cancellable")
+    return {"success": True}
+
+
+@router.post("/api/dynamoe/tasks/{task_id}/retry")
+async def retry_dynamoe_install(
+    task_id: str,
+    request: DynaMoeRetryRequest = DynaMoeRetryRequest(),
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        task = await _get_dynamoe_installer().retry(task_id, request.token)
+        return {"success": True, "task": task.to_dict()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/api/hf/download")
@@ -6519,95 +6690,20 @@ async def get_device_info(
 # Update Check
 # =============================================================================
 
-_update_cache: dict[str, dict[str, Any]] = {}
-_update_cache_time: dict[str, float] = {}
-_UPDATE_CACHE_TTL = 3600  # 1 hour
-_UPDATE_PREFS_PATH = (
-    Path.home() / "Library" / "Application Support" / "oMLX" / "update-prefs.json"
-)
-
-
-def _read_update_channel() -> str:
-    try:
-        data = json.loads(_UPDATE_PREFS_PATH.read_text())
-    except Exception:
-        return "stable"
-    return normalize_update_channel(data.get("channel"))
-
-
 @router.get("/api/update-check")
 async def check_update(
     is_admin: bool = Depends(require_admin),
 ):
-    """Check GitHub Releases for newer oMLX version (cached 24h)."""
-    global _update_cache, _update_cache_time
+    """Return the independent DynaMoe update state.
 
-    now = time.time()
-    channel = _read_update_channel()
-
-    if not isinstance(_update_cache, dict) or _update_cache is None:
-        _update_cache = {}
-    if not isinstance(_update_cache_time, dict) or _update_cache_time is None:
-        _update_cache_time = {}
-
-    cached = _update_cache.get(channel)
-    cached_time = _update_cache_time.get(channel, 0.0)
-    if cached is not None and now - cached_time < _UPDATE_CACHE_TTL:
-        return cached
-
-    no_update = {
+    Upstream oMLX releases must not be presented as DynaMoe product updates.
+    """
+    return {
         "update_available": False,
         "latest_version": None,
         "release_url": None,
-        "update_channel": channel,
+        "update_channel": "dynamoe",
     }
-
-    try:
-        # Use the releases list (not /releases/latest) and filter by the
-        # user's update channel. GitHub's prerelease flag has historically
-        # been unreliable for rc/dev tags, so release_check validates tags too.
-        resp = await asyncio.to_thread(
-            requests.get,
-            "https://api.github.com/repos/jundot/omlx/releases",
-            params={"per_page": 20},
-            timeout=5,
-        )
-        if resp.status_code != 200:
-            _update_cache[channel] = no_update
-            _update_cache_time[channel] = now
-            return _update_cache[channel]
-
-        data = select_latest_release(resp.json(), channel=channel)
-        if data is None:
-            _update_cache[channel] = no_update
-            _update_cache_time[channel] = now
-            return _update_cache[channel]
-
-        latest = data["tag_name"].lstrip("v")
-
-        try:
-            from packaging.version import Version
-
-            update_available = Version(latest) > Version(_omlx_version)
-        except Exception:
-            update_available = False
-
-        if update_available:
-            _update_cache[channel] = {
-                "update_available": True,
-                "latest_version": latest,
-                "release_url": data.get("html_url"),
-                "update_channel": channel,
-            }
-        else:
-            _update_cache[channel] = no_update
-
-        _update_cache_time[channel] = now
-    except Exception:
-        _update_cache[channel] = no_update
-        _update_cache_time[channel] = now
-
-    return _update_cache[channel]
 
 
 # =============================================================================

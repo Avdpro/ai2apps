@@ -38,6 +38,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import os
+import statistics
 import sys
 import time
 from pathlib import Path
@@ -79,6 +82,26 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="Warmup runs before timing (default: 1)",
+    )
+    p.add_argument(
+        "--warmup-each-pp",
+        action="store_true",
+        help="Warm every prompt length instead of only the shortest",
+    )
+    p.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="Measured runs per prompt length; report per-metric median (default: 1)",
+    )
+    p.add_argument(
+        "--prefill-step-size",
+        type=int,
+        default=None,
+        help=(
+            "Fixed tokens per prefill forward; disables model-specific adaptive "
+            "prefill (default: use scheduler/model policy)"
+        ),
     )
     return p.parse_args()
 
@@ -125,6 +148,9 @@ async def _bench_model(
     gen_tokens: int,
     batch_sizes: list[int],
     warmup: int,
+    warmup_each_pp: bool,
+    repeat: int,
+    prefill_step_size: int | None,
 ) -> tuple[list[dict], list[dict]]:
     """Load one model, run all tests, unload.  Returns (single_results, batch_results)."""
     from omlx.admin.benchmark import (
@@ -132,32 +158,110 @@ async def _bench_model(
         _run_batch_test,
         _run_single_test,
     )
+    from omlx.engine.batched import BatchedEngine
     from omlx.engine.vlm import VLMBatchedEngine
+    from omlx.scheduler import SchedulerConfig
+
+    config_path = Path(model_path) / "config.json"
+    config = json.loads(config_path.read_text()) if config_path.exists() else {}
+    engine_class = VLMBatchedEngine if config.get("vision_config") else BatchedEngine
 
     print(f"\nLoading {model_path} …")
     t0 = time.perf_counter()
-    engine = VLMBatchedEngine(model_path)
+    scheduler_config = SchedulerConfig(
+        prefill_step_size=prefill_step_size or 2048,
+        deepseek_v4_adaptive_prefill=prefill_step_size is None,
+    )
+    engine = engine_class(model_path, scheduler_config=scheduler_config)
     await engine.start()
+    scheduler = engine._engine.engine.scheduler
+    deepseek_prefill = getattr(scheduler, "_deepseek_v4_adaptive_prefill", None)
+    if str(config.get("model_type", "")).startswith("deepseek_v4"):
+        loaded_model = scheduler.model
+        print(
+            "DeepSeek prefill policy: "
+            f"enabled={deepseek_prefill is not None} "
+            f"model_type={getattr(loaded_model, 'model_type', None)!r} "
+            "args_type="
+            f"{getattr(getattr(loaded_model, 'args', None), 'model_type', None)!r}"
+        )
+    # Weight sanitize/stack can leave tens of GiB in MLX's reclaimable
+    # allocator cache for large MoE checkpoints.  It is not model state and
+    # would otherwise distort the benchmark's resident-memory headroom.
+    import mlx.core as mx
+
+    mx.clear_cache()
     print(f"Loaded in {time.perf_counter() - t0:.1f}s")
 
     tokenizer = engine.tokenizer
     prompts: dict[int, str] = {pp: _generate_prompt(tokenizer, pp) for pp in sorted(set(pp_lengths))}
 
     if warmup > 0 and pp_lengths:
-        warmup_pp = min(pp_lengths)
-        print(f"Warming up ({warmup}× pp={warmup_pp}) …")
-        for _ in range(warmup):
-            await _run_single_test(engine, prompts[warmup_pp], gen_tokens, warmup_pp)
+        warmup_lengths = pp_lengths if warmup_each_pp else [min(pp_lengths)]
+        for warmup_pp in warmup_lengths:
+            print(f"Warming up ({warmup}× pp={warmup_pp}) …")
+            for _ in range(warmup):
+                await _run_single_test(
+                    engine, prompts[warmup_pp], gen_tokens, warmup_pp
+                )
 
     single_results: list[dict] = []
     for pp in sorted(pp_lengths):
-        print(f"  pp={pp} gen={gen_tokens} …", end="", flush=True)
-        r = await _run_single_test(engine, prompts[pp], gen_tokens, pp)
-        single_results.append(r)
-        print(
-            f"  ttft={_fmt_metric(r['ttft_ms'], 0)}ms  "
-            f"{_fmt_metric(r['gen_tps'])} t/s"
+        runs = []
+        for run_idx in range(repeat):
+            scope_loader = None
+            scope_before = None
+            scope_store = os.environ.get("OMLX_DEEPSEEK_V4_EXPERT_STORE", "").strip()
+            if scope_store:
+                from omlx.patches.deepseek_v4.scope_cache import (
+                    get_scope_fallback_loader,
+                )
+
+                scope_loader = get_scope_fallback_loader(scope_store)
+                scope_before = scope_loader.stats()
+            suffix = f" run={run_idx + 1}/{repeat}" if repeat > 1 else ""
+            print(
+                f"  pp={pp} gen={gen_tokens}{suffix} …", end="", flush=True
+            )
+            r = await _run_single_test(engine, prompts[pp], gen_tokens, pp)
+            runs.append(r)
+            print(
+                f"  ttft={_fmt_metric(r['ttft_ms'], 0)}ms  "
+                f"{_fmt_metric(r['gen_tps'])} t/s"
+            )
+            if scope_loader is not None and scope_before is not None:
+                scope_after = scope_loader.stats()
+                loaded = scope_after["experts_loaded"] - scope_before["experts_loaded"]
+                prefill_loaded = (
+                    scope_after["transient_experts_loaded"]
+                    - scope_before["transient_experts_loaded"]
+                )
+                decode_loaded = (
+                    scope_after["decode_experts_loaded"]
+                    - scope_before["decode_experts_loaded"]
+                )
+                calls = scope_after["fallback_calls"] - scope_before["fallback_calls"]
+                hot = scope_after["hot_only_calls"] - scope_before["hot_only_calls"]
+                io_seconds = scope_after["load_seconds"] - scope_before["load_seconds"]
+                gib = (
+                    scope_after["bytes_loaded"] - scope_before["bytes_loaded"]
+                ) / (1024**3)
+                print(
+                    f"    scope-cache: l3_experts={loaded} "
+                    f"(prefill={prefill_loaded}, decode={decode_loaded}) "
+                    f"l3={gib:.2f}GiB "
+                    f"load+publish={io_seconds:.3f}s "
+                    f"fallback_layers={calls} hot_only={hot}"
+                )
+
+        result = dict(runs[0])
+        for key in ("ttft_ms", "gen_tps", "processing_tps"):
+            values = [run[key] for run in runs if run.get(key) is not None]
+            result[key] = statistics.median(values) if values else None
+        result["peak_memory_bytes"] = max(
+            run["peak_memory_bytes"] for run in runs
         )
+        single_results.append(result)
 
     batch_results: list[dict] = []
     batch_pp = sorted(pp_lengths)[0] if pp_lengths else 1024
@@ -276,6 +380,10 @@ def _print_batch_comparison(
 # ── main ──────────────────────────────────────────────────────────────────────
 
 async def _run(args: argparse.Namespace) -> None:
+    if args.repeat < 1:
+        raise ValueError("--repeat must be at least 1")
+    if args.prefill_step_size is not None and args.prefill_step_size < 1:
+        raise ValueError("--prefill-step-size must be at least 1")
     model_paths = [str(Path(m).expanduser().resolve()) for m in args.models]
     labels = [_short_name(p) for p in model_paths]
     pp_lengths = sorted(set(args.pp))
@@ -285,7 +393,14 @@ async def _run(args: argparse.Namespace) -> None:
 
     for path in model_paths:
         single, batch = await _bench_model(
-            path, pp_lengths, args.gen, sorted(args.batch), args.warmup
+            path,
+            pp_lengths,
+            args.gen,
+            sorted(args.batch),
+            args.warmup,
+            args.warmup_each_pp,
+            args.repeat,
+            args.prefill_step_size,
         )
         all_single.append(single)
         all_batch.append(batch)

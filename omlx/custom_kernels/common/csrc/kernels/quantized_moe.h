@@ -1101,7 +1101,7 @@ METAL_FUNC void qmm_t_impl(
     threadgroup T* Ws,
     const constant int& K,
     const constant int& N,
-    const constant int& M,
+    const int M,
     const constant int& K_eff,
     uint3 tid [[threadgroup_position_in_grid]],
     uint lid [[thread_index_in_threadgroup]],

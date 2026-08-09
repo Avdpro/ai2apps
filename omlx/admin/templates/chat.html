@@ -1025,26 +1025,23 @@
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <a href="/admin/dashboard">
-                        <img x-show="activeTheme === 'light'" src="/admin/static/navbar-logo-light.svg" alt="oMLX"
+                        <img x-show="activeTheme === 'light'" src="{{ static('navbar-logo-light.svg') }}" alt="DynaMoe"
                             class="w-[30px] h-[30px]">
-                        <img x-show="activeTheme === 'dark'" src="/admin/static/navbar-logo-dark.svg" alt="oMLX"
+                        <img x-show="activeTheme === 'dark'" src="{{ static('navbar-logo-dark.svg') }}" alt="DynaMoe"
                             class="w-[30px] h-[30px]" x-cloak>
                     </a>
                     <div class="flex flex-col gap-0">
                         <a href="/admin/dashboard" class="font-semibold leading-tight">{{ t('chat.brand') }}</a>
-                        <a :href="updateAvailable && releaseUrl ? releaseUrl : 'https://github.com/jundot/omlx'" target="_blank"
-                           class="relative text-[10px] leading-none hover:opacity-80 transition-opacity"
-                           style="color: var(--text-muted);"
-                           @mouseenter="versionHover = true" @mouseleave="versionHover = false">
-                            v{{ version }}
-                            <span x-show="updateAvailable" x-cloak
-                                  class="inline-block w-1.5 h-1.5 bg-green-500 rounded-full ml-0.5 align-middle"></span>
-                            <span x-show="versionHover" x-cloak
-                                  class="absolute left-1/2 -translate-x-1/2 top-full mt-1 px-2 py-1 text-[10px] text-white bg-neutral-800 rounded whitespace-nowrap z-50"
-                                  x-text="updateAvailable && latestVersion
-                                      ? window.t('navbar.update_available').replace('{version}', latestVersion)
-                                      : window.t('navbar.go_to_github')"></span>
-                        </a>
+                        <span class="text-[10px] leading-none" style="color: var(--text-muted);">v{{ version }}</span>
+                        <a href="https://github.com/jundot/omlx" target="_blank" rel="noopener noreferrer"
+                           title="Independent project built on oMLX; no affiliation or endorsement"
+                           class="text-[9px] leading-none hover:opacity-80 transition-opacity"
+                           style="color: var(--text-muted);">runtime: oMLX</a>
+                        <span x-show="isCacheMoeMode" x-cloak
+                              class="text-[9px] leading-none max-w-[120px] truncate"
+                              style="color: var(--text-muted);"
+                              :title="'Scope: ' + currentDynamoeScope + ' · Engine Boost: ' + currentEngineBoost"
+                              x-text="currentDynamoeScope + ' · ' + currentEngineBoost"></span>
                     </div>
                 </div>
                 <button @click="sidebarOpen = false"
@@ -1212,9 +1209,9 @@
             <div x-show="messages.length === 0" class="h-full flex items-center justify-center" x-cloak>
                 <div class="text-center max-w-lg px-4">
                     <div class="flex items-center justify-center gap-3 mb-4">
-                        <img x-show="activeTheme === 'light'" src="/admin/static/logo-light.svg" alt="oMLX"
+                        <img x-show="activeTheme === 'light'" src="{{ static('logo-light.svg') }}" alt="DynaMoe"
                             class="w-[60px] h-[60px]">
-                        <img x-show="activeTheme === 'dark'" src="/admin/static/logo-dark.svg" alt="oMLX"
+                        <img x-show="activeTheme === 'dark'" src="{{ static('logo-dark.svg') }}" alt="DynaMoe"
                             class="w-[60px] h-[60px]" x-cloak>
                         <h1 class="text-2xl font-bold">{{ t('chat.welcome_heading') }}</h1>
                     </div>
@@ -1723,6 +1720,12 @@
                             :disabled="!apiKeySet || !currentModel || isCurrentChatStreaming()" rows="1"
                             class="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm max-h-32"
                             style="color: var(--text-primary);"></textarea>
+                        <button x-show="isCurrentChatStreaming() && isCacheMoeMode" x-cloak
+                            @click="requestL1Optimization()"
+                            class="w-10 h-10 m-1 shrink-0 bg-surface-muted hover:bg-surface rounded-full border border-line transition-colors flex items-center justify-center"
+                            title="Optimize MoE L1 at the next safe token boundary">
+                            <i data-lucide="database-zap" class="w-4 h-4" style="color: var(--text-secondary);"></i>
+                        </button>
                         <div class="relative flex-shrink-0">
                             <button x-show="!isCurrentChatStreaming()" @click="sendMessage()"
                                 :disabled="(!inputMessage.trim() && uploadImages.length === 0 && uploadDocuments.length === 0) || hasPendingUploads() || !apiKeySet || !currentModel"
@@ -2158,6 +2161,40 @@
                     </div>
                 </div>
 
+                <!-- Adaptive MoE L1 -->
+                <div x-show="isCacheMoeMode" x-cloak class="space-y-2">
+                    <label class="text-[10px] font-bold uppercase tracking-wider block"
+                        style="color: var(--text-secondary);">MOE L1 OPTIMIZATION</label>
+                    <select x-model="l1OptimizationMode"
+                        @change="setL1OptimizationMode($event.target.value)"
+                        class="w-full px-3 py-2 text-xs border border-line rounded-xl focus:outline-none focus:border-line-strong bg-surface-muted"
+                        style="color: var(--text-primary);">
+                        <option value="auto">Auto</option>
+                        <option value="off">Off</option>
+                        <option value="trigger">Trigger now</option>
+                    </select>
+                    <p class="text-[10px]" style="color: var(--text-tertiary);">
+                        Trigger runs a full review after the next generated token.
+                    </p>
+                </div>
+
+                <!-- DynaMoe Engine Boost -->
+                <div x-show="isCacheMoeMode" x-cloak class="space-y-2">
+                    <label class="text-[10px] font-bold uppercase tracking-wider block"
+                        style="color: var(--text-secondary);">ENGINE BOOST</label>
+                    <select x-model="engineBoostMode" :disabled="rushActive"
+                        @change="setEngineBoostMode($event.target.value)"
+                        class="w-full px-3 py-2 text-xs border border-line rounded-xl focus:outline-none focus:border-line-strong bg-surface-muted"
+                        style="color: var(--text-primary);">
+                        <option value="natural">Natural · Full fidelity</option>
+                        <option value="turbo">Turbo · Tail2</option>
+                        <option value="blast">Blast · Head2</option>
+                    </select>
+                    <p class="text-[10px]" style="color: var(--text-tertiary);">
+                        Live changes take effect after the next generated token.
+                    </p>
+                </div>
+
                 <!-- Keyboard shortcuts -->
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold uppercase tracking-wider block"
@@ -2172,6 +2209,30 @@
 
             </div>
 
+        </div>
+
+        <!-- Momentary Cache-MoE acceleration -->
+        <div x-show="isCacheMoeMode" x-cloak
+             :title="rushButtonTooltip"
+             class="px-3 pt-3 bg-surface flex-shrink-0">
+            <button type="button"
+                @pointerdown.prevent="beginRush($event)"
+                @pointerup.prevent="releaseRush()"
+                @pointercancel="releaseRush()"
+                @lostpointercapture="releaseRush()"
+                @keydown.space.prevent="beginRush()"
+                @keyup.space.prevent="releaseRush()"
+                :disabled="!isCurrentChatStreaming() || isRushUnavailable"
+                :class="rushActive
+                    ? 'border-red-400 bg-red-500 text-white shadow-md scale-[0.99]'
+                    : 'border-line bg-surface-muted hover:bg-surface-alt'"
+                class="w-full min-h-11 px-4 py-2 rounded-xl border transition-all select-none disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style="touch-action: none;">
+                <i data-lucide="gauge" class="w-4 h-4"></i>
+                <span class="text-xs font-bold tracking-wide">RUSH</span>
+                <span class="text-[10px] opacity-75"
+                    x-text="rushActive ? 'Blast active' : 'Hold for Blast'"></span>
+            </button>
         </div>
 
         <!-- Performance Stats Panel on the Bottom -->
@@ -2217,6 +2278,29 @@
                     <div class="flex items-end justify-between">
                         <div class="text-sm font-semibold" style="color: var(--text-primary);"
                             x-text="recentStats?.total_time ? Number(recentStats.total_time).toFixed(1) : '-'"></div>
+                    </div>
+                </div>
+                <div x-show="isCacheMoeMode" x-cloak
+                     class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between"
+                     :title="currentSsdTooltip">
+                    <span class="text-[9px] font-bold uppercase tracking-wider"
+                        style="color: var(--text-tertiary);">SSD PRESSURE · 10 TOK</span>
+                    <div class="flex items-end justify-between">
+                        <div class="text-sm font-semibold transition-colors"
+                            :style="'color: ' + currentSsdSwapColor"
+                            x-text="currentSsdPressure"></div>
+                        <div class="text-[10px]" style="color: var(--text-tertiary);"
+                            x-text="currentSsdSwaps + ' experts'"></div>
+                    </div>
+                </div>
+                <div x-show="isCacheMoeMode" x-cloak
+                     class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between"
+                     title="An asterisk means this Session has applied an L1 optimization">
+                    <span class="text-[9px] font-bold uppercase tracking-wider"
+                        style="color: var(--text-tertiary);">SCOPE</span>
+                    <div class="flex items-end justify-between">
+                        <div class="text-sm font-semibold truncate" style="color: var(--text-primary);"
+                            x-text="currentDynamoeScope"></div>
                     </div>
                 </div>
             </div>
@@ -2402,6 +2486,13 @@
             chatSessions: {},
             messages: [],
             inputMessage: '',
+            l1OptimizationMode: 'auto',
+            engineBoostMode: 'natural',
+            rushActive: false,
+            rushRestoreMode: null,
+            rushSessionId: null,
+            rushModelId: null,
+            _rushControlChain: null,
 
             // Model State
             availableModels: [],
@@ -2489,6 +2580,7 @@
             releaseUrl: null,
             versionHover: false,
             _updateCheckTimer: null,
+            dynamoeStatus: null,
 
             // Timeline navigation rail
             timelineDots: [],              // [{ index, topPx }]
@@ -3357,6 +3449,9 @@
                 const generation = this.resolveApiGenerationOverrides(messages, variantUserIndex);
                 return {
                     model,
+                    dynamoe_session_id: context.chatId,
+                    dynamoe_l1_mode: this.getChatSession(context.chatId, false)?.l1OptimizationMode || 'auto',
+                    dynamoe_engine_boost: this.getChatSession(context.chatId, false)?.engineBoostMode || 'natural',
                     messages: this.buildMessagesForApi(messages, context.systemPrompt, {
                         variantUserIndex,
                         excludeVariantsAtUserIndex,
@@ -3553,6 +3648,8 @@
                         modelSettingsByModel: historyChat?.modelSettingsByModel
                             ? this.cloneData(historyChat.modelSettingsByModel) : {},
                         contextTokens: historyChat?.contextTokens ?? 0,
+                        l1OptimizationMode: historyChat?.l1OptimizationMode ?? 'auto',
+                        engineBoostMode: historyChat?.engineBoostMode ?? 'natural',
                     };
                 }
                 return this.chatSessions[chatId] || null;
@@ -3605,6 +3702,148 @@
                 const stream = this.getStreamSession(chatId, false);
                 if (stream?.abortController) {
                     stream.abortController.abort();
+                }
+            },
+
+            async requestL1Optimization() {
+                const sessionId = this.currentChatId;
+                if (!sessionId || !this.currentModel) return;
+                try {
+                    const response = await fetch('/v1/dynamoe/l1/optimize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.getApiKey()}`,
+                        },
+                        body: JSON.stringify({
+                            model: this.resolveGatewayModelId(this.currentModel),
+                            session_id: sessionId,
+                        }),
+                    });
+                    if (!response.ok) {
+                        throw new Error(await response.text());
+                    }
+                    this.setEngineStatus(sessionId, {
+                        text: 'L1 optimization queued', icon: 'database-zap'
+                    });
+                } catch (error) {
+                    this.setEngineStatus(sessionId, {
+                        text: `L1 optimization unavailable: ${error.message}`, icon: 'alert-triangle'
+                    });
+                }
+            },
+
+            async setL1OptimizationMode(mode) {
+                const session = this.getChatSession(this.currentChatId, true);
+                if (mode === 'trigger') {
+                    if (session) session.l1OptimizationMode = 'auto';
+                    await this.requestL1Optimization();
+                    this.l1OptimizationMode = 'auto';
+                } else {
+                    this.l1OptimizationMode = mode === 'off' ? 'off' : 'auto';
+                    if (session) session.l1OptimizationMode = this.l1OptimizationMode;
+                }
+                this.saveCurrentChat(this.currentChatId);
+            },
+
+            async setEngineBoostMode(mode) {
+                const normalized = ['natural', 'turbo', 'blast'].includes(mode)
+                    ? mode : 'natural';
+                this.engineBoostMode = normalized;
+                const session = this.getChatSession(this.currentChatId, true);
+                if (session) session.engineBoostMode = normalized;
+                this.saveCurrentChat(this.currentChatId);
+
+                if (!this.isCurrentChatStreaming() || !this.currentModel) return;
+                try {
+                    await this.postEngineBoost(
+                        this.currentChatId,
+                        this.resolveGatewayModelId(this.currentModel),
+                        normalized,
+                    );
+                    const label = {
+                        natural: 'Natural', turbo: 'Turbo', blast: 'Blast'
+                    }[normalized];
+                    this.setEngineStatus(this.currentChatId, {
+                        text: `Engine Boost: ${label} queued`, icon: 'gauge'
+                    });
+                } catch (error) {
+                    this.setEngineStatus(this.currentChatId, {
+                        text: `Engine Boost unavailable: ${error.message}`,
+                        icon: 'alert-triangle'
+                    });
+                }
+            },
+
+            async postEngineBoost(sessionId, modelId, mode) {
+                const response = await fetch('/v1/dynamoe/engine/boost', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.getApiKey()}`,
+                    },
+                    body: JSON.stringify({
+                        model: modelId,
+                        session_id: sessionId,
+                        mode,
+                    }),
+                });
+                if (!response.ok) throw new Error(await response.text());
+                return response.json();
+            },
+
+            queueRushBoost(sessionId, modelId, mode, statusText) {
+                const prior = this._rushControlChain || Promise.resolve();
+                this._rushControlChain = prior.catch(() => {}).then(async () => {
+                    try {
+                        await this.postEngineBoost(sessionId, modelId, mode);
+                        this.setEngineStatus(sessionId, {
+                            text: statusText, icon: 'gauge'
+                        });
+                    } catch (error) {
+                        this.setEngineStatus(sessionId, {
+                            text: `Rush unavailable: ${error.message}`,
+                            icon: 'alert-triangle'
+                        });
+                    }
+                });
+            },
+
+            beginRush(event = null) {
+                if (this.rushActive || !this.isCacheMoeMode
+                    || !this.isCurrentChatStreaming()
+                    || this.isRushUnavailable || !this.currentModel) return;
+                this.rushActive = true;
+                this.rushRestoreMode = this.engineBoostMode;
+                this.rushSessionId = this.currentChatId;
+                this.rushModelId = this.resolveGatewayModelId(this.currentModel);
+                if (event?.currentTarget && event?.pointerId != null) {
+                    try { event.currentTarget.setPointerCapture(event.pointerId); }
+                    catch (e) { /* Pointer capture is best-effort. */ }
+                }
+                this.queueRushBoost(
+                    this.rushSessionId, this.rushModelId, 'blast',
+                    'Rush: Blast active'
+                );
+            },
+
+            releaseRush() {
+                if (!this.rushActive) return;
+                const sessionId = this.rushSessionId;
+                const modelId = this.rushModelId;
+                const restoreMode = this.rushRestoreMode || 'natural';
+                this.rushActive = false;
+                this.rushRestoreMode = null;
+                this.rushSessionId = null;
+                this.rushModelId = null;
+                if (sessionId && modelId) {
+                    const label = {
+                        natural: 'Natural', turbo: 'Turbo', blast: 'Blast'
+                    }[restoreMode] || 'Natural';
+                    this.queueRushBoost(
+                        sessionId, modelId, restoreMode,
+                        `Rush released · restored ${label}`
+                    );
                 }
             },
 
@@ -3695,6 +3934,7 @@
             }
             this.loadChatHistory();
             this.fetchMcpTools();
+            this.loadDynamoeStatus();
         }
 
         this.applyTheme();
@@ -3741,7 +3981,11 @@
         // Refresh model list when returning to chat (e.g. after HF download on dashboard).
         this._modelsVisibilityTimer = null;
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState !== 'visible' || !this.apiKeySet) return;
+            if (document.visibilityState !== 'visible') {
+                this.releaseRush();
+                return;
+            }
+            if (!this.apiKeySet) return;
             clearTimeout(this._modelsVisibilityTimer);
             this._modelsVisibilityTimer = setTimeout(async () => {
                 try {
@@ -3754,6 +3998,7 @@
                 }
             }, 300);
         });
+        window.addEventListener('blur', () => this.releaseRush());
 
     },
 
@@ -4365,6 +4610,9 @@
                     id: this.aliasToGateway[m.id] || m.id, // gateway id for API calls
                     name: m.id, // original name (alias or directory name) for display
                     owned_by: m.owned_by,
+                    cache_moe: Boolean((this._adminModelsList || []).find(
+                        adminModel => adminModel.id === (this.aliasToGateway[m.id] || m.id)
+                    )?.cache_moe),
                     is_favorite: favoriteIds.has(this.aliasToGateway[m.id] || m.id)
                 }))
             );
@@ -4505,6 +4753,7 @@
             const resp = await fetch('/admin/api/stats', { credentials: 'same-origin' });
             if (!resp.ok) return;
             const data = await resp.json();
+            this.dynamoeStatus = data.dynamoe || this.dynamoeStatus;
 
             if (this.anyChatStreaming()) {
                 this.claimStatsRequests(data);
@@ -4797,6 +5046,8 @@
         const sysDefault = this.promptProfiles.find(p => p.name === 'System Default');
         const systemPrompt = sysDefault ? sysDefault.content : '';
         this.currentChatId = chatId;
+        this.l1OptimizationMode = 'auto';
+        this.engineBoostMode = 'natural';
         this.uploadImages = [];
         this.uploadDocuments = [];
         this.inputMessage = '';
@@ -4818,6 +5069,8 @@
             speculativeEngine: null,
             speculativeDraftModel: null,
             modelSettingsByModel: {},
+            l1OptimizationMode: 'auto',
+            engineBoostMode: 'natural',
         };
         this.chatSessions[chatId] = session;
         this.messages = session.messages;
@@ -4869,6 +5122,8 @@
             this.ensureMessageIds(session.messages);
             session.messages.forEach(m => this.ensureVariantMeta(m, session));
             this.currentChatId = chatId;
+            this.l1OptimizationMode = session.l1OptimizationMode ?? 'auto';
+            this.engineBoostMode = session.engineBoostMode ?? 'natural';
             this.messages = session.messages;
             this.systemPrompt = session.systemPrompt || '';
             this.activePromptProfile = session.activeProfile
@@ -4975,6 +5230,8 @@
                 ? this.cloneData(session.modelSettingsByModel || {})
                 : {},
             contextTokens: session?.contextTokens ?? existingChat?.contextTokens ?? 0,
+            l1OptimizationMode: session?.l1OptimizationMode ?? 'auto',
+            engineBoostMode: session?.engineBoostMode ?? 'natural',
             updatedAt: options.touchUpdatedAt === false && existingChat?.updatedAt
                 ? existingChat.updatedAt
                 : new Date().toISOString()
@@ -4987,6 +5244,8 @@
             session.modelSettings = settingsSnap.modelSettings;
             session.speculativeEngine = settingsSnap.speculativeEngine;
             session.speculativeDraftModel = settingsSnap.speculativeDraftModel;
+            session.l1OptimizationMode = session.l1OptimizationMode ?? this.l1OptimizationMode;
+            session.engineBoostMode = session.engineBoostMode ?? this.engineBoostMode;
             if (chatModel) {
                 this.saveModelSettingsForModel(session, chatModel);
             }
@@ -5613,11 +5872,20 @@
                 // Persist perf timeline that was just attached (saved earlier, before finally ran)
                 this.saveCurrentChat(context.chatId, chatSession.messages, chatSession.model, context.systemPrompt);
             }
+            if (this.rushActive && this.rushSessionId === context.chatId) {
+                this.releaseRush();
+            }
             this.resetStreamSession(stream, { preserveFinalContent: true });
             this.thinkingAutoScroll = true;
             if (depth === 0) {
                 this.stopStatsPollingIfIdle();
                 this.ensureStatsPollingForCurrentChat();
+                // Turn-end L1 review runs after the response is delivered.
+                // Refresh a few times so the Scope star appears without
+                // keeping the high-frequency generation poll alive.
+                for (const delay of [500, 2000, 5000]) {
+                    setTimeout(() => this.fetchStats(), delay);
+                }
             }
         }
     },
@@ -6744,6 +7012,98 @@
             }
         } catch (e) {
             // Silently ignore - not critical
+        }
+    },
+
+    get currentDynamoeModelStatus() {
+        const gatewayId = this.resolveGatewayModelId(this.currentModel);
+        return (this.dynamoeStatus?.models || []).find(model =>
+            model.id === gatewayId || model.id === this.currentModel
+        ) || null;
+    },
+
+    get isCacheMoeMode() {
+        if (this.currentDynamoeModelStatus) return true;
+        const gatewayId = this.resolveGatewayModelId(this.currentModel);
+        return Boolean(this.availableModels.find(model =>
+            model.id === gatewayId || model.id === this.currentModel
+        )?.cache_moe);
+    },
+
+    get rushButtonTooltip() {
+        if (this.isRushUnavailable) {
+            return 'Rush is unavailable because Engine Boost is already Blast (Head2).';
+        }
+        if (!this.isCurrentChatStreaming()) {
+            return 'Hold during generation to temporarily use Blast (Head2); release to restore the previous Engine Boost mode.';
+        }
+        return this.rushActive
+            ? 'Release to restore the previous Engine Boost mode.'
+            : 'Hold for temporary Blast (Head2). Release to restore the previous mode.';
+    },
+
+    get isRushUnavailable() {
+        const runtimeMode = this.currentDynamoeModelStatus?.engine_boost?.mode;
+        return this.engineBoostMode === 'blast'
+            || (!this.rushActive && runtimeMode === 'blast');
+    },
+
+    get currentDynamoeScope() {
+        const model = this.currentDynamoeModelStatus;
+        const state = model?.adaptive_l1?.session_states?.[this.currentChatId];
+        const scope = state?.scope
+            || model?.bank?.current_scope
+            || this.dynamoeStatus?.initial_scope
+            || 'auto';
+        return scope + (Number(state?.epoch || 0) > 0 ? '*' : '');
+    },
+
+    get currentSsdSwaps() {
+        return Number(this.currentSsdWindow?.expert_loads || 0);
+    },
+
+    get currentSsdPressure() {
+        return Number(this.currentSsdWindow?.pressure_percent || 0).toFixed(1) + '%';
+    },
+
+    get currentSsdTooltip() {
+        const bytes = Number(this.currentSsdWindow?.bytes_loaded || 0);
+        const mib = (bytes / (1024 * 1024)).toFixed(1);
+        return `Model-normalized SSD pressure over the latest 10 Decode tokens · `
+            + `${this.currentSsdSwaps} experts · ${mib} MiB · `
+            + `healthy ≤16.7% · elevated 16.7–25% · critical ≥25%`;
+    },
+
+    get currentSsdWindow() {
+        const model = this.currentDynamoeModelStatus;
+        return model?.ssd_recent_by_session?.[this.currentChatId]
+            || model?.ssd_recent_10_tokens
+            || null;
+    },
+
+    get currentSsdSwapColor() {
+        const severity = this.currentSsdWindow?.severity || 'healthy';
+        if (severity === 'critical') return '#ef4444';
+        if (severity === 'elevated') return '#f59e0b';
+        return 'var(--text-tertiary)';
+    },
+
+    get currentEngineBoost() {
+        const mode = this.currentDynamoeModelStatus?.engine_boost?.mode
+            || this.engineBoostMode
+            || 'natural';
+        return { natural: 'Natural', turbo: 'Turbo', blast: 'Blast' }[mode]
+            || 'Natural';
+    },
+
+    async loadDynamoeStatus() {
+        try {
+            const resp = await fetch('/admin/api/stats');
+            if (resp.ok) {
+                this.dynamoeStatus = (await resp.json()).dynamoe || null;
+            }
+        } catch (e) {
+            this.dynamoeStatus = null;
         }
     },
 

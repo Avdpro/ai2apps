@@ -112,6 +112,7 @@ def _make_recording_scheduler(
     uses_minimax_m3_positions: bool = False,
     nested_vlm_model_type: str | None = None,
     model_name: str = "",
+    deepseek_v4_adaptive_prefill: bool = True,
 ) -> tuple[Scheduler, _RecordingModel]:
     model = _RecordingModel(model_type)
     if uses_minimax_m3_positions:
@@ -130,6 +131,7 @@ def _make_recording_scheduler(
             chunked_prefill=True,
             paged_cache_block_size=0,
             model_name=model_name,
+            deepseek_v4_adaptive_prefill=deepseek_v4_adaptive_prefill,
         ),
     )
     return scheduler, model
@@ -294,6 +296,62 @@ class TestGLMAdaptiveChunkedPrefill:
         assert not done
         assert model.chunk_lengths == [2048]
         assert state.tokens_processed == 2048
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek V4 memory-safe chunked prefill
+# ---------------------------------------------------------------------------
+
+
+class TestDeepSeekV4AdaptiveChunkedPrefill:
+    def test_10k_uses_5120_first_chunk(self):
+        sched, model = _make_recording_scheduler("deepseek_v4")
+        req = _make_request("deepseek-v4", n_tokens=10_000)
+        state = _make_prefill_state(sched, req, n_remaining=9_999)
+
+        with patch("omlx.scheduler._sync_and_clear_cache"):
+            done = sched._step_prefill_chunk(state)
+
+        assert not done
+        assert model.chunk_lengths == [5120]
+        assert state.tokens_processed == 5120
+
+    def test_10k_keeps_unaligned_tail_to_avoid_extra_moe_reload(self):
+        sched, _ = _make_recording_scheduler("deepseek_v4")
+
+        assert (
+            sched._prefill_step_size_for_progress(
+                5120,
+                4879,
+                base_tokens=0,
+            )
+            == 4879
+        )
+
+    def test_long_context_splits_tail_before_native_indexer(self):
+        sched, _ = _make_recording_scheduler("deepseek_v4")
+
+        assert (
+            sched._prefill_step_size_for_progress(
+                0,
+                4001,
+                base_tokens=128 * 1024,
+            )
+            == 3968
+        )
+
+    def test_other_models_keep_global_2048_default(self):
+        sched, _ = _make_recording_scheduler("llama")
+
+        assert sched._prefill_step_size_for_progress(0, 9_999) == 2048
+
+    def test_fixed_step_ab_can_disable_adaptive_policy(self):
+        sched, _ = _make_recording_scheduler(
+            "deepseek_v4",
+            deepseek_v4_adaptive_prefill=False,
+        )
+
+        assert sched._prefill_step_size_for_progress(0, 9_999) == 2048
 
 
 # ---------------------------------------------------------------------------

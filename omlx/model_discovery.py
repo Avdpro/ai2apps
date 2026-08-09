@@ -17,6 +17,7 @@ Supports:
 import contextlib
 import json
 import logging
+import os
 import re
 import tempfile
 from dataclasses import dataclass
@@ -366,6 +367,7 @@ class DiscoveredModel:
     source_type: str = "local"  # "local" or "hf_cache"
     source_repo_id: str | None = None  # HuggingFace repo id for cache-backed models
     is_helper: bool = False  # Speculative-decoding drafter (dFlash/Assistant/MTP)
+    cache_moe_config: dict | None = None  # Persistent DynaMoe installation metadata
 
 
 @dataclass(frozen=True)
@@ -977,6 +979,283 @@ def estimate_model_size(model_path: Path) -> int:
     return int(total_size * overhead_factor)
 
 
+def estimate_deepseek_scope_model_size(
+    model_path: Path,
+    full_estimate: int,
+    resident_experts: int | None = None,
+    *,
+    profile_path: str | Path | None = None,
+    scope_name: str | None = None,
+    store_path: str | Path | None = None,
+) -> int:
+    """Adjust a full-checkpoint estimate for the configured physical MoE bank.
+
+    The expert-major manifest describes the exact byte size of each routed
+    expert. Subtract the full routed-expert payload from the checkpoint, then
+    add back the experts resident in the selected profile. Fail soft to the
+    full estimate when any external artifact is incomplete or inconsistent.
+    """
+
+    profile_raw = str(profile_path or "").strip() or os.environ.get(
+        "OMLX_DEEPSEEK_V4_SCOPE_PROFILE", ""
+    ).strip()
+    scope_id = (scope_name or "").strip() or os.environ.get(
+        "OMLX_DEEPSEEK_V4_SCOPE_NAME", ""
+    ).strip()
+    store_raw = str(store_path or "").strip() or os.environ.get(
+        "OMLX_DEEPSEEK_V4_EXPERT_STORE", ""
+    ).strip()
+    if not (profile_raw and scope_id and store_raw):
+        return full_estimate
+    try:
+        profile = json.loads(Path(profile_raw).expanduser().read_text())
+        manifest = json.loads(
+            (Path(store_raw).expanduser() / "manifest.json").read_text()
+        )
+        scope = profile["scopes"][scope_id]
+        layers = manifest["layers"]
+        full_expert_bytes = 0
+        resident_expert_bytes = 0
+        for raw_layer, info in layers.items():
+            layer = int(raw_layer)
+            record_bytes = int(info["record_bytes"])
+            num_experts = int(info["num_experts"])
+            full_expert_bytes += record_bytes * num_experts
+            resident_count = num_experts if layer < 3 else (
+                resident_experts
+                if resident_experts is not None
+                else len(scope[str(layer)])
+            )
+            if not 1 <= resident_count <= num_experts:
+                return full_estimate
+            resident_expert_bytes += record_bytes * resident_count
+
+        raw_checkpoint_bytes = sum(
+            path.stat().st_size for path in model_path.glob("*.safetensors")
+        )
+        if raw_checkpoint_bytes <= full_expert_bytes:
+            return full_estimate
+        adjusted = int(
+            (raw_checkpoint_bytes - full_expert_bytes + resident_expert_bytes)
+            * 1.05
+        )
+        logger.info(
+            "DeepSeek scope-aware model estimate: %.2fGB -> %.2fGB "
+            "(scope=%s)",
+            full_estimate / (1024**3),
+            adjusted / (1024**3),
+            scope_id,
+        )
+        return adjusted
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "Could not derive DeepSeek scope-aware model estimate; using full "
+            "checkpoint size: %s",
+            exc,
+        )
+        return full_estimate
+
+
+DEEPSEEK_CACHE_MOE_MEMORY_TIERS = (
+    ("lean", "Lean", 20),
+    ("compact", "Compact", 40),
+    ("optimal", "Optimal", 60),
+)
+
+
+def deepseek_cache_moe_memory_profile(
+    model_path: str | Path,
+    cache_moe_config: dict | None = None,
+) -> dict | None:
+    """Return model-specific Cache-MoE tiers and a safe device recommendation.
+
+    Estimates include the checkpoint's non-routed weights, the selected
+    physical expert bank, and the same 5% runtime allowance used by model
+    discovery. Recommendation keeps 20% (at least 8 GiB) free for macOS,
+    KV cache, activations, and transient expert loads.
+    """
+
+    path = Path(model_path).expanduser()
+    try:
+        full = estimate_model_size(path)
+        scope = (cache_moe_config or {}).get("scope", {})
+        estimates = [
+            estimate_deepseek_scope_model_size(
+                path,
+                full,
+                experts,
+                profile_path=scope.get("profile"),
+                scope_name=scope.get("default"),
+                store_path=(cache_moe_config or {}).get("expert_store"),
+            )
+            for _, _, experts in DEEPSEEK_CACHE_MOE_MEMORY_TIERS
+        ]
+    except (OSError, ValueError):
+        return None
+    if not estimates or any(value >= full for value in estimates):
+        return None
+
+    from .utils.hardware import get_total_memory_bytes
+
+    physical = get_total_memory_bytes()
+    reserve = max(8 * 1024**3, int(physical * 0.20))
+    usable = max(0, physical - reserve)
+    recommended = None
+    tiers = []
+    for (tier_id, label, experts), estimated in zip(
+        DEEPSEEK_CACHE_MOE_MEMORY_TIERS, estimates, strict=True
+    ):
+        fits = estimated <= usable
+        if fits:
+            recommended = tier_id
+        tiers.append(
+            {
+                "id": tier_id,
+                "label": label,
+                "experts": experts,
+                "estimated_bytes": estimated,
+                "estimated_gb": round(estimated / (1024**3)),
+                "fits": fits,
+            }
+        )
+    return {
+        "tiers": tiers,
+        "recommended": recommended,
+        "physical_memory_gb": round(physical / (1024**3)),
+        "reserved_memory_gb": round(reserve / (1024**3)),
+    }
+
+
+def resolve_deepseek_cache_moe_experts(
+    model_path: str | Path,
+    tier: str | None,
+    cache_moe_config: dict | None = None,
+) -> int:
+    """Resolve an explicit or automatic Cache-MoE tier to its slot count."""
+
+    profile = deepseek_cache_moe_memory_profile(model_path, cache_moe_config)
+    requested = (tier or "auto").strip().lower()
+    if requested == "auto":
+        if profile is None or profile["recommended"] is None:
+            raise ValueError(
+                "No Cache-MoE memory tier fits this device with the required "
+                "system and KV-cache reserve"
+            )
+        requested = profile["recommended"]
+    tiers = {item[0]: item[2] for item in DEEPSEEK_CACHE_MOE_MEMORY_TIERS}
+    if requested not in tiers:
+        raise ValueError(f"invalid Cache-MoE memory tier: {tier!r}")
+    return tiers[requested]
+
+
+QWEN36_CACHE_MOE_MEMORY_TIERS = (
+    ("lean", "Lean", 80),
+    ("compact", "Compact", 96),
+    ("optimal", "Optimal", 120),
+)
+
+
+def cache_moe_engine_id(config: dict | None) -> str:
+    """Read both v1 string and catalog-metadata engine manifest forms."""
+
+    value = (config or {}).get("engine")
+    if isinstance(value, dict):
+        value = value.get("id")
+    return str(value or "")
+
+
+def _qwen36_expert_record_bytes(store_path: str | Path) -> int:
+    """Read the generic expert-store header without importing MLX."""
+
+    path = Path(store_path).expanduser() / "layer-000.moe"
+    with path.open("rb") as handle:
+        page = handle.read(4096)
+    header_len = int.from_bytes(page[:8], "little")
+    payload = json.loads(page[8 : 8 + header_len])
+    if payload.get("format") != "omlx-moe-expert-major":
+        raise ValueError(f"unsupported Qwen expert store: {path}")
+    return int(payload["record_bytes"])
+
+
+def qwen36_cache_moe_memory_profile(
+    model_path: str | Path,
+    cache_moe_config: dict | None = None,
+) -> dict | None:
+    """Return Qwen3.6 Top80/96/120 tiers and a safe recommendation."""
+
+    config = cache_moe_config or {}
+    store_path = config.get("expert_store")
+    if not store_path:
+        return None
+    try:
+        record_bytes = _qwen36_expert_record_bytes(store_path)
+        path = Path(model_path).expanduser()
+        checkpoint_bytes = sum(p.stat().st_size for p in path.glob("*.safetensors"))
+        full_expert_bytes = record_bytes * 256 * 40
+        # A source checkpoint still contains all routed weights; an installed
+        # Flesh checkpoint contains only the resident backbone. Handle both.
+        backbone_bytes = (
+            checkpoint_bytes - full_expert_bytes
+            if checkpoint_bytes > full_expert_bytes
+            else checkpoint_bytes
+        )
+        estimates = [
+            int((backbone_bytes + record_bytes * experts * 40) * 1.05)
+            for _, _, experts in QWEN36_CACHE_MOE_MEMORY_TIERS
+        ]
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    from .utils.hardware import get_total_memory_bytes
+
+    physical = get_total_memory_bytes()
+    reserve = max(8 * 1024**3, int(physical * 0.20))
+    usable = max(0, physical - reserve)
+    recommended = None
+    tiers = []
+    for (tier_id, label, experts), estimated in zip(
+        QWEN36_CACHE_MOE_MEMORY_TIERS, estimates, strict=True
+    ):
+        fits = estimated <= usable
+        if fits:
+            recommended = tier_id
+        tiers.append(
+            {
+                "id": tier_id,
+                "label": label,
+                "experts": experts,
+                "estimated_bytes": estimated,
+                "estimated_gb": round(estimated / (1024**3)),
+                "fits": fits,
+            }
+        )
+    return {
+        "tiers": tiers,
+        "recommended": recommended,
+        "physical_memory_gb": round(physical / (1024**3)),
+        "reserved_memory_gb": round(reserve / (1024**3)),
+    }
+
+
+def resolve_qwen36_cache_moe_experts(
+    model_path: str | Path,
+    tier: str | None,
+    cache_moe_config: dict | None = None,
+) -> int:
+    profile = qwen36_cache_moe_memory_profile(model_path, cache_moe_config)
+    requested = (tier or "auto").strip().lower()
+    if requested == "auto":
+        if profile is None or profile["recommended"] is None:
+            raise ValueError(
+                "No Qwen3.6 Cache-MoE tier fits this device with the required reserve"
+            )
+        requested = profile["recommended"]
+    tiers = {item[0]: item[2] for item in QWEN36_CACHE_MOE_MEMORY_TIERS}
+    if requested not in tiers:
+        raise ValueError(f"invalid Qwen3.6 Cache-MoE memory tier: {tier!r}")
+    return tiers[requested]
+
+
 # Weight-name prefixes that the text-only (mlx-lm) loaders drop when serving a
 # VLM-shaped checkpoint: qwen3_5(_moe) sanitize strips ``vision_tower.*`` and
 # ``model.visual.*``; the projector/vision-model spellings cover the other
@@ -1334,6 +1613,50 @@ def _register_model(
         except Exception:
             pass
 
+        cache_moe_config = None
+        install_manifest = model_dir / "dynamoe-model.json"
+        if install_manifest.is_file():
+            try:
+                candidate = json.loads(install_manifest.read_text())
+                scope = candidate["scope"]
+                if candidate.get("format") != "dynamoe-cache-moe-model":
+                    raise ValueError("unsupported format")
+                if not Path(scope["profile"]).expanduser().is_file():
+                    raise FileNotFoundError("Scope Pack profile is missing")
+                if not Path(candidate["expert_store"]).expanduser().is_dir():
+                    raise FileNotFoundError("expert store is missing")
+                if not scope.get("default"):
+                    raise ValueError("default scope is missing")
+                cache_moe_config = candidate
+                source_type = "dynamoe"
+            except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                logger.warning(
+                    "Ignoring invalid DynaMoe manifest for %s: %s", model_id, exc
+                )
+
+        if config_model_type.startswith("deepseek_v4"):
+            scope = (cache_moe_config or {}).get("scope", {})
+            estimated_size = estimate_deepseek_scope_model_size(
+                model_dir,
+                estimated_size,
+                profile_path=scope.get("profile"),
+                scope_name=scope.get("default"),
+                store_path=(cache_moe_config or {}).get("expert_store"),
+            )
+        elif (
+            config_model_type == "qwen3_5_moe"
+            and cache_moe_config is not None
+            and cache_moe_engine_id(cache_moe_config)
+            in ("qwen3.6-flesh", "qwen3.6-arena", "qwen3.6-tiered")
+        ):
+            memory = qwen36_cache_moe_memory_profile(model_dir, cache_moe_config)
+            installed_tier = cache_moe_config.get("memory_tier", "compact")
+            if memory is not None:
+                by_id = {item["id"]: item for item in memory["tiers"]}
+                selected = by_id.get(installed_tier)
+                if selected is not None:
+                    estimated_size = int(selected["estimated_bytes"])
+
         thinking_default = detect_thinking_default(model_dir)
         preserve_thinking_default = detect_preserve_thinking(model_dir)
         model_context_length = _read_model_context_length(model_dir)
@@ -1352,6 +1675,7 @@ def _register_model(
             source_type=source_type,
             source_repo_id=source_repo_id,
             is_helper=is_helper,
+            cache_moe_config=cache_moe_config,
         )
 
         size_gb = estimated_size / (1024**3)

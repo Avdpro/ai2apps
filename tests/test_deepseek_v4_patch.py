@@ -119,6 +119,40 @@ class TestUtilsPatch:
         assert "x" in loaded
         assert loaded["x"].shape == (4, 4)
 
+    def test_benchmark_subset_loader_filters_before_mlx_load(
+        self, applied_patch, tmp_path
+    ):
+        import mlx.core as mx
+
+        from omlx.patches.deepseek_v4.utils_patch import (
+            _load_safetensors_benchmark_subset,
+        )
+
+        path = tmp_path / "model.safetensors"
+        data = {
+            "layers.0.attn.weight": mx.ones((2, 2), dtype=mx.bfloat16),
+            "layers.0.ffn.experts.0.w1.weight": mx.full(
+                (2, 2), 10, dtype=mx.int8
+            ),
+            "layers.0.ffn.experts.1.w1.weight": mx.full(
+                (2, 2), 11, dtype=mx.int8
+            ),
+            "layers.0.ffn.experts.2.w1.weight": mx.full(
+                (2, 2), 12, dtype=mx.int8
+            ),
+        }
+        mx.save_safetensors(str(path), data)
+
+        loaded = _load_safetensors_benchmark_subset(str(path), expert_slots=2)
+        mx.eval(*loaded.values())
+
+        assert "layers.0.attn.weight" in loaded
+        assert loaded["layers.0.attn.weight"].dtype == mx.bfloat16
+        assert "layers.0.ffn.experts.0.w1.weight" in loaded
+        assert "layers.0.ffn.experts.1.w1.weight" in loaded
+        assert "layers.0.ffn.experts.2.w1.weight" not in loaded
+        assert int(loaded["layers.0.ffn.experts.1.w1.weight"][0, 0]) == 11
+
 
 class TestGeneratePatch:
     """mlx_lm.generate._make_cache replaced."""
@@ -921,6 +955,336 @@ class TestCacheMaterialization:
 class TestDeepseekV4SwitchGLU:
     """DeepSeek-V4 SwitchGLU execution guards."""
 
+    @staticmethod
+    def _lossy_inputs(mx):
+        indices = mx.array([[[0, 1, 6, 7]]], dtype=mx.int32)
+        weights = mx.array([[[0.50, 0.30, 0.15, 0.05]]], dtype=mx.float32)
+        choice = mx.array(
+            [[[0.9, 0.8, 0.7, 0.6, 0.75, 0.85, 0.95, 1.0]]],
+            dtype=mx.float32,
+        )
+        available = mx.array(
+            [True, True, True, True, True, True, False, False]
+        )
+        return indices, weights, choice, available
+
+    def test_lossy_conservative_replaces_only_ten_percent_tail(
+        self, applied_patch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        args = self._lossy_inputs(mx)
+        out, replaced, before, after = dsv4._lossy_replace_scope_routes(
+            *args, ScopeLossyPolicy("conservative", 2, 0.10)
+        )
+        mx.eval(out, replaced, before, after)
+
+        assert out.tolist() == [[[0, 1, 6, 5]]]
+        assert int(replaced.item()) == 1
+        assert int(before.item()) == 2
+        assert int(after.item()) == 1
+
+    def test_lossy_tail2_replaces_two_misses_with_unique_cached_candidates(
+        self, applied_patch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        args = self._lossy_inputs(mx)
+        out, replaced, before, after = dsv4._lossy_replace_scope_routes(
+            *args, ScopeLossyPolicy("tail2", 2, None)
+        )
+        mx.eval(out, replaced, before, after)
+
+        # Expert 5 is the best cached candidate outside the original Top-K;
+        # expert 4 is second-best. The larger tail weight receives expert 5.
+        assert out.tolist() == [[[0, 1, 5, 4]]]
+        assert int(replaced.item()) == 2
+        assert int(before.item()) == 2
+        assert int(after.item()) == 0
+
+    def test_lossy_tail1_uses_true_lowest_weight_not_array_tail(
+        self, applied_patch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        indices, weights, choice, available = self._lossy_inputs(mx)
+        shuffled_weights = mx.array([[[0.05, 0.30, 0.50, 0.15]]])
+        out, replaced, _, _ = dsv4._lossy_replace_scope_routes(
+            indices,
+            shuffled_weights,
+            choice,
+            available,
+            ScopeLossyPolicy("tail1", 1, None),
+        )
+        mx.eval(out, replaced)
+
+        # Position zero has the lowest weight but expert 0 is resident, so a
+        # tail1 policy correctly performs no replacement.
+        assert out.tolist() == indices.tolist()
+        assert int(replaced.item()) == 0
+
+    def test_lossy_head2_protects_only_two_highest_weight_routes(
+        self, applied_patch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        indices = mx.array([[[0, 1, 2, 3, 6, 7]]], dtype=mx.int32)
+        weights = mx.array(
+            [[[0.30, 0.25, 0.16, 0.13, 0.09, 0.07]]], dtype=mx.float32
+        )
+        available = mx.array(
+            [True, True, False, False, True, True, False, False, True, True]
+        )
+        choice = mx.array(
+            [[[0.9, 0.8, 0.7, 0.6, 0.95, 0.85, 0.5, 0.4, 0.75, 0.65]]],
+            dtype=mx.float32,
+        )
+        out, replaced, before, after = dsv4._lossy_replace_scope_routes(
+            indices,
+            weights,
+            choice,
+            available,
+            ScopeLossyPolicy("head2", 4, None),
+        )
+        mx.eval(out, replaced, before, after)
+
+        assert out.tolist() == [[[0, 1, 4, 5, 8, 9]]]
+        assert int(replaced.item()) == 4
+        assert int(before.item()) == 4
+        assert int(after.item()) == 0
+
+    def test_lossy_head2_keeps_a_top2_miss_for_ssd(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        indices = mx.array([[[6, 1, 2, 3, 4, 5]]], dtype=mx.int32)
+        weights = mx.array(
+            [[[0.30, 0.25, 0.16, 0.13, 0.09, 0.07]]], dtype=mx.float32
+        )
+        available = mx.array(
+            [True, True, False, False, True, True, False, True, True, True]
+        )
+        choice = mx.array(
+            [[[0.7, 0.8, 0.6, 0.5, 0.4, 0.3, 1.0, 0.9, 0.75, 0.65]]],
+            dtype=mx.float32,
+        )
+        out, replaced, before, after = dsv4._lossy_replace_scope_routes(
+            indices,
+            weights,
+            choice,
+            available,
+            ScopeLossyPolicy("head2", 4, None),
+        )
+        mx.eval(out, replaced, before, after)
+
+        assert int(out[0, 0, 0].item()) == 6
+        assert int(replaced.item()) == 2
+        assert int(before.item()) == 3
+        assert int(after.item()) == 1
+
+    def test_lossy_route_selection_has_no_host_sync_calls(self, applied_patch):
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        source = inspect.getsource(dsv4._lossy_replace_scope_routes)
+        assert "mx.eval" not in source
+        assert ".item(" not in source
+        assert ".tolist(" not in source
+
+    def test_lossy_gate_variant_preserves_exact_router_outputs(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+
+        mx.random.seed(47)
+        logits = mx.random.normal((1, 3, 16), dtype=mx.float32)
+        bias = mx.random.normal((16,), dtype=mx.float32) * 0.01
+        exact_ids, exact_weights = dsv4._expert_select(
+            logits, bias, 6, 1.5, True, "sqrtsoftplus"
+        )
+        lossy_ids, lossy_weights, choice_scores = (
+            dsv4._expert_select_with_choice_scores(
+                logits, bias, 6, 1.5, True, "sqrtsoftplus"
+            )
+        )
+        mx.eval(
+            exact_ids,
+            exact_weights,
+            lossy_ids,
+            lossy_weights,
+            choice_scores,
+        )
+
+        assert mx.array_equal(lossy_ids, exact_ids)
+        assert mx.array_equal(lossy_weights, exact_weights)
+        assert choice_scores.shape == logits.shape
+
+    def test_scope_available_mask_includes_hot8_without_host_sync(
+        self, applied_patch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+
+        resident = mx.array([0, 1, -1, -1, 2, -1], dtype=mx.int32)
+        available = dsv4._scope_available_mask(resident, (2, 5))
+        mx.eval(available)
+
+        assert available.tolist() == [True, True, True, False, True, True]
+
+    def test_benchmark_miss_distribution_is_exact(self, applied_patch, monkeypatch):
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        monkeypatch.setattr(dsv4, "_BENCH_MISS_EVENT", 0)
+
+        counts = [dsv4._next_benchmark_miss_count() for _ in range(100)]
+
+        assert counts.count(1) == 70
+        assert counts.count(2) == 20
+        assert counts.count(3) == 7
+        assert counts.count(4) == 3
+
+    def test_historical_miss_profile_matches_trace_aggregate(
+        self, applied_patch, monkeypatch
+    ):
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        monkeypatch.setattr(dsv4, "_BENCH_MISS_EVENT", 0)
+        monkeypatch.setattr(dsv4, "_BENCH_SCORE_EVENT", 0)
+
+        counts = [
+            dsv4._next_historical_benchmark_miss_count() for _ in range(10000)
+        ]
+        misses = [count for count in counts if count]
+
+        assert len(misses) == 6549
+        assert sum(misses) / len(misses) == pytest.approx(1.581, abs=0.002)
+
+    def test_gpu_miss_split_invokes_loader(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4 import switch_layers
+
+        layer = switch_layers.SwitchGLU(8, 16, 4, global_num_experts=8)
+        x = mx.random.normal((1, 1, 8))
+        indices = mx.array([[[2, 5, 7]]], dtype=mx.int32)
+        scores = mx.ones((1, 1, 3), dtype=mx.float32) / 3
+        loaded = []
+
+        result = dsv4._benchmark_gpu_split_moe(
+            layer, x, indices, scores, miss_experts=2, miss_loader=loaded.append
+        )
+        mx.eval(result)
+
+        assert loaded == [[2, 5]]
+
+    def test_gpu_miss_overlap_preserves_result(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4 import switch_layers
+
+        mx.random.seed(31)
+        layer = switch_layers.SwitchGLU(8, 16, 4, global_num_experts=8)
+        x = mx.random.normal((1, 2, 8))
+        indices = mx.array([[[0, 3, 6], [1, 4, 7]]], dtype=mx.int32)
+        scores = mx.softmax(mx.random.normal((1, 2, 3)), axis=-1)
+
+        control = dsv4._benchmark_gpu_split_moe(
+            layer, x, indices, scores, miss_experts=2
+        )
+        overlap = dsv4._benchmark_gpu_split_moe(
+            layer,
+            x,
+            indices,
+            scores,
+            miss_experts=2,
+            overlap_io=True,
+            overlap_dependencies=x,
+        )
+        mx.eval(control, overlap)
+
+        assert mx.allclose(control, overlap, rtol=1e-5, atol=1e-5)
+
+    def test_gpu_miss_split_matches_unsplit_moe(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4 import switch_layers
+
+        mx.random.seed(29)
+        layer = switch_layers.SwitchGLU(
+            input_dims=8,
+            hidden_dims=16,
+            num_experts=4,
+            global_num_experts=8,
+        )
+        x = mx.random.normal((1, 3, 8))
+        indices = mx.array(
+            [[[0, 3, 6], [1, 4, 7], [2, 5, 0]]], dtype=mx.int32
+        )
+        scores = mx.softmax(mx.random.normal((1, 3, 3)), axis=-1)
+
+        routes = layer(x, indices)
+        expected = (routes * scores[..., None].astype(routes.dtype)).sum(-2)
+        got = dsv4._benchmark_gpu_split_moe(
+            layer, x, indices, scores, miss_experts=2
+        )
+        mx.eval(got, expected)
+
+        assert mx.allclose(got, expected, rtol=1e-5, atol=1e-5)
+
+    def test_benchmark_reduced_bank_maps_global_ids_on_device(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        from omlx.patches.deepseek_v4 import switch_layers
+
+        mx.random.seed(23)
+        layer = switch_layers.SwitchGLU(
+            input_dims=8,
+            hidden_dims=16,
+            num_experts=2,
+            global_num_experts=8,
+        )
+        x = mx.random.normal((1, 2, 8))
+        global_indices = mx.array([[[0, 3], [6, 7]]], dtype=mx.int32)
+
+        got = layer(x, global_indices)
+        expected = layer(x, global_indices % 2)
+        mx.eval(got, expected)
+
+        assert mx.array_equal(got, expected)
+
+    def test_benchmark_reduced_bank_keeps_global_router(self, applied_patch, monkeypatch):
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_BENCH_EXPERT_SLOTS", "2")
+        config = dsv4.ModelArgs(
+            vocab_size=16,
+            hidden_size=8,
+            intermediate_size=16,
+            moe_intermediate_size=4,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+            n_shared_experts=1,
+            n_routed_experts=8,
+            num_experts_per_tok=1,
+            num_hash_layers=0,
+            q_lora_rank=0,
+            qk_rope_head_dim=4,
+            head_dim=4,
+            o_lora_rank=0,
+            index_n_heads=2,
+            index_head_dim=4,
+            index_topk=2,
+        )
+
+        moe = dsv4.DeepseekV4MoE(config, layer_idx=0)
+
+        assert moe.gate.num_experts == 8
+        assert moe.switch_mlp.up_proj.num_experts == 2
+        assert moe.switch_mlp.global_num_experts == 8
+
     def test_short_affine_route_restores_bfloat16_output(
         self, applied_patch, monkeypatch
     ):
@@ -1169,6 +1533,36 @@ class TestMakeQuantizationConfigMtp:
 
 class TestDeepSeekV4SanitizeAffineSwitchMLP:
     """Sanitize should enable the FP16 affine routed-MoE fast path."""
+
+    def test_benchmark_reduced_bank_drops_nonresident_raw_experts(
+        self, applied_patch, monkeypatch
+    ):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_BENCH_EXPERT_SLOTS", "2")
+        fake_model = SimpleNamespace(
+            args=SimpleNamespace(
+                num_hidden_layers=1,
+                n_routed_experts=4,
+                o_groups=1,
+                o_lora_rank=1,
+            )
+        )
+        weights = {
+            f"layers.0.ffn.experts.{expert}.{proj}.weight": mx.full(
+                (2, 2), expert, dtype=mx.float32
+            )
+            for expert in range(4)
+            for proj in ("w1", "w2", "w3")
+        }
+
+        out = dsv4.Model.sanitize(fake_model, weights)
+
+        for projection in ("gate_proj", "down_proj", "up_proj"):
+            bank = out[f"model.layers.0.ffn.switch_mlp.{projection}.weight"]
+            assert bank.shape == (2, 2, 2)
+            assert mx.array_equal(bank[:, 0, 0], mx.array([0.0, 1.0]))
+        assert not any(".ffn.experts." in key for key in out)
 
     def test_affine_switch_mlp_scale_bias_cast_to_fp16(self, applied_patch):
         mx = pytest.importorskip("mlx.core")

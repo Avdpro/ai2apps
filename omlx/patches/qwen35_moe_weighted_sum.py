@@ -55,6 +55,15 @@ def _should_route(self: Any, x: mx.array, target_verify: bool, min_tokens: int) 
         return False
     if getattr(self, "sharding_group", None) is not None:
         return False
+    # The native >=1024-token shortcut owns the complete MoE calculation and
+    # therefore bypasses the cache-aware block's parity observer. Scope exact
+    # refinement needs those Router tensors, so fall through to the wrapped
+    # implementation while the diagnostic observer is active.
+    if getattr(self, "scope_policy", None) is not None:
+        from .qwen3_6_flesh.model_patch import qwen36_parity_observer_active
+
+        if qwen36_parity_observer_active():
+            return False
     if getattr(self, "top_k", None) not in (6, 8):
         return False
     if x.shape[-2] * int(getattr(self, "top_k", 0)) < 64:

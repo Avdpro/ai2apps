@@ -716,6 +716,157 @@ class Qwen35QAffineQmmTPrimitive : public Primitive {
   int group_size_;
 };
 
+class Qwen35Q4DualGatherQmmTPrimitive : public Primitive {
+ public:
+  Qwen35Q4DualGatherQmmTPrimitive(Stream stream, int max_rows)
+      : Primitive(stream), max_rows_(max_rows) {}
+
+  static bool unsupported(
+      const array& x,
+      const array& segment_ids,
+      const array& segment_starts,
+      const array& segment_counts,
+      const array& resident_weight,
+      const array& resident_scales,
+      const array& resident_biases,
+      const array& staging_weight,
+      const array& staging_scales,
+      const array& staging_biases,
+      Stream s) {
+    if (s.device == Device::cpu ||
+        (x.dtype() != float16 && x.dtype() != bfloat16) ||
+        segment_ids.dtype() != uint32 || segment_starts.dtype() != uint32 ||
+        segment_counts.dtype() != uint32 || x.ndim() != 3 ||
+        segment_ids.ndim() != 1 || segment_starts.ndim() != 1 ||
+        segment_counts.ndim() != 1 || resident_weight.ndim() != 3 ||
+        staging_weight.ndim() != 3 || resident_scales.ndim() != 3 ||
+        resident_biases.ndim() != 3 || staging_scales.ndim() != 3 ||
+        staging_biases.ndim() != 3) {
+      return true;
+    }
+    if (!row_contiguous(x) || !row_contiguous(segment_ids) ||
+        !row_contiguous(segment_starts) || !row_contiguous(segment_counts) ||
+        !row_contiguous(resident_weight) || !row_contiguous(resident_scales) ||
+        !row_contiguous(resident_biases) || !row_contiguous(staging_weight) ||
+        !row_contiguous(staging_scales) || !row_contiguous(staging_biases)) {
+      return true;
+    }
+    const int R = x.shape(0);
+    const int K = x.shape(-1);
+    const int N = resident_weight.shape(1);
+    if (R <= 0 || segment_ids.size() <= 0 ||
+        segment_starts.size() != segment_ids.size() ||
+        segment_counts.size() != segment_ids.size() || K <= 0 || N <= 0 ||
+        x.size() != int64_t(R) * K ||
+        K % 64 != 0 || N % 32 != 0 || resident_weight.dtype() != uint32 ||
+        staging_weight.dtype() != uint32 || resident_scales.dtype() != x.dtype() ||
+        resident_biases.dtype() != x.dtype() || staging_scales.dtype() != x.dtype() ||
+        staging_biases.dtype() != x.dtype()) {
+      return true;
+    }
+    const int packed_k = K * 4 / 32;
+    const int groups = K / 64;
+    if (resident_weight.shape(2) != packed_k ||
+        staging_weight.shape(1) != N || staging_weight.shape(2) != packed_k ||
+        resident_scales.shape(1) != N || resident_scales.shape(2) != groups ||
+        resident_biases.shape() != resident_scales.shape() ||
+        staging_scales.shape(1) != N || staging_scales.shape(2) != groups ||
+        staging_biases.shape() != staging_scales.shape()) {
+      return true;
+    }
+    return false;
+  }
+
+  void eval_cpu(
+      const std::vector<array>& /* inputs */,
+      std::vector<array>& /* outputs */) override {
+    throw std::runtime_error("Qwen35Q4DualGatherQmmTPrimitive has no CPU path.");
+  }
+
+  void eval_gpu(
+      const std::vector<array>& inputs,
+      std::vector<array>& outputs) override {
+    auto& s = stream();
+    auto& d = metal::device(s.device);
+    auto& out = outputs[0];
+    const auto& x = inputs[0];
+    const auto& segment_ids = inputs[1];
+    const auto& segment_starts = inputs[2];
+    const auto& segment_counts = inputs[3];
+    const auto& resident_weight = inputs[4];
+    const auto& resident_scales = inputs[5];
+    const auto& resident_biases = inputs[6];
+    const auto& staging_weight = inputs[7];
+    const auto& staging_scales = inputs[8];
+    const auto& staging_biases = inputs[9];
+    out.set_data(allocator::malloc(out.nbytes()));
+
+    const int K = x.shape(-1);
+    const int N = resident_weight.shape(1);
+    const int segments = segment_ids.size();
+    auto& compute_encoder = metal::get_command_encoder(s);
+    std::string kname;
+    concatenate(
+        kname,
+        "qwen35_q4_dual_gather_qmm_t_",
+        qwen_type_name(x.dtype()),
+        "_bm_32_bk_32_bn_32");
+    auto lib = d.get_library("omlx_qwen35_prefill_kernels", current_binary_dir());
+    auto kernel = d.get_kernel(kname, lib);
+    compute_encoder.set_compute_pipeline_state(kernel);
+    compute_encoder.set_input_array(resident_weight, 0);
+    compute_encoder.set_input_array(resident_scales, 1);
+    compute_encoder.set_input_array(resident_biases, 2);
+    compute_encoder.set_input_array(staging_weight, 3);
+    compute_encoder.set_input_array(staging_scales, 4);
+    compute_encoder.set_input_array(staging_biases, 5);
+    compute_encoder.set_input_array(x, 6);
+    compute_encoder.set_input_array(segment_ids, 7);
+    compute_encoder.set_input_array(segment_starts, 8);
+    compute_encoder.set_input_array(segment_counts, 9);
+    compute_encoder.set_output_array(out, 10);
+    compute_encoder.set_bytes(K, 11);
+    compute_encoder.set_bytes(N, 12);
+    if (is_nax_available() && nax_qmm_kernels_built() &&
+        nax_qmm_runtime_ok.load(std::memory_order_relaxed) && K % 64 == 0 &&
+        N % 64 == 0) {
+      std::string nax_name;
+      concatenate(
+          nax_name,
+          "qwen35_q4_dual_gather_qmm_t_nax_",
+          qwen_type_name(x.dtype()),
+          "_bm_64_bk_64_bn_64_wm_2_wn_2");
+      try {
+        auto nax_lib = d.get_library(kNaxMetallibName, current_binary_dir());
+        auto nax_kernel = d.get_kernel(nax_name, nax_lib);
+        compute_encoder.set_compute_pipeline_state(nax_kernel);
+        compute_encoder.dispatch_threadgroups(
+            MTL::Size(
+                (N + 63) / 64, (max_rows_ + 63) / 64, segments),
+            MTL::Size(32, 2, 2));
+        return;
+      } catch (const std::exception&) {
+        nax_qmm_runtime_ok.store(false, std::memory_order_relaxed);
+      }
+    }
+    compute_encoder.set_compute_pipeline_state(kernel);
+    compute_encoder.dispatch_threadgroups(
+        MTL::Size((N + 31) / 32, (max_rows_ + 31) / 32, segments),
+        MTL::Size(32, 2, 2));
+  }
+
+  DEFINE_NAME(Qwen35Q4DualGatherQmmTPrimitive)
+  DEFINE_INPUT_OUTPUT_SHAPE()
+  bool is_equivalent(const Primitive& other) const override {
+    return max_rows_ ==
+        static_cast<const Qwen35Q4DualGatherQmmTPrimitive&>(other).max_rows_;
+  }
+  auto state() const { return std::make_tuple(nullptr, max_rows_); }
+
+ private:
+  int max_rows_;
+};
+
 class Qwen35MoeWeightedSumPrimitive : public Primitive {
  public:
   explicit Qwen35MoeWeightedSumPrimitive(Stream stream) : Primitive(stream) {}
@@ -1082,6 +1233,57 @@ array qwen35_q8_affine_qmm_t(
     StreamOrDevice s) {
   return qwen35_q_affine_qmm_t(
       x, weight, scales, biases, 8, variant, use_nax, nax_variant, group_size, s);
+}
+
+array qwen35_q4_dual_gather_qmm_t(
+    const array& x,
+    const array& segment_ids,
+    const array& segment_starts,
+    const array& segment_counts,
+    int max_rows,
+    const array& resident_weight,
+    const array& resident_scales,
+    const array& resident_biases,
+    const array& staging_weight,
+    const array& staging_scales,
+    const array& staging_biases,
+    StreamOrDevice s) {
+  auto stream = to_stream(s);
+  if (Qwen35Q4DualGatherQmmTPrimitive::unsupported(
+          x,
+          segment_ids,
+          segment_starts,
+          segment_counts,
+          resident_weight,
+          resident_scales,
+          resident_biases,
+          staging_weight,
+          staging_scales,
+          staging_biases,
+          stream)) {
+    throw std::invalid_argument(
+        "[omlx_qwen35_prefill.qwen35_q4_dual_gather_qmm_t] unsupported "
+        "shape or dtype.");
+  }
+  Shape out_shape = x.shape();
+  out_shape.back() = resident_weight.shape(1);
+  std::vector<array> inputs = {
+      x,
+      segment_ids,
+      segment_starts,
+      segment_counts,
+      resident_weight,
+      resident_scales,
+      resident_biases,
+      staging_weight,
+      staging_scales,
+      staging_biases,
+  };
+  return array(
+      std::move(out_shape),
+      x.dtype(),
+      std::make_shared<Qwen35Q4DualGatherQmmTPrimitive>(stream, max_rows),
+      std::move(inputs));
 }
 
 array qwen35_moe_weighted_sum(

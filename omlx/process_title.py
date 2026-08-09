@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sys
 
-DEFAULT_PROCESS_TITLE = "omlx-server"
+DEFAULT_PROCESS_TITLE = "dynamoe-server"
 
 
 def set_process_title(title: str = DEFAULT_PROCESS_TITLE) -> bool:

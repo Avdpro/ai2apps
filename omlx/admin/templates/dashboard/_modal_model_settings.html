@@ -328,6 +328,57 @@
                                 </div>
                             </div>
 
+                            <!-- Cache-MoE resident memory bank -->
+                            <template x-if="selectedModel?.cache_moe">
+                                <div class="rounded-2xl border border-neutral-200 bg-neutral-50/70 p-4 space-y-3">
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div>
+                                            <label class="block text-xs font-bold uppercase tracking-wider text-neutral-500">Memory Profile</label>
+                                            <p class="mt-1 text-xs text-neutral-500">
+                                                Resident expert bank. Estimates include model weights and runtime overhead.
+                                            </p>
+                                        </div>
+                                        <span x-show="modelSettings.cache_moe_memory_profile?.recommended"
+                                              class="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
+                                              x-text="'Recommended for ' + modelSettings.cache_moe_memory_profile?.physical_memory_gb + 'G'">
+                                        </span>
+                                    </div>
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 transition-opacity"
+                                         :class="modelSettings.cache_moe_memory_locked ? 'opacity-40 pointer-events-none' : ''"
+                                         :title="modelSettings.cache_moe_memory_locked ? 'Memory profile cannot be changed while this model is running.' : ''">
+                                        <template x-for="tier in (modelSettings.cache_moe_memory_profile?.tiers || [])" :key="tier.id">
+                                            <label class="relative cursor-pointer rounded-xl border bg-white p-3 transition-all"
+                                                   :class="modelSettings.cache_moe_memory_tier === tier.id ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-neutral-200 hover:border-neutral-400'">
+                                                <input type="radio" class="sr-only"
+                                                       x-model="modelSettings.cache_moe_memory_tier"
+                                                       :disabled="modelSettings.cache_moe_memory_locked"
+                                                       :value="tier.id">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <span class="text-sm font-semibold text-neutral-900" x-text="tier.label"></span>
+                                                    <span x-show="tier.id === modelSettings.cache_moe_memory_profile?.recommended"
+                                                          class="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Recommended</span>
+                                                </div>
+                                                <div class="mt-1 text-xs text-neutral-600"
+                                                     x-text="'Top' + tier.experts + ' · ≈' + tier.estimated_gb + 'G'"></div>
+                                                <div x-show="!tier.fits" class="mt-1 text-[11px] font-medium text-amber-600">Exceeds safe device budget</div>
+                                            </label>
+                                        </template>
+                                    </div>
+                                    <p x-show="modelSettings.cache_moe_memory_locked"
+                                       class="text-xs font-medium text-neutral-500">
+                                        Available after the current inference and queued requests finish.
+                                    </p>
+                                    <p x-show="!modelSettings.cache_moe_memory_profile?.recommended"
+                                       class="text-xs font-medium text-red-600">
+                                        Even Lean exceeds this device's safe memory budget. This model will not be selected automatically.
+                                    </p>
+                                    <p class="text-[11px] text-neutral-400"
+                                       x-show="modelSettings.cache_moe_memory_profile">
+                                        Keeps approximately <span x-text="modelSettings.cache_moe_memory_profile?.reserved_memory_gb"></span>G free for macOS, KV cache, activations, and expert swaps. Changing this setting reloads the model.
+                                    </p>
+                                </div>
+                            </template>
+
                             <!-- Sampling settings (LLM/VLM only) -->
                             <template x-if="!selectedModel?.model_type || selectedModel.model_type === 'llm' || selectedModel.model_type === 'vlm'">
                                 <div class="space-y-5">

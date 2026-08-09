@@ -375,6 +375,16 @@ def maybe_apply_pre_load_patches(
         if apply_deepseek_v4_patch():
             logger.info("DeepSeek V4 pre-load patch applied for %s", model_name)
 
+    if model_type == "qwen3_5_moe":
+        # The patch self-gates on an explicitly configured Qwen Scope Pack.
+        # Ordinary Qwen3.5/3.6 models retain the unmodified mlx-lm model.
+        from ..patches.qwen3_6_flesh.model_patch import (
+            apply_qwen36_flesh_model_patch,
+        )
+
+        if apply_qwen36_flesh_model_patch():
+            logger.info("Qwen3.6 Flesh pre-load patch applied for %s", model_name)
+
     if model_type == "step3p7":
         from ..patches.step3p7 import apply_step3p7_patch
 
@@ -511,6 +521,7 @@ def maybe_apply_pre_load_patches(
                 # controller's exploration costs ~10% throughput vs fixed
                 # depth 1 on it.
                 set_mtp_depth(1)
+
             elif model_type == "gemma4":
                 # The fused multi-row verify kernel keeps gemma4 global-layer
                 # attention near-flat in L, so depths 4..8 are genuinely
@@ -544,6 +555,16 @@ def maybe_apply_pre_load_patches(
                     "(model has MTP heads but mtp_enabled=False; head not attached)",
                     model_name,
                 )
+
+        # MTP replaces qwen3_5_moe.Model.sanitize. Re-apply the Qwen Flesh
+        # wrapper after that replacement so resident expert slicing remains
+        # the outermost checkpoint adaptation.
+        if model_type == "qwen3_5_moe":
+            from ..patches.qwen3_6_flesh.model_patch import (
+                apply_qwen36_flesh_model_patch,
+            )
+
+            apply_qwen36_flesh_model_patch()
 
         # mlx-vlm side: only relevant when entering through VLMBatchedEngine
         # (e.g. ``qwen3_5_moe`` with vision_config). The mlx-lm patch alone

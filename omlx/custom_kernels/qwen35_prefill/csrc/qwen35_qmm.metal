@@ -2,6 +2,65 @@
 #include "mlx/backend/metal/kernels/steel/gemm/gemm.h"
 #include "kernels/quantized_moe.h"
 
+template <typename T, const int BM, const int BK, const int BN>
+[[kernel]] void qwen35_q4_dual_gather_qmm_t(
+    const device uint32_t* resident_w [[buffer(0)]],
+    const device T* resident_scales [[buffer(1)]],
+    const device T* resident_biases [[buffer(2)]],
+    const device uint32_t* staging_w [[buffer(3)]],
+    const device T* staging_scales [[buffer(4)]],
+    const device T* staging_biases [[buffer(5)]],
+    const device T* x [[buffer(6)]],
+    const device uint32_t* segment_ids [[buffer(7)]],
+    const device uint32_t* segment_starts [[buffer(8)]],
+    const device uint32_t* segment_counts [[buffer(9)]],
+    device T* y [[buffer(10)]],
+    const constant int& K [[buffer(11)]],
+    const constant int& N [[buffer(12)]],
+    uint3 tid [[threadgroup_position_in_grid]],
+    uint lid [[thread_index_in_threadgroup]],
+    uint simd_gid [[simdgroup_index_in_threadgroup]],
+    uint simd_lid [[thread_index_in_simdgroup]]) {
+  constexpr uint secondary_bit = 0x80000000u;
+  const uint encoded = segment_ids[tid.z];
+  const uint start = segment_starts[tid.z];
+  const int M = int(segment_counts[tid.z]);
+  if (int(tid.y) * BM >= M) {
+    return;
+  }
+  const uint expert = encoded & ~secondary_bit;
+  const ulong packed_k = (ulong(K) * 4u) / 32u;
+  const ulong groups = ulong(K) / 64u;
+  const ulong w_offset = ulong(expert) * ulong(N) * packed_k;
+  const ulong q_offset = ulong(expert) * ulong(N) * groups;
+  const bool secondary = (encoded & secondary_bit) != 0;
+  const device uint32_t* w =
+      (secondary ? staging_w : resident_w) + w_offset;
+  const device T* scales =
+      (secondary ? staging_scales : resident_scales) + q_offset;
+  const device T* biases =
+      (secondary ? staging_biases : resident_biases) + q_offset;
+  x += ulong(start) * ulong(K);
+  y += ulong(start) * ulong(N);
+
+  constexpr int BK_padded = (BK + 16 / sizeof(T));
+  threadgroup T Xs[BM * BK_padded];
+  threadgroup T Ws[BN * BK_padded];
+  const uint3 local_tid(tid.x, tid.y, 0);
+  qmm_t_impl<T, 64, 4, true, BM, BK, BN>(
+      w, scales, biases, x, y, Xs, Ws, K, N, M, K, local_tid, lid,
+      simd_gid, simd_lid);
+}
+
+#define instantiate_qwen35_q4_dual(type, bm, bk, bn)                         \
+  instantiate_kernel(                                                         \
+      "qwen35_q4_dual_gather_qmm_t_" #type "_bm_" #bm "_bk_" #bk          \
+      "_bn_" #bn,                                                            \
+      qwen35_q4_dual_gather_qmm_t, type, bm, bk, bn)
+
+instantiate_qwen35_q4_dual(float16_t, 32, 32, 32);
+instantiate_qwen35_q4_dual(bfloat16_t, 32, 32, 32);
+
 #define define_qwen35_q_affine_qmm_t(bits)                                    \
   template <typename T, const int BM, const int BK, const int BN>              \
   [[kernel]] void qwen35_q##bits##_affine_qmm_t(                              \

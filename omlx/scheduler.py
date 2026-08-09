@@ -1405,6 +1405,9 @@ class SchedulerConfig:
     # Per-forward embedding input chunk size
     embedding_batch_size: int = 32
     prefill_step_size: int = 2048
+    # DeepSeek V4 uses a model-specific 5120/4096/3072/2048 long-context
+    # schedule instead of this global default. Disable for fixed-step A/Bs.
+    deepseek_v4_adaptive_prefill: bool = True
     # When True, long prefills are processed one chunk per step() call,
     # interleaved with decode steps for already-running requests. This
     # reduces TTFT for concurrent requests but adds per-step overhead.
@@ -1638,6 +1641,31 @@ class Scheduler:
                 self._minimax_m3_adaptive_prefill.step_size,
                 self._minimax_m3_adaptive_prefill.after,
                 self._minimax_m3_adaptive_prefill.min_remaining,
+            )
+        self._deepseek_v4_adaptive_prefill = None
+        if getattr(self.config, "deepseek_v4_adaptive_prefill", True):
+            try:
+                from .patches.deepseek_v4.prefill import (
+                    make_deepseek_v4_prefill_config,
+                )
+
+                self._deepseek_v4_adaptive_prefill = make_deepseek_v4_prefill_config(
+                    model
+                )
+            except Exception:
+                logger.debug(
+                    "DeepSeek V4 adaptive prefill config unavailable", exc_info=True
+                )
+        if self._deepseek_v4_adaptive_prefill is not None:
+            cfg = self._deepseek_v4_adaptive_prefill
+            logger.info(
+                "DeepSeek V4 memory-safe prefill enabled: <=128k:%d "
+                "<=256k:%d <=512k:%d >512k:%d alignment=%d",
+                cfg.step_128k,
+                cfg.step_256k,
+                cfg.step_512k,
+                cfg.step_1m,
+                cfg.alignment,
             )
 
         # Request management - following vLLM's design
@@ -3179,7 +3207,9 @@ class Scheduler:
         while input_arr.shape[1] > 0:
             remaining = input_arr.shape[1]
             prefill_step_size = self._prefill_step_size_for_progress(
-                processed_tokens, remaining
+                processed_tokens,
+                remaining,
+                base_tokens=base_size,
             )
             n_to_process = min(prefill_step_size, remaining)
 
@@ -4345,7 +4375,10 @@ class Scheduler:
     # ------------------------------------------------------------------
 
     def _prefill_step_size_for_progress(
-        self, processed_tokens: int, remaining_tokens: int
+        self,
+        processed_tokens: int,
+        remaining_tokens: int,
+        base_tokens: int = 0,
     ) -> int:
         """Return the scheduler prefill chunk size for the current progress."""
         adaptive_prefill = self._glm_dsa_adaptive_prefill
@@ -4359,6 +4392,19 @@ class Scheduler:
                 processed_tokens,
                 remaining_tokens,
                 adaptive_prefill,
+            )
+
+        deepseek_prefill = getattr(self, "_deepseek_v4_adaptive_prefill", None)
+        if deepseek_prefill is not None:
+            from .patches.deepseek_v4.prefill import (
+                deepseek_v4_prefill_step_size,
+            )
+
+            return deepseek_v4_prefill_step_size(
+                processed_tokens=processed_tokens,
+                remaining_tokens=remaining_tokens,
+                base_tokens=base_tokens,
+                config=deepseek_prefill,
             )
 
         adaptive_prefill = getattr(self, "_minimax_m3_adaptive_prefill", None)
@@ -4455,7 +4501,9 @@ class Scheduler:
 
         remaining = state.tokens_remaining.shape[1]
         prefill_step_size = self._prefill_step_size_for_progress(
-            state.tokens_processed, remaining
+            state.tokens_processed,
+            remaining,
+            base_tokens=state.base_size,
         )
         n = min(prefill_step_size, remaining)
 
@@ -6871,7 +6919,7 @@ class Scheduler:
         request: Request,
     ) -> bool:
         return (
-            info.extra_keys == request.vlm_extra_keys_for_cache
+            info.extra_keys == request.extra_keys_for_cache
             and info.extra_key_token_start
             == request.vlm_extra_key_token_start_for_cache
             and info.extra_key_ranges == request.vlm_extra_key_ranges_for_cache
@@ -7007,7 +7055,7 @@ class Scheduler:
             block_table, remaining = self.block_aware_cache.fetch_cache(
                 request.request_id,
                 request.prompt_token_ids,
-                extra_keys=request.vlm_extra_keys_for_cache,
+                extra_keys=request.extra_keys_for_cache,
                 extra_key_token_start=request.vlm_extra_key_token_start_for_cache,
                 extra_key_ranges=request.vlm_extra_key_ranges_for_cache,
             )
@@ -10031,7 +10079,7 @@ class Scheduler:
                                         cache_to_store,
                                         model_cache_config,
                                         intermediate_snapshots,
-                                        request.vlm_extra_keys_for_cache,
+                                        request.extra_keys_for_cache,
                                         request.vlm_extra_key_token_start_for_cache,
                                         request.vlm_extra_key_ranges_for_cache,
                                         hot_cache_write_back,
@@ -10044,7 +10092,7 @@ class Scheduler:
                                 self._inflight_store_info[request_id] = (
                                     _InflightStoreInfo(
                                         tokens=list(token_sequence_to_store),
-                                        extra_keys=request.vlm_extra_keys_for_cache,
+                                        extra_keys=request.extra_keys_for_cache,
                                         extra_key_token_start=(
                                             request.vlm_extra_key_token_start_for_cache
                                         ),
@@ -10061,7 +10109,7 @@ class Scheduler:
                                     cache_to_store,
                                     model_cache_config,
                                     intermediate_snapshots,
-                                    request.vlm_extra_keys_for_cache,
+                                    request.extra_keys_for_cache,
                                     request.vlm_extra_key_token_start_for_cache,
                                     request.vlm_extra_key_ranges_for_cache,
                                     hot_cache_write_back,

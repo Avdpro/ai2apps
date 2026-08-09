@@ -225,6 +225,13 @@
                                     class="px-4 py-1.5 text-xs font-medium rounded-md transition-all">
                                 {{ t('models.downloader.source.hf') }}
                             </button>
+                            <button @click="downloaderSource = 'dynamoe'; initDynaMoeDownloader()"
+                                    :class="downloaderSource === 'dynamoe'
+                                        ? 'bg-white text-neutral-900 shadow-sm'
+                                        : 'text-neutral-500 hover:text-neutral-700'"
+                                    class="px-4 py-1.5 text-xs font-medium rounded-md transition-all">
+                                DynaMoe
+                            </button>
                             <button @click="downloaderSource = 'ms'; initMsDownloader()"
                                     :class="downloaderSource === 'ms'
                                         ? 'bg-white text-neutral-900 shadow-sm'
@@ -854,6 +861,110 @@
                         </template>
 
                         </div><!-- end HuggingFace Source -->
+
+                        <!-- ===== DynaMoe verified Cache-MoE source ===== -->
+                        <div x-show="downloaderSource === 'dynamoe'" x-cloak>
+                            <div class="bg-white rounded-2xl border border-neutral-200 overflow-hidden mb-6">
+                                <div class="flex items-center justify-between px-4 sm:px-6 py-4 bg-neutral-100 border-b border-neutral-200">
+                                    <div class="flex items-center gap-3">
+                                        <i data-lucide="sparkles" class="w-4 h-4 text-neutral-500"></i>
+                                        <span class="text-xs font-bold uppercase tracking-wider text-neutral-600">Verified Cache-MoE models</span>
+                                    </div>
+                                    <span class="text-xs text-neutral-400">models with a dedicated DynaMoe engine</span>
+                                </div>
+                                <div class="p-6 space-y-5">
+                                    <div x-show="dynaCatalogLoading" class="text-sm text-neutral-500">Loading catalog…</div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <template x-for="model in dynaCatalog" :key="model.id">
+                                            <button @click="dynaSelectedModelId = model.id; dynaWeightSource = model.sources?.[0]?.id || 'huggingface'"
+                                                    :class="dynaSelectedModelId === model.id ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-neutral-200 hover:border-neutral-400'"
+                                                    class="text-left rounded-xl border p-4 transition-all">
+                                                <div class="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div class="font-semibold text-neutral-900" x-text="model.name"></div>
+                                                        <div class="mt-1 text-xs leading-5 text-neutral-500" x-text="model.description"></div>
+                                                    </div>
+                                                    <span class="rounded-full px-2 py-1 text-[10px] font-semibold bg-green-50 text-green-700"
+                                                          x-text="`${model.engine.name} · v${model.engine.version}`"></span>
+                                                </div>
+                                            </button>
+                                        </template>
+                                    </div>
+
+                                    <template x-if="selectedDynaModel()">
+                                        <div class="grid gap-4 md:grid-cols-3">
+                                            <label class="block">
+                                                <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Weight source</span>
+                                                <select x-model="dynaWeightSource" class="w-full px-3 py-2.5 border border-neutral-200 rounded-xl bg-white text-sm">
+                                                    <template x-for="source in selectedDynaModel().sources" :key="source.id">
+                                                        <option :value="source.id" x-text="source.label"></option>
+                                                    </template>
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Memory</span>
+                                                <select x-model="dynaMemoryTier" class="w-full px-3 py-2.5 border border-neutral-200 rounded-xl bg-white text-sm">
+                                                    <option value="auto">Auto · match this Mac</option>
+                                                    <template x-for="tier in selectedDynaModel().memory_tiers" :key="tier.id">
+                                                        <option :value="tier.id" x-text="`${tier.label} · Top${tier.experts} · ~${tier.estimated_gb}G`"></option>
+                                                    </template>
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Access token <span class="normal-case text-neutral-400">optional</span></span>
+                                                <input type="password" x-model="dynaToken" placeholder="hf_…"
+                                                       class="w-full px-3 py-2.5 border border-neutral-200 rounded-xl bg-white text-sm font-mono">
+                                            </label>
+                                        </div>
+                                    </template>
+
+                                    <div class="flex flex-wrap items-center justify-between gap-3">
+                                        <div class="text-xs text-neutral-500" x-show="selectedDynaModel()">
+                                            Dedicated engine: <span class="font-medium" x-text="selectedDynaModel()?.engine?.name"></span>
+                                            <span> · scope profiles and conversion rules included</span>
+                                        </div>
+                                        <button @click="startDynaInstall()"
+                                                :disabled="dynaInstalling || !selectedDynaModel()"
+                                                class="px-6 py-2.5 bg-neutral-900 text-white text-sm font-semibold rounded-full hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                                            <i data-lucide="package-plus" class="w-4 h-4"></i>
+                                            <span x-text="dynaInstalling ? 'Starting…' : 'Download & Prepare'"></span>
+                                        </button>
+                                    </div>
+                                    <div x-show="dynaError" class="px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl" x-text="dynaError"></div>
+                                    <div x-show="dynaSuccess" class="px-4 py-2.5 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl" x-text="dynaSuccess"></div>
+                                </div>
+                            </div>
+
+                            <div x-show="dynaTasks.length" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden mb-6">
+                                <div class="px-4 sm:px-6 py-4 bg-neutral-100 border-b border-neutral-200 text-xs font-bold uppercase tracking-wider text-neutral-600">Installations</div>
+                                <div class="divide-y divide-neutral-100">
+                                    <template x-for="task in [...dynaTasks].reverse()" :key="task.task_id">
+                                        <div class="p-5">
+                                            <div class="flex items-start justify-between gap-4">
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="text-sm font-semibold text-neutral-900" x-text="task.repo_id"></span>
+                                                        <span class="text-[10px] uppercase font-semibold text-neutral-400" x-text="task.memory_tier"></span>
+                                                    </div>
+                                                    <div class="mt-1 text-xs text-neutral-500"><span x-text="task.phase"></span><span x-show="task.detail"> · <span x-text="task.detail"></span></span></div>
+                                                    <div class="mt-3 h-1.5 rounded-full bg-neutral-100 overflow-hidden">
+                                                        <div class="h-full rounded-full transition-all duration-300"
+                                                             :class="task.status === 'failed' ? 'bg-red-500' : task.status === 'completed' ? 'bg-green-500' : 'bg-neutral-800'"
+                                                             :style="`width: ${task.progress}%`"></div>
+                                                    </div>
+                                                    <div x-show="task.error" class="mt-2 text-xs text-red-600" x-text="task.error"></div>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-xs tabular-nums text-neutral-500" x-text="`${Math.round(task.progress)}%`"></span>
+                                                    <button x-show="!['completed','failed','cancelled'].includes(task.status)" @click="cancelDynaInstall(task.task_id)" class="text-xs text-neutral-500 hover:text-red-600">Cancel</button>
+                                                    <button x-show="['failed','cancelled'].includes(task.status)" @click="retryDynaInstall(task.task_id)" class="text-xs font-medium text-neutral-700 hover:text-neutral-900">Retry</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div><!-- end DynaMoe Source -->
 
                         <!-- ===== ModelScope Source ===== -->
                         <div x-show="downloaderSource === 'ms'" x-cloak>

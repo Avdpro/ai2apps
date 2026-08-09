@@ -264,6 +264,9 @@ class ModelSettings:
     )
 
     # Model management flags
+    # Cache-MoE resident bank sizing. None/"auto" selects the largest tier
+    # that fits physical unified memory with runtime headroom.
+    cache_moe_memory_tier: Optional[str] = None
     is_pinned: bool = False
     is_default: bool = False  # Only one model can be default
     is_hidden: bool = False  # Hidden from /v1/models (still shown, badged, in admin)

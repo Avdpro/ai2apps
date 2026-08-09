@@ -1,0 +1,36 @@
+{
+  "format": "omlx-scope-prefill-experiment",
+  "version": 1,
+  "artifact_policy": {
+    "output_root": "artifacts/scope-prefill-v1",
+    "overwrite": false,
+    "runtime_selection_env": "OMLX_DEEPSEEK_V4_SCOPE_PROFILE"
+  },
+  "scopes": {
+    "code.python": {
+      "corpus": "omlx/admin/bench_corpora/code_python.txt",
+      "parent_runtime_scope": "coding",
+      "status": "v3-regularized-candidate-below-baseline",
+      "current_artifact": "artifacts/scope-prefill-v3/code.python-regularized-keep40-v3.json",
+      "raw_leaf_artifact": "artifacts/scope-prefill-v3/code.python-mixed-16k-v3.json",
+      "candidate_mix": "25% Python source, 75% mixed chat-template prompt and generated continuation",
+      "next_iteration": "expand independent training and validation matrices; do not tune further on the two current validation prompts",
+      "required_contexts": [
+        "source-code reading and completion",
+        "code generation and modification",
+        "debugging and error analysis",
+        "natural-language questions and explanations",
+        "tests, packaging, dependencies, and project configuration",
+        "generated continuations"
+      ]
+    },
+    "code.cpp": {
+      "parent_runtime_scope": "coding",
+      "status": "blocked-on-dedicated-corpus"
+    },
+    "science.math": {
+      "parent_runtime_scope": "math_logic",
+      "status": "blocked-on-dedicated-corpus"
+    }
+  }
+}

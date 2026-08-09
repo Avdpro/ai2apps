@@ -393,8 +393,13 @@ class SwitchGLU(nn.Module):
         num_experts: int,
         activation=SwiGLU(),
         bias: bool = False,
+        global_num_experts: int | None = None,
     ):
         super().__init__()
+
+        self.global_num_experts = global_num_experts or num_experts
+        if self.global_num_experts < num_experts:
+            raise ValueError("global_num_experts cannot be smaller than num_experts")
 
         self.gate_proj = SwitchLinear(input_dims, hidden_dims, num_experts, bias=bias)
         self.up_proj = SwitchLinear(input_dims, hidden_dims, num_experts, bias=bias)
@@ -402,6 +407,13 @@ class SwitchGLU(nn.Module):
         self.activation = activation
 
     def __call__(self, x, indices, scores=None) -> mx.array:
+        # Benchmark-only reduced banks keep the router's global IDs and map
+        # them to the physically resident prefix on device.  Modulo is used
+        # instead of a host-side lookup so both prefill and decode measure the
+        # remap cost that a real cache adapter will pay.  Normal models have
+        # equal global/physical counts and skip this operation entirely.
+        if self.global_num_experts != self.up_proj.num_experts:
+            indices = indices % self.up_proj.num_experts
         x = mx.expand_dims(x, (-2, -3))
         original_dtype = x.dtype
 

@@ -17,6 +17,7 @@ import asyncio
 import gc
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ from .exceptions import (
     ModelUnavailableError,
     describe_ceiling_binding,
 )
-from .model_discovery import discover_models, format_size
+from .model_discovery import cache_moe_engine_id, discover_models, format_size
 from .scheduler import SchedulerConfig
 from .utils.proc_memory import get_phys_footprint
 
@@ -90,6 +91,7 @@ class EngineEntry:
     source_type: str = "local"
     source_repo_id: str | None = None
     is_helper: bool = False  # Speculative-decoding drafter (dFlash/Assistant/MTP)
+    cache_moe_config: dict | None = None  # Persistent DynaMoe installation metadata
     engine: (
         BaseEngine
         | EmbeddingEngine
@@ -331,6 +333,16 @@ class EnginePool:
         mtp_active = bool(data.get("mtp_enabled", False))
         add("mtp_enabled", mtp_active)
 
+        if entry and (
+            entry.config_model_type.startswith("deepseek_v4")
+            or (
+                entry.config_model_type == "qwen3_5_moe"
+                and cache_moe_engine_id(entry.cache_moe_config)
+                in ("qwen3.6-flesh", "qwen3.6-arena", "qwen3.6-tiered")
+            )
+        ):
+            add("cache_moe_memory_tier", data.get("cache_moe_memory_tier") or "auto")
+
         turboquant_active = bool(data.get("turboquant_kv_enabled", False))
         add("turboquant_kv_enabled", turboquant_active)
         if turboquant_active:
@@ -476,6 +488,7 @@ class EnginePool:
                     source_type=getattr(info, "source_type", "local"),
                     source_repo_id=getattr(info, "source_repo_id", None),
                     is_helper=getattr(info, "is_helper", False),
+                    cache_moe_config=getattr(info, "cache_moe_config", None),
                     is_pinned=model_id in pinned_set,
                 )
 
@@ -895,6 +908,53 @@ class EnginePool:
             # only its language weights, so admit it by the text-only estimate
             # instead of the vision-inclusive file size (#2385).
             admission_size = entry.estimated_size
+            scope_env_ready = all(
+                os.environ.get(name, "").strip()
+                for name in (
+                    "OMLX_DEEPSEEK_V4_SCOPE_PROFILE",
+                    "OMLX_DEEPSEEK_V4_SCOPE_NAME",
+                    "OMLX_DEEPSEEK_V4_EXPERT_STORE",
+                )
+            )
+            if entry.config_model_type.startswith("deepseek_v4") and (
+                entry.cache_moe_config is not None or scope_env_ready
+            ):
+                from .model_discovery import deepseek_cache_moe_memory_profile
+
+                memory_settings = runtime_settings
+                if memory_settings is None and self._settings_manager is not None:
+                    memory_settings = self._settings_manager.get_settings(model_id)
+                settings_tier = getattr(
+                    memory_settings, "cache_moe_memory_tier", None
+                )
+                installed_tier = (entry.cache_moe_config or {}).get("memory_tier")
+                requested_tier = (
+                    settings_tier
+                    if settings_tier not in (None, "auto")
+                    else installed_tier or settings_tier or "auto"
+                )
+                memory_profile = deepseek_cache_moe_memory_profile(
+                    entry.model_path, entry.cache_moe_config
+                )
+                if memory_profile is not None:
+                    selected_tier = (
+                        memory_profile["recommended"]
+                        if requested_tier == "auto"
+                        else requested_tier
+                    )
+                    selected = next(
+                        (
+                            tier
+                            for tier in memory_profile["tiers"]
+                            if tier["id"] == selected_tier
+                        ),
+                        None,
+                    )
+                    if selected is not None:
+                        admission_size = int(selected["estimated_bytes"])
+                        # Accounting, unload settlement, and the admin status
+                        # must describe the bank we are actually about to load.
+                        entry.estimated_size = admission_size
             if entry.text_only_size and (
                 force_lm or entry.engine_type == "batched"
             ):
@@ -1771,6 +1831,117 @@ class EnginePool:
                     eviction_request=eviction_request,
                 )
 
+            batched_engine_class = BatchedEngine
+            if entry.config_model_type.startswith("deepseek_v4"):
+                scope_env = (
+                    "OMLX_DEEPSEEK_V4_SCOPE_PROFILE",
+                    "OMLX_DEEPSEEK_V4_SCOPE_NAME",
+                    "OMLX_DEEPSEEK_V4_EXPERT_STORE",
+                )
+                if entry.cache_moe_config is not None or all(
+                    os.environ.get(name, "").strip() for name in scope_env
+                ):
+                    from .engine.flesh import DeepseekV4FleshEngine
+                    from .model_discovery import resolve_deepseek_cache_moe_experts
+                    from .patches.deepseek_v4.scope_policy import (
+                        clear_scope_policy_override,
+                        configure_scope_policy,
+                        configure_scope_resident_experts,
+                    )
+
+                    settings_tier = getattr(
+                        model_settings, "cache_moe_memory_tier", None
+                    )
+                    installed_tier = (entry.cache_moe_config or {}).get(
+                        "memory_tier"
+                    )
+                    configured_tier = (
+                        settings_tier
+                        if settings_tier not in (None, "auto")
+                        else installed_tier or settings_tier or "auto"
+                    )
+                    resident_experts = resolve_deepseek_cache_moe_experts(
+                        entry.model_path,
+                        configured_tier,
+                        entry.cache_moe_config,
+                    )
+                    if entry.cache_moe_config is not None:
+                        scope = entry.cache_moe_config["scope"]
+                        configure_scope_policy(
+                            scope["profile"],
+                            scope["default"],
+                            entry.cache_moe_config["expert_store"],
+                            resident_experts,
+                        )
+                    else:
+                        clear_scope_policy_override()
+                        configure_scope_resident_experts(resident_experts)
+                    logger.info(
+                        "DeepSeek Cache-MoE resident bank: Top%d (%s)",
+                        resident_experts,
+                        configured_tier,
+                    )
+
+                    batched_engine_class = DeepseekV4FleshEngine
+
+            elif (
+                entry.config_model_type == "qwen3_5_moe"
+                and entry.cache_moe_config is not None
+                and cache_moe_engine_id(entry.cache_moe_config)
+                in ("qwen3.6-flesh", "qwen3.6-arena", "qwen3.6-tiered")
+            ):
+                from .model_discovery import resolve_qwen36_cache_moe_experts
+                from .patches.qwen3_6_flesh.scope_policy import (
+                    configure_qwen36_scope_policy,
+                )
+
+                settings_tier = getattr(
+                    model_settings, "cache_moe_memory_tier", None
+                )
+                installed_tier = entry.cache_moe_config.get("memory_tier")
+                configured_tier = (
+                    settings_tier
+                    if settings_tier not in (None, "auto")
+                    else installed_tier or settings_tier or "auto"
+                )
+                resident_experts = resolve_qwen36_cache_moe_experts(
+                    entry.model_path,
+                    configured_tier,
+                    entry.cache_moe_config,
+                )
+                scope = entry.cache_moe_config["scope"]
+                qwen_backend = {
+                    "qwen3.6-arena": "arena",
+                    "qwen3.6-tiered": "tiered",
+                }.get(cache_moe_engine_id(entry.cache_moe_config), "flesh")
+                configure_qwen36_scope_policy(
+                    scope["profile"],
+                    scope["default"],
+                    entry.cache_moe_config["expert_store"],
+                    resident_experts,
+                    backend=qwen_backend,
+                    arena_tail_slots=int(
+                        entry.cache_moe_config.get("arena_tail_slots", 24)
+                    ),
+                )
+                logger.info(
+                    "Qwen3.6 Cache-MoE resident bank: Top%d (%s)",
+                    resident_experts,
+                    configured_tier,
+                )
+                if qwen_backend == "arena":
+                    from .engine.qwen36_arena import Qwen36ArenaEngine
+
+                    batched_engine_class = Qwen36ArenaEngine
+                elif qwen_backend == "tiered":
+                    from .engine.qwen36_tiered import Qwen36TieredEngine
+
+                    batched_engine_class = Qwen36TieredEngine
+                else:
+                    from .engine.qwen36_flesh import Qwen36FleshEngine
+
+                    batched_engine_class = Qwen36FleshEngine
+
             # Create engine based on engine type (if DFlash not active)
             if engine is None:
                 if effective_type == "embedding":
@@ -1802,7 +1973,7 @@ class EnginePool:
                         config_model_type=entry.config_model_type,
                     )
                 else:
-                    engine = BatchedEngine(
+                    engine = batched_engine_class(
                         model_name=entry.model_path,
                         trust_remote_code=trc,
                         scheduler_config=self._scheduler_config,
@@ -1846,7 +2017,7 @@ class EnginePool:
                             prefill_eviction_callback=prefill_eviction_callback,
                         )
                     else:
-                        engine = BatchedEngine(
+                        engine = batched_engine_class(
                             model_name=entry.model_path,
                             trust_remote_code=trc,
                             scheduler_config=self._scheduler_config,
@@ -1920,7 +2091,7 @@ class EnginePool:
                         lambda: (mx.synchronize(), mx.clear_cache()),
                     )
 
-                    engine = BatchedEngine(
+                    engine = batched_engine_class(
                         model_name=entry.model_path,
                         trust_remote_code=trc,
                         scheduler_config=self._scheduler_config,
@@ -2185,6 +2356,24 @@ class EnginePool:
                     "engine_type": e.engine_type,
                     "model_type": e.model_type,
                     "config_model_type": e.config_model_type,
+                    "cache_moe": (
+                        callable(getattr(e.engine, "request_engine_boost", None))
+                        if e.engine is not None
+                        else (
+                            e.config_model_type.startswith("deepseek_v4")
+                            and (
+                                all(
+                                    os.environ.get(name, "").strip()
+                                    for name in (
+                                        "OMLX_DEEPSEEK_V4_SCOPE_PROFILE",
+                                        "OMLX_DEEPSEEK_V4_SCOPE_NAME",
+                                        "OMLX_DEEPSEEK_V4_EXPERT_STORE",
+                                    )
+                                )
+                                or e.cache_moe_config is not None
+                            )
+                        )
+                    ),
                     "model_context_length": e.model_context_length,
                     "is_helper": e.is_helper,
                     "thinking_default": e.thinking_default,

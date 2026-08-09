@@ -90,6 +90,20 @@ mx::array qwen35_q8_affine_qmm_t(
     int group_size = 64,
     mx::StreamOrDevice s = {});
 
+mx::array qwen35_q4_dual_gather_qmm_t(
+    const mx::array& x,
+    const mx::array& segment_ids,
+    const mx::array& segment_starts,
+    const mx::array& segment_counts,
+    int max_rows,
+    const mx::array& resident_weight,
+    const mx::array& resident_scales,
+    const mx::array& resident_biases,
+    const mx::array& staging_weight,
+    const mx::array& staging_scales,
+    const mx::array& staging_biases,
+    mx::StreamOrDevice s = {});
+
 mx::array qwen35_moe_weighted_sum(
     const mx::array& x_sorted,
     const mx::array& inv_order,

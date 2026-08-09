@@ -2,6 +2,7 @@
 
 import logging
 import math
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache, partial
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -17,6 +18,13 @@ from .hyper_connection import HyperConnection, HyperHead, hc_expand
 from .mla import MultiLinear
 from .pipeline import PipelineMixin
 from omlx.patches.deepseek_v4.switch_layers import SwitchGLU
+from omlx.patches.deepseek_v4.scope_cache import get_scope_fallback_loader
+from omlx.patches.deepseek_v4.scope_policy import (
+    ScopeLossyPolicy,
+    load_scope_lossy_policy_from_env,
+    load_scope_policy_from_env,
+    parse_expert_key,
+)
 from omlx.patches.deepseek_v4.decode_consistency import (
     is_armed as is_dspark_verify_armed,
 )
@@ -31,6 +39,351 @@ from omlx.patches.deepseek_v4.verify_attention import (
 _DEEPSEEK_V4_SPARSE_ATTENTION_NATIVE_DISABLED = False
 _DEEPSEEK_V4_INDEXER_NATIVE_DISABLED = False
 _DEEPSEEK_V4_DSPARK_TOPK_NATIVE_DISABLED = False
+
+_BENCH_EXPERT_SLOTS_ENV = "OMLX_DEEPSEEK_V4_BENCH_EXPERT_SLOTS"
+_BENCH_MISS_MODE_ENV = "OMLX_DEEPSEEK_V4_BENCH_MISS_MODE"
+_BENCH_MISS_EVENT = 0
+_BENCH_SCORE_EVENT = 0
+
+
+def _benchmark_expert_slots(config: Any) -> int:
+    """Return the physical routed-expert count for an explicit speed test.
+
+    This deliberately corrupts model semantics: global expert IDs are folded
+    onto the resident prefix.  It exists only to measure prefill/decode speed
+    when the full expert bank cannot fit in unified memory.
+    """
+    total = int(config.n_routed_experts)
+    raw = os.environ.get(_BENCH_EXPERT_SLOTS_ENV)
+    if raw is None or not raw.strip():
+        return total
+    try:
+        slots = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{_BENCH_EXPERT_SLOTS_ENV} must be an integer") from exc
+    if not 1 <= slots <= total:
+        raise ValueError(
+            f"{_BENCH_EXPERT_SLOTS_ENV} must be between 1 and {total}, got {slots}"
+        )
+    return slots
+
+
+def _benchmark_miss_mode() -> str:
+    mode = os.environ.get(_BENCH_MISS_MODE_ENV, "").strip().lower()
+    if mode not in ("", "cpu", "gpu"):
+        raise ValueError(f"{_BENCH_MISS_MODE_ENV} must be 'cpu' or 'gpu', got {mode!r}")
+    return mode
+
+
+def _next_benchmark_miss_count() -> int:
+    """Return the exact 70/20/7/3 distribution over each 100 miss events."""
+    global _BENCH_MISS_EVENT
+    bucket = (_BENCH_MISS_EVENT * 37) % 100
+    _BENCH_MISS_EVENT += 1
+    if bucket < 70:
+        return 1
+    if bucket < 90:
+        return 2
+    if bucket < 97:
+        return 3
+    return 4
+
+
+def _next_historical_benchmark_miss_count() -> int:
+    """Replay the aggregate 128-token Top60+rolling8 miss distribution."""
+    global _BENCH_MISS_EVENT, _BENCH_SCORE_EVENT
+    layer_bucket = (_BENCH_SCORE_EVENT * 7919) % 10000
+    _BENCH_SCORE_EVENT += 1
+    if layer_bucket >= 6549:
+        return 0
+    count_bucket = (_BENCH_MISS_EVENT * 3571) % 10000
+    _BENCH_MISS_EVENT += 1
+    if count_bucket < 5598:
+        return 1
+    if count_bucket < 8816:
+        return 2
+    if count_bucket < 9794:
+        return 3
+    if count_bucket < 9982:
+        return 4
+    return 5
+
+
+@lru_cache(maxsize=None)
+def _benchmark_expert_to_slot(num_experts: int, physical_experts: int) -> mx.array:
+    return mx.arange(num_experts, dtype=mx.int32) % physical_experts
+
+
+@lru_cache(maxsize=None)
+def _scope_expert_lookup(values: tuple[int, ...]) -> mx.array:
+    return mx.array(values, dtype=mx.int32)
+
+
+def _scope_available_mask(
+    expert_to_slot: mx.array,
+    hot_ids: tuple[int, ...],
+) -> mx.array:
+    """Build the resident Top60 + rolling Hot8 candidate mask on device."""
+
+    available = expert_to_slot >= 0
+    if hot_ids:
+        ids = mx.arange(expert_to_slot.shape[0], dtype=mx.int32)
+        hot = mx.array(hot_ids, dtype=mx.int32)
+        available = available | mx.any(ids[:, None] == hot[None, :], axis=1)
+    return available
+
+
+def _lossy_replace_scope_routes(
+    inds: mx.array,
+    weights: mx.array,
+    router_choice_scores: mx.array,
+    available_experts: mx.array,
+    policy: ScopeLossyPolicy,
+) -> tuple[mx.array, mx.array, mx.array, mx.array]:
+    """Replace low-priority L3 misses with cached experts entirely on device.
+
+    The original route weights are retained. Candidate experts are ranked by
+    the same bias-corrected score used by the router, and experts already in
+    the original Top-K are excluded. No array is evaluated or copied to CPU.
+    """
+
+    top_k = inds.shape[-1]
+    tail_count = min(policy.tail_count, top_k)
+    selected = mx.any(
+        mx.arange(available_experts.shape[0], dtype=inds.dtype)[None, None, None, :]
+        == inds[..., None],
+        axis=-2,
+    )
+    candidate_mask = available_experts[None, None, :] & ~selected
+    masked_scores = mx.where(candidate_mask, router_choice_scores, -mx.inf)
+    candidate_ids = mx.argpartition(
+        -masked_scores, kth=tail_count - 1, axis=-1
+    )[..., :tail_count]
+    candidate_scores = mx.take_along_axis(
+        masked_scores, candidate_ids, axis=-1
+    )
+    candidate_order = mx.argsort(-candidate_scores, axis=-1)
+    candidate_ids = mx.take_along_axis(candidate_ids, candidate_order, axis=-1)
+
+    # Top-K output order is unspecified, so identify the true lowest-weight
+    # routes on device rather than treating the final array positions as tail.
+    tail_positions = mx.argsort(weights, axis=-1)[..., :tail_count]
+    tail_ids = mx.take_along_axis(inds, tail_positions, axis=-1)
+    eligible = ~available_experts[tail_ids]
+    if policy.max_weight_share is not None:
+        shares = weights / (mx.sum(weights, axis=-1, keepdims=True) + 1e-20)
+        tail_shares = mx.take_along_axis(shares, tail_positions, axis=-1)
+        eligible = eligible & (tail_shares <= policy.max_weight_share)
+
+    # Assign the best cached candidate to the highest-weight eligible tail.
+    # Rank is the number of eligible routes with a greater tail weight. This
+    # remains entirely on device for Conservative, Tail1/2, and Head2.
+    rank_positions = mx.arange(tail_count, dtype=mx.int32)
+    higher_weight = rank_positions[None, :] > rank_positions[:, None]
+    candidate_rank = mx.sum(
+        eligible[..., None, :] & higher_weight,
+        axis=-1,
+    ).astype(mx.int32)
+    replacements = mx.take_along_axis(candidate_ids, candidate_rank, axis=-1)
+
+    positions = mx.arange(top_k, dtype=tail_positions.dtype)
+    out = inds
+    replaced_mask = mx.zeros(inds.shape, dtype=mx.bool_)
+    for offset in range(tail_count):
+        position_mask = positions == tail_positions[..., offset, None]
+        apply = position_mask & eligible[..., offset, None]
+        out = mx.where(apply, replacements[..., offset, None], out)
+        replaced_mask = replaced_mask | apply
+
+    before_l3 = mx.sum((~available_experts[inds]).astype(mx.int32))
+    after_l3 = mx.sum((~available_experts[out]).astype(mx.int32))
+    replaced = mx.sum(replaced_mask.astype(mx.int32))
+    return out, replaced, before_l3, after_l3
+
+
+def _benchmark_gpu_split_moe(
+    switch_mlp: SwitchGLU,
+    x: mx.array,
+    inds: mx.array,
+    scores: mx.array,
+    miss_experts: int,
+    miss_loader: Any = None,
+    overlap_io: bool = False,
+    overlap_dependencies: Any = None,
+) -> mx.array:
+    """Compute hit and miss routes separately, then restore route order.
+
+    The selected miss IDs come from the first token, so Top-K uniqueness
+    guarantees exactly ``miss_experts`` returned IDs and at least one hit.
+    The only host synchronization is the simulated miss-return boundary.
+    """
+    batch, length, hidden = x.shape
+    top_k = inds.shape[-1]
+    flat_inds = inds.reshape(-1)
+    miss_ids = inds.reshape(-1, top_k)[0, :miss_experts]
+    miss_mask = mx.any(flat_inds[:, None] == miss_ids[None, :], axis=1)
+    miss_route_count_array = mx.sum(miss_mask.astype(mx.int32))
+
+    # This is where a real implementation would return the compact missed-ID
+    # array and suspend while its weights are fetched from storage.
+    mx.eval(miss_ids, miss_route_count_array)
+    host_miss_ids = miss_ids.tolist()
+    miss_route_count = int(miss_route_count_array.item())
+    hit_route_count = flat_inds.size - miss_route_count
+
+    flat_x = x.reshape(batch * length, hidden)
+    route_x = mx.broadcast_to(
+        flat_x[:, None, :], (batch * length, top_k, hidden)
+    ).reshape(-1, hidden)
+    order = mx.argsort(miss_mask.astype(mx.int32))
+    inverse_order = mx.argsort(order)
+    ordered_x = route_x[order]
+    ordered_inds = flat_inds[order]
+
+    hit = switch_mlp(
+        ordered_x[:hit_route_count][None],
+        ordered_inds[:hit_route_count].reshape(1, -1, 1),
+    ).reshape(hit_route_count, hidden)
+    if overlap_io:
+        if overlap_dependencies is None:
+            mx.async_eval(hit)
+        else:
+            mx.async_eval(hit, overlap_dependencies)
+    if miss_loader is not None:
+        miss_loader(host_miss_ids)
+    missed = switch_mlp(
+        ordered_x[hit_route_count:][None],
+        ordered_inds[hit_route_count:].reshape(1, -1, 1),
+    ).reshape(miss_route_count, hidden)
+    routes = mx.concatenate((hit, missed), axis=0)[inverse_order]
+    routes = routes.reshape(batch, length, top_k, hidden)
+    return (routes * scores[..., None].astype(routes.dtype)).sum(-2)
+
+
+def _scope_split_moe(
+    switch_mlp: SwitchGLU,
+    x: mx.array,
+    inds: mx.array,
+    scores: mx.array,
+    expert_to_slot: mx.array,
+    layer_idx: int,
+    store_path: str,
+    router_choice_scores: mx.array | None = None,
+    lossy_policy: ScopeLossyPolicy | None = None,
+) -> mx.array:
+    """Run resident scope hits and exact expert-major L3 misses."""
+
+    batch, length, hidden = x.shape
+    top_k = inds.shape[-1]
+    loader = get_scope_fallback_loader(store_path) if length == 1 else None
+    lossy_counters = None
+    if loader is not None:
+        loader.record_decode_routes(layer_idx, inds, expert_to_slot)
+    if lossy_policy is not None and router_choice_scores is not None and length == 1:
+        assert loader is not None
+        available = _scope_available_mask(
+            expert_to_slot,
+            loader.hot_ids(layer_idx),
+        )
+        inds, replaced, before_l3, after_l3 = _lossy_replace_scope_routes(
+            inds,
+            scores,
+            router_choice_scores,
+            available,
+            lossy_policy,
+        )
+        lossy_counters = (replaced, before_l3, after_l3)
+
+    flat_inds = inds.reshape(-1)
+    mapped = expert_to_slot[flat_inds]
+    miss_mask = mapped < 0
+    miss_route_count_array = mx.sum(miss_mask.astype(mx.int32))
+    if lossy_counters is None:
+        mx.eval(miss_route_count_array)
+    else:
+        mx.eval(miss_route_count_array, *lossy_counters)
+        assert loader is not None
+        loader.record_lossy(*(int(value.item()) for value in lossy_counters))
+    miss_route_count = int(miss_route_count_array.item())
+    if not miss_route_count:
+        routes = switch_mlp(x, expert_to_slot[inds], scores=scores)
+        if routes.ndim == scores.ndim + 1:
+            routes = (
+                routes * scores[..., None].astype(routes.dtype)
+            ).sum(-2)
+        return routes
+
+    hit_route_count = flat_inds.size - miss_route_count
+    # MLX 0.32 supports neither ``unique`` nor boolean indexing.  Partition
+    # routes on device, return only the missed tail, then de-duplicate its
+    # 8-bit IDs on the host at the unavoidable L3 suspension boundary.
+    order = mx.argsort(miss_mask.astype(mx.int32))
+    inverse_order = mx.argsort(order)
+    ordered_global = flat_inds[order]
+    missing_route_ids = ordered_global[hit_route_count:]
+    mx.eval(missing_route_ids)
+    missing_ids = sorted({int(value) for value in missing_route_ids.tolist()})
+
+    flat_x = x.reshape(batch * length, hidden)
+    route_x = mx.broadcast_to(
+        flat_x[:, None, :], (batch * length, top_k, hidden)
+    ).reshape(-1, hidden)
+    ordered_x = route_x[order]
+    ordered_slots = mapped[order]
+
+    route_parts = []
+    if hit_route_count:
+        hit = switch_mlp(
+            ordered_x[:hit_route_count][None],
+            ordered_slots[:hit_route_count].reshape(1, -1, 1),
+        ).reshape(hit_route_count, hidden)
+        route_parts.append(hit)
+
+    if loader is None:
+        loader = get_scope_fallback_loader(store_path)
+    if length == 1:
+        fallback, fallback_ids = loader.resolve_hot_switch(
+            layer_idx, missing_ids, switch_mlp
+        )
+    else:
+        last_route_ids = inds[:, -1, :].reshape(-1)
+        mx.eval(last_route_ids)
+        missing_id_set = set(missing_ids)
+        seed_ids = list(
+            dict.fromkeys(
+                int(value)
+                for value in last_route_ids.tolist()
+                if int(value) in missing_id_set
+            )
+        )
+        fallback, fallback_ids = loader.build_transient_switch(
+            layer_idx, missing_ids, switch_mlp, seed_ids
+        )
+    missing_lookup = [-1] * 256
+    for slot, expert_id in enumerate(fallback_ids):
+        missing_lookup[expert_id] = slot
+    missing_lookup_array = mx.array(missing_lookup, dtype=mx.int32)
+    miss_slots = missing_lookup_array[ordered_global[hit_route_count:]]
+    missed = fallback(
+        ordered_x[hit_route_count:][None],
+        miss_slots.reshape(1, -1, 1),
+    ).reshape(miss_route_count, hidden)
+    route_parts.append(missed)
+
+    routes = mx.concatenate(route_parts, axis=0)[inverse_order]
+    routes = routes.reshape(batch, length, top_k, hidden)
+    return (routes * scores[..., None].astype(routes.dtype)).sum(-2)
+
+
+def _raw_routed_expert_id(key: str) -> Optional[int]:
+    marker = ".ffn.experts."
+    if marker not in key:
+        return None
+    tail = key.split(marker, 1)[1]
+    try:
+        return int(tail.split(".", 1)[0])
+    except ValueError:
+        return None
 
 
 def set_dspark_verify_armed(flag: bool) -> None:
@@ -249,6 +602,28 @@ def _expert_select(
         weights = weights / (weights.sum(axis=-1, keepdims=True) + 1e-20)
     weights = weights * routed_scaling_factor
     return inds, weights
+
+
+@mx.compile
+def _expert_select_with_choice_scores(
+    logits: mx.array,
+    e_score_correction_bias: mx.array,
+    top_k: int,
+    routed_scaling_factor: float,
+    norm_topk_prob: bool,
+    scoring_func: str,
+) -> Tuple[mx.array, mx.array, mx.array]:
+    """Score-layer routing variant used only by opt-in lossy scope Decode."""
+
+    logits = logits.astype(mx.float32)
+    scores = _score_func(logits, scoring_func)
+    choice_scores = scores + e_score_correction_bias
+    inds = mx.argpartition(-choice_scores, kth=top_k - 1, axis=-1)[..., :top_k]
+    weights = mx.take_along_axis(scores, inds, axis=-1)
+    if scoring_func != "softmax" and norm_topk_prob:
+        weights = weights / (weights.sum(axis=-1, keepdims=True) + 1e-20)
+    weights = weights * routed_scaling_factor
+    return inds, weights, choice_scores
 
 
 @mx.compile
@@ -747,7 +1122,13 @@ class MoEGate(nn.Module):
                 (self.num_experts,), dtype=mx.float32
             )
 
-    def __call__(self, x: mx.array, input_ids: Optional[mx.array] = None):
+    def __call__(
+        self,
+        x: mx.array,
+        input_ids: Optional[mx.array] = None,
+        *,
+        return_choice_scores: bool = False,
+    ):
         logits = decode_matmul(x, self.weight.T)
 
         if self.hash:
@@ -762,6 +1143,15 @@ class MoEGate(nn.Module):
                 self.scoring_func,
             )
         else:
+            if return_choice_scores:
+                return _expert_select_with_choice_scores(
+                    logits,
+                    self.e_score_correction_bias,
+                    self.top_k,
+                    self.routed_scaling_factor,
+                    self.norm_topk_prob,
+                    self.scoring_func,
+                )
             inds, weights = _expert_select(
                 logits,
                 self.e_score_correction_bias,
@@ -819,13 +1209,45 @@ class DeepseekV4MoE(nn.Module):
     def __init__(self, config: ModelArgs, layer_idx: int):
         super().__init__()
         self.config = config
+        self.layer_idx = layer_idx
+        self.benchmark_miss_mode = _benchmark_miss_mode()
+        self.benchmark_miss_loader = None
+        self.benchmark_miss_decode_only = False
+        self.benchmark_miss_profile = "requested"
+        self.benchmark_miss_overlap_io = False
         self.gate = MoEGate(config, layer_idx)
+        scope_policy = load_scope_policy_from_env()
+        self.scope_policy = scope_policy
+        self.scope_lossy_policy = (
+            load_scope_lossy_policy_from_env() if scope_policy is not None else None
+        )
+        self.scope_expert_ids = (
+            scope_policy.experts(layer_idx) if scope_policy is not None else None
+        )
+        physical_experts = (
+            len(self.scope_expert_ids)
+            if self.scope_expert_ids is not None
+            else _benchmark_expert_slots(config)
+        )
+        self.physical_experts = physical_experts
         self.switch_mlp = SwitchGLU(
             config.hidden_size,
             config.moe_intermediate_size,
-            config.n_routed_experts,
+            physical_experts,
             activation=LimitedSwiGLU(config.swiglu_limit),
+            global_num_experts=(
+                physical_experts
+                if scope_policy is not None
+                else config.n_routed_experts
+            ),
         )
+        if self.scope_expert_ids is not None:
+            lookup = [-1] * config.n_routed_experts
+            for slot, expert_id in enumerate(self.scope_expert_ids):
+                lookup[expert_id] = slot
+            self.scope_expert_to_slot_values = tuple(lookup)
+        else:
+            self.scope_expert_to_slot_values = None
         self.shared_experts = DeepseekV4MLP(
             config,
             intermediate_size=config.moe_intermediate_size * config.n_shared_experts,
@@ -837,11 +1259,105 @@ class DeepseekV4MoE(nn.Module):
         if self.sharding_group is not None:
             x = sum_gradients(self.sharding_group)(x)
 
-        inds, scores = self.gate(x, input_ids)
-        y = self.switch_mlp(x, inds, scores=scores)
+        shared_y = self.shared_experts(x)
+        score_layer = self.layer_idx >= self.config.num_hash_layers
+        lossy_decode = (
+            self.scope_policy is not None
+            and self.scope_lossy_policy is not None
+            and score_layer
+            and x.shape[1] == 1
+        )
+        if lossy_decode:
+            inds, scores, router_choice_scores = self.gate(
+                x,
+                input_ids,
+                return_choice_scores=True,
+            )
+        else:
+            inds, scores = self.gate(x, input_ids)
+            router_choice_scores = None
+        if self.scope_policy is not None and score_layer:
+            y = _scope_split_moe(
+                self.switch_mlp,
+                x,
+                inds,
+                scores,
+                _scope_expert_lookup(self.scope_expert_to_slot_values),
+                self.layer_idx,
+                str(self.scope_policy.store_path),
+                router_choice_scores,
+                self.scope_lossy_policy,
+            )
+            y = y + shared_y
+            if self.sharding_group is not None:
+                y = mx.distributed.all_sum(y, group=self.sharding_group)
+            return y
+        if self.scope_policy is not None:
+            y = self.switch_mlp(x, inds, scores=scores)
+            if y.ndim == scores.ndim + 1:
+                y = (y * scores[..., None].astype(y.dtype)).sum(-2)
+            y = y + shared_y
+            if self.sharding_group is not None:
+                y = mx.distributed.all_sum(y, group=self.sharding_group)
+            return y
+        mode = self.benchmark_miss_mode
+        miss_enabled = not self.benchmark_miss_decode_only or x.shape[1] == 1
+        if mode and score_layer and miss_enabled:
+            if self.benchmark_miss_profile == "historical":
+                miss_experts = _next_historical_benchmark_miss_count()
+            else:
+                miss_layer = (
+                    self.layer_idx - self.config.num_hash_layers
+                ) % 2 == 0
+                miss_experts = _next_benchmark_miss_count() if miss_layer else 0
+        else:
+            miss_experts = 0
+
+        if mode == "cpu" and score_layer:
+            # Scheme 1: every score-router layer copies the complete Top-K
+            # result to the CPU. The forced miss set is empty on all-hit layers.
+            host_inds = inds.tolist()
+            forced_misses = (
+                set(host_inds[0][0][:miss_experts]) if miss_experts else set()
+            )
+            missed_ids = {
+                expert
+                for batch_rows in host_inds
+                for token_row in batch_rows
+                for expert in token_row
+                if expert in forced_misses
+            }
+            if missed_ids and self.benchmark_miss_loader is not None:
+                self.benchmark_miss_loader(sorted(missed_ids))
+            y = self.switch_mlp(x, inds, scores=scores)
+        elif mode == "gpu" and score_layer:
+            expert_to_slot = _benchmark_expert_to_slot(
+                self.config.n_routed_experts, self.physical_experts
+            )
+            mapped_slots = expert_to_slot[inds]
+            if miss_experts:
+                y = _benchmark_gpu_split_moe(
+                    self.switch_mlp,
+                    x,
+                    inds,
+                    scores,
+                    miss_experts,
+                    self.benchmark_miss_loader,
+                    self.benchmark_miss_overlap_io,
+                    shared_y,
+                )
+            else:
+                # Scheme 2 all-hit path: detection remains on device and the
+                # result graph depends on it, but Python never reads the flag.
+                miss_flag = mx.any(mapped_slots < 0)
+                y = self.switch_mlp(x, inds, scores=scores)
+                y = mx.depends(y, miss_flag)
+        else:
+            y = self.switch_mlp(x, inds, scores=scores)
+
         if y.ndim == scores.ndim + 1:
             y = (y * scores[..., None].astype(y.dtype)).sum(-2)
-        y = y + self.shared_experts(x)
+        y = y + shared_y
 
         if self.sharding_group is not None:
             y = mx.distributed.all_sum(y, group=self.sharding_group)
@@ -1910,6 +2426,21 @@ class DeepseekV4Model(PipelineMixin, nn.Module):
     def __init__(self, config: ModelArgs):
         super().__init__()
         self.args = config
+        scope_policy = load_scope_policy_from_env()
+        physical_experts = _benchmark_expert_slots(config)
+        if physical_experts != config.n_routed_experts:
+            logging.getLogger(__name__).warning(
+                "BENCHMARK-ONLY DeepSeek V4 expert folding enabled: "
+                "%d global experts -> %d resident slots; outputs are invalid",
+                config.n_routed_experts,
+                physical_experts,
+            )
+        if scope_policy is not None:
+            logging.getLogger(__name__).warning(
+                "DeepSeek V4 scope cache enabled: scope=%s profile=%s",
+                scope_policy.scope_name,
+                scope_policy.profile_path,
+            )
         self.vocab_size = config.vocab_size
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
         self.layers = [
@@ -1917,6 +2448,7 @@ class DeepseekV4Model(PipelineMixin, nn.Module):
         ]
         self.norm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.hc_head = HyperHead(config)
+        self.benchmark_force_layer_eval = False
 
     def __call__(self, inputs: mx.array, cache: Optional[Any] = None) -> mx.array:
         h = self.embed_tokens(inputs)
@@ -1948,6 +2480,8 @@ class DeepseekV4Model(PipelineMixin, nn.Module):
 
         for layer, layer_cache in zip(self.pipeline_layers, cache):
             h = layer(h, mask, layer_cache, inputs)
+            if self.benchmark_force_layer_eval and inputs.shape[1] == 1:
+                mx.eval(h)
 
         _materialize_cache_arrays(cache)
 
@@ -2020,6 +2554,8 @@ class Model(nn.Module):
 
     def sanitize(self, weights: Dict[str, mx.array]) -> Dict[str, mx.array]:
         n_layers = self.args.num_hidden_layers
+        physical_experts = _benchmark_expert_slots(self.args)
+        scope_policy = load_scope_policy_from_env()
 
         new_weights = {}
         for k, v in weights.items():
@@ -2032,8 +2568,39 @@ class Model(nn.Module):
                         continue
                 except ValueError:
                     pass
+            expert_id = _raw_routed_expert_id(k)
+            if expert_id is not None:
+                if scope_policy is not None:
+                    parsed = parse_expert_key(k)
+                    if parsed is None:
+                        continue
+                    layer_idx, parsed_expert = parsed
+                    if parsed_expert not in scope_policy.experts(layer_idx):
+                        continue
+                elif expert_id >= physical_experts:
+                    continue
             new_weights[k] = v
         weights = new_weights
+
+        # MLX affine checkpoints store all routed experts as one leading
+        # dimension per projection.  A scope bank constructs a smaller
+        # SwitchGLU, so slice that dimension to the selected physical slots.
+        # The official MXFP4 checkpoint instead uses per-expert keys and is
+        # handled by the stacking path below.
+        if scope_policy is not None:
+            for layer_idx in range(n_layers):
+                expert_ids = scope_policy.experts(layer_idx)
+                if len(expert_ids) == self.args.n_routed_experts:
+                    continue
+                prefix = f"model.layers.{layer_idx}.ffn.switch_mlp."
+                for key, value in list(weights.items()):
+                    if (
+                        key.startswith(prefix)
+                        and key.endswith((".weight", ".scales", ".biases"))
+                        and value.ndim >= 1
+                        and value.shape[0] == self.args.n_routed_experts
+                    ):
+                        weights[key] = value[list(expert_ids)]
 
         new_weights = {}
         for k, v in weights.items():
@@ -2105,17 +2672,25 @@ class Model(nn.Module):
 
         for layer_idx in range(n_layers):
             prefix = f"model.layers.{layer_idx}.ffn.experts"
+            expert_ids = tuple(
+                scope_policy.experts(layer_idx)
+                if scope_policy is not None
+                else range(physical_experts)
+            )
+            if not expert_ids:
+                continue
             for src, dst in (
                 ("w1", "gate_proj"),
                 ("w2", "down_proj"),
                 ("w3", "up_proj"),
             ):
                 for suffix in ("weight", "scales"):
-                    key0 = f"{prefix}.0.{src}.{suffix}"
+                    first_expert = expert_ids[0]
+                    key0 = f"{prefix}.{first_expert}.{src}.{suffix}"
                     if key0 in weights:
                         stacked = [
                             weights.pop(f"{prefix}.{e}.{src}.{suffix}")
-                            for e in range(self.args.n_routed_experts)
+                            for e in expert_ids
                         ]
                         weights[
                             f"model.layers.{layer_idx}.ffn.switch_mlp.{dst}.{suffix}"

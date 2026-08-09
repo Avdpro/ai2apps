@@ -24,6 +24,7 @@ import glob
 import importlib.util
 import json
 import logging
+import os
 import struct
 import sys
 from collections.abc import Callable
@@ -33,11 +34,15 @@ from typing import Any
 import mlx.core as mx
 import mlx.nn as nn
 import mlx_lm.utils as _utils
+import numpy as np
 from mlx.utils import tree_map
+
+from .scope_policy import load_scope_policy_from_env, parse_expert_key
 
 logger = logging.getLogger(__name__)
 
 SAFETENSORS_DTYPE_FALLBACKS = {"F8_E8M0": "U8"}
+_BENCH_EXPERT_SLOTS_ENV = "OMLX_DEEPSEEK_V4_BENCH_EXPERT_SLOTS"
 
 _PATCHED = False
 
@@ -93,6 +98,113 @@ def _load_safetensors(path: str) -> dict:
             f.flush()
 
 
+def _benchmark_expert_id(key: str) -> int | None:
+    marker = ".ffn.experts."
+    if marker not in key:
+        return None
+    try:
+        return int(key.split(marker, 1)[1].split(".", 1)[0])
+    except ValueError:
+        return None
+
+
+def _load_safetensors_benchmark_subset(
+    path: str,
+    expert_slots: int | None = None,
+    scope_experts: tuple[tuple[int, ...], ...] | None = None,
+) -> dict:
+    """Read only the resident expert prefix plus non-expert tensors.
+
+    ``mx.load`` creates arrays for every tensor in a shard before model
+    ``sanitize`` can discard nonresident experts.  On the V4 Flash source
+    checkpoint that temporarily accounts for the complete 148 GiB file set.
+    This explicit offset reader keeps the benchmark-only filter at the I/O
+    boundary, so dropped experts never become MLX arrays.
+    """
+    storage_dtypes = {
+        "I8": (np.int8, None),
+        "I64": (np.int64, None),
+        "U32": (np.uint32, None),
+        "F32": (np.float32, None),
+        "BF16": (np.uint16, mx.bfloat16),
+        # DeepSeek sanitize consumes both FP8 encodings as packed raw bytes.
+        "F8_E4M3": (np.uint8, None),
+        "F8_E8M0": (np.uint8, None),
+    }
+
+    selected = {}
+    with open(path, "rb") as f:
+        header_len = struct.unpack("<Q", f.read(8))[0]
+        header = json.loads(f.read(header_len))
+        data_start = 8 + header_len
+        for key, info in header.items():
+            if key == "__metadata__":
+                continue
+            if scope_experts is not None and key.startswith("mtp."):
+                # Scope-cache v1 benchmarks the main model only. MTP has a
+                # separate routed stack and needs its own scope policy.
+                continue
+            expert_id = _benchmark_expert_id(key)
+            if expert_id is not None:
+                if scope_experts is not None:
+                    parsed = parse_expert_key(key)
+                    if parsed is None:
+                        continue
+                    layer, parsed_expert = parsed
+                    if parsed_expert not in scope_experts[layer]:
+                        continue
+                elif expert_slots is not None and expert_id >= expert_slots:
+                    continue
+            stacked_expert_ids = None
+            if scope_experts is not None and ".ffn.switch_mlp." in key:
+                parts = key.split(".")
+                try:
+                    layer_marker = parts.index("layers")
+                    layer = int(parts[layer_marker + 1])
+                except (ValueError, IndexError):
+                    layer = -1
+                shape = info.get("shape", [])
+                if (
+                    0 <= layer < len(scope_experts)
+                    and shape
+                    and int(shape[0]) == len(scope_experts[layer])
+                ):
+                    # Already physically compact; no further selection needed.
+                    stacked_expert_ids = None
+                elif (
+                    0 <= layer < len(scope_experts)
+                    and shape
+                    and int(shape[0]) == 256
+                ):
+                    stacked_expert_ids = scope_experts[layer]
+            dtype = info["dtype"]
+            if dtype not in storage_dtypes:
+                raise ValueError(
+                    f"Unsupported safetensors dtype {dtype!r} in benchmark "
+                    f"subset loader for {path}"
+                )
+            storage_dtype, view_dtype = storage_dtypes[dtype]
+            start, end = info["data_offsets"]
+            shape = tuple(int(dim) for dim in info["shape"])
+            if stacked_expert_ids is not None:
+                expert_bytes = (end - start) // shape[0]
+                chunks = []
+                for selected_expert in stacked_expert_ids:
+                    f.seek(data_start + start + selected_expert * expert_bytes)
+                    chunks.append(f.read(expert_bytes))
+                raw = b"".join(chunks)
+                shape = (len(stacked_expert_ids), *shape[1:])
+            else:
+                f.seek(data_start + start)
+                raw = f.read(end - start)
+            value = np.frombuffer(raw, dtype=storage_dtype).reshape(shape)
+            value = mx.array(value)
+            if view_dtype is not None:
+                value = value.view(view_dtype)
+            selected[key] = value
+    return selected
+
+
 def _build_patched_load_model() -> Callable:
     """Build the replacement ``load_model`` closure.
 
@@ -120,9 +232,36 @@ def _build_patched_load_model() -> Callable:
         if not weight_files and strict:
             raise FileNotFoundError(f"No safetensors found in {model_path}")
 
+        benchmark_slots = None
+        scope_policy = None
+        if str(config.get("model_type", "")).startswith("deepseek_v4"):
+            raw_slots = os.environ.get(_BENCH_EXPERT_SLOTS_ENV, "").strip()
+            if raw_slots:
+                benchmark_slots = int(raw_slots)
+            scope_policy = load_scope_policy_from_env()
+            if scope_policy is not None and benchmark_slots is not None:
+                raise ValueError(
+                    "scope cache and benchmark expert folding are mutually exclusive"
+                )
+
+        scope_experts = (
+            tuple(tuple(ids) for ids in scope_policy.experts_by_layer)
+            if scope_policy is not None
+            else None
+        )
+
         weights = {}
         for wf in weight_files:
-            weights.update(_load_safetensors(wf))  # PR 1192 change
+            if benchmark_slots is None and scope_experts is None:
+                weights.update(_load_safetensors(wf))  # PR 1192 change
+            else:
+                weights.update(
+                    _load_safetensors_benchmark_subset(
+                        wf,
+                        benchmark_slots,
+                        scope_experts,
+                    )
+                )
 
         if (model_file := config.get("model_file")) is not None:
             if not trust_remote_code:

@@ -1,0 +1,105 @@
+{
+  "format": "omlx-code-python-contexts",
+  "version": 2,
+  "excludes_evaluation_topics": [
+    "Python asynchronous job queue"
+  ],
+  "prompts": [
+    {
+      "id": "en-numpy-vectorize",
+      "language": "en",
+      "category": "modification",
+      "content": "Optimize this Python/NumPy function without changing its NaN behavior. Remove the Python loop, explain broadcasting and temporary allocations, and include a numerical equivalence test.\n\ndef normalize_rows(x):\n    out = []\n    for row in x:\n        m = np.nanmean(row)\n        s = np.nanstd(row)\n        out.append((row - m) / s)\n    return np.array(out)"
+    },
+    {
+      "id": "zh-django-migration",
+      "language": "zh",
+      "category": "database",
+      "content": "一个 Django 表有五千万行，需要把 nullable 的 status 字段改成非空并增加索引。请设计零停机迁移方案，给出分批回填代码、migration 拆分方式、监控指标和回滚策略。"
+    },
+    {
+      "id": "en-sqlalchemy-unit-of-work",
+      "language": "en",
+      "category": "database",
+      "content": "Implement a small SQLAlchemy 2.x unit-of-work abstraction for Python. It should expose repositories, commit exactly once, roll back on exceptions, and be straightforward to fake in domain tests. Show sync code and explain where session expiry can surprise callers."
+    },
+    {
+      "id": "zh-pydantic-api",
+      "language": "zh",
+      "category": "generation",
+      "content": "使用 Pydantic v2 为一个批量创建订单的 API 设计请求模型。要求交叉字段校验、带时区时间、Decimal 金额、自定义错误信息，以及能够从旧版字段名平滑迁移。给出模型和测试。"
+    },
+    {
+      "id": "en-import-cycle",
+      "language": "en",
+      "category": "debugging",
+      "content": "A Python package fails with a partially initialized module error after adding type hints. Given api.py imports Service from service.py and service.py imports Request from api.py, explain the import execution order and present two clean fixes that do not rely on moving every import inside a function."
+    },
+    {
+      "id": "zh-multiprocessing-hang",
+      "language": "zh",
+      "category": "debugging",
+      "content": "一个 Python multiprocessing 程序在 macOS 上正常、Linux 容器中偶发卡死。代码在创建 Pool 之前启动了日志线程。请分析 fork、锁继承和 spawn 的差异，给出可观测的排查步骤与安全改法。"
+    },
+    {
+      "id": "en-typing-parser",
+      "language": "en",
+      "category": "typing",
+      "content": "Design a typed Python parser API whose parse method returns different dataclasses based on a Literal format argument. Compare overloads, a generic registry, and a discriminated union. Provide code that gives useful pyright or mypy inference to callers."
+    },
+    {
+      "id": "zh-logging-context",
+      "language": "zh",
+      "category": "observability",
+      "content": "为 Python Web 服务实现结构化日志上下文：request_id 需要在 async 调用链中传播，但不能在线程池任务之间串号。请使用 contextvars 给出实现，并说明如何与 logging.Filter 和后台任务集成。"
+    },
+    {
+      "id": "en-stream-parser",
+      "language": "en",
+      "category": "generation",
+      "content": "Write an incremental Python parser for a stream of length-prefixed binary frames. Input chunks may split the header or payload arbitrarily. Avoid repeated concatenation, enforce a maximum frame size, distinguish incomplete input from corruption, and include tests for boundary splits."
+    },
+    {
+      "id": "zh-notebook-pipeline",
+      "language": "zh",
+      "category": "project-context",
+      "content": "一个数据科学团队把所有处理逻辑放在 Jupyter Notebook 中，难以复现和测试。请给出逐步迁移到 Python package + notebook 薄层的方案，包括数据契约、随机种子、缓存、参数管理和 CI。"
+    },
+    {
+      "id": "en-pytest-flaky-time",
+      "language": "en",
+      "category": "testing",
+      "content": "A Python test around token expiration fails near second boundaries in CI. Refactor the production code to inject a clock, write deterministic pytest cases with timezone-aware datetimes, and explain why globally freezing time can hide concurrency bugs."
+    },
+    {
+      "id": "zh-wheel-native-extension",
+      "language": "zh",
+      "category": "packaging",
+      "content": "一个 Python 包包含小型 C 扩展，需要发布 macOS arm64/x86_64 与 manylinux wheels。请设计 cibuildwheel 配置、ABI 策略、本地 fallback、修复动态库路径的方法，并说明如何验证 wheel 没有偷偷依赖构建机。"
+    },
+    {
+      "id": "en-security-subprocess",
+      "language": "en",
+      "category": "security",
+      "content": "Review a Python helper that runs ffmpeg with subprocess.run(f'ffmpeg -i {name} {output}', shell=True). Replace it with a safe implementation, handle timeouts and large stderr, prevent output-path traversal, and show focused security tests."
+    },
+    {
+      "id": "zh-code-completion-cache",
+      "language": "zh",
+      "category": "completion",
+      "content": "补全下面的 Python TTLCache 类，使 get/set/delete 在并发线程下安全，过期项采用惰性清理，并支持 max_size 的 LRU 淘汰。保持现有方法签名，解释锁粒度。\n\nclass TTLCache:\n    def __init__(self, max_size, ttl, clock=time.monotonic):\n        self.max_size = max_size\n        self.ttl = ttl\n        self.clock = clock"
+    },
+    {
+      "id": "en-review-generator-cleanup",
+      "language": "en",
+      "category": "code-review",
+      "content": "Review a Python generator that opens a file and yields parsed records. Callers often stop early, and Windows then prevents replacing the file. Explain generator finalization guarantees and rewrite it with an explicit context-managed iterator API plus tests for early exit."
+    },
+    {
+      "id": "zh-explain-gil",
+      "language": "zh",
+      "category": "explanation",
+      "content": "面向有经验的工程师解释 Python GIL：区分 CPU 密集与 I/O 密集、C 扩展释放 GIL、线程切换、multiprocessing 成本，以及 free-threaded Python 对扩展兼容性的影响。最后给出选择并发模型的决策表。"
+    }
+  ]
+}

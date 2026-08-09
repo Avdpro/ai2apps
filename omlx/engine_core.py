@@ -341,7 +341,14 @@ class EngineCore:
         Runs on the MLX executor thread. Returns the SchedulerOutputs in order.
         """
         max_steps = self.config.decode_burst_max_steps
-        outputs = [self.scheduler.step()]
+        def step_once():
+            output = self.scheduler.step()
+            callback = getattr(self, "_between_decode_step_callback", None)
+            if callback is not None:
+                callback(output)
+            return output
+
+        outputs = [step_once()]
         if max_steps <= 1:
             return outputs
         # Adaptive budget: single active request -> aggressive (nothing else to
@@ -365,7 +372,7 @@ class EngineCore:
                 or time.monotonic() >= deadline
             ):
                 break
-            outputs.append(self.scheduler.step())
+            outputs.append(step_once())
         return outputs
 
     async def _engine_loop(self) -> None:
@@ -545,6 +552,7 @@ class EngineCore:
         specprefill_threshold: Optional[int] = None,
         specprefill_system_end: Optional[int] = None,
         skip_cache_store: bool = False,
+        cache_extra_keys: Optional[Tuple[Any, ...]] = None,
     ) -> str:
         """
         Add a request for processing.
@@ -583,6 +591,7 @@ class EngineCore:
             vlm_cache_key_start=vlm_cache_key_start,
             vlm_cache_key_ranges=vlm_cache_key_ranges,
             skip_cache_store=skip_cache_store,
+            cache_extra_keys=cache_extra_keys,
         )
 
         # SpecPrefill: resolve per-request settings.

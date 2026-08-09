@@ -308,6 +308,31 @@ class ChatCompletionRequest(BaseModel):
     specprefill_threshold: Optional[int] = None
     # Seed for reproducible generation (best-effort)
     seed: Optional[int] = None
+    # DynaMoe extension: stable logical conversation ownership for adaptive L1.
+    # Ignored by engines that do not implement a session-owned expert cache.
+    dynamoe_session_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    # DynaMoe extension: per-Session adaptive L1 policy. ``trigger`` is an
+    # action exposed by /v1/dynamoe/l1/optimize, not a request mode.
+    dynamoe_l1_mode: Optional[str] = None
+    # DynaMoe extension: per-request routed-expert acceleration policy.
+    # natural=exact, turbo=tail2, blast=head2.
+    dynamoe_engine_boost: Optional[str] = None
+
+    @field_validator("dynamoe_l1_mode")
+    @classmethod
+    def validate_dynamoe_l1_mode(cls, value):
+        if value is not None and value not in ("auto", "off"):
+            raise ValueError("dynamoe_l1_mode must be auto or off")
+        return value
+
+    @field_validator("dynamoe_engine_boost")
+    @classmethod
+    def validate_dynamoe_engine_boost(cls, value):
+        if value is not None and value not in ("natural", "turbo", "blast"):
+            raise ValueError(
+                "dynamoe_engine_boost must be natural, turbo, or blast"
+            )
+        return value
 
     @field_validator("stop", mode="before")
     @classmethod
@@ -316,6 +341,28 @@ class ChatCompletionRequest(BaseModel):
         if isinstance(v, str):
             return [v]
         return v
+
+
+class DynaMoeL1OptimizeRequest(BaseModel):
+    """DynaMoe extension for a non-blocking adaptive-L1 control request."""
+
+    model: str
+    session_id: str = Field(min_length=1, max_length=128)
+
+
+class DynaMoeEngineBoostRequest(BaseModel):
+    """Queue an Engine Boost change at the next safe Decode boundary."""
+
+    model: str
+    session_id: str = Field(min_length=1, max_length=128)
+    mode: str
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value):
+        if value not in ("natural", "turbo", "blast"):
+            raise ValueError("mode must be natural, turbo, or blast")
+        return value
 
 
 class AssistantMessage(BaseModel):

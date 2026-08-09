@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-    "setuptools>=61.0",
+    "setuptools>=77.0",
     "wheel",
     "cmake>=3.27",
     # Pin nanobind to match the ABI version MLX 0.32.0 was built with
@@ -14,24 +14,23 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "omlx"
+name = "dynamoe"
 dynamic = ["version"]
-description = "LLM inference server, optimized for your Mac"
+description = "Scope-aware dynamic MoE inference server for Apple Silicon"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11,<3.14"
 authors = [
-    {name = "omlx contributors"}
+    {name = "DynaMoe contributors"}
 ]
-keywords = ["llm", "mlx", "apple-silicon", "vllm", "inference", "transformers"]
+keywords = ["llm", "moe", "mlx", "apple-silicon", "inference", "expert-cache"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -221,22 +220,20 @@ dev = [
     "apache-tvm-ffi==0.1.11",
 ]
 
-[project.urls]
-Homepage = "https://github.com/jundot/omlx"
-Documentation = "https://github.com/jundot/omlx#readme"
-Repository = "https://github.com/jundot/omlx"
-
 [project.scripts]
+dynamoe = "dynamoe.cli:main"
+# Compatibility entry point for existing oMLX-based deployments.
 omlx = "omlx.cli:main"
 
 [tool.setuptools.dynamic]
-version = {attr = "omlx._version.__version__"}
+version = {attr = "dynamoe._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["omlx*"]
+include = ["dynamoe*", "omlx*"]
 
 [tool.setuptools.package-data]
+"dynamoe" = ["engines/**/*.json"]
 "omlx" = ["oq_calibration_data.json", "oqe_calibration_data.json"]
 "omlx.admin" = [
     "templates/**/*.html",
@@ -248,6 +245,14 @@ include = ["omlx*"]
 "omlx.custom_kernels.glm_moe_dsa" = ["*.metallib", "*.dylib", "*.so"]
 "omlx.custom_kernels.minimax_m3" = ["*.metallib", "*.dylib", "*.so"]
 "omlx.custom_kernels.qwen35_prefill" = ["*.metallib", "*.dylib", "*.so"]
+
+# Native files in a developer checkout are local build products.  Exclude them
+# from build_py/sdist input so a stale CPython- or macOS-specific artifact can
+# never leak into a nominally pure wheel.  Release wheels enable
+# OMLX_WITH_CUSTOM_KERNEL; MLX's CMakeBuild writes freshly compiled outputs
+# directly into build/lib after this filtering step.
+[tool.setuptools.exclude-package-data]
+"*" = ["*.metallib", "*.dylib", "*.so"]
 
 [tool.uv]
 # mlx and mlx-lm are git-pinned; override transitive pins

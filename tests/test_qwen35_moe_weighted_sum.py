@@ -148,6 +148,53 @@ def test_external_prefill_evaluates_native_weighted_sum_on_engine_stream():
 
 
 @pytest.mark.skipif(not mx.metal.is_available(), reason="Metal is required")
+def test_qwen35_dual_gather_qmm_selects_resident_and_staging_segments():
+    """The dual-source kernel must preserve both source and row selection."""
+    from omlx.custom_kernels.qwen35_prefill import fast
+
+    if not fast.has_symbol("qwen35_q4_dual_gather_qmm_t"):
+        pytest.skip("qwen35_q4_dual_gather_qmm_t native kernel unavailable")
+
+    width = 64
+    resident = mx.random.normal((3, width, width)).astype(mx.float16)
+    staging = mx.random.normal((2, width, width)).astype(mx.float16)
+    resident_weight, resident_scales, resident_biases = mx.quantize(
+        resident, group_size=64, bits=4, mode="affine"
+    )
+    staging_weight, staging_scales, staging_biases = mx.quantize(
+        staging, group_size=64, bits=4, mode="affine"
+    )
+    x = mx.random.normal((5, 1, width)).astype(mx.float16)
+    segment_ids = mx.array([0, 0x80000001], dtype=mx.uint32)
+    segment_starts = mx.array([0, 3], dtype=mx.uint32)
+    segment_counts = mx.array([3, 2], dtype=mx.uint32)
+
+    output = fast.qwen35_q4_dual_gather_qmm_t(
+        x,
+        segment_ids,
+        segment_starts,
+        segment_counts,
+        3,
+        resident_weight,
+        resident_scales,
+        resident_biases,
+        staging_weight,
+        staging_scales,
+        staging_biases,
+    )
+    resident_reference = fast.qwen35_q4_affine_qmm_t(
+        x[:3], resident_weight[0], resident_scales[0], resident_biases[0]
+    )
+    staging_reference = fast.qwen35_q4_affine_qmm_t(
+        x[3:], staging_weight[1], staging_scales[1], staging_biases[1]
+    )
+    mx.eval(output, resident_reference, staging_reference)
+
+    assert mx.max(mx.abs(output[:3] - resident_reference)).item() == 0
+    assert mx.max(mx.abs(output[3:] - staging_reference)).item() == 0
+
+
+@pytest.mark.skipif(not mx.metal.is_available(), reason="Metal is required")
 def test_qwen3_moe_patch_matches_stock_and_skips_decode(monkeypatch):
     from mlx_lm.models import qwen3_moe
 

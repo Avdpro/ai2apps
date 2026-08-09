@@ -669,6 +669,8 @@ def _patch_model(dsv4: Any) -> None:
         layers.
         """
         n_layers = self.args.num_hidden_layers
+        physical_experts = dsv4._benchmark_expert_slots(self.args)
+        scope_policy = dsv4.load_scope_policy_from_env()
         is_dspark = bool(getattr(self, "_omlx_dspark_decode_enabled", False))
         has_mtp = hasattr(self, "mtp")
         has_mtp_weights = any(k.startswith("mtp.") for k in weights)
@@ -798,17 +800,25 @@ def _patch_model(dsv4: Any) -> None:
         # Stack routed expert weights for backbone layers.
         for layer_idx in range(n_layers):
             prefix = f"model.layers.{layer_idx}.ffn.experts"
+            expert_ids = tuple(
+                scope_policy.experts(layer_idx)
+                if scope_policy is not None
+                else range(physical_experts)
+            )
+            if not expert_ids:
+                continue
             for src, dst in (
                 ("w1", "gate_proj"),
                 ("w2", "down_proj"),
                 ("w3", "up_proj"),
             ):
                 for suffix in ("weight", "scales"):
-                    key0 = f"{prefix}.0.{src}.{suffix}"
+                    first_expert = expert_ids[0]
+                    key0 = f"{prefix}.{first_expert}.{src}.{suffix}"
                     if key0 in weights:
                         stacked = [
                             weights.pop(f"{prefix}.{e}.{src}.{suffix}")
-                            for e in range(self.args.n_routed_experts)
+                            for e in expert_ids
                         ]
                         weights[
                             f"model.layers.{layer_idx}.ffn.switch_mlp.{dst}.{suffix}"
@@ -861,7 +871,7 @@ def _patch_model(dsv4: Any) -> None:
                         if key0 in weights:
                             stacked = [
                                 weights.pop(f"{prefix}.{e}.{src}.{suffix}")
-                                for e in range(self.args.n_routed_experts)
+                                for e in range(physical_experts)
                             ]
                             weights[
                                 f"mtp.{mtp_idx}{block_part}.ffn.switch_mlp."

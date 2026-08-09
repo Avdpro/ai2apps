@@ -1,0 +1,6 @@
+# Never publish machine-local build products or benchmark/model artifacts.
+# Native release wheels compile their binaries from the retained csrc sources.
+global-exclude *.so
+global-exclude *.dylib
+global-exclude *.metallib
+prune artifacts

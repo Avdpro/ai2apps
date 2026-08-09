@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """
-OpenAI-compatible API server for oMLX.
+OpenAI-compatible API server for DynaMoe, built on the oMLX runtime.
 
 This module provides a FastAPI server that exposes an OpenAI-compatible
 API for LLM inference using MLX on Apple Silicon.
@@ -18,13 +18,13 @@ Features:
 
 Usage:
     # Multi-model serving
-    omlx serve --model-dir /path/to/models --max-model-memory 32GB
+    dynamoe serve --model-dir /path/to/models
 
     # With pinned models
-    omlx serve --model-dir /path/to/models --max-model-memory 48GB --pin llama-3b,qwen-7b
+    dynamoe serve --model-dir /path/to/models
 
     # With MCP tools
-    omlx serve --model-dir /path/to/models --max-model-memory 32GB --mcp-config mcp.json
+    dynamoe serve --model-dir /path/to/models --mcp-config mcp.json
 
 The server provides:
     - POST /v1/completions - Text completions
@@ -60,7 +60,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from omlx._version import __version__
+from dynamoe._version import __version__ as _dynamoe_version
+from omlx._version import __version__ as _omlx_version
 
 from .api.anthropic_models import (
     MessagesRequest as AnthropicMessagesRequest,
@@ -121,6 +122,8 @@ from .api.openai_models import (
     CompletionChoice,
     CompletionRequest,
     CompletionResponse,
+    DynaMoeEngineBoostRequest,
+    DynaMoeL1OptimizeRequest,
     ModelInfo,
     ModelsResponse,
     PromptTokensDetails,
@@ -514,9 +517,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="oMLX API",
-    description="LLM inference, optimized for your Mac",
-    version=__version__,
+    title="DynaMoe API",
+    description=(
+        "Scope-aware dynamic MoE inference for Apple Silicon. "
+        "Independent project built on the oMLX runtime."
+    ),
+    version=_dynamoe_version,
     lifespan=lifespan,
 )
 
@@ -2245,7 +2251,8 @@ async def server_status(_: bool = Depends(verify_api_key)):
 
     return {
         "status": "ok",
-        "version": __version__,
+        "version": _dynamoe_version,
+        "runtime": {"name": "oMLX", "version": _omlx_version},
         "uptime_seconds": snapshot["uptime_seconds"],
         "models_discovered": models_discovered,
         "models_loaded": models_loaded,
@@ -2714,6 +2721,66 @@ async def load_model_public(model_id: str, _: bool = Depends(verify_api_key)):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     return {"status": "ok", "model_id": model_id, "message": f"Loaded {model_id}"}
+
+
+@app.post("/v1/dynamoe/l1/optimize")
+async def optimize_dynamoe_l1(
+    request: DynaMoeL1OptimizeRequest,
+    _: bool = Depends(verify_api_key),
+):
+    """Queue an adaptive-L1 commit at the next safe Decode boundary."""
+
+    pool = get_engine_pool()
+    try:
+        model_id = pool.resolve_model_id(request.model, _server_state.settings_manager)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    entry = pool.get_entry(model_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Model not found: {request.model}")
+    engine = entry.engine
+    if engine is None:
+        raise HTTPException(status_code=409, detail=f"Model not loaded: {model_id}")
+    trigger = getattr(engine, "request_l1_optimization", None)
+    if not callable(trigger):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Model does not support adaptive L1: {model_id}",
+        )
+    result = trigger(request.session_id)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=409, detail=result.get("reason", "rejected"))
+    return {"status": "queued", "model_id": model_id, **result}
+
+
+@app.post("/v1/dynamoe/engine/boost")
+async def set_dynamoe_engine_boost(
+    request: DynaMoeEngineBoostRequest,
+    _: bool = Depends(verify_api_key),
+):
+    """Apply Engine Boost at the next safe Decode boundary."""
+
+    pool = get_engine_pool()
+    try:
+        model_id = pool.resolve_model_id(request.model, _server_state.settings_manager)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    entry = pool.get_entry(model_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Model not found: {request.model}")
+    engine = entry.engine
+    if engine is None:
+        raise HTTPException(status_code=409, detail=f"Model not loaded: {model_id}")
+    setter = getattr(engine, "request_engine_boost", None)
+    if not callable(setter):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Model does not support Engine Boost: {model_id}",
+        )
+    result = setter(request.session_id, request.mode)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=409, detail=result.get("reason", "rejected"))
+    return {"status": "queued", "model_id": model_id, **result}
 
 
 # =============================================================================
@@ -3429,6 +3496,12 @@ async def create_chat_completion(
             "xtc_probability": xtc_probability,
             "xtc_threshold": xtc_threshold,
         }
+        if request.dynamoe_session_id:
+            chat_kwargs["flesh_session_id"] = request.dynamoe_session_id
+        if request.dynamoe_l1_mode:
+            chat_kwargs["flesh_l1_mode"] = request.dynamoe_l1_mode
+        if request.dynamoe_engine_boost:
+            chat_kwargs["flesh_boost_mode"] = request.dynamoe_engine_boost
 
         # Add seed for reproducible generation (best-effort)
         if request.seed is not None:
@@ -6838,7 +6911,7 @@ async def init_mcp(config_path: str):
 def main():
     """Run the server (use omlx CLI instead)."""
     parser = argparse.ArgumentParser(
-        description="oMLX multi-model serving for Apple Silicon",
+        description="DynaMoe multi-model serving for Apple Silicon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
