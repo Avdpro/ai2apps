@@ -33,11 +33,14 @@ def parse_args() -> argparse.Namespace:
 
 
 async def run(args: argparse.Namespace) -> None:
+    import mlx.core as mx
+
     from omlx.engine.batched import BatchedEngine
     from omlx.patches.qwen3_6_flesh.scope_policy import (
         configure_qwen36_scope_policy,
     )
 
+    mx.reset_peak_memory()
     if not args.full_resident:
         configure_qwen36_scope_policy(
             args.profile,
@@ -75,6 +78,7 @@ async def run(args: argparse.Namespace) -> None:
             if hasattr(layer.mlp, "tail_switch_mlp")
         ]
         report = {
+            "requested_max_tokens": args.max_tokens,
             "load_seconds": time.perf_counter() - started,
             "layers": len(layers),
             "physical_experts": sorted(set(physical)),
@@ -90,6 +94,7 @@ async def run(args: argparse.Namespace) -> None:
             ),
             "max_rss_gb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
             / (1024**3),
+            "peak_mlx_gb": mx.get_peak_memory() / (1024**3),
         }
         if tail_physical:
             report["tail_physical_experts"] = sorted(set(tail_physical))
@@ -186,6 +191,7 @@ async def run(args: argparse.Namespace) -> None:
                     report["generation"]["adaptive_l1"] = engine_stats[
                         "adaptive_l1"
                     ]
+            report["peak_mlx_gb"] = mx.get_peak_memory() / (1024**3)
         rendered = json.dumps(report, indent=2, sort_keys=True)
         if args.output:
             args.output.write_text(rendered)

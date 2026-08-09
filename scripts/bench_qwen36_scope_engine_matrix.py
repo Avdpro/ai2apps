@@ -28,6 +28,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--experts", type=int, default=96)
     parser.add_argument("--tail", type=int, default=24)
     parser.add_argument("--max-promotions", type=int, default=40)
+    parser.add_argument(
+        "--prefill-backend",
+        help=(
+            "override OMLX_QWEN36_PREFILL_BACKEND; use layer248 for "
+            "strict full-resident token parity"
+        ),
+    )
     parser.add_argument("--full-resident-oracle", action="store_true")
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
@@ -56,8 +63,9 @@ def valid_result(path: Path, max_tokens: int) -> bool:
         return False
     try:
         data = json.loads(path.read_text())
-        return int(data["generation"]["completion_tokens"]) > 0 and (
-            int(data["generation"]["completion_tokens"]) <= max_tokens
+        return (
+            int(data["generation"]["completion_tokens"]) > 0
+            and int(data.get("requested_max_tokens", -1)) == max_tokens
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
@@ -87,6 +95,8 @@ def run_one(
             "OMLX_QWEN36_TIERED_TOKEN_TXN": "0",
         }
     )
+    if args.prefill_backend:
+        env["OMLX_QWEN36_PREFILL_BACKEND"] = args.prefill_backend
     command = [
         sys.executable,
         str(Path(__file__).with_name("check_qwen36_flesh_load.py")),
@@ -248,6 +258,7 @@ def summarize(
         "experts": args.experts,
         "tail": args.tail,
         "max_promotions": args.max_promotions,
+        "prefill_backend": args.prefill_backend or "stable-swap",
         "scopes": scopes,
         "prompts": prompts,
         "rows": rows,

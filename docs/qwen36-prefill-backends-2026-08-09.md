@@ -13,7 +13,7 @@ Date: 2026-08-09
 
 Select a backend with `OMLX_QWEN36_PREFILL_BACKEND`:
 
-- `stable-swap`: existing exact baseline and the default.
+- `stable-swap`: memory-efficient numerical baseline and the default.
 - `workspace96`: negative control that restacks resident and SSD experts into a
   shared per-layer scratch bank.
 - `packed96`: `workspace96` plus sorted MoE and native weighted-sum.
@@ -58,9 +58,16 @@ The HTML prompt smoke test used:
 ```
 
 `stable-swap`, `packed96`, `global96`, and `global96-packed` produced the same
-token IDs and SHA-256 text hash for the checked generation. The model loading
-check reported all 40 layer layouts matching. The focused regression suite also
-passed: 15/15 tests.
+token IDs and SHA-256 text hash for the original smoke generation. This is
+cross-cache-path parity, not a proof of bit-exact full-resident parity. A later
+41-token HTML prompt exposed a greedy divergence at generated token 7 for
+`stable-swap` and `dual128-shared`. Route coverage remained exact; the cause was
+batch/kernel-dependent quantized numerical drift that was amplified by greedy
+decoding. `layer248`, which executes each layer through one native `SwitchGLU`
+invocation, matched the unchanged full-resident engine for all 1024 generated
+tokens. Use `layer248` for the strict release correctness gate; keep the
+lower-memory paths classified as numerically equivalent until their logits gate
+is recorded. The model loading check reported all 40 layer layouts matching.
 
 Artifacts are under `artifacts/qwen36-prefill-exploration-2026-08-09/`.
 
