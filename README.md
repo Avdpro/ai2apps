@@ -100,8 +100,17 @@ alias, but documentation and integrations should use `dynamoe`.
 ## DeepSeek V4 Flesh
 
 Models installed from the DynaMoe Download source use the verified Scope Pack
-shipped in the release automatically. Manual research checkouts can still
-override the profile and expert store before starting:
+shipped in the release automatically.
+
+The standalone `hf` CLI is not required. Release installs include
+`huggingface-hub>=1.19.0`; the DynaMoe Download page checks the installed
+version, shared-cache writability, downloader initialization and non-secret
+authentication state before enabling **Download & Prepare**. Public catalog
+models work anonymously. A completely missing dependency is reported by the
+`dynamoe` CLI with the exact `pip install` repair command before startup exits.
+
+Manual research checkouts can still override the profile and expert store
+before starting:
 
 ```bash
 export DYNAMOE_DEEPSEEK_V4_EXPERT_STORE=/path/to/expert-store

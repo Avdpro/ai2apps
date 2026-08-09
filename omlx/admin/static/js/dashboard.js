@@ -372,6 +372,8 @@
             dynaWeightSource: 'huggingface',
             dynaMemoryTier: 'auto',
             dynaToken: '',
+            dynaPreflight: null,
+            dynaPreflightLoading: false,
             dynaInstalling: false,
             dynaTasks: [],
             dynaError: '',
@@ -671,7 +673,11 @@
                         loads.push(this.loadRecommendedModels());
                     }
                     if (this.modelsTab === 'downloader' && this.downloaderSource === 'dynamoe') {
-                        loads.push(this.loadDynaCatalog(), this.loadDynaTasks());
+                        loads.push(
+                            this.loadDynaPreflight(),
+                            this.loadDynaCatalog(),
+                            this.loadDynaTasks(),
+                        );
                     }
                     if (this.modelsTab === 'quantizer') {
                         loads.push(this.loadOQModels());
@@ -4776,8 +4782,37 @@
             },
 
             async initDynaMoeDownloader() {
-                if (!this.dynaCatalog.length) await this.loadDynaCatalog();
-                await this.loadDynaTasks();
+                await Promise.all([
+                    this.loadDynaPreflight(),
+                    this.dynaCatalog.length
+                        ? Promise.resolve()
+                        : this.loadDynaCatalog(),
+                    this.loadDynaTasks(),
+                ]);
+            },
+
+            async loadDynaPreflight() {
+                this.dynaPreflightLoading = true;
+                try {
+                    const response = await fetch('/admin/api/dynamoe/preflight');
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Environment check failed');
+                    }
+                    this.dynaPreflight = data;
+                } catch (err) {
+                    this.dynaPreflight = {
+                        ready: false,
+                        issues: [{
+                            code: 'preflight_failed',
+                            message: err.message || 'Environment check failed',
+                            action: 'Check the server logs and restart DynaMoe.',
+                        }],
+                    };
+                } finally {
+                    this.dynaPreflightLoading = false;
+                    this.$nextTick(() => lucide.createIcons());
+                }
             },
 
             async loadDynaCatalog() {
@@ -4803,6 +4838,13 @@
             async startDynaInstall() {
                 const model = this.selectedDynaModel();
                 if (!model) return;
+                if (!this.dynaPreflight?.ready) {
+                    const issue = this.dynaPreflight?.issues?.[0];
+                    this.dynaError = issue
+                        ? `${issue.message} ${issue.action}`
+                        : 'Hugging Face environment is not ready.';
+                    return;
+                }
                 this.dynaInstalling = true;
                 this.dynaError = '';
                 this.dynaSuccess = '';

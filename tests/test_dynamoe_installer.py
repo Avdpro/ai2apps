@@ -321,6 +321,96 @@ def test_downloader_ui_exposes_dynamoe_source():
     assert "downloaderSource = 'dynamoe'" in template
     assert "Download & Prepare" in template
     assert "/admin/api/dynamoe/install" in script
+    assert "/admin/api/dynamoe/preflight" in script
+    assert "dynaPreflight?.ready" in template
+
+
+def test_dynamoe_hf_preflight_accepts_anonymous_public_access(
+    tmp_path: Path, monkeypatch
+):
+    from omlx.admin import routes
+
+    monkeypatch.setattr(routes, "package_version", lambda _name: "1.19.0")
+    monkeypatch.setattr(routes, "_hf_downloader", object())
+    monkeypatch.setattr(routes, "_hf_downloader_error", "")
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf-home"))
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hf-home" / "hub"))
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    result = routes._dynamoe_hf_preflight()
+
+    assert result["ready"] is True
+    assert result["cli_required"] is False
+    assert result["dependency"]["compatible"] is True
+    assert result["cache"]["writable"] is True
+    assert result["authentication"]["status"] == "anonymous"
+    assert result["issues"] == []
+
+
+def test_dynamoe_hf_preflight_explains_missing_dependency(
+    tmp_path: Path, monkeypatch
+):
+    from omlx.admin import routes
+
+    def missing(_name):
+        raise routes.PackageNotFoundError
+
+    monkeypatch.setattr(routes, "package_version", missing)
+    monkeypatch.setattr(routes, "_hf_downloader", None)
+    monkeypatch.setattr(routes, "_hf_downloader_error", "")
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf-home"))
+
+    result = routes._dynamoe_hf_preflight()
+
+    assert result["ready"] is False
+    assert result["dependency"]["installed"] is False
+    assert result["issues"][0]["code"] == "dependency_missing"
+    assert "pip install" in result["issues"][0]["action"]
+
+
+def test_dynamoe_hf_preflight_reports_unwritable_cache(
+    tmp_path: Path, monkeypatch
+):
+    from omlx.admin import routes
+
+    monkeypatch.setattr(routes, "package_version", lambda _name: "1.19.0")
+    monkeypatch.setattr(routes, "_hf_downloader", object())
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    monkeypatch.setattr(routes.os, "access", lambda *_args: False)
+
+    result = routes._dynamoe_hf_preflight()
+
+    assert result["ready"] is False
+    assert any(issue["code"] == "cache_not_writable" for issue in result["issues"])
+
+
+def test_dynamoe_cli_explains_missing_huggingface_dependency(
+    monkeypatch, capsys
+):
+    import sys
+    from types import ModuleType
+
+    from dynamoe import cli
+
+    fake_runtime = ModuleType("omlx.cli")
+
+    def missing_runtime():
+        raise ModuleNotFoundError(
+            "simulated missing huggingface_hub",
+            name="huggingface_hub",
+        )
+
+    fake_runtime.main = missing_runtime
+    monkeypatch.setitem(sys.modules, "omlx.cli", fake_runtime)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+
+    assert exc_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "huggingface-hub is missing" in error
+    assert "pip install -U dynamoe" in error
 
 
 def test_hf_snapshot_is_reused_as_a_no_copy_model_view(tmp_path: Path):

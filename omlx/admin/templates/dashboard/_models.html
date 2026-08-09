@@ -873,6 +873,35 @@
                                     <span class="text-xs text-neutral-400">models with a dedicated DynaMoe engine</span>
                                 </div>
                                 <div class="p-6 space-y-5">
+                                    <div x-show="dynaPreflightLoading" x-cloak
+                                         class="px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-sm text-neutral-600 flex items-center gap-2">
+                                        <i data-lucide="loader-circle" class="w-4 h-4 animate-spin shrink-0"></i>
+                                        <span>Checking Hugging Face environment…</span>
+                                    </div>
+                                    <div x-show="dynaPreflight && dynaPreflight.ready" x-cloak
+                                         class="px-4 py-3 rounded-xl border border-green-200 bg-green-50 text-sm text-green-800">
+                                        <div class="flex items-center gap-2 font-medium">
+                                            <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
+                                            <span>Hugging Face ready</span>
+                                            <span class="font-normal text-green-700"
+                                                  x-text="`· hub ${dynaPreflight?.dependency?.version} · ${dynaPreflight?.authentication?.status}`"></span>
+                                        </div>
+                                        <div class="mt-1 text-xs text-green-700 break-all"
+                                             x-text="`Shared cache: ${dynaPreflight?.cache?.path}`"></div>
+                                    </div>
+                                    <div x-show="dynaPreflight && !dynaPreflight.ready" x-cloak
+                                         class="px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">
+                                        <div class="flex items-center gap-2 font-medium mb-2">
+                                            <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0"></i>
+                                            <span>Hugging Face environment needs attention</span>
+                                        </div>
+                                        <template x-for="issue in (dynaPreflight?.issues || [])" :key="issue.code">
+                                            <div class="mt-1">
+                                                <span x-text="issue.message"></span>
+                                                <span class="font-medium" x-text="` ${issue.action}`"></span>
+                                            </div>
+                                        </template>
+                                    </div>
                                     <div x-show="dynaCatalogLoading" class="text-sm text-neutral-500">Loading catalog…</div>
                                     <div class="grid gap-3 md:grid-cols-2">
                                         <template x-for="model in dynaCatalog" :key="model.id">
@@ -914,6 +943,8 @@
                                                 <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Access token <span class="normal-case text-neutral-400">optional</span></span>
                                                 <input type="password" x-model="dynaToken" placeholder="hf_…"
                                                        class="w-full px-3 py-2.5 border border-neutral-200 rounded-xl bg-white text-sm font-mono">
+                                                <span class="mt-1 block text-[11px] text-neutral-400"
+                                                      x-text="dynaPreflight?.authentication?.token_configured ? 'Local token detected; this field can override it.' : 'Anonymous mode is enough for public models.'"></span>
                                             </label>
                                         </div>
                                     </template>
@@ -924,7 +955,8 @@
                                             <span> · scope profiles and conversion rules included</span>
                                         </div>
                                         <button @click="startDynaInstall()"
-                                                :disabled="dynaInstalling || !selectedDynaModel()"
+                                                :disabled="dynaInstalling || !selectedDynaModel() || !dynaPreflight?.ready"
+                                                :title="!dynaPreflight?.ready ? 'Resolve the Hugging Face environment check before downloading.' : ''"
                                                 class="px-6 py-2.5 bg-neutral-900 text-white text-sm font-semibold rounded-full hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
                                             <i data-lucide="package-plus" class="w-4 h-4"></i>
                                             <span x-text="dynaInstalling ? 'Starting…' : 'Download & Prepare'"></span>

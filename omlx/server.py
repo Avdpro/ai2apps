@@ -1806,9 +1806,10 @@ def init_server(
     if api_key:
         logger.info("API key authentication: enabled")
 
-    # Initialize HuggingFace downloader
-    from .admin.hf_downloader import HFDownloader
-    from .admin.routes import set_hf_downloader
+    # Initialize HuggingFace downloader. A broken source checkout should still
+    # start the admin UI so its DynaMoe preflight can explain how to repair the
+    # missing or outdated dependency.
+    from .admin.routes import set_hf_downloader, set_hf_downloader_unavailable
 
     async def _refresh_models_after_download():
         """Re-discover models when a HuggingFace download completes."""
@@ -1820,12 +1821,19 @@ def init_server(
             )
             logger.info("Model pool refreshed after download completion")
 
-    _server_state.hf_downloader = HFDownloader(
-        model_dir=dir_list[0],  # Downloads go to primary directory
-        on_complete=_refresh_models_after_download,
-    )
-    set_hf_downloader(_server_state.hf_downloader)
-    logger.info("HF Downloader initialized")
+    try:
+        from .admin.hf_downloader import HFDownloader
+
+        _server_state.hf_downloader = HFDownloader(
+            model_dir=dir_list[0],  # Downloads go to primary directory
+            on_complete=_refresh_models_after_download,
+        )
+        set_hf_downloader(_server_state.hf_downloader)
+        logger.info("HF Downloader initialized")
+    except (ImportError, AttributeError) as exc:
+        _server_state.hf_downloader = None
+        set_hf_downloader_unavailable(str(exc))
+        logger.error("HF Downloader unavailable: %s", exc)
 
     # Initialize ModelScope downloader (optional - requires modelscope SDK)
     try:

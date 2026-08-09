@@ -21,6 +21,7 @@ import time
 from collections import deque
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -1135,6 +1136,7 @@ _get_engine_pool = None
 _get_settings_manager = None
 _get_global_settings = None
 _hf_downloader = None
+_hf_downloader_error = ""
 _ms_downloader = None
 _dynamoe_installer = None
 _oq_manager = None
@@ -1173,8 +1175,128 @@ def set_hf_downloader(downloader):
     Args:
         downloader: HFDownloader instance created during server initialization.
     """
-    global _hf_downloader
+    global _hf_downloader, _hf_downloader_error
     _hf_downloader = downloader
+    _hf_downloader_error = ""
+
+
+def set_hf_downloader_unavailable(error: str) -> None:
+    """Record a recoverable HF dependency/initialization failure."""
+
+    global _hf_downloader, _hf_downloader_error, _dynamoe_installer
+    _hf_downloader = None
+    _dynamoe_installer = None
+    _hf_downloader_error = str(error).strip() or "Downloader initialization failed"
+
+
+def _version_numbers(value: str) -> tuple[int, int, int]:
+    numbers = [int(item) for item in re.findall(r"\d+", value)[:3]]
+    return tuple((numbers + [0, 0, 0])[:3])
+
+
+def _dynamoe_hf_preflight() -> dict[str, Any]:
+    """Report dependency, cache and non-secret authentication readiness."""
+
+    minimum = "1.19.0"
+    try:
+        installed_version = package_version("huggingface-hub")
+        dependency_installed = True
+    except PackageNotFoundError:
+        installed_version = ""
+        dependency_installed = False
+    dependency_compatible = dependency_installed and (
+        _version_numbers(installed_version) >= _version_numbers(minimum)
+    )
+
+    hf_home = Path(
+        os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")
+    ).expanduser()
+    cache_path = Path(
+        os.environ.get("HF_HUB_CACHE", hf_home / "hub")
+    ).expanduser()
+    writable_parent = cache_path
+    while not writable_parent.exists() and writable_parent.parent != writable_parent:
+        writable_parent = writable_parent.parent
+    cache_writable = (
+        writable_parent.exists()
+        and writable_parent.is_dir()
+        and os.access(writable_parent, os.W_OK)
+    )
+
+    token_path = Path(
+        os.environ.get("HF_TOKEN_PATH", hf_home / "token")
+    ).expanduser()
+    try:
+        token_file_configured = token_path.is_file() and token_path.stat().st_size > 0
+    except OSError:
+        token_file_configured = False
+    token_configured = bool(
+        os.environ.get("HF_TOKEN")
+        or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        or token_file_configured
+    )
+    downloader_ready = _hf_downloader is not None
+    issues = []
+    if not dependency_installed:
+        issues.append(
+            {
+                "code": "dependency_missing",
+                "message": "Hugging Face support is not installed.",
+                "action": (
+                    "Install DynaMoe with pip, or run: "
+                    "pip install 'huggingface-hub>=1.19.0'"
+                ),
+            }
+        )
+    elif not dependency_compatible:
+        issues.append(
+            {
+                "code": "dependency_outdated",
+                "message": (
+                    f"huggingface-hub {installed_version} is too old; "
+                    f"DynaMoe requires {minimum} or newer."
+                ),
+                "action": "Run: pip install -U 'huggingface-hub>=1.19.0'",
+            }
+        )
+    if not cache_writable:
+        issues.append(
+            {
+                "code": "cache_not_writable",
+                "message": f"Hugging Face cache is not writable: {cache_path}",
+                "action": "Choose a writable HF_HOME or HF_HUB_CACHE directory.",
+            }
+        )
+    if dependency_compatible and not downloader_ready:
+        issues.append(
+            {
+                "code": "downloader_unavailable",
+                "message": (
+                    _hf_downloader_error
+                    or "Hugging Face downloader is not initialized."
+                ),
+                "action": "Restart DynaMoe after repairing the Python environment.",
+            }
+        )
+
+    return {
+        "ready": dependency_compatible and cache_writable and downloader_ready,
+        "cli_required": False,
+        "dependency": {
+            "installed": dependency_installed,
+            "version": installed_version or None,
+            "minimum": minimum,
+            "compatible": dependency_compatible,
+        },
+        "cache": {"path": str(cache_path), "writable": cache_writable},
+        "authentication": {
+            "status": "configured" if token_configured else "anonymous",
+            "token_configured": token_configured,
+            "required_for_public_models": False,
+        },
+        "downloader_initialized": downloader_ready,
+        "issues": issues,
+    }
 
 
 def _get_dynamoe_installer():
@@ -5387,7 +5509,16 @@ async def probe_cache(
 async def get_dynamoe_catalog(is_admin: bool = Depends(require_admin)):
     """List DynaMoe-verified Cache-MoE installation recipes."""
 
-    return {"models": _get_dynamoe_installer().catalog()}
+    from dynamoe.model_installer import DynaMoeInstaller
+
+    return {"models": DynaMoeInstaller.catalog()}
+
+
+@router.get("/api/dynamoe/preflight")
+async def get_dynamoe_preflight(is_admin: bool = Depends(require_admin)):
+    """Return actionable Hugging Face environment readiness."""
+
+    return _dynamoe_hf_preflight()
 
 
 @router.post("/api/dynamoe/install")
@@ -5395,6 +5526,13 @@ async def start_dynamoe_install(
     request: DynaMoeInstallRequest,
     is_admin: bool = Depends(require_admin),
 ):
+    preflight = _dynamoe_hf_preflight()
+    if not preflight["ready"]:
+        issue = preflight["issues"][0]
+        raise HTTPException(
+            status_code=503,
+            detail=f"{issue['message']} {issue['action']}",
+        )
     try:
         task = await _get_dynamoe_installer().start(
             request.model_id,
