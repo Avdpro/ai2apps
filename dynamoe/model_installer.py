@@ -847,7 +847,7 @@ class DynaMoeInstaller:
                     routed_layers = list(range(first_routed_layer, num_layers))
                     split_store_dir = None
                     store_dir = work_dir / "expert-store"
-                conversion_state = {
+                conversion_identity = {
                     "format": "dynamoe-conversion-state",
                     "version": 1,
                     "model_id": task.model_id,
@@ -862,7 +862,56 @@ class DynaMoeInstaller:
                     )
                 except (OSError, TypeError, json.JSONDecodeError):
                     previous_conversion = {}
-                reuse_converted = previous_conversion == conversion_state
+                same_conversion = all(
+                    previous_conversion.get(key) == value
+                    for key, value in conversion_identity.items()
+                )
+                legacy_complete = previous_conversion == conversion_identity
+                completed_layers = (
+                    set(routed_layers)
+                    if legacy_complete
+                    else {
+                        int(layer)
+                        for layer in previous_conversion.get(
+                            "completed_layers", []
+                        )
+                    }
+                    if same_conversion
+                    else set()
+                )
+                split_completed_layers = (
+                    set(routed_layers)
+                    if legacy_complete and is_qwen
+                    else {
+                        int(layer)
+                        for layer in previous_conversion.get(
+                            "split_completed_layers", []
+                        )
+                    }
+                    if same_conversion
+                    else set()
+                )
+
+                def write_conversion_state() -> None:
+                    state = {
+                        **conversion_identity,
+                        "completed_layers": sorted(completed_layers),
+                        "split_completed_layers": sorted(
+                            split_completed_layers
+                        ),
+                    }
+                    partial = conversion_state_path.with_suffix(
+                        ".json.partial"
+                    )
+                    partial.write_text(
+                        json.dumps(state, indent=2, sort_keys=True) + "\n"
+                    )
+                    partial.replace(conversion_state_path)
+
+                # Persist the conversion identity before producing any layer.
+                # A cancellation can then resume only layers committed below;
+                # stale files from another revision/variant are never reused.
+                write_conversion_state()
                 task.status = InstallStatus.CONVERTING
                 task.phase = "Converting experts"
                 for index, layer in enumerate(routed_layers):
@@ -872,7 +921,7 @@ class DynaMoeInstaller:
                         return
                     output = store_dir / f"layer-{layer:03d}.moe"
                     valid = False
-                    if reuse_converted and output.is_file():
+                    if layer in completed_layers and output.is_file():
                         try:
                             with ExpertMajorStore(output) as existing:
                                 names = {item.name for item in existing.tensors}
@@ -884,6 +933,8 @@ class DynaMoeInstaller:
                         except Exception:
                             output.unlink(missing_ok=True)
                     if not valid:
+                        completed_layers.discard(layer)
+                    if not valid:
                         if is_qwen:
                             from omlx.patches.qwen3_6_flesh.checkpoint import (
                                 create_qwen36_fused_store,
@@ -894,12 +945,17 @@ class DynaMoeInstaller:
                                 split_store_dir / f"layer-{layer:03d}.moe"
                             )
                             split_valid = False
-                            if reuse_converted and split_output.is_file():
+                            if (
+                                layer in split_completed_layers
+                                and split_output.is_file()
+                            ):
                                 try:
                                     with ExpertMajorStore(split_output) as existing:
                                         split_valid = existing.layer == layer
                                 except Exception:
                                     split_output.unlink(missing_ok=True)
+                            if not split_valid:
+                                split_completed_layers.discard(layer)
                             if not split_valid:
                                 await asyncio.to_thread(
                                     create_expert_major_store,
@@ -908,6 +964,8 @@ class DynaMoeInstaller:
                                     split_output,
                                     force=True,
                                 )
+                                split_completed_layers.add(layer)
+                                write_conversion_state()
                             await asyncio.to_thread(
                                 create_qwen36_fused_store,
                                 split_output,
@@ -922,18 +980,14 @@ class DynaMoeInstaller:
                                 output,
                                 force=True,
                             )
+                        completed_layers.add(layer)
+                        write_conversion_state()
                     task.progress = 58.0 + 37.0 * (index + 1) / len(routed_layers)
                     task.detail = f"MoE layer {index + 1} / {len(routed_layers)}"
                 self._write_store_manifest(
-                    store_dir, ExpertMajorStore, conversion_state
+                    store_dir, ExpertMajorStore, conversion_identity
                 )
-                conversion_partial = conversion_state_path.with_suffix(
-                    ".json.partial"
-                )
-                conversion_partial.write_text(
-                    json.dumps(conversion_state, indent=2, sort_keys=True) + "\n"
-                )
-                conversion_partial.replace(conversion_state_path)
+                write_conversion_state()
 
                 task.status = InstallStatus.CONFIGURING
                 task.phase = "Configuring dedicated engine"

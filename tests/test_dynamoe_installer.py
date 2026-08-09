@@ -436,3 +436,24 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     discovered = discover_models(downloader.model_dir)["Qwen3.6-35B-A3B-4bit"]
     assert discovered.source_type == "dynamoe"
     assert cache_moe_engine_id(discovered.cache_moe_config) == "qwen3.6-tiered"
+
+    conversion_state = json.loads(
+        (source / ".dynamoe" / "conversion.json").read_text()
+    )
+    assert conversion_state["completed_layers"] == [0]
+    assert conversion_state["split_completed_layers"] == [0]
+    fused_layer = Path(manifest["expert_store"]) / "layer-000.moe"
+    split_layer = source / ".dynamoe" / "expert-store-split" / "layer-000.moe"
+    mtimes = (fused_layer.stat().st_mtime_ns, split_layer.stat().st_mtime_ns)
+
+    # Reinstalling the same pinned checkpoint must reuse each committed layer.
+    # This is also the resume path after a conversion task is interrupted.
+    resumed_installer = DynaMoeInstaller(downloader)
+    resumed = await resumed_installer.start(
+        "qwen3.6-35b-a3b-4bit", "huggingface", "compact", ""
+    )
+    await resumed_installer._runners[resumed.task_id]
+
+    assert resumed.status.value == "completed"
+    assert resumed.cache_hit is True
+    assert (fused_layer.stat().st_mtime_ns, split_layer.stat().st_mtime_ns) == mtimes
