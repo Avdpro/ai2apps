@@ -800,6 +800,7 @@ class DynaMoeInstaller:
                         token,
                         revision=task.revision,
                         notify_complete=False,
+                        cache_mode=True,
                     )
                     task.child_task_id = child.task_id
                     while child.status.value in {"pending", "downloading"}:

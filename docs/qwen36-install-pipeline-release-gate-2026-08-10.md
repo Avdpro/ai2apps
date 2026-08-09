@@ -101,8 +101,31 @@ verifies that a repeated pinned install preserves fused and split store mtimes.
 - `artifacts/release-gate/qwen36-install-pipeline-2026-08-10/tiered-64.json`
 - `artifacts/release-gate/qwen36-install-pipeline-2026-08-10/tiered-auto-2turn-128.json`
 
-Before publishing, the remaining operational smoke test is one real cold or
-partially interrupted Hugging Face network download from the WebUI/API. It is
-not necessary to repeat the 19 GiB transfer for conversion correctness, but it
-will validate credentials, CDN behavior, progress reporting and cancellation
-outside the mocked downloader tests.
+## Cold network follow-up
+
+A subsequent cold install downloaded the pinned 20,429,169,263-byte snapshot
+from Hugging Face and completed all 40 split and fused layers:
+
+- authenticated regular-HTTP download: 35 minutes 4 seconds;
+- complete download, index, conversion and validation: 35 minutes 37 seconds;
+- second identical install: 0.96 seconds internally, with `cache_hit=true`;
+- installed Tiered smoke: 1.10-second TTFT, 33.83 decode TPS and 11.49 GiB
+  peak MLX memory.
+
+The live run exposed two downloader defects. The default Xet transfer stopped
+making progress around 630 MiB, while regular HTTP sustained roughly 12-14
+MiB/s and resumed several disconnected range requests. Also, `local_dir`
+downloads kept their only cache inside the model view, so deleting that view
+would discard the checkpoint.
+
+Both paths are now addressed. DynaMoe requests cache-mode downloads: the pinned
+snapshot is stored once in the standard Hugging Face Hub cache and the model
+directory is a writable no-copy symlink view. Auto/Xet downloads with no file
+or mtime activity for 60 seconds abort once and retry through regular HTTP;
+HTTP retains the existing 300-second terminal stall timeout. Progress counts
+unique device/inode pairs so cache blob/snapshot symlinks are not double-counted.
+
+A real small-model cache test downloaded 8,950,800 bytes into an empty Hub cache
+in 7.93 seconds. Creating a second model view from that cache took 0.84 seconds;
+all nine view files were symlinks to the shared cache. The final release gate
+passed 137 focused tests in 186.23 seconds.

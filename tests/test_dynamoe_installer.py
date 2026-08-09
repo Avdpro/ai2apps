@@ -1,6 +1,7 @@
 import json
 import struct
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -359,6 +360,41 @@ def test_prepare_checkpoint_prefers_hf_cache(tmp_path: Path, monkeypatch):
     assert json.loads(
         (destination / ".dynamoe" / "source.json").read_text()
     )["revision"] == revision
+
+
+@pytest.mark.asyncio
+async def test_dynamoe_download_requests_global_hf_cache_mode(
+    tmp_path: Path, monkeypatch
+):
+    captured = {}
+
+    class FakeDownloader:
+        def __init__(self):
+            self.model_dir = tmp_path / "models"
+            self._on_complete = None
+
+        async def start_download(self, *_args, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                task_id="child",
+                status=SimpleNamespace(value="failed"),
+                error="expected test stop",
+            )
+
+    monkeypatch.setattr(
+        DynaMoeInstaller,
+        "_prepare_cached_checkpoint",
+        staticmethod(lambda *_args: False),
+    )
+    installer = DynaMoeInstaller(FakeDownloader())
+    task = await installer.start(
+        "qwen3.6-35b-a3b-4bit", "huggingface", "auto", ""
+    )
+    await installer._runners[task.task_id]
+
+    assert task.status.value == "failed"
+    assert captured["cache_mode"] is True
+    assert captured["revision"] == task.revision
 
 
 @pytest.mark.asyncio

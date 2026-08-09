@@ -41,6 +41,9 @@ class TestDownloadTask:
         assert task.error == ""
         assert task.started_at == 0.0
         assert task.completed_at == 0.0
+        assert task.cache_mode is False
+        assert task.transport == "auto"
+        assert task.transport_fallbacks == 0
 
     def test_default_retry_count(self):
         task = DownloadTask(task_id="test-id", repo_id="owner/model")
@@ -64,6 +67,9 @@ class TestDownloadTask:
         assert d["total_size"] == 1000000
         assert d["downloaded_size"] == 456700
         assert d["retry_count"] == 0
+        assert d["cache_mode"] is False
+        assert d["transport"] == "auto"
+        assert d["transport_fallbacks"] == 0
 
     def test_to_dict_retry_count(self):
         task = DownloadTask(task_id="t", repo_id="o/m", retry_count=3)
@@ -702,6 +708,7 @@ class TestHFDownloader:
         sub = d / "subdir"
         sub.mkdir()
         (sub / "file3.bin").write_bytes(b"z" * 50)
+        (sub / "file1-link.bin").symlink_to(d / "file1.bin")
 
         assert HFDownloader._get_dir_size(d) == 350
 
@@ -2416,6 +2423,109 @@ class TestHFEndpointPassthrough:
             mock_hf_download.assert_called_once()
             call_kwargs = mock_hf_download.call_args[1]
             assert call_kwargs["endpoint"] == "https://hf-mirror.com"
+
+
+class TestGlobalCacheMode:
+    """DynaMoe downloads should survive deletion of the linked model view."""
+
+    @pytest.mark.asyncio
+    async def test_cache_mode_populates_hub_and_links_model_view(
+        self, tmp_path, monkeypatch
+    ):
+        model_dir = tmp_path / "models"
+        cache_dir = tmp_path / "hub"
+        snapshot = (
+            cache_dir
+            / "models--owner--model"
+            / "snapshots"
+            / "abc123"
+        )
+        snapshot.mkdir(parents=True)
+        (snapshot / "config.json").write_text("{}")
+        (snapshot / "model.safetensors").write_bytes(b"weights")
+        monkeypatch.setenv("HF_HUB_CACHE", str(cache_dir))
+
+        def fake_snapshot_download(**kwargs):
+            if kwargs.get("dry_run"):
+                return []
+            return str(snapshot)
+
+        mock_api = MagicMock()
+        mock_info = MagicMock()
+        mock_info.siblings = []
+        mock_api.model_info.return_value = mock_info
+
+        with patch(
+            "omlx.admin.hf_downloader._get_hf_api",
+            return_value=(mock_api, None),
+        ), patch(
+            "omlx.admin.hf_downloader.snapshot_download",
+            side_effect=fake_snapshot_download,
+        ) as mock_download:
+            downloader = HFDownloader(model_dir=str(model_dir))
+            task = await downloader.start_download(
+                "owner/model",
+                revision="abc123",
+                cache_mode=True,
+            )
+            await downloader._active_tasks[task.task_id]
+
+        assert task.status == DownloadStatus.COMPLETED
+        assert task.cache_mode is True
+        actual_kwargs = mock_download.call_args_list[-1].kwargs
+        assert actual_kwargs["cache_dir"] == str(cache_dir)
+        assert "local_dir" not in actual_kwargs
+        view = model_dir / "owner" / "model"
+        assert (view / "config.json").is_symlink()
+        assert (view / "config.json").resolve() == snapshot / "config.json"
+        assert (view / "model.safetensors").read_bytes() == b"weights"
+
+
+class TestTransportFallback:
+    @pytest.mark.asyncio
+    async def test_stalled_auto_transport_retries_once_with_http(
+        self, tmp_path, monkeypatch
+    ):
+        import omlx.admin.hf_downloader as dl_module
+
+        model_dir = tmp_path / "models"
+        target = model_dir / "owner" / "model"
+        target.mkdir(parents=True)
+        monkeypatch.setattr(dl_module, "_XET_FALLBACK_TIMEOUT", -1)
+        monkeypatch.setattr(dl_module, "_STALL_TIMEOUT", 30)
+
+        def fake_snapshot_download(**kwargs):
+            if kwargs.get("dry_run"):
+                return []
+            time.sleep(3)
+            raise RuntimeError("xet session aborted")
+
+        mock_api = MagicMock()
+        mock_info = MagicMock()
+        mock_info.siblings = []
+        mock_api.model_info.return_value = mock_info
+
+        with patch(
+            "omlx.admin.hf_downloader._get_hf_api",
+            return_value=(mock_api, None),
+        ), patch(
+            "omlx.admin.hf_downloader.snapshot_download",
+            side_effect=fake_snapshot_download,
+        ), patch(
+            "omlx.admin.hf_downloader._snapshot_download_http",
+            return_value=str(target),
+        ) as mock_http, patch(
+            "omlx.admin.hf_downloader.abort_xet_session"
+        ) as mock_abort:
+            downloader = HFDownloader(model_dir=str(model_dir))
+            task = await downloader.start_download("owner/model")
+            await downloader._active_tasks[task.task_id]
+
+        assert task.status == DownloadStatus.COMPLETED
+        assert task.transport == "http"
+        assert task.transport_fallbacks == 1
+        mock_abort.assert_called_once()
+        mock_http.assert_called_once()
 
 
 # =============================================================================

@@ -8,6 +8,7 @@ with directory-size-based progress polling.
 import asyncio
 import enum
 import logging
+import os
 import shutil
 import time
 import uuid
@@ -16,7 +17,8 @@ from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
-from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+from huggingface_hub import HfApi, constants, hf_hub_download, snapshot_download
+from huggingface_hub.file_download import repo_folder_name
 from huggingface_hub.utils import (
     EntryNotFoundError,
     GatedRepoError,
@@ -37,6 +39,11 @@ _HF_API_TIMEOUT = 10
 
 # Seconds with no download progress before considering the download stalled.
 _STALL_TIMEOUT = 300
+
+# The Rust Xet path can remain alive without producing bytes or file mtime
+# changes. Fall back once to the regular HTTP range downloader well before the
+# generic terminal stall timeout is reached.
+_XET_FALLBACK_TIMEOUT = 60
 
 # Cache of (configured_endpoint -> resolved_endpoint) so we only probe each
 # endpoint once per process lifetime. Mirrors like hf-mirror.com permanently
@@ -137,6 +144,47 @@ def _make_cancellable_tqdm(should_cancel: Callable[[], bool]) -> type:
     return _CancellableTqdm
 
 
+def _snapshot_download_http(**kwargs):
+    """Run one snapshot download with the Xet transport disabled.
+
+    ``huggingface_hub`` reads this constant at runtime. Downloads are already
+    serialized by ``HFDownloader._download_sem``, so temporarily changing the
+    process-wide flag cannot race another managed download.
+    """
+
+    previous = constants.HF_HUB_DISABLE_XET
+    constants.HF_HUB_DISABLE_XET = True
+    try:
+        return snapshot_download(**kwargs)
+    finally:
+        constants.HF_HUB_DISABLE_XET = previous
+
+
+def _hf_cache_dir() -> Path:
+    """Return the active standard Hub cache, honoring runtime overrides."""
+
+    return Path(os.environ.get("HF_HUB_CACHE", constants.HF_HUB_CACHE)).expanduser()
+
+
+def _link_snapshot_view(snapshot: Path, destination: Path) -> None:
+    """Build a writable model view whose checkpoint files live in HF cache."""
+
+    destination.mkdir(parents=True, exist_ok=True)
+    for source in snapshot.rglob("*"):
+        relative = source.relative_to(snapshot)
+        target = destination / relative
+        if source.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        resolved = source.resolve()
+        if target.is_symlink() and target.resolve() == resolved:
+            continue
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        target.symlink_to(resolved)
+
+
 def _get_hf_api() -> tuple[HfApi, str | None]:
     """Create HfApi instance with configured endpoint.
 
@@ -213,6 +261,9 @@ class DownloadTask:
     completed_at: float = 0.0
     retry_count: int = 0
     notify_complete: bool = True
+    cache_mode: bool = False
+    transport: str = "auto"
+    transport_fallbacks: int = 0
 
     def to_dict(self) -> dict:
         """Serialize task to a JSON-compatible dict."""
@@ -229,6 +280,9 @@ class DownloadTask:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "retry_count": self.retry_count,
+            "cache_mode": self.cache_mode,
+            "transport": self.transport,
+            "transport_fallbacks": self.transport_fallbacks,
         }
 
 
@@ -610,6 +664,7 @@ class HFDownloader:
         self._progress_tasks: dict[str, asyncio.Task] = {}
         self._on_complete = on_complete
         self._cancelled: set[str] = set()
+        self._http_fallback_requested: set[str] = set()
         self._download_sem = asyncio.Semaphore(1)
 
     @property
@@ -627,12 +682,15 @@ class HFDownloader:
         *,
         revision: str | None = None,
         notify_complete: bool = True,
+        cache_mode: bool = False,
     ) -> DownloadTask:
         """Start downloading a model from HuggingFace.
 
         Args:
             repo_id: HuggingFace repository ID (e.g., "mlx-community/Llama-3-8B-4bit").
             hf_token: Optional HuggingFace token for gated models.
+            cache_mode: Download into the standard Hugging Face cache and
+                create a no-copy linked model view.
 
         Returns:
             The created DownloadTask.
@@ -663,6 +721,7 @@ class HFDownloader:
             repo_id=repo_id,
             revision=revision.strip() if revision else None,
             notify_complete=notify_complete,
+            cache_mode=cache_mode,
         )
         self._tasks[task_id] = task
 
@@ -735,6 +794,7 @@ class HFDownloader:
 
         del self._tasks[task_id]
         self._cancelled.discard(task_id)
+        self._http_fallback_requested.discard(task_id)
         return True
 
     async def retry_download(
@@ -770,6 +830,7 @@ class HFDownloader:
         # Remove old task entry
         del self._tasks[task_id]
         self._cancelled.discard(task_id)
+        self._http_fallback_requested.discard(task_id)
 
         # Start fresh download (snapshot_download resumes from existing files)
         new_task = await self.start_download(
@@ -777,6 +838,7 @@ class HFDownloader:
             hf_token,
             revision=old_task.revision,
             notify_complete=old_task.notify_complete,
+            cache_mode=old_task.cache_mode,
         )
         new_task.retry_count = old_retry_count + 1
         return new_task
@@ -807,6 +869,7 @@ class HFDownloader:
                 if task and task.status == DownloadStatus.DOWNLOADING:
                     task.status = DownloadStatus.CANCELLED
         self._active_tasks.clear()
+        self._http_fallback_requested.clear()
 
         # Reap any in-flight xet transfer thread (no-op without a session).
         abort_xet_session()
@@ -835,6 +898,15 @@ class HFDownloader:
                 # (LMStudio, huggingface-cli) and avoid duplicate downloads
                 # when sharing a model directory.
                 target_dir = self._model_dir / task.repo_id
+                if task.cache_mode:
+                    cache_dir = _hf_cache_dir()
+                    progress_dir = cache_dir / repo_folder_name(
+                        repo_id=task.repo_id,
+                        repo_type="model",
+                    )
+                else:
+                    cache_dir = None
+                    progress_dir = target_dir
 
                 api, endpoint = _get_hf_api()
 
@@ -878,11 +950,14 @@ class HFDownloader:
 
                 dl_kwargs: dict = {
                     "repo_id": task.repo_id,
-                    "local_dir": str(target_dir),
                     "token": hf_token or None,
                     "endpoint": endpoint,
                     "etag_timeout": 30,
                 }
+                if task.cache_mode:
+                    dl_kwargs["cache_dir"] = str(cache_dir)
+                else:
+                    dl_kwargs["local_dir"] = str(target_dir)
                 if ignore_patterns:
                     dl_kwargs["ignore_patterns"] = ignore_patterns
                 if task.revision:
@@ -912,27 +987,64 @@ class HFDownloader:
                         f"Dry run failed for {task.repo_id}: {e}. {detail}"
                     )
 
-                # Start progress polling
-                self._progress_tasks[task_id] = asyncio.create_task(
-                    self._poll_progress(task_id, target_dir)
-                )
+                snapshot_path: str | None = None
+                download_completed = False
+                for use_http in (False, True):
+                    if use_http and task.transport_fallbacks == 0:
+                        break
+                    task.transport = "http" if use_http else "auto"
+                    self._http_fallback_requested.discard(task_id)
+                    self._progress_tasks[task_id] = asyncio.create_task(
+                        self._poll_progress(task_id, progress_dir)
+                    )
+                    download = (
+                        _snapshot_download_http if use_http else snapshot_download
+                    )
+                    try:
+                        snapshot_path = await asyncio.to_thread(
+                            download,
+                            **dl_kwargs,
+                            tqdm_class=_make_cancellable_tqdm(
+                                lambda: task_id in self._cancelled
+                            ),
+                        )
+                        download_completed = True
+                    except Exception:
+                        if (
+                            task_id in self._http_fallback_requested
+                            and task_id not in self._cancelled
+                        ):
+                            logger.warning(
+                                "Retrying %s with regular HTTP after transport stall",
+                                task.repo_id,
+                            )
+                            continue
+                        raise
+                    finally:
+                        progress_task = self._progress_tasks.pop(task_id, None)
+                        if progress_task and not progress_task.done():
+                            progress_task.cancel()
+                    if task_id in self._http_fallback_requested:
+                        continue
+                    break
 
-                # Run snapshot_download in a thread (blocking call). Cancel
-                # reaches the thread two ways: the cancellable tqdm raises on
-                # the next chunk of the http_get path, and abort_xet_session()
-                # (called by cancel/stall/shutdown) unwinds the xet path with
-                # a RuntimeError (the thread itself can't be force-killed).
-                await asyncio.to_thread(
-                    snapshot_download,
-                    **dl_kwargs,
-                    tqdm_class=_make_cancellable_tqdm(
-                        lambda: task_id in self._cancelled
-                    ),
-                )
+                if not download_completed:
+                    raise RuntimeError("download transport fallback did not complete")
 
                 # Check if cancelled while downloading
                 if task_id in self._cancelled:
                     return
+
+                if task.cache_mode:
+                    if snapshot_path is None:
+                        raise RuntimeError(
+                            "Hugging Face cache download returned no snapshot path"
+                        )
+                    await asyncio.to_thread(
+                        _link_snapshot_view,
+                        Path(snapshot_path),
+                        target_dir,
+                    )
 
                 # Success
                 task.status = DownloadStatus.COMPLETED
@@ -1004,6 +1116,7 @@ class HFDownloader:
 
             # Remove from active tasks
             self._active_tasks.pop(task_id, None)
+            self._http_fallback_requested.discard(task_id)
 
     async def _poll_progress(self, task_id: str, target_dir: Path) -> None:
         """Poll the target directory to estimate download progress.
@@ -1029,7 +1142,11 @@ class HFDownloader:
                     break
 
                 current_size = self._get_dir_size(target_dir)
-                task.downloaded_size = current_size
+                task.downloaded_size = (
+                    min(current_size, task.total_size)
+                    if task.total_size > 0
+                    else current_size
+                )
 
                 if task.total_size > 0:
                     # Cap at 99% until snapshot_download confirms completion
@@ -1046,10 +1163,31 @@ class HFDownloader:
                     if latest_mtime > last_activity_at:
                         last_activity_at = latest_mtime
 
-                # Stall detection
+                idle_seconds = time.time() - last_activity_at
+
+                # Xet can wedge while its Rust session remains alive. Abort it
+                # once and let _run_download retry the same snapshot through
+                # the regular HTTP range path, which preserves cached chunks.
+                if (
+                    task.transport == "auto"
+                    and task.transport_fallbacks == 0
+                    and idle_seconds > _XET_FALLBACK_TIMEOUT
+                ):
+                    task.transport_fallbacks = 1
+                    task.transport = "http"
+                    self._http_fallback_requested.add(task_id)
+                    logger.warning(
+                        "Download transport stalled for %s; falling back to HTTP",
+                        task.repo_id,
+                    )
+                    abort_xet_session()
+                    break
+
+                # Terminal stall detection after HTTP fallback (or when the
+                # final timeout is configured shorter than the Xet threshold).
                 if (
                     current_size > 0
-                    and (time.time() - last_activity_at) > _STALL_TIMEOUT
+                    and idle_seconds > _STALL_TIMEOUT
                 ):
                     task.status = DownloadStatus.FAILED
                     task.error = (
@@ -1092,15 +1230,21 @@ class HFDownloader:
 
     @staticmethod
     def _get_dir_size(path: Path) -> int:
-        """Calculate total size of all files in a directory."""
+        """Calculate unique file bytes without double-counting cache symlinks."""
         if not path.exists():
             return 0
         total = 0
+        seen: set[tuple[int, int]] = set()
         try:
             for f in path.rglob("*"):
                 if f.is_file():
                     try:
-                        total += f.stat().st_size
+                        stat = f.stat()
+                        identity = (stat.st_dev, stat.st_ino)
+                        if identity in seen:
+                            continue
+                        seen.add(identity)
+                        total += stat.st_size
                     except OSError:
                         pass
         except OSError:
