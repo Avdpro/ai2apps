@@ -222,6 +222,7 @@ dev = [
 
 [project.scripts]
 dynamoe = "dynamoe.cli:main"
+dynamoe-release-gate = "dynamoe.release_gate:main"
 # Compatibility entry point for existing oMLX-based deployments.
 omlx = "omlx.cli:main"
 

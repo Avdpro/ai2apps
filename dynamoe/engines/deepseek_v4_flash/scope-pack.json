@@ -20,6 +20,10 @@
       "deepseek-v4-flash",
       "deepseek-v4-flash-2bit"
     ],
+    "source_revisions": {
+      "deepseek-v4-flash": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "deepseek-v4-flash-2bit": "722bf559b7de93575b2320973cf2002e05bfe6c9"
+    },
     "memory_tiers": [20, 40, 60]
   },
   "provenance": {

@@ -33,9 +33,15 @@ CATALOG = (
                 "id": "huggingface",
                 "label": "HuggingFace",
                 "repo_id": "deepseek-ai/DeepSeek-V4-Flash",
+                "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
             },
         ),
         "scope_name": "general",
+        "conversion": {
+            "format": "omlx-moe-expert-major-set",
+            "version": 1,
+            "variant": "deepseek-v4-expert-major-v1",
+        },
         "memory_tiers": (
             {"id": "lean", "label": "Lean", "experts": 20, "estimated_gb": 33},
             {"id": "compact", "label": "Compact", "experts": 40, "estimated_gb": 43},
@@ -59,9 +65,15 @@ CATALOG = (
                 "id": "huggingface",
                 "label": "HuggingFace",
                 "repo_id": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
+                "revision": "722bf559b7de93575b2320973cf2002e05bfe6c9",
             },
         ),
         "scope_name": "general",
+        "conversion": {
+            "format": "omlx-moe-expert-major-set",
+            "version": 1,
+            "variant": "deepseek-v4-expert-major-v1",
+        },
         "memory_tiers": (
             {"id": "lean", "label": "Lean", "experts": 20, "estimated_gb": 17},
             {"id": "compact", "label": "Compact", "experts": 40, "estimated_gb": 24},
@@ -86,9 +98,15 @@ CATALOG = (
                 "id": "huggingface",
                 "label": "HuggingFace",
                 "repo_id": "mlx-community/Qwen3.6-35B-A3B-4bit",
+                "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
             },
         ),
         "scope_name": "general",
+        "conversion": {
+            "format": "omlx-moe-expert-major-set",
+            "version": 1,
+            "variant": "qwen3.6-affine-q4-gate-up-fused-v2",
+        },
         "arena_tail_slots": 24,
         "memory_tiers": (
             {"id": "lean", "label": "Lean", "experts": 80, "estimated_gb": 9},
@@ -138,6 +156,7 @@ class InstallTask:
     model_id: str
     weight_source: str
     repo_id: str
+    revision: str
     memory_tier: str = "auto"
     status: InstallStatus = InstallStatus.PENDING
     phase: str = "Queued"
@@ -155,6 +174,7 @@ class InstallTask:
             "model_id": self.model_id,
             "weight_source": self.weight_source,
             "repo_id": self.repo_id,
+            "revision": self.revision,
             "memory_tier": self.memory_tier,
             "status": self.status.value,
             "phase": self.phase,
@@ -574,6 +594,14 @@ class DynaMoeInstaller:
             raise RuntimeError(
                 f"Scope Pack does not declare support for {recipe['id']}"
             )
+        source_revisions = manifest.get("compatibility", {}).get(
+            "source_revisions", {}
+        )
+        expected_revision = recipe["sources"][0]["revision"]
+        if source_revisions.get(recipe["id"]) != expected_revision:
+            raise RuntimeError(
+                f"Scope Pack checkpoint revision mismatch for {recipe['id']}"
+            )
         return manifest
 
     @staticmethod
@@ -626,10 +654,21 @@ class DynaMoeInstaller:
     @staticmethod
     def _prepare_cached_checkpoint(
         repo_id: str,
+        revision: str,
         token: str,
         destination: Path,
     ) -> bool:
-        if checkpoint_is_complete(destination):
+        source_record = destination / ".dynamoe" / "source.json"
+        try:
+            recorded = json.loads(source_record.read_text())
+        except (OSError, TypeError, json.JSONDecodeError):
+            recorded = {}
+        if checkpoint_is_complete(destination) and recorded == {
+            "format": "dynamoe-hf-source",
+            "version": 1,
+            "repo_id": repo_id,
+            "revision": revision,
+        }:
             return True
         try:
             from huggingface_hub import snapshot_download
@@ -637,16 +676,59 @@ class DynaMoeInstaller:
             snapshot = Path(
                 snapshot_download(
                     repo_id=repo_id,
+                    revision=revision,
                     token=token or None,
                     local_files_only=True,
                 )
             )
         except Exception:
             return False
-        if not checkpoint_is_complete(snapshot):
+        if snapshot.name != revision or not checkpoint_is_complete(snapshot):
+            return False
+        # An unrecorded complete destination may belong to another revision.
+        # Let snapshot_download reconcile it instead of mixing shard sets.
+        if checkpoint_is_complete(destination):
             return False
         link_cached_snapshot(snapshot, destination)
-        return checkpoint_is_complete(destination)
+        if not checkpoint_is_complete(destination):
+            return False
+        source_record.parent.mkdir(parents=True, exist_ok=True)
+        partial = source_record.with_suffix(".json.partial")
+        partial.write_text(
+            json.dumps(
+                {
+                    "format": "dynamoe-hf-source",
+                    "version": 1,
+                    "repo_id": repo_id,
+                    "revision": revision,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        partial.replace(source_record)
+        return True
+
+    @staticmethod
+    def _write_source_record(task: InstallTask, source_dir: Path) -> None:
+        path = source_dir / ".dynamoe" / "source.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        partial = path.with_suffix(".json.partial")
+        partial.write_text(
+            json.dumps(
+                {
+                    "format": "dynamoe-hf-source",
+                    "version": 1,
+                    "repo_id": task.repo_id,
+                    "revision": task.revision,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        partial.replace(path)
 
     async def start(
         self,
@@ -674,6 +756,7 @@ class DynaMoeInstaller:
             model_id=model_id,
             weight_source=weight_source,
             repo_id=source["repo_id"],
+            revision=source["revision"],
             memory_tier=memory_tier,
         )
         self.tasks[task.task_id] = task
@@ -702,6 +785,7 @@ class DynaMoeInstaller:
                 task.cache_hit = await asyncio.to_thread(
                     self._prepare_cached_checkpoint,
                     task.repo_id,
+                    task.revision,
                     token,
                     source_dir,
                 )
@@ -711,7 +795,10 @@ class DynaMoeInstaller:
                 else:
                     task.phase = "Downloading checkpoint"
                     child = await self.hf_downloader.start_download(
-                        task.repo_id, token, notify_complete=False
+                        task.repo_id,
+                        token,
+                        revision=task.revision,
+                        notify_complete=False,
                     )
                     task.child_task_id = child.task_id
                     while child.status.value in {"pending", "downloading"}:
@@ -727,6 +814,7 @@ class DynaMoeInstaller:
                         raise RuntimeError(
                             child.error or f"download {child.status.value}"
                         )
+                    self._write_source_record(task, source_dir)
 
                 work_dir = source_dir / ".dynamoe"
                 task.status = InstallStatus.INDEXING
@@ -758,6 +846,22 @@ class DynaMoeInstaller:
                     routed_layers = list(range(first_routed_layer, num_layers))
                     split_store_dir = None
                     store_dir = work_dir / "expert-store"
+                conversion_state = {
+                    "format": "dynamoe-conversion-state",
+                    "version": 1,
+                    "model_id": task.model_id,
+                    "repo_id": task.repo_id,
+                    "revision": task.revision,
+                    "conversion": recipe["conversion"],
+                }
+                conversion_state_path = work_dir / "conversion.json"
+                try:
+                    previous_conversion = json.loads(
+                        conversion_state_path.read_text()
+                    )
+                except (OSError, TypeError, json.JSONDecodeError):
+                    previous_conversion = {}
+                reuse_converted = previous_conversion == conversion_state
                 task.status = InstallStatus.CONVERTING
                 task.phase = "Converting experts"
                 for index, layer in enumerate(routed_layers):
@@ -767,7 +871,7 @@ class DynaMoeInstaller:
                         return
                     output = store_dir / f"layer-{layer:03d}.moe"
                     valid = False
-                    if output.is_file():
+                    if reuse_converted and output.is_file():
                         try:
                             with ExpertMajorStore(output) as existing:
                                 names = {item.name for item in existing.tensors}
@@ -789,7 +893,7 @@ class DynaMoeInstaller:
                                 split_store_dir / f"layer-{layer:03d}.moe"
                             )
                             split_valid = False
-                            if split_output.is_file():
+                            if reuse_converted and split_output.is_file():
                                 try:
                                     with ExpertMajorStore(split_output) as existing:
                                         split_valid = existing.layer == layer
@@ -801,11 +905,13 @@ class DynaMoeInstaller:
                                     offset_manifest,
                                     layer,
                                     split_output,
+                                    force=True,
                                 )
                             await asyncio.to_thread(
                                 create_qwen36_fused_store,
                                 split_output,
                                 output,
+                                force=True,
                             )
                         else:
                             await asyncio.to_thread(
@@ -813,29 +919,41 @@ class DynaMoeInstaller:
                                 offset_manifest,
                                 layer,
                                 output,
+                                force=True,
                             )
                     task.progress = 58.0 + 37.0 * (index + 1) / len(routed_layers)
                     task.detail = f"MoE layer {index + 1} / {len(routed_layers)}"
-                self._write_store_manifest(store_dir, ExpertMajorStore)
+                self._write_store_manifest(
+                    store_dir, ExpertMajorStore, conversion_state
+                )
+                conversion_partial = conversion_state_path.with_suffix(
+                    ".json.partial"
+                )
+                conversion_partial.write_text(
+                    json.dumps(conversion_state, indent=2, sort_keys=True) + "\n"
+                )
+                conversion_partial.replace(conversion_state_path)
 
                 task.status = InstallStatus.CONFIGURING
                 task.phase = "Configuring dedicated engine"
                 task.progress = 97.0
                 install_manifest = {
                     "format": "dynamoe-cache-moe-model",
-                    "version": 1,
+                    "version": 2,
                     "model_id": task.model_id,
                     "family": recipe["family"],
                     "engine": recipe["engine"],
                     "source": {
                         "provider": task.weight_source,
                         "repo_id": task.repo_id,
+                        "revision": task.revision,
                     },
                     "scope": {
                         "profile": str(scope_profile),
                         "default": recipe["scope_name"],
                     },
                     "expert_store": str(store_dir.resolve()),
+                    "conversion": recipe["conversion"],
                     "memory_tier": task.memory_tier,
                     "installed_at": time.time(),
                 }
@@ -882,7 +1000,11 @@ class DynaMoeInstaller:
             task.error = str(exc)
 
     @staticmethod
-    def _write_store_manifest(store_dir: Path, store_class: Any) -> None:
+    def _write_store_manifest(
+        store_dir: Path,
+        store_class: Any,
+        conversion_state: dict[str, Any],
+    ) -> None:
         layers = {}
         for path in sorted(store_dir.glob("layer-*.moe")):
             with store_class(path) as store:
@@ -895,7 +1017,16 @@ class DynaMoeInstaller:
         partial = store_dir / "manifest.json.partial"
         partial.write_text(
             json.dumps(
-                {"format": "omlx-moe-expert-major-set", "version": 1, "layers": layers},
+                {
+                    "format": "omlx-moe-expert-major-set",
+                    "version": 1,
+                    "source": {
+                        "repo_id": conversion_state["repo_id"],
+                        "revision": conversion_state["revision"],
+                    },
+                    "conversion": conversion_state["conversion"],
+                    "layers": layers,
+                },
                 indent=2,
                 sort_keys=True,
             )

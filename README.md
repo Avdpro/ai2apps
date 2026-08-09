@@ -14,7 +14,8 @@ models such as DeepSeek V4 Flesh.
 
 [中文说明](README.zh.md) · [Architecture](docs/architecture.md) ·
 [Flesh engine](docs/deepseek-v4-flesh-engine.md) ·
-[Benchmark records](docs/moe-cache-benchmark-2026-08-08.md)
+[Benchmark records](docs/moe-cache-benchmark-2026-08-08.md) ·
+[Release gate](docs/release-gate.md)
 
 ## What DynaMoe adds
 
@@ -131,6 +132,7 @@ generated tokens and record memory, cold TPS, and steady TPS.
 pytest -q
 python scripts/bench_scope_once.py --help
 python scripts/bench_moe_expert_store.py --help
+dynamoe-release-gate --mode preflight --run-tests
 ```
 
 Before dynamic replacement is considered production-ready, the static oracle

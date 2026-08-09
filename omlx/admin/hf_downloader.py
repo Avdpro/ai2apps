@@ -202,6 +202,7 @@ class DownloadTask:
 
     task_id: str
     repo_id: str
+    revision: str | None = None
     status: DownloadStatus = DownloadStatus.PENDING
     progress: float = 0.0
     total_size: int = 0
@@ -218,6 +219,7 @@ class DownloadTask:
         return {
             "task_id": self.task_id,
             "repo_id": self.repo_id,
+            "revision": self.revision,
             "status": self.status.value,
             "progress": round(self.progress, 1),
             "total_size": self.total_size,
@@ -619,7 +621,12 @@ class HFDownloader:
         self._model_dir = Path(new_dir)
 
     async def start_download(
-        self, repo_id: str, hf_token: str = "", *, notify_complete: bool = True
+        self,
+        repo_id: str,
+        hf_token: str = "",
+        *,
+        revision: str | None = None,
+        notify_complete: bool = True,
     ) -> DownloadTask:
         """Start downloading a model from HuggingFace.
 
@@ -654,6 +661,7 @@ class HFDownloader:
         task = DownloadTask(
             task_id=task_id,
             repo_id=repo_id,
+            revision=revision.strip() if revision else None,
             notify_complete=notify_complete,
         )
         self._tasks[task_id] = task
@@ -764,7 +772,12 @@ class HFDownloader:
         self._cancelled.discard(task_id)
 
         # Start fresh download (snapshot_download resumes from existing files)
-        new_task = await self.start_download(repo_id, hf_token)
+        new_task = await self.start_download(
+            repo_id,
+            hf_token,
+            revision=old_task.revision,
+            notify_complete=old_task.notify_complete,
+        )
         new_task.retry_count = old_retry_count + 1
         return new_task
 
@@ -830,12 +843,17 @@ class HFDownloader:
                 ignore_patterns = None
                 st_estimate = 0
                 try:
+                    info_kwargs: dict = {
+                        "token": hf_token or None,
+                        "expand": ["safetensors"],
+                    }
+                    if task.revision:
+                        info_kwargs["revision"] = task.revision
                     model_info = await asyncio.wait_for(
                         asyncio.to_thread(
                             api.model_info,
                             task.repo_id,
-                            token=hf_token or None,
-                            expand=["safetensors"],
+                            **info_kwargs,
                         ),
                         timeout=_HF_API_TIMEOUT,
                     )
@@ -867,6 +885,8 @@ class HFDownloader:
                 }
                 if ignore_patterns:
                     dl_kwargs["ignore_patterns"] = ignore_patterns
+                if task.revision:
+                    dl_kwargs["revision"] = task.revision
 
                 # Get accurate total size via dry run so the progress
                 # denominator matches what will actually be downloaded.

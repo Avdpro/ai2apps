@@ -18,6 +18,7 @@ def test_release_catalog_uses_packaged_scope_packs(monkeypatch):
     ]
     assert all(item["engine_ready"] for item in catalog)
     assert all(item["scope_pack"]["version"] == "2026.08.09.1" for item in catalog)
+    assert all(len(item["sources"][0]["revision"]) == 40 for item in catalog)
 
 
 def test_packaged_scope_pack_profiles_match_manifests():
@@ -32,6 +33,10 @@ def test_packaged_scope_pack_profiles_match_manifests():
         assert hashlib.sha256(profile.read_bytes()).hexdigest() == (
             manifest["profile"]["sha256"]
         )
+        for model_id in manifest["compatibility"]["model_ids"]:
+            assert len(
+                manifest["compatibility"]["source_revisions"][model_id]
+            ) == 40
 
 
 def test_packaged_profiles_cover_every_declared_scope_and_layer():

@@ -19,6 +19,9 @@
     "model_ids": [
       "qwen3.6-35b-a3b-4bit"
     ],
+    "source_revisions": {
+      "qwen3.6-35b-a3b-4bit": "38740b847e4cb78f352aba30aa41c76e08e6eb46"
+    },
     "memory_tiers": [80, 96, 120],
     "arena_tail_slots": 24
   },

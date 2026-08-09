@@ -785,6 +785,34 @@ class TestHFDownloader:
             await downloader.shutdown()
 
     @pytest.mark.asyncio
+    async def test_download_pins_revision_in_info_and_snapshot_calls(self, model_dir):
+        model_dir.mkdir(parents=True, exist_ok=True)
+        downloader = HFDownloader(model_dir=str(model_dir))
+        revision = "a" * 40
+        mock_api = MagicMock()
+        mock_info = MagicMock()
+        mock_info.safetensors = None
+        mock_api.model_info.return_value = mock_info
+
+        with patch(
+            "omlx.admin.hf_downloader._get_hf_api",
+            return_value=(mock_api, None),
+        ), patch(
+            "omlx.admin.hf_downloader.snapshot_download"
+        ) as mock_download:
+            task = await downloader.start_download(
+                "owner/model", revision=revision
+            )
+            await downloader._active_tasks[task.task_id]
+
+        assert task.to_dict()["revision"] == revision
+        assert mock_api.model_info.call_args.kwargs["revision"] == revision
+        assert all(
+            call.kwargs["revision"] == revision
+            for call in mock_download.call_args_list
+        )
+
+    @pytest.mark.asyncio
     async def test_dry_run_failure_falls_back_to_safetensors_size(self, model_dir):
         """When dry_run raises, total_size is estimated from safetensors metadata."""
         model_dir.mkdir(parents=True, exist_ok=True)

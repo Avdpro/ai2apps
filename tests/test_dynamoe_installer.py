@@ -321,8 +321,9 @@ def test_hf_snapshot_is_reused_as_a_no_copy_model_view(tmp_path: Path):
 
 
 def test_prepare_checkpoint_prefers_hf_cache(tmp_path: Path, monkeypatch):
-    snapshot = tmp_path / "snapshot"
-    snapshot.mkdir()
+    revision = "a" * 40
+    snapshot = tmp_path / "snapshots" / revision
+    snapshot.mkdir(parents=True)
     (snapshot / "config.json").write_text("{}")
     (snapshot / "model.safetensors").write_bytes(b"weights")
     destination = tmp_path / "models" / "owner" / "model"
@@ -332,9 +333,12 @@ def test_prepare_checkpoint_prefers_hf_cache(tmp_path: Path, monkeypatch):
     )
 
     assert DynaMoeInstaller._prepare_cached_checkpoint(
-        "owner/model", "", destination
+        "owner/model", revision, "", destination
     )
     assert checkpoint_is_complete(destination)
+    assert json.loads(
+        (destination / ".dynamoe" / "source.json").read_text()
+    )["revision"] == revision
 
 
 @pytest.mark.asyncio
@@ -367,6 +371,17 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     downloader = FakeDownloader()
     source = downloader.model_dir / "mlx-community/Qwen3.6-35B-A3B-4bit"
     _write_fake_qwen_checkpoint(source)
+    (source / ".dynamoe").mkdir()
+    (source / ".dynamoe" / "source.json").write_text(
+        json.dumps(
+            {
+                "format": "dynamoe-hf-source",
+                "version": 1,
+                "repo_id": "mlx-community/Qwen3.6-35B-A3B-4bit",
+                "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
+            }
+        )
+    )
     installer = DynaMoeInstaller(downloader)
 
     task = await installer.start(
@@ -380,8 +395,20 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     assert manifest["family"] == "qwen3_6"
     assert manifest["engine"]["id"] == "qwen3.6-tiered"
     assert manifest["memory_tier"] == "compact"
+    assert manifest["version"] == 2
+    assert manifest["source"]["revision"] == (
+        "38740b847e4cb78f352aba30aa41c76e08e6eb46"
+    )
+    assert manifest["conversion"]["variant"] == (
+        "qwen3.6-affine-q4-gate-up-fused-v2"
+    )
     assert manifest["arena_tail_slots"] == 24
     assert Path(manifest["expert_store"]).name == "expert-store-fused"
+    store_manifest = json.loads(
+        (Path(manifest["expert_store"]) / "manifest.json").read_text()
+    )
+    assert store_manifest["source"]["revision"] == task.revision
+    assert store_manifest["conversion"] == manifest["conversion"]
     with ExpertMajorStore(
         Path(manifest["expert_store"]) / "layer-000.moe"
     ) as store:
