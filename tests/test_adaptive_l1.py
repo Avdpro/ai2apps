@@ -265,6 +265,7 @@ def test_live_engine_boost_moves_kv_to_session_namespace():
     engine._pending_engine_boost = {}
     engine._session_owned_kv = set()
     engine._engine_boost_lock = threading.Lock()
+    engine._flesh_lock = threading.Lock()
     engine.has_active_requests = lambda: True
     applied = []
     engine._apply_engine_boost = lambda session_id, mode: applied.append(

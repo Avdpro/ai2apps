@@ -1539,6 +1539,22 @@ class TestDeepSeekV4SanitizeAffineSwitchMLP:
     ):
         mx = pytest.importorskip("mlx.core")
         dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import (
+            PROFILE_ENV,
+            SCOPE_ENV,
+            STORE_ENV,
+            clear_scope_policy_override,
+            load_scope_policy_from_env,
+        )
+
+        # This test exercises benchmark folding, which is mutually exclusive
+        # with a scope bank.  Reset both the process-local override and the
+        # cached environment result so its outcome cannot depend on earlier
+        # scope-policy tests in the same pytest worker.
+        clear_scope_policy_override()
+        for name in (PROFILE_ENV, SCOPE_ENV, STORE_ENV):
+            monkeypatch.delenv(name, raising=False)
+        load_scope_policy_from_env.cache_clear()
         monkeypatch.setenv("OMLX_DEEPSEEK_V4_BENCH_EXPERT_SLOTS", "2")
         fake_model = SimpleNamespace(
             args=SimpleNamespace(

@@ -690,6 +690,15 @@ def _patch_model(dsv4: Any) -> None:
             if k.startswith("mtp."):
                 if not has_mtp:
                     continue
+                # Benchmark folding is a physical-bank constraint, so it
+                # applies to the MTP routed experts as well as the backbone.
+                # Without this filter the stacking loop consumes the resident
+                # prefix but leaves every nonresident raw expert in the final
+                # state dict, defeating the memory-saving benchmark mode.
+                expert_id = dsv4._raw_routed_expert_id(k)
+                if scope_policy is None and expert_id is not None:
+                    if expert_id >= physical_experts:
+                        continue
                 new_weights[k] = v
                 continue
             parts = k.split(".")
@@ -699,8 +708,38 @@ def _patch_model(dsv4: Any) -> None:
                         continue
                 except ValueError:
                     pass
+            expert_id = dsv4._raw_routed_expert_id(k)
+            if expert_id is not None:
+                if scope_policy is not None:
+                    parsed = dsv4.parse_expert_key(k)
+                    if parsed is None:
+                        continue
+                    layer_idx, parsed_expert = parsed
+                    if parsed_expert not in scope_policy.experts(layer_idx):
+                        continue
+                elif expert_id >= physical_experts:
+                    continue
             new_weights[k] = v
         weights = new_weights
+
+        # Match the base DeepSeek sanitizer for affine checkpoints, where all
+        # experts are already packed along the leading dimension instead of
+        # being represented as per-expert keys.  Scope banks must slice these
+        # tensors before model.load_weights() sees them.
+        if scope_policy is not None:
+            for layer_idx in range(n_layers):
+                expert_ids = scope_policy.experts(layer_idx)
+                if len(expert_ids) == self.args.n_routed_experts:
+                    continue
+                prefix = f"model.layers.{layer_idx}.ffn.switch_mlp."
+                for key, value in list(weights.items()):
+                    if (
+                        key.startswith(prefix)
+                        and key.endswith((".weight", ".scales", ".biases"))
+                        and value.ndim >= 1
+                        and value.shape[0] == self.args.n_routed_experts
+                    ):
+                        weights[key] = value[list(expert_ids)]
 
         # FP4 dequant pre-pass (oMLX-specific). Identical to the
         # un-patched body — safe to keep as-is.

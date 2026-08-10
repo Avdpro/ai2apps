@@ -640,6 +640,7 @@ class TestDFlashEngineInit:
 
     def test_build_runtime_context_passes_knobs(self):
         """The new kwargs reach dflash-mlx and end up in RuntimeContext.runtime."""
+        pytest.importorskip("dflash_mlx")
         try:
             from omlx.engine.dflash import DFlashEngine
         except ImportError:
@@ -662,6 +663,7 @@ class TestDFlashEngineInit:
 
     def test_build_runtime_context_defaults_to_dflash_mlx_values(self):
         """None settings → dflash-mlx fills DEFAULT_RUNTIME_CONFIG (1024 / 64 / 'adaptive')."""
+        pytest.importorskip("dflash_mlx")
         try:
             from omlx.engine.dflash import DFlashEngine
         except ImportError:
@@ -680,6 +682,7 @@ class TestDFlashEngineInit:
     def test_l2_max_bytes_from_settings(self, tmp_path):
         """Issue #1326 — dflash L2 disk budget comes from the per-model setting,
         not a hard-coded 1 TiB sentinel, so dflash_l2/ stays bounded."""
+        pytest.importorskip("dflash_mlx")
         try:
             from omlx.engine.dflash import DFlashEngine
         except ImportError:
@@ -701,6 +704,7 @@ class TestDFlashEngineInit:
 
     def test_l2_max_bytes_defaults_to_20gib(self, tmp_path):
         """No explicit setting → engine falls back to the 20 GiB default budget."""
+        pytest.importorskip("dflash_mlx")
         try:
             from omlx.engine.dflash import DFlashEngine
         except ImportError:
@@ -1323,6 +1327,7 @@ class TestDFlashRuntimeCacheStats:
         assert engine.get_runtime_cache_stats() is None
 
     def test_budget_fallback_before_first_request(self, monkeypatch):
+        pytest.importorskip("dflash_mlx")
         engine = self._engine()
         import dflash_mlx.cache.manager as manager_mod
 
@@ -1340,6 +1345,7 @@ class TestDFlashRuntimeCacheStats:
         assert ssd["max_size_bytes"] == 0  # SSD cache not requested
 
     def test_manager_stats_mapped_to_panel_shape(self, monkeypatch):
+        pytest.importorskip("dflash_mlx")
         engine = self._engine()
         import dflash_mlx.cache.manager as manager_mod
 
@@ -1384,6 +1390,7 @@ class TestDFlashRuntimeCacheStats:
         assert cumulative["hot_cache_evictions"] == 1
 
     def test_closed_manager_falls_back_to_budgets(self, monkeypatch):
+        pytest.importorskip("dflash_mlx")
         engine = self._engine()
         import dflash_mlx.cache.manager as manager_mod
 
@@ -1401,6 +1408,7 @@ class TestDFlashRuntimeCacheStats:
         assert stats["ssd_cache"]["hot_cache_max_bytes"] == 8 * 1024**3
 
     def test_l2_scan_counts_snapshot_files(self, tmp_path, monkeypatch):
+        pytest.importorskip("dflash_mlx")
         settings = ModelSettings(dflash_ssd_cache=True)
         engine = self._engine(model_settings=settings, omlx_ssd_cache_dir=tmp_path)
         import dflash_mlx.cache.manager as manager_mod

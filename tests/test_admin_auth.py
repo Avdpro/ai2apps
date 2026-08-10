@@ -461,8 +461,8 @@ class TestCheckUpdate:
         assert result["latest_version"] is None
 
     @pytest.mark.asyncio
-    async def test_stable_version_shown(self):
-        """Stable GitHub releases should trigger update notification."""
+    async def test_upstream_stable_version_not_shown(self):
+        """Stable oMLX releases are not AI2Apps product updates."""
         fake_resp = _FakeResponse(
             200,
             [{
@@ -474,8 +474,9 @@ class TestCheckUpdate:
             mock_asyncio.to_thread = _make_async_return(fake_resp)
             result = await admin_routes.check_update(is_admin=True)
 
-        assert result["update_available"] is True
-        assert result["latest_version"] == "99.0.0"
+        assert result["update_available"] is False
+        assert result["latest_version"] is None
+        assert result["update_channel"] == "ai2apps"
 
     @pytest.mark.asyncio
     async def test_rc_not_shown(self):

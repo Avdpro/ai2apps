@@ -24,12 +24,18 @@ def test_product_identity_and_attribution() -> None:
 
 
 def test_ai2apps_environment_maps_to_runtime(monkeypatch) -> None:
+    runtime_name = "OMLX_DEEPSEEK_V4_SCOPE_PROBE_DEPTH"
     monkeypatch.setenv("AI2APPS_DEEPSEEK_V4_SCOPE_PROBE_DEPTH", "43")
-    monkeypatch.delenv("OMLX_DEEPSEEK_V4_SCOPE_PROBE_DEPTH", raising=False)
+    monkeypatch.delenv(runtime_name, raising=False)
 
-    _apply_environment_compatibility()
-
-    assert os.environ["OMLX_DEEPSEEK_V4_SCOPE_PROBE_DEPTH"] == "43"
+    try:
+        _apply_environment_compatibility()
+        assert os.environ[runtime_name] == "43"
+    finally:
+        # The compatibility layer intentionally creates runtime variables
+        # directly in os.environ.  monkeypatch cannot track keys created by
+        # the function, so remove the derived value explicitly.
+        os.environ.pop(runtime_name, None)
 
 
 def test_environment_does_not_override_explicit_runtime_value(monkeypatch) -> None:
@@ -46,9 +52,11 @@ def test_ai2apps_environment_overrides_legacy_product_value(monkeypatch) -> None
     monkeypatch.setenv("AI2APPS_PORT", "9000")
     monkeypatch.delenv("OMLX_PORT", raising=False)
 
-    _apply_environment_compatibility()
-
-    assert os.environ["OMLX_PORT"] == "9000"
+    try:
+        _apply_environment_compatibility()
+        assert os.environ["OMLX_PORT"] == "9000"
+    finally:
+        os.environ.pop("OMLX_PORT", None)
 
 
 def test_ai2apps_svg_assets_are_valid() -> None:
