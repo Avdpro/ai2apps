@@ -50,12 +50,12 @@ class Qwen36ScopeCatalog:
         path = Path(profile_path).expanduser().resolve()
         payload = json.loads(path.read_text())
 
-        # Native DynaMoe Scope Packs and the earlier DMoE joint-hotset output
+        # Native AI2Apps Scope Packs and the earlier DMoE joint-hotset output
         # have the same phase/scopes/layers payload; only the format marker is
         # different. Accepting the artifact directly keeps the repositories
         # separate and avoids copying DMoE runtime modules.
         format_name = payload.get("format")
-        if format_name not in (None, "dynamoe-qwen36-scope-policy"):
+        if format_name not in (None, "ai2apps-qwen36-scope-policy"):
             raise ValueError(f"unsupported Qwen3.6 scope profile: {path}")
         phases = payload.get("phases")
         if not isinstance(phases, dict):

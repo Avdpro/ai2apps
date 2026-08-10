@@ -32,7 +32,7 @@ Two objectives are reported:
 Command shape:
 
 ```bash
-OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/dynamoe/artifacts/moe-expert-major \
+OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/ai2apps/artifacts/moe-expert-major \
 ./.venv/bin/python scripts/bench_scope_shared_probe.py \
   /path/to/dmoe/artifacts/deepseek-v4-flash/source \
   /path/to/dmoe/configs/scope-dataset.v2.json \

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 _APP_BUNDLE_CLI_NAME = "omlx-cli"
-_PATH_CLI = "dynamoe"
+_PATH_CLI = "ai2apps"
 _USER_CLI_SHIM = Path(".omlx") / "bin" / "omlx"
 
 

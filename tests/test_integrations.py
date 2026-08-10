@@ -76,7 +76,7 @@ class TestCodexIntegration:
     def test_get_command(self):
         codex = CodexIntegration()
         cmd = codex.get_command(ctx(port=8000, api_key="test-key", model="qwen3.5"))
-        assert "omlx launch codex" in cmd
+        assert "ai2apps launch codex" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_get_command_no_model(self):
@@ -266,7 +266,7 @@ class TestCodexAppIntegration:
     def test_get_command(self):
         codex_app = CodexAppIntegration()
         cmd = codex_app.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch codex_app" in cmd
+        assert "ai2apps launch codex_app" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_configure(self, tmp_path):
@@ -390,7 +390,7 @@ class TestOpenCodeIntegration:
     def test_get_command(self):
         oc = OpenCodeIntegration()
         cmd = oc.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch opencode" in cmd
+        assert "ai2apps launch opencode" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_configure_new_file(self, tmp_path):
@@ -597,7 +597,7 @@ class TestOpenClawIntegration:
     def test_get_command(self):
         ocl = OpenClawIntegration()
         cmd = ocl.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch openclaw" in cmd
+        assert "ai2apps launch openclaw" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_configure_new_file(self, tmp_path):
@@ -795,7 +795,7 @@ class TestHermesIntegration:
     def test_get_command(self):
         hermes = HermesIntegration()
         cmd = hermes.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch hermes" in cmd
+        assert "ai2apps launch hermes" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_get_command_no_model(self):
@@ -1123,7 +1123,7 @@ class TestPiIntegration:
     def test_get_command(self):
         pi = PiIntegration()
         cmd = pi.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch pi" in cmd
+        assert "ai2apps launch pi" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_get_command_no_model(self):
@@ -1330,7 +1330,7 @@ class TestClaudeCodeIntegration:
     def test_get_command(self):
         cc = ClaudeCodeIntegration()
         cmd = cc.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch claude" in cmd
+        assert "ai2apps launch claude" in cmd
 
     def test_get_command_ignores_model(self):
         # Claude integration uses TUI selection so the rendered command
@@ -1791,7 +1791,7 @@ class TestCopilotIntegration:
     def test_get_command(self):
         copilot = CopilotIntegration()
         cmd = copilot.get_command(ctx(port=8000, api_key="key", model="qwen3.5"))
-        assert "omlx launch copilot" in cmd
+        assert "ai2apps launch copilot" in cmd
         assert "--model qwen3.5" in cmd
 
     def test_get_command_no_model(self):

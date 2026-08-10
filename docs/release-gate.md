@@ -1,4 +1,4 @@
-# DynaMoe release gate
+# AI2Apps release gate
 
 The release gate binds every supported engine to an immutable Hugging Face
 checkpoint revision, a checksummed Scope Pack, and a named conversion format.
@@ -11,11 +11,11 @@ are present.
 Run the source/package checks before building a release:
 
 ```bash
-dynamoe-release-gate \
+ai2apps-release-gate \
   --mode preflight \
   --run-tests \
-  --archive dist/dynamoe-0.1.0.dev1-py3-none-any.whl \
-  --archive dist/dynamoe-0.1.0.dev1.tar.gz \
+  --archive dist/ai2apps-0.1.0.dev1-py3-none-any.whl \
+  --archive dist/ai2apps-0.1.0.dev1.tar.gz \
   --json artifacts/release-gate/preflight.json \
   --markdown artifacts/release-gate/preflight.md
 ```
@@ -30,19 +30,19 @@ The source checkout still resolves the reviewed MLX ecosystem commits through
 not copied into wheel metadata. The first public wheel therefore installs
 `mlx-lm`, `mlx-vlm`, `mlx-embeddings`, and the optional `mlx-audio` extra from
 PyPI. The reviewed DFlash fork remains in the source development group until a
-compatible index release exists; it is not required by the three DynaMoe
+compatible index release exists; it is not required by the three AI2Apps
 release engines.
 
 ## Installed-model gate
 
 ```bash
-dynamoe-release-gate \
+ai2apps-release-gate \
   --mode installed \
   --model-dir /path/to/models \
   --json artifacts/release-gate/installed.json
 ```
 
-Each installed model must have a version-2 `dynamoe-model.json` recording the
+Each installed model must have a version-2 `ai2apps-model.json` recording the
 exact source commit, conversion variant, Scope Pack version/hash, and expert
 store. Older installs remain discoverable by the runtime, but do not pass a
 reproducible release gate until they are re-prepared.
@@ -52,14 +52,14 @@ reproducible release gate until they are re-prepared.
 Generate the evidence skeleton first:
 
 ```bash
-dynamoe-release-gate \
+ai2apps-release-gate \
   --write-evidence-template artifacts/release-gate/evidence.json
 ```
 
 Populate it from the checked-in Metal benchmark scripts, then run:
 
 ```bash
-dynamoe-release-gate \
+ai2apps-release-gate \
   --mode release \
   --model-dir /path/to/models \
   --evidence artifacts/release-gate/evidence.json \

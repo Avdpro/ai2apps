@@ -370,7 +370,7 @@ class ScopeFallbackLoader:
     def _prepare_mutable_switch(self, resident: SwitchGLU) -> None:
         """Detach one resident bank from checkpoint/concat graphs for slot writes."""
 
-        if getattr(resident, "_dynamoe_mutable_backing", False):
+        if getattr(resident, "_ai2apps_mutable_backing", False):
             return
         started = time.perf_counter()
         replacements: list[tuple[Any, str, mx.array]] = []
@@ -389,7 +389,7 @@ class ScopeFallbackLoader:
             mx.eval(*arrays)
         for projection, tensor_name, backing in replacements:
             setattr(projection, tensor_name, backing)
-        resident._dynamoe_mutable_backing = True
+        resident._ai2apps_mutable_backing = True
         self.l1_patch_prepare_layers += 1
         self.l1_patch_prepare_seconds += time.perf_counter() - started
 

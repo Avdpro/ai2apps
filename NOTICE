@@ -1,15 +1,15 @@
-DynaMoe
-Copyright 2026 DynaMoe contributors
+AI2Apps
+Copyright 2026 AI2Apps contributors
 
 This product includes software developed by the oMLX contributors:
 https://github.com/jundot/omlx
 Copyright 2025 oMLX contributors
 
-DynaMoe is an independent derivative project built on the open-source oMLX
+AI2Apps is an independent derivative project built on the open-source oMLX
 runtime. It is not affiliated with, sponsored by, or endorsed by the oMLX
 project or its maintainers.
 
-Major DynaMoe modifications include scope-aware DeepSeek V4 expert banks,
+Major AI2Apps modifications include scope-aware DeepSeek V4 expert banks,
 dynamic MoE cache policies, lossy expert replacement experiments, expert-store
 I/O, session-aware scope selection, observability, and product/API surfaces.
 

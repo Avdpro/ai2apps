@@ -412,7 +412,7 @@ Reproduction command (ordinary page cache, no `F_NOCACHE`):
 ```bash
 OMLX_DEEPSEEK_V4_SCOPE_PROFILE=/path/to/dmoe/artifacts/deepseek-v4-flash/scope-study/phase-long128-v1/tiered-top60-global4.json \
 OMLX_DEEPSEEK_V4_SCOPE_NAME=coding \
-OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/dynamoe/artifacts/moe-expert-major \
+OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/ai2apps/artifacts/moe-expert-major \
 OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS=8 \
   .venv/bin/python scripts/bench_scope_once.py \
   /path/to/dmoe/artifacts/deepseek-v4-flash/source \
@@ -440,7 +440,7 @@ Command:
 ```bash
 OMLX_DEEPSEEK_V4_SCOPE_PROFILE=/path/to/dmoe/artifacts/deepseek-v4-flash/scope-study/phase-long128-v1/tiered-top60-global4.json \
 OMLX_DEEPSEEK_V4_SCOPE_NAME=coding \
-OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/dynamoe/artifacts/moe-expert-major \
+OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/ai2apps/artifacts/moe-expert-major \
 OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS=8 \
   .venv/bin/python scripts/bench.py \
   /path/to/dmoe/artifacts/deepseek-v4-flash/source \
@@ -527,7 +527,7 @@ The final run used 512 tokens from the Python benchmark corpus:
 ```bash
 OMLX_DEEPSEEK_V4_SCOPE_PROFILE=/path/to/dmoe/artifacts/deepseek-v4-flash/scope-study/phase-long128-v1/tiered-top60-global4.json \
 OMLX_DEEPSEEK_V4_SCOPE_NAME=coding \
-OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/dynamoe/artifacts/moe-expert-major \
+OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/ai2apps/artifacts/moe-expert-major \
 OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS=8 \
   .venv/bin/python scripts/bench_router_parity.py \
   /path/to/dmoe/artifacts/deepseek-v4-flash/source \
@@ -581,7 +581,7 @@ and excludes only the last singleton for each request and layer.
 ```bash
 OMLX_DEEPSEEK_V4_SCOPE_PROFILE=/path/to/dmoe/artifacts/deepseek-v4-flash/scope-study/phase-long128-v1/tiered-top60-global4.json \
 OMLX_DEEPSEEK_V4_SCOPE_NAME=coding \
-OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/dynamoe/artifacts/moe-expert-major \
+OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/ai2apps/artifacts/moe-expert-major \
 OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS=8 \
   .venv/bin/python scripts/profile_scope_prefill.py \
   /path/to/dmoe/artifacts/deepseek-v4-flash/source \

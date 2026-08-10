@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sys
 
-DEFAULT_PROCESS_TITLE = "dynamoe-server"
+DEFAULT_PROCESS_TITLE = "ai2apps-server"
 
 
 def set_process_title(title: str = DEFAULT_PROCESS_TITLE) -> bool:

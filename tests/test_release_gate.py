@@ -2,8 +2,8 @@ import json
 import zipfile
 from pathlib import Path
 
-from dynamoe.model_installer import CATALOG
-from dynamoe.release_gate import (
+from ai2apps.model_installer import CATALOG
+from ai2apps.release_gate import (
     check_catalog,
     check_archives,
     check_evidence,
@@ -66,21 +66,21 @@ def test_preflight_cli_writes_reports(tmp_path: Path):
 
 def _write_test_wheel(path: Path, requirement: str) -> None:
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("dynamoe/model_installer.py", "")
+        archive.writestr("ai2apps/model_installer.py", "")
         archive.writestr(
-            "dynamoe/engines/deepseek_v4_flash/scope-pack.json", "{}"
+            "ai2apps/engines/deepseek_v4_flash/scope-pack.json", "{}"
         )
         archive.writestr(
-            "dynamoe/engines/qwen3_6_35b_a3b/scope-pack.json", "{}"
+            "ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json", "{}"
         )
         archive.writestr(
-            "dynamoe-0.1.dist-info/METADATA",
-            f"Metadata-Version: 2.4\nName: dynamoe\nVersion: 0.1\nRequires-Dist: {requirement}\n",
+            "ai2apps-0.1.dist-info/METADATA",
+            f"Metadata-Version: 2.4\nName: ai2apps\nVersion: 0.1\nRequires-Dist: {requirement}\n",
         )
 
 
 def test_archive_gate_accepts_index_dependency(tmp_path: Path):
-    wheel = tmp_path / "dynamoe.whl"
+    wheel = tmp_path / "ai2apps.whl"
     _write_test_wheel(wheel, "mlx-lm==0.31.3")
     checks = []
 
@@ -93,7 +93,7 @@ def test_archive_gate_accepts_index_dependency(tmp_path: Path):
 
 
 def test_archive_gate_rejects_direct_url_dependency(tmp_path: Path):
-    wheel = tmp_path / "dynamoe.whl"
+    wheel = tmp_path / "ai2apps.whl"
     _write_test_wheel(
         wheel,
         "mlx-lm @ git+https://github.com/ml-explore/mlx-lm@deadbeef",

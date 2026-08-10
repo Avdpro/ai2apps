@@ -74,7 +74,7 @@ def _data_payloads(frames):
 @pytest.mark.asyncio
 async def test_openai_stream_preserves_native_fusion_events_and_channels():
     request = ChatCompletionRequest(
-        model="fusion", messages=[], stream=True, dynamoe_stream_mode="reasoning"
+        model="fusion", messages=[], stream=True, ai2apps_stream_mode="reasoning"
     )
 
     frames = [
@@ -95,10 +95,10 @@ async def test_openai_stream_preserves_native_fusion_events_and_channels():
     review = next(
         delta
         for delta in deltas
-        if delta.get("dynamoe", {}).get("phase") == "review_result"
+        if delta.get("ai2apps", {}).get("phase") == "review_result"
     )
     assert draft["reasoning_content"] == "provisional"
-    assert draft["dynamoe"]["phase"] == "draft"
+    assert draft["ai2apps"]["phase"] == "draft"
     assert final["content"] == "canonical"
-    assert review["dynamoe"]["metadata"]["action"] == "pass"
+    assert review["ai2apps"]["metadata"]["action"] == "pass"
     assert frames[-1] == "data: [DONE]\n\n"

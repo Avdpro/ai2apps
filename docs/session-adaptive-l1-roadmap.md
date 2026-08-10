@@ -38,7 +38,7 @@ remain immutable inputs selected by explicit path.
 
 ## Triggers
 
-- Manual: `POST /v1/dynamoe/l1/optimize` queues a forced review at the next
+- Manual: `POST /v1/ai2apps/l1/optimize` queues a forced review at the next
   safe Decode boundary. The WebUI exposes the same action while streaming.
 - Early correction: reviews once after the first 128 generated tokens. It may
   commit without a prior TPS baseline only when at least 55% of routed expert
@@ -56,7 +56,7 @@ remain immutable inputs selected by explicit path.
 
 ## Per-Session control
 
-The OpenAI extension field `dynamoe_l1_mode` accepts `auto` or `off`.
+The OpenAI extension field `ai2apps_l1_mode` accepts `auto` or `off`.
 The WebUI exposes `auto / off / trigger`:
 
 - `auto`: device telemetry plus gated automatic reviews;

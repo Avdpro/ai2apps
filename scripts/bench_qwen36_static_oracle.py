@@ -372,7 +372,7 @@ async def run(args: argparse.Namespace) -> None:
             }
         final = arena.stats()
         report = {
-            "format": "dynamoe-qwen36-static-oracle",
+            "format": "ai2apps-qwen36-static-oracle",
             "version": 1,
             "scope": args.scope,
             "initial_physical_experts": capacity,

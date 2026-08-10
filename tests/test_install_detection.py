@@ -16,7 +16,7 @@ class TestInstallDetection:
     def test_not_app_bundle_in_dev(self):
         """Dev/pip install should not detect as app bundle."""
         assert not is_app_bundle()
-        assert get_cli_prefix() == "omlx"
+        assert get_cli_prefix() == "ai2apps"
 
     def test_app_bundle_detected(self, tmp_path):
         """Simulate running inside .app bundle."""
@@ -73,7 +73,7 @@ class TestInstallDetection:
             patch("omlx.utils.install.Path.home", return_value=tmp_path),
             patch("omlx.utils.install.shutil.which", return_value=str(shim)),
         ):
-            assert get_cli_prefix() == "omlx"
+            assert get_cli_prefix() == "ai2apps"
 
     def test_app_bundle_uses_bare_omlx_when_path_resolves_public_symlink(self, tmp_path):
         """Public symlink to the user shim is app-managed."""
@@ -90,7 +90,7 @@ class TestInstallDetection:
             patch("omlx.utils.install.Path.home", return_value=tmp_path),
             patch("omlx.utils.install.shutil.which", return_value=str(public)),
         ):
-            assert get_cli_prefix() == "omlx"
+            assert get_cli_prefix() == "ai2apps"
 
     def test_cli_command_prefix_quotes_full_app_path(self, tmp_path):
         fake = "/Users/me/My Apps/oMLX.app/Contents/Resources/omlx/utils/install.py"

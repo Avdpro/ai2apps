@@ -31,7 +31,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
-from dynamoe._version import __version__ as _dynamoe_version
+from ai2apps._version import __version__ as _ai2apps_version
 from omlx._version import __version__ as _omlx_version
 
 from ..api.markitdown import MARKITDOWN_MODEL_ID, markitdown_model_visible
@@ -335,7 +335,7 @@ class HFRetryRequest(BaseModel):
     hf_token: str = ""
 
 
-class DynaMoeInstallRequest(BaseModel):
+class AI2AppsInstallRequest(BaseModel):
     """Start a verified Cache-MoE model installation."""
 
     model_id: str
@@ -344,7 +344,7 @@ class DynaMoeInstallRequest(BaseModel):
     token: str = ""
 
 
-class DynaMoeRetryRequest(BaseModel):
+class AI2AppsRetryRequest(BaseModel):
     token: str = ""
 
 
@@ -1071,7 +1071,7 @@ def _static_version(path: str) -> str:
 
 templates.env.globals["static"] = _static_version
 
-templates.env.globals["version"] = _dynamoe_version
+templates.env.globals["version"] = _ai2apps_version
 templates.env.globals["runtime_version"] = _omlx_version
 
 # i18n defaults (English) — overridden once set_admin_getters is called
@@ -1138,7 +1138,7 @@ _get_global_settings = None
 _hf_downloader = None
 _hf_downloader_error = ""
 _ms_downloader = None
-_dynamoe_installer = None
+_ai2apps_installer = None
 _oq_manager = None
 _hf_uploader = None
 
@@ -1183,9 +1183,9 @@ def set_hf_downloader(downloader):
 def set_hf_downloader_unavailable(error: str) -> None:
     """Record a recoverable HF dependency/initialization failure."""
 
-    global _hf_downloader, _hf_downloader_error, _dynamoe_installer
+    global _hf_downloader, _hf_downloader_error, _ai2apps_installer
     _hf_downloader = None
-    _dynamoe_installer = None
+    _ai2apps_installer = None
     _hf_downloader_error = str(error).strip() or "Downloader initialization failed"
 
 
@@ -1194,7 +1194,7 @@ def _version_numbers(value: str) -> tuple[int, int, int]:
     return tuple((numbers + [0, 0, 0])[:3])
 
 
-def _dynamoe_hf_preflight() -> dict[str, Any]:
+def _ai2apps_hf_preflight() -> dict[str, Any]:
     """Report dependency, cache and non-secret authentication readiness."""
 
     minimum = "1.19.0"
@@ -1243,7 +1243,7 @@ def _dynamoe_hf_preflight() -> dict[str, Any]:
                 "code": "dependency_missing",
                 "message": "Hugging Face support is not installed.",
                 "action": (
-                    "Install DynaMoe with pip, or run: "
+                    "Install AI2Apps with pip, or run: "
                     "pip install 'huggingface-hub>=1.19.0'"
                 ),
             }
@@ -1254,7 +1254,7 @@ def _dynamoe_hf_preflight() -> dict[str, Any]:
                 "code": "dependency_outdated",
                 "message": (
                     f"huggingface-hub {installed_version} is too old; "
-                    f"DynaMoe requires {minimum} or newer."
+                    f"AI2Apps requires {minimum} or newer."
                 ),
                 "action": "Run: pip install -U 'huggingface-hub>=1.19.0'",
             }
@@ -1275,7 +1275,7 @@ def _dynamoe_hf_preflight() -> dict[str, Any]:
                     _hf_downloader_error
                     or "Hugging Face downloader is not initialized."
                 ),
-                "action": "Restart DynaMoe after repairing the Python environment.",
+                "action": "Restart AI2Apps after repairing the Python environment.",
             }
         )
 
@@ -1299,15 +1299,15 @@ def _dynamoe_hf_preflight() -> dict[str, Any]:
     }
 
 
-def _get_dynamoe_installer():
-    global _dynamoe_installer
+def _get_ai2apps_installer():
+    global _ai2apps_installer
     if _hf_downloader is None:
         raise HTTPException(status_code=503, detail="Downloader not initialized")
-    if _dynamoe_installer is None:
-        from dynamoe.model_installer import DynaMoeInstaller
+    if _ai2apps_installer is None:
+        from ai2apps.model_installer import AI2AppsInstaller
 
-        _dynamoe_installer = DynaMoeInstaller(_hf_downloader)
-    return _dynamoe_installer
+        _ai2apps_installer = AI2AppsInstaller(_hf_downloader)
+    return _ai2apps_installer
 
 
 def set_ms_downloader(downloader):
@@ -4653,7 +4653,7 @@ def _build_runtime_cache_observability(
     return payload
 
 
-def _build_dynamoe_observability(model_filter: str = "") -> dict:
+def _build_ai2apps_observability(model_filter: str = "") -> dict:
     """Return product-specific scope/cache state without synchronizing Metal."""
     raw_probe_depth = os.environ.get(
         "OMLX_DEEPSEEK_V4_SCOPE_PROBE_DEPTH", "16"
@@ -4663,7 +4663,7 @@ def _build_dynamoe_observability(model_filter: str = "") -> dict:
     except ValueError:
         probe_depth = 16
     payload = {
-        "version": _dynamoe_version,
+        "version": _ai2apps_version,
         "runtime": {"name": "oMLX", "version": _omlx_version},
         "scope_configured": bool(
             os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", "").strip()
@@ -4693,7 +4693,7 @@ def _build_dynamoe_observability(model_filter: str = "") -> dict:
         try:
             flesh = engine.get_stats().get("flesh")
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Could not collect DynaMoe stats for %s: %s", model_id, exc)
+            logger.debug("Could not collect AI2Apps stats for %s: %s", model_id, exc)
             continue
         if flesh:
             payload["models"].append({"id": model_id, **flesh})
@@ -4742,7 +4742,7 @@ async def get_server_stats(
         "engines": _get_engine_info(),
         "active_models": active_models_data,
         "runtime_cache": runtime_cache_data,
-        "dynamoe": _build_dynamoe_observability(model_filter=model),
+        "ai2apps": _build_ai2apps_observability(model_filter=model),
     }
 
 
@@ -5505,28 +5505,31 @@ async def probe_cache(
 # =============================================================================
 
 
-@router.get("/api/dynamoe/catalog")
-async def get_dynamoe_catalog(is_admin: bool = Depends(require_admin)):
-    """List DynaMoe-verified Cache-MoE installation recipes."""
+@router.get("/api/dynamoe/catalog", include_in_schema=False)
+@router.get("/api/ai2apps/catalog")
+async def get_ai2apps_catalog(is_admin: bool = Depends(require_admin)):
+    """List AI2Apps-verified Cache-MoE installation recipes."""
 
-    from dynamoe.model_installer import DynaMoeInstaller
+    from ai2apps.model_installer import AI2AppsInstaller
 
-    return {"models": DynaMoeInstaller.catalog()}
+    return {"models": AI2AppsInstaller.catalog()}
 
 
-@router.get("/api/dynamoe/preflight")
-async def get_dynamoe_preflight(is_admin: bool = Depends(require_admin)):
+@router.get("/api/dynamoe/preflight", include_in_schema=False)
+@router.get("/api/ai2apps/preflight")
+async def get_ai2apps_preflight(is_admin: bool = Depends(require_admin)):
     """Return actionable Hugging Face environment readiness."""
 
-    return _dynamoe_hf_preflight()
+    return _ai2apps_hf_preflight()
 
 
-@router.post("/api/dynamoe/install")
-async def start_dynamoe_install(
-    request: DynaMoeInstallRequest,
+@router.post("/api/dynamoe/install", include_in_schema=False)
+@router.post("/api/ai2apps/install")
+async def start_ai2apps_install(
+    request: AI2AppsInstallRequest,
     is_admin: bool = Depends(require_admin),
 ):
-    preflight = _dynamoe_hf_preflight()
+    preflight = _ai2apps_hf_preflight()
     if not preflight["ready"]:
         issue = preflight["issues"][0]
         raise HTTPException(
@@ -5534,7 +5537,7 @@ async def start_dynamoe_install(
             detail=f"{issue['message']} {issue['action']}",
         )
     try:
-        task = await _get_dynamoe_installer().start(
+        task = await _get_ai2apps_installer().start(
             request.model_id,
             request.weight_source,
             request.memory_tier,
@@ -5545,29 +5548,32 @@ async def start_dynamoe_install(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/api/dynamoe/tasks")
-async def list_dynamoe_tasks(is_admin: bool = Depends(require_admin)):
-    return {"tasks": _get_dynamoe_installer().get_tasks()}
+@router.get("/api/dynamoe/tasks", include_in_schema=False)
+@router.get("/api/ai2apps/tasks")
+async def list_ai2apps_tasks(is_admin: bool = Depends(require_admin)):
+    return {"tasks": _get_ai2apps_installer().get_tasks()}
 
 
-@router.post("/api/dynamoe/tasks/{task_id}/cancel")
-async def cancel_dynamoe_install(
+@router.post("/api/dynamoe/tasks/{task_id}/cancel", include_in_schema=False)
+@router.post("/api/ai2apps/tasks/{task_id}/cancel")
+async def cancel_ai2apps_install(
     task_id: str,
     is_admin: bool = Depends(require_admin),
 ):
-    if not await _get_dynamoe_installer().cancel(task_id):
+    if not await _get_ai2apps_installer().cancel(task_id):
         raise HTTPException(status_code=404, detail="Task not found or not cancellable")
     return {"success": True}
 
 
-@router.post("/api/dynamoe/tasks/{task_id}/retry")
-async def retry_dynamoe_install(
+@router.post("/api/dynamoe/tasks/{task_id}/retry", include_in_schema=False)
+@router.post("/api/ai2apps/tasks/{task_id}/retry")
+async def retry_ai2apps_install(
     task_id: str,
-    request: DynaMoeRetryRequest = DynaMoeRetryRequest(),
+    request: AI2AppsRetryRequest = AI2AppsRetryRequest(),
     is_admin: bool = Depends(require_admin),
 ):
     try:
-        task = await _get_dynamoe_installer().retry(task_id, request.token)
+        task = await _get_ai2apps_installer().retry(task_id, request.token)
         return {"success": True, "task": task.to_dict()}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -6832,15 +6838,15 @@ async def get_device_info(
 async def check_update(
     is_admin: bool = Depends(require_admin),
 ):
-    """Return the independent DynaMoe update state.
+    """Return the independent AI2Apps update state.
 
-    Upstream oMLX releases must not be presented as DynaMoe product updates.
+    Upstream oMLX releases must not be presented as AI2Apps product updates.
     """
     return {
         "update_available": False,
         "latest_version": None,
         "release_url": None,
-        "update_channel": "dynamoe",
+        "update_channel": "ai2apps",
     }
 
 

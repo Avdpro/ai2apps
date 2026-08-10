@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from dynamoe.fusion import (
+from ai2apps.fusion import (
     AdaptiveGate,
     DraftChunk,
     FailurePolicy,
@@ -21,8 +21,8 @@ from dynamoe.fusion import (
     apply_structured_patches,
     text_sha256,
 )
-from dynamoe.fusion.engine import FusionExecutionError, FusionOrchestrator
-from dynamoe.fusion.types import PatchOperation
+from ai2apps.fusion.engine import FusionExecutionError, FusionOrchestrator
+from ai2apps.fusion.types import PatchOperation
 
 
 @dataclass

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """
-OpenAI-compatible API server for DynaMoe, built on the oMLX runtime.
+OpenAI-compatible API server for AI2Apps, built on the oMLX runtime.
 
 This module provides a FastAPI server that exposes an OpenAI-compatible
 API for LLM inference using MLX on Apple Silicon.
@@ -18,13 +18,13 @@ Features:
 
 Usage:
     # Multi-model serving
-    dynamoe serve --model-dir /path/to/models
+    ai2apps serve --model-dir /path/to/models
 
     # With pinned models
-    dynamoe serve --model-dir /path/to/models
+    ai2apps serve --model-dir /path/to/models
 
     # With MCP tools
-    dynamoe serve --model-dir /path/to/models --mcp-config mcp.json
+    ai2apps serve --model-dir /path/to/models --mcp-config mcp.json
 
 The server provides:
     - POST /v1/completions - Text completions
@@ -60,7 +60,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from dynamoe._version import __version__ as _dynamoe_version
+from ai2apps._version import __version__ as _ai2apps_version
 from omlx._version import __version__ as _omlx_version
 
 from .api.anthropic_models import (
@@ -122,8 +122,8 @@ from .api.openai_models import (
     CompletionChoice,
     CompletionRequest,
     CompletionResponse,
-    DynaMoeEngineBoostRequest,
-    DynaMoeL1OptimizeRequest,
+    AI2AppsEngineBoostRequest,
+    AI2AppsL1OptimizeRequest,
     ModelInfo,
     ModelsResponse,
     PromptTokensDetails,
@@ -517,12 +517,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DynaMoe API",
+    title="AI2Apps API",
     description=(
         "Scope-aware dynamic MoE inference for Apple Silicon. "
         "Independent project built on the oMLX runtime."
     ),
-    version=_dynamoe_version,
+    version=_ai2apps_version,
     lifespan=lifespan,
 )
 
@@ -1807,7 +1807,7 @@ def init_server(
         logger.info("API key authentication: enabled")
 
     # Initialize HuggingFace downloader. A broken source checkout should still
-    # start the admin UI so its DynaMoe preflight can explain how to repair the
+    # start the admin UI so its AI2Apps preflight can explain how to repair the
     # missing or outdated dependency.
     from .admin.routes import set_hf_downloader, set_hf_downloader_unavailable
 
@@ -2259,7 +2259,7 @@ async def server_status(_: bool = Depends(verify_api_key)):
 
     return {
         "status": "ok",
-        "version": _dynamoe_version,
+        "version": _ai2apps_version,
         "runtime": {"name": "oMLX", "version": _omlx_version},
         "uptime_seconds": snapshot["uptime_seconds"],
         "models_discovered": models_discovered,
@@ -2731,9 +2731,10 @@ async def load_model_public(model_id: str, _: bool = Depends(verify_api_key)):
     return {"status": "ok", "model_id": model_id, "message": f"Loaded {model_id}"}
 
 
-@app.post("/v1/dynamoe/l1/optimize")
-async def optimize_dynamoe_l1(
-    request: DynaMoeL1OptimizeRequest,
+@app.post("/v1/dynamoe/l1/optimize", include_in_schema=False)
+@app.post("/v1/ai2apps/l1/optimize")
+async def optimize_ai2apps_l1(
+    request: AI2AppsL1OptimizeRequest,
     _: bool = Depends(verify_api_key),
 ):
     """Queue an adaptive-L1 commit at the next safe Decode boundary."""
@@ -2761,9 +2762,10 @@ async def optimize_dynamoe_l1(
     return {"status": "queued", "model_id": model_id, **result}
 
 
-@app.post("/v1/dynamoe/engine/boost")
-async def set_dynamoe_engine_boost(
-    request: DynaMoeEngineBoostRequest,
+@app.post("/v1/dynamoe/engine/boost", include_in_schema=False)
+@app.post("/v1/ai2apps/engine/boost")
+async def set_ai2apps_engine_boost(
+    request: AI2AppsEngineBoostRequest,
     _: bool = Depends(verify_api_key),
 ):
     """Apply Engine Boost at the next safe Decode boundary."""
@@ -3504,20 +3506,26 @@ async def create_chat_completion(
             "xtc_probability": xtc_probability,
             "xtc_threshold": xtc_threshold,
         }
-        if request.dynamoe_session_id:
-            chat_kwargs["flesh_session_id"] = request.dynamoe_session_id
-        if request.dynamoe_l1_mode:
-            chat_kwargs["flesh_l1_mode"] = request.dynamoe_l1_mode
-        if request.dynamoe_engine_boost:
-            chat_kwargs["flesh_boost_mode"] = request.dynamoe_engine_boost
-        fusion_stream_mode = request.dynamoe_stream_mode
+        session_id = request.ai2apps_session_id or request.dynamoe_session_id
+        l1_mode = request.ai2apps_l1_mode or request.dynamoe_l1_mode
+        boost_mode = request.ai2apps_engine_boost or request.dynamoe_engine_boost
+        if session_id:
+            chat_kwargs["flesh_session_id"] = session_id
+        if l1_mode:
+            chat_kwargs["flesh_l1_mode"] = l1_mode
+        if boost_mode:
+            chat_kwargs["flesh_boost_mode"] = boost_mode
+        fusion_stream_mode = request.ai2apps_stream_mode or request.dynamoe_stream_mode
         if (
             fusion_stream_mode is None
-            and http_request.headers.get("x-dynamoe-draft-protocol") == "1"
+            and (
+                http_request.headers.get("x-ai2apps-draft-protocol") == "1"
+                or http_request.headers.get("x-dynamoe-draft-protocol") == "1"
+            )
         ):
             fusion_stream_mode = "draft"
         if fusion_stream_mode:
-            chat_kwargs["dynamoe_stream_mode"] = fusion_stream_mode
+            chat_kwargs["ai2apps_stream_mode"] = fusion_stream_mode
 
         # Add seed for reproducible generation (best-effort)
         if request.seed is not None:
@@ -4503,7 +4511,7 @@ async def stream_chat_completion(
                 event_channel = fusion_event.get("channel", "control")
                 if first_token_time is None and event_text:
                     first_token_time = time.perf_counter()
-                delta_kwargs = {"dynamoe": fusion_event}
+                delta_kwargs = {"ai2apps": fusion_event}
                 if event_channel == "reasoning" and event_text:
                     delta_kwargs["reasoning_content"] = event_text
                 elif event_channel == "content" and event_text:
@@ -6957,7 +6965,7 @@ async def init_mcp(config_path: str):
 def main():
     """Run the server (use omlx CLI instead)."""
     parser = argparse.ArgumentParser(
-        description="DynaMoe multi-model serving for Apple Silicon",
+        description="AI2Apps multi-model serving for Apple Silicon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -225,30 +225,30 @@ def test_session_owned_namespace_is_stable_across_policy_changes():
     )
 
 
-def test_chat_request_accepts_dynamoe_session_id():
+def test_chat_request_accepts_ai2apps_session_id():
     from omlx.api.openai_models import ChatCompletionRequest
 
     request = ChatCompletionRequest(
         model="flesh",
         messages=[{"role": "user", "content": "hello"}],
-        dynamoe_session_id="chat_123",
-        dynamoe_l1_mode="off",
-        dynamoe_engine_boost="turbo",
+        ai2apps_session_id="chat_123",
+        ai2apps_l1_mode="off",
+        ai2apps_engine_boost="turbo",
     )
-    assert request.dynamoe_session_id == "chat_123"
-    assert request.dynamoe_l1_mode == "off"
-    assert request.dynamoe_engine_boost == "turbo"
+    assert request.ai2apps_session_id == "chat_123"
+    assert request.ai2apps_l1_mode == "off"
+    assert request.ai2apps_engine_boost == "turbo"
 
 
 def test_chat_request_rejects_unknown_engine_boost():
     from pydantic import ValidationError
     from omlx.api.openai_models import ChatCompletionRequest
 
-    with pytest.raises(ValidationError, match="dynamoe_engine_boost"):
+    with pytest.raises(ValidationError, match="ai2apps_engine_boost"):
         ChatCompletionRequest(
             model="flesh",
             messages=[{"role": "user", "content": "hello"}],
-            dynamoe_engine_boost="warp",
+            ai2apps_engine_boost="warp",
         )
 
 
@@ -301,7 +301,7 @@ def test_live_engine_boost_moves_kv_to_session_namespace():
 async def test_manual_optimize_endpoint_queues_without_engine_lease(monkeypatch):
     from types import SimpleNamespace
 
-    from omlx.api.openai_models import DynaMoeL1OptimizeRequest
+    from omlx.api.openai_models import AI2AppsL1OptimizeRequest
     from omlx import server
 
     calls = []
@@ -316,8 +316,8 @@ async def test_manual_optimize_endpoint_queues_without_engine_lease(monkeypatch)
         get_entry=lambda model: SimpleNamespace(engine=engine),
     )
     monkeypatch.setattr(server._server_state, "engine_pool", pool)
-    result = await server.optimize_dynamoe_l1(
-        DynaMoeL1OptimizeRequest(model="flesh", session_id="chat_123"), True
+    result = await server.optimize_ai2apps_l1(
+        AI2AppsL1OptimizeRequest(model="flesh", session_id="chat_123"), True
     )
     assert calls == ["chat_123"]
     assert result["status"] == "queued"
@@ -327,7 +327,7 @@ async def test_manual_optimize_endpoint_queues_without_engine_lease(monkeypatch)
 async def test_engine_boost_endpoint_queues_without_engine_lease(monkeypatch):
     from types import SimpleNamespace
 
-    from omlx.api.openai_models import DynaMoeEngineBoostRequest
+    from omlx.api.openai_models import AI2AppsEngineBoostRequest
     from omlx import server
 
     calls = []
@@ -347,8 +347,8 @@ async def test_engine_boost_endpoint_queues_without_engine_lease(monkeypatch):
         get_entry=lambda model: SimpleNamespace(engine=engine),
     )
     monkeypatch.setattr(server._server_state, "engine_pool", pool)
-    result = await server.set_dynamoe_engine_boost(
-        DynaMoeEngineBoostRequest(
+    result = await server.set_ai2apps_engine_boost(
+        AI2AppsEngineBoostRequest(
             model="flesh", session_id="chat_123", mode="blast"
         ),
         True,

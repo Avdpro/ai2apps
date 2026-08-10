@@ -225,12 +225,12 @@
                                     class="px-4 py-1.5 text-xs font-medium rounded-md transition-all">
                                 {{ t('models.downloader.source.hf') }}
                             </button>
-                            <button @click="downloaderSource = 'dynamoe'; initDynaMoeDownloader()"
-                                    :class="downloaderSource === 'dynamoe'
+                            <button @click="downloaderSource = 'ai2apps'; initAI2AppsDownloader()"
+                                    :class="downloaderSource === 'ai2apps'
                                         ? 'bg-white text-neutral-900 shadow-sm'
                                         : 'text-neutral-500 hover:text-neutral-700'"
                                     class="px-4 py-1.5 text-xs font-medium rounded-md transition-all">
-                                DynaMoe
+                                AI2Apps
                             </button>
                             <button @click="downloaderSource = 'ms'; initMsDownloader()"
                                     :class="downloaderSource === 'ms'
@@ -862,15 +862,15 @@
 
                         </div><!-- end HuggingFace Source -->
 
-                        <!-- ===== DynaMoe verified Cache-MoE source ===== -->
-                        <div x-show="downloaderSource === 'dynamoe'" x-cloak>
+                        <!-- ===== AI2Apps verified Cache-MoE source ===== -->
+                        <div x-show="downloaderSource === 'ai2apps'" x-cloak>
                             <div class="bg-white rounded-2xl border border-neutral-200 overflow-hidden mb-6">
                                 <div class="flex items-center justify-between px-4 sm:px-6 py-4 bg-neutral-100 border-b border-neutral-200">
                                     <div class="flex items-center gap-3">
                                         <i data-lucide="sparkles" class="w-4 h-4 text-neutral-500"></i>
                                         <span class="text-xs font-bold uppercase tracking-wider text-neutral-600">Verified Cache-MoE models</span>
                                     </div>
-                                    <span class="text-xs text-neutral-400">models with a dedicated DynaMoe engine</span>
+                                    <span class="text-xs text-neutral-400">models with a dedicated AI2Apps engine</span>
                                 </div>
                                 <div class="p-6 space-y-5">
                                     <div x-show="dynaPreflightLoading" x-cloak
@@ -996,7 +996,7 @@
                                     </template>
                                 </div>
                             </div>
-                        </div><!-- end DynaMoe Source -->
+                        </div><!-- end AI2Apps Source -->
 
                         <!-- ===== ModelScope Source ===== -->
                         <div x-show="downloaderSource === 'ms'" x-cloak>

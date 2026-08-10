@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import pytest
 
-from dynamoe.fusion.adapters import (
+from ai2apps.fusion.adapters import (
     OMLXGeneratorBackend,
     OMLXReviewerBackend,
     OpenAICompatibleReviewBackend,
 )
-from dynamoe.fusion.profiles import (
+from ai2apps.fusion.profiles import (
     FusionProfile,
     ResolverConfig,
     RoleConfig,
     fusion_profile_from_mapping,
     profile_to_mapping,
 )
-from dynamoe.fusion.serde import review_decision_from_json
-from dynamoe.fusion.types import (
+from ai2apps.fusion.serde import review_decision_from_json
+from ai2apps.fusion.types import (
     FusionRequest,
     ReviewAction,
     StreamMode,
@@ -213,10 +213,10 @@ def test_stream_mode_request_validation_is_exposed():
     from omlx.api.openai_models import ChatCompletionRequest
 
     parsed = ChatCompletionRequest(
-        model="fusion", messages=[], dynamoe_stream_mode="draft"
+        model="fusion", messages=[], ai2apps_stream_mode="draft"
     )
-    assert parsed.dynamoe_stream_mode == "draft"
+    assert parsed.ai2apps_stream_mode == "draft"
     with pytest.raises(ValidationError):
         ChatCompletionRequest(
-            model="fusion", messages=[], dynamoe_stream_mode="invalid"
+            model="fusion", messages=[], ai2apps_stream_mode="invalid"
         )

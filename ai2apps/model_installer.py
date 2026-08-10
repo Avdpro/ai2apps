@@ -15,11 +15,36 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+_METADATA_DIR = ".ai2apps"
+_LEGACY_METADATA_DIR = ".dynamoe"
+_MODEL_MANIFEST = "ai2apps-model.json"
+_LEGACY_MODEL_MANIFEST = "dynamoe-model.json"
+
+
+def _metadata_dir(source_dir: Path) -> Path:
+    current = source_dir / _METADATA_DIR
+    legacy = source_dir / _LEGACY_METADATA_DIR
+    if current.exists() or not legacy.exists():
+        return current
+    return legacy
+
+
+def _source_record(source_dir: Path) -> tuple[Path, dict[str, Any]]:
+    for directory in (_METADATA_DIR, _LEGACY_METADATA_DIR):
+        path = source_dir / directory / "source.json"
+        try:
+            value = json.loads(path.read_text())
+        except (OSError, TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            return path, value
+    return source_dir / _METADATA_DIR / "source.json", {}
+
 CATALOG = (
     {
         "id": "deepseek-v4-flash",
         "name": "DeepSeek V4 Flash",
-        "description": "DeepSeek V4 Flash with the dedicated DynaMoe Flesh engine.",
+        "description": "DeepSeek V4 Flash with the dedicated AI2Apps Flesh engine.",
         "family": "deepseek_v4",
         "engine": {
             "id": "deepseek-v4-flesh",
@@ -51,7 +76,7 @@ CATALOG = (
     {
         "id": "deepseek-v4-flash-2bit",
         "name": "DeepSeek V4 Flash 2-bit",
-        "description": "MLX 2-bit DQ checkpoint with the dedicated DynaMoe Flesh engine.",
+        "description": "MLX 2-bit DQ checkpoint with the dedicated AI2Apps Flesh engine.",
         "family": "deepseek_v4",
         "engine": {
             "id": "deepseek-v4-flesh",
@@ -83,7 +108,7 @@ CATALOG = (
     {
         "id": "qwen3.6-35b-a3b-4bit",
         "name": "Qwen3.6 35B A3B 4-bit",
-        "description": "MLX 4-bit checkpoint with the dedicated DynaMoe Tiered engine.",
+        "description": "MLX 4-bit checkpoint with the dedicated AI2Apps Tiered engine.",
         "family": "qwen3_6",
         "engine": {
             "id": "qwen3.6-tiered",
@@ -238,7 +263,7 @@ def build_deepseek_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
 
     config = json.loads((source_dir / "config.json").read_text())
     if config.get("model_type") != "deepseek_v4":
-        raise ValueError("DynaMoe recipe expects a deepseek_v4 checkpoint")
+        raise ValueError("AI2Apps recipe expects a deepseek_v4 checkpoint")
     num_layers = int(config["num_hidden_layers"])
     num_experts = int(config["n_routed_experts"])
     first_routed_layer = int(config.get("first_k_dense_replace", 0))
@@ -409,13 +434,13 @@ def build_qwen36_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
 
     config = json.loads((source_dir / "config.json").read_text())
     if config.get("model_type") != "qwen3_5_moe":
-        raise ValueError("DynaMoe Qwen recipe expects a qwen3_5_moe checkpoint")
+        raise ValueError("AI2Apps Qwen recipe expects a qwen3_5_moe checkpoint")
     text_config = config.get("text_config") or {}
     num_layers = int(text_config["num_hidden_layers"])
     num_experts = int(text_config["num_experts"])
     quantization = config.get("quantization") or config.get("quantization_config") or {}
     if int(quantization.get("bits", 0)) != 4 or quantization.get("mode") != "affine":
-        raise ValueError("DynaMoe Qwen recipe requires an affine 4-bit checkpoint")
+        raise ValueError("AI2Apps Qwen recipe requires an affine 4-bit checkpoint")
 
     index = json.loads(
         (source_dir / "model.safetensors.index.json").read_text()
@@ -534,7 +559,7 @@ def build_qwen36_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
     return destination
 
 
-class DynaMoeInstaller:
+class AI2AppsInstaller:
     def __init__(self, hf_downloader: Any):
         self.hf_downloader = hf_downloader
         self.tasks: dict[str, InstallTask] = {}
@@ -567,10 +592,10 @@ class DynaMoeInstaller:
             manifest = json.loads(manifest_path.read_text())
         except (OSError, TypeError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"invalid Scope Pack manifest: {manifest_path}") from exc
-        if (
-            manifest.get("format") != "dynamoe-scope-pack"
-            or manifest.get("version") != 1
-        ):
+        if manifest.get("format") not in {
+            "ai2apps-scope-pack",
+            "dynamoe-scope-pack",
+        } or manifest.get("version") != 1:
             raise RuntimeError(f"unsupported Scope Pack manifest: {manifest_path}")
         if manifest.get("family") != recipe["family"]:
             raise RuntimeError(
@@ -610,7 +635,7 @@ class DynaMoeInstaller:
         packaged = Path(__file__).parent / recipe["engine"]["scope_asset"]
         if packaged.is_file():
             profile = packaged.resolve()
-            DynaMoeInstaller._scope_pack_metadata(recipe, profile)
+            AI2AppsInstaller._scope_pack_metadata(recipe, profile)
             return profile
         # Development compatibility only. Release builds ship the profile in
         # the engine package above; research artifacts remain external here.
@@ -650,7 +675,7 @@ class DynaMoeInstaller:
         for recipe in CATALOG:
             if recipe["id"] == model_id:
                 return recipe
-        raise ValueError(f"unsupported DynaMoe model: {model_id}")
+        raise ValueError(f"unsupported AI2Apps model: {model_id}")
 
     @staticmethod
     def _prepare_cached_checkpoint(
@@ -659,17 +684,18 @@ class DynaMoeInstaller:
         token: str,
         destination: Path,
     ) -> bool:
-        source_record = destination / ".dynamoe" / "source.json"
-        try:
-            recorded = json.loads(source_record.read_text())
-        except (OSError, TypeError, json.JSONDecodeError):
-            recorded = {}
-        if checkpoint_is_complete(destination) and recorded == {
-            "format": "dynamoe-hf-source",
+        source_record, recorded = _source_record(destination)
+        expected_source = {
             "version": 1,
             "repo_id": repo_id,
             "revision": revision,
-        }:
+        }
+        if (
+            checkpoint_is_complete(destination)
+            and recorded.get("format")
+            in {"ai2apps-hf-source", "dynamoe-hf-source"}
+            and all(recorded.get(key) == value for key, value in expected_source.items())
+        ):
             return True
         try:
             from huggingface_hub import snapshot_download
@@ -693,12 +719,13 @@ class DynaMoeInstaller:
         link_cached_snapshot(snapshot, destination)
         if not checkpoint_is_complete(destination):
             return False
+        source_record = destination / _METADATA_DIR / "source.json"
         source_record.parent.mkdir(parents=True, exist_ok=True)
         partial = source_record.with_suffix(".json.partial")
         partial.write_text(
             json.dumps(
                 {
-                    "format": "dynamoe-hf-source",
+                    "format": "ai2apps-hf-source",
                     "version": 1,
                     "repo_id": repo_id,
                     "revision": revision,
@@ -713,13 +740,13 @@ class DynaMoeInstaller:
 
     @staticmethod
     def _write_source_record(task: InstallTask, source_dir: Path) -> None:
-        path = source_dir / ".dynamoe" / "source.json"
+        path = source_dir / _METADATA_DIR / "source.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_suffix(".json.partial")
         partial.write_text(
             json.dumps(
                 {
-                    "format": "dynamoe-hf-source",
+                    "format": "ai2apps-hf-source",
                     "version": 1,
                     "repo_id": task.repo_id,
                     "revision": task.revision,
@@ -750,7 +777,7 @@ class DynaMoeInstaller:
         scope_profile = self._scope_profile(recipe)
         if scope_profile is None:
             raise ValueError(
-                "The dedicated DynaMoe engine package is incomplete; reinstall DynaMoe"
+                "The dedicated AI2Apps engine package is incomplete; reinstall AI2Apps"
             )
         task = InstallTask(
             task_id=str(uuid.uuid4()),
@@ -818,7 +845,7 @@ class DynaMoeInstaller:
                         )
                     self._write_source_record(task, source_dir)
 
-                work_dir = source_dir / ".dynamoe"
+                work_dir = _metadata_dir(source_dir)
                 task.status = InstallStatus.INDEXING
                 task.phase = "Indexing checkpoint"
                 task.progress = 56.0
@@ -849,7 +876,7 @@ class DynaMoeInstaller:
                     split_store_dir = None
                     store_dir = work_dir / "expert-store"
                 conversion_identity = {
-                    "format": "dynamoe-conversion-state",
+                    "format": "ai2apps-conversion-state",
                     "version": 1,
                     "model_id": task.model_id,
                     "repo_id": task.repo_id,
@@ -863,6 +890,8 @@ class DynaMoeInstaller:
                     )
                 except (OSError, TypeError, json.JSONDecodeError):
                     previous_conversion = {}
+                if previous_conversion.get("format") == "dynamoe-conversion-state":
+                    previous_conversion["format"] = "ai2apps-conversion-state"
                 same_conversion = all(
                     previous_conversion.get(key) == value
                     for key, value in conversion_identity.items()
@@ -994,7 +1023,7 @@ class DynaMoeInstaller:
                 task.phase = "Configuring dedicated engine"
                 task.progress = 97.0
                 install_manifest = {
-                    "format": "dynamoe-cache-moe-model",
+                    "format": "ai2apps-cache-moe-model",
                     "version": 2,
                     "model_id": task.model_id,
                     "family": recipe["family"],
@@ -1024,7 +1053,7 @@ class DynaMoeInstaller:
                     install_manifest["arena_tail_slots"] = int(
                         recipe.get("arena_tail_slots", 24)
                     )
-                manifest_path = source_dir / "dynamoe-model.json"
+                manifest_path = source_dir / _MODEL_MANIFEST
                 partial = manifest_path.with_suffix(".json.partial")
                 partial.write_text(json.dumps(install_manifest, indent=2) + "\n")
                 partial.replace(manifest_path)
@@ -1109,7 +1138,7 @@ class DynaMoeInstaller:
                 raise ValueError("Qwen Scope Pack does not contain the default scope")
         else:
             if profile.get("format") != "dmoe-deepseek-tiered-policy":
-                raise ValueError("unsupported DynaMoe Scope Pack")
+                raise ValueError("unsupported AI2Apps Scope Pack")
             if scope_name not in profile.get("scopes", {}):
                 raise ValueError("Scope Pack does not contain the default scope")
         manifest = json.loads((store_dir / "manifest.json").read_text())
@@ -1121,8 +1150,8 @@ class DynaMoeInstaller:
                 names = {item.name for item in store.tensors}
             if "gate_up_proj.weight" not in names:
                 raise ValueError("Qwen expert store is not gate/up fused")
-        if not (source_dir / "dynamoe-model.json").is_file():
-            raise ValueError("DynaMoe install manifest was not committed")
+        if not (source_dir / _MODEL_MANIFEST).is_file():
+            raise ValueError("AI2Apps install manifest was not committed")
 
     async def cancel(self, task_id: str) -> bool:
         task = self.tasks.get(task_id)

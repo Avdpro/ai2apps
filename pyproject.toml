@@ -14,17 +14,17 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dynamoe"
+name = "ai2apps"
 dynamic = ["version"]
-description = "Scope-aware dynamic MoE inference server for Apple Silicon"
+description = "Local-first edge supermodel and Fusion inference runtime for Apple Silicon"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11,<3.14"
 authors = [
-    {name = "DynaMoe contributors"}
+    {name = "AI2Apps contributors"}
 ]
-keywords = ["llm", "moe", "mlx", "apple-silicon", "inference", "expert-cache"]
+keywords = ["llm", "moe", "mlx", "apple-silicon", "inference", "expert-cache", "fusion"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -94,7 +94,7 @@ dependencies = [
     "tabulate>=0.9.0",
     # Resource monitoring
     "psutil>=5.9.0",
-    # Native process title support (shows as omlx-server instead of python)
+    # Native process title support (shows as ai2apps-server instead of python)
     "setproctitle>=1.3.3",
     # Server
     "fastapi>=0.108.0",
@@ -115,7 +115,7 @@ dependencies = [
     "Pillow>=9.0.0",
     # DFlash remains a source-development capability until its reviewed fork
     # has an index release. The server already treats it as optional; the
-    # three DynaMoe release engines do not import it.
+    # three AI2Apps release engines do not import it.
     "markitdown[pdf,docx,pptx]==0.1.6",
 ]
 
@@ -221,20 +221,20 @@ dev = [
 ]
 
 [project.scripts]
-dynamoe = "dynamoe.cli:main"
-dynamoe-release-gate = "dynamoe.release_gate:main"
+ai2apps = "ai2apps.cli:main"
+ai2apps-release-gate = "ai2apps.release_gate:main"
 # Compatibility entry point for existing oMLX-based deployments.
 omlx = "omlx.cli:main"
 
 [tool.setuptools.dynamic]
-version = {attr = "dynamoe._version.__version__"}
+version = {attr = "ai2apps._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["dynamoe*", "omlx*"]
+include = ["ai2apps*", "omlx*"]
 
 [tool.setuptools.package-data]
-"dynamoe" = ["engines/**/*.json"]
+"ai2apps" = ["engines/**/*.json"]
 "omlx" = ["oq_calibration_data.json", "oqe_calibration_data.json"]
 "omlx.admin" = [
     "templates/**/*.html",

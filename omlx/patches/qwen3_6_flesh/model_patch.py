@@ -641,7 +641,7 @@ def _make_model_call(original_call):
         # Exact fail-closed recomputation: the real KV cache was not advanced.
         return original_call(self, inputs, *args, **kwargs)
 
-    patched._dynamoe_qwen36_tiered_txn = True
+    patched._ai2apps_qwen36_tiered_txn = True
     return patched
 
 
@@ -956,7 +956,7 @@ def _make_sanitize(original_sanitize):
             block.scope_prefill_model_key = model_key
         return sanitized
 
-    patched._dynamoe_qwen36_flesh = True
+    patched._ai2apps_qwen36_flesh = True
     return patched
 
 
@@ -967,17 +967,17 @@ def apply_qwen36_flesh_model_patch() -> bool:
     from mlx_lm.models.qwen3_5_moe import Model
     from mlx_lm.models.qwen3_next import Qwen3NextSparseMoeBlock
 
-    if not getattr(Qwen3NextSparseMoeBlock, "_dynamoe_qwen36_flesh", False):
+    if not getattr(Qwen3NextSparseMoeBlock, "_ai2apps_qwen36_flesh", False):
         Qwen3NextSparseMoeBlock.__init__ = _make_init(
             Qwen3NextSparseMoeBlock.__init__
         )
         Qwen3NextSparseMoeBlock.__call__ = _make_call(
             Qwen3NextSparseMoeBlock.__call__
         )
-        Qwen3NextSparseMoeBlock._dynamoe_qwen36_flesh = True
-    if not getattr(Model.sanitize, "_dynamoe_qwen36_flesh", False):
+        Qwen3NextSparseMoeBlock._ai2apps_qwen36_flesh = True
+    if not getattr(Model.sanitize, "_ai2apps_qwen36_flesh", False):
         Model.sanitize = _make_sanitize(Model.sanitize)
-    if not getattr(Model.__call__, "_dynamoe_qwen36_tiered_txn", False):
+    if not getattr(Model.__call__, "_ai2apps_qwen36_tiered_txn", False):
         Model.__call__ = _make_model_call(Model.__call__)
     _PATCHED = True
     logger.info("Qwen3.6 Flesh model patch applied")

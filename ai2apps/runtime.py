@@ -1,4 +1,4 @@
-"""Supported DynaMoe imports for product-specific inference engines."""
+"""Supported AI2Apps imports for product-specific inference engines."""
 
 from omlx.engine.flesh import DeepseekV4FleshEngine
 from omlx.engine.qwen36_arena import Qwen36ArenaEngine

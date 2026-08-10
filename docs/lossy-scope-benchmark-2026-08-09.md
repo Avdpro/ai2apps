@@ -52,7 +52,7 @@ Use the common environment below and set `MODE` to one of the five modes:
 ```bash
 OMLX_DEEPSEEK_V4_SCOPE_PROFILE=/path/to/dmoe/artifacts/deepseek-v4-flash/scope-study/phase-long128-v1/tiered-top60-global4.json \
 OMLX_DEEPSEEK_V4_SCOPE_NAME=coding \
-OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/dynamoe/artifacts/moe-expert-major \
+OMLX_DEEPSEEK_V4_EXPERT_STORE=/path/to/ai2apps/artifacts/moe-expert-major \
 OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS=8 \
 OMLX_DEEPSEEK_V4_SCOPE_WARMUP_TOKENS=off \
 OMLX_DEEPSEEK_V4_SCOPE_LOSSY_MODE=$MODE \

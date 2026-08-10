@@ -1,9 +1,10 @@
-# DynaMoe
+# AI2Apps
 
-DynaMoe est un projet indépendant d'inférence MoE dynamique pour Apple Silicon,
-construit sur le runtime open source [oMLX](https://github.com/jundot/omlx).
+AI2Apps est l'écosystème de supermodèles en périphérie : une plateforme locale
+d'inférence Fusion et Cache-MoE pour Apple Silicon, construite sur le runtime
+open source [oMLX](https://github.com/jundot/omlx).
 
-DynaMoe n'est ni affilié, ni sponsorisé, ni approuvé par le projet oMLX ou ses
+AI2Apps n'est ni affilié, ni sponsorisé, ni approuvé par le projet oMLX ou ses
 mainteneurs. Le nom oMLX sert uniquement à identifier l'origine du runtime.
 
 Consultez le [README principal](README.md), l'[architecture](docs/architecture.md)

@@ -308,39 +308,45 @@ class ChatCompletionRequest(BaseModel):
     specprefill_threshold: Optional[int] = None
     # Seed for reproducible generation (best-effort)
     seed: Optional[int] = None
-    # DynaMoe extension: stable logical conversation ownership for adaptive L1.
+    # AI2Apps extension: stable logical conversation ownership for adaptive L1.
     # Ignored by engines that do not implement a session-owned expert cache.
-    dynamoe_session_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
-    # DynaMoe extension: per-Session adaptive L1 policy. ``trigger`` is an
-    # action exposed by /v1/dynamoe/l1/optimize, not a request mode.
-    dynamoe_l1_mode: Optional[str] = None
-    # DynaMoe extension: per-request routed-expert acceleration policy.
+    ai2apps_session_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    # AI2Apps extension: per-Session adaptive L1 policy. ``trigger`` is an
+    # action exposed by /v1/ai2apps/l1/optimize, not a request mode.
+    ai2apps_l1_mode: Optional[str] = None
+    # AI2Apps extension: per-request routed-expert acceleration policy.
     # natural=exact, turbo=tail2, blast=head2.
+    ai2apps_engine_boost: Optional[str] = None
+    # AI2Apps Fusion stream capability negotiation.
+    ai2apps_stream_mode: Optional[str] = None
+    # Read-only compatibility fields for pre-rename local clients. New API
+    # responses and documentation expose only the AI2Apps names.
+    dynamoe_session_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    dynamoe_l1_mode: Optional[str] = None
     dynamoe_engine_boost: Optional[str] = None
-    # DynaMoe Fusion stream capability negotiation.
     dynamoe_stream_mode: Optional[str] = None
 
-    @field_validator("dynamoe_l1_mode")
+    @field_validator("ai2apps_l1_mode", "dynamoe_l1_mode")
     @classmethod
-    def validate_dynamoe_l1_mode(cls, value):
+    def validate_ai2apps_l1_mode(cls, value):
         if value is not None and value not in ("auto", "off"):
-            raise ValueError("dynamoe_l1_mode must be auto or off")
+            raise ValueError("ai2apps_l1_mode must be auto or off")
         return value
 
-    @field_validator("dynamoe_engine_boost")
+    @field_validator("ai2apps_engine_boost", "dynamoe_engine_boost")
     @classmethod
-    def validate_dynamoe_engine_boost(cls, value):
+    def validate_ai2apps_engine_boost(cls, value):
         if value is not None and value not in ("natural", "turbo", "blast"):
             raise ValueError(
-                "dynamoe_engine_boost must be natural, turbo, or blast"
+                "ai2apps_engine_boost must be natural, turbo, or blast"
             )
         return value
 
-    @field_validator("dynamoe_stream_mode")
+    @field_validator("ai2apps_stream_mode", "dynamoe_stream_mode")
     @classmethod
-    def validate_dynamoe_stream_mode(cls, value):
+    def validate_ai2apps_stream_mode(cls, value):
         if value is not None and value not in ("draft", "reasoning", "final"):
-            raise ValueError("dynamoe_stream_mode must be draft, reasoning, or final")
+            raise ValueError("ai2apps_stream_mode must be draft, reasoning, or final")
         return value
 
     @field_validator("stop", mode="before")
@@ -352,14 +358,14 @@ class ChatCompletionRequest(BaseModel):
         return v
 
 
-class DynaMoeL1OptimizeRequest(BaseModel):
-    """DynaMoe extension for a non-blocking adaptive-L1 control request."""
+class AI2AppsL1OptimizeRequest(BaseModel):
+    """AI2Apps extension for a non-blocking adaptive-L1 control request."""
 
     model: str
     session_id: str = Field(min_length=1, max_length=128)
 
 
-class DynaMoeEngineBoostRequest(BaseModel):
+class AI2AppsEngineBoostRequest(BaseModel):
     """Queue an Engine Boost change at the next safe Decode boundary."""
 
     model: str
@@ -372,6 +378,11 @@ class DynaMoeEngineBoostRequest(BaseModel):
         if value not in ("natural", "turbo", "blast"):
             raise ValueError("mode must be natural, turbo, or blast")
         return value
+
+
+# Import compatibility for integrations built against development checkouts.
+DynaMoeL1OptimizeRequest = AI2AppsL1OptimizeRequest
+DynaMoeEngineBoostRequest = AI2AppsEngineBoostRequest
 
 
 class AssistantMessage(BaseModel):
@@ -575,9 +586,9 @@ class ChatCompletionChunkDelta(BaseModel):
     content: Optional[str] = None
     reasoning_content: Optional[str] = None
     tool_calls: Optional[List[dict]] = None
-    # Native DynaMoe Fusion phase event. OpenAI-compatible clients ignore it;
-    # DynaMoe-aware clients can commit, patch, or supersede a streamed draft.
-    dynamoe: Optional[dict] = None
+    # Native AI2Apps Fusion phase event. OpenAI-compatible clients ignore it;
+    # AI2Apps-aware clients can commit, patch, or supersede a streamed draft.
+    ai2apps: Optional[dict] = None
 
 
 class ChatCompletionChunkChoice(BaseModel):

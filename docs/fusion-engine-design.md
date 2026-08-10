@@ -1,4 +1,4 @@
-# DynaMoe Fusion Engine
+# AI2Apps Fusion Engine
 
 Status: design specification, not implemented
 Date: 2026-08-10
@@ -66,7 +66,7 @@ A profile registers one normal model ID, for example:
 
 ```json
 {
-  "model": "dynamoe/fusion-quality",
+  "model": "ai2apps/fusion-quality",
   "messages": [{"role": "user", "content": "..."}],
   "stream": true
 }
@@ -230,11 +230,11 @@ Fusion supports three stream modes:
 A native client declares support with a request extension or header:
 
 ```json
-{"dynamoe_stream_mode": "draft"}
+{"ai2apps_stream_mode": "draft"}
 ```
 
 ```http
-X-DynaMoe-Draft-Protocol: 1
+X-AI2Apps-Draft-Protocol: 1
 ```
 
 Native events include a `draft_id` and the phases `draft_begin`, `draft_end`,
@@ -307,7 +307,7 @@ Local two-stage profile:
 
 ```yaml
 fusion:
-  model_id: dynamoe/fusion-local
+  model_id: ai2apps/fusion-local
   generator:
     backend: local
     model: qwen3.6-35b-a3b-4bit
@@ -325,7 +325,7 @@ Local generator with remote reviewer:
 
 ```yaml
 fusion:
-  model_id: dynamoe/fusion-cloud-review
+  model_id: ai2apps/fusion-cloud-review
   generator:
     backend: local
     model: local-generator
@@ -340,7 +340,7 @@ Optional three-stage profile:
 
 ```yaml
 fusion:
-  model_id: dynamoe/fusion-quality
+  model_id: ai2apps/fusion-quality
   generator:
     backend: local
     model: qwen3.6-35b-a3b-4bit
@@ -360,7 +360,7 @@ fusion:
     failure_policy: local_rebuild
 ```
 
-Credentials are references to Keychain, environment, or DynaMoe credential
+Credentials are references to Keychain, environment, or AI2Apps credential
 storage. They are never embedded in an exportable profile.
 
 ## 13. Privacy, cost, and failure behavior
@@ -398,7 +398,7 @@ class ResolverBackend:
 ```
 
 The first implementation should be an in-process orchestrator with injectable
-fake backends. It must not require HTTP between DynaMoe and its local engines.
+fake backends. It must not require HTTP between AI2Apps and its local engines.
 Remote providers are adapters around the same structured protocol.
 
 ## 15. Observability
@@ -455,7 +455,7 @@ The first in-process implementation now provides:
 - deterministic, hash- and anchor-protected structured patches;
 - `PASS`, `PATCH`, `REVISE`, and `ESCALATE` execution paths;
 - draft-native, reasoning-compatible, and final-only stream modes;
-- OpenAI chat streaming transport through optional `delta.dynamoe` events;
+- OpenAI chat streaming transport through optional `delta.ai2apps` events;
 - serializable profiles, local oMLX adapters, an OpenAI-compatible remote
   adapter, and an in-process `build_omlx_fusion_engine(...)` factory;
 - atomic protocol-level commit/abort semantics and failure-injection tests.

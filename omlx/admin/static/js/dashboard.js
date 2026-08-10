@@ -672,7 +672,7 @@
                     if (this.modelsTab === 'downloader' && !this.hfRecommendedLoaded) {
                         loads.push(this.loadRecommendedModels());
                     }
-                    if (this.modelsTab === 'downloader' && this.downloaderSource === 'dynamoe') {
+                    if (this.modelsTab === 'downloader' && this.downloaderSource === 'ai2apps') {
                         loads.push(
                             this.loadDynaPreflight(),
                             this.loadDynaCatalog(),
@@ -2537,8 +2537,8 @@
             },
 
             _launchCmd(tool) {
-                const raw = this.stats.cli_prefix || 'dynamoe';
-                const cli = raw === 'dynamoe' ? raw : this.shellQuote(raw);
+                const raw = this.stats.cli_prefix || 'ai2apps';
+                const cli = raw === 'ai2apps' ? raw : this.shellQuote(raw);
                 return `${cli} launch ${tool}`;
             },
 
@@ -3446,7 +3446,7 @@
                 const rpad = (s, w) => s.toString().padEnd(w);
                 let lines = [];
 
-                lines.push('DynaMoe - Dynamic MoE inference for Apple Silicon');
+                lines.push('AI2Apps - Dynamic MoE inference for Apple Silicon');
                 lines.push('Independent project built on oMLX (Apache-2.0)');
                 if (this.benchRunExternal) {
                     lines.push(`Benchmark Model: ${this.benchRunExternal.model} @ ${this.benchRunExternal.base_url}`);
@@ -4774,14 +4774,14 @@
             },
 
             // =================================================================
-            // DynaMoe verified model installer
+            // AI2Apps verified model installer
             // =================================================================
 
             selectedDynaModel() {
                 return this.dynaCatalog.find(model => model.id === this.dynaSelectedModelId) || null;
             },
 
-            async initDynaMoeDownloader() {
+            async initAI2AppsDownloader() {
                 await Promise.all([
                     this.loadDynaPreflight(),
                     this.dynaCatalog.length
@@ -4794,7 +4794,7 @@
             async loadDynaPreflight() {
                 this.dynaPreflightLoading = true;
                 try {
-                    const response = await fetch('/admin/api/dynamoe/preflight');
+                    const response = await fetch('/admin/api/ai2apps/preflight');
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok) {
                         throw new Error(data.detail || 'Environment check failed');
@@ -4806,7 +4806,7 @@
                         issues: [{
                             code: 'preflight_failed',
                             message: err.message || 'Environment check failed',
-                            action: 'Check the server logs and restart DynaMoe.',
+                            action: 'Check the server logs and restart AI2Apps.',
                         }],
                     };
                 } finally {
@@ -4819,8 +4819,8 @@
                 this.dynaCatalogLoading = true;
                 this.dynaError = '';
                 try {
-                    const response = await fetch('/admin/api/dynamoe/catalog');
-                    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || 'Could not load the DynaMoe catalog');
+                    const response = await fetch('/admin/api/ai2apps/catalog');
+                    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || 'Could not load the AI2Apps catalog');
                     const data = await response.json();
                     this.dynaCatalog = data.models || [];
                     if (!this.dynaSelectedModelId && this.dynaCatalog.length) {
@@ -4829,7 +4829,7 @@
                     }
                     this.$nextTick(() => lucide.createIcons());
                 } catch (err) {
-                    this.dynaError = err.message || 'Could not load the DynaMoe catalog';
+                    this.dynaError = err.message || 'Could not load the AI2Apps catalog';
                 } finally {
                     this.dynaCatalogLoading = false;
                 }
@@ -4849,7 +4849,7 @@
                 this.dynaError = '';
                 this.dynaSuccess = '';
                 try {
-                    const response = await fetch('/admin/api/dynamoe/install', {
+                    const response = await fetch('/admin/api/ai2apps/install', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -4873,7 +4873,7 @@
 
             async loadDynaTasks() {
                 try {
-                    const response = await fetch('/admin/api/dynamoe/tasks');
+                    const response = await fetch('/admin/api/ai2apps/tasks');
                     if (!response.ok) return;
                     const data = await response.json();
                     this.dynaTasks = data.tasks || [];
@@ -4887,7 +4887,7 @@
                     }
                     this.$nextTick(() => lucide.createIcons());
                 } catch (err) {
-                    console.error('Failed to load DynaMoe tasks:', err);
+                    console.error('Failed to load AI2Apps tasks:', err);
                 }
             },
 
@@ -4902,12 +4902,12 @@
             },
 
             async cancelDynaInstall(taskId) {
-                await fetch(`/admin/api/dynamoe/tasks/${taskId}/cancel`, { method: 'POST' });
+                await fetch(`/admin/api/ai2apps/tasks/${taskId}/cancel`, { method: 'POST' });
                 await this.loadDynaTasks();
             },
 
             async retryDynaInstall(taskId) {
-                const response = await fetch(`/admin/api/dynamoe/tasks/${taskId}/retry`, {
+                const response = await fetch(`/admin/api/ai2apps/tasks/${taskId}/retry`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token: this.dynaToken }),

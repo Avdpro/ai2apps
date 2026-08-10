@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """
-CLI runtime for DynaMoe.
+CLI runtime for AI2Apps.
 
 Commands:
-    dynamoe serve --model-dir /path/to/models    Start multi-model server
+    ai2apps serve --model-dir /path/to/models    Start multi-model server
 
 Usage:
     # Multi-model serving
-    dynamoe serve --model-dir /path/to/models
+    ai2apps serve --model-dir /path/to/models
 
     # With pinned models
-    dynamoe serve --model-dir /path/to/models --pin llama-3b,qwen-7b
+    ai2apps serve --model-dir /path/to/models --pin llama-3b,qwen-7b
 """
 
 import argparse
@@ -20,7 +20,7 @@ import math
 import os
 import sys
 
-from dynamoe._version import __version__
+from ai2apps._version import __version__
 
 from ._version import __version__ as _runtime_version
 
@@ -38,7 +38,7 @@ def _positive_float(value: str) -> float:
 def info_command() -> None:
     """Print product, runtime, endpoints, and effective MoE scope controls."""
     values = {
-        "Product": f"DynaMoe {__version__}",
+        "Product": f"AI2Apps {__version__}",
         "Runtime": f"oMLX {_runtime_version}",
         "OpenAI API": "http://127.0.0.1:8000/v1",
         "WebUI": "http://127.0.0.1:8000/admin/chat",
@@ -107,7 +107,7 @@ def serve_command(args):
         build_number = None
 
     # Print version banner
-    print("\033[33mDynaMoe - Dynamic MoE inference for Apple Silicon\033[0m")
+    print("\033[33mAI2Apps - The Edge Supermodel Ecosystem\033[0m")
     print("\033[33m├─ Independent project built on oMLX\033[0m")
     print(f"\033[33m├─ Runtime: oMLX {_runtime_version}\033[0m")
     if build_number:
@@ -318,7 +318,7 @@ def serve_command(args):
 
         if args.no_cache:
             print(
-            "Mode: Multi-model serving (no DynaMoe cache, mlx-lm BatchGenerator only)"
+            "Mode: Multi-model serving (no AI2Apps cache, mlx-lm BatchGenerator only)"
             )
         elif paged_ssd_cache_dir:
             print("Mode: Multi-model serving (continuous batching + paged SSD cache)")
@@ -417,8 +417,8 @@ def launch_command(args, extra_args: list[str] | None = None):
         resp = requests.get(f"{base_url}/health", timeout=3)
         resp.raise_for_status()
     except Exception:
-        print(f"DynaMoe server is not running at {base_url}")
-        print("Start the server first: dynamoe serve")
+        print(f"AI2Apps server is not running at {base_url}")
+        print("Start the server first: ai2apps serve")
         sys.exit(1)
 
     # Get API key: CLI args > settings.json > empty
@@ -700,7 +700,7 @@ def lifecycle_command(args) -> int:
 
     if command == "start":
         print("Background start is available for the macOS app and Homebrew installs.")
-        print("For this install, run foreground server mode with: dynamoe serve")
+        print("For this install, run foreground server mode with: ai2apps serve")
     else:
         print("Background stop/restart requires the macOS app or Homebrew service.")
     return 1
@@ -809,32 +809,32 @@ def diagnose_command(args) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="dynamoe",
-        description="DynaMoe: scope-aware dynamic MoE inference for Apple Silicon",
+        prog="ai2apps",
+        description="AI2Apps: local-first edge supermodel runtime for Apple Silicon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  dynamoe serve --model-dir ~/models --port 8000
-  dynamoe launch codex --model qwen3.5
+  ai2apps serve --model-dir ~/models --port 8000
+  ai2apps launch codex --model qwen3.5
         """,
     )
     parser.add_argument(
         "--version",
         action="version",
         version=__version__,
-        help="Print the DynaMoe version and exit",
+        help="Print the AI2Apps version and exit",
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     subparsers.add_parser(
         "info",
-        help="Show DynaMoe, runtime, API, scope, and lossy-mode information",
+        help="Show AI2Apps, runtime, API, scope, and lossy-mode information",
     )
 
     for name, help_text in (
-        ("start", "Start DynaMoe as a managed background server"),
-        ("stop", "Stop the managed background DynaMoe server"),
-        ("restart", "Restart the managed background DynaMoe server"),
+        ("start", "Start AI2Apps as a managed background server"),
+        ("stop", "Stop the managed background AI2Apps server"),
+        ("restart", "Restart the managed background AI2Apps server"),
     ):
         lifecycle_parser = subparsers.add_parser(
             name,
@@ -941,7 +941,7 @@ Example directory structure:
         "--paged-ssd-cache-dir",
         type=str,
         default=None,
-        help="Directory for paged SSD cache storage (enables DynaMoe prefix cache)",
+        help="Directory for paged SSD cache storage (enables AI2Apps prefix cache)",
     )
     serve_parser.add_argument(
         "--paged-ssd-cache-max-size",
@@ -958,7 +958,7 @@ Example directory structure:
     serve_parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Disable DynaMoe paged SSD cache. mlx-lm BatchGenerator still manages KV states internally.",
+        help="Disable AI2Apps paged SSD cache. mlx-lm BatchGenerator still manages KV states internally.",
     )
     serve_parser.add_argument(
         "--initial-cache-blocks",
@@ -1030,7 +1030,7 @@ Example directory structure:
         "--base-path",
         type=str,
         default=None,
-        help="Base directory for DynaMoe data (compatibility default: ~/.omlx)",
+        help="Base directory for AI2Apps data (compatibility default: ~/.omlx)",
     )
     serve_parser.add_argument(
         "--api-key",
@@ -1042,11 +1042,11 @@ Example directory structure:
     # Launch command
     launch_parser = subparsers.add_parser(
         "launch",
-        help="Launch an external tool with DynaMoe integration",
+        help="Launch an external tool with AI2Apps integration",
         description=(
             "Configure and launch external coding tools (Claude Code, Copilot, "
             "Codex, Codex App, OpenCode, OpenClaw, Hermes Agent, Pi) to use "
-            "the running DynaMoe server."
+            "the running AI2Apps server."
         ),
     )
     launch_parser.add_argument(
@@ -1067,19 +1067,19 @@ Example directory structure:
         "--host",
         type=str,
         default=None,
-        help="DynaMoe server host (default: from settings or 127.0.0.1)",
+        help="AI2Apps server host (default: from settings or 127.0.0.1)",
     )
     launch_parser.add_argument(
         "--port",
         type=int,
         default=None,
-        help="DynaMoe server port (default: from settings or 8000)",
+        help="AI2Apps server port (default: from settings or 8000)",
     )
     launch_parser.add_argument(
         "--api-key",
         type=str,
         default=None,
-        help="API key for DynaMoe server authentication",
+        help="API key for AI2Apps server authentication",
     )
     launch_parser.add_argument(
         "--tools-profile",

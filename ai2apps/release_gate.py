@@ -1,4 +1,4 @@
-"""Reproducible release checks for DynaMoe Cache-MoE engines."""
+"""Reproducible release checks for AI2Apps Cache-MoE engines."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from dynamoe._version import __version__
-from dynamoe.model_installer import CATALOG, DynaMoeInstaller
+from ai2apps._version import __version__
+from ai2apps.model_installer import CATALOG, AI2AppsInstaller
 
-EVIDENCE_FORMAT = "dynamoe-release-evidence"
+EVIDENCE_FORMAT = "ai2apps-release-evidence"
 EVIDENCE_VERSION = 1
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -59,7 +59,7 @@ def _scope_pack(recipe: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
 
 def check_catalog(checks: list[GateCheck]) -> None:
     expected_ids = {recipe["id"] for recipe in CATALOG}
-    exposed = {item["id"] for item in DynaMoeInstaller.catalog()}
+    exposed = {item["id"] for item in AI2AppsInstaller.catalog()}
     _check(
         checks,
         "catalog.engines",
@@ -111,15 +111,19 @@ def check_installations(checks: list[GateCheck], model_root: Path) -> None:
         model_id = recipe["id"]
         source = recipe["sources"][0]
         model_dir = model_root / source["repo_id"]
-        manifest_path = model_dir / "dynamoe-model.json"
+        manifest_path = model_dir / "ai2apps-model.json"
         if not manifest_path.is_file():
-            _pending(
-                checks,
-                "install.present",
-                f"not installed at {model_dir}",
-                model_id,
-            )
-            continue
+            legacy_manifest = model_dir / "dynamoe-model.json"
+            if legacy_manifest.is_file():
+                manifest_path = legacy_manifest
+            else:
+                _pending(
+                    checks,
+                    "install.present",
+                    f"not installed at {model_dir}",
+                    model_id,
+                )
+                continue
         try:
             manifest = _read_json(manifest_path)
         except (OSError, TypeError, json.JSONDecodeError) as exc:
@@ -139,7 +143,10 @@ def check_installations(checks: list[GateCheck], model_root: Path) -> None:
         _check(
             checks,
             "install.manifest",
-            manifest.get("format") == "dynamoe-cache-moe-model"
+            manifest.get("format") in {
+                "ai2apps-cache-moe-model",
+                "dynamoe-cache-moe-model",
+            }
             and int(manifest.get("version", 0)) >= 2,
             f"manifest version {manifest.get('version')!r}",
             model_id=model_id,
@@ -239,9 +246,9 @@ def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
             _check(checks, "package.archive", False, f"{archive}: {exc}")
             continue
         required_suffixes = (
-            "dynamoe/model_installer.py",
-            "dynamoe/engines/deepseek_v4_flash/scope-pack.json",
-            "dynamoe/engines/qwen3_6_35b_a3b/scope-pack.json",
+            "ai2apps/model_installer.py",
+            "ai2apps/engines/deepseek_v4_flash/scope-pack.json",
+            "ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json",
         )
         missing = [
             suffix
@@ -356,8 +363,8 @@ def run_tests(checks: list[GateCheck], repo_root: Path) -> None:
         "-m",
         "pytest",
         "-q",
-        "tests/test_dynamoe_installer.py",
-        "tests/test_dynamoe_scope_pack.py",
+        "tests/test_ai2apps_installer.py",
+        "tests/test_ai2apps_scope_pack.py",
         "tests/test_hf_downloader.py",
         "tests/test_release_gate.py",
         "tests/test_fusion_engine.py",
@@ -383,11 +390,11 @@ def _overall(checks: list[GateCheck]) -> str:
 def _markdown(report: dict[str, Any]) -> str:
     icons = {"pass": "PASS", "fail": "FAIL", "pending": "PENDING"}
     lines = [
-        "# DynaMoe Release Gate",
+        "# AI2Apps Release Gate",
         "",
         f"Overall: **{report['overall'].upper()}**",
         "",
-        f"DynaMoe: `{report['dynamoe_version']}`",
+        f"AI2Apps: `{report['ai2apps_version']}`",
         "",
         "| Status | Model | Check | Detail |",
         "|---|---|---|---|",
@@ -467,10 +474,10 @@ def main(argv: list[str] | None = None) -> int:
             _check(checks, "benchmark.evidence", False, "--evidence is required")
 
     report = {
-        "format": "dynamoe-release-gate-report",
+        "format": "ai2apps-release-gate-report",
         "version": 1,
         "created_at": time.time(),
-        "dynamoe_version": __version__,
+        "ai2apps_version": __version__,
         "python": platform.python_version(),
         "platform": platform.platform(),
         "mode": args.mode,

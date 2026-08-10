@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install one catalogued DynaMoe model and stream conversion progress."""
+"""Install one catalogued AI2Apps model and stream conversion progress."""
 
 from __future__ import annotations
 
@@ -30,12 +30,12 @@ def parse_args() -> argparse.Namespace:
 
 
 async def run(args: argparse.Namespace) -> None:
-    from dynamoe.model_installer import DynaMoeInstaller, InstallStatus
+    from ai2apps.model_installer import AI2AppsInstaller, InstallStatus
     from omlx.admin.hf_downloader import HFDownloader
 
     root = args.model_root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    installer = DynaMoeInstaller(HFDownloader(str(root)))
+    installer = AI2AppsInstaller(HFDownloader(str(root)))
     task = await installer.start(
         args.model_id,
         args.source,

@@ -2,14 +2,14 @@ import hashlib
 import json
 from pathlib import Path
 
-from dynamoe.model_installer import DynaMoeInstaller
+from ai2apps.model_installer import AI2AppsInstaller
 
 
 def test_release_catalog_uses_packaged_scope_packs(monkeypatch):
     monkeypatch.delenv("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", raising=False)
     monkeypatch.delenv("OMLX_QWEN36_SCOPE_PROFILE", raising=False)
 
-    catalog = DynaMoeInstaller.catalog()
+    catalog = AI2AppsInstaller.catalog()
 
     assert [item["id"] for item in catalog] == [
         "deepseek-v4-flash",
@@ -22,13 +22,13 @@ def test_release_catalog_uses_packaged_scope_packs(monkeypatch):
 
 
 def test_packaged_scope_pack_profiles_match_manifests():
-    engines = Path(__file__).parents[1] / "dynamoe" / "engines"
+    engines = Path(__file__).parents[1] / "ai2apps" / "engines"
     for family in ("deepseek_v4_flash", "qwen3_6_35b_a3b"):
         root = engines / family
         manifest = json.loads((root / "scope-pack.json").read_text())
         profile = root / manifest["profile"]["file"]
 
-        assert manifest["format"] == "dynamoe-scope-pack"
+        assert manifest["format"] == "ai2apps-scope-pack"
         assert manifest["version"] == 1
         assert hashlib.sha256(profile.read_bytes()).hexdigest() == (
             manifest["profile"]["sha256"]
@@ -40,7 +40,7 @@ def test_packaged_scope_pack_profiles_match_manifests():
 
 
 def test_packaged_profiles_cover_every_declared_scope_and_layer():
-    engines = Path(__file__).parents[1] / "dynamoe" / "engines"
+    engines = Path(__file__).parents[1] / "ai2apps" / "engines"
     deepseek = json.loads(
         (engines / "deepseek_v4_flash" / "scope-profile.json").read_text()
     )

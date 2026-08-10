@@ -91,7 +91,7 @@ class EngineEntry:
     source_type: str = "local"
     source_repo_id: str | None = None
     is_helper: bool = False  # Speculative-decoding drafter (dFlash/Assistant/MTP)
-    cache_moe_config: dict | None = None  # Persistent DynaMoe installation metadata
+    cache_moe_config: dict | None = None  # Persistent AI2Apps installation metadata
     engine: (
         BaseEngine
         | EmbeddingEngine

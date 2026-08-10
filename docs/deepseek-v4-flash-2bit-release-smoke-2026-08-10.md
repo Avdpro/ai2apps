@@ -8,7 +8,7 @@ Date: 2026-08-10
 - Hugging Face source: `mlx-community/DeepSeek-V4-Flash-2bit-DQ`
 - Fixed revision: `722bf559b7de93575b2320973cf2002e05bfe6c9`
 - Checkpoint validation: 19/19 safetensors shards, index complete
-- DynaMoe conversion: 43/43 routed layers, about 63 seconds
+- AI2Apps conversion: 43/43 routed layers, about 63 seconds
 - Download behavior: local HF cache reused (`cache_hit=true`)
 - Expert-major store: about 86 GiB
 - Installed memory tier: `auto`; this 128 GiB device resolves it to Top-60

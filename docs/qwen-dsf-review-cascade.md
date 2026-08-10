@@ -5,7 +5,7 @@ Date: 2026-08-09; generalized 2026-08-10
 Target branch: `experiment/moe-cache`
 
 > This document is the first concrete local profile for the model-independent
-> [`DynaMoe Fusion Engine`](fusion-engine-design.md). The generic specification
+> [`AI2Apps Fusion Engine`](fusion-engine-design.md). The generic specification
 > defines adaptive gating, `PASS/PATCH/REVISE/ESCALATE`, native draft streaming,
 > reasoning fallback, transactional KV state, and an optional configurable
 > resolver. Where this earlier three-state proposal conflicts with the generic
@@ -270,7 +270,7 @@ review_cascade:
   high_risk_failure_mode: fail_closed
 ```
 
-具体配置形式应遵循 DynaMoe 现有 model settings 和请求配置方式；上述
+具体配置形式应遵循 AI2Apps 现有 model settings 和请求配置方式；上述
 YAML 仅定义语义，不强制存储格式。
 
 ## 12. 可观测性

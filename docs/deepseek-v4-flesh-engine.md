@@ -1,7 +1,7 @@
 # DeepSeek V4 Flesh engine
 
 DeepSeek V4 Flesh is the scope-cached DeepSeek V4 backend served by the normal
-oMLX/DynaMoe model surface. It is not a separate HTTP server. Model discovery,
+oMLX/AI2Apps model surface. It is not a separate HTTP server. Model discovery,
 OpenAI and Anthropic APIs, streaming, tool calling, structured output, model
 LRU management, and the other LLM/VLM/audio engines remain owned by the common
 server.
@@ -98,16 +98,16 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 The inherited server also exposes `/v1/completions`, `/v1/responses`,
 `/v1/messages`, and `/v1/models`.
 
-Pass a stable DynaMoe Session ID on multi-turn Chat Completions:
+Pass a stable AI2Apps Session ID on multi-turn Chat Completions:
 
 ```json
-{"dynamoe_session_id":"chat_123"}
+{"ai2apps_session_id":"chat_123"}
 ```
 
 Queue an immediate L1 review during Decode:
 
 ```bash
-curl http://127.0.0.1:8000/v1/dynamoe/l1/optimize \
+curl http://127.0.0.1:8000/v1/ai2apps/l1/optimize \
   -H 'Content-Type: application/json' \
   -d '{"model":"deepseek-v4-flesh","session_id":"chat_123"}'
 ```
@@ -122,11 +122,11 @@ The Chat UI exposes three session-owned acceleration modes:
 | Turbo | Tail2 | Replace nonresident misses among the two lowest-weight routes |
 | Blast | Head2 | Protect the two highest-weight routes and replace lower misses |
 
-Chat Completions accepts `dynamoe_engine_boost` with `natural`, `turbo`, or
+Chat Completions accepts `ai2apps_engine_boost` with `natural`, `turbo`, or
 `blast`. Natural is the default. A live change can be queued with:
 
 ```bash
-curl http://127.0.0.1:8000/v1/dynamoe/engine/boost \
+curl http://127.0.0.1:8000/v1/ai2apps/engine/boost \
   -H 'Content-Type: application/json' \
   -d '{"model":"source","session_id":"chat_123","mode":"turbo"}'
 ```

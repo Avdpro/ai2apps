@@ -35,7 +35,7 @@ class FusionEngine(BaseEngine):
 
     @property
     def model_type(self) -> str:
-        return "dynamoe_fusion"
+        return "ai2apps_fusion"
 
     @property
     def grammar_compiler(self):
@@ -92,7 +92,14 @@ class FusionEngine(BaseEngine):
         if kwargs.get("tools"):
             raise ValueError("Fusion v1 does not support tool calling")
         kwargs.pop("tools", None)
-        mode = StreamMode(str(kwargs.pop("dynamoe_stream_mode", "reasoning")))
+        mode = StreamMode(
+            str(
+                kwargs.pop(
+                    "ai2apps_stream_mode",
+                    kwargs.pop("dynamoe_stream_mode", "reasoning"),
+                )
+            )
+        )
         session_id = str(
             kwargs.pop("fusion_session_id", None)
             or kwargs.get("flesh_session_id", None)

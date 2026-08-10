@@ -2426,7 +2426,7 @@ class TestHFEndpointPassthrough:
 
 
 class TestGlobalCacheMode:
-    """DynaMoe downloads should survive deletion of the linked model view."""
+    """AI2Apps downloads should survive deletion of the linked model view."""
 
     @pytest.mark.asyncio
     async def test_cache_mode_populates_hub_and_links_model_view(

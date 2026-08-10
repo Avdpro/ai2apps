@@ -1025,9 +1025,9 @@
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <a href="/admin/dashboard">
-                        <img x-show="activeTheme === 'light'" src="{{ static('navbar-logo-light.svg') }}" alt="DynaMoe"
+                        <img x-show="activeTheme === 'light'" src="{{ static('navbar-logo-light.svg') }}" alt="AI2Apps"
                             class="w-[30px] h-[30px]">
-                        <img x-show="activeTheme === 'dark'" src="{{ static('navbar-logo-dark.svg') }}" alt="DynaMoe"
+                        <img x-show="activeTheme === 'dark'" src="{{ static('navbar-logo-dark.svg') }}" alt="AI2Apps"
                             class="w-[30px] h-[30px]" x-cloak>
                     </a>
                     <div class="flex flex-col gap-0">
@@ -1209,9 +1209,9 @@
             <div x-show="messages.length === 0" class="h-full flex items-center justify-center" x-cloak>
                 <div class="text-center max-w-lg px-4">
                     <div class="flex items-center justify-center gap-3 mb-4">
-                        <img x-show="activeTheme === 'light'" src="{{ static('logo-light.svg') }}" alt="DynaMoe"
+                        <img x-show="activeTheme === 'light'" src="{{ static('logo-light.svg') }}" alt="AI2Apps"
                             class="w-[60px] h-[60px]">
-                        <img x-show="activeTheme === 'dark'" src="{{ static('logo-dark.svg') }}" alt="DynaMoe"
+                        <img x-show="activeTheme === 'dark'" src="{{ static('logo-dark.svg') }}" alt="AI2Apps"
                             class="w-[60px] h-[60px]" x-cloak>
                         <h1 class="text-2xl font-bold">{{ t('chat.welcome_heading') }}</h1>
                     </div>
@@ -2178,7 +2178,7 @@
                     </p>
                 </div>
 
-                <!-- DynaMoe Engine Boost -->
+                <!-- AI2Apps Engine Boost -->
                 <div x-show="isCacheMoeMode" x-cloak class="space-y-2">
                     <label class="text-[10px] font-bold uppercase tracking-wider block"
                         style="color: var(--text-secondary);">ENGINE BOOST</label>
@@ -2580,7 +2580,7 @@
             releaseUrl: null,
             versionHover: false,
             _updateCheckTimer: null,
-            dynamoeStatus: null,
+            ai2appsStatus: null,
 
             // Timeline navigation rail
             timelineDots: [],              // [{ index, topPx }]
@@ -3449,9 +3449,9 @@
                 const generation = this.resolveApiGenerationOverrides(messages, variantUserIndex);
                 return {
                     model,
-                    dynamoe_session_id: context.chatId,
-                    dynamoe_l1_mode: this.getChatSession(context.chatId, false)?.l1OptimizationMode || 'auto',
-                    dynamoe_engine_boost: this.getChatSession(context.chatId, false)?.engineBoostMode || 'natural',
+                    ai2apps_session_id: context.chatId,
+                    ai2apps_l1_mode: this.getChatSession(context.chatId, false)?.l1OptimizationMode || 'auto',
+                    ai2apps_engine_boost: this.getChatSession(context.chatId, false)?.engineBoostMode || 'natural',
                     messages: this.buildMessagesForApi(messages, context.systemPrompt, {
                         variantUserIndex,
                         excludeVariantsAtUserIndex,
@@ -3709,7 +3709,7 @@
                 const sessionId = this.currentChatId;
                 if (!sessionId || !this.currentModel) return;
                 try {
-                    const response = await fetch('/v1/dynamoe/l1/optimize', {
+                    const response = await fetch('/v1/ai2apps/l1/optimize', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -3776,7 +3776,7 @@
             },
 
             async postEngineBoost(sessionId, modelId, mode) {
-                const response = await fetch('/v1/dynamoe/engine/boost', {
+                const response = await fetch('/v1/ai2apps/engine/boost', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -4753,7 +4753,7 @@
             const resp = await fetch('/admin/api/stats', { credentials: 'same-origin' });
             if (!resp.ok) return;
             const data = await resp.json();
-            this.dynamoeStatus = data.dynamoe || this.dynamoeStatus;
+            this.ai2appsStatus = data.ai2apps || this.ai2appsStatus;
 
             if (this.anyChatStreaming()) {
                 this.claimStatsRequests(data);
@@ -7017,7 +7017,7 @@
 
     get currentDynamoeModelStatus() {
         const gatewayId = this.resolveGatewayModelId(this.currentModel);
-        return (this.dynamoeStatus?.models || []).find(model =>
+        return (this.ai2appsStatus?.models || []).find(model =>
             model.id === gatewayId || model.id === this.currentModel
         ) || null;
     },
@@ -7053,7 +7053,7 @@
         const state = model?.adaptive_l1?.session_states?.[this.currentChatId];
         const scope = state?.scope
             || model?.bank?.current_scope
-            || this.dynamoeStatus?.initial_scope
+            || this.ai2appsStatus?.initial_scope
             || 'auto';
         return scope + (Number(state?.epoch || 0) > 0 ? '*' : '');
     },
@@ -7100,10 +7100,10 @@
         try {
             const resp = await fetch('/admin/api/stats');
             if (resp.ok) {
-                this.dynamoeStatus = (await resp.json()).dynamoe || null;
+                this.ai2appsStatus = (await resp.json()).ai2apps || null;
             }
         } catch (e) {
-            this.dynamoeStatus = null;
+            this.ai2appsStatus = null;
         }
     },
 

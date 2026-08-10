@@ -2,7 +2,7 @@
 
 ## Result
 
-The Qwen3.6-35B-A3B 4-bit DynaMoe install pipeline passes the local release
+The Qwen3.6-35B-A3B 4-bit AI2Apps install pipeline passes the local release
 gate. A pinned Hugging Face snapshot was resolved from an isolated HF cache,
 converted into the dedicated fused/split expert stores, interrupted, resumed,
 reinstalled idempotently, loaded by the Tiered engine, and exercised through a
@@ -118,7 +118,7 @@ MiB/s and resumed several disconnected range requests. Also, `local_dir`
 downloads kept their only cache inside the model view, so deleting that view
 would discard the checkpoint.
 
-Both paths are now addressed. DynaMoe requests cache-mode downloads: the pinned
+Both paths are now addressed. AI2Apps requests cache-mode downloads: the pinned
 snapshot is stored once in the standard Hugging Face Hub cache and the model
 directory is a writable no-copy symlink view. Auto/Xet downloads with no file
 or mtime activity for 60 seconds abort once and retry through regular HTTP;

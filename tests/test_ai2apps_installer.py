@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from dynamoe.model_installer import (
-    DynaMoeInstaller,
+from ai2apps.model_installer import (
+    AI2AppsInstaller,
     build_deepseek_offset_manifest,
     build_qwen36_offset_manifest,
     checkpoint_is_complete,
@@ -168,7 +168,7 @@ def _write_fake_qwen_checkpoint(root: Path) -> None:
 
 def test_build_deepseek_offset_manifest(tmp_path: Path):
     source = tmp_path / "model"
-    output = source / ".dynamoe" / "offsets"
+    output = source / ".ai2apps" / "offsets"
     _write_fake_checkpoint(source)
 
     path = build_deepseek_offset_manifest(source, output)
@@ -187,7 +187,7 @@ def test_build_deepseek_offset_manifest(tmp_path: Path):
 
 def test_build_stacked_affine_2bit_offset_manifest(tmp_path: Path):
     source = tmp_path / "model"
-    output = source / ".dynamoe" / "offsets"
+    output = source / ".ai2apps" / "offsets"
     _write_fake_stacked_checkpoint(source)
 
     manifest = json.loads(
@@ -220,9 +220,9 @@ def test_qwen_checkpoint_converts_cross_shard_experts_to_fused_store(
     tmp_path: Path,
 ):
     source = tmp_path / "qwen"
-    offsets = source / ".dynamoe" / "offsets-qwen36"
-    split = source / ".dynamoe" / "split" / "layer-000.moe"
-    fused = source / ".dynamoe" / "fused" / "layer-000.moe"
+    offsets = source / ".ai2apps" / "offsets-qwen36"
+    split = source / ".ai2apps" / "split" / "layer-000.moe"
+    fused = source / ".ai2apps" / "fused" / "layer-000.moe"
     _write_fake_qwen_checkpoint(source)
 
     manifest_path = build_qwen36_offset_manifest(source, offsets)
@@ -258,13 +258,13 @@ def test_catalog_only_reports_complete_engine_packages(tmp_path: Path, monkeypat
     profile.write_text("{}")
     monkeypatch.setenv("OMLX_DEEPSEEK_V4_SCOPE_PROFILE", str(profile))
 
-    item = DynaMoeInstaller.catalog()[0]
+    item = AI2AppsInstaller.catalog()[0]
 
     assert item["id"] == "deepseek-v4-flash"
     assert item["engine_ready"] is True
     assert item["engine"]["id"] == "deepseek-v4-flesh"
     assert item["memory_tiers"][2]["experts"] == 60
-    assert DynaMoeInstaller.catalog()[1]["id"] == "deepseek-v4-flash-2bit"
+    assert AI2AppsInstaller.catalog()[1]["id"] == "deepseek-v4-flash-2bit"
 
 
 def test_catalog_exposes_qwen_when_its_scope_pack_is_configured(
@@ -276,7 +276,7 @@ def test_catalog_exposes_qwen_when_its_scope_pack_is_configured(
 
     item = next(
         item
-        for item in DynaMoeInstaller.catalog()
+        for item in AI2AppsInstaller.catalog()
         if item["id"] == "qwen3.6-35b-a3b-4bit"
     )
 
@@ -313,19 +313,19 @@ def test_model_local_scope_policy_override(tmp_path: Path):
         clear_scope_policy_override()
 
 
-def test_downloader_ui_exposes_dynamoe_source():
+def test_downloader_ui_exposes_ai2apps_source():
     root = Path(__file__).parents[1]
     template = (root / "omlx/admin/templates/dashboard/_models.html").read_text()
     script = (root / "omlx/admin/static/js/dashboard.js").read_text()
 
-    assert "downloaderSource = 'dynamoe'" in template
+    assert "downloaderSource = 'ai2apps'" in template
     assert "Download & Prepare" in template
-    assert "/admin/api/dynamoe/install" in script
-    assert "/admin/api/dynamoe/preflight" in script
+    assert "/admin/api/ai2apps/install" in script
+    assert "/admin/api/ai2apps/preflight" in script
     assert "dynaPreflight?.ready" in template
 
 
-def test_dynamoe_hf_preflight_accepts_anonymous_public_access(
+def test_ai2apps_hf_preflight_accepts_anonymous_public_access(
     tmp_path: Path, monkeypatch
 ):
     from omlx.admin import routes
@@ -338,7 +338,7 @@ def test_dynamoe_hf_preflight_accepts_anonymous_public_access(
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
 
-    result = routes._dynamoe_hf_preflight()
+    result = routes._ai2apps_hf_preflight()
 
     assert result["ready"] is True
     assert result["cli_required"] is False
@@ -348,7 +348,7 @@ def test_dynamoe_hf_preflight_accepts_anonymous_public_access(
     assert result["issues"] == []
 
 
-def test_dynamoe_hf_preflight_explains_missing_dependency(
+def test_ai2apps_hf_preflight_explains_missing_dependency(
     tmp_path: Path, monkeypatch
 ):
     from omlx.admin import routes
@@ -361,7 +361,7 @@ def test_dynamoe_hf_preflight_explains_missing_dependency(
     monkeypatch.setattr(routes, "_hf_downloader_error", "")
     monkeypatch.setenv("HF_HOME", str(tmp_path / "hf-home"))
 
-    result = routes._dynamoe_hf_preflight()
+    result = routes._ai2apps_hf_preflight()
 
     assert result["ready"] is False
     assert result["dependency"]["installed"] is False
@@ -369,7 +369,7 @@ def test_dynamoe_hf_preflight_explains_missing_dependency(
     assert "pip install" in result["issues"][0]["action"]
 
 
-def test_dynamoe_hf_preflight_reports_unwritable_cache(
+def test_ai2apps_hf_preflight_reports_unwritable_cache(
     tmp_path: Path, monkeypatch
 ):
     from omlx.admin import routes
@@ -379,19 +379,19 @@ def test_dynamoe_hf_preflight_reports_unwritable_cache(
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
     monkeypatch.setattr(routes.os, "access", lambda *_args: False)
 
-    result = routes._dynamoe_hf_preflight()
+    result = routes._ai2apps_hf_preflight()
 
     assert result["ready"] is False
     assert any(issue["code"] == "cache_not_writable" for issue in result["issues"])
 
 
-def test_dynamoe_cli_explains_missing_huggingface_dependency(
+def test_ai2apps_cli_explains_missing_huggingface_dependency(
     monkeypatch, capsys
 ):
     import sys
     from types import ModuleType
 
-    from dynamoe import cli
+    from ai2apps import cli
 
     fake_runtime = ModuleType("omlx.cli")
 
@@ -410,7 +410,7 @@ def test_dynamoe_cli_explains_missing_huggingface_dependency(
     assert exc_info.value.code == 2
     error = capsys.readouterr().err
     assert "huggingface-hub is missing" in error
-    assert "pip install -U dynamoe" in error
+    assert "pip install -U ai2apps" in error
 
 
 def test_hf_snapshot_is_reused_as_a_no_copy_model_view(tmp_path: Path):
@@ -443,17 +443,17 @@ def test_prepare_checkpoint_prefers_hf_cache(tmp_path: Path, monkeypatch):
         "huggingface_hub.snapshot_download", lambda **_: str(snapshot)
     )
 
-    assert DynaMoeInstaller._prepare_cached_checkpoint(
+    assert AI2AppsInstaller._prepare_cached_checkpoint(
         "owner/model", revision, "", destination
     )
     assert checkpoint_is_complete(destination)
     assert json.loads(
-        (destination / ".dynamoe" / "source.json").read_text()
+        (destination / ".ai2apps" / "source.json").read_text()
     )["revision"] == revision
 
 
 @pytest.mark.asyncio
-async def test_dynamoe_download_requests_global_hf_cache_mode(
+async def test_ai2apps_download_requests_global_hf_cache_mode(
     tmp_path: Path, monkeypatch
 ):
     captured = {}
@@ -472,11 +472,11 @@ async def test_dynamoe_download_requests_global_hf_cache_mode(
             )
 
     monkeypatch.setattr(
-        DynaMoeInstaller,
+        AI2AppsInstaller,
         "_prepare_cached_checkpoint",
         staticmethod(lambda *_args: False),
     )
-    installer = DynaMoeInstaller(FakeDownloader())
+    installer = AI2AppsInstaller(FakeDownloader())
     task = await installer.start(
         "qwen3.6-35b-a3b-4bit", "huggingface", "auto", ""
     )
@@ -498,7 +498,7 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     scope.write_text(
         json.dumps(
             {
-                "format": "dynamoe-qwen36-scope-policy",
+                "format": "ai2apps-qwen36-scope-policy",
                 "version": 1,
                 "phases": {"prefill": phase, "decode": phase},
             }
@@ -517,18 +517,18 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     downloader = FakeDownloader()
     source = downloader.model_dir / "mlx-community/Qwen3.6-35B-A3B-4bit"
     _write_fake_qwen_checkpoint(source)
-    (source / ".dynamoe").mkdir()
-    (source / ".dynamoe" / "source.json").write_text(
+    (source / ".ai2apps").mkdir()
+    (source / ".ai2apps" / "source.json").write_text(
         json.dumps(
             {
-                "format": "dynamoe-hf-source",
+                "format": "ai2apps-hf-source",
                 "version": 1,
                 "repo_id": "mlx-community/Qwen3.6-35B-A3B-4bit",
                 "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
             }
         )
     )
-    installer = DynaMoeInstaller(downloader)
+    installer = AI2AppsInstaller(downloader)
 
     task = await installer.start(
         "qwen3.6-35b-a3b-4bit", "huggingface", "compact", ""
@@ -537,7 +537,7 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
 
     assert task.status.value == "completed"
     assert task.cache_hit is True
-    manifest = json.loads((source / "dynamoe-model.json").read_text())
+    manifest = json.loads((source / "ai2apps-model.json").read_text())
     assert manifest["family"] == "qwen3_6"
     assert manifest["engine"]["id"] == "qwen3.6-tiered"
     assert manifest["memory_tier"] == "compact"
@@ -560,21 +560,21 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     ) as store:
         assert "gate_up_proj.weight" in {tensor.name for tensor in store.tensors}
     discovered = discover_models(downloader.model_dir)["Qwen3.6-35B-A3B-4bit"]
-    assert discovered.source_type == "dynamoe"
+    assert discovered.source_type == "ai2apps"
     assert cache_moe_engine_id(discovered.cache_moe_config) == "qwen3.6-tiered"
 
     conversion_state = json.loads(
-        (source / ".dynamoe" / "conversion.json").read_text()
+        (source / ".ai2apps" / "conversion.json").read_text()
     )
     assert conversion_state["completed_layers"] == [0]
     assert conversion_state["split_completed_layers"] == [0]
     fused_layer = Path(manifest["expert_store"]) / "layer-000.moe"
-    split_layer = source / ".dynamoe" / "expert-store-split" / "layer-000.moe"
+    split_layer = source / ".ai2apps" / "expert-store-split" / "layer-000.moe"
     mtimes = (fused_layer.stat().st_mtime_ns, split_layer.stat().st_mtime_ns)
 
     # Reinstalling the same pinned checkpoint must reuse each committed layer.
     # This is also the resume path after a conversion task is interrupted.
-    resumed_installer = DynaMoeInstaller(downloader)
+    resumed_installer = AI2AppsInstaller(downloader)
     resumed = await resumed_installer.start(
         "qwen3.6-35b-a3b-4bit", "huggingface", "compact", ""
     )

@@ -1,4 +1,4 @@
-"""DeepSeek V4 Flesh backend for the standard oMLX/DynaMoe serving surface."""
+"""DeepSeek V4 Flesh backend for the standard oMLX/AI2Apps serving surface."""
 
 from __future__ import annotations
 
@@ -931,7 +931,7 @@ class DeepseekV4FleshEngine(BatchedEngine):
                         ),
                     }
                     logger.info(
-                        "DynaMoe decode tail: session=%s mode=%s "
+                        "AI2Apps decode tail: session=%s mode=%s "
                         "completion=%d window=%d seconds=%.3f tps=%.3f",
                         session_id,
                         l1_mode,

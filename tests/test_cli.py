@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from omlx._version import __version__
+from ai2apps._version import __version__
 
 
 class TestCLIModule:
@@ -1241,7 +1241,7 @@ class TestCLIDocstrings:
             timeout=10,
         )
         # Should have some description
-        assert "omlx" in result.stdout.lower() or "llm" in result.stdout.lower()
+        assert "ai2apps" in result.stdout.lower()
 
     def test_serve_has_description(self):
         """Test that serve command has description."""

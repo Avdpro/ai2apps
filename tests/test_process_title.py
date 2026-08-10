@@ -10,7 +10,7 @@ from omlx.process_title import DEFAULT_PROCESS_TITLE, set_process_title
 
 
 def test_default_process_title_is_server_name():
-    assert DEFAULT_PROCESS_TITLE == "omlx-server"
+    assert DEFAULT_PROCESS_TITLE == "ai2apps-server"
 
 
 def test_set_process_title_fallback_updates_argv(monkeypatch):
@@ -26,7 +26,7 @@ def test_set_process_title_fallback_updates_argv(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     assert set_process_title() is False
-    assert sys.argv[0] == "omlx-server"
+    assert sys.argv[0] == "ai2apps-server"
 
 
 def test_set_process_title_uses_native_module(monkeypatch):
@@ -37,5 +37,5 @@ def test_set_process_title_uses_native_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "setproctitle", fake_module)
 
     assert set_process_title() is True
-    assert sys.argv[0] == "omlx-server"
-    fake_module.setproctitle.assert_called_once_with("omlx-server")
+    assert sys.argv[0] == "ai2apps-server"
+    fake_module.setproctitle.assert_called_once_with("ai2apps-server")

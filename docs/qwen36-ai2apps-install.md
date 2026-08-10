@@ -1,7 +1,7 @@
-# Qwen3.6 DynaMoe installation
+# Qwen3.6 AI2Apps installation
 
-`Qwen3.6-35B-A3B 4-bit` is a verified DynaMoe catalog recipe. The Download
-page uses the normal DynaMoe source and performs these stages automatically:
+`Qwen3.6-35B-A3B 4-bit` is a verified AI2Apps catalog recipe. The Download
+page uses the normal AI2Apps source and performs these stages automatically:
 
 1. Reuse a complete `mlx-community/Qwen3.6-35B-A3B-4bit` Hugging Face
    snapshot when it is already in the local HF cache; otherwise download it.
@@ -9,7 +9,7 @@ page uses the normal DynaMoe source and performs these stages automatically:
    safetensors shards. A layer may span more than one shard.
 3. Build page-aligned expert-major records and convert them to the Qwen
    gate/up-fused v2 runtime layout.
-4. Write `dynamoe-model.json` selecting the independent `qwen3.6-tiered`
+4. Write `ai2apps-model.json` selecting the independent `qwen3.6-tiered`
    engine, the chosen Top80/96/120 memory tier, Tail24, the expert store, and
    the Scope Pack.
 5. Validate every converted layer and rediscover the completed model.
@@ -20,9 +20,9 @@ cancelled or failed installation does not repeat completed layers.
 ## Scope Pack
 
 Release packages include the verified Scope Pack at the engine asset path. A
-normal DynaMoe download needs no profile environment variable. The installer
+normal AI2Apps download needs no profile environment variable. The installer
 checks the bundled profile SHA-256 and records its pack ID, version, and hash in
-`dynamoe-model.json`.
+`ai2apps-model.json`.
 
 For a development checkout that deliberately omits packaged assets, an
 external profile can provide the fallback path:
@@ -41,8 +41,8 @@ their checksummed Scope Pack.
 HF model directory/
 ├── config.json
 ├── model-*.safetensors          # links into HF cache when reused
-├── dynamoe-model.json
-└── .dynamoe/
+├── ai2apps-model.json
+└── .ai2apps/
     ├── offsets-qwen36/offset-manifest.json
     ├── expert-store-split/      # resumable conversion intermediate
     └── expert-store-fused/      # runtime store selected by the manifest

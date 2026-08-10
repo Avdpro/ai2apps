@@ -367,7 +367,7 @@ class DiscoveredModel:
     source_type: str = "local"  # "local" or "hf_cache"
     source_repo_id: str | None = None  # HuggingFace repo id for cache-backed models
     is_helper: bool = False  # Speculative-decoding drafter (dFlash/Assistant/MTP)
-    cache_moe_config: dict | None = None  # Persistent DynaMoe installation metadata
+    cache_moe_config: dict | None = None  # Persistent AI2Apps installation metadata
 
 
 @dataclass(frozen=True)
@@ -1614,12 +1614,19 @@ def _register_model(
             pass
 
         cache_moe_config = None
-        install_manifest = model_dir / "dynamoe-model.json"
+        install_manifest = model_dir / "ai2apps-model.json"
+        if not install_manifest.is_file():
+            legacy_manifest = model_dir / "dynamoe-model.json"
+            if legacy_manifest.is_file():
+                install_manifest = legacy_manifest
         if install_manifest.is_file():
             try:
                 candidate = json.loads(install_manifest.read_text())
                 scope = candidate["scope"]
-                if candidate.get("format") != "dynamoe-cache-moe-model":
+                if candidate.get("format") not in {
+                    "ai2apps-cache-moe-model",
+                    "dynamoe-cache-moe-model",
+                }:
                     raise ValueError("unsupported format")
                 if not Path(scope["profile"]).expanduser().is_file():
                     raise FileNotFoundError("Scope Pack profile is missing")
@@ -1628,10 +1635,10 @@ def _register_model(
                 if not scope.get("default"):
                     raise ValueError("default scope is missing")
                 cache_moe_config = candidate
-                source_type = "dynamoe"
+                source_type = "ai2apps"
             except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 logger.warning(
-                    "Ignoring invalid DynaMoe manifest for %s: %s", model_id, exc
+                    "Ignoring invalid AI2Apps manifest for %s: %s", model_id, exc
                 )
 
         if config_model_type.startswith("deepseek_v4"):
