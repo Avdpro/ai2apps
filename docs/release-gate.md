@@ -21,7 +21,17 @@ dynamoe-release-gate \
 ```
 
 This verifies all catalog commit pins, Scope Pack hashes and compatibility,
-package contents, and the focused release tests.
+package contents, publishable dependency metadata, and the focused release
+tests. Public archives must use index-resolvable dependencies only; a
+`Requires-Dist` entry containing a Git or HTTP URL fails the gate.
+
+The source checkout still resolves the reviewed MLX ecosystem commits through
+`[tool.uv.sources]`. Those development-only source overrides are deliberately
+not copied into wheel metadata. The first public wheel therefore installs
+`mlx-lm`, `mlx-vlm`, `mlx-embeddings`, and the optional `mlx-audio` extra from
+PyPI. The reviewed DFlash fork remains in the source development group until a
+compatible index release exists; it is not required by the three DynaMoe
+release engines.
 
 ## Installed-model gate
 

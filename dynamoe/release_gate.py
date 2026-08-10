@@ -204,6 +204,33 @@ def _archive_names(path: Path) -> set[str]:
         return set(archive.getnames())
 
 
+def _archive_core_metadata(path: Path) -> str:
+    """Read Core Metadata without installing an archive."""
+
+    if path.suffix == ".whl":
+        with zipfile.ZipFile(path) as archive:
+            members = [
+                name
+                for name in archive.namelist()
+                if name.endswith(".dist-info/METADATA")
+            ]
+            if len(members) != 1:
+                raise ValueError(f"expected one METADATA file, found {len(members)}")
+            return archive.read(members[0]).decode("utf-8")
+    with tarfile.open(path) as archive:
+        members = [
+            member
+            for member in archive.getmembers()
+            if member.name.endswith("/PKG-INFO")
+        ]
+        if len(members) != 1:
+            raise ValueError(f"expected one PKG-INFO file, found {len(members)}")
+        stream = archive.extractfile(members[0])
+        if stream is None:
+            raise ValueError("PKG-INFO is not readable")
+        return stream.read().decode("utf-8")
+
+
 def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
     for archive in archives:
         try:
@@ -232,6 +259,27 @@ def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
             not missing and not leaked,
             f"{archive.name}: missing={missing or 'none'}, leaked={len(leaked)}",
         )
+        try:
+            metadata = _archive_core_metadata(archive)
+            direct_dependencies = [
+                line.removeprefix("Requires-Dist:").strip()
+                for line in metadata.splitlines()
+                if line.startswith("Requires-Dist:")
+                and re.search(r"\s@\s+(?:git\+|https?://)", line)
+            ]
+        except (OSError, UnicodeDecodeError, ValueError, tarfile.TarError, zipfile.BadZipFile) as exc:
+            _check(checks, "package.index_dependencies", False, f"{archive.name}: {exc}")
+        else:
+            _check(
+                checks,
+                "package.index_dependencies",
+                not direct_dependencies,
+                (
+                    f"{archive.name}: index-only dependencies"
+                    if not direct_dependencies
+                    else f"{archive.name}: direct dependencies={direct_dependencies}"
+                ),
+            )
 
 
 def check_evidence(checks: list[GateCheck], evidence_path: Path) -> None:

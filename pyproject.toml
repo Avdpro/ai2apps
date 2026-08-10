@@ -43,15 +43,13 @@ dependencies = [
     # binaries are ABI-coupled to this exact mlx version — bumping the pin
     # requires rebuilding them (OMLX_WITH_CUSTOM_KERNEL=1 setup.py build_ext).
     "mlx==0.32.0",
-    # mlx-lm from commit (ab1806e, v0.31.3) - transformers 5.13+
-    # NewlineTokenizer registration compatibility, DeepSeek/GLM DSA indexer
-    # RoPE fix, trust_remote_code load gate, transformers 5.7.0
-    # compatibility, and prior BatchGenerator/cache fixes.
-    "mlx-lm @ git+https://github.com/ml-explore/mlx-lm@ab1806e8f5d6aa035973af194a1b9198ab4754dc",
+    # Public release dependency. Source checkouts retain the reviewed commit
+    # through [tool.uv.sources] without leaking a direct URL into wheel
+    # metadata (PyPI rejects direct-URL dependencies).
+    "mlx-lm==0.31.3",
     # regex for mlx-lm's Gemma 4 tool parser (uses recursive patterns)
     "regex",
-    # mlx-embeddings from latest commit (32981fa)
-    "mlx-embeddings @ git+https://github.com/Blaizzy/mlx-embeddings@32981fa4e8064ed664b52071789dd18271fe4206",
+    "mlx-embeddings==0.1.0",
     # mlx-vlm custom processors bypass HF AutoProcessor, so torch is not required
     # Keep <5.13 until the broader dependency set gets a dedicated resolver
     # smoke test with transformers 5.13+. The mlx-lm pin above includes the
@@ -110,16 +108,14 @@ dependencies = [
     "openai-harmony",
     # Cohere Command/Cohere2 output parser for reasoning and tool calls
     "cohere_melody>=0.9.0",
-    # mlx-vlm from commit 78b96eb. MiniMax M3 support is vendored under
+    # Source checkouts use reviewed commit 78b96eb via [tool.uv.sources].
+    # MiniMax M3 support is vendored under
     # omlx.patches.mlx_vlm_minimax_m3_compat because upstream removed it.
-    "mlx-vlm @ git+https://github.com/Blaizzy/mlx-vlm@78b96eb5462141447b9a6b4943ef553891da56dd",
+    "mlx-vlm==0.6.3",
     "Pillow>=9.0.0",
-    # dflash-mlx v0.1.10+omlx.3 (474f8e1) - jundot fork of bstnxbt 0.1.10 (9ca0028).
-    # Carries the trimmed-sidecar prefix cache fix (repeat-prompt L1 hits never
-    # fired upstream) and the single-host-sync decode cycle (one D2H transfer
-    # per cycle instead of four syncs plus a hard eval). Also supports current
-    # Gemma 4 unified target exports.
-    "dflash-mlx @ git+https://github.com/jundot/dflash-mlx@474f8e1ba95864f5bb0759cd1b9a13c80abc5ce3",
+    # DFlash remains a source-development capability until its reviewed fork
+    # has an index release. The server already treats it as optional; the
+    # three DynaMoe release engines do not import it.
     "markitdown[pdf,docx,pptx]==0.1.6",
 ]
 
@@ -140,11 +136,12 @@ modelscope = [
     "modelscope>=1.10.0",
 ]
 audio = [
-    # mlx-audio from commit (5175326) with tts/stt/sts extras
+    # Source checkouts can retain reviewed commit 5175326 via
+    # [tool.uv.sources]; published metadata resolves entirely from PyPI.
     # tts extra: misaki, num2words, spacy, phonemizer-fork, espeakng-loader, sentencepiece
     # stt extra: tiktoken, mistral-common[audio]
     # sts extra: tts deps + stt deps + webrtcvad
-    "mlx-audio[tts,stt,sts] @ git+https://github.com/Blaizzy/mlx-audio@51753266e0a4f766fd5e6fbc46652224efc23981",
+    "mlx-audio[tts,stt,sts]==0.4.6",
 ]
 paroquant = [
     # ParoQuant runtime loader for paroquant-quantized models. Installed
@@ -218,6 +215,9 @@ dev = [
     "venvstacks>=0.7.0",
     "xgrammar==0.2.3",
     "apache-tvm-ffi==0.1.11",
+    # Development-only DFlash fork. PEP 735 groups are not emitted into wheel
+    # metadata; [tool.uv.sources] resolves this name to the reviewed commit.
+    "dflash-mlx>=0.1.8",
 ]
 
 [project.scripts]
@@ -256,12 +256,21 @@ include = ["dynamoe*", "omlx*"]
 "*" = ["*.metallib", "*.dylib", "*.so"]
 
 [tool.uv]
-# mlx and mlx-lm are git-pinned; override transitive pins
-# (e.g. mlx-audio -> mlx-lm==0.31.1) so the resolver accepts them.
+# Keep the runtime ABI fixed and override older transitive mlx-lm pins.
 override-dependencies = [
     "mlx==0.32.0",
-    "mlx-lm @ git+https://github.com/ml-explore/mlx-lm@ab1806e8f5d6aa035973af194a1b9198ab4754dc",
+    "mlx-lm==0.31.3",
 ]
+
+# Development/source reproducibility belongs in uv's local source table, not
+# in publishable Core Metadata. `python -m build` ignores this table, while
+# `uv sync` continues to install the exact commits used by the research tree.
+[tool.uv.sources]
+mlx-lm = { git = "https://github.com/ml-explore/mlx-lm", rev = "ab1806e8f5d6aa035973af194a1b9198ab4754dc" }
+mlx-embeddings = { git = "https://github.com/Blaizzy/mlx-embeddings", rev = "32981fa4e8064ed664b52071789dd18271fe4206" }
+mlx-vlm = { git = "https://github.com/Blaizzy/mlx-vlm", rev = "78b96eb5462141447b9a6b4943ef553891da56dd" }
+mlx-audio = { git = "https://github.com/Blaizzy/mlx-audio", rev = "51753266e0a4f766fd5e6fbc46652224efc23981" }
+dflash-mlx = { git = "https://github.com/jundot/dflash-mlx", rev = "474f8e1ba95864f5bb0759cd1b9a13c80abc5ce3" }
 
 [tool.black]
 line-length = 88
