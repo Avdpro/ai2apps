@@ -6,9 +6,10 @@ name: Build wheels
 # to much slower generic kernels; see #2137 / #2208).
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
+
+# Release publication is handled by publish-pypi.yml.  This workflow remains
+# available as a safe manual build/smoke-test that cannot upload to PyPI.
 
 permissions:
   contents: read
@@ -76,22 +77,3 @@ jobs:
           name: wheels-py${{ matrix.python-version }}
           path: dist/*.whl
           if-no-files-found: error
-
-  attach-to-release:
-    if: github.event_name == 'release'
-    needs: build-wheels
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Attach wheels to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ github.event.release.tag_name }}" dist/*.whl \
-            --repo "${{ github.repository }}" --clobber
