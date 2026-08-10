@@ -1,6 +1,6 @@
 # Qwen + DeepSeek V4 Flesh Fusion Profile
 
-Status: concrete profile proposal, not implemented
+Status: generic Fusion core implemented; concrete Qwen/DSF deployment pending
 Date: 2026-08-09; generalized 2026-08-10
 Target branch: `experiment/moe-cache`
 
@@ -10,6 +10,11 @@ Target branch: `experiment/moe-cache`
 > reasoning fallback, transactional KV state, and an optional configurable
 > resolver. Where this earlier three-state proposal conflicts with the generic
 > specification, the generic specification takes precedence.
+>
+> The 2026-08-10 first implementation includes the generic orchestrator,
+> structured protocol, oMLX/remote adapters, profiles, and OpenAI chat stream
+> transport. This concrete Qwen/DSF profile is not yet registered with
+> `EnginePool`, exposed in the WebUI, or quality/performance benchmarked.
 
 This profile maps the roles as follows:
 

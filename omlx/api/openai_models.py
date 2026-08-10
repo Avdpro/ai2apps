@@ -317,6 +317,8 @@ class ChatCompletionRequest(BaseModel):
     # DynaMoe extension: per-request routed-expert acceleration policy.
     # natural=exact, turbo=tail2, blast=head2.
     dynamoe_engine_boost: Optional[str] = None
+    # DynaMoe Fusion stream capability negotiation.
+    dynamoe_stream_mode: Optional[str] = None
 
     @field_validator("dynamoe_l1_mode")
     @classmethod
@@ -332,6 +334,13 @@ class ChatCompletionRequest(BaseModel):
             raise ValueError(
                 "dynamoe_engine_boost must be natural, turbo, or blast"
             )
+        return value
+
+    @field_validator("dynamoe_stream_mode")
+    @classmethod
+    def validate_dynamoe_stream_mode(cls, value):
+        if value is not None and value not in ("draft", "reasoning", "final"):
+            raise ValueError("dynamoe_stream_mode must be draft, reasoning, or final")
         return value
 
     @field_validator("stop", mode="before")
@@ -566,6 +575,9 @@ class ChatCompletionChunkDelta(BaseModel):
     content: Optional[str] = None
     reasoning_content: Optional[str] = None
     tool_calls: Optional[List[dict]] = None
+    # Native DynaMoe Fusion phase event. OpenAI-compatible clients ignore it;
+    # DynaMoe-aware clients can commit, patch, or supersede a streamed draft.
+    dynamoe: Optional[dict] = None
 
 
 class ChatCompletionChunkChoice(BaseModel):

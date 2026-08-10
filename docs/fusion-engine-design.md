@@ -445,3 +445,39 @@ The initial implementation is acceptable only when:
 The concrete Qwen3.6 plus DeepSeek V4 Flesh profile and its earlier review
 budget discussion remain in
 [`qwen-dsf-review-cascade.md`](qwen-dsf-review-cascade.md).
+
+## 17. First implementation status (2026-08-10)
+
+The first in-process implementation now provides:
+
+- typed generator, reviewer, and optional resolver role interfaces;
+- adaptive/off/always gating with bounded reviewer and resolver calls;
+- deterministic, hash- and anchor-protected structured patches;
+- `PASS`, `PATCH`, `REVISE`, and `ESCALATE` execution paths;
+- draft-native, reasoning-compatible, and final-only stream modes;
+- OpenAI chat streaming transport through optional `delta.dynamoe` events;
+- serializable profiles, local oMLX adapters, an OpenAI-compatible remote
+  adapter, and an in-process `build_omlx_fusion_engine(...)` factory;
+- atomic protocol-level commit/abort semantics and failure-injection tests.
+
+This version deliberately has the following boundaries:
+
+- Fusion profiles are built programmatically and are not yet auto-discovered
+  or registered by `EnginePool` or the WebUI.
+- The oMLX generator adapter marks the draft `skip_cache_store=True`. The
+  protocol has commit hooks, but the current adapter does not yet promote or
+  prefill the canonical answer into a reusable KV transaction. A subsequent
+  request safely rebuilds canonical context from client-provided history.
+- Existing generation output does not yet expose batched NLL/logit-margin
+  statistics, so the live adapter initially gates on prompt risk, output
+  length, finish reason, and any signals supplied by a custom backend.
+- Tool calling is rejected explicitly in Fusion v1. Chat text streaming is the
+  supported API path; Anthropic and Responses-native phase transports remain
+  follow-up work.
+- Token accounting reports generator draft tokens. Reviewer/resolver compute,
+  detailed timings, cache metrics, and remote cost still require telemetry
+  plumbing before quality/performance claims can be made.
+
+These constraints keep the first version correct and testable without
+claiming zero-copy KV promotion or automatic deployment integration that is
+not implemented yet.

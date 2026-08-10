@@ -360,6 +360,9 @@ def run_tests(checks: list[GateCheck], repo_root: Path) -> None:
         "tests/test_dynamoe_scope_pack.py",
         "tests/test_hf_downloader.py",
         "tests/test_release_gate.py",
+        "tests/test_fusion_engine.py",
+        "tests/test_fusion_profiles.py",
+        "tests/test_fusion_transport.py",
     ]
     completed = subprocess.run(
         command, cwd=repo_root, text=True, capture_output=True, check=False

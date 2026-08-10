@@ -3510,6 +3510,14 @@ async def create_chat_completion(
             chat_kwargs["flesh_l1_mode"] = request.dynamoe_l1_mode
         if request.dynamoe_engine_boost:
             chat_kwargs["flesh_boost_mode"] = request.dynamoe_engine_boost
+        fusion_stream_mode = request.dynamoe_stream_mode
+        if (
+            fusion_stream_mode is None
+            and http_request.headers.get("x-dynamoe-draft-protocol") == "1"
+        ):
+            fusion_stream_mode = "draft"
+        if fusion_stream_mode:
+            chat_kwargs["dynamoe_stream_mode"] = fusion_stream_mode
 
         # Add seed for reproducible generation (best-effort)
         if request.seed is not None:
@@ -4476,6 +4484,7 @@ async def stream_chat_completion(
     tool_filter = None
     thinking_filter = None
     stream_content = True
+    fusion_transport_seen = False
     if has_tools:
         _content_filter = ToolCallStreamFilter(engine.tokenizer)
         _thinking_filter = ToolCallStreamFilter(engine.tokenizer)
@@ -4486,6 +4495,32 @@ async def stream_chat_completion(
             stream_content = False
     try:
         async for output in engine.stream_chat(messages=messages, **kwargs):
+            fusion_event = getattr(output, "fusion_event", None)
+            if fusion_event is not None:
+                fusion_transport_seen = True
+                last_output = output
+                event_text = str(fusion_event.get("text", ""))
+                event_channel = fusion_event.get("channel", "control")
+                if first_token_time is None and event_text:
+                    first_token_time = time.perf_counter()
+                delta_kwargs = {"dynamoe": fusion_event}
+                if event_channel == "reasoning" and event_text:
+                    delta_kwargs["reasoning_content"] = event_text
+                elif event_channel == "content" and event_text:
+                    delta_kwargs["content"] = event_text
+                    accumulated_text += event_text
+                chunk = ChatCompletionChunk(
+                    id=response_id,
+                    model=request.model,
+                    choices=[
+                        ChatCompletionChunkChoice(
+                            delta=ChatCompletionChunkDelta(**delta_kwargs),
+                            finish_reason=None,
+                        )
+                    ],
+                )
+                yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
+                continue
             if first_token_time is None and output.new_text:
                 first_token_time = time.perf_counter()
             last_output = output
@@ -4541,7 +4576,7 @@ async def stream_chat_completion(
         return
 
     # Flush remaining buffered content from thinking/tool-call parsers
-    if stream_content:
+    if stream_content and not fusion_transport_seen:
         thinking_delta, content_delta = thinking_parser.finish()
         if thinking_delta:
             if thinking_filter:
@@ -4610,7 +4645,10 @@ async def stream_chat_completion(
     # Parse tool calls from accumulated text
     tool_calls = None
     cleaned_text = accumulated_text
-    if last_output and last_output.tool_calls:
+    if fusion_transport_seen:
+        tool_calls = None
+        cleaned_text = accumulated_text
+    elif last_output and last_output.tool_calls:
         # Protocol parser already extracted structured tool calls.
         tool_calls = _convert_parser_tool_calls(last_output.tool_calls)
         cleaned_text = ""
