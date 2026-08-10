@@ -111,7 +111,7 @@ dependencies = [
     # Source checkouts use reviewed commit 78b96eb via [tool.uv.sources].
     # MiniMax M3 support is vendored under
     # omlx.patches.mlx_vlm_minimax_m3_compat because upstream removed it.
-    "mlx-vlm==0.6.3",
+    "mlx-vlm==0.6.10",
     "Pillow>=9.0.0",
     # DFlash remains a source-development capability until its reviewed fork
     # has an index release. The server already treats it as optional; the
