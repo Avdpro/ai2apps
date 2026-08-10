@@ -1,8 +1,22 @@
-# Qwen + DeepSeek V4 Flesh 三态审校级联
+# Qwen + DeepSeek V4 Flesh Fusion Profile
 
-Status: design proposal, not implemented  
-Date: 2026-08-09  
+Status: concrete profile proposal, not implemented
+Date: 2026-08-09; generalized 2026-08-10
 Target branch: `experiment/moe-cache`
+
+> This document is the first concrete local profile for the model-independent
+> [`DynaMoe Fusion Engine`](fusion-engine-design.md). The generic specification
+> defines adaptive gating, `PASS/PATCH/REVISE/ESCALATE`, native draft streaming,
+> reasoning fallback, transactional KV state, and an optional configurable
+> resolver. Where this earlier three-state proposal conflicts with the generic
+> specification, the generic specification takes precedence.
+
+This profile maps the roles as follows:
+
+- local Generator: Qwen3.6-35B-A3B 4-bit;
+- local Reviewer: DeepSeek V4 Flesh 2-bit by default;
+- optional Resolver: disabled by default, or an explicitly configured remote
+  high-quality model used only after escalation.
 
 ## 1. 目标
 
@@ -339,4 +353,3 @@ YAML 仅定义语义，不强制存储格式。
   管理策略。
 - 在 DSF 串行锁和 scope bank 切换存在时，请求排序、按 scope 分组或
   微批审核能否改善 P95，又不伤害单请求延迟。
-
