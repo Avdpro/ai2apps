@@ -315,8 +315,8 @@ def test_model_local_scope_policy_override(tmp_path: Path):
 
 def test_downloader_ui_exposes_ai2apps_source():
     root = Path(__file__).parents[1]
-    template = (root / "omlx/admin/templates/dashboard/_models.html").read_text()
-    script = (root / "omlx/admin/static/js/dashboard.js").read_text()
+    template = (root / "ai2apps/web/templates/dashboard/_models.html").read_text()
+    script = (root / "ai2apps/web/static/js/dashboard.js").read_text()
 
     assert "downloaderSource = 'ai2apps'" in template
     assert "Download & Prepare" in template
