@@ -1,0 +1,312 @@
+:root {
+    --shell-dock-height: 66px;
+    --shell-ink: #171717;
+    --shell-muted: #737373;
+    --shell-line: rgba(23, 23, 23, 0.1);
+    --shell-panel: rgba(255, 255, 255, 0.86);
+    --shell-canvas: #f5f5f4;
+}
+
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    margin: 0;
+    background: var(--shell-canvas) !important;
+}
+
+.app-shell {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: var(--shell-dock-height) minmax(0, 1fr);
+    color: var(--shell-ink);
+    background: var(--shell-canvas);
+    isolation: isolate;
+}
+
+.app-dock {
+    z-index: 50;
+    min-width: 0;
+    height: var(--shell-dock-height);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--shell-line);
+    background: var(--shell-panel);
+    -webkit-backdrop-filter: blur(24px) saturate(1.45);
+    backdrop-filter: blur(24px) saturate(1.45);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    transition: transform 220ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease;
+}
+
+.dock-launcher-button,
+.dock-control,
+.dock-app-button,
+.launcher-close,
+.launcher-category,
+.launcher-app {
+    appearance: none;
+    border: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.dock-launcher-button {
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 10px 5px 6px;
+    border-radius: 14px;
+    background: transparent;
+    transition: background 150ms ease, transform 150ms ease;
+}
+
+.dock-launcher-button:hover { background: rgba(23, 23, 23, 0.055); }
+.dock-launcher-button:active { transform: scale(.97); }
+.dock-logo { width: 36px; height: 36px; border-radius: 10px; }
+.dock-wordmark { font-size: 14px; font-weight: 680; letter-spacing: -.02em; }
+.dock-divider { width: 1px; height: 30px; background: var(--shell-line); }
+.dock-apps { display: flex; align-items: center; gap: 3px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.dock-apps::-webkit-scrollbar { display: none; }
+
+.dock-app-wrap { position: relative; flex: 0 0 auto; }
+.dock-app-wrap[draggable="true"] { cursor: grab; }
+.dock-app-wrap.is-dragging { opacity: .36; }
+.dock-app-wrap.drop-before::before,
+.dock-app-wrap.drop-after::before { content: ""; position: absolute; top: 7px; bottom: 7px; width: 2px; border-radius: 9px; background: #171717; }
+.dock-app-wrap.drop-before::before { left: -2px; }
+.dock-app-wrap.drop-after::before { right: -2px; }
+.dock-app-button {
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: transparent;
+    transition: background 150ms ease, transform 150ms ease;
+}
+.dock-app-button:hover { background: rgba(23,23,23,.06); transform: translateY(-1px); }
+.dock-app-button svg { width: 22px; height: 22px; stroke-width: 1.7; }
+.dock-app-wrap.is-current .dock-app-button { background: #171717; color: white; }
+.dock-app-wrap.is-running:not(.is-current)::after {
+    content: "";
+    position: absolute;
+    left: 50%; bottom: 1px;
+    width: 4px; height: 4px;
+    border-radius: 99px;
+    background: currentColor;
+    transform: translateX(-50%);
+    opacity: .55;
+}
+.dock-tooltip-host {
+    position: fixed; z-index: 115;
+    max-width: 180px; padding: 6px 9px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+    color: white; background: rgba(23,23,23,.94); box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    font-size: 11px; font-weight: 600; line-height: 1; text-overflow: ellipsis; white-space: nowrap;
+    opacity: 0; pointer-events: none; transform: translateY(-3px) scale(.97);
+    transform-origin: top center; transition: opacity 80ms ease, transform 80ms ease;
+}
+.dock-tooltip-host[hidden] { display: none; }
+.dock-tooltip-host.is-visible { opacity: 1; transform: translateY(0) scale(1); }
+.dock-spacer { flex: 1 1 auto; }
+.dock-current { min-width: 96px; display: flex; flex-direction: column; line-height: 1.15; }
+.dock-current-kicker { color: var(--shell-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.dock-current-name { margin-top: 3px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.dock-account {
+    min-width: 0; max-width: 220px; height: 46px; display: flex; align-items: center; gap: 9px;
+    padding: 5px 10px 5px 7px; border: 0; border-radius: 14px; color: inherit;
+    background: rgba(23,23,23,.04); font: inherit; text-align: left; cursor: pointer;
+    transition: background 150ms ease, transform 150ms ease;
+}
+.dock-account:hover { background: rgba(23,23,23,.09); }
+.dock-account:active { transform: scale(.98); }
+.dock-account-avatar { width: 31px; height: 31px; flex: none; display: grid; place-items: center; border-radius: 10px; color: #525252; background: #fff; }
+.dock-account-avatar svg { width: 18px; height: 18px; }
+.dock-account-copy { min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.dock-account-copy strong, .dock-account-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-account-copy strong { max-width: 145px; font-size: 11px; font-weight: 680; }
+.dock-account-copy small { max-width: 145px; margin-top: 3px; color: var(--shell-muted); font-size: 9px; }
+.dock-account-dot { width: 7px; height: 7px; flex: none; border-radius: 99px; background: #a3a3a3; box-shadow: 0 0 0 2px rgba(163,163,163,.15); }
+.dock-account.is-signed-in .dock-account-dot { background: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.15); }
+.dock-account.is-unavailable .dock-account-dot { background: #d97706; box-shadow: 0 0 0 2px rgba(217,119,6,.15); }
+.dock-controls { display: flex; gap: 4px; }
+.dock-control,
+.launcher-close {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+    border-radius: 12px;
+    background: rgba(23,23,23,.04);
+}
+.dock-control:hover, .launcher-close:hover { background: rgba(23,23,23,.09); }
+.dock-control:disabled { opacity: .28; cursor: default; }
+.dock-control svg, .launcher-close svg { width: 18px; height: 18px; }
+.dock-control { position: relative; }
+.control-alert-count { position: absolute; top: -3px; right: -3px; min-width: 16px; height: 16px; padding: 0 4px; place-items: center; border: 2px solid white; border-radius: 99px; color: white; background: #dc2626; font-size: 8px; font-weight: 750; }
+.control-alert-count:not([hidden]) { display: grid; }
+.dock-instance-count { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--shell-panel); border-radius: 99px; color: white; background: #171717; font-size: 8px; font-weight: 750; }
+
+.dock-context-menu {
+    position: fixed; z-index: 120; width: 210px; padding: 7px;
+    border: 1px solid rgba(23,23,23,.11); border-radius: 14px;
+    background: rgba(255,255,255,.96); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+    box-shadow: 0 18px 48px rgba(0,0,0,.18), 0 1px 0 rgba(255,255,255,.9) inset;
+    transform-origin: top left; animation: dock-menu-in 90ms ease-out;
+}
+.dock-context-menu[hidden] { display: none; }
+@keyframes dock-menu-in { from { opacity: 0; transform: scale(.97) translateY(-2px); } }
+.dock-context-heading { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 8px 9px 9px; color: #737373; font-size: 11px; font-weight: 700; }
+.dock-context-heading svg { width: 16px; height: 16px; flex: none; }
+.dock-context-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-context-menu button { width: 100%; height: 34px; padding: 0 9px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 8px; color: #262626; background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.dock-context-menu button:hover,
+.dock-context-menu button:focus-visible { outline: 0; background: #f0f0ef; }
+.dock-context-menu button:disabled { opacity: .36; cursor: default; background: transparent; }
+.dock-context-menu button.is-danger { color: #b91c1c; }
+.dock-context-menu button.is-danger:hover,
+.dock-context-menu button.is-danger:focus-visible { background: #fef2f2; }
+.dock-context-menu button svg { width: 15px; height: 15px; flex: none; }
+.dock-context-separator { height: 1px; margin: 5px 4px; background: rgba(23,23,23,.09); }
+
+.app-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: white; }
+.app-frame { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border: 0; background: white; opacity: 0; transition: opacity 180ms ease; }
+.app-frame[hidden] { display: none; }
+.app-frame.is-ready { opacity: 1; }
+.app-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 12px; justify-items: center; color: var(--shell-muted); font-size: 13px; background: white; }
+.app-loading[hidden] { display: none; }
+.app-frame.is-ready + .app-loading { display: none; }
+.app-loading-mark { width: 26px; height: 26px; border: 2px solid #e5e5e5; border-top-color: #171717; border-radius: 50%; animation: shell-spin .8s linear infinite; }
+@keyframes shell-spin { to { transform: rotate(360deg); } }
+
+.dock-hot-zone { display: none; }
+.app-shell[data-mode="immersive"] { display: block; }
+.app-shell[data-mode="immersive"] .app-stage { position: fixed; inset: 0; z-index: 1; }
+.app-shell[data-mode="immersive"] .app-dock {
+    position: fixed; top: 8px; left: 12px; right: 12px;
+    width: auto;
+    border: 1px solid var(--shell-line);
+    border-radius: 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.14), 0 1px 0 rgba(255,255,255,.8) inset;
+    transform: translateY(calc(-100% - 18px));
+    opacity: 0;
+    pointer-events: none;
+}
+.app-shell[data-mode="immersive"].dock-visible .app-dock,
+.app-shell[data-mode="immersive"] .app-dock:focus-within {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+.app-shell[data-mode="immersive"] .dock-hot-zone {
+    display: block;
+    position: fixed; z-index: 49;
+    top: 0; left: 0; right: 0; height: 12px;
+}
+
+.app-launcher { position: fixed; inset: 0; z-index: 80; display: none; }
+.app-launcher.is-open { display: block; }
+.launcher-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(245,245,244,.66); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.launcher-panel {
+    position: relative;
+    width: min(980px, calc(100% - 32px));
+    max-height: calc(100dvh - 48px);
+    margin: 24px auto;
+    overflow: auto;
+    padding: 28px;
+    border: 1px solid rgba(255,255,255,.85);
+    border-radius: 26px;
+    background: rgba(255,255,255,.9);
+    box-shadow: 0 32px 90px rgba(0,0,0,.16);
+    animation: launcher-in 180ms cubic-bezier(.2,.8,.2,1);
+}
+@keyframes launcher-in { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+.launcher-heading { display: flex; justify-content: space-between; align-items: start; }
+.launcher-eyebrow { margin: 0 0 3px; color: var(--shell-muted); font-size: 10px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.launcher-heading h1 { margin: 0; font-size: clamp(25px, 4vw, 38px); line-height: 1; letter-spacing: -.045em; }
+.launcher-search { height: 48px; margin-top: 24px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid var(--shell-line); border-radius: 14px; background: white; }
+.launcher-search svg { width: 18px; color: var(--shell-muted); }
+.launcher-search input { flex: 1; min-width: 0; border: 0; box-shadow: none !important; font-size: 15px; background: transparent; }
+.launcher-search kbd { padding: 3px 6px; border: 1px solid #e5e5e5; border-radius: 6px; color: var(--shell-muted); background: #fafafa; font-size: 10px; }
+.launcher-categories { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; }
+.launcher-category { padding: 7px 11px; border-radius: 99px; color: #525252; background: #f5f5f4; font-size: 12px; }
+.launcher-category.is-active { color: white; background: #171717; }
+.launcher-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 11px; }
+.launcher-app { position: relative; min-height: 142px; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 18px; background: #f7f7f6; transition: transform 160ms ease, background 160ms ease, border-color 160ms ease; }
+.launcher-app:hover { transform: translateY(-2px); border-color: #dededb; background: white; box-shadow: 0 12px 30px rgba(0,0,0,.06); }
+.launcher-app-open { appearance: none; width: 100%; min-height: 142px; padding: 18px; display: flex; flex-direction: column; align-items: flex-start; text-align: left; border: 0; color: inherit; background: transparent; cursor: pointer; }
+.launcher-app-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; color: white; background: #171717; }
+.launcher-app-icon svg { width: 22px; }
+.launcher-app-name { margin-top: 17px; font-size: 14px; font-weight: 700; }
+.launcher-app-description { margin-top: 4px; color: var(--shell-muted); font-size: 11px; line-height: 1.35; }
+.launcher-app-meta { margin-top: auto; padding-top: 11px; color: #a3a3a3; font-size: 10px; }
+.launcher-instances { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 14px 14px; }
+.launcher-instance { max-width: 100%; padding: 5px 8px; overflow: hidden; border: 1px solid #e5e5e5; border-radius: 8px; color: #525252; background: white; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.launcher-instance:hover { color: #171717; border-color: #a3a3a3; }
+.launcher-instance-new { color: white; border-color: #171717; background: #171717; }
+.launcher-pin { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 9px; color: #a3a3a3; background: rgba(255,255,255,.75); cursor: pointer; opacity: 0; transition: opacity 140ms ease, color 140ms ease, background 140ms ease; }
+.launcher-app:hover .launcher-pin, .launcher-pin:focus-visible, .launcher-pin.is-pinned { opacity: 1; }
+.launcher-pin:hover, .launcher-pin.is-pinned { color: #171717; background: white; }
+.launcher-pin svg { width: 14px; height: 14px; }
+.launcher-empty { padding: 50px; text-align: center; color: var(--shell-muted); }
+.shell-toast { position: fixed; z-index: 100; left: 50%; bottom: 24px; padding: 9px 13px; border-radius: 10px; color: white; background: #171717; font-size: 12px; transform: translate(-50%, 16px); opacity: 0; pointer-events: none; transition: 180ms ease; }
+.shell-toast.is-visible { transform: translate(-50%, 0); opacity: 1; }
+
+.system-control { position: fixed; inset: 0; z-index: 90; display: none; }
+.system-control.is-open { display: block; }
+.control-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(23,23,23,.32); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.control-panel { position: absolute; top: 12px; right: 12px; bottom: 12px; width: min(620px, calc(100% - 24px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,.8); border-radius: 24px; background: rgba(255,255,255,.96); box-shadow: 0 28px 90px rgba(0,0,0,.24); animation: control-in 180ms cubic-bezier(.2,.8,.2,1); }
+@keyframes control-in { from { opacity: 0; transform: translateX(12px) scale(.99); } }
+.control-heading { display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 24px 17px; }
+.control-heading h1 { margin: 0; font-size: 28px; line-height: 1; letter-spacing: -.04em; }
+.control-tabs { display: flex; gap: 6px; padding: 0 24px 14px; overflow-x: auto; border-bottom: 1px solid var(--shell-line); scrollbar-width: none; }
+.control-tabs::-webkit-scrollbar { display: none; }
+.control-tabs button { flex: 0 0 auto; padding: 7px 11px; border: 0; border-radius: 99px; color: #737373; background: #f5f5f4; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+.control-tabs button.is-active { color: white; background: #171717; }
+.control-content { min-height: 0; flex: 1; overflow: auto; padding: 20px 24px 30px; }
+.control-loading, .control-empty { padding: 44px 10px; color: #a3a3a3; text-align: center; font-size: 12px; }
+.control-section + .control-section { margin-top: 22px; }
+.control-section-title { margin: 0 0 9px; color: #737373; font-size: 9px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.control-card { padding: 15px; border: 1px solid #e5e5e5; border-radius: 15px; background: #fff; }
+.control-card + .control-card { margin-top: 9px; }
+.control-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.control-card h2, .control-card h3 { margin: 0; color: #171717; font-size: 14px; }
+.control-card p { margin: 5px 0 0; color: #737373; font-size: 11px; line-height: 1.45; }
+.control-meta { margin-top: 10px; display: grid; grid-template-columns: minmax(85px,.4fr) 1fr; gap: 5px 10px; color: #525252; font-size: 10px; }
+.control-meta dt { color: #a3a3a3; }
+.control-meta dd { margin: 0; overflow-wrap: anywhere; }
+.control-pill { flex: 0 0 auto; padding: 4px 7px; border-radius: 99px; color: #166534; background: #dcfce7; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.control-pill.warning { color: #92400e; background: #fef3c7; }
+.control-pill.danger { color: #991b1b; background: #fee2e2; }
+.control-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
+.control-action { padding: 7px 10px; border: 1px solid #e5e5e5; border-radius: 9px; color: #525252; background: #fff; font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
+.control-action:hover { border-color: #a3a3a3; color: #171717; }
+.control-action.primary { color: white; border-color: #171717; background: #171717; }
+.control-action.danger { color: #b91c1c; border-color: #fecaca; background: #fff7f7; }
+.control-code { margin-top: 9px; max-height: 150px; overflow: auto; padding: 9px; border-radius: 10px; color: #525252; background: #f5f5f4; font: 9px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+    :root { --shell-dock-height: 58px; }
+    .app-dock { padding: 6px 8px; gap: 5px; }
+    .dock-wordmark, .dock-current, .dock-divider, .dock-account-copy { display: none; }
+    .dock-logo { width: 34px; height: 34px; }
+    .dock-launcher-button { padding: 4px; }
+    .dock-account { width: 41px; padding: 5px; justify-content: center; }
+    .dock-account-dot { position: absolute; margin: -29px -30px 0 0; }
+    .dock-app-button { width: 41px; height: 41px; }
+    .dock-controls .dock-control:last-child { display: none; }
+    .control-panel { inset: 6px; width: auto; }
+    .launcher-panel { width: calc(100% - 16px); margin: 8px auto; max-height: calc(100dvh - 16px); padding: 19px; border-radius: 21px; }
+    .launcher-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .launcher-app { min-height: 132px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

@@ -118,6 +118,23 @@ class PrefillProgressTracker:
                 results.append(result)
             return results
 
+    def get_request_progress(self, request_id: str) -> Optional[Dict[str, Any]]:
+        """Return one active prefill entry regardless of its model."""
+
+        with self._lock:
+            entry = self._progress.get(request_id)
+            if entry is None:
+                return None
+            speed = entry.get("speed", 0.0)
+            remaining = entry["total"] - entry["processed"]
+            return {
+                **entry,
+                "request_id": request_id,
+                "elapsed": round(time.monotonic() - entry["start_time"], 1),
+                "speed": round(speed, 1),
+                "eta": round(remaining / speed, 1) if speed > 0 else None,
+            }
+
     def clear(self) -> None:
         """Remove all entries."""
         with self._lock:

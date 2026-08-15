@@ -1,0 +1,56 @@
+{% extends "mobile_base.html" %}
+{% block title %}Chat - AI2Apps Mobile{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ mobile_static('css/mobile_chat.css') }}">
+{% endblock %}
+{% block content %}
+<div class="mchat" data-mobile-chat>
+    <header class="mchat-head">
+        <button class="mchat-icon-button" type="button" data-mobile-chat-sessions aria-label="Sessions">
+            <i data-lucide="panel-left"></i>
+        </button>
+        <div class="mchat-title"><strong data-mobile-chat-title>New chat</strong><small>Shared with this Mac</small></div>
+        <button class="mchat-icon-button" type="button" data-mobile-chat-new aria-label="New session">
+            <i data-lucide="square-pen"></i>
+        </button>
+    </header>
+
+    <div class="mchat-controls">
+        <div class="mchat-mode" role="group" aria-label="Run mode">
+            <button class="is-active" type="button" data-mobile-chat-mode="chat"><i data-lucide="message-circle"></i>Chat</button>
+            <button type="button" data-mobile-chat-mode="agent"><i data-lucide="bot"></i>Agent</button>
+        </div>
+        <select data-mobile-chat-model aria-label="Model"><option>Loading models…</option></select>
+        <select data-mobile-chat-agent aria-label="Agent" hidden><option>Loading Agents…</option></select>
+    </div>
+
+    <main class="mchat-list" data-mobile-chat-list>
+        <div class="mchat-empty"><i data-lucide="sparkles"></i><h1>Chat with this Mac</h1><p>Sessions, attachments and Agent runs stay on your Mac. Your local API key is never sent to the phone.</p></div>
+    </main>
+
+    <div class="mchat-status" data-mobile-chat-status hidden role="status" aria-live="polite">
+        <span class="mchat-status-spinner"></span><div><strong data-mobile-chat-status-title>AI is working</strong><small data-mobile-chat-status-detail></small></div>
+        <div class="mchat-progress"><span data-mobile-chat-progress></span></div>
+    </div>
+
+    <form class="mchat-compose" data-mobile-chat-form>
+        <div class="mchat-attachments" data-mobile-chat-attachments hidden></div>
+        <div class="mchat-box">
+            <input type="file" multiple hidden data-mobile-chat-file accept="image/png,image/jpeg,image/webp,.pdf,.docx,.pptx,.xlsx,.csv,.json,.html,.txt,.md">
+            <button class="mchat-attach" type="button" data-mobile-chat-attach aria-label="Add attachment"><i data-lucide="paperclip"></i></button>
+            <textarea rows="1" maxlength="12000" placeholder="Message AI2Apps" aria-label="Message" data-mobile-chat-input></textarea>
+            <button class="mchat-send" aria-label="Send" data-mobile-chat-send><i data-lucide="arrow-up"></i></button>
+        </div>
+    </form>
+
+    <aside class="mchat-drawer" data-mobile-chat-drawer aria-hidden="true">
+        <button class="mchat-backdrop" type="button" data-mobile-chat-close aria-label="Close sessions"></button>
+        <section><header><div><small>THIS MAC</small><h2>Sessions</h2></div><button type="button" data-mobile-chat-close aria-label="Close"><i data-lucide="x"></i></button></header>
+            <button class="mchat-new-session" type="button" data-mobile-chat-new><i data-lucide="plus"></i>New session</button>
+            <div class="mchat-session-list" data-mobile-chat-session-list></div>
+        </section>
+    </aside>
+    <div class="mchat-toast" data-mobile-chat-toast role="alert"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ mobile_static('js/mobile_chat.js') }}"></script>{% endblock %}

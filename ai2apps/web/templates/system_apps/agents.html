@@ -1,0 +1,101 @@
+{% extends app_base_template|default("base.html") %}
+
+{% block title %}Agents - AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/agents.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="agent-manager" x-data="agentManager()" x-init="init()" data-app-id="ai2apps.agents">
+    <header class="agent-manager-header">
+        <div class="agent-avatar"><i data-lucide="bot"></i></div>
+        <div><div class="agent-manager-title">Agent Manager</div><div class="text-[11px] text-neutral-500">Definitions, Runs, Packages and Patches</div></div>
+        <nav class="agent-manager-tabs ml-auto">
+            <button class="agent-manager-tab" :class="tab==='catalog'&&'active'" @click="tab='catalog'">Catalog</button>
+            <button class="agent-manager-tab" :class="tab==='runs'&&'active'" @click="tab='runs'; loadRuns()">Runs</button>
+            <button class="agent-manager-tab" :class="tab==='packages'&&'active'" @click="tab='packages'">Packages</button>
+        </nav>
+        <button class="agent-button" @click="refresh()"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Refresh</button>
+    </header>
+
+    <main class="agent-manager-body">
+        <div x-show="error" x-cloak class="agent-alert" x-text="error"></div>
+
+        <section x-show="tab==='catalog'" x-cloak>
+            <div class="agent-toolbar">
+                <input class="agent-search" type="search" x-model="search" placeholder="Search Agents by name, key, alias or description">
+                <span class="text-xs text-neutral-500" x-text="filteredAgents().length + ' Agents'"></span>
+            </div>
+            <div class="agent-layout">
+                <div class="agent-panel">
+                    <template x-for="agent in filteredAgents()" :key="agent.id">
+                        <button class="agent-list-item" :class="selectedKey===agent.agent_key&&'active'" @click="selectAgent(agent.agent_key)">
+                            <span class="agent-avatar"><i data-lucide="bot"></i></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="flex items-center gap-2"><span class="agent-name" x-text="agent.display_name"></span><span class="agent-badge" :class="agent.status" x-text="agent.status"></span></span>
+                                <span class="agent-subtitle" x-text="agent.agent_key + ' · v' + agent.package_version"></span>
+                                <span class="agent-subtitle" x-text="agent.description || 'No description'"></span>
+                            </span>
+                        </button>
+                    </template>
+                    <div x-show="!loading && filteredAgents().length===0" class="agent-empty">No matching Agents</div>
+                </div>
+
+                <div class="agent-panel" x-show="detail" x-cloak>
+                    <div class="agent-detail-head">
+                        <span class="agent-avatar"><i data-lucide="bot"></i></span>
+                        <div class="min-w-0 flex-1"><h2 class="text-lg font-bold" x-text="detail?.definition.display_name"></h2><p class="text-xs text-neutral-500 mt-1" x-text="detail?.definition.agent_key"></p><p class="text-xs text-neutral-600 mt-2" x-text="detail?.definition.description"></p></div>
+                        <div class="flex gap-2">
+                            <button x-show="detail?.definition.status==='enabled'" class="agent-button" @click="setEnabled(false)">Disable</button>
+                            <button x-show="detail?.definition.status==='disabled'" class="agent-button primary" @click="setEnabled(true)">Enable</button>
+                            <button x-show="detail?.definition.source==='installed'" class="agent-button danger" @click="uninstallSelected()">Uninstall</button>
+                        </div>
+                    </div>
+                    <div class="agent-detail-content">
+                        <div class="agent-stats">
+                            <div class="agent-stat"><div class="agent-stat-value" x-text="detail?.run_counts.total||0"></div><div class="agent-stat-label">Total Runs</div></div>
+                            <div class="agent-stat"><div class="agent-stat-value" x-text="detail?.run_counts.active||0"></div><div class="agent-stat-label">Active</div></div>
+                            <div class="agent-stat"><div class="agent-stat-value" x-text="detail?.run_counts.completed||0"></div><div class="agent-stat-label">Completed</div></div>
+                            <div class="agent-stat"><div class="agent-stat-value" x-text="detail?.run_counts.failed||0"></div><div class="agent-stat-label">Failed</div></div>
+                        </div>
+                        <div class="agent-section-title">Runtime policy</div>
+                        <div class="agent-grid">
+                            <div class="agent-field"><div class="agent-field-label">Executor</div><div class="agent-field-value" x-text="detail?.definition.executor_key"></div></div>
+                            <div class="agent-field"><div class="agent-field-label">Source</div><div class="agent-field-value" x-text="detail?.definition.source"></div></div>
+                            <div class="agent-field"><div class="agent-field-label">Concurrency</div><div class="agent-field-value" x-text="detail?.definition.concurrency_group ? detail.definition.concurrency_group + ' · ' + detail.definition.concurrency_limit : 'Shared global pool'"></div></div>
+                            <div class="agent-field"><div class="agent-field-label">Resume policy</div><div class="agent-field-value" x-text="detail?.definition.resume_policy"></div></div>
+                            <div class="agent-field"><div class="agent-field-label">Step budget</div><div class="agent-field-value" x-text="detail?.definition.max_steps"></div></div>
+                            <div class="agent-field"><div class="agent-field-label">Timeout</div><div class="agent-field-value" x-text="(detail?.definition.timeout_seconds||0) + ' seconds'"></div></div>
+                        </div>
+                        <div class="agent-section"><div class="agent-section-title">Invocation</div><div class="flex flex-wrap gap-2"><template x-for="alias in (detail?.definition.aliases||[])" :key="alias"><span class="agent-badge" x-text="'@'+alias"></span></template><span class="agent-badge" x-text="detail?.definition.discoverable ? 'Discoverable' : 'Hidden'"></span></div></div>
+                        <details class="agent-section"><summary class="agent-section-title cursor-pointer">Manifest</summary><pre class="agent-code" x-text="pretty(detail?.definition.manifest)"></pre></details>
+                        <div class="agent-section"><div class="agent-section-title">Recent Runs</div><template x-for="run in (detail?.recent_runs||[]).slice(0,5)" :key="run.id"><div class="agent-package flex items-center gap-3"><span class="agent-badge" :class="run.status" x-text="run.status"></span><span class="agent-run-id flex-1" x-text="run.id"></span><span class="text-[11px] text-neutral-500" x-text="formatTime(run.created_at)"></span></div></template><div x-show="!(detail?.recent_runs||[]).length" class="text-xs text-neutral-500">No Runs yet.</div></div>
+                    </div>
+                </div>
+                <div class="agent-panel agent-empty" x-show="!detail">Select an Agent to inspect it.</div>
+            </div>
+        </section>
+
+        <section x-show="tab==='runs'" x-cloak>
+            <div class="agent-toolbar"><select class="agent-search !w-56" x-model="runAgent" @change="loadRuns()"><option value="">All Agents</option><template x-for="agent in agents" :key="agent.id"><option :value="agent.agent_key" x-text="agent.display_name"></option></template></select><select class="agent-search !w-48" x-model="runStatus" @change="loadRuns()"><option value="">All states</option><template x-for="state in runStates" :key="state"><option :value="state" x-text="state"></option></template></select><label class="text-xs text-neutral-600 flex items-center gap-2"><input type="checkbox" x-model="rootOnly" @change="loadRuns()">Root Runs only</label></div>
+            <div class="agent-panel"><template x-for="run in runs" :key="run.id"><div class="agent-run" :style="`padding-left:${16 + run.depth*18}px`"><div class="min-w-0"><div class="font-semibold truncate" x-text="(run.depth?'↳ ':'') + run.agent_display_name"></div><div class="agent-run-id" x-text="run.id"></div></div><span><span class="agent-badge" :class="run.status" x-text="run.status"></span></span><span class="text-neutral-500" x-text="formatTime(run.created_at)"></span><span class="flex gap-1 justify-end"><button x-show="canPause(run)" class="agent-button !p-2" @click="runAction(run,'pause')" title="Pause">Ⅱ</button><button x-show="run.status==='interrupted'" class="agent-button !p-2" @click="runAction(run,'resume')" title="Resume">▶</button><button x-show="['failed','cancelled'].includes(run.status)" class="agent-button !px-2" @click="runAction(run,'retry')" title="Create a fresh retry attempt">Retry</button><button x-show="isActive(run)" class="agent-button danger !p-2" @click="runAction(run,'cancel')" title="Cancel">×</button></span></div></template><div x-show="!runsLoading && !runs.length" class="agent-empty">No AgentRuns match the selected filters.</div></div>
+        </section>
+
+        <section x-show="tab==='packages'" x-cloak>
+            <div class="agent-install"><input class="agent-search flex-1" x-model="installPath" placeholder="Absolute path to a signed .ai2agent archive"><label class="flex items-center gap-2 text-xs"><input type="checkbox" x-model="approveReview">Approve review</label><button class="agent-button primary" :disabled="!installPath||working" @click="installAgent()">Install Agent</button></div>
+            <div class="agent-layout">
+                <div class="agent-panel"><template x-for="agent in agents" :key="agent.id"><button class="agent-list-item" :class="selectedKey===agent.agent_key&&'active'" @click="selectAgent(agent.agent_key); tab='packages'"><span class="agent-avatar"><i data-lucide="package"></i></span><span class="min-w-0"><span class="agent-name" x-text="agent.display_name"></span><span class="agent-subtitle" x-text="agent.source + ' · ' + agent.package_version"></span></span></button></template></div>
+                <div class="agent-panel"><div class="agent-detail-content" x-show="detail"><div class="agent-section-title">Installed versions</div><template x-for="pkg in (detail?.packages||[])" :key="pkg.digest"><div class="agent-package"><div class="flex items-center gap-2"><strong class="text-sm" x-text="'v'+pkg.version"></strong><span class="agent-badge" :class="pkg.status" x-text="pkg.status"></span><button x-show="pkg.status==='retained' || pkg.status==='installed'" class="agent-button ml-auto" @click="activatePackage(pkg.digest)">Activate</button></div><div class="agent-run-id mt-2" x-text="pkg.digest"></div><div class="text-[11px] text-neutral-500 mt-1" x-text="'Publisher: '+pkg.publisher"></div></div></template><div x-show="!(detail?.packages||[]).length" class="text-xs text-neutral-500">Built-in Agent; no installable package record.</div><div class="agent-section"><div class="agent-section-title">Effective Definition</div><div x-show="detail?.effective_definition" class="agent-package"><div class="agent-run-id" x-text="detail?.effective_definition?.effective_digest"></div><div class="text-[11px] text-neutral-500 mt-1" x-text="'Patch set: '+detail?.effective_definition?.patch_set_digest"></div></div><div x-show="!detail?.effective_definition" class="text-xs text-neutral-500">Built-in definition is active directly.</div></div><div class="agent-section"><div class="agent-section-title">Local Patches</div><template x-for="patch in (detail?.patches||[])" :key="patch.id"><div class="agent-package"><div class="flex items-center gap-2"><strong class="text-xs" x-text="patch.intent||patch.id"></strong><span class="agent-badge" :class="patch.status" x-text="patch.status"></span></div><div class="agent-run-id mt-2" x-text="patch.digest"></div><div x-show="patch.conflict" class="text-xs text-red-700 mt-2" x-text="pretty(patch.conflict)"></div></div></template><div x-show="!(detail?.patches||[]).length" class="text-xs text-neutral-500">No local Patches.</div></div></div><div x-show="!detail" class="agent-empty">Select an Agent to inspect package provenance.</div></div>
+            </div>
+        </section>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not mobile_surface %}
+<script>window.AI2APPS_AGENT_MANAGER_API_KEY = {{ (api_key or '') | tojson }};</script>
+{% endif %}
+<script src="{{ static('js/agent_manager.js') }}"></script>
+{% endblock %}

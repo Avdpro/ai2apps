@@ -498,6 +498,14 @@ class _InflightStoreInfo:
 
 
 @dataclass
+class _ExactPrefixStore:
+    request_id: str
+    tokens: list[int]
+    cache: list[Any]
+    model_cache_config: Any | None
+
+
+@dataclass
 class _CacheFreshnessWait:
     store_request_id: str
     future: concurrent.futures.Future
@@ -1572,7 +1580,7 @@ class Scheduler:
         self._stream = stream if stream is not None else _default_generation_stream
         self._serialize_llama4_requests = _model_declares_llama4(model)
         if self._serialize_llama4_requests and self.config.max_num_seqs > 1:
-            logger.info(
+            logger.debug(
                 "Llama 4 detected; serializing requests because ChunkedKVCache "
                 "does not support multi-row batching yet"
             )
@@ -1807,6 +1815,7 @@ class Scheduler:
         # Always maintained (int32 arrays, maxlen=4) so large re-prefills
         # can log their divergence point at INFO (#2333).
         self._cache_probe_seqs: deque[tuple[str, array | list[int]]] = deque(maxlen=4)
+        self._last_prefix_probe: dict[str, Any] | None = None
 
         model_name_lower = (self.config.model_name or "").lower()
         default_kv_eval_interval = 256 if "minimax" in model_name_lower else 0
@@ -1862,6 +1871,15 @@ class Scheduler:
         # blocking the scheduler step that continues existing decode/prefill.
         self._cache_freshness_waits: dict[str, _CacheFreshnessWait] = {}
         self._prefix_cache_prepared: set[str] = set()
+        # Session/persistent KV continuity keeps an exact, arbitrary-length
+        # turn boundary in addition to the ordinary full-block prefix index.
+        # ArraysCache hybrid models use large physical blocks (currently
+        # 2048 tokens), so ordinary matching alone cannot accelerate the
+        # common short second turn even when its prompt is append-only.
+        self._session_exact_prefix_tokens: dict[
+            tuple[Any, ...], list[int]
+        ] = {}
+        self._session_exact_prefix_lock = threading.Lock()
 
         # Mapping between our request IDs and BatchGenerator UIDs
         self.request_id_to_uid: dict[str, int] = {}
@@ -2035,6 +2053,7 @@ class Scheduler:
         self.num_requests_processed = 0
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        self._last_prefill_profile: dict[str, Any] | None = None
 
         # Step counter for periodic cleanup
         self._step_counter = 0
@@ -2093,6 +2112,110 @@ class Scheduler:
                 "avg_ms": total / count if count else 0.0,
             }
         return result
+
+    @staticmethod
+    def _ensure_prefill_profile(request: Request) -> dict[str, Any]:
+        profile = request.prefill_profile
+        if profile is None:
+            physical = get_phys_footprint()
+            profile = {
+                "request_id": request.request_id,
+                "started_at": time.perf_counter(),
+                "prompt_tokens": int(request.num_prompt_tokens or 0),
+                "cached_tokens": int(request.cached_tokens or 0),
+                "prefix_lookup_ms": 0.0,
+                "forward_eval_ms": 0.0,
+                "forward_tokens": 0,
+                "chunks": 0,
+                "physical_start_bytes": physical,
+                "physical_peak_observed_bytes": physical,
+            }
+            request.prefill_profile = profile
+        return profile
+
+    def _record_prefill_chunk(
+        self,
+        request: Request,
+        *,
+        tokens: int,
+        elapsed_ms: float,
+        physical_before: int,
+        physical_after: int,
+    ) -> None:
+        profile = self._ensure_prefill_profile(request)
+        profile["forward_eval_ms"] += max(0.0, float(elapsed_ms))
+        profile["forward_tokens"] += max(0, int(tokens))
+        profile["chunks"] += 1
+        profile["physical_peak_observed_bytes"] = max(
+            int(profile["physical_peak_observed_bytes"]),
+            int(physical_before),
+            int(physical_after),
+        )
+
+    def _notify_prefill_chunk(
+        self,
+        request: Request,
+        *,
+        tokens: int,
+        processed_tokens: int,
+        remaining_tokens: int,
+    ) -> None:
+        """Run an optional model-engine policy hook at a safe chunk boundary."""
+
+        callback = getattr(self, "_prefill_chunk_callback", None)
+        if callback is None:
+            return
+        callback(
+            request,
+            tokens=tokens,
+            processed_tokens=processed_tokens,
+            remaining_tokens=remaining_tokens,
+        )
+        # A policy hook may patch resident expert slots. Include that transient
+        # in the same request's peak instead of only sampling the model forward.
+        profile = self._ensure_prefill_profile(request)
+        profile["physical_peak_observed_bytes"] = max(
+            int(profile["physical_peak_observed_bytes"]),
+            int(get_phys_footprint()),
+        )
+
+    def _mark_prefill_ready(self, request: Request) -> None:
+        profile = self._ensure_prefill_profile(request)
+        if "ready_at" in profile:
+            return
+        ready_at = time.perf_counter()
+        physical_end = get_phys_footprint()
+        profile["ready_at"] = ready_at
+        profile["cached_tokens"] = int(request.cached_tokens or 0)
+        profile["new_prompt_tokens"] = max(
+            0, int(request.num_prompt_tokens or 0) - profile["cached_tokens"]
+        )
+        profile["active_prefill_ms"] = max(
+            0.0, (ready_at - float(profile["started_at"])) * 1000.0
+        )
+        profile["attributed_overhead_ms"] = max(
+            0.0,
+            profile["active_prefill_ms"]
+            - float(profile["prefix_lookup_ms"])
+            - float(profile["forward_eval_ms"]),
+        )
+        profile["physical_end_bytes"] = physical_end
+        profile["physical_peak_observed_bytes"] = max(
+            int(profile["physical_peak_observed_bytes"]), physical_end
+        )
+        profile["physical_observed_delta_bytes"] = max(
+            0,
+            int(profile["physical_peak_observed_bytes"])
+            - int(profile["physical_start_bytes"]),
+        )
+        profile["effective_new_tokens_per_second"] = (
+            profile["new_prompt_tokens"] / (profile["active_prefill_ms"] / 1000.0)
+            if profile["active_prefill_ms"] > 0
+            else 0.0
+        )
+        # Copy the public scalar payload. Timestamps remain useful for ordering,
+        # while no MLX arrays or cache objects escape through get_stats().
+        self._last_prefill_profile = dict(profile)
 
     def _periodic_clear_threshold_bytes(self) -> int:
         """Cache-bytes threshold above which the periodic clear runs.
@@ -2176,6 +2299,9 @@ class Scheduler:
         extra_key_token_start: int | None,
         extra_key_ranges: list[tuple[int, tuple[Any, ...]]] | None,
         hot_cache_write_back: bool = True,
+        exact_session_boundary: bool = False,
+        session_lineage_key: tuple[Any, ...] | None = None,
+        declared_exact_store: _ExactPrefixStore | None = None,
     ) -> None:
         """Run store_cache + paged_cache cleanup off the inference thread.
 
@@ -2211,6 +2337,7 @@ class Scheduler:
         threading.RLock so concurrent access from main and worker is safe.
         """
         try:
+            session_exact_stored = False
             # Hold _mx_buffer_access_lock across the worker's mx-buffer
             # access. store_cache eventually drives _extract_tensor_bytes,
             # which reads raw bytes via the buffer protocol; serializing
@@ -2220,7 +2347,22 @@ class Scheduler:
             with _mx_buffer_access_lock:
                 with self._phase_timer("store_cache_worker_sync"):
                     _safe_sync_stream(self._stream)
-                if hot_cache_write_back:
+                if exact_session_boundary:
+                    block_table = self.block_aware_cache.store_exact_prefix(
+                        request_id,
+                        token_sequence_to_store,
+                        cache_to_store,
+                        model_cache_config=model_cache_config,
+                        extra_keys=extra_keys,
+                        extra_key_token_start=extra_key_token_start,
+                        extra_key_ranges=extra_key_ranges,
+                    )
+                    # store_exact_prefix persists an arbitrary-length terminal
+                    # boundary but deliberately has no block-table return
+                    # contract.  Success, rather than a non-None return value,
+                    # is what makes this lineage restorable.
+                    session_exact_stored = True
+                elif hot_cache_write_back:
                     block_table = self.block_aware_cache.store_cache(
                         request_id,
                         token_sequence_to_store,
@@ -2243,9 +2385,41 @@ class Scheduler:
                         extra_key_ranges=extra_key_ranges,
                         hot_cache_write_back=False,
                     )
+                if declared_exact_store is not None:
+                    try:
+                        self.block_aware_cache.store_exact_prefix(
+                            declared_exact_store.request_id,
+                            declared_exact_store.tokens,
+                            declared_exact_store.cache,
+                            model_cache_config=(
+                                declared_exact_store.model_cache_config
+                            ),
+                            extra_keys=extra_keys,
+                            extra_key_token_start=extra_key_token_start,
+                            extra_key_ranges=extra_key_ranges,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Declared exact-prefix store failed for %s: %s",
+                            request_id,
+                            exc,
+                        )
+            if (
+                (block_table is not None or session_exact_stored)
+                and exact_session_boundary
+                and session_lineage_key is not None
+            ):
+                with self._session_exact_prefix_lock:
+                    self._session_exact_prefix_tokens[session_lineage_key] = list(
+                        token_sequence_to_store
+                    )
             if block_table is None and self.paged_cache_manager is not None:
                 block_table = self.paged_cache_manager.get_block_table(request_id)
-            if block_table and self.paged_cache_manager is not None:
+            if (
+                block_table
+                and self.paged_cache_manager is not None
+                and not exact_session_boundary
+            ):
                 self.paged_cache_manager.release_for_eviction(block_table.block_ids)
             if self.block_aware_cache is not None:
                 self.block_aware_cache.clear_request_entry(request_id)
@@ -2403,6 +2577,80 @@ class Scheduler:
     # reprocessing reasonable.
     _ROTATING_BLOCK_SIZE_MIN = 512
     _ROTATING_BLOCK_SIZE_MAX = 1024
+    _DEEPSEEK_V4_KV_CHECKPOINT_ENV = "OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS"
+
+    def _model_declares_deepseek_v4_for_cache(self) -> bool:
+        """Detect DS4 without importing the patch package during model load."""
+
+        seen: set[int] = set()
+        stack = [self.model]
+        while stack:
+            obj = stack.pop()
+            if obj is None or id(obj) in seen:
+                continue
+            seen.add(id(obj))
+            if type(obj).__module__.startswith("unittest.mock"):
+                continue
+            model_type = getattr(obj, "model_type", None)
+            if model_type is None:
+                model_type = getattr(getattr(obj, "args", None), "model_type", None)
+            if str(model_type or "").startswith("deepseek_v4"):
+                return True
+            module_name = type(obj).__module__.lower()
+            class_name = type(obj).__name__.lower()
+            if "deepseek_v4" in module_name or "deepseekv4" in class_name:
+                return True
+            for attr in (
+                "config",
+                "args",
+                "text_config",
+                "language_config",
+                "_language_model",
+                "language_model",
+                "model",
+            ):
+                try:
+                    child = getattr(obj, attr, None)
+                except Exception:
+                    continue
+                if child is not None and not isinstance(
+                    child, (str, bytes, int, float, bool)
+                ) and not type(child).__module__.startswith("unittest.mock"):
+                    stack.append(child)
+        return False
+
+    def _deepseek_v4_kv_checkpoint_tokens(self, window_size: int) -> int | None:
+        """Return an optional coarse prefix-cache checkpoint for DeepSeek V4.
+
+        DeepSeek V4's exact cache-MoE Prefill is particularly sensitive to
+        forward fragmentation: every prefix boundary rebuilds the transient
+        expert banks in all routed layers.  Keep the generic rotating-cache
+        policy unchanged, but allow controlled 1K/2K/4K DS4 checkpoints so a
+        single forward can amortize those expert loads across more tokens.
+        """
+
+        if not self._model_declares_deepseek_v4_for_cache():
+            return None
+
+        raw = os.environ.get(self._DEEPSEEK_V4_KV_CHECKPOINT_ENV, "768").strip()
+        if raw.lower() in {"off", "false", "none", "0"}:
+            return None
+        try:
+            tokens = int(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"{self._DEEPSEEK_V4_KV_CHECKPOINT_ENV} must be an integer"
+            ) from exc
+        if not 512 <= tokens <= 5120:
+            raise ValueError(
+                f"{self._DEEPSEEK_V4_KV_CHECKPOINT_ENV} must be between 512 and 5120, or off"
+            )
+        if tokens % window_size:
+            raise ValueError(
+                f"{self._DEEPSEEK_V4_KV_CHECKPOINT_ENV} must be a multiple "
+                f"of the rotating window ({window_size})"
+            )
+        return tokens
 
     def _align_block_size_with_rotating_window(self) -> None:
         """
@@ -2431,6 +2679,20 @@ class Scheduler:
             )
 
         window_size = next(iter(window_sizes))
+
+        deepseek_checkpoint = self._deepseek_v4_kv_checkpoint_tokens(window_size)
+        if deepseek_checkpoint is not None:
+            if self.config.paged_cache_block_size != deepseek_checkpoint:
+                logger.info(
+                    "DeepSeek V4 coarse KV checkpoints enabled: block_size=%s -> %s "
+                    "(rotating window=%s, multiplier=%sx)",
+                    self.config.paged_cache_block_size,
+                    deepseek_checkpoint,
+                    window_size,
+                    deepseek_checkpoint // window_size,
+                )
+                self.config.paged_cache_block_size = deepseek_checkpoint
+            return
 
         # Find the smallest multiple of window_size >= _ROTATING_BLOCK_SIZE_MIN.
         # If window_size itself is already >= max, just use window_size.
@@ -3224,6 +3486,14 @@ class Scheduler:
                 delta = target_boundary_prefill - processed_tokens
                 if delta > 0:
                     n_to_process = min(n_to_process, delta)
+                exact_boundary = int(
+                    getattr(request, "exact_prefix_token_count", 0) or 0
+                )
+                if current_total < exact_boundary:
+                    n_to_process = min(
+                        n_to_process,
+                        exact_boundary - current_total,
+                    )
                 n_to_process = max(1, n_to_process)
 
             # Adaptive throttle: shrink chunk when entering the caution zone
@@ -3235,6 +3505,7 @@ class Scheduler:
                 request_id=request.request_id,
                 loop_label="external",
                 kv_len=base_size + processed_tokens,
+                progress=processed_tokens,
             )
 
             # Pre-chunk safety guard: NEVER submit a chunk whose predicted peak
@@ -3262,6 +3533,7 @@ class Scheduler:
             # eval graph across two streams and adds a per-chunk cross-stream
             # fence, the synchronization pattern implicated in the #2197 and
             # #2183 engine hangs on macOS 26.
+            forward_started = time.perf_counter()
             with mx.stream(self._stream):
                 model_kwargs: dict[str, Any] = {}
                 if embeds_array is not None and embeds_array.shape[1] > 0:
@@ -3282,6 +3554,13 @@ class Scheduler:
                     if extra_kwargs:
                         extra_kwargs = _advance_vlm_extra(extra_kwargs, n_to_process)
             _throttle_post = get_phys_footprint()
+            self._record_prefill_chunk(
+                request,
+                tokens=n_to_process,
+                elapsed_ms=(time.perf_counter() - forward_started) * 1000.0,
+                physical_before=_throttle_pre,
+                physical_after=_throttle_post,
+            )
             self._record_chunk_transient(
                 n_to_process,
                 _throttle_pre,
@@ -3302,6 +3581,12 @@ class Scheduler:
                 _sync_and_clear_cache(self._stream)
 
             processed_tokens += n_to_process
+            self._notify_prefill_chunk(
+                request,
+                tokens=n_to_process,
+                processed_tokens=processed_tokens,
+                remaining_tokens=int(input_arr.shape[1]),
+            )
 
             # Progress callback
             if uid is not None:
@@ -3312,7 +3597,13 @@ class Scheduler:
                 total_tokens = base_size + processed_tokens
                 if (
                     total_tokens > 0
-                    and total_tokens % block_size == 0
+                    and (
+                        total_tokens % block_size == 0
+                        or total_tokens
+                        == int(
+                            getattr(request, "exact_prefix_token_count", 0) or 0
+                        )
+                    )
                     and emitted_boundaries.get(request.request_id, -1) < total_tokens
                 ):
                     self._emit_prefill_boundary_snapshot(
@@ -3420,7 +3711,11 @@ class Scheduler:
             total_tokens = base_size + processed_tokens
             if (
                 total_tokens > 0
-                and total_tokens % block_size == 0
+                and (
+                    total_tokens % block_size == 0
+                    or total_tokens
+                    == int(getattr(request, "exact_prefix_token_count", 0) or 0)
+                )
                 and emitted_boundaries.get(request.request_id, -1) < total_tokens
             ):
                 self._emit_prefill_boundary_snapshot(
@@ -3699,7 +3994,11 @@ class Scheduler:
             maybe_raise_eviction = getattr(
                 self, "_raise_prefill_eviction_if_available", None
             )
-            if request_id is not None and callable(maybe_raise_eviction):
+            if (
+                progress == 0
+                and request_id is not None
+                and callable(maybe_raise_eviction)
+            ):
                 maybe_raise_eviction(
                     request_id=request_id,
                     current=current,
@@ -3806,6 +4105,7 @@ class Scheduler:
         request_id: str,
         loop_label: str,
         kv_len: int = 0,
+        progress: int = 0,
     ) -> int:
         """Size the next prefill chunk so its predicted peak stays under a
         safety margin below the hard cap.
@@ -3893,10 +4193,24 @@ class Scheduler:
             # prevents.
             if current + per_token * requested <= target:
                 return requested
+            # Reclaim pooled Metal buffers before escalating to an engine-level
+            # LRU eviction.  The guard below already follows this order, but the
+            # adaptive throttle used to raise first; external Prefill then lost
+            # all chunk progress when the engine reported that there was no idle
+            # model to evict.  A 1075-token DeepSeek run consequently forwarded
+            # 1586 tokens (the first 512-token chunk was thrown away).  Reclaim
+            # locally and remeasure so reusable allocator headroom preserves the
+            # live Prefill cache and avoids that full-request retry.
+            current = self._reclaim_prefill_headroom()
+            if current + per_token * requested <= target:
+                return requested
             maybe_raise_eviction = getattr(
                 self, "_raise_prefill_eviction_if_available", None
             )
-            if callable(maybe_raise_eviction):
+            # Do not discard already-computed Prefill chunks just to ask the
+            # engine for an idle-model eviction.  Shrink the live request in
+            # place; engine-level eviction is only useful before chunk zero.
+            if progress == 0 and callable(maybe_raise_eviction):
                 maybe_raise_eviction(
                     request_id=request_id,
                     current=current,
@@ -4517,6 +4831,11 @@ class Scheduler:
             delta = (next_boundary - state.base_size) - state.tokens_processed
             if delta > 0:
                 n = min(n, delta)
+            exact_boundary = int(
+                getattr(state.request, "exact_prefix_token_count", 0) or 0
+            )
+            if current_total < exact_boundary:
+                n = min(n, exact_boundary - current_total)
             n = max(1, n)
 
         # Adaptive throttle — see _adaptive_chunk_size docstring. Raises
@@ -4528,6 +4847,7 @@ class Scheduler:
             request_id=state.request.request_id,
             loop_label="chunked_step",
             kv_len=state.base_size + state.tokens_processed,
+            progress=state.tokens_processed,
         )
 
         # Pre-chunk safety guard (mirrors the external loop): never submit a
@@ -4545,12 +4865,20 @@ class Scheduler:
         # same per-engine stream context as the regular external prefill path.
         # The chunk views stay inside it for the same reason (single-stream
         # chunk eval graph, #2197/#2183).
+        forward_started = time.perf_counter()
         with mx.stream(self._stream):
             chunk = state.tokens_remaining[:, :n]
             state.tokens_remaining = state.tokens_remaining[:, n:]
             self.model(chunk, cache=state.cache)
             mx.eval([c.state for c in state.cache])
         _throttle_post = get_phys_footprint()
+        self._record_prefill_chunk(
+            state.request,
+            tokens=n,
+            elapsed_ms=(time.perf_counter() - forward_started) * 1000.0,
+            physical_before=_throttle_pre,
+            physical_after=_throttle_post,
+        )
         self._record_chunk_transient(
             n,
             _throttle_pre,
@@ -4562,6 +4890,12 @@ class Scheduler:
         )
         self._maybe_record_fixed_state_bytes(state.cache)
         state.tokens_processed += n
+        self._notify_prefill_chunk(
+            state.request,
+            tokens=n,
+            processed_tokens=state.tokens_processed,
+            remaining_tokens=int(state.tokens_remaining.shape[1]),
+        )
 
         # Boundary snapshot
         if state.boundary_enabled:
@@ -4569,7 +4903,13 @@ class Scheduler:
             rid = state.request.request_id
             if (
                 total_tokens > 0
-                and total_tokens % state.block_size == 0
+                and (
+                    total_tokens % state.block_size == 0
+                    or total_tokens
+                    == int(
+                        getattr(state.request, "exact_prefix_token_count", 0) or 0
+                    )
+                )
                 and state.emitted_boundaries.get(rid, -1) < total_tokens
             ):
                 self._emit_prefill_boundary_snapshot(
@@ -4730,6 +5070,7 @@ class Scheduler:
                 request.status = RequestStatus.RUNNING
                 request.generation_started_at = now
                 request.last_activity_at = now
+                self._mark_prefill_ready(request)
                 self.running[request.request_id] = request
                 scheduled.append(request)
                 self.total_prompt_tokens += request.num_prompt_tokens
@@ -4766,6 +5107,7 @@ class Scheduler:
             request.status = RequestStatus.RUNNING
             request.generation_started_at = now
             request.last_activity_at = now
+            self._mark_prefill_ready(request)
             self.running[request.request_id] = request
             scheduled.append(request)
 
@@ -5582,7 +5924,14 @@ class Scheduler:
             return
 
         block_size = self.config.paged_cache_block_size
-        if block_size <= 0 or token_count <= 0 or token_count % block_size != 0:
+        request = getattr(self, "requests", {}).get(request_id)
+        exact_boundary = int(
+            getattr(request, "exact_prefix_token_count", 0) or 0
+        )
+        is_declared_exact_boundary = token_count == exact_boundary > 0
+        if block_size <= 0 or token_count <= 0 or (
+            token_count % block_size != 0 and not is_declared_exact_boundary
+        ):
             return
 
         if not self._cache_list_needs_boundary_snapshot(snapshot_cache):
@@ -6097,6 +6446,60 @@ class Scheduler:
             else:
                 merged.append(bc)
         return merged
+
+    def _prepare_declared_exact_prefix_store(
+        self,
+        request: Request,
+        full_cache: list[dict[str, Any]],
+        model_cache_config: Any | None,
+    ) -> _ExactPrefixStore | None:
+        """Build an exact static-prefix payload from live and boundary state."""
+        token_count = int(getattr(request, "exact_prefix_token_count", 0) or 0)
+        prompt_tokens = list(request.prompt_token_ids or [])
+        if (
+            token_count <= 0
+            or token_count >= len(prompt_tokens)
+            or not full_cache
+        ):
+            return None
+
+        cache_to_store = full_cache
+        if self._detect_boundary_snapshot_need():
+            snapshots = self._boundary_cache_snapshots.get(request.request_id) or {}
+            snapshot = snapshots.get(token_count)
+            if token_count not in snapshots:
+                logger.debug(
+                    "Skipping declared exact-prefix store for %s: no state snapshot at %d",
+                    request.request_id,
+                    token_count,
+                )
+                return None
+            if snapshot is None and self._boundary_snapshot_store is not None:
+                boundary_cache = self._boundary_snapshot_store.load(
+                    request.request_id,
+                    token_count,
+                )
+            elif (
+                isinstance(snapshot, tuple)
+                and len(snapshot) == 2
+                and snapshot[0] == self._PREFILL_SNAPSHOT_MARKER
+            ):
+                boundary_cache = snapshot[1]
+            else:
+                boundary_cache, _ = self._extract_cache_states(snapshot)
+            if not boundary_cache:
+                return None
+            cache_to_store = self._merge_boundary_with_full_cache(
+                boundary_cache,
+                full_cache,
+            )
+
+        return _ExactPrefixStore(
+            request_id=f"{request.request_id}:declared-exact",
+            tokens=prompt_tokens[:token_count],
+            cache=cache_to_store,
+            model_cache_config=model_cache_config,
+        )
 
     @staticmethod
     def _is_empty_boundary_placeholder(layer_state: Any) -> bool:
@@ -6868,6 +7271,16 @@ class Scheduler:
         reusable = min(len(prompt), len(best_seq))
         block = max(1, self.config.paged_cache_block_size)
         reprefill = len(prompt) - cached
+        self._last_prefix_probe = {
+            "request_id": request.request_id,
+            "stored_request_id": best_id,
+            "prompt_tokens": len(prompt),
+            "stored_tokens": len(best_seq),
+            "common_prefix_tokens": best_p,
+            "cached_tokens": cached,
+            "first_divergence_token": best_p if best_p < reusable else None,
+            "block_size": block,
+        }
         if reprefill >= self._REPREFILL_INFO_MIN_TOKENS and best_p >= block:
             logger.info(
                 "prefix cache: request %s re-prefills %d of %d tokens "
@@ -6902,13 +7315,12 @@ class Scheduler:
                 f"{best_p}: stored=...{stored_ctx!r} vs prompt=...{prompt_ctx!r}"
             )
 
-    # A 4K prompt is the smallest standard benchmark/workload where a missed
-    # async store is already a multi-second re-prefill.  DeepSeek V4 boundary
-    # snapshots intentionally retain 3584 of 4096 prompt tokens, and their SSD
-    # write can finish just after the first HTTP response is returned.  Include
-    # this workload class in the non-blocking freshness deferral so an immediate
-    # repeated turn waits for that relevant store instead of racing it.
-    _CACHE_FRESHNESS_WAIT_MIN_PROMPT_TOKENS = 4096
+    # Start freshness deferral at one physical cache block.  The old 4K floor
+    # let ordinary multi-turn chats (typically 512-4K tokens) race the async
+    # store from the previous turn and then re-prefill their whole transcript.
+    # Relevance is still guarded below by an 8K absolute match OR a 30% prefix
+    # ratio, so unrelated short requests never wait for another cache write.
+    _CACHE_FRESHNESS_WAIT_MIN_PROMPT_TOKENS = 512
     _CACHE_FRESHNESS_WAIT_MIN_COMMON_TOKENS = 8192
     _CACHE_FRESHNESS_WAIT_MIN_PROMPT_RATIO = 0.30
     _CACHE_FRESHNESS_WAIT_TIMEOUT_S = 4.0
@@ -6934,7 +7346,11 @@ class Scheduler:
             return None
 
         prompt = request.prompt_token_ids or []
-        if len(prompt) < self._CACHE_FRESHNESS_WAIT_MIN_PROMPT_TOKENS:
+        continuity_request = getattr(request, "kv_cache_policy", "strict") != "strict"
+        if (
+            len(prompt) < self._CACHE_FRESHNESS_WAIT_MIN_PROMPT_TOKENS
+            and not continuity_request
+        ):
             return None
 
         best_rid: str | None = None
@@ -6955,7 +7371,14 @@ class Scheduler:
 
         if best_future is None or best_rid is None:
             return None
-        if not (
+        info = self._inflight_store_info.get(best_rid)
+        exact_continuation = bool(
+            continuity_request
+            and info is not None
+            and best_common == len(info.tokens)
+            and best_common < len(prompt)
+        )
+        if not exact_continuation and not (
             best_common >= self._CACHE_FRESHNESS_WAIT_MIN_COMMON_TOKENS
             or best_common / len(prompt) >= self._CACHE_FRESHNESS_WAIT_MIN_PROMPT_RATIO
         ):
@@ -7045,12 +7468,130 @@ class Scheduler:
         )
         return True
 
+    @staticmethod
+    def _session_lineage_key(request: Request) -> tuple[Any, ...]:
+        ranges = tuple(
+            (int(start), tuple(keys))
+            for start, keys in (request.vlm_extra_key_ranges_for_cache or [])
+        )
+        return (
+            tuple(request.extra_keys_for_cache or ()),
+            request.vlm_extra_key_token_start_for_cache,
+            ranges,
+        )
+
+    def _restore_session_exact_prefix(self, request: Request) -> bool:
+        """Restore the prior completed turn when this prompt extends it exactly."""
+        if (
+            self.block_aware_cache is None
+            or getattr(request, "kv_cache_policy", "strict") == "strict"
+        ):
+            return False
+
+        lineage_key = self._session_lineage_key(request)
+        with self._session_exact_prefix_lock:
+            saved_tokens = self._session_exact_prefix_tokens.get(lineage_key)
+            if saved_tokens is not None:
+                saved_tokens = list(saved_tokens)
+        prompt_tokens = request.prompt_token_ids or []
+        if not saved_tokens or len(saved_tokens) >= len(prompt_tokens):
+            return False
+        if prompt_tokens[: len(saved_tokens)] != saved_tokens:
+            divergence = next(
+                (
+                    index
+                    for index, (saved, current) in enumerate(
+                        zip(saved_tokens, prompt_tokens)
+                    )
+                    if saved != current
+                ),
+                min(len(saved_tokens), len(prompt_tokens)),
+            )
+            logger.info(
+                "Session exact boundary diverged for %s at token %d "
+                "(saved=%d prompt=%d)",
+                request.request_id,
+                divergence,
+                len(saved_tokens),
+                len(prompt_tokens),
+            )
+            return False
+
+        bypass_hot_cache = self._bypass_hot_cache_under_pressure()
+        restored = self.block_aware_cache.restore_exact_prefix(
+            request.request_id,
+            saved_tokens,
+            promote_to_hot_cache=not bypass_hot_cache,
+            extra_keys=request.extra_keys_for_cache,
+            extra_key_token_start=request.vlm_extra_key_token_start_for_cache,
+            extra_key_ranges=request.vlm_extra_key_ranges_for_cache,
+        )
+        if restored is None:
+            return False
+
+        request.prompt_cache = restored
+        request.block_table = None
+        request.cached_tokens = len(saved_tokens)
+        block_size = max(1, int(getattr(self.config, "paged_cache_block_size", 1)))
+        request.shared_prefix_blocks = (
+            len(saved_tokens) + block_size - 1
+        ) // block_size
+        request.remaining_tokens = prompt_tokens[len(saved_tokens) :]
+        logger.info(
+            "Request %s: restored exact session turn boundary (%d cached, %d remaining)",
+            request.request_id,
+            request.cached_tokens,
+            len(request.remaining_tokens),
+        )
+        return True
+
+    def _restore_requested_exact_prefix(self, request: Request) -> bool:
+        """Restore a caller-declared stable prompt prefix of arbitrary length."""
+        if self.block_aware_cache is None:
+            return False
+        prompt_tokens = request.prompt_token_ids or []
+        token_count = int(getattr(request, "exact_prefix_token_count", 0) or 0)
+        if token_count <= 0 or token_count >= len(prompt_tokens):
+            return False
+        prefix_tokens = prompt_tokens[:token_count]
+        bypass_hot_cache = self._bypass_hot_cache_under_pressure()
+        restored = self.block_aware_cache.restore_exact_prefix(
+            request.request_id,
+            prefix_tokens,
+            promote_to_hot_cache=not bypass_hot_cache,
+            extra_keys=request.extra_keys_for_cache,
+            extra_key_token_start=request.vlm_extra_key_token_start_for_cache,
+            extra_key_ranges=request.vlm_extra_key_ranges_for_cache,
+        )
+        if restored is None:
+            return False
+        request.prompt_cache = restored
+        request.block_table = None
+        request.cached_tokens = token_count
+        block_size = max(1, int(getattr(self.config, "paged_cache_block_size", 1)))
+        request.shared_prefix_blocks = (token_count + block_size - 1) // block_size
+        request.remaining_tokens = prompt_tokens[token_count:]
+        logger.info(
+            "Request %s: restored declared exact prefix (%d cached, %d remaining)",
+            request.request_id,
+            token_count,
+            len(request.remaining_tokens),
+        )
+        return True
+
     def _prepare_prefix_cache_for_request(self, request: Request) -> None:
         if request.request_id in self._prefix_cache_prepared:
             return
+        profile = self._ensure_prefill_profile(request)
+        lookup_started = time.perf_counter()
 
         # Check prefix cache for cached KV state
-        if self.block_aware_cache is not None:
+        if self.block_aware_cache is not None and (
+            self._restore_requested_exact_prefix(request)
+            or self._restore_session_exact_prefix(request)
+        ):
+            pass
+        elif self.block_aware_cache is not None:
             # Use paged cache
             block_table, remaining = self.block_aware_cache.fetch_cache(
                 request.request_id,
@@ -7186,6 +7727,10 @@ class Scheduler:
         # Must run AFTER prefix cache check (scoring applies only to uncached suffix).
         self._try_specprefill_scoring(request)
         self._prefix_cache_prepared.add(request.request_id)
+        profile["prefix_lookup_ms"] += (
+            time.perf_counter() - lookup_started
+        ) * 1000.0
+        profile["cached_tokens"] = int(request.cached_tokens or 0)
 
     def add_request(self, request: Request) -> None:
         """
@@ -9491,6 +10036,7 @@ class Scheduler:
                     request.status = RequestStatus.RUNNING
                     request.generation_started_at = now
                     request.last_activity_at = now
+                    self._mark_prefill_ready(request)
                     self.running[request.request_id] = request
                     scheduled.append(request)
                     self.total_prompt_tokens += request.num_prompt_tokens
@@ -9538,6 +10084,7 @@ class Scheduler:
                 request.status = RequestStatus.RUNNING
                 request.generation_started_at = now
                 request.last_activity_at = now
+                self._mark_prefill_ready(request)
                 self.running[request.request_id] = request
                 scheduled.append(request)
 
@@ -9913,7 +10460,28 @@ class Scheduler:
                                 request.output_token_ids
                             )
 
-                            if prompt_boundary_store is not None:
+                            exact_continuity_candidate = bool(
+                                getattr(request, "kv_cache_policy", "strict")
+                                != "strict"
+                                and getattr(request, "_extracted_cache", None)
+                                is not None
+                            )
+                            if exact_continuity_candidate:
+                                # A complete-turn exact terminal is itself the
+                                # required state boundary. In particular,
+                                # ArraysCache/Rotating layers need the final
+                                # live state here; the ordinary prompt-boundary
+                                # snapshot would only preserve the prompt and
+                                # throw away the generated reasoning lineage.
+                                token_sequence_to_store = full_token_sequence
+                                cacheable_sequence = full_token_sequence
+                                cache_to_store = request._extracted_cache
+                                model_cache_config = getattr(
+                                    request, "_model_cache_config", None
+                                )
+                                intermediate_snapshots = None
+
+                            elif prompt_boundary_store is not None:
                                 (
                                     token_sequence_to_store,
                                     cache_to_store,
@@ -9922,10 +10490,15 @@ class Scheduler:
                                 ) = prompt_boundary_store
                                 cacheable_sequence = list(token_sequence_to_store)
                             else:
-                                # For reasoning models, only cache prompt tokens.
-                                # Output contains <think> tokens that the API layer
-                                # strips before the next turn, so they never match.
-                                if getattr(request, "needs_think_prefix", False):
+                                # Strict reasoning requests cache prompt only because
+                                # the API strips historical <think> tokens. Continuity
+                                # policies preserve that history and can commit the
+                                # complete prompt+output lineage.
+                                if (
+                                    getattr(request, "needs_think_prefix", False)
+                                    and getattr(request, "kv_cache_policy", "strict")
+                                    == "strict"
+                                ):
                                     cacheable_sequence = list(request.prompt_token_ids)
                                 else:
                                     cacheable_sequence = full_token_sequence
@@ -9935,6 +10508,14 @@ class Scheduler:
                                     request, "_model_cache_config", None
                                 )
                                 intermediate_snapshots = None
+
+                            declared_exact_store = (
+                                self._prepare_declared_exact_prefix_store(
+                                    request,
+                                    request._extracted_cache,
+                                    getattr(request, "_model_cache_config", None),
+                                )
+                            )
 
                             # Inference-thread store_cache prep, timed as
                             # three sub-phases (boundary / collect / dispatch)
@@ -9957,6 +10538,8 @@ class Scheduler:
                                         )
                                         if (
                                             boundary_override is None
+                                            and not exact_continuity_candidate
+                                            and declared_exact_store is None
                                             and self._detect_boundary_snapshot_need()
                                         ):
                                             # Non-sliceable cache state is only
@@ -9966,7 +10549,10 @@ class Scheduler:
                                             # speculative decode can leave off
                                             # the emitted count entirely).
                                             raise _BoundaryStoreUnavailable()
-                                        if boundary_override is not None:
+                                        if (
+                                            boundary_override is not None
+                                            and not exact_continuity_candidate
+                                        ):
                                             (
                                                 token_sequence_to_store,
                                                 boundary_cache,
@@ -10021,6 +10607,12 @@ class Scheduler:
                                                     snapshot_cache
                                                 )
                                             )
+                                    if declared_exact_store is not None:
+                                        pre_eval_arrays.extend(
+                                            self._collect_arrays_from_extracted_cache(
+                                                declared_exact_store.cache
+                                            )
+                                        )
                                 with self._phase_timer("store_cache_main_dispatch"):
                                     if pre_eval_arrays:
                                         # FULL eval (not async_eval) on the owner
@@ -10049,6 +10641,29 @@ class Scheduler:
                             hot_cache_write_back = (
                                 not self._bypass_hot_cache_under_pressure()
                             )
+                            exact_session_boundary = bool(
+                                getattr(request, "kv_cache_policy", "strict")
+                                != "strict"
+                                and list(token_sequence_to_store)
+                                == full_token_sequence
+                            )
+                            session_lineage_key = (
+                                self._session_lineage_key(request)
+                                if exact_session_boundary
+                                else None
+                            )
+                            if getattr(request, "kv_cache_policy", "strict") != "strict":
+                                logger.debug(
+                                    "Session continuity store: request=%s exact=%s "
+                                    "tokens=%d/%d extracted=%s boundary=%s",
+                                    request_id,
+                                    exact_session_boundary,
+                                    len(token_sequence_to_store),
+                                    len(full_token_sequence),
+                                    getattr(request, "_extracted_cache", None)
+                                    is not None,
+                                    prompt_boundary_store is not None,
+                                )
                             if not hot_cache_write_back:
                                 logger.info(
                                     "Using SSD write-through for %s "
@@ -10083,6 +10698,9 @@ class Scheduler:
                                         request.vlm_extra_key_token_start_for_cache,
                                         request.vlm_extra_key_ranges_for_cache,
                                         hot_cache_write_back,
+                                        exact_session_boundary,
+                                        session_lineage_key,
+                                        declared_exact_store,
                                     )
                                 except BaseException:
                                     if gate is not None:
@@ -10113,6 +10731,9 @@ class Scheduler:
                                     request.vlm_extra_key_token_start_for_cache,
                                     request.vlm_extra_key_ranges_for_cache,
                                     hot_cache_write_back,
+                                    exact_session_boundary,
+                                    session_lineage_key,
+                                    declared_exact_store,
                                 )
                             logger.debug(
                                 f"Submitted async store_cache for {request_id} "
@@ -10961,6 +11582,19 @@ class Scheduler:
         # Include cache stats
         if self.block_aware_cache is not None:
             stats["ssd_cache"] = self.block_aware_cache.get_stats()
+        stats["prefill_diagnostics"] = {
+            "last_completed": (
+                dict(self._last_prefill_profile)
+                if self._last_prefill_profile is not None
+                else None
+            ),
+            "cache_phase_timings": self.get_phase_stats(),
+            "last_prefix_probe": (
+                dict(self._last_prefix_probe)
+                if self._last_prefix_probe is not None
+                else None
+            ),
+        }
         return stats
 
     def get_cache_stats(self) -> dict[str, Any] | None:
@@ -11007,6 +11641,8 @@ class Scheduler:
         if self.block_aware_cache is not None:
             self.block_aware_cache.clear()
         self._cache_rate_tracker.clear()
+        self._last_prefill_profile = None
+        self._last_prefix_probe = None
 
         # Clear detokenizers
         self._request_detokenizers.clear()

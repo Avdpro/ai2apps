@@ -158,10 +158,10 @@ class TestLoginPage:
 
 
 class TestDashboardPage:
-    """Tests for GET /admin/dashboard TemplateResponse signature."""
+    """Tests for the legacy GET /admin/dashboard Shell entry."""
 
     def test_dashboard_page_uses_new_template_signature(self):
-        """dashboard_page should pass request as first arg to TemplateResponse."""
+        """dashboard_page should open Dashboard inside the AI2Apps Shell."""
         mock_request = MagicMock()
         with patch.object(admin_routes, "templates") as mock_templates:
             mock_templates.TemplateResponse.return_value = MagicMock()
@@ -169,7 +169,13 @@ class TestDashboardPage:
                 admin_routes.dashboard_page(request=mock_request, is_admin=True)
             )
             mock_templates.TemplateResponse.assert_called_once_with(
-                mock_request, "dashboard.html", {}
+                mock_request,
+                "shell.html",
+                {
+                    "system_apps": admin_routes.SYSTEM_APPS,
+                    "initial_app_id": "ai2apps.dashboard",
+                    "initial_instance_id": None,
+                },
             )
 
 
@@ -190,7 +196,7 @@ class TestChatPageApiKeyInjection:
                 mock_templates.TemplateResponse.assert_called_once_with(
                     mock_request,
                     "chat.html",
-                    {"api_key": "test-chat-key"},
+                    {"api_key": "test-chat-key", "terminal_assistant": False},
                 )
         finally:
             _restore_getter(original)

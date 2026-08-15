@@ -1,0 +1,61 @@
+{% extends app_base_template|default("base.html") %}
+
+{% block title %}Trust Center - AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/trust_center.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="trust-app" x-data="trustCenter()" x-init="init()" data-app-id="ai2apps.trust-center">
+    <header class="trust-header">
+        <div class="trust-mark"><i data-lucide="shield-check"></i></div>
+        <div><div class="trust-title">Trust Center</div><div class="text-[11px] text-neutral-500">Approvals, permissions, Secrets and recovery</div></div>
+        <nav class="trust-tabs">
+            <template x-for="item in tabs" :key="item.id"><button class="trust-tab" :class="tab===item.id&&'active'" @click="tab=item.id" x-text="item.label"></button></template>
+        </nav>
+        <button class="trust-button" @click="refresh()"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Refresh</button>
+    </header>
+
+    <main class="trust-body">
+        <div x-show="error" x-cloak class="trust-error" x-text="error"></div>
+        <div x-show="safeMode.active" x-cloak class="trust-alert"><i data-lucide="shield-alert" class="w-5 h-5"></i><div class="flex-1"><strong>Safe Mode is active</strong><div class="mt-0.5 opacity-80" x-text="safeMode.reason || 'External authority and local patches are restricted.'"></div></div><button class="trust-button" @click="setSafeMode(false)">Exit Safe Mode</button></div>
+
+        <section x-show="tab==='overview'" x-cloak>
+            <div class="trust-stats">
+                <div class="trust-stat"><div class="trust-stat-top"><span class="text-xs">Pending</span><i data-lucide="circle-help" class="w-4 h-4"></i></div><div class="trust-stat-value" x-text="pendingApprovals.length"></div><div class="trust-stat-label">Actions waiting for you</div></div>
+                <div class="trust-stat"><div class="trust-stat-top"><span class="text-xs">Permissions</span><i data-lucide="key-round" class="w-4 h-4"></i></div><div class="trust-stat-value" x-text="activeGrants.length"></div><div class="trust-stat-label">Active GrantLeases</div></div>
+                <div class="trust-stat"><div class="trust-stat-top"><span class="text-xs">Secrets</span><i data-lucide="vault" class="w-4 h-4"></i></div><div class="trust-stat-value" x-text="secrets.length"></div><div class="trust-stat-label" x-text="backendLabel()"></div></div>
+                <div class="trust-stat"><div class="trust-stat-top"><span class="text-xs">Protection</span><i data-lucide="shield" class="w-4 h-4"></i></div><div class="trust-stat-value text-[20px]" x-text="safeMode.active ? 'Safe Mode' : 'Normal'"></div><div class="trust-stat-label">Runtime authority state</div></div>
+            </div>
+            <div class="trust-grid">
+                <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="circle-help" class="w-4 h-4"></i><div class="trust-panel-title">Needs your attention</div><button class="trust-button ml-auto" @click="tab='approvals'">Open Inbox</button></div><template x-for="item in pendingApprovals.slice(0,5)" :key="item.id"><div class="trust-item"><div class="flex items-center gap-2"><span class="trust-item-title" x-text="item.title"></span><span class="trust-badge" :class="item.risk_level" x-text="item.risk_level"></span><span class="trust-badge" :class="item.operation_class" x-text="item.operation_class"></span></div><div class="trust-sub" x-text="item.prompt"></div></div></template><div x-show="!pendingApprovals.length" class="trust-empty">No pending approvals.</div></div>
+                <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="shield" class="w-4 h-4"></i><div class="trust-panel-title">Emergency control</div></div><div class="trust-panel-body"><p class="text-xs text-neutral-600 leading-relaxed">Safe Mode revokes every active permission, stops managed processes and terminals, and disables local patches.</p><button class="trust-button danger w-full mt-4" :disabled="safeMode.active||working" @click="setSafeMode(true)"><i data-lucide="shield-alert" class="w-4 h-4"></i>Enter Safe Mode</button><div class="trust-code mt-4" x-text="'Secret provider: ' + backendLabel()"></div></div></div>
+            </div>
+        </section>
+
+        <section x-show="tab==='approvals'" x-cloak>
+            <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="inbox" class="w-4 h-4"></i><div class="trust-panel-title">Approval Inbox</div><label class="ml-auto text-xs text-neutral-500 flex items-center gap-2"><input type="checkbox" x-model="includeResolved" @change="loadApprovals()">Show resolved</label></div><template x-for="item in approvals" :key="item.id"><div class="trust-item"><div class="flex flex-wrap items-center gap-2"><span class="trust-item-title" x-text="item.title"></span><span class="trust-badge" :class="item.risk_level" x-text="item.risk_level"></span><span class="trust-badge" :class="item.operation_class" x-text="item.operation_class"></span><span class="trust-badge" x-text="item.status"></span></div><div class="trust-sub" x-text="item.prompt"></div><div class="trust-sub" x-text="item.tool_name + ' · ' + (item.capabilities||[]).join(', ')"></div><div x-show="Object.keys(item.resource_selector||{}).length" class="trust-code" x-text="pretty(item.resource_selector)"></div><div x-show="item.status==='pending'" class="trust-actions"><select class="trust-select" x-model="approvalScopes[item.id]"><template x-for="scope in scopesFor(item)" :key="scope"><option :value="scope" x-text="scopeLabel(scope)"></option></template></select><button class="trust-button primary" :disabled="working" @click="decide(item,'approve')">Allow</button><button class="trust-button danger" :disabled="working" @click="decide(item,'deny')">Deny</button></div></div></template><div x-show="!approvals.length" class="trust-empty">No approval requests.</div></div>
+        </section>
+
+        <section x-show="tab==='permissions'" x-cloak>
+            <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="key-round" class="w-4 h-4"></i><div class="trust-panel-title">Granted Permissions</div><label class="ml-auto text-xs text-neutral-500 flex items-center gap-2"><input type="checkbox" x-model="includeInactive" @change="loadGrants()">Show inactive</label></div><template x-for="item in grants" :key="item.id"><div class="trust-item"><div class="flex flex-wrap items-center gap-2"><span class="trust-item-title" x-text="item.tool_pattern"></span><span class="trust-badge" :class="item.active?'active':'revoked'" x-text="item.active?'active':(item.revoke_reason||'inactive')"></span><span class="trust-badge" x-text="item.evidence?.requested_scope || item.scope"></span></div><div class="trust-sub" x-text="(item.capabilities||[]).join(', ') + ' · issued by ' + item.issued_by"></div><div x-show="Object.keys(item.resource_selector||{}).length" class="trust-code" x-text="pretty(item.resource_selector)"></div><div class="trust-actions"><span class="trust-sub !mt-0 flex-1" x-text="item.expires_at ? 'Expires '+formatTime(item.expires_at) : 'No time limit'"></span><button x-show="item.active" class="trust-button danger" :disabled="working" @click="revoke(item)">Revoke</button></div></div></template><div x-show="!grants.length" class="trust-empty">No GrantLeases.</div></div>
+        </section>
+
+        <section x-show="tab==='secrets'" x-cloak>
+            <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="vault" class="w-4 h-4"></i><div><div class="trust-panel-title">Secret Store</div><div class="trust-sub !mt-0" x-text="backendLabel() + ' · values are never returned by the API'"></div></div><button class="trust-button primary ml-auto" @click="openSecret()"><i data-lucide="plus" class="w-3.5 h-3.5"></i>Add Secret</button></div><template x-for="item in secrets" :key="item.id"><div class="trust-item"><div class="flex items-center gap-2"><span class="trust-item-title" x-text="item.name"></span><span class="trust-badge active">protected</span></div><div class="trust-sub" x-text="item.purpose || 'No purpose provided'"></div><div class="trust-code" x-text="item.uri + '\nAllowed: ' + (item.allowed_tools||[]).join(', ')"></div><div class="trust-actions"><span class="trust-sub !mt-0 flex-1" x-text="'Updated '+formatTime(item.updated_at)"></span><button class="trust-button" @click="openSecret(item)">Replace value</button><button class="trust-button danger" @click="deleteSecret(item)">Delete</button></div></div></template><div x-show="!secrets.length" class="trust-empty">No Secrets configured.</div></div>
+        </section>
+    </main>
+
+    <div x-show="secretModal" x-cloak class="trust-modal-wrap" @click.self="secretModal=false">
+        <div class="trust-modal"><div class="flex items-start"><div><h2 class="text-lg font-bold" x-text="secretForm.id ? 'Replace Secret value' : 'Add Secret'"></h2><p class="text-xs text-neutral-500 mt-1">The value goes directly to the selected secure provider.</p></div><button class="trust-button ml-auto !p-2" @click="secretModal=false">×</button></div><div class="trust-form"><label class="trust-label">Name<input class="trust-input" x-model="secretForm.name" :disabled="!!secretForm.id" autocomplete="off"></label><label class="trust-label">Secret value<input class="trust-input" type="password" x-model="secretForm.value" autocomplete="new-password"></label><label x-show="!secretForm.id" class="trust-label">Purpose<input class="trust-input" x-model="secretForm.purpose" placeholder="Used to access…"></label><label x-show="!secretForm.id" class="trust-label">Allowed Tools<input class="trust-input" x-model="secretForm.allowedTools" placeholder="web.search, browser.*"></label><div class="flex justify-end gap-2 mt-2"><button class="trust-button" @click="secretModal=false">Cancel</button><button class="trust-button primary" :disabled="working||!secretForm.value||(!secretForm.id&&!secretForm.name)" @click="saveSecret()">Save</button></div></div></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not mobile_surface %}
+<script>window.AI2APPS_TRUST_CENTER_API_KEY = {{ (api_key or '') | tojson }};</script>
+{% endif %}
+<script src="{{ static('js/trust_center.js') }}"></script>
+{% endblock %}

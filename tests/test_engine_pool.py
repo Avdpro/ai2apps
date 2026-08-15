@@ -2232,6 +2232,21 @@ class TestEnginePoolStatus:
             assert model["is_loading"] is False
 
 
+class TestCacheMoeStatus:
+    def test_unloaded_manifest_backed_model_is_cache_moe(self, small_mock_model_dir):
+        """Cache-MoE classification is not restricted to the DeepSeek family."""
+        pool = _make_pool(ceiling=10 * 1024**3)
+        pool.discover_models(str(small_mock_model_dir))
+        entry = pool._entries["model-b"]
+        entry.config_model_type = "qwen3_5_moe"
+        entry.cache_moe_config = {"engine": {"id": "qwen3.6-tiered"}}
+
+        model = next(item for item in pool.get_status()["models"] if item["id"] == "model-b")
+
+        assert model["loaded"] is False
+        assert model["cache_moe"] is True
+
+
 class TestEnginePoolTTL:
     """Tests for TTL expiration checking."""
 

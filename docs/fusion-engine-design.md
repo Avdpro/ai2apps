@@ -1,6 +1,6 @@
 # AI2Apps Fusion Engine
 
-Status: design specification, not implemented
+Status: first in-process implementation; product integration pending
 Date: 2026-08-10
 Target branch: `experiment/moe-cache`
 
@@ -169,7 +169,6 @@ does not require a second reviewer call.
 ```json
 {
   "action": "PASS | PATCH | REVISE | ESCALATE",
-  "summary": "short reason",
   "risk": "low | medium | high",
   "confidence": 0.0,
   "patches": [],
@@ -190,14 +189,14 @@ failure policy and may be an escalation trigger.
 ## 8. Minimal patching
 
 Long code and prose must not be regenerated merely to correct a small region.
-Every patch identifies the exact draft with `base_sha256` and targets a stable
-code-block or paragraph ID.
+Every patch targets a stable code-block or paragraph ID. The server binds the
+parsed patch to the exact current draft hash; the model does not receive or echo
+that transaction guard.
 
 Preferred code edits use exact anchors:
 
 ```json
 {
-  "base_sha256": "...",
   "target": "code_block_0",
   "operation": "replace",
   "before": "button.addEventListener('click', launch);",
@@ -211,7 +210,7 @@ Supported operations are `replace`, `insert_before`, `insert_after`, and
 cleanly. The server, not the client, is authoritative for applying patches and
 constructing the canonical answer.
 
-A patch is rejected when its base hash differs, an anchor does not match the
+A patch is rejected when its server-bound base hash differs, an anchor does not match the
 expected number of times, validation fails, or its changed region exceeds the
 profile limit. The initial suggested limit is 30 percent of the draft. Large
 or interdependent changes become `ESCALATE`, not an oversized patch disguised
@@ -266,10 +265,19 @@ Fusion session
 `- stage metrics and profile fingerprint
 ```
 
-On `SKIP` or `PASS`, provisional generator KV becomes committed. If any text is
-patched, revised, or replaced, the engine rolls back to the assistant-turn
-boundary, prefills the canonical final answer, and commits that KV. It must not
-leave rejected draft text in the next turn's context.
+On `SKIP` or `PASS`, the complete prompt-plus-draft token lineage is retained as
+an exact, session-namespaced KV boundary. This boundary is arbitrary-length, so
+short conversations reuse KV even on hybrid models whose ordinary physical
+cache block is 2048 tokens. The next prompt reuses it only when it is a strict
+token extension.
+
+If text is patched, revised, or replaced, the session is marked for compaction.
+On the next turn the generator removes historical assistant thinking fields and
+embedded `<think>` blocks before rendering the prompt. That canonical prompt no
+longer matches the rejected exact boundary and is prefetched normally; any safe
+content-addressed common prefix remains eligible. The newly completed turn then
+replaces the session's active exact boundary. Old terminal blocks have no
+request ownership and remain LRU-evictable.
 
 Reviewer and resolver do not own canonical conversation KV. A local reviewer
 may retain an internal review session and its own scope/L0/L1 state; a remote
@@ -464,20 +472,189 @@ This version deliberately has the following boundaries:
 
 - Fusion profiles are built programmatically and are not yet auto-discovered
   or registered by `EnginePool` or the WebUI.
-- The oMLX generator adapter marks the draft `skip_cache_store=True`. The
-  protocol has commit hooks, but the current adapter does not yet promote or
-  prefill the canonical answer into a reusable KV transaction. A subsequent
-  request safely rebuilds canonical context from client-provided history.
+- The oMLX generator adapter uses `strict` KV policy for isolated requests and
+  session continuity for Fusion generators. Exact canonical drafts reuse their
+  complete prior KV on the next turn; changed finals compact hidden reasoning
+  and rebuild once from canonical history.
 - Existing generation output does not yet expose batched NLL/logit-margin
   statistics, so the live adapter initially gates on prompt risk, output
   length, finish reason, and any signals supplied by a custom backend.
-- Tool calling is rejected explicitly in Fusion v1. Chat text streaming is the
-  supported API path; Anthropic and Responses-native phase transports remain
-  follow-up work.
+- OpenAI Chat tool calling is supported through the audited commit protocol in
+  section 21. Anthropic and Responses-native phase transports remain follow-up
+  work.
 - Token accounting reports generator draft tokens. Reviewer/resolver compute,
   detailed timings, cache metrics, and remote cost still require telemetry
   plumbing before quality/performance claims can be made.
 
-These constraints keep the first version correct and testable without
-claiming zero-copy KV promotion or automatic deployment integration that is
-not implemented yet.
+These constraints keep the implementation correct and testable without
+claiming in-place KV rewriting for patched drafts or automatic deployment
+integration that is not implemented yet.
+
+## 18. Mid-generation direction checkpoint (2026-08-11)
+
+Fusion can optionally stop the local generator after a configured number of
+generated tokens and ask the reviewer whether the current direction is sound.
+The feature is disabled by default:
+
+```yaml
+fusion:
+  gate:
+    mid_generation_review_enabled: true
+    mid_generation_checkpoint_tokens: 1024
+    mid_generation_reviewer_max_tokens: 192
+    mid_generation_reviewer_timeout_seconds: 30
+```
+
+The checkpoint reviewer returns exactly one bounded decision:
+
+- `CONTINUE`: continue the partial assistant answer;
+- `REDIRECT`: discard the provisional draft and regenerate from the turn
+  boundary using at most three short reviewer guidance items;
+- `ABORT`: fail the turn without committing provisional text.
+
+Each turn currently has at most one checkpoint and one redirect. Ordinary
+requests continue when the checkpoint reviewer is unavailable; explicitly
+high-risk requests fail closed. Native draft clients receive
+`checkpoint_review_begin`, `checkpoint_review_result`, and, for a redirect,
+`draft_reset` events.
+
+The current oMLX engine has no request-level decode pause/resume primitive.
+The first adapter therefore ends the first generation segment at the token
+checkpoint, makes its content-addressed prefix eligible for cache reuse, and
+uses partial-assistant continuation after `CONTINUE`. `REDIRECT` starts a new
+generation from the assistant-turn boundary. This preserves canonical-history
+correctness and establishes the protocol boundary; a future scheduler-native
+pause/resume implementation can replace the two-segment adapter without
+changing the Fusion state machine.
+
+## 19. Generator thinking audit (2026-08-11)
+
+Fusion can also use the same single checkpoint review when the local generator
+enters a thinking channel. This experiment is disabled by default:
+
+```yaml
+fusion:
+  gate:
+    thinking_audit_enabled: true
+    thinking_audit_min_tokens: 128
+    thinking_audit_max_tokens: 256
+```
+
+The adapter recognizes both the tokenizer's native `think_start` / `think_end`
+markers and the normalized `<think>` / `</think>` stream emitted by oMLX output
+parsers. Split markers across stream chunks are supported.
+
+Detection arms the audit immediately. The reviewer is called at the first of:
+
+- the thinking block closes;
+- at least `thinking_audit_min_tokens` have accumulated and the stream reaches
+  a sentence or paragraph boundary;
+- `thinking_audit_max_tokens` have accumulated;
+- generation finishes with an open thinking block.
+
+The decision remains `CONTINUE`, `REDIRECT`, or `ABORT`. A completed answer is
+audited without reopening generation on `CONTINUE`; an incomplete answer uses
+partial-assistant continuation. If the 1K direction checkpoint is also enabled,
+the first trigger wins and the turn receives only one checkpoint review.
+
+## 20. Optional reviewer reasoning handoff (2026-08-11)
+
+An experimental checkpoint action lets the reviewer supply a compact private
+reasoning seed for the local generator. It is disabled by default and requires
+one of the checkpoint triggers above:
+
+```yaml
+fusion:
+  gate:
+    mid_generation_review_enabled: true
+    mid_generation_checkpoint_tokens: 1024
+    reviewer_guidance_mode: reasoning_handoff
+    reasoning_handoff_max_tokens: 256
+```
+
+When enabled, the checkpoint protocol may return:
+
+```json
+{
+  "action": "REASONING_HANDOFF",
+  "summary": "short diagnosis",
+  "confidence": 0.8,
+  "reasoning_seed": "private reasoning seed",
+  "constraints": ["at most three hard constraints"]
+}
+```
+
+The raw seed is never included in Fusion stream events, the canonical answer,
+conversation history, or normal telemetry. Observability records only its
+SHA-256, character count, and constraint count. The generator receives it in
+an internal system context, continues the reasoning privately, and emits a
+fresh complete user-facing answer without mentioning the handoff.
+
+The first implementation rebuilds from the assistant-turn boundary, like a
+checkpoint `REDIRECT`, rather than injecting reviewer text into an active
+generator KV stream. This prevents hidden reviewer reasoning from becoming
+canonical assistant content and remains compatible with the current two-stage
+oMLX checkpoint adapter. Each turn permits at most one checkpoint, so a
+handoff cannot recursively trigger another thinking audit.
+
+## 21. Audited tool calling (2026-08-11)
+
+Fusion accepts OpenAI function-tool definitions and preserves assistant
+`tool_calls` plus subsequent `tool` messages in conversation history. A local
+generator may produce either native structured calls or model-specific textual
+tool envelopes; the adapter buffers the complete provisional output and
+normalizes it into canonical `{id, type, name, arguments}` records.
+
+Before anything is returned to the client, Fusion deterministically checks:
+
+- the tool name exists in the request;
+- arguments decode to a JSON object and satisfy the function JSON Schema;
+- `tool_choice`, the maximum call count, and unique call IDs are respected.
+
+Every candidate call then receives a mandatory large-model audit with one of
+three decisions: `PASS`, `REPLAN`, or `DENY`. `PASS` cannot override a failed
+deterministic check. `REPLAN` permits exactly one fresh small-model generation,
+which is validated and audited again; only a final `PASS` commits it. Any audit
+timeout, malformed response, second `REPLAN`, `DENY`, or invalid final candidate
+fails closed and returns no tool call.
+
+Tool requests force canonical-only Fusion streaming. Raw model tool markup and
+provisional structured calls never cross the API boundary; committed calls are
+emitted as ordinary OpenAI `tool_calls` with `finish_reason="tool_calls"`.
+Fusion only proposes and audits calls—the API client or MCP layer remains
+responsible for execution and for returning tool results in the next turn.
+
+## 22. Reviewer prompt and KV efficiency (2026-08-12)
+
+Final-answer and tool reviewers receive only canonical visible assistant text.
+The prompt builder removes `reasoning_content`, `reasoning`, `thinking`,
+`_thinking`, and embedded complete `<think>` blocks from historical assistant
+messages, and removes the current generator draft's private thinking before
+serialization. Draft hashes remain server-internal transaction guards and are
+not sent to the Reviewer. Direction/checkpoint review deliberately keeps the
+partial thinking text because inspecting that direction is the purpose of the
+checkpoint.
+
+Final review input is JSONL rather than one turn-level JSON object. Conversation
+messages and the current `review_target` are independent records, so a PASS can
+commit an append-only reviewer transcript. The next turn renders the prior
+review prompt, the exact prior PASS output, and a new user message containing
+only newly appended conversation records plus the new target. It therefore
+reuses the complete prior reviewer KV lineage rather than only the fixed system
+instruction. Each new review tail is speculative: PASS advances the committed
+checkpoint, while a non-PASS decision or review failure discards only that tail
+and leaves the preceding committed checkpoint reusable. `BatchedEngine` also
+declares the exact rendered token boundary of that committed message prefix, so
+the checkpoint remains addressable even after the speculative request becomes
+the session cache's latest entry. A regenerated turn or conversation-prefix
+mismatch is a true branch and therefore increments the reviewer epoch and
+rebuilds from the complete canonical visible conversation.
+
+`BatchedEngine` still renders a probe request with the same leading
+system/developer messages, computes the exact token LCP with the real prompt,
+and declares that stable instruction boundary to the scheduler as a cold-start
+fallback. The scheduler stores and restores this arbitrary-length prefix through
+the exact cache path, including boundary snapshots for ArraysCache/rotating
+hybrids. Checkpoint and tool-review payloads remain replacement-style strict
+requests, isolated from final PASS review by phase-specific Cache-MoE session
+IDs.

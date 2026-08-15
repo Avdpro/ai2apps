@@ -3,4 +3,12 @@
 global-exclude *.so
 global-exclude *.dylib
 global-exclude *.metallib
+global-exclude *.private.pem
+global-exclude vault.key
+global-exclude vault.aesgcm
+global-exclude *.sqlite
+global-exclude *.sqlite3
+global-exclude *.sqlite3-shm
+global-exclude *.sqlite3-wal
 prune artifacts
+prune output

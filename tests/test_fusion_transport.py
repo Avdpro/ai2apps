@@ -63,6 +63,44 @@ class FakeFusionTransportEngine:
         )
 
 
+class FakeFusionToolTransportEngine:
+    tokenizer = None
+
+    async def stream_chat(self, messages, **kwargs):
+        yield GenerationOutput(
+            text="",
+            finished=False,
+            finish_reason=None,
+            fusion_event={
+                "phase": "final_begin",
+                "channel": "control",
+                "text": "",
+                "draft_id": "draft_tool",
+                "metadata": {},
+            },
+        )
+        yield GenerationOutput(
+            text="",
+            completion_tokens=4,
+            finished=True,
+            finish_reason="tool_calls",
+            tool_calls=[
+                {
+                    "id": "call_weather",
+                    "name": "get_weather",
+                    "arguments": '{"city":"Shanghai"}',
+                }
+            ],
+            fusion_event={
+                "phase": "done",
+                "channel": "control",
+                "text": "",
+                "draft_id": "draft_tool",
+                "metadata": {"path": "tool_pass"},
+            },
+        )
+
+
 def _data_payloads(frames):
     payloads = []
     for frame in frames:
@@ -102,3 +140,43 @@ async def test_openai_stream_preserves_native_fusion_events_and_channels():
     assert final["content"] == "canonical"
     assert review["ai2apps"]["metadata"]["action"] == "pass"
     assert frames[-1] == "data: [DONE]\n\n"
+
+
+@pytest.mark.asyncio
+async def test_openai_stream_emits_only_committed_fusion_tool_calls():
+    request = ChatCompletionRequest(
+        model="fusion",
+        messages=[],
+        stream=True,
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ],
+    )
+
+    frames = [
+        frame
+        async for frame in stream_chat_completion(
+            FakeFusionToolTransportEngine(),
+            [],
+            request,
+            resolved_model="fusion",
+            tools=request.tools,
+        )
+    ]
+    payloads = _data_payloads(frames)
+    tool_deltas = [
+        payload["choices"][0]["delta"]["tool_calls"][0]
+        for payload in payloads
+        if payload.get("choices")
+        and payload["choices"][0]["delta"].get("tool_calls")
+    ]
+
+    assert len(tool_deltas) == 1
+    assert tool_deltas[0]["id"] == "call_weather"
+    assert tool_deltas[0]["function"]["name"] == "get_weather"

@@ -31,6 +31,19 @@ class ReviewAction(_StringEnum):
     ESCALATE = "escalate"
 
 
+class CheckpointAction(_StringEnum):
+    CONTINUE = "continue"
+    REDIRECT = "redirect"
+    REASONING_HANDOFF = "reasoning_handoff"
+    ABORT = "abort"
+
+
+class ToolReviewAction(_StringEnum):
+    PASS = "pass"
+    REPLAN = "replan"
+    DENY = "deny"
+
+
 class PatchOperation(_StringEnum):
     REPLACE = "replace"
     INSERT_BEFORE = "insert_before"
@@ -105,12 +118,82 @@ class ReviewDecision:
 
 
 @dataclass(frozen=True)
+class FusionToolCall:
+    id: str
+    name: str
+    arguments: str
+    type: str = "function"
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            raise ValueError("tool call id is required")
+        if self.type != "function":
+            raise ValueError("Fusion only supports function tool calls")
+
+    def to_mapping(self) -> dict[str, str]:
+        return {
+            "id": self.id,
+            "type": self.type,
+            "name": self.name,
+            "arguments": self.arguments,
+        }
+
+
+@dataclass(frozen=True)
+class ToolReviewDecision:
+    action: ToolReviewAction
+    summary: str = ""
+    confidence: float | None = None
+    guidance: tuple[str, ...] = ()
+    user_message: str = ""
+
+    def __post_init__(self) -> None:
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("tool review confidence must be in [0, 1]")
+        if len(self.guidance) > 3:
+            raise ValueError("tool review guidance must contain at most 3 items")
+        if self.action == ToolReviewAction.REPLAN and not self.guidance:
+            raise ValueError("REPLAN tool review requires guidance")
+
+
+@dataclass(frozen=True)
 class DraftChunk:
     text: str = ""
     token_count: int = 0
     finished: bool = False
     finish_reason: str = "stop"
     signals: GateSignals | None = None
+    checkpoint: bool = False
+    checkpoint_reason: str | None = None
+    tool_calls: tuple[FusionToolCall, ...] = ()
+
+
+@dataclass(frozen=True)
+class CheckpointDecision:
+    action: CheckpointAction
+    summary: str = ""
+    confidence: float | None = None
+    guidance: tuple[str, ...] = ()
+    reasoning_seed: str = ""
+    constraints: tuple[str, ...] = ()
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("checkpoint confidence must be in [0, 1]")
+        if self.action == CheckpointAction.REDIRECT and not self.guidance:
+            raise ValueError("REDIRECT checkpoint decision requires guidance")
+        if len(self.guidance) > 3:
+            raise ValueError("checkpoint guidance must contain at most 3 items")
+        if len(self.constraints) > 3:
+            raise ValueError("checkpoint constraints must contain at most 3 items")
+        if (
+            self.action == CheckpointAction.REASONING_HANDOFF
+            and not self.reasoning_seed.strip()
+        ):
+            raise ValueError(
+                "REASONING_HANDOFF checkpoint decision requires reasoning_seed"
+            )
 
 
 @dataclass(frozen=True)
@@ -123,6 +206,8 @@ class FusionRequest:
     prompt_risk: float | None = None
     high_risk: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    tools: Sequence[Mapping[str, Any]] = ()
+    tool_choice: str | Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.session_id:
@@ -149,6 +234,7 @@ class FusionConfig:
     resolver_triggers: tuple[str, ...] = (
         "reviewer_escalate",
         "reviewer_uncertain",
+        "reviewer_failed",
         "patch_failed",
     )
     reviewer_escalate_below: float = 0.35
@@ -157,6 +243,17 @@ class FusionConfig:
     resolver_unavailable_policy: FailurePolicy = FailurePolicy.LOCAL_REBUILD
     high_risk_failure_policy: FailurePolicy = FailurePolicy.ERROR
     replay_chunk_chars: int = 512
+    mid_generation_review_enabled: bool = False
+    mid_generation_checkpoint_tokens: int = 1024
+    mid_generation_reviewer_max_tokens: int = 256
+    mid_generation_reviewer_timeout_seconds: float = 30.0
+    thinking_audit_enabled: bool = False
+    thinking_audit_min_tokens: int = 128
+    thinking_audit_max_tokens: int = 256
+    reviewer_guidance_mode: str = "off"
+    reasoning_handoff_max_tokens: int = 256
+    max_tool_calls: int = 8
+    tool_denial_message: str = "I couldn't safely validate the requested tool action."
 
     def __post_init__(self) -> None:
         if not self.model_id:
@@ -179,17 +276,30 @@ class FusionConfig:
         allowed_triggers = {
             "reviewer_escalate",
             "reviewer_uncertain",
+            "reviewer_failed",
             "patch_failed",
         }
         unknown_triggers = set(self.resolver_triggers) - allowed_triggers
         if unknown_triggers:
-            raise ValueError(
-                f"unknown resolver triggers: {sorted(unknown_triggers)}"
-            )
+            raise ValueError(f"unknown resolver triggers: {sorted(unknown_triggers)}")
         if not 0.0 <= self.reviewer_escalate_below <= 1.0:
             raise ValueError("reviewer_escalate_below must be in [0, 1]")
         if self.replay_chunk_chars < 1:
             raise ValueError("replay_chunk_chars must be >= 1")
+        if self.mid_generation_checkpoint_tokens < 1:
+            raise ValueError("mid_generation_checkpoint_tokens must be >= 1")
+        if self.mid_generation_reviewer_max_tokens < 1:
+            raise ValueError("mid_generation_reviewer_max_tokens must be >= 1")
+        if self.mid_generation_reviewer_timeout_seconds <= 0:
+            raise ValueError("mid_generation_reviewer_timeout_seconds must be positive")
+        if not (1 <= self.thinking_audit_min_tokens <= self.thinking_audit_max_tokens):
+            raise ValueError("thinking audit tokens must satisfy 1 <= min <= max")
+        if self.reviewer_guidance_mode not in {"off", "reasoning_handoff"}:
+            raise ValueError("reviewer_guidance_mode must be off or reasoning_handoff")
+        if self.reasoning_handoff_max_tokens < 1:
+            raise ValueError("reasoning_handoff_max_tokens must be >= 1")
+        if self.max_tool_calls < 1:
+            raise ValueError("max_tool_calls must be >= 1")
 
 
 @dataclass(frozen=True)
@@ -211,3 +321,4 @@ class FusionResult:
     path: str
     signals: GateSignals
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    tool_calls: tuple[FusionToolCall, ...] = ()

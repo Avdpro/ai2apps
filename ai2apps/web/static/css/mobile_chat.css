@@ -1,0 +1,67 @@
+:root { color-scheme: light; --ink:#171717; --muted:#78716c; --line:#e7e5e4; --paper:#fafaf9; --blue:#2563eb; }
+* { box-sizing:border-box; }
+html, body { height:100%; margin:0; overflow:hidden; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+button, select, textarea { font:inherit; }
+[data-lucide] { display:inline-block; width:18px; height:18px; }
+.mchat { height:100vh; height:100dvh; display:flex; flex-direction:column; background:var(--paper); color:var(--ink); }
+.mchat-head { min-height:58px; display:flex; align-items:center; gap:10px; padding:calc(8px + env(safe-area-inset-top)) 12px 8px; border-bottom:1px solid var(--line); background:rgba(255,255,255,.94); }
+.mchat-icon-button { width:38px; height:38px; display:grid; place-items:center; border:1px solid var(--line); border-radius:12px; background:#fff; color:var(--ink); }
+.mchat-title { min-width:0; flex:1; display:flex; flex-direction:column; }
+.mchat-title strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+.mchat-title small { margin-top:2px; color:var(--muted); font-size:10px; }
+.mchat-controls { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:#fff; }
+.mchat-controls select { min-width:0; flex:1; height:32px; padding:0 7px; border:1px solid var(--line); border-radius:9px; background:#fff; color:#44403c; font-size:10px; }
+.mchat-mode { display:flex; padding:2px; border-radius:10px; background:#f1f0ee; }
+.mchat-mode button { height:28px; display:flex; align-items:center; gap:4px; padding:0 8px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:10px; font-weight:600; }
+.mchat-mode button [data-lucide] { width:13px; height:13px; }
+.mchat-mode button.is-active { background:#fff; color:var(--ink); box-shadow:0 1px 4px rgba(0,0,0,.08); }
+.mchat-list { flex:1; overflow:auto; padding:18px 13px 145px; scroll-behavior:smooth; }
+.mchat-message { max-width:88%; margin:0 0 13px; padding:11px 13px; border:1px solid #ecebea; border-radius:15px; background:#fff; font-size:13px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+.mchat-message.user { margin-left:auto; border-color:var(--ink); background:var(--ink); color:#fff; }
+.mchat-message.error { border-color:#fecdd3; background:#fff1f2; color:#991b1b; }
+.mchat-message-meta { display:block; margin-bottom:5px; opacity:.62; font-size:9px; font-weight:600; text-transform:uppercase; }
+.mchat-file-note { display:flex; align-items:center; gap:6px; margin-top:7px; font-size:10px; opacity:.76; }
+.mchat-empty { padding:15vh 24px; color:var(--muted); text-align:center; }
+.mchat-empty > [data-lucide] { width:34px; height:34px; }
+.mchat-empty h1 { margin:14px 0 5px; color:var(--ink); font-size:22px; }
+.mchat-empty p { max-width:330px; margin:0 auto; font-size:12px; line-height:1.5; }
+.mchat-status { position:fixed; z-index:4; right:12px; bottom:calc(84px + env(safe-area-inset-bottom)); left:12px; display:grid; grid-template-columns:24px 1fr; align-items:center; gap:8px; padding:9px 12px; border:1px solid #dbeafe; border-radius:13px; background:rgba(239,246,255,.96); color:#1e3a8a; box-shadow:0 8px 28px rgba(37,99,235,.12); }
+.mchat-status[hidden] { display:none; }
+.mchat-status-spinner { width:17px; height:17px; border:2px solid #bfdbfe; border-top-color:var(--blue); border-radius:50%; animation:mchat-spin .8s linear infinite; }
+.mchat-status div { min-width:0; display:flex; flex-direction:column; }
+.mchat-status strong { font-size:11px; }
+.mchat-status small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; color:#3b82f6; font-size:9px; }
+.mchat-progress { grid-column:1/-1; height:2px; overflow:hidden; border-radius:2px; background:#dbeafe; }
+.mchat-progress span { display:block; width:35%; height:100%; background:var(--blue); transition:width .25s ease; }
+@keyframes mchat-spin { to { transform:rotate(360deg); } }
+.mchat-compose { position:fixed; z-index:5; right:0; bottom:0; left:0; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(transparent,var(--paper) 22%); }
+.mchat-box { display:flex; align-items:flex-end; gap:5px; padding:6px; border:1px solid #dedbd8; border-radius:17px; background:#fff; box-shadow:0 12px 35px rgba(0,0,0,.08); }
+.mchat-box textarea { flex:1; min-height:38px; max-height:112px; padding:9px 5px; resize:none; border:0; outline:0; color:var(--ink); font-size:13px; }
+.mchat-box button { flex:0 0 38px; width:38px; height:38px; display:grid; place-items:center; border:0; border-radius:12px; }
+.mchat-attach { background:transparent; color:#57534e; }
+.mchat-send { background:var(--ink); color:#fff; }
+.mchat-box button:disabled { opacity:.38; }
+.mchat-attachments { display:flex; gap:6px; overflow-x:auto; padding:0 2px 7px; }
+.mchat-attachments[hidden] { display:none; }
+.mchat-attachment { flex:0 0 auto; max-width:180px; display:flex; align-items:center; gap:5px; padding:6px 7px 6px 9px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:10px; }
+.mchat-attachment span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mchat-attachment button { padding:2px; border:0; background:transparent; color:var(--muted); }
+.mchat-attachment [data-lucide] { width:13px; height:13px; }
+.mchat-drawer { position:fixed; z-index:20; inset:0; pointer-events:none; visibility:hidden; }
+.mchat-drawer.is-open { pointer-events:auto; visibility:visible; }
+.mchat-backdrop { position:absolute; inset:0; border:0; background:rgba(0,0,0,.34); opacity:0; transition:opacity .2s; }
+.mchat-drawer.is-open .mchat-backdrop { opacity:1; }
+.mchat-drawer > section { position:absolute; top:0; bottom:0; left:0; width:min(86vw,330px); padding:calc(16px + env(safe-area-inset-top)) 14px 20px; overflow:auto; background:#fff; transform:translateX(-102%); transition:transform .22s ease; box-shadow:16px 0 45px rgba(0,0,0,.16); }
+.mchat-drawer.is-open > section { transform:translateX(0); }
+.mchat-drawer header { display:flex; align-items:center; justify-content:space-between; }
+.mchat-drawer header small { color:var(--muted); font-size:9px; font-weight:700; letter-spacing:.08em; }
+.mchat-drawer h2 { margin:2px 0 0; font-size:21px; }
+.mchat-drawer header button { width:34px; height:34px; display:grid; place-items:center; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.mchat-new-session { width:100%; display:flex; align-items:center; gap:8px; margin:18px 0 10px; padding:11px; border:0; border-radius:12px; background:var(--ink); color:#fff; font-size:12px; font-weight:600; }
+.mchat-session-list { display:flex; flex-direction:column; gap:4px; }
+.mchat-session { width:100%; display:flex; flex-direction:column; align-items:flex-start; padding:10px; border:0; border-radius:10px; background:transparent; color:var(--ink); text-align:left; }
+.mchat-session.is-active { background:#f1f0ee; }
+.mchat-session strong { width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.mchat-session small { margin-top:3px; color:var(--muted); font-size:9px; }
+.mchat-toast { position:fixed; z-index:30; top:calc(70px + env(safe-area-inset-top)); left:50%; max-width:86%; padding:9px 13px; border-radius:10px; background:#292524; color:#fff; font-size:11px; opacity:0; pointer-events:none; transform:translate(-50%,-8px); transition:.18s; }
+.mchat-toast.is-visible { opacity:1; transform:translate(-50%,0); }

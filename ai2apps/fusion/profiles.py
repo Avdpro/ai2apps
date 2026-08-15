@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping
+from typing import TYPE_CHECKING, Any
 
 from .types import FailurePolicy, FusionConfig
 
@@ -46,6 +47,7 @@ class ResolverConfig:
     triggers: tuple[str, ...] = (
         "reviewer_escalate",
         "reviewer_uncertain",
+        "reviewer_failed",
         "patch_failed",
     )
     failure_policy: FailurePolicy = FailurePolicy.LOCAL_REBUILD
@@ -62,6 +64,7 @@ class FusionProfile:
     reviewer: RoleConfig
     resolver: ResolverConfig = field(default_factory=ResolverConfig)
     gate: Mapping[str, Any] = field(default_factory=dict)
+    cache_moe: Mapping[str, Any] = field(default_factory=dict)
     max_changed_ratio: float = 0.30
     ordinary_failure_policy: FailurePolicy = FailurePolicy.RETURN_DRAFT
     high_risk_failure_policy: FailurePolicy = FailurePolicy.ERROR
@@ -77,6 +80,44 @@ class FusionProfile:
             )
         if not 0 < self.max_changed_ratio <= 1:
             raise ValueError("max_changed_ratio must be in (0, 1]")
+        unknown_cache_keys = set(self.cache_moe) - {"generator", "reviewer"}
+        if unknown_cache_keys:
+            raise ValueError(
+                f"unknown Fusion Cache-MoE settings: {sorted(unknown_cache_keys)}"
+            )
+        for role_name, settings in self.cache_moe.items():
+            if not isinstance(settings, Mapping):
+                raise ValueError(
+                    f"Fusion Cache-MoE {role_name} settings must be an object"
+                )
+            unknown_role_keys = set(settings) - {
+                "l1_mode",
+                "engine_boost",
+                "prefill_boost",
+                "decode_boost",
+            }
+            if unknown_role_keys:
+                raise ValueError(
+                    f"unknown Fusion Cache-MoE {role_name} settings: "
+                    f"{sorted(unknown_role_keys)}"
+                )
+            if settings.get("l1_mode", "auto") not in {"auto", "off"}:
+                raise ValueError(
+                    f"Fusion Cache-MoE {role_name} l1_mode must be auto or off"
+                )
+            for boost_key in (
+                "engine_boost",
+                "prefill_boost",
+                "decode_boost",
+            ):
+                allowed_boosts = {"natural", "turbo", "blast"}
+                if boost_key == "prefill_boost":
+                    allowed_boosts.add("auto")
+                if settings.get(boost_key, "natural") not in allowed_boosts:
+                    raise ValueError(
+                        f"Fusion Cache-MoE {role_name} {boost_key} must be "
+                        f"{', '.join(sorted(allowed_boosts))}"
+                    )
 
     @property
     def fingerprint(self) -> str:
@@ -120,13 +161,15 @@ class FusionProfile:
         )
 
 
-def _role_from_mapping(value: Mapping[str, Any]) -> RoleConfig:
+def _role_from_mapping(
+    value: Mapping[str, Any], *, default_max_tokens: int = 384
+) -> RoleConfig:
     return RoleConfig(
         backend=str(value.get("backend", "")),
         model=str(value.get("model", "")),
         base_url=value.get("base_url"),
         credential_ref=value.get("credential_ref"),
-        max_tokens=int(value.get("max_tokens", 384)),
+        max_tokens=int(value.get("max_tokens", default_max_tokens)),
         timeout_seconds=float(value.get("timeout_seconds", 30.0)),
     )
 
@@ -148,14 +191,54 @@ def fusion_profile_from_mapping(value: Mapping[str, Any]) -> FusionProfile:
     raw_triggers = raw_resolver.get("triggers") or ResolverConfig.triggers
     if not isinstance(raw_triggers, (list, tuple)):
         raise ValueError("resolver triggers must be a list")
+    # Profiles written before external review fallback existed contain the
+    # three original triggers explicitly. Upgrade that legacy shape so a
+    # malformed or exhausted local review can use the configured external
+    # model instead of silently returning the draft.
+    if resolver_enabled and "reviewer_failed" not in raw_triggers:
+        raw_triggers = (*raw_triggers, "reviewer_failed")
 
     gate = root.get("gate") or {}
     if not isinstance(gate, Mapping):
         raise ValueError("Fusion gate must be an object")
+    raw_cache_moe = root.get("cache_moe") or {}
+    if not isinstance(raw_cache_moe, Mapping):
+        raise ValueError("Fusion cache_moe must be an object")
+    # Profiles created before role-specific controls used one flat policy for
+    # both local engines. Preserve that behavior when loading them.
+    if set(raw_cache_moe) & {
+        "l1_mode",
+        "engine_boost",
+        "prefill_boost",
+        "decode_boost",
+    }:
+        legacy = {
+            key: raw_cache_moe[key]
+            for key in (
+                "l1_mode",
+                "engine_boost",
+                "prefill_boost",
+                "decode_boost",
+            )
+            if key in raw_cache_moe
+        }
+        cache_moe = {"generator": dict(legacy), "reviewer": dict(legacy)}
+    else:
+        cache_moe = {
+            str(role): dict(settings) if isinstance(settings, Mapping) else settings
+            for role, settings in raw_cache_moe.items()
+        }
+    for settings in cache_moe.values():
+        if not isinstance(settings, dict):
+            continue
+        legacy_boost = settings.pop("engine_boost", None)
+        if legacy_boost is not None:
+            settings.setdefault("prefill_boost", legacy_boost)
+            settings.setdefault("decode_boost", legacy_boost)
     return FusionProfile(
         model_id=str(root.get("model_id", "")),
         generator=_role_from_mapping(generator),
-        reviewer=_role_from_mapping(reviewer),
+        reviewer=_role_from_mapping(reviewer, default_max_tokens=8192),
         resolver=ResolverConfig(
             enabled=resolver_enabled,
             role=resolver_role,
@@ -165,6 +248,7 @@ def fusion_profile_from_mapping(value: Mapping[str, Any]) -> FusionProfile:
             ),
         ),
         gate=dict(gate),
+        cache_moe=dict(cache_moe),
         max_changed_ratio=float(root.get("max_changed_ratio", 0.30)),
         ordinary_failure_policy=FailurePolicy(
             str(root.get("ordinary_failure_policy", "return_draft"))
@@ -215,6 +299,9 @@ def profile_to_mapping(profile: FusionProfile) -> dict[str, Any]:
             "reviewer": _role_to_mapping(profile.reviewer),
             "resolver": resolver,
             "gate": dict(profile.gate),
+            "cache_moe": {
+                role: dict(settings) for role, settings in profile.cache_moe.items()
+            },
             "max_changed_ratio": profile.max_changed_ratio,
             "ordinary_failure_policy": profile.ordinary_failure_policy.value,
             "high_risk_failure_policy": profile.high_risk_failure_policy.value,
@@ -231,7 +318,12 @@ async def _load_local(loader: LocalEngineLoader, model: str) -> Any:
     return await value if inspect.isawaitable(value) else value
 
 
-def _remote_backend(role: RoleConfig, credentials: CredentialResolver):
+def _remote_backend(
+    role: RoleConfig,
+    credentials: CredentialResolver,
+    *,
+    checkpoint_max_tokens: int = 256,
+):
     from .adapters import OpenAICompatibleReviewBackend
 
     assert role.base_url is not None and role.credential_ref is not None
@@ -240,6 +332,7 @@ def _remote_backend(role: RoleConfig, credentials: CredentialResolver):
         model=role.model,
         api_key=credentials(role.credential_ref),
         max_tokens=role.max_tokens,
+        checkpoint_max_tokens=checkpoint_max_tokens,
         timeout_seconds=role.timeout_seconds,
     )
 
@@ -257,6 +350,15 @@ async def build_omlx_fusion_engine(
     from .engine import FusionOrchestrator
     from .omlx_engine import FusionEngine
 
+    engine_config = profile.engine_config()
+    checkpoint_max_tokens = max(
+        engine_config.mid_generation_reviewer_max_tokens,
+        (
+            engine_config.reasoning_handoff_max_tokens
+            if engine_config.reviewer_guidance_mode == "reasoning_handoff"
+            else 0
+        ),
+    )
     generator_engine = await _load_local(load_local_engine, profile.generator.model)
     generator = OMLXGeneratorBackend(generator_engine)
     owned = [generator_engine]
@@ -264,13 +366,21 @@ async def build_omlx_fusion_engine(
     if profile.reviewer.backend == "local":
         reviewer_engine = await _load_local(load_local_engine, profile.reviewer.model)
         reviewer = OMLXReviewerBackend(
-            reviewer_engine, max_tokens=profile.reviewer.max_tokens
+            reviewer_engine,
+            max_tokens=profile.reviewer.max_tokens,
+            checkpoint_max_tokens=checkpoint_max_tokens,
+            inactivity_timeout_seconds=profile.reviewer.timeout_seconds,
+            cache_moe_defaults=profile.cache_moe.get("reviewer", {}),
         )
         owned.append(reviewer_engine)
     else:
         if resolve_credential is None:
             raise ValueError("remote reviewer requires a credential resolver")
-        reviewer = _remote_backend(profile.reviewer, resolve_credential)
+        reviewer = _remote_backend(
+            profile.reviewer,
+            resolve_credential,
+            checkpoint_max_tokens=checkpoint_max_tokens,
+        )
 
     resolver = None
     if profile.resolver.enabled:
@@ -279,17 +389,25 @@ async def build_omlx_fusion_engine(
         if role.backend == "local":
             resolver_engine = await _load_local(load_local_engine, role.model)
             resolver = OMLXReviewerBackend(
-                resolver_engine, max_tokens=role.max_tokens
+                resolver_engine,
+                max_tokens=role.max_tokens,
+                checkpoint_max_tokens=checkpoint_max_tokens,
+                inactivity_timeout_seconds=role.timeout_seconds,
             )
             owned.append(resolver_engine)
         else:
             if resolve_credential is None:
                 raise ValueError("remote resolver requires a credential resolver")
-            resolver = _remote_backend(role, resolve_credential)
+            resolver = _remote_backend(
+                role,
+                resolve_credential,
+                checkpoint_max_tokens=checkpoint_max_tokens,
+            )
 
-    orchestrator = FusionOrchestrator(
-        profile.engine_config(), generator, reviewer, resolver
-    )
+    orchestrator = FusionOrchestrator(engine_config, generator, reviewer, resolver)
     return FusionEngine(
-        orchestrator, generator_engine, owned_engines=tuple(owned[1:])
+        orchestrator,
+        generator_engine,
+        owned_engines=tuple(owned[1:]),
+        cache_moe_defaults=profile.cache_moe,
     )

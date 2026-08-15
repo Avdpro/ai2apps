@@ -2357,20 +2357,17 @@ class EnginePool:
                     "model_type": e.model_type,
                     "config_model_type": e.config_model_type,
                     "cache_moe": (
-                        callable(getattr(e.engine, "request_engine_boost", None))
-                        if e.engine is not None
-                        else (
+                        e.cache_moe_config is not None
+                        or callable(getattr(e.engine, "request_engine_boost", None))
+                        or (
                             e.config_model_type.startswith("deepseek_v4")
-                            and (
-                                all(
-                                    os.environ.get(name, "").strip()
-                                    for name in (
-                                        "OMLX_DEEPSEEK_V4_SCOPE_PROFILE",
-                                        "OMLX_DEEPSEEK_V4_SCOPE_NAME",
-                                        "OMLX_DEEPSEEK_V4_EXPERT_STORE",
-                                    )
+                            and all(
+                                os.environ.get(name, "").strip()
+                                for name in (
+                                    "OMLX_DEEPSEEK_V4_SCOPE_PROFILE",
+                                    "OMLX_DEEPSEEK_V4_SCOPE_NAME",
+                                    "OMLX_DEEPSEEK_V4_EXPERT_STORE",
                                 )
-                                or e.cache_moe_config is not None
                             )
                         )
                     ),

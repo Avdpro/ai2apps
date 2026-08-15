@@ -12,6 +12,10 @@ from .openai_models import Message
 
 # Model families whose chat templates consume message.reasoning_content directly.
 _NATIVE_REASONING_MODEL_TYPES = {
+    # AI2Apps' DeepSeek V4 DSML template consumes message.reasoning_content
+    # directly. Treating it as a generic template inlined an extra <think>
+    # wrapper and broke append-only KV lineage at the first assistant token.
+    "deepseek_v4",
     "minimax_m3",
     "minimax_m3_vl",
     # Inkling's chat template renders history reasoning_content back into

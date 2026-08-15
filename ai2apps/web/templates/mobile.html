@@ -1,0 +1,104 @@
+{% extends "mobile_base.html" %}
+
+{% block title %}AI2Apps Mobile{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ mobile_static('css/mobile.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="ai2apps-mobile" class="mobile-shell" data-view="home">
+    <header class="mobile-topbar">
+        <button class="mobile-brand" type="button" data-mobile-action="home" aria-label="AI2Apps Home">
+            <img src="{{ mobile_static('favicon.svg') }}" alt="">
+            <span><small>AI2Apps</small><strong data-mobile-title>Mobile</strong></span>
+        </button>
+        <span class="mobile-connection" title="Connected to this Mac">
+            <i data-lucide="wifi"></i><span>Local</span>
+        </span>
+        <button class="mobile-round-button" type="button" data-mobile-action="switcher"
+                aria-label="Open App Switcher"><i data-lucide="panels-top-left"></i></button>
+    </header>
+
+    <main class="mobile-main">
+        <section class="mobile-home" aria-label="Mobile Home">
+            <div class="mobile-hero">
+                <p class="mobile-eyebrow">This Mac</p>
+                <h1>Your AI Apps,<br>ready when you are.</h1>
+                <p>Everything runs on this Mac. Remote access will plug into the same private Mobile Shell.</p>
+                <div class="mobile-hero-status"><span></span> Connected on local network</div>
+            </div>
+
+            <section class="mobile-section" aria-labelledby="mobile-quick-title">
+                <div class="mobile-section-heading">
+                    <div><p>QUICK START</p><h2 id="mobile-quick-title">Open an App</h2></div>
+                    <button type="button" data-mobile-action="launcher">See all</button>
+                </div>
+                <div class="mobile-home-apps" data-mobile-home-apps></div>
+            </section>
+
+            <section class="mobile-activity-card">
+                <span class="mobile-activity-icon"><i data-lucide="sparkles"></i></span>
+                <div><strong>Mobile Shell is ready</strong><small>Dock, Launcher and App switching are running locally.</small></div>
+                <i data-lucide="chevron-right"></i>
+            </section>
+        </section>
+
+        <section class="mobile-stage" aria-label="Active App" hidden>
+            <div class="mobile-frame-host"></div>
+            <div class="mobile-loading" hidden><span></span><p>Opening App…</p></div>
+            <div class="mobile-error" hidden>
+                <i data-lucide="triangle-alert"></i><h2>App could not open</h2>
+                <p data-mobile-error-message></p>
+                <button type="button" data-mobile-action="home">Return Home</button>
+            </div>
+        </section>
+    </main>
+
+    <nav class="mobile-dock" aria-label="Mobile Dock">
+        <button class="mobile-dock-item is-active" type="button" data-mobile-action="home">
+            <span><i data-lucide="house"></i></span><small>Home</small>
+        </button>
+        <button class="mobile-dock-item" type="button" data-mobile-app="ai2apps.general-chat">
+            <span><i data-lucide="message-square"></i></span><small>Chat</small>
+        </button>
+        <div class="mobile-dock-recents" data-mobile-dock-recents></div>
+        <button class="mobile-dock-item" type="button" data-mobile-action="launcher">
+            <span><i data-lucide="grid-3x3"></i></span><small>Apps</small>
+        </button>
+    </nav>
+
+    <section class="mobile-overlay mobile-launcher" aria-hidden="true" data-mobile-overlay="launcher">
+        <button class="mobile-overlay-backdrop" type="button" data-mobile-action="close-overlays" aria-label="Close"></button>
+        <div class="mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-launcher-title">
+            <div class="mobile-sheet-handle"></div>
+            <div class="mobile-sheet-heading">
+                <div><p>AI2APPS</p><h2 id="mobile-launcher-title">App Launcher</h2></div>
+                <button type="button" data-mobile-action="close-overlays" aria-label="Close"><i data-lucide="x"></i></button>
+            </div>
+            <label class="mobile-search"><i data-lucide="search"></i><input type="search" placeholder="Search Apps" data-mobile-search></label>
+            <div class="mobile-launcher-grid" data-mobile-launcher-grid></div>
+            <p class="mobile-empty" data-mobile-launcher-empty hidden>No Mobile Ready Apps found.</p>
+        </div>
+    </section>
+
+    <section class="mobile-overlay mobile-switcher" aria-hidden="true" data-mobile-overlay="switcher">
+        <button class="mobile-overlay-backdrop" type="button" data-mobile-action="close-overlays" aria-label="Close"></button>
+        <div class="mobile-sheet mobile-switcher-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-switcher-title">
+            <div class="mobile-sheet-handle"></div>
+            <div class="mobile-sheet-heading">
+                <div><p>RUNNING</p><h2 id="mobile-switcher-title">App Switcher</h2></div>
+                <button type="button" data-mobile-action="close-overlays" aria-label="Close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="mobile-switcher-list" data-mobile-switcher-list></div>
+            <p class="mobile-empty" data-mobile-switcher-empty hidden>No Apps are open.</p>
+        </div>
+    </section>
+
+    <div class="mobile-toast" role="status" aria-live="polite"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ mobile_static('js/mobile.js') }}"></script>
+{% endblock %}

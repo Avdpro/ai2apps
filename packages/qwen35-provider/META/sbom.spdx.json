@@ -1,0 +1,12 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-qwen35-provider-0.1.0",
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://ai2apps.local/sbom/qwen35-provider/0.1.0",
+  "creationInfo": {
+    "created": "2026-08-14T00:00:00Z",
+    "creators": ["Organization: AI2Apps"]
+  },
+  "packages": []
+}

@@ -7,11 +7,33 @@ import re
 import shutil
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from omlx.integrations.base import Integration, IntegrationContext
 from omlx.utils.install import get_cli_command_prefix
 
 CODEX_CONFIG_PATH = Path.home() / ".codex" / "config.toml"
+
+
+def _with_local_no_proxy(env: dict[str, str], base_url: str) -> None:
+    """Keep Codex's local oMLX traffic out of the system HTTP proxy."""
+    host = urlparse(base_url).hostname
+    local_hosts = ["127.0.0.1", "localhost", "::1"]
+    if host and host not in local_hosts:
+        local_hosts.append(host)
+
+    entries: list[str] = []
+    for existing in (env.get("NO_PROXY", ""), env.get("no_proxy", "")):
+        for item in existing.split(","):
+            item = item.strip()
+            if item and item not in entries:
+                entries.append(item)
+    for item in local_hosts:
+        if item not in entries:
+            entries.append(item)
+    value = ",".join(entries)
+    env["NO_PROXY"] = value
+    env["no_proxy"] = value
 
 
 def write_codex_config(config_path: Path, ctx: IntegrationContext) -> None:
@@ -49,9 +71,14 @@ def write_codex_config(config_path: Path, ctx: IntegrationContext) -> None:
     )
     if is_reasoning:
         top_level_overrides["model_reasoning_effort"] = '"high"'
+    if ctx.context_window:
+        top_level_overrides["model_context_window"] = str(ctx.context_window)
 
     # Keys managed by oMLX that should be removed when not applicable
-    managed_keys = {"model_reasoning_effort"} - set(top_level_overrides.keys())
+    managed_keys = {
+        "model_context_window",
+        "model_reasoning_effort",
+    } - set(top_level_overrides.keys())
 
     seen_keys = set()
 
@@ -116,12 +143,24 @@ class CodexIntegration(Integration):
         write_codex_config(self.CONFIG_PATH, ctx)
 
     def launch(self, ctx: IntegrationContext) -> None:
-        self.configure(ctx)
-
         env = self._scrubbed_env()
         env["OMLX_API_KEY"] = ctx.auth_token
+        _with_local_no_proxy(env, ctx.openai_base_url)
 
-        args = ["codex"]
+        # Keep the AI2Apps provider scoped to this Codex process.  Writing it
+        # into ~/.codex/config.toml changes the provider used by Codex Desktop
+        # and unrelated CLI sessions, which then lack OMLX_API_KEY.
+        args = [
+            "codex",
+            "-c", 'model_provider="omlx"',
+            "-c", 'model_providers.omlx.name="oMLX"',
+            "-c", f'model_providers.omlx.base_url="{ctx.openai_base_url}"',
+            "-c", 'model_providers.omlx.env_key="OMLX_API_KEY"',
+        ]
+        if ctx.context_window:
+            args.extend(("-c", f"model_context_window={ctx.context_window}"))
+        if ctx.reasoning:
+            args.extend(("-c", 'model_reasoning_effort="high"'))
         if ctx.model:
             args.extend(["-m", ctx.model])
         args.extend(ctx.extra_args)

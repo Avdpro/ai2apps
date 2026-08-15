@@ -6,7 +6,7 @@ import copy
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -26,6 +26,15 @@ class _HotBank:
     switch: SwitchGLU
 
 
+@dataclass
+class _PreparedTransientRecords:
+    layer: int
+    ids: tuple[int, ...]
+    buffers: dict[int, bytearray]
+    record_bytes: int
+    read_seconds: float
+
+
 class ScopeFallbackLoader:
     """Load exact L3 experts and assemble a temporary compact SwitchGLU."""
 
@@ -37,6 +46,7 @@ class ScopeFallbackLoader:
         self._lock = threading.Lock()
         self._decode_miss_observer: Callable[[int, list[int]], None] | None = None
         self._route_telemetry_enabled = False
+        self._prefill_route_telemetry_enabled = False
         self._route_histograms: dict[int, mx.array] = {}
         self._route_miss_events: dict[int, mx.array] = {}
         self.route_telemetry_records = 0
@@ -63,6 +73,13 @@ class ScopeFallbackLoader:
             if self.io_workers > 1
             else None
         )
+        # This single coordinator may wait on the ordinary read pool while
+        # Metal evaluates the current bank. It never creates MLX arrays: GPU
+        # publication remains on the inference thread and its active stream.
+        self._prefetch_pool = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="omlx-moe-prefetch",
+        )
         self.experts_loaded = 0
         self.bytes_loaded = 0
         self.load_seconds = 0.0
@@ -85,6 +102,10 @@ class ScopeFallbackLoader:
         self.l1_patch_seconds = 0.0
         self.l1_patch_prepare_layers = 0
         self.l1_patch_prepare_seconds = 0.0
+        self.prefetch_submits = 0
+        self.prefetch_hits = 0
+        self.prefetch_wait_seconds = 0.0
+        self.prefetch_read_seconds = 0.0
 
     def set_decode_miss_observer(
         self, observer: Callable[[int, list[int]], None] | None
@@ -93,10 +114,13 @@ class ScopeFallbackLoader:
 
         self._decode_miss_observer = observer
 
-    def reset_route_telemetry(self, *, enabled: bool) -> None:
-        """Start a new device-resident Decode telemetry window."""
+    def reset_route_telemetry(
+        self, *, enabled: bool, prefill_enabled: bool = False
+    ) -> None:
+        """Start a new device-resident route telemetry window."""
 
         self._route_telemetry_enabled = enabled
+        self._prefill_route_telemetry_enabled = prefill_enabled
         self._route_histograms = {}
         self._route_miss_events = {}
 
@@ -105,15 +129,38 @@ class ScopeFallbackLoader:
 
         self._route_telemetry_enabled = True
 
+    def route_telemetry_enabled(self, *, prefill: bool) -> bool:
+        return (
+            self._prefill_route_telemetry_enabled
+            if prefill
+            else self._route_telemetry_enabled
+        )
+
+    def record_routes(
+        self,
+        layer: int,
+        expert_ids: mx.array,
+        expert_to_slot: mx.array,
+        *,
+        prefill: bool,
+    ) -> None:
+        """Accumulate route frequency without synchronizing the host."""
+
+        if not self.route_telemetry_enabled(prefill=prefill):
+            return
+        self.record_decode_routes(layer, expert_ids, expert_to_slot, _force=True)
+
     def record_decode_routes(
         self,
         layer: int,
         expert_ids: mx.array,
         expert_to_slot: mx.array,
+        *,
+        _force: bool = False,
     ) -> None:
         """Accumulate route frequency and L1-miss events without a host wait."""
 
-        if not self._route_telemetry_enabled or not 3 <= layer < 43:
+        if (not _force and not self._route_telemetry_enabled) or not 3 <= layer < 43:
             return
         flat = expert_ids.reshape(-1)
         universe = mx.arange(256, dtype=flat.dtype)
@@ -280,6 +327,52 @@ class ScopeFallbackLoader:
             records[expert_id] = store.mlx_tensor_views(record, copy_record=True)
         return records, store.record_bytes
 
+    def _read_transient_records_detached(
+        self,
+        layer: int,
+        expert_ids: tuple[int, ...],
+    ) -> _PreparedTransientRecords:
+        """Read one future bank into private CPU buffers only."""
+
+        started = time.perf_counter()
+        store = self._store(layer)
+        buffers = {expert_id: store.allocate_staging() for expert_id in expert_ids}
+        if self._io_pool is not None and len(expert_ids) > 1:
+            futures = [
+                self._io_pool.submit(store.read_into, expert_id, buffers[expert_id])
+                for expert_id in expert_ids
+            ]
+            for future in futures:
+                future.result()
+        else:
+            for expert_id in expert_ids:
+                store.read_into(expert_id, buffers[expert_id])
+        elapsed = time.perf_counter() - started
+        return _PreparedTransientRecords(
+            layer=layer,
+            ids=expert_ids,
+            buffers=buffers,
+            record_bytes=store.record_bytes,
+            read_seconds=elapsed,
+        )
+
+    def prefetch_transient_records(
+        self,
+        layer: int,
+        expert_ids: list[int],
+    ) -> Future[_PreparedTransientRecords]:
+        """Start pure CPU/SSD preparation for the next Prefill bank."""
+
+        ids = tuple(expert_ids)
+        if not ids:
+            raise ValueError("cannot prefetch an empty fallback expert bank")
+        self.prefetch_submits += 1
+        return self._prefetch_pool.submit(
+            self._read_transient_records_detached,
+            layer,
+            ids,
+        )
+
     @staticmethod
     def _stack_records(
         ids: tuple[int, ...], records: dict[int, dict[str, Any]]
@@ -295,6 +388,7 @@ class ScopeFallbackLoader:
         expert_ids: list[int],
         resident: SwitchGLU,
         seed_ids: list[int] | None = None,
+        prepared: Future[_PreparedTransientRecords] | None = None,
     ) -> tuple[SwitchGLU, tuple[int, ...]]:
         """Build a Prefill-only tail bank and seed Decode's rolling Top8."""
 
@@ -303,7 +397,24 @@ class ScopeFallbackLoader:
         started = time.perf_counter()
         with self._lock:
             ids = tuple(expert_ids)
-            records, record_bytes = self._read_records(layer, expert_ids)
+            if prepared is None:
+                records, record_bytes = self._read_records(layer, expert_ids)
+            else:
+                wait_started = time.perf_counter()
+                prefetched = prepared.result()
+                self.prefetch_wait_seconds += time.perf_counter() - wait_started
+                if prefetched.layer != layer or prefetched.ids != ids:
+                    raise ValueError("prefetched expert bank does not match request")
+                store = self._store(layer)
+                records = {
+                    expert_id: store.mlx_tensor_views(
+                        prefetched.buffers[expert_id], copy_record=True
+                    )
+                    for expert_id in ids
+                }
+                record_bytes = prefetched.record_bytes
+                self.prefetch_hits += 1
+                self.prefetch_read_seconds += prefetched.read_seconds
             stacked = self._stack_records(ids, records)
             mx.eval(*stacked.values())
             fallback = self._make_switch(resident, ids, stacked)
@@ -573,6 +684,10 @@ class ScopeFallbackLoader:
             "hot_layers": len(self._hot),
             "hot_slots": self.hot_slots,
             "io_workers": self.io_workers,
+            "prefetch_submits": self.prefetch_submits,
+            "prefetch_hits": self.prefetch_hits,
+            "prefetch_wait_seconds": self.prefetch_wait_seconds,
+            "prefetch_read_seconds": self.prefetch_read_seconds,
         }
 
 

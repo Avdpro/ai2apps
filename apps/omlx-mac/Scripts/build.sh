@@ -10,7 +10,7 @@
 #   2. (auto) rebuild the venvstacks export if sources have drifted
 #   3. stage the Swift `.app` and copy the venvstacks-produced Python
 #      layers into Contents/Resources/Python/ verbatim
-#   4. embed the omlx package from the worktree and ad-hoc sign
+#   4. embed the ai2apps and omlx packages from the worktree and ad-hoc sign
 #
 # venvstacks is the single source of truth for the bundle's Python
 # environment — we no longer post-process its output with a uv-sync
@@ -546,15 +546,17 @@ if [ -d "$DONOR_LAYERS/__venvstacks__" ]; then
     ok "  + __venvstacks__ metadata"
 fi
 
-# --- Embed omlx package ---------------------------------------------------
+# --- Embed Python product/runtime packages -------------------------------
 
 if [ "$WITH_CUSTOM_KERNEL" = "1" ]; then
     _build_custom_kernels
 fi
 
-log "Copying omlx package from source tree…"
+log "Copying ai2apps and omlx packages from source tree…"
 rm -rf "$RESOURCES_DIR/omlx"
+rm -rf "$RESOURCES_DIR/ai2apps"
 mkdir -p "$RESOURCES_DIR/omlx"
+mkdir -p "$RESOURCES_DIR/ai2apps"
 # rsync gives us per-tree exclude semantics that ditto lacks.
 RSYNC_EXCLUDES=(
     --exclude='__pycache__'
@@ -573,7 +575,10 @@ fi
 rsync -a \
     "${RSYNC_EXCLUDES[@]}" \
     "$REPO_ROOT/omlx/" "$RESOURCES_DIR/omlx/"
-ok "  + omlx package"
+rsync -a \
+    "${RSYNC_EXCLUDES[@]}" \
+    "$REPO_ROOT/ai2apps/" "$RESOURCES_DIR/ai2apps/"
+ok "  + ai2apps and omlx packages"
 
 log "Writing engine commit metadata..."
 "$PYTHON_BIN" "$PACKAGING_DIR/build.py" --write-engine-commits "$RESOURCES_DIR/omlx" \

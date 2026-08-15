@@ -48,6 +48,7 @@ def _make_fixture(monkeypatch, drafter_returns_uid):
     sched = SimpleNamespace(
         _vlm_mtp_drafter=object(),  # a drafter is configured
         _route_to_vlm_mtp=fake_route,
+        _mark_prefill_ready=lambda request: None,
         _finalize_chunked_prefill_cache_for_insert=lambda req, cache: None,
         _stream=mx.default_stream(mx.default_device()),
         batch_generator=SimpleNamespace(insert=fake_bg_insert),

@@ -30,6 +30,19 @@ class AdaptiveL1Config:
     bank_size: int = 60
     layer_start: int = 3
     layer_count: int = 40
+    # Experimental long-Prefill adaptation. Route histograms stay on device
+    # and are read only at existing Prefill chunk boundaries.
+    prefill_enabled: bool = False
+    prefill_min_prompt_tokens: int = 1024
+    prefill_min_remaining_tokens: int = 512
+    prefill_min_miss_route_rate: float = 0.20
+    prefill_max_promotions_per_layer: int = 8
+    prefill_max_layers_per_commit: int = 20
+    prefill_payback_ratio: float = 1.25
+    prefill_recheck_tokens: int = 2048
+    prefill_recheck_max_promotions_per_layer: int = 4
+    prefill_recheck_max_layers_per_commit: int = 10
+    prefill_recheck_miss_multiplier: float = 1.15
 
     @classmethod
     def from_env(cls) -> "AdaptiveL1Config":
@@ -77,6 +90,39 @@ class AdaptiveL1Config:
             post_commit_payback_multiplier=float(os.environ.get(
                 "OMLX_DEEPSEEK_V4_ADAPTIVE_L1_POST_PAYBACK_MULTIPLIER", "1.50"
             )),
+            prefill_enabled=os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_ADAPTIVE_L1", ""
+            ).strip().lower() in ("1", "true", "yes", "on"),
+            prefill_min_prompt_tokens=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_PROMPT", "1024"
+            )),
+            prefill_min_remaining_tokens=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_REMAINING", "512"
+            )),
+            prefill_min_miss_route_rate=float(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_MISS_RATE", "0.20"
+            )),
+            prefill_max_promotions_per_layer=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_MAX_PER_LAYER", "8"
+            )),
+            prefill_max_layers_per_commit=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_MAX_LAYERS", "20"
+            )),
+            prefill_payback_ratio=float(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_PAYBACK_RATIO", "1.25"
+            )),
+            prefill_recheck_tokens=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_RECHECK_TOKENS", "2048"
+            )),
+            prefill_recheck_max_promotions_per_layer=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_RECHECK_MAX_PER_LAYER", "4"
+            )),
+            prefill_recheck_max_layers_per_commit=int(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_RECHECK_MAX_LAYERS", "10"
+            )),
+            prefill_recheck_miss_multiplier=float(os.environ.get(
+                "OMLX_DEEPSEEK_V4_PREFILL_L1_RECHECK_MISS_MULTIPLIER", "1.15"
+            )),
         )
 
     def validate(self) -> None:
@@ -115,6 +161,26 @@ class AdaptiveL1Config:
             raise ValueError("post-commit miss multiplier must be at least 1")
         if self.post_commit_payback_multiplier < 1.0:
             raise ValueError("post-commit payback multiplier must be at least 1")
+        if self.prefill_min_prompt_tokens < 32:
+            raise ValueError("Prefill adaptive L1 minimum prompt must be at least 32")
+        if self.prefill_min_remaining_tokens < 1:
+            raise ValueError("Prefill adaptive L1 minimum remaining must be positive")
+        if not 0.0 <= self.prefill_min_miss_route_rate <= 1.0:
+            raise ValueError("Prefill adaptive L1 miss rate must be in [0, 1]")
+        if not 1 <= self.prefill_max_promotions_per_layer <= self.bank_size - self.pinned_slots:
+            raise ValueError("Prefill adaptive L1 per-layer promotion limit is invalid")
+        if not 1 <= self.prefill_max_layers_per_commit <= self.layer_count:
+            raise ValueError("Prefill adaptive L1 layer limit is invalid")
+        if self.prefill_payback_ratio < 1.0:
+            raise ValueError("Prefill adaptive L1 payback ratio must be at least 1")
+        if self.prefill_recheck_tokens < 512:
+            raise ValueError("Prefill adaptive L1 recheck must be at least 512 tokens")
+        if not 1 <= self.prefill_recheck_max_promotions_per_layer <= self.prefill_max_promotions_per_layer:
+            raise ValueError("Prefill adaptive L1 recheck promotion limit is invalid")
+        if not 1 <= self.prefill_recheck_max_layers_per_commit <= self.prefill_max_layers_per_commit:
+            raise ValueError("Prefill adaptive L1 recheck layer limit is invalid")
+        if self.prefill_recheck_miss_multiplier < 1.0:
+            raise ValueError("Prefill adaptive L1 recheck miss multiplier must be at least 1")
 
 
 @dataclass(frozen=True)
@@ -166,6 +232,7 @@ class AdaptiveL1Manager:
         self.interval_checks = 0
         self.interval_triggers = 0
         self.early_triggers = 0
+        self.prefill_triggers = 0
         self.manual_triggers = 0
         self.turn_triggers = 0
 
@@ -194,6 +261,12 @@ class AdaptiveL1Manager:
     def active(self) -> SessionL1State | None:
         with self._lock:
             return self.sessions.get(self.active_session_id or "")
+
+    def session_scope(self, session_id: str) -> str | None:
+        """Return the scope established for a session, if it has started."""
+        with self._lock:
+            state = self.sessions.get(session_id)
+            return state.scope if state is not None else None
 
     def observe_decode_miss(self, layer: int, expert_ids: list[int]) -> None:
         """Called only at the pre-existing miss CPU boundary; adds no sync."""
@@ -265,6 +338,15 @@ class AdaptiveL1Manager:
                 return False
             self._manual.remove(session_id)
             self.manual_triggers += 1
+            return True
+
+    def cancel_manual(self, session_id: str) -> bool:
+        """Discard a queued manual request without counting it as a trigger."""
+
+        with self._lock:
+            if session_id not in self._manual:
+                return False
+            self._manual.remove(session_id)
             return True
 
     def manual_pending(self, session_id: str) -> bool:
@@ -356,7 +438,7 @@ class AdaptiveL1Manager:
             state.last_reason = reason
             state.last_optimize_seconds = seconds
             if reason in (
-                "early", "interval", "turn_end_auto", "manual"
+                "early", "interval", "turn_end_auto", "manual", "prefill"
             ) and promotions:
                 state.auto_cooldown_checks = 1
                 state.auto_strict_checks = 1
@@ -370,6 +452,8 @@ class AdaptiveL1Manager:
                 self.interval_triggers += 1
             elif reason == "early":
                 self.early_triggers += 1
+            elif reason == "prefill":
+                self.prefill_triggers += 1
 
     def should_interval_optimize(
         self,
@@ -422,6 +506,8 @@ class AdaptiveL1Manager:
                 "interval_checks": self.interval_checks,
                 "interval_triggers": self.interval_triggers,
                 "early_triggers": self.early_triggers,
+                "prefill_enabled": self.config.prefill_enabled,
+                "prefill_triggers": self.prefill_triggers,
                 "manual_triggers": self.manual_triggers,
                 "turn_triggers": self.turn_triggers,
                 "session_states": {

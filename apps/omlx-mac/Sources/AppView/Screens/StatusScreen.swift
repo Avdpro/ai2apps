@@ -318,7 +318,7 @@ private struct RuntimeCacheSection: View {
 }
 
 /// Bytes → human-readable string. Mirrors `formatByteCount` in
-/// `omlx/admin/static/js/dashboard.js` — 1024-scaled, one decimal place.
+/// `ai2apps/web/static/js/dashboard.js` — 1024-scaled, one decimal place.
 private func formatByteCount(_ bytes: Int64) -> String {
     let b = Double(max(0, bytes))
     if b >= 1024 * 1024 * 1024 { return String(format: "%.1f GB", b / (1024 * 1024 * 1024)) }

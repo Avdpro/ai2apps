@@ -784,6 +784,63 @@ class BatchedEngine(BaseEngine):
             except Exception as e:
                 logger.debug(f"SpecPrefill: system_end calc failed: {e}")
 
+    def _inject_exact_system_prefix(
+        self,
+        messages: list[dict[str, Any]],
+        prompt: str,
+        template_tools: Any,
+        ct_kwargs: dict[str, Any] | None,
+        kwargs: dict[str, Any],
+    ) -> None:
+        """Expose a stable rendered-message token prefix for exact KV reuse.
+
+        A caller may declare an exact count of leading immutable messages (for
+        example, a committed Reviewer checkpoint). Otherwise the system-only
+        fallback is used. Render the stable messages with an unrelated probe in
+        the next message role and take the token LCP with the real prompt. This
+        accounts for template separators/headers without caching dynamic text.
+        """
+        cache_system = bool(kwargs.pop("cache_exact_system_prefix", False))
+        requested_count = int(kwargs.pop("cache_exact_message_prefix_count", 0) or 0)
+        if not cache_system and requested_count <= 0:
+            return
+        if 0 < requested_count < len(messages):
+            leading = [dict(message) for message in messages[:requested_count]]
+        else:
+            leading = []
+            for message in messages:
+                if message.get("role") not in ("system", "developer"):
+                    break
+                leading.append(dict(message))
+        if not leading or len(leading) == len(messages):
+            return
+        try:
+            next_role = str(messages[len(leading)].get("role", "user") or "user")
+            probe_messages = [
+                *leading,
+                {
+                    "role": next_role,
+                    "content": "OMLX_EXACT_PREFIX_PROBE_7f31c9",
+                },
+            ]
+            probe_prompt = self._apply_chat_template(
+                probe_messages,
+                template_tools,
+                chat_template_kwargs=ct_kwargs,
+                is_partial=False,
+            )
+            full_tokens = list(self._tokenizer.encode(prompt))
+            probe_tokens = list(self._tokenizer.encode(probe_prompt))
+            boundary = 0
+            for actual, probe in zip(full_tokens, probe_tokens):
+                if actual != probe:
+                    break
+                boundary += 1
+            if 0 < boundary < len(full_tokens):
+                kwargs["exact_prefix_token_count"] = boundary
+        except Exception as exc:
+            logger.debug("Exact message-prefix boundary calc failed: %s", exc)
+
     async def generate(
         self,
         prompt: str | list[int],
@@ -845,6 +902,8 @@ class BatchedEngine(BaseEngine):
             prompt=prompt,
             sampling_params=sampling_params,
             cache_extra_keys=kwargs.get("cache_extra_keys"),
+            kv_cache_policy=kwargs.get("kv_cache_policy", "strict"),
+            exact_prefix_token_count=kwargs.get("exact_prefix_token_count", 0),
             **specprefill_kwargs,
         )
 
@@ -920,8 +979,11 @@ class BatchedEngine(BaseEngine):
         request_id = await engine.add_request(
             prompt=prompt,
             sampling_params=sampling_params,
+            request_id=kwargs.get("request_id"),
             skip_cache_store=bool(kwargs.get("skip_cache_store", False)),
             cache_extra_keys=kwargs.get("cache_extra_keys"),
+            kv_cache_policy=kwargs.get("kv_cache_policy", "strict"),
+            exact_prefix_token_count=kwargs.get("exact_prefix_token_count", 0),
             **specprefill_kwargs,
         )
 
@@ -1018,6 +1080,9 @@ class BatchedEngine(BaseEngine):
 
         # SpecPrefill: protect the system-prompt region, mirroring stream_chat.
         self._inject_specprefill_system_end(
+            messages, prompt, template_tools, ct_kwargs, kwargs
+        )
+        self._inject_exact_system_prefix(
             messages, prompt, template_tools, ct_kwargs, kwargs
         )
 
@@ -1174,6 +1239,9 @@ class BatchedEngine(BaseEngine):
 
         # SpecPrefill: protect the system-prompt region from token dropping.
         self._inject_specprefill_system_end(
+            messages, prompt, template_tools, ct_kwargs, kwargs
+        )
+        self._inject_exact_system_prefix(
             messages, prompt, template_tools, ct_kwargs, kwargs
         )
 

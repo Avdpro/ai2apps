@@ -536,6 +536,8 @@ class Qwen36AdaptiveController:
         self.checks = 0
         self.triggers = 0
         self.cooldown_checks = 0
+        self.idle_manual_rejections = 0
+        self.stale_manual_cancellations = 0
         self.min_miss_rate = float(
             os.environ.get("OMLX_QWEN36_ADAPTIVE_L1_MIN_MISS_RATE", "0.10")
         )
@@ -558,6 +560,9 @@ class Qwen36AdaptiveController:
         # Engine Boost shares this scheduler-safe boundary. Install it even
         # when adaptive L1 itself is disabled.
         self.owner._engine.engine._between_decode_step_callback = self.between_step
+        self.owner._engine.engine.scheduler._prefill_chunk_callback = (
+            self.between_prefill_chunk
+        )
         self.bank.prepare()
         if self.manager is None:
             set_qwen36_route_observer(None)
@@ -565,33 +570,32 @@ class Qwen36AdaptiveController:
         set_qwen36_route_observer(self.observe_routes)
         self.owner._model._qwen36_stable_prefill = self.stable_prefill
 
-    def stable_prefill(self, call: Callable[[], Any]) -> Any:
-        """Run prefill through the immutable scope layout, then restore Decode."""
+    def between_prefill_chunk(
+        self,
+        request: Any,
+        *,
+        tokens: int,
+        processed_tokens: int,
+        remaining_tokens: int,
+    ) -> None:
+        del request, tokens, processed_tokens
+        if remaining_tokens > 0:
+            return
+        boost = getattr(self.owner, "_qwen_boost", None)
+        if boost is not None:
+            boost.complete_prefill()
 
-        if (
-            self.manager is None
-            or self.state is None
-            or self.prefill_backend in ("workspace96", "packed96")
-        ):
-            return call()
-        decode_layout = list(self.state.layout)
-        if decode_layout == self.base_layout:
-            return call()
-        mutable = self.bank.mutable_layout()
-        self._in_stable_prefill = True
-        # Preserve as much of the session-owned mutable L0 as possible while
-        # temporarily restoring L1. Prefill ignores L0 by construction.
-        self.bank.activate(self.base_layout)
-        try:
-            result = call()
-            # Slot tensors are mutable backing arrays. Complete every prefill
-            # consumer before restoring the session-owned Decode bank.
-            mx.eval(result)
-            return result
-        finally:
-            self.bank.activate(decode_layout, mutable_layout=mutable)
-            self.bank.prefill_swaps += 1
-            self._in_stable_prefill = False
+    def stable_prefill(self, call: Callable[[], Any]) -> Any:
+        """Run Prefill on the active session's current adaptive L1."""
+
+        return call()
+
+    def session_scope(self, session_id: str) -> str | None:
+        """Return the sticky scope already owned by a session."""
+
+        if self.manager is not None:
+            return self.manager.session_scope(session_id)
+        return self._static_session_scopes.get(session_id)
 
     def _scope_layout(self, scope_name: str) -> list[tuple[int, ...]]:
         return [
@@ -636,6 +640,12 @@ class Qwen36AdaptiveController:
             self.base_layout = layout
             self.current_scope = scope_name
             return ("session", session_id, scope_name)
+        # A manual optimization is only valid inside the Decode turn that
+        # accepted it. If it arrived after the final safe boundary, do not let
+        # it absorb the next turn's Prefill observations or cross a scope
+        # change before committing.
+        if self.manager.cancel_manual(session_id):
+            self.stale_manual_cancellations += 1
         previous_session_id = self.manager.active_session_id
         self.state = self.manager.begin(session_id, scope_name, mode=mode)
         if trigger:
@@ -646,7 +656,7 @@ class Qwen36AdaptiveController:
             partial(
                 self.bank.activate,
                 self.state.layout,
-                reset_mutable=(previous_session_id != session_id),
+                reset_mutable=previous_session_id != session_id,
             ),
         )
         self.base_layout = self.manager._base_layout(scope_name)
@@ -743,6 +753,10 @@ class Qwen36AdaptiveController:
     def request(self, session_id: str) -> dict[str, Any]:
         if self.manager is None:
             return {"accepted": False, "reason": "adaptive_l1_disabled"}
+        if not self.owner.has_active_requests():
+            self.manager.cancel_manual(session_id)
+            self.idle_manual_rejections += 1
+            return {"accepted": False, "reason": "no_active_decode"}
         self.manager.request_manual(session_id)
         return {"accepted": True, "queued": True, "session_id": session_id}
 
@@ -752,6 +766,8 @@ class Qwen36AdaptiveController:
             "max_promotions_per_layer": self.config.max_promotions_per_layer,
             "checks": self.checks,
             "triggers": self.triggers,
+            "idle_manual_rejections": self.idle_manual_rejections,
+            "stale_manual_cancellations": self.stale_manual_cancellations,
             "observed_routes": self.observed_routes,
             "nonresident_routes": self.nonresident_routes,
             "bank": self.bank.stats(),

@@ -1,0 +1,83 @@
+schema: ai2apps.service/v1
+id: ai2apps.qwen35
+name: Qwen3.5 Local Provider
+description: Independently packaged Qwen3.5 MLX model provider for AI2Apps.
+version: 0.1.0
+
+publisher:
+  id: ai2apps.local
+
+runtime:
+  mode: process
+  protocol: openai-compatible
+  command:
+    - "{python}"
+    - "{package}/src/provider.py"
+    - "--port"
+    - "{port}"
+  endpoint: "http://127.0.0.1:{port}"
+
+models:
+  - id: ai2apps.qwen35/qwen3.5-2b-4bit
+    display_name: Qwen3.5 2B 4-bit
+    model_type: vlm
+    upstream_id: mlx-community/Qwen3.5-2B-4bit
+    capabilities:
+      - work
+      - conversation
+      - image_recognition
+    context_window: 262144
+    metadata:
+      family: qwen3.5
+      parameters: 2B
+      quantization: 4bit
+      default: true
+  - id: ai2apps.qwen35/qwen3.5-0.8b-4bit
+    display_name: Qwen3.5 0.8B 4-bit
+    model_type: vlm
+    upstream_id: mlx-community/Qwen3.5-0.8B-4bit
+    capabilities:
+      - work
+      - conversation
+      - image_recognition
+    context_window: 262144
+    metadata:
+      family: qwen3.5
+      parameters: 0.8B
+      quantization: 4bit
+      lightweight: true
+
+capabilities: []
+
+requires:
+  services: []
+  python: ">=3.11,<3.14"
+
+permissions:
+  network:
+    outbound: true
+    reason: Download a selected checkpoint only when it is absent from the local HF cache.
+  model_weights:
+    huggingface_cache: read
+    reason: Reuse already downloaded Qwen3.5 checkpoints without copying weights into the Package.
+  accelerator:
+    metal: true
+    reason: Execute the selected MLX model on the local Apple GPU.
+
+compatibility:
+  os:
+    - macos
+  architectures:
+    - arm64
+  accelerator:
+    - metal
+
+health:
+  path: /health
+  startup_timeout_seconds: 30
+
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+
+tools: []

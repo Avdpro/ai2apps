@@ -86,6 +86,74 @@ class TestGenerationOutput:
         assert output.finished is False
         assert output.tool_calls == [{"name": "test_tool", "arguments": "{}"}]
 
+
+def test_exact_system_prefix_boundary_is_an_actual_prompt_lcp():
+    from omlx.engine.batched import BatchedEngine
+
+    engine = BatchedEngine(model_name="test-model")
+    tokenizer = MagicMock()
+
+    def render(messages, **kwargs):
+        del kwargs
+        system = messages[0]["content"]
+        user = messages[1]["content"]
+        return f"SYS:{system}|USER:{user}|ASSISTANT:"
+
+    tokenizer.apply_chat_template.side_effect = render
+    tokenizer.encode.side_effect = lambda text: [ord(char) for char in text]
+    engine._tokenizer = tokenizer
+    messages = [
+        {"role": "system", "content": "review rules"},
+        {"role": "user", "content": "{actual payload}"},
+    ]
+    prompt = render(messages)
+    kwargs = {"cache_exact_system_prefix": True}
+
+    engine._inject_exact_system_prefix(messages, prompt, None, None, kwargs)
+
+    boundary = kwargs["exact_prefix_token_count"]
+    assert prompt[:boundary] == "SYS:review rules|USER:"
+    assert prompt[boundary] == "{"
+    assert "cache_exact_system_prefix" not in kwargs
+
+
+def test_exact_message_prefix_boundary_preserves_committed_review_checkpoint():
+    from omlx.engine.batched import BatchedEngine
+
+    engine = BatchedEngine(model_name="test-model")
+    tokenizer = MagicMock()
+
+    def render(messages, **kwargs):
+        del kwargs
+        body = "".join(
+            f"<{message['role']}>{message['content']}</{message['role']}>"
+            for message in messages
+        )
+        return body + "<assistant>"
+
+    tokenizer.apply_chat_template.side_effect = render
+    tokenizer.encode.side_effect = lambda text: [ord(char) for char in text]
+    engine._tokenizer = tokenizer
+    messages = [
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "turn one"},
+        {"role": "assistant", "content": '{"action":"PASS"}'},
+        {"role": "user", "content": "speculative tail"},
+    ]
+    prompt = render(messages)
+    kwargs = {
+        "cache_exact_system_prefix": True,
+        "cache_exact_message_prefix_count": 3,
+    }
+
+    engine._inject_exact_system_prefix(messages, prompt, None, None, kwargs)
+
+    boundary = kwargs["exact_prefix_token_count"]
+    stable = render(messages[:3]).removesuffix("<assistant>") + "<user>"
+    assert prompt[:boundary] == stable
+    assert prompt[boundary:].startswith("speculative tail")
+    assert "cache_exact_message_prefix_count" not in kwargs
+
     def test_streaming_output(self):
         """Test GenerationOutput for streaming use case."""
         output = GenerationOutput(

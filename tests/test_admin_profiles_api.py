@@ -865,15 +865,15 @@ class TestExposeAsModelAPI:
         from pathlib import Path
 
         root = Path(__file__).resolve().parents[1]
-        js = (root / "omlx/admin/static/js/dashboard.js").read_text()
+        js = (root / "ai2apps/web/static/js/dashboard.js").read_text()
         html = (
-            root / "omlx/admin/templates/dashboard/_modal_model_settings.html"
+            root / "ai2apps/web/templates/dashboard/_modal_model_settings.html"
         ).read_text()
         settings_html = (
-            root / "omlx/admin/templates/dashboard/_settings.html"
+            root / "ai2apps/web/templates/dashboard/_settings.html"
         ).read_text()
-        dashboard_html = (root / "omlx/admin/templates/dashboard.html").read_text()
-        en = (root / "omlx/admin/i18n/en.json").read_text()
+        dashboard_html = (root / "ai2apps/web/templates/dashboard.html").read_text()
+        en = (root / "ai2apps/web/i18n/en.json").read_text()
 
         # api_name is the exposed model ID suffix, so it's validated as a
         # slug and rejected on bad input.

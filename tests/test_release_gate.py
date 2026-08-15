@@ -1,4 +1,6 @@
+import io
 import json
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -107,3 +109,46 @@ def test_archive_gate_rejects_direct_url_dependency(tmp_path: Path):
     )
     assert dependency.status == "fail"
     assert "mlx-lm" in dependency.detail
+
+
+def test_sdist_gate_reads_top_level_metadata_when_egg_info_is_present(
+    tmp_path: Path,
+):
+    sdist = tmp_path / "ai2apps.tar.gz"
+    metadata = (
+        b"Metadata-Version: 2.4\nName: ai2apps\nVersion: 0.1\n"
+        b"Requires-Dist: mlx-lm==0.31.3\n"
+    )
+    files = {
+        "ai2apps-0.1/PKG-INFO": metadata,
+        "ai2apps-0.1/ai2apps.egg-info/PKG-INFO": metadata,
+        "ai2apps-0.1/ai2apps/model_installer.py": b"",
+        "ai2apps-0.1/ai2apps/engines/deepseek_v4_flash/scope-pack.json": b"{}",
+        "ai2apps-0.1/ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json": b"{}",
+    }
+    with tarfile.open(sdist, "w:gz") as archive:
+        for name, content in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+    checks = []
+
+    check_archives(checks, [sdist])
+
+    assert {item.status for item in checks} == {"pass"}
+
+
+def test_archive_gate_rejects_private_and_runtime_data(tmp_path: Path):
+    wheel = tmp_path / "ai2apps.whl"
+    _write_test_wheel(wheel, "mlx-lm==0.31.3")
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("ai2apps/platform/secrets/vault.key", "not-a-real-key")
+        archive.writestr("ai2apps/cache.private.pem", "not-a-real-key")
+        archive.writestr("ai2apps/platform/ai2apps-platform.sqlite3", "")
+    checks = []
+
+    check_archives(checks, [wheel])
+
+    package = next(item for item in checks if item.check == "package.archive")
+    assert package.status == "fail"
+    assert "leaked=3" in package.detail

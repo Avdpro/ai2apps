@@ -553,6 +553,8 @@ class EngineCore:
         specprefill_system_end: Optional[int] = None,
         skip_cache_store: bool = False,
         cache_extra_keys: Optional[Tuple[Any, ...]] = None,
+        kv_cache_policy: str = "strict",
+        exact_prefix_token_count: int = 0,
     ) -> str:
         """
         Add a request for processing.
@@ -592,6 +594,8 @@ class EngineCore:
             vlm_cache_key_ranges=vlm_cache_key_ranges,
             skip_cache_store=skip_cache_store,
             cache_extra_keys=cache_extra_keys,
+            kv_cache_policy=kv_cache_policy,
+            exact_prefix_token_count=max(0, int(exact_prefix_token_count or 0)),
         )
 
         # SpecPrefill: resolve per-request settings.

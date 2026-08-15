@@ -12,6 +12,7 @@ import asyncio
 import inspect
 import json
 import logging
+import mimetypes
 import os
 import re
 import shutil
@@ -19,19 +20,39 @@ import signal
 import sys
 import time
 from collections import deque
+from contextlib import suppress
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, Literal, Optional
+from urllib.parse import quote, urlsplit
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+import httpx
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
 from ai2apps._version import __version__ as _ai2apps_version
+from ai2apps.apps import SYSTEM_APP_MANIFESTS
+from ai2apps.capabilities import operation_class
+from ai2apps.coder import CoderError
+from ai2apps.core import EntityIdKind, RepositoryError, new_entity_id
+from ai2apps.extensions import ExtensionError
+from ai2apps.model_providers import list_package_models
+from ai2apps.terminal import TerminalServiceError
+from ai2apps.web import I18N_DIR, STATIC_DIR, TEMPLATES_DIR
 from omlx._version import __version__ as _omlx_version
 
 from ..api.markitdown import MARKITDOWN_MODEL_ID, markitdown_model_visible
@@ -52,6 +73,7 @@ from .auth import (
 )
 
 logger = logging.getLogger(__name__)
+MOBILE_SESSION_COOKIE = "ai2apps_mobile_session"
 
 PRESET_REMOTE_URL = "https://omlx.ai/assets/omlx_preset.json"
 
@@ -88,6 +110,44 @@ class DeleteSubKeyRequest(BaseModel):
     key: str
 
 
+class CreateTerminalSessionRequest(BaseModel):
+    """Create one system-owned interactive terminal session."""
+
+    title: str | None = Field(default=None, max_length=80)
+    cwd: str | None = Field(default=None, max_length=4096)
+    cols: int = Field(default=100, ge=20, le=1000)
+    rows: int = Field(default=30, ge=5, le=500)
+
+
+class CreateCoderProjectRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    root_path: str = Field(min_length=1, max_length=4096)
+    kind: Literal["general", "ai2apps"] = "general"
+    create_directory: bool = False
+    bootstrap: bool = False
+
+
+class CreateCoderThreadRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    agent: Literal["codex", "opencode", "claude"]
+    model_source: Literal["default", "ai2apps"] = "default"
+    model: str = Field(default="", max_length=500)
+    parent_thread_id: str | None = None
+
+
+class ForkCoderThreadRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+
+
+class StartCoderDevSessionRequest(BaseModel):
+    component_id: str = Field(min_length=1, max_length=256)
+
+
+class SaveCoderFileRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    content: str = Field(max_length=2 * 1024 * 1024)
+
+
 class CacheProbeRequest(BaseModel):
     """Request model for probing per-prompt cache state.
 
@@ -112,6 +172,7 @@ class ModelSettingsRequest(BaseModel):
     model_type_override: str | None = None
     max_context_window: int | None = None
     cache_moe_memory_tier: str | None = None
+    kv_cache_policy: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -348,6 +409,28 @@ class AI2AppsRetryRequest(BaseModel):
     token: str = ""
 
 
+class FusionModelRequest(BaseModel):
+    fusion: dict[str, Any]
+
+
+class CloudProviderRequest(BaseModel):
+    name: str = ""
+    base_url: str = ""
+    protocol: Literal["openai", "anthropic"] = "openai"
+    models: list[str] | str = Field(default_factory=list)
+    enabled: bool = True
+    api_key: str | None = None
+
+
+class CloudModelSelectionRequest(BaseModel):
+    model_id: str
+    enabled: bool
+
+
+class DefaultModelRoutesRequest(BaseModel):
+    routes: dict[str, str | None]
+
+
 class MSDownloadRequest(BaseModel):
     """Request model for starting a ModelScope model download."""
 
@@ -397,6 +480,52 @@ class HFValidateTokenRequest(BaseModel):
     """Request model for validating a HuggingFace token."""
 
     hf_token: str
+
+
+class ShellMountRequest(BaseModel):
+    placement: Literal["inline", "sidebar"] = "inline"
+    interaction_session_id: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ShellSafeModeRequest(BaseModel):
+    active: bool
+    reason: str = Field(default="user-request", max_length=500)
+
+
+class ShellPatchResolutionRequest(BaseModel):
+    resolution: Literal["disable", "accept-upstream", "preserve-local"]
+    candidate_digest: str | None = None
+
+
+class ShellAgentRunRequest(BaseModel):
+    session_id: str
+    agent: str = "ai2apps.general-agent"
+    input: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = None
+    priority: int = Field(default=0, ge=-100, le=100)
+
+
+class ShellCapabilityRequest(BaseModel):
+    session_id: str | None = None
+    mount_id: str | None = None
+    capabilities: list[str] = Field(min_length=1, max_length=32)
+    tool_name: str = Field(default="*", min_length=1, max_length=200)
+    effects: list[str] = Field(default_factory=list, max_length=32)
+    resource_selector: dict[str, Any] = Field(default_factory=dict)
+    reason: str = Field(min_length=1, max_length=1000)
+    timeout_seconds: int = Field(default=600, ge=30, le=3600)
+
+
+class ShellApprovalDecisionRequest(BaseModel):
+    decision: Literal["approve", "deny"]
+    scope: Literal["once", "run", "session", "agent", "app"] = "once"
+    duration_seconds: int | None = Field(default=None, ge=60, le=86400)
+    resource_selector: dict[str, Any] | None = None
+
+
+class ShellGrantRevokeRequest(BaseModel):
+    reason: str = Field(default="user-revoked-from-system-control", min_length=1, max_length=500)
 
 
 # =============================================================================
@@ -1056,8 +1185,107 @@ def _apply_sampling_settings_runtime(
 # =============================================================================
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
-static_dir = Path(__file__).parent / "static"
+shell_router = APIRouter(tags=["apps"])
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+static_dir = STATIC_DIR
+MOBILE_STATIC_FILES = frozenset({
+    "favicon.svg",
+    "css/mobile.css",
+    "css/mobile_app.css",
+    "css/mobile_chat.css",
+    "css/tailwind.css",
+    "css/dashboard.css",
+    "css/account.css",
+    "css/agents.css",
+    "css/trust_center.css",
+    "js/alpine.min.js",
+    "js/account.js",
+    "js/agent_manager.js",
+    "js/dashboard.js",
+    "js/lucide.min.js",
+    "js/marked.umd.js",
+    "js/mobile.js",
+    "js/mobile_app.js",
+    "js/mobile_chat.js",
+    "js/purify.min.js",
+    "js/trust_center.js",
+    "omlx_preset.json",
+    "img/integrations/claude.png",
+    "img/integrations/codex.png",
+    "img/integrations/copilot.svg",
+    "img/integrations/hermes.svg",
+    "img/integrations/openclaw.png",
+    "img/integrations/opencode.png",
+    "img/integrations/pi.svg",
+    "fonts/inter/inter.css",
+    "fonts/inter/inter-latin-300-normal.woff2",
+    "fonts/inter/inter-latin-400-normal.woff2",
+    "fonts/inter/inter-latin-500-normal.woff2",
+    "fonts/inter/inter-latin-600-normal.woff2",
+    "fonts/inter/inter-latin-700-normal.woff2",
+    "fonts/inter/inter-latin-800-normal.woff2",
+})
+
+
+SYSTEM_APPS: tuple[dict[str, Any], ...] = tuple(
+    {
+        "id": manifest["id"],
+        "name": manifest["name"],
+        "description": manifest["description"],
+        "category": manifest["navigation"]["category"],
+        "icon": manifest["navigation"]["icon"],
+        "entry_url": "",
+        "singleton": manifest["instances"]["mode"] == "singleton",
+        "presentation": manifest.get("presentation", {}),
+    }
+    for manifest in SYSTEM_APP_MANIFESTS
+)
+
+_SYSTEM_APPS_BY_ID = {app["id"]: app for app in SYSTEM_APPS}
+_DASHBOARD_APP_TABS = {
+    "ai2apps.dashboard": "status",
+    "ai2apps.account": "account",
+    "ai2apps.models": "models",
+    "ai2apps.discover": "discover",
+    "ai2apps.agents": "agents",
+    "ai2apps.trust-center": "trust",
+    "ai2apps.settings": "settings",
+    "ai2apps.logs": "logs",
+    "ai2apps.terminal": "terminal",
+    "ai2apps.coder": "coder",
+    "ai2apps.benchmark": "bench",
+}
+_DASHBOARD_APP_TEMPLATES = {
+    "ai2apps.dashboard": "system_apps/dashboard.html",
+    "ai2apps.account": "system_apps/account.html",
+    "ai2apps.models": "system_apps/models.html",
+    "ai2apps.discover": "system_apps/discover.html",
+    "ai2apps.agents": "system_apps/agents.html",
+    "ai2apps.trust-center": "system_apps/trust_center.html",
+    "ai2apps.settings": "system_apps/settings.html",
+    "ai2apps.logs": "system_apps/logs.html",
+    "ai2apps.terminal": "system_apps/terminal.html",
+    "ai2apps.coder": "system_apps/coder.html",
+    "ai2apps.benchmark": "system_apps/benchmark.html",
+}
+_LEGACY_DASHBOARD_TAB_APPS = {
+    tab: app_id for app_id, tab in _DASHBOARD_APP_TABS.items()
+}
+_HOST_APP_ENTRIES = {
+    "ai2apps:system/dashboard": "/admin/app-content/ai2apps.dashboard",
+    "ai2apps:system/account": "/admin/app-content/ai2apps.account",
+    "ai2apps:system/models": "/admin/app-content/ai2apps.models",
+    "ai2apps:system/discover": "/admin/app-content/ai2apps.discover",
+    "ai2apps:system/agents": "/admin/app-content/ai2apps.agents",
+    "ai2apps:system/trust-center": "/admin/app-content/ai2apps.trust-center",
+    "ai2apps:system/settings": "/admin/app-content/ai2apps.settings",
+    "ai2apps:system/logs": "/admin/app-content/ai2apps.logs",
+    "ai2apps:system/terminal": "/admin/app-content/ai2apps.terminal",
+    "ai2apps:system/coder": "/admin/app-content/ai2apps.coder",
+    "ai2apps:system/benchmark": "/admin/app-content/ai2apps.benchmark",
+    "ai2apps:system/chat": "/admin/chat?embedded=1",
+    "ai2apps:mobile/chat": "/mobile/chat",
+}
 
 
 def _static_version(path: str) -> str:
@@ -1071,11 +1299,23 @@ def _static_version(path: str) -> str:
 
 templates.env.globals["static"] = _static_version
 
+
+def _mobile_static_version(path: str) -> str:
+    """Return a cache-busted URL from the narrow Mobile asset allowlist."""
+    if path not in MOBILE_STATIC_FILES:
+        raise ValueError("asset is not exposed by the Mobile Gateway")
+    file_path = static_dir / path
+    suffix = f"?v={int(file_path.stat().st_mtime)}" if file_path.is_file() else ""
+    return f"/mobile/static/{path}{suffix}"
+
+
+templates.env.globals["mobile_static"] = _mobile_static_version
+
 templates.env.globals["version"] = _ai2apps_version
 templates.env.globals["runtime_version"] = _omlx_version
 
 # i18n defaults (English) — overridden once set_admin_getters is called
-_i18n_dir = Path(__file__).parent / "i18n"
+_i18n_dir = I18N_DIR
 _en_locale: dict = {}
 try:
     _en_locale = json.loads((_i18n_dir / "en.json").read_text(encoding="utf-8"))
@@ -1135,6 +1375,7 @@ _get_server_state = None
 _get_engine_pool = None
 _get_settings_manager = None
 _get_global_settings = None
+_get_platform_runtime = None
 _hf_downloader = None
 _hf_downloader_error = ""
 _ms_downloader = None
@@ -1148,6 +1389,7 @@ def set_admin_getters(
     pool_getter,
     settings_manager_getter,
     global_settings_getter,
+    platform_runtime_getter=None,
 ):
     """
     Set the getter functions for accessing server state.
@@ -1161,11 +1403,13 @@ def set_admin_getters(
         settings_manager_getter: Function that returns the ModelSettingsManager.
         global_settings_getter: Function that returns the GlobalSettings.
     """
-    global _get_server_state, _get_engine_pool, _get_settings_manager, _get_global_settings
+    global _get_server_state, _get_engine_pool, _get_settings_manager
+    global _get_global_settings, _get_platform_runtime
     _get_server_state = state_getter
     _get_engine_pool = pool_getter
     _get_settings_manager = settings_manager_getter
     _get_global_settings = global_settings_getter
+    _get_platform_runtime = platform_runtime_getter
     _refresh_i18n_globals()
 
 
@@ -1517,15 +1761,1788 @@ async def login_page(request: Request):
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request, is_admin: bool = Depends(require_admin)):
-    """
-    Render the admin dashboard page.
+    """Resolve the legacy dashboard URL to its independent system App."""
+    requested_tab = request.query_params.get("tab")
+    app_id = _LEGACY_DASHBOARD_TAB_APPS.get(
+        requested_tab if isinstance(requested_tab, str) else "",
+        "ai2apps.dashboard",
+    )
+    return _shell_response(request, app_id)
 
-    Requires admin authentication via session cookie.
 
-    Returns:
-        HTML dashboard page with server status and model list.
-    """
-    return templates.TemplateResponse(request, "dashboard.html", {})
+def _shell_response(
+    request: Request,
+    app_id: str,
+    instance_id: str | None = None,
+):
+    """Render the Shell and let its authenticated catalog resolve the App."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,127}", app_id):
+        raise HTTPException(status_code=404, detail="App not found")
+    return templates.TemplateResponse(
+        request,
+        "shell.html",
+        {
+            "system_apps": SYSTEM_APPS,
+            "initial_app_id": app_id,
+            "initial_instance_id": instance_id,
+        },
+    )
+
+
+async def _mobile_access_dependency(request: Request):
+    return await _require_mobile_access(request)
+
+
+@shell_router.get("/mobile", response_class=HTMLResponse)
+async def mobile_shell(
+    request: Request,
+    access=Depends(_mobile_access_dependency),
+):
+    """Render the Mobile Shell for a local admin or device-scoped session."""
+    del access
+    return templates.TemplateResponse(request, "mobile.html", {})
+
+
+@shell_router.get("/mobile/static/{path:path}")
+async def mobile_static(path: str):
+    """Serve only the assets required by the public Mobile Shell."""
+    if path not in MOBILE_STATIC_FILES:
+        raise HTTPException(status_code=404, detail="File not found")
+    file_path = static_dir / path
+    if not file_path.is_file() or not file_path.resolve().is_relative_to(static_dir.resolve()):
+        raise HTTPException(status_code=404, detail="File not found")
+    media_types = {
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".json": "application/json",
+        ".woff2": "font/woff2",
+    }
+    return FileResponse(
+        file_path,
+        media_type=media_types.get(file_path.suffix, "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@shell_router.get("/mobile/complete", response_class=HTMLResponse)
+async def mobile_handoff_page(request: Request):
+    """Render the one-use handoff receiver before a local session exists."""
+    return templates.TemplateResponse(request, "mobile.html", {})
+
+
+@shell_router.get("/apps/{app_id}", response_class=HTMLResponse)
+async def system_app_shell(
+    request: Request,
+    app_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Open or switch to a singleton system App in the shared Shell."""
+    return _shell_response(request, app_id)
+
+
+@shell_router.get(
+    "/apps/{app_id}/instances/{instance_id}", response_class=HTMLResponse
+)
+async def app_instance_shell(
+    request: Request,
+    app_id: str,
+    instance_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Open one exact AppInstance through the shared Shell."""
+    return _shell_response(request, app_id, instance_id)
+
+
+def _shell_manager():
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    manager = None if runtime is None else runtime.extension_manager
+    if manager is None:
+        raise HTTPException(status_code=503, detail="App Runtime is unavailable")
+    return manager
+
+
+def _remote_manager():
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    manager = None if runtime is None else runtime.remote
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Remote Access is unavailable")
+    return manager
+
+
+def _local_mobile_admin(request: Request) -> bool:
+    settings = _get_global_settings() if _get_global_settings is not None else None
+    return bool(settings and settings.auth.skip_api_key_verification) or verify_session(request)
+
+
+async def _require_mobile_access(request: Request):
+    if _local_mobile_admin(request):
+        return {"local": True}
+    manager = _remote_manager()
+    session = await manager.authorize_session(request.cookies.get(MOBILE_SESSION_COOKIE))
+    if session is None:
+        raise HTTPException(status_code=401, detail="Mobile session is required")
+    device = manager.require_device(session.device_id)
+    expected = urlsplit(device.public_origin)
+    if request.url.hostname != expected.hostname:
+        raise HTTPException(status_code=403, detail="Mobile Host is not allowed")
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin", "")
+        if origin != device.public_origin:
+            raise HTTPException(status_code=403, detail="Mobile Origin is not allowed")
+    return session
+
+
+def _mobile_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
+    payload = _shell_mount_payload(manager, mount)
+    content_url = str(payload.get("content_url") or "")
+    if content_url.startswith("/admin/app-content/"):
+        payload["content_url"] = "/mobile/app-content/" + content_url.removeprefix("/admin/app-content/")
+    elif content_url.startswith("/admin/chat"):
+        payload["content_url"] = "/mobile/chat"
+    return payload
+
+
+def _shell_entry_payload(manager, instance_id: str) -> dict[str, Any]:
+    entry = manager.instance_entry(instance_id)
+    renderer = entry["renderer"]
+    resource = str(entry["resource"])
+    if renderer == "host":
+        content_url = _HOST_APP_ENTRIES.get(resource)
+        if content_url is None:
+            raise HTTPException(status_code=422, detail="Unknown host App Entry")
+    elif renderer in {"schema", "safe-html"}:
+        content_url = f"/admin/app-view/{instance_id}/{renderer}"
+    elif renderer == "sandbox":
+        content_url = (
+            f"/admin/api/shell/app-instances/{instance_id}/resources/"
+            f"{quote(resource, safe='/')}"
+        )
+    else:
+        raise HTTPException(status_code=422, detail="Unsupported App renderer")
+    return {**entry, "content_url": content_url}
+
+
+def _shell_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
+    renderer = mount["renderer"]
+    resource = str(mount["resource"])
+    instance_id = mount["app_instance_id"]
+    mount_id = mount["id"]
+    if renderer == "host":
+        if resource == "ai2apps:generic-launcher":
+            content_url = f"/admin/app-mini/{mount_id}/generic"
+        elif mount.get("placement") == "mobile":
+            content_url = _HOST_APP_ENTRIES.get(resource)
+            if content_url is None or mount.get("source") != "builtin":
+                raise HTTPException(
+                    status_code=422, detail="Unsupported Mobile host renderer"
+                )
+        else:
+            raise HTTPException(status_code=422, detail="Unsupported host mount")
+    elif renderer in {"schema", "safe-html"}:
+        content_url = (
+            f"/admin/app-view/{instance_id}/{renderer}?mount_id="
+            f"{quote(mount_id, safe='')}"
+        )
+    elif renderer == "sandbox":
+        content_url = (
+            f"/admin/api/shell/app-instances/{instance_id}/resources/"
+            f"{quote(resource, safe='/')}?mount_id={quote(mount_id, safe='')}"
+        )
+    else:
+        raise HTTPException(status_code=422, detail="Unsupported Mini-Entry renderer")
+    return {**mount, "content_url": content_url}
+
+
+def _shell_lifecycle_error(error: Exception):
+    if isinstance(error, RepositoryError):
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    if isinstance(error, ExtensionError):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": error.code, "message": str(error)},
+        ) from error
+    if isinstance(error, ValueError):
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if isinstance(error, RuntimeError):
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    raise error
+
+
+@router.get("/api/shell/apps")
+async def shell_apps(is_admin: bool = Depends(require_admin)):
+    """Return the authoritative enabled App catalog and live instances."""
+    del is_admin
+    return {"items": _shell_manager().list_apps()}
+
+
+@router.get("/api/shell/account-status")
+async def shell_account_status(is_admin: bool = Depends(require_admin)):
+    """Return a non-sensitive Cloud account summary for the fixed Dock entry."""
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    cloud = None if runtime is None else runtime.cloud
+    if cloud is None:
+        return {"state": "unavailable"}
+    try:
+        response = await cloud.request("GET", "/v1/auth/me")
+    except Exception:
+        logger.debug("Unable to refresh the Dock account summary", exc_info=True)
+        return {"state": "unavailable"}
+    try:
+        if response.status_code == 401:
+            return {"state": "signed_out"}
+        if response.status_code != 200:
+            return {"state": "unavailable"}
+        payload = response.json()
+    except (TypeError, ValueError):
+        return {"state": "unavailable"}
+    finally:
+        await response.aclose()
+    user = payload.get("user") if isinstance(payload, dict) else None
+    if not isinstance(user, dict):
+        return {"state": "unavailable"}
+    points = user.get("points") if isinstance(user.get("points"), dict) else {}
+    return {
+        "state": "signed_in",
+        "display_name": str(user.get("displayName") or user.get("email") or "AI2Apps Account"),
+        "email": str(user.get("email") or ""),
+        "points": str(points.get("total") or points.get("balance") or "0"),
+    }
+
+
+@router.get("/api/shell/app-suggestions")
+async def shell_app_suggestions(
+    q: str = "",
+    is_admin: bool = Depends(require_admin),
+):
+    """Suggest manifest-declared Apps without granting auto-mount authority."""
+    del is_admin
+    return {"items": _shell_manager().suggest_apps(q[:2000])}
+
+
+@router.post("/api/shell/apps/{app_key}/launch")
+async def shell_launch_app(
+    app_key: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Launch or restore an App without exposing the model API key."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        instance, home, created = manager.launch_app(app_key)
+        entry = _shell_entry_payload(manager, instance.id)
+        return {
+            **entry,
+            "created": created,
+            "home_session_id": None if home is None else home.id,
+            "route_url": f"/apps/{app_key}/instances/{instance.id}",
+        }
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/shell/app-instances/{instance_id}/focus")
+async def shell_focus_app(
+    instance_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    manager = _shell_manager()
+    try:
+        manager.focus_instance(instance_id)
+        return _shell_entry_payload(manager, instance_id)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/mobile/apps")
+async def mobile_app_catalog(is_admin: bool = Depends(require_admin)):
+    """Return the fail-closed catalog of explicit Mobile Ready Apps."""
+    del is_admin
+    return {"items": _shell_manager().list_mobile_apps()}
+
+
+@router.get("/api/mobile/mounts")
+async def mobile_mounts(is_admin: bool = Depends(require_admin)):
+    """Restore active Mobile mounts for the authenticated local session."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        return {
+            "items": [
+                _shell_mount_payload(manager, mount)
+                for mount in manager.list_mobile_mounts()
+            ]
+        }
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/mobile/apps/{app_key}/open")
+async def mobile_open_app(
+    app_key: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Launch or focus one App and return its durable Mobile mount."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        instance, home, created = manager.launch_app(app_key)
+        mount = manager.mount_mobile(
+            instance.id,
+            context={"surface": "mobile", "requested_by": "mobile-shell"},
+        )
+        return {
+            **_shell_mount_payload(manager, mount),
+            "created": created,
+            "home_session_id": None if home is None else home.id,
+        }
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/mobile/app-instances/{instance_id}/focus")
+async def mobile_focus_app(
+    instance_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Resume an existing Mobile Ready AppInstance and its Mobile mount."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        manager.focus_instance(instance_id)
+        return _shell_mount_payload(manager, manager.mount_mobile(instance_id))
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@shell_router.post("/v1/mobile/session/exchange")
+async def remote_mobile_session_exchange(request: Request, payload: dict[str, Any]):
+    """Exchange a fragment-delivered handoff without exposing the Cloud JWT."""
+    handoff = payload.get("handoff")
+    if not isinstance(handoff, str) or not 24 <= len(handoff) <= 200:
+        raise HTTPException(status_code=422, detail="Invalid mobile handoff")
+    manager = _remote_manager()
+    host = request.url.hostname
+    device = next(
+        (item for item in manager.repository.list() if urlsplit(item.public_origin).hostname == host),
+        None,
+    )
+    if device is None:
+        raise HTTPException(status_code=404, detail="Mobile device is unavailable")
+    try:
+        token, session = await manager.exchange_handoff(
+            device_id=device.device_id, handoff=handoff
+        )
+    except Exception as error:
+        from ai2apps.remote import RemoteAccessError, RemoteTokenError
+        if isinstance(error, RemoteAccessError):
+            raise HTTPException(status_code=error.status_code, detail={"code": error.code, "message": str(error)}) from error
+        if isinstance(error, RemoteTokenError):
+            raise HTTPException(status_code=401, detail="Mobile handoff was rejected") from error
+        raise
+    response = JSONResponse({"connected": True, "expiresAt": session.expires_at.isoformat()})
+    response.set_cookie(
+        MOBILE_SESSION_COOKIE, token, max_age=15 * 60, httponly=True,
+        secure=True, samesite="strict", path="/",
+    )
+    return response
+
+
+@shell_router.get("/v1/mobile/apps")
+async def remote_mobile_app_catalog(access=Depends(_mobile_access_dependency)):
+    del access
+    return {"items": _shell_manager().list_mobile_apps()}
+
+
+@shell_router.get("/v1/mobile/mounts")
+async def remote_mobile_mounts(access=Depends(_mobile_access_dependency)):
+    del access
+    manager = _shell_manager()
+    try:
+        return {"items": [_mobile_mount_payload(manager, item) for item in manager.list_mobile_mounts()]}
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@shell_router.post("/v1/mobile/apps/{app_key}/open")
+async def remote_mobile_open_app(app_key: str, access=Depends(_mobile_access_dependency)):
+    del access
+    manager = _shell_manager()
+    try:
+        instance, home, created = manager.launch_app(app_key)
+        mount = manager.mount_mobile(instance.id, context={"surface": "mobile", "requested_by": "mobile-shell"})
+        return {**_mobile_mount_payload(manager, mount), "created": created,
+                "home_session_id": None if home is None else home.id}
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@shell_router.post("/v1/mobile/app-instances/{instance_id}/focus")
+async def remote_mobile_focus_app(instance_id: str, access=Depends(_mobile_access_dependency)):
+    del access
+    manager = _shell_manager()
+    try:
+        manager.focus_instance(instance_id)
+        return _mobile_mount_payload(manager, manager.mount_mobile(instance_id))
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@shell_router.delete("/v1/mobile/mounts/{mount_id}")
+async def remote_mobile_unmount(mount_id: str, access=Depends(_mobile_access_dependency)):
+    del access
+    try:
+        return _shell_manager().unmount(mount_id)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@shell_router.get("/mobile/app-content/{app_id}", response_class=HTMLResponse)
+async def remote_mobile_app_content(
+    request: Request, app_id: str, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return _system_app_content_response(
+        request, app_id, include_api_key=False, mobile_surface=True
+    )
+
+
+@shell_router.get("/mobile/chat", response_class=HTMLResponse)
+async def remote_mobile_chat(
+    request: Request, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return templates.TemplateResponse(
+        request,
+        "mobile_chat.html",
+        {},
+        headers={
+            "Content-Security-Policy": (
+                "default-src 'self'; frame-ancestors 'self'; object-src 'none'; "
+                "base-uri 'none'; form-action 'none'"
+            )
+        },
+    )
+
+
+def _mobile_internal_headers() -> dict[str, str]:
+    state = _get_server_state() if _get_server_state is not None else None
+    key = None if state is None else state.api_key
+    return {} if key is None else {"Authorization": f"Bearer {key}"}
+
+
+async def _mobile_platform_proxy(
+    request: Request,
+    method: str,
+    path: str,
+    *,
+    payload: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    """Call one allowlisted Platform API from the cookie-authenticated gateway."""
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=request.app),
+        base_url="http://ai2apps.mobile.internal",
+        headers={**_mobile_internal_headers(), **(headers or {})},
+        timeout=httpx.Timeout(connect=10, read=120, write=30, pool=10),
+    ) as client:
+        response = await client.request(method, f"/v1/platform{path}", json=payload)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@shell_router.get("/v1/mobile/chat/state")
+async def remote_mobile_chat_state(
+    request: Request, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return await _mobile_platform_proxy(request, "GET", "/chat")
+
+
+@shell_router.get("/v1/mobile/chat/threads")
+async def remote_mobile_chat_threads(
+    request: Request, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return await _mobile_platform_proxy(request, "GET", "/chat/threads")
+
+
+@shell_router.post("/v1/mobile/chat/threads")
+async def remote_mobile_create_chat_thread(
+    request: Request,
+    payload: dict[str, Any],
+    access=Depends(_mobile_access_dependency),
+):
+    del access
+    safe = {
+        "title": str(payload.get("title", ""))[:160],
+        "session_metadata": {"surface": "mobile"},
+    }
+    return await _mobile_platform_proxy(request, "POST", "/chat/threads", payload=safe)
+
+
+@shell_router.get("/v1/mobile/chat/threads/{thread_id}/content")
+async def remote_mobile_chat_thread_content(
+    request: Request, thread_id: str, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return await _mobile_platform_proxy(
+        request, "GET", f"/chat/threads/{quote(thread_id, safe='')}/content"
+    )
+
+
+@shell_router.put("/v1/mobile/chat/threads/{thread_id}/content")
+async def remote_mobile_replace_chat_thread_content(
+    request: Request,
+    thread_id: str,
+    payload: dict[str, Any],
+    access=Depends(_mobile_access_dependency),
+):
+    del access
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or len(messages) > 1000:
+        raise HTTPException(status_code=422, detail="Mobile chat messages are invalid")
+    if (
+        len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        > 40 * 1024 * 1024
+    ):
+        raise HTTPException(status_code=413, detail="Mobile chat content is too large")
+    forwarded = {
+        "expected_revision": payload.get("expected_revision"),
+        "title": None if payload.get("title") is None else str(payload["title"])[:160],
+        "session_metadata": payload.get("session_metadata", {}),
+        "messages": messages,
+    }
+    return await _mobile_platform_proxy(
+        request,
+        "PUT",
+        f"/chat/threads/{quote(thread_id, safe='')}/content",
+        payload=forwarded,
+    )
+
+
+@shell_router.post("/v1/mobile/chat/threads/{thread_id}/attachments")
+async def remote_mobile_chat_attachment(
+    request: Request,
+    thread_id: str,
+    payload: dict[str, Any],
+    access=Depends(_mobile_access_dependency),
+):
+    del access
+    data = payload.get("data")
+    if not isinstance(data, str) or len(data) > 35 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Mobile attachment is too large")
+    forwarded = {
+        "filename": str(payload.get("filename", ""))[:512],
+        "media_type": str(payload.get("media_type", "application/octet-stream"))[:255],
+        "data": data,
+        "metadata": {"surface": "mobile"},
+    }
+    return await _mobile_platform_proxy(
+        request,
+        "POST",
+        f"/sessions/{quote(thread_id, safe='')}/attachments",
+        payload=forwarded,
+    )
+
+
+@shell_router.get("/v1/mobile/agents")
+async def remote_mobile_agents(
+    request: Request, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return await _mobile_platform_proxy(request, "GET", "/agents")
+
+
+@shell_router.post("/v1/mobile/chat/threads/{thread_id}/agent-runs")
+async def remote_mobile_create_agent_run(
+    request: Request,
+    thread_id: str,
+    payload: dict[str, Any],
+    access=Depends(_mobile_access_dependency),
+):
+    del access
+    agent = payload.get("agent", "ai2apps.general-agent")
+    run_input = payload.get("input")
+    if not isinstance(agent, str) or not isinstance(run_input, dict):
+        raise HTTPException(status_code=422, detail="Mobile Agent request is invalid")
+    return await _mobile_platform_proxy(
+        request,
+        "POST",
+        f"/sessions/{quote(thread_id, safe='')}/agent-runs",
+        payload={"agent": agent, "input": run_input},
+        headers={"Idempotency-Key": f"mobile:{thread_id}:{time.time_ns()}"},
+    )
+
+
+@shell_router.get("/v1/mobile/agent-runs/{run_id}")
+async def remote_mobile_agent_run(
+    request: Request, run_id: str, access=Depends(_mobile_access_dependency)
+):
+    del access
+    return await _mobile_platform_proxy(
+        request, "GET", f"/agent-runs/{quote(run_id, safe='')}"
+    )
+
+
+@shell_router.get("/v1/mobile/models")
+async def remote_mobile_models(
+    request: Request, access=Depends(_mobile_access_dependency)
+):
+    del access
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=request.app),
+        base_url="http://ai2apps.mobile.internal",
+        headers=_mobile_internal_headers(),
+    ) as client:
+        response = await client.get("/v1/models")
+    return Response(
+        content=response.content, status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+    )
+
+
+@shell_router.post("/v1/mobile/chat/completions")
+async def remote_mobile_chat_completions(
+    request: Request,
+    payload: dict[str, Any],
+    access=Depends(_mobile_access_dependency),
+):
+    """Forward a bounded chat request without exposing the local API key."""
+    del access
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not 1 <= len(messages) <= 100:
+        raise HTTPException(status_code=422, detail="Mobile chat messages are invalid")
+    model = payload.get("model")
+    if not isinstance(model, str) or not model.strip():
+        raise HTTPException(status_code=422, detail="Mobile chat model is required")
+    try:
+        max_tokens = int(payload.get("max_tokens", 4096))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Mobile chat max_tokens is invalid")
+    if max_tokens <= 0:
+        raise HTTPException(status_code=422, detail="Mobile chat max_tokens is invalid")
+    if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Mobile chat request is too large")
+    forwarded = {
+        "model": model.strip(), "messages": messages, "stream": True,
+        "temperature": payload.get("temperature", 0.7),
+        "max_tokens": min(max_tokens, 8192),
+    }
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=request.app),
+        base_url="http://ai2apps.mobile.internal",
+        headers={**_mobile_internal_headers(), "Accept": "text/event-stream"},
+        timeout=httpx.Timeout(connect=10, read=3600, write=30, pool=10),
+    )
+    upstream = await client.send(
+        client.build_request("POST", "/v1/chat/completions", json=forwarded),
+        stream=True,
+    )
+    if upstream.status_code >= 400:
+        body = await upstream.aread()
+        await upstream.aclose()
+        await client.aclose()
+        return Response(content=body, status_code=upstream.status_code,
+                        media_type=upstream.headers.get("content-type", "application/json"))
+
+    async def stream_body():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        stream_body(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/api/shell/app-instances/{instance_id}/suspend")
+async def shell_suspend_app(
+    instance_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        instance = _shell_manager().suspend_instance(instance_id)
+        return {"instance_id": instance.id, "status": instance.status.value}
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.delete("/api/shell/app-instances/{instance_id}")
+async def shell_close_app(
+    instance_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        instance = _shell_manager().close_instance(instance_id)
+        return {"instance_id": instance.id, "status": instance.status.value}
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/shell/app-instances/{instance_id}/entry")
+async def shell_instance_entry(
+    instance_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _shell_entry_payload(_shell_manager(), instance_id)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/shell/app-instances/{instance_id}/mounts")
+async def shell_mount_app(
+    instance_id: str,
+    request: ShellMountRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    """Create a durable Mini-Entry mount for a conversation surface."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        mount = manager.mount(
+            instance_id,
+            mini=True,
+            placement=request.placement,
+            interaction_session_id=request.interaction_session_id,
+            context=request.context,
+        )
+        return _shell_mount_payload(manager, mount)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/shell/sessions/{session_id}/mounts")
+async def shell_session_mounts(
+    session_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    manager = _shell_manager()
+    try:
+        return {
+            "items": [
+                _shell_mount_payload(manager, mount)
+                for mount in manager.list_mounts(session_id)
+            ]
+        }
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.delete("/api/shell/app-mounts/{mount_id}")
+async def shell_unmount_app(
+    mount_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _shell_manager().unmount(mount_id)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/shell/app-instances/{instance_id}/agent-runs")
+async def shell_create_agent_run(
+    instance_id: str,
+    request: ShellAgentRunRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    """Create an AgentRun only for a Session owned or mounted by this App."""
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    manager = _shell_manager()
+    if runtime is None or runtime.agents is None or runtime.agent_runtime is None:
+        raise HTTPException(status_code=503, detail="Agent Runtime is unavailable")
+    try:
+        if not manager.instance_can_use_session(instance_id, request.session_id):
+            raise HTTPException(status_code=403, detail="Session is outside App scope")
+        run, created = runtime.agents.create_run(
+            session_id=request.session_id,
+            agent_key=request.agent,
+            input={
+                **request.input,
+                "_invoking_app_instance_id": instance_id,
+            },
+            idempotency_key=request.idempotency_key,
+            priority=request.priority,
+        )
+        runtime.agent_runtime.wake()
+        return {
+            "id": run.id,
+            "created": created,
+            "status": run.status.value,
+            "session_id": run.session_id,
+            "agent_definition_id": run.agent_definition_id,
+            "event_stream_url": f"/v1/platform/agent-runs/{run.id}/events",
+        }
+    except RepositoryError as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/shell/control")
+async def shell_control_snapshot(is_admin: bool = Depends(require_admin)):
+    del is_admin
+    return _shell_manager().control_snapshot()
+
+
+def _grant_payload(item) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "scope": item.scope.value,
+        "scope_id": item.scope_id,
+        "agent_definition_id": item.agent_definition_id,
+        "session_id": item.session_id,
+        "app_instance_id": item.app_instance_id,
+        "capabilities": list(item.capabilities),
+        "tool_pattern": item.tool_pattern,
+        "resource_selector": item.resource_selector,
+        "issued_by": item.issued_by,
+        "evidence": item.evidence,
+        "expires_at": item.expires_at,
+        "revoked_at": item.revoked_at,
+        "revoke_reason": item.revoke_reason,
+        "created_at": item.created_at,
+        "active": item.active,
+    }
+
+
+def _capability_request_payload(item, *, app_name: str | None = None) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "source_kind": item.subject_kind,
+        "app_instance_id": item.app_instance_id,
+        "session_id": item.session_id,
+        "run_id": item.run_id,
+        "title": app_name or "App capability request",
+        "prompt": item.reason,
+        "capabilities": list(item.capabilities),
+        "tool_name": item.tool_name,
+        "effects": list(item.effects),
+        "resource_selector": item.resource_selector,
+        "risk_level": item.risk_level,
+        "operation_class": operation_class(item.effects),
+        "status": item.status.value,
+        "requested_by": item.requested_by,
+        "decision_scope": item.decision_scope,
+        "decision_evidence": item.decision_evidence,
+        "grant_lease_id": item.grant_lease_id,
+        "deadline_at": item.deadline_at,
+        "created_at": item.created_at,
+        "resolved_at": item.resolved_at,
+    }
+
+
+def _shell_approval_items(runtime, *, include_resolved: bool) -> list[dict[str, Any]]:
+    assert runtime.database is not None and runtime.capabilities is not None
+    direct = runtime.capabilities.list_requests(include_resolved=include_resolved)
+    app_names: dict[str, str] = {}
+    with runtime.database.transaction() as connection:
+        rows = connection.execute(
+            """SELECT i.*, r.session_id, r.agent_definition_id,
+                      s.app_instance_id, a.display_name AS agent_name,
+                      d.display_name AS app_name
+               FROM agent_interactions i
+               JOIN agent_runs r ON r.id = i.run_id
+               JOIN sessions s ON s.id = r.session_id
+               JOIN agent_definitions a ON a.id = r.agent_definition_id
+               JOIN app_instances ai ON ai.id = s.app_instance_id
+               JOIN app_definitions d ON d.id = ai.app_definition_id
+               WHERE i.kind = 'approval'
+                 AND (? OR i.status = 'pending')
+               ORDER BY i.created_at DESC""",
+            (int(include_resolved),),
+        ).fetchall()
+        for request in direct:
+            name = connection.execute(
+                """SELECT d.display_name FROM app_instances i
+                   JOIN app_definitions d ON d.id=i.app_definition_id
+                   WHERE i.id=?""",
+                (request.app_instance_id,),
+            ).fetchone()
+            app_names[request.app_instance_id] = (
+                request.app_instance_id if name is None else name["display_name"]
+            )
+    items = [
+        _capability_request_payload(
+            request, app_name=app_names.get(request.app_instance_id)
+        )
+        for request in direct
+    ]
+    for row in rows:
+        request = json.loads(row["request_json"])
+        effects = tuple(request.get("effects", []))
+        items.append(
+            {
+                "id": row["id"],
+                "source_kind": "agent_run",
+                "app_instance_id": row["app_instance_id"],
+                "session_id": row["session_id"],
+                "run_id": row["run_id"],
+                "title": row["agent_name"],
+                "app_name": row["app_name"],
+                "prompt": row["prompt"],
+                "capabilities": request.get("capabilities", []),
+                "tool_name": request.get("tool_name", "*"),
+                "effects": list(effects),
+                "resource_selector": request.get("resource_selector", {}),
+                "risk_level": runtime.capabilities.risk_level(effects),
+                "operation_class": operation_class(effects),
+                "action_preview": request.get("action_preview", {}),
+                "status": row["status"],
+                "requested_by": "agent-runtime",
+                "decision_scope": (
+                    None
+                    if row["response_json"] is None
+                    else json.loads(row["response_json"]).get("scope")
+                ),
+                "decision_evidence": {},
+                "grant_lease_id": None,
+                "deadline_at": row["deadline_at"],
+                "created_at": row["created_at"],
+                "resolved_at": row["resolved_at"],
+            }
+        )
+    return sorted(items, key=lambda item: str(item["created_at"]), reverse=True)
+
+
+@router.post("/api/shell/app-instances/{instance_id}/capability-requests")
+async def shell_create_capability_request(
+    instance_id: str,
+    request: ShellCapabilityRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    if runtime is None or runtime.capabilities is None or runtime.database is None:
+        raise HTTPException(status_code=503, detail="Capability Runtime is unavailable")
+    try:
+        session_id = request.session_id
+        if session_id is None and request.mount_id is not None:
+            mount = _shell_manager().mount_entry(request.mount_id)
+            if mount["app_instance_id"] != instance_id:
+                raise HTTPException(status_code=403, detail="Mount is outside App scope")
+            session_id = mount["interaction_session_id"]
+        if session_id is None:
+            with runtime.database.transaction() as connection:
+                home = connection.execute(
+                    """SELECT id FROM sessions WHERE app_instance_id=?
+                       AND status='active' ORDER BY created_at LIMIT 1""",
+                    (instance_id,),
+                ).fetchone()
+            session_id = None if home is None else home["id"]
+        if session_id is None:
+            raise HTTPException(status_code=409, detail="App has no active Session")
+        item = runtime.capabilities.create_app_request(
+            app_instance_id=instance_id,
+            session_id=session_id,
+            capabilities=tuple(request.capabilities),
+            tool_name=request.tool_name,
+            effects=tuple(request.effects),
+            resource_selector=request.resource_selector,
+            reason=request.reason,
+            timeout_seconds=request.timeout_seconds,
+        )
+        return _capability_request_payload(item)
+    except (RepositoryError, ValueError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/shell/approvals")
+async def shell_approval_inbox(
+    include_resolved: bool = False,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    if runtime is None or runtime.capabilities is None or runtime.database is None:
+        raise HTTPException(status_code=503, detail="Capability Runtime is unavailable")
+    return {"items": _shell_approval_items(runtime, include_resolved=include_resolved)}
+
+
+@router.post("/api/shell/approvals/{approval_id}/decide")
+async def shell_decide_approval(
+    approval_id: str,
+    request: ShellApprovalDecisionRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    if (
+        runtime is None
+        or runtime.capabilities is None
+        or runtime.agents is None
+        or runtime.agent_runtime is None
+        or runtime.database is None
+    ):
+        raise HTTPException(status_code=503, detail="Capability Runtime is unavailable")
+    try:
+        if approval_id.startswith(EntityIdKind.CAPABILITY_REQUEST.prefix):
+            item, lease = runtime.capabilities.decide_app_request(
+                approval_id,
+                decision=request.decision,
+                scope=request.scope,
+                duration_seconds=request.duration_seconds,
+                resource_selector=request.resource_selector,
+            )
+            return {
+                "request": _capability_request_payload(item),
+                "grant": None if lease is None else _grant_payload(lease),
+            }
+        with runtime.database.transaction() as connection:
+            interaction = connection.execute(
+                """SELECT i.run_id,i.kind,i.status FROM agent_interactions i
+                   WHERE i.id=?""",
+                (approval_id,),
+            ).fetchone()
+        if interaction is None or interaction["kind"] != "approval":
+            raise HTTPException(status_code=404, detail="Approval request not found")
+        scope = request.scope
+        runtime.agents.respond_interaction(
+            interaction["run_id"],
+            approval_id,
+            response={
+                "decision": request.decision,
+                **({"scope": scope} if request.decision == "approve" else {}),
+            },
+            response_id=new_entity_id(EntityIdKind.CAPABILITY_DECISION),
+        )
+        runtime.agent_runtime.wake()
+        run = runtime.agents.get_run(interaction["run_id"])
+        return {
+            "request": {
+                "id": approval_id,
+                "source_kind": "agent_run",
+                "run_id": run.id,
+                "status": "approved" if request.decision == "approve" else "denied",
+                "decision_scope": scope if request.decision == "approve" else None,
+            },
+            "grant": None,
+            "run_status": run.status.value,
+        }
+    except (RepositoryError, ValueError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/shell/grant-leases")
+async def shell_grant_leases(
+    include_inactive: bool = False,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    if runtime is None or runtime.capabilities is None:
+        raise HTTPException(status_code=503, detail="Capability Runtime is unavailable")
+    return {
+        "items": [
+            _grant_payload(item)
+            for item in runtime.capabilities.list_leases(
+                include_inactive=include_inactive
+            )
+        ]
+    }
+
+
+@router.post("/api/shell/grant-leases/{lease_id}/revoke")
+async def shell_revoke_grant(
+    lease_id: str,
+    request: ShellGrantRevokeRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    if runtime is None or runtime.capabilities is None:
+        raise HTTPException(status_code=503, detail="Capability Runtime is unavailable")
+    try:
+        return _grant_payload(
+            runtime.capabilities.revoke_lease(lease_id, reason=request.reason)
+        )
+    except RepositoryError as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/shell/safe-mode")
+async def shell_safe_mode(
+    request: ShellSafeModeRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+        if runtime is None:
+            raise HTTPException(status_code=503, detail="Platform Runtime is unavailable")
+        return await runtime.set_safe_mode(request.active, request.reason)
+    except (ExtensionError, RuntimeError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.post("/api/shell/local-patches/{patch_id}/resolve")
+async def shell_resolve_patch(
+    patch_id: str,
+    request: ShellPatchResolutionRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        result = _shell_manager().resolve_patch_and_activate(
+            patch_id,
+            request.resolution,
+            candidate_digest=request.candidate_digest,
+        )
+        item = result["patch"]
+        package = result["package"]
+        return {
+            "id": item.id,
+            "status": item.status.value,
+            "base_digest": item.base_digest,
+            "activated": result["activated"],
+            "package_digest": package.digest,
+            "package_status": package.status.value,
+            "pending_conflicts": result["pending_conflicts"],
+        }
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+
+
+@router.get("/api/shell/app-instances/{instance_id}/resources/{resource:path}")
+async def shell_app_resource(
+    request: Request,
+    instance_id: str,
+    resource: str,
+    mount_id: str | None = None,
+    is_admin: bool = Depends(require_admin),
+):
+    """Serve one digest-verified resource from an active installed App."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        entry = (
+            manager.mount_entry(mount_id)
+            if mount_id is not None
+            else manager.instance_entry(instance_id)
+        )
+        if mount_id is not None and entry["app_instance_id"] != instance_id:
+            raise HTTPException(status_code=409, detail="Mount instance changed")
+        path = manager.resolve_app_resource(instance_id, resource)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    headers = {
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if entry["renderer"] == "sandbox" and resource == entry["resource"]:
+        origin = str(request.base_url).rstrip("/")
+        headers["Content-Security-Policy"] = (
+            "sandbox allow-scripts allow-forms allow-downloads; "
+            f"default-src 'none'; script-src {origin} 'unsafe-inline'; "
+            f"style-src {origin} 'unsafe-inline'; "
+            f"img-src {origin} data: blob:; font-src {origin}; connect-src 'none'; "
+            "form-action 'none'; base-uri 'none'"
+        )
+    return FileResponse(path, media_type=media_type, headers=headers)
+
+
+@router.get("/app-view/{instance_id}/{renderer}", response_class=HTMLResponse)
+async def shell_constrained_view(
+    request: Request,
+    instance_id: str,
+    renderer: Literal["schema", "safe-html"],
+    mount_id: str | None = None,
+    is_admin: bool = Depends(require_admin),
+):
+    """Render trusted host wrappers around constrained package resources."""
+    del is_admin
+    manager = _shell_manager()
+    try:
+        entry = (
+            manager.mount_entry(mount_id)
+            if mount_id is not None
+            else manager.instance_entry(instance_id)
+        )
+        if mount_id is not None and entry["app_instance_id"] != instance_id:
+            raise HTTPException(status_code=409, detail="Mount instance changed")
+        if entry["renderer"] != renderer:
+            raise HTTPException(status_code=409, detail="Entry renderer changed")
+        manager.resolve_app_resource(instance_id, str(entry["resource"]))
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+    resource_url = (
+        f"/admin/api/shell/app-instances/{instance_id}/resources/"
+        f"{quote(str(entry['resource']), safe='/')}"
+    )
+    return templates.TemplateResponse(
+        request,
+        f"app_views/{renderer.replace('-', '_')}.html",
+        {
+            "app_name": entry["display_name"],
+            "resource_url": resource_url,
+            "mount_id": mount_id,
+        },
+        headers={
+            "Content-Security-Policy": (
+                "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; "
+                "form-action 'none'; frame-ancestors 'self'"
+            )
+        },
+    )
+
+
+@router.get("/app-mini/{mount_id}/generic", response_class=HTMLResponse)
+async def shell_generic_mini_entry(
+    request: Request,
+    mount_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        entry = _shell_manager().mount_entry(mount_id)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+    if entry["resource"] != "ai2apps:generic-launcher":
+        raise HTTPException(status_code=409, detail="Mini-Entry resource changed")
+    return templates.TemplateResponse(
+        request,
+        "app_views/mini_launcher.html",
+        {
+            "app_name": entry["display_name"],
+            "app_key": entry["app_key"],
+            "instance_id": entry["app_instance_id"],
+            "mount_id": mount_id,
+        },
+    )
+
+
+def _terminal_manager():
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    manager = None if runtime is None else runtime.terminal
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Terminal Service is unavailable")
+    return manager
+
+
+def _terminal_http_error(error: Exception) -> None:
+    if not isinstance(error, TerminalServiceError):
+        raise error
+    status = {
+        "not_found": 404,
+        "session_limit": 409,
+        "invalid_cwd": 422,
+        "invalid_size": 422,
+        "input_too_large": 413,
+    }.get(error.code, 409)
+    raise HTTPException(
+        status_code=status,
+        detail={"code": error.code, "message": str(error)},
+    ) from error
+
+
+@router.get("/api/terminal/sessions")
+async def terminal_sessions(is_admin: bool = Depends(require_admin)):
+    """List Terminal App sessions without leaking internal Coder PTYs."""
+    del is_admin
+    return {"items": _terminal_manager().list(owner="terminal")}
+
+
+@router.post("/api/terminal/sessions", status_code=201)
+async def terminal_create_session(
+    request: CreateTerminalSessionRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    """Create a PTY-backed login shell owned by the Terminal Service."""
+    del is_admin
+    try:
+        session = await _terminal_manager().create(
+            title=request.title,
+            cwd=request.cwd,
+            cols=request.cols,
+            rows=request.rows,
+            owner="terminal",
+        )
+    except Exception as error:
+        _terminal_http_error(error)
+    return session.public()
+
+
+@router.delete("/api/terminal/sessions/{session_id}", status_code=204)
+async def terminal_close_session(
+    session_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Close the PTY, its process group, and all browser attachments."""
+    del is_admin
+    try:
+        await _terminal_manager().close(session_id)
+    except Exception as error:
+        _terminal_http_error(error)
+    return Response(status_code=204)
+
+
+def _terminal_websocket_authorized(websocket: WebSocket) -> bool:
+    settings = _get_global_settings() if _get_global_settings is not None else None
+    if settings is not None and settings.auth.skip_api_key_verification:
+        return True
+    return verify_session(websocket)  # WebSocket and Request both expose cookies.
+
+
+def _terminal_websocket_same_origin(websocket: WebSocket) -> bool:
+    origin = websocket.headers.get("origin")
+    host = websocket.headers.get("host")
+    if not origin or not host:
+        return False
+    try:
+        return urlsplit(origin).netloc.lower() == host.lower()
+    except ValueError:
+        return False
+
+
+@router.websocket("/api/terminal/sessions/{session_id}/stream")
+async def terminal_session_stream(websocket: WebSocket, session_id: str):
+    """Attach one authenticated browser to a terminal byte stream."""
+    if not _terminal_websocket_authorized(websocket):
+        await websocket.close(code=4401, reason="Admin authentication required")
+        return
+    if not _terminal_websocket_same_origin(websocket):
+        await websocket.close(code=4403, reason="WebSocket origin denied")
+        return
+    try:
+        manager = _terminal_manager()
+        subscriber_id, queue, backlog = manager.subscribe(session_id)
+        session = manager.get(session_id)
+    except HTTPException:
+        await websocket.close(code=1013, reason="Terminal Service unavailable")
+        return
+    except Exception:
+        await websocket.close(code=4404, reason="Terminal session not found")
+        return
+
+    await websocket.accept()
+
+    async def send_output() -> None:
+        await websocket.send_json({"type": "ready", "session": session.public()})
+        if backlog:
+            await websocket.send_bytes(backlog)
+        while True:
+            item = await queue.get()
+            if isinstance(item, bytes):
+                await websocket.send_bytes(item)
+            else:
+                await websocket.send_json(item)
+
+    async def receive_input() -> None:
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000))
+            if message.get("bytes") is not None:
+                try:
+                    manager.write(session_id, message["bytes"])
+                except TerminalServiceError as error:
+                    await websocket.send_json(
+                        {"type": "error", "code": error.code, "message": str(error)}
+                    )
+                continue
+            raw = message.get("text")
+            if raw is None or len(raw) > 70_000:
+                continue
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            kind = payload.get("type")
+            if kind == "input" and isinstance(payload.get("data"), str):
+                try:
+                    manager.write(session_id, payload["data"])
+                except TerminalServiceError as error:
+                    await websocket.send_json(
+                        {"type": "error", "code": error.code, "message": str(error)}
+                    )
+            elif kind == "resize":
+                try:
+                    manager.resize(
+                        session_id, int(payload.get("cols")), int(payload.get("rows"))
+                    )
+                except (TypeError, ValueError):
+                    continue
+                except TerminalServiceError as error:
+                    await websocket.send_json(
+                        {"type": "error", "code": error.code, "message": str(error)}
+                    )
+
+    sender = asyncio.create_task(send_output())
+    receiver = asyncio.create_task(receive_input())
+    try:
+        done, pending = await asyncio.wait(
+            (sender, receiver), return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        for task in done:
+            with suppress(WebSocketDisconnect, RuntimeError):
+                task.result()
+    finally:
+        manager.unsubscribe(session_id, subscriber_id)
+
+
+def _coder_manager():
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    manager = None if runtime is None else runtime.coder
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Coder Service is unavailable")
+    return manager
+
+
+def _coder_http_error(error: CoderError) -> None:
+    status = {
+        "project_not_found": 404,
+        "thread_not_found": 404,
+        "component_not_found": 404,
+        "dev_session_not_found": 404,
+        "resource_not_found": 404,
+        "file_not_found": 404,
+        "parent_not_found": 404,
+        "project_exists": 409,
+        "agent_not_installed": 409,
+        "session_limit": 409,
+    }.get(error.code, 422)
+    raise HTTPException(
+        status_code=status,
+        detail={"code": error.code, "message": str(error)},
+    ) from error
+
+
+@router.get("/api/coder")
+async def coder_snapshot(is_admin: bool = Depends(require_admin)):
+    del is_admin
+    return _coder_manager().snapshot()
+
+
+@router.post("/api/coder/projects", status_code=201)
+async def coder_create_project(
+    request: CreateCoderProjectRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().create_project(**request.model_dump())
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/projects/{project_id}/threads", status_code=201)
+async def coder_create_thread(
+    project_id: str,
+    request: CreateCoderThreadRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().create_thread(
+            project_id=project_id, **request.model_dump()
+        )
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/threads/{thread_id}/fork", status_code=201)
+async def coder_fork_thread(
+    thread_id: str,
+    request: ForkCoderThreadRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().fork_thread(thread_id, title=request.title)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/threads/{thread_id}/start")
+async def coder_start_thread(
+    thread_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return await _coder_manager().start_thread(thread_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/threads/{thread_id}/stop")
+async def coder_stop_thread(
+    thread_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return await _coder_manager().stop_thread(thread_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.delete("/api/coder/threads/{thread_id}")
+async def coder_delete_thread(
+    thread_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return await _coder_manager().delete_thread(thread_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/projects/{project_id}/validate")
+async def coder_validate_project(
+    project_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().validate_project(project_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.delete("/api/coder/projects/{project_id}")
+async def coder_remove_project(
+    project_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return await _coder_manager().remove_project(project_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.get("/api/coder/projects/{project_id}/files")
+async def coder_list_project_files(
+    project_id: str,
+    path: str = ".",
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().list_project_files(project_id, path)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.get("/api/coder/projects/{project_id}/file")
+async def coder_read_project_file(
+    project_id: str,
+    path: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().read_project_file(project_id, path)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.put("/api/coder/projects/{project_id}/file")
+async def coder_write_project_file(
+    project_id: str,
+    request: SaveCoderFileRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().write_project_file(
+            project_id, request.path, request.content
+        )
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/projects/{project_id}/test")
+async def coder_test_project(
+    project_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return await _coder_manager().test_project(project_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/projects/{project_id}/build")
+async def coder_build_project(
+    project_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().build_project(project_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/projects/{project_id}/testflight")
+async def coder_submit_testflight(
+    project_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().submit_project_testflight(project_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.post("/api/coder/projects/{project_id}/dev-sessions", status_code=201)
+async def coder_start_dev_session(
+    project_id: str,
+    request: StartCoderDevSessionRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().start_dev_session(project_id, request.component_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+@router.delete("/api/coder/dev-sessions/{session_id}")
+async def coder_stop_dev_session(
+    session_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        return _coder_manager().stop_dev_session(session_id)
+    except CoderError as error:
+        _coder_http_error(error)
+
+
+def _coder_dev_headers(entry: bool = False) -> dict[str, str]:
+    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+    if entry:
+        headers["Content-Security-Policy"] = (
+            "sandbox allow-scripts allow-forms allow-downloads; "
+            "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+            "font-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'"
+        )
+    return headers
+
+
+@router.get("/coder-dev/{session_id}/preview")
+async def coder_dev_preview(
+    session_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        session = _coder_manager().dev_session(session_id)
+        entry = session.component.manifest.get("entry", {})
+        if not isinstance(entry, dict):
+            raise CoderError("invalid_dev_entry", "Component has no previewable Entry")
+        resource = entry.get("resource")
+        if entry.get("kind") not in {"sandbox", "safe-html"} or not isinstance(resource, str):
+            raise CoderError("invalid_dev_entry", "Component has no previewable Entry")
+        _coder_manager().resolve_dev_resource(session_id, resource)
+    except CoderError as error:
+        _coder_http_error(error)
+    return RedirectResponse(
+        f"/admin/coder-dev/{quote(session_id, safe='')}/{quote(resource, safe='/')}",
+        status_code=307,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/coder-dev/{session_id}/{resource:path}")
+async def coder_dev_resource(
+    session_id: str,
+    resource: str,
+    is_admin: bool = Depends(require_admin),
+):
+    del is_admin
+    try:
+        session = _coder_manager().dev_session(session_id)
+        path, media = _coder_manager().resolve_dev_resource(session_id, resource)
+        entry = session.component.manifest.get("entry")
+        is_entry = isinstance(entry, dict) and entry.get("resource") == resource
+    except CoderError as error:
+        _coder_http_error(error)
+    return FileResponse(path, media_type=media, headers=_coder_dev_headers(entry=is_entry))
+
+
+def _system_app_content_response(
+    request: Request,
+    app_id: str,
+    *,
+    include_api_key: bool,
+    mobile_surface: bool = False,
+):
+    tab = _DASHBOARD_APP_TABS.get(app_id)
+    template_name = _DASHBOARD_APP_TEMPLATES.get(app_id)
+    app = _SYSTEM_APPS_BY_ID.get(app_id)
+    if tab is None or template_name is None or app is None:
+        raise HTTPException(status_code=404, detail="App content not found")
+    context = {
+        "system_app": {
+            "id": app_id,
+            "name": app["name"],
+            "tab": tab,
+        }
+    }
+    if mobile_surface:
+        context.update(
+            {
+                "app_base_template": "mobile_app_base.html",
+                "mobile_surface": True,
+                "static": _mobile_static_version,
+            }
+        )
+    if app.get("presentation", {}).get("dock_reveal") is False:
+        context["show_dock_reveal"] = False
+    if include_api_key and app_id in {
+        "ai2apps.account",
+        "ai2apps.discover",
+        "ai2apps.agents",
+        "ai2apps.general-chat",
+        "ai2apps.trust-center",
+    }:
+        settings = _get_global_settings()
+        context["api_key"] = settings.auth.api_key if settings else ""
+    return templates.TemplateResponse(
+        request,
+        template_name,
+        context,
+    )
+
+
+@router.get("/app-content/{app_id}", response_class=HTMLResponse)
+async def system_app_content(
+    request: Request,
+    app_id: str,
+    is_admin: bool = Depends(require_admin),
+):
+    """Render one built-in system App through its independent Host Entry."""
+    del is_admin
+    return _system_app_content_response(request, app_id, include_api_key=True)
 
 
 @router.get("/chat", response_class=HTMLResponse)
@@ -1543,7 +3560,15 @@ async def chat_page(request: Request, is_admin: bool = Depends(require_admin)):
     """
     global_settings = _get_global_settings()
     api_key = global_settings.auth.api_key if global_settings else ""
-    return templates.TemplateResponse(request, "chat.html", {"api_key": api_key or ""})
+    return templates.TemplateResponse(
+        request,
+        "chat.html",
+        {
+            "api_key": api_key or "",
+            "terminal_assistant": request.query_params.get("terminal_assistant")
+            == "1",
+        },
+    )
 
 
 @router.get("/static/{path:path}")
@@ -1966,6 +3991,109 @@ def _model_dirs_for_display(global_settings: Any | None) -> list[Path]:
         return []
 
 
+def _cloud_model_capabilities(model: dict[str, Any]) -> set[str]:
+    """Normalize provider metadata and conservative name hints for routing."""
+
+    raw = model.get("capabilities")
+    capabilities = {
+        re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower().replace("-", "_")
+        for key, enabled in (raw.items() if isinstance(raw, dict) else [])
+        if enabled
+    }
+    if isinstance(raw, dict) and raw.get("imageInput"):
+        capabilities.add("image_recognition")
+    text = " ".join(
+        str(model.get(key) or "").lower() for key in ("id", "name")
+    )
+    if any(token in text for token in ("gpt-image", "dall-e", "imagen", "flux")):
+        capabilities.add("image_generation")
+    if any(token in text for token in ("sora", "veo", "video-generation", "video_gen")):
+        capabilities.add("video_generation")
+    if any(token in text for token in ("whisper", "transcribe", "speech-to-text", "asr")):
+        capabilities.add("speech_recognition")
+    if any(
+        token in text
+        for token in ("vision", "-vl", "gemini", "claude", "gpt-4", "gpt-5")
+    ):
+        capabilities.add("image_recognition")
+    if not capabilities.intersection(
+        {"image_generation", "video_generation", "speech_recognition"}
+    ):
+        capabilities.add("work")
+    return capabilities
+
+
+async def _ai2apps_cloud_provider() -> dict[str, Any]:
+    """Build the managed Model App provider from the current Cloud account."""
+
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    cloud = None if runtime is None else runtime.cloud
+    base = {
+        "id": "ai2apps",
+        "name": "AI2Apps Cloud",
+        "base_url": getattr(cloud, "base_url", "https://coder.ai2apps.com"),
+        "protocol": "ai2apps-responses",
+        "models": [],
+        "model_count": 0,
+        "enabled_model_count": 0,
+        "models_error": "",
+        "enabled": True,
+        "configured": False,
+        "builtin": True,
+        "managed": True,
+        "connection_state": "unavailable" if cloud is None else "signed_out",
+    }
+    if cloud is None:
+        base["models_error"] = "Cloud connection is not ready; local models remain available."
+        return base
+    try:
+        response = await cloud.request("GET", "/v1/ai/models")
+    except Exception:
+        logger.debug("Unable to load the AI2Apps Cloud model catalog", exc_info=True)
+        base["models_error"] = "AI2Apps Cloud is unavailable; local models remain available."
+        return base
+    try:
+        if response.status_code == 401:
+            return base
+        if response.status_code != 200:
+            base["connection_state"] = "unavailable"
+            base["models_error"] = f"AI2Apps Cloud returned HTTP {response.status_code}."
+            return base
+        payload = response.json()
+    except (TypeError, ValueError):
+        base["connection_state"] = "unavailable"
+        base["models_error"] = "AI2Apps Cloud returned an invalid model catalog."
+        return base
+    finally:
+        await response.aclose()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    models = [
+        {
+            "id": str(item["id"]),
+            "name": str(item.get("displayName") or item["id"]),
+            "owned_by": str(item.get("provider") or "AI2Apps"),
+            "capabilities": item.get("capabilities") or {},
+            "context_window": item.get("contextWindow"),
+            "max_output_tokens": item.get("maxOutputTokens"),
+            "pricing_version": item.get("pricingVersion"),
+            "rates": item.get("rates") or {},
+            "enabled": True,
+        }
+        for item in items
+        if isinstance(item, dict) and item.get("id")
+    ]
+    base.update(
+        {
+            "models": models,
+            "model_count": len(models),
+            "enabled_model_count": len(models),
+            "configured": True,
+            "connection_state": "signed_in",
+        }
+    )
+    return base
+
+
 @router.get("/api/models")
 async def list_models(is_admin: bool = Depends(require_admin)):
     """
@@ -2148,7 +4276,414 @@ async def list_models(is_admin: bool = Depends(require_admin)):
             }
         )
 
+    if global_settings is not None:
+        cloud_models = _model_manager_store().enabled_cloud_models()
+        ai2apps_provider = await _ai2apps_cloud_provider()
+        local_gateway_ids = {model["gateway_id"] for model in cloud_models}
+        configured_local_providers = {
+            provider["id"]
+            for provider in _model_manager_store().list_cloud()
+            if provider["configured"]
+        }
+        if ai2apps_provider["configured"]:
+            cloud_models.extend(
+                {
+                    **model,
+                    "gateway_id": f"cloud/{model['id']}",
+                    "provider_id": "ai2apps",
+                    "provider_name": "AI2Apps Cloud",
+                    "protocol": "ai2apps-responses",
+                }
+                for model in ai2apps_provider["models"]
+                if f"cloud/{model['id']}" not in local_gateway_ids
+                and str(model["id"]).split("/", 1)[0]
+                not in configured_local_providers
+            )
+        for cloud_model in cloud_models:
+            cloud_capabilities = _cloud_model_capabilities(cloud_model)
+            cloud_model_type = (
+                "image_generation"
+                if "image_generation" in cloud_capabilities
+                else (
+                    "video_generation"
+                    if "video_generation" in cloud_capabilities
+                    else (
+                        "audio_stt"
+                        if "speech_recognition" in cloud_capabilities
+                        else "llm"
+                    )
+                )
+            )
+            models.append(
+                {
+                    "id": cloud_model["gateway_id"],
+                    "model_path": f"cloud://{cloud_model['provider_id']}/{cloud_model['id']}",
+                    "display_name": cloud_model.get("name") or cloud_model["id"],
+                    "loaded": True,
+                    "is_loading": False,
+                    "estimated_size": 0,
+                    "estimated_size_formatted": format_size(0),
+                    "actual_size": 0,
+                    "actual_size_formatted": None,
+                    "pinned": False,
+                    "is_default": False,
+                    "is_hidden": False,
+                    "is_favorite": False,
+                    "is_helper": False,
+                    "engine_type": "cloud",
+                    "model_type": cloud_model_type,
+                    "config_model_type": "cloud",
+                    "capabilities": sorted(cloud_capabilities),
+                    "cache_moe": False,
+                    "thinking_default": None,
+                    "preserve_thinking_default": None,
+                    "source_type": "cloud",
+                    "source_repo_id": None,
+                    "last_access": None,
+                    "dflash_compatible": False,
+                    "dflash_compatibility_reason": "",
+                    "dflash_ssd_cache_available": False,
+                    "mtp_compatible": False,
+                    "mtp_compatibility_reason": "",
+                    "is_paroquant": False,
+                    "paroquant_reason": "",
+                    "virtual": True,
+                    "cloud_provider": cloud_model["provider_id"],
+                    "cloud_protocol": cloud_model.get("protocol", "openai"),
+                    "external_model_id": cloud_model["id"],
+                }
+            )
+
+        existing_ids = {model["id"] for model in models}
+        for fusion in _model_manager_store().list_fusion():
+            if not fusion.get("valid") or fusion["id"] in existing_ids:
+                continue
+            def role_is_cached_moe(role_model_id: str) -> bool:
+                return any(
+                    model.get("cache_moe")
+                    and role_model_id
+                    in {
+                        model["id"],
+                        model.get("display_name"),
+                        model.get("settings", {}).get("model_alias"),
+                    }
+                    for model in models
+                )
+
+            cached_role_ids = []
+            if role_is_cached_moe(fusion["generator"]["model"]):
+                cached_role_ids.append("generator")
+            if fusion["reviewer"].get("backend") == "local" and role_is_cached_moe(
+                fusion["reviewer"]["model"]
+            ):
+                cached_role_ids.append("reviewer")
+            models.append(
+                {
+                    "id": fusion["id"],
+                    "model_path": f"fusion://{fusion['id']}",
+                    "display_name": fusion.get("name") or fusion["id"],
+                    "loaded": True,
+                    "is_loading": False,
+                    "estimated_size": 0,
+                    "estimated_size_formatted": format_size(0),
+                    "actual_size": 0,
+                    "actual_size_formatted": None,
+                    "pinned": False,
+                    "is_default": False,
+                    "is_hidden": False,
+                    "is_favorite": False,
+                    "is_helper": False,
+                    "engine_type": "fusion",
+                    "model_type": "llm",
+                    "config_model_type": "ai2apps_fusion",
+                    "cache_moe": bool(cached_role_ids),
+                    "thinking_default": None,
+                    "preserve_thinking_default": None,
+                    "source_type": "fusion",
+                    "source_repo_id": None,
+                    "last_access": None,
+                    "dflash_compatible": False,
+                    "dflash_compatibility_reason": "",
+                    "dflash_ssd_cache_available": False,
+                    "mtp_compatible": False,
+                    "mtp_compatibility_reason": "",
+                    "is_paroquant": False,
+                    "paroquant_reason": "",
+                    "virtual": True,
+                    "fusion_generator": fusion["generator"]["model"],
+                    "fusion_reviewer": fusion["reviewer"]["model"],
+                    "fusion_cached_moe_roles": cached_role_ids,
+                    "fusion_config": {
+                        "gate": fusion.get("gate", {}),
+                        "cache_moe": fusion.get("cache_moe", {}),
+                        "resolver": fusion.get("resolver", {}),
+                    },
+                }
+            )
+            existing_ids.add(fusion["id"])
+
+    platform_runtime = _get_platform_runtime() if _get_platform_runtime else None
+    existing_ids = {model["id"] for model in models}
+    for package_model in list_package_models(platform_runtime):
+        if package_model.id in existing_ids:
+            continue
+        models.append(package_model.public_catalog_entry())
+        existing_ids.add(package_model.id)
+
     return {"models": models}
+
+
+def _model_manager_store():
+    from ai2apps.model_manager import ModelManagerStore
+
+    settings = _get_global_settings()
+    if settings is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+    return ModelManagerStore(settings.base_path)
+
+
+def _supports_default_model_purpose(model: dict[str, Any], purpose: str) -> bool:
+    """Keep UI filtering and the persisted routing contract fail-closed."""
+
+    if model.get("is_hidden") or model.get("is_helper"):
+        return False
+    model_type = str(model.get("model_type") or "").lower()
+    config_type = str(model.get("config_model_type") or "").lower()
+    capabilities = {str(item) for item in model.get("capabilities", [])}
+    is_diffusion = model_type == "image_generation" or "diffusion" in config_type
+    if purpose.startswith("work_"):
+        return (
+            model_type in {"llm", "vlm"}
+            and not is_diffusion
+            and (not capabilities or "work" in capabilities)
+        )
+    if purpose == "speech_recognition":
+        return model_type == "audio_stt" or purpose in capabilities
+    if purpose == "speech_generation":
+        return model_type == "audio_tts" or purpose in capabilities
+    if purpose == "audio_processing":
+        return model_type == "audio_processing" or purpose in capabilities
+    if purpose == "image_recognition":
+        return (model_type == "vlm" and not is_diffusion) or purpose in capabilities
+    if purpose == "image_generation":
+        return is_diffusion or purpose in capabilities
+    if purpose == "video_generation":
+        return (
+            model_type == "video_generation"
+            or "video" in config_type
+            or purpose in capabilities
+        )
+    return False
+
+
+@router.get("/api/model-manager")
+async def get_model_manager(is_admin: bool = Depends(require_admin)):
+    """Return models grouped by their serving contract, not disk location."""
+
+    from ai2apps.model_installer import AI2AppsInstaller
+
+    catalog = AI2AppsInstaller.catalog()
+    cached_repo_ids = {
+        source["repo_id"]
+        for recipe in catalog
+        for source in recipe.get("sources", [])
+    }
+    runtime_models = (await list_models(is_admin=is_admin))["models"]
+    cache_runtime = [model for model in runtime_models if model.get("cache_moe")]
+    ordinary_runtime = [
+        model
+        for model in runtime_models
+        if not model.get("cache_moe")
+        and not model.get("virtual")
+        and model.get("source_repo_id") not in cached_repo_ids
+        and model.get("id") not in cached_repo_ids
+    ]
+    package_runtime = [
+        model for model in runtime_models if model.get("source_type") == "package"
+    ]
+    try:
+        tasks = _get_ai2apps_installer().get_tasks()
+    except HTTPException:
+        tasks = []
+    latest_tasks: dict[str, dict[str, Any]] = {}
+    for task in tasks:
+        latest_tasks[task["model_id"]] = task
+
+    cached_moe = []
+    for recipe in catalog:
+        repo_ids = {source["repo_id"] for source in recipe.get("sources", [])}
+        installed = next(
+            (
+                model
+                for model in cache_runtime
+                if model.get("source_repo_id") in repo_ids
+                or model.get("id") in repo_ids
+                or any(str(model.get("model_path", "")).rstrip("/").endswith(repo) for repo in repo_ids)
+            ),
+            None,
+        )
+        cached_moe.append(
+            {
+                **recipe,
+                "installed": installed is not None,
+                "runtime_model": installed,
+                "task": latest_tasks.get(recipe["id"]),
+            }
+        )
+
+    store = _model_manager_store()
+    ai2apps_provider = await _ai2apps_cloud_provider()
+    configured_local_providers = {
+        provider["id"]: provider["name"]
+        for provider in store.list_cloud()
+        if provider["configured"]
+    }
+    for model in ai2apps_provider["models"]:
+        local_provider_id = str(model["id"]).split("/", 1)[0]
+        local_provider_name = configured_local_providers.get(local_provider_id)
+        model["enabled"] = local_provider_name is None
+        model["disabled_reason"] = (
+            ""
+            if local_provider_name is None
+            else f"Using local {local_provider_name} API key (local provider takes priority)."
+        )
+    ai2apps_provider["enabled_model_count"] = sum(
+        1 for model in ai2apps_provider["models"] if model["enabled"]
+    )
+    return {
+        "cached_moe": cached_moe,
+        "omlx": ordinary_runtime,
+        "packages": package_runtime,
+        "fusion": store.list_fusion(),
+        "cloud": [
+            ai2apps_provider,
+            *(provider for provider in store.list_cloud() if provider["id"] != "ai2apps"),
+        ],
+        "defaults": store.default_models(),
+    }
+
+
+@router.put("/api/model-manager/defaults")
+async def put_default_model_routes(
+    request: DefaultModelRoutesRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    """Persist purpose-specific system model defaults from the live catalog."""
+
+    runtime_models = (await list_models(is_admin=is_admin))["models"]
+    catalog = {str(model["id"]): model for model in runtime_models}
+    for purpose, selected in request.routes.items():
+        model_id = str(selected or "").strip()
+        if not model_id:
+            continue
+        model = catalog.get(model_id)
+        if model is None:
+            raise HTTPException(status_code=400, detail=f"Model is not available: {model_id}")
+        if not _supports_default_model_purpose(model, purpose):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_id} is not compatible with {purpose}",
+            )
+    try:
+        routes = _model_manager_store().put_default_models(
+            request.routes,
+            available_model_ids=set(catalog),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"defaults": routes}
+
+
+@router.put("/api/model-manager/fusion/{model_id}")
+async def put_fusion_model(
+    model_id: str,
+    request: FusionModelRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        return {"model": _model_manager_store().put_fusion(model_id, request.model_dump())}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/api/model-manager/fusion/{model_id}")
+async def delete_fusion_model(model_id: str, is_admin: bool = Depends(require_admin)):
+    try:
+        if not _model_manager_store().delete_fusion(model_id):
+            raise HTTPException(status_code=404, detail="Fusion model not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True}
+
+
+@router.put("/api/model-manager/cloud/{provider_id}")
+async def put_cloud_provider(
+    provider_id: str,
+    request: CloudProviderRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    if provider_id == "ai2apps":
+        raise HTTPException(status_code=409, detail="AI2Apps Cloud is managed by Account App")
+    store = _model_manager_store()
+    try:
+        provider = store.put_cloud(provider_id, request.model_dump())
+        if request.api_key:
+            try:
+                provider = await asyncio.to_thread(store.sync_cloud, provider_id)
+            except ValueError:
+                # The credential/configuration remains saved. Surface the
+                # sanitized sync error on the Provider card for correction.
+                provider = next(
+                    item for item in store.list_cloud() if item["id"] == provider_id
+                )
+        return {"provider": provider}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/model-manager/cloud/{provider_id}/refresh")
+async def refresh_cloud_provider_models(
+    provider_id: str, is_admin: bool = Depends(require_admin)
+):
+    if provider_id == "ai2apps":
+        raise HTTPException(status_code=409, detail="AI2Apps Cloud refreshes from Account App")
+    try:
+        provider = await asyncio.to_thread(
+            _model_manager_store().sync_cloud, provider_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"provider": provider}
+
+
+@router.put("/api/model-manager/cloud/{provider_id}/model-selection")
+async def set_cloud_provider_model_selection(
+    provider_id: str,
+    request: CloudModelSelectionRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    if provider_id == "ai2apps":
+        raise HTTPException(status_code=409, detail="AI2Apps Cloud models are managed by the service")
+    try:
+        provider = _model_manager_store().set_cloud_model_enabled(
+            provider_id, request.model_id, request.enabled
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"provider": provider}
+
+
+@router.delete("/api/model-manager/cloud/{provider_id}")
+async def delete_cloud_provider(
+    provider_id: str, is_admin: bool = Depends(require_admin)
+):
+    if provider_id == "ai2apps":
+        raise HTTPException(status_code=409, detail="Sign out from Account App to disconnect AI2Apps Cloud")
+    try:
+        _model_manager_store().delete_cloud(provider_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True}
 
 
 @router.post("/api/models/{model_id}/unload")
@@ -2376,6 +4911,14 @@ async def update_model_settings(
         current_settings.cache_moe_memory_tier = (
             None if memory_tier == "auto" else memory_tier
         )
+    if "kv_cache_policy" in sent:
+        kv_policy = (request.kv_cache_policy or "session").strip().lower()
+        if kv_policy not in {"strict", "session", "persistent"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid KV continuity policy: {kv_policy}",
+            )
+        current_settings.kv_cache_policy = kv_policy
     if "max_tokens" in sent:
         current_settings.max_tokens = request.max_tokens
     if "temperature" in sent:
@@ -5770,12 +8313,16 @@ async def get_hf_model_info(
 
 @router.get("/api/hf/models")
 async def list_hf_models(is_admin: bool = Depends(require_admin)):
-    """List models in all model directories with disk size info."""
+    """List models in every directory used by runtime discovery."""
     global_settings = _get_global_settings()
     if global_settings is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
 
-    model_dirs = global_settings.model.get_model_dirs(global_settings.base_path)
+    # Runtime discovery also includes the shared Hugging Face cache when it is
+    # enabled.  Keeping the Manager on only the explicitly configured model
+    # directories made models available to serving and Chat disappear from the
+    # management UI.
+    model_dirs = global_settings.get_effective_model_dirs()
 
     from ..model_discovery import _resolve_hf_cache_entry
 

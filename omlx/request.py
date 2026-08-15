@@ -146,6 +146,17 @@ class Request:
     # MoE scope bank) prevent cross-variant cache reuse without inventing fake
     # prompt tokens. Identical namespaces still share prefixes across sessions.
     cache_extra_keys: Optional[Tuple[Any, ...]] = None
+    # Controls how reasoning turns are committed to the prefix cache. Strict
+    # keeps the canonical visible prompt only; session/persistent retain the
+    # full append-only turn so a compatible next turn can reuse generated KV.
+    kv_cache_policy: str = "strict"
+    # Optional arbitrary-length prompt prefix to restore/store exactly. Used
+    # for short, stable instruction prefixes (for example Fusion Reviewer
+    # system prompts) that are smaller than the physical paged-cache block.
+    exact_prefix_token_count: int = 0
+    # Lightweight CPU-side Prefill attribution. Populated by Scheduler without
+    # synchronizing Metal; exposed as the most recent completed profile.
+    prefill_profile: Optional[Dict[str, Any]] = None
 
     # Multimodal content (images, video)
     images: Optional[List[Any]] = None

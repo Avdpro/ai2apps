@@ -146,6 +146,7 @@ class ModelSettings:
             to BatchGenerator so the constraints stay enforced (#2399).
         vlm_mtp_draft_model: Path/repo of the assistant drafter (e.g. "gemma-4-26B-A4B-it-assistant").
         vlm_mtp_draft_block_size: Tokens drafted per round (None = mlx-vlm default).
+        kv_cache_policy: Cache-MoE KV continuity default: strict, session, or persistent.
         is_pinned: Keep model loaded in memory.
         is_default: Use this model when no model is specified.
         display_name: Human-readable name for UI display.
@@ -267,6 +268,9 @@ class ModelSettings:
     # Cache-MoE resident bank sizing. None/"auto" selects the largest tier
     # that fits physical unified memory with runtime headroom.
     cache_moe_memory_tier: Optional[str] = None
+    # Cache-MoE KV continuity. ``session`` is the product default; API clients
+    # without a stable session id are always reduced to ``strict``.
+    kv_cache_policy: str = "session"
     is_pinned: bool = False
     is_default: bool = False  # Only one model can be default
     is_hidden: bool = False  # Hidden from /v1/models (still shown, badged, in admin)
@@ -283,6 +287,10 @@ class ModelSettings:
     active_profile_name: Optional[str] = None  # Name of the currently-applied profile
 
     def __post_init__(self) -> None:
+        if self.kv_cache_policy not in {"strict", "session", "persistent"}:
+            raise ValueError(
+                "kv_cache_policy must be strict, session, or persistent"
+            )
         # Native MTP is mutually exclusive with DFlash (also speculative).
         # Reject the combo at construction time so the conflict surfaces in
         # the admin UI / API rather than at model load. TurboQuant KV is
@@ -1189,7 +1197,7 @@ class ModelSettingsManager:
 
     def list_templates(self) -> list[dict]:
         # Shipped JSON seeds were retired in favor of the client-side preset
-        # bundle (`omlx/admin/static/omlx_preset.json`); every entry on this
+        # bundle (`ai2apps/web/static/omlx_preset.json`); every entry on this
         # surface is user-created. Callers that distinguish presets from
         # user templates do so via the preset bundle, not an `is_builtin`
         # flag on this response.

@@ -860,7 +860,7 @@ def _make_call(original_call):
             scores = scores / scores.sum(axis=-1, keepdims=True)
         lossy_counters = None
         policy = self.scope_lossy_policy
-        if policy is not None and x.shape[-2] == 1:
+        if policy is not None:
             inds, lossy_counters = _lossy_replace_routes(
                 inds,
                 scores,
@@ -942,12 +942,35 @@ def _make_sanitize(original_sanitize):
                     key = f"{prefix}.{projection}.{tensor_name}"
                     value = sanitized.get(key)
                     if value is not None:
-                        if policy.backend == "tiered":
-                            tail_key = key.replace(
-                                ".switch_mlp.", ".tail_switch_mlp."
+                        loaded_experts = int(value.shape[0])
+                        physical_experts = len(expert_ids) + len(tail_ids)
+                        if loaded_experts == NUM_EXPERTS:
+                            # Compatibility with the stock/full checkpoint
+                            # reader and older pre-compacted artifacts.
+                            if policy.backend == "tiered":
+                                tail_key = key.replace(
+                                    ".switch_mlp.", ".tail_switch_mlp."
+                                )
+                                sanitized[tail_key] = value[list(tail_ids)]
+                            sanitized[key] = value[list(expert_ids)]
+                        elif loaded_experts == physical_experts:
+                            # The I/O-boundary subset reader stores experts as
+                            # protected + tail. Split by local offsets so global
+                            # expert IDs never index the compact tensor.
+                            if policy.backend == "tiered":
+                                tail_key = key.replace(
+                                    ".switch_mlp.", ".tail_switch_mlp."
+                                )
+                                sanitized[tail_key] = value[len(expert_ids) :]
+                                sanitized[key] = value[: len(expert_ids)]
+                            else:
+                                sanitized[key] = value
+                        else:
+                            raise ValueError(
+                                f"Qwen3.6 layer {layer} {projection}.{tensor_name} "
+                                f"has {loaded_experts} experts; expected "
+                                f"{NUM_EXPERTS} or compact {physical_experts}"
                             )
-                            sanitized[tail_key] = value[list(tail_ids)]
-                        sanitized[key] = value[list(expert_ids)]
         all_blocks = tuple(decoder.mlp for decoder in layers)
         model_key = id(self)
         loader = get_qwen36_fallback_loader(str(policy.store_path))

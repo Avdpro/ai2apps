@@ -45,6 +45,66 @@ _BENCH_MISS_MODE_ENV = "OMLX_DEEPSEEK_V4_BENCH_MISS_MODE"
 _BENCH_MISS_EVENT = 0
 _BENCH_SCORE_EVENT = 0
 
+_PREFILL_MISS_BANK_EXPERTS_ENV = "OMLX_DEEPSEEK_V4_PREFILL_MISS_BANK_EXPERTS"
+_PREFILL_DOUBLE_BUFFER_ENV = "OMLX_DEEPSEEK_V4_PREFILL_DOUBLE_BUFFER"
+_PREFILL_BOOST_ENV = "OMLX_DEEPSEEK_V4_PREFILL_BOOST"
+
+
+def _prefill_miss_bank_experts() -> int:
+    """Select the bounded transient bank used by exact Prefill misses."""
+
+    raw = os.environ.get(_PREFILL_MISS_BANK_EXPERTS_ENV, "").strip()
+    if raw:
+        try:
+            bank_size = int(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"{_PREFILL_MISS_BANK_EXPERTS_ENV} must be an integer"
+            ) from exc
+        if not 1 <= bank_size <= 256:
+            raise ValueError(
+                f"{_PREFILL_MISS_BANK_EXPERTS_ENV} must be between 1 and 256"
+            )
+        return bank_size
+
+    # A real 13.7k-token DS4 replay measured a 58.44-GiB peak from a roughly
+    # 55-GiB resident baseline with 16 slots.  The former 64-slot default
+    # reached about 70 GiB on the same class of workload.  Keep 16 as the
+    # balanced product default for every L1 tier; high-memory deployments can
+    # still opt into 32/64 through the explicit environment override.
+    return 16
+
+
+def _prefill_double_buffer_enabled() -> bool:
+    raw = os.environ.get(_PREFILL_DOUBLE_BUFFER_ENV, "1").strip().lower()
+    if raw in {"0", "false", "off", "no"}:
+        return False
+    if raw in {"", "1", "true", "on", "yes"}:
+        return True
+    raise ValueError(f"{_PREFILL_DOUBLE_BUFFER_ENV} must be a boolean")
+
+
+def _prefill_boost_enabled() -> bool:
+    """Allow the Decode lossy-route policy during Prefill for experiments."""
+
+    raw = os.environ.get(_PREFILL_BOOST_ENV, "1").strip().lower()
+    if raw in {"", "0", "false", "off", "no"}:
+        return False
+    if raw in {"1", "true", "on", "yes"}:
+        return True
+    raise ValueError(f"{_PREFILL_BOOST_ENV} must be a boolean")
+
+
+def _prefill_lossy_policy(
+    policy: ScopeLossyPolicy | None,
+    length: int,
+) -> ScopeLossyPolicy | None:
+    """Use Head3 for Turbo Prefill while retaining Tail2 for Decode."""
+
+    if policy is None or length == 1 or policy.mode != "tail2":
+        return policy
+    return ScopeLossyPolicy("head3", tail_count=3, max_weight_share=None)
+
 
 def _benchmark_expert_slots(config: Any) -> int:
     """Return the physical routed-expert count for an explicit speed test.
@@ -156,12 +216,10 @@ def _lossy_replace_scope_routes(
     )
     candidate_mask = available_experts[None, None, :] & ~selected
     masked_scores = mx.where(candidate_mask, router_choice_scores, -mx.inf)
-    candidate_ids = mx.argpartition(
-        -masked_scores, kth=tail_count - 1, axis=-1
-    )[..., :tail_count]
-    candidate_scores = mx.take_along_axis(
-        masked_scores, candidate_ids, axis=-1
-    )
+    candidate_ids = mx.argpartition(-masked_scores, kth=tail_count - 1, axis=-1)[
+        ..., :tail_count
+    ]
+    candidate_scores = mx.take_along_axis(masked_scores, candidate_ids, axis=-1)
     candidate_order = mx.argsort(-candidate_scores, axis=-1)
     candidate_ids = mx.take_along_axis(candidate_ids, candidate_order, axis=-1)
 
@@ -260,6 +318,93 @@ def _benchmark_gpu_split_moe(
     return (routes * scores[..., None].astype(routes.dtype)).sum(-2)
 
 
+def _scope_prefill_missed_routes(
+    *,
+    loader: Any,
+    layer_idx: int,
+    switch_mlp: SwitchGLU,
+    ordered_miss_x: mx.array,
+    missing_route_ids: mx.array,
+    missing_route_ids_host: list[int],
+    missing_ids: list[int],
+    seed_ids: list[int],
+    hidden: int,
+) -> mx.array:
+    """Evaluate exact Prefill misses through bounded expert-weight banks.
+
+    A long chunk can touch well over 100 non-resident experts in one layer.
+    Materializing all of them at once made both the Metal transient and the
+    loader's reusable CPU staging array scale with that union.  Partition by
+    expert ID, evaluate each route subset exactly once, then restore the
+    original miss-route order.  Seed experts are kept together in the final
+    bank so Decode's rolling Hot bank has the same final-token contents as the
+    former monolithic path.
+    """
+
+    bank_size = _prefill_miss_bank_experts()
+    seed_set = set(seed_ids)
+    non_seed_ids = [expert_id for expert_id in missing_ids if expert_id not in seed_set]
+    banks = [
+        non_seed_ids[start : start + bank_size]
+        for start in range(0, len(non_seed_ids), bank_size)
+    ]
+    if seed_ids:
+        if banks and len(banks[-1]) + len(seed_ids) <= bank_size:
+            banks[-1].extend(seed_ids)
+        else:
+            banks.append(list(seed_ids))
+    if not banks:
+        banks = [list(missing_ids)]
+
+    output_parts: list[mx.array] = []
+    position_parts: list[mx.array] = []
+    double_buffer = _prefill_double_buffer_enabled() and len(banks) > 1
+    prepared = None
+    for bank_index, bank_ids in enumerate(banks):
+        bank_set = set(bank_ids)
+        positions = [
+            position
+            for position, expert_id in enumerate(missing_route_ids_host)
+            if expert_id in bank_set
+        ]
+        position_array = mx.array(positions, dtype=mx.int32)
+        fallback, fallback_ids = loader.build_transient_switch(
+            layer_idx,
+            bank_ids,
+            switch_mlp,
+            [expert_id for expert_id in seed_ids if expert_id in bank_set],
+            prepared=prepared,
+        )
+        prepared = None
+        if double_buffer and bank_index + 1 < len(banks):
+            prepared = loader.prefetch_transient_records(
+                layer_idx,
+                banks[bank_index + 1],
+            )
+        lookup = [-1] * 256
+        for slot, expert_id in enumerate(fallback_ids):
+            lookup[expert_id] = slot
+        lookup_array = mx.array(lookup, dtype=mx.int32)
+        group_route_ids = missing_route_ids[position_array]
+        group_slots = lookup_array[group_route_ids]
+        group_x = ordered_miss_x[position_array]
+        group_output = fallback(
+            group_x[None],
+            group_slots.reshape(1, -1, 1),
+        ).reshape(len(positions), hidden)
+        # Materialize before the next fallback bank replaces the local weight
+        # references.  Equal-sized banks can then reuse allocator buffers.
+        mx.eval(group_output)
+        output_parts.append(group_output)
+        position_parts.append(position_array)
+
+    if len(output_parts) == 1:
+        return output_parts[0]
+    concatenated_positions = mx.concatenate(position_parts)
+    restore_order = mx.argsort(concatenated_positions)
+    return mx.concatenate(output_parts, axis=0)[restore_order]
+
+
 def _scope_split_moe(
     switch_mlp: SwitchGLU,
     x: mx.array,
@@ -275,12 +420,19 @@ def _scope_split_moe(
 
     batch, length, hidden = x.shape
     top_k = inds.shape[-1]
-    loader = get_scope_fallback_loader(store_path) if length == 1 else None
+    loader = get_scope_fallback_loader(store_path)
     lossy_counters = None
-    if loader is not None:
-        loader.record_decode_routes(layer_idx, inds, expert_to_slot)
-    if lossy_policy is not None and router_choice_scores is not None and length == 1:
-        assert loader is not None
+    loader.record_routes(
+        layer_idx,
+        inds,
+        expert_to_slot,
+        prefill=length > 1,
+    )
+    if (
+        lossy_policy is not None
+        and router_choice_scores is not None
+        and (length == 1 or _prefill_boost_enabled())
+    ):
         available = _scope_available_mask(
             expert_to_slot,
             loader.hot_ids(layer_idx),
@@ -302,15 +454,12 @@ def _scope_split_moe(
         mx.eval(miss_route_count_array)
     else:
         mx.eval(miss_route_count_array, *lossy_counters)
-        assert loader is not None
         loader.record_lossy(*(int(value.item()) for value in lossy_counters))
     miss_route_count = int(miss_route_count_array.item())
     if not miss_route_count:
         routes = switch_mlp(x, expert_to_slot[inds], scores=scores)
         if routes.ndim == scores.ndim + 1:
-            routes = (
-                routes * scores[..., None].astype(routes.dtype)
-            ).sum(-2)
+            routes = (routes * scores[..., None].astype(routes.dtype)).sum(-2)
         return routes
 
     hit_route_count = flat_inds.size - miss_route_count
@@ -322,7 +471,8 @@ def _scope_split_moe(
     ordered_global = flat_inds[order]
     missing_route_ids = ordered_global[hit_route_count:]
     mx.eval(missing_route_ids)
-    missing_ids = sorted({int(value) for value in missing_route_ids.tolist()})
+    missing_route_ids_host = [int(value) for value in missing_route_ids.tolist()]
+    missing_ids = sorted(set(missing_route_ids_host))
 
     flat_x = x.reshape(batch * length, hidden)
     route_x = mx.broadcast_to(
@@ -337,14 +487,27 @@ def _scope_split_moe(
             ordered_x[:hit_route_count][None],
             ordered_slots[:hit_route_count].reshape(1, -1, 1),
         ).reshape(hit_route_count, hidden)
+        if length > 1:
+            # The L3 loader's record reads are CPU/SSD work. Submit resident
+            # routes first so Metal can execute them while those records are
+            # fetched and packed; the later miss-bank eval provides the normal
+            # same-stream dependency boundary.
+            mx.async_eval(hit)
         route_parts.append(hit)
 
-    if loader is None:
-        loader = get_scope_fallback_loader(store_path)
     if length == 1:
         fallback, fallback_ids = loader.resolve_hot_switch(
             layer_idx, missing_ids, switch_mlp
         )
+        missing_lookup = [-1] * 256
+        for slot, expert_id in enumerate(fallback_ids):
+            missing_lookup[expert_id] = slot
+        missing_lookup_array = mx.array(missing_lookup, dtype=mx.int32)
+        miss_slots = missing_lookup_array[missing_route_ids]
+        missed = fallback(
+            ordered_x[hit_route_count:][None],
+            miss_slots.reshape(1, -1, 1),
+        ).reshape(miss_route_count, hidden)
     else:
         last_route_ids = inds[:, -1, :].reshape(-1)
         mx.eval(last_route_ids)
@@ -356,18 +519,17 @@ def _scope_split_moe(
                 if int(value) in missing_id_set
             )
         )
-        fallback, fallback_ids = loader.build_transient_switch(
-            layer_idx, missing_ids, switch_mlp, seed_ids
+        missed = _scope_prefill_missed_routes(
+            loader=loader,
+            layer_idx=layer_idx,
+            switch_mlp=switch_mlp,
+            ordered_miss_x=ordered_x[hit_route_count:],
+            missing_route_ids=missing_route_ids,
+            missing_route_ids_host=missing_route_ids_host,
+            missing_ids=missing_ids,
+            seed_ids=seed_ids,
+            hidden=hidden,
         )
-    missing_lookup = [-1] * 256
-    for slot, expert_id in enumerate(fallback_ids):
-        missing_lookup[expert_id] = slot
-    missing_lookup_array = mx.array(missing_lookup, dtype=mx.int32)
-    miss_slots = missing_lookup_array[ordered_global[hit_route_count:]]
-    missed = fallback(
-        ordered_x[hit_route_count:][None],
-        miss_slots.reshape(1, -1, 1),
-    ).reshape(miss_route_count, hidden)
     route_parts.append(missed)
 
     routes = mx.concatenate(route_parts, axis=0)[inverse_order]
@@ -1261,13 +1423,13 @@ class DeepseekV4MoE(nn.Module):
 
         shared_y = self.shared_experts(x)
         score_layer = self.layer_idx >= self.config.num_hash_layers
-        lossy_decode = (
+        lossy_routes = (
             self.scope_policy is not None
             and self.scope_lossy_policy is not None
             and score_layer
-            and x.shape[1] == 1
+            and (x.shape[1] == 1 or _prefill_boost_enabled())
         )
-        if lossy_decode:
+        if lossy_routes:
             inds, scores, router_choice_scores = self.gate(
                 x,
                 input_ids,
@@ -1277,6 +1439,10 @@ class DeepseekV4MoE(nn.Module):
             inds, scores = self.gate(x, input_ids)
             router_choice_scores = None
         if self.scope_policy is not None and score_layer:
+            lossy_policy = _prefill_lossy_policy(
+                self.scope_lossy_policy,
+                int(x.shape[1]),
+            )
             y = _scope_split_moe(
                 self.switch_mlp,
                 x,
@@ -1286,7 +1452,7 @@ class DeepseekV4MoE(nn.Module):
                 self.layer_idx,
                 str(self.scope_policy.store_path),
                 router_choice_scores,
-                self.scope_lossy_policy,
+                lossy_policy,
             )
             y = y + shared_y
             if self.sharding_group is not None:
@@ -1306,9 +1472,7 @@ class DeepseekV4MoE(nn.Module):
             if self.benchmark_miss_profile == "historical":
                 miss_experts = _next_historical_benchmark_miss_count()
             else:
-                miss_layer = (
-                    self.layer_idx - self.config.num_hash_layers
-                ) % 2 == 0
+                miss_layer = (self.layer_idx - self.config.num_hash_layers) % 2 == 0
                 miss_experts = _next_benchmark_miss_count() if miss_layer else 0
         else:
             miss_experts = 0
@@ -1365,7 +1529,6 @@ class DeepseekV4MoE(nn.Module):
 
 
 class Compressor(nn.Module):
-
     def __init__(self, config: ModelArgs, compress_ratio: int, head_dim: int):
         super().__init__()
         self.compress_ratio = compress_ratio

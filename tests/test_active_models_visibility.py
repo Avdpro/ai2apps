@@ -591,12 +591,12 @@ def test_active_models_surfaces_dflash_guardrail_stats():
 def test_dflash_dashboard_localizes_metrics_and_shows_session_fallbacks():
     root = Path(__file__).resolve().parents[1]
     template = (
-        root / "omlx/admin/templates/dashboard/_status.html"
+        root / "ai2apps/web/templates/dashboard/_status.html"
     ).read_text(encoding="utf-8")
-    dashboard_js = (root / "omlx/admin/static/js/dashboard.js").read_text(
+    dashboard_js = (root / "ai2apps/web/static/js/dashboard.js").read_text(
         encoding="utf-8"
     )
-    i18n_dir = root / "omlx/admin/i18n"
+    i18n_dir = root / "ai2apps/web/i18n"
     keys = {
         "status.active_models.dflash_fallback_ar",
         "status.active_models.dflash_draft_share",

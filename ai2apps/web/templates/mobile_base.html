@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="{{ current_lang }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+    <title>{% block title %}AI2Apps Mobile{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ mobile_static('favicon.svg') }}">
+    <link rel="stylesheet" href="{{ mobile_static('fonts/inter/inter.css') }}">
+    <script src="{{ mobile_static('js/lucide.min.js') }}"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {% block content %}{% endblock %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1098,6 +1098,50 @@ class TestDeepseekV4SwitchGLU:
         assert ".item(" not in source
         assert ".tolist(" not in source
 
+    def test_prefill_boost_defaults_on_and_can_be_disabled(
+        self, applied_patch, monkeypatch
+    ):
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+
+        monkeypatch.delenv("OMLX_DEEPSEEK_V4_PREFILL_BOOST", raising=False)
+        assert dsv4._prefill_boost_enabled() is True
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_PREFILL_BOOST", "0")
+        assert dsv4._prefill_boost_enabled() is False
+
+    def test_prefill_turbo_uses_head3_but_decode_keeps_tail2(self, applied_patch):
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        policy = ScopeLossyPolicy("tail2", 2, None)
+        prefill = dsv4._prefill_lossy_policy(policy, 768)
+
+        assert prefill.mode == "head3"
+        assert prefill.tail_count == 3
+        assert dsv4._prefill_lossy_policy(policy, 1) is policy
+
+    def test_lossy_tail2_supports_multi_token_prefill(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
+        from omlx.patches.deepseek_v4.scope_policy import ScopeLossyPolicy
+
+        indices, weights, choice, available = self._lossy_inputs(mx)
+        indices = mx.concatenate((indices, indices), axis=1)
+        weights = mx.concatenate((weights, weights), axis=1)
+        choice = mx.concatenate((choice, choice), axis=1)
+        out, replaced, before, after = dsv4._lossy_replace_scope_routes(
+            indices,
+            weights,
+            choice,
+            available,
+            ScopeLossyPolicy("tail2", 2, None),
+        )
+        mx.eval(out, replaced, before, after)
+
+        assert out.tolist() == [[[0, 1, 5, 4], [0, 1, 5, 4]]]
+        assert int(replaced.item()) == 4
+        assert int(before.item()) == 4
+        assert int(after.item()) == 0
+
     def test_lossy_gate_variant_preserves_exact_router_outputs(self, applied_patch):
         mx = pytest.importorskip("mlx.core")
         dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]

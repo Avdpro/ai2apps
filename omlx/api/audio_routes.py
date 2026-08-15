@@ -81,6 +81,18 @@ def _get_engine_pool():
     return pool
 
 
+def _package_model(model_id: str):
+    """Resolve an enabled installable Model Provider without importing it at startup."""
+
+    from ai2apps.model_providers import resolve_package_model
+    from omlx.server import _server_state, resolve_model_id
+
+    resolved = resolve_model_id(model_id) or model_id
+    if _server_state.engine_pool is not None and _server_state.engine_pool.get_entry(resolved):
+        return None
+    return resolve_package_model(_server_state.ai2apps_platform_runtime, model_id)
+
+
 def _resolve_model(model_id: str) -> str:
     """Resolve a model alias to its real model ID.
 
@@ -477,6 +489,34 @@ async def create_transcription(
     ``{word, start, end, probability}`` objects. Default False preserves the
     existing response shape for every current caller.
     """
+    package_model = _package_model(model)
+    if package_model is not None:
+        if package_model.model_type != "audio_stt":
+            raise HTTPException(status_code=400, detail="Selected model is not speech-to-text")
+        from ai2apps.model_providers import proxy_package_multipart
+
+        content = await _read_upload(file)
+        return await proxy_package_multipart(
+            package_model,
+            "audio_transcription",
+            data={
+                "language": language,
+                "prompt": prompt,
+                "response_format": response_format,
+                "temperature": temperature,
+                "stream": str(stream).lower(),
+                "max_tokens": max_tokens,
+                "word_timestamps": str(word_timestamps).lower(),
+            },
+            files={
+                "file": (
+                    file.filename or "audio.wav",
+                    content,
+                    file.content_type or "application/octet-stream",
+                )
+            },
+        )
+
     from omlx.engine.stt import STTEngine
     from omlx.exceptions import ModelNotFoundError
 
@@ -649,6 +689,18 @@ def _transcode_speech_output(wav_bytes: bytes, response_format: str) -> bytes:
 @router.post("/v1/audio/speech")
 async def create_speech(request: AudioSpeechRequest):
     """OpenAI-compatible text-to-speech endpoint."""
+    package_model = _package_model(request.model)
+    if package_model is not None:
+        if package_model.model_type != "audio_tts":
+            raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
+        from ai2apps.model_providers import proxy_package_json
+
+        return await proxy_package_json(
+            package_model,
+            "audio_speech",
+            request.model_dump(mode="json", by_alias=True, exclude_none=True),
+        )
+
     from omlx.engine.tts import TTSEngine
     from omlx.exceptions import ModelNotFoundError
 
@@ -768,6 +820,26 @@ async def process_audio(
     the audio through an STS engine (e.g. DeepFilterNet, MossFormer2,
     SAMAudio, LFM2.5-Audio), and returns WAV bytes of the processed audio.
     """
+    package_model = _package_model(model)
+    if package_model is not None:
+        if package_model.model_type != "audio_processing":
+            raise HTTPException(status_code=400, detail="Selected model is not audio processing")
+        from ai2apps.model_providers import proxy_package_multipart
+
+        content = await _read_upload(file)
+        return await proxy_package_multipart(
+            package_model,
+            "audio_process",
+            data={},
+            files={
+                "file": (
+                    file.filename or "audio.wav",
+                    content,
+                    file.content_type or "application/octet-stream",
+                )
+            },
+        )
+
     from omlx.engine.sts import STSEngine
     from omlx.exceptions import ModelNotFoundError
 
