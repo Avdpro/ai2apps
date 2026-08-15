@@ -75,7 +75,6 @@ def _build_package(
     endpoint: str | None = None,
     variants: list[dict] | None = None,
     models: list[dict] | None = None,
-    network_outbound: bool = False,
 ):
     runtime = {
         "mode": mode,
@@ -106,7 +105,7 @@ def _build_package(
             ],
             "python": ">=3.11,<3.14",
         },
-        "permissions": {"network": {"outbound": network_outbound}},
+        "permissions": {"network": {"outbound": False}},
         "compatibility": {
             "os": ["macos", "linux"],
             "architectures": [os.uname().machine.lower()],
@@ -406,8 +405,13 @@ async def test_dependencies_lock_order_and_prevent_disable_uninstall(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_managed_process_health_tools_logs_and_lifecycle(tmp_path):
+async def test_managed_process_health_tools_logs_and_lifecycle(tmp_path, monkeypatch):
     runtime = _runtime(tmp_path)
+    monkeypatch.setattr(
+        runtime.package_manager.supervisor,
+        "_sandbox_command",
+        lambda command, *args, **kwargs: command,
+    )
     private = Ed25519PrivateKey.generate()
     _publisher(runtime, private)
     server = """
@@ -434,7 +438,6 @@ HTTPServer(("127.0.0.1",int(sys.argv[1])),Handler).serve_forever()
         service_key="example.managed",
         mode="process",
         source=server,
-        network_outbound=True,
     )
     package = await runtime.package_manager.install(archive, approve_audit_review=True)
     assert package.runtime_mode is ServiceRuntimeMode.MANAGED_PROCESS
