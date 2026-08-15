@@ -9,6 +9,12 @@ AI2Apps is an independent derivative project built on the open-source oMLX
 runtime. It is not affiliated with, sponsored by, or endorsed by the oMLX
 project or its maintainers.
 
+This product includes the FRP client from the fatedier/frp project:
+https://github.com/fatedier/frp
+Copyright 2015 fatedier
+FRP is distributed under the Apache License, Version 2.0. Its license and
+pinned binary provenance are included under ai2apps/remote/third_party/.
+
 Major AI2Apps modifications include scope-aware DeepSeek V4 expert banks,
 dynamic MoE cache policies, lossy expert replacement experiments, expert-store
 I/O, session-aware scope selection, observability, and product/API surfaces.

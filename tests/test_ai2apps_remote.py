@@ -17,7 +17,12 @@ from ai2apps.remote import (
     RemoteTokenError,
     verify_remote_token,
 )
-from ai2apps.remote.frpc import PINNED_FRP_CA_SHA256, RemoteFrpcConfig
+from ai2apps.remote import frpc as frpc_module
+from ai2apps.remote.frpc import (
+    PINNED_FRP_BINARY_SHA256,
+    PINNED_FRP_CA_SHA256,
+    RemoteFrpcConfig,
+)
 from ai2apps.secrets import MemorySecretBackend
 from ai2apps.storage import PlatformDatabase
 
@@ -162,6 +167,36 @@ def test_remote_frpc_config_uses_the_shipped_pinned_ca(tmp_path, monkeypatch):
     assert config is not None
     assert config.ca_file.name == "frp-ca-2026.pem"
     assert hashlib.sha256(config.ca_file.read_bytes()).hexdigest() == PINNED_FRP_CA_SHA256
+
+
+def test_bundled_frpc_binaries_match_pinned_digests_and_architectures():
+    binary_root = frpc_module.Path(frpc_module.__file__).with_name("bin")
+    expected_cpu_types = {
+        "darwin-arm64": 0x0100000C,
+        "darwin-x86_64": 0x01000007,
+    }
+
+    assert set(PINNED_FRP_BINARY_SHA256) == set(expected_cpu_types)
+    for platform_key, expected_digest in PINNED_FRP_BINARY_SHA256.items():
+        binary = binary_root / platform_key / "frpc"
+        content = binary.read_bytes()
+        assert hashlib.sha256(content).hexdigest() == expected_digest
+        assert content[:4] == b"\xcf\xfa\xed\xfe"
+        assert int.from_bytes(content[4:8], "little") == expected_cpu_types[platform_key]
+        assert binary.stat().st_mode & 0o100
+
+
+def test_bundled_frpc_discovery_fails_closed_on_digest_mismatch(monkeypatch):
+    platform_key = f"{frpc_module.platform.system().lower()}-{frpc_module.platform.machine().lower()}"
+    expected_digest = PINNED_FRP_BINARY_SHA256.get(platform_key)
+    if expected_digest is None:
+        pytest.skip("current platform has no bundled frpc")
+
+    monkeypatch.setitem(PINNED_FRP_BINARY_SHA256, platform_key, "0" * 64)
+    assert frpc_module._bundled_binary() is None
+
+    monkeypatch.setitem(PINNED_FRP_BINARY_SHA256, platform_key, expected_digest)
+    assert frpc_module._bundled_binary() is not None
 
 
 def test_remote_frpc_config_rejects_an_unpinned_ca(tmp_path, monkeypatch):
