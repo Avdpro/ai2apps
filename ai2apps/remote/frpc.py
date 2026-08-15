@@ -17,13 +17,24 @@ from .models import RemoteDeviceRecord
 
 PINNED_FRP_VERSION = "0.62.1"
 PINNED_FRP_CA_SHA256 = "2c460459daae289916e999a03baa3b4658fdfc0fb6a92243a002a601ad5017c0"
+PINNED_FRP_BINARY_SHA256 = {
+    "darwin-arm64": "49afde483f55927c3eeac9141cae82857cb2f15b9e9d55f4ac45378e761eabcc",
+    "darwin-x86_64": "5ce5258b6ff1a232e9eb8e29247a55badb127e7fc66b5a58c299b442aba2bcb2",
+}
 
 
 def _bundled_binary() -> Path | None:
     system = platform.system().lower()
     machine = platform.machine().lower()
-    candidate = Path(__file__).with_name("bin") / f"{system}-{machine}" / "frpc"
-    return candidate if candidate.is_file() else None
+    platform_key = f"{system}-{machine}"
+    expected_digest = PINNED_FRP_BINARY_SHA256.get(platform_key)
+    if expected_digest is None:
+        return None
+    candidate = Path(__file__).with_name("bin") / platform_key / "frpc"
+    if not candidate.is_file():
+        return None
+    actual_digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+    return candidate if actual_digest == expected_digest else None
 
 
 def _read_bootstrap_token(runtime_directory: Path) -> str:
@@ -73,7 +84,7 @@ class RemoteFrpcConfig:
         return "FRP runtime configuration is not installed"
 
     @classmethod
-    def from_environment(cls, runtime_directory: Path) -> "RemoteFrpcConfig | None":
+    def from_environment(cls, runtime_directory: Path) -> RemoteFrpcConfig | None:
         runtime_directory = runtime_directory.resolve()
         configured_binary = os.environ.get("AI2APPS_FRP_BINARY", "").strip()
         runtime_binary = runtime_directory / "bin" / "frpc"

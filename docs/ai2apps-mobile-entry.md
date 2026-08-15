@@ -416,7 +416,8 @@ Current implementation snapshot:
 - the authenticated desktop release packages the exact 2026 Remote Access CA
   (`SHA-256 2c460459daae289916e999a03baa3b4658fdfc0fb6a92243a002a601ad5017c0`)
   and rejects any replacement trust anchor;
-- the runtime automatically discovers a packaged frpc or the private
+- the macOS release packages pinned arm64 and x86_64 frpc binaries, verifies
+  their SHA-256 digests before use, and otherwise discovers the private
   `<base>/platform/remote/bin/frpc` installation, while the FRP bootstrap
   credential is supplied out of band as an environment secret or a mode-0600
   `<base>/platform/remote/bootstrap-token` file;
@@ -436,9 +437,9 @@ Formal integration smoke test — 2026-08-15:
 - production JWKS returned the expected Ed25519 `remote-mobile-v1` key;
 - the created public device origin reached the deployed edge and returned the
   expected offline response before frpc admission;
-- official macOS arm64 frpc 0.62.1 was verified against archive SHA-256
-  `f9fc616d994a87d790504da21c2f942cd4224637d9ade9a67482f3c23c7f2432`
-  and installed in the private runtime directory;
+- official macOS arm64 and amd64 frpc 0.62.1 archives were verified against
+  SHA-256 `f9fc616d994a87d790504da21c2f942cd4224637d9ade9a67482f3c23c7f2432`
+  and `f951a5aa727a4880f32753ba3c41ecc9dee38a63658760354011e71ea83db995`;
 - public tunnel, handoff exchange and phone Chat acceptance remain gated only
   by provisioning the deployment-owned FRP bootstrap credential. This secret
   is deliberately not returned by the account API or committed to source.

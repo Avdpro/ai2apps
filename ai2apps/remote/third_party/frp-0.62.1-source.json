@@ -1,0 +1,27 @@
+{
+  "name": "frp",
+  "version": "0.62.1",
+  "license": "Apache-2.0",
+  "source": "https://github.com/fatedier/frp/releases/tag/v0.62.1",
+  "checksum_source": "https://github.com/fatedier/frp/releases/download/v0.62.1/frp_sha256_checksums.txt",
+  "archives": {
+    "darwin-arm64": {
+      "name": "frp_0.62.1_darwin_arm64.tar.gz",
+      "sha256": "f9fc616d994a87d790504da21c2f942cd4224637d9ade9a67482f3c23c7f2432"
+    },
+    "darwin-x86_64": {
+      "name": "frp_0.62.1_darwin_amd64.tar.gz",
+      "sha256": "f951a5aa727a4880f32753ba3c41ecc9dee38a63658760354011e71ea83db995"
+    }
+  },
+  "binaries": {
+    "darwin-arm64": {
+      "path": "bin/darwin-arm64/frpc",
+      "sha256": "49afde483f55927c3eeac9141cae82857cb2f15b9e9d55f4ac45378e761eabcc"
+    },
+    "darwin-x86_64": {
+      "path": "bin/darwin-x86_64/frpc",
+      "sha256": "5ce5258b6ff1a232e9eb8e29247a55badb127e7fc66b5a58c299b442aba2bcb2"
+    }
+  }
+}

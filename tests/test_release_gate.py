@@ -6,8 +6,8 @@ from pathlib import Path
 
 from ai2apps.model_installer import CATALOG
 from ai2apps.release_gate import (
-    check_catalog,
     check_archives,
+    check_catalog,
     check_evidence,
     evidence_template,
     main,
@@ -75,6 +75,12 @@ def _write_test_wheel(path: Path, requirement: str) -> None:
         archive.writestr(
             "ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json", "{}"
         )
+        archive.writestr("ai2apps/remote/bin/darwin-arm64/frpc", "arm64")
+        archive.writestr("ai2apps/remote/bin/darwin-x86_64/frpc", "x86_64")
+        archive.writestr("ai2apps/remote/third_party/frp-LICENSE", "license")
+        archive.writestr(
+            "ai2apps/remote/third_party/frp-0.62.1-source.json", "{}"
+        )
         archive.writestr(
             "ai2apps-0.1.dist-info/METADATA",
             f"Metadata-Version: 2.4\nName: ai2apps\nVersion: 0.1\nRequires-Dist: {requirement}\n",
@@ -125,6 +131,10 @@ def test_sdist_gate_reads_top_level_metadata_when_egg_info_is_present(
         "ai2apps-0.1/ai2apps/model_installer.py": b"",
         "ai2apps-0.1/ai2apps/engines/deepseek_v4_flash/scope-pack.json": b"{}",
         "ai2apps-0.1/ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json": b"{}",
+        "ai2apps-0.1/ai2apps/remote/bin/darwin-arm64/frpc": b"arm64",
+        "ai2apps-0.1/ai2apps/remote/bin/darwin-x86_64/frpc": b"x86_64",
+        "ai2apps-0.1/ai2apps/remote/third_party/frp-LICENSE": b"license",
+        "ai2apps-0.1/ai2apps/remote/third_party/frp-0.62.1-source.json": b"{}",
     }
     with tarfile.open(sdist, "w:gz") as archive:
         for name, content in files.items():

@@ -12,9 +12,10 @@ import sys
 import tarfile
 import time
 import zipfile
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable
+from typing import Any
 
 from ai2apps._version import __version__
 from ai2apps.model_installer import CATALOG, AI2AppsInstaller
@@ -260,6 +261,10 @@ def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
             "ai2apps/model_installer.py",
             "ai2apps/engines/deepseek_v4_flash/scope-pack.json",
             "ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json",
+            "ai2apps/remote/bin/darwin-arm64/frpc",
+            "ai2apps/remote/bin/darwin-x86_64/frpc",
+            "ai2apps/remote/third_party/frp-LICENSE",
+            "ai2apps/remote/third_party/frp-0.62.1-source.json",
         )
         missing = [
             suffix

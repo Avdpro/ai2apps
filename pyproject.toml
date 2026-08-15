@@ -256,7 +256,12 @@ include = ["ai2apps*", "omlx*"]
 
 [tool.setuptools.package-data]
 "ai2apps" = ["engines/**/*.json"]
-"ai2apps.remote" = ["frpc-device.toml", "frp-ca-2026.pem", "bin/**/*"]
+"ai2apps.remote" = [
+    "frpc-device.toml",
+    "frp-ca-2026.pem",
+    "bin/**/*",
+    "third_party/*",
+]
 "ai2apps.browser" = ["readability.js"]
 "ai2apps.web" = [
     "templates/**/*.html",
