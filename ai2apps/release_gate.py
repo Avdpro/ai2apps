@@ -13,7 +13,7 @@ import tarfile
 import time
 import zipfile
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from ai2apps._version import __version__
@@ -225,13 +225,24 @@ def _archive_core_metadata(path: Path) -> str:
                 raise ValueError(f"expected one METADATA file, found {len(members)}")
             return archive.read(members[0]).decode("utf-8")
     with tarfile.open(path) as archive:
-        members = [
+        candidates = [
             member
             for member in archive.getmembers()
             if member.name.endswith("/PKG-INFO")
         ]
+        minimum_depth = min(
+            (len(PurePosixPath(member.name).parts) for member in candidates),
+            default=0,
+        )
+        members = [
+            member
+            for member in candidates
+            if len(PurePosixPath(member.name).parts) == minimum_depth
+        ]
         if len(members) != 1:
-            raise ValueError(f"expected one PKG-INFO file, found {len(members)}")
+            raise ValueError(
+                f"expected one top-level PKG-INFO file, found {len(members)}"
+            )
         stream = archive.extractfile(members[0])
         if stream is None:
             raise ValueError("PKG-INFO is not readable")
@@ -255,10 +266,25 @@ def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
             for suffix in required_suffixes
             if not any(name.endswith(suffix) for name in names)
         ]
+        forbidden_names = {
+            "vault.key",
+            "vault.aesgcm",
+        }
+        forbidden_suffixes = (
+            ".private.pem",
+            ".sqlite",
+            ".sqlite3",
+            ".sqlite3-shm",
+            ".sqlite3-wal",
+        )
         leaked = [
             name
             for name in names
-            if "/artifacts/" in f"/{name}" or "/expert-store/" in f"/{name}"
+            if "/artifacts/" in f"/{name}"
+            or "/expert-store/" in f"/{name}"
+            or "/output/" in f"/{name}"
+            or PurePosixPath(name).name in forbidden_names
+            or PurePosixPath(name).name.endswith(forbidden_suffixes)
         ]
         _check(
             checks,

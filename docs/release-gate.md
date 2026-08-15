@@ -14,8 +14,8 @@ Run the source/package checks before building a release:
 ai2apps-release-gate \
   --mode preflight \
   --run-tests \
-  --archive dist/ai2apps-0.1.0.dev1-py3-none-any.whl \
-  --archive dist/ai2apps-0.1.0.dev1.tar.gz \
+  --archive dist/ai2apps-0.1.0.dev2-py3-none-any.whl \
+  --archive dist/ai2apps-0.1.0.dev2.tar.gz \
   --json artifacts/release-gate/preflight.json \
   --markdown artifacts/release-gate/preflight.md
 ```

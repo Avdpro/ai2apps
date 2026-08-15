@@ -89,6 +89,8 @@ dependencies = [
     # Already a transitive dep via huggingface-hub; pinned direct so
     # omlx.admin.external_api can import it unconditionally at module top.
     "httpx>=0.27.0,<1",
+    # Portable encrypted Secret Vault for headless Linux/Windows deployments.
+    "cryptography>=42.0.0",
     # SOCKS proxy support (used by httpx via huggingface-hub)
     "socksio>=1.0.0",
     "tabulate>=0.9.0",
@@ -99,6 +101,9 @@ dependencies = [
     # Server
     "fastapi>=0.108.0",
     "uvicorn>=0.23.0",
+    # Uvicorn's base install has no WebSocket protocol implementation. The
+    # Terminal App streams PTY traffic over WebSocket, so keep one explicit.
+    "websockets>=14.0,<16",
     # python-multipart is needed by audio_routes.py (File/Form uploads), which
     # server.py unconditionally imports regardless of the [audio] extra.
     "python-multipart>=0.0.5",
@@ -113,13 +118,28 @@ dependencies = [
     # omlx.patches.mlx_vlm_minimax_m3_compat because upstream removed it.
     "mlx-vlm==0.6.3",
     "Pillow>=9.0.0",
+    # Render short-lived Remote Access pairing links as SVG QR codes.
+    "qrcode==8.2",
     # DFlash remains a source-development capability until its reviewed fork
     # has an index release. The server already treats it as optional; the
     # three AI2Apps release engines do not import it.
     "markitdown[pdf,docx,pptx]==0.1.6",
+    # Canonical reader HTML is converted to model-friendly Markdown by the
+    # managed-browser article tool. Declare this directly rather than relying
+    # on markitdown's transitive dependency.
+    "markdownify>=1.2.3,<2",
+    "openpyxl>=3.1.2,<4",
+    "reportlab>=4.2.0,<5",
+    "pypdf>=5.0.0,<7",
 ]
 
 [project.optional-dependencies]
+browser = [
+    # Selenium Manager resolves the ChromeDriver matching the installed Chrome.
+    # websocket-client is included by Selenium and carries the event-only BiDi
+    # connection used by the managed-browser runtime.
+    "selenium>=4.35.0,<5",
+]
 grammar = [
     # Grammar-constrained decoding for structured output (requires torch ~2GB)
     # Keep this native pair aligned with omlx/_torch_stub.py and the DMG
@@ -165,6 +185,7 @@ paroquant = [
 bundle = [
     "mcp>=1.5.0",
     "modelscope>=1.10.0",
+    "selenium>=4.35.0,<5",
     # mlx-audio[tts,stt,sts] transitives:
     "scipy>=1.11.0",
     "librosa>=0.10.0",
@@ -235,11 +256,17 @@ include = ["ai2apps*", "omlx*"]
 
 [tool.setuptools.package-data]
 "ai2apps" = ["engines/**/*.json"]
-"omlx" = ["oq_calibration_data.json", "oqe_calibration_data.json"]
-"omlx.admin" = [
+"ai2apps.remote" = ["frpc-device.toml", "frp-ca-2026.pem", "bin/**/*"]
+"ai2apps.browser" = ["readability.js"]
+"ai2apps.web" = [
     "templates/**/*.html",
     "static/**/*",
     "i18n/*.json",
+    "src/*.css",
+    "tailwind.config.js",
+]
+"omlx" = ["oq_calibration_data.json", "oqe_calibration_data.json"]
+"omlx.admin" = [
     "bench_corpora/*",
 ]
 "omlx.eval" = ["data/*.jsonl"]

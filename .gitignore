@@ -82,11 +82,21 @@ venv.bak/
 
 # Local models and benchmark artifacts (never publish)
 /artifacts/
+/output/
 *.bin
 *.safetensors
 *.gguf
 *.ggml
 *.moe
+
+# Runtime databases and secret material (never commit or publish)
+*.sqlite
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+vault.key
+vault.aesgcm
+*.private.pem
 
 # Logs
 *.log
@@ -113,7 +123,7 @@ omlx/_engine_commits.json
 omlx/_build_info.py
 
 # Tailwind CSS standalone CLI binary (download on demand via build_css.py)
-omlx/admin/tailwindcss-*
+ai2apps/web/tailwindcss-*
 
 # Git worktrees
 .worktrees/

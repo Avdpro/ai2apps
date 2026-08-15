@@ -60,7 +60,7 @@ def test_ai2apps_environment_overrides_legacy_product_value(monkeypatch) -> None
 
 
 def test_ai2apps_svg_assets_are_valid() -> None:
-    static = Path("omlx/admin/static")
+    static = Path("ai2apps/web/static")
     for name in (
         "favicon.svg",
         "logo-light.svg",
@@ -73,15 +73,19 @@ def test_ai2apps_svg_assets_are_valid() -> None:
 
 
 def test_chat_exposes_engine_boost_modes() -> None:
-    html = Path("omlx/admin/templates/chat.html").read_text()
+    html = Path("ai2apps/web/templates/chat.html").read_text()
     pool = Path("omlx/engine_pool.py").read_text()
     routes = Path("omlx/admin/routes.py").read_text()
     assert "ENGINE BOOST" in html
     assert 'value="natural">Natural · Full fidelity' in html
-    assert 'value="turbo">Turbo · Tail2' in html
+    assert 'value="auto">Auto · 2K Turbo / 10K Blast' in html
+    assert 'value="turbo">Turbo · Head3 Prefill' in html
     assert 'value="blast">Blast · Head2' in html
     assert "/v1/ai2apps/engine/boost" in html
     assert "ai2apps_engine_boost" in html
+    assert "KV CONTINUITY" in html
+    assert "ai2apps_kv_policy" in html
+    assert 'value="session">Continuous · Same session' in html
     assert "SSD PRESSURE · 10 TOK" in html
     assert "currentSsdPressure" in html
     assert "currentSsdSwapColor" in html
