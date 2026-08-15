@@ -90,6 +90,9 @@ EXCLUDED_FROM_PROFILES = frozenset(
         "ttl_seconds",
         # Security flag must be explicit per model — never propagated via profiles.
         "trust_remote_code",
+        # Request/session continuity policy is selected by the serving path and
+        # must not leak between saved generation profiles.
+        "kv_cache_policy",
     }
 )
 

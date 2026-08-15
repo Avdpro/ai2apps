@@ -189,7 +189,7 @@ def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
         "ai2apps.general-chat",
         "ai2apps.trust-center",
     }
-    assert catalog["ai2apps.general-chat"]["entry_source"] == "entry"
+    assert catalog["ai2apps.general-chat"]["entry_source"] == "mobile_entry"
     assert catalog["ai2apps.general-chat"]["mobile_renderer"] == "host"
     assert "ai2apps.terminal" not in catalog
     assert "ai2apps.coder" not in catalog

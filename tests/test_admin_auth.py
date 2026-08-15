@@ -196,7 +196,7 @@ class TestChatPageApiKeyInjection:
                 mock_templates.TemplateResponse.assert_called_once_with(
                     mock_request,
                     "chat.html",
-                    {"api_key": "test-chat-key"},
+                    {"api_key": "test-chat-key", "terminal_assistant": False},
                 )
         finally:
             _restore_getter(original)

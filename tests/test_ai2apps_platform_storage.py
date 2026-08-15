@@ -107,6 +107,7 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "attachments",
         "document_blocks",
         "secret_records",
+        "remote_client_devices",
     }
     assert [(row[0], row[1]) for row in ledger] == [
         (1, "platform_bootstrap"),
@@ -130,6 +131,7 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (19, "durable_attachments_and_documents"),
         (20, "keychain_secret_metadata"),
         (21, "mobile_app_mounts"),
+        (22, "remote_client_devices"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -453,9 +455,15 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
         assert response.json()["database"]["status"] == "ready"
         assert {item["service_key"] for item in services.json()["items"]} == {
             "ai2apps.diagnostics",
+            "ai2apps.documents",
+            "ai2apps.images",
             "ai2apps.mcp",
             "ai2apps.model-runtime",
             "ai2apps.process",
+            "ai2apps.agent-runtime",
+            "ai2apps.browser",
+            "ai2apps.terminal",
+            "ai2apps.web-research",
             "ai2apps.workspace",
         }
         assert echo.json()["output"] == {"value": "lifespan-ready"}

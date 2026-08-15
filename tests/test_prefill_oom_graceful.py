@@ -656,6 +656,8 @@ def test_step_prefill_reclaims_before_first_guard():
         model=lambda *args, **kwargs: events.append("model"),
         _adaptive_chunk_size=lambda n, **kwargs: events.append("adaptive") or n,
         _guard_prefill_chunk=lambda n, **kwargs: events.append("guard") or n,
+        _record_prefill_chunk=MagicMock(),
+        _notify_prefill_chunk=MagicMock(),
         _record_chunk_transient=MagicMock(),
         _maybe_record_fixed_state_bytes=MagicMock(),
     )
