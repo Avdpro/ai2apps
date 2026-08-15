@@ -264,6 +264,50 @@ class TestBlockAwarePrefixCache:
         finally:
             restarted_ssd_manager.close()
 
+    def test_exact_prefix_isolated_by_runtime_namespace(self, tmp_path):
+        """Exact turn boundaries must not cross session/L1 namespaces."""
+        import mlx.core as mx
+
+        prefix_cache, _, ssd_manager = self._make_ssd_prefix_cache(
+            tmp_path / "exact-prefix-namespace"
+        )
+        tokens = list(range(7))
+        keys = mx.arange(7, dtype=mx.float32).reshape(1, 1, 7, 1)
+        extracted_cache = [
+            {
+                "state": (keys, keys + 1),
+                "meta_state": (7,),
+                "class_name": "KVCache",
+                "cache_type": "KVCache",
+            }
+        ]
+
+        try:
+            stored = prefix_cache.store_exact_prefix(
+                "session-a-store",
+                tokens,
+                extracted_cache,
+                extra_keys=("session-a", "l1-bank-1"),
+            )
+            assert stored is not None
+            assert (
+                prefix_cache.fetch_exact_prefix(
+                    "session-b-fetch",
+                    tokens,
+                    extra_keys=("session-b", "l1-bank-1"),
+                )
+                is None
+            )
+            restored = prefix_cache.restore_exact_prefix(
+                "session-a-fetch",
+                tokens,
+                promote_to_hot_cache=False,
+                extra_keys=("session-a", "l1-bank-1"),
+            )
+            assert restored is not None
+        finally:
+            ssd_manager.close()
+
     def test_aligned_exact_prefix_does_not_reuse_placeholder_terminal(self, tmp_path):
         """An aligned static tip must not collide with an ordinary chain block."""
         import mlx.core as mx

@@ -311,34 +311,74 @@ class ChatCompletionRequest(BaseModel):
     # AI2Apps extension: stable logical conversation ownership for adaptive L1.
     # Ignored by engines that do not implement a session-owned expert cache.
     ai2apps_session_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    # AI2Apps Cloud logical request identity. The local gateway forwards this
+    # value only to AI2Apps Cloud; local/provider-direct requests ignore it.
+    ai2apps_idempotency_key: Optional[str] = Field(
+        default=None, min_length=8, max_length=160
+    )
     # AI2Apps extension: per-Session adaptive L1 policy. ``trigger`` is an
     # action exposed by /v1/ai2apps/l1/optimize, not a request mode.
     ai2apps_l1_mode: Optional[str] = None
     # AI2Apps extension: per-request routed-expert acceleration policy.
-    # natural=exact, turbo=tail2, blast=head2.
+    # auto selects a Prefill policy by context length and returns Decode to
+    # exact; natural=exact, turbo=Head3 Prefill/Tail2 Decode, blast=head2.
     ai2apps_engine_boost: Optional[str] = None
+    # Prefix-KV continuity: strict uses canonical visible history, session
+    # retains full KV for this process, persistent also permits SSD reuse after
+    # a server restart. Non-strict modes require ai2apps_session_id.
+    ai2apps_kv_policy: Optional[str] = None
     # AI2Apps Fusion stream capability negotiation.
     ai2apps_stream_mode: Optional[str] = None
+    # Per-request Fusion review overrides. None inherits the saved profile.
+    ai2apps_fusion_gate_policy: Optional[str] = None
+    ai2apps_fusion_mid_generation_review: Optional[bool] = None
+    ai2apps_fusion_thinking_audit: Optional[bool] = None
+    ai2apps_fusion_reviewer_guidance: Optional[str] = None
+    ai2apps_fusion_checkpoint_tokens: Optional[int] = Field(default=None, ge=1)
+    ai2apps_fusion_generator_l1_mode: Optional[str] = None
+    ai2apps_fusion_generator_engine_boost: Optional[str] = None
+    ai2apps_fusion_reviewer_l1_mode: Optional[str] = None
+    ai2apps_fusion_reviewer_engine_boost: Optional[str] = None
     # Read-only compatibility fields for pre-rename local clients. New API
     # responses and documentation expose only the AI2Apps names.
     dynamoe_session_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
     dynamoe_l1_mode: Optional[str] = None
     dynamoe_engine_boost: Optional[str] = None
+    dynamoe_kv_policy: Optional[str] = None
     dynamoe_stream_mode: Optional[str] = None
 
-    @field_validator("ai2apps_l1_mode", "dynamoe_l1_mode")
+    @field_validator(
+        "ai2apps_l1_mode",
+        "dynamoe_l1_mode",
+        "ai2apps_fusion_generator_l1_mode",
+        "ai2apps_fusion_reviewer_l1_mode",
+    )
     @classmethod
     def validate_ai2apps_l1_mode(cls, value):
         if value is not None and value not in ("auto", "off"):
             raise ValueError("ai2apps_l1_mode must be auto or off")
         return value
 
-    @field_validator("ai2apps_engine_boost", "dynamoe_engine_boost")
+    @field_validator(
+        "ai2apps_engine_boost",
+        "dynamoe_engine_boost",
+        "ai2apps_fusion_generator_engine_boost",
+        "ai2apps_fusion_reviewer_engine_boost",
+    )
     @classmethod
     def validate_ai2apps_engine_boost(cls, value):
-        if value is not None and value not in ("natural", "turbo", "blast"):
+        if value is not None and value not in ("auto", "natural", "turbo", "blast"):
             raise ValueError(
-                "ai2apps_engine_boost must be natural, turbo, or blast"
+                "ai2apps_engine_boost must be auto, natural, turbo, or blast"
+            )
+        return value
+
+    @field_validator("ai2apps_kv_policy", "dynamoe_kv_policy")
+    @classmethod
+    def validate_ai2apps_kv_policy(cls, value):
+        if value is not None and value not in ("strict", "session", "persistent"):
+            raise ValueError(
+                "ai2apps_kv_policy must be strict, session, or persistent"
             )
         return value
 
@@ -347,6 +387,22 @@ class ChatCompletionRequest(BaseModel):
     def validate_ai2apps_stream_mode(cls, value):
         if value is not None and value not in ("draft", "reasoning", "final"):
             raise ValueError("ai2apps_stream_mode must be draft, reasoning, or final")
+        return value
+
+    @field_validator("ai2apps_fusion_gate_policy")
+    @classmethod
+    def validate_ai2apps_fusion_gate_policy(cls, value):
+        if value is not None and value not in ("off", "always", "adaptive"):
+            raise ValueError("ai2apps_fusion_gate_policy must be off, always, or adaptive")
+        return value
+
+    @field_validator("ai2apps_fusion_reviewer_guidance")
+    @classmethod
+    def validate_ai2apps_fusion_reviewer_guidance(cls, value):
+        if value is not None and value not in ("off", "reasoning_handoff"):
+            raise ValueError(
+                "ai2apps_fusion_reviewer_guidance must be off or reasoning_handoff"
+            )
         return value
 
     @field_validator("stop", mode="before")
@@ -375,9 +431,26 @@ class AI2AppsEngineBoostRequest(BaseModel):
     @field_validator("mode")
     @classmethod
     def validate_mode(cls, value):
-        if value not in ("natural", "turbo", "blast"):
-            raise ValueError("mode must be natural, turbo, or blast")
+        if value not in ("auto", "natural", "turbo", "blast"):
+            raise ValueError("mode must be auto, natural, turbo, or blast")
         return value
+
+
+class AI2AppsFusionSkipReviewRequest(BaseModel):
+    """Skip the reviewer for one currently running Fusion session."""
+
+    model: str
+    session_id: str = Field(min_length=1, max_length=128)
+
+
+class AI2AppsExternalReviewRequest(BaseModel):
+    """Explicitly review one completed Fusion answer with a cloud model."""
+
+    fusion_model: str
+    external_model: str
+    session_id: str = Field(min_length=1, max_length=128)
+    messages: List[Dict[str, Any]]
+    draft: str = Field(min_length=1)
 
 
 # Import compatibility for integrations built against development checkouts.

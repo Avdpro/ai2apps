@@ -17,6 +17,7 @@ from omlx.patches.qwen3_6_flesh.model_patch import (
 from omlx.patches.qwen3_6_flesh.boost import (
     Qwen36BoostController,
     qwen36_lossy_policy,
+    resolve_qwen36_prefill_boost,
 )
 from omlx.patches.qwen3_6_flesh.arena_cache import Qwen36DecodeArena
 from omlx.patches.qwen3_6_flesh.tiered_cache import Qwen36TieredCache
@@ -268,6 +269,109 @@ def test_qwen_boost_live_change_is_applied_at_next_decode_boundary():
     controller.between_step()
     assert controller.mode == "blast"
     assert all(block.scope_lossy_policy.replace_count == 6 for block in blocks)
+
+
+def test_qwen_prefill_auto_boost_thresholds():
+    assert resolve_qwen36_prefill_boost("auto", 2048) == "natural"
+    assert resolve_qwen36_prefill_boost("auto", 2049) == "turbo"
+    assert resolve_qwen36_prefill_boost("auto", 10 * 1024) == "turbo"
+    assert resolve_qwen36_prefill_boost("auto", 10 * 1024 + 1) == "blast"
+    assert resolve_qwen36_prefill_boost("natural", 50_000) == "natural"
+
+
+@pytest.mark.asyncio
+async def test_qwen_controller_applies_effective_auto_prefill_mode():
+    block = SimpleNamespace(scope_lossy_policy=None)
+    owner = SimpleNamespace(
+        _engine=SimpleNamespace(engine=SimpleNamespace(_mlx_executor=None)),
+        _model=SimpleNamespace(
+            language_model=SimpleNamespace(
+                model=SimpleNamespace(layers=[SimpleNamespace(mlp=block)])
+            )
+        ),
+    )
+    controller = Qwen36BoostController(owner)
+    kwargs = {
+        "flesh_session_id": "long-prompt",
+        "flesh_prefill_boost_mode": "auto",
+        "flesh_decode_boost_mode": "natural",
+    }
+
+    _, effective = await controller.prepare(kwargs, context_tokens=10 * 1024 + 1)
+
+    assert effective == "blast"
+    assert controller.mode == "blast"
+    controller.complete_prefill()
+    assert controller.mode == "natural"
+
+
+@pytest.mark.asyncio
+async def test_qwen_boost_splits_prefill_and_decode_modes():
+    blocks = [SimpleNamespace(scope_lossy_policy=None) for _ in range(2)]
+    owner = SimpleNamespace(
+        _engine=SimpleNamespace(engine=SimpleNamespace(_mlx_executor=None)),
+        _model=SimpleNamespace(
+            language_model=SimpleNamespace(
+                model=SimpleNamespace(
+                    layers=[SimpleNamespace(mlp=block) for block in blocks]
+                )
+            )
+        ),
+        has_active_requests=lambda: False,
+    )
+    controller = Qwen36BoostController(owner)
+    kwargs = {
+        "flesh_session_id": "fusion-generator",
+        "flesh_prefill_boost_mode": "blast",
+        "flesh_decode_boost_mode": "natural",
+    }
+
+    session_id, prefill_mode = await controller.prepare(kwargs)
+
+    assert session_id == "fusion-generator"
+    assert prefill_mode == "blast"
+    assert controller.mode == "blast"
+    assert controller.modes[session_id] == "natural"
+    controller.complete_prefill()
+    assert controller.mode == "natural"
+    assert all(block.scope_lossy_policy is None for block in blocks)
+    assert controller.stats()["prefill_boost_supported"] is True
+
+
+def test_qwen_prefill_boost_replaces_routes_for_each_prompt_token():
+    inds = mx.array(
+        [[
+            [0, 1, 100, 101, 102, 103, 104, 105],
+            [2, 3, 110, 111, 112, 113, 114, 115],
+        ]],
+        dtype=mx.int32,
+    )
+    scores = mx.array(
+        [[
+            [0.30, 0.25, 0.14, 0.11, 0.08, 0.06, 0.04, 0.02],
+            [0.29, 0.24, 0.15, 0.12, 0.08, 0.06, 0.04, 0.02],
+        ]],
+        dtype=mx.float32,
+    )
+    router = mx.zeros((1, 2, 256), dtype=mx.float32)
+    candidate_ids = mx.arange(8, 20, dtype=mx.int32)
+    router[..., candidate_ids] = mx.arange(12, 0, -1, dtype=mx.float32)
+    available = mx.zeros((256,), dtype=mx.bool_)
+    available[mx.array([0, 1, 2, 3, *range(8, 20)], dtype=mx.int32)] = True
+
+    output, counters = _lossy_replace_routes(
+        inds, scores, router, available, qwen36_lossy_policy("blast")
+    )
+    mx.eval(output, *counters)
+
+    assert output.shape == inds.shape
+    assert int(counters[0].item()) == 12
+    assert tuple(int(value) for value in output[0, 0, :2].tolist()) == (0, 1)
+    assert tuple(int(value) for value in output[0, 1, :2].tolist()) == (2, 3)
+    assert all(
+        8 <= int(value) < 20
+        for value in output[..., 2:].reshape(-1).tolist()
+    )
 
 
 def test_dual_prefill_backend_never_captures_single_token_decode(

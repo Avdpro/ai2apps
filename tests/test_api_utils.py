@@ -610,6 +610,12 @@ class TestExtractTextContentNativeReasoningContent:
 
 
 class TestUsesNativeReasoningContent:
+    def test_detects_deepseek_v4_by_config_type(self):
+        assert uses_native_reasoning_content(
+            "any-name",
+            config_model_type="deepseek_v4",
+        )
+
     def test_detects_minimax_m3_by_config_type(self):
         assert uses_native_reasoning_content(
             "any-name",

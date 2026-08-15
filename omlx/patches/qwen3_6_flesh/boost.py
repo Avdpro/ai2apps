@@ -1,4 +1,4 @@
-"""Session-safe lossy Decode policies for Qwen3.6 Cache-MoE engines."""
+"""Session-safe lossy Prefill and Decode policies for Qwen3.6 Cache-MoE."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ BOOST_TO_LOSSY = {
     "tail3": "tail3",
     "head3": "head3",
 }
+PREFILL_AUTO_TURBO_TOKENS = 2048
+PREFILL_AUTO_BLAST_TOKENS = 10 * 1024
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,19 @@ def normalize_qwen36_boost(mode: str | None) -> str:
             "Qwen3.6 Engine Boost must be natural, turbo, blast, tail3, or head3"
         )
     return value
+
+
+def resolve_qwen36_prefill_boost(mode: str | None, context_tokens: int) -> str:
+    """Resolve Prefill Auto using the shared AI2Apps context bands."""
+
+    value = str(mode or "natural").strip().lower()
+    if value != "auto":
+        return normalize_qwen36_boost(value)
+    if context_tokens > PREFILL_AUTO_BLAST_TOKENS:
+        return "blast"
+    if context_tokens > PREFILL_AUTO_TURBO_TOKENS:
+        return "turbo"
+    return "natural"
 
 
 def qwen36_lossy_policy(mode: str) -> Qwen36LossyPolicy | None:
@@ -60,6 +75,7 @@ class Qwen36BoostController:
         self.session_id: str | None = None
         self.modes: dict[str, str] = {}
         self.pending: dict[str, str] = {}
+        self.decode_pending: dict[str, str] = {}
         self.switches = 0
         self._lock = threading.Lock()
 
@@ -76,26 +92,57 @@ class Qwen36BoostController:
         self.modes[session_id] = mode
         return changed
 
-    async def prepare(self, kwargs: dict[str, Any]) -> tuple[str, str]:
+    async def prepare(
+        self, kwargs: dict[str, Any], *, context_tokens: int = 0
+    ) -> tuple[str, str]:
         session_id = str(kwargs.get("flesh_session_id", "default"))
-        requested = kwargs.pop("flesh_boost_mode", None)
-        mode = normalize_qwen36_boost(
-            requested if requested is not None else self.modes.get(
+        legacy_requested = kwargs.pop("flesh_boost_mode", None)
+        prefill_requested = kwargs.pop(
+            "flesh_prefill_boost_mode", legacy_requested
+        )
+        decode_requested = kwargs.pop(
+            "flesh_decode_boost_mode", legacy_requested
+        )
+        prefill_mode = resolve_qwen36_prefill_boost(
+            prefill_requested if prefill_requested is not None else self.modes.get(
+                session_id, self.default_mode
+            ),
+            context_tokens,
+        )
+        decode_mode = normalize_qwen36_boost(
+            decode_requested if decode_requested is not None else self.modes.get(
                 session_id, self.default_mode
             )
         )
         with self._lock:
-            mode = self.pending.pop(session_id, mode)
+            decode_mode = self.pending.pop(session_id, decode_mode)
+            if prefill_mode != decode_mode:
+                self.decode_pending[session_id] = decode_mode
+            else:
+                self.decode_pending.pop(session_id, None)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             self.owner._engine.engine._mlx_executor,
             self._apply,
             session_id,
-            mode,
+            prefill_mode,
         )
-        return session_id, mode
+        # _apply records the active phase; keep the session preference pointed
+        # at Decode so the next request inherits the durable policy.
+        self.modes[session_id] = decode_mode
+        return session_id, prefill_mode
+
+    def complete_prefill(self) -> None:
+        session_id = self.session_id
+        if session_id is None:
+            return
+        with self._lock:
+            mode = self.decode_pending.pop(session_id, None)
+        if mode is not None:
+            self._apply(session_id, mode)
 
     def between_step(self) -> None:
+        self.complete_prefill()
         session_id = self.session_id
         if session_id is None:
             return
@@ -140,6 +187,7 @@ class Qwen36BoostController:
                 after += int(counters["misses_after"])
         return {
             "available": True,
+            "prefill_boost_supported": True,
             "mode": self.mode,
             "lossy_mode": BOOST_TO_LOSSY[self.mode],
             "session_id": self.session_id,
@@ -159,4 +207,5 @@ __all__ = [
     "Qwen36LossyPolicy",
     "normalize_qwen36_boost",
     "qwen36_lossy_policy",
+    "resolve_qwen36_prefill_boost",
 ]

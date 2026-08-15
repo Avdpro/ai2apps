@@ -2,7 +2,6 @@
 """Tests for PrefillProgressTracker."""
 
 import threading
-import time
 from unittest.mock import patch
 
 from omlx.prefill_progress import PrefillProgressTracker
@@ -19,6 +18,16 @@ class TestPrefillProgressTracker:
         assert result[0]["request_id"] == "req-1"
         assert result[0]["processed"] == 2048
         assert result[0]["total"] == 8192
+
+    def test_get_request_progress_crosses_model_boundary(self):
+        self.tracker.update("review-1", 1024, 4096, "reviewer-model")
+
+        result = self.tracker.get_request_progress("review-1")
+
+        assert result is not None
+        assert result["model_id"] == "reviewer-model"
+        assert result["processed"] == 1024
+        assert self.tracker.get_request_progress("missing") is None
 
     def test_auto_remove_on_complete(self):
         self.tracker.update("req-1", 2048, 8192, "llama-3b")

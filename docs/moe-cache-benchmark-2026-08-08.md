@@ -793,3 +793,142 @@ recorded architecture and re-entry gates.
   5 failures (289 passed, 1 skipped). They are in ring GEMM/sparse-attention
   tests and do not touch the MoE files changed here; the printed BF16 values
   match at normal display precision but fail bitwise equality.
+## DeepSeek V4 bounded Prefill miss banks (2026-08-12)
+
+Source commit: `394363a0` plus the local `experiment/moe-cache` changes under
+test.  The server was restarted between variants and only
+`CachedMOE-DSV4F` was loaded.  Both turns used the same session; turn one
+generated 520 tokens to seed a 512-token reusable prefix and turn two added
+559 prompt tokens with one generated token.  Every variant produced the same
+deterministic turn-one SHA-256 output hash:
+`53ce1cedececd9bc1328b2294d8d4205434a5ec97227539be1bc781cb4da080b`.
+
+Command (change the environment value before starting the server):
+
+```bash
+OMLX_DEEPSEEK_V4_PREFILL_MISS_BANK_EXPERTS=64 ai2apps-server
+.venv/bin/python scripts/bench_prefill_kvc_api.py \
+  --model CachedMOE-DSV4F \
+  --max-tokens 520 \
+  --second-max-tokens 1 \
+  --policies session \
+  --output /tmp/prefill-bank64-overlap.json
+```
+
+| Prefill miss bank | Resident-hit/SSD overlap | Reported TPS | Effective new-token TPS | TTFT | Observed physical start | Observed peak | Observed delta |
+|---:|:---:|---:|---:|---:|---:|---:|---:|
+| 256 (monolithic control) | No | 73.13 | 41.55 | 14.65 s | 54.33 GiB | 101.51 GiB | 47.18 GiB |
+| 64 | No | 79.74 | 45.31 | 13.44 s | 54.34 GiB | 74.53 GiB | 20.20 GiB |
+| 32 | No | 74.57 | 42.08 | 14.37 s | 54.33 GiB | 64.97 GiB | 10.65 GiB |
+| 64 | Yes | 93.78 | 56.43 | 11.42 s | 54.33 GiB | 74.52 GiB | 20.19 GiB |
+
+The initial selected 64-expert default reduced the observed Prefill transient
+peak by about 27 GiB versus the monolithic request and, with resident-hit work
+submitted before CPU/SSD miss loading, raised reported Prefill throughput by
+28.2%.  The later long-context memory gate below supersedes that selection:
+the balanced product default is now 16 experts for every L1 memory tier.  The
+environment setting remains an explicit 1--256 override for controlled or
+high-memory deployments.
+
+## DeepSeek V4 Prefill Adaptive L1 experiment (2026-08-12)
+
+The experimental path is gated by
+`OMLX_DEEPSEEK_V4_PREFILL_ADAPTIVE_L1=1` and also requires the existing
+`OMLX_DEEPSEEK_V4_ADAPTIVE_L1=1` switch plus request mode `auto`. It records
+route histograms on GPU during Prefill, reads one 40 x 257-int window only at
+an existing chunk boundary, and reuses the Session Adaptive-L1 patch backend.
+It remains off by default.
+
+An approximately 1.8k-token documentation prompt produced four reviews. The
+measured L1 miss-route rate was 55.0% to 71.2%, but the estimated savings over
+the remaining chunks fell from 0.627 seconds to 0.208 seconds, versus an
+estimated 2.0-second 20-layer patch cost. All four reviews correctly declined
+to update L1. The run reported 43.49 effective new-prompt tokens/s and a
+21.44-GiB observed physical-memory delta; its deterministic output hash matched
+the disabled run. This is not enough evidence to enable the policy by default:
+a longer matched-prompt gate must demonstrate an actual update and a positive
+end-to-end result after including both telemetry and patch cost.
+
+Useful tuning controls are:
+
+```text
+OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_PROMPT=1024
+OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_REMAINING=512
+OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_MISS_RATE=0.20
+OMLX_DEEPSEEK_V4_PREFILL_L1_MAX_PER_LAYER=8
+OMLX_DEEPSEEK_V4_PREFILL_L1_MAX_LAYERS=20
+OMLX_DEEPSEEK_V4_PREFILL_L1_PAYBACK_RATIO=1.25
+```
+
+### Long-context balanced-memory gate
+
+The real WebUI ``3D tornado`` follow-up was replayed with 13,676 prompt tokens,
+the 16-expert miss bank, resident-hit/SSD overlap, and Prefill Adaptive L1.  A
+180-second time box reached 8,192 processed prompt tokens.  After the first
+512-token review, steady progress was approximately 54.9 tok/s (about 2.5%
+below the earlier 64-bank steady interval), while 5-second process samples ranged
+from 52.01 to 58.44 GiB around the normal roughly 55-GiB resident footprint.
+This keeps the practical transient peak within the requested approximately
+5-GiB budget instead of the approximately 15-GiB spike seen with 64 slots.
+
+The revised Prefill L1 cadence made four reviews and only two commits: an
+initial 160-slot/20-layer patch at token 512 (0.163 seconds), then one
+40-slot/10-layer patch at token 6,656 (0.076 seconds).  Reviews at tokens 2,560
+and 4,608 were rejected.  This replaces the former 512-token unconditional
+review cadence, which committed 23 times during the comparable long replay.
+Artifact: ``/tmp/tornado-prefill-bank16-cadence-180s.json``.
+
+### Coarse DS4 KV checkpoints
+
+Production paged prefix caching originally aligned DeepSeek V4's 128-token
+rotating window to a 512-token block.  External Prefill clamps every forward
+to the next cache boundary, so this silently replaced the model's planned
+5,120-token chunks with 512-token forwards and rebuilt all 40 routed-layer
+transient banks at every boundary.
+
+``OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS`` now controls a DS4-only coarse
+checkpoint.  It accepts a 512--5120 multiple of the rotating window, or
+``off`` for the generic 512-token policy.  The balanced default is 768.
+Other model families retain their existing block-size selection.
+
+The same real 13,676-token tornado replay, exact 16-expert miss banks, paged
+SSD KV cache, and Prefill Adaptive L1 produced:
+
+| KV checkpoint | Progress / elapsed | Steady interval | Sampled peak | Approx. delta from 55 GiB |
+|---:|---:|---:|---:|---:|
+| 512 | 8,192 / 180 s | 54.9 tok/s | 58.44 GiB | +3.4 GiB |
+| 768 | 11,520 / 180 s | ~72 tok/s | 60.44 GiB | +5.4 GiB |
+| 1,024 | 13,676 / 169.4 s | ~91 tok/s | 62.48 GiB | +7.5 GiB |
+| no paged cache (up to 5,120) | 13,676 / 127.0 s | ~123 tok/s | 103.53 GiB | +48.5 GiB |
+
+The 768 checkpoint improves sustained progress by about 31% over 512 while
+remaining close to the requested +5-GiB transient budget.  The 1,024 and
+no-cache variants establish useful higher-throughput points but exceed that
+balanced memory target.  Artifacts are
+``/tmp/tornado-prefill-kv768-bank16-180s.json`` and
+``/tmp/tornado-prefill-kv1024-final-bank16-180s.json``.
+
+### DS4 Prefill miss-bank double buffering
+
+The bounded 16-expert path originally serialized every bank as CPU/SSD read,
+Metal publication, and MoE evaluation.  The double-buffer path starts the
+next bank's pure CPU/SSD read on one coordinator thread while Metal evaluates
+the current bank.  MLX tensor construction and publication remain on the
+inference thread, avoiding cross-thread GPU stream ownership.  Only one extra
+16-expert CPU staging bank is retained.
+
+With the same real tornado replay, 768-token KV checkpoints, 16-expert banks,
+and Prefill Adaptive L1:
+
+| Path | Progress at 180 s | Steady Prefill | Sampled peak | Prefetch read hidden |
+|---|---:|---:|---:|---:|
+| Single buffer | 11,520 / 13,676 | ~72 tok/s | 60.44 GiB | -- |
+| Double buffer | 13,056 / 13,676 | ~82 tok/s | 60.70 GiB | 14.8 / 87.4 s (16.9%) |
+
+The double buffer improves long-run progress by 13.3% for approximately
+0.26 GiB additional peak memory.  All 5,711 submitted future banks were used.
+A matched two-turn deterministic check produced identical hashes in both
+modes: ``cf17009...7126cb`` followed by ``9f6f850...d89986f4``.  Double
+buffering is therefore enabled by default and can be disabled with
+``OMLX_DEEPSEEK_V4_PREFILL_DOUBLE_BUFFER=0``.  Raw long-run artifact:
+``/tmp/tornado-prefill-kv768-double-buffer-180s.json``.

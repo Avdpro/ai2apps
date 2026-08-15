@@ -51,7 +51,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi import Request as FastAPIRequest
@@ -61,6 +61,18 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ai2apps._version import __version__ as _ai2apps_version
+from ai2apps.agents.model_stream import ChatCompletionStreamAccumulator
+from ai2apps.api import create_ai2apps_router
+from ai2apps.api.errors import platform_error_response
+from ai2apps.config import PlatformConfig
+from ai2apps.cloud_gateway import proxy_cloud_chat_completion, proxy_cloud_image_request
+from ai2apps.model_manager import ModelManagerStore
+from ai2apps.model_providers import (
+    list_package_models,
+    proxy_package_json,
+    resolve_package_model,
+)
+from ai2apps.platform_runtime import PlatformRuntime
 from omlx._version import __version__ as _omlx_version
 
 from .api.anthropic_models import (
@@ -124,6 +136,8 @@ from .api.openai_models import (
     CompletionResponse,
     AI2AppsEngineBoostRequest,
     AI2AppsL1OptimizeRequest,
+    AI2AppsFusionSkipReviewRequest,
+    AI2AppsExternalReviewRequest,
     ModelInfo,
     ModelsResponse,
     PromptTokensDetails,
@@ -266,6 +280,7 @@ class ServerState:
     responses_store: ResponseStore = field(default_factory=ResponseStore)
     oq_manager: Optional[object] = None  # OQManager
     hf_uploader: Optional[object] = None  # HFUploader
+    ai2apps_platform_runtime: Optional[object] = None  # PlatformRuntime
     # False while the startup pinned-model preload is still running.
     # /health returns 503 with status "loading" until it flips to True so
     # port watchdogs see liveness instead of a closed port (#2184).
@@ -291,6 +306,46 @@ def get_engine_pool() -> EnginePool:
 def get_mcp_manager():
     """Get the MCP manager instance (may be None)."""
     return _server_state.mcp_manager
+
+
+def get_ai2apps_platform_config() -> PlatformConfig:
+    """Derive platform paths from the existing installation data root."""
+
+    settings = _server_state.global_settings
+    if settings is None or getattr(settings, "base_path", None) is None:
+        return PlatformConfig.unconfigured()
+    return PlatformConfig.from_base_path(settings.base_path)
+
+
+def get_ai2apps_platform_runtime() -> PlatformRuntime | None:
+    """Return the initialized platform lifecycle object, when available."""
+
+    runtime = _server_state.ai2apps_platform_runtime
+    return runtime if isinstance(runtime, PlatformRuntime) else None
+
+
+def start_ai2apps_platform() -> PlatformRuntime:
+    """Initialize AI2Apps persistence through the server lifecycle boundary."""
+
+    runtime = PlatformRuntime(get_ai2apps_platform_config())
+    status = runtime.start()
+    _server_state.ai2apps_platform_runtime = runtime
+    if status.status == "ready":
+        logger.info(
+            "AI2Apps platform database ready: schema v%s, journal=%s",
+            status.schema_version,
+            status.journal_mode,
+        )
+    return runtime
+
+
+def stop_ai2apps_platform() -> None:
+    """Release AI2Apps platform lifecycle state."""
+
+    runtime = get_ai2apps_platform_runtime()
+    if runtime is not None:
+        runtime.stop()
+    _server_state.ai2apps_platform_runtime = None
 
 
 async def verify_api_key(
@@ -359,6 +414,8 @@ def _reset_boundary_snapshots_for_server() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan for startup/shutdown events."""
+    ai2apps_runtime = start_ai2apps_platform()
+
     # Startup: Auto-populate server aliases for the admin dashboard
     # so users get sensible hostname/IP options for API URL hints
     # without manual configuration. Only runs when the persisted list
@@ -480,6 +537,115 @@ async def lifespan(app: FastAPI):
     if mcp_config:
         await init_mcp(mcp_config)
 
+    ai2apps_runtime.bind_builtin_runtime_services(
+        engine_pool_provider=lambda: _server_state.engine_pool,
+        mcp_manager_provider=lambda: _server_state.mcp_manager,
+    )
+    if ai2apps_runtime.agent_runtime is not None:
+
+        async def _invoke_agent_model(payload: dict, report_progress=None) -> dict:
+            """Stream the public OpenAI contract and rebuild its durable result."""
+
+            import httpx
+
+            request_payload = dict(payload)
+            request_payload["stream"] = True
+            request_payload["stream_options"] = {
+                **(request_payload.get("stream_options") or {}),
+                "include_usage": True,
+            }
+            headers = {}
+            if _server_state.api_key is not None:
+                headers["Authorization"] = f"Bearer {_server_state.api_key}"
+            accumulator = ChatCompletionStreamAccumulator()
+            last_reported_fragments = 0
+            last_reported_at = 0.0
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://ai2apps.internal",
+                headers=headers,
+            ) as client, client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json=request_payload,
+            ) as response:
+                if response.status_code >= 400:
+                    body = (await response.aread()).decode(errors="replace")
+                    raise RuntimeError(
+                        "Model Runtime returned "
+                        f"HTTP {response.status_code}: {body[:500]}"
+                    )
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError as error:
+                        raise RuntimeError(
+                            "Model Runtime emitted malformed stream data"
+                        ) from error
+                    if not isinstance(chunk, dict):
+                        continue
+                    accumulator.add(chunk)
+                    if report_progress is None:
+                        continue
+                    now = time.monotonic()
+                    fragments = accumulator.fragments
+                    should_report = (
+                        fragments > 0
+                        and (
+                            last_reported_fragments == 0
+                            or fragments - last_reported_fragments >= 16
+                            or now - last_reported_at >= 0.75
+                        )
+                    ) or (
+                        accumulator.has_tool_calls
+                        and now - last_reported_at >= 0.75
+                    )
+                    if not should_report:
+                        continue
+                    last_reported_fragments = fragments
+                    last_reported_at = now
+                    characters = accumulator.output_characters
+                    detail = (
+                        "Receiving a Tool call"
+                        if accumulator.has_tool_calls
+                        else f"Streaming model output · {characters:,} characters"
+                    )
+                    value = report_progress(
+                        {
+                            "phase": "model_streaming",
+                            "text": (
+                                "Receiving the next Tool call"
+                                if accumulator.has_tool_calls
+                                else "Receiving the model plan"
+                            ),
+                            "presentation": "indeterminate",
+                            "content": {
+                                "tone": "info",
+                                "effect": "indeterminate",
+                                "icon": "sparkles",
+                                "detail": detail,
+                                "output_characters": characters,
+                                "fragments": fragments,
+                                "has_tool_calls": accumulator.has_tool_calls,
+                            },
+                        }
+                    )
+                    if inspect.isawaitable(value):
+                        await value
+            return accumulator.result()
+
+        ai2apps_runtime.agent_runtime.bind_model_provider(_invoke_agent_model)
+
+    # Start recovery and dispatch only after every built-in Service/provider is
+    # bound. Otherwise a queued Run restored at boot could be claimed during
+    # this startup window and fail spuriously with provider_unavailable.
+    await ai2apps_runtime.start_background_tasks()
+
     yield
 
     # Shutdown: Save all-time stats, stop TTL task, process memory enforcer, etc.
@@ -514,6 +680,8 @@ async def lifespan(app: FastAPI):
         await _server_state.engine_pool.shutdown()
         _reset_boundary_snapshots_for_server()
         logger.info("Engine pool shutdown")
+    await ai2apps_runtime.stop_background_tasks()
+    stop_ai2apps_platform()
 
 
 app = FastAPI(
@@ -526,6 +694,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Mount the AI2Apps Harness API through one narrow integration seam. Platform
+# modules receive configuration through callbacks and do not import oMLX
+# runtime internals.
+app.include_router(
+    create_ai2apps_router(
+        config_provider=get_ai2apps_platform_config,
+        runtime_provider=get_ai2apps_platform_runtime,
+    ),
+    dependencies=[Depends(verify_api_key)],
+)
+
 # Include MCP routes
 from .api.mcp_routes import router as mcp_router
 from .api.mcp_routes import set_mcp_manager_getter
@@ -533,22 +712,16 @@ from .api.mcp_routes import set_mcp_manager_getter
 set_mcp_manager_getter(get_mcp_manager)
 app.include_router(mcp_router, dependencies=[Depends(verify_api_key)])
 
-# Include audio routes only when mlx-audio is installed.
-# audio_routes.py itself only imports fastapi/stdlib at module level, so it
-# would always import successfully — we need an explicit mlx-audio check.
-try:
-    import mlx_audio as _  # noqa: F401
+# Audio routes are always present. Local engines still load mlx-audio lazily,
+# while installed Model Providers can serve these contracts without that extra.
+from .api.audio_routes import router as audio_router
 
-    from .api.audio_routes import router as audio_router
-
-    app.include_router(audio_router, dependencies=[Depends(verify_api_key)])
-    del _
-except ImportError:
-    pass
+app.include_router(audio_router, dependencies=[Depends(verify_api_key)])
 
 # Include admin routes
 from .admin.auth import _RedirectToLogin
 from .admin.routes import router as admin_router
+from .admin.routes import shell_router
 from .admin.routes import set_admin_getters
 
 set_admin_getters(
@@ -556,14 +729,17 @@ set_admin_getters(
     get_engine_pool,
     lambda: _server_state.settings_manager,
     lambda: _server_state.global_settings,
+    get_ai2apps_platform_runtime,
 )
 app.include_router(admin_router)
+app.include_router(shell_router)
 
 
 @app.exception_handler(_RedirectToLogin)
 async def redirect_to_login_handler(request, exc):
     """Redirect unauthenticated browser requests to the admin login page."""
-    return RedirectResponse(url="/admin", status_code=302)
+    target = "/admin?redirect=/mobile" if request.url.path == "/mobile" else "/admin"
+    return RedirectResponse(url=target, status_code=302)
 
 
 def _status_to_error_type(status_code: int) -> str:
@@ -596,6 +772,10 @@ def _is_api_route(request: FastAPIRequest) -> bool:
     return request.url.path.startswith("/v1/")
 
 
+def _is_platform_route(request: FastAPIRequest) -> bool:
+    return request.url.path.startswith("/v1/platform/")
+
+
 def _openai_error_body(message, status_code: int, param=None, code=None) -> dict:
     """Build an OpenAI-compatible error response body."""
     return {
@@ -626,6 +806,18 @@ async def http_exception_handler(request: FastAPIRequest, exc: HTTPException):
             exc.status_code,
             exc.detail,
         )
+    if _is_platform_route(request):
+        return platform_error_response(
+            status_code=exc.status_code,
+            code=(
+                "authentication_required"
+                if exc.status_code == 401
+                else "not_found"
+                if exc.status_code == 404
+                else "http_error"
+            ),
+            message=str(exc.detail),
+        )
     if _is_api_route(request):
         content = _openai_error_body(exc.detail, exc.status_code)
     else:
@@ -644,6 +836,21 @@ async def validation_exception_handler(
         request.url.path,
         exc.errors(),
     )
+    if _is_platform_route(request):
+        details = [
+            {
+                "location": [str(item) for item in error.get("loc", ())],
+                "message": error.get("msg", ""),
+                "type": error.get("type", ""),
+            }
+            for error in exc.errors()
+        ]
+        return platform_error_response(
+            status_code=422,
+            code="validation_error",
+            message="Request validation failed.",
+            details={"errors": details},
+        )
     if _is_api_route(request):
         errors = exc.errors()
         parts = []
@@ -1073,20 +1280,31 @@ def _suggest_endpoint_for_engine(engine: object) -> str:
 
 @dataclass
 class _LLMEngineLease:
-    """Release handle for an LLM engine lease taken from EnginePool."""
+    """Release handle for one or more LLM leases taken from EnginePool."""
 
     model_id: str | None = None
+    model_ids: list[str] = field(default_factory=list)
+    cleanup: object | None = None
     released: bool = False
 
     async def release(self) -> None:
         if self.released:
             return
         self.released = True
-        if self.model_id is not None:
-            await get_engine_pool().release_engine(self.model_id)
+        cleanup = self.cleanup
+        self.cleanup = None
+        try:
+            if callable(cleanup):
+                result = cleanup()
+                if inspect.isawaitable(result):
+                    await result
+        finally:
+            ids = self.model_ids or ([self.model_id] if self.model_id else [])
+            for model_id in reversed(ids):
+                await get_engine_pool().release_engine(model_id)
 
     def abort_requested(self) -> bool:
-        if self.model_id is None or self.released:
+        if self.released:
             return False
         pool = _server_state.engine_pool
         if pool is None:
@@ -1094,7 +1312,8 @@ class _LLMEngineLease:
         is_abort_requested = getattr(pool, "is_abort_requested", None)
         if not callable(is_abort_requested):
             return False
-        return bool(is_abort_requested(self.model_id))
+        ids = self.model_ids or ([self.model_id] if self.model_id else [])
+        return any(bool(is_abort_requested(model_id)) for model_id in ids)
 
 
 async def _raise_if_llm_lease_abort_requested(lease: _LLMEngineLease) -> None:
@@ -1140,6 +1359,38 @@ async def get_engine_for_model(
     Raises:
         HTTPException: If model not found or memory error
     """
+    profile = None
+    store = None
+    if model and _server_state.global_settings is not None:
+        store = ModelManagerStore(_server_state.global_settings.base_path)
+        profile = store.resolve_fusion_profile(model)
+
+    if profile is not None:
+        from ai2apps.fusion.profiles import build_omlx_fusion_engine
+
+        async def load_local_engine(local_model: str):
+            leased: list[str] = []
+            engine = await get_engine(
+                local_model,
+                EngineType.LLM,
+                _lease=lease is not None,
+                _leased_out=leased,
+            )
+            if lease is not None and leased:
+                lease.model_ids.extend(leased)
+                if lease.model_id is None:
+                    lease.model_id = leased[0]
+            return engine
+
+        fusion_engine = await build_omlx_fusion_engine(
+            profile,
+            load_local_engine=load_local_engine,
+            resolve_credential=store.resolve_credential if store is not None else None,
+        )
+        if lease is not None:
+            lease.cleanup = fusion_engine.close_backends
+        return fusion_engine
+
     if lease is None:
         return await get_engine(model, EngineType.LLM)
 
@@ -1152,6 +1403,7 @@ async def get_engine_for_model(
     )
     if leased:
         lease.model_id = leased[0]
+        lease.model_ids.extend(leased)
     return engine
 
 
@@ -1905,6 +2157,8 @@ def _completion_keepalive_chunk(response_id: str) -> str:
         '"model":"keepalive",'
         '"choices":[{"index":0,"text":"","logprobs":null,"finish_reason":null}]}\n\n'
     )
+
+
 _KEEPALIVE_ANTHROPIC_PING = 'event: ping\ndata: {"type":"ping"}\n\n'
 
 
@@ -2627,6 +2881,35 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
     ):
         models.append(ModelInfo(id=MARKITDOWN_MODEL_ID, owned_by="omlx"))
 
+    if _server_state.global_settings is not None:
+        model_store = ModelManagerStore(_server_state.global_settings.base_path)
+        for cloud_model in model_store.enabled_cloud_models():
+            models.append(
+                ModelInfo(
+                    id=cloud_model["gateway_id"],
+                    owned_by=cloud_model["provider_id"],
+                )
+            )
+        existing_ids = {model.id for model in models}
+        for fusion in model_store.list_fusion():
+            if not fusion.get("valid") or fusion["id"] in existing_ids:
+                continue
+            models.append(ModelInfo(id=fusion["id"], owned_by="ai2apps-fusion"))
+            existing_ids.add(fusion["id"])
+
+    existing_ids = {model.id for model in models}
+    for package_model in list_package_models(_server_state.ai2apps_platform_runtime):
+        if package_model.id in existing_ids:
+            continue
+        models.append(
+            ModelInfo(
+                id=package_model.id,
+                owned_by=package_model.service_key,
+                max_model_len=package_model.context_window,
+            )
+        )
+        existing_ids.add(package_model.id)
+
     # Favorites first; stable sort keeps alphabetical order within groups.
     if favorite_ids:
         models.sort(key=lambda m: m.id not in favorite_ids)
@@ -2674,6 +2957,33 @@ async def list_models_status(_: bool = Depends(verify_api_key)):
             if ms and ms.max_tokens is not None:
                 max_tokens = ms.max_tokens
         m["max_tokens"] = max_tokens
+
+    if _server_state.global_settings is not None:
+        existing_ids = {model["id"] for model in status["models"]}
+        for cloud_model in ModelManagerStore(
+            _server_state.global_settings.base_path
+        ).enabled_cloud_models():
+            if cloud_model["gateway_id"] in existing_ids:
+                continue
+            status["models"].append(
+                {
+                    "id": cloud_model["gateway_id"],
+                    "model_path": f"cloud://{cloud_model['provider_id']}/{cloud_model['id']}",
+                    "loaded": True,
+                    "is_loading": False,
+                    "engine_type": "cloud",
+                    "model_type": "llm",
+                    "source_type": "cloud",
+                    "owned_by": cloud_model["provider_id"],
+                    "max_context_window": None,
+                    "max_tokens": _server_state.sampling.max_tokens,
+                    "virtual": True,
+                }
+            )
+    existing_ids = {model["id"] for model in status["models"]}
+    for package_model in list_package_models(_server_state.ai2apps_platform_runtime):
+        if package_model.id not in existing_ids:
+            status["models"].append(package_model.public_catalog_entry())
     return status
 
 
@@ -2741,7 +3051,16 @@ async def optimize_ai2apps_l1(
 
     pool = get_engine_pool()
     try:
-        model_id = pool.resolve_model_id(request.model, _server_state.settings_manager)
+        requested_model = request.model
+        if _server_state.global_settings is not None:
+            profile = ModelManagerStore(
+                _server_state.global_settings.base_path
+            ).resolve_fusion_profile(requested_model)
+            if profile is not None:
+                requested_model = profile.generator.model
+        model_id = pool.resolve_model_id(
+            requested_model, _server_state.settings_manager
+        )
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     entry = pool.get_entry(model_id)
@@ -2772,7 +3091,16 @@ async def set_ai2apps_engine_boost(
 
     pool = get_engine_pool()
     try:
-        model_id = pool.resolve_model_id(request.model, _server_state.settings_manager)
+        requested_model = request.model
+        if _server_state.global_settings is not None:
+            profile = ModelManagerStore(
+                _server_state.global_settings.base_path
+            ).resolve_fusion_profile(requested_model)
+            if profile is not None:
+                requested_model = profile.generator.model
+        model_id = pool.resolve_model_id(
+            requested_model, _server_state.settings_manager
+        )
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     entry = pool.get_entry(model_id)
@@ -2791,6 +3119,125 @@ async def set_ai2apps_engine_boost(
     if not result.get("accepted"):
         raise HTTPException(status_code=409, detail=result.get("reason", "rejected"))
     return {"status": "queued", "model_id": model_id, **result}
+
+
+@app.post("/v1/ai2apps/fusion/skip-review")
+async def skip_ai2apps_fusion_review(
+    request: AI2AppsFusionSkipReviewRequest,
+    _: bool = Depends(verify_api_key),
+):
+    """Skip review for the active turn while allowing its draft to finish."""
+
+    if _server_state.global_settings is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+    profile = ModelManagerStore(
+        _server_state.global_settings.base_path
+    ).resolve_fusion_profile(request.model)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Model is not a Fusion model")
+
+    from ai2apps.fusion.control import request_active_skip_review
+
+    if not request_active_skip_review(request.session_id):
+        raise HTTPException(status_code=409, detail="Fusion session is not active")
+    return {
+        "status": "queued",
+        "model_id": profile.model_id,
+        "accepted": True,
+        "session_id": request.session_id,
+    }
+
+
+@app.post("/v1/ai2apps/fusion/external-review")
+async def run_ai2apps_external_review(
+    request: AI2AppsExternalReviewRequest,
+    _: bool = Depends(verify_api_key),
+):
+    """Review and, when necessary, replace one completed Fusion answer."""
+
+    if _server_state.global_settings is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+    store = ModelManagerStore(_server_state.global_settings.base_path)
+    profile = store.resolve_fusion_profile(request.fusion_model)
+    if profile is None or not profile.resolver.enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="Fusion model has no external assistance configured",
+        )
+    provider = store.resolve_cloud_model(request.external_model)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Cloud model is not enabled")
+    if provider.get("protocol") != "openai":
+        raise HTTPException(
+            status_code=409,
+            detail="External Review currently requires an OpenAI-compatible provider",
+        )
+
+    from ai2apps.fusion.adapters import OpenAICompatibleReviewBackend
+    from ai2apps.fusion.types import FusionRequest
+
+    backend = OpenAICompatibleReviewBackend(
+        base_url=str(provider["base_url"]),
+        model=str(provider["model_id"]),
+        api_key=str(provider["api_key"]),
+        max_tokens=16384,
+        timeout_seconds=300.0,
+    )
+    try:
+        answer, action, usage, prompt, response, explanation = (
+            await backend.review_and_repair(
+            FusionRequest(
+                messages=request.messages,
+                session_id=request.session_id,
+                max_tokens=16384,
+            ),
+            request.draft,
+            max_tokens=16384,
+        )
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        await backend.close()
+    return {
+        "action": action,
+        "answer": answer,
+        "model": request.external_model,
+        "usage": dict(usage),
+        "prompt": prompt,
+        "response": response,
+        "explanation": explanation,
+    }
+
+
+@app.get("/v1/ai2apps/diagnostics/prefill")
+async def get_ai2apps_prefill_diagnostics(
+    model: str,
+    _: bool = Depends(verify_api_key),
+):
+    """Return the latest request-level Prefill attribution without Metal sync."""
+
+    from .utils.proc_memory import get_phys_footprint
+
+    pool = get_engine_pool()
+    try:
+        model_id = pool.resolve_model_id(model, _server_state.settings_manager)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    entry = pool.get_entry(model_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Model not found: {model}")
+    engine = entry.engine
+    if engine is None:
+        raise HTTPException(status_code=409, detail=f"Model not loaded: {model_id}")
+    stats = engine.get_stats() if hasattr(engine, "get_stats") else {}
+    return {
+        "model_id": model_id,
+        "process_physical_bytes": get_phys_footprint(),
+        "prefill": stats.get("prefill_diagnostics"),
+        "ssd_cache": stats.get("ssd_cache"),
+        "cache_moe": stats.get("flesh"),
+    }
 
 
 # =============================================================================
@@ -3183,11 +3630,11 @@ async def create_completion(
             )
 
             prefill_duration = (
-                (first_token_at - start_time)
-                if first_token_at is not None
-                else 0.0
+                (first_token_at - start_time) if first_token_at is not None else 0.0
             )
-            gen_duration = elapsed - prefill_duration if prefill_duration > 0 else elapsed
+            gen_duration = (
+                elapsed - prefill_duration if prefill_duration > 0 else elapsed
+            )
             get_server_metrics().record_request_complete(
                 prompt_tokens=total_prompt_tokens,
                 completion_tokens=total_completion_tokens,
@@ -3226,6 +3673,70 @@ async def create_completion(
     except BaseException:
         await lease.release()
         raise
+
+
+async def _create_image(payload: dict[str, Any], *, edit: bool):
+    if _server_state.global_settings is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+    requested_model = str(payload.get("model") or "")
+    package_model = resolve_package_model(
+        _server_state.ai2apps_platform_runtime, requested_model
+    )
+    if package_model is not None:
+        if package_model.model_type != "image_generation":
+            raise HTTPException(status_code=400, detail="Selected model is not an image generator")
+        return await proxy_package_json(
+            package_model,
+            "image_edit" if edit else "image_generation",
+            payload,
+        )
+    return await proxy_cloud_image_request(
+        payload,
+        edit=edit,
+        base_path=_server_state.global_settings.base_path,
+        cloud_client=(
+            _server_state.ai2apps_platform_runtime.cloud
+            if _server_state.ai2apps_platform_runtime is not None
+            else None
+        ),
+    )
+
+
+@app.post("/v1/images/generations")
+async def create_image_generation(
+    payload: dict[str, Any], _: bool = Depends(verify_api_key)
+):
+    """Generate one image through the selected local or AI2Apps Cloud model."""
+
+    return await _create_image(payload, edit=False)
+
+
+@app.post("/v1/images/edits")
+async def create_image_edit(
+    payload: dict[str, Any], _: bool = Depends(verify_api_key)
+):
+    """Edit one to four images through the selected image model."""
+
+    return await _create_image(payload, edit=True)
+
+
+@app.post("/v1/videos")
+@app.post("/v1/videos/generations")
+async def create_video_generation(
+    payload: dict[str, Any], _: bool = Depends(verify_api_key)
+):
+    """Generate video through an installed Model Provider."""
+
+    model_id = str(payload.get("model") or "")
+    model = resolve_package_model(_server_state.ai2apps_platform_runtime, model_id)
+    if model is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video model provider not found: {model_id or '(missing model)'}",
+        )
+    if model.model_type != "video_generation":
+        raise HTTPException(status_code=400, detail="Selected model is not a video generator")
+    return await proxy_package_json(model, "video_generation", payload)
 
 
 @app.post("/v1/chat/completions")
@@ -3269,6 +3780,37 @@ async def create_chat_completion(
     if is_markitdown_model(request.model):
         return await _create_markitdown_chat_completion(request, http_request)
 
+    if request.model.startswith("cloud/"):
+        if _server_state.global_settings is None:
+            raise HTTPException(status_code=503, detail="Server not initialized")
+        return await proxy_cloud_chat_completion(
+            request,
+            base_path=_server_state.global_settings.base_path,
+            cloud_client=(
+                _server_state.ai2apps_platform_runtime.cloud
+                if _server_state.ai2apps_platform_runtime is not None
+                else None
+            ),
+        )
+
+    resolved_local = resolve_model_id(request.model) or request.model
+    local_entry = (
+        _server_state.engine_pool.get_entry(resolved_local)
+        if _server_state.engine_pool is not None
+        else None
+    )
+    package_model = None if local_entry is not None else resolve_package_model(
+        _server_state.ai2apps_platform_runtime, request.model
+    )
+    if package_model is not None:
+        if package_model.model_type not in {"llm", "vlm"}:
+            raise HTTPException(status_code=400, detail="Selected model is not conversational")
+        return await proxy_package_json(
+            package_model,
+            "chat_completions",
+            request.model_dump(mode="json", by_alias=True, exclude_none=True),
+        )
+
     request = await _preprocess_markitdown_files_for_llm(request)
 
     # Block inference during quantization to prevent GPU Metal errors
@@ -3300,6 +3842,23 @@ async def create_chat_completion(
             ms,
             request.chat_template_kwargs,
         )
+        session_id = request.ai2apps_session_id or request.dynamoe_session_id
+        requested_kv_policy = (
+            request.ai2apps_kv_policy or request.dynamoe_kv_policy
+        )
+        kv_policy = requested_kv_policy or (
+            getattr(ms, "kv_cache_policy", "session") if ms else "session"
+        )
+        # Continuity requires both a stable owner and an engine that guarantees
+        # scope/Boost/L1 changes do not alter the logical KV lineage.
+        if not session_id or not getattr(engine, "supports_kv_continuity", False):
+            kv_policy = "strict"
+        if kv_policy != "strict":
+            # DeepSeek's canonical template normally removes historical hidden
+            # reasoning. Keeping it is what makes prompt+output append-only and
+            # therefore eligible for full-turn KV reuse.
+            merged_ct_kwargs = dict(merged_ct_kwargs or {})
+            merged_ct_kwargs["drop_thinking"] = False
 
         # Extract messages - different engines need different content handling.
         # Templates that expose message.reasoning_content natively (Qwen 3.6+)
@@ -3506,26 +4065,49 @@ async def create_chat_completion(
             "xtc_probability": xtc_probability,
             "xtc_threshold": xtc_threshold,
         }
-        session_id = request.ai2apps_session_id or request.dynamoe_session_id
-        l1_mode = request.ai2apps_l1_mode or request.dynamoe_l1_mode
-        boost_mode = request.ai2apps_engine_boost or request.dynamoe_engine_boost
+        l1_mode = (
+            request.ai2apps_fusion_generator_l1_mode
+            or request.ai2apps_l1_mode
+            or request.dynamoe_l1_mode
+        )
+        boost_mode = (
+            request.ai2apps_fusion_generator_engine_boost
+            or request.ai2apps_engine_boost
+            or request.dynamoe_engine_boost
+        )
         if session_id:
             chat_kwargs["flesh_session_id"] = session_id
+            chat_kwargs["flesh_kv_policy"] = kv_policy
         if l1_mode:
             chat_kwargs["flesh_l1_mode"] = l1_mode
         if boost_mode:
             chat_kwargs["flesh_boost_mode"] = boost_mode
         fusion_stream_mode = request.ai2apps_stream_mode or request.dynamoe_stream_mode
-        if (
-            fusion_stream_mode is None
-            and (
-                http_request.headers.get("x-ai2apps-draft-protocol") == "1"
-                or http_request.headers.get("x-dynamoe-draft-protocol") == "1"
-            )
+        if fusion_stream_mode is None and (
+            http_request.headers.get("x-ai2apps-draft-protocol") == "1"
+            or http_request.headers.get("x-dynamoe-draft-protocol") == "1"
         ):
             fusion_stream_mode = "draft"
         if fusion_stream_mode:
             chat_kwargs["ai2apps_stream_mode"] = fusion_stream_mode
+        fusion_overrides = {
+            "fusion_gate_policy": request.ai2apps_fusion_gate_policy,
+            "fusion_mid_generation_review_enabled": (
+                request.ai2apps_fusion_mid_generation_review
+            ),
+            "fusion_thinking_audit_enabled": request.ai2apps_fusion_thinking_audit,
+            "fusion_reviewer_guidance_mode": (
+                request.ai2apps_fusion_reviewer_guidance
+            ),
+            "fusion_checkpoint_tokens": request.ai2apps_fusion_checkpoint_tokens,
+            "fusion_reviewer_l1_mode": request.ai2apps_fusion_reviewer_l1_mode,
+            "fusion_reviewer_boost_mode": (
+                request.ai2apps_fusion_reviewer_engine_boost
+            ),
+        }
+        chat_kwargs.update(
+            {key: value for key, value in fusion_overrides.items() if value is not None}
+        )
 
         # Add seed for reproducible generation (best-effort)
         if request.seed is not None:
@@ -3550,7 +4132,14 @@ async def create_chat_completion(
         if (
             _entry is not None
             and _entry.preserve_thinking_default is True
-            and merged_ct_kwargs.get("enable_thinking") is not False
+            # Continuity replays the generator's exact raw transcript.  Even
+            # with thinking disabled, Qwen's generation prompt owns an empty
+            # <think>...</think> marker which must survive historical
+            # rendering for the next prompt to extend the cached KV exactly.
+            and (
+                merged_ct_kwargs.get("enable_thinking") is not False
+                or kv_policy != "strict"
+            )
             and "preserve_thinking" not in merged_ct_kwargs
         ):
             merged_ct_kwargs["preserve_thinking"] = True
@@ -3572,6 +4161,8 @@ async def create_chat_completion(
         # Add tools if provided (includes MCP tools)
         if tools_for_template:
             chat_kwargs["tools"] = tools_for_template
+            if getattr(engine, "model_type", None) == "ai2apps_fusion":
+                chat_kwargs["tool_choice"] = request.tool_choice or "auto"
 
         # Add chat template kwargs
         if merged_ct_kwargs:
@@ -3665,11 +4256,7 @@ async def create_chat_completion(
                 f"request_max_tokens={request.max_tokens}"
             )
             first_token_at = getattr(output, "first_token_at", None)
-            ttft = (
-                (first_token_at - start_time)
-                if first_token_at is not None
-                else 0.0
-            )
+            ttft = (first_token_at - start_time) if first_token_at is not None else 0.0
             gen_duration = elapsed - ttft if ttft > 0 else elapsed
             metric_prefill_duration, metric_gen_duration = _resolve_metric_durations(
                 output,
@@ -4654,7 +5241,11 @@ async def stream_chat_completion(
     tool_calls = None
     cleaned_text = accumulated_text
     if fusion_transport_seen:
-        tool_calls = None
+        tool_calls = (
+            _convert_parser_tool_calls(last_output.tool_calls)
+            if last_output and last_output.tool_calls
+            else None
+        )
         cleaned_text = accumulated_text
     elif last_output and last_output.tool_calls:
         # Protocol parser already extracted structured tool calls.
@@ -5590,11 +6181,11 @@ async def create_anthropic_message(
 
             first_token_at = getattr(output, "first_token_at", None)
             prefill_duration = (
-                (first_token_at - start_time)
-                if first_token_at is not None
-                else 0.0
+                (first_token_at - start_time) if first_token_at is not None else 0.0
             )
-            gen_duration = elapsed - prefill_duration if prefill_duration > 0 else elapsed
+            gen_duration = (
+                elapsed - prefill_duration if prefill_duration > 0 else elapsed
+            )
             get_server_metrics().record_request_complete(
                 prompt_tokens=output.prompt_tokens,
                 completion_tokens=output.completion_tokens,
@@ -5806,6 +6397,24 @@ async def create_response(
     logger.debug(
         f"Responses API request: model={request.model}, stream={request.stream}"
     )
+
+    resolved_local = resolve_model_id(request.model) or request.model
+    local_entry = (
+        _server_state.engine_pool.get_entry(resolved_local)
+        if _server_state.engine_pool is not None
+        else None
+    )
+    package_model = None if local_entry is not None else resolve_package_model(
+        _server_state.ai2apps_platform_runtime, request.model
+    )
+    if package_model is not None:
+        if package_model.model_type not in {"llm", "vlm"}:
+            raise HTTPException(status_code=400, detail="Selected model is not conversational")
+        return await proxy_package_json(
+            package_model,
+            "responses",
+            request.model_dump(mode="json", by_alias=True, exclude_none=True),
+        )
 
     load_start = time.perf_counter()
     lease = _LLMEngineLease()
@@ -6022,6 +6631,8 @@ async def create_response(
 
         if tools_for_template:
             chat_kwargs["tools"] = tools_for_template
+            if getattr(engine, "model_type", None) == "ai2apps_fusion":
+                chat_kwargs["tool_choice"] = request.tool_choice or "auto"
         if merged_ct_kwargs:
             chat_kwargs["chat_template_kwargs"] = merged_ct_kwargs
 
@@ -6076,11 +6687,11 @@ async def create_response(
 
             first_token_at = getattr(output, "first_token_at", None)
             prefill_duration = (
-                (first_token_at - start_time)
-                if first_token_at is not None
-                else 0.0
+                (first_token_at - start_time) if first_token_at is not None else 0.0
             )
-            gen_duration = elapsed - prefill_duration if prefill_duration > 0 else elapsed
+            gen_duration = (
+                elapsed - prefill_duration if prefill_duration > 0 else elapsed
+            )
             get_server_metrics().record_request_complete(
                 prompt_tokens=output.prompt_tokens,
                 completion_tokens=output.completion_tokens,

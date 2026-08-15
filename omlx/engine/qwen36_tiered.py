@@ -15,6 +15,8 @@ from .batched import BatchedEngine
 class Qwen36TieredEngine(BatchedEngine):
     """Serialized exact engine with a small Tail execution bank and L1 backing."""
 
+    supports_kv_continuity = True
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tiered_lock = asyncio.Lock()
@@ -62,13 +64,24 @@ class Qwen36TieredEngine(BatchedEngine):
         self, prompt: str | list[int], kwargs: dict[str, Any]
     ) -> None:
         policy = self._scope_policy
+        session_id = str(kwargs.get("flesh_session_id", "default"))
+        kv_policy = str(kwargs.pop("flesh_kv_policy", "strict")).lower()
+        if kv_policy not in {"strict", "session", "persistent"}:
+            raise ValueError(f"unsupported Qwen KV continuity policy: {kv_policy}")
         override = kwargs.pop("flesh_scope", None)
-        if override is None:
-            token_ids = (
-                list(prompt)
-                if isinstance(prompt, list)
-                else self._tokenizer.encode(prompt, add_special_tokens=False)
-            )
+        token_ids = (
+            list(prompt)
+            if isinstance(prompt, list)
+            else self._tokenizer.encode(prompt, add_special_tokens=False)
+        )
+        existing_scope = self._qwen_adaptive.session_scope(session_id)
+        if existing_scope is not None:
+            scope = existing_scope
+            self._qwen_last_selection = None
+        elif override is not None:
+            scope = str(override)
+            self._qwen_last_selection = None
+        else:
             threshold = float(
                 os.environ.get("OMLX_QWEN36_SCOPE_PROBE_MARGIN", "0.010")
             )
@@ -83,22 +96,30 @@ class Qwen36TieredEngine(BatchedEngine):
             )
             scope = selection.scope
             self._qwen_last_selection = selection
-        else:
-            scope = str(override)
-            self._qwen_last_selection = None
-        session_id, boost = await self._qwen_boost.prepare(kwargs)
+        session_id, boost = await self._qwen_boost.prepare(
+            kwargs, context_tokens=len(token_ids)
+        )
         adaptive_keys = await self._qwen_adaptive.prepare(
             kwargs, scope_name=scope
         )
-        kwargs["cache_extra_keys"] = (
-            "qwen3.6-tiered-v1",
-            scope,
-            f"top{policy.resident_experts}",
-            f"tail{policy.arena_tail_slots}",
-            "session",
-            session_id,
-            *adaptive_keys,
-        )
+        if kv_policy == "strict":
+            kwargs["cache_extra_keys"] = (
+                "qwen3.6-tiered-v1",
+                scope,
+                f"top{policy.resident_experts}",
+                f"tail{policy.arena_tail_slots}",
+                f"prefill-boost-{boost}",
+                "session",
+                session_id,
+                *adaptive_keys,
+            )
+        else:
+            kwargs["cache_extra_keys"] = (
+                "qwen3.6-tiered-kvc-v1",
+                kv_policy,
+                session_id,
+            )
+        kwargs["kv_cache_policy"] = kv_policy
 
     async def generate(
         self, prompt: str | list[int], *args: Any, **kwargs: Any
@@ -133,7 +154,10 @@ class Qwen36TieredEngine(BatchedEngine):
                 "scope": self._qwen_adaptive.current_scope,
                 "configured_scope": policy.scope_name,
                 "active_scope": self._qwen_adaptive.current_scope,
-                "selector": self._qwen_selector.stats(),
+                "selector": {
+                    "policy": "session-initial",
+                    **self._qwen_selector.stats(),
+                },
                 "last_selection": (
                     {
                         "scope": self._qwen_last_selection.scope,

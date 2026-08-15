@@ -991,10 +991,24 @@ class TestHFDownloaderRoutes:
         )
         (nested_model / "model.safetensors").write_bytes(b"q" * 4096)
 
+        # The runtime also discovers models from the shared Hugging Face cache.
+        # Manager must use the same effective directory list.
+        hf_cache = model_dir_with_models.parent / "huggingface" / "hub"
+        cached_model = hf_cache / "cached-model"
+        cached_model.mkdir(parents=True)
+        (cached_model / "config.json").write_text(
+            '{"architectures": ["LlamaForCausalLM"]}'
+        )
+        (cached_model / "model.safetensors").write_bytes(b"c" * 3072)
+
         # Create a mock global settings
         mock_settings = MagicMock()
         mock_settings.model.model_dir = str(model_dir_with_models)
         mock_settings.model.get_model_dirs.return_value = [model_dir_with_models]
+        mock_settings.get_effective_model_dirs.return_value = [
+            model_dir_with_models,
+            hf_cache,
+        ]
 
         import omlx.admin.routes as routes_module
 
@@ -1006,13 +1020,14 @@ class TestHFDownloaderRoutes:
             result = await list_hf_models(is_admin=True)
             models = result["models"]
 
-            assert len(models) == 5
+            assert len(models) == 6
             names = [m["name"] for m in models]
             assert "model-a" in names
             assert "model-b" in names
             assert "Zebra-Model" in names
             assert "apple-model" in names
             assert "Qwen3.6-27B-MLX-oQ5-FP16" in names
+            assert "cached-model" in names
             assert "not-a-model" not in names
             assert ".hidden" not in names
 

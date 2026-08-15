@@ -25,6 +25,34 @@ def test_default_policy_uses_128_token_review_and_retains_top20():
     assert config.early_check_tokens == 128
     assert config.pinned_slots == 20
     assert config.max_promotions_per_layer == 40
+    assert not config.prefill_enabled
+
+
+def test_prefill_policy_is_explicitly_configurable(monkeypatch):
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_ADAPTIVE_L1", "1")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_PREFILL_ADAPTIVE_L1", "1")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_PROMPT", "2048")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_PREFILL_L1_MIN_REMAINING", "768")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_PREFILL_L1_MAX_PER_LAYER", "6")
+    config = AdaptiveL1Config.from_env()
+    config.validate()
+    assert config.enabled
+    assert config.prefill_enabled
+    assert config.prefill_min_prompt_tokens == 2048
+    assert config.prefill_min_remaining_tokens == 768
+    assert config.prefill_max_promotions_per_layer == 6
+    assert config.prefill_recheck_tokens == 2048
+    assert config.prefill_recheck_max_promotions_per_layer == 4
+    assert config.prefill_recheck_max_layers_per_commit == 10
+
+
+def test_prefill_commit_has_independent_counter():
+    manager = _manager(min_observations=1)
+    state = manager.begin("prefill", "coding")
+    manager.observe_decode_miss(7, [100])
+    manager.commit(state, manager.plan(state), reason="prefill", seconds=0.1)
+    assert manager.prefill_triggers == 1
+    assert manager.interval_triggers == 0
 
 
 def test_session_observations_plan_bounded_tail_promotion():
@@ -225,6 +253,24 @@ def test_session_owned_namespace_is_stable_across_policy_changes():
     )
 
 
+def test_kv_continuity_namespaces_ignore_scope_and_physical_bank():
+    from omlx.engine.flesh import DeepseekV4FleshEngine
+
+    engine = object.__new__(DeepseekV4FleshEngine)
+    engine._kv_runtime_nonce = "boot-1"
+    assert engine._continuity_cache_namespace("session", "chat_123") == (
+        "deepseek-v4-flesh-kvc-v1",
+        "session",
+        "boot-1",
+        "chat_123",
+    )
+    assert engine._continuity_cache_namespace("persistent", "chat_123") == (
+        "deepseek-v4-flesh-kvc-v1",
+        "persistent",
+        "chat_123",
+    )
+
+
 def test_chat_request_accepts_ai2apps_session_id():
     from omlx.api.openai_models import ChatCompletionRequest
 
@@ -234,10 +280,98 @@ def test_chat_request_accepts_ai2apps_session_id():
         ai2apps_session_id="chat_123",
         ai2apps_l1_mode="off",
         ai2apps_engine_boost="turbo",
+        ai2apps_kv_policy="session",
     )
     assert request.ai2apps_session_id == "chat_123"
     assert request.ai2apps_l1_mode == "off"
     assert request.ai2apps_engine_boost == "turbo"
+    assert request.ai2apps_kv_policy == "session"
+
+
+def test_prefill_auto_boost_thresholds():
+    from omlx.engine.flesh import DeepseekV4FleshEngine
+
+    resolve = DeepseekV4FleshEngine._resolve_prefill_boost
+    assert resolve("auto", 2048) == "natural"
+    assert resolve("auto", 2049) == "turbo"
+    assert resolve("auto", 10 * 1024 - 1) == "turbo"
+    assert resolve("auto", 10 * 1024) == "turbo"
+    assert resolve("auto", 10 * 1024 + 1) == "blast"
+    assert resolve("turbo", 50_000) == "turbo"
+
+
+def test_chat_request_accepts_auto_engine_boost():
+    from omlx.api.openai_models import ChatCompletionRequest
+
+    request = ChatCompletionRequest(
+        model="flesh",
+        messages=[{"role": "user", "content": "hello"}],
+        ai2apps_engine_boost="auto",
+    )
+    assert request.ai2apps_engine_boost == "auto"
+
+
+def test_prefill_auto_restores_natural_before_decode():
+    from types import SimpleNamespace
+
+    from omlx.engine.flesh import DeepseekV4FleshEngine
+
+    engine = object.__new__(DeepseekV4FleshEngine)
+    engine._engine_boost_session_id = "chat_auto"
+    engine._engine_boost_modes = {"chat_auto": "auto"}
+    engine._prefill_boost_runtime_by_session = {"chat_auto": "blast"}
+    engine._adaptive_l1 = None
+    engine._adaptive_state = None
+    applied = []
+    engine._apply_engine_boost = lambda session_id, mode: applied.append(
+        (session_id, mode)
+    )
+
+    engine._between_prefill_chunk(
+        SimpleNamespace(), tokens=17, processed_tokens=10_241, remaining_tokens=0
+    )
+
+    assert applied == [("chat_auto", "natural")]
+    assert engine._prefill_boost_runtime_by_session["chat_auto"] == "natural"
+
+
+def test_prefill_switches_to_configured_decode_boost():
+    from types import SimpleNamespace
+
+    from omlx.engine.flesh import DeepseekV4FleshEngine
+
+    engine = object.__new__(DeepseekV4FleshEngine)
+    engine._engine_boost_session_id = "fusion-review"
+    engine._engine_boost_mode = "blast"
+    engine._engine_boost_modes = {"fusion-review": "turbo"}
+    engine._decode_boost_modes = {"fusion-review": "turbo"}
+    engine._prefill_boost_runtime_by_session = {"fusion-review": "blast"}
+    engine._adaptive_l1 = None
+    engine._adaptive_state = None
+    applied = []
+    engine._apply_engine_boost = lambda session_id, mode: applied.append(
+        (session_id, mode)
+    )
+
+    engine._between_prefill_chunk(
+        SimpleNamespace(), tokens=64, processed_tokens=4096, remaining_tokens=0
+    )
+
+    assert applied == [("fusion-review", "turbo")]
+    assert engine._prefill_boost_runtime_by_session["fusion-review"] == "turbo"
+
+
+def test_chat_request_rejects_unknown_kv_policy():
+    from pydantic import ValidationError
+
+    from omlx.api.openai_models import ChatCompletionRequest
+
+    with pytest.raises(ValidationError, match="ai2apps_kv_policy"):
+        ChatCompletionRequest(
+            model="flesh",
+            messages=[{"role": "user", "content": "hello"}],
+            ai2apps_kv_policy="reckless",
+        )
 
 
 def test_chat_request_rejects_unknown_engine_boost():
@@ -356,3 +490,34 @@ async def test_engine_boost_endpoint_queues_without_engine_lease(monkeypatch):
     )
     assert calls == [("chat_123", "blast")]
     assert result["status"] == "queued"
+    assert result["model_id"] == "resolved"
+
+
+async def test_prefill_diagnostics_endpoint_is_read_only(monkeypatch):
+    from types import SimpleNamespace
+
+    from omlx import server
+
+    diagnostics = {
+        "last_completed": {"cached_tokens": 512, "forward_eval_ms": 12.5},
+        "cache_phase_timings": {},
+    }
+    engine = SimpleNamespace(
+        get_stats=lambda: {
+            "prefill_diagnostics": diagnostics,
+            "ssd_cache": {"hits": 3},
+            "flesh": {"expert_store": {"loads": 7}},
+        }
+    )
+    pool = SimpleNamespace(
+        resolve_model_id=lambda model, settings: "resolved",
+        get_entry=lambda model: SimpleNamespace(engine=engine),
+    )
+    monkeypatch.setattr(server._server_state, "engine_pool", pool)
+
+    result = await server.get_ai2apps_prefill_diagnostics("flesh", True)
+
+    assert result["model_id"] == "resolved"
+    assert result["prefill"] == diagnostics
+    assert result["ssd_cache"] == {"hits": 3}
+    assert result["cache_moe"]["expert_store"]["loads"] == 7

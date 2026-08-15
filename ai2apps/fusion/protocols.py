@@ -5,10 +5,13 @@ from __future__ import annotations
 from typing import AsyncIterator, Mapping, Protocol, runtime_checkable
 
 from .types import (
+    CheckpointDecision,
     DraftChunk,
     FusionRequest,
     ReviewDecision,
     StructuredPatch,
+    FusionToolCall,
+    ToolReviewDecision,
 )
 
 
@@ -16,9 +19,17 @@ from .types import (
 class GeneratorTurn(Protocol):
     async def stream_draft(self) -> AsyncIterator[DraftChunk]: ...
 
+    async def resume_from_checkpoint(
+        self, draft: str, decision: CheckpointDecision
+    ) -> AsyncIterator[DraftChunk]: ...
+
     async def revise(
         self, draft: str, decision: ReviewDecision
     ) -> tuple[StructuredPatch, ...]: ...
+
+    async def replan_tool_calls(
+        self, draft: str, decision: ToolReviewDecision
+    ) -> AsyncIterator[DraftChunk]: ...
 
     async def realize(self, draft: str, blueprint: Mapping[str, object]) -> str: ...
 
@@ -36,6 +47,24 @@ class GeneratorBackend(Protocol):
 
 @runtime_checkable
 class ReviewerBackend(Protocol):
+    async def review_tool_calls(
+        self,
+        request: FusionRequest,
+        draft: str,
+        tool_calls: tuple[FusionToolCall, ...],
+        validation_errors: tuple[str, ...],
+        *,
+        final: bool = False,
+    ) -> ToolReviewDecision: ...
+
+    async def review_checkpoint(
+        self,
+        request: FusionRequest,
+        draft: str,
+        draft_sha256: str,
+        signals: object,
+    ) -> CheckpointDecision: ...
+
     async def review(
         self,
         request: FusionRequest,
@@ -47,6 +76,14 @@ class ReviewerBackend(Protocol):
 
 @runtime_checkable
 class ResolverBackend(Protocol):
+    async def review(
+        self,
+        request: FusionRequest,
+        draft: str,
+        draft_sha256: str,
+        signals: object,
+    ) -> ReviewDecision: ...
+
     async def resolve(
         self,
         request: FusionRequest,

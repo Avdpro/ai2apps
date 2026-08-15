@@ -1510,6 +1510,10 @@ class VLMBatchedEngine(BaseEngine):
         from ..engine_core import get_mlx_executor
 
         def _load_vlm_sync():
+            from ..patches.qwen3_6_flesh.io_patch import (
+                qwen36_scope_safetensors_on_load,
+            )
+
             _patch_video_processor_bug()
             _patch_torch_free_image_processor()
             apply_pixtral_torch_free_patch()
@@ -1518,6 +1522,7 @@ class VLMBatchedEngine(BaseEngine):
                 _drop_gemma4_mlx_shared_kv_extras_on_load(Path(self._model_name)),
                 _force_minimax_m3_moe_sanitize_on_load(Path(self._model_name)),
                 _remap_nested_visual_on_load(Path(self._model_name)),
+                qwen36_scope_safetensors_on_load(self._model_name),
             ):
                 custom_loaded = maybe_load_custom_quantization(
                     self._model_name,
@@ -3227,6 +3232,7 @@ class VLMBatchedEngine(BaseEngine):
         request_id = await engine.add_request(
             prompt=prompt,
             sampling_params=sampling_params,
+            request_id=kwargs.get("request_id"),
             vlm_inputs_embeds=vlm_inputs_embeds,
             vlm_extra_kwargs=vlm_extra_kwargs,
             vlm_image_hash=vlm_image_hash,

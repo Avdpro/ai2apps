@@ -7,6 +7,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any
@@ -37,6 +38,9 @@ _LOSSY_TO_BOOST = {
 # these are equivalent to about 400 and 600 same-size experts per 10 tokens.
 _SSD_ELEVATED_PRESSURE = 1.0 / 6.0
 _SSD_CRITICAL_PRESSURE = 0.25
+_KV_PROCESS_NONCE = uuid.uuid4().hex
+_PREFILL_AUTO_TURBO_TOKENS = 2048
+_PREFILL_AUTO_BLAST_TOKENS = 10 * 1024
 
 
 class DeepseekV4FleshEngine(BatchedEngine):
@@ -48,6 +52,8 @@ class DeepseekV4FleshEngine(BatchedEngine):
     also leaves room for future access-driven L1 promotion/eviction. The outer
     oMLX EnginePool can still serve other model types concurrently.
     """
+
+    supports_kv_continuity = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -68,6 +74,14 @@ class DeepseekV4FleshEngine(BatchedEngine):
         self._adaptive_turn_scored_steps = 0
         self._adaptive_turn_miss_routes = 0
         self._adaptive_turn_routes = 0
+        self._prefill_l1_window_stats: dict[str, Any] | None = None
+        self._prefill_l1_reviews = 0
+        self._prefill_l1_triggers = 0
+        self._last_prefill_l1_review: dict[str, Any] | None = None
+        self._prefill_l1_window_token = 0
+        self._prefill_l1_last_commit_token = 0
+        self._prefill_l1_best_miss_rate: float | None = None
+        self._prefill_l1_initial_reviewed = False
         self._maintenance_tasks: set[asyncio.Task[Any]] = set()
         self._last_decode_tail: dict[str, Any] | None = None
         # The product default is always exact. Legacy lossy environment flags
@@ -77,8 +91,13 @@ class DeepseekV4FleshEngine(BatchedEngine):
         self._engine_boost_mode = self._default_boost_mode
         self._engine_boost_session_id: str | None = None
         self._engine_boost_modes: dict[str, str] = {}
+        self._prefill_boost_runtime_by_session: dict[str, str] = {}
+        self._decode_boost_modes: dict[str, str] = {}
         self._pending_engine_boost: dict[str, str] = {}
         self._session_owned_kv: set[str] = set()
+        # Session policy is intentionally process-local. Persistent policy
+        # omits this nonce so the SSD prefix index can survive a restart.
+        self._kv_runtime_nonce = _KV_PROCESS_NONCE
         self._engine_boost_lock = threading.Lock()
         self._engine_boost_switches = 0
         self._routed_expert_bytes_per_token = 0
@@ -182,6 +201,7 @@ class DeepseekV4FleshEngine(BatchedEngine):
         # Engine Boost uses the same scheduler-safe boundary even when
         # adaptive L1 itself is disabled.
         core._between_decode_step_callback = self._between_decode_step
+        core.scheduler._prefill_chunk_callback = self._between_prefill_chunk
         logger.info(
             "DeepSeek V4 Flesh ready: scopes=%d initial=%s probe_depth=%d",
             len(catalog.scope_ids),
@@ -195,8 +215,9 @@ class DeepseekV4FleshEngine(BatchedEngine):
         override: str | None = None,
         session_id: str = "default",
         l1_mode: str = "auto",
-        boost_mode: str | None = None,
-    ) -> str:
+        prefill_boost_mode: str | None = None,
+        decode_boost_mode: str | None = None,
+    ) -> tuple[str, str]:
         await self.start()
         token_ids = (
             list(prompt)
@@ -243,20 +264,48 @@ class DeepseekV4FleshEngine(BatchedEngine):
                 enabled=(
                     self._adaptive_state.mode == "auto"
                     or self._adaptive_l1.manual_pending(session_id)
-                )
+                ),
+                prefill_enabled=(
+                    self._adaptive_state.mode == "auto"
+                    and self._adaptive_l1.config.prefill_enabled
+                    and len(token_ids)
+                    >= self._adaptive_l1.config.prefill_min_prompt_tokens
+                ),
             )
-        boost_mode = self._normalize_boost_mode(
-            boost_mode or self._engine_boost_modes.get(
+            self._prefill_l1_window_stats = self._scope_bank.loader.stats()
+            self._prefill_l1_window_token = 0
+            self._prefill_l1_last_commit_token = 0
+            self._prefill_l1_best_miss_rate = None
+            self._prefill_l1_initial_reviewed = False
+        requested_prefill_boost = self._normalize_boost_mode(
+            prefill_boost_mode or self._engine_boost_modes.get(
                 session_id, self._default_boost_mode
             )
         )
+        requested_decode_boost = self._normalize_boost_mode(
+            decode_boost_mode
+            or self._engine_boost_modes.get(session_id, self._default_boost_mode)
+        )
         with self._engine_boost_lock:
-            boost_mode = self._pending_engine_boost.pop(session_id, boost_mode)
+            requested_decode_boost = self._pending_engine_boost.pop(
+                session_id, requested_decode_boost
+            )
+        self._engine_boost_modes[session_id] = requested_decode_boost
+        resolved_decode_boost = (
+            "natural"
+            if requested_decode_boost == "auto"
+            else requested_decode_boost
+        )
+        self._decode_boost_modes[session_id] = resolved_decode_boost
+        boost_mode = self._resolve_prefill_boost(
+            requested_prefill_boost, len(token_ids)
+        )
+        self._prefill_boost_runtime_by_session[session_id] = boost_mode
         await loop.run_in_executor(
             core._mlx_executor, self._apply_engine_boost, session_id, boost_mode
         )
         self._reset_ssd_window(session_id)
-        return scope
+        return scope, boost_mode
 
     @staticmethod
     def _cache_namespace(
@@ -289,11 +338,50 @@ class DeepseekV4FleshEngine(BatchedEngine):
         return namespace
 
     @staticmethod
+    def _normalize_kv_policy(value: str | None) -> str:
+        policy = str(value or "strict").strip().lower()
+        if policy not in {"strict", "session", "persistent"}:
+            raise ValueError(f"Unsupported KV continuity policy: {value}")
+        return policy
+
+    def _continuity_cache_namespace(
+        self,
+        policy: str,
+        session_id: str,
+    ) -> tuple[str, ...]:
+        if policy == "session":
+            return (
+                "deepseek-v4-flesh-kvc-v1",
+                "session",
+                self._kv_runtime_nonce,
+                session_id,
+            )
+        if policy == "persistent":
+            return (
+                "deepseek-v4-flesh-kvc-v1",
+                "persistent",
+                session_id,
+            )
+        raise ValueError("strict policy does not use a continuity namespace")
+
+    @staticmethod
     def _normalize_boost_mode(mode: str) -> str:
         normalized = str(mode).strip().lower()
-        if normalized not in _BOOST_TO_LOSSY:
-            raise ValueError("Engine Boost must be natural, turbo, or blast")
+        if normalized not in {*_BOOST_TO_LOSSY, "auto"}:
+            raise ValueError("Engine Boost must be auto, natural, turbo, or blast")
         return normalized
+
+    @staticmethod
+    def _resolve_prefill_boost(mode: str, context_tokens: int) -> str:
+        """Resolve Auto for Prefill without changing the Decode preference."""
+
+        if mode != "auto":
+            return mode
+        if context_tokens > _PREFILL_AUTO_BLAST_TOKENS:
+            return "blast"
+        if context_tokens > _PREFILL_AUTO_TURBO_TOKENS:
+            return "turbo"
+        return "natural"
 
     def _apply_engine_boost(self, session_id: str, mode: str) -> bool:
         """Publish a policy-only change on the MLX executor boundary."""
@@ -303,6 +391,8 @@ class DeepseekV4FleshEngine(BatchedEngine):
         )
 
         mode = self._normalize_boost_mode(mode)
+        if mode == "auto":
+            mode = "natural"
         changed = mode != self._engine_boost_mode
         policy = scope_lossy_policy_for_mode(_BOOST_TO_LOSSY[mode])
         target = getattr(self._model, "model", self._model)
@@ -311,7 +401,6 @@ class DeepseekV4FleshEngine(BatchedEngine):
                 block.ffn.scope_lossy_policy = policy
         self._engine_boost_mode = mode
         self._engine_boost_session_id = session_id
-        self._engine_boost_modes[session_id] = mode
         if changed:
             self._engine_boost_switches += 1
             logger.info(
@@ -336,6 +425,12 @@ class DeepseekV4FleshEngine(BatchedEngine):
         if mode != previous:
             self._session_owned_kv.add(session_id)
         self._engine_boost_modes[session_id] = mode
+        decode_modes = getattr(self, "_decode_boost_modes", None)
+        if decode_modes is None:
+            decode_modes = self._decode_boost_modes = {}
+        decode_modes[session_id] = (
+            "natural" if mode == "auto" else mode
+        )
         if active:
             with self._engine_boost_lock:
                 self._pending_engine_boost[session_id] = mode
@@ -499,7 +594,9 @@ class DeepseekV4FleshEngine(BatchedEngine):
             "seconds": elapsed,
         }
 
-    def _drain_route_window(self, state: Any, tokens: int) -> dict[str, int]:
+    def _drain_route_window(
+        self, state: Any, tokens: int, *, account_decode_turn: bool = True
+    ) -> dict[str, int]:
         window = self._scope_bank.loader.drain_route_telemetry()
         route_count = 0
         miss_routes = 0
@@ -511,16 +608,182 @@ class DeepseekV4FleshEngine(BatchedEngine):
                     miss_routes += count
         self._adaptive_l1.observe_route_window(state, window["histograms"])
         miss_steps = int(window["miss_layer_steps"])
-        self._adaptive_turn_miss_steps += miss_steps
-        self._adaptive_turn_scored_steps += max(tokens, 0) * 40
-        self._adaptive_turn_miss_routes += miss_routes
-        self._adaptive_turn_routes += route_count
+        if account_decode_turn:
+            self._adaptive_turn_miss_steps += miss_steps
+            self._adaptive_turn_scored_steps += max(tokens, 0) * 40
+            self._adaptive_turn_miss_routes += miss_routes
+            self._adaptive_turn_routes += route_count
         return {
             "miss_steps": miss_steps,
             "scored_steps": max(tokens, 0) * 40,
             "miss_routes": miss_routes,
             "routes": route_count,
         }
+
+    @staticmethod
+    def _limit_prefill_plan(
+        plan: list[Any], *, max_layers: int
+    ) -> list[Any]:
+        selected_layers: list[int] = []
+        limited: list[Any] = []
+        for item in plan:
+            if item.layer not in selected_layers:
+                if len(selected_layers) >= max_layers:
+                    continue
+                selected_layers.append(item.layer)
+            limited.append(item)
+        return limited
+
+    def _between_prefill_chunk(
+        self,
+        request: Any,
+        *,
+        tokens: int,
+        processed_tokens: int,
+        remaining_tokens: int,
+    ) -> None:
+        """Review device route statistics at an existing Prefill boundary."""
+
+        if remaining_tokens <= 0:
+            session_id = self._engine_boost_session_id
+            if session_id is not None:
+                decode_boost = getattr(self, "_decode_boost_modes", {}).get(
+                    session_id,
+                    "natural"
+                    if self._engine_boost_modes.get(session_id) == "auto"
+                    else self._engine_boost_modes.get(session_id, "natural"),
+                )
+                if decode_boost != getattr(self, "_engine_boost_mode", None):
+                    self._apply_engine_boost(session_id, decode_boost)
+                self._prefill_boost_runtime_by_session[session_id] = decode_boost
+
+        state = self._adaptive_state
+        if self._adaptive_l1 is None or state is None:
+            return
+        config = self._adaptive_l1.config
+        prompt_tokens = int(getattr(request, "num_prompt_tokens", 0) or 0)
+        if (
+            not config.prefill_enabled
+            or state.mode != "auto"
+            or prompt_tokens < config.prefill_min_prompt_tokens
+        ):
+            return
+
+        first_review = not self._prefill_l1_initial_reviewed
+        window_tokens = processed_tokens - self._prefill_l1_window_token
+        if not first_review and window_tokens < config.prefill_recheck_tokens:
+            return
+
+        before = self._prefill_l1_window_stats or self._scope_bank.loader.stats()
+        route_window = self._drain_route_window(
+            state, window_tokens, account_decode_turn=False
+        )
+        after = self._scope_bank.loader.stats()
+        route_count = route_window["routes"]
+        miss_route_rate = route_window["miss_routes"] / max(route_count, 1)
+        plan = self._adaptive_l1.plan(
+            state,
+            max_promotions=(
+                config.prefill_max_promotions_per_layer
+                if first_review
+                else config.prefill_recheck_max_promotions_per_layer
+            ),
+        )
+        plan = self._limit_prefill_plan(
+            plan,
+            max_layers=(
+                config.prefill_max_layers_per_commit
+                if first_review
+                else config.prefill_recheck_max_layers_per_commit
+            ),
+        )
+
+        loaded = max(self._stats_delta(after, before, "transient_experts_loaded"), 1)
+        load_seconds = max(
+            float(after.get("load_seconds", 0.0))
+            - float(before.get("load_seconds", 0.0)),
+            0.0,
+        )
+        per_expert_seconds = load_seconds / loaded
+        future_windows = (
+            (remaining_tokens + max(window_tokens, 1) - 1) // max(window_tokens, 1)
+            if remaining_tokens > 0
+            else 0
+        )
+        predicted_savings = len(plan) * future_windows * per_expert_seconds
+        changed_layers, switch_cost = self._switch_cost(plan)
+        deteriorated = (
+            first_review
+            or self._prefill_l1_best_miss_rate is None
+            or miss_route_rate
+            >= self._prefill_l1_best_miss_rate
+            * config.prefill_recheck_miss_multiplier
+        )
+        should = (
+            bool(plan)
+            and remaining_tokens >= config.prefill_min_remaining_tokens
+            and miss_route_rate >= config.prefill_min_miss_route_rate
+            and predicted_savings >= switch_cost * config.prefill_payback_ratio
+            and deteriorated
+        )
+        review = {
+            "processed_tokens": processed_tokens,
+            "remaining_tokens": remaining_tokens,
+            "chunk_tokens": tokens,
+            "window_tokens": window_tokens,
+            "miss_route_rate": miss_route_rate,
+            "candidates": len(plan),
+            "layers": changed_layers,
+            "predicted_savings_seconds": predicted_savings,
+            "switch_cost_seconds": switch_cost,
+            "first_review": first_review,
+            "deteriorated": deteriorated,
+            "trigger": should,
+        }
+        self._prefill_l1_reviews += 1
+        self._prefill_l1_initial_reviewed = True
+        self._last_prefill_l1_review = review
+        profile = getattr(request, "prefill_profile", None)
+        if profile is not None:
+            profile["l1_reviews"] = int(profile.get("l1_reviews", 0)) + 1
+            profile["l1_last_review"] = dict(review)
+        logger.info(
+            "Adaptive L1 Prefill review: session=%s processed=%d remaining=%d "
+            "miss_route_rate=%.3f candidates=%d layers=%d "
+            "predicted_savings=%.3fs switch_cost=%.3fs trigger=%s",
+            state.session_id,
+            processed_tokens,
+            remaining_tokens,
+            miss_route_rate,
+            len(plan),
+            changed_layers,
+            predicted_savings,
+            switch_cost,
+            should,
+        )
+        if should:
+            result = self._apply_adaptive_l1(
+                "prefill", state=state, promotions=plan
+            )
+            self._prefill_l1_triggers += 1
+            self._prefill_l1_last_commit_token = processed_tokens
+            if profile is not None:
+                profile["l1_triggers"] = int(profile.get("l1_triggers", 0)) + 1
+                profile["l1_update_seconds"] = float(
+                    profile.get("l1_update_seconds", 0.0)
+                ) + float(result["seconds"])
+
+        self._prefill_l1_best_miss_rate = (
+            miss_route_rate
+            if self._prefill_l1_best_miss_rate is None
+            else min(self._prefill_l1_best_miss_rate, miss_route_rate)
+        )
+        self._prefill_l1_window_token = processed_tokens
+        self._prefill_l1_window_stats = self._scope_bank.loader.stats()
+        self._scope_bank.loader.reset_route_telemetry(
+            enabled=True,
+            prefill_enabled=remaining_tokens > 0,
+        )
 
     def _switch_cost(self, promotions: list[Any]) -> tuple[int, float]:
         changed_layers = len({item.layer for item in promotions})
@@ -811,38 +1074,67 @@ class DeepseekV4FleshEngine(BatchedEngine):
         async with self._flesh_lock:
             override = kwargs.pop("flesh_scope", None)
             session_id = str(kwargs.pop("flesh_session_id", "default"))
+            kv_policy = self._normalize_kv_policy(
+                kwargs.pop("flesh_kv_policy", "strict")
+            )
             l1_mode = str(kwargs.pop("flesh_l1_mode", "auto"))
-            boost_override = kwargs.pop("flesh_boost_mode", None)
+            legacy_boost_override = kwargs.pop("flesh_boost_mode", None)
+            prefill_boost_override = kwargs.pop(
+                "flesh_prefill_boost_mode", legacy_boost_override
+            )
+            decode_boost_override = kwargs.pop(
+                "flesh_decode_boost_mode", legacy_boost_override
+            )
             previous_boost = self._engine_boost_modes.get(session_id)
-            boost_mode = self._normalize_boost_mode(
-                boost_override
+            prefill_boost_mode = self._normalize_boost_mode(
+                prefill_boost_override
                 or self._engine_boost_modes.get(
                     session_id, self._default_boost_mode
                 )
             )
-            if previous_boost is not None and previous_boost != boost_mode:
+            decode_boost_mode = self._normalize_boost_mode(
+                decode_boost_override
+                or self._engine_boost_modes.get(
+                    session_id, self._default_boost_mode
+                )
+            )
+            if previous_boost is not None and previous_boost != decode_boost_mode:
                 self._session_owned_kv.add(session_id)
-            if boost_mode != "natural":
+            if (
+                prefill_boost_mode != "natural"
+                or decode_boost_mode != "natural"
+            ):
                 self._session_owned_kv.add(session_id)
-            scope = await self._prepare_scope(
-                prompt, override, session_id, l1_mode, boost_mode
+            scope, effective_prefill_boost = await self._prepare_scope(
+                prompt,
+                override,
+                session_id,
+                l1_mode,
+                prefill_boost_mode,
+                decode_boost_mode,
             )
             # A live control request may arrive while scope preparation is
             # awaiting the MLX executor. Use the policy that was actually
             # published, not the value sampled before that await.
-            boost_mode = self._engine_boost_modes.get(session_id, boost_mode)
+            boost_mode = effective_prefill_boost
             state = self._adaptive_state
             fingerprint = (
                 self._adaptive_state.fingerprint()
                 if self._adaptive_state is not None else None
             )
-            kwargs["cache_extra_keys"] = self._cache_namespace(
-                scope,
-                fingerprint,
-                boost_mode,
-                session_id,
-                session_id in self._session_owned_kv,
-            )
+            if kv_policy == "strict":
+                kwargs["cache_extra_keys"] = self._cache_namespace(
+                    scope,
+                    fingerprint,
+                    boost_mode,
+                    session_id,
+                    session_id in self._session_owned_kv,
+                )
+            else:
+                kwargs["cache_extra_keys"] = self._continuity_cache_namespace(
+                    kv_policy, session_id
+                )
+            kwargs["kv_cache_policy"] = kv_policy
             output = await super().generate(prompt, *args, **kwargs)
             if state is not None and state.mode != "off":
                 await self._schedule_turn_maintenance(state)
@@ -860,35 +1152,64 @@ class DeepseekV4FleshEngine(BatchedEngine):
         async with self._flesh_lock:
             override = kwargs.pop("flesh_scope", None)
             session_id = str(kwargs.pop("flesh_session_id", "default"))
+            kv_policy = self._normalize_kv_policy(
+                kwargs.pop("flesh_kv_policy", "strict")
+            )
             l1_mode = str(kwargs.pop("flesh_l1_mode", "auto"))
-            boost_override = kwargs.pop("flesh_boost_mode", None)
+            legacy_boost_override = kwargs.pop("flesh_boost_mode", None)
+            prefill_boost_override = kwargs.pop(
+                "flesh_prefill_boost_mode", legacy_boost_override
+            )
+            decode_boost_override = kwargs.pop(
+                "flesh_decode_boost_mode", legacy_boost_override
+            )
             previous_boost = self._engine_boost_modes.get(session_id)
-            boost_mode = self._normalize_boost_mode(
-                boost_override
+            prefill_boost_mode = self._normalize_boost_mode(
+                prefill_boost_override
                 or self._engine_boost_modes.get(
                     session_id, self._default_boost_mode
                 )
             )
-            if previous_boost is not None and previous_boost != boost_mode:
-                self._session_owned_kv.add(session_id)
-            if boost_mode != "natural":
-                self._session_owned_kv.add(session_id)
-            scope = await self._prepare_scope(
-                prompt, override, session_id, l1_mode, boost_mode
+            decode_boost_mode = self._normalize_boost_mode(
+                decode_boost_override
+                or self._engine_boost_modes.get(
+                    session_id, self._default_boost_mode
+                )
             )
-            boost_mode = self._engine_boost_modes.get(session_id, boost_mode)
+            if previous_boost is not None and previous_boost != decode_boost_mode:
+                self._session_owned_kv.add(session_id)
+            if (
+                prefill_boost_mode != "natural"
+                or decode_boost_mode != "natural"
+            ):
+                self._session_owned_kv.add(session_id)
+            scope, effective_prefill_boost = await self._prepare_scope(
+                prompt,
+                override,
+                session_id,
+                l1_mode,
+                prefill_boost_mode,
+                decode_boost_mode,
+            )
+            boost_mode = effective_prefill_boost
             state = self._adaptive_state
             fingerprint = (
                 self._adaptive_state.fingerprint()
                 if self._adaptive_state is not None else None
             )
-            kwargs["cache_extra_keys"] = self._cache_namespace(
-                scope,
-                fingerprint,
-                boost_mode,
-                session_id,
-                session_id in self._session_owned_kv,
-            )
+            if kv_policy == "strict":
+                kwargs["cache_extra_keys"] = self._cache_namespace(
+                    scope,
+                    fingerprint,
+                    boost_mode,
+                    session_id,
+                    session_id in self._session_owned_kv,
+                )
+            else:
+                kwargs["cache_extra_keys"] = self._continuity_cache_namespace(
+                    kv_policy, session_id
+                )
+            kwargs["kv_cache_policy"] = kv_policy
             finished = False
             try:
                 async for output in super().stream_generate(prompt, *args, **kwargs):
@@ -950,6 +1271,7 @@ class DeepseekV4FleshEngine(BatchedEngine):
             self._scope_bank.loader.set_decode_miss_observer(None)
         if self._engine is not None and self._engine.engine is not None:
             self._engine.engine._between_decode_step_callback = None
+            self._engine.engine.scheduler._prefill_chunk_callback = None
         await super().stop()
         self._scope_selector = None
         self._scope_bank = None
@@ -980,6 +1302,25 @@ class DeepseekV4FleshEngine(BatchedEngine):
                 "engine_boost": {
                     "mode": self._engine_boost_mode,
                     "lossy_mode": _BOOST_TO_LOSSY[self._engine_boost_mode],
+                    "configured_mode": (
+                        self._engine_boost_modes.get(
+                            self._engine_boost_session_id,
+                            self._default_boost_mode,
+                        )
+                        if self._engine_boost_session_id is not None
+                        else self._default_boost_mode
+                    ),
+                    "prefill_runtime_mode": (
+                        self._prefill_boost_runtime_by_session.get(
+                            self._engine_boost_session_id
+                        )
+                        if self._engine_boost_session_id is not None
+                        else None
+                    ),
+                    "auto_thresholds": {
+                        "turbo_above_tokens": _PREFILL_AUTO_TURBO_TOKENS,
+                        "blast_above_tokens": _PREFILL_AUTO_BLAST_TOKENS,
+                    },
                     "session_id": self._engine_boost_session_id,
                     "switches": self._engine_boost_switches,
                     "pending": len(self._pending_engine_boost),
@@ -997,5 +1338,18 @@ class DeepseekV4FleshEngine(BatchedEngine):
                     for session_id, window in self._ssd_recent_by_session.items()
                 },
                 "last_decode_tail": self._last_decode_tail,
+                "prefill_adaptive_l1": {
+                    "enabled": bool(
+                        self._adaptive_l1 is not None
+                        and self._adaptive_l1.config.prefill_enabled
+                    ),
+                    "reviews": self._prefill_l1_reviews,
+                    "triggers": self._prefill_l1_triggers,
+                    "last_review": (
+                        dict(self._last_prefill_l1_review)
+                        if self._last_prefill_l1_review is not None
+                        else None
+                    ),
+                },
             }
         return stats

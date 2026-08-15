@@ -32,6 +32,7 @@ from omlx.scheduler import (
     SchedulerConfig,
     SchedulerOutput,
     SchedulingPolicy,
+    _ExactPrefixStore,
     _PrefillState,
     _PreflightRejection,
     _StoreCacheGate,
@@ -772,14 +773,14 @@ class TestSchedulerAddRequest:
         """Prompts below the freshness minimum should never wait on store_cache."""
         scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
         scheduler.block_aware_cache = MagicMock()
-        prompt = list(range(4095))
+        prompt = list(range(511))
 
         future = MagicMock()
         future.done.return_value = False
         future.result.return_value = None
         scheduler._inflight_store_futures["req-prev"] = future
         scheduler._inflight_store_info["req-prev"] = (
-            scheduler_module._InflightStoreInfo(tokens=list(range(3584)))
+            scheduler_module._InflightStoreInfo(tokens=list(range(384)))
         )
 
         request = Request(
@@ -794,6 +795,32 @@ class TestSchedulerAddRequest:
         scheduler.block_aware_cache.fetch_cache.assert_not_called()
         assert scheduler._should_defer_for_cache_freshness(request) is False
         assert request.request_id not in scheduler._cache_freshness_waits
+
+    def test_admission_defers_for_ordinary_multiturn_boundary_store(
+        self, mock_model, mock_tokenizer
+    ):
+        """A normal chat turn should not race its previous 512-token store."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        scheduler.block_aware_cache = MagicMock()
+        prompt = list(range(1075))
+
+        future = MagicMock()
+        future.done.return_value = False
+        scheduler._inflight_store_futures["req-prev"] = future
+        scheduler._inflight_store_info["req-prev"] = (
+            scheduler_module._InflightStoreInfo(tokens=list(range(512)))
+        )
+
+        request = Request(
+            request_id="req-next",
+            prompt=prompt,
+            sampling_params=SamplingParams(max_tokens=16),
+        )
+
+        scheduler.add_request(request)
+
+        assert scheduler._should_defer_for_cache_freshness(request) is True
+        assert request.request_id in scheduler._cache_freshness_waits
 
     def test_admission_defers_for_immediate_4k_boundary_store(
         self, mock_model, mock_tokenizer
@@ -984,6 +1011,172 @@ class TestSchedulerAddRequest:
             extra_key_ranges=None,
             hot_cache_write_back=False,
         )
+
+    def test_session_continuity_restores_short_exact_turn_boundary(
+        self, mock_model, mock_tokenizer
+    ):
+        """A short second turn reuses KV even below the physical block size."""
+        scheduler = Scheduler(
+            model=mock_model,
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=2048),
+        )
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.block_aware_cache.restore_exact_prefix.return_value = ["kv"]
+        request = Request(
+            request_id="turn-2",
+            prompt=[1, 2, 3, 4, 5, 6],
+            sampling_params=SamplingParams(max_tokens=4),
+            kv_cache_policy="session",
+            cache_extra_keys=("qwen-kvc-v1", "session-1"),
+        )
+        request.prompt_token_ids = [1, 2, 3, 4, 5, 6]
+        lineage_key = scheduler._session_lineage_key(request)
+        scheduler._session_exact_prefix_tokens[lineage_key] = [1, 2, 3, 4]
+
+        scheduler._prepare_prefix_cache_for_request(request)
+
+        assert request.cached_tokens == 4
+        assert request.remaining_tokens == [5, 6]
+        assert request.prompt_cache == ["kv"]
+        scheduler.block_aware_cache.restore_exact_prefix.assert_called_once()
+        scheduler.block_aware_cache.fetch_cache.assert_not_called()
+
+    def test_store_worker_registers_short_exact_session_boundary(
+        self, mock_model, mock_tokenizer
+    ):
+        """An exact store returning no block table still publishes its lineage."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.block_aware_cache.store_exact_prefix.return_value = None
+        lineage_key = ("qwen-kvc-v1", "session-1")
+
+        with patch("omlx.scheduler._safe_sync_stream"):
+            scheduler._async_store_cache_worker(
+                "turn-1",
+                [1, 2, 3, 4],
+                [],
+                None,
+                None,
+                ("qwen-kvc-v1", "session-1"),
+                None,
+                None,
+                exact_session_boundary=True,
+                session_lineage_key=lineage_key,
+            )
+
+        scheduler.block_aware_cache.store_exact_prefix.assert_called_once_with(
+            "turn-1",
+            [1, 2, 3, 4],
+            [],
+            model_cache_config=None,
+            extra_keys=("qwen-kvc-v1", "session-1"),
+            extra_key_token_start=None,
+            extra_key_ranges=None,
+        )
+        assert scheduler._session_exact_prefix_tokens[lineage_key] == [1, 2, 3, 4]
+
+    def test_declared_exact_prefix_restores_below_physical_block_size(
+        self, mock_model, mock_tokenizer
+    ):
+        scheduler = Scheduler(
+            model=mock_model,
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=2048),
+        )
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.block_aware_cache.restore_exact_prefix.return_value = ["review-kv"]
+        request = Request(
+            request_id="review-turn-2",
+            prompt=[1, 2, 3, 4, 5],
+            sampling_params=SamplingParams(max_tokens=4),
+            cache_extra_keys=("review-model", "review-phase"),
+            exact_prefix_token_count=3,
+        )
+        request.prompt_token_ids = [1, 2, 3, 4, 5]
+
+        scheduler._prepare_prefix_cache_for_request(request)
+
+        assert request.cached_tokens == 3
+        assert request.remaining_tokens == [4, 5]
+        assert request.prompt_cache == ["review-kv"]
+        scheduler.block_aware_cache.fetch_cache.assert_not_called()
+
+    def test_store_worker_persists_declared_exact_prefix(
+        self, mock_model, mock_tokenizer
+    ):
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.block_aware_cache.store_cache.return_value = None
+        scheduler.paged_cache_manager = MagicMock()
+        scheduler.paged_cache_manager.get_block_table.return_value = None
+        payload = _ExactPrefixStore(
+            request_id="review-static",
+            tokens=[1, 2, 3],
+            cache=[],
+            model_cache_config=None,
+        )
+
+        with patch("omlx.scheduler._safe_sync_stream"):
+            scheduler._async_store_cache_worker(
+                "review-request",
+                [1, 2, 3, 4],
+                [],
+                None,
+                None,
+                ("review",),
+                None,
+                None,
+                declared_exact_store=payload,
+            )
+
+        scheduler.block_aware_cache.store_exact_prefix.assert_called_once_with(
+            "review-static",
+            [1, 2, 3],
+            [],
+            model_cache_config=None,
+            extra_keys=("review",),
+            extra_key_token_start=None,
+            extra_key_ranges=None,
+        )
+
+    def test_declared_exact_store_merges_hybrid_boundary_state(
+        self, mock_model, mock_tokenizer
+    ):
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        request = Request(
+            request_id="review-static-hybrid",
+            prompt=[1, 2, 3, 4, 5],
+            sampling_params=SamplingParams(),
+            exact_prefix_token_count=3,
+        )
+        request.prompt_token_ids = [1, 2, 3, 4, 5]
+        full_cache = [
+            {"state": ("full-k", "full-v"), "cache_type": "KVCache"},
+            {"state": ["late-state"], "cache_type": "ArraysCache"},
+        ]
+        boundary_cache = [
+            {"state": (), "cache_type": "KVCache"},
+            {"state": ["prefix-state"], "cache_type": "ArraysCache"},
+        ]
+        scheduler.requests[request.request_id] = request
+        scheduler._boundary_cache_snapshots[request.request_id] = {
+            3: (scheduler._PREFILL_SNAPSHOT_MARKER, boundary_cache)
+        }
+
+        with patch.object(
+            scheduler, "_detect_boundary_snapshot_need", return_value=True
+        ):
+            payload = scheduler._prepare_declared_exact_prefix_store(
+                request,
+                full_cache,
+                None,
+            )
+
+        assert payload is not None
+        assert payload.tokens == [1, 2, 3]
+        assert payload.cache[0]["state"] == ("full-k", "full-v")
+        assert payload.cache[1]["state"] == ["prefix-state"]
 
 
 class TestSchedulerAbortRequest:
@@ -2408,6 +2601,36 @@ class TestSchedulerBoundarySnapshots:
         assert args[0] == "req-reasoning"
         assert args[1] == [1, 2, 3, 4, 5, 6, 7, 8]  # prompt only
 
+    def test_cleanup_finished_keeps_reasoning_output_for_continuous_kv(
+        self, mock_model, mock_tokenizer
+    ):
+        """Continuous KV commits hidden reasoning so the next turn can hit it."""
+        config = SchedulerConfig(paged_cache_block_size=4)
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer, config=config)
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.paged_cache_manager = None
+
+        request = Request(
+            request_id="req-continuous-reasoning",
+            prompt="hello",
+            sampling_params=SamplingParams(),
+            kv_cache_policy="session",
+        )
+        request.prompt_token_ids = [1, 2, 3, 4]
+        request.num_prompt_tokens = 4
+        request.output_token_ids = [5, 6, 7, 8]
+        request.needs_think_prefix = True
+        request._extracted_cache = [{"state": "cache"}]
+        request._model_cache_config = None
+        scheduler.running[request.request_id] = request
+        scheduler.requests[request.request_id] = request
+
+        scheduler._cleanup_finished({request.request_id})
+
+        scheduler.block_aware_cache.store_exact_prefix.assert_called_once()
+        args, _ = scheduler.block_aware_cache.store_exact_prefix.call_args
+        assert args[1] == [1, 2, 3, 4, 5, 6, 7, 8]
+
     def test_cleanup_finished_stores_output_tokens_for_non_reasoning_model(
         self, mock_model, mock_tokenizer
     ):
@@ -2779,6 +3002,140 @@ class TestSchedulerRotatingBlockAlignment:
         # window_size=128 is below _ROTATING_BLOCK_SIZE_MIN (512),
         # so it gets rounded up to 512 (smallest multiple of 128 >= 512).
         assert scheduler.config.paged_cache_block_size == 512
+
+    @pytest.mark.parametrize("checkpoint", (1024, 2048, 4096))
+    def test_deepseek_v4_coarse_checkpoint_override(
+        self, monkeypatch, mock_tokenizer, checkpoint
+    ):
+        RotatingStub = type("RotatingKVCache", (), {})
+
+        class DeepSeekV4Model:
+            model_type = "deepseek_v4"
+
+            def __init__(self):
+                self.config = MagicMock()
+                self.config.num_hidden_layers = 1
+
+            def make_cache(self):
+                cache = RotatingStub()
+                cache.max_size = 128
+                return [cache]
+
+        monkeypatch.setenv(
+            "OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS", str(checkpoint)
+        )
+        scheduler = Scheduler(
+            model=DeepSeekV4Model(),
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=256),
+        )
+        scheduler.config.paged_ssd_cache_dir = "/tmp/cache"
+        scheduler._align_block_size_with_rotating_window()
+
+        assert scheduler.config.paged_cache_block_size == checkpoint
+
+    def test_deepseek_v4_coarse_checkpoint_detects_wrapped_model(
+        self, monkeypatch, mock_tokenizer
+    ):
+        RotatingStub = type("RotatingKVCache", (), {})
+
+        class InnerArgs:
+            model_type = "deepseek_v4_flash"
+
+        class InnerModel:
+            args = InnerArgs()
+
+        class WrappedModel:
+            model = InnerModel()
+
+            def make_cache(self):
+                cache = RotatingStub()
+                cache.max_size = 128
+                return [cache]
+
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS", "1024")
+        scheduler = Scheduler(
+            model=WrappedModel(),
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=256),
+        )
+        scheduler.config.paged_ssd_cache_dir = "/tmp/cache"
+        scheduler._align_block_size_with_rotating_window()
+
+        assert scheduler.config.paged_cache_block_size == 1024
+
+    def test_deepseek_v4_coarse_checkpoint_defaults_to_balanced_768(
+        self, monkeypatch, mock_tokenizer
+    ):
+        RotatingStub = type("RotatingKVCache", (), {})
+
+        class DeepSeekV4Model:
+            model_type = "deepseek_v4"
+
+            def make_cache(self):
+                cache = RotatingStub()
+                cache.max_size = 128
+                return [cache]
+
+        monkeypatch.delenv("OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS", raising=False)
+        scheduler = Scheduler(
+            model=DeepSeekV4Model(),
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=256),
+        )
+        scheduler.config.paged_ssd_cache_dir = "/tmp/cache"
+        scheduler._align_block_size_with_rotating_window()
+
+        assert scheduler.config.paged_cache_block_size == 768
+
+    def test_deepseek_v4_coarse_checkpoint_can_be_disabled(
+        self, monkeypatch, mock_tokenizer
+    ):
+        RotatingStub = type("RotatingKVCache", (), {})
+
+        class DeepSeekV4Model:
+            model_type = "deepseek_v4"
+
+            def make_cache(self):
+                cache = RotatingStub()
+                cache.max_size = 128
+                return [cache]
+
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS", "off")
+        scheduler = Scheduler(
+            model=DeepSeekV4Model(),
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=256),
+        )
+        scheduler.config.paged_ssd_cache_dir = "/tmp/cache"
+        scheduler._align_block_size_with_rotating_window()
+
+        assert scheduler.config.paged_cache_block_size == 512
+
+    @pytest.mark.parametrize("checkpoint", ("invalid", "256", "513", "6144"))
+    def test_deepseek_v4_coarse_checkpoint_rejects_invalid_value(
+        self, monkeypatch, mock_tokenizer, checkpoint
+    ):
+        RotatingStub = type("RotatingKVCache", (), {})
+
+        class DeepSeekV4Model:
+            model_type = "deepseek_v4"
+
+            def make_cache(self):
+                cache = RotatingStub()
+                cache.max_size = 128
+                return [cache]
+
+        monkeypatch.setenv("OMLX_DEEPSEEK_V4_KV_CHECKPOINT_TOKENS", checkpoint)
+        scheduler = Scheduler(
+            model=DeepSeekV4Model(),
+            tokenizer=mock_tokenizer,
+            config=SchedulerConfig(paged_cache_block_size=256),
+        )
+        scheduler.config.paged_ssd_cache_dir = "/tmp/cache"
+
+        with pytest.raises(ValueError, match="KV_CHECKPOINT_TOKENS"):
+            scheduler._align_block_size_with_rotating_window()
 
     def test_multiple_rotating_window_sizes_raise(self, mock_tokenizer):
         RotatingStub = type("RotatingKVCache", (), {})
