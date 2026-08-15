@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }}</title>
+    <link rel="stylesheet" href="{{ static('css/app-view.css') }}">
+    <script src="{{ static('js/purify.min.js') }}"></script>
+    <script defer src="{{ static('js/app-safe-html.js') }}"></script>
+</head>
+<body data-resource-url="{{ resource_url }}" data-app-name="{{ app_name }}">
+    <main id="app-view" class="app-view" aria-live="polite">
+        <div class="app-view-loading">Opening {{ app_name }}…</div>
+    </main>
+</body>
+</html>

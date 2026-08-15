@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>{% block title %}AI2Apps Admin{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ static('favicon.svg') }}">
+
+    <!-- Inter Font (self-hosted, Latin) -->
+    <link rel="stylesheet" href="/admin/static/fonts/inter/inter.css">
+
+    <!-- CJK Font (conditional, self-hosted) -->
+    {% if current_lang == 'zh' %}
+    <link rel="stylesheet" href="/admin/static/fonts/noto-sans-sc/noto-sans-sc.css">
+    {% elif current_lang == 'zh-TW' %}
+    <link rel="stylesheet" href="/admin/static/fonts/noto-sans-tc/noto-sans-tc.css">
+    {% elif current_lang == 'ko' %}
+    <link rel="stylesheet" href="/admin/static/fonts/noto-sans-kr/noto-sans-kr.css">
+    {% elif current_lang == 'ja' %}
+    <link rel="stylesheet" href="/admin/static/fonts/noto-sans-jp/noto-sans-jp.css">
+    {% endif %}
+
+    <!-- Tailwind CSS (pre-compiled) -->
+    <link rel="stylesheet" href="{{ static('css/tailwind.css') }}">
+
+    <!-- Alpine.js -->
+    <script defer src="/admin/static/js/alpine.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="/admin/static/js/lucide.min.js"></script>
+
+    <script>
+        // Apply theme immediately to prevent flash of wrong theme
+        (function() {
+            var stored = localStorage.getItem('omlx-chat-theme');
+            var theme = stored || 'auto';
+            if (theme === 'auto') {
+                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
+    <script>
+        // i18n locale strings
+        window._t = {{ locale_json | safe }};
+        window.t = function(key) { return window._t[key] !== undefined ? window._t[key] : key; };
+    </script>
+
+    <style>
+        /* Lucide icon fallback: ensure unprocessed <i data-lucide> elements
+           are inline-block so Tailwind w-*/h-* classes apply even if
+           lucide.min.js fails to load or createIcons() hasn't run yet. */
+        [data-lucide] {
+            display: inline-block;
+        }
+
+        /* Language-specific font stack */
+        :root {
+            {% if current_lang == 'ko' %}
+            --font-sans: 'Noto Sans KR', 'Inter', system-ui, sans-serif;
+            {% elif current_lang == 'zh' %}
+            --font-sans: 'Noto Sans SC', 'Inter', system-ui, sans-serif;
+            {% elif current_lang == 'zh-TW' %}
+            --font-sans: 'Noto Sans TC', 'Inter', system-ui, sans-serif;
+            {% elif current_lang == 'ja' %}
+            --font-sans: 'Noto Sans JP', 'Inter', system-ui, sans-serif;
+            {% else %}
+            --font-sans: 'Inter', system-ui, sans-serif;
+            {% endif %}
+        }
+
+        body {
+            font-family: var(--font-sans) !important;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        [x-cloak] { display: none !important; }
+
+        .ai2apps-shell-reveal {
+            position: fixed;
+            z-index: 2147483000;
+            top: 8px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(0,0,0,.09);
+            border-radius: 10px;
+            color: #737373;
+            background: rgba(255,255,255,.76);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            box-shadow: 0 5px 16px rgba(0,0,0,.08);
+            opacity: .38;
+            cursor: pointer;
+            transition: opacity .15s ease, color .15s ease;
+        }
+        .ai2apps-shell-reveal:hover,
+        .ai2apps-shell-reveal:focus-visible { opacity: 1; color: #171717; }
+        .ai2apps-shell-reveal svg { width: 15px; height: 15px; }
+
+        /* Subtle grain texture for background */
+        .bg-grain {
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+        }
+
+        /* Card hover effect */
+        .card-hover {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+        }
+
+        /* Input focus ring */
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+        }
+
+        /* Benchmark tooltip (fixed position, outside overflow containers) */
+        .bench-tip-fixed {
+            position: fixed;
+            z-index: 9999;
+            max-width: 320px;
+            padding: 10px 12px;
+            background: #171717;
+            color: #e5e5e5;
+            font-size: 12px;
+            font-weight: 400;
+            line-height: 1.5;
+            border-radius: 8px;
+            white-space: normal;
+            text-align: left;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+
+    {% block head %}{% endblock %}
+</head>
+<body class="font-sans bg-white text-neutral-900 antialiased selection:bg-neutral-900 selection:text-white">
+    {% block content %}{% endblock %}
+
+    <script>
+        // Instance-bound bridge shared by trusted host-rendered App pages.
+        (function() {
+            if (window.self === window.top) return;
+            var hash = new URLSearchParams(window.location.hash.slice(1));
+            var mountToken = hash.get('ai2apps-mount');
+            var instanceId = hash.get('ai2apps-instance');
+            var viewMountId = hash.get('ai2apps-view-mount');
+            var requestSequence = 0;
+            var pending = new Map();
+            function send(type, detail) {
+                window.parent.postMessage(Object.assign({
+                    type: type,
+                    mountToken: mountToken,
+                    instanceId: instanceId,
+                    viewMountId: viewMountId
+                }, detail || {}), '*');
+            }
+            function request(type, detail, timeoutMs) {
+                var requestId = 'bridge-' + (++requestSequence) + '-' + Date.now();
+                return new Promise(function(resolve, reject) {
+                    var timer = setTimeout(function() {
+                        pending.delete(requestId);
+                        reject(new Error('AI2Apps Host did not respond'));
+                    }, timeoutMs || 30000);
+                    pending.set(requestId, { resolve: resolve, reject: reject, timer: timer });
+                    send(type, Object.assign({ requestId: requestId }, detail || {}));
+                });
+            }
+            window.ai2appsShell = {
+                ready: function() { send('ai2apps.shell.ready'); },
+                showDock: function() { send('ai2apps.shell.request-dock'); },
+                openLauncher: function() { send('ai2apps.shell.open-launcher'); },
+                setTitle: function(title) { send('ai2apps.shell.set-title', { title: String(title) }); },
+                setBadge: function(badge) { send('ai2apps.shell.set-badge', { badge: badge }); },
+                accountChanged: function() { send('ai2apps.account.changed'); },
+                navigate: function(path) { return request('ai2apps.shell.navigate', { path: String(path) }); },
+                openEntry: function(options) {
+                    options = options || {};
+                    return request('ai2apps.shell.open-entry', Object.assign({}, options, {
+                        targetInstanceId: options.targetInstanceId || options.instanceId || null,
+                        instanceId: instanceId
+                    }));
+                },
+                mountMiniEntry: function(options) {
+                    options = options || {};
+                    return request('ai2apps.shell.mount-mini-entry', Object.assign({}, options, {
+                        targetInstanceId: options.targetInstanceId || options.instanceId || null,
+                        instanceId: instanceId
+                    }));
+                },
+                closeMiniEntry: function(mountId) { return request('ai2apps.shell.close', { mountId: String(mountId) }); },
+                requestCapability: function(options) {
+                    return request('ai2apps.shell.request-capability', options || {}, 15 * 60 * 1000);
+                },
+                createAgentRun: function(options) { return request('ai2apps.shell.create-agent-run', options || {}); },
+                exportArtifact: function(options) { return request('ai2apps.shell.export-artifact', options || {}); },
+                close: function() { return request('ai2apps.shell.close', { mountId: viewMountId }); }
+            };
+            window.addEventListener('message', function(event) {
+                if (event.source !== window.parent) return;
+                if (event.origin !== window.location.origin && event.origin !== 'null') return;
+                var message = event.data || {};
+                if (message.mountToken !== mountToken || message.instanceId !== instanceId) return;
+                if (message.type === 'ai2apps.host.response' && pending.has(message.requestId)) {
+                    var task = pending.get(message.requestId);
+                    pending.delete(message.requestId);
+                    clearTimeout(task.timer);
+                    if (message.ok === false) task.reject(new Error(message.error || 'Host request failed'));
+                    else task.resolve(message.result);
+                }
+                if (message.type === 'ai2apps.host.context') {
+                    window.dispatchEvent(new CustomEvent('ai2apps:host-context', { detail: message }));
+                }
+                if (message.type === 'ai2apps.host.account-changed') {
+                    window.dispatchEvent(new CustomEvent('ai2apps:account-changed', { detail: message }));
+                }
+            });
+            document.addEventListener('DOMContentLoaded', function() {
+                var showDockReveal = {{ show_dock_reveal | default(true) | tojson }};
+                if (showDockReveal) {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'ai2apps-shell-reveal';
+                    button.setAttribute('aria-label', 'Show AI2Apps Dock');
+                    button.setAttribute('title', 'Show AI2Apps Dock');
+                    button.innerHTML = '<i data-lucide="panel-top-open"></i>';
+                    button.addEventListener('click', window.ai2appsShell.showDock);
+                    document.body.appendChild(button);
+                }
+                window.ai2appsShell.ready();
+            });
+        })();
+    </script>
+
+    <script>
+        // Lucide icon processor — bypasses createIcons() which has Safari issues.
+        // Directly creates SVGs from lucide.icons definitions.
+        (function() {
+            if (typeof lucide === 'undefined' || !lucide.icons) return;
+
+            function toPascal(s) {
+                return s.replace(/(^|[-_ ])(\w)/g, function(m, sep, c) { return c.toUpperCase(); });
+            }
+
+            function replaceIcon(el) {
+                var name = el.getAttribute('data-lucide');
+                if (!name) return;
+                var def = lucide.icons[toPascal(name)];
+                if (!def) return;
+                var svg = lucide.createElement(def);
+                Array.from(el.attributes).forEach(function(a) {
+                    if (a.name !== 'data-lucide') svg.setAttribute(a.name, a.value);
+                });
+                svg.classList.add('lucide', 'lucide-' + name);
+                if (el.parentNode) el.parentNode.replaceChild(svg, el);
+            }
+
+            function processAll() {
+                document.querySelectorAll('i[data-lucide]').forEach(replaceIcon);
+            }
+
+            // Initial pass
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', processAll);
+            } else {
+                processAll();
+            }
+
+            // Poll for dynamically added icons (Alpine x-for, x-if, modals).
+            setInterval(function() {
+                if (document.querySelector('i[data-lucide]')) processAll();
+            }, 300);
+        })();
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

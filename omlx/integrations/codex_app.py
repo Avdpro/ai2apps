@@ -2,8 +2,8 @@
 """Codex App (OpenAI Codex App Desktop) integration.
 
 This integration launches the Codex App Desktop GUI/TUI via the
-``codex app`` subcommand, while sharing the same config file as
-the CLI variant (``~/.codex/config.toml``).
+``codex app`` subcommand. AI2Apps model settings are passed as process-local
+CLI overrides so launching it does not modify ``~/.codex/config.toml``.
 
 OpenAI renamed the desktop app from Codex to ChatGPT. In-place
 upgrades keep the old ``/Applications/Codex.app`` folder name while
@@ -16,11 +16,7 @@ is on PATH (DMG-only installs).
 Usage:
     omlx launch codex_app --model qwen3.5
 
-Which launches:
-    codex app
-
-Both CLI and App use the same config file:
-    ~/.codex/config.toml
+Which launches ``codex app`` with invocation-scoped ``-c`` overrides.
 """
 
 from __future__ import annotations
@@ -31,7 +27,11 @@ import shutil
 from pathlib import Path
 
 from omlx.integrations.base import Integration, IntegrationContext
-from omlx.integrations.codex import CODEX_CONFIG_PATH, write_codex_config
+from omlx.integrations.codex import (
+    CODEX_CONFIG_PATH,
+    _with_local_no_proxy,
+    write_codex_config,
+)
 from omlx.utils.install import get_cli_command_prefix
 
 CODEX_APP_BUNDLE_ID = "com.openai.codex"
@@ -108,15 +108,29 @@ class CodexAppIntegration(Integration):
         write_codex_config(self.CONFIG_PATH, ctx)
 
     def launch(self, ctx: IntegrationContext) -> None:
-        self.configure(ctx)
-
         env = self._scrubbed_env()
         env["OMLX_API_KEY"] = ctx.auth_token
+        _with_local_no_proxy(env, ctx.openai_base_url)
 
-        # Launch codex app (desktop GUI/TUI) instead of codex CLI
-        # Note: codex app doesn't accept -m flag, model is set in config
+        # Scope AI2Apps settings to this launch. The app subcommand supports
+        # ``-c`` overrides but not ``-m``, so model is also passed via ``-c``.
+        # In particular, never call configure() here: that would change the
+        # provider used by unrelated Codex Desktop and CLI sessions.
         codex_bin = resolve_codex_binary() or "codex"
-        args = [codex_bin, "app"]
+        args = [
+            codex_bin,
+            "app",
+            "-c", 'model_provider="omlx"',
+            "-c", 'model_providers.omlx.name="oMLX"',
+            "-c", f'model_providers.omlx.base_url="{ctx.openai_base_url}"',
+            "-c", 'model_providers.omlx.env_key="OMLX_API_KEY"',
+        ]
+        if ctx.context_window:
+            args.extend(("-c", f"model_context_window={ctx.context_window}"))
+        if ctx.reasoning:
+            args.extend(("-c", 'model_reasoning_effort="high"'))
+        if ctx.model:
+            args.extend(("-c", f'model="{ctx.model}"'))
         args.extend(ctx.extra_args)
 
         os.execvpe(codex_bin, args, env)

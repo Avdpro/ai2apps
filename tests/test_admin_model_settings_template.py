@@ -6,7 +6,7 @@ from pathlib import Path
 def _model_settings_template() -> str:
     root = Path(__file__).resolve().parents[1]
     return (
-        root / "omlx/admin/templates/dashboard/_modal_model_settings.html"
+        root / "ai2apps/web/templates/dashboard/_modal_model_settings.html"
     ).read_text()
 
 
@@ -52,3 +52,15 @@ def test_reasoning_effort_offers_max_after_high():
     assert high_option in html
     assert max_option in html
     assert html.index(high_option) < html.index(max_option)
+
+
+def test_cache_moe_recommended_badge_wraps_inside_tier_card():
+    html = _model_settings_template()
+    memory_profile = _section(
+        html,
+        "<!-- Cache-MoE resident memory bank -->",
+        "<!-- Cache-MoE KV continuity default -->",
+    )
+
+    assert "flex min-w-0 flex-wrap items-center" in memory_profile
+    assert "basis-full text-[10px]" in memory_profile

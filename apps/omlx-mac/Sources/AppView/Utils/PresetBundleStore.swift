@@ -2,8 +2,8 @@
 // HTML's localStorage-cached preset bundle:
 //
 //   1. Disk cache (~/Library/Application Support/oMLX/preset_cache.json)
-//   2. Bundled fixture (Contents/Resources/omlx/admin/static/omlx_preset.json)
-//      — staged into the .app by Scripts/build.sh from the omlx package.
+//   2. Bundled fixture (Contents/Resources/ai2apps/web/static/omlx_preset.json)
+//      — staged into the .app by Scripts/build.sh from the ai2apps package.
 //   3. Remote refresh via POST /admin/api/presets/refresh (omlx.ai proxy).
 //
 // Replaces the previous behavior of treating `/api/profile-templates`
@@ -74,16 +74,16 @@ final class PresetBundleStore {
     }
 
     /// Pull the JSON bundled inside the app at
-    /// `Contents/Resources/omlx/admin/static/omlx_preset.json`. The file
-    /// is staged into the app by `Scripts/build.sh` (omlx package rsync),
+    /// `Contents/Resources/ai2apps/web/static/omlx_preset.json`. The file
+    /// is staged into the app by `Scripts/build.sh` (ai2apps package rsync),
     /// not by Xcode — so this lookup uses the on-disk path under
     /// `Bundle.main.resourceURL` rather than `Bundle.main.url(forResource:)`
     /// which only finds Xcode-managed resources.
     private static func loadFixture() -> PresetBundleDTO? {
         guard let resources = Bundle.main.resourceURL else { return nil }
         let url = resources
-            .appendingPathComponent("omlx", isDirectory: true)
-            .appendingPathComponent("admin", isDirectory: true)
+            .appendingPathComponent("ai2apps", isDirectory: true)
+            .appendingPathComponent("web", isDirectory: true)
             .appendingPathComponent("static", isDirectory: true)
             .appendingPathComponent("omlx_preset.json")
         guard FileManager.default.fileExists(atPath: url.path),

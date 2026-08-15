@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Coder - AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/xterm.css') }}">
+<link rel="stylesheet" href="{{ static('css/coder.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="coder-app" data-app-id="ai2apps.coder">
+    <aside class="coder-sidebar" aria-label="Coder Projects and Threads">
+        <header class="coder-brand">
+            <div><span>AI2Apps</span><h1>Coder</h1></div>
+            <button class="coder-icon" data-action="new-project" title="Add Project"><i data-lucide="folder-plus"></i></button>
+        </header>
+        <div class="coder-tree" data-coder-tree></div>
+        <footer><span class="coder-service-dot"></span>Terminal Agent Runtime</footer>
+    </aside>
+    <main class="coder-main">
+        <header class="coder-toolbar">
+            <button class="coder-icon coder-sidebar-toggle" data-action="toggle-sidebar" title="Collapse Project sidebar"><i data-lucide="panel-left-close"></i></button>
+            <div class="coder-current">
+                <strong data-current-title>No Thread selected</strong>
+                <span data-current-meta>Add a Project, then create a Thread</span>
+            </div>
+            <div class="coder-actions">
+                <span class="coder-status" data-status>Idle</span>
+                <button class="coder-icon" data-action="files" title="Open Project Files" disabled><i data-lucide="folder-tree"></i></button>
+                <button class="coder-icon" data-action="validate" title="Validate AI2Apps Project" disabled><i data-lucide="badge-check"></i></button>
+                <button class="coder-icon" data-action="test" title="Test Project" disabled><i data-lucide="flask-conical"></i></button>
+                <button class="coder-icon" data-action="build" title="Build development Project Bundle" disabled><i data-lucide="package"></i></button>
+                <button class="coder-icon" data-action="testflight" title="Submit Apps to TestFlight" disabled><i data-lucide="plane-takeoff"></i></button>
+                <button class="coder-icon" data-action="run-component" title="Run Component" disabled><i data-lucide="play"></i></button>
+                <button class="coder-icon danger" data-action="stop-component" title="Stop Dev Session" disabled><i data-lucide="circle-stop"></i></button>
+                <button class="coder-icon" data-action="fork" title="Fork Thread" disabled><i data-lucide="git-fork"></i></button>
+                <button class="coder-icon" data-action="reconnect" title="Reconnect" disabled><i data-lucide="refresh-cw"></i></button>
+                <button class="coder-icon danger" data-action="stop" title="Stop Thread" disabled><i data-lucide="square"></i></button>
+                <button class="coder-icon danger" data-action="delete-entry" title="Delete selected Entry" disabled><i data-lucide="trash-2"></i></button>
+            </div>
+        </header>
+        <section class="coder-stage">
+            <div id="coder-terminal-host"></div>
+            <iframe class="coder-dev-preview" data-dev-preview title="AI2Apps Development Preview" sandbox="allow-scripts allow-forms allow-downloads" hidden></iframe>
+            <section class="coder-ide" data-coder-ide hidden>
+                <aside class="coder-file-explorer">
+                    <header><strong>Project Files</strong><button class="coder-icon" data-action="refresh-files" title="Refresh files"><i data-lucide="refresh-cw"></i></button></header>
+                    <div class="coder-file-tree" data-file-tree></div>
+                </aside>
+                <div class="coder-editor-pane">
+                    <header>
+                        <span data-editor-path>No file selected</span>
+                        <span class="coder-editor-dirty" data-editor-dirty hidden>Modified</span>
+                        <button class="coder-editor-save" data-action="save-file" disabled><i data-lucide="save"></i> Save</button>
+                    </header>
+                    <div id="coder-editor"></div>
+                    <footer><span data-editor-mode>Plain Text</span><span>⌘S Save · ⌘F Find · Fold controls in gutter</span></footer>
+                </div>
+            </section>
+            <div class="coder-empty">
+                <i data-lucide="code-2"></i>
+                <h2 data-empty-title>Start coding with an Agent CLI</h2>
+                <p data-empty-description>Each Project maps to a directory. Threads keep running while Coder is in the background.</p>
+                <button data-action="new-project" data-empty-action>Add Project</button>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div class="coder-context-menu" data-context-menu hidden role="menu">
+    <button data-context-action="files"><i data-lucide="folder-tree"></i>Open Files</button>
+    <button data-context-action="validate"><i data-lucide="badge-check"></i>Validate Project</button>
+    <button data-context-action="run"><i data-lucide="play"></i>Run Component</button>
+    <button data-context-action="fork"><i data-lucide="git-fork"></i>Fork Thread</button>
+    <button data-context-action="stop"><i data-lucide="square"></i>Stop Thread</button>
+    <hr>
+    <button class="danger" data-context-action="delete"><i data-lucide="trash-2"></i><span>Delete Entry</span></button>
+</div>
+
+<dialog class="coder-dialog" data-project-dialog>
+    <form method="dialog" data-project-form>
+        <header><div><span>Workspace</span><h2>Add Project</h2></div><button value="cancel" class="coder-icon"><i data-lucide="x"></i></button></header>
+        <label><span>Name</span><input name="name" required maxlength="120" autocomplete="off"></label>
+        <label><span>Directory</span><input name="root_path" required maxlength="4096" placeholder="my-app"><small data-project-root-hint>Relative paths use the default Project directory.</small></label>
+        <label><span>Project type</span><select name="kind"><option value="general">General software</option><option value="ai2apps">AI2Apps</option></select></label>
+        <label class="coder-check"><input type="checkbox" name="create_directory"><span>Create directory if missing</span></label>
+        <label class="coder-check"><input type="checkbox" name="bootstrap"><span>Add AI2Apps project metadata</span></label>
+        <p class="coder-dialog-error" role="alert"></p>
+        <footer><button value="cancel" class="secondary">Cancel</button><button value="create" class="primary">Add Project</button></footer>
+    </form>
+</dialog>
+
+<dialog class="coder-dialog coder-report-dialog" data-report-dialog>
+    <form method="dialog">
+        <header><div><span>Developer Tools</span><h2 data-report-title>Result</h2></div><button value="close" class="coder-icon"><i data-lucide="x"></i></button></header>
+        <pre data-report-output></pre>
+        <footer><button value="close" class="primary">Close</button></footer>
+    </form>
+</dialog>
+
+<dialog class="coder-dialog" data-thread-dialog>
+    <form method="dialog" data-thread-form>
+        <header><div><span data-thread-project>Project</span><h2>New Thread</h2></div><button value="cancel" class="coder-icon"><i data-lucide="x"></i></button></header>
+        <label><span>Title</span><input name="title" required maxlength="160" value="New coding task" autocomplete="off"></label>
+        <label><span>Coding Agent</span><select name="agent" data-agent-select></select></label>
+        <label><span>Model source</span><select name="model_source" data-model-source><option value="default">Agent CLI default</option><option value="ai2apps">AI2Apps model</option></select></label>
+        <label data-model-row hidden>
+            <span>AI2Apps model</span>
+            <select name="model" data-model-select disabled required>
+                <option value="">Loading available models…</option>
+            </select>
+            <small data-model-hint>Local, cloud, and Fusion models configured in AI2Apps.</small>
+        </label>
+        <p class="coder-dialog-error" role="alert"></p>
+        <footer><button value="cancel" class="secondary">Cancel</button><button value="create" class="primary">Create & Start</button></footer>
+    </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/xterm.min.js') }}"></script>
+<script src="{{ static('js/xterm-addon-fit.min.js') }}"></script>
+<script src="{{ static('vendor/ace/ace.js') }}"></script>
+<script src="{{ static('vendor/ace/theme-one_dark.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-text.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-json.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-yaml.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-javascript.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-typescript.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-python.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-xml.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-html.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-css.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-markdown.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-sh.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-golang.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-rust.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-java.js') }}"></script>
+<script src="{{ static('vendor/ace/mode-c_cpp.js') }}"></script>
+<script src="{{ static('js/coder.js') }}"></script>
+{% endblock %}

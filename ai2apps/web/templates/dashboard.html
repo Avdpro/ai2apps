@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('dashboard.title') }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-white flex flex-col" x-data="dashboard()" x-init="init()">
+    <!-- Legacy navigation remains available outside the App Shell. -->
+    {% if not embedded_app %}
+    {% include "dashboard/_navbar.html" %}
+    {% endif %}
+
+    <!-- Main Content -->
+    <main class="flex-grow relative overflow-hidden">
+        <!-- Background Effects -->
+        <div class="absolute inset-0 bg-grain pointer-events-none z-0"></div>
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-neutral-50 to-transparent rounded-full blur-3xl -z-10 opacity-50"></div>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 relative z-10">
+            <!-- Status Main Tab -->
+            {% include "dashboard/_status.html" %}
+
+            <!-- Settings Main Tab -->
+            {% include "dashboard/_settings.html" %}
+
+            <!-- Models Main Tab -->
+            {% include "dashboard/_models.html" %}
+
+            <!-- Logs Main Tab -->
+            {% include "dashboard/_logs.html" %}
+
+            <!-- Benchmark Main Tab -->
+            {% include "dashboard/_bench.html" %}
+
+        </div>
+    </main>
+
+    <!-- Model Settings Modal -->
+    {% include "dashboard/_modal_model_settings.html" %}
+
+    <!-- HF Mirror Settings Modal -->
+    {% include "dashboard/_modal_hf_mirror.html" %}
+
+    <!-- Floating tooltip shared by preset/profile/API pills. -->
+    <div x-show="tip.visible" x-cloak x-text="tip.text"
+         class="fixed z-[60] max-w-sm px-2.5 py-1 text-left text-xs font-medium text-white bg-neutral-800 rounded-md whitespace-pre-line pointer-events-none -translate-x-1/2"
+         :style="`top: ${tip.y}px; left: ${tip.x}px`"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if initial_tab %}
+<script>window.AI2APPS_INITIAL_DASHBOARD_TAB = {{ initial_tab | tojson }};</script>
+{% endif %}
+<script src="{{ static('js/purify.min.js') }}"></script>
+<script src="{{ static('js/marked.umd.js') }}"></script>
+<script src="{{ static('js/dashboard.js') }}"></script>
+{% endblock %}

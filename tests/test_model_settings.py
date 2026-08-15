@@ -30,8 +30,15 @@ class TestModelSettings:
         assert settings.is_pinned is False
         assert settings.is_default is False
         assert settings.is_favorite is False
+        assert settings.kv_cache_policy == "session"
         # Issue #926: opt-in per model. Default off.
         assert settings.trust_remote_code is False
+
+    def test_kv_cache_policy_validation_and_roundtrip(self):
+        settings = ModelSettings(kv_cache_policy="persistent")
+        assert ModelSettings.from_dict(settings.to_dict()).kv_cache_policy == "persistent"
+        with pytest.raises(ValueError, match="kv_cache_policy"):
+            ModelSettings(kv_cache_policy="unsafe")
 
     def test_trust_remote_code_roundtrip(self):
         """Test trust_remote_code field survives to_dict -> from_dict roundtrip."""

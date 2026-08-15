@@ -5,7 +5,7 @@ from pathlib import Path
 
 def _dashboard_js() -> str:
     root = Path(__file__).resolve().parents[1]
-    return (root / "omlx/admin/static/js/dashboard.js").read_text()
+    return (root / "ai2apps/web/static/js/dashboard.js").read_text()
 
 
 def _method_block(js: str, signature: str, following_signature: str) -> str:

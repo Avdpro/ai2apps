@@ -96,6 +96,22 @@ class TestCodexIntegration:
         assert 'model_provider = "omlx"' in content
         assert 'base_url = "http://127.0.0.1:8000/v1"' in content
         assert 'env_key = "OMLX_API_KEY"' in content
+        assert "model_context_window" not in content
+
+    def test_configure_writes_model_context_window(self, tmp_path):
+        codex = CodexIntegration()
+        config_path = tmp_path / "codex" / "config.toml"
+        with patch.object(CodexIntegration, "CONFIG_PATH", config_path):
+            codex.configure(
+                ctx(
+                    port=8000,
+                    api_key="test-key",
+                    model="local-model",
+                    context_window=131_072,
+                )
+            )
+
+        assert "model_context_window = 131072" in config_path.read_text()
 
     def test_configure_custom_host(self, tmp_path):
         codex = CodexIntegration()
@@ -238,11 +254,62 @@ name = "old-omlx"
                 )
             )
 
-        assert captured["argv"] == ["codex", "-m", "qwen3.5", "--yolo"]
+        assert captured["argv"] == [
+            "codex",
+            "-c",
+            'model_provider="omlx"',
+            "-c",
+            'model_providers.omlx.name="oMLX"',
+            "-c",
+            'model_providers.omlx.base_url="http://127.0.0.1:8000/v1"',
+            "-c",
+            'model_providers.omlx.env_key="OMLX_API_KEY"',
+            "-m",
+            "qwen3.5",
+            "--yolo",
+        ]
+        assert not config_path.exists()
         assert captured["env"]["OMLX_API_KEY"] == "key"
+        assert captured["env"]["NO_PROXY"] == "127.0.0.1,localhost,::1"
+        assert captured["env"]["no_proxy"] == "127.0.0.1,localhost,::1"
         assert "PYTHONHOME" not in captured["env"]
         assert "PYTHONPATH" not in captured["env"]
         assert "PYTHONDONTWRITEBYTECODE" not in captured["env"]
+
+    def test_launch_preserves_existing_no_proxy_and_adds_custom_host(self, tmp_path):
+        codex = CodexIntegration()
+        config_path = tmp_path / "codex" / "config.toml"
+        captured = {}
+
+        def fake_execvpe(binary, argv, env):
+            captured["env"] = env
+
+        with (
+            patch.object(CodexIntegration, "CONFIG_PATH", config_path),
+            patch(
+                "omlx.integrations.codex.os.environ",
+                {
+                    "PATH": "/usr/bin",
+                    "NO_PROXY": "example.test,localhost",
+                    "no_proxy": "legacy.test,example.test",
+                },
+            ),
+            patch("omlx.integrations.codex.os.execvpe", side_effect=fake_execvpe),
+        ):
+            codex.launch(
+                ctx(
+                    host="omlx.internal",
+                    port=8000,
+                    api_key="key",
+                    model="qwen3.5",
+                )
+            )
+
+        expected = (
+            "example.test,localhost,legacy.test,127.0.0.1,::1,omlx.internal"
+        )
+        assert captured["env"]["NO_PROXY"] == expected
+        assert captured["env"]["no_proxy"] == expected
 
 
 def make_app_bundle(
@@ -315,8 +382,23 @@ class TestCodexAppIntegration:
                 )
             )
 
-        # Codex App should launch with "app" subcommand, not "-m <model>"
-        assert captured["argv"] == ["/opt/homebrew/bin/codex", "app"]
+        # AI2Apps settings are invocation-scoped and do not touch the user's
+        # global Codex configuration.
+        assert captured["argv"] == [
+            "/opt/homebrew/bin/codex",
+            "app",
+            "-c",
+            'model_provider="omlx"',
+            "-c",
+            'model_providers.omlx.name="oMLX"',
+            "-c",
+            'model_providers.omlx.base_url="http://127.0.0.1:8000/v1"',
+            "-c",
+            'model_providers.omlx.env_key="OMLX_API_KEY"',
+            "-c",
+            'model="qwen3.5"',
+        ]
+        assert not config_path.exists()
         assert captured["env"]["OMLX_API_KEY"] == "key"
         assert "PYTHONHOME" not in captured["env"]
         assert "PYTHONPATH" not in captured["env"]
@@ -377,7 +459,21 @@ class TestCodexAppIntegration:
 
         bundled = str(bundle / "Contents" / "Resources" / "codex")
         assert captured["binary"] == bundled
-        assert captured["argv"] == [bundled, "app"]
+        assert captured["argv"] == [
+            bundled,
+            "app",
+            "-c",
+            'model_provider="omlx"',
+            "-c",
+            'model_providers.omlx.name="oMLX"',
+            "-c",
+            'model_providers.omlx.base_url="http://127.0.0.1:8000/v1"',
+            "-c",
+            'model_providers.omlx.env_key="OMLX_API_KEY"',
+            "-c",
+            'model="q"',
+        ]
+        assert not config_path.exists()
 
     def test_type(self):
         codex_app = CodexAppIntegration()

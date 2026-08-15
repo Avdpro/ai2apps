@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }}{% endblock %}
+
+{% block head %}
+<style>
+    html, body { min-height: 0; background: transparent !important; }
+    .mini-launcher { min-height: 132px; display: flex; align-items: center; gap: 16px; padding: 18px; border: 1px solid #e5e5e5; border-radius: 18px; background: #fff; }
+    .mini-icon { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 14px; color: #fff; background: #171717; }
+    .mini-copy { min-width: 0; flex: 1; }
+    .mini-label { margin: 0 0 4px; color: #a3a3a3; font-size: 9px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .mini-title { margin: 0; color: #171717; font-size: 17px; font-weight: 720; }
+    .mini-note { margin: 4px 0 0; color: #737373; font-size: 12px; }
+    .mini-actions { display: flex; gap: 7px; }
+    .mini-button { padding: 8px 11px; border: 1px solid #e5e5e5; border-radius: 10px; color: #525252; background: #fff; font-size: 11px; font-weight: 650; cursor: pointer; }
+    .mini-button.primary { color: #fff; border-color: #171717; background: #171717; }
+    .ai2apps-shell-reveal { display: none; }
+    @media (max-width: 520px) { .mini-launcher { align-items: flex-start; flex-wrap: wrap; } .mini-actions { width: 100%; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="mini-launcher">
+    <span class="mini-icon"><i data-lucide="app-window"></i></span>
+    <div class="mini-copy">
+        <p class="mini-label">Mini-Entry</p>
+        <h1 class="mini-title">{{ app_name }}</h1>
+        <p class="mini-note">This App does not provide a custom compact view.</p>
+    </div>
+    <div class="mini-actions">
+        <button class="mini-button" type="button" id="close-mini">Close</button>
+        <button class="mini-button primary" type="button" id="open-entry">Open App</button>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('open-entry').addEventListener('click', function() {
+    window.ai2appsShell.openEntry({
+        appId: {{ app_key | tojson }},
+        instanceId: {{ instance_id | tojson }}
+    });
+});
+document.getElementById('close-mini').addEventListener('click', function() {
+    window.ai2appsShell.close();
+});
+</script>
+{% endblock %}

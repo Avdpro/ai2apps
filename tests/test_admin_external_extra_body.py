@@ -5,13 +5,13 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-I18N_DIR = ROOT / "omlx" / "admin" / "i18n"
+I18N_DIR = ROOT / "ai2apps" / "web" / "i18n"
 
 
 def test_accuracy_extra_body_is_wired_through_dashboard():
-    js = (ROOT / "omlx/admin/static/js/dashboard.js").read_text()
+    js = (ROOT / "ai2apps/web/static/js/dashboard.js").read_text()
     template = (
-        ROOT / "omlx/admin/templates/dashboard/_bench_accuracy.html"
+        ROOT / "ai2apps/web/templates/dashboard/_bench_accuracy.html"
     ).read_text()
 
     assert "accExternalExtraBody: ''" in js

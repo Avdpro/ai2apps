@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Terminal - AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/xterm.css') }}">
+<link rel="stylesheet" href="{{ static('css/terminal.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="terminal-app" data-app-id="ai2apps.terminal">
+    <aside class="terminal-sidebar" aria-label="Terminal sessions">
+        <div class="terminal-brand">
+            <div>
+                <span class="terminal-eyebrow">AI2Apps</span>
+                <h1>Terminal</h1>
+            </div>
+            <button type="button" class="icon-button" data-action="new" title="New terminal" aria-label="New terminal">
+                <i data-lucide="plus"></i>
+            </button>
+        </div>
+        <div class="terminal-session-list" role="list"></div>
+        <div class="terminal-sidebar-footer">
+            <span class="service-dot"></span>
+            <span>System PTY Service</span>
+        </div>
+    </aside>
+
+    <main class="terminal-main">
+        <header class="terminal-toolbar">
+            <button type="button" class="mobile-sessions icon-button" data-action="toggle-sidebar" aria-label="Toggle sessions">
+                <i data-lucide="panel-left"></i>
+            </button>
+            <div class="terminal-current">
+                <strong data-current-title>No terminal</strong>
+                <span data-current-cwd>Select or create a session</span>
+            </div>
+            <div class="terminal-actions">
+                <span class="terminal-status" data-status>Disconnected</span>
+                <button type="button" class="icon-button" data-action="assistant" title="Select a terminal to use the AI Assistant" aria-label="Open Terminal AI Assistant" aria-pressed="false" disabled>
+                    <i data-lucide="message-square-text"></i>
+                </button>
+                <button type="button" class="icon-button" data-action="reconnect" title="Reconnect" aria-label="Reconnect">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+                <button type="button" class="icon-button danger" data-action="close" title="Close terminal" aria-label="Close terminal" disabled>
+                    <i data-lucide="trash-2"></i>
+                </button>
+            </div>
+        </header>
+        <section class="terminal-stage" aria-label="Interactive terminal">
+            <div id="terminal-host"></div>
+            <div class="terminal-empty">
+                <i data-lucide="square-terminal"></i>
+                <h2>Open a terminal session</h2>
+                <p>Sessions keep running while you switch Apps or reload this view.</p>
+                <button type="button" data-action="new">New Terminal</button>
+            </div>
+        </section>
+    </main>
+    <aside class="terminal-assistant" aria-label="Terminal AI Assistant" aria-hidden="true">
+        <header class="terminal-assistant-header">
+            <div>
+                <span class="terminal-eyebrow">Context aware</span>
+                <strong>In-App Chat</strong>
+                <span data-assistant-session>No terminal selected</span>
+            </div>
+            <button type="button" class="icon-button" data-action="close-assistant" title="Close AI Assistant" aria-label="Close Terminal AI Assistant">
+                <i data-lucide="panel-right-close"></i>
+            </button>
+        </header>
+        <div class="terminal-assistant-body">
+            <iframe title="Terminal In-App Chat" data-terminal-assistant-frame></iframe>
+        </div>
+    </aside>
+    <button type="button" class="sidebar-scrim" data-action="toggle-sidebar" aria-label="Close sessions"></button>
+</div>
+
+<dialog class="new-terminal-dialog">
+    <form method="dialog" class="new-terminal-form">
+        <div class="dialog-heading">
+            <div>
+                <span class="terminal-eyebrow">New session</span>
+                <h2>Open Terminal</h2>
+            </div>
+            <button value="cancel" class="icon-button" aria-label="Cancel"><i data-lucide="x"></i></button>
+        </div>
+        <label>
+            <span>Name</span>
+            <input name="title" maxlength="80" value="Terminal" autocomplete="off">
+        </label>
+        <label>
+            <span>Working directory</span>
+            <input name="cwd" maxlength="4096" placeholder="Server working directory">
+        </label>
+        <p class="dialog-error" role="alert"></p>
+        <div class="dialog-actions">
+            <button value="cancel" class="secondary">Cancel</button>
+            <button value="create" class="primary">Create</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="close-terminal-dialog">
+    <form method="dialog" class="close-terminal-form">
+        <div class="dialog-heading">
+            <div>
+                <span class="terminal-eyebrow">Destructive action</span>
+                <h2>Close Terminal?</h2>
+            </div>
+            <button value="cancel" class="icon-button" aria-label="Cancel"><i data-lucide="x"></i></button>
+        </div>
+        <p>
+            This will terminate the shell and every process running in
+            <strong data-close-terminal-name>this session</strong>.
+        </p>
+        <div class="dialog-actions">
+            <button value="cancel" class="secondary" autofocus>Cancel</button>
+            <button value="close" class="destructive">Close Terminal</button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/xterm.min.js') }}"></script>
+<script src="{{ static('js/xterm-addon-fit.min.js') }}"></script>
+<script src="{{ static('js/terminal.js') }}"></script>
+{% endblock %}

@@ -1,7 +1,7 @@
 // Context Bench screen.
 //
 // Mirrors the "Context" tab from the HTML admin panel
-// (omlx/admin/templates/dashboard/_bench_context.html + dashboard.js
+// (ai2apps/web/templates/dashboard/_bench_context.html + dashboard.js
 // context bench section). Wires the /api/bench/context/* endpoints onto
 // a stack of sections:
 //

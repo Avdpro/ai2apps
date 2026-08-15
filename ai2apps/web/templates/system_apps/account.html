@@ -1,0 +1,135 @@
+{% extends app_base_template|default("base.html") %}
+
+{% block title %}Account - AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/account.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="account-app" x-data="accountApp()" x-init="init()" data-app-id="ai2apps.account">
+    <header class="account-header">
+        <span class="account-mark"><i data-lucide="circle-user-round"></i></span>
+        <div><div class="account-title">AI2Apps Account</div><div class="account-subtitle">Cloud identity, level and points</div></div>
+        <span class="account-status" :class="signedIn && 'online'" x-text="signedIn ? 'Signed in' : (cloudUnavailable ? 'Cloud unavailable' : 'Not signed in')"></span>
+        <button x-show="signedIn" class="account-button" :disabled="busy" @click="refresh()"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh</button>
+    </header>
+
+    <main class="account-main">
+        <div class="account-note">Your AI2Apps account is optional. Signing out, losing connectivity, or not having an account never disables local Apps, local models, or local data.</div>
+        <div x-show="message" x-cloak class="account-alert" :class="messageTone==='success'&&'success'" x-text="message"></div>
+
+        <div x-show="!signedIn" x-cloak class="account-auth-wrap">
+            <section class="account-auth">
+                <template x-if="mode==='login'"><div>
+                    <h1>Sign in</h1><p>Use AI2Apps Cloud models and keep your account points available to Model App.</p>
+                    <form @submit.prevent="login()">
+                        <label class="account-field"><span>Email</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
+                        <label class="account-field"><span>Password</span><input class="account-input" type="password" autocomplete="current-password" minlength="12" required x-model="password"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Sign in</button><button type="button" class="account-link" @click="setMode('resetRequest')">Forgot password?</button></div>
+                    </form>
+                    <div class="account-actions"><span class="text-[11px] text-neutral-500">New to AI2Apps?</span><button class="account-link" @click="setMode('register')">Create account</button></div>
+                </div></template>
+
+                <template x-if="mode==='register'"><div>
+                    <h1>Create account</h1><p>Registration adds optional Cloud capabilities; your local workspace remains independent.</p>
+                    <form @submit.prevent="register()">
+                        <label class="account-field"><span>Display name</span><input class="account-input" autocomplete="name" maxlength="120" required x-model.trim="displayName"></label>
+                        <label class="account-field"><span>Email</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
+                        <label class="account-field"><span>Password</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="password"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Create account</button><button type="button" class="account-link" @click="setMode('login')">Back to sign in</button></div>
+                    </form>
+                </div></template>
+
+                <template x-if="mode==='verify'"><div>
+                    <h1>Verify email</h1><p>Enter the 8-digit code sent to your email, then sign in.</p>
+                    <form @submit.prevent="verifyEmail()">
+                        <label class="account-field"><span>Email</span><input class="account-input" type="email" required x-model.trim="email"></label>
+                        <label class="account-field"><span>Verification code</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Verify</button><button type="button" class="account-link" :disabled="busy" @click="resendCode()">Send again</button></div>
+                    </form>
+                </div></template>
+
+                <template x-if="mode==='resetRequest'"><div>
+                    <h1>Reset password</h1><p>Request a reset code. The response is intentionally the same for every email address.</p>
+                    <form @submit.prevent="requestReset()">
+                        <label class="account-field"><span>Email</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Request code</button><button type="button" class="account-link" @click="setMode('login')">Back</button></div>
+                    </form>
+                </div></template>
+
+                <template x-if="mode==='reset'"><div>
+                    <h1>Choose a new password</h1><p>Enter the 8-digit reset code and a new password of at least 12 characters.</p>
+                    <form @submit.prevent="resetPassword()">
+                        <label class="account-field"><span>Email</span><input class="account-input" type="email" required x-model.trim="email"></label>
+                        <label class="account-field"><span>Reset code</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
+                        <label class="account-field"><span>New password</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="newPassword"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Reset password</button><button type="button" class="account-link" @click="setMode('login')">Cancel</button></div>
+                    </form>
+                </div></template>
+            </section>
+        </div>
+
+        <div x-show="signedIn" x-cloak class="account-profile">
+            <section class="account-card">
+                <div class="account-card-head"><div><h2>Profile</h2><p>AI2Apps Cloud identity</p></div><button class="account-button danger ml-auto" :disabled="busy" @click="logout()">Sign out</button></div>
+                <div class="account-card-body">
+                    <div class="account-identity"><span class="account-avatar" x-text="initials()"></span><div><div class="account-name" x-text="user?.displayName || 'AI2Apps User'"></div><div class="account-email" x-text="user?.email"></div></div></div>
+                    <div class="account-meta"><span class="account-pill" x-text="user?.level?.displayName || 'No level'"></span><span class="account-pill" x-text="user?.systemRole || 'user'"></span><span class="account-pill" x-text="user?.emailVerified ? 'Email verified' : 'Email unverified'"></span></div>
+                </div>
+            </section>
+            <section class="account-card">
+                <div class="account-card-head"><div><h2>Points</h2><p>Balances are stored as exact decimal strings</p></div></div>
+                <div class="account-card-body"><div class="account-points"><div class="account-point"><strong x-text="points.total || points.balance || '0'"></strong><span>Total</span></div><div class="account-point"><strong x-text="points.promotional || '0'"></strong><span>Free</span></div><div class="account-point"><strong x-text="points.paid || '0'"></strong><span>Purchased</span></div></div></div>
+            </section>
+            <section class="account-card account-wide">
+                <div class="account-card-head"><div><h2>Entitlements</h2><p>Cloud services use server-side authorization as the final decision</p></div></div>
+                <div class="account-card-body"><div class="account-entitlements"><template x-for="item in entitlements" :key="item"><span class="account-pill" x-text="item"></span></template><span x-show="!entitlements.length" class="text-xs text-neutral-500">No entitlements for this level.</span></div></div>
+            </section>
+            <section class="account-card account-wide">
+                <div class="account-card-head"><div><h2>Remote access</h2><p>Connect your phone to this Mac through the managed AI2Apps relay</p></div><button class="account-button ml-auto" :disabled="busy" @click="loadRemote()">Refresh</button></div>
+                <div class="account-card-body">
+                    <div x-show="!hasRemoteEntitlement" class="account-note">Your current account level does not include <code>remote.connect</code>. Local and same-Wi-Fi Mobile access remain available.</div>
+                    <div class="remote-grid">
+                        <div>
+                            <template x-for="device in remote.devices" :key="device.deviceId"><article class="remote-device">
+                                <div class="remote-device-head"><span class="remote-dot" :class="device.proxyConnected?'online':(device.enabled&&remote.connector.lastError?'error':(device.enabled&&device.status==='active'?'connecting':''))"></span><div><strong x-text="device.displayName"></strong><small x-text="device.publicOrigin"></small></div><span class="account-pill ml-auto" x-text="device.proxyConnected?'Online':(device.enabled&&remote.connector.lastError?'Connection error':(device.enabled&&device.status==='active'?'Connecting…':device.status))"></span></div>
+                                <div class="account-meta"><span class="account-pill" x-text="'Credential v'+device.credentialVersion"></span><span class="account-pill" x-text="device.enabled?'Auto start':'Stopped'"></span><span class="account-pill" x-text="remote.connector.available?'FRP ready':'FRP setup required'"></span></div>
+                                <div x-show="device.status!=='revoked'" class="account-actions"><button class="account-button primary" :disabled="busy||!remote.connector.available||device.status!=='active'" @click="device.enabled?stopRemote(device):startRemote(device)" x-text="device.enabled?'Stop':'Start'"></button><button class="account-button" :disabled="busy||device.status!=='active'||!device.proxyConnected" :title="device.proxyConnected?'Create a one-use phone pairing code':'Wait until the Remote Access indicator is green'" @click="createPairing(device)">Pair phone</button><button class="account-button" :disabled="busy" @click="rotateRemote(device)">Rotate key</button><button class="account-button danger" :disabled="busy" @click="revokeRemote(device)">Revoke</button></div>
+                                <div x-show="device.status==='revoked'" class="account-note">Revocation is permanent. Register this Mac again to create a new device identity, URL, and connector credential.</div>
+                                <div x-show="device.status==='revoked'" class="account-actions"><button class="account-button primary" :disabled="busy" @click="reregisterRemote(device)">Register again</button></div>
+                            </article></template>
+                            <div x-show="!remote.devices.length" class="account-empty">This Mac is not registered for remote access.</div>
+                            <div x-show="hasRemoteEntitlement&&!remote.devices.length" class="account-actions"><input class="account-input" style="max-width:300px" maxlength="120" x-model.trim="remoteName" placeholder="This Mac"><button class="account-button primary" :disabled="busy||!remoteName" @click="registerRemote()">Register this Mac</button></div>
+                        </div>
+                        <div>
+                            <div class="remote-device"><strong>Relay usage</strong><div class="account-meta"><span class="account-pill" x-text="remote.usage.totalBytes?formatBytes(remote.usage.totalBytes):'Not loaded'"></span><span class="account-pill" x-text="remote.usage.quotaBytes?('of '+formatBytes(remote.usage.quotaBytes)):'Cloud quota'"></span></div><small class="account-email" x-text="remote.connector.lastError||'Connector credentials stay in Keychain.'"></small></div>
+                            <div x-show="pairingUrl" class="remote-pair"><strong>Scan with your phone</strong><img x-show="pairingQr" class="remote-qr" :src="pairingQr" alt="One-use AI2Apps phone pairing QR code"><span class="remote-expiry" x-text="pairingExpiresAt?('Expires '+formatTime(pairingExpiresAt)):'Expires in five minutes'"></span><code x-text="pairingUrl"></code><div class="account-actions"><button class="account-button" @click="copyPairing()">Copy link</button><button class="account-button" @click="sharePairing()">Share</button></div></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section x-show="user?.systemRole === 'admin'" class="account-card account-wide">
+                <div class="account-card-head"><div><h2>Administrator verification</h2><p>Required before sensitive review and publication actions; valid for 15 minutes</p></div></div>
+                <div class="account-card-body">
+                    <form @submit.prevent="verifyAdmin()">
+                        <label class="account-field"><span>Administrator password</span><input class="account-input" type="password" autocomplete="current-password" minlength="12" maxlength="128" required x-model="adminPassword"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Verify administrator</button><span x-show="adminVerifiedUntil" class="text-[11px] text-green-700" x-text="'Verified until ' + formatTime(adminVerifiedUntil)"></span></div>
+                    </form>
+                </div>
+            </section>
+            <section class="account-card account-wide">
+                <div class="account-card-head"><div><h2>Point activity</h2><p>Latest immutable ledger entries</p></div></div>
+                <div class="overflow-x-auto"><table class="account-ledger"><thead><tr><th>Description</th><th>Change</th><th>Balance after</th><th>Time</th></tr></thead><tbody><template x-for="entry in ledger" :key="entry.id"><tr><td x-text="entry.description || entry.kind"></td><td class="delta" x-text="signedDelta(entry.delta)"></td><td x-text="entry.balanceAfter"></td><td x-text="formatTime(entry.createdAt)"></td></tr></template></tbody></table><div x-show="!ledger.length" class="account-empty">No point activity yet.</div></div>
+            </section>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not mobile_surface %}
+<script>window.AI2APPS_ACCOUNT_API_KEY = {{ (api_key or '') | tojson }};</script>
+{% endif %}
+<script src="{{ static('js/account.js') }}"></script>
+{% endblock %}

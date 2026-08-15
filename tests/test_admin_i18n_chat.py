@@ -8,7 +8,7 @@ from omlx.admin import routes as admin_routes
 
 def _chat_template() -> str:
     root = Path(__file__).resolve().parents[1]
-    return (root / "omlx/admin/templates/chat.html").read_text()
+    return (root / "ai2apps/web/templates/chat.html").read_text()
 
 
 def test_locale_loader_uses_english_fallback_for_missing_keys(tmp_path, monkeypatch):

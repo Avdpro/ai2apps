@@ -1,0 +1,9 @@
+:root { --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+html, body { min-height:100%; margin:0; font-family:var(--font-sans); -webkit-font-smoothing:antialiased; }
+[data-lucide] { display:inline-block; }
+[x-cloak] { display:none !important; }
+input:focus, select:focus, textarea:focus { outline:none; box-shadow:0 0 0 2px rgba(0,0,0,.1); }
+.bg-grain { background-image:none; }
+@media (max-width: 760px) {
+    button, input, select, textarea { font-size:16px; }
+}

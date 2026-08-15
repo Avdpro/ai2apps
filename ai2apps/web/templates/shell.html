@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/shell.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="ai2apps-shell" class="app-shell" data-mode="docked">
+    <div class="dock-hot-zone" aria-hidden="true"></div>
+
+    <header class="app-dock" aria-label="AI2Apps Dock">
+        <button class="dock-launcher-button" type="button" data-shell-action="launcher"
+                aria-label="Open App Launcher" aria-expanded="false">
+            <img src="{{ static('favicon.svg') }}" alt="" class="dock-logo">
+            <span class="dock-wordmark">AI2Apps</span>
+        </button>
+
+        <div class="dock-divider" aria-hidden="true"></div>
+        <nav class="dock-apps" aria-label="Pinned and running Apps"></nav>
+        <div class="dock-spacer"></div>
+
+        <div class="dock-current" aria-live="polite">
+            <span class="dock-current-kicker">Active App</span>
+            <strong class="dock-current-name">Dashboard</strong>
+        </div>
+
+        <button class="dock-account" type="button" data-shell-action="account"
+                aria-label="Open AI2Apps Account" title="Open Account App">
+            <span class="dock-account-avatar"><i data-lucide="circle-user-round"></i></span>
+            <span class="dock-account-copy">
+                <strong data-account-name>Checking account…</strong>
+                <small data-account-detail>AI2Apps Cloud</small>
+            </span>
+            <span class="dock-account-dot" data-account-dot aria-hidden="true"></span>
+        </button>
+
+        <div class="dock-controls">
+            <button class="dock-control" type="button" data-shell-action="control"
+                    aria-label="Open System Control" title="Trust, Patches, and Safe Mode">
+                <i data-lucide="shield-check"></i>
+                <span class="control-alert-count" hidden></span>
+            </button>
+            <button class="dock-control" type="button" data-shell-action="close-current"
+                    aria-label="Close current App" title="Close App" disabled>
+                <i data-lucide="x"></i>
+            </button>
+            <button class="dock-control" type="button" data-shell-action="toggle-mode"
+                    aria-label="Enter immersive mode" title="Toggle Dock mode">
+                <i data-lucide="maximize-2"></i>
+            </button>
+            <button class="dock-control" type="button" data-shell-action="launcher"
+                    aria-label="Show all Apps" title="App Launcher">
+                <i data-lucide="grid-3x3"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="app-stage" aria-label="Active App">
+        <iframe class="app-frame" title="Dashboard" allow="clipboard-read; clipboard-write"
+                referrerpolicy="same-origin"></iframe>
+        <div class="app-loading" aria-live="polite">
+            <span class="app-loading-mark"></span>
+            <span>Opening App…</span>
+        </div>
+    </main>
+
+    <section class="app-launcher" aria-label="App Launcher" aria-hidden="true">
+        <button class="launcher-backdrop" type="button" data-shell-action="close-launcher"
+                aria-label="Close App Launcher"></button>
+        <div class="launcher-panel" role="dialog" aria-modal="true" aria-labelledby="launcher-title">
+            <div class="launcher-heading">
+                <div>
+                    <p class="launcher-eyebrow">AI2Apps</p>
+                    <h1 id="launcher-title">App Launcher</h1>
+                </div>
+                <button class="launcher-close" type="button" data-shell-action="close-launcher"
+                        aria-label="Close App Launcher"><i data-lucide="x"></i></button>
+            </div>
+            <label class="launcher-search">
+                <i data-lucide="search"></i>
+                <input type="search" placeholder="Search Apps" autocomplete="off"
+                       aria-label="Search Apps" data-launcher-search>
+                <kbd>Esc</kbd>
+            </label>
+            <div class="launcher-categories" aria-label="App categories"></div>
+            <div class="launcher-grid" role="list"></div>
+            <p class="launcher-empty" hidden>No Apps match this search.</p>
+        </div>
+    </section>
+
+    <section class="system-control" aria-label="AI2Apps System Control" aria-hidden="true">
+        <button class="control-backdrop" type="button" data-shell-action="close-control"
+                aria-label="Close System Control"></button>
+        <div class="control-panel" role="dialog" aria-modal="true" aria-labelledby="control-title">
+            <div class="control-heading">
+                <div>
+                    <p class="launcher-eyebrow">Unpatchable recovery surface</p>
+                    <h1 id="control-title">System Control</h1>
+                </div>
+                <button class="launcher-close" type="button" data-shell-action="close-control"
+                        aria-label="Close System Control"><i data-lucide="x"></i></button>
+            </div>
+            <nav class="control-tabs" aria-label="System Control sections">
+                <button type="button" data-control-tab="overview" class="is-active">Recovery</button>
+                <button type="button" data-control-tab="approvals">Approvals</button>
+                <button type="button" data-control-tab="grants">Grants</button>
+                <button type="button" data-control-tab="trust">Package Trust</button>
+                <button type="button" data-control-tab="patches">Patch Conflicts</button>
+            </nav>
+            <div class="control-content" aria-live="polite">
+                <div class="control-loading">Loading trusted system state…</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="dock-context-menu" role="menu" aria-label="App actions" hidden>
+        <div class="dock-context-heading">
+            <i data-context-icon data-lucide="app-window"></i>
+            <span data-context-name>App</span>
+        </div>
+        <button type="button" role="menuitem" data-dock-menu-action="switch">
+            <i data-lucide="mouse-pointer-2"></i><span>Switch to App</span>
+        </button>
+        <button type="button" role="menuitem" data-dock-menu-action="pin">
+            <i data-lucide="pin"></i><span data-context-pin-label>Keep in Dock</span>
+        </button>
+        <button type="button" role="menuitem" data-dock-menu-action="warm">
+            <i data-lucide="flame"></i><span data-context-warm-label>Keep Warm</span>
+        </button>
+        <button type="button" role="menuitem" data-dock-menu-action="reload">
+            <i data-lucide="refresh-cw"></i><span>Reload</span>
+        </button>
+        <div class="dock-context-separator" role="separator"></div>
+        <button type="button" role="menuitem" data-dock-menu-action="close">
+            <i data-lucide="x"></i><span>Close</span>
+        </button>
+        <button type="button" role="menuitem" class="is-danger" data-dock-menu-action="force-close">
+            <i data-lucide="octagon-x"></i><span>Force Close</span>
+        </button>
+    </div>
+
+    <div class="dock-tooltip-host" role="tooltip" hidden></div>
+
+    <div class="shell-toast" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+window.AI2APPS_SHELL_BOOT = {
+    apps: {{ system_apps | tojson }},
+    initialAppId: {{ initial_app_id | tojson }},
+    initialInstanceId: {{ initial_instance_id | tojson }}
+};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/shell.js') }}"></script>
+{% endblock %}

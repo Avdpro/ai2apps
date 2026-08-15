@@ -1,0 +1,10 @@
+{% extends "system_apps/base.html" %}
+
+{% block system_app_content %}
+{% include "dashboard/_models.html" %}
+{% endblock %}
+
+{% block system_app_modals %}
+{% include "dashboard/_modal_model_settings.html" %}
+{% include "dashboard/_modal_hf_mirror.html" %}
+{% endblock %}
