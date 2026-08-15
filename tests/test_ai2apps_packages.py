@@ -75,6 +75,7 @@ def _build_package(
     endpoint: str | None = None,
     variants: list[dict] | None = None,
     models: list[dict] | None = None,
+    network_outbound: bool = False,
 ):
     runtime = {
         "mode": mode,
@@ -105,7 +106,7 @@ def _build_package(
             ],
             "python": ">=3.11,<3.14",
         },
-        "permissions": {"network": {"outbound": False}},
+        "permissions": {"network": {"outbound": network_outbound}},
         "compatibility": {
             "os": ["macos", "linux"],
             "architectures": [os.uname().machine.lower()],
@@ -428,7 +429,12 @@ class Handler(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1",int(sys.argv[1])),Handler).serve_forever()
 """
     archive, _ = _build_package(
-        tmp_path, private, service_key="example.managed", mode="process", source=server
+        tmp_path,
+        private,
+        service_key="example.managed",
+        mode="process",
+        source=server,
+        network_outbound=True,
     )
     package = await runtime.package_manager.install(archive, approve_audit_review=True)
     assert package.runtime_mode is ServiceRuntimeMode.MANAGED_PROCESS

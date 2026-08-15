@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from dataclasses import replace
+from types import ModuleType
 
 import pytest
 
@@ -872,7 +874,25 @@ async def test_omlx_reviewer_stops_public_analysis_at_forced_think_boundary():
 
 
 @pytest.mark.asyncio
-async def test_omlx_reviewer_constrains_post_think_channel_to_json():
+async def test_omlx_reviewer_constrains_post_think_channel_to_json(monkeypatch):
+    class FakeStructuralTag:
+        def model_dump(self):
+            return {
+                "format": {
+                    "type": "sequence",
+                    "elements": [
+                        {"type": "any_text"},
+                        {"type": "any_text"},
+                    ],
+                }
+            }
+
+    fake_xgrammar = ModuleType("xgrammar")
+    fake_xgrammar.get_builtin_structural_tag = lambda *args, **kwargs: (
+        FakeStructuralTag()
+    )
+    monkeypatch.setitem(sys.modules, "xgrammar", fake_xgrammar)
+
     class FakeCompiler:
         def __init__(self):
             self.structural_tag = None
