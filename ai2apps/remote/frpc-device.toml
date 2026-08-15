@@ -1,0 +1,31 @@
+# Trusted AI2Apps Remote Access v1 template. Values come only from the main process.
+serverAddr = "{{ .Envs.AI2APPS_FRP_SERVER_ADDR }}"
+serverPort = {{ .Envs.AI2APPS_FRP_SERVER_PORT }}
+loginFailExit = false
+
+transport.protocol = "tcp"
+transport.heartbeatInterval = 30
+transport.heartbeatTimeout = 60
+transport.tls.enable = true
+transport.tls.trustedCaFile = "{{ .Envs.AI2APPS_FRP_CA_FILE }}"
+transport.tls.serverName = "frpc.ai2apps.com"
+transport.tls.disableCustomTLSFirstByte = true
+
+auth.method = "token"
+auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
+auth.token = "{{ .Envs.AI2APPS_FRP_BOOTSTRAP_TOKEN }}"
+
+metadatas.deviceId = "{{ .Envs.AI2APPS_REMOTE_DEVICE_ID }}"
+metadatas.credentialVersion = "{{ .Envs.AI2APPS_REMOTE_CREDENTIAL_VERSION }}"
+metadatas.connectorSecret = "{{ .Envs.AI2APPS_REMOTE_CONNECTOR_SECRET }}"
+
+[[proxies]]
+name = "device-{{ .Envs.AI2APPS_REMOTE_DEVICE_ID }}"
+type = "http"
+localIP = "127.0.0.1"
+localPort = {{ .Envs.AI2APPS_MOBILE_GATEWAY_PORT }}
+subdomain = "device-{{ .Envs.AI2APPS_REMOTE_PUBLIC_SLUG }}"
+locations = []
+customDomains = []
+transport.useEncryption = false
+transport.useCompression = false
