@@ -5,6 +5,7 @@ from .backends import (
     LinuxSecretServiceBackend,
     MacOSKeychainBackend,
     MemorySecretBackend,
+    NamespacedSecretBackend,
     SecretBackend,
     SecretBackendError,
 )
@@ -18,7 +19,7 @@ from .repository import SecretRepository
 
 __all__ = [
     "EncryptedFileSecretBackend", "LinuxSecretServiceBackend",
-    "MacOSKeychainBackend", "MemorySecretBackend", "SecretBackend",
+    "MacOSKeychainBackend", "MemorySecretBackend", "NamespacedSecretBackend", "SecretBackend",
     "SecretBackendError", "create_secret_backend", "register_secret_backend",
     "select_secret_backend_name",
     "SecretInjection", "SecretRecord", "SecretRepository",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 import platform
 import shutil
@@ -14,7 +15,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from packaging.specifiers import SpecifierSet
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
 from ai2apps.config import PlatformPaths
 from ai2apps.core import ResourceNotFoundError
@@ -27,6 +28,11 @@ from ai2apps.services import (
 )
 
 from .archive import ServicePackageArchive
+from .inference_runtime import (
+    InferenceRuntimeInstaller,
+    InferenceRuntimeResolver,
+    is_inference_runtime_manifest,
+)
 from .models import (
     AuditDecision,
     AuditRisk,
@@ -36,13 +42,14 @@ from .models import (
     InstallPlan,
     PackageError,
     PackageStatus,
-    TrustStatus,
 )
 from .repository import PackageRepository
 from .resolver import ServiceDependencyResolver
 from .runtime import PackageRuntimeBinder
 from .supervisor import ManagedServiceSupervisor
 from .trust import PackageTrustVerifier
+
+logger = logging.getLogger(__name__)
 
 
 class ServicePackageManager:
@@ -61,16 +68,41 @@ class ServicePackageManager:
         self.registry = registry
         self.trust = PackageTrustVerifier(packages)
         self.resolver = ServiceDependencyResolver(packages)
+        self.inference_runtime_resolver = InferenceRuntimeResolver(
+            packages, paths.packages_path
+        )
+        self.inference_runtime_installer = InferenceRuntimeInstaller(
+            self.inference_runtime_resolver
+        )
         self.supervisor = ManagedServiceSupervisor(
-            packages, services, paths.packages_path
+            packages,
+            services,
+            paths.packages_path,
+            inference_runtimes=self.inference_runtime_resolver,
         )
         self.runtime = PackageRuntimeBinder(services, registry, self.supervisor)
         self.compatibility = compatibility or CompatibilityContext(
             os_name=platform.system().lower(),
             architecture=platform.machine().lower(),
             python_version=".".join(map(str, sys.version_info[:3])),
+            os_version=(
+                platform.mac_ver()[0]
+                if platform.system() == "Darwin"
+                else platform.release()
+            ),
         )
         self._install_lock = asyncio.Lock()
+
+    @staticmethod
+    def _require_isolated_runtime(package) -> None:
+        mode = getattr(package, "runtime_mode", None)
+        if mode is None:
+            mode = getattr(package.manifest, "runtime_mode", None)
+        if mode is ServiceRuntimeMode.IN_PROCESS:
+            raise PackageError(
+                "third_party_in_process_denied",
+                "Installable Service Packages cannot execute in the AI2Apps host process",
+            )
 
     def inspect(self, archive_path: str | Path) -> InspectedServicePackage:
         package = ServicePackageArchive.inspect(archive_path)
@@ -198,6 +230,39 @@ class ServicePackageManager:
                 "platform_incompatible",
                 f"Package does not support OS {context.os_name}",
             )
+        minimum_os = value.get("minimum_os_version") or value.get(
+            "minimumOsVersion"
+        )
+        maximum_os = value.get("maximum_os_version_exclusive") or value.get(
+            "maximumOsVersionExclusive"
+        )
+        if minimum_os or maximum_os:
+            try:
+                current_os = Version(context.os_version)
+            except InvalidVersion as error:
+                raise PackageError(
+                    "os_version_unknown",
+                    "The current OS version could not be determined",
+                    details={"current": context.os_version},
+                ) from error
+            if minimum_os and current_os < Version(str(minimum_os)):
+                raise PackageError(
+                    "os_version_too_old",
+                    f"Package requires OS {minimum_os} or later; this device runs {context.os_version}",
+                    details={
+                        "current": context.os_version,
+                        "minimum": str(minimum_os),
+                    },
+                )
+            if maximum_os and current_os >= Version(str(maximum_os)):
+                raise PackageError(
+                    "os_version_too_new",
+                    f"Package requires an OS earlier than {maximum_os}; this device runs {context.os_version}",
+                    details={
+                        "current": context.os_version,
+                        "maximumExclusive": str(maximum_os),
+                    },
+                )
         architectures = value.get("architectures", value.get("architecture", []))
         if isinstance(architectures, str):
             architectures = [architectures]
@@ -283,14 +348,7 @@ class ServicePackageManager:
             package, allow_untrusted=allow_untrusted
         )
         signature["selected_variant"] = self._select_variant(package)
-        if (
-            package.manifest.runtime_mode is ServiceRuntimeMode.IN_PROCESS
-            and signature["trust"] != TrustStatus.TRUSTED.value
-        ):
-            raise PackageError(
-                "embedded_requires_trusted_publisher",
-                "Embedded Services require a trusted publisher",
-            )
+        self._require_isolated_runtime(package)
         audit = await self.trust.audit(package)
         if audit["decision"] == AuditDecision.REVIEW.value and not approve_audit_review:
             raise PackageError(
@@ -348,6 +406,7 @@ class ServicePackageManager:
     def _declare(self, package: InstalledPackageRecord) -> None:
         from ai2apps.model_providers import validate_package_models
 
+        self._require_isolated_runtime(package)
         manifest = package.manifest
         try:
             existing_service = self.services.get_service(package.service_key)
@@ -409,12 +468,140 @@ class ServicePackageManager:
 
     async def _activate(self, package: InstalledPackageRecord) -> None:
         self._validate_installed(package)
+        if is_inference_runtime_manifest(package.manifest):
+            # DMG verification and the Runtime payload copy are intentionally
+            # synchronous filesystem operations. Keep them off the server's
+            # event loop so a large Runtime install does not freeze the Local
+            # UI or health endpoints.
+            await asyncio.to_thread(
+                self.inference_runtime_installer.materialize, package
+            )
         self.packages.activate(package.service_key, package.package_digest)
         package = self.packages.get_by_digest(package.package_digest)
         self._declare(package)
         await self.runtime.start(package)
 
+    def _compatible_runtime_dependents(
+        self, package: InstalledPackageRecord
+    ) -> tuple[str, ...]:
+        """Validate and return active dependents that can move to a staged Runtime."""
+
+        version = Version(package.package_version)
+        provided = set(package.manifest.get("capabilities", []))
+        dependent_digests: list[str] = []
+        for dependent_key in self.packages.dependents(package.service_key):
+            dependent = self.packages.active(dependent_key)
+            if dependent is None:
+                continue
+            requirement = next(
+                (
+                    item
+                    for item in dependent.manifest.get("requires", {}).get(
+                        "services", []
+                    )
+                    if isinstance(item, dict)
+                    and item.get("id") == package.service_key
+                    and not bool(item.get("optional", False))
+                ),
+                None,
+            )
+            if requirement is None:
+                raise PackageError(
+                    "runtime_dependent_invalid",
+                    "Active dependent has no required Runtime declaration",
+                    details={"dependent": dependent_key},
+                )
+            raw_spec = str(requirement.get("version", "*"))
+            if version not in SpecifierSet("" if raw_spec == "*" else raw_spec):
+                raise PackageError(
+                    "dependent_version_conflict",
+                    "Runtime upgrade would break an active dependent Service",
+                    details={
+                        "service_key": package.service_key,
+                        "version": package.package_version,
+                        "dependent": dependent_key,
+                        "required_version": raw_spec,
+                    },
+                )
+            missing = set(requirement.get("capabilities", [])) - provided
+            if missing:
+                raise PackageError(
+                    "runtime_capability_missing",
+                    "Runtime upgrade lacks capabilities required by an active Service",
+                    details={
+                        "dependent": dependent_key,
+                        "missing": sorted(missing),
+                    },
+                )
+            dependent_digests.append(dependent.package_digest)
+        return tuple(dependent_digests)
+
+    def _activate_staged_inference_runtimes(
+        self,
+    ) -> tuple[
+        tuple[
+            InstalledPackageRecord,
+            InstalledPackageRecord | None,
+            tuple[str, ...],
+        ],
+        ...,
+    ]:
+        """Apply verified Runtime Packages only while Local is starting."""
+
+        pending = [
+            item
+            for item in self.packages.installed()
+            if item.status is PackageStatus.INSTALLED
+            and is_inference_runtime_manifest(item.manifest)
+        ]
+        pending.sort(key=lambda item: Version(item.package_version))
+        activated = []
+        try:
+            for package in pending:
+                self._validate_installed(package)
+                prior = self.packages.active(package.service_key)
+                dependents = self._compatible_runtime_dependents(package)
+                self.packages.activate_with_relocked_dependents(
+                    package.service_key,
+                    package.package_digest,
+                    dependents,
+                )
+                activated.append((package, prior, dependents))
+                self._declare(self.packages.get_by_digest(package.package_digest))
+        except BaseException:
+            self._rollback_staged_inference_runtimes(tuple(activated))
+            raise
+        return tuple(activated)
+
+    def _rollback_staged_inference_runtimes(
+        self,
+        activated: tuple[
+            tuple[
+                InstalledPackageRecord,
+                InstalledPackageRecord | None,
+                tuple[str, ...],
+            ],
+            ...,
+        ],
+    ) -> None:
+        for package, prior, dependents in reversed(activated):
+            if prior is None:
+                self.packages.set_package_status(
+                    package.package_digest, PackageStatus.INSTALLED
+                )
+                continue
+            self.packages.activate_with_relocked_dependents(
+                prior.service_key,
+                prior.package_digest,
+                dependents,
+            )
+            self.packages.set_package_status(
+                package.package_digest, PackageStatus.INSTALLED
+            )
+            self._declare(self.packages.get_by_digest(prior.package_digest))
+
     def _validate_installed(self, package: InstalledPackageRecord) -> None:
+        self._require_isolated_runtime(package)
         root = Path(package.store_path).resolve(strict=True)
         archive = root / "package.ai2service"
         cloud_contract = (
@@ -503,6 +690,7 @@ class ServicePackageManager:
         """Install a Service authenticated by Cloud v1 detached metadata."""
 
         async with self._install_lock:
+            self._require_isolated_runtime(package)
             self._select_variant(package)
             for installed in self.packages.installed(package.manifest.service_key):
                 if (
@@ -525,6 +713,15 @@ class ServicePackageManager:
                     "Required Service dependencies are not installed",
                     details={"dependencies": unresolved},
                 )
+            # Cloud Registry installs arrive one immutable Package at a time.
+            # Resolve their already-active dependencies into the same digest
+            # locks used by the local multi-archive installer before
+            # activation; inference Runtime resolution refuses an unlocked
+            # provider by design.
+            plan = self.resolver.resolve(package)
+            dependency_locks = tuple(
+                lock for lock in plan.locks if lock.package_digest == package.digest
+            )
             audit = await self.trust.audit(package)
             if (
                 audit["decision"] == AuditDecision.REVIEW.value
@@ -563,6 +760,21 @@ class ServicePackageManager:
                     policy_version=audit.get("policy_version"),
                     evidence=audit.get("evidence", {}),
                 )
+                self.packages.store_locks(
+                    package.manifest.service_key,
+                    package.digest,
+                    dependency_locks,
+                )
+                if is_inference_runtime_manifest(package.manifest.raw):
+                    # Runtime Providers are immutable and fully materialized now,
+                    # but activation is deferred until the next Local startup so
+                    # active model locks can move atomically with the provider.
+                    self._compatible_runtime_dependents(record)
+                    await asyncio.to_thread(
+                        self.inference_runtime_installer.materialize, record
+                    )
+                    self.packages.settle_operation(operation_id, "completed")
+                    return self.packages.get_by_digest(package.digest)
                 if prior and prior.package_digest != record.package_digest:
                     await self.runtime.stop(prior)
                 await self._activate(record)
@@ -707,15 +919,59 @@ class ServicePackageManager:
 
     def restore_registry(self) -> None:
         for package in self._active_start_order():
+            if package.runtime_mode is ServiceRuntimeMode.IN_PROCESS:
+                self.packages.set_package_status(
+                    package.package_digest, PackageStatus.REJECTED
+                )
+                with suppress(ResourceNotFoundError):
+                    service = self.services.get_service(package.service_key)
+                    self.services.set_service_status(
+                        service.id,
+                        expected_revision=service.revision,
+                        status=ServiceStatus.DISABLED,
+                    )
+                    instance = self.services.get_instance_for_service(service.id)
+                    self.services.set_instance_status(
+                        instance.id,
+                        ServiceInstanceStatus.DISABLED,
+                        last_error=(
+                            "Blocked by security policy: third-party in-process "
+                            "Services are no longer supported"
+                        ),
+                    )
+                continue
             self._declare(package)
 
     async def startup(self) -> None:
         await asyncio.to_thread(self.supervisor.recover_orphans)
-        for package in self._active_start_order():
-            service = self.services.get_service(package.service_key)
-            if service.status is ServiceStatus.ENABLED:
-                self._validate_installed(package)
-                await self.runtime.start(package)
+        had_pending_runtime = any(
+            item.status is PackageStatus.INSTALLED
+            and is_inference_runtime_manifest(item.manifest)
+            for item in self.packages.installed()
+        )
+        staged = ()
+
+        async def start_active() -> None:
+            for package in self._active_start_order():
+                service = self.services.get_service(package.service_key)
+                if service.status is ServiceStatus.ENABLED:
+                    self._validate_installed(package)
+                    await self.runtime.start(package)
+
+        try:
+            staged = self._activate_staged_inference_runtimes()
+            await start_active()
+        except BaseException:
+            if not staged and not had_pending_runtime:
+                raise
+            logger.exception(
+                "Staged inference Runtime activation failed; restoring prior Runtime"
+            )
+            with suppress(Exception):
+                await self.runtime.shutdown()
+            if staged:
+                self._rollback_staged_inference_runtimes(staged)
+            await start_active()
 
     async def shutdown(self) -> None:
         for package in reversed(self._active_start_order()):

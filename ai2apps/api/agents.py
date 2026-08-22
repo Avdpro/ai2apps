@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -20,8 +20,20 @@ from ai2apps.agents import (
 )
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.api.ownership import (
+    authorize_session,
+    require_agent_run_access,
+    require_session_access,
+)
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
 from ai2apps.events.stream import stream_events
+from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 
 
@@ -294,8 +306,18 @@ def _run_response(runtime: PlatformRuntime, run: AgentRunRecord) -> AgentRunResp
     )
 
 
-def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter()
+def create_agent_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        dependencies=[
+            Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
+        ]
+    )
+    principal_dependency = Depends(principal_provider)
+    session_access = Depends(require_session_access(runtime_provider, principal_provider))
+    run_access = Depends(require_agent_run_access(runtime_provider, principal_provider))
 
     @router.get("/agents", response_model=AgentDefinitionListResponse)
     def list_agents():
@@ -417,6 +439,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         root_only: bool = False,
         limit: int = Query(default=100, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
+        principal: RequestPrincipal = principal_dependency,
     ):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
@@ -433,6 +456,15 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
                 limit=limit,
                 offset=offset,
             )
+            if principal.authentication_type != "legacy_api_key":
+                owned_runs = []
+                for run in runs:
+                    try:
+                        authorize_session(runtime, principal, run.session_id)
+                    except HTTPException:
+                        continue
+                    owned_runs.append(run)
+                runs = tuple(owned_runs)
             return AgentRunListResponse(
                 items=[_run_response(runtime, run) for run in runs]
             )
@@ -449,6 +481,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         "/sessions/{session_id}/agent-runs",
         response_model=AgentRunResponse,
         status_code=202,
+        dependencies=[session_access],
     )
     def create_run(
         session_id: str,
@@ -494,7 +527,11 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
                 message=str(error),
             )
 
-    @router.get("/agent-runs/{run_id}", response_model=AgentRunResponse)
+    @router.get(
+        "/agent-runs/{run_id}",
+        response_model=AgentRunResponse,
+        dependencies=[run_access],
+    )
     def get_run(run_id: str):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
@@ -507,6 +544,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     @router.get(
         "/agent-runs/{run_id}/children",
         response_model=list[AgentRunResponse],
+        dependencies=[run_access],
     )
     def list_child_runs(run_id: str):
         runtime = _runtime_or_error(runtime_provider)
@@ -521,7 +559,11 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         except RepositoryError as error:
             return repository_error_response(error)
 
-    @router.get("/agent-runs/{run_id}/events", response_model=None)
+    @router.get(
+        "/agent-runs/{run_id}/events",
+        response_model=None,
+        dependencies=[run_access],
+    )
     async def run_events(
         run_id: str,
         after: int | None = Query(default=None, ge=0),
@@ -564,6 +606,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     @router.post(
         "/agent-runs/{run_id}/interactions/{interaction_id}/respond",
         response_model=AgentRunResponse,
+        dependencies=[run_access],
     )
     def respond_interaction(
         run_id: str,
@@ -606,6 +649,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     @router.post(
         "/agent-runs/{run_id}/approve/{interaction_id}",
         response_model=AgentRunResponse,
+        dependencies=[run_access],
     )
     async def approve(
         run_id: str,
@@ -617,6 +661,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     @router.post(
         "/agent-runs/{run_id}/deny/{interaction_id}",
         response_model=AgentRunResponse,
+        dependencies=[run_access],
     )
     async def deny(
         run_id: str,
@@ -625,7 +670,11 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     ):
         return await decide(run_id, interaction_id, request, "deny")
 
-    @router.post("/agent-runs/{run_id}/cancel", response_model=AgentRunResponse)
+    @router.post(
+        "/agent-runs/{run_id}/cancel",
+        response_model=AgentRunResponse,
+        dependencies=[run_access],
+    )
     def cancel_run(run_id: str):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
@@ -635,7 +684,11 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         except RepositoryError as error:
             return repository_error_response(error)
 
-    @router.post("/agent-runs/{run_id}/pause", response_model=AgentRunResponse)
+    @router.post(
+        "/agent-runs/{run_id}/pause",
+        response_model=AgentRunResponse,
+        dependencies=[run_access],
+    )
     async def pause_run(run_id: str):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
@@ -645,7 +698,11 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         except RepositoryError as error:
             return repository_error_response(error)
 
-    @router.post("/agent-runs/{run_id}/resume", response_model=AgentRunResponse)
+    @router.post(
+        "/agent-runs/{run_id}/resume",
+        response_model=AgentRunResponse,
+        dependencies=[run_access],
+    )
     def resume_run(run_id: str, request: ResumeRunRequest):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
@@ -669,6 +726,7 @@ def create_agent_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         "/agent-runs/{run_id}/retry",
         response_model=AgentRunResponse,
         status_code=202,
+        dependencies=[run_access],
     )
     def retry_run(
         run_id: str,

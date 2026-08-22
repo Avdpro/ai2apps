@@ -15,7 +15,8 @@ from ai2apps.capabilities import (
     PolicyEffect,
     action_preview,
 )
-from ai2apps.services import ToolCallContext, ToolGateway, ToolGatewayError
+from ai2apps.model_invocation import ModelInvocationContext
+from ai2apps.services import ToolGateway, ToolGatewayError
 
 from .models import (
     AgentAction,
@@ -69,7 +70,7 @@ class AgentRuntime:
         self.global_concurrency = global_concurrency
         self._executors: dict[str, AgentExecutor] = {}
         self._model_provider: ModelProvider | None = None
-        self._model_provider_accepts_progress = False
+        self._model_provider_positional_arity = 1
         self._wake = asyncio.Event()
         self._stopping = False
         self._dispatcher: asyncio.Task[None] | None = None
@@ -85,27 +86,32 @@ class AgentRuntime:
     def bind_model_provider(self, provider: ModelProvider) -> None:
         self._model_provider = provider
         try:
-            parameters = inspect.signature(provider).parameters.values()
-            self._model_provider_accepts_progress = any(
+            parameters = tuple(inspect.signature(provider).parameters.values())
+            has_varargs = any(
                 item.kind is inspect.Parameter.VAR_POSITIONAL for item in parameters
-            ) or sum(
+            )
+            positional_arity = sum(
                 item.kind
                 in {
                     inspect.Parameter.POSITIONAL_ONLY,
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                 }
                 for item in parameters
-            ) >= 2
+            )
+            self._model_provider_positional_arity = 3 if has_varargs else positional_arity
         except (TypeError, ValueError):
-            self._model_provider_accepts_progress = False
+            self._model_provider_positional_arity = 1
 
     async def _call_model_provider(
         self,
         request: dict,
         progress_reporter: ModelProgressReporter,
+        context: ModelInvocationContext,
     ) -> dict:
         assert self._model_provider is not None
-        if self._model_provider_accepts_progress:
+        if self._model_provider_positional_arity >= 3:
+            value = self._model_provider(request, progress_reporter, context)
+        elif self._model_provider_positional_arity >= 2:
             value = self._model_provider(request, progress_reporter)
         else:
             value = self._model_provider(request)
@@ -118,6 +124,7 @@ class AgentRuntime:
         *,
         model_name: str,
         step_sequence: int,
+        context: ModelInvocationContext,
     ) -> dict:
         """Invoke a model while durably surfacing stream and wait progress."""
 
@@ -154,7 +161,7 @@ class AgentRuntime:
             }
         )
         task = asyncio.create_task(
-            self._call_model_provider(request, publish),
+            self._call_model_provider(request, publish, context),
             name=f"ai2apps-agent-model-{run_id}-{step_sequence}",
         )
         try:
@@ -650,7 +657,7 @@ class AgentRuntime:
                     result = await self.tools.execute(
                         action.tool_name,
                         action.arguments,
-                        context=ToolCallContext(
+                        context=self.tools.context_for_session(
                             caller_id=f"agent:{definition.agent_key}",
                             session_id=run.session_id,
                             granted_capabilities=frozenset(effective_capabilities),
@@ -719,12 +726,30 @@ class AgentRuntime:
                     return
                 try:
                     model_name = str(action.request.get("model") or "the model")
+                    model_context = ModelInvocationContext.for_session(
+                        self.repository.database,
+                        run.session_id,
+                    )
+                    await asyncio.to_thread(
+                        self.repository.events.append,
+                        event_type="agent.model.invocation.started",
+                        subject_id=run.id,
+                        app_instance_id=model_context.app_instance_id,
+                        session_id=run.session_id,
+                        trace_id=run.id,
+                        payload={
+                            **model_context.audit_payload(),
+                            "model": model_name,
+                            "step": step.sequence,
+                        },
+                    )
                     model_output = await _await_action(
                         self._run_model_call(
                             run_id,
                             action.request,
                             model_name=model_name,
                             step_sequence=step.sequence,
+                            context=model_context,
                         )
                     )
                 except Exception as error:

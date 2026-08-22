@@ -1,0 +1,179 @@
+{% extends app_base_template|default("base.html") %}
+
+{% block title %}Sharing - AI2Apps{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/account.css') }}">
+<link rel="stylesheet" href="{{ static('css/sharing.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="account-app sharing-app" x-data="sharingApp()" x-init="init()" data-app-id="ai2apps.sharing">
+    <header class="account-header">
+        <span class="account-mark"><i data-lucide="share-2"></i></span>
+        <div><div class="account-title">Local Sharing</div><div class="account-subtitle">Publish selected capabilities to trusted LAN clients</div></div>
+        <span class="account-status online">Local only</span>
+        <button class="account-button" :disabled="busy" @click="reload()"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh</button>
+    </header>
+    <main class="account-main">
+        <div class="account-note">Nothing is shared by default. Only capabilities explicitly published by the Core user can enter a client Grant. Cloud models, Terminal, Secrets, browser control and host-side-effect Tools are not exportable. Shared Agent Sessions are isolated per Grant and cannot approve sensitive interactions remotely.</div>
+        <div x-show="message" x-cloak class="account-alert" :class="messageTone==='success'&&'success'" x-text="message"></div>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Cloud gateway federation</h2><p>Share selected exports or connect a Parent Local through AI2Apps Cloud</p></div><span class="account-pill">one hop</span></div>
+            <div class="account-card-body sharing-form">
+                <div class="sharing-grow"><strong>Upstream · publish this Local</strong><small>Synchronizes active model, Tool and Service descriptors. Cloud stores metadata and routes encrypted HTTPS requests; it does not store prompts or responses.</small></div>
+                <div class="account-actions"><button class="account-button" :disabled="busy" @click="syncCloudExports()">Sync Cloud exports</button></div>
+            </div>
+            <div class="account-card-body sharing-form">
+                <div class="sharing-grow"><strong>Downstream · request a parent</strong><small>Create a ten-minute one-use pairing. The parent Core user must accept the code on their own Local.</small></div>
+                <label class="account-field"><span>Parent label</span><input class="account-input" maxlength="200" x-model.trim="cloudParent.label"></label>
+                <label class="account-field"><span>Priority</span><input class="account-input" type="number" min="1" max="1000" x-model.number="cloudParent.priority"></label>
+                <label class="sharing-check"><input type="checkbox" x-model="cloudParent.routeModels"> Models</label>
+                <label class="sharing-check"><input type="checkbox" x-model="cloudParent.routeMcp"> MCP</label>
+                <div class="account-actions"><button class="account-button primary" :disabled="busy" @click="createCloudPairing()">Create Cloud pairing</button></div>
+            </div>
+            <div class="issued-panel" x-show="cloudPairing" x-cloak>
+                <img :src="cloudPairing?.pairingQr" alt="Cloud parent pairing QR code">
+                <div class="sharing-grow"><strong>Pairing expires <span x-text="cloudPairing?.expiresAt"></span></strong><small>The code is stored only in this Local credential provider until exchange.</small><label>Pairing code<input class="account-input" readonly :value="cloudPairing?.pairingCode"></label><button class="account-button primary" :disabled="busy" @click="exchangeCloudPairing()">Finish after parent accepts</button></div>
+            </div>
+            <div class="account-card-body sharing-form">
+                <div class="sharing-grow"><strong>Parent · accept another Local</strong><small>Paste or scan the downstream code. Owner reauthentication is purpose-bound and used once.</small></div>
+                <label class="account-field sharing-grow"><span>Pairing code</span><input class="account-input" type="password" autocomplete="off" x-model="cloudPairingCode" placeholder="pairing-id.secret"></label>
+                <label class="account-field"><span>Owner password</span><input class="account-input" type="password" autocomplete="current-password" x-model="cloudOwnerPassword"></label>
+                <div class="account-actions"><button class="account-button primary" :disabled="busy||!cloudPairingCode||!cloudOwnerPassword" @click="acceptCloudPairing()">Accept as parent</button></div>
+            </div>
+            <div class="account-card-body"><div class="nearby-head"><div><strong>Cloud NodeLinks</strong><small>Upstream links can receive a capability grant; downstream links use the credential stored only on that Local.</small></div><span class="account-pill" x-text="cloudLinks.length+' links'"></span></div>
+                <div class="sharing-list nearby-list"><template x-for="item in cloudLinks" :key="item.nodeLinkId"><div class="sharing-row">
+                    <span class="sharing-kind" x-text="item.direction"></span><span class="sharing-grow"><strong x-text="item.nodeLinkId"></strong><small x-text="'epoch '+item.linkEpoch+' · credential v'+item.credentialVersion+' · expires '+activityTime(item.credentialExpiresAt)"></small></span><span class="account-pill" x-text="item.status"></span>
+                    <button class="account-button" x-show="item.direction==='upstream'&&item.status==='active'" @click="chooseCloudLink(item)">Configure grant</button>
+                    <button class="account-button" x-show="item.direction==='upstream'&&item.status==='active'" @click="rotateCloudLink(item)">Rotate</button>
+                    <button class="account-button danger" x-show="item.direction==='upstream'&&item.status==='active'" @click="revokeCloudLink(item)">Revoke</button>
+                </div></template><div x-show="!cloudLinks.length" class="account-empty">No Cloud NodeLink is registered for this installation.</div></div>
+            </div>
+            <div class="account-card-body sharing-form" x-show="cloudGrant.linkId" x-cloak>
+                <div class="sharing-grow"><strong>NodeGrant · <span x-text="cloudGrant.linkId"></span></strong><small>Choose only the active exports this downstream may invoke. An empty selection denies all capabilities.</small><div class="sharing-list nearby-list"><template x-for="item in exports" :key="item.id"><label class="sharing-row"><input type="checkbox" :value="item.id" x-model="cloudGrant.exportIds" :disabled="item.status!=='active'"><span class="sharing-kind" x-text="item.kind"></span><span class="sharing-grow" x-text="item.display_name"></span><span class="account-pill" x-text="item.status"></span></label></template></div></div>
+                <label class="account-field"><span>Concurrency</span><input class="account-input" type="number" min="1" max="100" x-model.number="cloudGrant.concurrency"></label>
+                <label class="account-field"><span>Monthly points · blank unlimited</span><input class="account-input" x-model.trim="cloudGrant.monthlyPoints"></label>
+                <label class="account-field"><span>Expires · blank never</span><input class="account-input" type="datetime-local" x-model="cloudGrant.expiresAt"></label>
+                <label class="account-field"><span>Owner password</span><input class="account-input" type="password" autocomplete="current-password" x-model="cloudGrant.ownerPassword"></label>
+                <button class="account-button primary" :disabled="busy||!cloudGrant.ownerPassword" @click="saveCloudGrant()">Save NodeGrant</button>
+            </div>
+            <div class="issued-panel" x-show="cloudRotation" x-cloak><img :src="cloudRotation?.credentialQr" alt="Rotated NodeLink credential QR"><div class="sharing-grow"><strong>Transfer this credential now</strong><small>It is returned once. Scan it in the downstream Local; the prior credential is invalid.</small><input class="account-input" readonly :value="cloudRotation?.credential"><button class="account-button" @click="cloudRotation=null">Done</button></div></div>
+            <div class="account-card-body sharing-form">
+                <div class="sharing-grow"><strong>Downstream credential update</strong><small>Scan a rotation QR, or paste the NodeLink ID and one-time credential supplied by the upstream Core user.</small></div>
+                <label class="account-field"><span>NodeLink ID</span><input class="account-input" x-model.trim="cloudCredential.nodeLinkId"></label>
+                <label class="account-field sharing-grow"><span>Rotated credential</span><input class="account-input" type="password" autocomplete="off" x-model="cloudCredential.credential"></label>
+                <button class="account-button primary" :disabled="busy||!cloudCredential.nodeLinkId||!cloudCredential.credential" @click="importCloudCredential()">Install and test</button>
+            </div>
+        </section>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Local network access</h2><p>Core controls whether other LAN devices can reach this Local</p></div><span class="account-pill" x-text="network.mode"></span></div>
+            <div class="account-card-body sharing-form">
+                <label class="account-field"><span>Visibility</span><select class="account-input" x-model="network.mode"><option value="disabled">Off · this device only</option><option value="share_only">Shared capabilities only</option><option value="full">Full Local web and Apps</option></select></label>
+                <label class="account-field"><span>LAN port</span><input class="account-input" type="number" min="1024" max="65535" x-model.number="network.port"></label>
+                <label class="account-field"><span>Bind address</span><select class="account-input" x-model="network.bind_host"><option value="0.0.0.0">IPv4 · all interfaces</option><option value="::">IPv6 · all interfaces</option></select></label>
+                <div class="account-actions"><button class="account-button primary" :disabled="busy" @click="saveNetwork()">Apply network access</button></div>
+            </div>
+            <div class="account-card-body network-warning" x-show="network.mode==='full'" x-cloak>Full Local mode makes the login page, Shell and authorized App APIs reachable on your LAN. Account, Role and App permission checks remain active. Use this only on a trusted home or business network.</div>
+        </section>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Publish capability</h2><p>Explicitly select a model, Tool, Service, or Agent; all remain private by default</p></div></div>
+            <div class="account-card-body sharing-form">
+                <label class="account-field"><span>Type</span><select class="account-input" x-model="form.kind" @change="form.targetId=''"><option value="model">AI model</option><option value="tool">MCP Tool</option><option value="service">MCP Service</option><option value="agent">MCP Agent</option></select></label>
+                <label class="account-field" x-show="form.kind==='model'"><span>Available model</span><select class="account-input" x-model="form.targetId"><option value="">Select model</option><template x-for="model in models" :key="model.id"><option :value="model.id" x-text="modelLabel(model)"></option></template></select></label>
+                <label class="account-field" x-show="form.kind==='tool'"><span>Safe Tool</span><select class="account-input" x-model="form.targetId"><option value="">Select Tool</option><template x-for="tool in candidates.tools" :key="tool.id"><option :value="tool.id" x-text="tool.name+' · '+tool.id"></option></template></select></label>
+                <label class="account-field" x-show="form.kind==='service'"><span>Safe Service</span><select class="account-input" x-model="form.targetId"><option value="">Select Service</option><template x-for="service in candidates.services" :key="service.id"><option :value="service.id" x-text="service.name+' · '+service.methods.length+' MCP methods'"></option></template></select></label>
+                <label class="account-field" x-show="form.kind==='agent'"><span>Available Agent</span><select class="account-input" x-model="form.targetId"><option value="">Select Agent</option><template x-for="agent in candidates.agents" :key="agent.id"><option :value="agent.id" x-text="agent.name+' · '+agent.id"></option></template></select></label>
+                <label class="account-field"><span>Display name</span><input class="account-input" maxlength="200" x-model.trim="form.displayName" placeholder="Living room model"></label>
+                <div class="account-actions"><button class="account-button primary" :disabled="busy||!form.targetId||!form.displayName" @click="createExport()">Publish</button></div>
+            </div>
+            <div class="account-card-body network-warning" x-show="form.kind==='model' && selectedModel()?.source==='local_byok'" x-cloak><strong>External API billing</strong><br>This model uses an API Key stored on this device. Calls made by shared clients are billed to that Provider account. The Provider API Key is never sent to the client.</div>
+            <div class="account-card-body network-warning" x-show="form.kind==='agent'" x-cloak><strong>Agent authority</strong><br>Publishing an Agent permits it to run with its locally configured model and capability policy. Remote clients cannot approve pending sensitive interactions, and every Session remains bound to its client Grant.</div>
+        </section>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Published capabilities</h2><p>Select active exports when creating client access</p></div><span class="account-pill" x-text="exports.length+' exports'"></span></div>
+            <div class="sharing-list"><template x-for="item in exports" :key="item.id"><label class="sharing-row">
+                <input type="checkbox" :value="item.id" x-model="grantForm.exportIds" :disabled="item.status!=='active'">
+                <span class="sharing-kind" x-text="item.kind"></span><span class="sharing-grow"><strong x-text="item.display_name"></strong><small x-text="item.target_id+' · '+item.protocols.join(', ')"></small></span>
+                <span class="account-pill" x-text="item.status"></span>
+                <button type="button" class="account-button" x-show="item.status==='active'" @click.prevent="setExport(item,'paused')">Pause</button>
+                <button type="button" class="account-button" x-show="item.status==='paused'" @click.prevent="setExport(item,'active')">Resume</button>
+                <button type="button" class="account-button danger" x-show="item.status!=='revoked'" @click.prevent="setExport(item,'revoked')">Revoke</button>
+            </label></template><div x-show="!exports.length" class="account-empty">No Local capability is published.</div></div>
+        </section>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Create client access</h2><p>Credentials are displayed once and can be revoked independently</p></div></div>
+            <div class="account-card-body sharing-form">
+                <label class="account-field"><span>Client label</span><input class="account-input" maxlength="200" x-model.trim="grantForm.label" placeholder="Kitchen Mac"></label>
+                <label class="account-field"><span>Concurrency</span><input class="account-input" type="number" min="1" max="100" x-model.number="grantForm.maxConcurrency"></label>
+                <label class="account-field"><span>Maximum requests · blank unlimited</span><input class="account-input" type="number" min="1" max="1000000" x-model="grantForm.maxRequests"></label>
+                <label class="account-field"><span>Expires in days · blank never expires</span><input class="account-input" type="number" min="1" max="365" x-model="grantForm.expiresDays"></label>
+                <div class="account-actions"><button class="account-button primary" :disabled="busy||!grantForm.label||!grantForm.exportIds.length" @click="createGrant()">Create access</button></div>
+            </div>
+            <div x-show="issued" x-cloak class="issued-panel">
+                <img :src="issued?.connection_qr" alt="Client connection QR code">
+                <div class="sharing-grow"><strong>Save this credential now</strong><small>The token cannot be displayed again.</small>
+                    <label>OpenAI base URL<input class="account-input" readonly :value="issued?.openai_base_url"></label>
+                    <label>MCP URL<input class="account-input" readonly :value="issued?.mcp_url"></label>
+                    <label>Bearer token<input class="account-input" readonly :value="issued?.token"></label>
+                    <button class="account-button primary" @click="copyConnection()">Copy connection JSON</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Client access</h2><p>Usage metadata only; prompts and Tool arguments are not stored here</p></div></div>
+            <div class="sharing-list"><template x-for="grant in grants" :key="grant.id"><div class="sharing-row"><span class="sharing-grow"><strong x-text="grant.label"></strong><small x-text="grant.exports.length+' capabilities · '+grant.request_count+(grant.max_requests?' / '+grant.max_requests:'')+' requests · max '+grant.max_concurrency+' concurrent'"></small></span><span class="account-pill" x-text="grant.status"></span><button class="account-button" :disabled="grant.status!=='active'" @click="rotateGrant(grant)">Rotate</button><button class="account-button danger" :disabled="grant.status!=='active'" @click="revokeGrant(grant)">Revoke</button></div></template><div x-show="!grants.length" class="account-empty">No client access has been created.</div></div>
+        </section>
+
+        <section class="account-card account-wide">
+            <div class="account-card-head"><div><h2>Parent Locals</h2><p>Use selected models and MCP capabilities from a higher-level Local without opening its Apps</p></div><span class="account-pill" x-text="upstreams.length+' parents'"></span></div>
+            <div class="account-card-body sharing-form">
+                <label class="account-field"><span>Default model route</span><select class="account-input" x-model="parentRouting.model_policy"><option value="explicit_only">Explicit parent model IDs only</option><option value="parent_first">Parent first, then this Local</option></select></label>
+                <div class="sharing-grow"><small><strong>Explicit only</strong> requires choosing a model named <code>gateway/…</code>. <strong>Parent first</strong> sends a matching model to the default healthy parent, then the remaining parents by priority; when no parent is available, this Local handles the model itself.</small></div>
+                <div class="account-actions"><button class="account-button primary" :disabled="busy" @click="saveParentRouting()">Save model route</button></div>
+            </div>
+            <div class="account-card-body nearby-panel">
+                <div class="nearby-head"><div><strong>Nearby AI2Apps Locals</strong><small>Bonjour discovery reveals endpoints only. Access still requires a scoped QR from that Local's Core user.</small></div><button class="account-button" :disabled="busy" @click="refreshDiscovery()"><i data-lucide="radar" class="w-3 h-3"></i> Scan LAN</button></div>
+                <div class="sharing-list nearby-list"><template x-for="item in nearby" :key="item.service_name"><div class="sharing-row">
+                    <span class="sharing-kind">nearby</span><span class="sharing-grow"><strong x-text="item.label"></strong><small x-text="item.address+':'+item.port+' · '+item.mode"></small></span><button class="account-button" @click="chooseNearby(item)">Use label</button>
+                </div></template><div x-show="!nearby.length" class="account-empty" x-text="discoveryError || (discoveryAvailable ? 'No other gateway discovered.' : 'LAN discovery is unavailable.')"></div></div>
+            </div>
+            <div class="account-card-body sharing-form">
+                <label class="account-field"><span>Parent label</span><input class="account-input" maxlength="200" x-model.trim="upstreamForm.label" placeholder="Home NAS"></label>
+                <label class="account-field"><span>Priority · lower first</span><input class="account-input" type="number" min="1" max="1000" x-model.number="upstreamForm.priority"></label>
+                <label class="account-field sharing-grow"><span>Connection JSON</span><input class="account-input" type="password" autocomplete="new-password" x-model="upstreamForm.connection" placeholder="Paste the one-time connection JSON from the parent Local"></label>
+                <label class="sharing-check"><input type="checkbox" x-model="upstreamForm.routeModels"> Route models</label>
+                <label class="sharing-check"><input type="checkbox" x-model="upstreamForm.routeMcp"> Import MCP</label>
+                <div class="account-actions qr-actions"><button class="account-button" type="button" @click="startScanner()"><i data-lucide="scan-line" class="w-3 h-3"></i> Scan QR</button><label class="account-button qr-upload"><i data-lucide="image-up" class="w-3 h-3"></i> QR image<input type="file" accept="image/*" @change="readQrImage($event)"></label><button class="account-button primary" :disabled="busy||!upstreamForm.label||!upstreamForm.connection" @click="addUpstream()">Connect and test</button></div>
+            </div>
+            <div class="account-note">The Share Token goes directly to this device's secure credential provider. Parent Node IDs and live ancestry are checked on every health probe to reject A → B → A loops. Parent Apps are never imported or opened.</div>
+            <div class="sharing-list"><template x-for="item in upstreams" :key="item.id"><div class="sharing-row">
+                <span class="sharing-kind" x-text="item.is_default?'default':'parent'"></span><span class="sharing-grow"><strong x-text="item.label"></strong><small x-text="item.openai_base_url+' · '+((item.capabilities.models||[]).length)+' models · '+((item.capabilities.tools||[]).length)+' MCP tools'"></small><small x-text="(item.remote_node_id ? 'Node '+item.remote_node_id : 'Legacy connection · identity pending')+' · '+(item.ancestor_node_ids||[]).length+' ancestors'"></small><small x-show="item.last_checked_at" x-text="'Checked '+activityTime(item.last_checked_at)"></small><small x-show="item.last_error" x-text="item.last_error"></small></span>
+                <label class="compact-field"><small>Priority</small><input class="account-input" type="number" min="1" max="1000" x-model.number="item.priority"></label>
+                <label class="sharing-check"><input type="checkbox" x-model="item.route_models"> Models</label>
+                <label class="sharing-check"><input type="checkbox" x-model="item.route_mcp"> MCP</label>
+                <span class="account-pill" x-text="item.health_status"></span><span class="account-pill" x-text="item.status"></span>
+                <button class="account-button" :disabled="busy" @click="saveParent(item)">Save</button>
+                <button class="account-button" x-show="!item.is_default" :disabled="busy||item.status!=='active'" @click="makeDefault(item)">Make default</button>
+                <button class="account-button" :disabled="busy||item.status!=='active'" @click="probeUpstream(item)">Test</button>
+                <button class="account-button" x-show="item.status==='active'" @click="setUpstream(item,'disabled')">Disable</button>
+                <button class="account-button" x-show="item.status==='disabled'" @click="setUpstream(item,'active')">Enable</button>
+                <button class="account-button danger" @click="removeUpstream(item)">Remove</button>
+            </div></template><div x-show="!upstreams.length" class="account-empty">No parent Local is connected.</div></div>
+            <div class="account-card-body activity-panel"><strong>Recent parent activity</strong><small>Metadata only. Prompts, responses and Tool arguments are not recorded.</small><div class="sharing-list nearby-list"><template x-for="entry in upstreamActivity" :key="entry.id"><div class="sharing-row"><span class="sharing-kind" x-text="entry.operation"></span><span class="sharing-grow"><strong x-text="gatewayLabel(entry.gateway_id)+' · '+(entry.capability_id||'connection test')"></strong><small x-text="activityTime(entry.created_at)+' · '+entry.duration_ms+' ms'+(entry.error_code?' · '+entry.error_code:'')"></small></span><span class="account-pill" x-text="entry.status"></span></div></template><div x-show="!upstreamActivity.length" class="account-empty">No parent calls recorded.</div></div></div>
+        </section>
+        <div class="qr-scanner-backdrop" x-show="scannerOpen" x-cloak @click.self="stopScanner()" @keydown.escape.window="stopScanner()"><div class="qr-scanner-card"><div class="nearby-head"><strong>Scan parent access QR</strong><button class="account-button" @click="stopScanner()">Close</button></div><video x-ref="qrVideo" playsinline muted></video><small>Point the camera at the one-time QR shown by the parent Local.</small></div></div>
+        <div class="account-alert" x-show="scannerError" x-cloak x-text="scannerError"></div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/sharing.js') }}"></script>
+{% endblock %}

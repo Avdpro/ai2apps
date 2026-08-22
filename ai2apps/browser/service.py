@@ -24,6 +24,7 @@ def install_browser_service(
     repository: ServiceRepository,
     registry: ServiceRegistry,
 ) -> None:
+    engine = str(getattr(manager.backend, "engine", "unknown"))
     service = repository.ensure_service(
         service_key="ai2apps.browser",
         package_id="ai2apps.browser",
@@ -39,7 +40,7 @@ def install_browser_service(
             "browser.commit",
         ),
         config={
-            "engine": "chromium",
+            "engine": engine,
             "transport": "webdriver-bidi",
             "visible": True,
             "authentication": "user-only",
@@ -48,7 +49,7 @@ def install_browser_service(
     )
     instance = repository.ensure_instance(
         service_id=service.id,
-        provider_key="builtin:browser-chrome",
+        provider_key=f"builtin:browser-{engine}",
         status=ServiceInstanceStatus.RUNNING,
         endpoint="/v1/platform/browser/status",
         health={"status": "ready", "browser_state": "stopped"},
@@ -60,11 +61,22 @@ def install_browser_service(
         except BrowserError as exc:
             raise ToolProviderError(f"{exc.code}: {exc}") from exc
 
+    def bind(context: ToolCallContext) -> None:
+        try:
+            manager.bind_actor(context.session_id, context.actor_user_id)
+        except BrowserError as exc:
+            raise ToolProviderError(f"{exc.code}: {exc}") from exc
+
     async def status(_: dict[str, Any], __: ToolCallContext):
         return await call(manager.get_status)
 
     async def open_browser(arguments: dict[str, Any], context: ToolCallContext):
-        result = await call(manager.start, session_id=context.session_id)
+        bind(context)
+        result = await call(
+            manager.start,
+            session_id=context.session_id,
+            actor_user_id=context.actor_user_id,
+        )
         if arguments.get("url"):
             result = await call(
                 manager.navigate, arguments["url"], session_id=context.session_id
@@ -72,14 +84,17 @@ def install_browser_service(
         return result
 
     async def navigate(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.navigate, arguments["url"], session_id=context.session_id
         )
 
     async def list_tabs(_: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(manager.list_tabs, session_id=context.session_id)
 
     async def open_tab(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.open_tab,
             session_id=context.session_id,
@@ -87,6 +102,7 @@ def install_browser_service(
         )
 
     async def switch_tab(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.switch_tab,
             arguments["tab_id"],
@@ -94,6 +110,7 @@ def install_browser_service(
         )
 
     async def close_tab(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.close_tab,
             arguments["tab_id"],
@@ -101,6 +118,7 @@ def install_browser_service(
         )
 
     async def snapshot(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.snapshot,
             session_id=context.session_id,
@@ -111,6 +129,7 @@ def install_browser_service(
         )
 
     async def read_article(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.read_article,
             session_id=context.session_id,
@@ -124,6 +143,7 @@ def install_browser_service(
         )
 
     async def click(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.click,
             arguments["target"],
@@ -133,6 +153,7 @@ def install_browser_service(
         )
 
     async def hover(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.hover,
             arguments["target"],
@@ -141,6 +162,7 @@ def install_browser_service(
         )
 
     async def move_pointer(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.move_pointer,
             session_id=context.session_id,
@@ -151,6 +173,7 @@ def install_browser_service(
         )
 
     async def wait_for(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.wait_for,
             session_id=context.session_id,
@@ -165,6 +188,7 @@ def install_browser_service(
         )
 
     async def observe_changes(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.observe_changes,
             session_id=context.session_id,
@@ -174,6 +198,7 @@ def install_browser_service(
         )
 
     async def type_text(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.type_text,
             arguments["target"],
@@ -185,6 +210,7 @@ def install_browser_service(
         )
 
     async def key_press(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.key_press,
             arguments["key"],
@@ -196,6 +222,7 @@ def install_browser_service(
         )
 
     async def clipboard_action(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.clipboard_action,
             arguments["action"],
@@ -204,6 +231,7 @@ def install_browser_service(
         )
 
     async def upload_file(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.upload_file,
             arguments["target"],
@@ -212,6 +240,7 @@ def install_browser_service(
         )
 
     async def collect_downloads(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.collect_downloads,
             session_id=context.session_id,
@@ -219,6 +248,7 @@ def install_browser_service(
         )
 
     async def scroll(arguments: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(
             manager.scroll,
             arguments["delta_y"],
@@ -226,6 +256,7 @@ def install_browser_service(
         )
 
     async def screenshot(_: dict[str, Any], context: ToolCallContext):
+        bind(context)
         return await call(manager.screenshot, session_id=context.session_id)
 
     definitions = (

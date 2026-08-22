@@ -12,7 +12,10 @@ from omlx.patches.deepseek_v4.scope_policy import (
     PROFILE_ENV,
     SCOPE_ENV,
     STORE_ENV,
+    clear_scope_policy_override,
+    configure_scope_policy,
     configure_scope_resident_experts,
+    disable_scope_policy,
     load_scope_lossy_policy_from_env,
     load_scope_policy_from_env,
     load_scope_probe_depth_from_env,
@@ -23,11 +26,13 @@ from omlx.patches.deepseek_v4.scope_policy import (
 
 @pytest.fixture(autouse=True)
 def _clear_policy_cache():
+    clear_scope_policy_override()
     configure_scope_resident_experts(60)
     load_scope_lossy_policy_from_env.cache_clear()
     load_scope_policy_from_env.cache_clear()
     load_scope_probe_depth_from_env.cache_clear()
     yield
+    clear_scope_policy_override()
     configure_scope_resident_experts(60)
     load_scope_lossy_policy_from_env.cache_clear()
     load_scope_policy_from_env.cache_clear()
@@ -77,6 +82,30 @@ def test_scope_policy_can_build_smaller_resident_bank(tmp_path, monkeypatch):
     assert policy is not None
     assert policy.resident_experts == 20
     assert policy.experts(3) == tuple(range(20))
+
+
+def test_full_execution_explicitly_disables_legacy_environment_policy(
+    tmp_path, monkeypatch
+):
+    profile, store = _profile(tmp_path)
+    monkeypatch.setenv(PROFILE_ENV, str(profile))
+    monkeypatch.setenv(SCOPE_ENV, "coding")
+    monkeypatch.setenv(STORE_ENV, str(store))
+
+    disable_scope_policy()
+
+    assert load_scope_policy_from_env() is None
+
+
+def test_prepared_full_store_policy_selects_all_experts(tmp_path):
+    profile, store = _profile(tmp_path)
+    configure_scope_policy(profile, "coding", store, 256)
+
+    policy = load_scope_policy_from_env()
+
+    assert policy is not None
+    assert policy.resident_experts == 256
+    assert all(ids == tuple(range(256)) for ids in policy.experts_by_layer)
 
 
 def test_scope_policy_requires_all_three_environment_values(tmp_path, monkeypatch):

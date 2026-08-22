@@ -14,6 +14,12 @@ from jsonschema import SchemaError
 from ai2apps.api.router import create_ai2apps_router
 from ai2apps.config import PLATFORM_DATABASE_SCHEMA_VERSION, PlatformConfig
 from ai2apps.core import ResourceConflictError
+from ai2apps.identity import (
+    IdentityRepository,
+    MemberRole,
+    OrganizationType,
+    RequestPrincipal,
+)
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.services import (
     MCPServiceAdapter,
@@ -41,7 +47,7 @@ def _runtime(tmp_path):
 
 def _client(runtime):
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     return TestClient(app)
 
 
@@ -63,6 +69,43 @@ def test_schema_v6_seeds_a_durable_echo_service_and_tool(tmp_path):
         )
 
 
+def test_tool_context_derives_authoritative_actor_from_session(tmp_path):
+    runtime = _runtime(tmp_path)
+    identities = IdentityRepository(runtime.database)
+    identities.bind_installation(
+        installation_id="installation-1",
+        cloud_device_id="device-1",
+        organization_id="organization-1",
+        organization_type=OrganizationType.HOUSEHOLD,
+        core_user_id="user-core",
+        billing_account_id="billing-core",
+        access_epoch=1,
+    )
+    identities.upsert_membership(
+        cloud_user_id="user-alice",
+        role=MemberRole.MEMBER,
+        status="active",
+        membership_epoch=3,
+    )
+    principal = identities.principal_for("user-alice")
+    _, home, _ = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat", principal=principal
+    )
+    assert home is not None
+
+    context = runtime.tools.context_for_session(
+        caller_id="agent:test",
+        session_id=home.id,
+        trace_id="run-1",
+    )
+
+    assert context.actor_user_id == "user-alice"
+    assert context.installation_id == "installation-1"
+    assert context.organization_id == "organization-1"
+    assert context.billing_account_id == "billing-core"
+    assert context.membership_epoch == 3
+
+
 def test_service_dependencies_are_persisted_and_restart_safe(tmp_path):
     runtime = _runtime(tmp_path)
     runtime.services.ensure_service(
@@ -76,6 +119,7 @@ def test_service_dependencies_are_persisted_and_restart_safe(tmp_path):
             ServiceDependency("ai2apps.mcp", "*", True),
         ),
     )
+    runtime.stop()
 
     restarted = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     restarted.start()
@@ -354,6 +398,7 @@ def test_runtime_marks_unfinished_tool_invocation_interrupted(tmp_path):
         arguments={"value": "pending"},
         timeout_ms=5_000,
     )
+    runtime.stop()
 
     restarted = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     restarted.start()

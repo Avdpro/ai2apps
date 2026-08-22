@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai2apps.com/schemas/acefox/local-config.v1.json",
+  "title": "AI2Apps Local configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bind_address", "port_mode", "start_at_login", "auto_restart"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "bind_address": { "const": "127.0.0.1" },
+    "port_mode": { "enum": ["automatic", "fixed"] },
+    "configured_port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+    "start_at_login": { "type": "boolean" },
+    "auto_restart": { "type": "boolean" },
+    "model_cache_mode": { "enum": ["isolated", "shared"], "default": "isolated" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "port_mode": { "const": "fixed" } } },
+      "then": { "required": ["configured_port"] },
+      "else": { "not": { "required": ["configured_port"] } }
+    }
+  ]
+}

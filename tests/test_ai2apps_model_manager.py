@@ -1,15 +1,43 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from ai2apps.development import (
+    can_access_developer_surfaces,
+    is_source_development_runtime,
+)
 from ai2apps.model_manager import (
     BUILTIN_CLOUD_PROVIDERS,
     DEFAULT_MODEL_PURPOSES,
     ModelManagerStore,
 )
+from ai2apps.secrets import MemorySecretBackend
 
 WEB_ROOT = Path(__file__).parents[1] / "ai2apps" / "web"
+
+
+def test_developer_surfaces_require_a_git_source_checkout(tmp_path):
+    project = tmp_path / "project"
+    (project / ".git").mkdir(parents=True)
+    (project / "ai2apps").mkdir()
+    (project / "omlx").mkdir()
+    (project / "pyproject.toml").write_text("[project]\nname='ai2apps'\n")
+
+    assert is_source_development_runtime(project) is True
+    assert can_access_developer_surfaces(
+        SimpleNamespace(role=SimpleNamespace(value="core")), project
+    ) is True
+    assert can_access_developer_surfaces(
+        SimpleNamespace(role=SimpleNamespace(value="owner")), project
+    ) is False
+    assert can_access_developer_surfaces(
+        SimpleNamespace(role=SimpleNamespace(value="member")), project
+    ) is False
+
+    (project / ".git").rmdir()
+    assert is_source_development_runtime(project) is False
 
 
 def test_default_model_routes_are_complete_atomic_and_resolvable(tmp_path):
@@ -56,7 +84,11 @@ def test_models_app_opens_with_default_model_routing_first():
     assert template.index("setModelsTab('defaults')") < template.index(
         "setModelsTab('manager')"
     )
-    assert "System AI routing" in template
+    assert "models.tab.default_usage" in template
+    assert "models.tab.manager" in template
+    assert "models.defaults.section_label" in template
+    assert "models.defaults.work_simple.title" in template
+    assert "models.defaults.speech_recognition.title" in template
     assert "defaultModels[route.id]" in template
     assert "'/admin/api/model-manager/defaults'" in script
     assert "modelsTab: 'defaults'" in script
@@ -66,6 +98,84 @@ def test_models_app_opens_with_default_model_routing_first():
     assert "image_generation" in script
     assert "Installed Model Providers" in template
     assert "packages: data.packages || []" in script
+
+
+def test_default_model_routing_i18n_keys_exist_in_every_locale():
+    i18n_dir = WEB_ROOT / "i18n"
+    english = json.loads((i18n_dir / "en.json").read_text())
+    required = {key for key in english if key.startswith("models.defaults.")}
+
+    assert required
+    for locale_path in i18n_dir.glob("*.json"):
+        translations = json.loads(locale_path.read_text())
+        missing = required - translations.keys()
+        assert not missing, (
+            f"{locale_path.name} is missing default-model keys: {sorted(missing)}"
+        )
+
+
+def test_cloud_provider_i18n_and_key_protection_notice_exist_in_every_locale():
+    i18n_dir = WEB_ROOT / "i18n"
+    english = json.loads((i18n_dir / "en.json").read_text())
+    required = {
+        key
+        for key in english
+        if key.startswith("models.cloud.")
+        or key in {
+            "models.manager.loading",
+            "models.manager.section.cloud",
+            "models.manager.section.packages",
+        }
+    }
+
+    assert "models.cloud.key_security" in required
+    for locale_path in i18n_dir.glob("*.json"):
+        translations = json.loads(locale_path.read_text())
+        missing = required - translations.keys()
+        assert not missing, (
+            f"{locale_path.name} is missing cloud-provider keys: {sorted(missing)}"
+        )
+
+
+def test_cloud_provider_disabled_bindings_require_explicit_true():
+    template = (WEB_ROOT / "templates" / "dashboard" / "_models.html").read_text()
+
+    assert ':disabled="provider.managed === true"' in template
+    assert ':disabled="cloudRefreshing[provider.id] === true"' in template
+    assert ':disabled="provider.managed"' not in template
+    assert ':disabled="cloudRefreshing[provider.id]"' not in template
+
+
+def test_model_manager_prioritizes_cloud_and_packages_for_members():
+    template = (WEB_ROOT / "templates" / "dashboard" / "_models.html").read_text()
+    script = (WEB_ROOT / "static" / "js" / "dashboard.js").read_text()
+
+    assert "managerSection: 'cloud'" in script
+    cloud_section = "{ id: 'cloud', label: window.t('models.manager.section.cloud') }"
+    package_section = (
+        "{ id: 'packages', label: window.t('models.manager.section.packages') }"
+    )
+    assert script.index(cloud_section) < script.index(package_section)
+    assert "window.AI2APPS_SYSTEM_APP?.developerSurfacesVisible" in script
+    assert "'/v1/platform/auth/me'" not in script
+    assert "modelManagerSections()" in template
+    assert "modelManagerSectionCount(section.id)" in template
+    assert 'x-for="model in modelManager.cached_moe"' in template
+    assert "Model Package" in template
+    assert "openModelPackageConfig(model)" in template
+    assert "setModelsTab('downloader')" not in template
+    assert "modelsTab === 'downloader'" not in template
+    assert "{% if false %}" in template
+    assert "['defaults', 'manager']" in script
+    assert "setModelsTab('quantizer')" not in template
+    assert "setModelsTab('uploader')" not in template
+    assert "modelsTab === 'quantizer' || modelsTab === 'uploader'" in script
+    assert "modelsTab === 'downloader'" in script
+    assert "this.managerSection = 'packages'" in script
+    assert "ai2apps.pendingModelPackage" in script
+    assert "await this.openModelPackageConfig(recipe)" in script
+    system_app = (WEB_ROOT / "templates" / "system_apps" / "models.html").read_text()
+    assert 'dashboard/_modal_model_package.html' in system_app
 
 
 def test_cloud_capabilities_route_work_and_dedicated_models_separately():
@@ -196,8 +306,36 @@ def test_cloud_secret_is_persisted_but_never_returned(tmp_path):
     assert public["configured"] is True
     assert "api_key" not in public
     assert "sk-secret" not in json.dumps(store.list_cloud())
-    assert "sk-secret" in store.cloud_path.read_text()
+    assert "sk-secret" not in store.cloud_path.read_text()
+    assert "credential_ref" in store.cloud_path.read_text()
+    assert b"sk-secret" not in store.secret_backend.vault_path.read_bytes()
     assert store.cloud_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_legacy_plaintext_cloud_key_migrates_to_secret_backend(tmp_path):
+    backend = MemorySecretBackend()
+    path = tmp_path / "ai2apps" / "cloud-providers.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({
+        "version": 1,
+        "providers": {
+            "openai": {
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "legacy-secret",
+                "models": [],
+            }
+        },
+    }))
+
+    store = ModelManagerStore(tmp_path, secret_backend=backend)
+
+    assert next(item for item in store.list_cloud() if item["id"] == "openai")[
+        "configured"
+    ] is True
+    saved = path.read_text()
+    assert "legacy-secret" not in saved
+    assert '"version": 2' in saved
+    assert store.resolve_credential("ai2apps-cloud:openai") == "legacy-secret"
 
 
 def test_reset_builtin_and_delete_custom_provider(tmp_path):
@@ -532,6 +670,12 @@ def test_cloud_models_are_opt_in_and_resolve_only_when_enabled(tmp_path):
     assert resolved is not None
     assert resolved["api_key"] == "sk-secret"
     assert "sk-secret" not in json.dumps(store.list_cloud())
+    assert store.model_source("cloud/openai/gpt-new") == "local_byok"
+    assert store.model_shareable("cloud/openai/gpt-new") is True
+    assert store.model_source("cloud/ai2apps/openai/gpt-new") == "ai2apps_cloud"
+    assert store.model_shareable("cloud/ai2apps/openai/gpt-new") is False
+    assert store.model_source("gateway/upg_test/model") == "upstream_gateway"
+    assert store.model_source("local-model") == "local_runtime"
 
     store.set_cloud_model_enabled("openai", "gpt-new", False)
     assert store.enabled_cloud_models() == []

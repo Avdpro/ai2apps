@@ -1,0 +1,35 @@
+{
+  "format": "ai2apps-scope-pack",
+  "version": 1,
+  "id": "deepseek-v4-flash-scope-pack",
+  "pack_version": "2026.08.09.1",
+  "family": "deepseek_v4",
+  "engine": "deepseek-v4-flesh",
+  "profile": {
+    "file": "scope-profile.json",
+    "format": "dmoe-deepseek-tiered-policy",
+    "sha256": "66a83a5af4abb541482052f814330fdf359d7a6580d5a394b18e1dfaf8cf2855",
+    "layers": 43,
+    "routed_layers": 40,
+    "experts": 256,
+    "max_ranked_experts": 60,
+    "scopes": 10
+  },
+  "compatibility": {
+    "model_ids": [
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-2bit"
+    ],
+    "source_revisions": {
+      "deepseek-v4-flash": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "deepseek-v4-flash-2bit": "722bf559b7de93575b2320973cf2002e05bfe6c9"
+    },
+    "memory_tiers": [20, 40, 60]
+  },
+  "provenance": {
+    "kind": "derived-router-profile",
+    "source_project": "DMoE research artifacts",
+    "source_artifact": "deepseek-v4-flash/scope-study/phase-long128-v1/tiered-top60-global4.json",
+    "benchmark_document": "docs/scope-matrix-benchmark-2026-08-08.md"
+  }
+}

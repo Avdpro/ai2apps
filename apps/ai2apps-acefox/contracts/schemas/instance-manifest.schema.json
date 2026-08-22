@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai2apps.com/schemas/acefox/instance-manifest.v1.json",
+  "title": "AI2Apps instance manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "instance_id",
+    "display_name",
+    "bundle_identifier",
+    "helper_bundle_identifier",
+    "helper_service_name",
+    "shell_protocol",
+    "helper_protocol",
+    "default_local_configuration"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "instance_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+    },
+    "display_name": { "type": "string", "minLength": 1 },
+    "bundle_identifier": { "type": "string", "minLength": 3 },
+    "helper_bundle_identifier": { "type": "string", "minLength": 3 },
+    "helper_service_name": { "type": "string", "minLength": 3 },
+    "shell_protocol": { "$ref": "#/$defs/protocolRange" },
+    "helper_protocol": { "$ref": "#/$defs/protocolRange" },
+    "default_local_configuration": { "$ref": "local-config.v1.json" }
+  },
+  "$defs": {
+    "protocolRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": { "type": "integer", "minimum": 1 },
+        "maximum": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

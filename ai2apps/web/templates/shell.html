@@ -11,8 +11,8 @@
     <div class="dock-hot-zone" aria-hidden="true"></div>
 
     <header class="app-dock" aria-label="AI2Apps Dock">
-        <button class="dock-launcher-button" type="button" data-shell-action="launcher"
-                aria-label="Open App Launcher" aria-expanded="false">
+        <button class="dock-launcher-button" type="button" data-shell-action="home"
+                aria-label="{{ t('shell.home.aria') }}" title="{{ t('shell.home.name') }}">
             <img src="{{ static('favicon.svg') }}" alt="" class="dock-logo">
             <span class="dock-wordmark">AI2Apps</span>
         </button>
@@ -22,8 +22,8 @@
         <div class="dock-spacer"></div>
 
         <div class="dock-current" aria-live="polite">
-            <span class="dock-current-kicker">Active App</span>
-            <strong class="dock-current-name">Dashboard</strong>
+            <span class="dock-current-kicker">{{ t('shell.active_app') }}</span>
+            <strong class="dock-current-name">{{ t('shell.home.name') }}</strong>
         </div>
 
         <button class="dock-account" type="button" data-shell-action="account"
@@ -38,6 +38,7 @@
 
         <div class="dock-controls">
             <button class="dock-control" type="button" data-shell-action="control"
+                    {% if not can_manage_system %}hidden{% endif %}
                     aria-label="Open System Control" title="Trust, Patches, and Safe Mode">
                 <i data-lucide="shield-check"></i>
                 <span class="control-alert-count" hidden></span>
@@ -58,11 +59,68 @@
     </header>
 
     <main class="app-stage" aria-label="Active App">
+        <section class="desktop-home" aria-label="{{ t('shell.home.aria') }}">
+            <div class="desktop-home-scroll">
+                <section class="desktop-home-hero">
+                    <div class="desktop-home-hero-copy">
+                        <p class="desktop-home-eyebrow">
+                            <span>{{ t('shell.home.eyebrow') }}</span><span data-desktop-client-version
+                                {% if not desktop_client_version | default('', true) %}hidden{% endif %}>{% if desktop_client_version | default('', true) %} · v{{ desktop_client_version }}{% endif %}</span>
+                        </p>
+                        <h1>{{ t('shell.home.hero.line1') }}<br>{{ t('shell.home.hero.line2_prefix') }}<span data-desktop-device-label>{{ desktop_device_label | default('Device', true) }}</span>{{ t('shell.home.hero.line2_suffix') }}</h1>
+                        <p class="desktop-home-intro">{{ t('shell.home.intro') }}</p>
+                        <a class="desktop-home-open-source" href="https://github.com/Avdpro/ai2apps"
+                           target="_blank" rel="noopener noreferrer">
+                            <span class="desktop-home-open-source-icon"><i data-lucide="github"></i></span>
+                            <span>
+                                <strong>{{ t('shell.home.open_source.title') }}</strong>
+                                <small>{{ t('shell.home.open_source.description') }}</small>
+                            </span>
+                            <i data-lucide="arrow-up-right"></i>
+                        </a>
+                        <div class="desktop-home-actions">
+                            <button type="button" class="desktop-home-primary" data-home-app-id="ai2apps.general-chat">
+                                <i data-lucide="message-square"></i><span>{{ t('shell.home.action.chat') }}</span>
+                            </button>
+                            <button type="button" class="desktop-home-secondary" data-shell-action="launcher">
+                                <i data-lucide="grid-3x3"></i><span>{{ t('shell.home.action.browse') }}</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="desktop-home-status">
+                        <span class="desktop-home-status-mark"><i data-lucide="sparkles"></i></span>
+                        <div><strong>{{ t('shell.home.status.title') }}</strong><small>{{ t('shell.home.status.prefix') }}<span data-desktop-device-label>{{ desktop_device_label | default('Device', true) }}</span>{{ t('shell.home.status.suffix') }}</small></div>
+                        <span class="desktop-home-online"><i data-lucide="wifi"></i> {{ t('shell.home.status.local') }}</span>
+                    </div>
+                </section>
+
+                <section class="desktop-home-account" data-desktop-home-account hidden aria-live="polite">
+                    <span class="desktop-home-account-icon"><i data-lucide="circle-user-round"></i></span>
+                    <div class="desktop-home-account-copy">
+                        <p>{{ t('shell.home.account.eyebrow') }}</p>
+                        <h2 data-home-account-title></h2>
+                        <p data-home-account-body></p>
+                        <div class="desktop-home-account-benefits" data-home-account-benefits></div>
+                    </div>
+                    <button type="button" class="desktop-home-account-action" data-shell-action="account">
+                        <span data-home-account-action-label>{{ t('shell.home.account.open') }}</span><i data-lucide="arrow-right"></i>
+                    </button>
+                </section>
+
+                <section class="desktop-home-section" aria-labelledby="desktop-home-apps-title">
+                    <div class="desktop-home-section-heading">
+                        <div><p>{{ t('shell.home.apps.eyebrow') }}</p><h2 id="desktop-home-apps-title">{{ t('shell.home.apps.title') }}</h2></div>
+                        <button type="button" data-shell-action="launcher">{{ t('shell.home.apps.all') }} <i data-lucide="arrow-right"></i></button>
+                    </div>
+                    <div class="desktop-home-apps" data-desktop-home-apps></div>
+                </section>
+            </div>
+        </section>
         <iframe class="app-frame" title="Dashboard" allow="clipboard-read; clipboard-write"
-                referrerpolicy="same-origin"></iframe>
-        <div class="app-loading" aria-live="polite">
+                referrerpolicy="same-origin" hidden></iframe>
+        <div class="app-loading" aria-live="polite" hidden>
             <span class="app-loading-mark"></span>
-            <span>Opening App…</span>
+            <span>{{ t('shell.opening_app') }}</span>
         </div>
     </main>
 
@@ -115,6 +173,8 @@
         </div>
     </section>
 
+    <button class="dock-context-dismiss" type="button" tabindex="-1"
+            aria-label="Close App actions" hidden></button>
     <div class="dock-context-menu" role="menu" aria-label="App actions" hidden>
         <div class="dock-context-heading">
             <i data-context-icon data-lucide="app-window"></i>
@@ -150,7 +210,8 @@
 window.AI2APPS_SHELL_BOOT = {
     apps: {{ system_apps | tojson }},
     initialAppId: {{ initial_app_id | tojson }},
-    initialInstanceId: {{ initial_instance_id | tojson }}
+    initialInstanceId: {{ initial_instance_id | tojson }},
+        canManageSystem: {{ can_manage_system | default(false) | tojson }}
 };
 </script>
 {% endblock %}

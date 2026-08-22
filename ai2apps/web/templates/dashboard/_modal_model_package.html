@@ -1,0 +1,123 @@
+<template x-if="showModelPackageModal && selectedModelPackage">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="closeModelPackageConfig()">
+        <div class="fixed inset-0 bg-black/50" @click="closeModelPackageConfig()"></div>
+        <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-neutral-200 bg-white px-6 py-5">
+                <div>
+                    <div class="text-xs font-bold uppercase tracking-wider text-violet-600">Model Package</div>
+                    <h3 class="mt-1 text-xl font-bold text-neutral-900" x-text="selectedModelPackage.name"></h3>
+                    <p class="mt-1 text-sm text-neutral-500" x-text="selectedModelPackage.description"></p>
+                </div>
+                <button @click="closeModelPackageConfig()" class="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700">
+                    <i data-lucide="x" class="h-5 w-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-5 p-6">
+                <div x-show="selectedModelPackage.installed" class="rounded-2xl border border-green-200 bg-green-50 px-5 py-5">
+                    <div class="flex items-start gap-3">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+                            <i data-lucide="check" class="h-5 w-5"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-base font-bold text-green-900" x-text="window.t('models.package.complete.title')"></div>
+                            <div class="mt-1 text-sm text-green-800"
+                                 x-text="window.t('models.package.complete.description').replace('{model}', selectedModelPackage.name)"></div>
+                            <div x-show="modelPackageLatestTask()?.status === 'completed' && modelPackageLatestTask()?.detail"
+                                 class="mt-2 text-xs text-green-700" x-text="modelPackageLatestTask()?.detail"></div>
+                        </div>
+                    </div>
+                    <div class="mt-5 flex flex-wrap justify-end gap-2">
+                        <button x-show="selectedModelPackage.runtime_model" @click="openModelPackageRuntimeSettings()"
+                                class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-green-800 shadow-sm ring-1 ring-green-200 hover:bg-green-100"
+                                x-text="window.t('models.package.complete.runtime_settings')"></button>
+                        <button @click="closeModelPackageConfig()"
+                                class="rounded-lg bg-green-700 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-800"
+                                x-text="window.t('models.package.complete.done')"></button>
+                    </div>
+                </div>
+
+                <div x-show="!selectedModelPackage.installed && dynaPreflightLoading" class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+                    <i data-lucide="loader-circle" class="h-4 w-4 animate-spin"></i>
+                    <span>Checking download environment…</span>
+                </div>
+                <div x-show="!selectedModelPackage.installed && dynaPreflight && !dynaPreflight.ready" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    <div class="font-semibold">Download environment needs attention</div>
+                    <template x-for="issue in (dynaPreflight?.issues || [])" :key="issue.code">
+                        <div class="mt-1"><span x-text="issue.message"></span> <span class="font-medium" x-text="issue.action"></span></div>
+                    </template>
+                </div>
+
+                <div x-show="!selectedModelPackage.installed" class="space-y-5">
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label class="block">
+                            <span class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-neutral-500">Weight source</span>
+                            <select x-model="dynaWeightSource" class="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm">
+                                <template x-for="source in (activeModelPackageRecipe()?.sources || [])" :key="source.id">
+                                    <option :value="source.id" x-text="source.label"></option>
+                                </template>
+                            </select>
+                        </label>
+                        <label x-show="activeModelPackageRecipe()?.recipe !== 'native'" class="block">
+                            <span class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-neutral-500">Memory</span>
+                            <select x-model="dynaMemoryTier" class="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm">
+                                <option value="auto">Auto · match this Mac</option>
+                                <template x-for="tier in (activeModelPackageRecipe()?.memory_tiers || [])" :key="tier.id">
+                                    <option :value="tier.id" x-text="`${tier.label} · Top${tier.experts} · ~${tier.estimated_gb}G`"></option>
+                                </template>
+                            </select>
+                        </label>
+                        <label x-show="activeModelPackageRecipe()?.recipe !== 'native'" class="block">
+                            <span class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-neutral-500">Storage</span>
+                            <select x-model="dynaStoragePolicy" class="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm">
+                                <option value="delete_after" :disabled="!activeModelPackageRecipe()?.storage_policies?.includes('delete_after')">Delete source after verification</option>
+                                <option value="stream_reclaim" :disabled="!activeModelPackageRecipe()?.storage_policies?.includes('stream_reclaim')">Low disk · reclaim while converting</option>
+                                <option value="keep_source">Keep original checkpoint</option>
+                            </select>
+                            <span class="mt-1 block text-[11px] text-neutral-400"
+                                  x-text="dynaStoragePolicy === 'stream_reclaim' ? 'Lowest peak disk use; completed layers are reclaimed during conversion.' : dynaStoragePolicy === 'keep_source' ? 'Keeps the original checkpoint for rollback, using more disk.' : 'Removes source weights after the prepared model passes validation.'"></span>
+                        </label>
+                        <label class="block">
+                            <span class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-neutral-500">Access token <span class="normal-case text-neutral-400">optional</span></span>
+                            <input type="password" x-model="dynaToken" placeholder="hf_…" class="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 font-mono text-sm">
+                            <span class="mt-1 block text-[11px] text-neutral-400" x-text="dynaPreflight?.authentication?.token_configured ? 'A local token is available; this field can override it.' : 'Public checkpoints can download anonymously.'"></span>
+                        </label>
+                    </div>
+                    <div class="flex justify-end">
+                        <button @click="startDynaInstall()" :disabled="dynaInstalling || modelPackageHasActiveTask() || !activeModelPackageRecipe() || !dynaPreflight?.ready"
+                                class="flex items-center gap-2 rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                            <i data-lucide="download" class="h-4 w-4"></i>
+                            <span x-text="dynaInstalling ? 'Starting…' : modelPackageHasActiveTask() ? 'Downloading…' : 'Download & Prepare'"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div x-show="dynaError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="dynaError"></div>
+                <div x-show="dynaSuccess && !selectedModelPackage.installed" class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700" x-text="dynaSuccess"></div>
+
+                <div x-show="modelPackageTasks().length" class="overflow-hidden rounded-xl border border-neutral-200">
+                    <div class="border-b border-neutral-200 bg-neutral-100 px-4 py-3 text-xs font-bold uppercase tracking-wider text-neutral-600">Download activity</div>
+                    <template x-for="task in [...modelPackageTasks()].reverse()" :key="task.task_id">
+                        <div class="border-b border-neutral-100 p-4 last:border-b-0">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-sm font-semibold text-neutral-900" x-text="task.phase"></div>
+                                    <div class="mt-1 text-xs text-neutral-500" x-text="task.detail || task.repo_id"></div>
+                                    <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-neutral-100">
+                                        <div class="h-full rounded-full transition-all" :class="task.status === 'failed' ? 'bg-red-500' : task.status === 'completed' ? 'bg-green-500' : 'bg-neutral-800'" :style="`width: ${task.progress}%`"></div>
+                                    </div>
+                                    <div x-show="task.error" class="mt-2 text-xs text-red-600" x-text="task.error"></div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs tabular-nums text-neutral-500" x-text="`${Math.round(task.progress)}%`"></span>
+                                    <button x-show="!['completed','failed','cancelled'].includes(task.status)" @click="cancelDynaInstall(task.task_id)" class="text-xs text-neutral-500 hover:text-red-600">Cancel</button>
+                                    <button x-show="['failed','cancelled'].includes(task.status)" @click="retryDynaInstall(task.task_id)" class="text-xs font-medium text-neutral-700">Retry</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

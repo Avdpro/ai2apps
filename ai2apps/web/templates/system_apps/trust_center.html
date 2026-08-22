@@ -43,7 +43,7 @@
         </section>
 
         <section x-show="tab==='secrets'" x-cloak>
-            <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="vault" class="w-4 h-4"></i><div><div class="trust-panel-title">Secret Store</div><div class="trust-sub !mt-0" x-text="backendLabel() + ' · values are never returned by the API'"></div></div><button class="trust-button primary ml-auto" @click="openSecret()"><i data-lucide="plus" class="w-3.5 h-3.5"></i>Add Secret</button></div><template x-for="item in secrets" :key="item.id"><div class="trust-item"><div class="flex items-center gap-2"><span class="trust-item-title" x-text="item.name"></span><span class="trust-badge active">protected</span></div><div class="trust-sub" x-text="item.purpose || 'No purpose provided'"></div><div class="trust-code" x-text="item.uri + '\nAllowed: ' + (item.allowed_tools||[]).join(', ')"></div><div class="trust-actions"><span class="trust-sub !mt-0 flex-1" x-text="'Updated '+formatTime(item.updated_at)"></span><button class="trust-button" @click="openSecret(item)">Replace value</button><button class="trust-button danger" @click="deleteSecret(item)">Delete</button></div></div></template><div x-show="!secrets.length" class="trust-empty">No Secrets configured.</div></div>
+            <div class="trust-panel"><div class="trust-panel-head"><i data-lucide="vault" class="w-4 h-4"></i><div><div class="trust-panel-title">Secret Store</div><div class="trust-sub !mt-0" x-text="backendLabel() + ' · values are never returned by the API'"></div></div><button class="trust-button primary ml-auto" @click="openSecret()"><i data-lucide="plus" class="w-3.5 h-3.5"></i>Add Secret</button></div><template x-for="item in secrets" :key="item.id"><div class="trust-item"><div class="flex items-center gap-2"><span class="trust-item-title" x-text="item.name"></span><span class="trust-badge active">protected</span></div><div class="trust-sub" x-text="item.purpose || 'No purpose provided'"></div><div class="trust-code" x-text="item.uri + '\nAllowed: ' + (item.allowed_tools||[]).join(', ') + '\nLast use: ' + (item.last_used_at ? formatTime(item.last_used_at) + ' by ' + (item.last_used_by_tool || 'unknown Tool') : 'never')"></div><div class="trust-actions"><span class="trust-sub !mt-0 flex-1" x-text="'Updated '+formatTime(item.updated_at)"></span><button class="trust-button" @click="openSecret(item)">Replace value</button><button class="trust-button danger" @click="deleteSecret(item)">Delete</button></div></div></template><div x-show="!secrets.length" class="trust-empty">No Secrets configured.</div></div>
         </section>
     </main>
 
@@ -55,7 +55,6 @@
 
 {% block scripts %}
 {% if not mobile_surface %}
-<script>window.AI2APPS_TRUST_CENTER_API_KEY = {{ (api_key or '') | tojson }};</script>
 {% endif %}
 <script src="{{ static('js/trust_center.js') }}"></script>
 {% endblock %}

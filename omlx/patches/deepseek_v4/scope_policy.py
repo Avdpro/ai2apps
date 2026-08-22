@@ -24,13 +24,16 @@ DEFAULT_PROBE_DEPTH = 16
 MAX_PROBE_DEPTH = 43
 _resident_experts_override = 60
 _scope_policy_override: tuple[str, str, str] | None = None
+_scope_policy_disabled = False
 
 
 def configure_scope_resident_experts(count: int) -> None:
     """Configure the physical scope bank before constructing a model."""
 
-    if count not in (20, 40, 60):
-        raise ValueError("DeepSeek scope resident experts must be 20, 40, or 60")
+    if count not in (20, 40, 60, 256):
+        raise ValueError(
+            "DeepSeek scope resident experts must be 20, 40, 60, or 256"
+        )
     global _resident_experts_override
     _resident_experts_override = count
     load_scope_policy_from_env.cache_clear()
@@ -45,7 +48,8 @@ def configure_scope_policy(
     """Select a model-local Scope Pack without mutating process environment."""
 
     configure_scope_resident_experts(resident_experts)
-    global _scope_policy_override
+    global _scope_policy_disabled, _scope_policy_override
+    _scope_policy_disabled = False
     _scope_policy_override = (
         str(Path(profile_path).expanduser()),
         str(scope_name),
@@ -57,7 +61,17 @@ def configure_scope_policy(
 def clear_scope_policy_override() -> None:
     """Return policy selection to the legacy environment configuration."""
 
-    global _scope_policy_override
+    global _scope_policy_disabled, _scope_policy_override
+    _scope_policy_disabled = False
+    _scope_policy_override = None
+    load_scope_policy_from_env.cache_clear()
+
+
+def disable_scope_policy() -> None:
+    """Force full-resident execution even when legacy env vars are present."""
+
+    global _scope_policy_disabled, _scope_policy_override
+    _scope_policy_disabled = True
     _scope_policy_override = None
     load_scope_policy_from_env.cache_clear()
 
@@ -161,6 +175,8 @@ class ScopePolicy:
 
 @cache
 def load_scope_policy_from_env() -> ScopePolicy | None:
+    if _scope_policy_disabled:
+        return None
     if _scope_policy_override is not None:
         raw_profile, raw_scope, raw_store = _scope_policy_override
     else:
@@ -192,7 +208,7 @@ def load_scope_policy_from_env() -> ScopePolicy | None:
     experts_by_layer: list[tuple[int, ...]] = []
     scope_layers = scopes[raw_scope]
     for layer in range(43):
-        if layer < 3:
+        if _resident_experts_override == 256 or layer < 3:
             experts = tuple(range(256))
         else:
             try:

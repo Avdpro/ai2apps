@@ -1,0 +1,66 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen3-tts-0.6b
+name: Qwen3 TTS 0.6B CustomVoice
+description: Isolated multilingual speech synthesis Worker with named voices.
+version: 0.2.0
+
+publisher: {id: ai2apps}
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.qwen3-tts-0.6b/custom-voice-6bit
+    display_name: Qwen3 TTS 0.6B CustomVoice 6-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit
+    capabilities: [speech_generation, named_voices, voice_instructions]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit
+      revision: 7dc92af14613355896fcab13b268c19ede233139
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en, de, it, pt, es, ja, ko, fr, ru]
+      formats: {input: [], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices:
+          mode: native
+          voices: [serena, vivian, uncle_fu, ryan, aiden, ono_anna, sohee, eric, dylan]
+        speed: {mode: unsupported}
+        emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited]}
+        instructions: {mode: native}
+        voice_profiles: {mode: unsupported}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs]
+  python: ">=3.11,<3.14"
+
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Qwen3 TTS checkpoint cache.
+  accelerator:
+    metal: true
+    reason: Run speech synthesis with the isolated oMLX runtime.
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+  minimum_os_version: "26.2"
+
+health: {path: /health, startup_timeout_seconds: 45}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

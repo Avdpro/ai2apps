@@ -330,6 +330,26 @@ def maybe_apply_pre_load_patches(
         )
         return
 
+    # Run installable family-specific preparation before the legacy dispatch
+    # below.  Adapters are additive in this migration phase: an unmatched
+    # checkpoint, or an adapter without a prepare hook, changes nothing.
+    from ..model_adapters import adapter_context, get_model_adapter_registry
+
+    prepared_adapters = get_model_adapter_registry().prepare(
+        adapter_context(
+            model_name,
+            config,
+            model_settings=model_settings,
+            for_vlm=for_vlm,
+        )
+    )
+    if prepared_adapters:
+        logger.info(
+            "Prepared model adapters for %s: %s",
+            model_name,
+            ", ".join(prepared_adapters),
+        )
+
     # Bonsai t5 load patch must run FIRST — before any other patch that wraps
     # load_weights on a model subclass (e.g. mlx_vlm_mtp qwen35_vlm_runtime).
     # Those patches capture cls.load_weights as original_load_weights; if our
@@ -1018,6 +1038,17 @@ def maybe_load_custom_quantization(
             e,
         )
         return None
+
+    # A matched adapter may own an unusual checkpoint representation.  It is
+    # tried before built-in quantization dispatch; returning None keeps the
+    # existing ParoQuant/native loader behavior unchanged.
+    from ..model_adapters import adapter_context, get_model_adapter_registry
+
+    adapter_loaded = get_model_adapter_registry().load(
+        adapter_context(model_name, config, for_vlm=is_vlm)
+    )
+    if adapter_loaded is not None:
+        return adapter_loaded
 
     quant_config = config.get("quantization_config")
     quant_method = quant_config.get("quant_method") if quant_config else None

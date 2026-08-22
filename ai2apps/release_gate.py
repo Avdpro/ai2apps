@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ai2apps._version import __version__
-from ai2apps.model_installer import CATALOG, AI2AppsInstaller
+from ai2apps.model_installer import AI2AppsInstaller
 
 EVIDENCE_FORMAT = "ai2apps-release-evidence"
 EVIDENCE_VERSION = 1
@@ -53,13 +53,19 @@ def _pending(
 
 
 def _scope_pack(recipe: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
-    root = Path(__file__).parent
-    path = root / recipe["engine"]["scope_pack"]
+    path = Path(recipe["engine"]["scope_pack"])
+    if not path.is_absolute():
+        path = Path(__file__).parent / path
     return path, json.loads(path.read_text())
 
 
+def _recipes() -> tuple[dict[str, Any], ...]:
+    return AI2AppsInstaller._recipes()
+
+
 def check_catalog(checks: list[GateCheck]) -> None:
-    expected_ids = {recipe["id"] for recipe in CATALOG}
+    recipes = _recipes()
+    expected_ids = {recipe["id"] for recipe in recipes}
     exposed = {item["id"] for item in AI2AppsInstaller.catalog()}
     _check(
         checks,
@@ -67,7 +73,7 @@ def check_catalog(checks: list[GateCheck]) -> None:
         exposed == expected_ids,
         f"exposed {len(exposed)}/{len(expected_ids)} dedicated engines",
     )
-    for recipe in CATALOG:
+    for recipe in recipes:
         model_id = recipe["id"]
         source = recipe["sources"][0]
         revision = str(source.get("revision", ""))
@@ -108,7 +114,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def check_installations(checks: list[GateCheck], model_root: Path) -> None:
-    for recipe in CATALOG:
+    for recipe in _recipes():
         model_id = recipe["id"]
         source = recipe["sources"][0]
         model_dir = model_root / source["repo_id"]
@@ -259,8 +265,6 @@ def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
             continue
         required_suffixes = (
             "ai2apps/model_installer.py",
-            "ai2apps/engines/deepseek_v4_flash/scope-pack.json",
-            "ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json",
             "ai2apps/remote/bin/darwin-arm64/frpc",
             "ai2apps/remote/bin/darwin-x86_64/frpc",
             "ai2apps/remote/third_party/frp-LICENSE",
@@ -320,6 +324,111 @@ def check_archives(checks: list[GateCheck], archives: Iterable[Path]) -> None:
             )
 
 
+def check_security_boundaries(checks: list[GateCheck], repo_root: Path) -> None:
+    """Fail release preflight when critical containment invariants regress."""
+
+    adapters = (repo_root / "omlx/model_adapters/packages.py").read_text()
+    _check(
+        checks,
+        "security.installed_adapters_fail_closed",
+        "AI2APPS_UNSAFE_IN_PROCESS_MODEL_ADAPTERS" in adapters
+        and "return ()" in adapters,
+        "installed adapter code is excluded from the Host unless unsafe development mode is explicit",
+    )
+    process_sandbox = (repo_root / "ai2apps/processes/sandbox.py").read_text()
+    package_sandbox = (repo_root / "ai2apps/packages/supervisor.py").read_text()
+    _check(
+        checks,
+        "security.no_global_mach_lookup",
+        '"(allow mach-lookup)"' not in process_sandbox
+        and '"(allow mach-lookup)"' not in package_sandbox,
+        "Agent and Package sandboxes do not grant every Mach service",
+    )
+    worker_server = (repo_root / "ai2apps/model_worker/server.py").read_text()
+    worker_launcher = (repo_root / "ai2apps/model_worker/launcher.py").read_text()
+    _check(
+        checks,
+        "security.model_worker_host_boundary",
+        "AI2APPS_MODEL_WORKER_TOKEN" in worker_server
+        and '"-I"' in package_sandbox
+        and "sys.path.insert(0, str(_PLATFORM_ROOT))" in worker_launcher
+        and "ai2apps-model-worker/v1" in package_sandbox,
+        "Model Packages use the authenticated system launcher instead of a Package-owned server command",
+    )
+    server = (repo_root / "omlx/server.py").read_text()
+    platform_guard = server.split("async def verify_ai2apps_platform_access(", 1)[
+        1
+    ].split("def _reset_boundary_snapshots_for_server", 1)[0]
+    _check(
+        checks,
+        "security.inference_key_not_platform_admin",
+        "await verify_api_key" not in platform_guard
+        and '"code": "local_session_required"' in platform_guard,
+        "Platform administration requires an Installation-scoped Local Session",
+    )
+    chat = (repo_root / "ai2apps/web/templates/chat.html").read_text()
+    settings = (
+        repo_root / "ai2apps/web/templates/dashboard/_settings.html"
+    ).read_text()
+    _check(
+        checks,
+        "security.web_credentials_write_only",
+        "api_key | tojson" not in chat and "sk.key" not in settings,
+        "WebUI receives neither the main API key nor stored sub-key values",
+    )
+
+    menubar = (
+        repo_root / "apps/omlx-mac/Sources/Menubar/MenubarController.swift"
+    ).read_text()
+    web_url_builder = menubar.split("static func webAdminURL", 1)[1].split(
+        "static func shouldShowGenericFailureAlert", 1
+    )[0]
+    _check(
+        checks,
+        "security.inference_key_never_in_browser_url",
+        "apiKey" not in web_url_builder
+        and "/admin/auto-login" not in web_url_builder,
+        "the native Helper opens account login without placing an inference key in the URL",
+    )
+    admin_auth = (repo_root / "omlx/admin/auth.py").read_text()
+    session_verifier = admin_auth.split("def verify_session(", 1)[1].split(
+        "async def require_admin", 1
+    )[0]
+    admin_guard = admin_auth.split("async def require_admin", 1)[1].split(
+        "class _RedirectToLogin", 1
+    )[0]
+    _check(
+        checks,
+        "security.web_admin_requires_core_local_session",
+        "verify_session_token" not in session_verifier
+        and "skip_api_key_verification" not in admin_guard,
+        "legacy admin cookies and inference no-auth mode cannot grant Web administration",
+    )
+    admin_routes = (repo_root / "omlx/admin/routes.py").read_text()
+    login_routes = admin_routes.split('@router.post("/api/login")', 1)[1].split(
+        "# =============================================================================\n# Sub Key Management Routes",
+        1,
+    )[0]
+    _check(
+        checks,
+        "security.api_key_web_login_retired",
+        "api_key_web_login_retired" in login_routes
+        and "api_key_web_setup_retired" in login_routes
+        and "create_session_token" not in login_routes,
+        "API-key login, first-run setup and query-string auto-login cannot create Web sessions",
+    )
+    platform_identity = (repo_root / "ai2apps/api/identity.py").read_text()
+    cloud_api = (repo_root / "ai2apps/api/cloud.py").read_text()
+    _check(
+        checks,
+        "security.cookie_writes_require_exact_origin",
+        "enforce_same_origin_cookie_request" in admin_auth
+        and "enforce_same_origin_cookie_request" in platform_identity
+        and "enforce_same_origin_cookie_request" in cloud_api,
+        "Local and Cloud-browser writes reject cross-origin and cross-port requests",
+    )
+
+
 def check_evidence(checks: list[GateCheck], evidence_path: Path) -> None:
     try:
         evidence = _read_json(evidence_path)
@@ -334,7 +443,7 @@ def check_evidence(checks: list[GateCheck], evidence_path: Path) -> None:
         f"{evidence.get('format')!r} v{evidence.get('version')!r}",
     )
     models = evidence.get("models", {})
-    for recipe in CATALOG:
+    for recipe in _recipes():
         model_id = recipe["id"]
         result = models.get(model_id)
         if not isinstance(result, dict):
@@ -456,7 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def evidence_template() -> dict[str, Any]:
     models: dict[str, Any] = {}
-    for recipe in CATALOG:
+    for recipe in _recipes():
         parity = {
             "top10_parity": False,
             "zero_runtime_misses": False,
@@ -491,6 +600,7 @@ def main(argv: list[str] | None = None) -> int:
     check_catalog(checks)
     check_archives(checks, args.archive)
     repo_root = Path(__file__).parents[1]
+    check_security_boundaries(checks, repo_root)
     if args.run_tests:
         run_tests(checks, repo_root)
     if args.mode in {"installed", "release"}:

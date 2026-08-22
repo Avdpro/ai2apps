@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/mock-audio-tts",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "AI2Apps Mock Audio TTS",
+    "description": "Protocol fixture for isolated WAV synthesis Model Workers."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"]
+  },
+  "entrypoints": [
+    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [],
+  "dependencies": [
+    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.0.1 <2.0.0", "optional": false}
+  ],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

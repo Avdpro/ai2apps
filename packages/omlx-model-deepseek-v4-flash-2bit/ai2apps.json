@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-deepseek-v4-flash-2bit",
+    "type": "service",
+    "version": "0.3.1",
+    "displayName": "DeepSeek V4 Flash 2-bit",
+    "description": "Isolated full and Cached-MoE Worker for the 2-bit DQ checkpoint."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned DeepSeek repository cache.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run the isolated oMLX engine on Apple GPU.", "required": true}
+  ],
+  "dependencies": [
+    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.0.1 <2.0.0", "optional": false}
+  ],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

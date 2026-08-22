@@ -202,7 +202,7 @@ class TestTTSEndpointBasic:
         client, _ = server_tts_client
         response = client.post(
             "/v1/audio/speech",
-            json={"model": "qwen3-tts", "input": "Hello", "response_format": "aac"},
+            json={"model": "qwen3-tts", "input": "Hello", "response_format": "caf"},
         )
         assert response.status_code == 400
         detail = response.json().get("detail") or response.json().get("error", {}).get(

@@ -10,6 +10,7 @@ from omlx.patches.qwen3_6_flesh.scope_policy import (
     Qwen36ScopeCatalog,
     clear_qwen36_scope_policy,
     configure_qwen36_scope_policy,
+    disable_qwen36_scope_policy,
     estimated_resident_bytes,
     load_qwen36_scope_policy,
 )
@@ -61,6 +62,16 @@ def test_qwen_policy_is_independent_and_has_all_40_moe_layers(tmp_path):
     assert len(policy.experts(0)) == 96
     assert len(policy.experts(39)) == 96
     assert policy.experts(0, phase="prefill") != policy.experts(0, phase="decode")
+
+
+def test_full_execution_disables_configured_qwen_scope_policy(tmp_path):
+    store = tmp_path / "experts"
+    store.mkdir()
+    configure_qwen36_scope_policy(_profile(tmp_path), "coding", store, 96)
+
+    disable_qwen36_scope_policy()
+
+    assert load_qwen36_scope_policy() is None
 
 
 def test_qwen_tiers_do_not_reuse_deepseek_top20_40_60():

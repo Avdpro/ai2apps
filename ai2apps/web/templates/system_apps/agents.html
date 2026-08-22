@@ -95,7 +95,6 @@
 
 {% block scripts %}
 {% if not mobile_surface %}
-<script>window.AI2APPS_AGENT_MANAGER_API_KEY = {{ (api_key or '') | tojson }};</script>
 {% endif %}
 <script src="{{ static('js/agent_manager.js') }}"></script>
 {% endblock %}

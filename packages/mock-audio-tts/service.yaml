@@ -1,0 +1,48 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.mock-audio-tts
+name: AI2Apps Mock Audio TTS
+description: Protocol fixture for isolated WAV synthesis Model Workers.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.mock-audio-tts/default
+    display_name: Mock Audio TTS
+    model_type: audio_tts
+    upstream_id: ai2apps/mock-audio-tts
+    capabilities: [speech_generation, named_voices]
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [zh, en]
+      formats: {input: [], output: [wav, pcm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: native, voices: [mock]}
+        speed: {mode: native, minimum: 0.5, maximum: 2.0}
+        emotion: {mode: fallback, values: [neutral]}
+        instructions: {mode: unsupported}
+        voice_profiles: {mode: unsupported}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.0.1,<2.0.0"
+      optional: false
+      capabilities: [model-worker-v1]
+permissions:
+  network: {outbound: false}
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

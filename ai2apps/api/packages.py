@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
+from ai2apps.http_security import enforce_same_origin_cookie_request
 from ai2apps.packages import PackageError, TrustStatus
 from ai2apps.packages.contract_v1 import PackageContractError
 from ai2apps.packages.registry import RegistryError
@@ -91,6 +101,10 @@ class CloudSubmissionReviewRequest(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
 
 
+class CloudAdminReauthRequest(BaseModel):
+    password: str = Field(min_length=12, max_length=128)
+
+
 def _package(record) -> dict[str, Any]:
     return {
         "id": record.id,
@@ -126,6 +140,9 @@ def _error(error: PackageError) -> JSONResponse:
         "dependency_cycle": 409,
         "service_has_dependents": 409,
         "platform_incompatible": 422,
+        "os_version_unknown": 422,
+        "os_version_too_old": 422,
+        "os_version_too_new": 422,
         "accelerator_incompatible": 422,
     }.get(error.code, 422)
     return platform_error_response(
@@ -147,9 +164,13 @@ def _registry_error(error: RegistryError | PackageContractError) -> JSONResponse
         "repository_metadata_rollback": 409,
         "repository_metadata_expired": 503,
         "audit_review_required": 409,
+        "dependency_restart_required": 409,
         "app_has_instances": 409,
         "platform_incompatible": 422,
         "architecture_incompatible": 422,
+        "os_version_unknown": 422,
+        "os_version_too_old": 422,
+        "os_version_too_new": 422,
         "ai2apps_incompatible": 422,
         "service_contract_adapter_required": 501,
     }.get(error.code)
@@ -165,8 +186,114 @@ def _registry_error(error: RegistryError | PackageContractError) -> JSONResponse
     )
 
 
-def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter()
+def _registry_install_result(item, namespace: str, name: str) -> dict[str, Any]:
+    if hasattr(item, "unit_key"):
+        package_id = item.unit_key
+        package_type = item.kind.value
+        version = item.version
+        digest = item.digest
+    else:
+        package_id = f"{namespace}/{name}"
+        package_type = "service"
+        version = item.package_version
+        digest = item.package_digest
+    model_ids = [
+        model.get("id")
+        for model in getattr(item, "manifest", {}).get("models", [])
+        if isinstance(model, dict)
+        and isinstance(model.get("id"), str)
+        and isinstance(model.get("weights"), dict)
+    ]
+    pending_runtime_restart = bool(
+        package_type == "service"
+        and getattr(item, "service_key", None) == "ai2apps.runtime.omlx"
+        and item.status.value == "installed"
+    )
+    return {
+        "packageId": package_id,
+        "packageType": package_type,
+        "version": version,
+        "digest": digest,
+        "status": item.status.value,
+        "runtimeKey": getattr(item, "service_key", None),
+        "modelConfigurationId": model_ids[0] if model_ids else None,
+        "restartRequired": pending_runtime_restart,
+        "restartScope": "local" if pending_runtime_restart else None,
+    }
+
+
+def create_package_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        dependencies=[
+            Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
+        ]
+    )
+    install_operations: dict[str, dict[str, Any]] = {}
+    install_tasks: set[asyncio.Task] = set()
+
+    def update_install_operation(operation_id: str, values: dict[str, Any]) -> None:
+        operation = install_operations.get(operation_id)
+        if operation is None:
+            return
+        operation.update(values)
+        operation["updatedAt"] = datetime.now(UTC).isoformat()
+
+    async def run_install_operation(
+        operation_id: str,
+        manager,
+        namespace: str,
+        name: str,
+        install_request: RegistryInstallRequest,
+    ) -> None:
+        update_install_operation(operation_id, {"status": "running"})
+        try:
+            item = await manager.install(
+                namespace,
+                name,
+                install_request.version,
+                approve_review=install_request.approve_review,
+                progress=lambda values: update_install_operation(operation_id, values),
+            )
+            update_install_operation(
+                operation_id,
+                {
+                    "status": "completed",
+                    "currentStep": 6,
+                    "stage": "completed",
+                    "bytesCompleted": None,
+                    "bytesTotal": None,
+                    "result": _registry_install_result(item, namespace, name),
+                },
+            )
+        except RegistryError as error:
+            update_install_operation(
+                operation_id,
+                {
+                    "status": "failed",
+                    "stage": "failed",
+                    "error": {
+                        "code": error.code,
+                        "message": str(error),
+                        "details": error.details,
+                    },
+                },
+            )
+        except Exception as error:
+            update_install_operation(
+                operation_id,
+                {
+                    "status": "failed",
+                    "stage": "failed",
+                    "error": {
+                        "code": "install_failed",
+                        "message": str(error),
+                        "details": {},
+                    },
+                },
+            )
 
     def runtime_or_error():
         runtime = runtime_provider()
@@ -193,6 +320,49 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
                 retryable=True,
             )
         return runtime.registry_packages
+
+    def publishing_registry_or_error(request: Request):
+        """Return a Registry manager bound to this browser's Cloud session."""
+
+        manager = registry_or_error()
+        if isinstance(manager, JSONResponse):
+            return manager
+        runtime = runtime_provider()
+        enforce_same_origin_cookie_request(request)
+        cookie_reader = getattr(
+            runtime, "cloud_browser_session_from_cookies", None
+        )
+        browser_session_id = (
+            cookie_reader(request.cookies) if cookie_reader is not None else None
+        )
+        if not browser_session_id:
+            return platform_error_response(
+                status_code=409,
+                code="cloud_browser_session_required",
+                message=(
+                    "Sign in to AI2Apps Cloud in this browser before publishing "
+                    "Packages."
+                ),
+                retryable=False,
+            )
+        resolver = getattr(runtime, "cloud_for_browser", None)
+        if resolver is None:
+            return platform_error_response(
+                status_code=503,
+                code="cloud_client_not_ready",
+                message="Browser-isolated Cloud publishing is not ready.",
+                retryable=True,
+            )
+        try:
+            cloud = resolver(browser_session_id)
+        except (RuntimeError, ValueError) as error:
+            return platform_error_response(
+                status_code=409,
+                code="cloud_browser_session_invalid",
+                message=str(error),
+                retryable=False,
+            )
+        return manager.for_cloud(cloud)
 
     @router.get("/packages/catalog/search")
     async def registry_search(
@@ -236,11 +406,11 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.get("/packages/installed")
-    def registry_installed():
+    def registry_installed(locale: str | None = Query(default=None, max_length=64)):
         manager = registry_or_error()
         if isinstance(manager, JSONResponse):
             return manager
-        return {"items": manager.installed()}
+        return {"items": manager.installed(locale=locale)}
 
     @router.post("/packages/build")
     def registry_build(request: RegistryBuildRequest):
@@ -322,8 +492,8 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.get("/packages/publishing/publishers")
-    async def registry_publishers():
-        manager = registry_or_error()
+    async def registry_publishers(request: Request):
+        manager = publishing_registry_or_error(request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -332,8 +502,10 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.post("/packages/publishing/publishers")
-    async def registry_create_publisher(request: CloudPublisherCreateRequest):
-        manager = registry_or_error()
+    async def registry_create_publisher(
+        request: CloudPublisherCreateRequest, browser_request: Request
+    ):
+        manager = publishing_registry_or_error(browser_request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -342,8 +514,12 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.post("/packages/publishing/publishers/{publisher_id}/key-challenges")
-    async def registry_create_key_challenge(publisher_id: str, request: CloudKeyChallengeRequest):
-        manager = registry_or_error()
+    async def registry_create_key_challenge(
+        publisher_id: str,
+        request: CloudKeyChallengeRequest,
+        browser_request: Request,
+    ):
+        manager = publishing_registry_or_error(browser_request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -354,8 +530,12 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.post("/packages/publishing/publishers/{publisher_id}/keys")
-    async def registry_register_key(publisher_id: str, request: CloudKeyRegisterRequest):
-        manager = registry_or_error()
+    async def registry_register_key(
+        publisher_id: str,
+        request: CloudKeyRegisterRequest,
+        browser_request: Request,
+    ):
+        manager = publishing_registry_or_error(browser_request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -364,8 +544,10 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.post("/packages/publishing/submissions")
-    async def registry_submit(request: CloudSubmissionRequest):
-        manager = registry_or_error()
+    async def registry_submit(
+        request: CloudSubmissionRequest, browser_request: Request
+    ):
+        manager = publishing_registry_or_error(browser_request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -373,22 +555,59 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
         except (RegistryError, PackageContractError) as error:
             return _registry_error(error)
 
-    @router.get("/packages/publishing/submissions")
-    async def registry_submissions(
-        status: str | None = None,
-        limit: int = Query(default=50, ge=1, le=100),
-    ):
-        manager = registry_or_error()
+    @router.get("/packages/publishing/context")
+    async def registry_publishing_context(request: Request):
+        manager = publishing_registry_or_error(request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            return await manager.submissions(status=status, limit=limit)
+            return await manager.publishing_context()
+        except RegistryError as error:
+            return _registry_error(error)
+
+    @router.post("/packages/publishing/admin/reauth")
+    async def registry_admin_reauth(
+        request: CloudAdminReauthRequest, browser_request: Request
+    ):
+        manager = publishing_registry_or_error(browser_request)
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            return await manager.reauthenticate_admin(request.password)
+        except RegistryError as error:
+            return _registry_error(error)
+
+    @router.get("/packages/publishing/submissions")
+    async def registry_submissions(
+        request: Request,
+        status: str | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        manager = publishing_registry_or_error(request)
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            return await manager.publisher_submissions(status=status, limit=limit)
+        except RegistryError as error:
+            return _registry_error(error)
+
+    @router.get("/packages/publishing/review-submissions")
+    async def registry_review_submissions(
+        request: Request,
+        status: str | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        manager = publishing_registry_or_error(request)
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            return await manager.review_submissions(status=status, limit=limit)
         except RegistryError as error:
             return _registry_error(error)
 
     @router.get("/packages/publishing/submissions/{submission_id}")
-    async def registry_submission(submission_id: str):
-        manager = registry_or_error()
+    async def registry_submission(submission_id: str, request: Request):
+        manager = publishing_registry_or_error(request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -397,8 +616,8 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.get("/packages/publishing/submissions/{submission_id}/details")
-    async def registry_submission_details(submission_id: str):
-        manager = registry_or_error()
+    async def registry_submission_details(submission_id: str, request: Request):
+        manager = publishing_registry_or_error(request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -407,8 +626,8 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.post("/packages/publishing/submissions/{submission_id}/review-request")
-    async def registry_request_review(submission_id: str):
-        manager = registry_or_error()
+    async def registry_request_review(submission_id: str, request: Request):
+        manager = publishing_registry_or_error(request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -418,9 +637,11 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
 
     @router.post("/packages/publishing/submissions/{submission_id}/reviews")
     async def registry_review_submission(
-        submission_id: str, request: CloudSubmissionReviewRequest
+        submission_id: str,
+        request: CloudSubmissionReviewRequest,
+        browser_request: Request,
     ):
-        manager = registry_or_error()
+        manager = publishing_registry_or_error(browser_request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -431,8 +652,8 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _registry_error(error)
 
     @router.post("/packages/publishing/submissions/{submission_id}/publication")
-    async def registry_publish_submission(submission_id: str):
-        manager = registry_or_error()
+    async def registry_publish_submission(submission_id: str, request: Request):
+        manager = publishing_registry_or_error(request)
         if isinstance(manager, JSONResponse):
             return manager
         try:
@@ -471,25 +692,64 @@ def create_package_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
                 request.version,
                 approve_review=request.approve_review,
             )
-            if hasattr(item, "unit_key"):
-                package_id = item.unit_key
-                package_type = item.kind.value
-                version = item.version
-                digest = item.digest
-            else:
-                package_id = f"{namespace}/{name}"
-                package_type = "service"
-                version = item.package_version
-                digest = item.package_digest
-            return {
-                "packageId": package_id,
-                "packageType": package_type,
-                "version": version,
-                "digest": digest,
-                "status": item.status.value,
-            }
+            return _registry_install_result(item, namespace, name)
         except RegistryError as error:
             return _registry_error(error)
+
+    @router.post(
+        "/packages/{namespace}/{name}/install-operations",
+        status_code=202,
+    )
+    async def registry_start_install_operation(
+        namespace: str,
+        name: str,
+        request: RegistryInstallRequest,
+    ):
+        manager = registry_or_error()
+        if isinstance(manager, JSONResponse):
+            return manager
+        # Retain a bounded amount of terminal history for the Discover UI.
+        terminal = [
+            key
+            for key, value in install_operations.items()
+            if value.get("status") in {"completed", "failed"}
+        ]
+        for stale_id in terminal[:-32]:
+            install_operations.pop(stale_id, None)
+        operation_id = uuid4().hex
+        now = datetime.now(UTC).isoformat()
+        operation = {
+            "operationId": operation_id,
+            "packageId": f"{namespace}/{name}",
+            "status": "pending",
+            "currentStep": 1,
+            "totalSteps": 6,
+            "stage": "preparing",
+            "bytesCompleted": None,
+            "bytesTotal": None,
+            "result": None,
+            "error": None,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        install_operations[operation_id] = operation
+        task = asyncio.create_task(
+            run_install_operation(operation_id, manager, namespace, name, request)
+        )
+        install_tasks.add(task)
+        task.add_done_callback(install_tasks.discard)
+        return operation
+
+    @router.get("/packages/install-operations/{operation_id}")
+    async def registry_install_operation(operation_id: str):
+        operation = install_operations.get(operation_id)
+        if operation is None:
+            return platform_error_response(
+                status_code=404,
+                code="install_operation_not_found",
+                message="Package install operation was not found.",
+            )
+        return operation
 
     @router.post("/packages/{namespace}/{name}/uninstall")
     async def registry_uninstall(namespace: str, name: str, request: RegistryUninstallRequest):

@@ -215,6 +215,7 @@ final class MenubarControllerModelsTests: XCTestCase {
             engineType: nil,
             modelType: nil,
             configModelType: nil,
+            cacheMoe: nil,
             modelContextLength: nil,
             thinkingDefault: nil,
             dflashCompatible: nil,

@@ -31,7 +31,13 @@
 {% block scripts %}
 {% if not mobile_surface %}
 <script>
-window.AI2APPS_SYSTEM_APP = {{ system_app | tojson }};
+window.AI2APPS_SYSTEM_APP = Object.assign(
+    {{ system_app | tojson }},
+    {
+        principalIsCore: {{ principal_is_core | default(false) | tojson }},
+        developerSurfacesVisible: {{ developer_surfaces_visible | default(false) | tojson }}
+    }
+);
 window.AI2APPS_INITIAL_DASHBOARD_TAB = {{ system_app.tab | tojson }};
 </script>
 {% endif %}

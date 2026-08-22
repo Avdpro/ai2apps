@@ -14,6 +14,28 @@ def mgr(tmp_path):
     return ModelSettingsManager(tmp_path)
 
 
+def test_moe_execution_mode_round_trips_and_rejects_unknown_values():
+    restored = ModelSettings.from_dict(
+        ModelSettings(moe_execution_mode="full").to_dict()
+    )
+    assert restored.moe_execution_mode == "full"
+    with pytest.raises(ValueError, match="moe_execution_mode"):
+        ModelSettings(moe_execution_mode="streaming")
+
+
+def test_moe_execution_mode_is_never_saved_in_generation_profile(mgr):
+    mgr.save_profile(
+        "model-a",
+        "local",
+        "Local",
+        None,
+        {"temperature": 0.2, "moe_execution_mode": "full"},
+    )
+    assert mgr.get_profile("model-a", "local")["settings"] == {
+        "temperature": 0.2
+    }
+
+
 class TestProfilesCRUD:
     def test_list_profiles_empty_by_default(self, mgr):
         assert mgr.list_profiles("model-a") == []

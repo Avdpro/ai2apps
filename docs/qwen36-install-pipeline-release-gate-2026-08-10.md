@@ -9,7 +9,7 @@ reinstalled idempotently, loaded by the Tiered engine, and exercised through a
 two-turn Auto-L1 conversation.
 
 This run deliberately reused the existing read-only 19 GiB checkpoint at
-`/Users/avdpropang/sdk/dmoe/artifacts/qwen3.6-35b-a3b-4bit/source` to avoid a
+`<dmoe-checkout>/artifacts/qwen3.6-35b-a3b-4bit/source` to avoid a
 second network transfer. The isolated cache contains only Hugging Face cache
 links to that checkpoint; the DMoE repository was not modified. This validates
 cache discovery and conversion, but it is not a cold-network bandwidth test.

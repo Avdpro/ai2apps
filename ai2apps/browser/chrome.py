@@ -743,6 +743,8 @@ class _BiDiEventClient:
 class ChromeBrowserBackend:
     """Selenium creates the session; the session exposes a real BiDi socket."""
 
+    engine = "chromium"
+
     def __init__(self, config: BrowserRuntimeConfig) -> None:
         self.config = config
         self.driver = None

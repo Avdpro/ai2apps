@@ -1,126 +1,259 @@
 {% extends app_base_template|default("base.html") %}
 
-{% block title %}Account - AI2Apps{% endblock %}
+{% block title %}{{ t('account.page_title') }}{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ static('css/account.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="account-app" x-data="accountApp()" x-init="init()" data-app-id="ai2apps.account">
+<div class="account-app" x-data="accountApp()" data-app-id="ai2apps.account">
     <header class="account-header">
         <span class="account-mark"><i data-lucide="circle-user-round"></i></span>
-        <div><div class="account-title">AI2Apps Account</div><div class="account-subtitle">Cloud identity, level and points</div></div>
-        <span class="account-status" :class="signedIn && 'online'" x-text="signedIn ? 'Signed in' : (cloudUnavailable ? 'Cloud unavailable' : 'Not signed in')"></span>
-        <button x-show="signedIn" class="account-button" :disabled="busy" @click="refresh()"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh</button>
+        <div><div class="account-title">{{ t('account.title') }}</div><div class="account-subtitle">{{ t('account.subtitle') }}</div></div>
+        <span class="account-status" :class="{'online':(signedIn || localIdentity), 'warning':signedIn&&(installationAccess==='unregistered'||installationAccess==='inactive')}" x-text="localIdentity && !localIdentity.isCore ? tr('account.status.local_member') : (signedIn ? installationAccessLabel : (cloudUnavailable ? tr('account.status.cloud_unavailable') : tr('account.status.not_signed_in')))"></span>
+        <button x-show="signedIn" class="account-button" :disabled="busy" @click="refresh()"><i data-lucide="refresh-cw" class="w-3 h-3"></i> {{ t('account.action.refresh') }}</button>
     </header>
 
     <main class="account-main">
-        <div class="account-note">Your AI2Apps account is optional. Signing out, losing connectivity, or not having an account never disables local Apps, local models, or local data.</div>
+        <div class="account-note">{{ t('account.local_access.note') }}</div>
+        <div x-show="registrationNotice" x-cloak class="account-alert registration-notice" x-text="registrationNotice"></div>
         <div x-show="message" x-cloak class="account-alert" :class="messageTone==='success'&&'success'" x-text="message"></div>
 
-        <div x-show="!signedIn" x-cloak class="account-auth-wrap">
+        <section class="account-card account-wide" x-show="localIdentity" x-cloak>
+            <div class="account-card-head"><div><h2>{{ t('account.local_access.title') }}</h2><p>{{ t('account.local_access.subtitle') }}</p></div><button x-show="localIdentity && !localIdentity.isCore" class="account-button danger ml-auto" :disabled="busy" @click="logoutLocal()">{{ t('account.action.sign_out_local_member') }}</button></div>
+            <div class="account-card-body">
+                <div class="account-meta">
+                    <span class="account-pill" x-text="localIdentity?.isCore ? tr('account.local_access.core_session') : tr('account.local_access.member_session')"></span>
+                    <span class="account-pill" x-text="localIdentity?.role || tr('account.common.unknown')"></span>
+                    <span class="account-pill" :title="localIdentity?.actorUserId" x-text="shortIdentity(localIdentity?.actorUserId)"></span>
+                    <span class="account-pill" x-text="localIdentity?.authenticationType || 'local'"></span>
+                </div>
+                <p class="account-email" x-show="localIdentity && localIdentity.isCore">{{ t('account.local_access.core_description') }}</p>
+                <p class="account-email" x-show="localIdentity && !localIdentity.isCore">{{ t('account.local_access.member_description') }}</p>
+                <div class="account-actions" x-show="localIdentity && localIdentity.isCore" x-cloak>
+                    <label class="account-field" style="max-width:320px">
+                        <span>{{ t('settings.language.label') }}</span>
+                        <select class="account-input" x-model="uiLanguage" :disabled="busy">
+                            <option value="en">{{ t('settings.language.en') }}</option>
+                            <option value="zh">{{ t('settings.language.zh') }}</option>
+                        </select>
+                    </label>
+                    <span class="account-email">{{ t('account.language.hint') }}</span>
+                    <button class="account-button primary" :disabled="busy" @click="saveLanguage()">{{ t('account.language.apply') }}</button>
+                </div>
+                <div class="account-actions">
+                    <input class="account-input" style="max-width:520px" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" :readonly="!handoffEntryEnabled" @focus="handoffEntryEnabled=true" x-init="handoffInput='';$el.value=''" x-model.trim="handoffInput" placeholder="{{ t('account.local_access.handoff_placeholder') }}">
+                    <button class="account-button primary" :disabled="busy||!handoffInput" @click="connectLocalMember()">{{ t('account.action.switch_local_user') }}</button>
+                </div>
+            </div>
+        </section>
+
+        <div x-show="(!localIdentity || localIdentity.isCore) && !signedIn" x-cloak class="account-auth-wrap">
             <section class="account-auth">
                 <template x-if="mode==='login'"><div>
-                    <h1>Sign in</h1><p>Use AI2Apps Cloud models and keep your account points available to Model App.</p>
-                    <form @submit.prevent="login()">
-                        <label class="account-field"><span>Email</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
-                        <label class="account-field"><span>Password</span><input class="account-input" type="password" autocomplete="current-password" minlength="12" required x-model="password"></label>
-                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Sign in</button><button type="button" class="account-link" @click="setMode('resetRequest')">Forgot password?</button></div>
+                    <h1>{{ t('account.auth.sign_in_title') }}</h1><p>{{ t('account.auth.sign_in_description') }}</p>
+                    <form @submit.prevent="login()" x-init="email='';password='';credentialEntryEnabled=false">
+                        <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" autocomplete="off" name="ai2apps-cloud-account" :readonly="!credentialEntryEnabled" @focus="credentialEntryEnabled=true" required x-model.trim="email"></label>
+                        <label class="account-field"><span>{{ t('account.field.password') }}</span><input class="account-input" type="password" autocomplete="off" name="ai2apps-cloud-credential" :readonly="!credentialEntryEnabled" @focus="credentialEntryEnabled=true" minlength="12" required x-model="password"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.sign_in') }}</button><button type="button" class="account-link" @click="setMode('resetRequest')">{{ t('account.action.forgot_password') }}</button></div>
                     </form>
-                    <div class="account-actions"><span class="text-[11px] text-neutral-500">New to AI2Apps?</span><button class="account-link" @click="setMode('register')">Create account</button></div>
+                    <div class="account-actions"><span class="text-[11px] text-neutral-500">{{ t('account.auth.new_to_ai2apps') }}</span><button class="account-link" @click="setMode('register')">{{ t('account.action.create_account') }}</button></div>
                 </div></template>
 
                 <template x-if="mode==='register'"><div>
-                    <h1>Create account</h1><p>Registration adds optional Cloud capabilities; your local workspace remains independent.</p>
+                    <h1>{{ t('account.auth.create_title') }}</h1><p>{{ t('account.auth.create_description') }}</p>
                     <form @submit.prevent="register()">
-                        <label class="account-field"><span>Display name</span><input class="account-input" autocomplete="name" maxlength="120" required x-model.trim="displayName"></label>
-                        <label class="account-field"><span>Email</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
-                        <label class="account-field"><span>Password</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="password"></label>
-                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Create account</button><button type="button" class="account-link" @click="setMode('login')">Back to sign in</button></div>
+                        <label class="account-field"><span>{{ t('account.field.display_name') }}</span><input class="account-input" autocomplete="name" maxlength="120" required x-model.trim="displayName"></label>
+                        <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
+                        <label class="account-field"><span>{{ t('account.field.password') }}</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="password"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.create_account') }}</button><button type="button" class="account-link" @click="setMode('login')">{{ t('account.action.back_to_sign_in') }}</button></div>
                     </form>
                 </div></template>
 
                 <template x-if="mode==='verify'"><div>
-                    <h1>Verify email</h1><p>Enter the 8-digit code sent to your email, then sign in.</p>
+                    <h1>{{ t('account.auth.verify_title') }}</h1><p>{{ t('account.auth.verify_description') }}</p>
                     <form @submit.prevent="verifyEmail()">
-                        <label class="account-field"><span>Email</span><input class="account-input" type="email" required x-model.trim="email"></label>
-                        <label class="account-field"><span>Verification code</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
-                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Verify</button><button type="button" class="account-link" :disabled="busy" @click="resendCode()">Send again</button></div>
+                        <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" required x-model.trim="email"></label>
+                        <label class="account-field"><span>{{ t('account.field.verification_code') }}</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.verify') }}</button><button type="button" class="account-link" :disabled="busy" @click="resendCode()">{{ t('account.action.send_again') }}</button></div>
                     </form>
                 </div></template>
 
                 <template x-if="mode==='resetRequest'"><div>
-                    <h1>Reset password</h1><p>Request a reset code. The response is intentionally the same for every email address.</p>
+                    <h1>{{ t('account.auth.reset_request_title') }}</h1><p>{{ t('account.auth.reset_request_description') }}</p>
                     <form @submit.prevent="requestReset()">
-                        <label class="account-field"><span>Email</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
-                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Request code</button><button type="button" class="account-link" @click="setMode('login')">Back</button></div>
+                        <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.request_code') }}</button><button type="button" class="account-link" @click="setMode('login')">{{ t('account.action.back') }}</button></div>
                     </form>
                 </div></template>
 
                 <template x-if="mode==='reset'"><div>
-                    <h1>Choose a new password</h1><p>Enter the 8-digit reset code and a new password of at least 12 characters.</p>
+                    <h1>{{ t('account.auth.reset_title') }}</h1><p>{{ t('account.auth.reset_description') }}</p>
                     <form @submit.prevent="resetPassword()">
-                        <label class="account-field"><span>Email</span><input class="account-input" type="email" required x-model.trim="email"></label>
-                        <label class="account-field"><span>Reset code</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
-                        <label class="account-field"><span>New password</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="newPassword"></label>
-                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Reset password</button><button type="button" class="account-link" @click="setMode('login')">Cancel</button></div>
+                        <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" required x-model.trim="email"></label>
+                        <label class="account-field"><span>{{ t('account.field.reset_code') }}</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
+                        <label class="account-field"><span>{{ t('account.field.new_password') }}</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="newPassword"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.reset_password') }}</button><button type="button" class="account-link" @click="setMode('login')">{{ t('account.action.cancel') }}</button></div>
                     </form>
                 </div></template>
             </section>
         </div>
 
-        <div x-show="signedIn" x-cloak class="account-profile">
+        <div x-show="(!localIdentity || localIdentity.isCore) && signedIn" x-cloak class="account-profile">
+            <section x-show="installationAccess==='inactive'" x-cloak class="account-card account-wide account-binding-warning">
+                <div class="account-card-body binding-message"><span class="binding-icon"><i data-lucide="user-lock"></i></span><div><h2>{{ t('account.access.inactive_title') }}</h2><p>{{ t('account.access.inactive_description') }}</p></div><button class="account-button danger" :disabled="busy" @click="logout()">{{ t('account.action.sign_out') }}</button></div>
+            </section>
+            <section x-show="installationAccess==='member'" x-cloak class="account-card account-wide account-binding-member">
+                <div class="account-card-body binding-message"><span class="binding-icon"><i data-lucide="user-check"></i></span><div><h2>{{ t('account.access.registered_as') }} <span x-text="installation?.role || tr('account.common.member')"></span></h2><p>{{ t('account.access.member_description') }}</p></div></div>
+            </section>
             <section class="account-card">
-                <div class="account-card-head"><div><h2>Profile</h2><p>AI2Apps Cloud identity</p></div><button class="account-button danger ml-auto" :disabled="busy" @click="logout()">Sign out</button></div>
+                <div class="account-card-head"><div><h2>{{ t('account.profile.title') }}</h2><p>{{ t('account.profile.subtitle') }}</p></div><button class="account-button danger ml-auto" :disabled="busy" @click="logout()">{{ t('account.action.sign_out') }}</button></div>
                 <div class="account-card-body">
-                    <div class="account-identity"><span class="account-avatar" x-text="initials()"></span><div><div class="account-name" x-text="user?.displayName || 'AI2Apps User'"></div><div class="account-email" x-text="user?.email"></div></div></div>
-                    <div class="account-meta"><span class="account-pill" x-text="user?.level?.displayName || 'No level'"></span><span class="account-pill" x-text="user?.systemRole || 'user'"></span><span class="account-pill" x-text="user?.emailVerified ? 'Email verified' : 'Email unverified'"></span></div>
+                    <div class="account-identity"><span class="account-avatar" x-text="initials()"></span><div><div class="account-name" x-text="user?.displayName || tr('account.profile.default_user')"></div><div class="account-email" x-text="user?.email"></div></div></div>
+                    <div class="account-meta"><span class="account-pill" x-text="user?.level?.displayName || tr('account.profile.no_level')"></span><span class="account-pill" x-text="user?.systemRole || tr('account.common.user')"></span><span class="account-pill" x-text="user?.emailVerified ? tr('account.profile.email_verified') : tr('account.profile.email_unverified')"></span><span class="account-pill" :class="installationAccess==='manager'&&user?.id===installation?.coreUserId&&'member-active'" x-text="installationAccessLabel"></span></div>
                 </div>
             </section>
             <section class="account-card">
-                <div class="account-card-head"><div><h2>Points</h2><p>Balances are stored as exact decimal strings</p></div></div>
-                <div class="account-card-body"><div class="account-points"><div class="account-point"><strong x-text="points.total || points.balance || '0'"></strong><span>Total</span></div><div class="account-point"><strong x-text="points.promotional || '0'"></strong><span>Free</span></div><div class="account-point"><strong x-text="points.paid || '0'"></strong><span>Purchased</span></div></div></div>
+                <div class="account-card-head"><div><h2>{{ t('account.points.title') }}</h2><p>{{ t('account.points.subtitle') }}</p></div></div>
+                <div class="account-card-body"><div class="account-points"><div class="account-point"><strong x-text="points.total || points.balance || '0'"></strong><span>{{ t('account.points.total') }}</span></div><div class="account-point"><strong x-text="points.promotional || '0'"></strong><span>{{ t('account.points.free') }}</span></div><div class="account-point"><strong x-text="points.paid || '0'"></strong><span>{{ t('account.points.purchased') }}</span></div></div></div>
             </section>
             <section class="account-card account-wide">
-                <div class="account-card-head"><div><h2>Entitlements</h2><p>Cloud services use server-side authorization as the final decision</p></div></div>
-                <div class="account-card-body"><div class="account-entitlements"><template x-for="item in entitlements" :key="item"><span class="account-pill" x-text="item"></span></template><span x-show="!entitlements.length" class="text-xs text-neutral-500">No entitlements for this level.</span></div></div>
+                <div class="account-card-head"><div><h2>{{ t('account.entitlements.title') }}</h2><p>{{ t('account.entitlements.subtitle') }}</p></div></div>
+                <div class="account-card-body"><div class="account-entitlements"><template x-for="item in entitlements" :key="item"><span class="account-pill" x-text="item"></span></template><span x-show="!entitlements.length" class="text-xs text-neutral-500">{{ t('account.entitlements.empty') }}</span></div></div>
             </section>
             <section class="account-card account-wide">
-                <div class="account-card-head"><div><h2>Remote access</h2><p>Connect your phone to this Mac through the managed AI2Apps relay</p></div><button class="account-button ml-auto" :disabled="busy" @click="loadRemote()">Refresh</button></div>
+                <div class="account-card-head"><div><h2>{{ t('account.capacity.title') }}</h2><p>{{ t('account.capacity.subtitle') }}</p></div><div class="account-meta ml-auto"><span class="account-pill" x-text="user?.level?.displayName || accountLevelId || tr('account.capacity.unknown_level')"></span><span class="account-pill" x-text="subscriptionPlanLabel"></span></div></div>
                 <div class="account-card-body">
-                    <div x-show="!hasRemoteEntitlement" class="account-note">Your current account level does not include <code>remote.connect</code>. Local and same-Wi-Fi Mobile access remain available.</div>
+                    <div class="account-points capacity-points">
+                        <div class="account-point"><strong x-text="coreDeviceCapacityLabel"></strong><span>{{ t('account.capacity.core_devices') }}</span></div>
+                        <div class="account-point"><strong x-text="memberCapacityLabel"></strong><span>{{ t('account.capacity.seats') }}</span></div>
+                        <div class="account-point"><strong x-text="pendingSeatsUsed"></strong><span>{{ t('account.capacity.pending_invitations') }}</span></div>
+                    </div>
+                    <p class="account-email capacity-note" x-text="memberCapacityDetail"></p>
+                    <p class="account-email capacity-note">{{ t('account.capacity.note') }}</p>
+                </div>
+            </section>
+            <section x-show="installationAccess==='manager'" x-cloak class="account-card account-wide">
+                <div class="account-card-head"><div><h2>{{ t('account.devices.title') }}</h2><p>{{ t('account.devices.subtitle') }}</p></div><div class="account-actions ml-auto"><span class="account-pill" x-text="tr('account.devices.bound_count',{count:coreDevices.filter(device => device.status !== 'revoked').length})"></span><button class="account-button" :disabled="busy" @click="loadCoreDevices()">{{ t('account.action.refresh') }}</button></div></div>
+                <div class="account-card-body device-management-note">
+                    <label class="account-field"><span>{{ t('account.devices.revoke_password') }}</span><input class="account-input" type="password" autocomplete="off" name="device-revoke-owner-password" minlength="12" maxlength="128" x-model="deviceOwnerPassword" placeholder="{{ t('account.devices.revoke_password_placeholder') }}"></label>
+                    <p>{{ t('account.devices.revocation_note') }}</p>
+                </div>
+                <div class="overflow-x-auto"><table class="account-ledger device-table"><thead><tr><th>{{ t('account.table.device') }}</th><th>{{ t('account.table.status') }}</th><th>{{ t('account.table.connection') }}</th><th>{{ t('account.table.last_active') }}</th><th>{{ t('account.table.actions') }}</th></tr></thead><tbody><template x-for="device in coreDevices" :key="device.id"><tr>
+                    <td><div class="device-name-editor"><input class="account-input" maxlength="120" x-model="device.pendingDisplayName" :disabled="busy||device.status==='revoked'" aria-label="{{ t('account.devices.device_name') }}"><button class="account-button" :disabled="busy||device.status==='revoked'||!device.pendingDisplayName.trim()||device.pendingDisplayName.trim()===device.displayName" @click="renameCoreDevice(device)">{{ t('account.action.save') }}</button></div><small><span x-show="device.id===currentCloudDeviceId" class="account-pill member-active">{{ t('account.devices.this_device') }}</span><span x-text="(device.platform || tr('account.common.unknown')) + ' · ' + (device.clientVersion || tr('account.devices.unknown_version'))"></span></small><small :title="device.id" x-text="shortIdentity(device.id)"></small></td>
+                    <td><span class="account-pill" :class="device.status==='active'&&'member-active'" x-text="device.status"></span><small x-show="device.suspensionReason" x-text="device.suspensionReason"></small></td>
+                    <td><span class="account-pill" :class="device.proxyConnected&&'member-active'" x-text="device.proxyConnected?tr('account.common.online'):(device.online?tr('account.devices.connector_seen'):tr('account.common.offline'))"></span><small x-text="device.publicOrigin || tr('account.devices.no_relay_url')"></small></td>
+                    <td><span x-text="formatTime(device.lastSeenAt || device.createdAt)"></span><small x-show="!device.lastSeenAt">{{ t('account.devices.registered') }}</small></td>
+                    <td><div class="member-actions"><button x-show="device.status!=='revoked'" class="account-button danger" :disabled="busy||!deviceOwnerPassword" @click="revokeCoreDevice(device)">{{ t('account.action.revoke') }}</button><span x-show="device.status==='revoked'" class="account-email">{{ t('account.devices.revoked_permanently') }}</span></div></td>
+                </tr></template></tbody></table><div x-show="!coreDevices.length" class="account-empty">{{ t('account.devices.empty') }}</div></div>
+            </section>
+            <section x-show="installationAccess==='manager'" x-cloak class="account-card account-wide">
+                <div class="account-card-head"><div><h2>{{ t('account.policy.title') }}</h2><p>{{ t('account.policy.subtitle') }}</p></div><span class="account-pill ml-auto" x-text="policy ? tr('account.common.version',{version:policy.policyVersion}) : tr('account.common.loading')"></span></div>
+                <form class="account-card-body policy-form" @submit.prevent="savePolicy()">
+                    <label class="account-field"><span>{{ t('account.policy.allowed_apps') }}</span><textarea class="account-input policy-list" x-model="policyDraft.allowedAppIds" placeholder="ai2apps.chat"></textarea></label>
+                    <label class="account-field"><span>{{ t('account.policy.allowed_models') }}</span><textarea class="account-input policy-list" x-model="policyDraft.allowedModelIds" placeholder="provider/model-id"></textarea></label>
+                    <label class="account-field"><span>{{ t('account.policy.monthly_points') }}</span><input class="account-input" inputmode="numeric" pattern="(0|[1-9][0-9]{0,18})" x-model.trim="policyDraft.defaultMonthlyPointLimit" placeholder="{{ t('account.policy.balance_placeholder') }}"></label>
+                    <label class="account-field"><span>{{ t('account.policy.concurrency') }}</span><input class="account-input" type="number" min="1" max="100" required x-model.number="policyDraft.defaultConcurrencyLimit"></label>
+                    <label class="account-field"><span>{{ t('account.policy.offline_grace') }}</span><input class="account-input" type="number" min="0" max="86400" required x-model.number="policyDraft.offlineGraceSeconds"></label>
+                    <label class="account-field"><span>{{ t('account.field.owner_password') }}</span><input class="account-input" type="password" autocomplete="off" name="organization-policy-owner-password" minlength="12" maxlength="128" required x-model="policyOwnerPassword"></label>
+                    <div class="policy-actions"><button class="account-button primary" :disabled="busy||!policy||!policyOwnerPassword">{{ t('account.action.save_policy') }}</button><small>{{ t('account.policy.save_note') }}</small></div>
+                </form>
+            </section>
+            <section x-show="installationAccess==='manager'" x-cloak class="account-card account-wide">
+                <div class="account-card-head"><div><h2>{{ t('account.members.title') }}</h2><p>{{ t('account.members.subtitle_prefix') }} <span x-text="installation?.organizationType || tr('account.common.organization')"></span> {{ t('account.members.subtitle_suffix') }}</p></div><button class="account-button ml-auto" :disabled="busy" @click="loadMembership()">{{ t('account.action.refresh') }}</button></div>
+                <div class="account-card-body">
+                    <div class="member-summary">
+                        <div><strong x-text="installation?.organizationName || tr('account.members.default_organization')"></strong><small x-text="installation ? (installation.organizationType + ' · ' + installation.status) : tr('account.members.loading_installation')"></small></div>
+                        <div class="account-meta"><span class="account-pill" x-text="tr(members.length===1?'account.members.count_one':'account.members.count_many',{count:members.length})"></span><span class="account-pill" :class="!memberSeatAvailable&&'capacity-full'" x-text="tr('account.members.seats',{value:memberCapacityLabel})"></span></div>
+                    </div>
+                    <form class="member-invite" @submit.prevent="inviteMember()">
+                        <label class="account-field"><span>{{ t('account.members.invite_email') }}</span><input class="account-input" type="email" required maxlength="320" x-model.trim="inviteEmail" placeholder="family@example.com"></label>
+                        <label class="account-field"><span>{{ t('account.members.initial_role') }}</span><select class="account-input" x-model="inviteRole"><template x-for="role in memberRoles" :key="role"><option :value="role" x-text="role"></option></template></select></label>
+                        <button class="account-button primary" :disabled="busy||!inviteEmail||!memberSeatAvailable" :aria-busy="invitationCreating" x-text="invitationCreating ? tr('account.common.creating') : tr('account.action.create_invitation')"></button>
+                    </form>
+                    <div x-show="!memberSeatAvailable" x-cloak class="account-note capacity-warning">{{ t('account.members.capacity_warning') }}</div>
+                    <div x-show="invitationCreating" x-cloak class="invitation-loading" role="status" aria-live="polite"><span class="invitation-spinner" aria-hidden="true"></span><div><strong>{{ t('account.members.creating_invitation') }}</strong><small>{{ t('account.members.creating_description') }}</small></div></div>
+                    <div x-show="invitation" x-cloak class="member-invitation">
+                        <div class="invitation-result-head">
+                            <div><strong>{{ t('account.members.one_use_link') }}</strong><small x-text="(invitation?.email ? invitation.email + ' · ' : '') + (invitation?.expiresAt ? tr('account.common.expires_at',{time:formatTime(invitation.expiresAt)}) : tr('account.common.expires_seven_days'))"></small></div>
+                            <span class="account-pill invitation-delivery" :class="invitationDeliveryClass(invitation?.delivery)" x-text="invitationDeliveryLabel(invitation?.delivery)"></span>
+                        </div>
+                        <p class="invitation-delivery-detail" x-text="invitationDeliveryDetail(invitation?.delivery)"></p>
+                        <img x-show="invitation?.inviteQrDataUrl" class="invite-qr" :src="invitation?.inviteQrDataUrl" alt="{{ t('account.members.invitation_qr_alt') }}">
+                        <code x-text="invitation?.inviteUrl || invitation?.inviteCode"></code>
+                        <div class="account-actions"><button class="account-button" @click="copyInvitationLink()">{{ t('account.action.copy_link') }}</button><button x-show="invitation?.inviteUrl" class="account-button" @click="openInvitationLink()">{{ t('account.action.open') }}</button><button class="account-button" :disabled="busy" @click="resendInvitation(invitation)">{{ t('account.action.send_again') }}</button><button class="account-button danger" :disabled="busy" @click="cancelInvitation()">{{ t('account.action.cancel_invitation') }}</button></div>
+                    </div>
+                    <div class="pending-invitations">
+                        <div class="pending-invitations-head"><div><strong>{{ t('account.capacity.pending_invitations') }}</strong><small>{{ t('account.members.pending_note') }}</small></div><span class="account-pill" x-text="pendingInvitations.length"></span></div>
+                        <div x-show="pendingInvitations.length===0" class="account-empty invitation-empty">{{ t('account.members.no_pending') }}</div>
+                        <div x-show="pendingInvitations.length>0" class="overflow-x-auto"><table class="account-ledger invitation-table"><thead><tr><th>{{ t('account.field.email') }}</th><th>{{ t('account.table.role') }}</th><th>{{ t('account.table.delivery') }}</th><th>{{ t('account.table.expires') }}</th><th>{{ t('account.table.actions') }}</th></tr></thead><tbody><template x-for="pending in pendingInvitations" :key="pending.invitationId"><tr>
+                            <td><strong x-text="pending.email"></strong><small x-text="shortIdentity(pending.invitationId)"></small></td>
+                            <td><span class="account-pill" x-text="pending.role"></span></td>
+                            <td><span class="account-pill invitation-delivery" :class="invitationDeliveryClass(pending.delivery)" x-text="invitationDeliveryLabel(pending.delivery)"></span><small x-text="invitationDeliveryDetail(pending.delivery)"></small></td>
+                            <td x-text="formatTime(pending.expiresAt)"></td>
+                            <td><div class="member-actions"><button class="account-button" :disabled="busy" @click="resendInvitation(pending)">{{ t('account.action.send_again') }}</button><button class="account-button danger" :disabled="busy" @click="cancelPendingInvitation(pending)">{{ t('account.action.cancel') }}</button></div></td>
+                        </tr></template></tbody></table></div>
+                    </div>
+                    <div class="member-role-verification">
+                        <label class="account-field"><span>{{ t('account.members.role_password') }}</span><input class="account-input" type="password" autocomplete="off" name="member-role-owner-password" minlength="12" maxlength="128" x-model="memberOwnerPassword" placeholder="{{ t('account.members.role_password_placeholder') }}"></label>
+                        <p>{{ t('account.members.password_note') }}</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto"><table class="account-ledger member-table"><thead><tr><th>{{ t('account.table.member') }}</th><th>{{ t('account.table.role') }}</th><th>{{ t('account.table.status') }}</th><th>{{ t('account.table.epoch') }}</th><th>{{ t('account.table.actions') }}</th></tr></thead><tbody><template x-for="member in members" :key="member.userId"><tr>
+                    <td><strong x-text="member.displayName || tr('account.members.default_member')"></strong><small :title="member.userId" x-text="shortIdentity(member.userId)"></small></td>
+                    <td><template x-if="member.role==='core'||member.role==='owner'"><span class="account-pill" x-text="member.role"></span></template><template x-if="member.role!=='core'&&member.role!=='owner'"><div class="member-role"><select class="account-input" x-model="member.pendingRole" :disabled="busy||member.status==='revoked'"><template x-for="role in memberRoles" :key="role"><option :value="role" x-text="role"></option></template></select><button class="account-button" :disabled="busy||member.pendingRole===member.role||member.status==='revoked'" @click="updateMember(member,{role:member.pendingRole})">{{ t('account.action.apply') }}</button></div></template></td>
+                    <td><span class="account-pill" :class="member.status==='active'&&'member-active'" x-text="member.status"></span></td>
+                    <td x-text="member.membershipEpoch"></td>
+                    <td><div x-show="member.role!=='core'&&member.role!=='owner'" class="member-actions"><button x-show="member.status==='active'" class="account-button" :disabled="busy" @click="updateMember(member,{status:'suspended'})">{{ t('account.action.suspend') }}</button><button x-show="member.status==='suspended'||member.status==='revoked'" class="account-button" :disabled="busy" @click="updateMember(member,{status:'active'})">{{ t('account.action.reactivate') }}</button><button x-show="member.status!=='revoked'" class="account-button danger" :disabled="busy" @click="updateMember(member,{status:'revoked'})">{{ t('account.action.remove') }}</button></div></td>
+                </tr></template></tbody></table><div x-show="!members.length" class="account-empty">{{ t('account.members.empty') }}</div></div>
+                <div class="account-card-body member-quota-list">
+                    <div class="member-quota-head"><div><strong>{{ t('account.quota.title') }}</strong><p>{{ t('account.quota.subtitle') }}</p></div><label class="account-field"><span>{{ t('account.quota.owner_password') }}</span><input class="account-input" type="password" autocomplete="off" name="member-quota-owner-password" minlength="12" maxlength="128" x-model="policyOwnerPassword"></label></div>
+                    <template x-for="member in members.filter(item => item.role!=='core'&&item.role!=='owner')" :key="'quota-'+member.userId"><article class="member-quota-editor">
+                        <div class="member-quota-identity"><strong x-text="member.displayName || shortIdentity(member.userId)"></strong><small x-text="member.quota ? tr('account.quota.policy_version',{version:member.quota.policyVersion}) : (member.quotaError || tr('account.quota.loading'))"></small></div>
+                        <label class="account-field"><span>{{ t('account.quota.allowed_models') }}</span><textarea class="account-input policy-list" x-model="member.quotaDraft.allowedModelIds" :disabled="!member.quotaLoaded" placeholder="{{ t('account.quota.blank_inherit') }}"></textarea></label>
+                        <label class="account-field"><span>{{ t('account.quota.monthly_points') }}</span><input class="account-input" inputmode="numeric" pattern="(0|[1-9][0-9]{0,18})" x-model.trim="member.quotaDraft.monthlyPointLimit" :disabled="!member.quotaLoaded" placeholder="{{ t('account.quota.inherit') }}"></label>
+                        <label class="account-field"><span>{{ t('account.quota.concurrency') }}</span><input class="account-input" type="number" min="1" max="100" x-model="member.quotaDraft.concurrencyLimit" :disabled="!member.quotaLoaded" placeholder="{{ t('account.quota.inherit') }}"></label>
+                        <button class="account-button" :disabled="busy||!member.quotaLoaded||!policyOwnerPassword" @click="saveMemberQuota(member)">{{ t('account.action.save_quota') }}</button>
+                    </article></template>
+                    <div x-show="!members.some(item => item.role!=='core'&&item.role!=='owner')" class="account-empty">{{ t('account.quota.empty') }}</div>
+                </div>
+            </section>
+            <section x-show="installationAccess==='manager'" x-cloak class="account-card account-wide">
+                <div class="account-card-head"><div><h2>{{ t('account.remote.title') }}</h2><p>{{ t('account.remote.subtitle') }}</p></div><button class="account-button ml-auto" :disabled="busy" @click="loadRemote()">{{ t('account.action.refresh') }}</button></div>
+                <div class="account-card-body">
+                    <div x-show="!hasRemoteEntitlement" class="account-note">{{ t('account.remote.no_entitlement_prefix') }} <code>remote.connect</code>{{ t('account.remote.no_entitlement_suffix') }}</div>
                     <div class="remote-grid">
                         <div>
                             <template x-for="device in remote.devices" :key="device.deviceId"><article class="remote-device">
-                                <div class="remote-device-head"><span class="remote-dot" :class="device.proxyConnected?'online':(device.enabled&&remote.connector.lastError?'error':(device.enabled&&device.status==='active'?'connecting':''))"></span><div><strong x-text="device.displayName"></strong><small x-text="device.publicOrigin"></small></div><span class="account-pill ml-auto" x-text="device.proxyConnected?'Online':(device.enabled&&remote.connector.lastError?'Connection error':(device.enabled&&device.status==='active'?'Connecting…':device.status))"></span></div>
-                                <div class="account-meta"><span class="account-pill" x-text="'Credential v'+device.credentialVersion"></span><span class="account-pill" x-text="device.enabled?'Auto start':'Stopped'"></span><span class="account-pill" x-text="remote.connector.available?'FRP ready':'FRP setup required'"></span></div>
-                                <div x-show="device.status!=='revoked'" class="account-actions"><button class="account-button primary" :disabled="busy||!remote.connector.available||device.status!=='active'" @click="device.enabled?stopRemote(device):startRemote(device)" x-text="device.enabled?'Stop':'Start'"></button><button class="account-button" :disabled="busy||device.status!=='active'||!device.proxyConnected" :title="device.proxyConnected?'Create a one-use phone pairing code':'Wait until the Remote Access indicator is green'" @click="createPairing(device)">Pair phone</button><button class="account-button" :disabled="busy" @click="rotateRemote(device)">Rotate key</button><button class="account-button danger" :disabled="busy" @click="revokeRemote(device)">Revoke</button></div>
-                                <div x-show="device.status==='revoked'" class="account-note">Revocation is permanent. Register this Mac again to create a new device identity, URL, and connector credential.</div>
-                                <div x-show="device.status==='revoked'" class="account-actions"><button class="account-button primary" :disabled="busy" @click="reregisterRemote(device)">Register again</button></div>
+                                <div class="remote-device-head"><span class="remote-dot" :class="device.proxyConnected?'online':(device.enabled&&remote.connector.lastError?'error':(device.enabled&&device.status==='active'?'connecting':''))"></span><div><strong x-text="device.displayName"></strong><small x-text="device.publicOrigin"></small></div><span class="account-pill ml-auto" x-text="device.proxyConnected?tr('account.common.online'):(device.enabled&&remote.connector.lastError?tr('account.remote.connection_error'):(device.enabled&&device.status==='active'?tr('account.remote.connecting'):device.status))"></span></div>
+                                <div class="account-meta"><span class="account-pill" x-text="tr('account.remote.credential_version',{version:device.credentialVersion})"></span><span class="account-pill" x-text="device.enabled?tr('account.remote.auto_start'):tr('account.remote.stopped')"></span><span class="account-pill" x-text="remote.connector.available?tr('account.remote.frp_ready'):tr('account.remote.frp_required')"></span></div>
+                                <div x-show="device.status!=='revoked'" class="account-actions"><button class="account-button primary" :disabled="busy||!remote.connector.available||device.status!=='active'" @click="device.enabled?stopRemote(device):startRemote(device)" x-text="device.enabled?tr('account.action.stop'):tr('account.action.start')"></button><button class="account-button" :disabled="busy||device.status!=='active'||!device.proxyConnected" :title="device.proxyConnected?tr('account.remote.pair_ready_hint'):tr('account.remote.pair_wait_hint')" @click="createPairing(device)">{{ t('account.action.pair_phone') }}</button><button class="account-button" :disabled="busy" @click="rotateRemote(device)">{{ t('account.action.rotate_key') }}</button><button class="account-button danger" :disabled="busy||!deviceOwnerPassword" title="{{ t('account.remote.revoke_hint') }}" @click="revokeCoreDevice(device)">{{ t('account.action.revoke') }}</button></div>
+                                <div x-show="device.status==='revoked'" class="account-note">{{ t('account.remote.revoked_note') }}</div>
+                                <div x-show="device.status==='revoked'" class="account-actions"><button class="account-button primary" :disabled="busy" @click="reregisterRemote(device)">{{ t('account.action.register_again') }}</button></div>
                             </article></template>
-                            <div x-show="!remote.devices.length" class="account-empty">This Mac is not registered for remote access.</div>
-                            <div x-show="hasRemoteEntitlement&&!remote.devices.length" class="account-actions"><input class="account-input" style="max-width:300px" maxlength="120" x-model.trim="remoteName" placeholder="This Mac"><button class="account-button primary" :disabled="busy||!remoteName" @click="registerRemote()">Register this Mac</button></div>
+                            <div x-show="!remote.devices.length" class="account-empty">{{ t('account.remote.not_registered') }}</div>
+                            <div x-show="hasRemoteEntitlement&&!remote.devices.length" class="account-actions"><input class="account-input" style="max-width:300px" maxlength="120" x-model.trim="remoteName" placeholder="{{ t('account.remote.this_mac') }}"><button class="account-button primary" :disabled="busy||!remoteName" @click="registerRemote()">{{ t('account.action.register_this_mac') }}</button></div>
                         </div>
                         <div>
-                            <div class="remote-device"><strong>Relay usage</strong><div class="account-meta"><span class="account-pill" x-text="remote.usage.totalBytes?formatBytes(remote.usage.totalBytes):'Not loaded'"></span><span class="account-pill" x-text="remote.usage.quotaBytes?('of '+formatBytes(remote.usage.quotaBytes)):'Cloud quota'"></span></div><small class="account-email" x-text="remote.connector.lastError||'Connector credentials stay in Keychain.'"></small></div>
-                            <div x-show="pairingUrl" class="remote-pair"><strong>Scan with your phone</strong><img x-show="pairingQr" class="remote-qr" :src="pairingQr" alt="One-use AI2Apps phone pairing QR code"><span class="remote-expiry" x-text="pairingExpiresAt?('Expires '+formatTime(pairingExpiresAt)):'Expires in five minutes'"></span><code x-text="pairingUrl"></code><div class="account-actions"><button class="account-button" @click="copyPairing()">Copy link</button><button class="account-button" @click="sharePairing()">Share</button></div></div>
+                            <div class="remote-device"><strong>{{ t('account.remote.relay_usage') }}</strong><div class="account-meta"><span class="account-pill" x-text="remote.usage.totalBytes?formatBytes(remote.usage.totalBytes):tr('account.remote.not_loaded')"></span><span class="account-pill" x-text="remote.usage.quotaBytes?tr('account.remote.of_quota',{value:formatBytes(remote.usage.quotaBytes)}):tr('account.remote.cloud_quota')"></span></div><small class="account-email" x-text="remote.connector.lastError||tr('account.remote.keychain_note')"></small></div>
+                            <div x-show="pairingUrl" class="remote-pair"><strong>{{ t('account.remote.scan_phone') }}</strong><img x-show="pairingQr" class="remote-qr" :src="pairingQr" alt="{{ t('account.remote.pairing_qr_alt') }}"><span class="remote-expiry" x-text="pairingExpiresAt?tr('account.common.expires_at',{time:formatTime(pairingExpiresAt)}):tr('account.remote.expires_five_minutes')"></span><code x-text="pairingUrl"></code><div class="account-actions"><button class="account-button" @click="copyPairing()">{{ t('account.action.copy_link') }}</button><button class="account-button" @click="sharePairing()">{{ t('account.action.share') }}</button></div></div>
                         </div>
                     </div>
                 </div>
             </section>
             <section x-show="user?.systemRole === 'admin'" class="account-card account-wide">
-                <div class="account-card-head"><div><h2>Administrator verification</h2><p>Required before sensitive review and publication actions; valid for 15 minutes</p></div></div>
+                <div class="account-card-head"><div><h2>{{ t('account.admin.title') }}</h2><p>{{ t('account.admin.subtitle') }}</p></div></div>
                 <div class="account-card-body">
                     <form @submit.prevent="verifyAdmin()">
-                        <label class="account-field"><span>Administrator password</span><input class="account-input" type="password" autocomplete="current-password" minlength="12" maxlength="128" required x-model="adminPassword"></label>
-                        <div class="account-actions"><button class="account-button primary" :disabled="busy">Verify administrator</button><span x-show="adminVerifiedUntil" class="text-[11px] text-green-700" x-text="'Verified until ' + formatTime(adminVerifiedUntil)"></span></div>
+                        <label class="account-field"><span>{{ t('account.admin.password') }}</span><input class="account-input" type="password" autocomplete="current-password" minlength="12" maxlength="128" required x-model="adminPassword"></label>
+                        <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.verify_admin') }}</button><span x-show="adminVerifiedUntil" class="text-[11px] text-green-700" x-text="tr('account.admin.verified_until',{time:formatTime(adminVerifiedUntil)})"></span></div>
                     </form>
                 </div>
             </section>
             <section class="account-card account-wide">
-                <div class="account-card-head"><div><h2>Point activity</h2><p>Latest immutable ledger entries</p></div></div>
-                <div class="overflow-x-auto"><table class="account-ledger"><thead><tr><th>Description</th><th>Change</th><th>Balance after</th><th>Time</th></tr></thead><tbody><template x-for="entry in ledger" :key="entry.id"><tr><td x-text="entry.description || entry.kind"></td><td class="delta" x-text="signedDelta(entry.delta)"></td><td x-text="entry.balanceAfter"></td><td x-text="formatTime(entry.createdAt)"></td></tr></template></tbody></table><div x-show="!ledger.length" class="account-empty">No point activity yet.</div></div>
+                <div class="account-card-head"><div><h2>{{ t('account.ledger.title') }}</h2><p>{{ t('account.ledger.subtitle') }}</p></div></div>
+                <div class="overflow-x-auto"><table class="account-ledger"><thead><tr><th>{{ t('account.table.description') }}</th><th>{{ t('account.table.change') }}</th><th>{{ t('account.table.balance_after') }}</th><th>{{ t('account.table.time') }}</th></tr></thead><tbody><template x-for="entry in ledger" :key="entry.id"><tr><td x-text="entry.description || entry.kind"></td><td class="delta" x-text="signedDelta(entry.delta)"></td><td x-text="entry.balanceAfter"></td><td x-text="formatTime(entry.createdAt)"></td></tr></template></tbody></table><div x-show="!ledger.length" class="account-empty">{{ t('account.ledger.empty') }}</div></div>
             </section>
         </div>
     </main>
@@ -128,8 +261,5 @@
 {% endblock %}
 
 {% block scripts %}
-{% if not mobile_surface %}
-<script>window.AI2APPS_ACCOUNT_API_KEY = {{ (api_key or '') | tojson }};</script>
-{% endif %}
 <script src="{{ static('js/account.js') }}"></script>
 {% endblock %}

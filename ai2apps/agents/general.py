@@ -12,7 +12,7 @@ from typing import Any
 
 from ai2apps.core import MessageRole, MessageStatus, ResourceNotFoundError
 from ai2apps.events import EventStore
-from ai2apps.services import ToolCallContext, ToolDescriptorRecord, ToolGateway
+from ai2apps.services import ToolDescriptorRecord, ToolGateway
 from ai2apps.storage import MessagePartInput, PlatformDatabase
 from ai2apps.storage.repositories import MessageRepository
 
@@ -301,7 +301,7 @@ class GeneralAgentExecutor:
 
     def _available_tools(self, context: AgentExecutionContext):
         candidates = self.tools.list_tools(
-            ToolCallContext(
+            self.tools.context_for_session(
                 caller_id=f"agent:{context.definition.agent_key}",
                 session_id=context.run.session_id,
                 granted_capabilities=frozenset(context.run.granted_capabilities),

@@ -4,9 +4,10 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 
+from ai2apps.identity import MemberRole, RequestPrincipal
 from omlx.engine_pool import EngineEntry
 from omlx.exceptions import (
     InvalidRequestError,
@@ -18,6 +19,7 @@ from omlx.server import (
     EngineType,
     SamplingDefaults,
     ServerState,
+    _apply_package_max_tokens,
     _format_generation_speed_for_log,
     _reject_diffusion_structured_outputs,
     _reset_boundary_snapshots_for_server,
@@ -432,6 +434,110 @@ class TestGetSamplingParams:
             assert max_tokens == 8192  # model setting, not global 4096
 
 
+class TestPackageMaxTokens:
+    """Package workers receive the Host-resolved output cap explicitly."""
+
+    @pytest.fixture(autouse=True)
+    def setup_server_state(self):
+        state = ServerState()
+        state.sampling = SamplingDefaults(max_tokens=4096)
+        with patch("omlx.server._server_state", state):
+            self._state = state
+            yield
+
+    def test_chat_uses_global_default_when_request_omits_cap(self):
+        payload = {"model": "example.worker/chat"}
+
+        _apply_package_max_tokens(
+            payload,
+            model_id="example.worker/chat",
+            requested=None,
+            field="max_tokens",
+        )
+
+        assert payload["max_tokens"] == 4096
+
+    def test_explicit_request_cap_wins(self):
+        payload = {"model": "example.worker/chat"}
+
+        _apply_package_max_tokens(
+            payload,
+            model_id="example.worker/chat",
+            requested=8192,
+            field="max_tokens",
+        )
+
+        assert payload["max_tokens"] == 8192
+
+    def test_responses_uses_model_default(self, tmp_path):
+        manager = ModelSettingsManager(tmp_path)
+        manager.set_settings(
+            "example.worker/chat",
+            ModelSettings(max_tokens=6144),
+        )
+        self._state.settings_manager = manager
+        payload = {"model": "example.worker/chat"}
+
+        _apply_package_max_tokens(
+            payload,
+            model_id="example.worker/chat",
+            requested=None,
+            field="max_output_tokens",
+        )
+
+        assert payload["max_output_tokens"] == 6144
+
+    @pytest.mark.asyncio
+    async def test_chat_route_proxies_resolved_cap(self):
+        from types import SimpleNamespace
+
+        from omlx.api.openai_models import ChatCompletionRequest
+        from omlx.server import create_chat_completion
+
+        request = ChatCompletionRequest(
+            model="example.worker/chat",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        proxy = AsyncMock(return_value="proxied")
+        with (
+            patch(
+                "omlx.server.resolve_package_model",
+                return_value=SimpleNamespace(model_type="llm"),
+            ),
+            patch("omlx.server.proxy_package_json", proxy),
+        ):
+            response = await create_chat_completion(request, MagicMock(), True)
+
+        assert response == "proxied"
+        assert proxy.await_args.args[1] == "chat_completions"
+        assert proxy.await_args.args[2]["max_tokens"] == 4096
+
+    @pytest.mark.asyncio
+    async def test_responses_route_proxies_resolved_cap(self):
+        from types import SimpleNamespace
+
+        from omlx.api.responses_models import ResponsesRequest
+        from omlx.server import create_response
+
+        request = ResponsesRequest(
+            model="example.worker/chat",
+            input="hi",
+        )
+        proxy = AsyncMock(return_value="proxied")
+        with (
+            patch(
+                "omlx.server.resolve_package_model",
+                return_value=SimpleNamespace(model_type="llm"),
+            ),
+            patch("omlx.server.proxy_package_json", proxy),
+        ):
+            response = await create_response(request, MagicMock(), True)
+
+        assert response == "proxied"
+        assert proxy.await_args.args[1] == "responses"
+        assert proxy.await_args.args[2]["max_output_tokens"] == 4096
+
+
 class TestExceptionHandlers:
     """Tests for global exception handlers that log API errors."""
 
@@ -800,6 +906,17 @@ class TestExposedProfileModels:
             expose_as_model=True,
         )
 
+    @staticmethod
+    def _member_principal():
+        return RequestPrincipal(
+            actor_user_id="member-user",
+            installation_id="member-installation",
+            organization_id="member-organization",
+            billing_account_id="member-billing",
+            role=MemberRole.MEMBER,
+            membership_epoch=1,
+        )
+
     @pytest.fixture
     def manager(self, tmp_path):
         """Swap a real ModelSettingsManager into the live server state."""
@@ -825,12 +942,121 @@ class TestExposedProfileModels:
         )
         server_module._server_state.engine_pool = self._FakePool()
 
-        response = await server_module.list_models(True)
+        response = await server_module.list_models(Response(), True)
 
         model_ids = {model.id for model in response.data}
         assert "qwen-base:thinking" in model_ids
         profile_model = next(m for m in response.data if m.id == "qwen-base:thinking")
         assert profile_model.max_model_len == 4096
+
+    @pytest.mark.asyncio
+    async def test_v1_models_hides_raw_local_models_from_members(self, manager):
+        from types import SimpleNamespace
+
+        import omlx.server as server_module
+
+        manager.set_settings("qwen-base", ModelSettings(model_alias="Local Qwen"))
+        self._save_exposed_profile(manager, {"max_context_window": 4096})
+        server_module._server_state.engine_pool = self._FakePool()
+        package_model = SimpleNamespace(
+            id="ai2apps.qwen/model",
+            service_key="ai2apps.qwen",
+            context_window=32768,
+        )
+
+        http_response = Response()
+        with patch("omlx.server.list_package_models", return_value=(package_model,)):
+            response = await server_module.list_models(
+                http_response, self._member_principal()
+            )
+
+        model_ids = {model.id for model in response.data}
+        assert "Local Qwen" not in model_ids
+        assert "qwen-base:thinking" not in model_ids
+        assert "ai2apps.qwen/model" in model_ids
+        assert http_response.headers["cache-control"] == "no-store"
+        assert http_response.headers["vary"] == "Cookie, Authorization"
+
+    @pytest.mark.asyncio
+    async def test_v1_models_includes_managed_ai2apps_cloud_models(self, manager):
+        from types import SimpleNamespace
+
+        import omlx.server as server_module
+
+        server_module._server_state.engine_pool = self._FakePool()
+        store = SimpleNamespace(
+            enabled_cloud_models=lambda: [],
+            list_cloud=lambda: [],
+            list_fusion=lambda: [],
+            model_source=lambda _model_id: "ai2apps_cloud",
+        )
+        cloud_models = [
+            {
+                "id": "openai/gpt-test",
+                "displayName": "GPT Test",
+                "contextWindow": 100000,
+                "maxOutputTokens": 4096,
+            }
+        ]
+
+        with (
+            patch.object(
+                server_module._server_state,
+                "global_settings",
+                SimpleNamespace(),
+            ),
+            patch.object(
+                server_module,
+                "_server_model_manager_store",
+                return_value=store,
+            ),
+            patch.object(
+                server_module,
+                "_managed_ai2apps_cloud_models",
+                new=AsyncMock(return_value=cloud_models),
+            ),
+            patch("omlx.server.list_package_models", return_value=()),
+        ):
+            response = await server_module.list_models(
+                Response(), self._member_principal()
+            )
+
+        cloud_model = next(
+            model for model in response.data
+            if model.id == "cloud/openai/gpt-test"
+        )
+        assert cloud_model.owned_by == "ai2apps"
+        assert cloud_model.source == "ai2apps_cloud"
+        assert cloud_model.shareable is False
+
+    @pytest.mark.asyncio
+    async def test_v1_models_hides_raw_local_models_outside_source_checkout(
+        self, manager
+    ):
+        import omlx.server as server_module
+
+        server_module._server_state.engine_pool = self._FakePool()
+
+        with (
+            patch("omlx.server.can_access_developer_surfaces", return_value=False),
+            patch("omlx.server.list_package_models", return_value=()),
+        ):
+            response = await server_module.list_models(Response(), True)
+
+        assert "qwen-base" not in {model.id for model in response.data}
+
+    @pytest.mark.asyncio
+    async def test_v1_models_status_hides_raw_local_models_from_members(self, manager):
+        import omlx.server as server_module
+
+        server_module._server_state.engine_pool = self._FakePool()
+
+        with patch("omlx.server.list_package_models", return_value=()):
+            status = await server_module.list_models_status(
+                Response(), self._member_principal()
+            )
+
+        assert "qwen-base" not in {model["id"] for model in status["models"]}
 
     @pytest.mark.asyncio
     async def test_v1_models_status_includes_exposed_profile_capabilities(
@@ -852,7 +1078,7 @@ class TestExposedProfileModels:
         )
         server_module._server_state.engine_pool = self._FakePool()
 
-        status = await server_module.list_models_status(True)
+        status = await server_module.list_models_status(Response(), True)
 
         profile_model = next(
             m for m in status["models"] if m["id"] == "qwen-base:thinking"
@@ -876,7 +1102,7 @@ class TestExposedProfileModels:
         self._save_exposed_profile(manager, {"max_context_window": 4096})
         server_module._server_state.engine_pool = self._FakePool()
 
-        response = await server_module.list_models(True)
+        response = await server_module.list_models(Response(), True)
 
         model_ids = {model.id for model in response.data}
         assert "gpt-4" in model_ids

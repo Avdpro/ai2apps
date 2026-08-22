@@ -31,6 +31,12 @@ def _source(tmp_path):
                     "version": "1.0.0",
                     "displayName": "Hello World",
                     "description": "Contract fixture",
+                    "localizations": {
+                        "zh-CN": {
+                            "displayName": "你好世界",
+                            "description": "合约测试包",
+                        }
+                    },
                 },
                 "compatibility": {
                     "ai2apps": ">=0.1.0 <2.0.0",
@@ -58,6 +64,10 @@ def test_build_inspect_sign_and_verify(tmp_path):
     archive = tmp_path / "hello.ai2app"
     inspected = build_package(_source(tmp_path), archive)
     assert inspected.manifest["files"][0]["path"] == "main.js"
+    assert inspected.manifest["package"]["localizations"]["zh-CN"] == {
+        "displayName": "你好世界",
+        "description": "合约测试包",
+    }
     assert inspected.sha256 == hashlib.sha256(archive.read_bytes()).hexdigest()
     private_pem, public_pem, _fingerprint = generate_publisher_key()
     envelope = create_signature_envelope(
@@ -68,6 +78,43 @@ def test_build_inspect_sign_and_verify(tmp_path):
     )
     verified = verify_signed_package(archive, envelope, public_pem)
     assert verified.manifest["package"]["id"] == "example/hello-world"
+
+
+def test_invalid_package_localization_is_rejected(tmp_path):
+    source = _source(tmp_path)
+    manifest_path = source / "ai2apps.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["package"]["localizations"] = {
+        "not_a_locale": {"displayName": "Invalid"}
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(PackageContractError) as error:
+        build_package(source, tmp_path / "invalid.ai2app")
+    assert error.value.code == "manifest_invalid"
+
+
+def test_os_version_constraints_require_one_platform_and_valid_range(tmp_path):
+    source = _source(tmp_path)
+    manifest_path = source / "ai2apps.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatibility"].update(
+        {
+            "platforms": ["darwin"],
+            "minimumOsVersion": "26.2",
+            "maximumOsVersionExclusive": "27.0",
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    inspected = build_package(source, tmp_path / "compatible.ai2app")
+    assert inspected.manifest["compatibility"]["minimumOsVersion"] == "26.2"
+
+    manifest["compatibility"]["platforms"] = ["darwin", "linux"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(PackageContractError) as error:
+        build_package(source, tmp_path / "ambiguous.ai2app")
+    assert error.value.code == "manifest_invalid"
 
 
 def test_raw_artifact_tamper_is_rejected_before_zip_parse(tmp_path):

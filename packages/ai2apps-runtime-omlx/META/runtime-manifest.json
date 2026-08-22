@@ -1,0 +1,20 @@
+{
+  "schema": "ai2apps.inference-runtime/v1",
+  "service_id": "ai2apps.runtime.omlx",
+  "version": "1.3.7",
+  "protocol": "ai2apps-model-worker/v1",
+  "capabilities": ["mlx", "model-worker-v1", "cached-moe", "vlm", "nvfp4", "metal", "audio-stt", "audio-tts", "audio-processing", "text-punctuation", "onnx", "audio-codecs"],
+  "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
+  "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",
+  "framework_site_packages": "Contents/Resources/Runtime/Python/framework-mlx-base/lib/python3.11/site-packages",
+  "launcher": "Contents/Resources/Runtime/app/ai2apps/model_worker/launcher.py",
+  "payload": {
+    "type": "dmg",
+    "path": "variants/darwin-arm64/AI2AppsOmlxRuntime.dmg",
+    "root": "AI2AppsOmlxRuntime.bundle"
+  },
+  "distribution": {
+    "signing": "developer-id",
+    "team_id": "84XL5V265N"
+  }
+}

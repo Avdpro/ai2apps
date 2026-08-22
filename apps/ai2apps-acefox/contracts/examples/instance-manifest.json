@@ -1,0 +1,24 @@
+{
+  "bundle_identifier": "com.ai2apps.default",
+  "default_local_configuration": {
+    "auto_restart": true,
+    "bind_address": "127.0.0.1",
+    "model_cache_mode": "isolated",
+    "port_mode": "automatic",
+    "schema_version": 1,
+    "start_at_login": true
+  },
+  "display_name": "AI2Apps",
+  "helper_bundle_identifier": "com.ai2apps.default.helper",
+  "helper_protocol": {
+    "maximum": 1,
+    "minimum": 1
+  },
+  "helper_service_name": "com.ai2apps.default.helper-service",
+  "instance_id": "default",
+  "schema_version": 1,
+  "shell_protocol": {
+    "maximum": 1,
+    "minimum": 1
+  }
+}

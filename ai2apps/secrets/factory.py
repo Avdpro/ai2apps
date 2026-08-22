@@ -12,6 +12,7 @@ from .backends import (
     EncryptedFileSecretBackend,
     LinuxSecretServiceBackend,
     MacOSKeychainBackend,
+    NamespacedSecretBackend,
     SecretBackend,
     SecretBackendError,
 )
@@ -62,6 +63,7 @@ def create_secret_backend(
     directory: str | Path,
     *,
     configured: str = "auto",
+    namespace: str | None = None,
 ) -> SecretBackend:
     name = select_secret_backend_name(configured)
     factory = _PROVIDERS.get(name)
@@ -70,4 +72,7 @@ def create_secret_backend(
         raise SecretBackendError(
             f"Unknown Secret backend '{name}'. Available providers: {available}"
         )
-    return factory(Path(directory).expanduser().resolve())
+    backend = factory(Path(directory).expanduser().resolve())
+    if namespace is not None:
+        return NamespacedSecretBackend(backend, namespace)
+    return backend

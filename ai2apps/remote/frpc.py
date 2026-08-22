@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 import platform
 import random
+import re
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from ai2apps.secrets import SecretBackend
 
 from .models import RemoteDeviceRecord
+
+logger = logging.getLogger(__name__)
 
 PINNED_FRP_VERSION = "0.62.1"
 PINNED_FRP_CA_SHA256 = "2c460459daae289916e999a03baa3b4658fdfc0fb6a92243a002a601ad5017c0"
@@ -21,6 +25,21 @@ PINNED_FRP_BINARY_SHA256 = {
     "darwin-arm64": "49afde483f55927c3eeac9141cae82857cb2f15b9e9d55f4ac45378e761eabcc",
     "darwin-x86_64": "5ce5258b6ff1a232e9eb8e29247a55badb127e7fc66b5a58c299b442aba2bcb2",
 }
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_FRPC_ERROR_MARKERS = (
+    "authorization denied",
+    "authentication failed",
+    "connect to server error",
+    "connection refused",
+    "error",
+    "failed",
+    "login to server failed",
+    "tls",
+)
+_FRPC_DIAGNOSTIC_PREFIX = re.compile(
+    r"^\d{4}-\d{2}-\d{2} [0-9:.]+ \[[A-Z]\] \[[^]]+\](?: \[[^]]+\])?\s*"
+)
 
 
 def _bundled_binary() -> Path | None:
@@ -37,30 +56,10 @@ def _bundled_binary() -> Path | None:
     return candidate if actual_digest == expected_digest else None
 
 
-def _read_bootstrap_token(runtime_directory: Path) -> str:
-    value = os.environ.get("AI2APPS_FRP_BOOTSTRAP_TOKEN", "").strip()
-    if value:
-        return value
-    configured_file = os.environ.get("AI2APPS_FRP_BOOTSTRAP_TOKEN_FILE", "").strip()
-    path = (
-        Path(configured_file).expanduser().resolve()
-        if configured_file
-        else (runtime_directory / "bootstrap-token").resolve()
-    )
-    if not path.exists() and not configured_file:
-        return ""
-    if not path.is_file():
-        raise ValueError("AI2APPS_FRP_BOOTSTRAP_TOKEN_FILE is not a file")
-    if path.stat().st_mode & 0o077:
-        raise ValueError("AI2Apps FRP bootstrap token file must not be group/world accessible")
-    return path.read_text(encoding="utf-8").strip()
-
-
 @dataclass(frozen=True, slots=True)
 class RemoteFrpcConfig:
     binary: Path
     ca_file: Path
-    bootstrap_token: str = field(repr=False)
     mobile_gateway_port: int
     runtime_directory: Path
 
@@ -76,11 +75,6 @@ class RemoteFrpcConfig:
         )
         if binary is None or not binary.is_file():
             return f"FRP client {PINNED_FRP_VERSION} is not installed"
-        try:
-            if not _read_bootstrap_token(runtime_directory):
-                return "FRP bootstrap credential is not installed"
-        except ValueError as error:
-            return str(error)
         return "FRP runtime configuration is not installed"
 
     @classmethod
@@ -99,8 +93,7 @@ class RemoteFrpcConfig:
             if configured_ca
             else Path(__file__).with_name("frp-ca-2026.pem").resolve()
         )
-        bootstrap = _read_bootstrap_token(runtime_directory)
-        if binary_path is None or not bootstrap:
+        if binary_path is None:
             return None
         port = int(os.environ.get("AI2APPS_MOBILE_GATEWAY_PORT", "8000"))
         if not 1 <= port <= 65535:
@@ -111,7 +104,7 @@ class RemoteFrpcConfig:
             raise ValueError("AI2APPS_FRP_CA_FILE is not a file")
         if hashlib.sha256(ca_path.read_bytes()).hexdigest() != PINNED_FRP_CA_SHA256:
             raise ValueError("AI2Apps Remote Access CA fingerprint does not match the pinned release")
-        return cls(binary_path, ca_path, bootstrap, port, runtime_directory)
+        return cls(binary_path, ca_path, port, runtime_directory)
 
 
 class RemoteFrpcSupervisor:
@@ -143,7 +136,54 @@ class RemoteFrpcSupervisor:
     def status(self) -> dict:
         return {"available": self.available, "running": self.running,
                 "deviceId": None if self._device is None else self._device.device_id,
+                "authentication": "device-credential-v1" if self.available else None,
                 "lastError": self.last_error}
+
+    @staticmethod
+    def _safe_diagnostic(value: str, secret: str) -> str:
+        value = _ANSI_ESCAPE.sub("", value).strip()
+        if secret:
+            value = value.replace(secret, "[REDACTED]")
+        # Defence in depth in case a future frpc version echoes metadata.
+        value = re.sub(
+            r"(?i)(connectorSecret(?:\s*[=:]\s*|\s+))[A-Za-z0-9._~-]+",
+            r"\1[REDACTED]",
+            value,
+        )
+        value = _FRPC_DIAGNOSTIC_PREFIX.sub("", value)
+        return value[-1000:]
+
+    @staticmethod
+    def _diagnostic_priority(value: str) -> int:
+        if not value:
+            return 0
+        lowered = value.lower()
+        if "start error: new proxy" in lowered or "new proxy" in lowered:
+            return 30
+        if "login" in lowered or "authorization" in lowered:
+            return 20
+        if "ping" in lowered or "newworkconn" in lowered:
+            return 10
+        return 15
+
+    async def _drain_output(
+        self, stream: asyncio.StreamReader | None, secret: str
+    ) -> None:
+        if stream is None:
+            return
+        while line := await stream.readline():
+            diagnostic = self._safe_diagnostic(
+                line.decode(errors="replace"), secret
+            )
+            lowered = diagnostic.lower()
+            if diagnostic and any(marker in lowered for marker in _FRPC_ERROR_MARKERS):
+                if (
+                    self._diagnostic_priority(diagnostic)
+                    >= self._diagnostic_priority(self.last_error)
+                    and diagnostic != self.last_error
+                ):
+                    self.last_error = diagnostic
+                    logger.warning("FRP connector diagnostic: %s", diagnostic)
 
     async def start(self, device: RemoteDeviceRecord) -> None:
         if self.config is None:
@@ -184,7 +224,6 @@ class RemoteFrpcSupervisor:
                     "AI2APPS_FRP_SERVER_ADDR": self._device.server_addr,
                     "AI2APPS_FRP_SERVER_PORT": str(self._device.server_port),
                     "AI2APPS_FRP_CA_FILE": str(self.config.ca_file),
-                    "AI2APPS_FRP_BOOTSTRAP_TOKEN": self.config.bootstrap_token,
                     "AI2APPS_REMOTE_DEVICE_ID": self._device.device_id,
                     "AI2APPS_REMOTE_CREDENTIAL_VERSION": str(self._device.credential_version),
                     "AI2APPS_REMOTE_CONNECTOR_SECRET": secret,
@@ -193,10 +232,16 @@ class RemoteFrpcSupervisor:
                 }
                 self._process = await asyncio.create_subprocess_exec(
                     str(self.config.binary), "-c", str(runtime_template), env=environment,
-                    stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
+                    stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                self.last_error = ""
+                output_task = asyncio.create_task(
+                    self._drain_output(self._process.stdout, secret),
+                    name="ai2apps-frpc-output",
                 )
                 code = await self._process.wait()
+                await output_task
                 self._process = None
                 if self._stop.is_set():
                     break

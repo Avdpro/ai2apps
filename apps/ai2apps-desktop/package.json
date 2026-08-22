@@ -1,0 +1,22 @@
+{
+  "name": "@ai2apps/desktop",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "description": "Secure Electron desktop shell for AI2Apps nodes",
+  "productName": "AI2Apps",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node scripts/smoke.js",
+    "package:mac": "node scripts/package-macos.js",
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.0.4",
+    "electron": "43.2.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

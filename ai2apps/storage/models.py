@@ -44,6 +44,7 @@ class AppInstanceRecord:
     id: str
     app_definition_id: str
     singleton_key: str | None
+    owner_user_id: str | None
     status: AppInstanceStatus
     state_schema_version: int
     state: JsonObject

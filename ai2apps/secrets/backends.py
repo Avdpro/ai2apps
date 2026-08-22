@@ -7,6 +7,7 @@ import ctypes
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import subprocess
@@ -28,6 +29,62 @@ class SecretBackend(Protocol):
     def store(self, key: str, value: str) -> None: ...
     def load(self, key: str) -> str: ...
     def delete(self, key: str) -> None: ...
+
+
+class NamespacedSecretBackend:
+    """Scope backend account names to one immutable Local security identity.
+
+    The wrapper is intentionally backend-independent. Safe legacy records are
+    copied on first read and verified before use; globally ambiguous Cloud
+    browser sessions are not migrated because they cannot be attributed to one
+    Local instance.
+    """
+
+    _NAMESPACE = re.compile(r"^[A-Za-z0-9._~-]{1,200}$")
+    _AMBIGUOUS_LEGACY_PREFIXES = ("ai2apps-cloud-session-",)
+
+    def __init__(self, backend: SecretBackend, namespace: str) -> None:
+        if not self._NAMESPACE.fullmatch(namespace):
+            raise ValueError("Secret namespace is invalid")
+        self.backend = backend
+        self.namespace = namespace
+        self.provider_name = backend.provider_name
+        self._prefix = f"ai2apps.v1.{namespace}."
+
+    def __getattr__(self, name: str):
+        # Preserve diagnostics such as vault_path without exposing an alternate
+        # unscoped SecretBackend through the normal runtime interface.
+        return getattr(self.backend, name)
+
+    def scoped_key(self, key: str) -> str:
+        if not isinstance(key, str) or not key:
+            raise ValueError("Secret key cannot be empty")
+        return self._prefix + key
+
+    def _can_migrate_legacy(self, key: str) -> bool:
+        return not key.startswith(self._AMBIGUOUS_LEGACY_PREFIXES)
+
+    def store(self, key: str, value: str) -> None:
+        self.backend.store(self.scoped_key(key), value)
+
+    def load(self, key: str) -> str:
+        scoped = self.scoped_key(key)
+        try:
+            return self.backend.load(scoped)
+        except KeyError:
+            if not self._can_migrate_legacy(key):
+                raise
+        value = self.backend.load(key)
+        self.backend.store(scoped, value)
+        if self.backend.load(scoped) != value:
+            raise SecretBackendError("Secret migration read-back verification failed")
+        return value
+
+    def delete(self, key: str) -> None:
+        self.backend.delete(self.scoped_key(key))
+        if self._can_migrate_legacy(key):
+            # Prevent a later read from resurrecting a migrated legacy value.
+            self.backend.delete(key)
 
 
 class MacOSKeychainBackend:

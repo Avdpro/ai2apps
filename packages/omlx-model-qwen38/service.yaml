@@ -1,0 +1,66 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen38
+name: Qwen3.8 27B NVFP4
+description: Isolated oMLX Worker Package for the pinned Qwen3.8 27B NVFP4 checkpoint.
+version: 0.3.1
+
+publisher:
+  id: ai2apps
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.qwen38/qwen3.8-27b-nvfp4
+    display_name: Qwen3.8 27B NVFP4
+    model_type: vlm
+    upstream_id: unsloth/Qwen3.8-27B-NVFP4
+    capabilities: [work, conversation, image_recognition]
+    context_window: 262144
+    weights:
+      provider: huggingface
+      repo_id: unsloth/Qwen3.8-27B-NVFP4
+      revision: 16b6615af3548b88e2d8e382457bc705b00479cf
+      preparation:
+        recipe: native
+    metadata:
+      family: qwen3.8
+      quantization: nvfp4-mixed
+
+capabilities: []
+
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.0.1,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, vlm, nvfp4]
+  python: ">=3.11,<3.14"
+
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Qwen3.8 repository cache.
+  accelerator:
+    metal: true
+    reason: Run the isolated oMLX engine on Apple GPU.
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+  minimum_os_version: "26.2"
+
+health:
+  path: /health
+  startup_timeout_seconds: 30
+
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+
+tools: []

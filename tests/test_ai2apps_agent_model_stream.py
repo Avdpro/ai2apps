@@ -10,6 +10,7 @@ from ai2apps.agents import AgentRunStatus
 from ai2apps.agents.model_stream import ChatCompletionStreamAccumulator
 from ai2apps.chat import ChatRepository
 from ai2apps.config import PlatformConfig
+from ai2apps.identity import IdentityRepository, MemberRole, OrganizationType
 from ai2apps.platform_runtime import PlatformRuntime
 
 
@@ -181,3 +182,70 @@ async def test_progress_aware_model_provider_updates_durable_agent_status(tmp_pa
     finally:
         release.set()
         await runtime.stop_background_tasks()
+
+
+@pytest.mark.asyncio
+async def test_agent_model_provider_receives_server_derived_identity_and_cache_context(
+    tmp_path,
+):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    identities = IdentityRepository(runtime.database)
+    identities.bind_installation(
+        installation_id="nas-1",
+        cloud_device_id="device-1",
+        organization_id="family-1",
+        organization_type=OrganizationType.HOUSEHOLD,
+        core_user_id="core-user",
+        billing_account_id="core-billing",
+        access_epoch=1,
+    )
+    identities.upsert_membership(
+        cloud_user_id="member-alice",
+        role=MemberRole.MEMBER,
+        status="active",
+        membership_epoch=7,
+    )
+    principal = identities.principal_for("member-alice")
+    thread, _ = ChatRepository(
+        runtime.database, runtime.events, principal=principal
+    ).create_thread(title="Alice model context")
+    received = {}
+
+    async def provider(request, report_progress, context):
+        received["request"] = request
+        received["context"] = context
+        return {
+            "choices": [{"message": {"role": "assistant", "content": "finished"}}]
+        }
+
+    runtime.agent_runtime.bind_model_provider(provider)
+    await runtime.start_background_tasks(retention_interval_seconds=60)
+    try:
+        run, _ = runtime.agents.create_run(
+            session_id=thread.session.id,
+            agent_key="ai2apps.diagnostic-agent",
+            input={
+                "mode": "model",
+                "request": {
+                    "model": "context-model",
+                    "messages": [{"role": "user", "content": "hello"}],
+                },
+            },
+        )
+        runtime.agent_runtime.wake()
+        await runtime.agent_runtime.wait_for_terminal(run.id, timeout=2)
+    finally:
+        await runtime.stop_background_tasks()
+
+    context = received["context"]
+    assert context.actor_user_id == "member-alice"
+    assert context.billing_account_id == "core-billing"
+    assert context.session_id == thread.session.id
+    assert context.cache_namespace.startswith("a2c-")
+    assert "actor_user_id" not in received["request"]
+    event = runtime.events.latest_for_subject(
+        run.id, event_type="agent.model.invocation.started"
+    )
+    assert event is not None
+    assert event.payload["cache_namespace"] == context.cache_namespace

@@ -12,7 +12,10 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ai2apps.apps.access import APP_CODER_USE, has_app_capability
 from ai2apps.core import EntityIdKind, new_entity_id, utc_now_text
+from ai2apps.events import EventStore
+from ai2apps.identity import RequestPrincipal
 from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.records import canonical_json
 from ai2apps.terminal import TerminalManager, TerminalServiceError
@@ -120,6 +123,7 @@ class CoderManager:
         testflight_root: str | Path | None = None,
     ) -> None:
         self.database = database
+        self.events = EventStore(database)
         self.terminal = terminal
         self.project_root = Path(project_root or terminal.default_cwd).expanduser().resolve()
         self.managed_cli_root = Path(
@@ -136,6 +140,49 @@ class CoderManager:
             testflight_root or (self.managed_cli_root / "testflight"),
         )
         self.project_root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _principal(value: RequestPrincipal | None) -> RequestPrincipal:
+        return value or RequestPrincipal.legacy_local()
+
+    def _prepare_principal(
+        self, value: RequestPrincipal | None
+    ) -> RequestPrincipal:
+        principal = self._principal(value)
+        if not has_app_capability(principal, APP_CODER_USE):
+            raise CoderError("coder_access_denied", "Current account cannot use Coder")
+        if (
+            principal.authentication_type == "legacy_api_key"
+            or not principal.is_core
+        ):
+            return principal
+        now = utc_now_text()
+        with self.database.transaction(write=True) as connection:
+            legacy = connection.execute(
+                "SELECT id FROM coder_projects WHERE owner_user_id IS NULL"
+            ).fetchall()
+            for row in legacy:
+                connection.execute(
+                    "UPDATE coder_projects SET owner_user_id=?,updated_at=? WHERE id=?",
+                    (principal.actor_user_id, now, row["id"]),
+                )
+                self.events.append_in_transaction(
+                    connection,
+                    event_type="coder.project.owner_claimed",
+                    subject_id=row["id"],
+                    payload={"owner_user_id": principal.actor_user_id},
+                )
+        return principal
+
+    @staticmethod
+    def _owner_filter(
+        principal: RequestPrincipal,
+        *,
+        table: str = "coder_projects",
+    ) -> tuple[str, tuple[str, ...]]:
+        if principal.authentication_type == "legacy_api_key":
+            return "", ()
+        return f" AND {table}.owner_user_id=?", (principal.actor_user_id,)
 
     @staticmethod
     def _project(row) -> dict[str, Any]:
@@ -174,14 +221,25 @@ class CoderManager:
             "updated_at": row["updated_at"],
         }
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(
+        self, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        request_principal = self._prepare_principal(principal)
+        owner_sql, owner_params = self._owner_filter(request_principal)
         with self.database.transaction() as connection:
             projects = connection.execute(
-                "SELECT * FROM coder_projects ORDER BY updated_at DESC"
+                "SELECT * FROM coder_projects WHERE 1=1"
+                + owner_sql
+                + " ORDER BY updated_at DESC",
+                owner_params,
             ).fetchall()
             threads = connection.execute(
-                "SELECT * FROM coder_threads WHERE status != 'archived' "
-                "ORDER BY updated_at DESC"
+                "SELECT coder_threads.* FROM coder_threads "
+                "JOIN coder_projects ON coder_projects.id=coder_threads.project_id "
+                "WHERE coder_threads.status != 'archived'"
+                + owner_sql
+                + " ORDER BY coder_threads.updated_at DESC",
+                owner_params,
             ).fetchall()
         project_items = [self._decorate_project(self._project(item)) for item in projects]
         return {
@@ -204,10 +262,18 @@ class CoderManager:
         ]
         return project
 
-    def _project_row(self, project_id: str) -> dict[str, Any]:
+    def _project_row(
+        self,
+        project_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        request_principal = self._prepare_principal(principal)
+        owner_sql, owner_params = self._owner_filter(request_principal)
         with self.database.transaction() as connection:
             row = connection.execute(
-                "SELECT * FROM coder_projects WHERE id=?", (project_id,)
+                "SELECT * FROM coder_projects WHERE id=?" + owner_sql,
+                (project_id, *owner_params),
             ).fetchone()
         if row is None:
             raise CoderError("project_not_found", "Project not found")
@@ -221,14 +287,39 @@ class CoderManager:
         except ProjectSourceError as error:
             return [{"id": "project-error", "kind": "error", "name": str(error), "runnable": False}]
 
-    def validate_project(self, project_id: str) -> dict[str, Any]:
-        project = self._project_row(project_id)
+    def _thread_row(
+        self,
+        thread_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ):
+        request_principal = self._prepare_principal(principal)
+        owner_sql, owner_params = self._owner_filter(
+            request_principal, table="p"
+        )
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                "SELECT t.*,p.root_path FROM coder_threads t "
+                "JOIN coder_projects p ON p.id=t.project_id "
+                "WHERE t.id=?" + owner_sql,
+                (thread_id, *owner_params),
+            ).fetchone()
+        if row is None:
+            raise CoderError("thread_not_found", "Thread not found")
+        return row
+
+    def validate_project(
+        self, project_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        project = self._project_row(project_id, principal=principal)
         if project["kind"] != "ai2apps":
             raise CoderError("not_ai2apps_project", "Validation is available for AI2Apps Projects")
         return self._source(project).validate()
 
-    async def test_project(self, project_id: str) -> dict[str, Any]:
-        project = self._project_row(project_id)
+    async def test_project(
+        self, project_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        project = self._project_row(project_id, principal=principal)
         command = test_command(Path(project["root_path"]))
         if command is None:
             return {"ok": True, "skipped": True, "command": [], "output": "No Project test runner was discovered."}
@@ -247,8 +338,14 @@ class CoderManager:
         text = output[-256_000:].decode("utf-8", errors="replace")
         return {"ok": process.returncode == 0, "skipped": False, "command": command, "exit_code": process.returncode, "output": text}
 
-    def start_dev_session(self, project_id: str, component_id: str) -> dict[str, Any]:
-        project = self._project_row(project_id)
+    def start_dev_session(
+        self,
+        project_id: str,
+        component_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        project = self._project_row(project_id, principal=principal)
         if project["kind"] != "ai2apps":
             raise CoderError("not_ai2apps_project", "Development runtime requires an AI2Apps Project")
         try:
@@ -281,20 +378,41 @@ class CoderManager:
         self._dev_sessions[session.id] = session
         return session.public()
 
-    def stop_dev_session(self, session_id: str) -> dict[str, Any]:
-        session = self._dev_sessions.pop(session_id, None)
-        if session is None:
-            raise CoderError("dev_session_not_found", "Development Session not found")
+    def stop_dev_session(
+        self,
+        session_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        session = self.dev_session(session_id, principal=principal)
+        self._dev_sessions.pop(session_id, None)
         return {**session.public(), "status": "stopped"}
 
-    def dev_session(self, session_id: str) -> DevSession:
+    def dev_session(
+        self,
+        session_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> DevSession:
         session = self._dev_sessions.get(session_id)
         if session is None:
             raise CoderError("dev_session_not_found", "Development Session not found")
+        try:
+            self._project_row(session.project_id, principal=principal)
+        except CoderError as error:
+            raise CoderError(
+                "dev_session_not_found", "Development Session not found"
+            ) from error
         return session
 
-    def resolve_dev_resource(self, session_id: str, resource: str) -> tuple[Path, str]:
-        session = self.dev_session(session_id)
+    def resolve_dev_resource(
+        self,
+        session_id: str,
+        resource: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> tuple[Path, str]:
+        session = self.dev_session(session_id, principal=principal)
         try:
             path = SourceProject(session.component.root).resolve_resource(
                 session.component, resource
@@ -303,8 +421,10 @@ class CoderManager:
             raise CoderError(error.code, str(error)) from error
         return path, media_type(path)
 
-    def build_project(self, project_id: str) -> dict[str, Any]:
-        project = self._project_row(project_id)
+    def build_project(
+        self, project_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        project = self._project_row(project_id, principal=principal)
         if project["kind"] != "ai2apps":
             raise CoderError("not_ai2apps_project", "Project Bundle requires an AI2Apps Project")
         try:
@@ -313,17 +433,24 @@ class CoderManager:
             raise CoderError(error.code, str(error)) from error
         return {"ok": True, "path": str(path), "development": True, "installable": False}
 
-    def submit_project_testflight(self, project_id: str) -> dict[str, Any]:
-        built = self.build_project(project_id)
+    def submit_project_testflight(
+        self, project_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        built = self.build_project(project_id, principal=principal)
         try:
             return self.testflight.submit(built["path"])
         except TestFlightError as error:
             raise CoderError(error.code, str(error)) from error
 
     def _project_file(
-        self, project_id: str, relative_path: str, *, missing: bool = False
+        self,
+        project_id: str,
+        relative_path: str,
+        *,
+        missing: bool = False,
+        principal: RequestPrincipal | None = None,
     ) -> tuple[dict[str, Any], Path]:
-        project = self._project_row(project_id)
+        project = self._project_row(project_id, principal=principal)
         pure = PurePosixPath(relative_path)
         if (
             not relative_path
@@ -345,8 +472,16 @@ class CoderManager:
             raise CoderError("unsafe_file_path", "Project file is not editable")
         return project, resolved
 
-    def list_project_files(self, project_id: str, path: str = ".") -> dict[str, Any]:
-        project, directory = self._project_file(project_id, path)
+    def list_project_files(
+        self,
+        project_id: str,
+        path: str = ".",
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        project, directory = self._project_file(
+            project_id, path, principal=principal
+        )
         if not directory.is_dir():
             raise CoderError("not_directory", "Project path is not a directory")
         root = Path(project["root_path"]).resolve()
@@ -367,8 +502,14 @@ class CoderManager:
                 break
         return {"path": path, "items": items, "truncated": len(items) >= 1000}
 
-    def read_project_file(self, project_id: str, path: str) -> dict[str, Any]:
-        _project, item = self._project_file(project_id, path)
+    def read_project_file(
+        self,
+        project_id: str,
+        path: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        _project, item = self._project_file(project_id, path, principal=principal)
         if not item.is_file():
             raise CoderError("not_file", "Project path is not a file")
         size = item.stat().st_size
@@ -380,10 +521,19 @@ class CoderManager:
             raise CoderError("binary_file", "Binary files cannot be edited") from error
         return {"path": path, "content": content, "size_bytes": size}
 
-    def write_project_file(self, project_id: str, path: str, content: str) -> dict[str, Any]:
+    def write_project_file(
+        self,
+        project_id: str,
+        path: str,
+        content: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
         if len(content.encode("utf-8")) > _MAX_EDITOR_FILE_BYTES:
             raise CoderError("file_too_large", "Editor files are limited to 2 MiB")
-        _project, item = self._project_file(project_id, path, missing=True)
+        _project, item = self._project_file(
+            project_id, path, missing=True, principal=principal
+        )
         if item.exists() and not item.is_file():
             raise CoderError("not_file", "Project path is not a file")
         if not item.parent.is_dir():
@@ -400,10 +550,12 @@ class CoderManager:
             temporary.replace(item)
         finally:
             temporary.unlink(missing_ok=True)
-        return self.read_project_file(project_id, path)
+        return self.read_project_file(project_id, path, principal=principal)
 
-    async def delete_thread(self, thread_id: str) -> dict[str, Any]:
-        stopped = await self.stop_thread(thread_id)
+    async def delete_thread(
+        self, thread_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        stopped = await self.stop_thread(thread_id, principal=principal)
         with self.database.transaction(write=True) as connection:
             connection.execute("DELETE FROM coder_threads WHERE id=?", (thread_id,))
         capture = self._codex_capture_tasks.pop(thread_id, None)
@@ -411,15 +563,17 @@ class CoderManager:
             capture.cancel()
         return {"id": stopped["id"], "deleted": True}
 
-    async def remove_project(self, project_id: str) -> dict[str, Any]:
-        project = self._project_row(project_id)
+    async def remove_project(
+        self, project_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        project = self._project_row(project_id, principal=principal)
         with self.database.transaction() as connection:
             rows = connection.execute(
                 "SELECT id FROM coder_threads WHERE project_id=?", (project_id,)
             ).fetchall()
         for row in rows:
             try:
-                await self.stop_thread(row["id"])
+                await self.stop_thread(row["id"], principal=principal)
             except CoderError as error:
                 if error.code != "thread_not_found":
                     raise
@@ -457,7 +611,9 @@ class CoderManager:
         kind: str = "general",
         create_directory: bool = False,
         bootstrap: bool = False,
+        principal: RequestPrincipal | None = None,
     ) -> dict[str, Any]:
+        request_principal = self._prepare_principal(principal)
         label = name.strip()
         if not label or len(label) > 120:
             raise CoderError("invalid_name", "Project name is invalid")
@@ -479,8 +635,23 @@ class CoderManager:
             with self.database.transaction(write=True) as connection:
                 connection.execute(
                     "INSERT INTO coder_projects(id,name,root_path,project_kind,"
-                    "metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                    (project_id, label, str(path), kind, "{}", now, now),
+                    "metadata_json,owner_user_id,created_at,updated_at) "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        project_id,
+                        label,
+                        str(path),
+                        kind,
+                        "{}",
+                        (
+                            None
+                            if request_principal.authentication_type
+                            == "legacy_api_key"
+                            else request_principal.actor_user_id
+                        ),
+                        now,
+                        now,
+                    ),
                 )
                 row = connection.execute(
                     "SELECT * FROM coder_projects WHERE id=?", (project_id,)
@@ -533,7 +704,9 @@ class CoderManager:
         model_source: str = "default",
         model: str = "",
         parent_thread_id: str | None = None,
+        principal: RequestPrincipal | None = None,
     ) -> dict[str, Any]:
+        self._project_row(project_id, principal=principal)
         label = title.strip()
         if not label or len(label) > 160:
             raise CoderError("invalid_title", "Thread title is invalid")
@@ -543,20 +716,18 @@ class CoderManager:
             raise CoderError("invalid_model_source", "Invalid model source")
         if model_source == "ai2apps" and not model.strip():
             raise CoderError("model_required", "Choose an AI2Apps model")
+        if parent_thread_id:
+            try:
+                parent = self._thread_row(parent_thread_id, principal=principal)
+            except CoderError as error:
+                raise CoderError(
+                    "invalid_parent", "Parent Thread is invalid"
+                ) from error
+            if parent["project_id"] != project_id:
+                raise CoderError("invalid_parent", "Parent Thread is invalid")
         thread_id = new_entity_id(EntityIdKind.CODER_THREAD)
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
-            project = connection.execute(
-                "SELECT id FROM coder_projects WHERE id=?", (project_id,)
-            ).fetchone()
-            if project is None:
-                raise CoderError("project_not_found", "Project not found")
-            if parent_thread_id:
-                parent = connection.execute(
-                    "SELECT project_id FROM coder_threads WHERE id=?", (parent_thread_id,)
-                ).fetchone()
-                if parent is None or parent["project_id"] != project_id:
-                    raise CoderError("invalid_parent", "Parent Thread is invalid")
             connection.execute(
                 "INSERT INTO coder_threads(id,project_id,parent_thread_id,title,agent,"
                 "model_source,model,metadata_json,created_at,updated_at) "
@@ -579,13 +750,14 @@ class CoderManager:
             ).fetchone()
         return self._thread(row)
 
-    def fork_thread(self, thread_id: str, *, title: str | None = None) -> dict[str, Any]:
-        with self.database.transaction() as connection:
-            row = connection.execute(
-                "SELECT * FROM coder_threads WHERE id=?", (thread_id,)
-            ).fetchone()
-        if row is None:
-            raise CoderError("thread_not_found", "Thread not found")
+    def fork_thread(
+        self,
+        thread_id: str,
+        *,
+        title: str | None = None,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        row = self._thread_row(thread_id, principal=principal)
         return self.create_thread(
             project_id=row["project_id"],
             title=title or f"{row['title']} (fork)",
@@ -593,6 +765,7 @@ class CoderManager:
             model_source=row["model_source"],
             model=row["model"],
             parent_thread_id=thread_id,
+            principal=principal,
         )
 
     @staticmethod
@@ -707,19 +880,19 @@ class CoderManager:
 
         task.add_done_callback(discard)
 
-    async def start_thread(self, thread_id: str) -> dict[str, Any]:
+    async def start_thread(
+        self, thread_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
         async with self._codex_start_lock:
-            return await self._start_thread_locked(thread_id)
+            return await self._start_thread_locked(thread_id, principal=principal)
 
-    async def _start_thread_locked(self, thread_id: str) -> dict[str, Any]:
-        with self.database.transaction() as connection:
-            row = connection.execute(
-                "SELECT t.*, p.root_path FROM coder_threads t "
-                "JOIN coder_projects p ON p.id=t.project_id WHERE t.id=?",
-                (thread_id,),
-            ).fetchone()
-        if row is None:
-            raise CoderError("thread_not_found", "Thread not found")
+    async def _start_thread_locked(
+        self,
+        thread_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict[str, Any]:
+        row = self._thread_row(thread_id, principal=principal)
         if row["terminal_session_id"]:
             try:
                 terminal = self.terminal.get(row["terminal_session_id"])
@@ -779,13 +952,10 @@ class CoderManager:
             )
         return self._thread(updated)
 
-    async def stop_thread(self, thread_id: str) -> dict[str, Any]:
-        with self.database.transaction() as connection:
-            row = connection.execute(
-                "SELECT * FROM coder_threads WHERE id=?", (thread_id,)
-            ).fetchone()
-        if row is None:
-            raise CoderError("thread_not_found", "Thread not found")
+    async def stop_thread(
+        self, thread_id: str, *, principal: RequestPrincipal | None = None
+    ) -> dict[str, Any]:
+        row = self._thread_row(thread_id, principal=principal)
         if row["terminal_session_id"]:
             try:
                 await self.terminal.close(row["terminal_session_id"])

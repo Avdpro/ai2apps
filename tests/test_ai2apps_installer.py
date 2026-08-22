@@ -1,5 +1,6 @@
 import json
 import struct
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,10 +8,17 @@ import pytest
 
 from ai2apps.model_installer import (
     AI2AppsInstaller,
+    _read_safetensors_header,
+    build_backbone_checkpoint,
+    build_storage_transition,
+    commit_backbone_index,
     build_deepseek_offset_manifest,
     build_qwen36_offset_manifest,
     checkpoint_is_complete,
     link_cached_snapshot,
+    reclaim_stream_shards,
+    release_hf_cache_revision,
+    resume_storage_transition,
 )
 from omlx.cache.moe_expert_store import ExpertMajorStore, create_expert_major_store
 from omlx.model_discovery import cache_moe_engine_id, discover_models
@@ -20,6 +28,33 @@ from omlx.patches.deepseek_v4.scope_policy import (
     configure_scope_policy,
     load_scope_policy_from_env,
 )
+
+CACHED_MOE_PACKAGE_SRCS = tuple(
+    Path(__file__).parents[1] / "packages" / name / "src"
+    for name in (
+        "omlx-model-deepseek-v4-flash",
+        "omlx-model-deepseek-v4-flash-2bit",
+        "omlx-model-qwen36-cached-moe",
+    )
+)
+for package_src in CACHED_MOE_PACKAGE_SRCS:
+    sys.path.insert(0, str(package_src))
+
+from omlx_model_deepseek_v4_flash import DeepSeekV4FlashAdapter  # noqa: E402
+from omlx_model_deepseek_v4_flash_2bit import DeepSeekV4Flash2BitAdapter  # noqa: E402
+from omlx_model_qwen36_cached_moe import Qwen36CachedMoeAdapter  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _cached_moe_package_registry(monkeypatch):
+    from omlx.model_adapters import ModelAdapterRegistry
+    from omlx.model_adapters import registry as registry_module
+
+    registry = ModelAdapterRegistry(load_entry_points=False)
+    registry.register(DeepSeekV4FlashAdapter())
+    registry.register(DeepSeekV4Flash2BitAdapter())
+    registry.register(Qwen36CachedMoeAdapter())
+    monkeypatch.setattr(registry_module, "_default_registry", registry)
 
 
 def _write_fake_checkpoint(root: Path) -> None:
@@ -104,6 +139,141 @@ def _write_fake_stacked_checkpoint(root: Path) -> None:
     (root / "model.safetensors.index.json").write_text(
         json.dumps({"weight_map": weight_map})
     )
+
+
+def _append_fake_backbone_tensor(root: Path) -> tuple[str, str]:
+    index_path = root / "model.safetensors.index.json"
+    index = json.loads(index_path.read_text())
+    shard = "model-00001-of-00002.safetensors"
+    data_start, header = _read_safetensors_header(root / shard)
+    cursor = max(int(spec["data_offsets"][1]) for spec in header.values())
+    name = "model.layers.0.attn.weight"
+    header[name] = {"dtype": "U32", "shape": [1], "data_offsets": [cursor, cursor + 4]}
+    encoded = json.dumps(header, separators=(",", ":")).encode()
+    payload = (root / shard).read_bytes()[data_start:] + b"ABCD"
+    (root / shard).write_bytes(struct.pack("<Q", len(encoded)) + encoded + payload)
+    index["weight_map"][name] = shard
+    index_path.write_text(json.dumps(index))
+    return name, shard
+
+
+def test_backbone_checkpoint_raw_copies_only_non_expert_tensors(tmp_path: Path):
+    source = tmp_path / "source"
+    _write_fake_stacked_checkpoint(source)
+    name, shard = _append_fake_backbone_tensor(source)
+
+    output = tmp_path / "backbone"
+    manifest = build_backbone_checkpoint(source, output, "deepseek_v4")
+
+    rebuilt_index = json.loads(
+        (output / "model.safetensors.index.json").read_text()
+    )
+    assert rebuilt_index["weight_map"] == {name: shard}
+    rebuilt_start, rebuilt_header = _read_safetensors_header(output / shard)
+    assert set(rebuilt_header) == {name}
+    assert (output / shard).read_bytes()[rebuilt_start:] == b"ABCD"
+    assert manifest["shards"]["model-00002-of-00002.safetensors"]["backbone_file"] is None
+
+
+def test_stream_reclaim_replaces_only_shards_past_their_last_layer(tmp_path: Path):
+    source = tmp_path / "source"
+    _write_fake_stacked_checkpoint(source)
+    _append_fake_backbone_tensor(source)
+    backbone = source / ".ai2apps" / "backbone-staging"
+    build_backbone_checkpoint(source, backbone, "deepseek_v4")
+    offsets = build_deepseek_offset_manifest(source, source / ".ai2apps" / "offsets")
+    transition = build_storage_transition(
+        source,
+        backbone,
+        offsets,
+        repo_id="owner/model",
+        revision="a" * 40,
+        policy="stream_reclaim",
+    )
+
+    released = reclaim_stream_shards(source, transition, completed_layer=0)
+
+    assert set(released) == {
+        "model-00001-of-00002.safetensors",
+        "model-00002-of-00002.safetensors",
+    }
+    committed = commit_backbone_index(source, transition)
+    assert committed["state"] == "prepared"
+    rebuilt = json.loads((source / "model.safetensors.index.json").read_text())
+    assert all("switch_mlp" not in name for name in rebuilt["weight_map"])
+
+
+def test_interrupted_stream_reclaim_is_resumable(tmp_path: Path):
+    source = tmp_path / "source"
+    _write_fake_stacked_checkpoint(source)
+    _append_fake_backbone_tensor(source)
+    backbone = source / ".ai2apps" / "backbone-staging"
+    build_backbone_checkpoint(source, backbone, "deepseek_v4")
+    offsets = build_deepseek_offset_manifest(source, source / ".ai2apps" / "offsets")
+    transition = build_storage_transition(
+        source,
+        backbone,
+        offsets,
+        repo_id="owner/model",
+        revision="a" * 40,
+        policy="stream_reclaim",
+    )
+    reclaim_stream_shards(source, transition, completed_layer=0)
+
+    assert not checkpoint_is_complete(source)
+    assert resume_storage_transition(
+        source,
+        repo_id="owner/model",
+        revision="a" * 40,
+        policy="stream_reclaim",
+    ) == transition
+
+
+def test_release_hf_cache_materializes_links_and_deletes_exact_revision(
+    tmp_path: Path, monkeypatch
+):
+    cache = tmp_path / "hub"
+    repo_cache = cache / "models--owner--model"
+    blob = repo_cache / "blobs" / "abc"
+    blob.parent.mkdir(parents=True)
+    blob.write_text("model metadata")
+    source = tmp_path / "models" / "owner" / "model"
+    source.mkdir(parents=True)
+    (source / "config.json").symlink_to(blob)
+    executed = []
+
+    class Strategy:
+        expected_freed_size = 14
+
+        def execute(self):
+            executed.append(True)
+
+    fake_revision = SimpleNamespace(commit_hash="a" * 40)
+    fake_repo = SimpleNamespace(
+        repo_id="owner/model", repo_type="model", revisions=[fake_revision]
+    )
+    fake_cache = SimpleNamespace(
+        repos=[fake_repo], delete_revisions=lambda revision: Strategy()
+    )
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub, "scan_cache_dir", lambda path: fake_cache)
+    result = release_hf_cache_revision(
+        source,
+        "owner/model",
+        "a" * 40,
+        cache_linked=True,
+    )
+
+    assert result == {
+        "attempted": True,
+        "freed_bytes": 14,
+        "materialized_files": 1,
+        "completed": True,
+    }
+    assert executed == [True]
+    assert not (source / "config.json").is_symlink()
+    assert (source / "config.json").read_text() == "model metadata"
 
 
 def _write_fake_qwen_checkpoint(root: Path) -> None:
@@ -313,13 +483,24 @@ def test_model_local_scope_policy_override(tmp_path: Path):
         clear_scope_policy_override()
 
 
-def test_downloader_ui_exposes_ai2apps_source():
+def test_model_package_config_exposes_weight_download():
     root = Path(__file__).parents[1]
-    template = (root / "ai2apps/web/templates/dashboard/_models.html").read_text()
+    template = (
+        root / "ai2apps/web/templates/dashboard/_modal_model_package.html"
+    ).read_text()
     script = (root / "ai2apps/web/static/js/dashboard.js").read_text()
 
-    assert "downloaderSource = 'ai2apps'" in template
     assert "Download & Prepare" in template
+    assert "Weight source" in template
+    assert "Storage" in template
+    assert "Memory" in template
+    assert "Download activity" in template
+    assert "models.package.complete.title" in template
+    assert "models.package.complete.description" in template
+    assert "models.package.complete.done" in template
+    assert "openModelPackageConfig" in script
+    assert "modelPackageTasks" in script
+    assert "modelPackageLatestTask" in script
     assert "/admin/api/ai2apps/install" in script
     assert "/admin/api/ai2apps/preflight" in script
     assert "dynaPreflight?.ready" in template
@@ -540,8 +721,11 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     manifest = json.loads((source / "ai2apps-model.json").read_text())
     assert manifest["family"] == "qwen3_6"
     assert manifest["engine"]["id"] == "qwen3.6-tiered"
+    assert "scope_asset" not in manifest["engine"]
+    assert "scope_pack" not in manifest["engine"]
     assert manifest["memory_tier"] == "compact"
     assert manifest["version"] == 2
+    assert manifest["execution_modes"] == ["cached", "full"]
     assert manifest["source"]["revision"] == (
         "38740b847e4cb78f352aba30aa41c76e08e6eb46"
     )
@@ -549,6 +733,16 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
         "qwen3.6-affine-q4-gate-up-fused-v2"
     )
     assert manifest["arena_tail_slots"] == 24
+    runtime_scope = Path(manifest["scope"]["profile"])
+    assert runtime_scope.parent == source / ".ai2apps" / "scope-assets"
+    assert runtime_scope.is_file()
+    assert runtime_scope != Path(
+        next(
+            recipe
+            for recipe in AI2AppsInstaller._recipes()
+            if recipe["id"] == "qwen3.6-35b-a3b-4bit"
+        )["engine"]["scope_asset"]
+    )
     assert Path(manifest["expert_store"]).name == "expert-store-fused"
     store_manifest = json.loads(
         (Path(manifest["expert_store"]) / "manifest.json").read_text()

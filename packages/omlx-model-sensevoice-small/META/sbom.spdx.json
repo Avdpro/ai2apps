@@ -1,0 +1,38 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.sensevoice-small-0.2.1",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.sensevoice-small/0.2.1",
+  "creationInfo": {
+    "created": "2026-08-21T00:00:00Z",
+    "creators": ["Organization: AI2Apps"]
+  },
+  "packages": [
+    {
+      "name": "SenseVoiceSmall",
+      "SPDXID": "SPDXRef-SenseVoiceSmall",
+      "versionInfo": "8ddd966bd96243cff196422f81f0c5d955814792",
+      "downloadLocation": "https://huggingface.co/mlx-community/SenseVoiceSmall",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LicenseRef-FunASR-Model-1.1",
+      "licenseDeclared": "LicenseRef-FunASR-Model-1.1",
+      "copyrightText": "Copyright (C) 2023-2028 Alibaba Group. All rights reserved.",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "original-model",
+          "referenceLocator": "https://huggingface.co/FunAudioLLM/SenseVoiceSmall"
+        }
+      ]
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-FunASR-Model-1.1",
+      "extractedText": "See META/licenses/FunASR-MODEL-LICENSE-1.1.txt in this Package.",
+      "name": "FunASR Model Open Source License Agreement 1.1",
+      "seeAlsos": ["https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE"]
+    }
+  ]
+}

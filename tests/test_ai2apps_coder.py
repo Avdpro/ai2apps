@@ -6,13 +6,18 @@ import json
 import os
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
 import pytest
 import yaml
+from fastapi import FastAPI
 
+from ai2apps.api.coder import create_coder_router
 from ai2apps.apps import SYSTEM_APP_MANIFESTS
 from ai2apps.coder import CoderError, CoderManager
+from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.storage import PlatformDatabase
 from ai2apps.terminal import TerminalManager
 
@@ -114,6 +119,153 @@ def coder(tmp_path):
         managed_cli_root=tmp_path / "managed-cli",
         codex_home=tmp_path / "codex-home",
     ), terminal
+
+
+def _principal(user_id: str, role: MemberRole = MemberRole.DEVELOPER):
+    return RequestPrincipal(
+        actor_user_id=user_id,
+        installation_id="installation-1",
+        organization_id="organization-1",
+        billing_account_id="billing-core",
+        role=role,
+        membership_epoch=1,
+    )
+
+
+def test_coder_projects_and_threads_are_isolated_by_principal(coder, tmp_path):
+    manager, _terminal = coder
+    alice = _principal("developer-alice")
+    bob = _principal("developer-bob")
+    alice_project = manager.create_project(
+        name="Alice",
+        root_path=str(tmp_path / "alice"),
+        create_directory=True,
+        principal=alice,
+    )
+    bob_project = manager.create_project(
+        name="Bob",
+        root_path=str(tmp_path / "bob"),
+        create_directory=True,
+        principal=bob,
+    )
+    alice_thread = manager.create_thread(
+        project_id=alice_project["id"],
+        title="Alice thread",
+        agent="codex",
+        principal=alice,
+    )
+    bob_thread = manager.create_thread(
+        project_id=bob_project["id"],
+        title="Bob thread",
+        agent="codex",
+        principal=bob,
+    )
+
+    assert [item["id"] for item in manager.snapshot(principal=alice)["projects"]] == [
+        alice_project["id"]
+    ]
+    assert [item["id"] for item in manager.snapshot(principal=bob)["threads"]] == [
+        bob_thread["id"]
+    ]
+    with pytest.raises(CoderError) as foreign_project:
+        manager.read_project_file(
+            bob_project["id"], "secret.txt", principal=alice
+        )
+    assert foreign_project.value.code == "project_not_found"
+    with pytest.raises(CoderError) as foreign_thread:
+        manager.fork_thread(bob_thread["id"], principal=alice)
+    assert foreign_thread.value.code == "thread_not_found"
+    assert manager.fork_thread(alice_thread["id"], principal=alice)[
+        "parent_thread_id"
+    ] == alice_thread["id"]
+
+
+def test_core_claims_legacy_coder_projects_and_member_is_denied(coder, tmp_path):
+    manager, _terminal = coder
+    legacy = manager.create_project(
+        name="Legacy",
+        root_path=str(tmp_path / "legacy"),
+        create_directory=True,
+    )
+    member = _principal("user-member", MemberRole.MEMBER)
+    core = _principal("user-core", MemberRole.CORE)
+
+    with pytest.raises(CoderError) as denied:
+        manager.snapshot(principal=member)
+    assert denied.value.code == "coder_access_denied"
+    assert [item["id"] for item in manager.snapshot(principal=core)["projects"]] == [
+        legacy["id"]
+    ]
+    with manager.database.transaction() as connection:
+        owner = connection.execute(
+            "SELECT owner_user_id FROM coder_projects WHERE id=?", (legacy["id"],)
+        ).fetchone()[0]
+    assert owner == "user-core"
+
+
+@pytest.mark.asyncio
+async def test_principal_aware_coder_api_blocks_cross_user_ids(coder, tmp_path):
+    manager, _terminal = coder
+    alice = _principal("developer-alice")
+    bob = _principal("developer-bob")
+    member = _principal("user-member", MemberRole.MEMBER)
+
+    def app_for(principal):
+        app = FastAPI()
+        app.include_router(
+            create_coder_router(
+                lambda: SimpleNamespace(coder=manager),
+                lambda: principal,
+            )
+        )
+        return app
+
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app_for(alice)),
+            base_url="http://alice",
+        ) as alice_client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app_for(bob)),
+            base_url="http://bob",
+        ) as bob_client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app_for(member)),
+            base_url="http://member",
+        ) as member_client,
+    ):
+        created = await alice_client.post(
+            "/coder/projects",
+            json={
+                "name": "Alice API",
+                "root_path": str(tmp_path / "alice-api"),
+                "create_directory": True,
+            },
+        )
+        project_id = created.json()["id"]
+        thread = await alice_client.post(
+            f"/coder/projects/{project_id}/threads",
+            json={"title": "Private", "agent": "codex"},
+        )
+        alice_snapshot = await alice_client.get("/coder")
+        bob_snapshot = await bob_client.get("/coder")
+        foreign_files = await bob_client.get(
+            f"/coder/projects/{project_id}/files"
+        )
+        foreign_thread = await bob_client.post(
+            f"/coder/threads/{thread.json()['id']}/fork", json={}
+        )
+        member_denied = await member_client.get("/coder")
+
+    assert created.status_code == 201
+    assert thread.status_code == 201
+    assert [item["id"] for item in alice_snapshot.json()["projects"]] == [
+        project_id
+    ]
+    assert bob_snapshot.json()["projects"] == []
+    assert foreign_files.status_code == 404
+    assert foreign_thread.status_code == 404
+    assert member_denied.status_code == 403
 
 
 def test_coder_resolves_relative_paths_from_default_project_root(coder, tmp_path):

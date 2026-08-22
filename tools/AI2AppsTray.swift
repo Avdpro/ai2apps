@@ -20,7 +20,10 @@ private enum ServiceState {
 
 @MainActor
 final class TrayDelegate: NSObject, NSApplicationDelegate {
-    private let projectDirectory = "/Users/avdpropang/sdk/omlx-moe-cache"
+    private let projectDirectory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .path
     private let port = 8000
 
     private lazy var baseDirectory = FileManager.default.homeDirectoryForCurrentUser

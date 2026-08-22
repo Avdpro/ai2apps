@@ -33,6 +33,9 @@ struct ModelDTO: Codable, Equatable, Sendable, Identifiable {
     /// Lower-level config-derived model class (e.g. `deepseek_v32`,
     /// `glm_moe_dsa`). Used to gate the IndexCache row to DSA models.
     let configModelType: String?
+    /// True when this checkpoint was prepared with a Cached-MoE package and
+    /// can switch between cached and full-resident expert execution.
+    let cacheMoe: Bool?
     /// Native context window from the model's config.json. The Context
     /// Bench target selector hides presets beyond it.
     let modelContextLength: Int?
@@ -73,6 +76,7 @@ struct ModelSettingsDTO: Codable, Equatable, Sendable {
     let modelAlias: String?
     let modelTypeOverride: String?
     let maxContextWindow: Int?
+    let moeExecutionMode: String?
     let maxTokens: Int?
     let temperature: Double?
     let topP: Double?
@@ -142,6 +146,7 @@ struct ModelSettingsPatch: Encodable, Equatable, Sendable {
     var modelAlias: String? = nil
     var modelTypeOverride: String? = nil
     var maxContextWindow: Int? = nil
+    var moeExecutionMode: String? = nil
     var maxTokens: Int? = nil
     var temperature: Double? = nil
     var topP: Double? = nil

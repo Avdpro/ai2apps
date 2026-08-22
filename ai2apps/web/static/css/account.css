@@ -9,10 +9,21 @@
     .account-status::before { content:""; width:7px; height:7px; border-radius:99px; background:#a8a29e; }
     .account-status.online { color:#166534; background:#ecfdf3; }
     .account-status.online::before { background:#16a34a; }
+    .account-status.warning { color:#991b1b; background:#fff1f2; }
+    .account-status.warning::before { background:#dc2626; }
     .account-main { width:min(1040px,calc(100% - 32px)); margin:0 auto; padding:34px 0 54px; }
     .account-note { margin-bottom:18px; padding:12px 14px; border:1px solid #e7e5e4; border-radius:13px; color:#57534e; background:rgba(255,255,255,.75); font-size:11px; line-height:1.5; }
     .account-alert { margin-bottom:16px; padding:11px 13px; border-radius:11px; color:#991b1b; background:#fff1f2; font-size:12px; }
     .account-alert.success { color:#166534; background:#ecfdf3; }
+    .registration-notice { border:1px solid #fecaca; }
+    .account-binding-warning { border-color:#fecaca; background:#fff7f7; }
+    .account-binding-member { border-color:#bbf7d0; background:#f7fff9; }
+    .binding-message { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:start; gap:14px; }
+    .binding-message h2 { margin:1px 0 6px; font-size:15px; }
+    .binding-message p { margin:4px 0 0; color:#57534e; font-size:11px; line-height:1.55; }
+    .binding-icon { width:38px; height:38px; display:grid; place-items:center; border-radius:12px; color:#991b1b; background:#fee2e2; }
+    .account-binding-member .binding-icon { color:#166534; background:#dcfce7; }
+    .binding-icon svg { width:18px; height:18px; }
     .account-auth-wrap { min-height:510px; display:grid; place-items:center; }
     .account-auth { width:min(430px,100%); padding:27px; border:1px solid var(--account-line); border-radius:22px; background:rgba(255,255,255,.94); box-shadow:0 24px 65px rgba(23,23,23,.08); }
     .account-auth h1 { margin:0; font-size:25px; letter-spacing:-.04em; }
@@ -40,17 +51,80 @@
     .account-email { margin-top:3px; color:var(--account-muted); font-size:11px; }
     .account-meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }
     .account-pill { padding:4px 8px; border-radius:99px; color:#57534e; background:#f5f5f4; font-size:9px; font-weight:700; }
+    .account-pill.capacity-full { color:#991b1b; background:#fee2e2; }
     .account-points { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
     .account-point { padding:14px; border-radius:14px; background:var(--account-soft); }
     .account-point strong { display:block; overflow:hidden; text-overflow:ellipsis; font-size:22px; letter-spacing:-.04em; }
     .account-point span { display:block; margin-top:3px; color:var(--account-muted); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
     .account-wide { grid-column:1/-1; }
     .account-entitlements { display:flex; flex-wrap:wrap; gap:6px; }
+    .capacity-note { margin:11px 0 0; line-height:1.5; }
+    .capacity-warning { margin:12px 0 0; color:#991b1b; border-color:#fecaca; background:#fff7f7; }
     .account-ledger { width:100%; border-collapse:collapse; }
     .account-ledger th { padding:9px 10px; color:var(--account-muted); font-size:9px; text-align:left; text-transform:uppercase; letter-spacing:.08em; }
     .account-ledger td { padding:11px 10px; border-top:1px solid #f0efee; font-size:11px; }
     .account-ledger .delta { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; }
     .account-empty { padding:35px; color:var(--account-muted); text-align:center; font-size:11px; }
+    .member-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .member-summary strong,.member-invitation strong,.member-quota strong { display:block; font-size:12px; }
+    .member-summary small,.member-invitation small { display:block; margin-top:3px; color:var(--account-muted); font-size:9px; }
+    .member-invite { display:grid; grid-template-columns:minmax(220px,1fr) 160px auto; align-items:end; gap:10px; margin-top:16px; }
+    .member-invite .account-field { margin:0; }
+    .member-invite .account-button { min-height:42px; }
+    .invitation-loading { display:flex; align-items:center; gap:12px; margin-top:16px; padding:14px; border:1px solid #fde68a; border-radius:14px; color:#78350f; background:#fffbeb; }
+    .invitation-loading strong { display:block; font-size:12px; }
+    .invitation-loading small { display:block; margin-top:3px; color:#92400e; font-size:9px; line-height:1.5; }
+    .invitation-spinner { width:18px; height:18px; flex:0 0 auto; border:2px solid #fcd34d; border-top-color:#92400e; border-radius:50%; animation:invitation-spin .8s linear infinite; }
+    @keyframes invitation-spin { to { transform:rotate(360deg); } }
+    @media(prefers-reduced-motion:reduce){.invitation-spinner{animation:none;border-top-color:#fcd34d;background:#f59e0b}}
+    .member-invitation { margin-top:16px; padding:14px; border-radius:14px; color:#fff; background:#171717; }
+    .member-invitation code { display:block; margin-top:10px; padding:9px 10px; border-radius:9px; color:#d4d4d4; background:#262626; font-size:9px; word-break:break-all; }
+    .invitation-result-head,.pending-invitations-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .invitation-delivery-detail { margin:9px 0 0; color:#d4d4d4; font-size:10px; line-height:1.5; }
+    .invitation-delivery.delivery-sent { color:#166534; background:#dcfce7; }
+    .invitation-delivery.delivery-failed { color:#991b1b; background:#fee2e2; }
+    .invitation-delivery.delivery-pending { color:#92400e; background:#fef3c7; }
+    .invite-qr { display:block; width:min(220px,100%); aspect-ratio:1; margin:14px auto 4px; padding:10px; border-radius:14px; background:#fff; }
+    .pending-invitations { margin-top:18px; padding-top:16px; border-top:1px solid var(--account-line); }
+    .pending-invitations-head strong,.invitation-table td strong { display:block; font-size:12px; }
+    .pending-invitations-head small,.invitation-table td small { display:block; margin-top:3px; color:var(--account-muted); font-size:9px; line-height:1.45; }
+    .invitation-table { margin-top:10px; }
+    .invitation-table td { vertical-align:top; }
+    .invitation-empty { padding:20px; }
+    .member-role-verification { display:grid; grid-template-columns:minmax(260px,420px) 1fr; align-items:end; gap:16px; margin-top:18px; padding-top:16px; border-top:1px solid var(--account-line); }
+    .member-role-verification .account-field { margin:0; }
+    .member-role-verification p,.member-quota p { margin:0; color:var(--account-muted); font-size:10px; line-height:1.5; }
+    .member-table td strong { display:block; font-size:11px; }
+    .member-table td small { display:block; margin-top:3px; color:var(--account-muted); font-size:9px; }
+    .member-role { display:flex; align-items:center; gap:7px; min-width:210px; }
+    .member-role .account-input { width:120px; height:35px; }
+    .member-actions { display:flex; flex-wrap:wrap; gap:6px; min-width:180px; }
+    .account-pill.member-active { color:#166534; background:#ecfdf3; }
+    .device-management-note { display:grid; grid-template-columns:minmax(280px,420px) 1fr; align-items:end; gap:16px; }
+    .device-management-note .account-field { margin:0; }
+    .device-management-note p { margin:0; color:var(--account-muted); font-size:10px; line-height:1.5; }
+    .device-table td { vertical-align:top; }
+    .device-table td strong,.device-table td small { display:block; }
+    .device-table td strong { font-size:11px; }
+    .device-table td small { margin-top:4px; color:var(--account-muted); font-size:9px; line-height:1.45; }
+    .device-table td small .account-pill { display:inline-flex; margin-right:6px; }
+    .device-name-editor { display:flex; align-items:center; gap:7px; min-width:260px; }
+    .device-name-editor .account-input { min-width:180px; height:35px; }
+    .member-quota { display:flex; align-items:center; justify-content:space-between; gap:14px; border-top:1px solid var(--account-line); background:#fafaf9; }
+    .policy-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .policy-form .account-field { margin:0; }
+    .policy-list { min-height:82px; height:auto; padding:10px 12px; resize:vertical; line-height:1.45; }
+    .policy-actions { grid-column:1/-1; display:flex; align-items:center; gap:12px; }
+    .policy-actions small,.member-quota-head p,.member-quota-identity small { color:var(--account-muted); font-size:9px; line-height:1.5; }
+    .member-quota-list { border-top:1px solid var(--account-line); background:#fafaf9; }
+    .member-quota-head { display:flex; align-items:end; justify-content:space-between; gap:16px; }
+    .member-quota-head strong,.member-quota-identity strong { display:block; font-size:12px; }
+    .member-quota-head p { margin:3px 0 0; }
+    .member-quota-head .account-field { width:min(380px,100%); margin:0; }
+    .member-quota-editor { display:grid; grid-template-columns:minmax(140px,.8fr) minmax(180px,1.5fr) minmax(125px,.7fr) minmax(115px,.6fr) auto; align-items:end; gap:10px; margin-top:14px; padding:13px; border:1px solid var(--account-line); border-radius:13px; background:#fff; }
+    .member-quota-editor .account-field { margin:0; }
+    .member-quota-identity { align-self:center; }
+    .member-quota-identity small { display:block; margin-top:3px; }
     .remote-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:12px; }
     .remote-device { padding:15px; border:1px solid var(--account-line); border-radius:14px; background:var(--account-soft); }
     .remote-device-head { display:flex; align-items:flex-start; gap:12px; }
@@ -65,4 +139,4 @@
     .remote-pair code { display:block; margin-top:7px; color:#d4d4d4; font-size:9px; line-height:1.45; word-break:break-all; }
     .remote-qr { display:block; width:min(232px,100%); aspect-ratio:1; margin:12px auto 8px; padding:10px; border-radius:14px; background:#fff; }
     .remote-expiry { display:block; color:#a3a3a3; font-size:9px; text-align:center; }
-    @media(max-width:760px){.account-header{padding:13px 16px}.account-status{display:none}.account-main{padding-top:20px}.account-profile,.remote-grid{grid-template-columns:1fr}.account-points{grid-template-columns:1fr}.account-auth{padding:21px}.account-card-body{padding:15px}.account-ledger th:nth-child(3),.account-ledger td:nth-child(3){display:none}}
+    @media(max-width:760px){.account-header{padding:13px 16px}.account-status{display:none}.account-main{padding-top:20px}.account-profile,.remote-grid,.policy-form{grid-template-columns:1fr}.account-points{grid-template-columns:1fr}.account-auth{padding:21px}.account-card-body{padding:15px}.account-ledger:not(.member-table):not(.invitation-table) th:nth-child(3),.account-ledger:not(.member-table):not(.invitation-table) td:nth-child(3){display:none}.member-invite,.member-role-verification,.member-quota-editor,.binding-message,.device-management-note{grid-template-columns:1fr}.member-invite .account-button{width:100%}.member-quota,.member-quota-head,.policy-actions{align-items:flex-start;flex-direction:column}.policy-actions{grid-column:auto}.invitation-result-head,.pending-invitations-head{align-items:flex-start;flex-direction:column}}

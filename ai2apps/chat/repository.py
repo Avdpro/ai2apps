@@ -10,7 +10,6 @@ from typing import Any
 from ai2apps.config import (
     BUILTIN_CHAT_PACKAGE_ID,
     BUILTIN_CHAT_PACKAGE_VERSION,
-    BUILTIN_CHAT_SINGLETON_KEY,
 )
 from ai2apps.core import (
     EntityIdKind,
@@ -23,6 +22,7 @@ from ai2apps.core import (
     utc_now_text,
 )
 from ai2apps.events import EventStore
+from ai2apps.identity import RequestPrincipal, user_singleton_key
 from ai2apps.storage import (
     BuiltinChatRecord,
     ChatCollectionRecord,
@@ -68,12 +68,25 @@ class ChatContentRecord:
 class ChatRepository:
     """Keep Chat collection state separate from generic Session content."""
 
-    def __init__(self, database: PlatformDatabase, events: EventStore | None = None):
+    def __init__(
+        self,
+        database: PlatformDatabase,
+        events: EventStore | None = None,
+        *,
+        principal: RequestPrincipal | None = None,
+    ):
         self.database = database
         self.events = events or EventStore(database)
+        self.principal = principal or RequestPrincipal.legacy_local()
+        self.owner_user_id = self.principal.actor_user_id
+        self.singleton_key = user_singleton_key(
+            BUILTIN_CHAT_PACKAGE_ID,
+            self.owner_user_id,
+            self.principal.client_scope,
+        )
 
     def ensure_builtin(self, *, trace_id: str | None = None) -> BuiltinChatRecord:
-        """Idempotently seed and resolve the local-user singleton Chat App."""
+        """Idempotently seed and resolve the current actor's Chat App."""
 
         with self.database.transaction() as connection:
             definition = connection.execute(
@@ -85,7 +98,7 @@ class ChatRepository:
             ).fetchone()
             instance = connection.execute(
                 "SELECT * FROM app_instances WHERE singleton_key = ?",
-                (BUILTIN_CHAT_SINGLETON_KEY,),
+                (self.singleton_key,),
             ).fetchone()
             collection = (
                 None
@@ -110,6 +123,13 @@ class ChatRepository:
         ):
             raise ResourceConflictError(
                 "Built-in Chat singleton key belongs to another definition"
+            )
+        if instance is not None and instance["owner_user_id"] not in {
+            None if self.owner_user_id == "local" else self.owner_user_id,
+            self.owner_user_id,
+        }:
+            raise ResourceConflictError(
+                "Built-in Chat singleton belongs to another user"
             )
         if definition is not None and instance is not None and collection is not None:
             return BuiltinChatRecord(
@@ -180,21 +200,68 @@ class ChatRepository:
 
                 instance = connection.execute(
                     "SELECT * FROM app_instances WHERE singleton_key = ?",
-                    (BUILTIN_CHAT_SINGLETON_KEY,),
+                    (self.singleton_key,),
                 ).fetchone()
+                if (
+                    instance is None
+                    and self.principal.is_core
+                    and self.owner_user_id != "local"
+                    and self.principal.client_scope == "desktop"
+                ):
+                    legacy_key = user_singleton_key(
+                        BUILTIN_CHAT_PACKAGE_ID, "local"
+                    )
+                    legacy = connection.execute(
+                        """
+                        SELECT * FROM app_instances
+                        WHERE singleton_key = ? AND owner_user_id IS NULL
+                        """,
+                        (legacy_key,),
+                    ).fetchone()
+                    if legacy is not None:
+                        connection.execute(
+                            """
+                            UPDATE app_instances
+                            SET singleton_key=?, owner_user_id=?,
+                                revision=revision+1, updated_at=?
+                            WHERE id=?
+                            """,
+                            (
+                                self.singleton_key,
+                                self.owner_user_id,
+                                now,
+                                legacy["id"],
+                            ),
+                        )
+                        self.events.append_in_transaction(
+                            connection,
+                            event_type="app.instance.owner_claimed",
+                            subject_id=legacy["id"],
+                            app_instance_id=legacy["id"],
+                            trace_id=trace_id,
+                            payload={
+                                "owner_user_id": self.owner_user_id,
+                                "previous_singleton_key": legacy_key,
+                            },
+                        )
+                        instance = connection.execute(
+                            "SELECT * FROM app_instances WHERE id=?",
+                            (legacy["id"],),
+                        ).fetchone()
                 if instance is None:
                     instance_id = new_entity_id(EntityIdKind.APP_INSTANCE)
                     connection.execute(
                         """
                         INSERT INTO app_instances(
                             id, app_definition_id, singleton_key, status,
-                            state_json, created_at, updated_at
-                        ) VALUES (?, ?, ?, 'active', '{}', ?, ?)
+                            state_json, owner_user_id, created_at, updated_at
+                        ) VALUES (?, ?, ?, 'active', '{}', ?, ?, ?)
                         """,
                         (
                             instance_id,
                             definition["id"],
-                            BUILTIN_CHAT_SINGLETON_KEY,
+                            self.singleton_key,
+                            None if self.owner_user_id == "local" else self.owner_user_id,
                             now,
                             now,
                         ),
@@ -205,7 +272,10 @@ class ChatRepository:
                         subject_id=instance_id,
                         app_instance_id=instance_id,
                         trace_id=trace_id,
-                        payload={"app_definition_id": definition["id"]},
+                        payload={
+                            "app_definition_id": definition["id"],
+                            "owner_user_id": self.owner_user_id,
+                        },
                     )
                     instance = connection.execute(
                         "SELECT * FROM app_instances WHERE id = ?", (instance_id,)
@@ -214,6 +284,13 @@ class ChatRepository:
                 elif instance["app_definition_id"] != definition["id"]:
                     raise ResourceConflictError(
                         "Built-in Chat singleton key belongs to another definition"
+                    )
+                elif instance["owner_user_id"] not in {
+                    None if self.owner_user_id == "local" else self.owner_user_id,
+                    self.owner_user_id,
+                }:
+                    raise ResourceConflictError(
+                        "Built-in Chat singleton belongs to another user"
                     )
 
                 connection.execute(
@@ -301,14 +378,11 @@ class ChatRepository:
             with self.database.transaction(write=True) as connection:
                 if legacy_thread_id is not None:
                     existing = connection.execute(
-                        _THREAD_SELECT + " WHERE e.legacy_thread_id = ?",
-                        (legacy_thread_id,),
+                        _THREAD_SELECT
+                        + " WHERE e.legacy_thread_id = ? AND e.app_instance_id = ?",
+                        (legacy_thread_id, builtin.instance.id),
                     ).fetchone()
                     if existing is not None:
-                        if existing["app_instance_id"] != builtin.instance.id:
-                            raise ResourceConflictError(
-                                "Legacy thread belongs to another Chat collection"
-                            )
                         return chat_thread_from_joined_row(existing), False
                 has_home = connection.execute(
                     """

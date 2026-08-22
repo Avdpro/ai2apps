@@ -1,0 +1,63 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.deepseek-v4-flash-2bit
+name: DeepSeek V4 Flash 2-bit
+description: Isolated full and Cached-MoE Worker for the 2-bit DQ checkpoint.
+version: 0.3.1
+publisher: {id: ai2apps}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit
+    display_name: DeepSeek V4 Flash 2-bit DQ
+    model_type: llm
+    upstream_id: mlx-community/DeepSeek-V4-Flash-2bit-DQ
+    capabilities: [work, conversation]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/DeepSeek-V4-Flash-2bit-DQ
+      revision: 722bf559b7de93575b2320973cf2002e05bfe6c9
+      preparation:
+        recipe: ai2apps/cache-moe/v1
+        install_id: deepseek-v4-flash-2bit
+        family: deepseek_v4
+        execution_modes: [cached, full]
+        storage_policies: [keep_source, delete_after, stream_reclaim]
+        storage_estimates: {source_gb: 90, prepared_gb: 90, keep_peak_gb: 180, stream_peak_gb: 100}
+        engine:
+          id: deepseek-v4-flesh
+          name: DeepSeek V4 Flesh
+          version: 1
+          scope_asset: src/omlx_model_deepseek_v4_flash_2bit/assets/scope-profile.json
+          scope_pack: src/omlx_model_deepseek_v4_flash_2bit/assets/scope-pack.json
+        scope_name: general
+        conversion: {format: omlx-moe-expert-major-set, version: 1, variant: deepseek-v4-expert-major-v1}
+        memory_tiers:
+          - {id: lean, label: Lean, experts: 20, estimated_gb: 17}
+          - {id: compact, label: Compact, experts: 40, estimated_gb: 24}
+          - {id: optimal, label: Optimal, experts: 60, estimated_gb: 30}
+    metadata:
+      family: deepseek_v4
+      quantization: 2bit-dq
+      execution_modes: [cached, full]
+      preparation: cache-moe
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.0.1,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, cached-moe]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned DeepSeek repository cache.
+  accelerator: {metal: true, reason: Run oMLX on Apple GPU.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -10,7 +10,7 @@ import SwiftUI
 
 enum AppSection: String, Hashable, CaseIterable, Identifiable, Sendable {
     case server, status, appearance, network, performance, logs
-    case models, downloads, integrations, quantization
+    case models, modelAdapters, downloads, integrations, quantization
     case throughputBench, accuracyBench, contextBench
     case security, about
 
@@ -46,6 +46,10 @@ enum AppSection: String, Hashable, CaseIterable, Identifiable, Sendable {
             return String(localized: "sidebar.models",
                           defaultValue: "Models",
                           comment: "Sidebar row label / navigation title for the Models section")
+        case .modelAdapters:
+            return String(localized: "sidebar.model_adapters",
+                          defaultValue: "Model Adapters",
+                          comment: "Sidebar row label for installable model support packages")
         case .downloads:
             return String(localized: "sidebar.downloads",
                           defaultValue: "Downloads",
@@ -90,6 +94,7 @@ enum AppSection: String, Hashable, CaseIterable, Identifiable, Sendable {
         case .appearance:      return "paintbrush"
         case .logs:            return "scroll"
         case .models:          return "cube.transparent"
+        case .modelAdapters:   return "shippingbox"
         case .downloads:       return "icloud.and.arrow.down"
         case .integrations:    return "powerplug"
         case .quantization:    return "sparkles"

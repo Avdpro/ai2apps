@@ -25,6 +25,24 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
+def _text_contains_secret(value: str, secret: str) -> bool:
+    return value == secret or (len(secret) >= 8 and secret in value)
+
+
+def _metadata_contains_value(value: Any, secret: str) -> bool:
+    if isinstance(value, str):
+        return _text_contains_secret(value, secret)
+    if isinstance(value, dict):
+        return any(
+            _metadata_contains_value(key, secret)
+            or _metadata_contains_value(item, secret)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_metadata_contains_value(item, secret) for item in value)
+    return False
+
+
 class SecretRepository:
     def __init__(
         self, database: PlatformDatabase, events: EventStore, backend: SecretBackend
@@ -50,6 +68,12 @@ class SecretRepository:
     ) -> SecretRecord:
         if not name.strip() or not value:
             raise ValueError("Secret name and value cannot be empty")
+        if _text_contains_secret(name, value) or _text_contains_secret(
+            purpose, value
+        ) or _metadata_contains_value(
+            metadata or {}, value
+        ):
+            raise ValueError("Secret value cannot appear in metadata")
         secret_id = new_entity_id(EntityIdKind.SECRET)
         backend_key = secret_id
         now = utc_now_text()
@@ -104,6 +128,12 @@ class SecretRepository:
             ).fetchone()
         if row is None:
             raise ResourceNotFoundError("secret", secret_id)
+        if (
+            _text_contains_secret(str(row["name"]), value)
+            or _text_contains_secret(str(row["purpose"]), value)
+            or _metadata_contains_value(json.loads(row["metadata_json"]), value)
+        ):
+            raise ValueError("Secret value cannot appear in metadata")
         self.backend.store(row["backend_key"], value)
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
@@ -115,6 +145,16 @@ class SecretRepository:
                 payload={"name": row["name"]},
             )
         return self.get(secret_id)
+
+    def last_use(self, secret_id: str) -> tuple[Any, str | None]:
+        """Return audited usage metadata without resolving the secret value."""
+
+        event = self.events.latest_for_subject(
+            secret_id, event_type="secret.injected"
+        )
+        if event is None:
+            return None, None
+        return event.occurred_at, str(event.payload.get("tool_name") or "") or None
 
     def delete(self, secret_id: str) -> SecretRecord:
         with self.database.transaction() as connection:
@@ -144,12 +184,49 @@ class SecretRepository:
                 "SELECT * FROM secret_records WHERE id = ? AND status = 'active'",
                 (secret_id,),
             ).fetchone()
+            consumer = connection.execute(
+                """
+                SELECT s.source,s.execution_mode
+                FROM tool_descriptors t
+                JOIN service_descriptors s ON s.id=t.service_id
+                WHERE t.qualified_name=?
+                """,
+                (tool_name,),
+            ).fetchone()
         if row is None:
             raise ResourceNotFoundError("secret", secret_id)
+        if (
+            consumer is not None
+            and consumer["source"] == "installed"
+            and consumer["execution_mode"] == "external"
+        ):
+            self.events.append(
+                event_type="secret.injection_denied",
+                subject_id=secret_id,
+                payload={"tool_name": tool_name, "reason": "external_service"},
+            )
+            raise ResourceConflictError(
+                "Installed external Services cannot receive Secret values; "
+                "use a managed Service or a Host-brokered provider operation"
+            )
         allowed = tuple(json.loads(row["allowed_tools_json"]))
         if not allowed or not any(fnmatch.fnmatchcase(tool_name, item) for item in allowed):
+            self.events.append(
+                event_type="secret.injection_denied",
+                subject_id=secret_id,
+                payload={"tool_name": tool_name, "reason": "tool_scope"},
+            )
             raise ResourceConflictError(f"Secret {secret_id} is not allowed for {tool_name}")
-        return self.backend.load(row["backend_key"])
+        value = self.backend.load(row["backend_key"])
+        # Record successful disclosure without ever placing the value in
+        # SQLite. Denied attempts remain visible through the Tool invocation
+        # failure audit, while this event answers which Secret was disclosed.
+        self.events.append(
+            event_type="secret.injected",
+            subject_id=secret_id,
+            payload={"tool_name": tool_name},
+        )
+        return value
 
     def inject_arguments(self, arguments: dict[str, Any], tool_name: str) -> SecretInjection:
         values: list[str] = []

@@ -532,6 +532,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
+
+    /// Receive Cloud's one-use member handoff without exchanging it in the
+    /// native process. Opening the local completion page keeps the resulting
+    /// HttpOnly session in the browser that will use AI2Apps Local.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            guard url.scheme?.lowercased() == "ai2apps",
+                  url.host?.lowercased() == "auth",
+                  url.path == "/complete",
+                  let fragment = URLComponents(
+                    url: url,
+                    resolvingAgainstBaseURL: false
+                  )?.fragment,
+                  fragment.hasPrefix("handoff=")
+            else { continue }
+
+            guard let base = AppConfig.httpURL(
+                host: services.config.host,
+                port: services.config.port,
+                path: "/auth/complete"
+            ), var local = URLComponents(
+                url: base,
+                resolvingAgainstBaseURL: false
+            ) else { continue }
+
+            local.fragment = fragment
+            if let completionURL = local.url {
+                NSWorkspace.shared.open(completionURL)
+            }
+        }
+    }
 }
 
 extension AppDelegate: AppControlHandling {

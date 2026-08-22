@@ -1,0 +1,62 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.vibevoice-0.5b
+name: VibeVoice Realtime 0.5B
+description: Long-form and multi-speaker local VibeVoice synthesis Worker.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license: {name: MIT License, id: MIT, path: META/licenses/MIT.txt}
+attribution:
+  notice: META/NOTICE.md
+  original_model: https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B
+  conversion: https://huggingface.co/mlx-community/VibeVoice-Realtime-0.5B-4bit
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.vibevoice-0.5b/realtime-4bit
+    display_name: VibeVoice Realtime 0.5B 4-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/VibeVoice-Realtime-0.5B-4bit
+    capabilities: [speech_generation, named_voices, long_form, multi_speaker]
+    metadata: {family: vibevoice, variant: realtime, long_form: true, multi_speaker: true}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/VibeVoice-Realtime-0.5B-4bit
+      revision: 550877a15358642c1e062aa38ce1fe0623beaa1b
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [en]
+      formats: {input: [], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: native, voices: [en-Carter_man, en-Davis_man, en-Emma_woman, en-Frank_man, en-Grace_woman, en-Mike_man]}
+        speed: {mode: unsupported}
+        emotion: {mode: unsupported, values: []}
+        instructions: {mode: unsupported}
+        voice_profiles: {mode: unsupported}
+        long_form: {mode: native}
+        multi_speaker: {mode: native, max_speakers: 32}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned VibeVoice checkpoint.}
+  accelerator: {metal: true, reason: Run long-form speech synthesis with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 45}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import os
+import platform
 import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -23,6 +24,8 @@ from ai2apps.api.router import create_ai2apps_router
 from ai2apps.capabilities import GrantScope
 from ai2apps.chat import ChatRepository
 from ai2apps.config import PlatformConfig
+from ai2apps.identity import RequestPrincipal
+from ai2apps.model_providers import list_package_models, proxy_package_json
 from ai2apps.packages import (
     PackageError,
     PackageFile,
@@ -69,18 +72,22 @@ def _build_package(
     service_key="example.echo",
     version="1.0.0",
     publisher="example.publisher",
-    mode="embedded",
+    mode="process",
     dependencies=(),
     source: str | None = None,
     endpoint: str | None = None,
     variants: list[dict] | None = None,
     models: list[dict] | None = None,
+    model_worker: bool = False,
 ):
     runtime = {
         "mode": mode,
         "protocol": "internal-asgi" if mode == "embedded" else "http-json",
     }
-    if mode == "embedded":
+    if model_worker:
+        runtime["protocol"] = "ai2apps-model-worker/v1"
+        runtime["adapter"] = "src/adapter.py:create_adapter"
+    elif mode == "embedded":
         runtime["entrypoint"] = "echo:create"
     elif mode == "process":
         runtime["command"] = [
@@ -142,7 +149,7 @@ def _build_package(
         "dataLicense": "CC0-1.0",
         "packages": [],
     }
-    if source is None:
+    if source is None and mode == "embedded":
         source = f"""
 async def echo(arguments, context):
     return {{"value": arguments["value"], "version": "{version}"}}
@@ -150,10 +157,40 @@ async def echo(arguments, context):
 def create():
     return {{"tools": {{"{service_key}.echo": echo}}}}
 """
+    elif source is None and model_worker:
+        source = """
+class Adapter:
+    def __init__(self, context): self.context = context
+    async def invoke(self, request):
+        return {"object": "chat.completion", "model": request.payload.get("model"), "choices": []}
+def create_adapter(context): return Adapter(context)
+"""
+    elif source is None:
+        source = f"""
+import json, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({{"status": "ok"}}).encode()
+        self.send_response(200); self.end_headers(); self.wfile.write(body)
+    def do_POST(self):
+        size = int(self.headers.get("content-length", "0"))
+        value = json.loads(self.rfile.read(size) or b"{{}}")
+        body = json.dumps({{"value": value.get("value"), "version": "{version}"}}).encode()
+        self.send_response(200); self.end_headers(); self.wfile.write(body)
+    def log_message(self, *args): pass
+HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"""
     immutable = {
         "service.yaml": yaml.safe_dump(manifest, sort_keys=True).encode(),
         "META/sbom.spdx.json": json.dumps(sbom, sort_keys=True).encode(),
-        "src/echo.py" if mode == "embedded" else "src/server.py": source.encode(),
+        (
+            "src/adapter.py"
+            if model_worker
+            else "src/echo.py"
+            if mode == "embedded"
+            else "src/server.py"
+        ): source.encode(),
     }
     files = tuple(
         PackageFile(
@@ -211,7 +248,7 @@ def test_archive_digest_hash_sbom_and_traversal_are_fail_closed(tmp_path):
     assert {item.path for item in inspected.files} == {
         "service.yaml",
         "META/sbom.spdx.json",
-        "src/echo.py",
+        "src/server.py",
     }
 
     unsafe = tmp_path / "unsafe.ai2service"
@@ -220,6 +257,55 @@ def test_archive_digest_hash_sbom_and_traversal_are_fail_closed(tmp_path):
     with pytest.raises(PackageError) as error:
         ServicePackageArchive.inspect(unsafe)
     assert error.value.code == "unsafe_archive_path"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "https://example.com:443",
+        "http://example.com:9000",
+        "http://127.0.0.1:9000?redirect=https://example.com",
+        "http://user:pass@127.0.0.1:9000",
+        "http://127.0.0.1",
+    ),
+)
+def test_installed_external_service_endpoint_is_loopback_only(tmp_path, endpoint):
+    private = Ed25519PrivateKey.generate()
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.external-denied",
+        mode="external",
+        endpoint=endpoint,
+    )
+
+    with pytest.raises(PackageError) as error:
+        ServicePackageArchive.inspect(archive)
+
+    assert error.value.code == "external_endpoint_not_local"
+
+
+def test_managed_service_cannot_redirect_host_calls_to_remote_endpoint(tmp_path):
+    private = Ed25519PrivateKey.generate()
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.managed-redirect",
+        mode="process",
+    )
+    with zipfile.ZipFile(archive, "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    manifest = yaml.safe_load(files["service.yaml"])
+    manifest["runtime"]["endpoint"] = "https://collector.example:443"
+    files["service.yaml"] = yaml.safe_dump(manifest, sort_keys=True).encode()
+    with zipfile.ZipFile(archive, "w") as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+
+    with pytest.raises(PackageError) as error:
+        ServicePackageArchive.inspect(archive)
+
+    assert error.value.code == "managed_endpoint_not_local"
 
 
 def test_archive_validates_installable_model_provider_contract(tmp_path):
@@ -246,6 +332,7 @@ def test_archive_validates_installable_model_provider_contract(tmp_path):
         tmp_path,
         private,
         service_key="example.embedded-model",
+        mode="embedded",
         models=[
             {
                 "id": "example.embedded-model/chat-v1",
@@ -259,7 +346,7 @@ def test_archive_validates_installable_model_provider_contract(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_signature_trust_and_audit_gate_precede_embedded_execution(tmp_path):
+async def test_signature_trust_gate_precedes_in_process_runtime_denial(tmp_path):
     runtime = _runtime(tmp_path)
     private = Ed25519PrivateKey.generate()
     marker = tmp_path / "executed"
@@ -269,7 +356,7 @@ Path({str(marker)!r}).write_text("executed")
 def create():
     return {{"tools": {{}}}}
 """
-    archive, _ = _build_package(tmp_path, private, source=source)
+    archive, _ = _build_package(tmp_path, private, mode="embedded", source=source)
 
     with pytest.raises(PackageError) as unknown:
         await runtime.package_manager.install(archive, approve_audit_review=True)
@@ -284,87 +371,87 @@ def create():
 
     _publisher(runtime, private, status=TrustStatus.TRUSTED)
 
-    async def reject(_request):
-        return {
-            "decision": "reject",
-            "risk": "high",
-            "model": "audit-model",
-            "evidence": {"finding": "test rejection"},
-        }
-
-    runtime.bind_service_package_auditor(reject)
     with pytest.raises(PackageError) as rejected:
-        await runtime.package_manager.install(archive)
-    assert rejected.value.code == "audit_rejected"
+        await runtime.package_manager.install(archive, approve_audit_review=True)
+    assert rejected.value.code == "third_party_in_process_denied"
     assert not marker.exists()
     assert runtime.package_repository.installed() == ()
 
 
 @pytest.mark.asyncio
-async def test_embedded_install_upgrade_failed_upgrade_and_rollback(tmp_path):
+async def test_embedded_alias_is_denied_without_executing_package_code(tmp_path):
     runtime = _runtime(tmp_path)
     private = Ed25519PrivateKey.generate()
     _publisher(runtime, private)
-    first_archive, first_digest = _build_package(tmp_path, private, version="1.0.0")
-    first = await runtime.package_manager.install(
-        first_archive, approve_audit_review=True
+    marker = tmp_path / "host-process-executed"
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        mode="embedded",
+        source=f"from pathlib import Path\nPath({str(marker)!r}).write_text('bad')\n",
     )
-    assert first.status.value == "active"
-    service = runtime.services.get_service("example.echo")
-    assert service.runtime_mode is ServiceRuntimeMode.IN_PROCESS
-    assert service.package_digest == first_digest
-    assert Path(first.store_path).stat().st_mode & 0o222 == 0
-    result = await runtime.tools.execute(
-        "example.echo.echo",
-        {"value": "one"},
-        context=ToolCallContext(caller_id="test"),
-    )
-    assert result.output == {"value": "one", "version": "1.0.0"}
 
-    broken_source = "raise RuntimeError('must roll back before activation')"
-    broken_archive, broken_digest = _build_package(
-        tmp_path, private, version="1.5.0", source=broken_source
-    )
-    with pytest.raises(RuntimeError, match="must roll back"):
-        await runtime.package_manager.install(broken_archive, approve_audit_review=True)
-    assert (
-        runtime.package_repository.active("example.echo").package_digest == first_digest
-    )
-    assert (
-        runtime.package_repository.get_by_digest(broken_digest).status.value
-        == "uninstalled"
-    )
-    assert (
-        await runtime.tools.execute(
-            "example.echo.echo",
-            {"value": "safe"},
-            context=ToolCallContext(caller_id="test"),
-        )
-    ).output["version"] == "1.0.0"
+    with pytest.raises(PackageError) as denied:
+        await runtime.package_manager.install(archive, approve_audit_review=True)
 
-    second_archive, second_digest = _build_package(tmp_path, private, version="2.0.0")
-    await runtime.package_manager.install(second_archive, approve_audit_review=True)
-    assert (
-        runtime.package_repository.active("example.echo").package_digest
-        == second_digest
-    )
-    assert (
-        await runtime.tools.execute(
-            "example.echo.echo",
-            {"value": "two"},
-            context=ToolCallContext(caller_id="test"),
-        )
-    ).output["version"] == "2.0.0"
+    assert denied.value.code == "third_party_in_process_denied"
+    assert not marker.exists()
 
-    rolled_back = await runtime.package_manager.rollback("example.echo")
-    assert rolled_back.package_digest == first_digest
-    assert (
-        await runtime.tools.execute(
-            "example.echo.echo",
-            {"value": "back"},
-            context=ToolCallContext(caller_id="test"),
+
+@pytest.mark.asyncio
+async def test_registry_verified_service_cannot_bypass_in_process_denial(tmp_path):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    archive, _ = _build_package(tmp_path, private, mode="embedded")
+    inspected = ServicePackageArchive.inspect(archive)
+
+    with pytest.raises(PackageError) as denied:
+        await runtime.package_manager.install_verified_package(
+            inspected,
+            {"trust": "ai2apps-cloud-registry-v1"},
+            approve_audit_review=True,
         )
-    ).output["version"] == "1.0.0"
+
+    assert denied.value.code == "third_party_in_process_denied"
+    assert runtime.package_repository.installed() == ()
+
+
+@pytest.mark.asyncio
+async def test_registry_verified_service_stores_active_dependency_locks(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+    async def no_runtime_start(_package):
+        return None
+
+    monkeypatch.setattr(runtime.package_manager.runtime, "start", no_runtime_start)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    dependency, dependency_digest = _build_package(
+        tmp_path, private, service_key="example.registry-base", version="1.2.0"
+    )
+    await runtime.package_manager.install(
+        dependency, approve_audit_review=True
+    )
+    root, root_digest = _build_package(
+        tmp_path,
+        private,
+        service_key="example.registry-consumer",
+        dependencies=(("example.registry-base", ">=1,<2", False),),
+    )
+    inspected = ServicePackageArchive.inspect(root)
+
+    installed = await runtime.package_manager.install_verified_package(
+        inspected,
+        {"trust": "test-registry"},
+        approve_audit_review=True,
+    )
+
+    assert installed.package_digest == root_digest
+    locks = runtime.package_repository.locks(root_digest)
+    assert [(item.dependency_key, item.dependency_digest) for item in locks] == [
+        ("example.registry-base", dependency_digest)
+    ]
 
 
 @pytest.mark.asyncio
@@ -402,6 +489,62 @@ async def test_dependencies_lock_order_and_prevent_disable_uninstall(tmp_path):
     with pytest.raises(PackageError) as uninstall:
         await runtime.package_manager.uninstall("example.base")
     assert uninstall.value.code == "service_has_dependents"
+
+
+@pytest.mark.asyncio
+async def test_provider_activation_and_dependent_relock_are_atomic(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+
+    async def no_start_or_stop(_package):
+        return None
+
+    monkeypatch.setattr(runtime.package_manager.runtime, "start", no_start_or_stop)
+    monkeypatch.setattr(runtime.package_manager.runtime, "stop", no_start_or_stop)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    provider_v1, provider_v1_digest = _build_package(
+        tmp_path, private, service_key="example.provider", version="1.0.0"
+    )
+    consumer, consumer_digest = _build_package(
+        tmp_path,
+        private,
+        service_key="example.consumer-atomic",
+        dependencies=(("example.provider", ">=1,<2", False),),
+    )
+    await runtime.package_manager.install(
+        consumer,
+        dependency_archives=(provider_v1,),
+        approve_audit_review=True,
+    )
+    provider_v2, provider_v2_digest = _build_package(
+        tmp_path, private, service_key="example.provider", version="1.1.0"
+    )
+    inspected = ServicePackageArchive.inspect(provider_v2)
+    store, _created = runtime.package_manager._store(inspected)
+    runtime.package_repository.record_install(
+        inspected,
+        store_path=str(store),
+        verification={"signature": {}, "audit": {}},
+    )
+
+    runtime.package_repository.activate_with_relocked_dependents(
+        "example.provider",
+        provider_v2_digest,
+        (consumer_digest,),
+    )
+
+    assert runtime.package_repository.active("example.provider").package_digest == (
+        provider_v2_digest
+    )
+    assert runtime.package_repository.get_by_digest(provider_v1_digest).status.value == (
+        "retained"
+    )
+    locks = runtime.package_repository.locks(consumer_digest)
+    assert [(item.dependency_version, item.dependency_digest) for item in locks] == [
+        ("1.1.0", provider_v2_digest)
+    ]
 
 
 @pytest.mark.asyncio
@@ -476,6 +619,122 @@ HTTPServer(("127.0.0.1",int(sys.argv[1])),Handler).serve_forever()
     await runtime.package_manager.restart("example.managed")
     await runtime.package_manager.uninstall("example.managed")
     assert runtime.package_repository.active("example.managed") is None
+
+
+@pytest.mark.asyncio
+async def test_system_model_worker_package_install_route_and_auth(tmp_path, monkeypatch):
+    runtime = _runtime(tmp_path)
+    monkeypatch.setattr(
+        runtime.package_manager.supervisor,
+        "_sandbox_command",
+        lambda command, *args, **kwargs: command,
+    )
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.worker",
+        mode="process",
+        model_worker=True,
+        models=[
+            {
+                "id": "example.worker/chat",
+                "display_name": "Worker Chat",
+                "model_type": "llm",
+                "upstream_id": "example-checkpoint",
+            }
+        ],
+    )
+
+    await runtime.package_manager.install(archive, approve_audit_review=True)
+    model = list_package_models(runtime)[0]
+    assert model.internal_headers is not None
+    assert model.internal_headers["Authorization"].startswith("Bearer ")
+
+    response = await proxy_package_json(
+        model,
+        "chat_completions",
+        {"model": model.id, "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert response.status_code == 200
+    assert json.loads(response.body)["model"] == "example-checkpoint"
+    await runtime.package_manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_failed_first_activation_can_retry_same_package_digest(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.retry",
+        mode="process",
+    )
+    attempts = 0
+
+    async def start_once_ready(_package):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PackageError("service_start_failed", "first start failed")
+
+    monkeypatch.setattr(runtime.package_manager.runtime, "start", start_once_ready)
+
+    with pytest.raises(PackageError, match="first start failed"):
+        await runtime.package_manager.install(archive, approve_audit_review=True)
+    assert runtime.package_repository.installed("example.retry") == ()
+
+    installed = await runtime.package_manager.install(
+        archive, approve_audit_review=True
+    )
+
+    assert attempts == 2
+    assert installed.status.value == "active"
+    assert runtime.package_repository.active("example.retry") is not None
+    await runtime.package_manager.shutdown()
+
+
+@pytest.mark.skipif(platform.system() != "Darwin", reason="macOS sandbox integration")
+@pytest.mark.asyncio
+async def test_system_model_worker_runs_inside_macos_package_sandbox(tmp_path):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.sandboxed-worker",
+        mode="process",
+        model_worker=True,
+        models=[
+            {
+                "id": "example.sandboxed-worker/chat",
+                "display_name": "Sandboxed Worker Chat",
+                "model_type": "llm",
+                "upstream_id": "sandboxed-checkpoint",
+            }
+        ],
+    )
+
+    try:
+        await runtime.package_manager.install(archive, approve_audit_review=True)
+    except PackageError as exc:
+        logs = runtime.package_repository.logs("example.sandboxed-worker")
+        pytest.fail(f"sandboxed Model Worker failed: {exc}; logs={logs}")
+    model = list_package_models(runtime)[0]
+    response = await proxy_package_json(
+        model,
+        "chat_completions",
+        {"model": model.id, "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert response.status_code == 200
+    assert json.loads(response.body)["model"] == "sandboxed-checkpoint"
+    await runtime.package_manager.shutdown()
 
 
 @pytest.mark.asyncio
@@ -571,7 +830,7 @@ async def test_tampered_installed_source_cannot_restart(tmp_path):
     _publisher(runtime, private)
     archive, _ = _build_package(tmp_path, private)
     package = await runtime.package_manager.install(archive, approve_audit_review=True)
-    source = Path(package.store_path) / "src" / "echo.py"
+    source = Path(package.store_path) / "src" / "server.py"
     source.chmod(0o644)
     source.write_text("def create(): return {'tools': {}}", encoding="utf-8")
     with pytest.raises(PackageError) as error:
@@ -610,7 +869,7 @@ async def test_package_management_api_inspect_audit_install_and_detail(tmp_path)
     )
     archive, digest = _build_package(tmp_path, private)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -685,6 +944,31 @@ def test_signed_accelerator_variant_selection_is_deterministic(tmp_path):
     )
     inspected = runtime.package_manager.inspect(archive)
     assert runtime.package_manager._select_variant(inspected) == "cuda-fast"
+
+
+def test_service_package_rejects_os_below_declared_minimum(tmp_path):
+    from ai2apps.packages import CompatibilityContext
+
+    runtime = _runtime(tmp_path)
+    current = runtime.package_manager.compatibility
+    runtime.package_manager.compatibility = CompatibilityContext(
+        os_name="darwin",
+        architecture="arm64",
+        python_version=current.python_version,
+        os_version="15.6.1",
+    )
+    package = type(
+        "Package",
+        (),
+        {"manifest": type("Manifest", (), {"raw": {"requires": {}}})()},
+    )()
+
+    with pytest.raises(PackageError) as error:
+        runtime.package_manager._check_requirements(
+            {"os": ["macos"], "minimum_os_version": "26.2"}, package
+        )
+    assert error.value.code == "os_version_too_old"
+    assert error.value.details == {"current": "15.6.1", "minimum": "26.2"}
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,11 @@
 import io
 import json
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
 
-from ai2apps.model_installer import CATALOG
+from ai2apps.model_installer import AI2AppsInstaller
 from ai2apps.release_gate import (
     check_archives,
     check_catalog,
@@ -13,8 +14,27 @@ from ai2apps.release_gate import (
     main,
 )
 
+for name in ("omlx-model-deepseek-v4-flash", "omlx-model-deepseek-v4-flash-2bit", "omlx-model-qwen36-cached-moe"):
+    sys.path.insert(0, str(Path(__file__).parents[1] / "packages" / name / "src"))
+from omlx_model_deepseek_v4_flash import DeepSeekV4FlashAdapter  # noqa: E402
+from omlx_model_deepseek_v4_flash_2bit import DeepSeekV4Flash2BitAdapter  # noqa: E402
+from omlx_model_qwen36_cached_moe import Qwen36CachedMoeAdapter  # noqa: E402
 
-def test_catalog_release_checks_pass():
+
+def _install_cached_moe_registry(monkeypatch):
+    from omlx.model_adapters import ModelAdapterRegistry
+    from omlx.model_adapters import registry as registry_module
+
+    registry = ModelAdapterRegistry(load_entry_points=False)
+    for adapter in (DeepSeekV4FlashAdapter(), DeepSeekV4Flash2BitAdapter(), Qwen36CachedMoeAdapter()):
+        registry.register(adapter)
+    monkeypatch.setattr(registry_module, "_default_registry", registry)
+
+
+def test_catalog_release_checks_pass(monkeypatch):
+    _install_cached_moe_registry(monkeypatch)
+
+
     checks = []
     check_catalog(checks)
 
@@ -23,9 +43,10 @@ def test_catalog_release_checks_pass():
     assert sum(item.check == "catalog.pinned_revision" for item in checks) == 3
 
 
-def test_evidence_gate_enforces_parity_speed_and_memory(tmp_path: Path):
+def test_evidence_gate_enforces_parity_speed_and_memory(tmp_path: Path, monkeypatch):
+    _install_cached_moe_registry(monkeypatch)
     evidence = evidence_template()
-    for recipe in CATALOG:
+    for recipe in AI2AppsInstaller._recipes():
         model = evidence["models"][recipe["id"]]
         for key in model["correctness"]:
             if key != "long_decode_tokens":
@@ -46,7 +67,8 @@ def test_evidence_gate_enforces_parity_speed_and_memory(tmp_path: Path):
     assert {item.status for item in checks} == {"pass"}
 
 
-def test_preflight_cli_writes_reports(tmp_path: Path):
+def test_preflight_cli_writes_reports(tmp_path: Path, monkeypatch):
+    _install_cached_moe_registry(monkeypatch)
     json_path = tmp_path / "gate.json"
     markdown_path = tmp_path / "gate.md"
 
@@ -69,12 +91,6 @@ def test_preflight_cli_writes_reports(tmp_path: Path):
 def _write_test_wheel(path: Path, requirement: str) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("ai2apps/model_installer.py", "")
-        archive.writestr(
-            "ai2apps/engines/deepseek_v4_flash/scope-pack.json", "{}"
-        )
-        archive.writestr(
-            "ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json", "{}"
-        )
         archive.writestr("ai2apps/remote/bin/darwin-arm64/frpc", "arm64")
         archive.writestr("ai2apps/remote/bin/darwin-x86_64/frpc", "x86_64")
         archive.writestr("ai2apps/remote/third_party/frp-LICENSE", "license")
@@ -129,8 +145,6 @@ def test_sdist_gate_reads_top_level_metadata_when_egg_info_is_present(
         "ai2apps-0.1/PKG-INFO": metadata,
         "ai2apps-0.1/ai2apps.egg-info/PKG-INFO": metadata,
         "ai2apps-0.1/ai2apps/model_installer.py": b"",
-        "ai2apps-0.1/ai2apps/engines/deepseek_v4_flash/scope-pack.json": b"{}",
-        "ai2apps-0.1/ai2apps/engines/qwen3_6_35b_a3b/scope-pack.json": b"{}",
         "ai2apps-0.1/ai2apps/remote/bin/darwin-arm64/frpc": b"arm64",
         "ai2apps-0.1/ai2apps/remote/bin/darwin-x86_64/frpc": b"x86_64",
         "ai2apps-0.1/ai2apps/remote/third_party/frp-LICENSE": b"license",

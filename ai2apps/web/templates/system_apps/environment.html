@@ -1,0 +1,194 @@
+{% extends "system_apps/base.html" %}
+
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ static('css/environment.css') }}">
+{% endblock %}
+
+{% block system_app_content %}
+<section x-data="environmentCheck()" x-init="scan(false)" class="environment-app">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-8">
+        <div>
+            <div class="flex items-center gap-2 mb-3">
+                <span class="env-kicker">SYSTEM READINESS</span>
+                <span class="env-live"><span></span> LOCAL</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">环境与配置检查</h1>
+            <p class="mt-3 text-sm text-neutral-500 max-w-2xl leading-6">
+                验证本机硬件、Python / Hugging Face / MLX 组件和存储状态，并依据可用资源给出模型与运行参数建议。
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button @click="scan(false)" :disabled="loading"
+                    class="env-button env-button-secondary">
+                <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading && 'animate-spin'"></i>
+                快速检查
+            </button>
+            <button @click="scan(true)" :disabled="loading"
+                    class="env-button env-button-primary">
+                <i data-lucide="radar" class="w-4 h-4"></i>
+                深度检查
+            </button>
+        </div>
+    </div>
+
+    <div x-show="error" x-cloak class="env-error mb-6">
+        <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0"></i>
+        <span x-text="error"></span>
+    </div>
+
+    <div x-show="loading && !report" class="env-loading">
+        <div class="env-scan-line"></div>
+        <p>正在读取设备、依赖与存储状态…</p>
+    </div>
+
+    <template x-if="report">
+        <div>
+            <div class="env-overview" :data-status="report.status">
+                <div class="env-score-block">
+                    <div class="env-score-ring">
+                        <span x-text="passedCount()"></span><small x-text="'/' + report.checks.length"></small>
+                    </div>
+                    <div>
+                        <p class="env-label">总体状态</p>
+                        <h2 x-text="overallLabel()"></h2>
+                        <p x-text="report.host.chip + ' · ' + report.host.architecture"></p>
+                    </div>
+                </div>
+                <div class="env-metric">
+                    <span>统一内存</span>
+                    <strong x-text="formatBytes(report.memory.total_bytes)"></strong>
+                    <small x-text="'可用 ' + formatBytes(report.memory.available_bytes)"></small>
+                </div>
+                <div class="env-metric">
+                    <span>Metal / GPU</span>
+                    <strong x-text="report.host.apple_silicon ? 'Apple GPU' : '不可用'"></strong>
+                    <small x-text="report.host.metal_memory_is_unified ? '使用统一内存' : '需要 Apple Silicon'"></small>
+                </div>
+                <div class="env-metric">
+                    <span>模型磁盘</span>
+                    <strong x-text="formatBytes(report.disk.free_bytes)"></strong>
+                    <small>当前可用空间</small>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 mt-5">
+                <div class="xl:col-span-7 space-y-5">
+                    <article class="env-panel">
+                        <div class="env-panel-head">
+                            <div>
+                                <p class="env-label">HEALTH CHECKS</p>
+                                <h3>系统健康状态</h3>
+                            </div>
+                            <span class="env-timestamp" x-text="lastScanLabel"></span>
+                        </div>
+                        <div class="env-check-list">
+                            <template x-for="check in report.checks" :key="check.id">
+                                <div class="env-check-row">
+                                    <span class="env-status-icon" :data-status="check.status">
+                                        <i :data-lucide="statusIcon(check.status)" class="w-4 h-4"></i>
+                                    </span>
+                                    <div>
+                                        <strong x-text="check.title"></strong>
+                                        <p x-text="check.detail"></p>
+                                    </div>
+                                    <span class="env-status-text" :data-status="check.status" x-text="statusLabel(check.status)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </article>
+
+                    <article class="env-panel">
+                        <div class="env-panel-head">
+                            <div>
+                                <p class="env-label">RUNTIME COMPONENTS</p>
+                                <h3>执行组件</h3>
+                            </div>
+                            <span class="env-chip" :data-ok="report.huggingface.cli_installed">
+                                HF CLI <b x-text="report.huggingface.cli_installed ? 'AVAILABLE' : 'OPTIONAL'"></b>
+                            </span>
+                        </div>
+                        <div class="env-component-grid">
+                            <template x-for="component in report.components" :key="component.id">
+                                <div class="env-component">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <strong x-text="component.name"></strong>
+                                        <span :data-ok="component.status === 'pass'" class="env-dot"></span>
+                                    </div>
+                                    <p x-text="component.status === 'pass' ? ('v' + (component.version || 'installed')) : (component.installed ? ('版本不兼容：' + (component.version || 'unknown')) : (component.required ? '未安装' : '可选组件'))"></p>
+                                    <small x-text="'最低 ' + component.minimum_version"></small>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="env-path-row">
+                            <i data-lucide="database" class="w-4 h-4"></i>
+                            <div><span>HF Cache</span><code x-text="report.huggingface.cache.path"></code></div>
+                            <span :class="report.huggingface.cache.writable ? 'text-green-600' : 'text-red-600'"
+                                  x-text="report.huggingface.cache.writable ? '可写' : '不可写'"></span>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="xl:col-span-5 space-y-5">
+                    <article class="env-panel env-recommendation">
+                        <div class="env-panel-head">
+                            <div>
+                                <p class="env-label">MODEL FIT</p>
+                                <h3>模型配置建议</h3>
+                            </div>
+                            <span class="env-tier" x-text="report.recommendation.tier"></span>
+                        </div>
+                        <div class="env-model-family" x-text="report.recommendation.model_family"></div>
+                        <p class="env-model-note" x-text="report.recommendation.notes"></p>
+                        <dl class="env-spec-list">
+                            <div><dt>量化</dt><dd x-text="report.recommendation.quantization"></dd></div>
+                            <div><dt>建议上下文</dt><dd x-text="formatNumber(report.recommendation.max_context_window) + ' tokens'"></dd></div>
+                            <div><dt>最大并发</dt><dd x-text="report.recommendation.max_concurrent_requests"></dd></div>
+                            <div><dt>模型内存预算</dt><dd x-text="formatBytes(report.memory.recommended_model_budget_bytes)"></dd></div>
+                            <div><dt>安装空间</dt><dd x-text="formatBytes(report.recommendation.recommended_free_space_bytes)"></dd></div>
+                        </dl>
+                        <div class="env-fit" :data-ok="report.recommendation.disk_ready">
+                            <i :data-lucide="report.recommendation.disk_ready ? 'circle-check' : 'circle-alert'" class="w-4 h-4"></i>
+                            <span x-text="report.recommendation.disk_ready ? '磁盘空间满足建议余量' : '磁盘余量不足，安装前请清理空间'"></span>
+                        </div>
+                    </article>
+
+                    <article class="env-panel">
+                        <div class="env-panel-head">
+                            <div>
+                                <p class="env-label">SAFE ACTIONS</p>
+                                <h3>可执行建议</h3>
+                            </div>
+                            <span class="text-xs text-neutral-400" x-text="report.actions.length + ' 项'"></span>
+                        </div>
+                        <div x-show="!report.actions.length" class="env-empty">
+                            <i data-lucide="badge-check" class="w-5 h-5"></i>
+                            当前关键配置已符合建议。
+                        </div>
+                        <div class="space-y-3">
+                            <template x-for="action in report.actions" :key="action.id">
+                                <div class="env-action">
+                                    <div>
+                                        <strong x-text="action.title"></strong>
+                                        <p x-text="action.detail"></p>
+                                    </div>
+                                    <button @click="applyAction(action)" :disabled="applying === action.id"
+                                            class="env-apply">
+                                        <span x-text="applying === action.id ? '应用中…' : '应用'"></span>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                        <p class="env-action-footnote">每次只应用一项白名单设置；不会安装软件、删除文件或自动下载模型。</p>
+                    </article>
+                </div>
+            </div>
+        </div>
+    </template>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ static('js/environment.js') }}"></script>
+{% endblock %}

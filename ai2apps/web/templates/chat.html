@@ -7,6 +7,7 @@
 <script src="/admin/static/js/purify.min.js"></script>
 <script src="/admin/static/js/marked.umd.js"></script>
 <script src="/admin/static/js/marked-highlight.umd.js"></script>
+<script src="/admin/static/js/streaming_tts.js"></script>
 
 <!-- Code highlighting -->
 <link rel="stylesheet" id="hljs-light-theme" href="/admin/static/css/hljs-github.min.css">
@@ -1224,26 +1225,8 @@
         document.documentElement.setAttribute('data-theme', theme);
     })();
 </script>
-<div class="chat-shell flex overflow-hidden{% if terminal_assistant | default(false) %} terminal-assistant-chat{% endif %}" x-data="chatApp()" x-init="init()"
+<div class="chat-shell flex overflow-hidden{% if terminal_assistant | default(false) %} terminal-assistant-chat{% endif %}" data-app-id="ai2apps.chat" x-data="chatApp()" x-init="init()"
     @keydown.window="handleGlobalKeydown($event)">
-    <!-- API Key Modal -->
-    <div class="api-key-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]"
-        :class="{ 'hidden': apiKeySet }" x-cloak>
-        <div class="bg-surface rounded-2xl p-8 max-w-[400px] w-[90%] shadow-2xl">
-            <h2 class="text-xl font-bold mb-2">{{ t('login.login.label_api_key') }}</h2>
-            <p class="text-sm text-fg-tertiary mb-4">{{ t('chat.api_key_prompt') }}</p>
-            <input type="password" x-model="apiKeyInput" @keydown.enter="saveApiKey"
-                placeholder="{{ t('chat.api_key_placeholder') }}"
-                class="w-full px-4 py-3 border border-line rounded-xl mb-4 focus:outline-none focus:border-line-strong"
-                style="background: var(--bg-primary); color: var(--text-primary);">
-            <button @click="saveApiKey"
-                class="w-full bg-accent text-accent-fg px-6 py-3 rounded-xl font-medium transition-all hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                :disabled="!apiKeyInput.trim()">
-                {{ t('chat.api_key_continue') }}
-            </button>
-        </div>
-    </div>
-
     <!-- External Review progress and confirmation dialog -->
     <div x-show="externalReviewDialog.show" x-cloak
         class="external-review-dialog fixed inset-0 flex items-center justify-center bg-black/50 p-4"
@@ -1945,6 +1928,13 @@
                                         title="{{ t('chat.copy_tooltip') }}">
                                         <i data-lucide="copy" class="w-4 h-4"></i>
                                     </button>
+                                    <button x-show="availableAudioModelsByType('audio_tts').length > 0"
+                                        @click="speakMessage(msg)"
+                                        :disabled="audioOutputBusy && audioPlayingMessageId !== msg.id"
+                                        class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary disabled:opacity-40"
+                                        :title="audioPlayingMessageId === msg.id ? 'Stop reading' : (audioOutputBusy ? 'Generating speech…' : 'Read aloud')">
+                                        <i :data-lucide="audioPlayingMessageId === msg.id ? 'square' : 'volume-2'" class="w-4 h-4"></i>
+                                    </button>
                                     <button @click="regenerateMessage(index)"
                                         class="w-7 h-7 flex items-center justify-center rounded-md bg-transparent text-fg-tertiary cursor-pointer transition-all hover:bg-surface-alt hover:text-fg-secondary"
                                         title="{{ t('chat.regenerate_tooltip') }}">
@@ -2393,13 +2383,13 @@
                                 :aria-pressed="!agentMode"
                                 :disabled="isLegacyChatStreaming()"
                                 @click="setConversationMode('chat')">Chat</button>
-                            <button type="button" class="chat-mode-option"
+                            {% if principal_is_core %}<button type="button" class="chat-mode-option"
                                 :class="{ 'is-active': agentMode }"
                                 :aria-pressed="agentMode"
                                 :disabled="isLegacyChatStreaming()"
-                                @click="setConversationMode('agent')">Agent</button>
+                                @click="setConversationMode('agent')">Agent</button>{% endif %}
                         </div>
-                        <select x-show="agentMode" class="chat-agent-select"
+                        {% if principal_is_core %}<select x-show="agentMode" class="chat-agent-select"
                             :value="currentAgentKey"
                             :disabled="isLegacyChatStreaming() || availableAgents.length === 0"
                             aria-label="Selected Agent"
@@ -2407,7 +2397,7 @@
                             <template x-for="agent in availableAgents" :key="agent.agent_key">
                                 <option :value="agent.agent_key" x-text="agent.display_name"></option>
                             </template>
-                        </select>
+                        </select>{% endif %}
                         <span class="chat-mode-hint"
                             x-text="agentMode ? selectedAgentDescription() : 'Direct model conversation'"></span>
                     </div>
@@ -2504,6 +2494,14 @@
                             :title="window.t('chat.upload_document')">
                             <i data-lucide="file-text" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
                         </button>
+                        <button x-show="availableAudioModelsByType('audio_stt').length > 0"
+                            @click="toggleVoiceInput()"
+                            :disabled="isCurrentChatStreaming() || audioInputBusy || audioInputStarting"
+                            class="w-10 h-10 m-1 shrink-0 rounded-full border transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                            :class="audioRecording ? 'bg-red-50 border-red-300 text-red-600' : 'bg-surface-muted hover:bg-surface border-line'"
+                            :title="audioRecording ? 'Stop and transcribe' : (audioInputStarting ? 'Starting microphone…' : (audioInputBusy ? 'Transcribing…' : 'Voice input'))">
+                            <i :data-lucide="audioRecording ? 'square' : 'mic'" class="w-4 h-4"></i>
+                        </button>
 
                         <textarea x-ref="messageInput" x-model="inputMessage"
                             autocomplete="off" autocorrect="off"
@@ -2538,6 +2536,9 @@
                                 x-text="uploadDocuments.length"></div>
                         </div>
                     </div>
+                    <div x-show="audioError" x-cloak class="mx-2 mb-2 px-3 py-2 rounded-lg border text-xs"
+                        style="border-color:var(--text-danger);color:var(--text-danger);background:var(--bg-danger);"
+                        x-text="audioError"></div>
                 </div>
                 <!-- Context usage: status line — active model on the left, a capsule holding
                      tokens · % + a ring on the right. Hover the capsule for the exact count. -->
@@ -2808,6 +2809,76 @@
                     <div x-show="availableModels.length === 0">
                         {{ t('chat.no_models') }}
                     </div>
+                </div>
+
+                <!-- Voice input/output models are independent from the conversation model. -->
+                <div x-show="availableAudioModels.length > 0" class="space-y-3 rounded-xl border border-line bg-surface-muted p-3">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="audio-lines" class="w-4 h-4" style="color:var(--text-secondary);"></i>
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Voice</span>
+                    </div>
+                    <label x-show="availableAudioModelsByType('audio_stt').length" class="block space-y-1">
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Speech recognition</span>
+                        <select x-model="audioSettings.sttModel" @change="saveAudioSettings()"
+                            class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
+                            <template x-for="model in availableAudioModelsByType('audio_stt')" :key="model.id">
+                                <option :value="model.id" x-text="model.name"></option>
+                            </template>
+                        </select>
+                    </label>
+                    <label x-show="availableAudioModelsByType('audio_tts').length" class="block space-y-1">
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Speech synthesis</span>
+                        <select x-model="audioSettings.ttsModel" @change="audioVoiceOptions(); saveAudioSettings()"
+                            class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
+                            <template x-for="model in availableAudioModelsByType('audio_tts')" :key="model.id">
+                                <option :value="model.id" x-text="model.name"></option>
+                            </template>
+                        </select>
+                    </label>
+                    <label x-show="audioVoiceOptions().length" class="block space-y-1">
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Voice role</span>
+                        <select x-model="audioSettings.voice" @change="saveAudioSettings()"
+                            class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
+                            <template x-for="voice in audioVoiceOptions()" :key="voice">
+                                <option :value="voice" x-text="voice"></option>
+                            </template>
+                        </select>
+                    </label>
+                    <label x-show="audioEmotionOptions().length" class="block space-y-1">
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Emotion</span>
+                        <select x-model="audioSettings.emotion" @change="saveAudioSettings()"
+                            class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
+                            <template x-for="emotion in audioEmotionOptions()" :key="emotion">
+                                <option :value="emotion" x-text="emotion"></option>
+                            </template>
+                        </select>
+                    </label>
+                    <label x-show="audioTtsFeature('instructions')?.mode === 'native'" class="block space-y-1">
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Voice instructions</span>
+                        <textarea x-model="audioSettings.instructions" @change="saveAudioSettings()" rows="2"
+                            placeholder="Describe the voice, delivery, or emotion…"
+                            class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface resize-y"></textarea>
+                    </label>
+                    <div x-show="audioTtsFeature('voice_profiles')?.mode === 'native'" class="space-y-2">
+                        <label class="block space-y-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Reference voice</span>
+                            <input type="file" accept="audio/*,.wav,.pcm,.mp3,.m4a,.aac,.flac,.ogg,.opus,.webm" @change="loadAudioReference($event)"
+                                class="w-full text-[10px]" style="color:var(--text-secondary);">
+                        </label>
+                        <label class="block space-y-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">Reference transcript</span>
+                            <textarea x-model="audioSettings.referenceText" @change="saveAudioSettings()" rows="2"
+                                placeholder="Exact words spoken in the reference WAV…"
+                                class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface resize-y"></textarea>
+                        </label>
+                    </div>
+                    <label class="flex items-center justify-between gap-3 text-xs" style="color:var(--text-secondary);">
+                        <span>Read replies aloud</span>
+                        <input type="checkbox" x-model="audioSettings.autoSpeak" @change="saveAudioSettings()">
+                    </label>
+                    <p class="text-[10px] leading-4" style="color:var(--text-tertiary);">
+                        Voice input records WAV locally. Unsupported realtime or advanced voice features fall back according to the selected Package capability profile.
+                    </p>
                 </div>
 
                 <!-- Temperature & Max Tokens -->
@@ -3294,10 +3365,27 @@
 
 {% block scripts %}
 <script>
+    function escapeRawMarkdownHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     // Configure marked.js
     marked.use({
         breaks: true,
-        gfm: true
+        gfm: true,
+        // Model output is untrusted. Keep fenced code rendering, but never let
+        // raw HTML from a response become live elements in the Chat document.
+        renderer: {
+            html(token) {
+                const rawHtml = typeof token === 'string'
+                    ? token
+                    : (token?.text ?? token?.raw ?? '');
+                return escapeRawMarkdownHtml(rawHtml);
+            }
+        }
     });
 
     if (typeof markedHighlight !== 'undefined') {
@@ -3312,11 +3400,18 @@
 
     const CHAT_UNTITLED_I18N_KEY = 'chat.untitled_title';
     const MAX_CHAT_HISTORY_SIZE = 100;
-    const CHAT_HISTORY_STORAGE_KEY = 'omlx_chat_history';
+    const CHAT_PRINCIPAL_ACTOR_ID = {{ principal_actor_user_id | tojson }};
+    const CHAT_PRINCIPAL_IS_CORE = {{ principal_is_core | tojson }};
+    const CHAT_DEVELOPER_SURFACES_VISIBLE = {{ developer_surfaces_visible | default(false) | tojson }};
+    const LEGACY_CHAT_HISTORY_STORAGE_KEY = 'omlx_chat_history';
+    const CHAT_HISTORY_STORAGE_KEY = CHAT_PRINCIPAL_ACTOR_ID && CHAT_PRINCIPAL_ACTOR_ID !== 'local'
+        ? `ai2apps_chat_history_v2:${CHAT_PRINCIPAL_ACTOR_ID}`
+        : LEGACY_CHAT_HISTORY_STORAGE_KEY;
     const TERMINAL_ASSISTANT_HISTORY_STORAGE_KEY = 'ai2apps_terminal_assistant_history_v1';
-    const CHAT_BACKEND_MIGRATION_KEY = 'ai2apps_chat_backend_migrated_v1';
+    const CHAT_BACKEND_MIGRATION_KEY = `ai2apps_chat_backend_migrated_v2:${CHAT_PRINCIPAL_ACTOR_ID || 'local'}`;
     const TERMINAL_ASSISTANT_CHATS_STORAGE_KEY = 'ai2apps_terminal_assistant_chats_v1';
-    const API_KEY_STORAGE_KEY = 'omlx_chat_api_key';
+    const LEGACY_API_KEY_STORAGE_KEY = 'omlx_chat_api_key';
+    let runtimeApiKey = '';
     const THEME_STORAGE_KEY = 'omlx-chat-theme';
     const ALLOW_SVG_STORAGE_KEY = 'omlx-chat-allow-svg';
     const SYSTEM_PROMPT_STORAGE_KEY = 'omlx_chat_system_prompt';
@@ -3401,6 +3496,11 @@
         return 'Untitled';
     }
 
+    // Native browser objects are kept outside Alpine's reactive proxy.
+    let chatAudioRecorder = null;
+    let chatAudioPlayer = null;
+    let chatAudioPipeline = null;
+
     function chatApp() {
         return {
             // API Key
@@ -3473,7 +3573,40 @@
 
             // Model State
             availableModels: [],
+            availableAudioModels: [],
             currentModel: null,
+
+            // Voice I/O is deliberately independent from the active LLM/VLM.
+            audioSettings: (() => {
+                const defaults = {
+                    sttModel: '',
+                    ttsModel: '',
+                    voice: '',
+                    emotion: 'neutral',
+                    instructions: '',
+                    referenceText: '',
+                    speed: 1,
+                    autoSpeak: false,
+                };
+                try {
+                    return {
+                        ...defaults,
+                        ...JSON.parse(localStorage.getItem('ai2apps-chat-audio-v1') || '{}'),
+                    };
+                } catch (_) {
+                    return defaults;
+                }
+            })(),
+            audioRecording: false,
+            audioInputStarting: false,
+            audioInputBusy: false,
+            audioOutputBusy: false,
+            audioPlayingMessageId: null,
+            audioError: '',
+            audioReferenceData: '',
+            audioReferenceFormat: '',
+            _audioRecorder: null,
+            _audioPlayer: null,
 
             // Streaming State
             streamSessions: {},
@@ -4499,7 +4632,9 @@
                     : null;
                 const model = context._modelOverride
                     ? this.resolveGatewayModelId(context._modelOverride)
-                    : this.resolveApiModel(messages, context.model, variantUserIndex);
+                    : context._directModelOnly
+                        ? this.resolveGatewayModelId(context.model)
+                        : this.resolveApiModel(messages, context.model, variantUserIndex);
                 const generation = this.resolveApiGenerationOverrides(messages, variantUserIndex);
                 const cloudRequestKey = this.ensureCloudRequestKey(messages, `text:${depth}`);
                 return {
@@ -5045,6 +5180,9 @@
 
             async stopChatStreaming(chatId) {
                 const stream = this.getStreamSession(chatId, false);
+                if (chatAudioPipeline?.chatId === chatId) {
+                    this.stopSpeechOutput();
+                }
                 const cancellation = stream?.cloudRequestId
                     ? this.cancelCloudRequest(stream.cloudRequestId)
                     : Promise.resolve();
@@ -5311,6 +5449,7 @@
             },
 
             stopAllStreams() {
+                this.stopSpeechOutput();
                 Object.values(this.streamSessions).forEach((stream) => {
                     stream.abortController?.abort();
                     this.resetStreamSession(stream);
@@ -5673,26 +5812,20 @@
         this.loadTerminalAssistantChats();
         this.setupTerminalAssistantBridge();
 
-                const serverApiKey = {{ api_key | tojson }};
-
-        if (serverApiKey) {
-            localStorage.setItem(API_KEY_STORAGE_KEY, serverApiKey);
+        runtimeApiKey = '';
+        // Browser requests authenticate with the HttpOnly Local Session.
+        localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
+        this.apiKeySet = true;
+        await this.loadModels();
+        await this.loadAgents();
+        if (this.currentModel) {
+            await this.loadModelCapabilities(this.currentModel);
         }
-
-        const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-        if (storedKey) {
-            this.apiKeySet = true;
-            await this.loadModels();
-            await this.loadAgents();
-            if (this.currentModel) {
-                await this.loadModelCapabilities(this.currentModel);
-            }
-            this.loadChatHistory();
-            await this.initializeBackendChat();
-            await this.loadMiniEntriesForSession();
-            this.fetchMcpTools();
-            this.loadDynamoeStatus();
-        }
+        this.loadChatHistory();
+        await this.initializeBackendChat();
+        await this.loadMiniEntriesForSession();
+        this.fetchMcpTools();
+        this.loadDynamoeStatus();
 
         window.addEventListener('ai2apps:account-changed', async () => {
             await this.loadModels();
@@ -5778,8 +5911,13 @@
 
             async fetchModelTypes() {
         try {
+            const apiHeaders = this.getApiKey()
+                ? { 'Authorization': `Bearer ${this.getApiKey()}` }
+                : {};
             const resp = await fetch('/v1/models/status', {
-                headers: { 'Authorization': `Bearer ${this.getApiKey()}` }
+                headers: apiHeaders,
+                credentials: 'same-origin',
+                cache: 'no-store',
             });
             if (!resp.ok) return;
             const data = await resp.json();
@@ -6338,7 +6476,7 @@
 
     async saveApiKey() {
         if (!this.apiKeyInput.trim()) return;
-        localStorage.setItem(API_KEY_STORAGE_KEY, this.apiKeyInput.trim());
+        runtimeApiKey = this.apiKeyInput.trim();
         this.apiKeySet = true;
         this.apiKeyInput = '';
         try {
@@ -6355,7 +6493,7 @@
     },
 
     getApiKey() {
-        return localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+        return runtimeApiKey;
     },
 
     combineAbortSignals(signals) {
@@ -6392,6 +6530,481 @@
         return { signal: controller.signal, dispose };
     },
 
+    availableAudioModelsByType(modelType) {
+        return this.availableAudioModels.filter(model => model.model_type === modelType);
+    },
+
+    reconcileAudioModels() {
+        const stt = this.availableAudioModelsByType('audio_stt');
+        const tts = this.availableAudioModelsByType('audio_tts');
+        if (!stt.some(model => model.id === this.audioSettings.sttModel)) {
+            this.audioSettings.sttModel = stt[0]?.id || '';
+        }
+        if (!tts.some(model => model.id === this.audioSettings.ttsModel)) {
+            this.audioSettings.ttsModel = tts[0]?.id || '';
+        }
+        const voices = this.audioVoiceOptions();
+        if (!voices.includes(this.audioSettings.voice)) {
+            this.audioSettings.voice = voices[0] || '';
+        }
+        const emotions = this.audioEmotionOptions();
+        if (!emotions.includes(this.audioSettings.emotion)) {
+            this.audioSettings.emotion = emotions[0] || 'neutral';
+        }
+        this.saveAudioSettings();
+    },
+
+    audioVoiceOptions(modelId = this.audioSettings.ttsModel) {
+        const model = this.availableAudioModels.find(
+            candidate => candidate.id === modelId
+        );
+        const voices = model?.audio_capabilities?.tts?.named_voices?.voices;
+        return Array.isArray(voices) ? voices : [];
+    },
+
+    audioEmotionOptions() {
+        const model = this.availableAudioModels.find(
+            candidate => candidate.id === this.audioSettings.ttsModel
+        );
+        const feature = model?.audio_capabilities?.tts?.emotion;
+        if (!feature || feature.mode === 'unsupported') return [];
+        const values = Array.isArray(feature.values) ? feature.values : [];
+        return [...new Set(['neutral', ...values])];
+    },
+
+    audioTtsFeature(name, modelId = this.audioSettings.ttsModel) {
+        const model = this.availableAudioModels.find(
+            candidate => candidate.id === modelId
+        );
+        return model?.audio_capabilities?.tts?.[name] || null;
+    },
+
+    loadAudioReference(event) {
+        this.audioReferenceData = '';
+        this.audioReferenceFormat = '';
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+        const format = String(file.name || '').split('.').pop().toLowerCase();
+        const supported = ['wav', 'pcm', 'mp3', 'm4a', 'aac', 'flac', 'ogg', 'opus', 'webm'];
+        if (!supported.includes(format)) {
+            this.audioError = 'Unsupported reference audio format.';
+            event.target.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            const value = String(reader.result || '');
+            this.audioReferenceData = value.includes(',') ? value.split(',', 2)[1] : '';
+            this.audioReferenceFormat = this.audioReferenceData ? format : '';
+            this.audioError = this.audioReferenceData ? '' : 'Could not read reference audio.';
+        };
+        reader.onerror = () => { this.audioError = 'Could not read reference audio.'; };
+        reader.readAsDataURL(file);
+    },
+
+    saveAudioSettings() {
+        localStorage.setItem('ai2apps-chat-audio-v1', JSON.stringify(this.audioSettings));
+        if (!this.audioSettings.autoSpeak && chatAudioPipeline?.automatic) {
+            this.stopSpeechOutput();
+        }
+    },
+
+    async toggleVoiceInput() {
+        this.audioError = '';
+        if (this.audioRecording) {
+            await this.stopVoiceInput();
+            return;
+        }
+        if (!this.audioSettings.sttModel) {
+            this.audioError = 'Install and prepare a speech-recognition Package first.';
+            return;
+        }
+        this.audioInputStarting = true;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+            });
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) throw new Error('This browser does not provide Web Audio.');
+            const context = new AudioContextClass();
+            const source = context.createMediaStreamSource(stream);
+            const processor = context.createScriptProcessor(4096, 1, 1);
+            const silence = context.createGain();
+            silence.gain.value = 0;
+            const chunks = [];
+            processor.onaudioprocess = event => {
+                chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+            };
+            source.connect(processor);
+            processor.connect(silence);
+            silence.connect(context.destination);
+            chatAudioRecorder = { stream, context, source, processor, silence, chunks };
+            this.audioRecording = true;
+            this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+        } catch (error) {
+            this.audioError = error?.message || 'Microphone access failed.';
+            this.audioRecording = false;
+        } finally {
+            this.audioInputStarting = false;
+        }
+    },
+
+    async stopVoiceInput() {
+        const recorder = chatAudioRecorder;
+        chatAudioRecorder = null;
+        this.audioRecording = false;
+        if (!recorder) return;
+        recorder.processor.onaudioprocess = null;
+        recorder.stream.getTracks().forEach(track => track.stop());
+        for (const node of [recorder.source, recorder.processor, recorder.silence]) {
+            try { node.disconnect(); } catch (_) { }
+        }
+        await recorder.context.close();
+        const frameCount = recorder.chunks.reduce((total, chunk) => total + chunk.length, 0);
+        if (!frameCount) {
+            this.audioError = 'No microphone audio was captured.';
+            return;
+        }
+        const samples = new Float32Array(frameCount);
+        let offset = 0;
+        for (const chunk of recorder.chunks) {
+            samples.set(chunk, offset);
+            offset += chunk.length;
+        }
+        const wav = this.encodePcmWav(samples, recorder.context.sampleRate);
+        await this.transcribeVoiceInput(wav);
+    },
+
+    encodePcmWav(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        const ascii = (offset, value) => {
+            for (let index = 0; index < value.length; index += 1) {
+                view.setUint8(offset + index, value.charCodeAt(index));
+            }
+        };
+        ascii(0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        ascii(8, 'WAVE');
+        ascii(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        ascii(36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+        for (let index = 0; index < samples.length; index += 1) {
+            const value = Math.max(-1, Math.min(1, samples[index]));
+            view.setInt16(44 + index * 2, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+        }
+        return new Blob([buffer], { type: 'audio/wav' });
+    },
+
+    async transcribeVoiceInput(wav) {
+        this.audioInputBusy = true;
+        this.audioError = '';
+        try {
+            const form = new FormData();
+            form.append('model', this.audioSettings.sttModel);
+            form.append('response_format', 'json');
+            form.append('file', wav, `ai2apps-chat-${Date.now()}.wav`);
+            const headers = this.getApiKey()
+                ? { Authorization: `Bearer ${this.getApiKey()}` }
+                : {};
+            const response = await fetch('/v1/audio/transcriptions', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers,
+                body: form,
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(body?.error?.message || body?.detail || `Transcription failed (${response.status}).`);
+            }
+            const text = String(body.text || '').trim();
+            if (!text) throw new Error('Speech recognition returned no text.');
+            this.inputMessage = this.inputMessage.trim()
+                ? `${this.inputMessage.trim()} ${text}`
+                : text;
+            this.$nextTick(() => {
+                const input = this.$refs.messageInput;
+                if (input) {
+                    this.autoResize(input);
+                    input.focus();
+                }
+            });
+        } catch (error) {
+            this.audioError = error?.message || 'Speech recognition failed.';
+        } finally {
+            this.audioInputBusy = false;
+            this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+        }
+    },
+
+    speechTextForMessage(message) {
+        const markdown = this.getCopyableMarkdown(message);
+        if (!markdown) return '';
+        const root = document.createElement('div');
+        root.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
+        return String(root.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 12000);
+    },
+
+    speechPayload(input, pipeline = null) {
+        const settings = pipeline?.speechSettings || this.audioSettings;
+        const voices = this.audioVoiceOptions(settings.ttsModel);
+        const voice = settings.voice || voices[0] || '';
+        const payload = {
+            model: settings.ttsModel,
+            input,
+            response_format: 'wav',
+            speed: Number(settings.speed) || 1,
+        };
+        if (voice) payload.voice = voice;
+        if (settings.emotion && settings.emotion !== 'neutral') {
+            payload.style = { emotion: settings.emotion };
+        }
+        if (this.audioTtsFeature('instructions', settings.ttsModel)?.mode === 'native') {
+            const instructions = String(settings.instructions || '').trim();
+            if (instructions) payload.instructions = instructions;
+        }
+        if (this.audioTtsFeature('voice_profiles', settings.ttsModel)?.mode === 'native' && pipeline?.referenceData) {
+            const referenceText = String(settings.referenceText || '').trim();
+            if (!referenceText) throw new Error('Reference transcript is required for voice cloning.');
+            payload.ref_audio = pipeline.referenceData;
+            payload.ref_audio_format = pipeline.referenceFormat;
+            payload.ref_text = referenceText;
+        }
+        return payload;
+    },
+
+    async requestSpeechSegment(input, pipeline) {
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.getApiKey()) headers.Authorization = `Bearer ${this.getApiKey()}`;
+        const response = await fetch('/v1/audio/speech', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers,
+            body: JSON.stringify(this.speechPayload(input, pipeline)),
+            signal: pipeline.controller.signal,
+        });
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body?.error?.message || body?.detail || `Speech synthesis failed (${response.status}).`);
+        }
+        return response.blob();
+    },
+
+    stopSpeechOutput({ error = '' } = {}) {
+        const pipeline = chatAudioPipeline;
+        if (pipeline) {
+            pipeline.stopped = true;
+            pipeline.controller.abort();
+            if (pipeline.idleTimer) clearTimeout(pipeline.idleTimer);
+            for (const release of pipeline.capacityWaiters || []) release();
+            pipeline.capacityWaiters = [];
+            pipeline.finishPlayback?.();
+        }
+        if (chatAudioPlayer) {
+            chatAudioPlayer.pause();
+            chatAudioPlayer = null;
+        }
+        chatAudioPipeline = null;
+        this.audioOutputBusy = false;
+        this.audioPlayingMessageId = null;
+        if (error) this.audioError = error;
+        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+    },
+
+    createSpeechPipeline(messageId, { automatic = false, chatId = this.currentChatId } = {}) {
+        this.stopSpeechOutput();
+        const Segmenter = window.AI2AppsStreamingTTS?.StreamingTextSegmenter;
+        if (!Segmenter) throw new Error('Streaming speech component is unavailable.');
+        const pipeline = {
+            messageId,
+            chatId,
+            automatic,
+            segmenter: new Segmenter({ minChars: 8, softChars: 24, maxChars: 56 }),
+            controller: new AbortController(),
+            synthesisTail: Promise.resolve(),
+            playbackTail: Promise.resolve(),
+            pending: 0,
+            prepared: 0,
+            maxPrepared: 2,
+            capacityWaiters: [],
+            finished: false,
+            stopped: false,
+            failed: false,
+            idleTimer: null,
+            finishPlayback: null,
+            speechSettings: { ...this.audioSettings },
+            referenceData: this.audioReferenceData,
+            referenceFormat: this.audioReferenceFormat,
+        };
+        chatAudioPipeline = pipeline;
+        this.audioOutputBusy = true;
+        this.audioPlayingMessageId = messageId;
+        this.audioError = '';
+        return pipeline;
+    },
+
+    async playSpeechSegment(blob, pipeline) {
+        if (pipeline.stopped || chatAudioPipeline !== pipeline) return;
+        const url = URL.createObjectURL(blob);
+        const player = new Audio(url);
+        chatAudioPlayer = player;
+        await new Promise((resolve, reject) => {
+            let released = false;
+            const release = (error = null) => {
+                if (released) return;
+                released = true;
+                URL.revokeObjectURL(url);
+                if (chatAudioPlayer === player) chatAudioPlayer = null;
+                if (pipeline.finishPlayback === cancelPlayback) pipeline.finishPlayback = null;
+                error ? reject(error) : resolve();
+            };
+            const cancelPlayback = () => {
+                player.pause();
+                release();
+            };
+            pipeline.finishPlayback = cancelPlayback;
+            player.addEventListener('ended', () => release(), { once: true });
+            player.addEventListener('error', () => release(new Error('Audio playback failed.')), { once: true });
+            player.play().catch(release);
+        });
+    },
+
+    failSpeechPipeline(pipeline, error) {
+        if (pipeline.failed || pipeline.stopped) return;
+        pipeline.failed = true;
+        const message = error?.name === 'AbortError' ? '' : (error?.message || 'Speech synthesis failed.');
+        if (chatAudioPipeline === pipeline) this.stopSpeechOutput({ error: message });
+    },
+
+    settleSpeechPipeline(pipeline) {
+        if (chatAudioPipeline !== pipeline || pipeline.stopped) return;
+        if (!pipeline.finished || pipeline.pending > 0) return;
+        chatAudioPipeline = null;
+        this.audioOutputBusy = false;
+        this.audioPlayingMessageId = null;
+        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+    },
+
+    async waitForSpeechCapacity(pipeline) {
+        while (!pipeline.stopped && pipeline.prepared >= pipeline.maxPrepared) {
+            await new Promise((resolve) => pipeline.capacityWaiters.push(resolve));
+        }
+    },
+
+    releaseSpeechCapacity(pipeline) {
+        const release = pipeline.capacityWaiters.shift();
+        if (release) release();
+    },
+
+    queueSpeechSegment(pipeline, input) {
+        const text = String(input || '').trim();
+        if (!text || pipeline.stopped || chatAudioPipeline !== pipeline) return;
+        pipeline.pending += 1;
+        const synthesis = pipeline.synthesisTail.then(async () => {
+            if (pipeline.stopped || chatAudioPipeline !== pipeline) return null;
+            await this.waitForSpeechCapacity(pipeline);
+            if (pipeline.stopped || chatAudioPipeline !== pipeline) return null;
+            const blob = await this.requestSpeechSegment(text, pipeline);
+            pipeline.prepared += 1;
+            return blob;
+        });
+        // Keep synthesis single-filed, but let the next synthesis run while this
+        // segment is already waiting in the ordered playback chain.
+        pipeline.synthesisTail = synthesis.catch((error) => {
+            this.failSpeechPipeline(pipeline, error);
+            return null;
+        });
+        pipeline.playbackTail = pipeline.playbackTail
+            .then(async () => {
+                const blob = await synthesis.catch(() => null);
+                if (blob && !pipeline.stopped && chatAudioPipeline === pipeline) {
+                    pipeline.prepared = Math.max(0, pipeline.prepared - 1);
+                    this.releaseSpeechCapacity(pipeline);
+                    await this.playSpeechSegment(blob, pipeline);
+                }
+            })
+            .catch((error) => this.failSpeechPipeline(pipeline, error))
+            .finally(() => {
+                pipeline.pending = Math.max(0, pipeline.pending - 1);
+                this.settleSpeechPipeline(pipeline);
+            });
+    },
+
+    appendStreamingSpeech(pipeline, deltaText) {
+        if (!pipeline || pipeline.stopped || chatAudioPipeline !== pipeline) return;
+        for (const segment of pipeline.segmenter.append(deltaText)) {
+            this.queueSpeechSegment(pipeline, segment);
+        }
+        if (pipeline.idleTimer) clearTimeout(pipeline.idleTimer);
+        pipeline.idleTimer = setTimeout(() => {
+            pipeline.idleTimer = null;
+            for (const segment of pipeline.segmenter.flushSoft()) {
+                this.queueSpeechSegment(pipeline, segment);
+            }
+        }, 700);
+    },
+
+    finishSpeechPipeline(pipeline) {
+        if (!pipeline || pipeline.stopped || chatAudioPipeline !== pipeline) return false;
+        if (pipeline.idleTimer) clearTimeout(pipeline.idleTimer);
+        pipeline.idleTimer = null;
+        for (const segment of pipeline.segmenter.finish()) {
+            this.queueSpeechSegment(pipeline, segment);
+        }
+        pipeline.finished = true;
+        this.settleSpeechPipeline(pipeline);
+        return true;
+    },
+
+    beginStreamingAutoSpeak(context, stream) {
+        if (!this.audioSettings.autoSpeak || !this.audioSettings.ttsModel) return null;
+        if (context.chatId !== this.currentChatId) return null;
+        try {
+            return this.createSpeechPipeline(stream.targetMessageId || this.newMessageId(), {
+                automatic: true,
+                chatId: context.chatId,
+            });
+        } catch (error) {
+            this.audioError = error?.message || 'Speech synthesis failed.';
+            return null;
+        }
+    },
+
+    async speakMessage(message, { automatic = false } = {}) {
+        if (chatAudioPipeline && this.audioPlayingMessageId === message?.id) {
+            this.stopSpeechOutput();
+            return;
+        }
+        if (!this.audioSettings.ttsModel) {
+            if (!automatic) this.audioError = 'Install and prepare a speech-synthesis Package first.';
+            return;
+        }
+        const input = this.speechTextForMessage(message);
+        if (!input) return;
+        try {
+            const pipeline = this.createSpeechPipeline(message.id, { automatic });
+            this.appendStreamingSpeech(pipeline, input);
+            this.finishSpeechPipeline(pipeline);
+        } catch (error) {
+            if (!automatic || this.audioSettings.autoSpeak) {
+                this.audioError = error?.message || 'Speech synthesis failed.';
+            }
+        }
+    },
+
+    maybeAutoSpeak(message) {
+        if (this.audioSettings.autoSpeak && message?.role === 'assistant') {
+            void this.speakMessage(message, { automatic: true });
+        }
+    },
+
             async loadModels() {
         try {
             this._adminModelsList = null;
@@ -6400,7 +7013,11 @@
                 : {};
             // Fetch models, admin model list, server health, and integration settings in parallel
             const [modelsResponse, adminModelsResponse, healthResponse, settingsResponse] = await Promise.all([
-                fetch('/v1/models', { headers: apiHeaders }),
+                fetch('/v1/models', {
+                    headers: apiHeaders,
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                }),
                 fetch('/admin/api/models', { credentials: 'same-origin', headers: apiHeaders }),
                 fetch('/health'),
                 fetch('/admin/api/global-settings', { credentials: 'same-origin' })
@@ -6409,7 +7026,7 @@
             if (!modelsResponse.ok) {
                 if (modelsResponse.status === 401) {
                     alert(window.t('chat.error.incorrect_api_key'));
-                    localStorage.removeItem(API_KEY_STORAGE_KEY);
+                    runtimeApiKey = '';
                     this.apiKeySet = false;
                     this.messages = [];
                     this.currentChatId = null;
@@ -6447,12 +7064,42 @@
             this._mirrorAliasModelTypes();
 
             const modelsData = await modelsResponse.json();
-            const allModels = modelsData.data || [];
+            const catalogModels = (modelsData.data || []).filter(
+                model => CHAT_DEVELOPER_SURFACES_VISIBLE || model.owned_by !== 'omlx'
+            );
+            // The admin catalog can discover account-managed Cloud/Fusion models
+            // independently of the OpenAI-compatible catalog. Merge those stable
+            // gateway ids so Chat never loses models that Model Manager can use.
+            const catalogIds = new Set(catalogModels.map(model => model.id));
+            const managedModels = (this._adminModelsList || [])
+                .filter(model => ['cloud', 'fusion'].includes(model.source_type))
+                .filter(model => !catalogIds.has(model.id))
+                .map(model => ({ id: model.id, owned_by: 'ai2apps' }));
+            const allModels = [...catalogModels, ...managedModels];
 
             // Favorite gateway ids from the admin list; used to sort favorites first
             const favoriteIds = new Set(
                 (this._adminModelsList || []).filter(m => m.is_favorite).map(m => m.id)
             );
+
+            this.availableAudioModels = this.dedupeAvailableModels(
+                allModels.filter(m => {
+                    const gatewayId = this.aliasToGateway[m.id] || m.id;
+                    return (this.modelTypeMap[gatewayId] || '').toLowerCase().startsWith('audio_');
+                }).map(m => {
+                    const gatewayId = this.aliasToGateway[m.id] || m.id;
+                    const adminModel = (this._adminModelsList || []).find(
+                        candidate => candidate.id === gatewayId
+                    );
+                    return {
+                        id: gatewayId,
+                        name: adminModel?.display_name || m.id,
+                        model_type: adminModel?.model_type || this.modelTypeMap[gatewayId],
+                        audio_capabilities: adminModel?.audio_capabilities || m.audio_capabilities || null,
+                    };
+                })
+            );
+            this.reconcileAudioModels();
 
             // Build available models with gateway id (directory name) as the value
             // Store alias for display (in case we want to show it later)
@@ -7026,7 +7673,7 @@
     },
 
     setConversationMode(mode) {
-        this.agentMode = mode === 'agent';
+        this.agentMode = CHAT_PRINCIPAL_IS_CORE && mode === 'agent';
         const session = this.getChatSession(this.currentChatId, true);
         if (session) {
             session.agentMode = this.agentMode;
@@ -7617,6 +8264,11 @@
                     _perfVisible: false,
                 });
             }
+            if (run.chatId === this.currentChatId) {
+                const completedMessage = session.messages.find(message =>
+                    message.agent_run_id === run.id && message.role === 'assistant');
+                this.maybeAutoSpeak(completedMessage);
+            }
         }
         if (run.chatId === this.currentChatId) this.messages = session.messages;
         if (String(session.model || '').startsWith('cloud/')
@@ -7751,7 +8403,9 @@
             const importedLegacyIds = new Set(
                 (list.items || []).map(thread => thread.legacy_thread_id).filter(Boolean)
             );
-            const pendingLegacy = localBackup
+            // Shared legacy browser history belongs to the device Core. Never
+            // import it into a member-owned backend thread collection.
+            const pendingLegacy = (CHAT_PRINCIPAL_IS_CORE ? localBackup : [])
                 .filter(chat => !chat.id?.startsWith('ses_') && !importedLegacyIds.has(chat.id))
                 .slice(0, MAX_CHAT_HISTORY_SIZE);
             if (pendingLegacy.length > 0) {
@@ -7901,8 +8555,13 @@
         const key = this.chatHistoryStorageKey();
         let history = localStorage.getItem(key);
         let migratedFromSharedHistory = false;
+        if (!history && !this.terminalAssistantMode && CHAT_PRINCIPAL_IS_CORE
+            && key !== LEGACY_CHAT_HISTORY_STORAGE_KEY) {
+            history = localStorage.getItem(LEGACY_CHAT_HISTORY_STORAGE_KEY);
+            migratedFromSharedHistory = !!history;
+        }
         if (!history && this.terminalAssistantMode) {
-            history = localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+            history = localStorage.getItem(LEGACY_CHAT_HISTORY_STORAGE_KEY);
             migratedFromSharedHistory = !!history;
         }
         if (history) {
@@ -7960,6 +8619,7 @@
     async startNewChat() {
         this.cancelPersistModelSettingsTimer();
         const prevChatId = this.currentChatId;
+        if (chatAudioPipeline?.chatId === prevChatId) this.stopSpeechOutput();
         if (prevChatId) {
             const prevSession = this.getChatSession(prevChatId, false);
             if (prevSession) {
@@ -8061,6 +8721,7 @@
     async loadChat(chatId, { skipBackendSelect = false } = {}) {
         this.cancelPersistModelSettingsTimer();
         if (this.currentChatId && this.currentChatId !== chatId) {
+            if (chatAudioPipeline?.chatId === this.currentChatId) this.stopSpeechOutput();
             const prevSession = this.getChatSession(this.currentChatId, false);
             if (prevSession) {
                 prevSession.messages = this.messages;
@@ -8317,7 +8978,7 @@
         chatSession.model = sourceModel;
         chatSession.systemPrompt = sourceSystemPrompt;
 
-        const useAgent = this.agentMode;
+        const useAgent = CHAT_PRINCIPAL_IS_CORE && this.agentMode;
         const invocation = useAgent
             ? this.resolveAgentInvocation(userText)
             : { agentKey: null, source: 'direct_model', prompt: userText };
@@ -8669,6 +9330,7 @@
         stream.cloudFailure = null;
         stream.abortController = new AbortController();
         this.autoScrollEnabled = true;
+        const speechPipeline = this.beginStreamingAutoSpeak(context, stream);
               
         if (stream.targetMessageId) {
             context._apiVariantChainId = stream.targetMessageId;
@@ -8748,6 +9410,9 @@
 
                             // Accumulate streaming tool_call chunks
                             if (delta?.tool_calls) {
+                                if (speechPipeline && chatAudioPipeline === speechPipeline) {
+                                    this.stopSpeechOutput();
+                                }
                                 if (!firstToken) {
                                     firstToken = true;
                                     this.stopPrefillPolling(context.chatId);
@@ -8832,6 +9497,7 @@
                                     stream.engineStatus = null;
                                 }
                                 stream.streamingContent += deltaText;
+                                this.appendStreamingSpeech(speechPipeline, deltaText);
                                 for (const imageUrl of deltaImages) {
                                     const match = imageUrl.match(/^data:image\/(png|jpeg|webp);/);
                                     const persisted = await this.persistGeneratedImage(
@@ -9043,12 +9709,17 @@
             chatSession.messages.push(assistantMsg);
             this._setActiveVariant(chatSession, assistantId, context._variantUserIndex);
             this.saveCurrentChat(context.chatId, chatSession.messages, chatSession.model, context.systemPrompt);
+            const streamingSpeechFinished = this.finishSpeechPipeline(speechPipeline);
             if (this.currentChatId === context.chatId) {
                 this.scheduleEnhanceMessages();
+                if (!streamingSpeechFinished) this.maybeAutoSpeak(assistantMsg);
             }
 
         } catch (error) {
             console.log('[streamResponse] catch error:', error.name, error.message);
+            if (speechPipeline && chatAudioPipeline === speechPipeline) {
+                this.stopSpeechOutput();
+            }
             if (error.name === 'AbortError') {
                 console.log('[streamResponse] AbortError caught - stream stopped by user');
                 // Reset thinking state (reasoning now lives in streamingThinking, not streamingContent)

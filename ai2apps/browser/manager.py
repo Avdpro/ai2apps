@@ -23,8 +23,9 @@ class BrowserManager:
     def __init__(self, backend, workspace=None) -> None:
         self.backend = backend
         self.workspace = workspace
-        self.status = BrowserRuntimeStatus()
+        self.status = BrowserRuntimeStatus(engine=getattr(backend, "engine", "unknown"))
         self._lock = asyncio.Lock()
+        self._actor_user_id: str | None = None
         self._io_session_id: str | None = None
         self._observations: dict[str, dict[str, Any]] = {}
 
@@ -81,20 +82,35 @@ class BrowserManager:
         await asyncio.to_thread(self.backend.set_download_directory, directory)
         self._io_session_id = session_id
 
-    async def start(self, *, session_id: str | None) -> dict[str, Any]:
+    async def start(
+        self,
+        *,
+        session_id: str | None,
+        actor_user_id: str | None = None,
+    ) -> dict[str, Any]:
         async with self._lock:
             self._claim(session_id)
+            self._bind_actor(actor_user_id)
             if self.status.state is BrowserControlState.STOPPED:
                 await self._prepare_session_io(session_id)
-                await asyncio.to_thread(self.backend.start)
+                start_for_actor = getattr(self.backend, "start_for_actor", None)
+                if start_for_actor is None:
+                    await asyncio.to_thread(self.backend.start)
+                else:
+                    await asyncio.to_thread(start_for_actor, self._actor_user_id)
                 self.status.state = BrowserControlState.AGENT_CONTROL
+            else:
+                await self._update_backend_lease("renew_lease")
             await self._refresh()
             return self.status.to_dict()
 
     async def close(self) -> dict[str, Any]:
         async with self._lock:
             await asyncio.to_thread(self.backend.stop)
-            self.status = BrowserRuntimeStatus()
+            self.status = BrowserRuntimeStatus(
+                engine=getattr(self.backend, "engine", "unknown")
+            )
+            self._actor_user_id = None
             self._io_session_id = None
             self._observations.clear()
             return self.status.to_dict()
@@ -698,6 +714,7 @@ class BrowserManager:
                     "invalid_browser_state",
                     f"Cannot enter user control from {self.status.state.value}",
                 )
+            await self._update_backend_lease("pause_lease")
             self.status.state = BrowserControlState.USER_CONTROL
             self.status.recent_events = []
             return self.status.to_dict()
@@ -713,6 +730,7 @@ class BrowserManager:
                 self.status.state = BrowserControlState.USER_REQUIRED
                 self.status.challenge = challenge
                 return {**self.status.to_dict(), "completed": False}
+            await self._update_backend_lease("resume_lease")
             self.status.state = BrowserControlState.AGENT_CONTROL
             self.status.challenge = None
             await self._refresh()
@@ -728,7 +746,11 @@ class BrowserManager:
         self._claim(session_id)
         if self.status.state is BrowserControlState.STOPPED:
             await self._prepare_session_io(session_id)
-            await asyncio.to_thread(self.backend.start)
+            start_for_actor = getattr(self.backend, "start_for_actor", None)
+            if start_for_actor is None:
+                await asyncio.to_thread(self.backend.start)
+            else:
+                await asyncio.to_thread(start_for_actor, self._actor_user_id)
             self.status.state = BrowserControlState.AGENT_CONTROL
         if self.status.state in {
             BrowserControlState.USER_REQUIRED,
@@ -738,6 +760,12 @@ class BrowserManager:
                 "user_control_active",
                 "Authentication must be completed by the user before Agent control resumes",
             )
+        await self._update_backend_lease("renew_lease")
+
+    async def _update_backend_lease(self, operation: str) -> None:
+        callback = getattr(self.backend, operation, None)
+        if callback is not None:
+            await asyncio.to_thread(callback)
 
     def _claim(self, session_id: str | None) -> None:
         if self.status.owner_session_id is None:
@@ -746,6 +774,24 @@ class BrowserManager:
             raise BrowserError(
                 "browser_in_use",
                 "The managed browser belongs to another active Session",
+            )
+
+    def bind_actor(
+        self, session_id: str | None, actor_user_id: str | None
+    ) -> None:
+        """Bind trusted Tool context before any operation can auto-start a backend."""
+        self._claim(session_id)
+        self._bind_actor(actor_user_id)
+
+    def _bind_actor(self, actor_user_id: str | None) -> None:
+        if actor_user_id is None:
+            return
+        if self._actor_user_id is None:
+            self._actor_user_id = actor_user_id
+        elif self._actor_user_id != actor_user_id:
+            raise BrowserError(
+                "browser_actor_mismatch",
+                "The managed browser belongs to another authenticated actor",
             )
 
     async def _detect_challenge(self):

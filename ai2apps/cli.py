@@ -6,8 +6,54 @@ runtime patches stay reviewable.  This module is the stable product boundary.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+
+
+def _shared_cache_command(arguments: list[str]) -> int:
+    """Run a bounded cache operation only against the supervised shared path."""
+
+    import argparse
+
+    from ai2apps.shared_model_cache import (
+        SharedModelCacheError,
+        collect_unreferenced_hf_snapshots,
+        configured_shared_model_cache,
+    )
+
+    parser = argparse.ArgumentParser(prog="ai2apps shared-cache")
+    parser.add_argument("operation", choices=("inspect", "collect"))
+    parsed = parser.parse_args(arguments)
+    try:
+        configured = configured_shared_model_cache()
+        if configured is None:
+            raise SharedModelCacheError("shared model cache mode is not enabled")
+        _instance_id, hub_cache = configured
+        report = collect_unreferenced_hf_snapshots(
+            hub_cache, dry_run=parsed.operation == "inspect"
+        )
+    except SharedModelCacheError as exc:
+        print(f"AI2Apps shared cache operation failed: {exc}", file=sys.stderr)
+        return 2
+    print(
+        json.dumps(
+            {
+                "format": "ai2apps-shared-model-cache-report",
+                "version": 1,
+                "operation": parsed.operation,
+                "scanned_snapshots": report.scanned_snapshots,
+                "protected_snapshots": len(report.protected_snapshots),
+                "unmanaged_snapshots": len(report.unmanaged_snapshots),
+                "collectible_snapshots": len(report.collected_snapshots),
+                "collectible_blobs": len(report.collected_blobs),
+                "reclaimable_bytes": report.reclaimed_bytes,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return 0
 
 
 def _apply_environment_compatibility() -> None:
@@ -38,6 +84,8 @@ def main() -> None:
     """Run the AI2Apps CLI backed by the embedded oMLX runtime."""
     os.environ["AI2APPS_PRODUCT"] = "1"
     _apply_environment_compatibility()
+    if len(sys.argv) >= 2 and sys.argv[1] == "shared-cache":
+        raise SystemExit(_shared_cache_command(sys.argv[2:]))
     try:
         from omlx.cli import main as runtime_main
 

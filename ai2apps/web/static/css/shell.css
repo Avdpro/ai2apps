@@ -153,6 +153,11 @@ body {
 .control-alert-count:not([hidden]) { display: grid; }
 .dock-instance-count { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--shell-panel); border-radius: 99px; color: white; background: #171717; font-size: 8px; font-weight: 750; }
 
+.dock-context-dismiss {
+    position: fixed; inset: 0; z-index: 119; padding: 0; border: 0;
+    background: transparent; cursor: default;
+}
+.dock-context-dismiss[hidden] { display: none; }
 .dock-context-menu {
     position: fixed; z-index: 120; width: 210px; padding: 7px;
     border: 1px solid rgba(23,23,23,.11); border-radius: 14px;
@@ -176,6 +181,91 @@ body {
 .dock-context-separator { height: 1px; margin: 5px 4px; background: rgba(23,23,23,.09); }
 
 .app-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: white; }
+.desktop-home { position: absolute; inset: 0; overflow: auto; color: #171717; background: #f5f5f4; }
+.desktop-home[hidden] { display: none; }
+.desktop-home-scroll { width: min(1180px, calc(100% - 64px)); margin: 0 auto; padding: clamp(38px, 6vh, 76px) 0 64px; }
+.desktop-home-hero { min-height: 330px; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, .7fr); gap: 28px; align-items: stretch; }
+.desktop-home-hero-copy { padding: clamp(34px, 5vw, 64px); border-radius: 30px; color: white; background: #171717; box-shadow: 0 24px 64px rgba(23,23,23,.16); }
+.desktop-home-eyebrow { margin: 0 0 18px; color: rgba(255,255,255,.58); font-size: 11px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
+.desktop-home-hero h1 { margin: 0; font-size: clamp(40px, 5.3vw, 72px); font-weight: 680; line-height: .98; letter-spacing: -.06em; }
+.desktop-home-intro { max-width: 590px; margin: 24px 0 0; color: rgba(255,255,255,.68); font-size: clamp(15px, 1.5vw, 18px); line-height: 1.55; }
+.desktop-home-open-source { width: fit-content; max-width: 100%; margin-top: 24px; padding: 11px 13px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 16px; gap: 11px; align-items: center; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; color: white; background: rgba(255,255,255,.075); text-decoration: none; transition: background 150ms ease, border-color 150ms ease, transform 150ms ease; }
+.desktop-home-open-source:hover { border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.13); transform: translateY(-1px); }
+.desktop-home-open-source-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: #171717; background: white; }
+.desktop-home-open-source-icon svg { width: 18px; height: 18px; }
+.desktop-home-open-source > span:nth-child(2) { min-width: 0; }
+.desktop-home-open-source strong, .desktop-home-open-source small { display: block; }
+.desktop-home-open-source strong { font-size: 12px; letter-spacing: -.01em; }
+.desktop-home-open-source small { margin-top: 3px; color: rgba(255,255,255,.58); font-size: 9px; line-height: 1.35; }
+.desktop-home-open-source > svg { width: 15px; height: 15px; color: rgba(255,255,255,.55); }
+.desktop-home-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.desktop-home-actions button, .desktop-home-section-heading button { border: 0; font: inherit; cursor: pointer; }
+.desktop-home-primary, .desktop-home-secondary { height: 46px; display: inline-flex; align-items: center; gap: 9px; padding: 0 17px; border-radius: 13px; font-size: 13px; font-weight: 680; }
+.desktop-home-primary { color: #171717; background: white; }
+.desktop-home-secondary { color: white; background: rgba(255,255,255,.12); }
+.desktop-home-primary:hover { background: #f5f5f4; }
+.desktop-home-secondary:hover { background: rgba(255,255,255,.19); }
+.desktop-home-primary svg, .desktop-home-secondary svg { width: 17px; height: 17px; }
+.desktop-home-status { min-width: 0; padding: 28px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid rgba(23,23,23,.08); border-radius: 30px; background: white; box-shadow: 0 18px 50px rgba(23,23,23,.06); }
+.desktop-home-status-mark { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 17px; color: white; background: #171717; }
+.desktop-home-status-mark svg { width: 25px; height: 25px; }
+.desktop-home-status > div { margin-top: auto; }
+.desktop-home-status strong, .desktop-home-status small { display: block; }
+.desktop-home-status strong { font-size: 19px; letter-spacing: -.03em; }
+.desktop-home-status small { margin-top: 7px; color: #737373; font-size: 12px; line-height: 1.5; }
+.desktop-home-online { margin-top: 20px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 99px; color: #166534; background: #f0fdf4; font-size: 10px; font-weight: 700; }
+.desktop-home-online svg { width: 13px; height: 13px; }
+.desktop-home-section { margin-top: 42px; }
+.desktop-home-account { margin-top: 24px; padding: 22px 24px; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 18px; align-items: center; border: 1px solid #d6d3d1; border-radius: 22px; background: white; box-shadow: 0 12px 34px rgba(23,23,23,.05); }
+.desktop-home-account[hidden] { display: none; }
+.desktop-home-account[data-mode="setup"] { border-color: #bfdbfe; background: linear-gradient(135deg, #eff6ff, #fff 64%); }
+.desktop-home-account[data-mode="signin"] { border-color: #fed7aa; background: linear-gradient(135deg, #fff7ed, #fff 64%); }
+.desktop-home-account-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 15px; color: white; background: #171717; }
+.desktop-home-account-icon svg { width: 22px; height: 22px; }
+.desktop-home-account-copy { min-width: 0; }
+.desktop-home-account-copy > p:first-child { margin: 0 0 4px; color: #a3a3a3; font-size: 9px; font-weight: 750; letter-spacing: .14em; }
+.desktop-home-account-copy h2 { margin: 0; font-size: 17px; letter-spacing: -.025em; }
+.desktop-home-account-copy > p { max-width: 720px; margin: 7px 0 0; color: #737373; font-size: 11px; line-height: 1.5; }
+.desktop-home-account-benefits { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+.desktop-home-account-benefits span { display: inline-flex; align-items: center; gap: 5px; color: #525252; font-size: 10px; font-weight: 600; }
+.desktop-home-account-benefits svg { width: 13px; height: 13px; }
+.desktop-home-account-action { height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; color: white; background: #171717; font: inherit; font-size: 11px; font-weight: 680; cursor: pointer; }
+.desktop-home-account-action:hover { background: #292929; }
+.desktop-home-account-action svg { width: 14px; height: 14px; }
+.desktop-home-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 17px; }
+.desktop-home-section-heading p { margin: 0 0 5px; color: #a3a3a3; font-size: 10px; font-weight: 750; letter-spacing: .14em; }
+.desktop-home-section-heading h2 { margin: 0; font-size: 25px; letter-spacing: -.04em; }
+.desktop-home-section-heading button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 0; color: #525252; background: transparent; font-size: 12px; font-weight: 650; }
+.desktop-home-section-heading button:hover { color: #171717; }
+.desktop-home-section-heading button svg { width: 14px; height: 14px; }
+.desktop-home-apps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+.desktop-home-app { min-width: 0; min-height: 150px; padding: 19px; display: grid; grid-template-columns: 44px minmax(0, 1fr) 18px; gap: 13px; align-items: start; border: 1px solid rgba(23,23,23,.08); border-radius: 20px; color: inherit; background: white; font: inherit; text-align: left; cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease; }
+.desktop-home-app:hover { transform: translateY(-2px); border-color: rgba(23,23,23,.16); box-shadow: 0 16px 38px rgba(23,23,23,.08); }
+.desktop-home-app.is-locked { opacity: .48; filter: grayscale(1); cursor: not-allowed; }
+.desktop-home-app.is-locked:hover { transform: none; border-color: rgba(23,23,23,.08); box-shadow: none; }
+.desktop-home-app-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: white; background: #171717; }
+.desktop-home-app-icon svg { width: 21px; height: 21px; }
+.desktop-home-app-copy { min-width: 0; padding-top: 2px; }
+.desktop-home-app-copy strong, .desktop-home-app-copy small { display: block; }
+.desktop-home-app-copy strong { font-size: 14px; }
+.desktop-home-app-copy small { margin-top: 7px; overflow: hidden; color: #737373; font-size: 11px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.desktop-home-app-arrow { width: 16px; height: 16px; color: #a3a3a3; }
+@media (max-width: 900px) {
+    .desktop-home-scroll { width: min(100% - 32px, 720px); }
+    .desktop-home-hero { grid-template-columns: 1fr; }
+    .desktop-home-status { min-height: 180px; }
+    .desktop-home-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+    .desktop-home-scroll { width: min(100% - 22px, 520px); padding-top: 20px; }
+    .desktop-home-hero-copy { padding: 30px 24px; border-radius: 24px; }
+    .desktop-home-hero h1 { font-size: 40px; }
+    .desktop-home-status { border-radius: 24px; }
+    .desktop-home-apps { grid-template-columns: 1fr; }
+    .desktop-home-account { grid-template-columns: 42px minmax(0, 1fr); padding: 18px; }
+    .desktop-home-account-icon { width: 42px; height: 42px; }
+    .desktop-home-account-action { grid-column: 1 / -1; justify-content: center; }
+}
 .app-frame { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border: 0; background: white; opacity: 0; transition: opacity 180ms ease; }
 .app-frame[hidden] { display: none; }
 .app-frame.is-ready { opacity: 1; }

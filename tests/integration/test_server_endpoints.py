@@ -500,6 +500,27 @@ class TestResponsesEndpoint:
         ct_kwargs = recorded_chat_kwargs[0].get("chat_template_kwargs") or {}
         assert ct_kwargs["enable_thinking"] is False
 
+    def test_responses_forwards_reasoning_effort(self, client, mock_llm_engine):
+        recorded_chat_kwargs = []
+
+        async def chat(messages, **kwargs):
+            recorded_chat_kwargs.append(kwargs)
+            return MockGenerationOutput(text="pong")
+
+        mock_llm_engine.chat = chat
+        response = client.post(
+            "/v1/responses",
+            json={
+                "model": "test-model",
+                "input": "Say pong",
+                "reasoning": {"effort": "high"},
+            },
+        )
+
+        assert response.status_code == 200
+        ct_kwargs = recorded_chat_kwargs[0].get("chat_template_kwargs") or {}
+        assert ct_kwargs["reasoning_effort"] == "high"
+
     def test_response_stream_includes_reasoning_item_for_think_blocks(
         self, client, mock_llm_engine
     ):
@@ -983,6 +1004,58 @@ class TestChatCompletionEndpoint:
         assert response.status_code == 200
         assert mock_engine_pool.get_engine_calls[-1]["_lease"] is True
         assert mock_engine_pool.release_calls == ["test-model"]
+
+    def test_chat_completion_forwards_reasoning_effort(
+        self, client, mock_llm_engine
+    ):
+        recorded_chat_kwargs = []
+
+        async def chat(messages, **kwargs):
+            recorded_chat_kwargs.append(kwargs)
+            return MockGenerationOutput(text="done")
+
+        mock_llm_engine.chat = chat
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Think"}],
+                "reasoning_effort": "high",
+            },
+        )
+
+        assert response.status_code == 200
+        ct_kwargs = recorded_chat_kwargs[0].get("chat_template_kwargs") or {}
+        assert ct_kwargs["reasoning_effort"] == "high"
+
+    def test_ai2apps_session_partitions_general_prefix_cache(
+        self, client, mock_llm_engine
+    ):
+        captured = {}
+
+        async def chat(messages, **kwargs):
+            captured.update(kwargs)
+            return MockGenerationOutput(text="Session-scoped response.")
+
+        mock_llm_engine.chat = chat
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "ai2apps_session_id": "a2c-session-alice-1",
+                "ai2apps_kv_policy": "session",
+            },
+        )
+
+        assert response.status_code == 200
+        assert captured["cache_extra_keys"] == (
+            "ai2apps-session-v1",
+            "a2c-session-alice-1",
+        )
+        # The mock engine does not guarantee append-only KV continuity, so the
+        # policy safely degrades while retaining namespace isolation.
+        assert captured["kv_cache_policy"] == "strict"
 
     def test_chat_completion_summary_log_names_the_model(self, client, caplog):
         """The per-request summary must identify the serving model.

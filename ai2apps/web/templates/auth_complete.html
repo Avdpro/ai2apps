@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connecting to AI2Apps Local</title>
+    <style>
+        :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #f5f5f4; color: #171717; }
+        main { width: min(420px, calc(100vw - 48px)); padding: 32px; border: 1px solid #e5e5e5; border-radius: 20px; background: white; box-shadow: 0 18px 50px rgb(0 0 0 / .08); }
+        h1 { margin: 0 0 10px; font-size: 22px; }
+        p { margin: 0; color: #666; line-height: 1.55; }
+        .error { color: #b42318; }
+        @media (prefers-color-scheme: dark) { body { background: #111; color: #fafafa; } main { background: #1c1c1e; border-color: #333; } p { color: #aaa; } }
+    </style>
+</head>
+<body>
+<main>
+    <h1 id="title">Connecting this account…</h1>
+    <p id="status">The one-use Cloud handoff is being verified by this AI2Apps device.</p>
+</main>
+<script>
+(async function () {
+    'use strict';
+    const title = document.getElementById('title');
+    const status = document.getElementById('status');
+    const handoff = new URLSearchParams(location.hash.slice(1)).get('handoff');
+    history.replaceState(null, '', '/auth/complete');
+    if (!handoff || handoff.length < 24 || handoff.length > 200) {
+        title.textContent = 'The sign-in link is invalid';
+        status.textContent = 'Return to AI2Apps Cloud and create a new member sign-in link.';
+        status.className = 'error';
+        return;
+    }
+    try {
+        const response = await fetch('/v1/platform/auth/handoff/exchange', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ handoff: handoff }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(payload?.error?.message || 'The sign-in link was rejected.');
+        }
+        localStorage.removeItem('omlx_chat_api_key');
+        title.textContent = 'Account connected';
+        status.textContent = 'Opening AI2Apps Account…';
+        location.replace('/apps/ai2apps.account');
+    } catch (error) {
+        title.textContent = 'Could not connect this account';
+        status.textContent = error.message || String(error);
+        status.className = 'error';
+    }
+})();
+</script>
+</body>
+</html>

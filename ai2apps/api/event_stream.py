@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
+from ai2apps.api.ownership import authorize_app_instance, authorize_session
 from ai2apps.events.stream import stream_events
+from ai2apps.identity import RequestPrincipal
 
 
 def create_event_stream_router(
     runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
 ) -> APIRouter:
     router = APIRouter()
+    principal_dependency = Depends(principal_provider)
 
     @router.get("/events", response_model=None)
     async def events(
@@ -22,6 +27,7 @@ def create_event_stream_router(
         app_instance_id: str | None = None,
         subject_id: str | None = None,
         last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+        principal: RequestPrincipal = principal_dependency,
     ) -> StreamingResponse | JSONResponse:
         cursor = after
         if cursor is None and last_event_id is not None:
@@ -51,6 +57,19 @@ def create_event_stream_router(
                 message="AI2Apps Event transport is not ready.",
                 retryable=True,
             )
+        if principal.authentication_type != "legacy_api_key":
+            if session_id is None and app_instance_id is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": "event_scope_required",
+                        "message": "User event streams require an owned scope",
+                    },
+                )
+            if app_instance_id is not None:
+                authorize_app_instance(runtime, principal, app_instance_id)
+            if session_id is not None:
+                authorize_session(runtime, principal, session_id)
         return StreamingResponse(
             stream_events(
                 runtime.events,

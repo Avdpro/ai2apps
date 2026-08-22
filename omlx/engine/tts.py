@@ -162,8 +162,8 @@ class TTSEngine(BaseNonStreamingEngine):
 
     async def synthesize(
         self,
-        text: str,
-        voice: Optional[str] = None,
+        text: str | list[str],
+        voice: Optional[str | list[str]] = None,
         speed: float = 1.0,
         instructions: Optional[str] = None,
         ref_audio: Optional[str] = None,
@@ -205,7 +205,7 @@ class TTSEngine(BaseNonStreamingEngine):
         logger.info(
             "TTS synthesize: model=%s, text_len=%d, voice=%s, language=%s, speed=%.1f, ref_audio=%s",
             self._model_name,
-            len(text),
+            sum(len(item) for item in text) if isinstance(text, list) else len(text),
             voice,
             language or "auto",
             speed,
@@ -286,7 +286,13 @@ class TTSEngine(BaseNonStreamingEngine):
         activity_id = self._begin_activity(
             "synthesizing speech",
             detail="Synthesizing speech",
-            metadata={"text_length": len(text)},
+            metadata={
+                "text_length": (
+                    sum(len(item) for item in text)
+                    if isinstance(text, list)
+                    else len(text)
+                )
+            },
         )
         try:
             loop = asyncio.get_running_loop()

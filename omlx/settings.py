@@ -1029,7 +1029,13 @@ class GlobalSettings:
                 markitdown_pdf_processing_engine.strip() or "markitdown"
             )
 
-    def _apply_cli_overrides(self, args: Any, *, include_api_key: bool = True) -> None:
+    def _apply_cli_overrides(
+        self,
+        args: Any,
+        *,
+        include_api_key: bool = True,
+        include_transient_port: bool = True,
+    ) -> None:
         """
         Apply CLI argument overrides.
 
@@ -1039,7 +1045,11 @@ class GlobalSettings:
         # Server settings
         if hasattr(args, "host") and args.host is not None:
             self.server.host = args.host
-        if hasattr(args, "port") and args.port is not None:
+        if (
+            hasattr(args, "port")
+            and args.port is not None
+            and (include_transient_port or args.port != 0)
+        ):
             self.server.port = args.port
         if hasattr(args, "log_level") and args.log_level is not None:
             self.server.log_level = args.log_level
@@ -1221,7 +1231,11 @@ class GlobalSettings:
         settings_file = self.base_path / "settings.json"
         if settings_file.exists():
             persisted._load_from_file(settings_file)
-        persisted._apply_cli_overrides(args, include_api_key=False)
+        persisted._apply_cli_overrides(
+            args,
+            include_api_key=False,
+            include_transient_port=False,
+        )
         persisted.save()
 
     def ensure_directories(self) -> None:
@@ -1278,8 +1292,17 @@ class GlobalSettings:
         errors = []
 
         # Server validation
-        if not 1 <= self.server.port <= 65535:
+        helper_supervised = os.getenv("AI2APPS_SUPERVISED") == "helper"
+        ephemeral_port = self.server.port == 0 and helper_supervised
+        if not ephemeral_port and not 1 <= self.server.port <= 65535:
             errors.append(f"Invalid port: {self.server.port} (must be 1-65535)")
+        if ephemeral_port:
+            bind_hosts = [host.strip() for host in self.server.host.split(",") if host.strip()]
+            if bind_hosts != ["127.0.0.1"]:
+                errors.append(
+                    "Automatic port selection requires the Helper-supervised "
+                    "127.0.0.1 listener"
+                )
 
         valid_log_levels = {"trace", "debug", "info", "warning", "error", "critical"}
         if self.server.log_level.lower() not in valid_log_levels:

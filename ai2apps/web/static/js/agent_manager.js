@@ -8,18 +8,15 @@ function agentManager() {
         runStates: ['queued','planning','running','waiting_input','waiting_capability','interrupted','completed','failed','cancelled'],
 
         async init() {
-            const key = window.AI2APPS_AGENT_MANAGER_API_KEY || '';
-            if (key) localStorage.setItem('omlx_chat_api_key', key);
+            localStorage.removeItem('omlx_chat_api_key');
             await this.refresh();
         },
-        apiKey() { return localStorage.getItem('omlx_chat_api_key') || window.AI2APPS_AGENT_MANAGER_API_KEY || ''; },
         async request(path, options = {}) {
             const response = await fetch('/v1/platform' + path, {
                 credentials: 'same-origin',
                 ...options,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(this.apiKey() ? { Authorization: 'Bearer ' + this.apiKey() } : {}),
                     ...(options.headers || {}),
                 },
             });

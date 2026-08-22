@@ -23,4 +23,9 @@ before dynamic cache replacement work begins.
 - Experimental branch: `experiment/moe-cache`.
 - Keep upstream-compatible changes isolated and small.
 - Record benchmark commands, source commit, memory, cold TPS, and steady TPS.
-- Never modify `/Users/avdpropang/sdk/dmoe` from this repository.
+- Never modify a sibling DMoE checkout from this repository.
+
+## Notice:
+- The current AI2Apps desktop client has bundle ID `com.ai2apps.desktop`.
+- Never launch or control the retired `com.electron.ai2apps` client or its build output.
+- When using Computer Use, identify AI2Apps by its exact bundle ID or executable path, not only by display name.

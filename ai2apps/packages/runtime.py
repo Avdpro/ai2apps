@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
-import inspect
 import json
-import sys
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from ai2apps.services import (
@@ -22,6 +18,7 @@ from ai2apps.services import (
     ToolProviderError,
 )
 
+from .inference_runtime import is_inference_runtime_manifest
 from .models import InstalledPackageRecord, PackageError
 from .supervisor import ManagedServiceSupervisor
 
@@ -36,9 +33,17 @@ class PackageRuntimeBinder:
         self.services = services
         self.registry = registry
         self.supervisor = supervisor
-        self._embedded: dict[str, dict[str, Any]] = {}
+
+    @staticmethod
+    def _require_isolated_runtime(package: InstalledPackageRecord) -> None:
+        if package.runtime_mode is ServiceRuntimeMode.IN_PROCESS:
+            raise PackageError(
+                "third_party_in_process_denied",
+                "Installed Service Packages cannot execute in the AI2Apps host process",
+            )
 
     def register(self, package: InstalledPackageRecord) -> None:
+        self._require_isolated_runtime(package)
         service = self.services.get_service(package.service_key)
         instance = self.services.get_instance_for_service(service.id)
         active_names: set[str] = set()
@@ -90,18 +95,6 @@ class PackageRuntimeBinder:
         self, package: InstalledPackageRecord, descriptor: dict[str, Any]
     ):
         async def invoke(arguments: dict[str, Any], context: ToolCallContext):
-            if package.runtime_mode is ServiceRuntimeMode.IN_PROCESS:
-                state = self._embedded.get(package.service_key)
-                handlers = {} if state is None else state.get("tools", {})
-                handler = handlers.get(descriptor["name"])
-                if handler is None:
-                    raise ToolProviderError(
-                        "Embedded Service Tool handler is unavailable"
-                    )
-                value = handler(arguments, context)
-                if inspect.isawaitable(value):
-                    value = await value
-                return value
             service = self.services.get_service(package.service_key)
             instance = self.services.get_instance_for_service(service.id)
             if not instance.endpoint:
@@ -150,8 +143,22 @@ class PackageRuntimeBinder:
         return result
 
     async def start(self, package: InstalledPackageRecord) -> None:
+        self._require_isolated_runtime(package)
         service = self.services.get_service(package.service_key)
         instance = self.services.get_instance_for_service(service.id)
+        if is_inference_runtime_manifest(package.manifest):
+            self.services.ensure_instance(
+                service_id=service.id,
+                provider_key=instance.provider_key,
+                status=ServiceInstanceStatus.RUNNING,
+                endpoint=None,
+                health={
+                    "status": "ready",
+                    "mode": "inference_runtime",
+                    "capabilities": package.manifest.get("capabilities", []),
+                },
+            )
+            return
         if package.runtime_mode is ServiceRuntimeMode.MANAGED_PROCESS:
             endpoint = await self.supervisor.start(package)
             self.services.ensure_instance(
@@ -178,63 +185,17 @@ class PackageRuntimeBinder:
                 endpoint=endpoint,
                 health={"status": "ok", "mode": "external"},
             )
-        else:
-            await self._start_embedded(package)
-            self.services.set_instance_status(
-                instance.id,
-                ServiceInstanceStatus.RUNNING,
-                health={"status": "ok", "mode": "in_process"},
-            )
-
-    async def _start_embedded(self, package: InstalledPackageRecord) -> None:
-        entrypoint = package.entrypoint
-        if not entrypoint or ":" not in entrypoint:
+        else:  # pragma: no cover - guarded above and retained for enum exhaustiveness
             raise PackageError(
-                "invalid_entrypoint", "Embedded entrypoint must be module:function"
+                "third_party_in_process_denied",
+                "Installed Service Packages cannot execute in the AI2Apps host process",
             )
-        module_name, function_name = entrypoint.split(":", 1)
-        source = (
-            Path(package.store_path) / "src" / (module_name.replace(".", "/") + ".py")
-        )
-        if not source.is_file():
-            raise PackageError(
-                "entrypoint_not_found", f"Embedded entrypoint not found: {source}"
-            )
-        unique_name = f"_ai2apps_service_{package.package_digest.split(':')[-1]}"
-        spec = importlib.util.spec_from_file_location(unique_name, source)
-        if spec is None or spec.loader is None:
-            raise PackageError("entrypoint_load_failed", "Cannot load embedded Service")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[unique_name] = module
-        try:
-            spec.loader.exec_module(module)
-            factory = getattr(module, function_name)
-            state = factory()
-            if inspect.isawaitable(state):
-                state = await state
-        except Exception:
-            sys.modules.pop(unique_name, None)
-            raise
-        if not isinstance(state, dict) or not isinstance(state.get("tools", {}), dict):
-            raise PackageError(
-                "invalid_embedded_provider",
-                "Embedded factory must return a provider object",
-            )
-        state["module_name"] = unique_name
-        self._embedded[package.service_key] = state
 
     async def stop(self, package: InstalledPackageRecord) -> None:
+        if is_inference_runtime_manifest(package.manifest):
+            return
         if package.runtime_mode is ServiceRuntimeMode.MANAGED_PROCESS:
             await self.supervisor.stop(package.service_key)
-        elif package.runtime_mode is ServiceRuntimeMode.IN_PROCESS:
-            state = self._embedded.pop(package.service_key, None)
-            if state is not None:
-                stop = state.get("stop")
-                if stop is not None:
-                    value = stop()
-                    if inspect.isawaitable(value):
-                        await value
-                sys.modules.pop(state.get("module_name", ""), None)
 
     async def restart(self, package: InstalledPackageRecord) -> None:
         await self.stop(package)

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {"id": "ai2apps/model-vibevoice-05b", "type": "service", "version": "0.1.0", "displayName": "VibeVoice Realtime 0.5B", "description": "Long-form and multi-speaker local speech synthesis."},
+  "compatibility": {"ai2apps": ">=0.1.0 <2.0.0", "platforms": ["darwin"], "architectures": ["arm64"], "minimumOsVersion": "26.2"},
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned VibeVoice checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run local speech synthesis.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.3.0 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

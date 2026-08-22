@@ -2039,6 +2039,557 @@ MIGRATIONS: tuple[Migration, ...] = (
             "CREATE INDEX idx_remote_client_devices_status ON remote_client_devices(status, updated_at DESC)",
         ),
     ),
+    Migration(
+        version=23,
+        name="installation_member_identity",
+        statements=(
+            """
+            CREATE TABLE installations (
+                id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 200),
+                cloud_device_id TEXT NOT NULL UNIQUE
+                    CHECK (length(cloud_device_id) BETWEEN 1 AND 200),
+                organization_id TEXT NOT NULL
+                    CHECK (length(organization_id) BETWEEN 1 AND 200),
+                organization_type TEXT NOT NULL
+                    CHECK (organization_type IN ('household','business')),
+                core_user_id TEXT NOT NULL
+                    CHECK (length(core_user_id) BETWEEN 1 AND 200),
+                billing_account_id TEXT NOT NULL
+                    CHECK (length(billing_account_id) BETWEEN 1 AND 200),
+                access_epoch INTEGER NOT NULL CHECK (access_epoch >= 1),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','suspended','revoked')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE installation_memberships (
+                installation_id TEXT NOT NULL,
+                cloud_user_id TEXT NOT NULL
+                    CHECK (length(cloud_user_id) BETWEEN 1 AND 200),
+                role TEXT NOT NULL CHECK (role IN (
+                    'core','owner','admin','developer','member','child','guest'
+                )),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','suspended','revoked')),
+                membership_epoch INTEGER NOT NULL CHECK (membership_epoch >= 1),
+                last_verified_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (installation_id, cloud_user_id),
+                FOREIGN KEY (installation_id)
+                    REFERENCES installations(id) ON DELETE RESTRICT
+            )
+            """,
+            """
+            CREATE INDEX idx_installation_memberships_user_status
+            ON installation_memberships(cloud_user_id, status)
+            """,
+            """
+            CREATE TABLE local_login_sessions (
+                token_digest TEXT PRIMARY KEY CHECK (length(token_digest) = 64),
+                installation_id TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                role_snapshot TEXT NOT NULL CHECK (role_snapshot IN (
+                    'core','owner','admin','developer','member','child','guest'
+                )),
+                membership_epoch INTEGER NOT NULL CHECK (membership_epoch >= 1),
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_access_check_at TEXT NOT NULL,
+                FOREIGN KEY (installation_id, actor_user_id)
+                    REFERENCES installation_memberships(
+                        installation_id, cloud_user_id
+                    ) ON DELETE RESTRICT
+            )
+            """,
+            """
+            CREATE INDEX idx_local_login_sessions_installation_actor
+            ON local_login_sessions(installation_id, actor_user_id, expires_at)
+            """,
+            """
+            ALTER TABLE app_instances ADD COLUMN owner_user_id TEXT
+                CHECK (owner_user_id IS NULL OR length(owner_user_id) BETWEEN 1 AND 200)
+            """,
+            """
+            CREATE INDEX idx_app_instances_owner_status
+            ON app_instances(owner_user_id, status, updated_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=24,
+        name="user_owned_coder_projects",
+        statements=(
+            """
+            ALTER TABLE coder_projects
+            ADD COLUMN owner_user_id TEXT
+                CHECK (
+                    owner_user_id IS NULL
+                    OR length(owner_user_id) BETWEEN 1 AND 200
+                )
+            """,
+            """
+            CREATE INDEX idx_coder_projects_owner_updated
+            ON coder_projects(owner_user_id, updated_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=25,
+        name="cloud_ai_request_ownership",
+        statements=(
+            """
+            CREATE TABLE cloud_ai_requests (
+                idempotency_key TEXT PRIMARY KEY
+                    CHECK (length(idempotency_key) BETWEEN 8 AND 160),
+                cloud_request_id TEXT UNIQUE
+                    CHECK (
+                        cloud_request_id IS NULL
+                        OR length(cloud_request_id) BETWEEN 1 AND 200
+                    ),
+                actor_user_id TEXT NOT NULL
+                    CHECK (length(actor_user_id) BETWEEN 1 AND 200),
+                installation_id TEXT NOT NULL
+                    CHECK (length(installation_id) BETWEEN 1 AND 200),
+                organization_id TEXT NOT NULL
+                    CHECK (length(organization_id) BETWEEN 1 AND 200),
+                billing_account_id TEXT NOT NULL
+                    CHECK (length(billing_account_id) BETWEEN 1 AND 200),
+                membership_epoch INTEGER NOT NULL CHECK (membership_epoch >= 1),
+                operation TEXT NOT NULL CHECK (operation IN (
+                    'responses','images.generations','images.edits'
+                )),
+                model TEXT NOT NULL CHECK (length(model) <= 500),
+                status TEXT NOT NULL CHECK (status IN (
+                    'requested','in_progress','completed','failed',
+                    'cancel_requested','cancelled'
+                )),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX idx_cloud_ai_requests_actor_updated
+            ON cloud_ai_requests(
+                installation_id, actor_user_id, updated_at DESC
+            )
+            """,
+            """
+            CREATE INDEX idx_cloud_ai_requests_status_updated
+            ON cloud_ai_requests(status, updated_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=26,
+        name="local_client_session_scope",
+        statements=(
+            """
+            ALTER TABLE local_login_sessions
+            ADD COLUMN client_scope TEXT NOT NULL DEFAULT 'desktop'
+                CHECK (length(client_scope) BETWEEN 1 AND 200)
+            """,
+        ),
+    ),
+    Migration(
+        version=27,
+        name="local_capability_sharing",
+        statements=(
+            """
+            CREATE TABLE capability_exports (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'exp_'),
+                kind TEXT NOT NULL CHECK (kind IN ('model','tool')),
+                target_id TEXT NOT NULL CHECK (length(target_id) BETWEEN 1 AND 500),
+                display_name TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 200),
+                protocols_json TEXT NOT NULL CHECK (json_valid(protocols_json)),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','paused','revoked')),
+                created_by_user_id TEXT NOT NULL
+                    CHECK (length(created_by_user_id) BETWEEN 1 AND 200),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX uq_active_capability_export_target
+            ON capability_exports(kind, target_id) WHERE status != 'revoked'
+            """,
+            """
+            CREATE TABLE capability_share_grants (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'shr_'),
+                label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 200),
+                token_digest TEXT NOT NULL UNIQUE CHECK (length(token_digest) = 64),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','revoked')),
+                max_concurrency INTEGER NOT NULL DEFAULT 1
+                    CHECK (max_concurrency BETWEEN 1 AND 100),
+                expires_at TEXT,
+                created_by_user_id TEXT NOT NULL
+                    CHECK (length(created_by_user_id) BETWEEN 1 AND 200),
+                request_count INTEGER NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+                last_used_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE capability_share_grant_exports (
+                grant_id TEXT NOT NULL,
+                export_id TEXT NOT NULL,
+                PRIMARY KEY (grant_id, export_id),
+                FOREIGN KEY (grant_id)
+                    REFERENCES capability_share_grants(id) ON DELETE RESTRICT,
+                FOREIGN KEY (export_id)
+                    REFERENCES capability_exports(id) ON DELETE RESTRICT
+            )
+            """,
+            """
+            CREATE TABLE capability_share_audit (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'sha_'),
+                grant_id TEXT NOT NULL,
+                export_id TEXT,
+                operation TEXT NOT NULL CHECK (length(operation) BETWEEN 1 AND 200),
+                status TEXT NOT NULL CHECK (status IN ('started','completed','failed','denied')),
+                duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
+                error_code TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (grant_id)
+                    REFERENCES capability_share_grants(id) ON DELETE RESTRICT,
+                FOREIGN KEY (export_id)
+                    REFERENCES capability_exports(id) ON DELETE RESTRICT
+            )
+            """,
+            """
+            CREATE INDEX idx_capability_share_audit_grant_created
+            ON capability_share_audit(grant_id, created_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=28,
+        name="core_controlled_lan_access",
+        statements=(
+            """
+            CREATE TABLE local_network_access (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                mode TEXT NOT NULL DEFAULT 'disabled'
+                    CHECK (mode IN ('disabled','share_only','full')),
+                bind_host TEXT NOT NULL DEFAULT '0.0.0.0'
+                    CHECK (length(bind_host) BETWEEN 1 AND 200),
+                port INTEGER NOT NULL DEFAULT 8011
+                    CHECK (port BETWEEN 1024 AND 65535),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                updated_by_user_id TEXT NOT NULL DEFAULT 'local'
+                    CHECK (length(updated_by_user_id) BETWEEN 1 AND 200),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            INSERT INTO local_network_access(
+                singleton_id,mode,bind_host,port,revision,
+                updated_by_user_id,created_at,updated_at
+            ) VALUES (1,'disabled','0.0.0.0',8011,1,'local',
+                strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            """,
+        ),
+    ),
+    Migration(
+        version=29,
+        name="upstream_ai_gateways",
+        statements=(
+            """
+            CREATE TABLE upstream_gateways (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'upg_'),
+                label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 200),
+                openai_base_url TEXT NOT NULL
+                    CHECK (length(openai_base_url) BETWEEN 1 AND 2000),
+                mcp_url TEXT NOT NULL CHECK (length(mcp_url) BETWEEN 1 AND 2000),
+                secret_backend_key TEXT NOT NULL UNIQUE
+                    CHECK (length(secret_backend_key) BETWEEN 1 AND 500),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','disabled')),
+                health_status TEXT NOT NULL DEFAULT 'unknown'
+                    CHECK (health_status IN ('unknown','online','offline')),
+                capabilities_json TEXT NOT NULL DEFAULT '{}'
+                    CHECK (json_valid(capabilities_json)),
+                last_error TEXT CHECK (
+                    last_error IS NULL OR length(last_error) <= 1000
+                ),
+                last_checked_at TEXT,
+                created_by_user_id TEXT NOT NULL
+                    CHECK (length(created_by_user_id) BETWEEN 1 AND 200),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX uq_active_upstream_gateway_endpoint
+            ON upstream_gateways(openai_base_url) WHERE status = 'active'
+            """,
+            """
+            CREATE INDEX idx_upstream_gateways_status_updated
+            ON upstream_gateways(status, updated_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=30,
+        name="upstream_gateway_activity",
+        statements=(
+            """
+            CREATE TABLE upstream_gateway_activity (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'upa_'),
+                gateway_id TEXT NOT NULL,
+                operation TEXT NOT NULL
+                    CHECK (operation IN ('probe','model','tool')),
+                capability_id TEXT CHECK (
+                    capability_id IS NULL OR length(capability_id) <= 500
+                ),
+                status TEXT NOT NULL CHECK (status IN ('completed','failed')),
+                duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+                error_code TEXT CHECK (
+                    error_code IS NULL OR length(error_code) <= 100
+                ),
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (gateway_id)
+                    REFERENCES upstream_gateways(id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE INDEX idx_upstream_gateway_activity_gateway_created
+            ON upstream_gateway_activity(gateway_id, created_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=31,
+        name="share_grant_request_budget",
+        statements=(
+            """
+            ALTER TABLE capability_share_grants
+            ADD COLUMN max_requests INTEGER CHECK (
+                max_requests IS NULL OR max_requests BETWEEN 1 AND 1000000
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=32,
+        name="share_services_and_agents",
+        statements=(
+            """
+            CREATE TABLE capability_exports_v32 (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'exp_'),
+                kind TEXT NOT NULL
+                    CHECK (kind IN ('model','tool','service','agent')),
+                target_id TEXT NOT NULL
+                    CHECK (length(target_id) BETWEEN 1 AND 500),
+                display_name TEXT NOT NULL
+                    CHECK (length(display_name) BETWEEN 1 AND 200),
+                protocols_json TEXT NOT NULL CHECK (json_valid(protocols_json)),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','paused','revoked')),
+                created_by_user_id TEXT NOT NULL
+                    CHECK (length(created_by_user_id) BETWEEN 1 AND 200),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            INSERT INTO capability_exports_v32
+            SELECT * FROM capability_exports
+            """,
+            """
+            CREATE TABLE capability_share_grant_exports_v32 (
+                grant_id TEXT NOT NULL,
+                export_id TEXT NOT NULL,
+                PRIMARY KEY (grant_id, export_id),
+                FOREIGN KEY (grant_id)
+                    REFERENCES capability_share_grants(id) ON DELETE RESTRICT,
+                FOREIGN KEY (export_id)
+                    REFERENCES capability_exports_v32(id) ON DELETE RESTRICT
+            )
+            """,
+            """
+            INSERT INTO capability_share_grant_exports_v32
+            SELECT * FROM capability_share_grant_exports
+            """,
+            """
+            CREATE TABLE capability_share_audit_v32 (
+                id TEXT PRIMARY KEY
+                    CHECK (length(id) = 36 AND substr(id, 1, 4) = 'sha_'),
+                grant_id TEXT NOT NULL,
+                export_id TEXT,
+                operation TEXT NOT NULL CHECK (length(operation) BETWEEN 1 AND 200),
+                status TEXT NOT NULL
+                    CHECK (status IN ('started','completed','failed','denied')),
+                duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
+                error_code TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (grant_id)
+                    REFERENCES capability_share_grants(id) ON DELETE RESTRICT,
+                FOREIGN KEY (export_id)
+                    REFERENCES capability_exports_v32(id) ON DELETE RESTRICT
+            )
+            """,
+            """
+            INSERT INTO capability_share_audit_v32
+            SELECT * FROM capability_share_audit
+            """,
+            "DROP TABLE capability_share_audit",
+            "DROP TABLE capability_share_grant_exports",
+            "DROP TABLE capability_exports",
+            "ALTER TABLE capability_exports_v32 RENAME TO capability_exports",
+            "ALTER TABLE capability_share_grant_exports_v32 RENAME TO capability_share_grant_exports",
+            "ALTER TABLE capability_share_audit_v32 RENAME TO capability_share_audit",
+            """
+            CREATE UNIQUE INDEX uq_active_capability_export_target
+            ON capability_exports(kind, target_id) WHERE status != 'revoked'
+            """,
+            """
+            CREATE INDEX idx_capability_share_audit_grant_created
+            ON capability_share_audit(grant_id, created_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=33,
+        name="parent_local_routing",
+        statements=(
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN remote_node_id TEXT
+                CHECK (remote_node_id IS NULL OR length(remote_node_id) BETWEEN 8 AND 128)
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN ancestor_node_ids_json TEXT
+                NOT NULL DEFAULT '[]' CHECK (json_valid(ancestor_node_ids_json))
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN is_parent INTEGER
+                NOT NULL DEFAULT 1 CHECK (is_parent IN (0,1))
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN is_default INTEGER
+                NOT NULL DEFAULT 0 CHECK (is_default IN (0,1))
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN priority INTEGER
+                NOT NULL DEFAULT 100 CHECK (priority BETWEEN 1 AND 1000)
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN route_models INTEGER
+                NOT NULL DEFAULT 1 CHECK (route_models IN (0,1))
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN route_mcp INTEGER
+                NOT NULL DEFAULT 1 CHECK (route_mcp IN (0,1))
+            """,
+            """
+            CREATE UNIQUE INDEX uq_upstream_remote_node
+            ON upstream_gateways(remote_node_id) WHERE remote_node_id IS NOT NULL
+            """,
+            """
+            CREATE UNIQUE INDEX uq_default_parent_local
+            ON upstream_gateways(is_default) WHERE is_default = 1
+            """,
+            """
+            UPDATE upstream_gateways SET is_default=1
+            WHERE id=(
+                SELECT id FROM upstream_gateways
+                WHERE is_parent=1 AND status='active'
+                ORDER BY created_at,id LIMIT 1
+            )
+            """,
+            """
+            CREATE TABLE upstream_route_settings (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                model_policy TEXT NOT NULL DEFAULT 'explicit_only'
+                    CHECK (model_policy IN ('explicit_only','parent_first')),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                updated_by_user_id TEXT NOT NULL
+                    CHECK (length(updated_by_user_id) BETWEEN 1 AND 200),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            INSERT INTO upstream_route_settings(
+                singleton_id,model_policy,revision,updated_by_user_id,created_at,updated_at
+            ) VALUES (
+                1,'explicit_only',1,'system',
+                strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ','now')
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=34,
+        name="cloud_relay_parent_transport",
+        statements=(
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN transport_kind TEXT
+                NOT NULL DEFAULT 'direct' CHECK (transport_kind IN ('direct','cloud_relay'))
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN downstream_installation_id TEXT
+                CHECK (downstream_installation_id IS NULL OR length(downstream_installation_id) BETWEEN 8 AND 200)
+            """,
+            """
+            ALTER TABLE upstream_gateways ADD COLUMN node_link_id TEXT
+                CHECK (node_link_id IS NULL OR length(node_link_id) BETWEEN 8 AND 200)
+            """,
+            """
+            CREATE UNIQUE INDEX uq_upstream_node_link
+            ON upstream_gateways(node_link_id) WHERE node_link_id IS NOT NULL
+            """,
+            """
+            CREATE TABLE federation_pairing_attempts (
+                pairing_id TEXT PRIMARY KEY CHECK (length(pairing_id) BETWEEN 8 AND 200),
+                secret_backend_key TEXT NOT NULL UNIQUE,
+                expires_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','exchanged','expired')),
+                created_by_user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=35,
+        name="local_security_instance_identity",
+        statements=(
+            """
+            CREATE TABLE local_security_identity (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                security_instance_id TEXT NOT NULL UNIQUE
+                    CHECK (
+                        length(security_instance_id) = 38
+                        AND substr(security_instance_id, 1, 6) = 'local_'
+                        AND substr(security_instance_id, 7)
+                            NOT GLOB '*[^0-9a-f]*'
+                    ),
+                created_at TEXT NOT NULL
+                    CHECK (length(created_at) = 27 AND substr(created_at, -1) = 'Z')
+            )
+            """,
+        ),
+    ),
 )
 
 

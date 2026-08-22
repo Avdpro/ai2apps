@@ -1,117 +1,179 @@
 # AI2Apps
 
-The Edge Supermodel Ecosystem — local-first Fusion and Cache-MoE inference
-for Apple Silicon.
+**A local-first AI application and Agent platform for personal AI nodes.**
 
-AI2Apps is an independent inference product built on the open-source
-[oMLX](https://github.com/jundot/omlx) runtime. It adds scope selection,
-cache-aware routed experts, SSD expert storage, optional lossy acceleration,
-session-safe KV reuse, and AI2Apps-specific observability for very large MoE
-models such as DeepSeek V4 Flesh.
+AI2Apps turns local and connected model runtimes into durable Apps, Agents,
+and versioned Services. It provides a server-owned Agent Harness, application
+shell, tool and capability gateway, package trust system, multi-user identity,
+and remote access above one or more model backends.
+
+Apple Silicon and the embedded [oMLX](https://github.com/jundot/omlx) runtime
+are the first implementation. AI2Apps also keeps its platform contracts
+hardware-neutral so that external providers and future NVIDIA/CUDA or AMD/ROCm
+nodes can expose the same model and Service capabilities.
 
 > AI2Apps is not affiliated with, sponsored by, or endorsed by the oMLX
-> project or its maintainers. The oMLX name is used only to identify the origin
-> of the runtime. See [NOTICE](NOTICE) for attribution.
+> project or its maintainers. The oMLX name identifies the origin of the
+> embedded runtime. See [NOTICE](NOTICE) for attribution.
 
-[中文说明](README.zh.md) · [Architecture](docs/architecture.md) ·
-[Flesh engine](docs/deepseek-v4-flesh-engine.md) ·
-[Benchmark records](docs/moe-cache-benchmark-2026-08-08.md) ·
+[中文说明](README.zh.md) ·
+[Platform architecture](docs/ai2apps-platform-architecture.md) ·
+[Backend plan](docs/ai2apps-backend-development-plan.md) ·
+[Local Knowledge/RAG](docs/ai2apps-local-knowledge-rag-architecture.md) ·
+[Security baseline](docs/security-authority-baseline.md) ·
 [Release gate](docs/release-gate.md)
 
-## What AI2Apps adds
+## Product model
 
-- Configurable flat or hierarchical scope catalogs.
-- Shared-expert scope probing, 16 layers by default and configurable to 43.
-- Per-scope static expert banks with device-side Top-K routing.
-- Exact, conservative, `tail1`, `tail2`, and aggressive `head2` policies.
-- Expert-major SSD storage and cache-aware fallback loading.
-- Multi-turn sessions and scope-namespaced KV-cache reuse.
-- OpenAI-compatible endpoints, CLI, chat UI, and live scope/cache status.
-- Reproducible prefill/decode, miss handling, I/O, and scope benchmarks.
+AI2Apps is organized around four product objects and one runtime layer:
 
-The inherited oMLX runtime continues to provide model loading, attention,
-fused MoE kernels, continuous batching, paged KV caching, audio/VLM engines,
-MCP integration, and the original administration capabilities.
+```text
+User / API client
+        ↓
+App      interaction, UI, instances, Sessions, files and artifacts
+        ↓
+Agent    goals, instructions, model policy, tools and durable execution
+        ↓
+Service  stable, versioned and auditable capabilities
+        ↓
+Runtime  local oMLX/Fusion, Cloud, external or future federated providers
+```
+
+- **Apps** own user interaction and persistent application state. Built-in
+  Apps currently include Chat, Coder, Account, Agents, Models, Trust Center,
+  Terminal, settings, logs, and benchmarks.
+- **Agents** run through an authoritative server-side Harness. Runs, steps,
+  status, interactions, approvals, events, retries, delegation, pause, resume,
+  cancellation, and final output are durable and restart-aware.
+- **Services** expose models, tools, workspace operations, processes, browser
+  control, documents, images, research, terminal access, and external
+  capabilities through stable identities instead of fixed physical URLs.
+- **AI nodes** keep application and Session data local while supporting Cloud
+  models, remote/mobile access, installation membership, and controlled
+  Service federation as the next node-to-node layer.
+- **Model runtimes** remain replaceable backends. Cache-MoE and Fusion are
+  important local inference optimizations, not the boundary of the platform.
+
+## Implemented platform capabilities
+
+The current alpha includes:
+
+- a SQLite-backed App, AppInstance, Session, Message, AgentRun, Step, Event,
+  Workspace, Artifact, Service, Tool, capability, package, and identity control
+  plane;
+- persistent asynchronous Agent execution with Tool calls, user interactions,
+  capability approval, bounded delegation, recovery, and replayable events;
+- a Service Registry and Tool Gateway for embedded, sandboxed managed-process,
+  and external Services;
+- signed and content-addressed `.ai2service`, `.ai2agent`, `.ai2app`, and local
+  `.ai2patch` package flows with verification, lifecycle, rollback, and Safe
+  Mode;
+- Session-scoped workspaces, ResourceHandles, artifacts, document parsing and
+  source-located reads, process limits, Secret injection, and audit events;
+- Chat as a per-user singleton App with independently isolated thread Sessions;
+- Coder projects and threads for Codex, OpenCode, and Claude CLIs, including
+  source validation, tests, browser preview, development bundles, TestFlight,
+  and a bounded file editor;
+- local installation identity, multiple member roles, per-user ownership,
+  Cloud device binding, unified billing identity, revocable local sessions,
+  and role-aware App access;
+- a desktop shell, mobile-ready App contracts, managed remote access, and
+  Cloud model bridging;
+- OpenAI-compatible model APIs backed by the existing oMLX runtime.
+
+The project is still under active development. Node-to-node Service federation,
+complete OS-level sandbox coverage, a first-class local knowledge/retrieval
+Service, and additional hardware backend providers remain ongoing work. Design
+documents distinguish implemented behavior from target architecture.
+
+## Local inference and Fusion
+
+The embedded oMLX backend retains model loading, attention, fused MoE kernels,
+continuous batching, paged KV caching, audio/VLM engines, embeddings,
+reranking, and MCP integration. AI2Apps adds local inference capabilities for
+large MoE models such as DeepSeek V4 Flesh:
+
+- configurable flat or hierarchical scope catalogs;
+- shared-expert scope probing and per-scope static expert banks;
+- device-side Top-K routing with exact and explicitly enabled lossy policies;
+- expert-major SSD storage and cache-aware fallback loading;
+- Session-safe KV/prefix-cache namespaces and adaptive L1 expert residency;
+- reproducible memory, quality, prefill, decode, miss, and I/O release gates.
+
+See the [Flesh engine](docs/deepseek-v4-flesh-engine.md),
+[Fusion design](docs/fusion-engine-design.md), and
+[MoE benchmark record](docs/moe-cache-benchmark-2026-08-08.md).
 
 ## Repository layout
 
 ```text
-ai2apps/                 AI2Apps product package and public CLI
-omlx/                    Embedded, modified oMLX runtime
-  engine/flesh.py        DeepSeek V4 Flesh request orchestration
-  cache/                 KV and MoE expert storage
-  patches/deepseek_v4/   Scope router, banks, policies and kernels
-  admin/                 AI2Apps WebUI served by the runtime
-configs/                 Scope catalogs and profiles
-scripts/                 Conversion, profiling and benchmark tools
-docs/                    Architecture and experiment records
-artifacts/               Local experiment output
+ai2apps/                 Platform, App, Agent, Service and product code
+  agents/                Durable Agent Runtime and built-in Agents
+  api/                   Versioned platform APIs
+  apps/                  App definitions, access policy and lifecycle
+  packages/              Signed package trust and Service lifecycle
+  services/              Service Registry, adapters and Tool Gateway
+  storage/               SQLite schema, migrations and repositories
+  workspace/ documents/  Session resources, artifacts and document tools
+  web/                    Desktop/mobile Shell and built-in App UI
+apps/omlx-mac/            Native macOS application shell
+omlx/                     Embedded and modified oMLX model runtime
+  engine/flesh.py         DeepSeek V4 Flesh request orchestration
+  cache/                  KV and routed-expert storage
+  patches/deepseek_v4/    Scope routing, expert banks and kernels
+configs/                  Scope catalogs and model profiles
+scripts/                  Conversion, profiling, packaging and benchmarks
+docs/                     Architecture, product contracts and experiment records
+tests/                    Platform, security, API and inference tests
 ```
 
-The `omlx` Python namespace and `OMLX_*` environment variables are retained as
-runtime compatibility interfaces. New consumers should use the `ai2apps`
-command and import product engines from `ai2apps.runtime`.
+The `omlx` Python namespace and `OMLX_*` variables remain compatibility
+interfaces for the embedded runtime. New integrations should use the
+`ai2apps` command and `AI2APPS_*` configuration where available. Runtime data
+currently remains under `~/.omlx` so existing models and settings survive the
+product migration.
 
 ## Install
 
-Requirements: Apple Silicon Mac, Python 3.11–3.13, and macOS with Metal support.
+The bundled local model backend currently requires an Apple Silicon Mac,
+Python 3.11–3.13, and Metal-capable macOS.
 
 ```bash
 brew install uv
 uv sync --dev
 source .venv/bin/activate
-```
 
-Alternatively, create a Python 3.11–3.13 virtual environment and install the
-project with `python -m pip install -e '.[dev]'`.
-
-Verify the product and embedded runtime:
-
-```bash
 ai2apps --version
 ai2apps info
 ```
 
-Runtime data currently remains under `~/.omlx` so existing models, settings,
-and KV cache data are not orphaned during migration.
+Alternatively, create a Python 3.11–3.13 virtual environment and run:
 
-## Start the server
+```bash
+python -m pip install -e '.[dev]'
+```
+
+## Start AI2Apps
 
 ```bash
 ai2apps serve --model-dir ~/models --port 8000
 ```
 
-- Chat UI: <http://127.0.0.1:8000/admin/chat>
-- Dashboard: <http://127.0.0.1:8000/admin/dashboard>
+- App shell / dashboard: <http://127.0.0.1:8000/admin/dashboard>
+- Chat: <http://127.0.0.1:8000/admin/chat>
 - OpenAI base URL: <http://127.0.0.1:8000/v1>
+- Platform API root: <http://127.0.0.1:8000/v1/platform>
 - Chat completions: `POST /v1/chat/completions`
-- Models: `GET /v1/models`
+- Model catalog: `GET /v1/models`
 
-Example:
+If an API key is configured, send it as a Bearer token. The legacy `omlx`
+executable remains a compatibility alias; new documentation and integrations
+should use `ai2apps`.
 
-```bash
-curl http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"source","messages":[{"role":"user","content":"Hello"}]}'
-```
+## DeepSeek V4 Flesh research overrides
 
-The legacy `omlx` executable remains available as a temporary compatibility
-alias, but documentation and integrations should use `ai2apps`.
-
-## DeepSeek V4 Flesh
-
-Models installed from the AI2Apps Download source use the verified Scope Pack
-shipped in the release automatically.
-
-The standalone `hf` CLI is not required. Release installs include
-`huggingface-hub>=1.19.0`; the AI2Apps Download page checks the installed
-version, shared-cache writability, downloader initialization and non-secret
-authentication state before enabling **Download & Prepare**. Public catalog
-models work anonymously. A completely missing dependency is reported by the
-`ai2apps` CLI with the exact `pip install` repair command before startup exits.
-
-Manual research checkouts can still override the profile and expert store
-before starting:
+Models prepared through AI2Apps use their verified Scope Pack automatically.
+Manual research environments can override the expert store and profile:
 
 ```bash
 export AI2APPS_DEEPSEEK_V4_EXPERT_STORE=/path/to/expert-store
@@ -123,20 +185,22 @@ export AI2APPS_DEEPSEEK_V4_SCOPE_LOSSY_MODE=exact
 ai2apps serve --model-dir /path/to/models
 ```
 
-The `ai2apps` entry point translates `AI2APPS_*` variables to the retained
-`OMLX_*` runtime interface; legacy deployment files therefore continue to
-work. The profile override is not required for models prepared by AI2Apps.
-Lossy mode is opt-in. Use `exact` for quality-sensitive serving; benchmark
-`conservative`, `tail1`, `tail2`, or `head2` against representative prompts
-before deployment. The dashboard reports the active scope, probe depth, lossy
-mode, scope switches, and fallback count without introducing a GPU sync.
+Lossy modes are opt-in. Use `exact` for quality-sensitive serving and evaluate
+other policies with representative prompts before deployment.
 
-## Development and performance gate
+## Development and release gates
 
-The experimental branch is `experiment/moe-cache`. Preserve oMLX model,
-attention, router, and fused MoE behavior unless a AI2Apps feature explicitly
-requires a small isolated patch. Benchmark changes with identical prompts and
-generated tokens and record memory, cold TPS, and steady TPS.
+Before developing an installable Service or model Package, read the
+[Service/Package runtime and Sandbox development guide](docs/service-package-sandbox-development-guide.md).
+For the Model Worker protocol, Adapter API, and checkpoint contract, see the
+[Model Worker Package manual](docs/model-worker-package-manual.md). A local
+Harness or terminal run does not reproduce installed Sandbox permissions; a
+real `.ai2service` installation and activation is required before release.
+
+The active experimental branch is `experiment/moe-cache`. Preserve existing
+oMLX model, attention, router, scheduler, and fused-kernel behavior unless an
+AI2Apps feature requires a small, isolated compatibility patch. Platform code
+should remain under `ai2apps` and depend on model runtimes through adapters.
 
 ```bash
 pytest -q
@@ -145,16 +209,21 @@ python scripts/bench_moe_expert_store.py --help
 ai2apps-release-gate --mode preflight --run-tests
 ```
 
-Before dynamic replacement is considered production-ready, the static oracle
-bank must retain exact Top-10 parity, have zero runtime misses, reduce resident
-memory, and preserve at least 85% of full-resident steady-state TPS.
+Inference comparisons use identical prompts and generated tokens and record
+source commit, resident/peak memory, cold TPS, and steady TPS. The original
+static oracle gate requires exact Top-10 parity, zero runtime misses, lower
+resident memory, and at least 85% of full-resident steady-state TPS.
+
+Platform changes must additionally preserve ownership isolation, capability
+enforcement, package verification, restart recovery, API compatibility, and
+bounded resource behavior.
 
 ## Origin, license, and trademarks
 
 AI2Apps is based on oMLX commit
 [`49ec271`](https://github.com/jundot/omlx/commit/49ec271676ba9c14bbebb75da1912e3fcb5fb0f4)
 and retains upstream copyright and attribution notices. Modified files and the
-repository history identify the AI2Apps changes.
+repository history identify AI2Apps changes.
 
 This project is licensed under the [Apache License 2.0](LICENSE). Copyright
 2025 oMLX contributors; Copyright 2026 AI2Apps contributors. Apache-2.0 does

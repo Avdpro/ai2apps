@@ -1,0 +1,48 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.mock-audio-stt
+name: AI2Apps Mock Audio STT
+description: Protocol fixture for isolated WAV transcription Model Workers.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.mock-audio-stt/default
+    display_name: Mock Audio STT
+    model_type: audio_stt
+    upstream_id: ai2apps/mock-audio-stt
+    capabilities: [speech_recognition]
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_transcription]
+      languages: [zh, en]
+      formats: {input: [wav], output: []}
+      streaming: {mode: unsupported, formats: []}
+      stt:
+        timestamps: {mode: native, segment: true, word: false}
+        diarization: {mode: unsupported}
+        speaker_recognition: {mode: unsupported}
+        speech_rate: {mode: unsupported}
+        emotion: {mode: unsupported}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.0.1,<2.0.0"
+      optional: false
+      capabilities: [model-worker-v1]
+permissions:
+  network: {outbound: false}
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -4,16 +4,23 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from ai2apps.config import PLATFORM_DATABASE_SCHEMA_VERSION, PlatformConfig
 from ai2apps.core import AppInstanceMode, SessionRetention, SessionStatus
+from ai2apps.identity import RequestPrincipal
+from ai2apps.installation_security import (
+    LocalInstanceAlreadyRunningError,
+    LocalSecurityIdentityClaimError,
+)
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.storage import (
     DatabaseCorruptionError,
@@ -108,6 +115,20 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "document_blocks",
         "secret_records",
         "remote_client_devices",
+        "installations",
+        "installation_memberships",
+        "local_login_sessions",
+        "cloud_ai_requests",
+        "capability_exports",
+        "capability_share_grants",
+        "capability_share_grant_exports",
+        "capability_share_audit",
+        "local_network_access",
+        "upstream_gateways",
+        "upstream_gateway_activity",
+        "upstream_route_settings",
+        "federation_pairing_attempts",
+        "local_security_identity",
     }
     assert [(row[0], row[1]) for row in ledger] == [
         (1, "platform_bootstrap"),
@@ -132,6 +153,19 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (20, "keychain_secret_metadata"),
         (21, "mobile_app_mounts"),
         (22, "remote_client_devices"),
+        (23, "installation_member_identity"),
+        (24, "user_owned_coder_projects"),
+        (25, "cloud_ai_request_ownership"),
+        (26, "local_client_session_scope"),
+        (27, "local_capability_sharing"),
+        (28, "core_controlled_lan_access"),
+        (29, "upstream_ai_gateways"),
+        (30, "upstream_gateway_activity"),
+        (31, "share_grant_request_budget"),
+        (32, "share_services_and_agents"),
+        (33, "parent_local_routing"),
+        (34, "cloud_relay_parent_transport"),
+        (35, "local_security_instance_identity"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -151,6 +185,62 @@ def test_database_bootstrap_is_idempotent(tmp_path):
             "SELECT version, applied_at FROM schema_migrations"
         ).fetchall()
     assert rows == first_rows
+
+
+def test_schema_v32_preserves_existing_capability_shares(tmp_path):
+    database_path = tmp_path / "share-upgrade.sqlite3"
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    apply_migrations(connection, MIGRATIONS[:31])
+    now = "2026-08-16T00:00:00.000000Z"
+    export_id = "exp_" + "e" * 32
+    grant_id = "shr_" + "g" * 32
+    audit_id = "sha_" + "a" * 32
+    connection.execute(
+        """INSERT INTO capability_exports(
+        id,kind,target_id,display_name,protocols_json,status,
+        created_by_user_id,revision,created_at,updated_at
+        ) VALUES (?,?,?,?,?,'active','owner',1,?,?)""",
+        (export_id, "tool", "system.echo", "Echo", '["mcp"]', now, now),
+    )
+    connection.execute(
+        """INSERT INTO capability_share_grants(
+        id,label,token_digest,status,max_concurrency,created_by_user_id,
+        request_count,created_at,updated_at,max_requests
+        ) VALUES (?,? ,?,'active',1,'owner',1,?,?,10)""",
+        (grant_id, "Existing", "d" * 64, now, now),
+    )
+    connection.execute(
+        "INSERT INTO capability_share_grant_exports(grant_id,export_id) VALUES (?,?)",
+        (grant_id, export_id),
+    )
+    connection.execute(
+        """INSERT INTO capability_share_audit(
+        id,grant_id,export_id,operation,status,duration_ms,created_at
+        ) VALUES (?,?,?,'tool:system.echo','completed',1,?)""",
+        (audit_id, grant_id, export_id, now),
+    )
+    connection.close()
+
+    PlatformDatabase(database_path).initialize()
+
+    with PlatformDatabase(database_path).connect() as upgraded:
+        assert tuple(upgraded.execute(
+            "SELECT kind,target_id FROM capability_exports WHERE id=?", (export_id,)
+        ).fetchone()) == ("tool", "system.echo")
+        assert tuple(upgraded.execute(
+            "SELECT grant_id,export_id FROM capability_share_grant_exports"
+        ).fetchone()) == (grant_id, export_id)
+        assert upgraded.execute(
+            "SELECT id FROM capability_share_audit"
+        ).fetchone()[0] == audit_id
+        upgraded.execute(
+            """INSERT INTO capability_exports(
+            id,kind,target_id,display_name,protocols_json,status,
+            created_by_user_id,revision,created_at,updated_at
+            ) VALUES (?,?,?,?,?,'active','owner',1,?,?)""",
+            ("exp_" + "n" * 32, "agent", "ai2apps.general-agent", "Agent", '["mcp"]', now, now),
+        )
 
 
 def test_schema_v1_upgrades_to_current_without_rewriting_ledger(tmp_path):
@@ -330,6 +420,47 @@ def test_platform_runtime_reports_ready_database(tmp_path):
     assert after.journal_mode == "wal"
 
 
+def test_platform_runtime_rejects_two_live_hosts_for_the_same_data_root(tmp_path):
+    first = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    second = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    first.start()
+    try:
+        with pytest.raises(LocalInstanceAlreadyRunningError, match="already active"):
+            second.start()
+    finally:
+        first.stop()
+
+    second.start()
+    second.stop()
+
+
+def test_platform_runtime_releases_root_lease_after_late_startup_failure(tmp_path):
+    failing = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    with patch(
+        "ai2apps.platform_runtime.create_secret_backend",
+        side_effect=RuntimeError("simulated secret claim collision"),
+    ):
+        with pytest.raises(RuntimeError, match="claim collision"):
+            failing.start()
+
+    recovered = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    recovered.start()
+    recovered.stop()
+
+
+def test_copied_data_root_cannot_reuse_local_security_identity(tmp_path):
+    original_root = tmp_path / "original"
+    copied_root = tmp_path / "copy"
+    original = PlatformRuntime(PlatformConfig.from_base_path(original_root))
+    original.start()
+    original.stop()
+    shutil.copytree(original_root, copied_root)
+
+    copied = PlatformRuntime(PlatformConfig.from_base_path(copied_root))
+    with pytest.raises(LocalSecurityIdentityClaimError, match="another data root"):
+        copied.start()
+
+
 @pytest.mark.asyncio
 async def test_runtime_retention_task_expires_temporary_sessions(tmp_path):
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
@@ -436,36 +567,47 @@ def test_server_lifecycle_boundary_publishes_ready_health(tmp_path):
 
 
 def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
-    from omlx.server import ServerState, app
+    from omlx.server import ServerState, app, verify_ai2apps_platform_access
     from omlx.settings import GlobalSettings
 
     state = ServerState(global_settings=GlobalSettings(base_path=tmp_path))
+
+    async def authorize_test_request(request: Request):
+        request.state.ai2apps_principal = RequestPrincipal.legacy_local()
+        return True
+
     with (
         patch("omlx.server._server_state", state),
         patch("omlx.utils.network.detect_server_aliases", return_value=[]),
         TestClient(app) as client,
     ):
-        response = client.get("/v1/platform/health")
-        services = client.get("/v1/platform/services")
-        echo = client.post(
-            "/v1/platform/tools/system.echo/invoke",
-            json={"arguments": {"value": "lifespan-ready"}},
-        )
-        assert state.ai2apps_platform_runtime is not None
-        assert response.json()["database"]["status"] == "ready"
-        assert {item["service_key"] for item in services.json()["items"]} == {
-            "ai2apps.diagnostics",
-            "ai2apps.documents",
-            "ai2apps.images",
-            "ai2apps.mcp",
-            "ai2apps.model-runtime",
-            "ai2apps.process",
-            "ai2apps.agent-runtime",
-            "ai2apps.browser",
-            "ai2apps.terminal",
-            "ai2apps.web-research",
-            "ai2apps.workspace",
-        }
-        assert echo.json()["output"] == {"value": "lifespan-ready"}
+        app.dependency_overrides[
+            verify_ai2apps_platform_access
+        ] = authorize_test_request
+        try:
+            response = client.get("/v1/platform/health")
+            services = client.get("/v1/platform/services")
+            echo = client.post(
+                "/v1/platform/tools/system.echo/invoke",
+                json={"arguments": {"value": "lifespan-ready"}},
+            )
+            assert state.ai2apps_platform_runtime is not None
+            assert response.json()["database"]["status"] == "ready"
+            assert {item["service_key"] for item in services.json()["items"]} == {
+                "ai2apps.diagnostics",
+                "ai2apps.documents",
+                "ai2apps.images",
+                "ai2apps.mcp",
+                "ai2apps.model-runtime",
+                "ai2apps.process",
+                "ai2apps.agent-runtime",
+                "ai2apps.browser",
+                "ai2apps.terminal",
+                "ai2apps.web-research",
+                "ai2apps.workspace",
+            }
+            assert echo.json()["output"] == {"value": "lifespan-ready"}
+        finally:
+            app.dependency_overrides.pop(verify_ai2apps_platform_access, None)
 
     assert state.ai2apps_platform_runtime is None

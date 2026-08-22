@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.models import (
     EventListResponse,
     EventResponse,
@@ -17,6 +18,10 @@ from ai2apps.api.models import (
     SessionListResponse,
     SessionPatchRequest,
     SessionResponse,
+)
+from ai2apps.api.ownership import (
+    require_app_instance_access,
+    require_session_access,
 )
 from ai2apps.core import (
     RepositoryError,
@@ -63,13 +68,21 @@ def _session_defaults(request: SessionCreateRequest):
     return visibility, retention
 
 
-def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
+def create_resource_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
     router = APIRouter()
+    instance_access = Depends(
+        require_app_instance_access(runtime_provider, principal_provider)
+    )
+    session_access = Depends(require_session_access(runtime_provider, principal_provider))
 
     @router.post(
         "/app-instances/{app_instance_id}/sessions",
         response_model=SessionResponse,
         status_code=201,
+        dependencies=[instance_access],
     )
     def create_session(
         app_instance_id: str,
@@ -103,6 +116,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
     @router.get(
         "/app-instances/{app_instance_id}/sessions",
         response_model=SessionListResponse,
+        dependencies=[instance_access],
     )
     def list_sessions(
         app_instance_id: str,
@@ -131,6 +145,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
     @router.get(
         "/app-instances/{app_instance_id}/sessions/{session_id}",
         response_model=SessionResponse,
+        dependencies=[instance_access],
     )
     def get_session(app_instance_id: str, session_id: str):
         runtime = _runtime_or_error(runtime_provider)
@@ -148,6 +163,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
     @router.patch(
         "/app-instances/{app_instance_id}/sessions/{session_id}",
         response_model=SessionResponse,
+        dependencies=[instance_access],
     )
     def patch_session(
         app_instance_id: str,
@@ -178,6 +194,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
     @router.delete(
         "/app-instances/{app_instance_id}/sessions/{session_id}",
         response_model=SessionResponse,
+        dependencies=[instance_access],
     )
     def delete_session(
         app_instance_id: str,
@@ -204,6 +221,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
         "/sessions/{session_id}/messages",
         response_model=MessageResponse,
         status_code=201,
+        dependencies=[session_access],
     )
     def append_message(
         session_id: str,
@@ -253,6 +271,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
     @router.get(
         "/sessions/{session_id}/messages",
         response_model=MessageListResponse,
+        dependencies=[session_access],
     )
     def list_messages(
         session_id: str,
@@ -277,6 +296,7 @@ def create_resource_router(runtime_provider: PlatformRuntimeProvider) -> APIRout
     @router.get(
         "/sessions/{session_id}/events",
         response_model=EventListResponse,
+        dependencies=[session_access],
     )
     def list_session_events(
         session_id: str,

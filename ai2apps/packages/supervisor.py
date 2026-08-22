@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import resource
+import secrets
 import shutil
 import signal
 import socket
@@ -23,6 +24,7 @@ import psutil
 from ai2apps.core import EntityIdKind, new_entity_id, utc_now_text
 from ai2apps.services import ServiceInstanceStatus, ServiceRepository
 
+from .inference_runtime import InferenceRuntimeResolver, ResolvedInferenceRuntime
 from .models import InstalledPackageRecord, PackageError
 from .repository import PackageRepository
 
@@ -36,6 +38,7 @@ class _Managed:
     desired: bool
     restart_count: int
     tasks: tuple[asyncio.Task[None], ...]
+    internal_token: str | None = None
 
 
 class ManagedServiceSupervisor:
@@ -44,10 +47,13 @@ class ManagedServiceSupervisor:
         packages: PackageRepository,
         services: ServiceRepository,
         packages_root: Path,
+        *,
+        inference_runtimes: InferenceRuntimeResolver | None = None,
     ) -> None:
         self.packages = packages
         self.services = services
         self.packages_root = packages_root
+        self.inference_runtimes = inference_runtimes
         self._live: dict[str, _Managed] = {}
         self._stopping = False
 
@@ -56,6 +62,205 @@ class ManagedServiceSupervisor:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             return int(listener.getsockname()[1])
+
+    def internal_headers(self, service_key: str) -> dict[str, str] | None:
+        """Return ephemeral Host-to-Worker authentication headers."""
+        managed = self._live.get(service_key)
+        if managed is None or managed.internal_token is None:
+            return None
+        return {"Authorization": f"Bearer {managed.internal_token}"}
+
+    @staticmethod
+    def _trusted_framework_site_packages() -> Path | None:
+        configured = os.environ.get("AI2APPS_TRUSTED_FRAMEWORK_SITE_PACKAGES")
+        if not configured:
+            return None
+        try:
+            candidate = Path(configured).expanduser().resolve(strict=True)
+        except OSError as error:
+            raise PackageError(
+                "invalid_runtime_layer",
+                "AI2Apps trusted framework site-packages does not exist",
+            ) from error
+        if not candidate.is_dir():
+            raise PackageError(
+                "invalid_runtime_layer",
+                "AI2Apps trusted framework site-packages is not a directory",
+            )
+        host_import_roots = {
+            Path(value).expanduser().resolve()
+            for value in sys.path
+            if isinstance(value, str) and value
+        }
+        if candidate not in host_import_roots:
+            raise PackageError(
+                "invalid_runtime_layer",
+                "AI2Apps trusted framework site-packages is not a Host import root",
+            )
+        return candidate
+
+    @staticmethod
+    def _model_worker_command(
+        package_root: Path,
+        data_root: Path,
+        manifest: dict[str, Any],
+        port: int,
+        checkpoints: tuple[dict[str, Any], ...] = (),
+        inference_runtime: ResolvedInferenceRuntime | None = None,
+    ) -> tuple[tuple[str, ...], str]:
+        runtime = manifest["runtime"]
+        adapter = str(runtime["adapter"])
+        adapter_path, separator, factory = adapter.partition(":")
+        if not separator or not factory:
+            raise PackageError("invalid_model_worker", "Model Worker adapter is invalid")
+        candidate = (package_root / adapter_path).resolve()
+        try:
+            candidate.relative_to(package_root)
+        except ValueError as error:
+            raise PackageError(
+                "invalid_model_worker", "Model Worker adapter escapes the Package"
+            ) from error
+        if not candidate.is_file():
+            raise PackageError(
+                "missing_model_adapter", f"Model Worker adapter does not exist: {adapter_path}"
+            )
+        config_path = data_root / "model-worker.json"
+        config = {
+            "protocol": "ai2apps-model-worker/v1",
+            "service_id": manifest["id"],
+            "package_root": str(package_root),
+            "data_root": str(data_root),
+            "adapter_path": str(candidate),
+            "adapter_factory": factory,
+            "models": manifest.get("models", []),
+            "checkpoints": list(checkpoints),
+        }
+        config_path.write_text(json.dumps(config, sort_keys=True), encoding="utf-8")
+        config_path.chmod(0o600)
+        launcher = (
+            inference_runtime.launcher
+            if inference_runtime is not None
+            else Path(__file__).resolve().parents[1] / "model_worker" / "launcher.py"
+        )
+        python = (
+            inference_runtime.python
+            if inference_runtime is not None
+            else Path(sys.executable).absolute()
+        )
+        return (
+            (
+                str(python),
+                "-I",
+                str(launcher),
+                "--config",
+                str(config_path),
+                "--port",
+                str(port),
+            ),
+            str(config_path),
+        )
+
+    @staticmethod
+    def _huggingface_hub_cache() -> Path:
+        if configured := os.environ.get("HF_HUB_CACHE"):
+            return Path(configured).expanduser().resolve()
+        if configured := os.environ.get("HF_HOME"):
+            return (Path(configured).expanduser() / "hub").resolve()
+        return (Path.home() / ".cache" / "huggingface" / "hub").resolve()
+
+    @staticmethod
+    def _model_worker_checkpoints(
+        manifest: dict[str, Any], hub_cache: Path
+    ) -> tuple[tuple[dict[str, Any], ...], tuple[Path, ...]]:
+        checkpoints: list[dict[str, Any]] = []
+        roots: list[Path] = []
+        for model in manifest.get("models", []):
+            weights = model.get("weights") if isinstance(model, dict) else None
+            if not isinstance(weights, dict):
+                continue
+            repo_id = str(weights["repo_id"])
+            revision = str(weights["revision"])
+            repo_root = (hub_cache / ("models--" + repo_id.replace("/", "--"))).resolve()
+            try:
+                repo_root.relative_to(hub_cache)
+            except ValueError as exc:
+                raise PackageError(
+                    "invalid_model_weights", "Model weight repository escapes the cache"
+                ) from exc
+            snapshot = repo_root / "snapshots" / revision
+            snapshot_path = (
+                snapshot.resolve()
+                if snapshot.is_dir()
+                and ManagedServiceSupervisor._checkpoint_is_complete(snapshot)
+                else None
+            )
+            if snapshot_path is not None:
+                try:
+                    snapshot_path.relative_to(repo_root)
+                except ValueError as exc:
+                    raise PackageError(
+                        "invalid_model_weights", "Model snapshot escapes its repository cache"
+                    ) from exc
+                roots.append(repo_root)
+            checkpoints.append(
+                {
+                    "model_id": model["id"],
+                    "upstream_id": model["upstream_id"],
+                    "provider": weights["provider"],
+                    "repo_id": repo_id,
+                    "revision": revision,
+                    "path": str(snapshot_path) if snapshot_path is not None else None,
+                    "preparation": weights.get("preparation", {}),
+                }
+            )
+        return tuple(checkpoints), tuple(dict.fromkeys(roots))
+
+    @staticmethod
+    def _checkpoint_is_complete(snapshot: Path) -> bool:
+        """Require a complete native checkpoint before granting it to a Worker.
+
+        MLX checkpoints use safetensors, while signed helper Packages may pin
+        native ONNX checkpoints (for example the CT-Transformer punctuation
+        dependency).  Both formats are immutable Hugging Face snapshots and
+        are safe to expose after their required model file is present.
+        """
+
+        onnx_files = tuple(snapshot.glob("*.onnx"))
+        if onnx_files:
+            native_config = next(
+                (
+                    snapshot / name
+                    for name in ("config.json", "config.yaml", "config.yml")
+                    if (snapshot / name).is_file()
+                ),
+                None,
+            )
+            return native_config is not None and any(
+                path.is_file() for path in onnx_files
+            )
+
+        if not (snapshot / "config.json").is_file():
+            return False
+        indexes = sorted(snapshot.glob("*.safetensors.index.json"))
+        if indexes:
+            try:
+                payload = json.loads(indexes[0].read_text(encoding="utf-8"))
+                weight_map = payload.get("weight_map", {})
+                shards = set(weight_map.values())
+            except (OSError, json.JSONDecodeError, AttributeError):
+                return False
+            if not shards:
+                return False
+            for shard in shards:
+                if (
+                    not isinstance(shard, str)
+                    or shard.startswith("/")
+                    or ".." in shard.split("/")
+                    or not (snapshot / shard).is_file()
+                ):
+                    return False
+            return True
+        return any(path.is_file() for path in snapshot.glob("*.safetensors"))
 
     def _sandbox_command(
         self,
@@ -82,7 +287,6 @@ class ManagedServiceSupervisor:
                 '(import "system.sb")',
                 "(allow process*)",
                 "(allow sysctl-read)",
-                "(allow mach-lookup)",
                 f"(allow file-read* (subpath {json.dumps(str(package_root))}))",
                 f"(allow file-read* (subpath {json.dumps(str(data_root))}))",
                 f"(allow file-read* (subpath {json.dumps(str(temporary))}))",
@@ -226,7 +430,22 @@ class ManagedServiceSupervisor:
         manifest = package.manifest
         runtime = manifest["runtime"]
         command = runtime.get("command", [])
-        if not isinstance(command, list) or not command:
+        is_model_worker = package.protocol == "ai2apps-model-worker/v1"
+        runtime_provider = manifest.get("runtime", {}).get("provider")
+        resolved_runtime = None
+        if is_model_worker and runtime_provider is not None:
+            if self.inference_runtimes is None:
+                raise PackageError(
+                    "runtime_resolver_unavailable",
+                    "Inference Runtime Resolver is unavailable",
+                )
+            resolved_runtime = self.inference_runtimes.resolve(package)
+            framework_site = resolved_runtime.framework_site_packages
+        else:
+            framework_site = (
+                self._trusted_framework_site_packages() if is_model_worker else None
+            )
+        if (not isinstance(command, list) or not command) and not is_model_worker:
             raise PackageError(
                 "missing_entrypoint", "Managed Service command is missing"
             )
@@ -237,6 +456,7 @@ class ManagedServiceSupervisor:
         data_root.mkdir(parents=True, exist_ok=True)
         temporary.mkdir(parents=True, exist_ok=True)
         port = self._port()
+        internal_token = secrets.token_urlsafe(32) if is_model_worker else None
         replacements = {
             "{port}": str(port),
             "{package}": str(package_root),
@@ -253,12 +473,45 @@ class ManagedServiceSupervisor:
         replacements["{variant_root}"] = str(
             package_root / "variants" / (replacements["{variant}"] or "portable")
         )
-        expanded = []
-        for argument in command:
-            value = argument
-            for marker, replacement in replacements.items():
-                value = value.replace(marker, replacement)
-            expanded.append(value)
+        hf_hub_cache = self._huggingface_hub_cache()
+        worker_checkpoints: tuple[dict[str, Any], ...] = ()
+        worker_weight_roots: tuple[Path, ...] = ()
+        if is_model_worker:
+            declared_weight_permission = manifest.get("permissions", {}).get(
+                "model_weights", {}
+            )
+            if any(
+                isinstance(model, dict) and isinstance(model.get("weights"), dict)
+                for model in manifest.get("models", [])
+            ) and not (
+                isinstance(declared_weight_permission, dict)
+                and declared_weight_permission.get("huggingface_cache") == "read"
+            ):
+                raise PackageError(
+                    "missing_model_weight_permission",
+                    "Declared Hugging Face weights require model_weights.huggingface_cache: read",
+                )
+            worker_checkpoints, worker_weight_roots = self._model_worker_checkpoints(
+                manifest, hf_hub_cache
+            )
+        expanded: list[str]
+        if is_model_worker:
+            worker_command, _ = self._model_worker_command(
+                package_root,
+                data_root,
+                manifest,
+                port,
+                worker_checkpoints,
+                resolved_runtime,
+            )
+            expanded = list(worker_command)
+        else:
+            expanded = []
+            for argument in command:
+                value = argument
+                for marker, replacement in replacements.items():
+                    value = value.replace(marker, replacement)
+                expanded.append(value)
         executable = Path(expanded[0])
         if "/" not in expanded[0]:
             resolved = shutil.which(
@@ -283,6 +536,9 @@ class ManagedServiceSupervisor:
         endpoint = str(runtime.get("endpoint") or f"http://127.0.0.1:{port}").replace(
             "{port}", str(port)
         )
+        from .archive import _validate_external_endpoint
+
+        _validate_external_endpoint(endpoint)
         permissions = manifest.get("permissions", {})
         network = bool(permissions.get("network", {}).get("outbound", False))
         model_weights = permissions.get("model_weights", {})
@@ -291,16 +547,18 @@ class ManagedServiceSupervisor:
             and model_weights.get("huggingface_cache") == "read"
         )
         read_only_roots: list[Path] = []
+        if framework_site is not None:
+            read_only_roots.append(framework_site)
+        if resolved_runtime is not None:
+            read_only_roots.append(resolved_runtime.root)
         hf_cache_root: Path | None = None
         if allow_hf_cache:
-            configured_hf_home = os.environ.get("HF_HOME")
-            hf_cache_root = Path(
-                configured_hf_home
-                if configured_hf_home
-                else Path.home() / ".cache" / "huggingface"
-            ).expanduser().resolve()
-            if hf_cache_root.exists():
-                read_only_roots.append(hf_cache_root)
+            if is_model_worker:
+                read_only_roots.extend(worker_weight_roots)
+            else:
+                hf_cache_root = hf_hub_cache
+                if hf_cache_root.exists():
+                    read_only_roots.append(hf_cache_root)
         accelerator = permissions.get("accelerator", {})
         allow_metal = bool(
             isinstance(accelerator, dict) and accelerator.get("metal") is True
@@ -330,6 +588,15 @@ class ManagedServiceSupervisor:
             "AI2APPS_PACKAGE_ROOT": str(package_root),
             "AI2APPS_DATA_ROOT": str(data_root),
         }
+        if internal_token is not None:
+            environment["AI2APPS_MODEL_WORKER_TOKEN"] = internal_token
+        if framework_site is not None:
+            environment["AI2APPS_TRUSTED_FRAMEWORK_SITE_PACKAGES"] = str(
+                framework_site
+            )
+        if resolved_runtime is not None:
+            environment["PYTHONHOME"] = str(resolved_runtime.python_home)
+            environment["AI2APPS_INFERENCE_RUNTIME"] = str(resolved_runtime.root)
         if hf_cache_root is not None:
             environment["AI2APPS_HF_CACHE_ROOT"] = str(hf_cache_root)
         process_id = new_entity_id(EntityIdKind.MANAGED_SERVICE_PROCESS)
@@ -359,7 +626,16 @@ class ManagedServiceSupervisor:
                 self._logs(service_key, process_id, "stderr", process.stderr)
             ),
         )
-        managed = _Managed(package, process_id, process, endpoint, True, 0, readers)
+        managed = _Managed(
+            package,
+            process_id,
+            process,
+            endpoint,
+            True,
+            0,
+            readers,
+            internal_token,
+        )
         self._live[service_key] = managed
         with self.packages.database.transaction(write=True) as connection:
             connection.execute(
@@ -368,7 +644,7 @@ class ManagedServiceSupervisor:
                 (process.pid, now, now, process_id),
             )
         try:
-            await self._wait_ready(package, endpoint, process)
+            await self._wait_ready(package, endpoint, process, internal_token)
         except Exception:
             await self.stop(service_key)
             raise
@@ -390,6 +666,7 @@ class ManagedServiceSupervisor:
         package: InstalledPackageRecord,
         endpoint: str,
         process: asyncio.subprocess.Process,
+        internal_token: str | None = None,
     ) -> None:
         health = package.manifest.get("health", {})
         path = str(health.get("path", "/health"))
@@ -402,7 +679,9 @@ class ManagedServiceSupervisor:
                     "service_start_failed", "Managed Service exited before readiness"
                 )
             try:
-                status = await asyncio.to_thread(self._health_request, url)
+                status = await asyncio.to_thread(
+                    self._health_request, url, internal_token
+                )
                 if status:
                     return
             except (OSError, urllib.error.URLError):
@@ -413,8 +692,10 @@ class ManagedServiceSupervisor:
         )
 
     @staticmethod
-    def _health_request(url: str) -> bool:
-        with urllib.request.urlopen(url, timeout=1) as response:
+    def _health_request(url: str, token: str | None = None) -> bool:
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=1) as response:
             if response.status < 200 or response.status >= 300:
                 return False
             content = response.read(64 * 1024)
@@ -502,9 +783,18 @@ class ManagedServiceSupervisor:
         if managed.desired and not self._stopping:
             self._live.pop(service_key, None)
             try:
-                await self.start(managed.package)
+                endpoint = await self.start(managed.package)
                 replacement = self._live[service_key]
                 replacement.restart_count = managed.restart_count + 1
+                service = self.services.get_service(service_key)
+                instance = self.services.get_instance_for_service(service.id)
+                self.services.ensure_instance(
+                    service_id=service.id,
+                    provider_key=instance.provider_key,
+                    status=ServiceInstanceStatus.RUNNING,
+                    endpoint=endpoint,
+                    health={"status": "ok", "mode": "managed_process"},
+                )
             except Exception as error:
                 self.packages.append_log(
                     service_key,

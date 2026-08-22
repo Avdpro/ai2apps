@@ -9,12 +9,16 @@ This module provides HTTP routes for the admin panel including:
 """
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
 import mimetypes
 import os
+import platform
+import plistlib
 import re
+import secrets
 import shutil
 import signal
 import sys
@@ -29,8 +33,8 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 from urllib.parse import quote, urlsplit
 
-import requests
 import httpx
+import requests
 from fastapi import (
     APIRouter,
     Depends,
@@ -46,11 +50,22 @@ from pydantic import BaseModel, Field, field_validator
 
 from ai2apps._version import __version__ as _ai2apps_version
 from ai2apps.apps import SYSTEM_APP_MANIFESTS
+from ai2apps.apps.access import APP_SYSTEM_MANAGE, can_access_app, has_app_capability
 from ai2apps.capabilities import operation_class
+from ai2apps.cloud_client import AI2APPS_CLOUD_BROWSER_COOKIE
 from ai2apps.coder import CoderError
 from ai2apps.core import EntityIdKind, RepositoryError, new_entity_id
+from ai2apps.development import can_access_developer_surfaces
+from ai2apps.environment_check import collect_environment_report
 from ai2apps.extensions import ExtensionError
-from ai2apps.model_providers import list_package_models
+from ai2apps.identity import (
+    LOCAL_SESSION_COOKIE,
+    IdentityBindingError,
+    IdentityRepository,
+    RequestPrincipal,
+)
+from ai2apps.localization import localized_app_metadata
+from ai2apps.model_providers import list_package_models, resolve_package_model
 from ai2apps.terminal import TerminalServiceError
 from ai2apps.web import I18N_DIR, STATIC_DIR, TEMPLATES_DIR
 from omlx._version import __version__ as _omlx_version
@@ -62,18 +77,18 @@ from ..model_profiles import EXCLUDED_FROM_PROFILES
 from ..model_settings import merge_chat_template_kwargs
 from ..settings import BURST_DECODE_MODES, SubKeyEntry, burst_decode_env
 from .auth import (
-    REMEMBER_ME_MAX_AGE,
-    SESSION_MAX_AGE,
+    active_local_principal,
     compare_keys,
-    create_session_token,
     require_admin,
+    session_cookie_name,
     validate_api_key,
-    verify_api_key,
     verify_session,
 )
 
 logger = logging.getLogger(__name__)
 MOBILE_SESSION_COOKIE = "ai2apps_mobile_session"
+MOBILE_CLIENT_COOKIE = "ai2apps_mobile_client"
+_MOBILE_CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
 PRESET_REMOTE_URL = "https://omlx.ai/assets/omlx_preset.json"
 
@@ -107,7 +122,20 @@ class CreateSubKeyRequest(BaseModel):
 class DeleteSubKeyRequest(BaseModel):
     """Request model for deleting a sub API key."""
 
-    key: str
+    fingerprint: str | None = None
+    key: str | None = None
+
+
+def _sub_key_fingerprint(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _sub_key_view(entry: SubKeyEntry) -> dict[str, str]:
+    return {
+        "fingerprint": _sub_key_fingerprint(entry.key),
+        "name": entry.name,
+        "created_at": entry.created_at,
+    }
 
 
 class CreateTerminalSessionRequest(BaseModel):
@@ -171,6 +199,7 @@ class ModelSettingsRequest(BaseModel):
     model_alias: str | None = None
     model_type_override: str | None = None
     max_context_window: int | None = None
+    moe_execution_mode: str | None = None
     cache_moe_memory_tier: str | None = None
     kv_cache_policy: str | None = None
     max_tokens: int | None = None
@@ -383,11 +412,29 @@ class GlobalSettingsRequest(BaseModel):
         return v
 
 
+class AccountLanguageRequest(BaseModel):
+    """Core-controlled display language for this Local installation."""
+
+    language: Literal["en", "zh"]
+
+
+class EnvironmentActionRequest(BaseModel):
+    """One audited, allowlisted configuration recommendation."""
+
+    action_id: Literal[
+        "enable_memory_guard",
+        "set_memory_guard_safe",
+        "set_memory_guard_balanced",
+        "enable_hf_cache",
+    ]
+
+
 class HFDownloadRequest(BaseModel):
     """Request model for starting a HuggingFace model download."""
 
     repo_id: str
     hf_token: str = ""
+    revision: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class HFRetryRequest(BaseModel):
@@ -402,10 +449,29 @@ class AI2AppsInstallRequest(BaseModel):
     model_id: str
     weight_source: str = "huggingface"
     memory_tier: str = "auto"
+    storage_policy: Literal["keep_source", "delete_after", "stream_reclaim"] | None = None
     token: str = ""
 
 
 class AI2AppsRetryRequest(BaseModel):
+    token: str = ""
+
+
+class ModelAdapterPackageRequest(BaseModel):
+    wheel_path: str = Field(min_length=1, max_length=4096)
+
+
+class ModelAdapterCatalogInstallRequest(BaseModel):
+    package_name: str = Field(min_length=1, max_length=128)
+    version: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class ModelAdapterCheckpointInstallRequest(BaseModel):
+    package_name: str = Field(min_length=1, max_length=128)
+    package_version: str = Field(min_length=1, max_length=64)
+    recipe_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,127}$")
+    memory_tier: Literal["auto", "lean", "compact", "optimal"] = "auto"
+    storage_policy: Literal["keep_source", "delete_after", "stream_reclaim"] | None = None
     token: str = ""
 
 
@@ -1192,6 +1258,7 @@ MOBILE_STATIC_FILES = frozenset({
     "favicon.svg",
     "css/mobile.css",
     "css/mobile_app.css",
+    "css/app-readability.css",
     "css/mobile_chat.css",
     "css/tailwind.css",
     "css/dashboard.css",
@@ -1242,10 +1309,15 @@ SYSTEM_APPS: tuple[dict[str, Any], ...] = tuple(
 )
 
 _SYSTEM_APPS_BY_ID = {app["id"]: app for app in SYSTEM_APPS}
+_SYSTEM_APP_MANIFESTS_BY_ID = {
+    manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS
+}
 _DASHBOARD_APP_TABS = {
     "ai2apps.dashboard": "status",
     "ai2apps.account": "account",
+    "ai2apps.sharing": "sharing",
     "ai2apps.models": "models",
+    "ai2apps.environment": "environment",
     "ai2apps.discover": "discover",
     "ai2apps.agents": "agents",
     "ai2apps.trust-center": "trust",
@@ -1258,7 +1330,9 @@ _DASHBOARD_APP_TABS = {
 _DASHBOARD_APP_TEMPLATES = {
     "ai2apps.dashboard": "system_apps/dashboard.html",
     "ai2apps.account": "system_apps/account.html",
+    "ai2apps.sharing": "system_apps/sharing.html",
     "ai2apps.models": "system_apps/models.html",
+    "ai2apps.environment": "system_apps/environment.html",
     "ai2apps.discover": "system_apps/discover.html",
     "ai2apps.agents": "system_apps/agents.html",
     "ai2apps.trust-center": "system_apps/trust_center.html",
@@ -1274,7 +1348,9 @@ _LEGACY_DASHBOARD_TAB_APPS = {
 _HOST_APP_ENTRIES = {
     "ai2apps:system/dashboard": "/admin/app-content/ai2apps.dashboard",
     "ai2apps:system/account": "/admin/app-content/ai2apps.account",
+    "ai2apps:system/sharing": "/admin/app-content/ai2apps.sharing",
     "ai2apps:system/models": "/admin/app-content/ai2apps.models",
+    "ai2apps:system/environment": "/admin/app-content/ai2apps.environment",
     "ai2apps:system/discover": "/admin/app-content/ai2apps.discover",
     "ai2apps:system/agents": "/admin/app-content/ai2apps.agents",
     "ai2apps:system/trust-center": "/admin/app-content/ai2apps.trust-center",
@@ -1314,6 +1390,40 @@ templates.env.globals["mobile_static"] = _mobile_static_version
 templates.env.globals["version"] = _ai2apps_version
 templates.env.globals["runtime_version"] = _omlx_version
 
+
+def _desktop_device_label(
+    system_name: str | None = None,
+    device_description: str | None = None,
+) -> str:
+    """Return the short product label used by the Local desktop Home."""
+    system = (system_name or platform.system()).strip().lower()
+    if system == "darwin":
+        return "Mac"
+    if system == "windows":
+        return "PC"
+    if system != "linux":
+        return "Device"
+
+    if device_description is None:
+        descriptions = [platform.node(), platform.platform()]
+        for path in (
+            Path("/sys/class/dmi/id/product_name"),
+            Path("/sys/devices/virtual/dmi/id/product_name"),
+            Path("/proc/device-tree/model"),
+        ):
+            try:
+                descriptions.append(path.read_text(errors="ignore"))
+            except OSError:
+                pass
+        device_description = " ".join(descriptions)
+    normalized = device_description.lower().replace("\x00", " ")
+    if "dgx spark" in normalized or "nvidia gb10" in normalized:
+        return "Spark"
+    return "PC"
+
+
+templates.env.globals["desktop_device_label"] = _desktop_device_label()
+
 # i18n defaults (English) — overridden once set_admin_getters is called
 _i18n_dir = I18N_DIR
 _en_locale: dict = {}
@@ -1352,8 +1462,7 @@ def _make_t(locale: dict):
     return t
 
 
-def _refresh_i18n_globals() -> None:
-    """Reload i18n globals from current settings. Called on startup and language change."""
+def _current_ui_language() -> str:
     lang = "en"
     try:
         settings = _get_global_settings() if _get_global_settings else None
@@ -1361,6 +1470,12 @@ def _refresh_i18n_globals() -> None:
             lang = settings.ui.language
     except Exception:
         pass
+    return lang
+
+
+def _refresh_i18n_globals() -> None:
+    """Reload i18n globals from current settings. Called on startup and language change."""
+    lang = _current_ui_language()
     locale = _load_locale(lang)
     templates.env.globals["t"] = _make_t(locale)
     templates.env.globals["locale_json"] = json.dumps(locale, ensure_ascii=False)
@@ -1532,7 +1647,11 @@ def _ai2apps_hf_preflight() -> dict[str, Any]:
             "minimum": minimum,
             "compatible": dependency_compatible,
         },
-        "cache": {"path": str(cache_path), "writable": cache_writable},
+        "cache": {
+            "path": str(cache_path),
+            "writable": cache_writable,
+            "free_bytes": shutil.disk_usage(writable_parent).free,
+        },
         "authentication": {
             "status": "configured" if token_configured else "anonymous",
             "token_configured": token_configured,
@@ -1547,10 +1666,33 @@ def _get_ai2apps_installer():
     global _ai2apps_installer
     if _hf_downloader is None:
         raise HTTPException(status_code=503, detail="Downloader not initialized")
+    from ai2apps.model_providers import installed_model_preparation_recipes
+
+    runtime = _get_platform_runtime() if _get_platform_runtime else None
+    recipes = installed_model_preparation_recipes(runtime)
+
+    async def activate_model_worker(recipe: dict[str, Any]) -> None:
+        service_key = recipe.get("service_key")
+        if (
+            service_key
+            and runtime is not None
+            and getattr(runtime, "package_manager", None) is not None
+        ):
+            await runtime.package_manager.restart(service_key)
+
     if _ai2apps_installer is None:
         from ai2apps.model_installer import AI2AppsInstaller
 
-        _ai2apps_installer = AI2AppsInstaller(_hf_downloader)
+        _ai2apps_installer = AI2AppsInstaller(
+            _hf_downloader,
+            recipes,
+            on_ready=activate_model_worker,
+        )
+    else:
+        # Package install/upgrade/uninstall is live; never retain recipes from
+        # a Package version that is no longer active.
+        _ai2apps_installer.package_recipes = recipes
+        _ai2apps_installer.on_ready = activate_model_worker
     return _ai2apps_installer
 
 
@@ -1731,10 +1873,7 @@ def get_system_memory_info() -> dict:
 @router.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
     """
-    Render the admin login page or setup page.
-
-    If no API key is configured, the page will show the initial setup form.
-    Otherwise, it shows the standard login form.
+    Render the Cloud-account login and device-Core bootstrap page.
 
     Returns:
         HTML login/setup page.
@@ -1745,46 +1884,176 @@ async def login_page(request: Request):
     if verify_session(request):
         return RedirectResponse(url="/admin/dashboard", status_code=302)
 
-    global_settings = _get_global_settings()
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    database = None if runtime is None else getattr(runtime, "database", None)
+    installation_bound = False
+    if database is not None:
+        from ai2apps.identity import IdentityRepository
 
-    # Skip login page when skip_api_key_verification is enabled
-    if global_settings is not None and global_settings.auth.skip_api_key_verification:
-        return RedirectResponse(url="/admin/dashboard", status_code=302)
-
-    api_key_configured = bool(global_settings and global_settings.auth.api_key)
+        installation_bound = IdentityRepository(database).get_installation() is not None
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"api_key_configured": api_key_configured},
+        {
+            # The API key remains an automation compatibility credential. It
+            # is deliberately not rendered into, or requested by, the WebUI.
+            "installation_bound": installation_bound,
+        },
     )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request, is_admin: bool = Depends(require_admin)):
     """Resolve the legacy dashboard URL to its independent system App."""
+    del is_admin
     requested_tab = request.query_params.get("tab")
     app_id = _LEGACY_DASHBOARD_TAB_APPS.get(
         requested_tab if isinstance(requested_tab, str) else "",
         "ai2apps.dashboard",
     )
-    return _shell_response(request, app_id)
+    return _shell_response(
+        request, app_id, principal=RequestPrincipal.legacy_local()
+    )
+
+
+async def _require_shell_access(request: Request) -> RequestPrincipal:
+    """Accept a Local member Cookie or the legacy administrator session."""
+
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    authorizer = (
+        None if runtime is None else getattr(runtime, "authorize_local_session", None)
+    )
+    cookie_reader = (
+        None
+        if runtime is None
+        else getattr(runtime, "local_session_token_from_cookies", None)
+    )
+    token = cookie_reader(request.cookies) if cookie_reader is not None else None
+    principal = authorizer(token) if token and authorizer is not None else None
+    if principal is None:
+        await require_admin(request)
+        resolver = (
+            None if runtime is None else getattr(runtime, "legacy_api_key_principal", None)
+        )
+        principal = (
+            resolver() if resolver is not None else RequestPrincipal.legacy_local()
+        )
+    request.state.ai2apps_principal = principal
+    return principal
+
+
+def _authorized_system_apps(principal: RequestPrincipal) -> tuple[dict[str, Any], ...]:
+    locale = _current_ui_language()
+    result = []
+    for app in SYSTEM_APPS:
+        manifest = _SYSTEM_APP_MANIFESTS_BY_ID[app["id"]]
+        if not can_access_app(principal, manifest):
+            continue
+        metadata = localized_app_metadata(manifest, locale)
+        result.append(
+            {
+                **app,
+                "name": metadata["name"],
+                "description": metadata["description"],
+                "category": metadata["category"],
+            }
+        )
+    return tuple(result)
+
+
+def _require_system_app_access(app_id: str, principal: RequestPrincipal) -> None:
+    manifest = _SYSTEM_APP_MANIFESTS_BY_ID.get(app_id)
+    if manifest is None or not can_access_app(principal, manifest):
+        raise HTTPException(status_code=404, detail="App not found")
+
+
+def _require_shell_app_access(app_id: str, principal: RequestPrincipal) -> None:
+    """Authorize built-in and installed Apps through the same fail-closed catalog."""
+    if app_id in _SYSTEM_APP_MANIFESTS_BY_ID:
+        _require_system_app_access(app_id, principal)
+        return
+    if not any(
+        app["app_key"] == app_id
+        for app in _shell_manager().list_apps(
+            principal=principal,
+            locale=_current_ui_language(),
+        )
+    ):
+        raise HTTPException(status_code=404, detail="App not found")
+
+
+def _desktop_client_version() -> str | None:
+    """Return the native client bundle version for the supervised local Shell."""
+    raw_version = os.environ.get("AI2APPS_CLIENT_VERSION", "").strip()
+    if not raw_version:
+        try:
+            settings = _get_global_settings() if _get_global_settings else None
+            base_path = Path(settings.base_path) if settings is not None else None
+            if base_path is None:
+                return None
+            descriptor_path = (
+                base_path.parent / "run" / "shell.json"
+            )
+            descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+            app_bundle_path = Path(str(descriptor.get("app_bundle_path", "")))
+            if not app_bundle_path.is_absolute():
+                return None
+            info_path = app_bundle_path / "Contents" / "Info.plist"
+            with info_path.open("rb") as info_file:
+                info = plistlib.load(info_file)
+            raw_version = str(info.get("CFBundleShortVersionString", "")).strip()
+        except (OSError, ValueError, TypeError, json.JSONDecodeError, plistlib.InvalidFileException):
+            return None
+    if raw_version[:1].lower() == "v":
+        raw_version = raw_version[1:]
+    if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,63}", raw_version):
+        return None
+    return raw_version
 
 
 def _shell_response(
     request: Request,
     app_id: str,
     instance_id: str | None = None,
+    *,
+    principal: RequestPrincipal,
 ):
     """Render the Shell and let its authenticated catalog resolve the App."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,127}", app_id):
         raise HTTPException(status_code=404, detail="App not found")
+    _require_shell_app_access(app_id, principal)
     return templates.TemplateResponse(
         request,
         "shell.html",
         {
-            "system_apps": SYSTEM_APPS,
+            "system_apps": _authorized_system_apps(principal),
             "initial_app_id": app_id,
             "initial_instance_id": instance_id,
+            "desktop_client_version": _desktop_client_version(),
+            "can_manage_system": has_app_capability(
+                principal, APP_SYSTEM_MANAGE
+            ),
+        },
+    )
+
+
+@shell_router.get("/", response_class=HTMLResponse)
+async def desktop_home(
+    request: Request,
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
+    """Render the Local desktop Home without launching a system App."""
+    return templates.TemplateResponse(
+        request,
+        "shell.html",
+        {
+            "system_apps": _authorized_system_apps(principal),
+            "initial_app_id": "",
+            "initial_instance_id": None,
+            "desktop_client_version": _desktop_client_version(),
+            "can_manage_system": has_app_capability(
+                principal, APP_SYSTEM_MANAGE
+            ),
         },
     )
 
@@ -1832,14 +2101,20 @@ async def mobile_handoff_page(request: Request):
     return templates.TemplateResponse(request, "mobile.html", {})
 
 
+@shell_router.get("/auth/complete", response_class=HTMLResponse)
+async def local_member_handoff_page(request: Request):
+    """Render the desktop handoff receiver before a Local session exists."""
+    return templates.TemplateResponse(request, "auth_complete.html", {})
+
+
 @shell_router.get("/apps/{app_id}", response_class=HTMLResponse)
 async def system_app_shell(
     request: Request,
     app_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Open or switch to a singleton system App in the shared Shell."""
-    return _shell_response(request, app_id)
+    return _shell_response(request, app_id, principal=principal)
 
 
 @shell_router.get(
@@ -1849,10 +2124,16 @@ async def app_instance_shell(
     request: Request,
     app_id: str,
     instance_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Open one exact AppInstance through the shared Shell."""
-    return _shell_response(request, app_id, instance_id)
+    try:
+        entry = _shell_manager().instance_entry(instance_id, principal=principal)
+    except (RepositoryError, ExtensionError) as error:
+        _shell_lifecycle_error(error)
+    if entry["app_key"] != app_id:
+        raise HTTPException(status_code=404, detail="App not found")
+    return _shell_response(request, app_id, instance_id, principal=principal)
 
 
 def _shell_manager():
@@ -1876,9 +2157,21 @@ def _local_mobile_admin(request: Request) -> bool:
     return bool(settings and settings.auth.skip_api_key_verification) or verify_session(request)
 
 
-async def _require_mobile_access(request: Request):
+def _local_mobile_principal(request: Request) -> RequestPrincipal:
+    principal = active_local_principal(request)
+    if principal is not None and principal.is_core:
+        return principal
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    resolver = (
+        None if runtime is None else getattr(runtime, "legacy_api_key_principal", None)
+    )
+    return resolver() if resolver is not None else RequestPrincipal.legacy_local()
+
+
+async def _require_mobile_access(request: Request) -> RequestPrincipal:
     if _local_mobile_admin(request):
-        return {"local": True}
+        request.state.ai2apps_mobile_local_session = None
+        return _local_mobile_principal(request)
     manager = _remote_manager()
     session = await manager.authorize_session(request.cookies.get(MOBILE_SESSION_COOKIE))
     if session is None:
@@ -1891,7 +2184,18 @@ async def _require_mobile_access(request: Request):
         origin = request.headers.get("origin", "")
         if origin != device.public_origin:
             raise HTTPException(status_code=403, detail="Mobile Origin is not allowed")
-    return session
+    try:
+        principal = manager.principal_for_mobile_session(session)
+    except Exception as error:
+        from ai2apps.remote import RemoteAccessError
+        if isinstance(error, RemoteAccessError):
+            raise HTTPException(
+                status_code=error.status_code,
+                detail={"code": error.code, "message": str(error)},
+            ) from error
+        raise
+    request.state.ai2apps_mobile_local_session = session.local_session_token
+    return principal
 
 
 def _mobile_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
@@ -1904,8 +2208,13 @@ def _mobile_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _shell_entry_payload(manager, instance_id: str) -> dict[str, Any]:
-    entry = manager.instance_entry(instance_id)
+def _shell_entry_payload(
+    manager,
+    instance_id: str,
+    *,
+    principal: RequestPrincipal | None = None,
+) -> dict[str, Any]:
+    entry = manager.instance_entry(instance_id, principal=principal)
     renderer = entry["renderer"]
     resource = str(entry["resource"])
     if renderer == "host":
@@ -1971,68 +2280,172 @@ def _shell_lifecycle_error(error: Exception):
 
 
 @router.get("/api/shell/apps")
-async def shell_apps(is_admin: bool = Depends(require_admin)):
+async def shell_apps(
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
     """Return the authoritative enabled App catalog and live instances."""
-    del is_admin
-    return {"items": _shell_manager().list_apps()}
+    return {
+        "items": _shell_manager().list_apps(
+            principal=principal,
+            locale=_current_ui_language(),
+        )
+    }
 
 
 @router.get("/api/shell/account-status")
-async def shell_account_status(is_admin: bool = Depends(require_admin)):
+async def shell_account_status(
+    request: Request,
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
     """Return a non-sensitive Cloud account summary for the fixed Dock entry."""
-    del is_admin
     runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
-    cloud = None if runtime is None else runtime.cloud
+    cloud_cookie_reader = (
+        None
+        if runtime is None
+        else getattr(runtime, "cloud_browser_session_from_cookies", None)
+    )
+    browser_session_id = (
+        cloud_cookie_reader(request.cookies)
+        if cloud_cookie_reader is not None
+        else request.cookies.get(AI2APPS_CLOUD_BROWSER_COOKIE)
+    )
+    database = None if runtime is None else getattr(runtime, "database", None)
+    installation = None
+    if database is not None:
+        try:
+            installation = IdentityRepository(database).get_installation()
+        except IdentityBindingError:
+            logger.warning("Unable to resolve the Local installation identity")
+    account_context = {
+        "installation_registered": installation is not None,
+        "principal_actor_user_id": principal.actor_user_id,
+        "principal_role": principal.role.value,
+        "principal_is_core": principal.is_core,
+        "principal_membership_epoch": principal.membership_epoch,
+    }
+    if not principal.is_core:
+        return {
+            **account_context,
+            "state": "local_member",
+            "display_name": "Local member",
+            "role": principal.role.value,
+        }
+    browser_cloud_resolver = (
+        None if runtime is None else getattr(runtime, "cloud_for_browser", None)
+    )
+    try:
+        cloud = (
+            browser_cloud_resolver(browser_session_id)
+            if isinstance(browser_session_id, str)
+            and browser_session_id
+            and browser_cloud_resolver is not None
+            else None if runtime is None else runtime.cloud
+        )
+    except (RuntimeError, ValueError):
+        logger.debug("Unable to resolve the Dock browser Cloud session", exc_info=True)
+        cloud = None
     if cloud is None:
-        return {"state": "unavailable"}
+        return {**account_context, "state": "unavailable"}
     try:
         response = await cloud.request("GET", "/v1/auth/me")
     except Exception:
         logger.debug("Unable to refresh the Dock account summary", exc_info=True)
-        return {"state": "unavailable"}
+        return {**account_context, "state": "unavailable"}
     try:
         if response.status_code == 401:
-            return {"state": "signed_out"}
+            return {**account_context, "state": "signed_out"}
         if response.status_code != 200:
-            return {"state": "unavailable"}
+            return {**account_context, "state": "unavailable"}
         payload = response.json()
     except (TypeError, ValueError):
-        return {"state": "unavailable"}
+        return {**account_context, "state": "unavailable"}
     finally:
         await response.aclose()
     user = payload.get("user") if isinstance(payload, dict) else None
     if not isinstance(user, dict):
-        return {"state": "unavailable"}
+        return {**account_context, "state": "unavailable"}
     points = user.get("points") if isinstance(user.get("points"), dict) else {}
     return {
+        **account_context,
         "state": "signed_in",
+        "signed_in_user_is_core": bool(
+            installation is not None
+            and str(user.get("id") or "") == installation.core_user_id
+        ),
         "display_name": str(user.get("displayName") or user.get("email") or "AI2Apps Account"),
         "email": str(user.get("email") or ""),
         "points": str(points.get("total") or points.get("balance") or "0"),
     }
 
 
+def _require_core_language_access(principal: RequestPrincipal) -> None:
+    if not principal.is_core:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the Core user can change the display language",
+        )
+
+
+@router.get("/api/account/ui-language")
+async def account_ui_language(
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
+    """Return the installation-wide display language to the Core user."""
+    _require_core_language_access(principal)
+    global_settings = _get_global_settings() if _get_global_settings else None
+    if global_settings is None:
+        raise HTTPException(status_code=503, detail="Global settings are unavailable")
+    language = global_settings.ui.language
+    return {"language": language if language in {"en", "zh"} else "en"}
+
+
+@router.post("/api/account/ui-language")
+async def update_account_ui_language(
+    request: AccountLanguageRequest,
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
+    """Persist the installation-wide display language for the Core user."""
+    _require_core_language_access(principal)
+    global_settings = _get_global_settings() if _get_global_settings else None
+    if global_settings is None:
+        raise HTTPException(status_code=503, detail="Global settings are unavailable")
+
+    previous_language = global_settings.ui.language
+    global_settings.ui.language = request.language
+    try:
+        global_settings.save()
+    except Exception as exc:
+        global_settings.ui.language = previous_language
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save display language: {exc}",
+        ) from exc
+    _refresh_i18n_globals()
+    logger.info("Core user changed UI language to: %s", request.language)
+    return {"language": request.language}
+
+
 @router.get("/api/shell/app-suggestions")
 async def shell_app_suggestions(
     q: str = "",
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Suggest manifest-declared Apps without granting auto-mount authority."""
-    del is_admin
-    return {"items": _shell_manager().suggest_apps(q[:2000])}
+    return {
+        "items": _shell_manager().suggest_apps(q[:2000], principal=principal)
+    }
 
 
 @router.post("/api/shell/apps/{app_key}/launch")
 async def shell_launch_app(
     app_key: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Launch or restore an App without exposing the model API key."""
-    del is_admin
     manager = _shell_manager()
     try:
-        instance, home, created = manager.launch_app(app_key)
-        entry = _shell_entry_payload(manager, instance.id)
+        instance, home, created = manager.launch_app(app_key, principal=principal)
+        entry = _shell_entry_payload(manager, instance.id, principal=principal)
         return {
             **entry,
             "created": created,
@@ -2046,13 +2459,12 @@ async def shell_launch_app(
 @router.post("/api/shell/app-instances/{instance_id}/focus")
 async def shell_focus_app(
     instance_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     manager = _shell_manager()
     try:
-        manager.focus_instance(instance_id)
-        return _shell_entry_payload(manager, instance_id)
+        manager.focus_instance(instance_id, principal=principal)
+        return _shell_entry_payload(manager, instance_id, principal=principal)
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
 
@@ -2061,7 +2473,9 @@ async def shell_focus_app(
 async def mobile_app_catalog(is_admin: bool = Depends(require_admin)):
     """Return the fail-closed catalog of explicit Mobile Ready Apps."""
     del is_admin
-    return {"items": _shell_manager().list_mobile_apps()}
+    return {
+        "items": _shell_manager().list_mobile_apps(locale=_current_ui_language())
+    }
 
 
 @router.get("/api/mobile/mounts")
@@ -2132,9 +2546,15 @@ async def remote_mobile_session_exchange(request: Request, payload: dict[str, An
     )
     if device is None:
         raise HTTPException(status_code=404, detail="Mobile device is unavailable")
+    client_id = request.cookies.get(MOBILE_CLIENT_COOKIE)
+    if client_id is None or _MOBILE_CLIENT_ID.fullmatch(client_id) is None:
+        client_id = secrets.token_urlsafe(32)
+    client_scope = f"mobile-{client_id}"
     try:
         token, session = await manager.exchange_handoff(
-            device_id=device.device_id, handoff=handoff
+            device_id=device.device_id,
+            handoff=handoff,
+            client_scope=client_scope,
         )
     except Exception as error:
         from ai2apps.remote import RemoteAccessError, RemoteTokenError
@@ -2148,32 +2568,59 @@ async def remote_mobile_session_exchange(request: Request, payload: dict[str, An
         MOBILE_SESSION_COOKIE, token, max_age=15 * 60, httponly=True,
         secure=True, samesite="strict", path="/",
     )
+    response.set_cookie(
+        MOBILE_CLIENT_COOKIE,
+        client_id,
+        max_age=365 * 24 * 60 * 60,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+    )
     return response
 
 
 @shell_router.get("/v1/mobile/apps")
-async def remote_mobile_app_catalog(access=Depends(_mobile_access_dependency)):
-    del access
-    return {"items": _shell_manager().list_mobile_apps()}
+async def remote_mobile_app_catalog(
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
+    return {
+        "items": _shell_manager().list_mobile_apps(
+            principal=principal,
+            locale=_current_ui_language(),
+        )
+    }
 
 
 @shell_router.get("/v1/mobile/mounts")
-async def remote_mobile_mounts(access=Depends(_mobile_access_dependency)):
-    del access
+async def remote_mobile_mounts(
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
     manager = _shell_manager()
     try:
-        return {"items": [_mobile_mount_payload(manager, item) for item in manager.list_mobile_mounts()]}
+        return {
+            "items": [
+                _mobile_mount_payload(manager, item)
+                for item in manager.list_mobile_mounts(principal=principal)
+            ]
+        }
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
 
 
 @shell_router.post("/v1/mobile/apps/{app_key}/open")
-async def remote_mobile_open_app(app_key: str, access=Depends(_mobile_access_dependency)):
-    del access
+async def remote_mobile_open_app(
+    app_key: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
     manager = _shell_manager()
     try:
-        instance, home, created = manager.launch_app(app_key)
-        mount = manager.mount_mobile(instance.id, context={"surface": "mobile", "requested_by": "mobile-shell"})
+        instance, home, created = manager.launch_app(app_key, principal=principal)
+        mount = manager.mount_mobile(
+            instance.id,
+            context={"surface": "mobile", "requested_by": "mobile-shell"},
+            principal=principal,
+        )
         return {**_mobile_mount_payload(manager, mount), "created": created,
                 "home_session_id": None if home is None else home.id}
     except (RepositoryError, ExtensionError) as error:
@@ -2181,40 +2628,52 @@ async def remote_mobile_open_app(app_key: str, access=Depends(_mobile_access_dep
 
 
 @shell_router.post("/v1/mobile/app-instances/{instance_id}/focus")
-async def remote_mobile_focus_app(instance_id: str, access=Depends(_mobile_access_dependency)):
-    del access
+async def remote_mobile_focus_app(
+    instance_id: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
     manager = _shell_manager()
     try:
-        manager.focus_instance(instance_id)
-        return _mobile_mount_payload(manager, manager.mount_mobile(instance_id))
+        manager.focus_instance(instance_id, principal=principal)
+        return _mobile_mount_payload(
+            manager, manager.mount_mobile(instance_id, principal=principal)
+        )
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
 
 
 @shell_router.delete("/v1/mobile/mounts/{mount_id}")
-async def remote_mobile_unmount(mount_id: str, access=Depends(_mobile_access_dependency)):
-    del access
+async def remote_mobile_unmount(
+    mount_id: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
+):
     try:
-        return _shell_manager().unmount(mount_id)
+        return _shell_manager().unmount(mount_id, principal=principal)
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
 
 
 @shell_router.get("/mobile/app-content/{app_id}", response_class=HTMLResponse)
 async def remote_mobile_app_content(
-    request: Request, app_id: str, access=Depends(_mobile_access_dependency)
+    request: Request,
+    app_id: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
-    del access
     return _system_app_content_response(
-        request, app_id, include_api_key=False, mobile_surface=True
+        request,
+        app_id,
+        include_api_key=False,
+        principal=principal,
+        mobile_surface=True,
     )
 
 
 @shell_router.get("/mobile/chat", response_class=HTMLResponse)
 async def remote_mobile_chat(
-    request: Request, access=Depends(_mobile_access_dependency)
+    request: Request,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
-    del access
+    _require_system_app_access("ai2apps.general-chat", principal)
     return templates.TemplateResponse(
         request,
         "mobile_chat.html",
@@ -2234,6 +2693,24 @@ def _mobile_internal_headers() -> dict[str, str]:
     return {} if key is None else {"Authorization": f"Bearer {key}"}
 
 
+def _mobile_proxy_auth_headers(request: Request) -> dict[str, str]:
+    local_session = getattr(request.state, "ai2apps_mobile_local_session", None)
+    if isinstance(local_session, str) and local_session:
+        runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+        cookie_name_resolver = (
+            None
+            if runtime is None
+            else getattr(runtime, "local_session_cookie_name", None)
+        )
+        cookie_name = (
+            cookie_name_resolver()
+            if cookie_name_resolver is not None
+            else LOCAL_SESSION_COOKIE
+        )
+        return {"Cookie": f"{cookie_name}={local_session}"}
+    return _mobile_internal_headers()
+
+
 async def _mobile_platform_proxy(
     request: Request,
     method: str,
@@ -2246,7 +2723,7 @@ async def _mobile_platform_proxy(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app),
         base_url="http://ai2apps.mobile.internal",
-        headers={**_mobile_internal_headers(), **(headers or {})},
+        headers={**_mobile_proxy_auth_headers(request), **(headers or {})},
         timeout=httpx.Timeout(connect=10, read=120, write=30, pool=10),
     ) as client:
         response = await client.request(method, f"/v1/platform{path}", json=payload)
@@ -2355,9 +2832,10 @@ async def remote_mobile_chat_attachment(
 
 @shell_router.get("/v1/mobile/agents")
 async def remote_mobile_agents(
-    request: Request, access=Depends(_mobile_access_dependency)
+    request: Request,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
-    del access
+    _require_system_app_access("ai2apps.agents", principal)
     return await _mobile_platform_proxy(request, "GET", "/agents")
 
 
@@ -2366,9 +2844,9 @@ async def remote_mobile_create_agent_run(
     request: Request,
     thread_id: str,
     payload: dict[str, Any],
-    access=Depends(_mobile_access_dependency),
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
-    del access
+    _require_system_app_access("ai2apps.agents", principal)
     agent = payload.get("agent", "ai2apps.general-agent")
     run_input = payload.get("input")
     if not isinstance(agent, str) or not isinstance(run_input, dict):
@@ -2384,9 +2862,11 @@ async def remote_mobile_create_agent_run(
 
 @shell_router.get("/v1/mobile/agent-runs/{run_id}")
 async def remote_mobile_agent_run(
-    request: Request, run_id: str, access=Depends(_mobile_access_dependency)
+    request: Request,
+    run_id: str,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
-    del access
+    _require_system_app_access("ai2apps.agents", principal)
     return await _mobile_platform_proxy(
         request, "GET", f"/agent-runs/{quote(run_id, safe='')}"
     )
@@ -2394,13 +2874,14 @@ async def remote_mobile_agent_run(
 
 @shell_router.get("/v1/mobile/models")
 async def remote_mobile_models(
-    request: Request, access=Depends(_mobile_access_dependency)
+    request: Request,
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
-    del access
+    _require_system_app_access("ai2apps.general-chat", principal)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app),
         base_url="http://ai2apps.mobile.internal",
-        headers=_mobile_internal_headers(),
+        headers=_mobile_proxy_auth_headers(request),
     ) as client:
         response = await client.get("/v1/models")
     return Response(
@@ -2413,10 +2894,10 @@ async def remote_mobile_models(
 async def remote_mobile_chat_completions(
     request: Request,
     payload: dict[str, Any],
-    access=Depends(_mobile_access_dependency),
+    principal: RequestPrincipal = Depends(_mobile_access_dependency),
 ):
     """Forward a bounded chat request without exposing the local API key."""
-    del access
+    _require_system_app_access("ai2apps.general-chat", principal)
     messages = payload.get("messages")
     if not isinstance(messages, list) or not 1 <= len(messages) <= 100:
         raise HTTPException(status_code=422, detail="Mobile chat messages are invalid")
@@ -2439,7 +2920,7 @@ async def remote_mobile_chat_completions(
     client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app),
         base_url="http://ai2apps.mobile.internal",
-        headers={**_mobile_internal_headers(), "Accept": "text/event-stream"},
+        headers={**_mobile_proxy_auth_headers(request), "Accept": "text/event-stream"},
         timeout=httpx.Timeout(connect=10, read=3600, write=30, pool=10),
     )
     upstream = await client.send(
@@ -2470,11 +2951,12 @@ async def remote_mobile_chat_completions(
 @router.post("/api/shell/app-instances/{instance_id}/suspend")
 async def shell_suspend_app(
     instance_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     try:
-        instance = _shell_manager().suspend_instance(instance_id)
+        instance = _shell_manager().suspend_instance(
+            instance_id, principal=principal
+        )
         return {"instance_id": instance.id, "status": instance.status.value}
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
@@ -2483,11 +2965,12 @@ async def shell_suspend_app(
 @router.delete("/api/shell/app-instances/{instance_id}")
 async def shell_close_app(
     instance_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     try:
-        instance = _shell_manager().close_instance(instance_id)
+        instance = _shell_manager().close_instance(
+            instance_id, principal=principal
+        )
         return {"instance_id": instance.id, "status": instance.status.value}
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
@@ -2496,11 +2979,12 @@ async def shell_close_app(
 @router.get("/api/shell/app-instances/{instance_id}/entry")
 async def shell_instance_entry(
     instance_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     try:
-        return _shell_entry_payload(_shell_manager(), instance_id)
+        return _shell_entry_payload(
+            _shell_manager(), instance_id, principal=principal
+        )
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
 
@@ -2509,10 +2993,9 @@ async def shell_instance_entry(
 async def shell_mount_app(
     instance_id: str,
     request: ShellMountRequest,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Create a durable Mini-Entry mount for a conversation surface."""
-    del is_admin
     manager = _shell_manager()
     try:
         mount = manager.mount(
@@ -2521,6 +3004,7 @@ async def shell_mount_app(
             placement=request.placement,
             interaction_session_id=request.interaction_session_id,
             context=request.context,
+            principal=principal,
         )
         return _shell_mount_payload(manager, mount)
     except (RepositoryError, ExtensionError) as error:
@@ -2530,15 +3014,16 @@ async def shell_mount_app(
 @router.get("/api/shell/sessions/{session_id}/mounts")
 async def shell_session_mounts(
     session_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     manager = _shell_manager()
     try:
         return {
             "items": [
                 _shell_mount_payload(manager, mount)
-                for mount in manager.list_mounts(session_id)
+                for mount in manager.list_mounts(
+                    session_id, principal=principal
+                )
             ]
         }
     except (RepositoryError, ExtensionError) as error:
@@ -2548,11 +3033,10 @@ async def shell_session_mounts(
 @router.delete("/api/shell/app-mounts/{mount_id}")
 async def shell_unmount_app(
     mount_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     try:
-        return _shell_manager().unmount(mount_id)
+        return _shell_manager().unmount(mount_id, principal=principal)
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
 
@@ -2925,20 +3409,21 @@ async def shell_app_resource(
     instance_id: str,
     resource: str,
     mount_id: str | None = None,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Serve one digest-verified resource from an active installed App."""
-    del is_admin
     manager = _shell_manager()
     try:
         entry = (
-            manager.mount_entry(mount_id)
+            manager.mount_entry(mount_id, principal=principal)
             if mount_id is not None
-            else manager.instance_entry(instance_id)
+            else manager.instance_entry(instance_id, principal=principal)
         )
         if mount_id is not None and entry["app_instance_id"] != instance_id:
             raise HTTPException(status_code=409, detail="Mount instance changed")
-        path = manager.resolve_app_resource(instance_id, resource)
+        path = manager.resolve_app_resource(
+            instance_id, resource, principal=principal
+        )
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -2964,22 +3449,23 @@ async def shell_constrained_view(
     instance_id: str,
     renderer: Literal["schema", "safe-html"],
     mount_id: str | None = None,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Render trusted host wrappers around constrained package resources."""
-    del is_admin
     manager = _shell_manager()
     try:
         entry = (
-            manager.mount_entry(mount_id)
+            manager.mount_entry(mount_id, principal=principal)
             if mount_id is not None
-            else manager.instance_entry(instance_id)
+            else manager.instance_entry(instance_id, principal=principal)
         )
         if mount_id is not None and entry["app_instance_id"] != instance_id:
             raise HTTPException(status_code=409, detail="Mount instance changed")
         if entry["renderer"] != renderer:
             raise HTTPException(status_code=409, detail="Entry renderer changed")
-        manager.resolve_app_resource(instance_id, str(entry["resource"]))
+        manager.resolve_app_resource(
+            instance_id, str(entry["resource"]), principal=principal
+        )
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
     resource_url = (
@@ -3008,11 +3494,10 @@ async def shell_constrained_view(
 async def shell_generic_mini_entry(
     request: Request,
     mount_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
-    del is_admin
     try:
-        entry = _shell_manager().mount_entry(mount_id)
+        entry = _shell_manager().mount_entry(mount_id, principal=principal)
     except (RepositoryError, ExtensionError) as error:
         _shell_lifecycle_error(error)
     if entry["resource"] != "ai2apps:generic-launcher":
@@ -3494,6 +3979,7 @@ def _system_app_content_response(
     app_id: str,
     *,
     include_api_key: bool,
+    principal: RequestPrincipal,
     mobile_surface: bool = False,
 ):
     tab = _DASHBOARD_APP_TABS.get(app_id)
@@ -3501,12 +3987,16 @@ def _system_app_content_response(
     app = _SYSTEM_APPS_BY_ID.get(app_id)
     if tab is None or template_name is None or app is None:
         raise HTTPException(status_code=404, detail="App content not found")
+    _require_system_app_access(app_id, principal)
     context = {
         "system_app": {
             "id": app_id,
             "name": app["name"],
             "tab": tab,
-        }
+        },
+        "principal_actor_user_id": principal.actor_user_id,
+        "principal_is_core": principal.is_core,
+        "developer_surfaces_visible": can_access_developer_surfaces(principal),
     }
     if mobile_surface:
         context.update(
@@ -3518,15 +4008,10 @@ def _system_app_content_response(
         )
     if app.get("presentation", {}).get("dock_reveal") is False:
         context["show_dock_reveal"] = False
-    if include_api_key and app_id in {
-        "ai2apps.account",
-        "ai2apps.discover",
-        "ai2apps.agents",
-        "ai2apps.general-chat",
-        "ai2apps.trust-center",
-    }:
-        settings = _get_global_settings()
-        context["api_key"] = settings.auth.api_key if settings else ""
+    # include_api_key is retained in the private helper signature only to
+    # avoid a broad routing refactor. Long-lived API credentials are never
+    # rendered into system App HTML.
+    del include_api_key
     return templates.TemplateResponse(
         request,
         template_name,
@@ -3538,35 +4023,39 @@ def _system_app_content_response(
 async def system_app_content(
     request: Request,
     app_id: str,
-    is_admin: bool = Depends(require_admin),
+    principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Render one built-in system App through its independent Host Entry."""
-    del is_admin
-    return _system_app_content_response(request, app_id, include_api_key=True)
+    return _system_app_content_response(
+        request, app_id, include_api_key=True, principal=principal
+    )
 
 
 @router.get("/chat", response_class=HTMLResponse)
-async def chat_page(request: Request, is_admin: bool = Depends(require_admin)):
+async def chat_page(
+    request: Request,
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
     """
     Render the chat page for interacting with models.
 
-    Requires admin authentication via session cookie.
-    The API key is injected into the template context so that
-    the chat page can auto-set it in localStorage, bypassing
-    the manual API key entry modal.
+    Requires an Installation-scoped Local Session. Browser-side Chat state is
+    namespaced by the principal; inference credentials are never rendered.
 
     Returns:
         HTML chat page.
     """
-    global_settings = _get_global_settings()
-    api_key = global_settings.auth.api_key if global_settings else ""
+    _require_system_app_access("ai2apps.general-chat", principal)
     return templates.TemplateResponse(
         request,
         "chat.html",
         {
-            "api_key": api_key or "",
+            "api_key": "",
             "terminal_assistant": request.query_params.get("terminal_assistant")
             == "1",
+            "principal_actor_user_id": principal.actor_user_id,
+            "principal_is_core": principal.is_core,
+            "developer_surfaces_visible": can_access_developer_surfaces(principal),
         },
     )
 
@@ -3616,35 +4105,14 @@ async def login(request: LoginRequest, response: Response):
     Raises:
         HTTPException: 400 if no API key configured, 401 if invalid.
     """
-    global_settings = _get_global_settings()
-    server_api_key = global_settings.auth.api_key if global_settings else None
-
-    # Reject login if no API key is configured (must use setup first)
-    if not server_api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="No API key configured. Please set up an API key first.",
-        )
-
-    # Main key only — sub keys must not grant admin login
-    if not verify_api_key(request.api_key, server_api_key):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key",
-        )
-
-    # Create session token and set cookie
-    token = create_session_token(remember=request.remember)
-    cookie_max_age = REMEMBER_ME_MAX_AGE if request.remember else SESSION_MAX_AGE
-    response.set_cookie(
-        key="omlx_admin_session",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        max_age=cookie_max_age,
+    del request, response
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "code": "api_key_web_login_retired",
+            "message": "Sign in with your AI2Apps account instead.",
+        },
     )
-
-    return {"success": True}
 
 
 @router.post("/api/setup-api-key")
@@ -3667,53 +4135,18 @@ async def setup_api_key(request: SetupApiKeyRequest, response: Response):
         HTTPException: 400 if key already configured, validation fails,
                       or keys don't match.
     """
-    from ..server import _server_state
-
-    global_settings = _get_global_settings()
-
-    # Only allow setup if no API key is currently configured
-    if global_settings and global_settings.auth.api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="API key is already configured. Use settings to change it.",
-        )
-
-    # Validate confirmation match
-    if request.api_key != request.api_key_confirm:
-        raise HTTPException(status_code=400, detail="API keys do not match")
-
-    # Validate key format
-    is_valid, error_msg = validate_api_key(request.api_key)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=error_msg)
-
-    # Apply to settings and runtime
-    global_settings.auth.api_key = request.api_key
-    _server_state.api_key = request.api_key
-
-    # Persist to file
-    try:
-        global_settings.save()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save settings: {e}")
-
-    logger.info("API key configured via initial setup")
-
-    # Create session token and set cookie (auto-login after setup)
-    token = create_session_token()
-    response.set_cookie(
-        key="omlx_admin_session",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        max_age=86400,  # 24 hours
+    del request, response
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "code": "api_key_web_setup_retired",
+            "message": "Set up the device Core account from the sign-in page.",
+        },
     )
-
-    return {"success": True, "message": "API key configured successfully"}
 
 
 @router.post("/api/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
     """
     Clear session cookie and logout.
 
@@ -3723,7 +4156,36 @@ async def logout(response: Response):
     Returns:
         JSON response with success status.
     """
-    response.delete_cookie(key="omlx_admin_session")
+    from ai2apps.http_security import (
+        enforce_same_origin_cookie_request,
+        has_local_session_cookie,
+    )
+
+    if has_local_session_cookie(request):
+        enforce_same_origin_cookie_request(request)
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    cookie_reader = (
+        None
+        if runtime is None
+        else getattr(runtime, "local_session_token_from_cookies", None)
+    )
+    token = cookie_reader(request.cookies) if cookie_reader is not None else None
+    revoker = (
+        None if runtime is None else getattr(runtime, "revoke_local_session", None)
+    )
+    if revoker is not None:
+        revoker(token)
+    local_cookie_resolver = (
+        None if runtime is None else getattr(runtime, "local_session_cookie_name", None)
+    )
+    if local_cookie_resolver is not None:
+        local_cookie_name = local_cookie_resolver()
+        response.delete_cookie(key=local_cookie_name, path="/")
+        if local_cookie_name != "ai2apps_local_session":
+            response.delete_cookie(key="ai2apps_local_session", path="/")
+    response.delete_cookie(key=session_cookie_name(), path="/")
+    if session_cookie_name() != "omlx_admin_session":
+        response.delete_cookie(key="omlx_admin_session")
     return {"success": True}
 
 
@@ -3745,23 +4207,12 @@ async def auto_login(key: str = "", redirect: str = "/admin/dashboard"):
     if not redirect.startswith("/admin"):
         raise HTTPException(status_code=400, detail="Invalid redirect path")
 
-    global_settings = _get_global_settings()
-    server_api_key = global_settings.auth.api_key if global_settings else None
-
-    # Main key only — sub keys must not grant admin login
-    if not key or not server_api_key or not verify_api_key(key, server_api_key):
-        return RedirectResponse(url="/admin", status_code=302)
-
-    token = create_session_token()
-    response = RedirectResponse(url=redirect, status_code=302)
-    response.set_cookie(
-        key="omlx_admin_session",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        max_age=86400,
+    del key
+    # Query-string credentials leak through browser history, logs and referrer
+    # headers. The Helper now opens the normal account-authenticated WebUI.
+    return RedirectResponse(
+        url=f"/admin?redirect={quote(redirect, safe='/')}", status_code=302
     )
-    return response
 
 
 # =============================================================================
@@ -3844,9 +4295,19 @@ async def delete_sub_key(
     if global_settings is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
 
-    # Find and remove the key
+    requested_fingerprint = (request.fingerprint or "").strip().lower()
+    if not requested_fingerprint and not request.key:
+        raise HTTPException(status_code=400, detail="Sub key fingerprint is required")
+
+    # Fingerprints let the browser revoke a key without receiving the secret
+    # again. ``key`` remains accepted for API compatibility with older clients.
     for i, sk in enumerate(global_settings.auth.sub_keys):
-        if sk.key and compare_keys(request.key, sk.key):
+        fingerprint_matches = (
+            bool(requested_fingerprint)
+            and requested_fingerprint == _sub_key_fingerprint(sk.key)
+        )
+        key_matches = bool(request.key and sk.key and compare_keys(request.key, sk.key))
+        if fingerprint_matches or key_matches:
             removed = global_settings.auth.sub_keys.pop(i)
             try:
                 global_settings.save()
@@ -4023,11 +4484,35 @@ def _cloud_model_capabilities(model: dict[str, Any]) -> set[str]:
     return capabilities
 
 
-async def _ai2apps_cloud_provider() -> dict[str, Any]:
+async def _ai2apps_cloud_provider(
+    request: Request | None = None,
+    principal: RequestPrincipal | None = None,
+) -> dict[str, Any]:
     """Build the managed Model App provider from the current Cloud account."""
 
     runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
     cloud = None if runtime is None else runtime.cloud
+    if runtime is not None and request is not None:
+        browser_session_id = runtime.cloud_browser_session_from_cookies(
+            request.cookies
+        )
+        if browser_session_id:
+            try:
+                cloud = runtime.cloud_for_browser(browser_session_id)
+            except (RuntimeError, ValueError):
+                logger.debug(
+                    "Unable to resolve the Model App browser Cloud session",
+                    exc_info=True,
+                )
+    if principal is None and request is not None:
+        principal = active_local_principal(request)
+    if principal is None and runtime is not None:
+        resolver = getattr(runtime, "legacy_api_key_principal", None)
+        if resolver is not None:
+            try:
+                principal = resolver()
+            except IdentityBindingError:
+                principal = None
     base = {
         "id": "ai2apps",
         "name": "AI2Apps Cloud",
@@ -4046,14 +4531,35 @@ async def _ai2apps_cloud_provider() -> dict[str, Any]:
     if cloud is None:
         base["models_error"] = "Cloud connection is not ready; local models remain available."
         return base
+    headers = None
+    authorization_headers = getattr(
+        runtime, "cloud_ai_authorization_headers", None
+    )
+    if principal is not None and authorization_headers is not None:
+        try:
+            headers = authorization_headers(principal)
+        except (IdentityBindingError, RuntimeError):
+            logger.debug(
+                "Unable to authorize the AI2Apps Cloud model catalog",
+                exc_info=True,
+            )
     try:
-        response = await cloud.request("GET", "/v1/ai/models")
+        response = await cloud.request(
+            "GET",
+            "/v1/ai/models",
+            **({"headers": headers} if headers else {}),
+        )
     except Exception:
         logger.debug("Unable to load the AI2Apps Cloud model catalog", exc_info=True)
         base["models_error"] = "AI2Apps Cloud is unavailable; local models remain available."
         return base
     try:
         if response.status_code == 401:
+            if headers:
+                base["connection_state"] = "unavailable"
+                base["models_error"] = (
+                    "AI2Apps Cloud rejected this Local installation's model access."
+                )
             return base
         if response.status_code != 200:
             base["connection_state"] = "unavailable"
@@ -4095,7 +4601,10 @@ async def _ai2apps_cloud_provider() -> dict[str, Any]:
 
 
 @router.get("/api/models")
-async def list_models(is_admin: bool = Depends(require_admin)):
+async def list_models(
+    request: Request = None,
+    is_admin: bool = Depends(require_admin),
+):
     """
     List all models with their settings.
 
@@ -4211,6 +4720,7 @@ async def list_models(is_admin: bool = Depends(require_admin)):
 
         if model_data["cache_moe"]:
             from ..model_discovery import (
+                cache_moe_engine_id,
                 deepseek_cache_moe_memory_profile,
                 qwen36_cache_moe_memory_profile,
             )
@@ -4221,13 +4731,22 @@ async def list_models(is_admin: bool = Depends(require_admin)):
             profile_fn = (
                 qwen36_cache_moe_memory_profile
                 if model_data["config_model_type"] == "qwen3_5_moe"
-                and (cache_config or {}).get("engine")
+                and cache_moe_engine_id(cache_config)
                 in ("qwen3.6-flesh", "qwen3.6-arena", "qwen3.6-tiered")
                 else deepseek_cache_moe_memory_profile
             )
-            model_data["cache_moe_memory"] = profile_fn(
+            cache_memory = profile_fn(
                 model_info.get("model_path", ""), cache_config
             )
+            model_data["cache_moe_memory"] = cache_memory
+            if (
+                settings is not None
+                and settings.moe_execution_mode == "full"
+                and cache_memory is not None
+            ):
+                full_estimate = int(cache_memory["full_estimated_bytes"])
+                model_data["estimated_size"] = full_estimate
+                model_data["estimated_size_formatted"] = format_size(full_estimate)
 
         # Add settings if available
         if settings:
@@ -4278,7 +4797,7 @@ async def list_models(is_admin: bool = Depends(require_admin)):
 
     if global_settings is not None:
         cloud_models = _model_manager_store().enabled_cloud_models()
-        ai2apps_provider = await _ai2apps_cloud_provider()
+        ai2apps_provider = await _ai2apps_cloud_provider(request)
         local_gateway_ids = {model["gateway_id"] for model in cloud_models}
         configured_local_providers = {
             provider["id"]
@@ -4436,6 +4955,10 @@ async def list_models(is_admin: bool = Depends(require_admin)):
 def _model_manager_store():
     from ai2apps.model_manager import ModelManagerStore
 
+    runtime = _get_platform_runtime() if _get_platform_runtime is not None else None
+    shared = None if runtime is None else getattr(runtime, "model_manager", None)
+    if shared is not None:
+        return shared
     settings = _get_global_settings()
     if settings is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
@@ -4477,18 +5000,24 @@ def _supports_default_model_purpose(model: dict[str, Any], purpose: str) -> bool
 
 
 @router.get("/api/model-manager")
-async def get_model_manager(is_admin: bool = Depends(require_admin)):
+async def get_model_manager(
+    request: Request,
+    is_admin: bool = Depends(require_admin),
+):
     """Return models grouped by their serving contract, not disk location."""
 
     from ai2apps.model_installer import AI2AppsInstaller
 
-    catalog = AI2AppsInstaller.catalog()
+    from ai2apps.model_providers import installed_model_preparation_recipes
+
+    runtime = _get_platform_runtime() if _get_platform_runtime else None
+    catalog = AI2AppsInstaller.catalog(installed_model_preparation_recipes(runtime))
     cached_repo_ids = {
         source["repo_id"]
         for recipe in catalog
         for source in recipe.get("sources", [])
     }
-    runtime_models = (await list_models(is_admin=is_admin))["models"]
+    runtime_models = (await list_models(request=request, is_admin=is_admin))["models"]
     cache_runtime = [model for model in runtime_models if model.get("cache_moe")]
     ordinary_runtime = [
         model
@@ -4512,27 +5041,33 @@ async def get_model_manager(is_admin: bool = Depends(require_admin)):
     cached_moe = []
     for recipe in catalog:
         repo_ids = {source["repo_id"] for source in recipe.get("sources", [])}
-        installed = next(
+        runtime_match = next(
             (
                 model
-                for model in cache_runtime
+                for model in (*cache_runtime, *package_runtime)
                 if model.get("source_repo_id") in repo_ids
                 or model.get("id") in repo_ids
+                or model.get("id") == recipe.get("id")
                 or any(str(model.get("model_path", "")).rstrip("/").endswith(repo) for repo in repo_ids)
             ),
             None,
         )
+        installed = (
+            bool(recipe.get("installed"))
+            if recipe.get("recipe") == "native"
+            else runtime_match is not None
+        )
         cached_moe.append(
             {
                 **recipe,
-                "installed": installed is not None,
-                "runtime_model": installed,
+                "installed": installed,
+                "runtime_model": runtime_match,
                 "task": latest_tasks.get(recipe["id"]),
             }
         )
 
     store = _model_manager_store()
-    ai2apps_provider = await _ai2apps_cloud_provider()
+    ai2apps_provider = await _ai2apps_cloud_provider(request)
     configured_local_providers = {
         provider["id"]: provider["name"]
         for provider in store.list_cloud()
@@ -4707,41 +5242,10 @@ async def unload_model(
     return {"status": "ok", "model_id": model_id, "message": f"Unloaded {model_id}"}
 
 
-async def _require_admin_or_bearer(request: Request) -> bool:
-    """Allow admin session OR a valid Bearer API key (for CLI use)."""
-    gs = _get_global_settings() if _get_global_settings else None
-
-    # No-auth mode: always allow
-    if gs is not None and gs.auth.skip_api_key_verification:
-        return True
-
-    # Valid admin session cookie
-    if verify_session(request):
-        return True
-
-    # Bearer token matching the configured API key
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer ") and gs is not None:
-        token = auth_header[7:]
-        server_key = gs.auth.api_key or ""
-        sub_keys = gs.auth.sub_keys or []
-        if verify_api_key(token, server_key):
-            return True
-        for sk in sub_keys:
-            if verify_api_key(token, getattr(sk, "key", "")):
-                return True
-
-    raise HTTPException(
-        status_code=401,
-        detail="Admin authentication required",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-
 @router.post("/api/models/{model_id}/load")
 async def load_model(
     model_id: str,
-    is_admin: bool = Depends(_require_admin_or_bearer),
+    is_admin: bool = Depends(require_admin),
 ):
     """Manually load a model into memory."""
     engine_pool = _get_engine_pool()
@@ -4811,6 +5315,53 @@ async def update_model_settings(
 
     # Check if model exists
     entry = engine_pool.get_entry(model_id)
+    platform_runtime = _get_platform_runtime() if _get_platform_runtime else None
+    package_model = (
+        resolve_package_model(platform_runtime, model_id) if entry is None else None
+    )
+    if package_model is not None:
+        current_settings = settings_manager.get_settings(model_id)
+        sent = request.model_fields_set
+        supported = {"moe_execution_mode", "cache_moe_memory_tier"}
+        unsupported = sent - supported
+        if unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This Model Worker Package currently supports only MoE "
+                    "execution mode and memory tier settings"
+                ),
+            )
+        execution_modes = set(package_model.metadata.get("execution_modes", ()))
+        if "moe_execution_mode" in sent:
+            execution_mode = (request.moe_execution_mode or "cached").strip().lower()
+            if execution_mode not in execution_modes:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported Package execution mode: {execution_mode}",
+                )
+            current_settings.moe_execution_mode = execution_mode
+        if "cache_moe_memory_tier" in sent:
+            memory_tier = (request.cache_moe_memory_tier or "auto").strip().lower()
+            if memory_tier not in {"auto", "lean", "compact", "optimal"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Cache-MoE memory tier: {memory_tier}",
+                )
+            current_settings.cache_moe_memory_tier = (
+                None if memory_tier == "auto" else memory_tier
+            )
+        settings_manager.set_settings(model_id, current_settings)
+        return {
+            "success": True,
+            "model_id": model_id,
+            "settings": current_settings.to_dict(),
+            "model_type": package_model.model_type,
+            "engine_type": "package",
+            "requires_reload": False,
+            "auto_unloaded": False,
+            "auto_reloaded": False,
+        }
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
 
@@ -4892,6 +5443,27 @@ async def update_model_settings(
             entry.engine_type = type_to_engine.get(detected_type, "batched")
     if "max_context_window" in sent:
         current_settings.max_context_window = request.max_context_window
+    if "moe_execution_mode" in sent:
+        execution_mode = (request.moe_execution_mode or "cached").strip().lower()
+        if execution_mode not in {"cached", "full"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid MoE execution mode: {execution_mode}",
+            )
+        if not entry.cache_moe_config:
+            raise HTTPException(
+                status_code=400,
+                detail="MoE execution mode is only available for prepared Cached-MoE models",
+            )
+        if (
+            execution_mode != current_settings.moe_execution_mode
+            and engine_pool._entry_is_busy(entry)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="MoE execution mode cannot be changed while the model has active requests",
+            )
+        current_settings.moe_execution_mode = execution_mode
     if "cache_moe_memory_tier" in sent:
         memory_tier = (request.cache_moe_memory_tier or "auto").strip().lower()
         if memory_tier not in {"auto", "lean", "compact", "optimal"}:
@@ -5304,6 +5876,7 @@ async def update_model_settings(
         ("model_type_override" in sent and entry.engine_type != prev_engine_type)
         or "index_cache_freq" in sent
         or "cache_moe_memory_tier" in sent
+        or "moe_execution_mode" in sent
         or "dflash_enabled" in sent
         or "dflash_draft_model" in sent
         or "dflash_draft_quant_enabled" in sent
@@ -5852,6 +6425,178 @@ def _schedule_self_terminate(delay: float = 0.5) -> None:
     asyncio.get_running_loop().call_later(delay, _kill)
 
 
+def _model_adapter_package_manager():
+    from ..model_adapters import ModelAdapterPackageManager
+
+    settings = _get_global_settings() if _get_global_settings else None
+    if settings is None:
+        raise HTTPException(status_code=503, detail="Global settings not initialized")
+    return ModelAdapterPackageManager(settings.base_path)
+
+
+def _model_adapter_catalog():
+    from ..model_adapters.catalog import ModelAdapterCatalog
+
+    return ModelAdapterCatalog(_model_adapter_package_manager())
+
+
+def _raise_model_adapter_package_error(error) -> None:
+    status = {
+        "wheel_not_found": 404,
+        "package_not_installed": 404,
+        "catalog_release_not_found": 404,
+        "dependency_missing": 409,
+        "dependency_incompatible": 409,
+        "catalog_metadata_rollback": 409,
+        "catalog_metadata_equivocation": 409,
+        "adapter_version_rollback": 409,
+        "catalog_unavailable": 503,
+        "artifact_download_failed": 502,
+        "manifest_invalid": 500,
+    }.get(error.code, 422)
+    raise HTTPException(
+        status_code=status,
+        detail={"code": error.code, "message": str(error), "details": error.details},
+    ) from error
+
+
+@router.get("/api/model-adapter-packages")
+async def list_model_adapter_packages(is_admin: bool = Depends(require_admin)):
+    try:
+        items = await asyncio.to_thread(_model_adapter_package_manager().installed)
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        raise
+    return {"items": items}
+
+
+@router.post("/api/model-adapter-packages/inspect")
+async def inspect_model_adapter_package(
+    request: ModelAdapterPackageRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        return await asyncio.to_thread(
+            _model_adapter_package_manager().inspect, request.wheel_path
+        )
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        raise
+
+
+@router.post("/api/model-adapter-packages/install")
+async def install_model_adapter_package(
+    request: ModelAdapterPackageRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        return await asyncio.to_thread(
+            _model_adapter_package_manager().install, request.wheel_path
+        )
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        raise
+
+
+@router.get("/api/model-adapter-packages/catalog")
+async def list_model_adapter_catalog(is_admin: bool = Depends(require_admin)):
+    try:
+        return await _model_adapter_catalog().trusted_catalog()
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        raise
+
+
+@router.post("/api/model-adapter-packages/install-from-catalog")
+async def install_model_adapter_from_catalog(
+    request: ModelAdapterCatalogInstallRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        return await _model_adapter_catalog().install(
+            request.package_name, request.version
+        )
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        raise
+
+
+@router.post("/api/model-adapter-packages/install-checkpoint")
+async def install_model_adapter_checkpoint(
+    request: ModelAdapterCheckpointInstallRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    """Start a package-selected Cached-MoE checkpoint preparation task."""
+    try:
+        checkpoint = await _model_adapter_catalog().cached_moe_checkpoint(
+            request.package_name, request.package_version, request.recipe_id
+        )
+        installer = _get_ai2apps_installer()
+        recipe = installer._recipe(request.recipe_id)
+        source = next(
+            (
+                item
+                for item in recipe["sources"]
+                if item["id"] == checkpoint["source"]
+            ),
+            None,
+        )
+        if source is None or source["repo_id"] != checkpoint["repo_id"] or source[
+            "revision"
+        ] != checkpoint["revision"]:
+            raise ValueError(
+                "The active adapter recipe does not match its signed checkpoint recommendation"
+            )
+        task = await installer.start(
+            request.recipe_id,
+            checkpoint["source"],
+            request.memory_tier,
+            request.token,
+            request.storage_policy,
+        )
+        return {"success": True, "task": task.to_dict()}
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        if isinstance(error, ValueError):
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        raise
+
+
+@router.delete("/api/model-adapter-packages/{package_name}")
+async def uninstall_model_adapter_package(
+    package_name: str,
+    is_admin: bool = Depends(require_admin),
+):
+    try:
+        return await asyncio.to_thread(
+            _model_adapter_package_manager().uninstall, package_name
+        )
+    except Exception as error:
+        from ..model_adapters import ModelAdapterPackageError
+
+        if isinstance(error, ModelAdapterPackageError):
+            _raise_model_adapter_package_error(error)
+        raise
+
+
 @router.post("/api/server/restart")
 async def restart_server(is_admin: bool = Depends(require_admin)):
     """Trigger a server restart via the menubar supervisor.
@@ -6003,9 +6748,14 @@ async def get_global_settings(is_admin: bool = Depends(require_admin)):
         },
         "auth": {
             "api_key_set": bool(global_settings.auth.api_key),
-            "api_key": global_settings.auth.api_key or "",
+            # Write-only rotation field. Never return the long-lived key to
+            # browser JavaScript or diagnostics.
+            "api_key": "",
             "skip_api_key_verification": global_settings.auth.skip_api_key_verification,
-            "sub_keys": [sk.to_dict() for sk in global_settings.auth.sub_keys],
+            # API client credentials are write-only after creation. Browsers
+            # receive enough metadata to identify and revoke them, never the
+            # bearer value itself.
+            "sub_keys": [_sub_key_view(sk) for sk in global_settings.auth.sub_keys],
         },
         "claude_code": {
             "mode": global_settings.claude_code.mode,
@@ -6078,6 +6828,12 @@ async def update_global_settings(
 
     if global_settings is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
+
+    if "ui_language" in request.model_fields_set:
+        raise HTTPException(
+            status_code=400,
+            detail="Change the display language in the Account App",
+        )
 
     # Track which settings were applied at runtime
     runtime_applied: list[str] = []
@@ -6630,13 +7386,6 @@ async def update_global_settings(
             f"markitdown_pdf_processing_engine={global_settings.integrations.markitdown_pdf_processing_engine}"
         )
 
-    # Apply UI settings
-    if request.ui_language is not None:
-        global_settings.ui.language = request.ui_language
-        runtime_applied.append("ui_language")
-        _refresh_i18n_globals()
-        logger.info(f"UI language changed to: {request.ui_language}")
-
     # Apply idle timeout settings (Live)
     # Use model_fields_set to distinguish "explicitly sent as null" (disable)
     # from "not sent" (don't touch).
@@ -6707,6 +7456,77 @@ async def update_global_settings(
         "message": message,
         "runtime_applied": runtime_applied,
     }
+
+
+@router.get("/api/environment-check")
+async def get_environment_check(
+    network: bool = False,
+    is_admin: bool = Depends(require_admin),
+):
+    """Inspect runtime readiness without importing MLX or model weights."""
+    del is_admin
+    global_settings = _get_global_settings()
+    if global_settings is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+    model_dirs = global_settings.get_effective_model_dirs()
+    model_dir = (
+        Path(model_dirs[0])
+        if model_dirs
+        else global_settings.model.get_model_dir(global_settings.base_path)
+    )
+    report = await asyncio.to_thread(
+        collect_environment_report,
+        model_dir=Path(model_dir),
+        hf_cache_dir=Path(global_settings.get_hf_cache_dir()),
+        hf_endpoint=(
+            global_settings.huggingface.endpoint or "https://huggingface.co"
+        ),
+        settings={
+            "prefill_memory_guard": global_settings.memory.prefill_memory_guard,
+            "memory_guard_tier": global_settings.memory.memory_guard_tier,
+            "hf_cache_enabled": global_settings.huggingface.hf_cache_enabled,
+        },
+        check_network=network,
+    )
+    hf_preflight = _ai2apps_hf_preflight()
+    report["huggingface"]["runtime_preflight"] = hf_preflight
+    report["checks"].append(
+        {
+            "id": "huggingface_runtime",
+            "status": "pass" if hf_preflight["ready"] else "fail",
+            "title": "Hugging Face 下载器",
+            "detail": (
+                "下载器、缓存与依赖已就绪。"
+                if hf_preflight["ready"]
+                else hf_preflight["issues"][0]["message"]
+                if hf_preflight["issues"]
+                else "Hugging Face 下载器尚未就绪。"
+            ),
+        }
+    )
+    if not hf_preflight["ready"]:
+        report["status"] = "critical"
+    return report
+
+
+@router.post("/api/environment-check/actions")
+async def apply_environment_recommendation(
+    request: EnvironmentActionRequest,
+    is_admin: bool = Depends(require_admin),
+):
+    """Apply one explicit recommendation through the normal settings path."""
+    del is_admin
+    payloads = {
+        "enable_memory_guard": {"memory_prefill_memory_guard": True},
+        "set_memory_guard_safe": {"memory_guard_tier": "safe"},
+        "set_memory_guard_balanced": {"memory_guard_tier": "balanced"},
+        "enable_hf_cache": {"hf_cache_enabled": True},
+    }
+    result = await update_global_settings(
+        GlobalSettingsRequest(**payloads[request.action_id]), is_admin=True
+    )
+    logger.info("Environment recommendation applied: %s", request.action_id)
+    return {**result, "action_id": request.action_id}
 
 
 # =============================================================================
@@ -7265,7 +8085,6 @@ async def get_server_stats(
     global_settings = _get_global_settings()
     host = global_settings.server.host if global_settings else "127.0.0.1"
     port = global_settings.server.port if global_settings else 8000
-    api_key = global_settings.auth.api_key if global_settings else ""
 
     from ..utils.install import get_cli_prefix
 
@@ -7280,7 +8099,7 @@ async def get_server_stats(
         **snapshot,
         "host": host,
         "port": port,
-        "api_key": api_key or "",
+        "api_key": "",
         "cli_prefix": get_cli_prefix(),
         "engines": _get_engine_info(),
         "active_models": active_models_data,
@@ -8055,7 +8874,14 @@ async def get_ai2apps_catalog(is_admin: bool = Depends(require_admin)):
 
     from ai2apps.model_installer import AI2AppsInstaller
 
-    return {"models": AI2AppsInstaller.catalog()}
+    from ai2apps.model_providers import installed_model_preparation_recipes
+
+    runtime = _get_platform_runtime() if _get_platform_runtime else None
+    return {
+        "models": AI2AppsInstaller.catalog(
+            installed_model_preparation_recipes(runtime)
+        )
+    }
 
 
 @router.get("/api/dynamoe/preflight", include_in_schema=False)
@@ -8085,6 +8911,7 @@ async def start_ai2apps_install(
             request.weight_source,
             request.memory_tier,
             request.token,
+            request.storage_policy,
         )
         return {"success": True, "task": task.to_dict()}
     except ValueError as exc:
@@ -8132,7 +8959,9 @@ async def start_hf_download(
         raise HTTPException(status_code=503, detail="Downloader not initialized")
 
     try:
-        task = await _hf_downloader.start_download(request.repo_id, request.hf_token)
+        task = await _hf_downloader.start_download(
+            request.repo_id, request.hf_token, revision=request.revision
+        )
         return {"success": True, "task": task.to_dict()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -8437,6 +9266,19 @@ async def delete_hf_model(
     if not model_path.is_dir():
         raise HTTPException(status_code=400, detail="Not a model directory")
 
+    try:
+        from ai2apps.model_installer import installed_shared_model_source_reference
+
+        shared_source_reference = installed_shared_model_source_reference(model_path)
+    except Exception as exc:
+        logger.error(
+            "Refusing model deletion with invalid shared source metadata: %s", exc
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="Model shared-cache metadata is invalid; restart AI2Apps and retry",
+        ) from exc
+
     # Unload model if loaded
     if engine_pool is not None:
         loaded_ids = engine_pool.get_loaded_model_ids()
@@ -8472,6 +9314,22 @@ async def delete_hf_model(
     except Exception as e:
         logger.error(f"Failed to delete model directory {model_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete model: {e}")
+
+    if shared_source_reference is not None:
+        try:
+            from ai2apps.shared_model_cache import (
+                remove_configured_shared_model_reference,
+            )
+
+            removed = remove_configured_shared_model_reference(
+                repo_id=shared_source_reference[0],
+                revision=shared_source_reference[1],
+            )
+            logger.info("Released deleted model's shared-cache reference: %s", removed)
+        except Exception:
+            # Disk deletion is already committed. Keep the conservative stale
+            # reference; cold-start reconciliation will retry its removal.
+            logger.exception("Shared model reference release deferred until restart")
 
     # If the model was inside an org folder (organized layout) and that
     # folder is now empty, drop it so the listing stays tidy.

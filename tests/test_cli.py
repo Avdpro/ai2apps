@@ -27,6 +27,18 @@ class TestCLIModule:
 
         assert hasattr(cli, "main")
 
+    def test_bound_local_port_becomes_the_mobile_gateway_port(self):
+        from omlx.cli import _publish_mobile_gateway_port
+
+        environment = {"AI2APPS_MOBILE_GATEWAY_PORT": "8000"}
+
+        _publish_mobile_gateway_port(54_893, environment)
+
+        assert environment["AI2APPS_MOBILE_GATEWAY_PORT"] == "54893"
+
+        with pytest.raises(ValueError, match="port is invalid"):
+            _publish_mobile_gateway_port(0, environment)
+
     def test_cli_has_serve_command(self):
         """Test that CLI has serve command setup."""
         from omlx import cli

@@ -1,0 +1,52 @@
+schema: ai2apps.service/v1
+id: example.model-worker
+name: Example Model Worker
+description: Minimal AI2Apps system-hosted model Package.
+version: 0.1.0
+
+publisher:
+  id: example.publisher
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  adapter: src/adapter.py:create_adapter
+
+models:
+  - id: example.model-worker/demo
+    display_name: Example Demo Model
+    model_type: llm
+    upstream_id: example/demo-checkpoint
+    capabilities:
+      - work
+      - conversation
+    context_window: 8192
+
+capabilities: []
+
+requires:
+  services: []
+  python: ">=3.11,<3.14"
+
+permissions:
+  network:
+    outbound: false
+  model_weights:
+    huggingface_cache: read
+    reason: Reuse a checkpoint that the user already downloaded.
+  accelerator:
+    metal: false
+
+compatibility:
+  os: [macos, linux]
+  architectures: [arm64, x86_64]
+
+health:
+  path: /health
+  startup_timeout_seconds: 30
+
+restart:
+  max_attempts: 2
+  base_delay_seconds: 1
+
+tools: []

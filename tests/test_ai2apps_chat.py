@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 import pytest
 from fastapi import FastAPI
@@ -16,10 +17,12 @@ from ai2apps.core import (
     AppInstanceStatus,
     MessageRole,
     ResourceConflictError,
+    ResourceNotFoundError,
     RevisionConflictError,
     SessionStatus,
 )
 from ai2apps.events import EventStore
+from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.storage import MessagePartInput
 from ai2apps.storage.repositories import MessageRepository, SessionRepository
@@ -254,7 +257,7 @@ def test_chat_aliases_allow_two_clients_to_display_different_threads(tmp_path):
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     runtime.start()
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     first_client = TestClient(app)
     second_client = TestClient(app)
     first = first_client.post(
@@ -282,7 +285,7 @@ def test_chat_content_api_round_trips_ui_snapshot_and_conflict(tmp_path):
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     runtime.start()
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     client = TestClient(app)
     thread = client.post(
         "/v1/platform/chat/threads", json={"title": "Before"}
@@ -320,3 +323,184 @@ def test_chat_content_api_round_trips_ui_snapshot_and_conflict(tmp_path):
     }
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "revision_conflict"
+
+
+def _member_principal(user_id: str) -> RequestPrincipal:
+    return RequestPrincipal(
+        actor_user_id=user_id,
+        installation_id="installation-1",
+        organization_id="household-1",
+        billing_account_id="billing-core",
+        role=MemberRole.MEMBER,
+        membership_epoch=1,
+    )
+
+
+def _core_principal(user_id: str) -> RequestPrincipal:
+    return RequestPrincipal(
+        actor_user_id=user_id,
+        installation_id="installation-1",
+        organization_id="household-1",
+        billing_account_id=user_id,
+        role=MemberRole.CORE,
+        membership_epoch=1,
+    )
+
+
+def test_two_cloud_members_have_distinct_chat_singletons_and_idor_is_hidden(
+    tmp_path,
+):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    alice = ChatRepository(
+        runtime.database,
+        runtime.events,
+        principal=_member_principal("user-alice"),
+    )
+    bob = ChatRepository(
+        runtime.database,
+        runtime.events,
+        principal=_member_principal("user-bob"),
+    )
+
+    alice_thread, _ = alice.create_thread(title="Alice private")
+    bob_thread, _ = bob.create_thread(title="Bob private")
+
+    assert alice.ensure_builtin().instance.id != bob.ensure_builtin().instance.id
+    assert alice.ensure_builtin().instance.owner_user_id == "user-alice"
+    assert bob.ensure_builtin().instance.owner_user_id == "user-bob"
+    assert [item.session.id for item in alice.list_threads()] == [
+        alice_thread.session.id
+    ]
+    assert [item.session.id for item in bob.list_threads()] == [bob_thread.session.id]
+    with pytest.raises(ResourceNotFoundError):
+        bob.get_thread(alice_thread.session.id)
+
+
+def test_same_user_desktop_and_mobile_have_distinct_chat_singletons(tmp_path):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    desktop_principal = _core_principal("user-core")
+    mobile_principal = replace(
+        desktop_principal,
+        client_scope="mobile-browser-one",
+    )
+    desktop = ChatRepository(
+        runtime.database,
+        runtime.events,
+        principal=desktop_principal,
+    )
+    mobile = ChatRepository(
+        runtime.database,
+        runtime.events,
+        principal=mobile_principal,
+    )
+
+    desktop_thread, _ = desktop.create_thread(title="Desktop private")
+    mobile_thread, _ = mobile.create_thread(title="Mobile private")
+
+    assert desktop.ensure_builtin().instance.singleton_key == (
+        "ai2apps.general-chat:user:user-core"
+    )
+    assert mobile.ensure_builtin().instance.singleton_key == (
+        "ai2apps.general-chat:user:user-core:client:mobile-browser-one"
+    )
+    assert [item.session.id for item in desktop.list_threads()] == [
+        desktop_thread.session.id
+    ]
+    assert [item.session.id for item in mobile.list_threads()] == [
+        mobile_thread.session.id
+    ]
+    with pytest.raises(ResourceNotFoundError):
+        mobile.get_thread(desktop_thread.session.id)
+    with pytest.raises(ResourceNotFoundError):
+        desktop.get_thread(mobile_thread.session.id)
+
+
+def test_chat_api_uses_trusted_principal_provider_for_user_isolation(tmp_path):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    alice_principal = _member_principal("user-alice")
+    bob_principal = _member_principal("user-bob")
+
+    alice_app = FastAPI()
+    alice_app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: alice_principal,
+        )
+    )
+    bob_app = FastAPI()
+    bob_app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: bob_principal,
+        )
+    )
+    alice_client = TestClient(alice_app)
+    bob_client = TestClient(bob_app)
+
+    alice_thread = alice_client.post(
+        "/v1/platform/chat/threads", json={"title": "Alice"}
+    ).json()
+    bob_thread = bob_client.post(
+        "/v1/platform/chat/threads", json={"title": "Bob"}
+    ).json()
+
+    assert alice_thread["app_instance_id"] != bob_thread["app_instance_id"]
+    assert alice_client.get("/v1/platform/chat/threads").json()["items"] == [
+        alice_thread
+    ]
+    assert bob_client.get("/v1/platform/chat/threads").json()["items"] == [
+        bob_thread
+    ]
+    assert (
+        bob_client.get(
+            f"/v1/platform/chat/threads/{alice_thread['id']}"
+        ).status_code
+        == 404
+    )
+
+
+def test_core_principal_claims_legacy_local_chat_without_losing_sessions(tmp_path):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    legacy = ChatRepository(runtime.database, runtime.events)
+    legacy_thread, _ = legacy.create_thread(title="Existing local history")
+    legacy_instance_id = legacy.ensure_builtin().instance.id
+
+    core = ChatRepository(
+        runtime.database,
+        runtime.events,
+        principal=_core_principal("user-core"),
+    )
+    claimed = core.ensure_builtin()
+
+    assert claimed.instance.id == legacy_instance_id
+    assert claimed.instance.owner_user_id == "user-core"
+    assert core.get_thread(legacy_thread.session.id).session.title == (
+        "Existing local history"
+    )
+    assert claimed.instance.singleton_key == "ai2apps.general-chat:user:user-core"
+
+
+def test_non_core_member_never_claims_legacy_local_chat(tmp_path):
+    runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
+    runtime.start()
+    legacy = ChatRepository(runtime.database, runtime.events)
+    legacy_instance = legacy.ensure_builtin().instance
+
+    member = ChatRepository(
+        runtime.database,
+        runtime.events,
+        principal=_member_principal("user-member"),
+    ).ensure_builtin()
+
+    assert member.instance.id != legacy_instance.id
+    assert member.instance.owner_user_id == "user-member"
+    with runtime.database.transaction() as connection:
+        still_legacy = connection.execute(
+            "SELECT singleton_key,owner_user_id FROM app_instances WHERE id=?",
+            (legacy_instance.id,),
+        ).fetchone()
+    assert tuple(still_legacy) == ("ai2apps.general-chat:user:local", None)

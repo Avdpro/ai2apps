@@ -25,6 +25,17 @@ _NATIVE_REASONING_MODEL_TYPES = {
 }
 
 
+def merge_reasoning_effort_chat_template_kwargs(
+    chat_template_kwargs: dict[str, Any] | None,
+    reasoning_effort: str | None,
+) -> dict[str, Any] | None:
+    """Add the dedicated reasoning effort without overriding raw kwargs."""
+    merged = dict(chat_template_kwargs or {})
+    if reasoning_effort is not None:
+        merged.setdefault("reasoning_effort", reasoning_effort)
+    return merged or None
+
+
 def uses_native_reasoning_content(
     model_name: str | None = None,
     *,

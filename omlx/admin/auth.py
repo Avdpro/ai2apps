@@ -1,18 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Authentication utilities for the oMLX admin panel.
-
-This module provides session-based authentication using signed tokens
-and API key verification for admin panel access.
-"""
+"""Authentication utilities for the AI2Apps Web administration surface."""
 
 import hashlib
 import os
 import secrets
-from typing import Optional
 
 from fastapi import HTTPException, Request
-from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+
+from ai2apps.http_security import enforce_same_origin_cookie_request
 
 # Session configuration
 SESSION_COOKIE_NAME = "omlx_admin_session"
@@ -30,9 +26,18 @@ _serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 # Global settings getter (set by init_auth)
 _get_global_settings = None
+_resolve_local_principal = None
+_resolve_local_cookie_name = None
+_resolve_session_audience = None
 
 
-def init_auth(secret_key: str, global_settings_getter=None) -> None:
+def init_auth(
+    secret_key: str,
+    global_settings_getter=None,
+    local_principal_resolver=None,
+    local_cookie_name_resolver=None,
+    session_audience_resolver=None,
+) -> None:
     """Initialize authentication with a persistent secret key.
 
     Should be called during server startup with the secret key from settings.
@@ -42,13 +47,57 @@ def init_auth(secret_key: str, global_settings_getter=None) -> None:
         secret_key: The secret key from settings.json for signing tokens.
         global_settings_getter: Optional callable that returns GlobalSettings.
     """
-    global _serializer, SECRET_KEY, _get_global_settings
+    global _serializer, SECRET_KEY, _get_global_settings, _resolve_local_principal
+    global _resolve_local_cookie_name
+    global _resolve_session_audience
     # Environment variable takes priority over settings
     key = os.environ.get("OMLX_SECRET_KEY") or secret_key
     SECRET_KEY = key
     _serializer = URLSafeTimedSerializer(key)
     if global_settings_getter is not None:
         _get_global_settings = global_settings_getter
+    _resolve_local_principal = local_principal_resolver
+    _resolve_local_cookie_name = local_cookie_name_resolver
+    _resolve_session_audience = session_audience_resolver
+
+
+def _session_audience() -> str | None:
+    if _resolve_session_audience is None:
+        return None
+    value = _resolve_session_audience()
+    return value if isinstance(value, str) and value else None
+
+
+def session_cookie_name() -> str:
+    """Return an instance-specific legacy-admin cookie name when configured."""
+
+    audience = _session_audience()
+    if audience is None:
+        return SESSION_COOKIE_NAME
+    suffix = hashlib.sha256(audience.encode("utf-8")).hexdigest()[:16]
+    return f"{SESSION_COOKIE_NAME}_{suffix}"
+
+
+def active_local_principal(request: Request):
+    """Resolve a valid Local session when one takes precedence in this browser."""
+
+    if _resolve_local_principal is None:
+        return None
+    cookie_name = (
+        _resolve_local_cookie_name()
+        if _resolve_local_cookie_name is not None
+        else "ai2apps_local_session"
+    )
+    token = request.cookies.get(cookie_name)
+    if not token and cookie_name != "ai2apps_local_session":
+        token = request.cookies.get("ai2apps_local_session")
+    if not token:
+        return None
+    enforce_same_origin_cookie_request(request)
+    try:
+        return _resolve_local_principal(token)
+    except Exception:
+        return None
 
 
 def create_session_token(remember: bool = False) -> str:
@@ -67,6 +116,9 @@ def create_session_token(remember: bool = False) -> str:
         True
     """
     payload = {"admin": True, "remember": remember}
+    audience = _session_audience()
+    if audience is not None:
+        payload["aud"] = audience
     return _serializer.dumps(payload)
 
 
@@ -105,7 +157,12 @@ def verify_session_token(token: str, max_age: int = SESSION_MAX_AGE) -> bool:
 
         # Re-validate with the correct max_age
         data = _serializer.loads(token, max_age=effective_max_age)
-        return data.get("admin", False) is True
+        if data.get("admin", False) is not True:
+            return False
+        expected_audience = _session_audience()
+        if expected_audience is not None and data.get("aud") != expected_audience:
+            return False
+        return True
     except (BadSignature, SignatureExpired):
         return False
 
@@ -238,20 +295,9 @@ def validate_api_key(api_key: str) -> tuple[bool, str]:
 
 
 def verify_session(request: Request) -> bool:
-    """Verify if the request has a valid admin session.
-
-    Checks for a valid session cookie in the request.
-
-    Args:
-        request: The FastAPI request object.
-
-    Returns:
-        True if the session is valid, False otherwise.
-    """
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not token:
-        return False
-    return verify_session_token(token)
+    """Accept only an instance-scoped Local Session belonging to Core."""
+    principal = active_local_principal(request)
+    return principal is not None and principal.is_core
 
 
 async def require_admin(request: Request) -> bool:
@@ -275,11 +321,17 @@ async def require_admin(request: Request) -> bool:
         ... async def get_settings(is_admin: bool = Depends(require_admin)):
         ...     return {"settings": "..."}
     """
-    # Skip admin auth when skip_api_key_verification is enabled
-    if _get_global_settings is not None:
-        gs = _get_global_settings()
-        if gs is not None and gs.auth.skip_api_key_verification:
+    principal = active_local_principal(request)
+    if principal is not None:
+        if principal.is_core:
             return True
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "core_account_required",
+                "message": "The active Local account cannot access Core administration",
+            },
+        )
 
     if not verify_session(request):
         # Browser requests (Accept: text/html) get redirected to login page

@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import zipfile
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -17,6 +18,7 @@ from fastapi import FastAPI
 
 from ai2apps.api.router import create_ai2apps_router
 from ai2apps.config import PlatformConfig
+from ai2apps.core import ResourceNotFoundError
 from ai2apps.extensions import (
     ExtensionError,
     InteractivePackageManager,
@@ -24,6 +26,7 @@ from ai2apps.extensions import (
     UnitKind,
 )
 from ai2apps.extensions.patching import canonical_digest
+from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.packages import PackageFile, TrustStatus, package_digest
 from ai2apps.platform_runtime import PlatformRuntime
 
@@ -32,6 +35,17 @@ def _runtime(tmp_path):
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path / "data"))
     runtime.start()
     return runtime
+
+
+def _principal(user_id: str, role: MemberRole) -> RequestPrincipal:
+    return RequestPrincipal(
+        actor_user_id=user_id,
+        installation_id="installation-1",
+        organization_id="organization-1",
+        billing_account_id="billing-core",
+        role=role,
+        membership_epoch=1,
+    )
 
 
 def _publisher(runtime, private):
@@ -174,6 +188,13 @@ def test_runtime_registers_authoritative_builtin_app_catalog(tmp_path):
         "resource": "ai2apps:system/account",
     }
 
+    zh_catalog = {
+        item["app_key"]: item
+        for item in runtime.extension_manager.list_apps(locale="zh-CN")
+    }
+    assert zh_catalog["ai2apps.account"]["display_name"] == "账户"
+    assert zh_catalog["ai2apps.account"]["navigation"]["category"] == "系统"
+
 
 def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
     runtime = _runtime(tmp_path)
@@ -193,6 +214,110 @@ def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
     assert catalog["ai2apps.general-chat"]["mobile_renderer"] == "host"
     assert "ai2apps.terminal" not in catalog
     assert "ai2apps.coder" not in catalog
+
+
+def test_builtin_app_catalog_and_launch_are_filtered_by_role(tmp_path):
+    runtime = _runtime(tmp_path)
+    member = _principal("user-member", MemberRole.MEMBER)
+    developer = _principal("user-developer", MemberRole.DEVELOPER)
+    core = _principal("user-core", MemberRole.CORE)
+
+    member_catalog = {
+        item["app_key"]
+        for item in runtime.extension_manager.list_apps(principal=member)
+    }
+    developer_catalog = {
+        item["app_key"]
+        for item in runtime.extension_manager.list_apps(principal=developer)
+    }
+    core_catalog = {
+        item["app_key"]
+        for item in runtime.extension_manager.list_apps(principal=core)
+    }
+
+    assert member_catalog == {"ai2apps.account", "ai2apps.general-chat"}
+    assert "ai2apps.coder" in developer_catalog
+    assert "ai2apps.agents" not in developer_catalog
+    assert {
+        "ai2apps.agents",
+        "ai2apps.coder",
+        "ai2apps.models",
+        "ai2apps.terminal",
+    }.issubset(core_catalog)
+
+    with pytest.raises(ExtensionError) as denied:
+        runtime.extension_manager.launch_app(
+            "ai2apps.agents", principal=member
+        )
+    assert denied.value.code == "app_access_denied"
+
+
+def test_user_app_instance_ownership_blocks_direct_id_access(tmp_path):
+    runtime = _runtime(tmp_path)
+    alice = _principal("user-alice", MemberRole.MEMBER)
+    bob = _principal("user-bob", MemberRole.MEMBER)
+    alice_chat, _, _ = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat", principal=alice
+    )
+
+    assert alice_chat.owner_user_id == "user-alice"
+    assert runtime.extension_manager.instance_entry(
+        alice_chat.id, principal=alice
+    )["app_key"] == "ai2apps.general-chat"
+    with pytest.raises(ResourceNotFoundError):
+        runtime.extension_manager.instance_entry(alice_chat.id, principal=bob)
+    with pytest.raises(ResourceNotFoundError):
+        runtime.extension_manager.focus_instance(alice_chat.id, principal=bob)
+
+
+def test_core_launch_claims_legacy_chat_instance(tmp_path):
+    runtime = _runtime(tmp_path)
+    legacy, _, _ = runtime.extension_manager.launch_app("ai2apps.general-chat")
+    core = _principal("user-core", MemberRole.CORE)
+
+    before = {
+        item["app_key"]: item
+        for item in runtime.extension_manager.list_apps(principal=core)
+    }
+    assert before["ai2apps.general-chat"]["running_count"] == 0
+
+    claimed, _, created = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat", principal=core
+    )
+
+    assert created is False
+    assert claimed.id == legacy.id
+    assert claimed.owner_user_id == "user-core"
+    assert claimed.singleton_key == "ai2apps.general-chat:user:user-core"
+    after = {
+        item["app_key"]: item
+        for item in runtime.extension_manager.list_apps(principal=core)
+    }
+    assert [item["id"] for item in after["ai2apps.general-chat"]["instances"]] == [
+        claimed.id
+    ]
+
+
+def test_mobile_chat_mount_uses_exact_client_scoped_principal(tmp_path):
+    runtime = _runtime(tmp_path)
+    mobile = replace(
+        _principal("user-core", MemberRole.CORE),
+        client_scope="mobile-browser-one",
+    )
+
+    instance, _, created = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat",
+        principal=mobile,
+    )
+    mount = runtime.extension_manager.mount_mobile(
+        instance.id,
+        principal=mobile,
+    )
+
+    assert created is False
+    assert instance.singleton_key.endswith(":client:mobile-browser-one")
+    assert mount["app_instance_id"] == instance.id
+    assert mount["placement"] == "mobile"
 
 
 @pytest.mark.asyncio
@@ -581,6 +706,51 @@ async def test_failed_app_migration_retains_old_effective_state_and_package(tmp_
 
 
 @pytest.mark.asyncio
+async def test_app_api_enforces_principal_catalog_and_launch_policy(tmp_path):
+    runtime = _runtime(tmp_path)
+    member = _principal("user-member", MemberRole.MEMBER)
+    app = FastAPI()
+    app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: member,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        catalog = await client.get("/v1/platform/apps")
+        denied = await client.post(
+            "/v1/platform/apps/ai2apps.agents/launch", json={}
+        )
+        launched = await client.post(
+            "/v1/platform/apps/ai2apps.general-chat/launch", json={}
+        )
+        agents_api = await client.get("/v1/platform/agents")
+        secrets_api = await client.get("/v1/platform/secrets")
+        services_api = await client.get("/v1/platform/services")
+
+    assert [item["app_key"] for item in catalog.json()["items"]] == [
+        "ai2apps.account",
+        "ai2apps.general-chat",
+    ]
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "app_access_denied"
+    assert agents_api.status_code == 403
+    assert agents_api.json()["detail"]["code"] == "app_access_denied"
+    assert secrets_api.status_code == 403
+    assert secrets_api.json()["detail"]["code"] == "app_access_denied"
+    assert services_api.status_code == 403
+    assert services_api.json()["detail"]["code"] == "app_access_denied"
+    assert launched.status_code == 200
+    instance = runtime.extension_manager.apps.get_instance(
+        launched.json()["instance_id"]
+    )
+    assert instance.owner_user_id == "user-member"
+
+
+@pytest.mark.asyncio
 async def test_m9_management_api_installs_launches_mounts_and_reports_effective(
     tmp_path,
 ):
@@ -590,7 +760,7 @@ async def test_m9_management_api_installs_launches_mounts_and_reports_effective(
     resources = {"ui/entry.html": b"<main>Notes</main>", "ui/mini.json": b"{}"}
     archive, _ = _write_bundle(tmp_path, private, _app(), ".ai2app", resources)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:

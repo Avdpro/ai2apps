@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
@@ -14,6 +15,17 @@ from ai2apps.secrets import SecretBackend
 
 DEFAULT_AI2APPS_CLOUD_BASE_URL = "https://coder.ai2apps.com"
 AI2APPS_SESSION_COOKIE = "ai2apps_session"
+AI2APPS_CLOUD_BROWSER_COOKIE = "ai2apps_cloud_browser"
+_SESSION_NAMESPACE = re.compile(r"^[A-Za-z0-9:_-]{1,200}$")
+
+
+def cloud_browser_cookie_name(security_instance_id: str) -> str:
+    """Return a cookie-safe Cloud-browser namespace for one Local instance."""
+
+    if not re.fullmatch(r"local_[0-9a-f]{32}", security_instance_id):
+        raise ValueError("Local security instance identity is invalid")
+    suffix = hashlib.sha256(security_instance_id.encode("ascii")).hexdigest()[:16]
+    return f"{AI2APPS_CLOUD_BROWSER_COOKIE}_{suffix}"
 
 
 def resolve_cloud_base_url(value: str | None = None) -> str:
@@ -39,11 +51,22 @@ def resolve_cloud_base_url(value: str | None = None) -> str:
 class CloudSessionStore:
     """Persist only the opaque Cloud session value in the platform SecretBackend."""
 
-    def __init__(self, backend: SecretBackend, base_url: str) -> None:
+    def __init__(
+        self,
+        backend: SecretBackend,
+        base_url: str,
+        *,
+        namespace: str | None = None,
+    ) -> None:
         self.backend = backend
         origin = resolve_cloud_base_url(base_url)
         origin_id = hashlib.sha256(origin.encode("utf-8")).hexdigest()[:16]
         self.key = f"ai2apps-cloud-session-{origin_id}"
+        if namespace is not None:
+            if not _SESSION_NAMESPACE.fullmatch(namespace):
+                raise ValueError("Cloud session namespace is invalid")
+            namespace_id = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:24]
+            self.key = f"{self.key}-scope-{namespace_id}"
 
     def load(self) -> str | None:
         try:

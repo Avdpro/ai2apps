@@ -40,3 +40,5 @@ class RemoteMobileSession:
     created_at: datetime
     expires_at: datetime
     last_access_check_at: datetime
+    local_session_token: str | None = None
+    client_scope: str = "desktop"

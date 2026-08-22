@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from ai2apps.api.router import create_ai2apps_router
 from ai2apps.config import PlatformConfig
 from ai2apps.core import AppInstanceMode
+from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.storage.repositories import AppRepository
 
@@ -27,7 +28,7 @@ def _client(tmp_path):
     )
     instance = apps.create_instance(app_definition_id=definition.id)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     return TestClient(app), runtime, instance.id
 
 

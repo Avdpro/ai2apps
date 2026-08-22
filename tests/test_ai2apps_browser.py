@@ -54,6 +54,7 @@ class FakeBrowserBackend:
             {"ref": "e1", "tag": "button", "text": "Continue"}
         ]
         self.bidi_connected = True
+        self.lease_events = []
 
     def start(self):
         self.started = True
@@ -63,6 +64,15 @@ class FakeBrowserBackend:
 
     def stop(self):
         self.started = False
+
+    def renew_lease(self):
+        self.lease_events.append("renew")
+
+    def pause_lease(self):
+        self.lease_events.append("pause")
+
+    def resume_lease(self):
+        self.lease_events.append("resume")
 
     def current(self):
         return self.url, self.title
@@ -391,6 +401,43 @@ async def test_browser_is_owned_by_one_session_until_closed():
     await manager.close()
     result = await manager.start(session_id="session-2")
     assert result["owner_session_id"] == "session-2"
+
+
+@pytest.mark.asyncio
+async def test_browser_start_passes_authenticated_actor_to_backend():
+    backend = FakeBrowserBackend()
+    captured: list[str | None] = []
+
+    def start_for_actor(actor_user_id: str | None) -> None:
+        captured.append(actor_user_id)
+        backend.start()
+
+    backend.start_for_actor = start_for_actor
+    manager = BrowserManager(backend)
+    await manager.start(session_id="session-1", actor_user_id="user-123")
+    assert captured == ["user-123"]
+
+
+@pytest.mark.asyncio
+async def test_browser_rejects_actor_change_within_owned_session():
+    manager = BrowserManager(FakeBrowserBackend())
+    await manager.start(session_id="session-1", actor_user_id="user-123")
+    with pytest.raises(BrowserError, match="authenticated actor"):
+        await manager.start(session_id="session-1", actor_user_id="user-456")
+
+
+@pytest.mark.asyncio
+async def test_browser_renews_and_pauses_helper_managed_agent_lease():
+    backend = FakeBrowserBackend()
+    manager = BrowserManager(backend)
+
+    await manager.start(session_id="session-1", actor_user_id="user-123")
+    await manager.navigate("https://example.test/", session_id="session-1")
+    await manager.begin_user_control()
+    completed = await manager.complete_user_control()
+
+    assert completed["completed"] is True
+    assert backend.lease_events == ["renew", "pause", "resume"]
 
 
 @pytest.mark.asyncio

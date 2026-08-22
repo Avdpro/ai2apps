@@ -13,17 +13,14 @@ function trustCenter() {
         secretForm: { id: '', name: '', value: '', purpose: '', allowedTools: '' },
 
         async init() {
-            const key = window.AI2APPS_TRUST_CENTER_API_KEY || '';
-            if (key) localStorage.setItem('omlx_chat_api_key', key);
+            localStorage.removeItem('omlx_chat_api_key');
             await this.refresh();
         },
-        apiKey() { return localStorage.getItem('omlx_chat_api_key') || window.AI2APPS_TRUST_CENTER_API_KEY || ''; },
         async request(path, options = {}, platform = false) {
             const response = await fetch((platform ? '/v1/platform' : '/admin/api/shell') + path, {
                 credentials: 'same-origin', ...options,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(platform && this.apiKey() ? { Authorization: 'Bearer ' + this.apiKey() } : {}),
                     ...(options.headers || {}),
                 },
             });

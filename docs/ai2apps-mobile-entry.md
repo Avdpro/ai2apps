@@ -418,9 +418,20 @@ Current implementation snapshot:
   and rejects any replacement trust anchor;
 - the macOS release packages pinned arm64 and x86_64 frpc binaries, verifies
   their SHA-256 digests before use, and otherwise discovers the private
-  `<base>/platform/remote/bin/frpc` installation, while the FRP bootstrap
-  credential is supplied out of band as an environment secret or a mode-0600
-  `<base>/platform/remote/bootstrap-token` file;
+  `<base>/platform/remote/bin/frpc` installation;
+- FRP authentication uses the existing device-scoped Connector Secret already
+  stored in Local `SecretBackend`; the frps HTTP plugin validates it on
+  `Login`, `NewProxy`, `Ping`, and `NewWorkConn`, so no deployment-global FRP
+  credential is embedded in the App or manually provisioned on a device;
+- the launcher publishes the Local listener's already-bound dynamic port to
+  the FRP runtime, so the proxy always targets this instance's constrained
+  Mobile Gateway instead of a legacy fixed port;
+- canonical Device UUIDs, integer credential versions and bounded secrets are
+  validated before any value reaches the trusted FRP template;
+- enabled connectors are stopped locally when their credential enters the
+  seven-day rotation window, including during background runtime checks;
+- the Cloud/frps side of this contract is specified in
+  `docs/ai2apps-cloud-frp-device-auth-requirements-v1.md`;
 - Cloud connector responses are accepted only when the fixed server, port,
   HTTP proxy type, device proxy name, 32-hex device subdomain and HTTPS public
   origin all match the v1 policy;
@@ -440,9 +451,9 @@ Formal integration smoke test — 2026-08-15:
 - official macOS arm64 and amd64 frpc 0.62.1 archives were verified against
   SHA-256 `f9fc616d994a87d790504da21c2f942cd4224637d9ade9a67482f3c23c7f2432`
   and `f951a5aa727a4880f32753ba3c41ecc9dee38a63658760354011e71ea83db995`;
-- public tunnel, handoff exchange and phone Chat acceptance remain gated only
-  by provisioning the deployment-owned FRP bootstrap credential. This secret
-  is deliberately not returned by the account API or committed to source.
+- public tunnel acceptance remains gated by deploying the fail-closed Cloud
+  FRP authentication plugin. Device credential rotation and revocation must
+  immediately affect new Login, proxy, heartbeat, and work-connection checks.
 
 ### Phase M4 — App authoring
 

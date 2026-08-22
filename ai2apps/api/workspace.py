@@ -6,12 +6,14 @@ import base64
 import binascii
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
+from ai2apps.api.ownership import require_session_access
 from ai2apps.core import RepositoryError
 from ai2apps.workspace import ArtifactRecord, ResourceHandleRecord, WorkspaceError
 
@@ -91,8 +93,15 @@ class ArtifactListResponse(BaseModel):
     items: list[ArtifactResponse]
 
 
-def create_workspace_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter()
+def create_workspace_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        dependencies=[
+            Depends(require_session_access(runtime_provider, principal_provider))
+        ]
+    )
 
     def workspace_or_error():
         runtime = runtime_provider()

@@ -9,6 +9,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from ai2apps.identity import RequestPrincipal
+
 
 class ServiceRuntimeMode(StrEnum):
     IN_PROCESS = "in_process"
@@ -103,10 +105,39 @@ ToolProgressReporter = Callable[
 class ToolCallContext:
     caller_id: str
     session_id: str | None = None
+    actor_user_id: str | None = None
+    installation_id: str | None = None
+    organization_id: str | None = None
+    billing_account_id: str | None = None
+    membership_epoch: int | None = None
     granted_capabilities: frozenset[str] = frozenset()
     trace_id: str | None = None
     invocation_id: str | None = None
     progress_reporter: ToolProgressReporter | None = None
+
+    @classmethod
+    def from_principal(
+        cls,
+        principal: RequestPrincipal,
+        *,
+        caller_id: str,
+        session_id: str | None = None,
+        granted_capabilities: frozenset[str] = frozenset(),
+        trace_id: str | None = None,
+        progress_reporter: ToolProgressReporter | None = None,
+    ) -> ToolCallContext:
+        return cls(
+            caller_id=caller_id,
+            session_id=session_id,
+            actor_user_id=principal.actor_user_id,
+            installation_id=principal.installation_id,
+            organization_id=principal.organization_id,
+            billing_account_id=principal.billing_account_id,
+            membership_epoch=principal.membership_epoch,
+            granted_capabilities=granted_capabilities,
+            trace_id=trace_id,
+            progress_reporter=progress_reporter,
+        )
 
     async def report_progress(
         self,

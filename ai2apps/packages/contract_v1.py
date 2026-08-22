@@ -24,6 +24,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
+from packaging.version import Version
 
 PACKAGE_PREFIX = b"AI2APPS-PACKAGE-RELEASE-V1\n"
 REPOSITORY_PREFIX = b"AI2APPS-REPOSITORY-SNAPSHOT-V1\n"
@@ -45,8 +46,10 @@ _SEMVER = re.compile(
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
+_OS_VERSION = re.compile(r"^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){0,3}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _B64URL_SIGNATURE = re.compile(r"^[A-Za-z0-9_-]{86}$")
+_LICENSE_ID = re.compile(r"^(?:[A-Za-z0-9.-]+|LicenseRef-[A-Za-z0-9.-]+)$")
 
 
 class PackageContractError(RuntimeError):
@@ -115,7 +118,10 @@ def jcs_bytes(value: Any) -> bytes:
     return jcs(value).encode("utf-8")
 
 
-def _exact_keys(value: dict, required: set[str], optional: set[str] = set()) -> None:
+def _exact_keys(
+    value: dict, required: set[str], optional: set[str] | None = None
+) -> None:
+    optional = optional or set()
     keys = set(value)
     missing = required - keys
     extra = keys - required - optional
@@ -140,6 +146,66 @@ def _safe_archive_path(value: Any) -> str:
     return value
 
 
+def _validate_package_localizations(value: Any) -> None:
+    if not isinstance(value, dict) or not value or len(value) > 64:
+        raise PackageContractError("manifest_invalid", "package.localizations is invalid")
+    normalized: set[str] = set()
+    for locale, translation in value.items():
+        if not isinstance(locale, str) or not re.fullmatch(
+            r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", locale
+        ):
+            raise PackageContractError("manifest_invalid", "Package locale tag is invalid")
+        locale_key = locale.replace("_", "-").casefold()
+        if locale_key in normalized:
+            raise PackageContractError("manifest_invalid", "Package locale tags must be unique")
+        normalized.add(locale_key)
+        if not isinstance(translation, dict):
+            raise PackageContractError("manifest_invalid", "Package localization is invalid")
+        _exact_keys(translation, {"displayName"}, {"description"})
+        if not isinstance(translation["displayName"], str) or not 1 <= len(
+            translation["displayName"]
+        ) <= 160:
+            raise PackageContractError("manifest_invalid", "Localized displayName is invalid")
+        if "description" in translation and (
+            not isinstance(translation["description"], str)
+            or len(translation["description"]) > 2000
+        ):
+            raise PackageContractError("manifest_invalid", "Localized description is invalid")
+
+
+def _validate_package_license(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise PackageContractError("manifest_invalid", "package.license is invalid")
+    _exact_keys(value, {"name", "spdx", "path", "url"})
+    if not isinstance(value["name"], str) or not 1 <= len(value["name"]) <= 200:
+        raise PackageContractError("manifest_invalid", "package.license.name is invalid")
+    if not isinstance(value["spdx"], str) or not _LICENSE_ID.fullmatch(value["spdx"]):
+        raise PackageContractError("manifest_invalid", "package.license.spdx is invalid")
+    _safe_archive_path(value["path"])
+    if (
+        not isinstance(value["url"], str)
+        or not value["url"].startswith("https://")
+        or len(value["url"]) > 2000
+    ):
+        raise PackageContractError("manifest_invalid", "package.license.url is invalid")
+
+
+def _validate_package_attribution(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise PackageContractError("manifest_invalid", "package.attribution is invalid")
+    _exact_keys(
+        value,
+        {"noticePath", "originalModel", "source", "conversion"},
+    )
+    _safe_archive_path(value["noticePath"])
+    for key in ("originalModel", "source", "conversion"):
+        url = value[key]
+        if not isinstance(url, str) or not url.startswith("https://") or len(url) > 2000:
+            raise PackageContractError(
+                "manifest_invalid", f"package.attribution.{key} is invalid"
+            )
+
+
 def validate_manifest(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PackageContractError("manifest_invalid", "ai2apps.json must be an object")
@@ -153,7 +219,11 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     package = value["package"]
     if not isinstance(package, dict):
         raise PackageContractError("manifest_invalid", "package must be an object")
-    _exact_keys(package, {"id", "type", "version", "displayName"}, {"description"})
+    _exact_keys(
+        package,
+        {"id", "type", "version", "displayName"},
+        {"description", "localizations", "license", "attribution"},
+    )
     if not isinstance(package["id"], str) or not _PACKAGE_ID.fullmatch(package["id"]):
         raise PackageContractError("package_id_invalid", "Package ID is invalid")
     if package["type"] not in PACKAGE_TYPES:
@@ -166,10 +236,25 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         not isinstance(package["description"], str) or len(package["description"]) > 2000
     ):
         raise PackageContractError("manifest_invalid", "description is invalid")
+    if "localizations" in package:
+        _validate_package_localizations(package["localizations"])
+    if "license" in package:
+        _validate_package_license(package["license"])
+    if "attribution" in package:
+        _validate_package_attribution(package["attribution"])
     compatibility = value["compatibility"]
     if not isinstance(compatibility, dict):
         raise PackageContractError("manifest_invalid", "compatibility must be an object")
-    _exact_keys(compatibility, {"ai2apps"}, {"platforms", "architectures"})
+    _exact_keys(
+        compatibility,
+        {"ai2apps"},
+        {
+            "platforms",
+            "architectures",
+            "minimumOsVersion",
+            "maximumOsVersionExclusive",
+        },
+    )
     if not isinstance(compatibility["ai2apps"], str) or not compatibility["ai2apps"].strip():
         raise PackageContractError("manifest_invalid", "compatibility.ai2apps is invalid")
     for key, accepted in (
@@ -182,6 +267,31 @@ def validate_manifest(value: Any) -> dict[str, Any]:
             or not set(compatibility[key]).issubset(accepted)
         ):
             raise PackageContractError("manifest_invalid", f"compatibility.{key} is invalid")
+    for key in ("minimumOsVersion", "maximumOsVersionExclusive"):
+        if key in compatibility and (
+            not isinstance(compatibility[key], str)
+            or not _OS_VERSION.fullmatch(compatibility[key])
+        ):
+            raise PackageContractError(
+                "manifest_invalid", f"compatibility.{key} is invalid"
+            )
+    if (
+        "minimumOsVersion" in compatibility
+        or "maximumOsVersionExclusive" in compatibility
+    ) and len(compatibility.get("platforms", [])) != 1:
+        raise PackageContractError(
+            "manifest_invalid",
+            "OS version constraints require exactly one compatibility platform",
+        )
+    if (
+        "minimumOsVersion" in compatibility
+        and "maximumOsVersionExclusive" in compatibility
+        and Version(compatibility["minimumOsVersion"])
+        >= Version(compatibility["maximumOsVersionExclusive"])
+    ):
+        raise PackageContractError(
+            "manifest_invalid", "OS version compatibility range is empty"
+        )
     entrypoints = value["entrypoints"]
     if not isinstance(entrypoints, list) or not 1 <= len(entrypoints) <= 64:
         raise PackageContractError("manifest_invalid", "At least one entrypoint is required")
@@ -248,6 +358,17 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     for entry in entrypoints:
         if entry["path"] not in file_paths:
             raise PackageContractError("manifest_invalid", "Entrypoint is not indexed")
+    if "license" in package and package["license"]["path"] not in file_paths:
+        raise PackageContractError(
+            "manifest_invalid", "Package license file is not indexed"
+        )
+    if (
+        "attribution" in package
+        and package["attribution"]["noticePath"] not in file_paths
+    ):
+        raise PackageContractError(
+            "manifest_invalid", "Package attribution notice is not indexed"
+        )
     if "sbom" in value:
         sbom = value["sbom"]
         if not isinstance(sbom, dict):
@@ -516,9 +637,27 @@ def build_package(source: str | Path, output: str | Path) -> InspectedContractPa
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise PackageContractError("manifest_invalid", "ai2apps.json is invalid") from error
+    package_type = (
+        manifest.get("package", {}).get("type")
+        if isinstance(manifest, dict) and isinstance(manifest.get("package"), dict)
+        else None
+    )
+    service_source = package_type == "service" and (source_path / "service.yaml").is_file()
     rows = []
     for file in sorted(item for item in source_path.rglob("*") if item.is_file() and item != manifest_path):
         relative = file.relative_to(source_path).as_posix()
+        if service_source and (
+            relative == "README.md"
+            or relative.startswith("dist/")
+            or relative in {
+                "META/files.json",
+                "attestations/publisher.json",
+                "signatures/publisher.sig",
+            }
+            or "__pycache__" in file.parts
+            or file.suffix in {".pyc", ".pyo"}
+        ):
+            continue
         _safe_archive_path(relative)
         content = file.read_bytes()
         rows.append({"path": relative, "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)})

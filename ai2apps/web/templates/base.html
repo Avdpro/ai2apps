@@ -142,6 +142,11 @@
     </style>
 
     {% block head %}{% endblock %}
+
+    <!-- Shared readability floor for AI2Apps-owned App surfaces. The stylesheet
+         is deliberately scoped by data-app-id so installed Packages retain
+         control of their own typography. -->
+    <link rel="stylesheet" href="{{ static('css/app-readability.css') }}">
 </head>
 <body class="font-sans bg-white text-neutral-900 antialiased selection:bg-neutral-900 selection:text-white">
     {% block content %}{% endblock %}

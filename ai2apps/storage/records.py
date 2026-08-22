@@ -63,6 +63,7 @@ def app_instance_from_row(row: sqlite3.Row) -> AppInstanceRecord:
         id=row["id"],
         app_definition_id=row["app_definition_id"],
         singleton_key=row["singleton_key"],
+        owner_user_id=row["owner_user_id"],
         status=AppInstanceStatus(row["status"]),
         state_schema_version=row["state_schema_version"],
         state=json.loads(row["state_json"]),

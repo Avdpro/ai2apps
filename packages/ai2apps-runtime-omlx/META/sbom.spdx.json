@@ -1,0 +1,16 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-runtime-omlx-1.3.7",
+  "dataLicense": "CC0-1.0",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-PyAV",
+      "name": "av",
+      "versionInfo": "18.0.0",
+      "downloadLocation": "https://pypi.org/project/av/18.0.0/",
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseDeclared": "BSD-3-Clause"
+    }
+  ]
+}

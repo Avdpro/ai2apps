@@ -12,6 +12,10 @@
         warm: 'ai2apps.shell.warmApps',
     };
     const appStage = root.querySelector('.app-stage');
+    const home = root.querySelector('.desktop-home');
+    const homeApps = root.querySelector('[data-desktop-home-apps]');
+    const homeAccount = root.querySelector('[data-desktop-home-account]');
+    const desktopClientVersion = root.querySelector('[data-desktop-client-version]');
     let frame = root.querySelector('.app-frame');
     let spareFrame = frame;
     const loading = root.querySelector('.app-loading');
@@ -32,6 +36,7 @@
     const controlContent = root.querySelector('.control-content');
     const controlAlert = root.querySelector('.control-alert-count');
     const dockContextMenu = root.querySelector('.dock-context-menu');
+    const dockContextDismiss = root.querySelector('.dock-context-dismiss');
     const dockTooltipHost = root.querySelector('.dock-tooltip-host');
 
     let apps = [];
@@ -40,9 +45,10 @@
     let pinned = [];
     let dockOrder = [];
     let warmApps = [];
-    let currentId = boot.initialAppId || 'ai2apps.dashboard';
+    let currentId = boot.initialAppId || '';
     let currentInstanceId = boot.initialInstanceId || null;
     let currentMountToken = null;
+    let homeAppsLocked = false;
     let activeCategory = 'All';
     let dockHideTimer = null;
     let toastTimer = null;
@@ -55,6 +61,8 @@
     let dockDraggingId = null;
     let suppressDockClick = false;
     let dockTooltipTimer = null;
+    let principalBoundary = null;
+    let principalBoundarySync = Promise.resolve();
     const framePool = new Map();
     const frameCacheLimit = 4;
     const persistentFrameApps = new Set(['ai2apps.general-chat', 'ai2apps.coder']);
@@ -65,6 +73,39 @@
         return String(value == null ? '' : value).replace(/[&<>"]/g, (character) => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
         })[character]);
+    }
+
+    async function applyDesktopClientVersion() {
+        const getDesktopInfo = window.ai2appsDesktop?.getDesktopInfo;
+        if (!desktopClientVersion) return;
+        let rawVersion = '';
+        try {
+            if (typeof getDesktopInfo === 'function') {
+                const info = await getDesktopInfo();
+                rawVersion = String(info?.version || '').trim();
+            }
+        } catch (error) {
+            console.warn('Unable to read AI2Apps Desktop version', error);
+        }
+        if (!rawVersion || rawVersion.toLowerCase() === 'unknown') {
+            const userAgentVersion = navigator.userAgent.match(
+                /(?:^|\s)AI2Apps\/([^\s]+)/i
+            );
+            rawVersion = String(userAgentVersion?.[1] || '').trim();
+        }
+        if (!rawVersion || rawVersion.toLowerCase() === 'unknown') return;
+        desktopClientVersion.textContent = ' · ' + (
+            rawVersion.toLowerCase().startsWith('v') ? rawVersion : `v${rawVersion}`
+        );
+        desktopClientVersion.hidden = false;
+    }
+
+    function tr(key, values) {
+        let text = typeof window.t === 'function' ? window.t(key) : key;
+        Object.entries(values || {}).forEach(([name, value]) => {
+            text = text.replaceAll('{' + name + '}', String(value));
+        });
+        return text;
     }
 
     function normalizeApp(item) {
@@ -136,7 +177,9 @@
                 const body = await response.json();
                 detail = typeof body.detail === 'string' ? body.detail : body.detail?.message || detail;
             } catch (_) { /* retain status */ }
-            throw new Error(detail);
+            const error = new Error(detail);
+            error.status = response.status;
+            throw error;
         }
         return response.json();
     }
@@ -159,6 +202,10 @@
                 accountName.textContent = result.display_name || 'AI2Apps Account';
                 accountDetail.textContent = (result.points || '0') + ' points';
                 accountButton.title = result.email ? result.email + ' · Open Account App' : 'Open Account App';
+            } else if (state === 'local_member') {
+                accountName.textContent = result.display_name || 'Local member';
+                accountDetail.textContent = result.role || 'member';
+                accountButton.title = 'Open Local Account';
             } else if (state === 'signed_out') {
                 accountName.textContent = 'Not signed in';
                 accountDetail.textContent = 'Local features available';
@@ -168,11 +215,15 @@
                 accountDetail.textContent = 'Local features available';
                 accountButton.title = 'Open Account App';
             }
+            renderHomeAccount(result);
+            return result;
         } catch (_) {
             accountButton.classList.remove('is-signed-in');
             accountButton.classList.add('is-unavailable');
             accountName.textContent = 'Cloud unavailable';
             accountDetail.textContent = 'Local features available';
+            renderHomeAccount({ state: 'unavailable' });
+            return null;
         }
     }
 
@@ -181,7 +232,7 @@
             const result = await request('/admin/api/shell/apps');
             apps = result.items.map(normalizeApp);
         } catch (error) {
-            apps = boot.apps.map(normalizeApp);
+            apps = options?.fallback === false ? [] : boot.apps.map(normalizeApp);
             if (!options || !options.quiet) showToast('App Runtime unavailable: ' + error.message);
         }
         byId = new Map(apps.map((app) => [app.id, app]));
@@ -192,6 +243,7 @@
         if (!warmApps.length) warmApps = readWarmApps();
         else warmApps = warmApps.filter((id) => byId.has(id));
         renderDock();
+        renderHomeApps();
         if (launcher.classList.contains('is-open')) {
             renderCategories();
             renderLauncher();
@@ -202,6 +254,81 @@
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             try { window.lucide.createIcons(); } catch (_) { /* base template also processes icons */ }
         }
+    }
+
+    function applyDesktopDeviceLabel() {
+        const labels = Array.from(root.querySelectorAll('[data-desktop-device-label]'));
+        const serverLabel = labels[0]?.textContent.trim() || '';
+        let label = ['Mac', 'PC', 'Spark'].includes(serverLabel) ? serverLabel : '';
+        if (!label) {
+            const clientPlatform = [
+                navigator.userAgentData?.platform,
+                navigator.platform,
+                navigator.userAgent,
+            ].filter(Boolean).join(' ');
+            if (/mac/i.test(clientPlatform)) label = 'Mac';
+            else if (/win|linux|x11/i.test(clientPlatform)) label = 'PC';
+            else label = 'Device';
+        }
+        labels.forEach((element) => { element.textContent = label; });
+    }
+
+    function renderHomeAccount(result) {
+        const state = result.state || 'unavailable';
+        const registered = result.installation_registered;
+        const signedInCore = state === 'signed_in' && result.signed_in_user_is_core !== false;
+        const localMember = state === 'local_member';
+        homeAppsLocked = registered === true && state === 'signed_out';
+        if (signedInCore || localMember || (state === 'signed_in' && registered === true)) {
+            homeAccount.hidden = true;
+            renderHomeApps();
+            return;
+        }
+
+        const setup = registered === false;
+        const knownSignedOut = state === 'signed_out';
+        if (!setup && !knownSignedOut) {
+            homeAccount.hidden = true;
+            renderHomeApps();
+            return;
+        }
+        homeAccount.hidden = false;
+        homeAccount.dataset.mode = setup ? 'setup' : 'signin';
+        homeAccount.querySelector('[data-home-account-title]').textContent = setup
+            ? tr('shell.home.account.setup.title')
+            : tr('shell.home.account.signin.title');
+        homeAccount.querySelector('[data-home-account-body]').textContent = setup
+            ? tr('shell.home.account.setup.body')
+            : tr('shell.home.account.signin.body');
+        homeAccount.querySelector('[data-home-account-action-label]').textContent = setup
+            ? tr('shell.home.account.setup.action') : tr('shell.home.account.signin.action');
+        const benefits = setup
+            ? [['smartphone', tr('shell.home.account.setup.phone')], ['shield-check', tr('shell.home.account.setup.ownership')], ['users', tr('shell.home.account.setup.members')]]
+            : [['lock-keyhole', tr('shell.home.account.signin.limited')], ['refresh-cw', tr('shell.home.account.signin.restore')]];
+        homeAccount.querySelector('[data-home-account-benefits]').innerHTML = benefits.map((item) =>
+            '<span><i data-lucide="' + item[0] + '"></i>' + escapeHtml(item[1]) + '</span>'
+        ).join('');
+        renderHomeApps();
+        refreshIcons();
+    }
+
+    function renderHomeApps() {
+        const preferred = ['ai2apps.general-chat', 'ai2apps.coder', 'ai2apps.dashboard', 'ai2apps.models'];
+        const visible = [
+            ...preferred.map((id) => byId.get(id)).filter(Boolean),
+            ...apps.filter((app) => !preferred.includes(app.id)),
+        ].slice(0, 4);
+        homeApps.innerHTML = visible.map((app) =>
+            '<button class="desktop-home-app' + (homeAppsLocked ? ' is-locked' : '') +
+                '" type="button" data-home-app-id="' + escapeHtml(app.id) + '"' +
+                (homeAppsLocked ? ' disabled aria-disabled="true" title="' + escapeHtml(tr('shell.home.apps.signin_title')) + '"' : '') + '>' +
+                '<span class="desktop-home-app-icon">' + iconMarkup(app.icon) + '</span>' +
+                '<span class="desktop-home-app-copy"><strong>' + escapeHtml(app.name) + '</strong><small>' +
+                    escapeHtml(homeAppsLocked ? tr('shell.home.apps.signin_description') : app.description || tr('shell.home.apps.open', { app: app.name })) + '</small></span>' +
+                '<i class="desktop-home-app-arrow" data-lucide="' + (homeAppsLocked ? 'lock-keyhole' : 'arrow-up-right') + '"></i>' +
+            '</button>'
+        ).join('');
+        refreshIcons();
     }
 
     function showToast(message) {
@@ -558,16 +685,94 @@
         });
     }
 
-    function attachFrame(frameElement, record) {
-        frameElement.addEventListener('load', () => {
-            record.loaded = true;
-            frameElement.classList.add('is-ready');
-            if (record.instanceId === currentInstanceId) {
-                loading.hidden = true;
-                sendHostContext();
-                postFrameLifecycle(record, 'ai2apps.host.activate');
-            }
+    function accountBoundaryKey(result) {
+        if (!result?.principal_actor_user_id) return null;
+        return [
+            result.principal_actor_user_id,
+            result.principal_role || '',
+            result.principal_membership_epoch || 0,
+        ].join(':');
+    }
+
+    function installSpareFrame() {
+        const blank = document.createElement('iframe');
+        blank.className = 'app-frame';
+        blank.allow = 'clipboard-read; clipboard-write';
+        blank.referrerPolicy = 'same-origin';
+        blank.hidden = true;
+        appStage.insertBefore(blank, loading);
+        frame = blank;
+        spareFrame = blank;
+    }
+
+    async function rebuildForPrincipalChange() {
+        const previousAppId = currentId;
+        ++launchSequence;
+        currentMountToken = null;
+        currentInstanceId = null;
+        appBadges.clear();
+        closeControl();
+        framePool.forEach((record) => {
+            record.frame.src = 'about:blank';
+            record.frame.remove();
         });
+        framePool.clear();
+        if (spareFrame?.isConnected) spareFrame.remove();
+        installSpareFrame();
+        currentId = '';
+        pinned = [];
+        dockOrder = [];
+        warmApps = [];
+        showHome({ navigate: false });
+        await loadCatalog({ quiet: true, fallback: false });
+        const target = byId.has(previousAppId)
+            ? previousAppId
+            : (byId.has('ai2apps.general-chat') ? 'ai2apps.general-chat' : 'ai2apps.account');
+        if (byId.has(target)) await launch(target, { navigate: true });
+        else showHome({ navigate: true });
+    }
+
+    function synchronizeAccountBoundary() {
+        principalBoundarySync = principalBoundarySync.then(async () => {
+            const result = await refreshAccountStatus();
+            const nextBoundary = accountBoundaryKey(result);
+            if (!nextBoundary) return;
+            if (principalBoundary === null) {
+                principalBoundary = nextBoundary;
+                return;
+            }
+            if (nextBoundary === principalBoundary) return;
+            principalBoundary = nextBoundary;
+            await rebuildForPrincipalChange();
+        }).catch((error) => showToast('Unable to apply account access: ' + error.message));
+        return principalBoundarySync;
+    }
+
+    function markFrameReady(record) {
+        record.loaded = true;
+        record.frame.classList.add('is-ready');
+        if (record.instanceId === currentInstanceId) {
+            loading.hidden = true;
+            sendHostContext();
+            postFrameLifecycle(record, 'ai2apps.host.activate');
+        }
+    }
+
+    function attachFrame(frameElement, record) {
+        frameElement.addEventListener('load', () => markFrameReady(record));
+    }
+
+    function watchFrameReadiness(record, remainingChecks = 100) {
+        if (record.loaded || !record.frame.isConnected || remainingChecks <= 0) return;
+        try {
+            const frameLocation = record.frame.contentWindow?.location.href || 'about:blank';
+            if (frameLocation !== 'about:blank' &&
+                    record.frame.contentDocument?.readyState === 'complete') {
+                markFrameReady(record);
+                return;
+            }
+        } catch (_) { /* cross-origin frames must report readiness through load */ }
+        window.setTimeout(() => watchFrameReadiness(record, remainingChecks - 1), 100);
     }
 
     function acquireFrame(record) {
@@ -577,10 +782,12 @@
         } else {
             frameElement = document.createElement('iframe');
             frameElement.className = 'app-frame';
-            frameElement.allow = 'clipboard-read; clipboard-write';
             frameElement.referrerPolicy = 'same-origin';
             appStage.insertBefore(frameElement, loading);
         }
+        frameElement.allow = record.appId === 'ai2apps.general-chat'
+            ? 'clipboard-read; clipboard-write; microphone'
+            : 'clipboard-read; clipboard-write';
         frameElement.hidden = true;
         attachFrame(frameElement, record);
         return frameElement;
@@ -594,6 +801,31 @@
         window.history.pushState({ appId: app.id, instanceId }, '', route);
     }
 
+    function showHome(options) {
+        ++launchSequence;
+        const previous = framePool.get(currentInstanceId);
+        if (previous) {
+            previous.lastUsed = Date.now();
+            previous.frame.hidden = true;
+            previous.frame.setAttribute('aria-hidden', 'true');
+            postFrameLifecycle(previous, 'ai2apps.host.background');
+        }
+        currentId = '';
+        currentInstanceId = null;
+        currentMountToken = null;
+        home.hidden = false;
+        currentName.textContent = tr('shell.home.name');
+        closeButton.disabled = true;
+        loading.hidden = true;
+        renderDock();
+        renderHomeApps();
+        closeLauncher();
+        closeDockContextMenu();
+        if (!options || options.navigate !== false) {
+            window.history.pushState({ home: true }, '', '/');
+        }
+    }
+
     function activateFrameRecord(app, record, options) {
         const previous = framePool.get(currentInstanceId);
         if (previous && previous.instanceId !== record.instanceId) {
@@ -605,13 +837,22 @@
         currentId = app.id;
         currentInstanceId = record.instanceId;
         currentMountToken = record.mountToken;
+        home.hidden = true;
         frame = record.frame;
         record.lastUsed = Date.now();
         frame.hidden = false;
         frame.removeAttribute('aria-hidden');
         currentName.textContent = app.name;
+        closeButton.disabled = false;
         frame.title = app.name;
         loading.hidden = Boolean(record.loaded);
+        // Firefox can restore a same-origin iframe before the refreshed outer shell
+        // reattaches its load listener. Treat that already-complete document as ready.
+        if (!record.loaded) {
+            try {
+                if (frame.contentDocument?.readyState === 'complete') markFrameReady(record);
+            } catch (_) { /* cross-origin frames must report readiness through load */ }
+        }
         if (record.loaded) {
             frame.classList.add('is-ready');
             sendHostContext();
@@ -683,10 +924,15 @@
         record.frame.classList.remove('is-ready');
         record.frame.src = framedUrl(entry.content_url, record.mountToken, record.instanceId);
         activateFrameRecord(app, record, options);
+        watchFrameReadiness(record);
         enforceFrameCacheLimit();
     }
 
     async function launch(appId, options) {
+        if (homeAppsLocked && appId !== 'ai2apps.account') {
+            showToast('Sign in to your Core account to open Apps');
+            return;
+        }
         const app = byId.get(appId);
         if (!app) {
             showToast('App is not installed');
@@ -710,10 +956,10 @@
             const cached = instanceId && framePool.get(instanceId);
             if (cached && !(options && options.newInstance)) {
                 activateFrameRecord(app, cached, options);
-                request('/admin/api/shell/app-instances/' + encodeURIComponent(instanceId) + '/focus', {
+                await request('/admin/api/shell/app-instances/' + encodeURIComponent(instanceId) + '/focus', {
                     method: 'POST',
-                }).then(() => loadCatalog({ quiet: true }))
-                    .catch((error) => showToast('Unable to focus ' + app.name + ': ' + error.message));
+                });
+                loadCatalog({ quiet: true });
                 return;
             }
             const entry = instanceId
@@ -724,6 +970,30 @@
             await loadCatalog({ quiet: true });
         } catch (error) {
             if (sequence !== launchSequence) return;
+            const staleInstanceId = options?.instanceId || app.instances[0]?.id;
+            if (staleInstanceId && error.status === 404) {
+                app.instances = app.instances.filter(
+                    (instance) => instance.id !== staleInstanceId
+                );
+                const staleFrame = framePool.get(staleInstanceId);
+                if (staleFrame) {
+                    staleFrame.frame.src = 'about:blank';
+                    staleFrame.frame.remove();
+                    framePool.delete(staleInstanceId);
+                }
+                try {
+                    const entry = await request(
+                        '/admin/api/shell/apps/' + encodeURIComponent(appId) + '/launch',
+                        { method: 'POST' },
+                    );
+                    if (sequence !== launchSequence) return;
+                    displayEntry(app, entry, options);
+                    await loadCatalog({ quiet: true });
+                    return;
+                } catch (retryError) {
+                    error = retryError;
+                }
+            }
             loading.hidden = true;
             showToast('Unable to open ' + app.name + ': ' + error.message);
         }
@@ -833,6 +1103,7 @@
 
     function closeDockContextMenu() {
         contextAppId = null;
+        dockContextDismiss.hidden = true;
         dockContextMenu.hidden = true;
         dockContextMenu.classList.remove('is-open');
     }
@@ -873,6 +1144,7 @@
             warmApps.includes(appId) ? 'Allow Eviction' : 'Keep Warm';
         dockContextMenu.querySelectorAll('[data-dock-menu-action="close"], [data-dock-menu-action="force-close"]')
             .forEach((button) => { button.disabled = app.instances.length === 0; });
+        dockContextDismiss.hidden = false;
         dockContextMenu.hidden = false;
         dockContextMenu.classList.add('is-open');
         const width = 218;
@@ -990,6 +1262,7 @@
         const actionButton = event.target.closest('[data-shell-action]');
         if (actionButton) {
             const action = actionButton.dataset.shellAction;
+            if (action === 'home') showHome();
             if (action === 'launcher') launcher.classList.contains('is-open') ? closeLauncher() : openLauncher();
             if (action === 'account') launch('ai2apps.account');
             if (action === 'close-launcher') closeLauncher();
@@ -1001,6 +1274,11 @@
                 updateMode();
                 showToast(mode === 'immersive' ? 'Immersive mode' : 'Dock always visible');
             }
+            return;
+        }
+        const homeAppButton = event.target.closest('[data-home-app-id]');
+        if (homeAppButton) {
+            launch(homeAppButton.dataset.homeAppId);
             return;
         }
         const controlTabButton = event.target.closest('[data-control-tab]');
@@ -1092,6 +1370,22 @@
         hideDockTooltip();
         openDockContextMenu(item.dataset.dockDragId, event);
     });
+    dockContextDismiss.addEventListener('pointerdown', (event) => {
+        // Keep the dismiss layer mounted for the complete pointer gesture so the
+        // click cannot be retargeted to the App iframe or another control below it.
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    dockContextDismiss.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeDockContextMenu();
+    });
+    dockContextDismiss.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeDockContextMenu();
+    });
     dockApps.addEventListener('pointerover', (event) => {
         const button = event.target.closest('[data-dock-tooltip]');
         if (button && !button.contains(event.relatedTarget)) showDockTooltip(button);
@@ -1162,6 +1456,10 @@
     });
     window.addEventListener('popstate', (event) => {
         const parts = window.location.pathname.split('/').filter(Boolean);
+        if (!parts.length) {
+            showHome({ navigate: false });
+            return;
+        }
         const appId = decodeURIComponent(parts[1] || 'ai2apps.dashboard');
         const instanceId = parts[2] === 'instances' ? decodeURIComponent(parts[3] || '') : null;
         launch((event.state && event.state.appId) || appId, {
@@ -1181,7 +1479,11 @@
             requestId: message.requestId,
         };
         try {
-            if (message.type === 'ai2apps.shell.ready') sendHostContext();
+            if (message.type === 'ai2apps.shell.ready') {
+                const activeRecord = framePool.get(currentInstanceId);
+                if (activeRecord) markFrameReady(activeRecord);
+                else sendHostContext();
+            }
             else if (message.type === 'ai2apps.shell.request-dock') setDockVisible(true);
             else if (message.type === 'ai2apps.shell.set-title' && typeof message.title === 'string') {
                 currentName.textContent = message.title.slice(0, 80);
@@ -1195,8 +1497,8 @@
                 } : String(value == null ? '' : value).slice(0, 8));
                 renderDock();
             } else if (message.type === 'ai2apps.account.changed') {
-                refreshAccountStatus();
                 broadcastAccountChanged();
+                await synchronizeAccountBoundary();
             } else if (message.type === 'ai2apps.shell.open-launcher') openLauncher();
             else if (message.type === 'ai2apps.shell.navigate') {
                 const parsed = new URL(String(message.path || ''), window.location.origin);
@@ -1270,17 +1572,20 @@
 
     document.addEventListener('visibilitychange', () => {
         sendHostContext();
-        if (document.visibilityState === 'visible') refreshAccountStatus();
+        if (document.visibilityState === 'visible') synchronizeAccountBoundary();
     });
 
     async function initialize() {
         // Apply the stored visual mode without overwriting Dock state before it is restored.
+        applyDesktopDeviceLabel();
+        await applyDesktopClientVersion();
         updateMode({ persist: false });
         await loadCatalog();
-        await launch(currentId, { instanceId: currentInstanceId, navigate: false });
+        if (currentId) await launch(currentId, { instanceId: currentInstanceId, navigate: false });
+        else showHome({ navigate: false });
         refreshControl().catch(() => {});
-        refreshAccountStatus();
-        window.setInterval(refreshAccountStatus, 60 * 1000);
+        await synchronizeAccountBoundary();
+        window.setInterval(synchronizeAccountBoundary, 60 * 1000);
     }
 
     initialize();

@@ -10,6 +10,7 @@ import re
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -34,6 +35,61 @@ MAX_METADATA_BYTES = 4 * 1024 * 1024
 _SERVICE_KEY = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$")
 _INDEX_EXCLUSIONS = frozenset({"META/files.json"})
 _UNINDEXED_PREFIXES = ("signatures/", "attestations/")
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _validate_external_endpoint(value: Any) -> str:
+    """Accept only a local HTTP endpoint for an installed external Service.
+
+    A Package Tool may receive explicitly granted Secret values. Allowing its
+    endpoint to name an arbitrary remote host would turn that grant into an
+    implicit data-egress permission and make DNS rebinding relevant. Remote AI
+    providers use the separate Host-controlled Provider/Cloud integrations.
+    """
+
+    if not isinstance(value, str):
+        raise PackageError(
+            "missing_endpoint", "External Service requires runtime.endpoint"
+        )
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise PackageError(
+            "invalid_external_endpoint", "External Service endpoint is invalid"
+        ) from error
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in _LOOPBACK_HOSTS
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise PackageError(
+            "external_endpoint_not_local",
+            "Installed external Services must use an explicit loopback HTTP port",
+        )
+    return value
+
+
+def _validate_managed_endpoint(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value.count("{port}") > 1:
+        raise PackageError(
+            "invalid_managed_endpoint", "Managed Service endpoint is invalid"
+        )
+    probe = value.replace("{port}", "1")
+    try:
+        _validate_external_endpoint(probe)
+    except PackageError as error:
+        raise PackageError(
+            "managed_endpoint_not_local",
+            "Managed Services must use a loopback HTTP endpoint",
+        ) from error
+    return value
 
 
 def canonical_json(value: Any) -> bytes:
@@ -219,7 +275,14 @@ class ServicePackageArchive:
                 "invalid_runtime", "Unsupported Service runtime mode"
             ) from error
         protocol = runtime.get("protocol", "http-json")
-        if protocol not in {"http-json", "mcp", "openai-compatible", "internal-asgi"}:
+        if protocol not in {
+            "http-json",
+            "mcp",
+            "openai-compatible",
+            "internal-asgi",
+            "ai2apps-model-worker/v1",
+            "ai2apps-inference-runtime/v1",
+        }:
             raise PackageError("invalid_protocol", "Unsupported Service protocol")
         command = runtime.get("command", [])
         if not isinstance(command, list) or not all(
@@ -230,14 +293,45 @@ class ServicePackageArchive:
             )
         entrypoint = runtime.get("entrypoint")
         endpoint = runtime.get("endpoint")
-        if mode is ServiceRuntimeMode.MANAGED_PROCESS and not command:
+        model_worker = protocol == "ai2apps-model-worker/v1"
+        inference_runtime = protocol == "ai2apps-inference-runtime/v1"
+        if mode is ServiceRuntimeMode.MANAGED_PROCESS and not command and not (
+            model_worker or inference_runtime
+        ):
             raise PackageError(
                 "missing_entrypoint", "Managed Service requires runtime.command"
             )
-        if mode is ServiceRuntimeMode.EXTERNAL and not isinstance(endpoint, str):
-            raise PackageError(
-                "missing_endpoint", "External Service requires runtime.endpoint"
-            )
+        if model_worker:
+            adapter = runtime.get("adapter")
+            if mode is not ServiceRuntimeMode.MANAGED_PROCESS:
+                raise PackageError(
+                    "invalid_model_worker",
+                    "Model Worker Packages must use runtime.mode: process",
+                )
+            if command:
+                raise PackageError(
+                    "invalid_model_worker",
+                    "Model Worker startup is system-owned; runtime.command is not allowed",
+                )
+            if (
+                not isinstance(adapter, str)
+                or not adapter
+                or adapter.startswith("/")
+                or ".." in adapter.partition(":")[0].split("/")
+                or ":" not in adapter
+            ):
+                raise PackageError(
+                    "invalid_model_worker",
+                    "runtime.adapter must be a package-relative path and factory, for example src/adapter.py:create_adapter",
+                )
+        if inference_runtime:
+            from .inference_runtime import validate_inference_runtime_manifest
+
+            validate_inference_runtime_manifest(raw)
+        if mode is ServiceRuntimeMode.MANAGED_PROCESS:
+            endpoint = _validate_managed_endpoint(endpoint)
+        if mode is ServiceRuntimeMode.EXTERNAL:
+            endpoint = _validate_external_endpoint(endpoint)
         dependencies = []
         requires = raw.get("requires", {})
         service_requires = (
@@ -266,6 +360,14 @@ class ServicePackageArchive:
                     dependency["id"], spec, bool(dependency.get("optional", False))
                 )
             )
+            required_capabilities = dependency.get("capabilities", [])
+            if not isinstance(required_capabilities, list) or not all(
+                isinstance(item, str) and item for item in required_capabilities
+            ):
+                raise PackageError(
+                    "invalid_dependencies",
+                    "Service dependency capabilities must be an array of strings",
+                )
         permissions = raw.get("permissions", {})
         compatibility = raw.get("compatibility", {})
         health = raw.get("health", {})

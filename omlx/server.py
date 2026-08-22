@@ -53,6 +53,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, Union
 
+import httpx
+
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi import Request as FastAPIRequest
 from fastapi.exceptions import RequestValidationError
@@ -64,8 +66,13 @@ from ai2apps._version import __version__ as _ai2apps_version
 from ai2apps.agents.model_stream import ChatCompletionStreamAccumulator
 from ai2apps.api import create_ai2apps_router
 from ai2apps.api.errors import platform_error_response
-from ai2apps.config import PlatformConfig
+from ai2apps.api.federation import create_federation_ingress_router
+from ai2apps.api.sharing import create_sharing_data_router
 from ai2apps.cloud_gateway import proxy_cloud_chat_completion, proxy_cloud_image_request
+from ai2apps.config import PlatformConfig
+from ai2apps.development import can_access_developer_surfaces
+from ai2apps.http_security import LocalBrowserSecurityHeadersMiddleware
+from ai2apps.identity import RequestPrincipal
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.model_providers import (
     list_package_models,
@@ -73,6 +80,8 @@ from ai2apps.model_providers import (
     resolve_package_model,
 )
 from ai2apps.platform_runtime import PlatformRuntime
+from ai2apps.sharing import GatewayDiscovery, LanAccessController, stable_gateway_id
+from ai2apps.upstream import ParentCallContext
 from omlx._version import __version__ as _omlx_version
 
 from .api.anthropic_models import (
@@ -188,13 +197,34 @@ from .api.utils import (
     extract_multimodal_content,
     extract_text_content,
     has_nonleading_system_message,
+    merge_reasoning_effort_chat_template_kwargs,
     prepare_system_messages_for_template,
     uses_native_reasoning_content,
 )
-from .engine import BaseEngine, VLMBatchedEngine
-from .engine.embedding import EmbeddingEngine
-from .engine.reranker import RerankerEngine
-from .engine_pool import EnginePool
+_CLOUD_RUNTIME_PROFILE = os.environ.get("AI2APPS_RUNTIME_PROFILE", "full") == "cloud"
+
+if _CLOUD_RUNTIME_PROFILE:
+    # The Base App must be importable without MLX or any native inference
+    # dependency.  Service Packages and Cloud providers remain available via
+    # PlatformRuntime; only the legacy in-process engine pool is replaced.
+    from .cloud_engine_pool import CloudEnginePool as EnginePool
+
+    class BaseEngine:  # pragma: no cover - marker used only by annotations/isinstance
+        pass
+
+    class VLMBatchedEngine(BaseEngine):
+        pass
+
+    class EmbeddingEngine(BaseEngine):
+        pass
+
+    class RerankerEngine(BaseEngine):
+        pass
+else:
+    from .engine import BaseEngine, VLMBatchedEngine
+    from .engine.embedding import EmbeddingEngine
+    from .engine.reranker import RerankerEngine
+    from .engine_pool import EnginePool
 from .exceptions import (
     EnginePoolError,
     InsufficientMemoryError,
@@ -324,6 +354,49 @@ def get_ai2apps_platform_runtime() -> PlatformRuntime | None:
     return runtime if isinstance(runtime, PlatformRuntime) else None
 
 
+def _server_model_manager_store() -> ModelManagerStore:
+    """Return the SecretBackend-bound store owned by the platform runtime."""
+
+    runtime = get_ai2apps_platform_runtime()
+    if runtime is not None and getattr(runtime, "model_manager", None) is not None:
+        return runtime.model_manager
+    settings = _server_state.global_settings
+    if settings is None:
+        raise RuntimeError("Server not initialized")
+    return ModelManagerStore(settings.base_path)
+
+
+async def _managed_ai2apps_cloud_models(
+    principal: RequestPrincipal | bool,
+) -> list[dict[str, Any]]:
+    """Return models authorized for the current Local installation member."""
+
+    runtime = get_ai2apps_platform_runtime()
+    if runtime is None or not isinstance(principal, RequestPrincipal):
+        return []
+    try:
+        headers = runtime.cloud_ai_authorization_headers(principal)
+        response = await runtime.cloud.request(
+            "GET", "/v1/ai/models", headers=headers
+        )
+    except Exception:
+        logger.debug("Unable to load managed AI2Apps Cloud models", exc_info=True)
+        return []
+    try:
+        if response.status_code != 200:
+            return []
+        payload = response.json()
+    except (TypeError, ValueError):
+        return []
+    finally:
+        await response.aclose()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return [
+        item for item in items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+
+
 def start_ai2apps_platform() -> PlatformRuntime:
     """Initialize AI2Apps persistence through the server lifecycle boundary."""
 
@@ -359,6 +432,27 @@ async def verify_api_key(
     """
     from .admin.auth import fingerprint_key, verify_any_api_key
 
+    # Same-origin browser clients authenticate with an Installation-scoped,
+    # HttpOnly Local Session. Never copy the long-lived API key into page JS.
+    runtime = get_ai2apps_platform_runtime()
+    cookie_reader = (
+        None
+        if runtime is None
+        else getattr(runtime, "local_session_token_from_cookies", None)
+    )
+    authorizer = (
+        None if runtime is None else getattr(runtime, "authorize_local_session", None)
+    )
+    local_token = cookie_reader(request.cookies) if cookie_reader is not None else None
+    local_principal = (
+        authorizer(local_token)
+        if local_token is not None and authorizer is not None
+        else None
+    )
+    if local_principal is not None:
+        request.state.ai2apps_principal = local_principal
+        return True
+
     # No auth required if no API key is configured
     if _server_state.api_key is None:
         return True
@@ -392,6 +486,62 @@ async def verify_api_key(
     return True
 
 
+async def verify_ai2apps_platform_access(
+    request: FastAPIRequest,
+) -> RequestPrincipal | bool:
+    """Require an Installation-scoped Local session for Platform APIs.
+
+    The main and sub API keys authenticate OpenAI-compatible inference only.
+    Treating them as Core principals would turn disclosure of an inference
+    credential into Package, Secret, Trust, and device administration.
+    """
+
+    runtime = get_ai2apps_platform_runtime()
+    cookie_reader = (
+        None
+        if runtime is None
+        else getattr(runtime, "local_session_token_from_cookies", None)
+    )
+    token = cookie_reader(request.cookies) if cookie_reader is not None else None
+    authorizer = (
+        None if runtime is None else getattr(runtime, "authorize_local_session", None)
+    )
+    if token and authorizer is not None:
+        principal = authorizer(token)
+        if principal is not None:
+            request.state.ai2apps_principal = principal
+            return principal
+
+    # Only readiness and credential-establishment routes are public. They do
+    # not expose a control plane: handoff is one-use and high-entropy, while
+    # Cloud login/bootstrap still requires Cloud proof before a Local Session
+    # is issued.
+    public_bootstrap_routes = {
+        ("GET", "/v1/platform/health"),
+        ("GET", "/v1/platform/client/bootstrap"),
+        ("POST", "/v1/platform/client/shell-session"),
+        ("GET", "/v1/platform/client/shell"),
+        ("POST", "/v1/platform/cloud/auth/register"),
+        ("POST", "/v1/platform/cloud/auth/email/verify"),
+        ("POST", "/v1/platform/cloud/auth/email/resend"),
+        ("POST", "/v1/platform/cloud/auth/login"),
+        ("POST", "/v1/platform/cloud/auth/password/reset-request"),
+        ("POST", "/v1/platform/cloud/auth/password/reset"),
+        ("POST", "/v1/platform/auth/handoff/exchange"),
+        ("POST", "/v1/platform/auth/cloud-member/activate"),
+        ("POST", "/v1/platform/auth/core/bootstrap"),
+    }
+    if (request.method, request.url.path) in public_bootstrap_routes:
+        return True
+    raise HTTPException(
+        status_code=401,
+        detail={
+            "code": "local_session_required",
+            "message": "Sign in to this AI2Apps Installation to access Platform APIs",
+        },
+    )
+
+
 def _reset_boundary_snapshots_for_server() -> None:
     """Reset ephemeral boundary snapshots at server lifecycle boundaries."""
     engine_pool = _server_state.engine_pool
@@ -415,6 +565,47 @@ def _reset_boundary_snapshots_for_server() -> None:
 async def lifespan(app: FastAPI):
     """FastAPI lifespan for startup/shutdown events."""
     ai2apps_runtime = start_ai2apps_platform()
+    try:
+        from ai2apps.model_installer import reconcile_installed_shared_model_references
+        from ai2apps.model_providers import installed_model_preparation_recipes
+
+        if _server_state.hf_downloader is not None:
+            cache_reconciliation = await asyncio.to_thread(
+                reconcile_installed_shared_model_references,
+                Path(_server_state.hf_downloader.model_dir),
+                installed_model_preparation_recipes(ai2apps_runtime),
+            )
+            logger.info(
+                "AI2Apps shared model references reconciled: expected=%s "
+                "published=%s removed=%s",
+                cache_reconciliation.expected_references,
+                cache_reconciliation.published_references,
+                cache_reconciliation.removed_references,
+            )
+    except Exception:
+        # A malformed manifest/reference must stop cache mutation, not the
+        # diagnostic Local UI. The collector independently fails closed too.
+        logger.exception("AI2Apps shared model reference reconciliation failed closed")
+    sharing = getattr(ai2apps_runtime, "sharing", None)
+    lan_access = None
+    gateway_discovery = None
+    if sharing is not None:
+        lan_access = LanAccessController(app, sharing.network_access)
+        gateway_discovery = GatewayDiscovery(
+            gateway_id=stable_gateway_id(ai2apps_runtime.config.paths.database_path)
+        )
+        ai2apps_runtime.gateway_discovery = gateway_discovery
+
+        async def apply_lan_access(settings):
+            await lan_access.apply(settings)
+            await gateway_discovery.apply(settings)
+
+        sharing.bind_network_apply(apply_lan_access)
+        try:
+            await apply_lan_access(sharing.network_access())
+        except Exception as exc:
+            sharing.disable_network_after_failure()
+            logger.error("LAN access listener failed closed: %s", exc)
 
     # Startup: Auto-populate server aliases for the admin dashboard
     # so users get sensible hostname/IP options for API URL hints
@@ -447,6 +638,8 @@ async def lifespan(app: FastAPI):
 
     # Start process memory enforcer if configured
     if (
+        not _CLOUD_RUNTIME_PROFILE
+        and
         _server_state.global_settings is not None
         and _server_state.engine_pool is not None
     ):
@@ -543,7 +736,11 @@ async def lifespan(app: FastAPI):
     )
     if ai2apps_runtime.agent_runtime is not None:
 
-        async def _invoke_agent_model(payload: dict, report_progress=None) -> dict:
+        async def _invoke_agent_model(
+            payload: dict,
+            report_progress=None,
+            model_context=None,
+        ) -> dict:
             """Stream the public OpenAI contract and rebuild its durable result."""
 
             import httpx
@@ -554,6 +751,11 @@ async def lifespan(app: FastAPI):
                 **(request_payload.get("stream_options") or {}),
                 "include_usage": True,
             }
+            if model_context is not None:
+                # This value is derived from durable Session ownership by the
+                # Agent runtime. It is never accepted from the Agent action.
+                request_payload["ai2apps_session_id"] = model_context.cache_namespace
+                request_payload["ai2apps_kv_policy"] = "session"
             headers = {}
             if _server_state.api_key is not None:
                 headers["Authorization"] = f"Bearer {_server_state.api_key}"
@@ -680,6 +882,11 @@ async def lifespan(app: FastAPI):
         await _server_state.engine_pool.shutdown()
         _reset_boundary_snapshots_for_server()
         logger.info("Engine pool shutdown")
+    if sharing is not None and lan_access is not None:
+        sharing.bind_network_apply(None)
+        await lan_access.stop()
+    if gateway_discovery is not None:
+        await gateway_discovery.close()
     await ai2apps_runtime.stop_background_tasks()
     stop_ai2apps_platform()
 
@@ -693,6 +900,7 @@ app = FastAPI(
     version=_ai2apps_version,
     lifespan=lifespan,
 )
+app.add_middleware(LocalBrowserSecurityHeadersMiddleware)
 
 # Mount the AI2Apps Harness API through one narrow integration seam. Platform
 # modules receive configuration through callbacks and do not import oMLX
@@ -702,7 +910,39 @@ app.include_router(
         config_provider=get_ai2apps_platform_config,
         runtime_provider=get_ai2apps_platform_runtime,
     ),
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_ai2apps_platform_access)],
+)
+
+
+async def _shared_model_list(_grant):
+    # Names are resolved when the request arrives, after module initialization.
+    return await list_models(True)
+
+
+async def _shared_chat_completion(payload, request, _grant):
+    return await create_chat_completion(
+        ChatCompletionRequest.model_validate(payload), request, True
+    )
+
+
+# Share-token routes deliberately bypass the installation API key dependency.
+# Their narrow router authenticates a separate revocable LAN ShareGrant and
+# only dispatches explicitly exported model/tool identifiers.
+app.include_router(
+    create_sharing_data_router(
+        get_ai2apps_platform_runtime,
+        model_list_handler=_shared_model_list,
+        model_chat_handler=_shared_chat_completion,
+    )
+)
+
+# Cloud Relay assertions are verified independently from Local API keys. Only
+# explicitly active exports can reach these narrow connector routes.
+app.include_router(
+    create_federation_ingress_router(
+        get_ai2apps_platform_runtime,
+        model_chat_handler=_shared_chat_completion,
+    )
 )
 
 # Include MCP routes
@@ -712,11 +952,14 @@ from .api.mcp_routes import set_mcp_manager_getter
 set_mcp_manager_getter(get_mcp_manager)
 app.include_router(mcp_router, dependencies=[Depends(verify_api_key)])
 
-# Audio routes are always present. Local engines still load mlx-audio lazily,
-# while installed Model Providers can serve these contracts without that extra.
-from .api.audio_routes import router as audio_router
+# The legacy audio router imports PCM helpers through ``omlx.engine`` and thus
+# pulls MLX into the process before any request is handled. Runtime-backed
+# audio providers will move to the package-provider gateway; until then the
+# inference-free Base App intentionally omits these legacy local routes.
+if not _CLOUD_RUNTIME_PROFILE:
+    from .api.audio_routes import router as audio_router
 
-app.include_router(audio_router, dependencies=[Depends(verify_api_key)])
+    app.include_router(audio_router, dependencies=[Depends(verify_api_key)])
 
 # Include admin routes
 from .admin.auth import _RedirectToLogin
@@ -738,7 +981,11 @@ app.include_router(shell_router)
 @app.exception_handler(_RedirectToLogin)
 async def redirect_to_login_handler(request, exc):
     """Redirect unauthenticated browser requests to the admin login page."""
-    target = "/admin?redirect=/mobile" if request.url.path == "/mobile" else "/admin"
+    redirect_targets = {
+        "/": "/admin?redirect=/",
+        "/mobile": "/admin?redirect=/mobile",
+    }
+    target = redirect_targets.get(request.url.path, "/admin")
     return RedirectResponse(url=target, status_code=302)
 
 
@@ -1362,7 +1609,7 @@ async def get_engine_for_model(
     profile = None
     store = None
     if model and _server_state.global_settings is not None:
-        store = ModelManagerStore(_server_state.global_settings.base_path)
+        store = _server_model_manager_store()
         profile = store.resolve_fusion_profile(model)
 
     if profile is not None:
@@ -1713,6 +1960,48 @@ def resolve_model_id(model_id: str | None) -> str | None:
     return pool.resolve_model_id(model_id, _server_state.settings_manager)
 
 
+def _package_model_runtime_settings(model_id: str) -> dict[str, Any]:
+    """Return Host-owned runtime policy for an isolated Model Worker."""
+
+    manager = _server_state.settings_manager
+    if manager is None:
+        return {"moe_execution_mode": "cached", "cache_moe_memory_tier": "auto"}
+    settings = manager.get_settings(model_id)
+    return {
+        "moe_execution_mode": getattr(settings, "moe_execution_mode", "cached")
+        or "cached",
+        "cache_moe_memory_tier": getattr(
+            settings, "cache_moe_memory_tier", None
+        )
+        or "auto",
+    }
+
+
+def _apply_package_max_tokens(
+    payload: dict[str, Any],
+    *,
+    model_id: str,
+    requested: int | None,
+    field: str,
+) -> None:
+    """Materialize the Host's effective output cap for a Model Worker.
+
+    Package requests are proxied before the local-engine generation path calls
+    ``get_sampling_params``.  Leaving the cap absent would therefore make the
+    Worker use its protocol fallback (256) instead of the Host's model/global
+    default.  Keep the normal request > model > global precedence at the Host
+    boundary and pass the resolved value as an ordinary generation parameter.
+    """
+
+    max_tokens = get_sampling_params(
+        None,
+        None,
+        model_id,
+        req_max_tokens=requested,
+    )[7]
+    payload[field] = max_tokens
+
+
 async def _ensure_tokenizer_for_system_probe(
     engine: BaseEngine, messages: list
 ) -> None:
@@ -1921,6 +2210,10 @@ def init_server(
     # Store API key
     _server_state.api_key = api_key
     _server_state.global_settings = global_settings
+    if global_settings:
+        from .model_adapters import configure_model_adapter_packages
+
+        configure_model_adapter_packages(global_settings.base_path)
     response_state_dir = None
     if global_settings:
         response_state_dir = (
@@ -1945,7 +2238,24 @@ def init_server(
         from .admin.auth import init_auth
 
         init_auth(
-            global_settings.auth.secret_key, lambda: _server_state.global_settings
+            global_settings.auth.secret_key,
+            lambda: _server_state.global_settings,
+            lambda token: (
+                get_ai2apps_platform_runtime().authorize_local_session(token)
+                if get_ai2apps_platform_runtime() is not None
+                else None
+            ),
+            lambda: (
+                get_ai2apps_platform_runtime().local_session_cookie_name()
+                if get_ai2apps_platform_runtime() is not None
+                else "ai2apps_local_session"
+            ),
+            lambda: (
+                get_ai2apps_platform_runtime().security_identity.security_instance_id
+                if get_ai2apps_platform_runtime() is not None
+                and get_ai2apps_platform_runtime().security_identity is not None
+                else None
+            ),
         )
 
     # Configure CORS middleware from settings
@@ -2073,6 +2383,9 @@ def init_server(
             )
             logger.info("Model pool refreshed after download completion")
 
+    # Checkpoint acquisition is a trusted control-plane responsibility.  The
+    # external Runtime Package owns model execution, but it must not be needed
+    # merely to download weights into the instance model directory.
     try:
         from .admin.hf_downloader import HFDownloader
 
@@ -2089,6 +2402,8 @@ def init_server(
 
     # Initialize ModelScope downloader (optional - requires modelscope SDK)
     try:
+        if _CLOUD_RUNTIME_PROFILE:
+            raise ImportError("Runtime Package owned")
         from .admin.ms_downloader import MS_SDK_AVAILABLE, MSDownloader
 
         if MS_SDK_AVAILABLE:
@@ -2105,26 +2420,27 @@ def init_server(
     except ImportError:
         logger.info("ModelScope support not available")
 
-    # Initialize oQ Quantizer
-    from .admin.oq_manager import OQManager
-    from .admin.routes import set_oq_manager
+    if not _CLOUD_RUNTIME_PROFILE:
+        # Conversion and checkpoint publishing belong to the full developer
+        # Runtime, never to the distributable Base App.
+        from .admin.oq_manager import OQManager
+        from .admin.routes import set_oq_manager
 
-    _server_state.oq_manager = OQManager(
-        model_dirs=[str(d) for d in dir_list],
-        on_complete=_refresh_models_after_download,
-    )
-    set_oq_manager(_server_state.oq_manager)
-    logger.info("oQ Quantizer initialized")
+        _server_state.oq_manager = OQManager(
+            model_dirs=[str(d) for d in dir_list],
+            on_complete=_refresh_models_after_download,
+        )
+        set_oq_manager(_server_state.oq_manager)
+        logger.info("oQ Quantizer initialized")
 
-    # Initialize HuggingFace uploader
-    from .admin.hf_uploader import HFUploader
-    from .admin.routes import set_hf_uploader
+        from .admin.hf_uploader import HFUploader
+        from .admin.routes import set_hf_uploader
 
-    _server_state.hf_uploader = HFUploader(
-        model_dirs=[str(d) for d in dir_list],
-    )
-    set_hf_uploader(_server_state.hf_uploader)
-    logger.info("HF Uploader initialized")
+        _server_state.hf_uploader = HFUploader(
+            model_dirs=[str(d) for d in dir_list],
+        )
+        set_hf_uploader(_server_state.hf_uploader)
+        logger.info("HF Uploader initialized")
 
 
 _KEEPALIVE_SENTINEL = object()
@@ -2796,10 +3112,16 @@ async def _create_markitdown_chat_completion(
 
 
 @app.get("/v1/models")
-async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
+async def list_models(
+    http_response: Response,
+    principal: RequestPrincipal | bool = Depends(verify_ai2apps_platform_access),
+) -> ModelsResponse:
     """List all available models with load status."""
+    http_response.headers["Cache-Control"] = "no-store"
+    http_response.headers["Vary"] = "Cookie, Authorization"
     models = []
     favorite_ids: set[str] = set()
+    expose_raw_local_models = can_access_developer_surfaces(principal)
 
     if _server_state.engine_pool is not None:
         status = _server_state.engine_pool.get_status()
@@ -2825,6 +3147,8 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
 
         excluded_model_ids: set[str] = set()
         for m in status["models"]:
+            if not expose_raw_local_models:
+                continue
             model_id = m["id"]
             display_id = model_id
             ms = None
@@ -2853,9 +3177,11 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
                     id=display_id,
                     owned_by="omlx",
                     max_model_len=get_max_context_window(model_id),
+                    source="local_runtime",
+                    shareable=True,
                 )
             )
-        if settings_manager:
+        if settings_manager and expose_raw_local_models:
             physical_ids = {m["id"] for m in status["models"]}
             existing_ids = {m.id for m in models}
             for profile in settings_manager.list_exposed_profile_models():
@@ -2872,6 +3198,8 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
                         id=profile_model_id,
                         owned_by="omlx",
                         max_model_len=get_max_context_window(profile_model_id),
+                        source="local_runtime",
+                        shareable=True,
                     )
                 )
                 existing_ids.add(profile_model_id)
@@ -2879,22 +3207,55 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
     if _markitdown_is_visible() and not any(
         m.id == MARKITDOWN_MODEL_ID for m in models
     ):
-        models.append(ModelInfo(id=MARKITDOWN_MODEL_ID, owned_by="omlx"))
+        models.append(ModelInfo(
+            id=MARKITDOWN_MODEL_ID, owned_by="omlx",
+            source="local_runtime", shareable=True,
+        ))
 
     if _server_state.global_settings is not None:
-        model_store = ModelManagerStore(_server_state.global_settings.base_path)
+        model_store = _server_model_manager_store()
         for cloud_model in model_store.enabled_cloud_models():
             models.append(
                 ModelInfo(
                     id=cloud_model["gateway_id"],
                     owned_by=cloud_model["provider_id"],
+                    source=model_store.model_source(cloud_model["gateway_id"]),
+                    shareable=model_store.model_shareable(cloud_model["gateway_id"]),
+                    usage_notice="External API usage is billed to the API key stored on this device.",
                 )
             )
+        existing_ids = {model.id for model in models}
+        configured_local_providers = {
+            provider["id"]
+            for provider in model_store.list_cloud()
+            if provider["configured"]
+        }
+        for cloud_model in await _managed_ai2apps_cloud_models(principal):
+            model_id = str(cloud_model["id"])
+            gateway_id = f"cloud/{model_id}"
+            if (
+                gateway_id in existing_ids
+                or model_id.split("/", 1)[0] in configured_local_providers
+            ):
+                continue
+            models.append(
+                ModelInfo(
+                    id=gateway_id,
+                    owned_by="ai2apps",
+                    source=model_store.model_source(gateway_id),
+                    shareable=False,
+                    usage_notice="AI2Apps Cloud usage is billed in account points.",
+                )
+            )
+            existing_ids.add(gateway_id)
         existing_ids = {model.id for model in models}
         for fusion in model_store.list_fusion():
             if not fusion.get("valid") or fusion["id"] in existing_ids:
                 continue
-            models.append(ModelInfo(id=fusion["id"], owned_by="ai2apps-fusion"))
+            models.append(ModelInfo(
+                id=fusion["id"], owned_by="ai2apps-fusion",
+                source="local_runtime", shareable=True,
+            ))
             existing_ids.add(fusion["id"])
 
     existing_ids = {model.id for model in models}
@@ -2906,9 +3267,27 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
                 id=package_model.id,
                 owned_by=package_model.service_key,
                 max_model_len=package_model.context_window,
+                source="local_runtime",
+                shareable=True,
             )
         )
         existing_ids.add(package_model.id)
+
+    runtime = _server_state.ai2apps_platform_runtime
+    upstreams = None if runtime is None else getattr(runtime, "upstreams", None)
+    if upstreams is not None:
+        for projected in upstreams.projected_models():
+            if projected["id"] in existing_ids:
+                continue
+            models.append(
+                ModelInfo(
+                    id=projected["id"],
+                    owned_by=f"gateway:{projected['gateway_label']}",
+                    source="upstream_gateway",
+                    shareable=False,
+                )
+            )
+            existing_ids.add(projected["id"])
 
     # Favorites first; stable sort keeps alphabetical order within groups.
     if favorite_ids:
@@ -2918,18 +3297,28 @@ async def list_models(_: bool = Depends(verify_api_key)) -> ModelsResponse:
 
 
 @app.get("/v1/models/status")
-async def list_models_status(_: bool = Depends(verify_api_key)):
+async def list_models_status(
+    http_response: Response,
+    principal: RequestPrincipal | bool = Depends(verify_ai2apps_platform_access),
+):
     """
     List all available models with detailed status.
 
     Extended endpoint that provides more information than /v1/models.
     """
+    http_response.headers["Cache-Control"] = "no-store"
+    http_response.headers["Vary"] = "Cookie, Authorization"
     if _server_state.engine_pool is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
 
     status = _with_exposed_profile_status(
         _with_markitdown_status(_server_state.engine_pool.get_status())
     )
+    if not can_access_developer_surfaces(principal):
+        status["models"] = [
+            model for model in status["models"]
+            if is_markitdown_model(model["id"])
+        ]
     for m in status["models"]:
         model_id = m["id"]
         if is_markitdown_model(model_id):
@@ -2959,10 +3348,9 @@ async def list_models_status(_: bool = Depends(verify_api_key)):
         m["max_tokens"] = max_tokens
 
     if _server_state.global_settings is not None:
+        model_store = _server_model_manager_store()
         existing_ids = {model["id"] for model in status["models"]}
-        for cloud_model in ModelManagerStore(
-            _server_state.global_settings.base_path
-        ).enabled_cloud_models():
+        for cloud_model in model_store.enabled_cloud_models():
             if cloud_model["gateway_id"] in existing_ids:
                 continue
             status["models"].append(
@@ -2980,6 +3368,36 @@ async def list_models_status(_: bool = Depends(verify_api_key)):
                     "virtual": True,
                 }
             )
+            existing_ids.add(cloud_model["gateway_id"])
+        configured_local_providers = {
+            provider["id"]
+            for provider in model_store.list_cloud()
+            if provider["configured"]
+        }
+        for cloud_model in await _managed_ai2apps_cloud_models(principal):
+            model_id = str(cloud_model["id"])
+            gateway_id = f"cloud/{model_id}"
+            if (
+                gateway_id in existing_ids
+                or model_id.split("/", 1)[0] in configured_local_providers
+            ):
+                continue
+            status["models"].append(
+                {
+                    "id": gateway_id,
+                    "model_path": f"cloud://ai2apps/{model_id}",
+                    "loaded": True,
+                    "is_loading": False,
+                    "engine_type": "cloud",
+                    "model_type": "llm",
+                    "source_type": "cloud",
+                    "owned_by": "ai2apps",
+                    "max_context_window": cloud_model.get("contextWindow"),
+                    "max_tokens": cloud_model.get("maxOutputTokens"),
+                    "virtual": True,
+                }
+            )
+            existing_ids.add(gateway_id)
     existing_ids = {model["id"] for model in status["models"]}
     for package_model in list_package_models(_server_state.ai2apps_platform_runtime):
         if package_model.id not in existing_ids:
@@ -2988,7 +3406,10 @@ async def list_models_status(_: bool = Depends(verify_api_key)):
 
 
 @app.post("/v1/models/{model_id}/unload")
-async def unload_model(model_id: str, _: bool = Depends(verify_api_key)):
+async def unload_model(
+    model_id: str,
+    _: RequestPrincipal | bool = Depends(verify_ai2apps_platform_access),
+):
     """Manually unload a model from memory."""
     if _server_state.engine_pool is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
@@ -3004,7 +3425,10 @@ async def unload_model(model_id: str, _: bool = Depends(verify_api_key)):
 
 
 @app.post("/v1/models/{model_id}/load")
-async def load_model_public(model_id: str, _: bool = Depends(verify_api_key)):
+async def load_model_public(
+    model_id: str,
+    _: RequestPrincipal | bool = Depends(verify_ai2apps_platform_access),
+):
     """Load a discovered model into memory. Blocks until loading completes."""
     if _server_state.engine_pool is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
@@ -3053,9 +3477,9 @@ async def optimize_ai2apps_l1(
     try:
         requested_model = request.model
         if _server_state.global_settings is not None:
-            profile = ModelManagerStore(
-                _server_state.global_settings.base_path
-            ).resolve_fusion_profile(requested_model)
+            profile = _server_model_manager_store().resolve_fusion_profile(
+                requested_model
+            )
             if profile is not None:
                 requested_model = profile.generator.model
         model_id = pool.resolve_model_id(
@@ -3093,9 +3517,9 @@ async def set_ai2apps_engine_boost(
     try:
         requested_model = request.model
         if _server_state.global_settings is not None:
-            profile = ModelManagerStore(
-                _server_state.global_settings.base_path
-            ).resolve_fusion_profile(requested_model)
+            profile = _server_model_manager_store().resolve_fusion_profile(
+                requested_model
+            )
             if profile is not None:
                 requested_model = profile.generator.model
         model_id = pool.resolve_model_id(
@@ -3130,9 +3554,7 @@ async def skip_ai2apps_fusion_review(
 
     if _server_state.global_settings is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
-    profile = ModelManagerStore(
-        _server_state.global_settings.base_path
-    ).resolve_fusion_profile(request.model)
+    profile = _server_model_manager_store().resolve_fusion_profile(request.model)
     if profile is None:
         raise HTTPException(status_code=404, detail="Model is not a Fusion model")
 
@@ -3157,7 +3579,7 @@ async def run_ai2apps_external_review(
 
     if _server_state.global_settings is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
-    store = ModelManagerStore(_server_state.global_settings.base_path)
+    store = _server_model_manager_store()
     profile = store.resolve_fusion_profile(request.fusion_model)
     if profile is None or not profile.resolver.enabled:
         raise HTTPException(
@@ -3694,6 +4116,7 @@ async def _create_image(payload: dict[str, Any], *, edit: bool):
         payload,
         edit=edit,
         base_path=_server_state.global_settings.base_path,
+        model_manager=_server_model_manager_store(),
         cloud_client=(
             _server_state.ai2apps_platform_runtime.cloud
             if _server_state.ai2apps_platform_runtime is not None
@@ -3743,7 +4166,7 @@ async def create_video_generation(
 async def create_chat_completion(
     request: ChatCompletionRequest,
     http_request: FastAPIRequest,
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(verify_ai2apps_platform_access),
 ):
     """
     Create a chat completion.
@@ -3783,14 +4206,151 @@ async def create_chat_completion(
     if request.model.startswith("cloud/"):
         if _server_state.global_settings is None:
             raise HTTPException(status_code=503, detail="Server not initialized")
+        runtime = _server_state.ai2apps_platform_runtime
+        principal = getattr(http_request.state, "ai2apps_principal", None)
+        authorization_headers = None
+        if (
+            runtime is not None
+            and principal is not None
+            and principal.installation_id != "local"
+        ):
+            authorization_headers = runtime.cloud_ai_authorization_headers(
+                principal
+            )
         return await proxy_cloud_chat_completion(
             request,
             base_path=_server_state.global_settings.base_path,
+            model_manager=_server_model_manager_store(),
             cloud_client=(
-                _server_state.ai2apps_platform_runtime.cloud
-                if _server_state.ai2apps_platform_runtime is not None
+                runtime.cloud
+                if runtime is not None
                 else None
             ),
+            authorization_headers=authorization_headers,
+        )
+
+    runtime = _server_state.ai2apps_platform_runtime
+    upstreams = None if runtime is None else getattr(runtime, "upstreams", None)
+    resolved_upstream = None if upstreams is None else upstreams.resolve_model(request.model)
+    if resolved_upstream is not None:
+        gateway, remote_model_id, token = resolved_upstream
+        upstream_started = time.monotonic()
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        payload["model"] = remote_model_id
+        exchange = None
+        try:
+            exchange = await upstreams.open_model(
+                gateway, token, payload, stream=bool(request.stream),
+                context=(
+                    None if principal is None else
+                    ParentCallContext(
+                        principal.actor_user_id, principal.installation_id,
+                        principal.membership_epoch,
+                    )
+                ),
+            )
+            response = exchange.response
+            if response.status_code >= 400:
+                await response.aread()
+                public_status = (
+                    response.status_code
+                    if gateway.transport_kind == "cloud_relay" and 400 <= response.status_code < 500
+                    else 502
+                )
+                cloud_code = None
+                try:
+                    cloud_value = response.json()
+                    if isinstance(cloud_value, dict):
+                        cloud_code = cloud_value.get("code") or cloud_value.get("error", {}).get("code")
+                except Exception:
+                    pass
+                upstreams.record_activity(
+                    gateway_id=gateway.id, operation="model", capability_id=remote_model_id,
+                    status="failed", duration_ms=int((time.monotonic() - upstream_started) * 1000),
+                    error_code=f"upstream_http_{response.status_code}",
+                )
+                raise HTTPException(
+                    status_code=public_status,
+                    detail={
+                        "code": cloud_code or "upstream_gateway_error",
+                        "upstream_status": response.status_code,
+                    },
+                )
+            if request.stream:
+                async def stream_upstream():
+                    try:
+                        async for chunk in response.aiter_raw():
+                            yield chunk
+                        upstreams.record_activity(
+                            gateway_id=gateway.id, operation="model", capability_id=remote_model_id,
+                            status="completed", duration_ms=int((time.monotonic() - upstream_started) * 1000),
+                        )
+                    except Exception as exc:
+                        upstreams.mark_unavailable(
+                            gateway_id=gateway.id, operation="model", capability_id=remote_model_id,
+                            started_at=upstream_started, error_code="upstream_stream_interrupted",
+                            message=str(exc),
+                        )
+                        raise
+                    finally:
+                        await exchange.close()
+
+                return StreamingResponse(
+                    stream_upstream(),
+                    media_type=response.headers.get("content-type", "text/event-stream"),
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
+            data = response.json()
+            if isinstance(data, dict):
+                data["model"] = request.model
+            upstreams.record_activity(
+                gateway_id=gateway.id, operation="model", capability_id=remote_model_id,
+                status="completed", duration_ms=int((time.monotonic() - upstream_started) * 1000),
+            )
+            await exchange.close()
+            return JSONResponse(data)
+        except HTTPException:
+            if exchange is not None:
+                await exchange.close()
+            raise
+        except Exception as exc:
+            if exchange is not None:
+                await exchange.close()
+            upstreams.mark_unavailable(
+                gateway_id=gateway.id, operation="model", capability_id=remote_model_id,
+                started_at=upstream_started, error_code="upstream_unavailable", message=str(exc),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "upstream_gateway_unavailable", "message": str(exc)},
+            ) from exc
+
+    # A Package model ID is an explicit, globally unique selection and must
+    # win before legacy local-model alias resolution.  The latter strips the
+    # provider prefix after the first slash; without this ordering a Package
+    # such as ``ai2apps.model.qwen38/qwen3.8-27b-nvfp4`` can accidentally
+    # resolve to an unrelated local directory named ``Qwen3.8-27B-NVFP4`` and
+    # bypass its isolated Worker and package-owned compatibility loader.
+    package_model = resolve_package_model(
+        _server_state.ai2apps_platform_runtime, request.model
+    )
+    if package_model is not None:
+        if package_model.model_type not in {"llm", "vlm"}:
+            raise HTTPException(status_code=400, detail="Selected model is not conversational")
+        package_payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        _apply_package_max_tokens(
+            package_payload,
+            model_id=request.model,
+            requested=request.max_tokens,
+            field="max_tokens",
+        )
+        package_payload["_ai2apps_model_settings"] = _package_model_runtime_settings(
+            request.model
+        )
+        return await proxy_package_json(
+            package_model,
+            "chat_completions",
+            package_payload,
         )
 
     resolved_local = resolve_model_id(request.model) or request.model
@@ -3799,17 +4359,6 @@ async def create_chat_completion(
         if _server_state.engine_pool is not None
         else None
     )
-    package_model = None if local_entry is not None else resolve_package_model(
-        _server_state.ai2apps_platform_runtime, request.model
-    )
-    if package_model is not None:
-        if package_model.model_type not in {"llm", "vlm"}:
-            raise HTTPException(status_code=400, detail="Selected model is not conversational")
-        return await proxy_package_json(
-            package_model,
-            "chat_completions",
-            request.model_dump(mode="json", by_alias=True, exclude_none=True),
-        )
 
     request = await _preprocess_markitdown_files_for_llm(request)
 
@@ -3840,7 +4389,10 @@ async def create_chat_completion(
             settings_guided_grammar = _settings_guided_grammar(ms)
         merged_ct_kwargs = merge_chat_template_request_kwargs(
             ms,
-            request.chat_template_kwargs,
+            merge_reasoning_effort_chat_template_kwargs(
+                request.chat_template_kwargs,
+                request.reasoning_effort,
+            ),
         )
         session_id = request.ai2apps_session_id or request.dynamoe_session_id
         requested_kv_policy = (
@@ -4076,6 +4628,14 @@ async def create_chat_completion(
             or request.dynamoe_engine_boost
         )
         if session_id:
+            # Partition the general prefix-KV cache by the trusted logical
+            # Session namespace. Specialized adaptive engines may replace this
+            # tuple with a richer key, but they retain the same session_id.
+            chat_kwargs["cache_extra_keys"] = (
+                "ai2apps-session-v1",
+                session_id,
+            )
+            chat_kwargs["kv_cache_policy"] = kv_policy
             chat_kwargs["flesh_session_id"] = session_id
             chat_kwargs["flesh_kv_policy"] = kv_policy
         if l1_mode:
@@ -6410,10 +6970,20 @@ async def create_response(
     if package_model is not None:
         if package_model.model_type not in {"llm", "vlm"}:
             raise HTTPException(status_code=400, detail="Selected model is not conversational")
+        package_payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        _apply_package_max_tokens(
+            package_payload,
+            model_id=request.model,
+            requested=request.max_output_tokens,
+            field="max_output_tokens",
+        )
+        package_payload["_ai2apps_model_settings"] = _package_model_runtime_settings(
+            request.model
+        )
         return await proxy_package_json(
             package_model,
             "responses",
-            request.model_dump(mode="json", by_alias=True, exclude_none=True),
+            package_payload,
         )
 
     load_start = time.perf_counter()
@@ -6464,7 +7034,12 @@ async def create_response(
             reasoning_parser = ms.reasoning_parser
         merged_ct_kwargs = merge_chat_template_request_kwargs(
             ms,
-            request.chat_template_kwargs,
+            merge_reasoning_effort_chat_template_kwargs(
+                request.chat_template_kwargs,
+                request.reasoning.get("effort")
+                if isinstance(request.reasoning, dict)
+                else None,
+            ),
         )
 
         _entry = get_engine_pool().get_entry(resolved_model)

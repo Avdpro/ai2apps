@@ -21,12 +21,8 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_MODEL = Path(
-    "/Users/avdpropang/.omlx/models/mlx-community/Qwen3.6-35B-A3B-4bit"
-)
-DEFAULT_DEEPSEEK_MODEL = Path(
-    "/Users/avdpropang/.omlx/models/deepseek-ai/DeepSeek-V4-Flash"
-)
+DEFAULT_MODEL = Path.home() / ".omlx/models/mlx-community/Qwen3.6-35B-A3B-4bit"
+DEFAULT_DEEPSEEK_MODEL = Path.home() / ".omlx/models/deepseek-ai/DeepSeek-V4-Flash"
 DEFAULT_SCENE_DB = Path(
     "output/qwen36-two-turn-repro-20260812T085415Z/scene/"
     "ai2apps-platform.sqlite3"

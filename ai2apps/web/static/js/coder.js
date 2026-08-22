@@ -175,7 +175,7 @@
         if (!project) return;
         host.innerHTML = '<div class="coder-file-message">Loading…</div>';
         try {
-            const result = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/files?path=' + encodeURIComponent(path));
+            const result = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/files?path=' + encodeURIComponent(path));
             host.innerHTML = result.items.map(function (item) {
                 const icon = item.kind === 'directory' ? 'folder' : 'file-code-2';
                 return '<div class="coder-file-node"><button class="coder-file-row ' + item.kind + '" data-file-path="' + escapeHtml(item.path) + '" data-file-kind="' + item.kind + '">' +
@@ -193,7 +193,7 @@
         if (!project || !canLeaveFile()) return;
         status.textContent = 'Opening File';
         try {
-            const result = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/file?path=' + encodeURIComponent(path));
+            const result = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/file?path=' + encodeURIComponent(path));
             currentFilePath = result.path;
             const mode = fileMode(result.path);
             settingEditorValue = true;
@@ -252,7 +252,7 @@
         if (!project || !currentFilePath || !fileDirty) return;
         status.textContent = 'Saving';
         try {
-            await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/file', {
+            await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/file', {
                 method: 'PUT',
                 body: JSON.stringify({ path: currentFilePath, content: codeEditor.getValue() })
             });
@@ -389,7 +389,7 @@
         if (!thread.terminal_session_id || thread.status !== 'running') {
             status.textContent = 'Starting';
             try {
-                const updated = await api('/admin/api/coder/threads/' + encodeURIComponent(thread.id) + '/start', { method: 'POST', body: '{}' });
+                const updated = await api('/v1/platform/coder/threads/' + encodeURIComponent(thread.id) + '/start', { method: 'POST', body: '{}' });
                 threads = threads.map(function (item) { return item.id === updated.id ? updated : item; });
                 thread = updated;
                 render();
@@ -471,7 +471,7 @@
 
     async function load() {
         try {
-            const data = await api('/admin/api/coder');
+            const data = await api('/v1/platform/coder');
             projects = data.projects; threads = data.threads; agents = data.agents;
             defaultProjectRoot = data.default_project_root || '';
             const rootHint = projectForm.querySelector('[data-project-root-hint]');
@@ -577,7 +577,7 @@
         if (event.submitter?.value !== 'create') return;
         event.preventDefault(); const data = new FormData(projectForm); const errorHost = projectForm.querySelector('.coder-dialog-error'); errorHost.textContent = '';
         try {
-            const project = await api('/admin/api/coder/projects', { method: 'POST', body: JSON.stringify({ name: data.get('name'), root_path: data.get('root_path'), kind: data.get('kind'), create_directory: data.get('create_directory') === 'on', bootstrap: data.get('bootstrap') === 'on' }) });
+            const project = await api('/v1/platform/coder/projects', { method: 'POST', body: JSON.stringify({ name: data.get('name'), root_path: data.get('root_path'), kind: data.get('kind'), create_directory: data.get('create_directory') === 'on', bootstrap: data.get('bootstrap') === 'on' }) });
             projects.unshift(project); projectDialog.close(); render();
         } catch (error) { errorHost.textContent = error.message; }
     });
@@ -585,20 +585,20 @@
         if (event.submitter?.value !== 'create') return;
         event.preventDefault(); const data = new FormData(threadForm); const errorHost = threadForm.querySelector('.coder-dialog-error'); errorHost.textContent = '';
         try {
-            const thread = await api('/admin/api/coder/projects/' + encodeURIComponent(pendingProjectId) + '/threads', { method: 'POST', body: JSON.stringify({ title: data.get('title'), agent: data.get('agent'), model_source: data.get('model_source'), model: data.get('model') || '' }) });
+            const thread = await api('/v1/platform/coder/projects/' + encodeURIComponent(pendingProjectId) + '/threads', { method: 'POST', body: JSON.stringify({ title: data.get('title'), agent: data.get('agent'), model_source: data.get('model_source'), model: data.get('model') || '' }) });
             threads.unshift(thread); threadDialog.close(); render(); activate(thread.id);
         } catch (error) { errorHost.textContent = error.message; }
     });
     forkButton.addEventListener('click', async function () {
         const thread = activeThread(); if (!thread) return;
-        try { const fork = await api('/admin/api/coder/threads/' + encodeURIComponent(thread.id) + '/fork', { method: 'POST', body: '{}' }); threads.unshift(fork); render(); activate(fork.id); } catch (error) { status.textContent = error.message; }
+        try { const fork = await api('/v1/platform/coder/threads/' + encodeURIComponent(thread.id) + '/fork', { method: 'POST', body: '{}' }); threads.unshift(fork); render(); activate(fork.id); } catch (error) { status.textContent = error.message; }
     });
 
     async function deleteThreadEntry(threadId) {
         const thread = threads.find(function (item) { return item.id === threadId; });
         if (!thread || !window.confirm('Delete Thread “' + thread.title + '”? The Project files will not be changed.')) return;
         try {
-            await api('/admin/api/coder/threads/' + encodeURIComponent(thread.id), { method: 'DELETE' });
+            await api('/v1/platform/coder/threads/' + encodeURIComponent(thread.id), { method: 'DELETE' });
             const projectId = thread.project_id;
             threads = threads.filter(function (item) { return item.id !== thread.id; });
             activeThreadId = null;
@@ -610,7 +610,7 @@
         const project = projects.find(function (item) { return item.id === projectId; });
         if (!project || !window.confirm('Remove Project “' + project.name + '” from Coder? Its directory and files will be kept.')) return;
         try {
-            await api('/admin/api/coder/projects/' + encodeURIComponent(project.id), { method: 'DELETE' });
+            await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id), { method: 'DELETE' });
             projects = projects.filter(function (item) { return item.id !== project.id; });
             threads = threads.filter(function (item) { return item.project_id !== project.id; });
             disconnect();
@@ -651,12 +651,12 @@
             selectComponent(target.projectId, target.id); runComponentButton.click();
         } else if (action === 'fork') {
             try {
-                const fork = await api('/admin/api/coder/threads/' + encodeURIComponent(target.id) + '/fork', { method: 'POST', body: '{}' });
+                const fork = await api('/v1/platform/coder/threads/' + encodeURIComponent(target.id) + '/fork', { method: 'POST', body: '{}' });
                 threads.unshift(fork); render(); activate(fork.id);
             } catch (error) { status.textContent = error.message; }
         } else if (action === 'stop') {
             try {
-                const updated = await api('/admin/api/coder/threads/' + encodeURIComponent(target.id) + '/stop', { method: 'POST', body: '{}' });
+                const updated = await api('/v1/platform/coder/threads/' + encodeURIComponent(target.id) + '/stop', { method: 'POST', body: '{}' });
                 threads = threads.map(function (item) { return item.id === updated.id ? updated : item; });
                 if (activeThreadId === target.id) { disconnect(); status.textContent = 'Stopped'; }
                 render();
@@ -669,13 +669,13 @@
     reconnectButton.addEventListener('click', function () { const thread = activeThread(); if (thread) connect(thread); });
     stopButton.addEventListener('click', async function () {
         const thread = activeThread(); if (!thread) return;
-        try { const updated = await api('/admin/api/coder/threads/' + encodeURIComponent(thread.id) + '/stop', { method: 'POST', body: '{}' }); threads = threads.map(function (item) { return item.id === updated.id ? updated : item; }); disconnect(); status.textContent = 'Stopped'; render(); } catch (error) { status.textContent = error.message; }
+        try { const updated = await api('/v1/platform/coder/threads/' + encodeURIComponent(thread.id) + '/stop', { method: 'POST', body: '{}' }); threads = threads.map(function (item) { return item.id === updated.id ? updated : item; }); disconnect(); status.textContent = 'Stopped'; render(); } catch (error) { status.textContent = error.message; }
     });
     validateButton.addEventListener('click', async function () {
         const project = activeProject(); if (!project) return;
         status.textContent = 'Validating';
         try {
-            const result = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/validate', { method: 'POST', body: '{}' });
+            const result = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/validate', { method: 'POST', body: '{}' });
             status.textContent = result.valid ? 'Valid' : 'Invalid';
             showReport('Validation · ' + project.name, result);
         } catch (error) { status.textContent = error.message; }
@@ -684,7 +684,7 @@
         const project = activeProject(); if (!project) return;
         status.textContent = 'Testing';
         try {
-            const result = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/test', { method: 'POST', body: '{}' });
+            const result = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/test', { method: 'POST', body: '{}' });
             status.textContent = result.ok ? (result.skipped ? 'No Tests' : 'Tests Passed') : 'Tests Failed';
             showReport('Tests · ' + project.name, result.output || result);
         } catch (error) { status.textContent = error.message; }
@@ -693,7 +693,7 @@
         const project = activeProject(); if (!project) return;
         status.textContent = 'Building';
         try {
-            const result = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/build', { method: 'POST', body: '{}' });
+            const result = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/build', { method: 'POST', body: '{}' });
             status.textContent = 'Bundle Ready';
             showReport('Development Bundle · ' + project.name, result);
         } catch (error) { status.textContent = error.message; }
@@ -702,7 +702,7 @@
         const project = activeProject(); if (!project) return;
         status.textContent = 'Submitting TestFlight';
         try {
-            const result = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/testflight', { method: 'POST', body: '{}' });
+            const result = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/testflight', { method: 'POST', body: '{}' });
             status.textContent = 'TestFlight Ready';
             showReport('TestFlight · ' + project.name, result);
         } catch (error) { status.textContent = error.message; }
@@ -712,7 +712,7 @@
         if (!project || !component) return;
         status.textContent = 'Starting DEV';
         try {
-            const session = await api('/admin/api/coder/projects/' + encodeURIComponent(project.id) + '/dev-sessions', { method: 'POST', body: JSON.stringify({ component_id: component.id }) });
+            const session = await api('/v1/platform/coder/projects/' + encodeURIComponent(project.id) + '/dev-sessions', { method: 'POST', body: JSON.stringify({ component_id: component.id }) });
             project.dev_sessions = (project.dev_sessions || []).filter(function (item) { return item.id !== session.id; });
             project.dev_sessions.push(session);
             devPreview.src = session.preview_url + '?reload=' + Date.now();
@@ -727,7 +727,7 @@
         const project = activeProject(); const session = activeDevSession();
         if (!project || !session) return;
         try {
-            await api('/admin/api/coder/dev-sessions/' + encodeURIComponent(session.id), { method: 'DELETE' });
+            await api('/v1/platform/coder/dev-sessions/' + encodeURIComponent(session.id), { method: 'DELETE' });
             project.dev_sessions = (project.dev_sessions || []).filter(function (item) { return item.id !== session.id; });
             devPreview.hidden = true;
             devPreview.removeAttribute('src');

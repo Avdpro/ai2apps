@@ -102,7 +102,13 @@ def install_image_service(
     async def generate(arguments: dict[str, Any], context: ToolCallContext):
         if context.session_id is None:
             raise ToolProviderError("Image generation requires a Session")
-        model = _default_image_model(ModelManagerStore(base_path))
+        runtime = runtime_provider() if runtime_provider is not None else None
+        model_manager = (
+            getattr(runtime, "model_manager", None)
+            if runtime is not None
+            else None
+        ) or ModelManagerStore(base_path)
+        model = _default_image_model(model_manager)
         request_fingerprint = hashlib.sha256(
             json.dumps(arguments, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
@@ -120,10 +126,10 @@ def install_image_service(
                 ),
             }
         package_model = None
-        if runtime_provider is not None:
+        if runtime is not None:
             from ai2apps.model_providers import resolve_package_model
 
-            package_model = resolve_package_model(runtime_provider(), model)
+            package_model = resolve_package_model(runtime, model)
         if package_model is not None:
             from ai2apps.model_providers import proxy_package_json
 
@@ -157,6 +163,7 @@ def install_image_service(
                 edit=False,
                 base_path=base_path,
                 cloud_client=cloud_client,
+                model_manager=model_manager,
             )
         image = result.get("image") if isinstance(result, dict) else None
         match = _DATA_URL.fullmatch(str((image or {}).get("dataUrl") or ""))

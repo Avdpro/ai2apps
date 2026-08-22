@@ -34,6 +34,7 @@ struct HFTaskDTO: Codable, Equatable, Sendable, Identifiable {
 struct StartHFDownloadRequest: Encodable, Sendable {
     let repoId: String
     let hfToken: String
+    let revision: String?
 }
 
 struct StartHFDownloadResponse: Decodable, Sendable {

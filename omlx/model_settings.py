@@ -265,6 +265,10 @@ class ModelSettings:
     )
 
     # Model management flags
+    # MoE weight execution for prepared Cached-MoE checkpoints. ``cached``
+    # uses the package-provided expert bank; ``full`` loads every expert from
+    # the original checkpoint through the normal oMLX engine.
+    moe_execution_mode: str = "cached"
     # Cache-MoE resident bank sizing. None/"auto" selects the largest tier
     # that fits physical unified memory with runtime headroom.
     cache_moe_memory_tier: Optional[str] = None
@@ -287,6 +291,8 @@ class ModelSettings:
     active_profile_name: Optional[str] = None  # Name of the currently-applied profile
 
     def __post_init__(self) -> None:
+        if self.moe_execution_mode not in {"cached", "full"}:
+            raise ValueError("moe_execution_mode must be cached or full")
         if self.kv_cache_policy not in {"strict", "session", "persistent"}:
             raise ValueError(
                 "kv_cache_policy must be strict, session, or persistent"

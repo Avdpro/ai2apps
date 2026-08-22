@@ -5,15 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from ai2apps.api.errors import repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.resources import _runtime_or_error
 from ai2apps.chat import ChatContentRecord, ChatRepository, LegacyChatMessageInput
 from ai2apps.core import MessageRole, RepositoryError, SessionStatus
+from ai2apps.identity import RequestPrincipal
 from ai2apps.storage import BuiltinChatRecord, ChatCollectionRecord, ChatThreadRecord
 
 
@@ -151,18 +153,28 @@ class ChatContentResponse(BaseModel):
         )
 
 
-def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
+def create_chat_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
     router = APIRouter(prefix="/chat")
+    principal_dependency = Depends(principal_provider)
 
-    def repository_or_error():
+    def repository_or_error(principal: RequestPrincipal):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
             return runtime
-        return ChatRepository(runtime.database, runtime.events)
+        return ChatRepository(
+            runtime.database,
+            runtime.events,
+            principal=principal,
+        )
 
     @router.get("", response_model=ChatAppResponse)
-    def get_chat_app():
-        repository = repository_or_error()
+    def get_chat_app(
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -173,9 +185,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     @router.post("/threads", response_model=ChatThreadResponse, status_code=201)
     def create_thread(
         request: ChatThreadCreateRequest,
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -206,11 +219,12 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
 
     @router.get("/threads", response_model=ChatThreadListResponse)
     def list_threads(
+        principal: RequestPrincipal = principal_dependency,
         include_archived: bool = False,
         include_deleted: bool = False,
         limit: int = Query(default=100, ge=1, le=1_000),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         records = repository.list_threads(
@@ -223,8 +237,11 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         )
 
     @router.get("/threads/{thread_id}", response_model=ChatThreadResponse)
-    def get_thread(thread_id: str):
-        repository = repository_or_error()
+    def get_thread(
+        thread_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -236,8 +253,11 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         "/threads/{thread_id}/content",
         response_model=ChatContentResponse,
     )
-    def get_thread_content(thread_id: str):
-        repository = repository_or_error()
+    def get_thread_content(
+        thread_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -252,9 +272,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     def replace_thread_content(
         thread_id: str,
         request: ChatContentRequest,
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -281,9 +302,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     def patch_thread(
         thread_id: str,
         request: ChatThreadPatchRequest,
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -302,9 +324,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     def select_thread(
         thread_id: str,
         request: ExpectedRevisionRequest,
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -321,9 +344,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     def set_home_thread(
         thread_id: str,
         request: ExpectedRevisionRequest,
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -340,9 +364,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     def archive_thread(
         thread_id: str,
         request: ExpectedRevisionRequest,
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:
@@ -360,9 +385,10 @@ def create_chat_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     def delete_thread(
         thread_id: str,
         expected_revision: int = Query(ge=1),
+        principal: RequestPrincipal = principal_dependency,
         x_trace_id: str | None = Header(default=None),
     ):
-        repository = repository_or_error()
+        repository = repository_or_error(principal)
         if isinstance(repository, JSONResponse):
             return repository
         try:

@@ -121,6 +121,7 @@ async def request_cloud_image(
     edit: bool,
     base_path: Any,
     cloud_client: Any | None = None,
+    model_manager: ModelManagerStore | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, Any]:
     """Generate or edit one image through the selected local/account route."""
@@ -128,7 +129,7 @@ async def request_cloud_image(
     model = str(payload.get("model") or "").strip()
     if not model:
         raise HTTPException(status_code=400, detail="Image model is required")
-    store = ModelManagerStore(base_path)
+    store = model_manager or ModelManagerStore(base_path)
     provider = store.resolve_cloud_model(model)
     managed_model = _managed_model_id(model)
     if provider is None and managed_model is not None:
@@ -384,7 +385,12 @@ def _chat_chunk(model: str, request_id: str, delta: dict[str, Any], finish: str 
     return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
 
 
-async def _proxy_ai2apps_chat_completion(request: Any, cloud_client: Any) -> Response:
+async def _proxy_ai2apps_chat_completion(
+    request: Any,
+    cloud_client: Any,
+    *,
+    authorization_headers: dict[str, str] | None = None,
+) -> Response:
     if cloud_client is None:
         raise HTTPException(status_code=503, detail="AI2Apps Cloud client is not ready")
     body = _ai2apps_request_body(request)
@@ -394,6 +400,7 @@ async def _proxy_ai2apps_chat_completion(request: Any, cloud_client: Any) -> Res
             "/v1/ai/responses",
             json=body,
             headers={
+                **(authorization_headers or {}),
                 "Idempotency-Key": str(
                     getattr(request, "ai2apps_idempotency_key", None)
                     or f"local-chat-{uuid.uuid4()}"
@@ -557,11 +564,13 @@ async def proxy_cloud_chat_completion(
     *,
     base_path: Any,
     cloud_client: Any | None = None,
+    model_manager: ModelManagerStore | None = None,
+    authorization_headers: dict[str, str] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> Response:
     """Proxy a selected virtual model through its configured provider."""
 
-    store = ModelManagerStore(base_path)
+    store = model_manager or ModelManagerStore(base_path)
     provider = store.resolve_cloud_model(request.model)
     if provider is None and request.model.startswith("cloud/"):
         managed_model = request.model[len("cloud/") :]
@@ -575,7 +584,11 @@ async def proxy_cloud_chat_completion(
             original_model = request.model
             request.model = f"{AI2APPS_CLOUD_MODEL_PREFIX}{managed_model}"
             try:
-                return await _proxy_ai2apps_chat_completion(request, cloud_client)
+                return await _proxy_ai2apps_chat_completion(
+                    request,
+                    cloud_client,
+                    authorization_headers=authorization_headers,
+                )
             finally:
                 request.model = original_model
     if provider is None:

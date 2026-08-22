@@ -177,5 +177,6 @@ class CompatibilityContext:
     os_name: str
     architecture: str
     python_version: str
+    os_version: str = ""
     accelerator: str | None = None
     features: frozenset[str] = frozenset()

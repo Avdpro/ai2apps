@@ -35,6 +35,16 @@ def _positive_float(value: str) -> float:
     return parsed
 
 
+def _publish_mobile_gateway_port(
+    port: int, environ: dict[str, str] | None = None
+) -> None:
+    """Publish the already-bound Local port to the in-process FRP runtime."""
+
+    if not 1 <= port <= 65535:
+        raise ValueError("AI2Apps Mobile Gateway port is invalid")
+    (os.environ if environ is None else environ)["AI2APPS_MOBILE_GATEWAY_PORT"] = str(port)
+
+
 def info_command() -> None:
     """Print product, runtime, endpoints, and effective MoE scope controls."""
     values = {
@@ -81,7 +91,13 @@ def _has_cli_overrides(args) -> bool:
         "no_proxy",
         "ca_bundle",
     )
-    if any(getattr(args, field, None) is not None for field in persisted_fields):
+    if any(
+        getattr(args, field, None) is not None
+        for field in persisted_fields
+        if field != "port"
+    ):
+        return True
+    if getattr(args, "port", None) not in {None, 0}:
         return True
 
     # --no-cache is the only persistable boolean flag with a False default.
@@ -229,6 +245,7 @@ def serve_command(args):
     )
     # Only show access logs at trace level
     show_access_log = settings.server.log_level == "trace"
+    requested_port = settings.server.port
     uvicorn_config = uvicorn.Config(
         "omlx.server:app",
         host=bind_hosts[0],
@@ -248,6 +265,26 @@ def serve_command(args):
             access_log=show_access_log,
         )
         serve_sockets.append(extra_cfg.bind_socket())
+
+    actual_ports = {int(sock.getsockname()[1]) for sock in serve_sockets}
+    if len(actual_ports) != 1:
+        for sock in serve_sockets:
+            sock.close()
+        raise RuntimeError("AI2Apps listeners did not bind the same port")
+    settings.server.port = actual_ports.pop()
+    # The same loopback listener exposes the constrained Mobile Gateway. This
+    # assignment happens only after the socket has been bound, so automatic
+    # port mode cannot accidentally leave frpc pointing at the legacy 8000.
+    _publish_mobile_gateway_port(settings.server.port)
+
+    from ai2apps.supervision import write_supervised_run_descriptor
+
+    write_supervised_run_descriptor(
+        actual_port=settings.server.port,
+        configured_port=None if requested_port == 0 else requested_port,
+        runtime_version=__version__,
+        base_path=settings.base_path,
+    )
 
     try:
         # Import server and config after the port is known to be available.
@@ -271,9 +308,15 @@ def serve_command(args):
             print(f"MCP config: {mcp_config}")
             os.environ["OMLX_MCP_CONFIG"] = mcp_config
 
+        cloud_runtime_profile = (
+            os.environ.get("AI2APPS_RUNTIME_PROFILE", "full") == "cloud"
+        )
+
         # Determine paged SSD cache directory
         # Priority: --no-cache > CLI arg > settings file
-        if args.no_cache:
+        if cloud_runtime_profile:
+            paged_ssd_cache_dir = None
+        elif args.no_cache:
             paged_ssd_cache_dir = None
         elif args.paged_ssd_cache_dir:
             # CLI argument takes precedence
@@ -287,10 +330,14 @@ def serve_command(args):
             # Cache explicitly disabled in settings
             paged_ssd_cache_dir = None
 
-        # Build scheduler config for BatchedEngine
-        scheduler_config = settings.to_scheduler_config()
+        # The Base App has no in-process scheduler or MLX allocator. Installed
+        # model Service Packages run in their own signed Runtime instead.
+        scheduler_config = (
+            None if cloud_runtime_profile else settings.to_scheduler_config()
+        )
         # Set paged SSD cache options
-        scheduler_config.paged_ssd_cache_dir = paged_ssd_cache_dir
+        if scheduler_config is not None:
+            scheduler_config.paged_ssd_cache_dir = paged_ssd_cache_dir
         # Determine cache max size: CLI arg > settings (with auto resolution)
         if paged_ssd_cache_dir:
             if args.paged_ssd_cache_max_size:
@@ -301,9 +348,11 @@ def serve_command(args):
                 cache_max_size_bytes = settings.cache.get_ssd_cache_max_size_bytes(
                     settings.base_path
                 )
-            scheduler_config.paged_ssd_cache_max_size = cache_max_size_bytes
+            if scheduler_config is not None:
+                scheduler_config.paged_ssd_cache_max_size = cache_max_size_bytes
         else:
-            scheduler_config.paged_ssd_cache_max_size = 0
+            if scheduler_config is not None:
+                scheduler_config.paged_ssd_cache_max_size = 0
             cache_max_size_bytes = 0
 
         # Hot cache: CLI arg > settings
@@ -312,11 +361,15 @@ def serve_command(args):
                 hot_cache_max_bytes = parse_size(args.hot_cache_max_size)
             else:
                 hot_cache_max_bytes = settings.cache.get_hot_cache_max_size_bytes()
-            scheduler_config.hot_cache_max_size = hot_cache_max_bytes
+            if scheduler_config is not None:
+                scheduler_config.hot_cache_max_size = hot_cache_max_bytes
         else:
-            scheduler_config.hot_cache_max_size = 0
+            if scheduler_config is not None:
+                scheduler_config.hot_cache_max_size = 0
 
-        if args.no_cache:
+        if cloud_runtime_profile:
+            print("Mode: AI2Apps control plane (Cloud + managed Runtime Packages)")
+        elif args.no_cache:
             print(
             "Mode: Multi-model serving (no AI2Apps cache, mlx-lm BatchGenerator only)"
             )
@@ -327,7 +380,7 @@ def serve_command(args):
             print(
                 f"paged SSD cache: {paged_ssd_cache_dir} (max: {cache_max_size_display})"
             )
-            if scheduler_config.hot_cache_max_size > 0:
+            if scheduler_config is not None and scheduler_config.hot_cache_max_size > 0:
                 hot_display = f"{scheduler_config.hot_cache_max_size / (1024**3):.1f}GB"
                 print(f"Hot cache: {hot_display} (in-memory)")
         else:
@@ -340,11 +393,14 @@ def serve_command(args):
         # With a large cache limit, freed buffers always stay in the pool
         # and are only released via mx.clear_cache() (which we protect
         # with mx.synchronize()). See issue #300.
-        import mlx.core as mx
+        if not cloud_runtime_profile:
+            import mlx.core as mx
 
-        total_mem = mx.device_info().get("memory_size", 0)
-        if total_mem > 0:
-            mx.set_cache_limit(total_mem)
+            total_mem = mx.device_info().get("memory_size", 0)
+            if total_mem > 0:
+                mx.set_cache_limit(total_mem)
+        else:
+            print("In-process MLX: disabled")
 
         # Initialize server
         # Note: pinned_models and default_model are managed via admin page (model_settings.json)

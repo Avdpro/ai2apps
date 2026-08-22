@@ -83,6 +83,9 @@ EXCLUDED_FROM_PROFILES = frozenset(
         "description",
         "model_alias",
         "model_type_override",
+        # Physical execution strategy is device/model-install specific and
+        # must not travel with a generation profile.
+        "moe_execution_mode",
         # Device-specific physical expert-bank sizing must never travel with
         # a generation profile to another machine.
         "cache_moe_memory_tier",

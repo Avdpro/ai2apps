@@ -5,12 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, SecretStr
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
 from ai2apps.secrets import SecretRecord
 
@@ -26,15 +32,23 @@ class SecretResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    last_used_at: datetime | None = None
+    last_used_by_tool: str | None = None
 
     @classmethod
-    def from_record(cls, record: SecretRecord):
+    def from_record(
+        cls,
+        record: SecretRecord,
+        *,
+        last_use: tuple[datetime | None, str | None] = (None, None),
+    ):
         return cls(
             id=record.id, uri=record.uri, name=record.name,
             purpose=record.purpose, allowed_tools=list(record.allowed_tools),
             status=record.status, metadata=record.metadata,
             created_at=record.created_at, updated_at=record.updated_at,
             deleted_at=record.deleted_at,
+            last_used_at=last_use[0], last_used_by_tool=last_use[1],
         )
 
 
@@ -59,8 +73,15 @@ class SecretReplaceRequest(BaseModel):
     value: SecretStr
 
 
-def create_secret_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter()
+def create_secret_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        dependencies=[
+            Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
+        ]
+    )
 
     def repository_or_error():
         runtime = runtime_provider()
@@ -88,7 +109,12 @@ def create_secret_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter
         if isinstance(repository, JSONResponse):
             return repository
         return SecretListResponse(
-            items=[SecretResponse.from_record(item) for item in repository.list()]
+            items=[
+                SecretResponse.from_record(
+                    item, last_use=repository.last_use(item.id)
+                )
+                for item in repository.list()
+            ]
         )
 
     @router.post("/secrets", response_model=SecretResponse, status_code=201)

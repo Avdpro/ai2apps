@@ -5,6 +5,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_TEMPLATE = ROOT / "ai2apps/web/templates/chat.html"
+
+
+def test_chat_merges_managed_models_from_admin_catalog():
+    chat = CHAT_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "const catalogIds = new Set(catalogModels.map(model => model.id));" in chat
+    assert "['cloud', 'fusion'].includes(model.source_type)" in chat
+    assert "const allModels = [...catalogModels, ...managedModels];" in chat
 I18N_DIR = ROOT / "ai2apps/web/i18n"
 TAILWIND_CSS = ROOT / "ai2apps/web/static/css/tailwind.css"
 
@@ -25,6 +33,16 @@ def _template() -> str:
 
 def _section(source: str, start: str, end: str) -> str:
     return source.split(start, 1)[1].split(end, 1)[0]
+
+
+def test_model_markdown_never_mounts_raw_html_in_chat_document():
+    html = _template()
+
+    assert "function escapeRawMarkdownHtml(value)" in html
+    assert "html(token)" in html
+    assert "return escapeRawMarkdownHtml(rawHtml);" in html
+    assert ".replace(/</g, '&lt;')" in html
+    assert "markedHighlight.markedHighlight" in html
 
 
 def test_regeneration_overrides_survive_stream_context():
@@ -115,6 +133,21 @@ def test_chat_backend_migration_is_idempotent_and_keeps_local_backup():
     assert "CHAT_BACKEND_MIGRATION_KEY" in initialize
     assert "localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY)" not in html
     assert "await this.initializeBackendChat()" in html
+
+
+def test_chat_browser_state_is_scoped_to_principal_and_member_cannot_claim_legacy():
+    html = _template()
+    initialize = _section(
+        html,
+        "    async initializeBackendChat()",
+        "    scheduleBackendChatSync(",
+    )
+
+    assert "ai2apps_chat_history_v2:${CHAT_PRINCIPAL_ACTOR_ID}" in html
+    assert "ai2apps_chat_backend_migrated_v2:${CHAT_PRINCIPAL_ACTOR_ID" in html
+    assert "(CHAT_PRINCIPAL_IS_CORE ? localBackup : [])" in initialize
+    assert "localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY)" in html
+    assert "localStorage.setItem(API_KEY_STORAGE_KEY" not in html
 
 
 def test_chat_backend_is_authoritative_with_revisioned_snapshot_sync():
@@ -222,7 +255,7 @@ def test_chat_turn_supports_direct_model_and_general_agent_modes():
     send = _section(html, "async sendMessage()", "async streamResponse(")
     agent_start = _section(html, "async startAgentRun(", "async finalizeAgentRun(")
 
-    assert "const useAgent = this.agentMode" in send
+    assert "const useAgent = CHAT_PRINCIPAL_IS_CORE && this.agentMode" in send
     assert "execution_mode: useAgent ? 'agent' : 'chat'" in send
     assert "await this.streamResponse" in send
     assert "_directModelOnly: true" in send
@@ -286,6 +319,19 @@ def test_direct_chat_completion_does_not_offer_mcp_tools():
 
     assert "!context._directModelOnly" in body
     assert "_directModelOnly: streamContext?._directModelOnly ?? false" in stream
+
+
+def test_direct_chat_completion_uses_the_currently_selected_model():
+    html = _template()
+    body = _section(
+        html,
+        "buildChatCompletionBody(messages, context, depth = 0)",
+        "createThinkingState()",
+    )
+
+    assert "context._directModelOnly" in body
+    assert "this.resolveGatewayModelId(context.model)" in body
+    assert "this.resolveApiModel(messages, context.model, variantUserIndex)" in body
 
 
 def test_agent_interactions_are_schema_driven_and_file_waits_for_resource_handle():

@@ -114,7 +114,18 @@ temp/
 packaging/_wheels/
 packaging/_export/
 packaging/_build/
+.build/
+.swiftpm/
+node_modules/
+*.app/
 *.dmg
+
+# Apple signing, notarization, and provisioning material (never publish)
+*.p8
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.key
 
 # Generated engine commit metadata (build-time artifact)
 omlx/_engine_commits.json

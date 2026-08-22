@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import threading
 import time
 from collections.abc import Mapping
 from datetime import datetime
@@ -17,6 +19,11 @@ from ai2apps.fusion.profiles import (
     FusionProfile,
     fusion_profile_from_mapping,
     profile_to_mapping,
+)
+from ai2apps.secrets import (
+    EncryptedFileSecretBackend,
+    SecretBackend,
+    SecretBackendError,
 )
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
@@ -57,6 +64,11 @@ BUILTIN_CLOUD_PROVIDERS: tuple[dict[str, Any], ...] = (
     },
 )
 
+MODEL_SOURCE_LOCAL_RUNTIME = "local_runtime"
+MODEL_SOURCE_LOCAL_BYOK = "local_byok"
+MODEL_SOURCE_AI2APPS_CLOUD = "ai2apps_cloud"
+MODEL_SOURCE_UPSTREAM_GATEWAY = "upstream_gateway"
+
 
 def _safe_id(value: str, label: str) -> str:
     value = value.strip()
@@ -78,11 +90,44 @@ def _atomic_json(path: Path, value: Any) -> None:
 class ModelManagerStore:
     """Small file-backed registry whose API never returns secret values."""
 
-    def __init__(self, base_path: str | Path):
-        self.base_path = Path(base_path)
+    def __init__(
+        self,
+        base_path: str | Path,
+        *,
+        secret_backend: SecretBackend | None = None,
+    ):
+        self.base_path = Path(base_path).expanduser().resolve()
         self.fusion_dir = self.base_path / "fusion"
         self.cloud_path = self.base_path / "ai2apps" / "cloud-providers.json"
         self.defaults_path = self.base_path / "ai2apps" / "default-models.json"
+        # Composition roots pass the platform-selected backend (Keychain on
+        # macOS).  The encrypted fallback keeps standalone tools and tests from
+        # ever regressing to plaintext provider credentials.
+        self.secret_backend = secret_backend or EncryptedFileSecretBackend(
+            self.base_path / "platform" / "secrets"
+        )
+        self._cloud_lock = threading.RLock()
+
+    def _credential_key(self, provider_id: str) -> str:
+        return f"ai2apps-model-provider-{provider_id}"
+
+    def _legacy_credential_key(self, provider_id: str) -> str:
+        installation = hashlib.sha256(
+            str(self.base_path).encode("utf-8")
+        ).hexdigest()[:16]
+        return f"ai2apps-model-provider-{installation}-{provider_id}"
+
+    def _load_provider_key(self, provider_id: str, raw: Mapping[str, Any]) -> str | None:
+        expected = self._credential_key(provider_id)
+        legacy = self._legacy_credential_key(provider_id)
+        credential_ref = raw.get("credential_ref")
+        if credential_ref not in {expected, legacy}:
+            return None
+        try:
+            value = self.secret_backend.load(str(credential_ref))
+        except (KeyError, OSError, SecretBackendError):
+            return None
+        return value or None
 
     def default_models(self) -> dict[str, str]:
         """Return the complete system model routing table without stale keys."""
@@ -217,23 +262,67 @@ class ModelManagerStore:
             credential_ref[len(prefix) :], "Cloud provider id"
         )
         provider = self._cloud_data().get(provider_id)
-        if (
-            not provider
-            or not provider.get("enabled", True)
-            or not provider.get("api_key")
-        ):
+        secret = None if not provider else self._load_provider_key(provider_id, provider)
+        if not provider or not provider.get("enabled", True) or not secret:
             raise ValueError("Fusion cloud provider is unavailable or not configured")
-        return str(provider["api_key"])
+        return secret
 
     def _cloud_data(self) -> dict[str, dict[str, Any]]:
-        try:
-            value = json.loads(self.cloud_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return {}
-        except (OSError, TypeError, json.JSONDecodeError):
-            return {}
-        providers = value.get("providers", {}) if isinstance(value, dict) else {}
-        return providers if isinstance(providers, dict) else {}
+        with self._cloud_lock:
+            try:
+                value = json.loads(self.cloud_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return {}
+            except (OSError, TypeError, json.JSONDecodeError):
+                return {}
+            providers = value.get("providers", {}) if isinstance(value, dict) else {}
+            if not isinstance(providers, dict):
+                return {}
+
+            # One-way, fail-safe migration from the legacy plaintext JSON.
+            # The file is rewritten only after every non-empty key has reached
+            # the SecretBackend successfully.
+            migrated = False
+            normalized: dict[str, dict[str, Any]] = {}
+            for provider_id, candidate in providers.items():
+                if not isinstance(candidate, dict):
+                    continue
+                raw = dict(candidate)
+                if "api_key" in raw:
+                    legacy = str(raw.pop("api_key") or "").strip()
+                    if legacy:
+                        key = self._credential_key(str(provider_id))
+                        self.secret_backend.store(key, legacy)
+                        raw["credential_ref"] = key
+                    else:
+                        raw.pop("credential_ref", None)
+                    migrated = True
+                legacy_key = self._legacy_credential_key(str(provider_id))
+                if raw.get("credential_ref") == legacy_key:
+                    try:
+                        legacy_value = self.secret_backend.load(legacy_key)
+                        current_key = self._credential_key(str(provider_id))
+                        self.secret_backend.store(current_key, legacy_value)
+                        if self.secret_backend.load(current_key) != legacy_value:
+                            raise SecretBackendError(
+                                "Provider credential migration verification failed"
+                            )
+                    except (KeyError, OSError, SecretBackendError):
+                        # Preserve the old reference on transient Keychain or
+                        # vault failures; _load_provider_key still accepts it.
+                        pass
+                    else:
+                        raw["credential_ref"] = current_key
+                        migrated = True
+                normalized[str(provider_id)] = raw
+            if migrated:
+                _atomic_json(self.cloud_path, {"version": 2, "providers": normalized})
+            return normalized
+
+    def migrate_legacy_credentials(self) -> None:
+        """Move any v1 plaintext provider keys into the configured backend."""
+
+        self._cloud_data()
 
     def list_cloud(self) -> list[dict[str, Any]]:
         saved = self._cloud_data()
@@ -290,7 +379,7 @@ class ModelManagerStore:
                     "models_synced_at": raw.get("models_synced_at"),
                     "models_error": raw.get("models_error") or "",
                     "enabled": bool(raw.get("enabled", True)),
-                    "configured": bool(raw.get("api_key")),
+                    "configured": self._load_provider_key(provider_id, raw) is not None,
                     "builtin": bool(default),
                 }
             )
@@ -299,6 +388,26 @@ class ModelManagerStore:
     @staticmethod
     def gateway_model_id(provider_id: str, model_id: str) -> str:
         return f"cloud/{provider_id}/{model_id}"
+
+    def model_source(self, model_id: str) -> str:
+        """Classify billing/execution authority independently from the public id."""
+        if model_id.startswith("gateway/"):
+            return MODEL_SOURCE_UPSTREAM_GATEWAY
+        if not model_id.startswith("cloud/"):
+            return MODEL_SOURCE_LOCAL_RUNTIME
+        if model_id.startswith("cloud/ai2apps/"):
+            return MODEL_SOURCE_AI2APPS_CLOUD
+        return (
+            MODEL_SOURCE_LOCAL_BYOK
+            if self.resolve_cloud_model(model_id) is not None
+            else MODEL_SOURCE_AI2APPS_CLOUD
+        )
+
+    def model_shareable(self, model_id: str) -> bool:
+        return self.model_source(model_id) in {
+            MODEL_SOURCE_LOCAL_RUNTIME,
+            MODEL_SOURCE_LOCAL_BYOK,
+        }
 
     def enabled_cloud_models(self) -> list[dict[str, Any]]:
         result = []
@@ -328,7 +437,8 @@ class ModelManagerStore:
             return None
         data = self._cloud_data()
         raw = data.get(provider_id)
-        if not raw or not raw.get("enabled", True) or not raw.get("api_key"):
+        api_key = None if not raw else self._load_provider_key(provider_id, raw)
+        if not raw or not raw.get("enabled", True) or not api_key:
             return None
         if model_id not in {str(item) for item in raw.get("enabled_model_ids", [])}:
             return None
@@ -337,7 +447,7 @@ class ModelManagerStore:
             "provider_id": provider_id,
             "model_id": model_id,
             "base_url": str(raw.get("base_url") or "").rstrip("/"),
-            "api_key": str(raw["api_key"]),
+            "api_key": api_key,
             "protocol": str(raw.get("protocol") or "openai"),
         }
 
@@ -364,7 +474,7 @@ class ModelManagerStore:
             selected.discard(model_id)
         raw["enabled_model_ids"] = sorted(selected)
         data[provider_id] = raw
-        _atomic_json(self.cloud_path, {"version": 1, "providers": data})
+        _atomic_json(self.cloud_path, {"version": 2, "providers": data})
         return next(item for item in self.list_cloud() if item["id"] == provider_id)
 
     @staticmethod
@@ -393,19 +503,20 @@ class ModelManagerStore:
         provider_id = _safe_id(provider_id, "Provider id")
         data = self._cloud_data()
         raw = data.get(provider_id)
-        if not raw or not raw.get("api_key"):
+        api_key = None if not raw else self._load_provider_key(provider_id, raw)
+        if not raw or not api_key:
             raise ValueError("Configure the provider API key before refreshing models")
         protocol = str(raw.get("protocol") or "openai")
         headers = {"Accept": "application/json"}
         if protocol == "anthropic":
             headers.update(
                 {
-                    "x-api-key": str(raw["api_key"]),
+                    "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
                 }
             )
         else:
-            headers["Authorization"] = f"Bearer {raw['api_key']}"
+            headers["Authorization"] = f"Bearer {api_key}"
         url = self._models_url(str(raw["base_url"]), protocol)
         try:
             response = requests.get(
@@ -444,12 +555,15 @@ class ModelManagerStore:
             raw["models_synced_at"] = time.time()
             raw["models_error"] = ""
         except (requests.RequestException, ValueError, TypeError, json.JSONDecodeError) as exc:
-            raw["models_error"] = str(exc)
+            safe_error = str(exc).replace(api_key, "[redacted]")
+            raw["models_error"] = safe_error
             data[provider_id] = raw
-            _atomic_json(self.cloud_path, {"version": 1, "providers": data})
-            raise ValueError(f"Could not list models from {provider_id}: {exc}") from exc
+            _atomic_json(self.cloud_path, {"version": 2, "providers": data})
+            raise ValueError(
+                f"Could not list models from {provider_id}: {safe_error}"
+            ) from exc
         data[provider_id] = raw
-        _atomic_json(self.cloud_path, {"version": 1, "providers": data})
+        _atomic_json(self.cloud_path, {"version": 2, "providers": data})
         return next(item for item in self.list_cloud() if item["id"] == provider_id)
 
     def put_cloud(self, provider_id: str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -480,21 +594,40 @@ class ModelManagerStore:
         if models == current_ids and any(isinstance(item, dict) for item in current_models):
             models = current_models
         api_key = value.get("api_key")
+        credential_key = self._credential_key(provider_id)
+        prior_key = self._load_provider_key(provider_id, current)
         record = {
             "name": str(value.get("name") or current.get("name") or default.get("name") or provider_id).strip(),
             "base_url": base_url.rstrip("/"),
             "protocol": protocol,
             "models": models,
             "enabled": bool(value.get("enabled", current.get("enabled", True))),
-            "api_key": current.get("api_key", ""),
+            "credential_ref": current.get("credential_ref"),
             "models_synced_at": current.get("models_synced_at"),
             "models_error": current.get("models_error", ""),
             "enabled_model_ids": current.get("enabled_model_ids", []),
         }
-        if api_key is not None:
-            record["api_key"] = str(api_key).strip()
+        replacement = None if api_key is None else str(api_key).strip()
+        if replacement is not None:
+            if replacement:
+                self.secret_backend.store(credential_key, replacement)
+                record["credential_ref"] = credential_key
+            else:
+                record.pop("credential_ref", None)
+        if not record.get("credential_ref"):
+            record.pop("credential_ref", None)
         data[provider_id] = record
-        _atomic_json(self.cloud_path, {"version": 1, "providers": data})
+        try:
+            _atomic_json(self.cloud_path, {"version": 2, "providers": data})
+        except Exception:
+            if replacement is not None:
+                if prior_key:
+                    self.secret_backend.store(credential_key, prior_key)
+                else:
+                    self.secret_backend.delete(credential_key)
+            raise
+        if replacement == "":
+            self.secret_backend.delete(credential_key)
         return next(item for item in self.list_cloud() if item["id"] == provider_id)
 
     def delete_cloud(self, provider_id: str) -> bool:
@@ -502,5 +635,8 @@ class ModelManagerStore:
         data = self._cloud_data()
         existed = provider_id in data
         data.pop(provider_id, None)
-        _atomic_json(self.cloud_path, {"version": 1, "providers": data})
+        _atomic_json(self.cloud_path, {"version": 2, "providers": data})
+        if existed:
+            self.secret_backend.delete(self._credential_key(provider_id))
+            self.secret_backend.delete(self._legacy_credential_key(provider_id))
         return existed

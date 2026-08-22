@@ -1,0 +1,99 @@
+name: Model adapter release check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packages/omlx-model-*/**"
+      - "omlx/model_adapters/**"
+      - "scripts/model_adapter_release.py"
+      - "scripts/sign_repository_snapshot.mjs"
+      - "tests/test_model_adapter_*.py"
+      - "tests/test_cached_moe_adapter_package.py"
+      - ".github/workflows/model-adapter-release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qwen38-release-check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install build and verification runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install build
+
+      - name: Run adapter package and publication tests
+        run: |
+          python -m pytest -q \
+            tests/test_model_adapters.py \
+            tests/test_model_adapter_packages.py \
+            tests/test_model_adapter_publishing.py \
+            tests/test_cached_moe_adapter_package.py \
+            tests/test_ai2apps_installer.py \
+            tests/test_qwen38_adapter_package.py \
+            tests/test_qwen38_modelopt_package.py
+
+      - name: Build one-model adapter wheels
+        run: |
+          python -m build --wheel \
+            --outdir dist/model-adapters \
+            packages/omlx-model-qwen38
+          python -m build --wheel \
+            --outdir dist/model-adapters \
+            packages/omlx-model-deepseek-v4-flash
+          python -m build --wheel \
+            --outdir dist/model-adapters \
+            packages/omlx-model-deepseek-v4-flash-2bit
+          python -m build --wheel \
+            --outdir dist/model-adapters \
+            packages/omlx-model-qwen36-cached-moe
+
+      - name: Exercise signed static release bundle
+        run: |
+          mkdir -p /tmp/omlx-adapter-ci
+          python scripts/model_adapter_release.py generate-key \
+            --private-key /tmp/omlx-adapter-ci/repository-private.pem \
+            --public-key /tmp/omlx-adapter-ci/repository-public.pem
+          jq -s 'add' \
+            packages/omlx-model-qwen38/release-checkpoints.json \
+            packages/omlx-model-deepseek-v4-flash/release-checkpoints.json \
+            packages/omlx-model-deepseek-v4-flash-2bit/release-checkpoints.json \
+            packages/omlx-model-qwen36-cached-moe/release-checkpoints.json \
+            > /tmp/omlx-adapter-ci/release-checkpoints.json
+          python scripts/model_adapter_release.py build \
+            --wheel dist/model-adapters/omlx_model_qwen38-*.whl \
+            --wheel dist/model-adapters/omlx_model_deepseek_v4_flash-*.whl \
+            --wheel dist/model-adapters/omlx_model_deepseek_v4_flash_2bit-*.whl \
+            --wheel dist/model-adapters/omlx_model_qwen36_cached_moe-*.whl \
+            --private-key /tmp/omlx-adapter-ci/repository-private.pem \
+            --output-dir dist/model-adapter-release-preview \
+            --metadata-version 1 \
+            --artifact-url-prefix . \
+            --checkpoint-manifest /tmp/omlx-adapter-ci/release-checkpoints.json \
+            --allow-non-production-key
+          python scripts/model_adapter_release.py verify \
+            --catalog dist/model-adapter-release-preview/catalog.json \
+            --public-key /tmp/omlx-adapter-ci/repository-public.pem \
+            --artifacts-dir dist/model-adapter-release-preview
+
+      - name: Upload non-production release preview
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: model-adapters-ephemeral-signed-preview
+          path: dist/model-adapter-release-preview/
+          if-no-files-found: error

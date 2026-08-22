@@ -26,6 +26,15 @@ enum AdminAPI {
     static func unloadModel(_ id: String) -> String { "\(models)/\(id)/unload" }
     static func modelSettings(_ id: String) -> String { "\(models)/\(id)/settings" }
     static let reloadModels    = "\(prefix)/reload"
+    static let modelAdapterPackages = "\(prefix)/model-adapter-packages"
+    static let inspectModelAdapterPackage = "\(modelAdapterPackages)/inspect"
+    static let installModelAdapterPackage = "\(modelAdapterPackages)/install"
+    static let modelAdapterCatalog = "\(modelAdapterPackages)/catalog"
+    static let installModelAdapterFromCatalog = "\(modelAdapterPackages)/install-from-catalog"
+    static let installModelAdapterCheckpoint = "\(modelAdapterPackages)/install-checkpoint"
+    static func modelAdapterPackage(_ name: String) -> String {
+        "\(modelAdapterPackages)/\(name)"
+    }
 
     static func modelProfiles(_ id: String) -> String { "\(models)/\(id)/profiles" }
     static func modelProfile(_ id: String, _ name: String) -> String {

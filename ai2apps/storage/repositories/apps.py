@@ -110,6 +110,7 @@ class AppRepository:
         *,
         app_definition_id: str,
         singleton_key: str | None = None,
+        owner_user_id: str | None = None,
         status: AppInstanceStatus = AppInstanceStatus.ACTIVE,
         state_schema_version: int = 1,
         state: dict[str, Any] | None = None,
@@ -131,8 +132,9 @@ class AppRepository:
                     """
                     INSERT INTO app_instances(
                         id, app_definition_id, singleton_key, status,
-                        state_schema_version, state_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        state_schema_version, state_json, owner_user_id,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         instance_id,
@@ -141,6 +143,7 @@ class AppRepository:
                         status.value,
                         state_schema_version,
                         canonical_json(state or {}),
+                        owner_user_id,
                         now,
                         now,
                     ),
@@ -151,7 +154,10 @@ class AppRepository:
                     subject_id=instance_id,
                     app_instance_id=instance_id,
                     trace_id=trace_id,
-                    payload={"app_definition_id": app_definition_id},
+                    payload={
+                        "app_definition_id": app_definition_id,
+                        "owner_user_id": owner_user_id,
+                    },
                 )
                 row = connection.execute(
                     "SELECT * FROM app_instances WHERE id = ?", (instance_id,)

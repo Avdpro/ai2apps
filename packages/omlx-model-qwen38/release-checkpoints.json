@@ -1,0 +1,11 @@
+{
+  "omlx-model-qwen38@0.1.0": [
+    {
+      "source": "huggingface",
+      "repoId": "unsloth/Qwen3.8-27B-NVFP4",
+      "revision": "16b6615af3548b88e2d8e382457bc705b00479cf",
+      "displayName": "Qwen3.8 27B NVFP4",
+      "estimatedSizeBytes": 23444511709
+    }
+  ]
+}

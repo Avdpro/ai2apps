@@ -239,6 +239,46 @@ class ExpertMajorStore:
         return result
 
 
+def load_expert_major_weights(
+    directory: str | os.PathLike[str],
+    experts_by_layer: tuple[tuple[int, ...], ...],
+) -> dict[str, Any]:
+    """Materialize selected routed banks from the canonical expert store.
+
+    The returned names are already in the sanitized DeepSeek ``SwitchGLU``
+    layout. Only one layer's CPU staging records are live at a time; the final
+    MLX stacks are evaluated before those records are released.
+    """
+
+    import mlx.core as mx
+
+    root = Path(directory)
+    result: dict[str, Any] = {}
+    for layer, expert_ids in enumerate(experts_by_layer):
+        path = root / f"layer-{layer:03d}.moe"
+        with ExpertMajorStore(path) as store:
+            if not expert_ids:
+                raise ValueError(f"layer {layer} has no prepared experts")
+            buffers: list[bytearray] = []
+            records: list[dict[str, Any]] = []
+            for expert_id in expert_ids:
+                buffer = store.allocate_staging()
+                store.read_into(expert_id, buffer)
+                buffers.append(buffer)
+                records.append(store.mlx_tensor_views(buffer))
+            names = {tensor.name for tensor in store.tensors}
+            if any(set(record) != names for record in records):
+                raise ValueError(f"layer {layer} expert-store layout mismatch")
+            stacked = {
+                name: mx.stack([record[name] for record in records])
+                for name in sorted(names)
+            }
+            mx.eval(*stacked.values())
+            prefix = f"model.layers.{layer}.ffn.switch_mlp."
+            result.update({prefix + name: value for name, value in stacked.items()})
+    return result
+
+
 def create_expert_major_store(
     offset_manifest: str | os.PathLike[str],
     layer: int,

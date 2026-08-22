@@ -10,7 +10,6 @@ This module provides OpenAI-compatible audio endpoints:
 
 import asyncio
 import base64
-import io
 import json
 import logging
 import math
@@ -22,6 +21,8 @@ from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
+
+from ai2apps.audio_codecs import OUTPUT_MEDIA_TYPES as _SPEECH_RESPONSE_FORMATS
 
 from ..engine.audio_utils import wav_bytes_to_pcm_frames, wav_header
 from ..server_metrics import get_server_metrics
@@ -41,18 +42,6 @@ MAX_REF_AUDIO_BASE64_BYTES = 20 * 1024 * 1024
 # improve TTFT while still letting the model process the full input at once.
 DEFAULT_NATIVE_TTS_STREAMING_INTERVAL_SECONDS = 0.2
 MIN_NATIVE_TTS_STREAMING_INTERVAL_SECONDS = 0.01
-
-# Non-streaming TTS output formats and their Content-Type. wav is the native
-# engine output; the others are transcoded in memory by soundfile's bundled
-# libsndfile (lame/opus/flac), which the audio extra already ships via
-# mlx-audio -> librosa. aac is not offered (libsndfile has no aac encoder).
-_SPEECH_RESPONSE_FORMATS = {
-    "wav": "audio/wav",
-    "mp3": "audio/mpeg",
-    "opus": "audio/ogg",
-    "flac": "audio/flac",
-    "pcm": "audio/pcm",
-}
 
 # Video container extensions that should be routed through ffmpeg decoding.
 # mlx-audio only recognises audio-specific extensions (m4a, aac, ogg, opus),
@@ -151,6 +140,90 @@ async def _read_upload(file: UploadFile) -> bytes:
     return b"".join(chunks)
 
 
+def _terminal_punctuation(text: str, language: Optional[str]) -> str:
+    """Guarantee a readable sentence terminator when a restorer is unavailable."""
+
+    value = text.strip()
+    if not value or value[-1] in ".!?。！？":
+        return value
+    return value + ("。" if (language or "").lower() in {"zh", "yue", "ja"} else ".")
+
+
+async def _restore_package_transcription_punctuation(
+    package_model,
+    response: Response,
+) -> Response:
+    """Run the signed punctuation dependency declared by an ASR Package."""
+
+    punctuation_model_id = package_model.metadata.get("punctuation_model_id")
+    if not isinstance(punctuation_model_id, str) or not punctuation_model_id:
+        return response
+    if response.status_code < 200 or response.status_code >= 300:
+        return response
+    try:
+        payload = json.loads(response.body)
+        raw_text = str(payload.get("text") or "")
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+        return response
+    if not raw_text.strip():
+        return response
+
+    restored = ""
+    status = "fallback"
+    try:
+        from ai2apps.model_providers import proxy_package_json, resolve_package_model
+        from omlx.server import _server_state
+
+        punctuation_model = resolve_package_model(
+            _server_state.ai2apps_platform_runtime,
+            punctuation_model_id,
+        )
+        if punctuation_model is None or not punctuation_model.checkpoint_ready:
+            raise RuntimeError("Required punctuation Package is unavailable")
+        punctuation_response = await proxy_package_json(
+            punctuation_model,
+            "chat_completions",
+            {
+                "model": punctuation_model.id,
+                "messages": [{"role": "user", "content": raw_text}],
+                "temperature": 0,
+                "max_tokens": max(64, min(len(raw_text) * 2, 4096)),
+                "stream": False,
+            },
+        )
+        if not 200 <= punctuation_response.status_code < 300:
+            raise RuntimeError("Punctuation Package request failed")
+        punctuation_payload = json.loads(punctuation_response.body)
+        restored = str(
+            punctuation_payload["choices"][0]["message"]["content"] or ""
+        ).strip()
+        if not restored:
+            raise RuntimeError("Punctuation Package returned empty text")
+        status = "native"
+    except Exception as exc:
+        logger.warning("Punctuation restoration fallback for %s: %s", package_model.id, exc)
+        restored = _terminal_punctuation(raw_text, payload.get("language"))
+
+    payload["raw_text"] = raw_text
+    payload["text"] = restored
+    features = payload.setdefault("features", {})
+    features["punctuation"] = {
+        "status": status,
+        "provider": punctuation_model_id,
+        "preserves_words": True,
+    }
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        status_code=response.status_code,
+        media_type="application/json",
+        headers={
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() not in {"content-length", "content-type"}
+        },
+    )
+
+
 def _decode_ref_audio_base64(request: AudioSpeechRequest) -> Optional[bytes]:
     """Validate and decode optional base64 ref_audio from a TTS request."""
     if request.ref_audio is None:
@@ -178,6 +251,34 @@ def _decode_ref_audio_base64(request: AudioSpeechRequest) -> Optional[bytes]:
             status_code=400,
             detail="Invalid base64 encoding in 'ref_audio' field",
         )
+
+
+async def _normalize_audio_bytes(
+    content: bytes,
+    *,
+    filename: str | None,
+    media_type: str | None,
+    sample_rate: int,
+    max_duration_seconds: float = 7_200,
+) -> bytes:
+    """Decode an external audio upload before it crosses into a Worker."""
+
+    from ai2apps.audio_codecs import (
+        AudioCodecError,
+        decode_audio_to_wav,
+        infer_audio_format,
+    )
+
+    try:
+        return await asyncio.to_thread(
+            decode_audio_to_wav,
+            content,
+            input_format=infer_audio_format(filename, media_type),
+            sample_rate=sample_rate,
+            max_duration_seconds=max_duration_seconds,
+        )
+    except AudioCodecError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
 
 
 def _write_ref_audio_tempfile(audio_bytes: Optional[bytes]) -> Optional[str]:
@@ -496,7 +597,13 @@ async def create_transcription(
         from ai2apps.model_providers import proxy_package_multipart
 
         content = await _read_upload(file)
-        return await proxy_package_multipart(
+        wav_content = await _normalize_audio_bytes(
+            content,
+            filename=file.filename,
+            media_type=file.content_type,
+            sample_rate=16_000,
+        )
+        response = await proxy_package_multipart(
             package_model,
             "audio_transcription",
             data={
@@ -510,11 +617,15 @@ async def create_transcription(
             },
             files={
                 "file": (
-                    file.filename or "audio.wav",
-                    content,
-                    file.content_type or "application/octet-stream",
+                    "audio.wav",
+                    wav_content,
+                    "audio/wav",
                 )
             },
+        )
+        return await _restore_package_transcription_punctuation(
+            package_model,
+            response,
         )
 
     from omlx.engine.stt import STTEngine
@@ -636,6 +747,18 @@ async def list_model_voices(model: Optional[str] = None):
         raise HTTPException(
             status_code=400, detail="'model' query parameter is required"
         )
+    package_model = _package_model(model)
+    if package_model is not None:
+        if package_model.model_type != "audio_tts":
+            raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
+        capabilities = dict(package_model.audio_capabilities or {})
+        named = capabilities.get("tts", {}).get("named_voices", {})
+        voices = named.get("voices", []) if isinstance(named, dict) else []
+        return {
+            "model": package_model.id,
+            "voices": list(voices) if isinstance(voices, list) else [],
+            "source": "signed_package_metadata",
+        }
     pool = _get_engine_pool()
     resolved = _resolve_model(model)
     entry = pool.get_entry(resolved)
@@ -665,48 +788,60 @@ async def list_model_voices(model: Optional[str] = None):
     return {"model": resolved, "voices": voices}
 
 
+@router.get("/v1/audio/models/{model:path}/capabilities")
+async def get_model_audio_capabilities(model: str):
+    """Return signed static capabilities without loading the checkpoint."""
+
+    package_model = _package_model(model)
+    if package_model is None:
+        raise HTTPException(status_code=404, detail=f"Package audio model '{model}' not found")
+    if not package_model.model_type.startswith("audio_"):
+        raise HTTPException(status_code=400, detail="Selected model is not an audio model")
+    return {
+        "model": package_model.id,
+        "source": "signed_package_metadata",
+        "capabilities": dict(package_model.audio_capabilities or {}),
+    }
+
+
 def _transcode_speech_output(wav_bytes: bytes, response_format: str) -> bytes:
     """Transcode the engine's native WAV output to response_format in memory."""
-    if response_format == "pcm":
-        return wav_bytes_to_pcm_frames(wav_bytes)[3]
+    from ai2apps.audio_codecs import encode_wav_audio
 
-    # Lazy import like the other optional audio deps: soundfile ships with
-    # the audio extra (mlx-audio -> librosa -> soundfile), and this module
-    # must stay importable without it (see server.py route registration).
-    import soundfile as sf
+    return encode_wav_audio(wav_bytes, response_format)
 
-    data, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-    buf = io.BytesIO()
-    if response_format == "mp3":
-        sf.write(buf, data, sample_rate, format="MP3")
-    elif response_format == "opus":
-        sf.write(buf, data, sample_rate, format="OGG", subtype="OPUS")
-    else:
-        sf.write(buf, data, sample_rate, format="FLAC")
-    return buf.getvalue()
+
+async def _package_speech_response(
+    response: Response,
+    response_format: str,
+) -> Response:
+    if response.status_code >= 400 or response_format == "wav":
+        return response
+    try:
+        content = await asyncio.to_thread(
+            _transcode_speech_output,
+            bytes(response.body),
+            response_format,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    headers = {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() not in {"content-length", "content-type"}
+    }
+    return Response(
+        content=content,
+        status_code=response.status_code,
+        media_type=_SPEECH_RESPONSE_FORMATS[response_format],
+        headers=headers,
+    )
 
 
 @router.post("/v1/audio/speech")
 async def create_speech(request: AudioSpeechRequest):
     """OpenAI-compatible text-to-speech endpoint."""
-    package_model = _package_model(request.model)
-    if package_model is not None:
-        if package_model.model_type != "audio_tts":
-            raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
-        from ai2apps.model_providers import proxy_package_json
-
-        return await proxy_package_json(
-            package_model,
-            "audio_speech",
-            request.model_dump(mode="json", by_alias=True, exclude_none=True),
-        )
-
-    from omlx.engine.tts import TTSEngine
-    from omlx.exceptions import ModelNotFoundError
-
-    if not request.input or not request.input.strip():
-        raise HTTPException(status_code=400, detail="'input' field must not be empty")
-    response_format = request.response_format or "wav"
+    response_format = (request.response_format or "wav").lower()
     if response_format not in _SPEECH_RESPONSE_FORMATS:
         raise HTTPException(
             status_code=400,
@@ -715,6 +850,51 @@ async def create_speech(request: AudioSpeechRequest):
                 f"available formats: {', '.join(_SPEECH_RESPONSE_FORMATS)}"
             ),
         )
+    if request.stream and response_format != "wav":
+        raise HTTPException(
+            status_code=400,
+            detail="Streaming TTS currently only supports response_format='wav'",
+        )
+    package_model = _package_model(request.model)
+    if package_model is not None:
+        if package_model.model_type != "audio_tts":
+            raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
+        from ai2apps.model_providers import proxy_package_json, proxy_package_multipart
+
+        payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
+        payload["response_format"] = "wav"
+        if request.ref_audio is not None:
+            reference_audio = _decode_ref_audio_base64(request)
+            reference_audio = await _normalize_audio_bytes(
+                reference_audio or b"",
+                filename=f"reference.{request.ref_audio_format or 'wav'}",
+                media_type=None,
+                sample_rate=24_000,
+                max_duration_seconds=300,
+            )
+            payload.pop("ref_audio", None)
+            payload.pop("ref_audio_format", None)
+            response = await proxy_package_multipart(
+                package_model,
+                "audio_speech",
+                data=payload,
+                files={
+                    "reference_audio": (
+                        "reference.wav",
+                        reference_audio or b"",
+                        "audio/wav",
+                    )
+                },
+            )
+            return await _package_speech_response(response, response_format)
+        response = await proxy_package_json(package_model, "audio_speech", payload)
+        return await _package_speech_response(response, response_format)
+
+    from omlx.engine.tts import TTSEngine
+    from omlx.exceptions import ModelNotFoundError
+
+    if not request.input or not request.input.strip():
+        raise HTTPException(status_code=400, detail="'input' field must not be empty")
     streaming_interval = DEFAULT_NATIVE_TTS_STREAMING_INTERVAL_SECONDS
     if request.stream:
         if response_format != "wav":
@@ -725,6 +905,14 @@ async def create_speech(request: AudioSpeechRequest):
         streaming_interval = _resolve_tts_streaming_interval(request)
 
     audio_bytes = _decode_ref_audio_base64(request)
+    if audio_bytes is not None:
+        audio_bytes = await _normalize_audio_bytes(
+            audio_bytes,
+            filename=f"reference.{request.ref_audio_format or 'wav'}",
+            media_type=None,
+            sample_rate=24_000,
+            max_duration_seconds=300,
+        )
 
     pool = _get_engine_pool()
     resolved_model = _resolve_model(request.model)
@@ -827,15 +1015,21 @@ async def process_audio(
         from ai2apps.model_providers import proxy_package_multipart
 
         content = await _read_upload(file)
+        wav_content = await _normalize_audio_bytes(
+            content,
+            filename=file.filename,
+            media_type=file.content_type,
+            sample_rate=48_000,
+        )
         return await proxy_package_multipart(
             package_model,
             "audio_process",
             data={},
             files={
                 "file": (
-                    file.filename or "audio.wav",
-                    content,
-                    file.content_type or "application/octet-stream",
+                    "audio.wav",
+                    wav_content,
+                    "audio/wav",
                 )
             },
         )

@@ -25,7 +25,7 @@ final class ModelSettingsScreenVM {
     }
 
     enum Field: Sendable {
-        case alias, modelType, contextLength, maxTokens
+        case alias, modelType, moeExecutionMode, contextLength, maxTokens
         case temperature, topP, topK, minP
         case repetitionPenalty, presencePenalty, ttl
         case enableThinking, thinkingBudgetEnabled, thinkingBudgetTokens
@@ -73,6 +73,17 @@ final class ModelSettingsScreenVM {
             ("audio_sts", String(localized: "settings.model_type.audio_sts",
                                  defaultValue: "Audio STS",
                                  comment: "Model type option label for speech-to-speech models")),
+        ]
+    }
+
+    static var moeExecutionModeOptions: [(String, String)] {
+        [
+            ("cached", String(localized: "settings.moe_execution.cached",
+                               defaultValue: "Cached-MoE — lower memory",
+                               comment: "MoE execution mode using a resident expert bank")),
+            ("full", String(localized: "settings.moe_execution.full",
+                             defaultValue: "Full resident — all experts",
+                             comment: "MoE execution mode loading every expert into memory")),
         ]
     }
 
@@ -216,6 +227,7 @@ final class ModelSettingsScreenVM {
     // Basic
     var alias: String = ""
     var modelTypeOverride: String = ""
+    var moeExecutionMode: String = "cached"
     var contextLength: String = ""
     var maxTokens: String = ""
     var temperature: String = ""
@@ -365,7 +377,7 @@ final class ModelSettingsScreenVM {
             return true
         case .vlmMtpDraftBlockSize:
             return true
-        case .alias, .modelType, .contextLength, .maxTokens:
+        case .alias, .modelType, .moeExecutionMode, .contextLength, .maxTokens:
             return false
         case .temperature, .ttl, .isPinned, .isFavorite, .trustRemoteCode:
             return false
@@ -431,6 +443,7 @@ final class ModelSettingsScreenVM {
                 let s = m.settings
                 self.alias = s?.modelAlias ?? ""
                 self.modelTypeOverride = s?.modelTypeOverride ?? ""
+                self.moeExecutionMode = s?.moeExecutionMode ?? "cached"
                 self.contextLength = s?.maxContextWindow.map(String.init) ?? ""
                 self.maxTokens = s?.maxTokens.map(String.init) ?? ""
                 self.temperature = s?.temperature.map { String($0) } ?? ""
@@ -524,6 +537,7 @@ final class ModelSettingsScreenVM {
         switch field {
         case .alias:                   patch.modelAlias = alias.isEmpty ? nil : alias
         case .modelType:               patch.modelTypeOverride = modelTypeOverride.isEmpty ? nil : modelTypeOverride
+        case .moeExecutionMode:        patch.moeExecutionMode = moeExecutionMode
         case .contextLength:           patch.maxContextWindow = Int(contextLength)
         case .maxTokens:               patch.maxTokens = Int(maxTokens)
         case .temperature:

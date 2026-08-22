@@ -15,6 +15,7 @@ Supports:
 """
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -600,6 +601,33 @@ def detect_model_type(model_path: Path) -> ModelType:
     except (json.JSONDecodeError, IOError):
         return "llm"
 
+    # Installable adapters get the first opportunity to classify a valid
+    # checkpoint.  Returning None preserves the complete legacy classifier
+    # below, which makes adapter rollout incremental and reversible.
+    from .model_adapters import adapter_context, get_model_adapter_registry
+
+    adapter_type = get_model_adapter_registry().classify(
+        adapter_context(model_path, config)
+    )
+    supported_adapter_types = {
+        "llm",
+        "vlm",
+        "embedding",
+        "reranker",
+        "audio_stt",
+        "audio_tts",
+        "audio_sts",
+    }
+    if adapter_type in supported_adapter_types:
+        return adapter_type
+    if adapter_type is not None:
+        logger.warning(
+            "Model adapter returned unsupported classification %r for %s; "
+            "using built-in discovery",
+            adapter_type,
+            model_path,
+        )
+
     # Check architectures field for reranker first (more specific)
     architectures = config.get("architectures", [])
     for arch in architectures:
@@ -1033,11 +1061,18 @@ def estimate_deepseek_scope_model_size(
         raw_checkpoint_bytes = sum(
             path.stat().st_size for path in model_path.glob("*.safetensors")
         )
-        if raw_checkpoint_bytes <= full_expert_bytes:
+        prepared_layout = raw_checkpoint_bytes <= full_expert_bytes and bool(
+            store_path
+        )
+        if raw_checkpoint_bytes <= full_expert_bytes and not prepared_layout:
             return full_estimate
+        backbone_bytes = (
+            raw_checkpoint_bytes
+            if prepared_layout
+            else raw_checkpoint_bytes - full_expert_bytes
+        )
         adjusted = int(
-            (raw_checkpoint_bytes - full_expert_bytes + resident_expert_bytes)
-            * 1.05
+            (backbone_bytes + resident_expert_bytes) * 1.05
         )
         logger.info(
             "DeepSeek scope-aware model estimate: %.2fGB -> %.2fGB "
@@ -1079,6 +1114,22 @@ def deepseek_cache_moe_memory_profile(
     try:
         full = estimate_model_size(path)
         scope = (cache_moe_config or {}).get("scope", {})
+        layout = (cache_moe_config or {}).get("checkpoint_layout") or {}
+        if layout.get("format") == "ai2apps-backbone-expert-store":
+            store_manifest = json.loads(
+                (
+                    Path(cache_moe_config["expert_store"]).expanduser()
+                    / "manifest.json"
+                ).read_text()
+            )
+            expert_bytes = sum(
+                int(info["record_bytes"]) * int(info["num_experts"])
+                for info in store_manifest["layers"].values()
+            )
+            backbone_bytes = sum(
+                item.stat().st_size for item in path.glob("*.safetensors")
+            )
+            full = int((backbone_bytes + expert_bytes) * 1.05)
         estimates = [
             estimate_deepseek_scope_model_size(
                 path,
@@ -1121,6 +1172,9 @@ def deepseek_cache_moe_memory_profile(
     return {
         "tiers": tiers,
         "recommended": recommended,
+        "full_estimated_bytes": full,
+        "full_estimated_gb": round(full / (1024**3)),
+        "full_fits": full <= usable,
         "physical_memory_gb": round(physical / (1024**3)),
         "reserved_memory_gb": round(reserve / (1024**3)),
     }
@@ -1232,6 +1286,11 @@ def qwen36_cache_moe_memory_profile(
     return {
         "tiers": tiers,
         "recommended": recommended,
+        "full_estimated_bytes": int((backbone_bytes + full_expert_bytes) * 1.05),
+        "full_estimated_gb": round(
+            (backbone_bytes + full_expert_bytes) * 1.05 / (1024**3)
+        ),
+        "full_fits": int((backbone_bytes + full_expert_bytes) * 1.05) <= usable,
         "physical_memory_gb": round(physical / (1024**3)),
         "reserved_memory_gb": round(reserve / (1024**3)),
     }
@@ -1560,6 +1619,74 @@ def _is_hf_cache_mlx_compatible(model_dir: Path, source_repo_id: str) -> bool:
     return False
 
 
+def _repair_package_owned_scope_profile(
+    model_dir: Path,
+    manifest_path: Path,
+    candidate: dict,
+) -> None:
+    """Migrate an old manifest away from an adapter package asset path."""
+    scope = candidate.get("scope")
+    if not isinstance(scope, dict):
+        return
+    current = Path(str(scope.get("profile", ""))).expanduser()
+    if current.is_file() and candidate.get("execution_modes"):
+        return
+
+    source = candidate.get("source") or {}
+    model_id = candidate.get("model_id")
+    from omlx.model_adapters import get_model_adapter_registry
+
+    recipe = next(
+        (
+            item
+            for item in get_model_adapter_registry().installation_recipes()
+            if item.get("id") == model_id
+            and any(
+                option.get("repo_id") == source.get("repo_id")
+                and option.get("revision") == source.get("revision")
+                for option in item.get("sources", ())
+            )
+        ),
+        None,
+    )
+    if recipe is None:
+        return
+    packaged_profile = Path(recipe["engine"]["scope_asset"]).expanduser()
+    packaged_manifest = Path(recipe["engine"]["scope_pack"]).expanduser()
+    pack = json.loads(packaged_manifest.read_text())
+    payload = packaged_profile.read_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != str(pack.get("profile", {}).get("sha256", "")).lower():
+        raise ValueError("replacement Scope Pack profile checksum mismatch")
+
+    destination = model_dir / ".ai2apps" / "scope-assets" / f"{digest}.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_file():
+        if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
+            raise ValueError("installed Scope Pack profile checksum mismatch")
+    else:
+        partial_asset = destination.with_suffix(".json.partial")
+        partial_asset.write_bytes(payload)
+        os.replace(partial_asset, destination)
+
+    scope["profile"] = str(destination.resolve())
+    scope["pack"] = {
+        "id": pack["id"],
+        "version": pack["pack_version"],
+        "sha256": digest,
+    }
+    candidate["execution_modes"] = list(
+        recipe.get("execution_modes", ("cached",))
+    )
+    engine = candidate.get("engine")
+    if isinstance(engine, dict):
+        for package_only_key in ("scope_asset", "scope_pack", "scope_env"):
+            engine.pop(package_only_key, None)
+    partial_manifest = manifest_path.with_suffix(".json.partial")
+    partial_manifest.write_text(json.dumps(candidate, indent=2) + "\n")
+    os.replace(partial_manifest, manifest_path)
+
+
 def _register_model(
     models: dict[str, DiscoveredModel],
     model_dir: Path,
@@ -1628,6 +1755,9 @@ def _register_model(
                     "dynamoe-cache-moe-model",
                 }:
                     raise ValueError("unsupported format")
+                _repair_package_owned_scope_profile(
+                    model_dir, install_manifest, candidate
+                )
                 if not Path(scope["profile"]).expanduser().is_file():
                     raise FileNotFoundError("Scope Pack profile is missing")
                 if not Path(candidate["expert_store"]).expanduser().is_dir():

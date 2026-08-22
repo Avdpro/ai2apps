@@ -1,6 +1,7 @@
 # Trusted AI2Apps Remote Access v1 template. Values come only from the main process.
 serverAddr = "{{ .Envs.AI2APPS_FRP_SERVER_ADDR }}"
 serverPort = {{ .Envs.AI2APPS_FRP_SERVER_PORT }}
+user = "{{ .Envs.AI2APPS_REMOTE_DEVICE_ID }}"
 loginFailExit = false
 
 transport.protocol = "tcp"
@@ -13,11 +14,15 @@ transport.tls.disableCustomTLSFirstByte = true
 
 auth.method = "token"
 auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
-auth.token = "{{ .Envs.AI2APPS_FRP_BOOTSTRAP_TOKEN }}"
+# The Cloud FRP Login/NewProxy/Ping/NewWorkConn plugin is the authentication
+# boundary. It validates the device-scoped, rotatable Connector Secret below.
+# No deployment-global token is embedded in, downloaded by, or configured on
+# an AI2Apps client.
 
 metadatas.deviceId = "{{ .Envs.AI2APPS_REMOTE_DEVICE_ID }}"
 metadatas.credentialVersion = "{{ .Envs.AI2APPS_REMOTE_CREDENTIAL_VERSION }}"
 metadatas.connectorSecret = "{{ .Envs.AI2APPS_REMOTE_CONNECTOR_SECRET }}"
+metadatas.authProtocol = "device-credential-v1"
 
 [[proxies]]
 name = "device-{{ .Envs.AI2APPS_REMOTE_DEVICE_ID }}"

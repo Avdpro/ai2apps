@@ -1,6 +1,6 @@
             <div x-show="mainTab === 'models'" x-cloak>
                 <div data-models-root>
-                    <!-- Sub-tab navigation (Manager / Downloader) -->
+                    <!-- Model routing, management, and Core maintenance tools -->
                     <div class="flex flex-wrap items-center gap-2 mb-10 animate-fade-in-up">
                         <button
                             @click="setModelsTab('defaults')"
@@ -8,7 +8,7 @@
                                 ? 'bg-neutral-900 text-white'
                                 : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
                             class="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200">
-                            Defaults
+                            {{ t('models.tab.default_usage') }}
                         </button>
                         <button
                             @click="setModelsTab('manager')"
@@ -18,46 +18,22 @@
                             class="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200">
                             {{ t('models.tab.manager') }}
                         </button>
-                        <button
-                            @click="setModelsTab('downloader')"
-                            :class="modelsTab === 'downloader'
-                                ? 'bg-neutral-900 text-white'
-                                : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
-                            class="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200">
-                            {{ t('models.tab.downloader') }}
-                        </button>
-                        <button
-                            @click="setModelsTab('quantizer')"
-                            :class="modelsTab === 'quantizer'
-                                ? 'bg-neutral-900 text-white'
-                                : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
-                            class="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200">
-                            {{ t('models.tab.quantizer') }}
-                        </button>
-                        <button
-                            @click="setModelsTab('uploader')"
-                            :class="modelsTab === 'uploader'
-                                ? 'bg-neutral-900 text-white'
-                                : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
-                            class="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200">
-                            {{ t('models.tab.uploader') }}
-                        </button>
                     </div>
 
                     <!-- ==================== DEFAULT ROUTING TAB ==================== -->
                     <div x-show="modelsTab === 'defaults'" x-cloak>
                         <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
                             <div class="max-w-3xl">
-                                <h2 class="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">System AI routing</h2>
-                                <h3 class="text-2xl font-bold tracking-tight text-neutral-900">Default models</h3>
-                                <p class="text-sm text-neutral-500 mt-2">Choose the models AI2Apps should use when a caller asks for a task class or dedicated capability without naming a model. Empty slots inherit the API default.</p>
+                                <h2 class="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">{{ t('models.defaults.section_label') }}</h2>
+                                <h3 class="text-2xl font-bold tracking-tight text-neutral-900">{{ t('models.defaults.heading') }}</h3>
+                                <p class="text-sm text-neutral-500 mt-2">{{ t('models.defaults.description') }}</p>
                             </div>
                             <div class="flex items-center gap-3">
                                 <span x-show="defaultModelsStatus" class="text-xs font-semibold text-green-700" x-text="defaultModelsStatus"></span>
                                 <button @click="saveDefaultModels()" :disabled="defaultModelsSaving || modelManagerLoading"
                                         class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-40">
                                     <i data-lucide="save" class="w-4 h-4"></i>
-                                    <span x-text="defaultModelsSaving ? 'Saving…' : 'Save defaults'"></span>
+                                    <span x-text="defaultModelsSaving ? window.t('models.defaults.saving') : window.t('models.defaults.save')"></span>
                                 </button>
                             </div>
                         </div>
@@ -68,23 +44,23 @@
 
                         <section class="mb-8">
                             <div class="mb-3">
-                                <h4 class="text-sm font-bold text-neutral-900">Work complexity</h4>
-                                <p class="mt-1 text-xs text-neutral-500">A shared contract for Agents, Apps, Services, and system automation.</p>
+                                <h4 class="text-sm font-bold text-neutral-900">{{ t('models.defaults.complexity.heading') }}</h4>
+                                <p class="mt-1 text-xs text-neutral-500">{{ t('models.defaults.complexity.description') }}</p>
                             </div>
                             <div class="grid gap-4 md:grid-cols-3">
                                 <template x-for="route in [
-                                    {id:'work_simple', title:'Simple tasks', description:'Classification, extraction, short rewrites, and lightweight tool decisions.'},
-                                    {id:'work_standard', title:'Standard tasks', description:'General chat, coding, analysis, and everyday Agent work.'},
-                                    {id:'work_complex', title:'Complex tasks', description:'Long-horizon reasoning, difficult coding, review, and high-risk planning.'}
+                                    {id:'work_simple', title:window.t('models.defaults.work_simple.title'), description:window.t('models.defaults.work_simple.description')},
+                                    {id:'work_standard', title:window.t('models.defaults.work_standard.title'), description:window.t('models.defaults.work_standard.description')},
+                                    {id:'work_complex', title:window.t('models.defaults.work_complex.title'), description:window.t('models.defaults.work_complex.description')}
                                 ]" :key="route.id">
                                     <label class="block rounded-2xl border border-neutral-200 bg-white p-5">
                                         <span class="flex items-center gap-2 text-sm font-semibold text-neutral-900"><i data-lucide="brain-circuit" class="w-4 h-4 text-neutral-400"></i><span x-text="route.title"></span></span>
                                         <span class="mt-2 block min-h-10 text-xs leading-5 text-neutral-500" x-text="route.description"></span>
                                         <select x-model="defaultModels[route.id]" @change="defaultModelsStatus=''; defaultModelsError=''"
                                                 class="mt-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm">
-                                            <option value="">Use API default</option>
+                                            <option value="">{{ t('models.defaults.use_api_default') }}</option>
                                             <template x-if="defaultModels[route.id] && !defaultModelOptions(route.id).some(model => model.id === defaultModels[route.id])">
-                                                <option :value="defaultModels[route.id]" disabled x-text="`Unavailable · ${defaultModels[route.id]}`"></option>
+                                                <option :value="defaultModels[route.id]" disabled x-text="window.t('models.defaults.unavailable').replace('{model}', defaultModels[route.id])"></option>
                                             </template>
                                             <template x-for="model in defaultModelOptions(route.id)" :key="`${route.id}-${model.id}`">
                                                 <option :value="model.id" x-text="defaultModelLabel(model)"></option>
@@ -97,32 +73,32 @@
 
                         <section>
                             <div class="mb-3">
-                                <h4 class="text-sm font-bold text-neutral-900">Dedicated capabilities</h4>
-                                <p class="mt-1 text-xs text-neutral-500">Only compatible models from the current local, Fusion, and enabled cloud catalog are offered.</p>
+                                <h4 class="text-sm font-bold text-neutral-900">{{ t('models.defaults.capabilities.heading') }}</h4>
+                                <p class="mt-1 text-xs text-neutral-500">{{ t('models.defaults.capabilities.description') }}</p>
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
                                 <template x-for="route in [
-                                    {id:'speech_recognition', icon:'audio-lines', title:'Speech recognition', description:'Speech and audio transcription (STT).'},
-                                    {id:'speech_generation', icon:'mic-vocal', title:'Speech generation', description:'Text-to-speech, voices, and narration (TTS).'},
-                                    {id:'audio_processing', icon:'audio-waveform', title:'Audio processing', description:'Enhancement, separation, and speech-to-speech models.'},
-                                    {id:'image_recognition', icon:'scan-eye', title:'Image recognition', description:'Image understanding, OCR, and visual question answering.'},
-                                    {id:'image_generation', icon:'image-plus', title:'Image generation', description:'Image synthesis and editing models.'},
-                                    {id:'video_generation', icon:'video', title:'Video generation', description:'Video synthesis and editing models.'}
+                                    {id:'speech_recognition', icon:'audio-lines', title:window.t('models.defaults.speech_recognition.title'), description:window.t('models.defaults.speech_recognition.description')},
+                                    {id:'speech_generation', icon:'mic-vocal', title:window.t('models.defaults.speech_generation.title'), description:window.t('models.defaults.speech_generation.description')},
+                                    {id:'audio_processing', icon:'audio-waveform', title:window.t('models.defaults.audio_processing.title'), description:window.t('models.defaults.audio_processing.description')},
+                                    {id:'image_recognition', icon:'scan-eye', title:window.t('models.defaults.image_recognition.title'), description:window.t('models.defaults.image_recognition.description')},
+                                    {id:'image_generation', icon:'image-plus', title:window.t('models.defaults.image_generation.title'), description:window.t('models.defaults.image_generation.description')},
+                                    {id:'video_generation', icon:'video', title:window.t('models.defaults.video_generation.title'), description:window.t('models.defaults.video_generation.description')}
                                 ]" :key="route.id">
                                     <label class="block rounded-2xl border border-neutral-200 bg-white p-5">
                                         <span class="flex items-center gap-2 text-sm font-semibold text-neutral-900"><i :data-lucide="route.icon" class="w-4 h-4 text-neutral-400"></i><span x-text="route.title"></span></span>
                                         <span class="mt-2 block text-xs text-neutral-500" x-text="route.description"></span>
                                         <select x-model="defaultModels[route.id]" @change="defaultModelsStatus=''; defaultModelsError=''"
                                                 class="mt-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm">
-                                            <option value="">Not assigned</option>
+                                            <option value="">{{ t('models.defaults.not_assigned') }}</option>
                                             <template x-if="defaultModels[route.id] && !defaultModelOptions(route.id).some(model => model.id === defaultModels[route.id])">
-                                                <option :value="defaultModels[route.id]" disabled x-text="`Unavailable · ${defaultModels[route.id]}`"></option>
+                                                <option :value="defaultModels[route.id]" disabled x-text="window.t('models.defaults.unavailable').replace('{model}', defaultModels[route.id])"></option>
                                             </template>
                                             <template x-for="model in defaultModelOptions(route.id)" :key="`${route.id}-${model.id}`">
                                                 <option :value="model.id" x-text="defaultModelLabel(model)"></option>
                                             </template>
                                         </select>
-                                        <span x-show="!defaultModelOptions(route.id).length" class="mt-2 block text-[11px] text-amber-700">No compatible model is currently available.</span>
+                                        <span x-show="!defaultModelOptions(route.id).length" class="mt-2 block text-[11px] text-amber-700">{{ t('models.defaults.no_compatible') }}</span>
                                     </label>
                                 </template>
                             </div>
@@ -149,19 +125,19 @@
                         </div>
 
                         <div class="flex flex-wrap gap-2 mb-5">
-                            <template x-for="section in [{id:'cached_moe',label:'Cached-MoE'},{id:'omlx',label:'oMLX'},{id:'packages',label:'Packages'},{id:'fusion',label:'Fusion'},{id:'cloud',label:'Cloud'}]" :key="section.id">
+                            <template x-for="section in modelManagerSections()" :key="section.id">
                                 <button @click="managerSection = section.id"
                                         :class="managerSection === section.id ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'"
                                         class="px-4 py-2 rounded-xl text-sm font-semibold transition-all">
                                     <span x-text="section.label"></span>
-                                    <span class="ml-1 opacity-60" x-text="section.id === 'cloud' ? cloudEnabledModelCount : (modelManager[section.id]?.length || 0)"></span>
+                                    <span class="ml-1 opacity-60" x-text="modelManagerSectionCount(section.id)"></span>
                                 </button>
                             </template>
                         </div>
                         <div x-show="modelManagerError" class="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700" x-text="modelManagerError"></div>
-                        <div x-show="modelManagerLoading" class="py-12 text-center text-sm text-neutral-500">Loading models…</div>
+                        <div x-show="modelManagerLoading" class="py-12 text-center text-sm text-neutral-500">{{ t('models.manager.loading') }}</div>
 
-                        <div x-show="!modelManagerLoading && managerSection === 'cached_moe'" class="grid gap-4 lg:grid-cols-2">
+                        <div x-show="modelDeveloperEntriesVisible && !modelManagerLoading && managerSection === 'cached_moe'" class="grid gap-4 lg:grid-cols-2">
                             <template x-for="model in modelManager.cached_moe" :key="model.id">
                                 <div class="bg-white rounded-2xl border border-neutral-200 p-5">
                                     <div class="flex items-start justify-between gap-3">
@@ -189,7 +165,7 @@
                             </template>
                         </div>
 
-                        <div x-show="!modelManagerLoading && managerSection === 'omlx'" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+                        <div x-show="modelDeveloperEntriesVisible && !modelManagerLoading && managerSection === 'omlx'" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
                             <div class="px-5 py-4 bg-neutral-100 border-b border-neutral-200 text-xs font-bold uppercase tracking-wider text-neutral-600">Runtime-compatible local models</div>
                             <div class="divide-y divide-neutral-100">
                                 <template x-for="model in modelManager.omlx" :key="model.id">
@@ -204,9 +180,30 @@
                             </div>
                         </div>
 
-                        <div x-show="!modelManagerLoading && managerSection === 'packages'" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-                            <div class="px-5 py-4 bg-neutral-100 border-b border-neutral-200 text-xs font-bold uppercase tracking-wider text-neutral-600">Installed Model Providers</div>
-                            <div class="divide-y divide-neutral-100">
+                        <div x-show="!modelManagerLoading && managerSection === 'packages'" class="space-y-4">
+                            <div class="grid gap-4 lg:grid-cols-2">
+                                <template x-for="model in modelManager.cached_moe" :key="`package-${model.id}`">
+                                    <div class="bg-white rounded-2xl border border-neutral-200 p-5">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <h4 class="font-semibold text-neutral-900 truncate" x-text="model.runtime_model?.settings?.model_alias || model.name"></h4>
+                                                <p class="mt-1 text-xs leading-5 text-neutral-500" x-text="model.description"></p>
+                                            </div>
+                                            <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
+                                                <span class="px-2 py-1 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 whitespace-nowrap">Model Package</span>
+                                                <span :class="model.installed ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'" class="px-2 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap" x-text="model.installed ? 'Ready' : 'Weights required'"></span>
+                                            </div>
+                                        </div>
+                                        <div class="mt-4 flex items-center justify-between gap-3">
+                                            <span class="text-xs text-neutral-500" x-text="model.recipe === 'native' ? `${model.sources?.[0]?.repo_id || ''} · pinned revision` : `${model.engine.name} · v${model.engine.version}`"></span>
+                                            <button @click="openModelPackageConfig(model)" class="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-xs font-medium">Configure</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                            <div x-show="modelManager.packages.length" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+                                <div class="px-5 py-4 bg-neutral-100 border-b border-neutral-200 text-xs font-bold uppercase tracking-wider text-neutral-600">Installed Model Providers</div>
+                                <div class="divide-y divide-neutral-100">
                                 <template x-for="model in modelManager.packages" :key="model.id">
                                     <div class="flex items-center gap-4 px-5 py-3">
                                         <div class="min-w-0 flex-1"><div class="text-sm font-medium truncate" x-text="model.display_name || model.id"></div><div class="text-xs text-neutral-400 truncate" x-text="model.id"></div></div>
@@ -214,9 +211,10 @@
                                         <span class="hidden sm:block text-xs text-neutral-500" x-text="model.package_service"></span>
                                     </div>
                                 </template>
-                                <div x-show="!modelManager.packages.length" class="px-6 py-12 text-center text-sm text-neutral-500">No installed Model Provider Packages.</div>
+                                </div>
                             </div>
-                        </div>
+                            <div x-show="!modelPackageCount" class="bg-white rounded-2xl border border-neutral-200 px-6 py-12 text-center text-sm text-neutral-500">No installed Model Packages.</div>
+                            </div>
 
                         <div x-show="!modelManagerLoading && managerSection === 'fusion'">
                             <div class="flex justify-end mb-3"><button @click="openFusionEditor()" class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>Add Fusion model</button></div>
@@ -230,8 +228,8 @@
 
                         <div x-show="!modelManagerLoading && managerSection === 'cloud'">
                             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                                <div><h4 class="text-sm font-semibold text-neutral-800">Cloud Providers</h4><p class="text-xs text-neutral-500" x-text="`${modelManager.cloud.length} providers · ${cloudEnabledModelCount} enabled / ${cloudModelCount} available`"></p></div>
-                                <button @click="openCloudEditor()" class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>Add endpoint</button>
+                                <div><h4 class="text-sm font-semibold text-neutral-800">{{ t('models.cloud.heading') }}</h4><p class="text-xs text-neutral-500" x-text="window.t('models.cloud.summary').replace('{providers}', modelManager.cloud.length).replace('{enabled}', cloudEnabledModelCount).replace('{available}', cloudModelCount)"></p></div>
+                                <button @click="openCloudEditor()" class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>{{ t('models.cloud.add_endpoint') }}</button>
                             </div>
                             <div class="grid gap-4">
                                 <template x-for="provider in modelManager.cloud" :key="provider.id">
@@ -239,27 +237,28 @@
                                         <div class="p-5 flex items-start gap-3">
                                             <i data-lucide="cloud" class="w-5 h-5 text-neutral-400 mt-0.5"></i>
                                             <div class="min-w-0 flex-1">
-                                                <div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold" x-text="provider.name"></h4><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-100 text-neutral-600" x-text="provider.managed ? 'AI2Apps Account' : 'Provider'"></span><span :class="provider.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'" class="px-2 py-0.5 rounded-full text-[10px] font-semibold" x-text="provider.managed ? (provider.connection_state === 'signed_in' ? 'Account connected' : (provider.connection_state === 'unavailable' ? 'Unavailable' : 'Sign in required')) : (provider.configured ? 'Configured' : 'Key required')"></span></div>
+                                                <div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold" x-text="provider.name"></h4><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-100 text-neutral-600" x-text="provider.managed ? window.t('models.cloud.kind.account') : window.t('models.cloud.kind.provider')"></span><span :class="provider.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'" class="px-2 py-0.5 rounded-full text-[10px] font-semibold" x-text="cloudProviderStatusLabel(provider)"></span></div>
                                                 <div class="mt-1 text-xs text-neutral-500 truncate" x-text="provider.base_url"></div>
-                                                <div class="mt-1 text-[10px] uppercase text-neutral-400"><span x-text="provider.protocol"></span><span x-show="provider.configured"> · <span x-text="provider.managed ? `${provider.enabled_model_count || 0} account models available · local keys preferred` : `${provider.enabled_model_count || 0} enabled / ${provider.model_count} available`"></span></span><span x-show="provider.managed && !provider.configured"> · Local features remain available</span></div>
+                                                <div class="mt-1 text-[10px] uppercase text-neutral-400"><span x-text="provider.protocol"></span><span x-show="provider.configured"> · <span x-text="cloudProviderAvailabilityLabel(provider)"></span></span><span x-show="provider.managed && !provider.configured"> · {{ t('models.cloud.local_features') }}</span></div>
+                                                <div x-show="!provider.managed" class="mt-3 flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] leading-5 text-emerald-800"><i data-lucide="shield-check" class="mt-0.5 h-3.5 w-3.5 shrink-0"></i><span>{{ t('models.cloud.key_security') }}</span></div>
                                             </div>
-                                            <button x-show="provider.configured" @click="refreshCloudProvider(provider)" :disabled="cloudRefreshing[provider.id]" class="p-2 text-neutral-400 hover:text-neutral-900 disabled:opacity-40" :title="`Refresh ${provider.name} models`"><i data-lucide="refresh-cw" class="w-4 h-4" :class="cloudRefreshing[provider.id] && 'animate-spin'"></i></button>
-                                            <button x-show="provider.managed && !provider.configured" @click="window.ai2appsShell?.openEntry({appId:'ai2apps.account'})" class="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-xs font-semibold">Open Account</button>
-                                            <button x-show="!provider.managed" @click="openCloudEditor(provider)" class="p-2 text-neutral-400 hover:text-neutral-900" :title="`Configure ${provider.name}`"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
-                                            <button x-show="!provider.managed" @click="deleteCloudProvider(provider)" class="p-2 text-neutral-400 hover:text-red-600" :title="provider.builtin ? `Reset ${provider.name}` : `Delete ${provider.name}`"><i :data-lucide="provider.builtin ? 'rotate-ccw' : 'trash-2'" class="w-4 h-4"></i></button>
+                                            <button x-show="provider.configured" @click="refreshCloudProvider(provider)" :disabled="cloudRefreshing[provider.id] === true" class="p-2 text-neutral-400 hover:text-neutral-900 disabled:opacity-40" :title="window.t('models.cloud.action.refresh').replace('{provider}', provider.name)"><i data-lucide="refresh-cw" class="w-4 h-4" :class="cloudRefreshing[provider.id] && 'animate-spin'"></i></button>
+                                            <button x-show="provider.managed && !provider.configured" @click="window.ai2appsShell?.openEntry({appId:'ai2apps.account'})" class="px-3 py-1.5 rounded-lg bg-neutral-900 text-white text-xs font-semibold">{{ t('models.cloud.action.open_account') }}</button>
+                                            <button x-show="!provider.managed" @click="openCloudEditor(provider)" class="p-2 text-neutral-400 hover:text-neutral-900" :title="window.t('models.cloud.action.configure').replace('{provider}', provider.name)"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
+                                            <button x-show="!provider.managed" @click="deleteCloudProvider(provider)" class="p-2 text-neutral-400 hover:text-red-600" :title="window.t(provider.builtin ? 'models.cloud.action.reset' : 'models.cloud.action.delete').replace('{provider}', provider.name)"><i :data-lucide="provider.builtin ? 'rotate-ccw' : 'trash-2'" class="w-4 h-4"></i></button>
                                         </div>
                                         <div x-show="provider.models_error" class="mx-5 mb-4 px-3 py-2 rounded-lg bg-red-50 text-xs text-red-700" x-text="provider.models_error"></div>
                                         <div x-show="provider.configured && provider.models.length" class="border-t border-neutral-100 bg-neutral-50/60">
-                                            <button @click="cloudExpanded[provider.id] = !cloudExpanded[provider.id]" class="w-full px-5 py-3 flex items-center justify-between text-xs font-semibold text-neutral-600 hover:bg-neutral-100"><span x-text="`${provider.enabled_model_count || 0} enabled · ${provider.model_count} available models`"></span><i :data-lucide="cloudExpanded[provider.id] ? 'chevron-up' : 'chevron-down'" class="w-4 h-4"></i></button>
+                                            <button @click="cloudExpanded[provider.id] = !cloudExpanded[provider.id]" class="w-full px-5 py-3 flex items-center justify-between text-xs font-semibold text-neutral-600 hover:bg-neutral-100"><span x-text="window.t('models.cloud.models_summary').replace('{enabled}', provider.enabled_model_count || 0).replace('{available}', provider.model_count)"></span><i :data-lucide="cloudExpanded[provider.id] ? 'chevron-up' : 'chevron-down'" class="w-4 h-4"></i></button>
                                             <div x-show="cloudExpanded[provider.id]" x-cloak class="px-5 pb-4">
-                                                <div class="relative mb-3"><i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i><input x-model="cloudModelSearch[provider.id]" placeholder="Search provider models…" class="w-full pl-9 pr-3 py-2 border border-neutral-200 rounded-lg bg-white text-sm"></div>
+                                                <div class="relative mb-3"><i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i><input x-model="cloudModelSearch[provider.id]" placeholder="{{ t('models.cloud.search_placeholder') }}" class="w-full pl-9 pr-3 py-2 border border-neutral-200 rounded-lg bg-white text-sm"></div>
                                                 <div class="max-h-72 overflow-y-auto rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
-                                                    <template x-for="cloudModel in filteredCloudModels(provider)" :key="cloudModel.id"><div class="px-4 py-2.5 flex items-center gap-3"><input type="checkbox" :checked="cloudModel.enabled" :disabled="provider.managed" @change="setCloudModelEnabled(provider, cloudModel, $event.target.checked)" :aria-label="`Enable ${cloudModel.name}`" class="w-4 h-4 rounded border-neutral-300 accent-neutral-900 shrink-0 disabled:opacity-50"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-neutral-400"></i><div class="min-w-0 flex-1"><div class="text-sm font-medium truncate" x-text="cloudModel.name"></div><div x-show="cloudModel.name !== cloudModel.id" class="text-[11px] text-neutral-400 truncate" x-text="cloudModel.id"></div><div x-show="provider.managed && !cloudModel.enabled" class="mt-1 text-[11px] font-medium text-amber-700" x-text="cloudModel.disabled_reason || `Using local ${(cloudModel.name || cloudModel.owned_by || 'provider').split(' ')[0]} API key (local provider takes priority).`"></div></div><span x-show="cloudModel.created" class="hidden sm:block text-[10px] text-neutral-400" x-text="new Date((typeof cloudModel.created === 'number' ? cloudModel.created * 1000 : cloudModel.created)).toLocaleDateString()"></span><span x-show="cloudModel.owned_by" class="text-[10px] text-neutral-400" x-text="cloudModel.owned_by"></span></div></template>
-                                                    <div x-show="!filteredCloudModels(provider).length" class="px-4 py-8 text-center text-xs text-neutral-500">No matching models.</div>
+                                                    <template x-for="cloudModel in filteredCloudModels(provider)" :key="cloudModel.id"><div class="px-4 py-2.5 flex items-center gap-3"><input type="checkbox" :checked="cloudModel.enabled" :disabled="provider.managed === true" @change="setCloudModelEnabled(provider, cloudModel, $event.target.checked)" :aria-label="`Enable ${cloudModel.name}`" class="w-4 h-4 rounded border-neutral-300 accent-neutral-900 shrink-0 disabled:opacity-50"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-neutral-400"></i><div class="min-w-0 flex-1"><div class="text-sm font-medium truncate" x-text="cloudModel.name"></div><div x-show="cloudModel.name !== cloudModel.id" class="text-[11px] text-neutral-400 truncate" x-text="cloudModel.id"></div><div x-show="provider.managed && !cloudModel.enabled" class="mt-1 text-[11px] font-medium text-amber-700" x-text="cloudModel.disabled_reason || `Using local ${(cloudModel.name || cloudModel.owned_by || 'provider').split(' ')[0]} API key (local provider takes priority).`"></div></div><span x-show="cloudModel.created" class="hidden sm:block text-[10px] text-neutral-400" x-text="new Date((typeof cloudModel.created === 'number' ? cloudModel.created * 1000 : cloudModel.created)).toLocaleDateString()"></span><span x-show="cloudModel.owned_by" class="text-[10px] text-neutral-400" x-text="cloudModel.owned_by"></span></div></template>
+                                                    <div x-show="!filteredCloudModels(provider).length" class="px-4 py-8 text-center text-xs text-neutral-500">{{ t('models.cloud.no_match') }}</div>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div x-show="provider.configured && !provider.models.length && !provider.models_error" class="border-t border-neutral-100 px-5 py-4 text-xs text-neutral-500">No models synchronized yet. Use Refresh models.</div>
+                                        <div x-show="provider.configured && !provider.models.length && !provider.models_error" class="border-t border-neutral-100 px-5 py-4 text-xs text-neutral-500">{{ t('models.cloud.no_models_synced') }}</div>
                                     </div>
                                 </template>
                             </div>
@@ -319,11 +318,14 @@
                                 <div class="flex items-center justify-between gap-3 px-6 py-4 border-t border-neutral-200 bg-white shrink-0"><p x-show="!fusionLocalModelOptions.length" class="text-xs text-amber-600">Install a local model before creating a Fusion model.</p><span class="flex-1"></span><button @click="saveFusionModel()" :disabled="!fusionEditor.id || !fusionEditor.generator || !fusionEditor.reviewer || (fusionEditor.resolverEnabled && (!fusionEditor.resolverProvider || !fusionEditor.resolver || fusionEditor.reviewerBackend !== 'local'))" class="px-5 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Save</button></div>
                             </div>
                         </div>
-                        <div x-show="showCloudEditor" x-cloak class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" @click.self="showCloudEditor=false"><div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4"><div class="flex justify-between"><h3 class="text-lg font-bold">Cloud provider</h3><button @click="showCloudEditor=false"><i data-lucide="x" class="w-5 h-5"></i></button></div><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">ID<input x-model="cloudEditor.id" :disabled="cloudEditor.builtin" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><label class="text-xs font-medium">NAME<input x-model="cloudEditor.name" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label></div><label class="block text-xs font-medium">BASE URL<input x-model="cloudEditor.base_url" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><label class="block text-xs font-medium">PROTOCOL<select x-model="cloudEditor.protocol" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option></select></label><label class="block text-xs font-medium">MANUAL MODEL IDS <span class="font-normal text-neutral-400">optional fallback, comma separated</span><input x-model="cloudEditor.models" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><label class="block text-xs font-medium">API KEY <span class="font-normal text-neutral-400">saving a new key also synchronizes models</span><input type="password" x-model="cloudEditor.api_key" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><p class="text-xs text-neutral-500">The key remains local. AI2Apps requests the Provider's Models API and stores only the returned model metadata.</p><div class="flex justify-end"><button @click="saveCloudProvider()" class="px-5 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold">Save & Sync</button></div></div></div>
+                        <div x-show="showCloudEditor" x-cloak class="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" @click.self="showCloudEditor=false"><div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4"><div class="flex justify-between"><h3 class="text-lg font-bold">{{ t('models.cloud.editor.heading') }}</h3><button @click="showCloudEditor=false"><i data-lucide="x" class="w-5 h-5"></i></button></div><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">{{ t('models.cloud.editor.id') }}<input x-model="cloudEditor.id" :disabled="cloudEditor.builtin" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><label class="text-xs font-medium">{{ t('models.cloud.editor.name') }}<input x-model="cloudEditor.name" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label></div><label class="block text-xs font-medium">{{ t('models.cloud.editor.base_url') }}<input x-model="cloudEditor.base_url" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><label class="block text-xs font-medium">{{ t('models.cloud.editor.protocol') }}<select x-model="cloudEditor.protocol" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option></select></label><label class="block text-xs font-medium">{{ t('models.cloud.editor.manual_models') }} <span class="font-normal text-neutral-400">{{ t('models.cloud.editor.manual_hint') }}</span><input x-model="cloudEditor.models" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><label class="block text-xs font-medium">API Key <span class="font-normal text-neutral-400">{{ t('models.cloud.editor.key_hint') }}</span><input type="password" x-model="cloudEditor.api_key" class="mt-1 w-full border rounded-xl px-3 py-2 text-sm"></label><div class="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800"><i data-lucide="shield-check" class="mt-0.5 h-4 w-4 shrink-0"></i><span>{{ t('models.cloud.key_security') }}</span></div><p class="text-xs text-neutral-500">{{ t('models.cloud.editor.metadata_note') }}</p><div class="flex justify-end"><button @click="saveCloudProvider()" class="px-5 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold">{{ t('models.cloud.editor.save_sync') }}</button></div></div></div>
                     </div>
 
                     <!-- ==================== DOWNLOADER TAB ==================== -->
-                    <div x-show="modelsTab === 'downloader'" x-cloak>
+                    {# Legacy generic downloader markup retained temporarily for
+                       downstream template compatibility, but no longer rendered. #}
+                    {% if false %}
+                    <div>
                         <!-- Header -->
                         <div class="mb-8">
                             <h2 class="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">{{ t('models.downloader.section_label') }}</h2>
@@ -1030,7 +1032,7 @@
                                     <div x-show="dynaCatalogLoading" class="text-sm text-neutral-500">Loading catalog…</div>
                                     <div class="grid gap-3 md:grid-cols-2">
                                         <template x-for="model in dynaCatalog" :key="model.id">
-                                            <button @click="dynaSelectedModelId = model.id; dynaWeightSource = model.sources?.[0]?.id || 'huggingface'"
+                                            <button @click="dynaSelectedModelId = model.id; dynaWeightSource = model.sources?.[0]?.id || 'huggingface'; dynaStoragePolicy = recommendedDynaStoragePolicy(model)"
                                                     :class="dynaSelectedModelId === model.id ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-neutral-200 hover:border-neutral-400'"
                                                     class="text-left rounded-xl border p-4 transition-all">
                                                 <div class="flex items-start justify-between gap-3">
@@ -1046,7 +1048,7 @@
                                     </div>
 
                                     <template x-if="selectedDynaModel()">
-                                        <div class="grid gap-4 md:grid-cols-3">
+                                        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                                             <label class="block">
                                                 <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Weight source</span>
                                                 <select x-model="dynaWeightSource" class="w-full px-3 py-2.5 border border-neutral-200 rounded-xl bg-white text-sm">
@@ -1054,6 +1056,20 @@
                                                         <option :value="source.id" x-text="source.label"></option>
                                                     </template>
                                                 </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Storage</span>
+                                                <select x-model="dynaStoragePolicy" class="w-full px-3 py-2.5 border border-neutral-200 rounded-xl bg-white text-sm">
+                                                    <option value="delete_after" :disabled="!selectedDynaModel()?.storage_policies?.includes('delete_after')">Delete source after verification</option>
+                                                    <option value="stream_reclaim" :disabled="!selectedDynaModel()?.storage_policies?.includes('stream_reclaim')">Low disk · reclaim while converting</option>
+                                                    <option value="keep_source">Keep original checkpoint</option>
+                                                </select>
+                                                <span class="mt-1 block text-[11px] text-neutral-400"
+                                                      x-text="dynaStoragePolicy === 'stream_reclaim' ? 'Lowest peak usage; conversion resumes from its last committed layer after interruption.' : dynaStoragePolicy === 'keep_source' ? 'Keeps rollback and native checkpoint loading, but uses roughly twice the disk.' : 'Safest default; source weights are removed only after validation.'"></span>
+                                                <span class="mt-1 block text-[11px] font-medium text-amber-600"
+                                                      x-show="recommendedDynaStoragePolicy(selectedDynaModel()) === 'stream_reclaim' && dynaStoragePolicy !== 'stream_reclaim'">
+                                                    Low-disk mode is recommended for current free space.
+                                                </span>
                                             </label>
                                             <label class="block">
                                                 <span class="block text-xs font-medium uppercase tracking-wider text-neutral-500 mb-1.5">Memory</span>
@@ -1102,6 +1118,7 @@
                                                     <div class="flex items-center gap-2">
                                                         <span class="text-sm font-semibold text-neutral-900" x-text="task.repo_id"></span>
                                                         <span class="text-[10px] uppercase font-semibold text-neutral-400" x-text="task.memory_tier"></span>
+                                                        <span class="text-[10px] uppercase font-semibold text-neutral-400" x-text="task.storage_policy?.replaceAll('_', ' ')"></span>
                                                     </div>
                                                     <div class="mt-1 text-xs text-neutral-500"><span x-text="task.phase"></span><span x-show="task.detail"> · <span x-text="task.detail"></span></span></div>
                                                     <div class="mt-3 h-1.5 rounded-full bg-neutral-100 overflow-hidden">
@@ -1549,6 +1566,7 @@
                         </div><!-- end ModelScope Source -->
 
                     </div>
+                    {% endif %}
 
                     <!-- ==================== QUANTIZER TAB ==================== -->
                     <div x-show="modelsTab === 'quantizer'" x-cloak

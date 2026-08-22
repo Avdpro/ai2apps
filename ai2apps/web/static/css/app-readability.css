@@ -1,0 +1,126 @@
+/*
+ * Shared readability floor for first-party AI2Apps surfaces.
+ *
+ * Product Apps may keep their own layout and visual language, but supporting
+ * copy should remain readable at normal desktop zoom. Third-party Package
+ * content is intentionally outside this data-app-id scope.
+ */
+:where([data-app-id^="ai2apps."]) {
+    --app-readable-secondary: #52525b;
+    --app-readable-muted: #71717a;
+    --app-readable-supporting-size: 13px;
+    --app-readable-caption-size: 12px;
+    --app-readable-meta-size: 11px;
+    --app-readable-line-height: 1.55;
+
+    /* Existing first-party themes consume these component variables. */
+    --account-muted: var(--app-readable-secondary);
+    --agent-muted: var(--app-readable-secondary);
+    --trust-muted: var(--app-readable-secondary);
+}
+
+/* Tailwind-sized supporting copy used by Chat and dashboard-family Apps. */
+:where([data-app-id^="ai2apps."]) .text-xs {
+    font-size: var(--app-readable-supporting-size) !important;
+    line-height: var(--app-readable-line-height) !important;
+}
+:where([data-app-id^="ai2apps."]) [class~="text-[11px]"] {
+    font-size: var(--app-readable-caption-size) !important;
+    line-height: 1.5 !important;
+}
+:where([data-app-id^="ai2apps."]) [class~="text-[10px]"],
+:where([data-app-id^="ai2apps."]) [class~="text-[9px]"],
+:where([data-app-id^="ai2apps."]) [class~="text-[8px]"] {
+    font-size: var(--app-readable-meta-size) !important;
+    line-height: 1.45 !important;
+}
+:where([data-app-id^="ai2apps."]) .text-neutral-500,
+:where([data-app-id^="ai2apps."]) .text-zinc-500 {
+    color: var(--app-readable-secondary) !important;
+}
+:where([data-app-id^="ai2apps."]) .text-neutral-400,
+:where([data-app-id^="ai2apps."]) .text-neutral-300,
+:where([data-app-id^="ai2apps."]) .text-zinc-400,
+:where([data-app-id^="ai2apps."]) .text-zinc-300 {
+    color: var(--app-readable-muted) !important;
+}
+
+/* Account also underpins Sharing. */
+.account-app .account-subtitle { font-size: var(--app-readable-caption-size); line-height: 1.45; }
+.account-app :is(.account-note, .binding-message p) {
+    font-size: var(--app-readable-supporting-size);
+    line-height: var(--app-readable-line-height);
+}
+.account-app :is(.account-card-head p, .account-email, .account-empty, .account-ledger td,
+                  .account-button, .account-link) {
+    font-size: var(--app-readable-caption-size);
+    line-height: 1.45;
+}
+.account-app :is(.account-status, .account-field span, .account-pill, .account-point span,
+                  .account-ledger th, .member-summary small, .member-invitation small,
+                  .invitation-loading small, .pending-invitations-head small,
+                  .invitation-table td small, .member-role-verification p, .member-quota p,
+                  .member-table td small, .device-management-note p, .device-table td small,
+                  .policy-actions small, .member-quota-head p, .member-quota-identity small,
+                  .remote-device-head small, .remote-expiry) {
+    font-size: var(--app-readable-meta-size);
+    line-height: 1.5;
+}
+.account-app :is(.member-invitation code, .invitation-delivery-detail, .remote-pair code) {
+    font-size: var(--app-readable-meta-size);
+    line-height: 1.55;
+}
+.sharing-app :is(small, .sharing-kind, .issued-panel label, .sharing-grow code) {
+    font-size: var(--app-readable-caption-size);
+    line-height: 1.5;
+}
+
+/* Agent Manager and Trust Center use compact bespoke styles. */
+.agent-manager .agent-subtitle,
+.trust-app :is(.trust-stat-label, .trust-sub, .trust-label) {
+    font-size: var(--app-readable-caption-size);
+    line-height: 1.5;
+}
+.agent-manager :is(.agent-badge, .agent-stat-label, .agent-section-title,
+                    .agent-field-label, .agent-run-id) {
+    font-size: var(--app-readable-meta-size);
+    line-height: 1.45;
+}
+.trust-app .trust-badge { font-size: var(--app-readable-meta-size); line-height: 1.45; }
+
+/* Discover defines most typography locally; keep its secondary screens aligned. */
+.discover-app :is(.submission-name span, .submission-cell span, .submission-detail span) {
+    color: var(--app-readable-muted);
+    font-size: var(--app-readable-meta-size);
+    line-height: 1.45;
+}
+.discover-app :is(.submission-status, .publish-pill, .publish-step) {
+    font-size: var(--app-readable-meta-size);
+}
+
+/* Chat has its own light/dark tokens. Raise both contrast floors without
+   changing message hierarchy or editor/code typography. */
+.chat-shell { --text-muted: #64748b; }
+[data-theme="dark"] .chat-shell {
+    --text-secondary: #c4c4cc;
+    --text-tertiary: #a1a1aa;
+    --text-muted: #8b8b95;
+}
+
+/* Coder and Terminal are intentionally dense workspaces. Increase only their
+   chrome captions and muted contrast; terminal/canvas content is untouched. */
+.coder-app :is(.coder-brand span, .coder-thread small, .coder-component small,
+               .coder-sidebar > footer, .coder-current span, .coder-status,
+               .coder-file-message, .coder-editor-pane > footer,
+               .coder-dialog label small, .coder-dialog-error) {
+    color: #9ca0ab;
+    font-size: var(--app-readable-meta-size);
+    line-height: 1.4;
+}
+.terminal-app :is(.terminal-eyebrow, .session-copy span, .terminal-sidebar-footer,
+                  .terminal-current span, .terminal-status,
+                  .terminal-assistant-header [data-assistant-session],
+                  .new-terminal-form label, .dialog-error) {
+    font-size: var(--app-readable-caption-size);
+    line-height: 1.4;
+}

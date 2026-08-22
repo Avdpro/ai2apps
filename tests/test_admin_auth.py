@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for admin authentication and chat page API key injection."""
+# ruff: noqa: I001
+"""Tests for account-based admin authentication and credential isolation."""
 
 import asyncio
-import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,106 +36,36 @@ def _restore_getter(original):
 
 
 class TestAutoLogin:
-    """Tests for GET /admin/auto-login endpoint."""
+    """The retired API-key URL can only redirect to account login."""
 
-    def test_auto_login_success_redirects_to_dashboard(self):
-        """Valid API key should redirect to the specified path with session cookie."""
-        mock_settings = _mock_global_settings(api_key="test-key")
-        original = _patch_getter(mock_settings)
-        try:
-            result = asyncio.run(
-                admin_routes.auto_login(key="test-key", redirect="/admin/dashboard")
-            )
-            assert result.status_code == 302
-            assert result.headers["location"] == "/admin/dashboard"
-            # Check that session cookie is set
-            cookie_header = result.headers.get("set-cookie", "")
-            assert "omlx_admin_session" in cookie_header
-        finally:
-            _restore_getter(original)
+    @pytest.mark.parametrize("key", ("correct-key", "wrong-key", ""))
+    def test_auto_login_never_authenticates_with_inference_key(self, key):
+        result = asyncio.run(
+            admin_routes.auto_login(key=key, redirect="/admin/dashboard")
+        )
 
-    def test_auto_login_success_redirects_to_chat(self):
-        """Valid API key should redirect to chat page."""
-        mock_settings = _mock_global_settings(api_key="test-key")
-        original = _patch_getter(mock_settings)
-        try:
-            result = asyncio.run(
-                admin_routes.auto_login(key="test-key", redirect="/admin/chat")
-            )
-            assert result.status_code == 302
-            assert result.headers["location"] == "/admin/chat"
-        finally:
-            _restore_getter(original)
-
-    def test_auto_login_invalid_key_redirects_to_login(self):
-        """Invalid API key should redirect to login page without session cookie."""
-        mock_settings = _mock_global_settings(api_key="correct-key")
-        original = _patch_getter(mock_settings)
-        try:
-            result = asyncio.run(
-                admin_routes.auto_login(key="wrong-key", redirect="/admin/dashboard")
-            )
-            assert result.status_code == 302
-            assert result.headers["location"] == "/admin"
-            cookie_header = result.headers.get("set-cookie", "")
-            assert "omlx_admin_session" not in cookie_header
-        finally:
-            _restore_getter(original)
-
-    def test_auto_login_empty_key_redirects_to_login(self):
-        """Empty API key should redirect to login page."""
-        mock_settings = _mock_global_settings(api_key="test-key")
-        original = _patch_getter(mock_settings)
-        try:
-            result = asyncio.run(
-                admin_routes.auto_login(key="", redirect="/admin/dashboard")
-            )
-            assert result.status_code == 302
-            assert result.headers["location"] == "/admin"
-        finally:
-            _restore_getter(original)
-
-    def test_auto_login_no_server_key_redirects_to_login(self):
-        """No server API key configured should redirect to login page."""
-        mock_settings = _mock_global_settings(api_key=None)
-        original = _patch_getter(mock_settings)
-        try:
-            result = asyncio.run(
-                admin_routes.auto_login(key="any-key", redirect="/admin/dashboard")
-            )
-            assert result.status_code == 302
-            assert result.headers["location"] == "/admin"
-        finally:
-            _restore_getter(original)
+        assert result.status_code == 302
+        assert result.headers["location"] == "/admin?redirect=/admin/dashboard"
+        assert "set-cookie" not in result.headers
 
     def test_auto_login_invalid_redirect_returns_400(self):
         """Redirect path not starting with /admin should return 400."""
-        mock_settings = _mock_global_settings(api_key="test-key")
-        original = _patch_getter(mock_settings)
-        try:
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(
-                    admin_routes.auto_login(
-                        key="test-key", redirect="https://evil.com"
-                    )
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(
+                admin_routes.auto_login(
+                    key="test-key", redirect="https://evil.com"
                 )
-            assert exc_info.value.status_code == 400
-            assert "Invalid redirect path" in exc_info.value.detail
-        finally:
-            _restore_getter(original)
+            )
+        assert exc_info.value.status_code == 400
+        assert "Invalid redirect path" in exc_info.value.detail
 
     def test_auto_login_redirect_to_admin_root(self):
         """Redirect to /admin (exact match) should be allowed."""
-        mock_settings = _mock_global_settings(api_key="test-key")
-        original = _patch_getter(mock_settings)
-        try:
-            result = asyncio.run(
-                admin_routes.auto_login(key="test-key", redirect="/admin")
-            )
-            assert result.status_code == 302
-            assert result.headers["location"] == "/admin"
-        finally:
-            _restore_getter(original)
+        result = asyncio.run(
+            admin_routes.auto_login(key="test-key", redirect="/admin")
+        )
+        assert result.status_code == 302
+        assert result.headers["location"] == "/admin?redirect=/admin"
 
 
 class TestLoginPage:
@@ -146,13 +77,16 @@ class TestLoginPage:
         original = _patch_getter(mock_settings)
         try:
             mock_request = MagicMock()
-            with patch("omlx.admin.auth.verify_session", return_value=False):
-                with patch.object(admin_routes, "templates") as mock_templates:
-                    mock_templates.TemplateResponse.return_value = MagicMock()
-                    asyncio.run(admin_routes.login_page(request=mock_request))
-                    mock_templates.TemplateResponse.assert_called_once_with(
-                        mock_request, "login.html", {"api_key_configured": True}
-                    )
+            with (
+                patch("omlx.admin.auth.verify_session", return_value=False),
+                patch.object(admin_routes, "_get_platform_runtime", lambda: None),
+                patch.object(admin_routes, "templates") as mock_templates,
+            ):
+                mock_templates.TemplateResponse.return_value = MagicMock()
+                asyncio.run(admin_routes.login_page(request=mock_request))
+                mock_templates.TemplateResponse.assert_called_once_with(
+                    mock_request, "login.html", {"installation_bound": False}
+                )
         finally:
             _restore_getter(original)
 
@@ -175,28 +109,35 @@ class TestDashboardPage:
                     "system_apps": admin_routes.SYSTEM_APPS,
                     "initial_app_id": "ai2apps.dashboard",
                     "initial_instance_id": None,
+                    "can_manage_system": True,
                 },
             )
 
 
-class TestChatPageApiKeyInjection:
-    """Tests for GET /admin/chat API key template injection."""
+class TestChatPageCredentialIsolation:
+    """Tests that GET /admin/chat never injects inference credentials."""
 
-    def test_chat_page_passes_api_key_in_context(self):
-        """Chat page should include API key in template context."""
+    def test_chat_page_never_passes_configured_api_key_in_context(self):
         mock_settings = _mock_global_settings(api_key="test-chat-key")
         original = _patch_getter(mock_settings)
         try:
             mock_request = MagicMock()
             with patch.object(admin_routes, "templates") as mock_templates:
                 mock_templates.TemplateResponse.return_value = MagicMock()
-                asyncio.run(
-                    admin_routes.chat_page(request=mock_request, is_admin=True)
-                )
+                mock_request.query_params = {}
+                asyncio.run(admin_routes.chat_page(
+                    request=mock_request, principal=admin_routes.RequestPrincipal.legacy_local()
+                ))
                 mock_templates.TemplateResponse.assert_called_once_with(
                     mock_request,
                     "chat.html",
-                    {"api_key": "test-chat-key", "terminal_assistant": False},
+                    {
+                        "api_key": "",
+                        "terminal_assistant": False,
+                        "principal_actor_user_id": "local",
+                        "principal_is_core": True,
+                        "developer_surfaces_visible": True,
+                    },
                 )
         finally:
             _restore_getter(original)
@@ -209,9 +150,10 @@ class TestChatPageApiKeyInjection:
             mock_request = MagicMock()
             with patch.object(admin_routes, "templates") as mock_templates:
                 mock_templates.TemplateResponse.return_value = MagicMock()
-                asyncio.run(
-                    admin_routes.chat_page(request=mock_request, is_admin=True)
-                )
+                mock_request.query_params = {}
+                asyncio.run(admin_routes.chat_page(
+                    request=mock_request, principal=admin_routes.RequestPrincipal.legacy_local()
+                ))
                 call_args = mock_templates.TemplateResponse.call_args
                 context = call_args[0][2]
                 assert context["api_key"] == ""
@@ -226,9 +168,10 @@ class TestChatPageApiKeyInjection:
             mock_request = MagicMock()
             with patch.object(admin_routes, "templates") as mock_templates:
                 mock_templates.TemplateResponse.return_value = MagicMock()
-                asyncio.run(
-                    admin_routes.chat_page(request=mock_request, is_admin=True)
-                )
+                mock_request.query_params = {}
+                asyncio.run(admin_routes.chat_page(
+                    request=mock_request, principal=admin_routes.RequestPrincipal.legacy_local()
+                ))
                 call_args = mock_templates.TemplateResponse.call_args
                 context = call_args[0][2]
                 assert context["api_key"] == ""
@@ -237,7 +180,7 @@ class TestChatPageApiKeyInjection:
 
 
 class TestSkipAdminAuth:
-    """Tests for skipping admin auth when skip_api_key_verification is enabled."""
+    """Inference no-auth mode must never disable Web/Core authorization."""
 
     def _mock_gs(self, skip=True, host="127.0.0.1"):
         mock = MagicMock()
@@ -245,29 +188,31 @@ class TestSkipAdminAuth:
         mock.server.host = host
         return mock
 
-    def test_require_admin_skipped_on_localhost(self):
-        """require_admin should pass when skip_api_key_verification=True."""
+    def test_require_admin_not_skipped_on_localhost(self):
         gs = self._mock_gs(skip=True, host="127.0.0.1")
         original = admin_auth._get_global_settings
         admin_auth._get_global_settings = lambda: gs
         try:
             mock_request = MagicMock()
             mock_request.cookies.get.return_value = None  # No session cookie
-            result = asyncio.run(admin_auth.require_admin(mock_request))
-            assert result is True
+            mock_request.headers.get.return_value = "application/json"
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(admin_auth.require_admin(mock_request))
+            assert exc_info.value.status_code == 401
         finally:
             admin_auth._get_global_settings = original
 
-    def test_require_admin_skipped_on_any_host(self):
-        """require_admin should skip auth when skip_api_key_verification=True regardless of host."""
+    def test_require_admin_not_skipped_on_any_host(self):
         gs = self._mock_gs(skip=True, host="0.0.0.0")
         original = admin_auth._get_global_settings
         admin_auth._get_global_settings = lambda: gs
         try:
             mock_request = MagicMock()
             mock_request.cookies.get.return_value = None
-            result = asyncio.run(admin_auth.require_admin(mock_request))
-            assert result is True
+            mock_request.headers.get.return_value = "application/json"
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(admin_auth.require_admin(mock_request))
+            assert exc_info.value.status_code == 401
         finally:
             admin_auth._get_global_settings = original
 
@@ -286,8 +231,32 @@ class TestSkipAdminAuth:
         finally:
             admin_auth._get_global_settings = original
 
-    def test_login_page_redirects_when_skip_enabled(self):
-        """Login page should redirect to dashboard when skip is enabled on localhost."""
+    def test_active_member_cannot_reuse_admin_cookie_or_no_auth_mode(self):
+        gs = self._mock_gs(skip=True, host="127.0.0.1")
+        request = SimpleNamespace(
+            cookies={
+                "ai2apps_local_session": "member-session",
+                "omlx_admin_session": "still-valid-core-cookie",
+            },
+            headers={"accept": "application/json"},
+        )
+        with (
+            patch.object(admin_auth, "_get_global_settings", lambda: gs),
+            patch.object(
+                admin_auth,
+                "_resolve_local_principal",
+                lambda token: SimpleNamespace(is_core=False),
+            ),
+            patch.object(admin_auth, "verify_session_token", return_value=True),
+        ):
+            assert admin_auth.verify_session(request) is False
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(admin_auth.require_admin(request))
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["code"] == "core_account_required"
+
+    def test_login_page_still_requires_account_when_inference_no_auth_is_enabled(self):
         gs = MagicMock()
         gs.auth.skip_api_key_verification = True
         gs.auth.api_key = "test-key"
@@ -295,10 +264,17 @@ class TestSkipAdminAuth:
         original = _patch_getter(gs)
         try:
             mock_request = MagicMock()
-            with patch("omlx.admin.auth.verify_session", return_value=False):
+            with (
+                patch("omlx.admin.auth.verify_session", return_value=False),
+                patch.object(admin_routes, "_get_platform_runtime", lambda: None),
+                patch.object(admin_routes, "templates") as mock_templates,
+            ):
+                mock_templates.TemplateResponse.return_value = MagicMock()
                 result = asyncio.run(admin_routes.login_page(request=mock_request))
-                assert result.status_code == 302
-                assert result.headers["location"] == "/admin/dashboard"
+                assert result is mock_templates.TemplateResponse.return_value
+                mock_templates.TemplateResponse.assert_called_once_with(
+                    mock_request, "login.html", {"installation_bound": False}
+                )
         finally:
             _restore_getter(original)
 

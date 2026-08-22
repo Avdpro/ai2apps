@@ -1,0 +1,10 @@
+{
+  "omlx-model-deepseek-v4-flash-2bit@0.1.0": [{
+    "source": "huggingface",
+    "repoId": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
+    "revision": "722bf559b7de93575b2320973cf2002e05bfe6c9",
+    "displayName": "DeepSeek V4 Flash 2-bit DQ",
+    "installMode": "cache-moe",
+    "recipeId": "deepseek-v4-flash-2bit"
+  }]
+}

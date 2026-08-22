@@ -5,13 +5,21 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.api.ownership import authorize_session
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
+from ai2apps.identity import RequestPrincipal
 from ai2apps.packages import PackageError
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.services import (
@@ -232,8 +240,16 @@ def _gateway_error(error: ToolGatewayError) -> JSONResponse:
     )
 
 
-def create_service_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter()
+def create_service_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        dependencies=[
+            Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
+        ]
+    )
+    principal_dependency = Depends(principal_provider)
 
     @router.get("/services", response_model=ServiceListResponse)
     def list_services():
@@ -331,11 +347,13 @@ def create_service_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
             return _gateway_error(error)
 
     @router.get("/tools", response_model=ToolListResponse)
-    def list_tools():
+    def list_tools(principal: RequestPrincipal = principal_dependency):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
             return runtime
-        context = ToolCallContext(caller_id="api:authenticated")
+        context = ToolCallContext.from_principal(
+            principal, caller_id="api:authenticated"
+        )
         return ToolListResponse(
             items=[
                 ToolResponse.from_record(tool)
@@ -351,10 +369,18 @@ def create_service_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
         trace_id: str | None = None,
         status: ToolInvocationStatus | None = None,
         limit: int = 100,
+        principal: RequestPrincipal = principal_dependency,
     ):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
             return runtime
+        if principal.authentication_type != "legacy_api_key":
+            if session_id is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"code": "session_scope_required"},
+                )
+            authorize_session(runtime, principal, session_id)
         return ToolInvocationListResponse(
             items=[
                 ToolInvocationResponse.from_record(item)
@@ -371,14 +397,23 @@ def create_service_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
         "/tool-invocations/{invocation_id}",
         response_model=ToolInvocationResponse,
     )
-    def get_tool_invocation(invocation_id: str):
+    def get_tool_invocation(
+        invocation_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
             return runtime
         try:
-            return ToolInvocationResponse.from_record(
-                runtime.services.get_invocation(invocation_id)
-            )
+            invocation = runtime.services.get_invocation(invocation_id)
+            if principal.authentication_type != "legacy_api_key":
+                if invocation.session_id is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "tool_invocation_not_found"},
+                    )
+                authorize_session(runtime, principal, invocation.session_id)
+            return ToolInvocationResponse.from_record(invocation)
         except RepositoryError as error:
             return repository_error_response(error)
 
@@ -390,15 +425,24 @@ def create_service_router(runtime_provider: PlatformRuntimeProvider) -> APIRoute
         qualified_name: str,
         request: ToolInvokeRequest,
         x_trace_id: str | None = Header(default=None),
+        principal: RequestPrincipal = principal_dependency,
     ):
         runtime = _runtime_or_error(runtime_provider)
         if isinstance(runtime, JSONResponse):
             return runtime
+        if principal.authentication_type != "legacy_api_key":
+            if request.session_id is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"code": "session_scope_required"},
+                )
+            authorize_session(runtime, principal, request.session_id)
         try:
             result = await runtime.tools.execute(
                 qualified_name,
                 request.arguments,
-                context=ToolCallContext(
+                context=ToolCallContext.from_principal(
+                    principal,
                     caller_id="api:authenticated",
                     session_id=request.session_id,
                     trace_id=x_trace_id,

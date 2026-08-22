@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
 from ai2apps.extensions import ExtensionError, UnitKind
+from ai2apps.identity import RequestPrincipal
 
 
 class InstallRequest(BaseModel):
@@ -53,7 +60,11 @@ class SafeModeRequest(BaseModel):
 
 
 def _error(error: ExtensionError) -> JSONResponse:
-    status = 409 if error.code.endswith(("conflict", "unavailable")) else 422
+    status = (
+        403
+        if error.code == "app_access_denied"
+        else 409 if error.code.endswith(("conflict", "unavailable")) else 422
+    )
     return JSONResponse(
         status_code=status,
         content={
@@ -98,8 +109,15 @@ def _effective(item):
     }
 
 
-def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
+def create_extension_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
     router = APIRouter(tags=["interactive-packages"])
+    principal_dependency = Depends(principal_provider)
+    system_manage_dependency = Depends(
+        require_app_capability(principal_provider, APP_SYSTEM_MANAGE)
+    )
 
     def runtime():
         value = runtime_provider()
@@ -110,7 +128,10 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
         return value
 
     @router.post("/interactive-packages/inspect")
-    def inspect(request: InstallRequest):
+    def inspect(
+        request: InstallRequest,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -139,7 +160,10 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return _error(error)
 
     @router.post("/interactive-packages/install")
-    async def install(request: InstallRequest):
+    async def install(
+        request: InstallRequest,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -162,7 +186,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.get("/interactive-packages")
-    def packages(kind: UnitKind | None = None, key: str | None = None):
+    def packages(
+        kind: UnitKind | None = None,
+        key: str | None = None,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -174,14 +202,21 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
         }
 
     @router.get("/interactive-operations")
-    def operations(kind: UnitKind | None = None, key: str | None = None):
+    def operations(
+        kind: UnitKind | None = None,
+        key: str | None = None,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
         return {"items": value.extension_repository.operations(kind, key)}
 
     @router.post("/interactive-packages/{digest:path}/activate")
-    def activate(digest: str):
+    def activate(
+        digest: str,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -195,7 +230,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return _error(error)
 
     @router.get("/effective-definitions/{kind}/{key}")
-    def effective(kind: UnitKind, key: str):
+    def effective(
+        kind: UnitKind,
+        key: str,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -208,7 +247,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
         return _effective(item)
 
     @router.get("/local-patches/{kind}/{key}")
-    def patches(kind: UnitKind, key: str):
+    def patches(
+        kind: UnitKind,
+        key: str,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -232,7 +275,10 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
         }
 
     @router.post("/local-patches/create")
-    def create_patch(request: PatchCreateRequest):
+    def create_patch(
+        request: PatchCreateRequest,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -255,7 +301,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return _error(error)
 
     @router.post("/local-patches/{patch_id}/resolve")
-    def resolve(patch_id: str, request: PatchResolutionRequest):
+    def resolve(
+        patch_id: str,
+        request: PatchResolutionRequest,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -274,7 +324,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.post("/apps/{app_key}/launch")
-    def launch(app_key: str, request: AppLaunchRequest):
+    def launch(
+        app_key: str,
+        request: AppLaunchRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -283,6 +337,7 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
                 app_key,
                 singleton_identity=request.singleton_identity,
                 state=request.state,
+                principal=principal,
             )
             return {
                 "created": created,
@@ -298,59 +353,97 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.get("/apps")
-    def apps():
+    def apps(
+        locale: str | None = Query(default=None, max_length=64),
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
-        return {"items": value.extension_manager.list_apps()}
+        return {
+            "items": value.extension_manager.list_apps(
+                principal=principal,
+                locale=locale,
+            )
+        }
 
     @router.get("/app-instances/{instance_id}/entry")
-    def instance_entry(instance_id: str):
+    def instance_entry(
+        instance_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
         try:
-            return value.extension_manager.instance_entry(instance_id)
+            return value.extension_manager.instance_entry(
+                instance_id, principal=principal
+            )
         except ExtensionError as error:
             return _error(error)
         except RepositoryError as error:
             return repository_error_response(error)
 
     @router.post("/app-instances/{instance_id}/focus")
-    def focus(instance_id: str):
+    def focus(
+        instance_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
         try:
-            instance = value.extension_manager.focus_instance(instance_id)
+            instance = value.extension_manager.focus_instance(
+                instance_id, principal=principal
+            )
             return {"instance_id": instance.id, "status": instance.status.value}
+        except ExtensionError as error:
+            return _error(error)
         except RepositoryError as error:
             return repository_error_response(error)
 
     @router.post("/app-instances/{instance_id}/suspend")
-    def suspend(instance_id: str):
+    def suspend(
+        instance_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
         try:
-            instance = value.extension_manager.suspend_instance(instance_id)
+            instance = value.extension_manager.suspend_instance(
+                instance_id, principal=principal
+            )
             return {"instance_id": instance.id, "status": instance.status.value}
+        except ExtensionError as error:
+            return _error(error)
         except RepositoryError as error:
             return repository_error_response(error)
 
     @router.delete("/app-instances/{instance_id}")
-    def close(instance_id: str):
+    def close(
+        instance_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
         try:
-            instance = value.extension_manager.close_instance(instance_id)
+            instance = value.extension_manager.close_instance(
+                instance_id, principal=principal
+            )
             return {"instance_id": instance.id, "status": instance.status.value}
+        except ExtensionError as error:
+            return _error(error)
         except RepositoryError as error:
             return repository_error_response(error)
 
     @router.post("/app-instances/{instance_id}/mounts")
-    def mount(instance_id: str, request: MountRequest):
+    def mount(
+        instance_id: str,
+        request: MountRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -361,6 +454,7 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
                 placement=request.placement,
                 interaction_session_id=request.interaction_session_id,
                 context=request.context,
+                principal=principal,
             )
         except ExtensionError as error:
             return _error(error)
@@ -368,7 +462,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.post("/definitions/{kind}/{key}/enable")
-    def enable(kind: UnitKind, key: str):
+    def enable(
+        kind: UnitKind,
+        key: str,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -379,7 +477,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.post("/definitions/{kind}/{key}/disable")
-    def disable(kind: UnitKind, key: str):
+    def disable(
+        kind: UnitKind,
+        key: str,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -390,7 +492,11 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.post("/definitions/{kind}/{key}/rollback")
-    def rollback(kind: UnitKind, key: str):
+    def rollback(
+        kind: UnitKind,
+        key: str,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -402,7 +508,12 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.delete("/definitions/{kind}/{key}")
-    def uninstall(kind: UnitKind, key: str, force: bool = False):
+    def uninstall(
+        kind: UnitKind,
+        key: str,
+        force: bool = False,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -415,7 +526,10 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return repository_error_response(error)
 
     @router.post("/safe-mode")
-    async def safe_mode(request: SafeModeRequest):
+    async def safe_mode(
+        request: SafeModeRequest,
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value
@@ -425,7 +539,9 @@ def create_extension_router(runtime_provider: PlatformRuntimeProvider) -> APIRou
             return _error(error)
 
     @router.get("/safe-mode")
-    def safe_mode_status():
+    def safe_mode_status(
+        _authorized: RequestPrincipal = system_manage_dependency,
+    ):
         value = runtime()
         if isinstance(value, JSONResponse):
             return value

@@ -21,6 +21,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--source", default="huggingface")
     parser.add_argument(
+        "--storage-policy",
+        choices=("keep_source", "delete_after", "stream_reclaim"),
+        default=None,
+        help=(
+            "keep the source checkpoint, delete it after conversion, or "
+            "reclaim source shards progressively while converting"
+        ),
+    )
+    parser.add_argument(
         "--token-env",
         default="HF_TOKEN",
         help="environment variable containing an optional Hugging Face token",
@@ -41,6 +50,7 @@ async def run(args: argparse.Namespace) -> None:
         args.source,
         args.memory_tier,
         os.environ.get(args.token_env, ""),
+        args.storage_policy,
     )
     last = None
     while task.status not in {

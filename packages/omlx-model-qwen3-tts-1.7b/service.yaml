@@ -1,0 +1,110 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen3-tts-1.7b
+name: Qwen3 TTS 1.7B
+description: High-quality Qwen3-TTS CustomVoice, reference-voice Base, and VoiceDesign Workers.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/QwenLM/Qwen3-TTS
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.qwen3-tts-1.7b/custom-voice-8bit
+    display_name: Qwen3 TTS 1.7B CustomVoice 8-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
+    capabilities: [speech_generation, named_voices, voice_instructions, emotion]
+    metadata: {family: qwen3-tts, variant: custom_voice}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
+      revision: 41d3337e8b7f2843a75841595fc14e4b9a7a4b96
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en, de, it, pt, es, ja, ko, fr, ru]
+      formats: {input: [], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: native, voices: [serena, vivian, uncle_fu, ryan, aiden, ono_anna, sohee, eric, dylan]}
+        speed: {mode: unsupported}
+        emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited]}
+        instructions: {mode: native}
+        voice_profiles: {mode: unsupported}
+        multi_speaker: {mode: unsupported}
+
+  - id: ai2apps.model.qwen3-tts-1.7b/base-5bit
+    display_name: Qwen3 TTS 1.7B Base 5-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/Qwen3-TTS-12Hz-1.7B-Base-5bit
+    capabilities: [speech_generation, reference_voice, voice_cloning]
+    metadata: {family: qwen3-tts, variant: base, reference_audio_required_for_cloning: true}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-TTS-12Hz-1.7B-Base-5bit
+      revision: 18103d58b04c292bfd53c4d65013b38487efa411
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en, de, it, pt, es, ja, ko, fr, ru]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: unsupported, voices: []}
+        speed: {mode: unsupported}
+        emotion: {mode: unsupported, values: []}
+        instructions: {mode: unsupported}
+        voice_profiles: {mode: native, reference_audio: true, reference_transcript: required}
+        multi_speaker: {mode: unsupported}
+
+  - id: ai2apps.model.qwen3-tts-1.7b/voice-design-5bit
+    display_name: Qwen3 TTS 1.7B VoiceDesign 5-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-5bit
+    capabilities: [speech_generation, voice_design, voice_instructions, emotion]
+    metadata: {family: qwen3-tts, variant: voice_design, instructions_required: true}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-5bit
+      revision: 6e936cfb98d95b707bd1f85351874a377230fe83
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en, de, it, pt, es, ja, ko, fr, ru]
+      formats: {input: [], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: unsupported, voices: []}
+        speed: {mode: unsupported}
+        emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited]}
+        instructions: {mode: native, required: true}
+        voice_profiles: {mode: unsupported}
+        multi_speaker: {mode: unsupported}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only Host-selected pinned Qwen3-TTS checkpoints.}
+  accelerator: {metal: true, reason: Run high-quality speech synthesis with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 60}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

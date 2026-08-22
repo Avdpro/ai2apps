@@ -52,6 +52,14 @@
 				<string>omlxapp</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.ai2apps.local-auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ai2apps</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleLocalizations</key>
 	<array>

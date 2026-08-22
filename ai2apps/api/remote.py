@@ -2,39 +2,28 @@
 
 from __future__ import annotations
 
-import base64
-import io
 from dataclasses import asdict
 
 import httpx
-import qrcode
-import qrcode.image.svg
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
+from ai2apps.cloud_client import AI2APPS_CLOUD_BROWSER_COOKIE
+from ai2apps.qr import svg_qr_data_url
 from ai2apps.remote import RemoteAccessError
 
 
 class RegisterRemoteDeviceRequest(BaseModel):
     display_name: str = Field(alias="displayName", min_length=1, max_length=120)
-
-
-def _pairing_qr_data_url(value: str) -> str:
-    qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_Q,
-        box_size=8,
-        border=4,
-    )
-    qr.add_data(value)
-    qr.make(fit=True)
-    image = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
-    output = io.BytesIO()
-    image.save(output)
-    encoded = base64.b64encode(output.getvalue()).decode("ascii")
-    return f"data:image/svg+xml;base64,{encoded}"
 
 
 def _device(value) -> dict:
@@ -55,8 +44,17 @@ def _device(value) -> dict:
     }
 
 
-def create_remote_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter(prefix="/remote", tags=["platform-remote"])
+def create_remote_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        prefix="/remote",
+        tags=["platform-remote"],
+        dependencies=[
+            Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
+        ],
+    )
 
     def manager():
         runtime = runtime_provider()
@@ -64,6 +62,42 @@ def create_remote_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter
         if value is None:
             raise RemoteAccessError(503, "remote_not_ready", "Remote Access is not ready")
         return value
+
+    def browser_cloud(
+        request: Request,
+    ):
+        runtime = runtime_provider()
+        cookie_reader = (
+            None
+            if runtime is None
+            else getattr(runtime, "cloud_browser_session_from_cookies", None)
+        )
+        browser_session_id = (
+            cookie_reader(request.cookies)
+            if cookie_reader is not None
+            else request.cookies.get(AI2APPS_CLOUD_BROWSER_COOKIE)
+        )
+        resolver = (
+            None if runtime is None else getattr(runtime, "cloud_for_browser", None)
+        )
+        if resolver is None:
+            cloud = None if runtime is None else getattr(runtime, "cloud", None)
+        else:
+            try:
+                cloud = resolver(browser_session_id or "")
+            except (RuntimeError, ValueError):
+                cloud = None
+        if cloud is None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "cloud_browser_session_required",
+                    "message": "Sign in to AI2Apps Cloud in this browser first",
+                },
+            )
+        return cloud
+
+    browser_cloud_dependency = Depends(browser_cloud)
 
     async def run(operation):
         try:
@@ -85,34 +119,38 @@ def create_remote_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter
                 "connector": value.frpc.status()}
 
     @router.post("/devices")
-    async def register(request: RegisterRemoteDeviceRequest):
-        result = await run(manager().register(display_name=request.display_name))
+    async def register(
+        request: RegisterRemoteDeviceRequest, cloud=browser_cloud_dependency
+    ):
+        result = await run(
+            manager().register(display_name=request.display_name, cloud=cloud)
+        )
         return result if isinstance(result, Response) else _device(result)
 
     @router.post("/devices/reconcile")
-    async def reconcile():
-        result = await run(manager().reconcile())
+    async def reconcile(cloud=browser_cloud_dependency):
+        result = await run(manager().reconcile(cloud=cloud))
         return result if isinstance(result, Response) else {"devices": [_device(item) for item in result]}
 
     @router.post("/devices/{device_id}/credentials/rotate")
-    async def rotate(device_id: str):
-        result = await run(manager().rotate(device_id))
+    async def rotate(device_id: str, cloud=browser_cloud_dependency):
+        result = await run(manager().rotate(device_id, cloud=cloud))
         return result if isinstance(result, Response) else _device(result)
 
     @router.post("/devices/{device_id}/pairing-challenges")
-    async def pairing(device_id: str):
-        result = await run(manager().pairing_challenge(device_id))
+    async def pairing(device_id: str, cloud=browser_cloud_dependency):
+        result = await run(manager().pairing_challenge(device_id, cloud=cloud))
         if isinstance(result, Response):
             return result
-        return {**result, "pairingQrDataUrl": _pairing_qr_data_url(result["pairingUrl"])}
+        return {**result, "pairingQrDataUrl": svg_qr_data_url(result["pairingUrl"])}
 
     @router.post("/devices/{device_id}/revoke")
-    async def revoke(device_id: str):
-        return await run(manager().revoke(device_id))
+    async def revoke(device_id: str, cloud=browser_cloud_dependency):
+        return await run(manager().revoke(device_id, cloud=cloud))
 
     @router.post("/devices/{device_id}/start")
-    async def start(device_id: str):
-        result = await run(manager().start(device_id))
+    async def start(device_id: str, cloud=browser_cloud_dependency):
+        result = await run(manager().start(device_id, cloud=cloud))
         return result if isinstance(result, Response) else _device(result)
 
     @router.post("/devices/{device_id}/stop")
@@ -121,12 +159,12 @@ def create_remote_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter
         return result if isinstance(result, Response) else _device(result)
 
     @router.delete("/devices/{device_id}", status_code=204)
-    async def redact(device_id: str):
-        result = await run(manager().redact(device_id))
+    async def redact(device_id: str, cloud=browser_cloud_dependency):
+        result = await run(manager().redact(device_id, cloud=cloud))
         return result if isinstance(result, Response) else Response(status_code=204)
 
     @router.get("/usage")
-    async def usage():
-        return await run(manager().usage())
+    async def usage(cloud=browser_cloud_dependency):
+        return await run(manager().usage(cloud=cloud))
 
     return router

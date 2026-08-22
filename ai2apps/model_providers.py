@@ -8,15 +8,22 @@ role routing independent from the provider implementation.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
 from fastapi.responses import Response, StreamingResponse
 
+from ai2apps.model_worker.audio_capabilities import (
+    AudioCapabilitiesError,
+    default_audio_capabilities,
+    validate_audio_capabilities,
+)
 from ai2apps.services import ServiceInstanceStatus, ServiceStatus
 
 MODEL_TYPES = frozenset(
@@ -54,10 +61,57 @@ DEFAULT_PATHS = {
 
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$")
 _CAPABILITY = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
+_HF_REPOSITORY = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+)
+_IMMUTABLE_REVISION = re.compile(r"^[0-9a-fA-F]{40,64}$")
+_PREPARATION_RECIPE = re.compile(r"^[a-z][a-z0-9._/-]{0,127}$")
 
 
 class ModelProviderContractError(ValueError):
     pass
+
+
+def _validate_model_weights(value: Any, *, field: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) - {
+        "provider",
+        "repo_id",
+        "revision",
+        "preparation",
+    }:
+        raise ModelProviderContractError(f"{field} is invalid")
+    provider = value.get("provider")
+    repo_id = value.get("repo_id")
+    revision = value.get("revision")
+    if provider != "huggingface":
+        raise ModelProviderContractError(f"{field}.provider must be 'huggingface'")
+    if not isinstance(repo_id, str) or not _HF_REPOSITORY.fullmatch(repo_id):
+        raise ModelProviderContractError(f"{field}.repo_id is invalid")
+    if not isinstance(revision, str) or not _IMMUTABLE_REVISION.fullmatch(revision):
+        raise ModelProviderContractError(
+            f"{field}.revision must be an immutable 40-64 character commit digest"
+        )
+    preparation = value.get("preparation", {"recipe": "native"})
+    if not isinstance(preparation, dict):
+        raise ModelProviderContractError(f"{field}.preparation is invalid")
+    recipe = preparation.get("recipe", "native")
+    if not isinstance(recipe, str) or not _PREPARATION_RECIPE.fullmatch(recipe):
+        raise ModelProviderContractError(f"{field}.preparation.recipe is invalid")
+    try:
+        normalized_preparation = json.loads(json.dumps(preparation))
+    except (TypeError, ValueError) as exc:
+        raise ModelProviderContractError(
+            f"{field}.preparation must contain JSON values"
+        ) from exc
+    normalized_preparation["recipe"] = recipe
+    return {
+        "provider": provider,
+        "repo_id": repo_id,
+        "revision": revision.lower(),
+        "preparation": normalized_preparation,
+    }
 
 
 def validate_package_models(
@@ -77,7 +131,11 @@ def validate_package_models(
         raise ModelProviderContractError(
             "Model providers must use a managed_process or external HTTP runtime"
         )
-    if models and protocol not in {"openai-compatible", "http-json"}:
+    if models and protocol not in {
+        "openai-compatible",
+        "http-json",
+        "ai2apps-model-worker/v1",
+    }:
         raise ModelProviderContractError(
             "Model providers require openai-compatible or http-json protocol"
         )
@@ -141,6 +199,21 @@ def validate_package_models(
             or context_window <= 0
         ):
             raise ModelProviderContractError(f"models[{index}].context_window is invalid")
+        weights = _validate_model_weights(
+            raw.get("weights"), field=f"models[{index}].weights"
+        )
+        audio_capabilities = None
+        if model_type.startswith("audio_"):
+            try:
+                audio_capabilities = validate_audio_capabilities(
+                    raw.get("audio_capabilities")
+                    or default_audio_capabilities(model_type),
+                    model_type=model_type,
+                )
+            except AudioCapabilitiesError as exc:
+                raise ModelProviderContractError(
+                    f"models[{index}].audio_capabilities is invalid: {exc}"
+                ) from exc
         normalized.append(
             {
                 "id": model_id,
@@ -150,6 +223,8 @@ def validate_package_models(
                 "capabilities": sorted(set(capabilities)),
                 "endpoints": normalized_paths,
                 "context_window": context_window,
+                "weights": weights,
+                "audio_capabilities": audio_capabilities,
                 "metadata": raw.get("metadata", {}) if isinstance(raw.get("metadata", {}), dict) else {},
             }
         )
@@ -166,16 +241,20 @@ class PackageModel:
     endpoints: Mapping[str, str]
     context_window: int | None
     metadata: Mapping[str, Any]
+    audio_capabilities: Mapping[str, Any] | None
     service_key: str
     provider_key: str
     endpoint: str
+    checkpoint_ready: bool = True
+    weights: Mapping[str, Any] | None = None
+    internal_headers: Mapping[str, str] | None = None
 
     def public_catalog_entry(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "display_name": self.display_name,
             "model_path": f"package://{self.service_key}/{self.id}",
-            "loaded": True,
+            "loaded": self.checkpoint_ready,
             "is_loading": False,
             "estimated_size": 0,
             "estimated_size_formatted": "0 B",
@@ -183,7 +262,9 @@ class PackageModel:
             "actual_size_formatted": None,
             "pinned": False,
             "is_default": False,
-            "is_hidden": False,
+            # An installed provider is not usable until its exact pinned
+            # checkpoint has been prepared by the trusted Host.
+            "is_hidden": not self.checkpoint_ready or bool(self.metadata.get("internal")),
             "is_favorite": False,
             "is_helper": False,
             "engine_type": "package",
@@ -192,12 +273,15 @@ class PackageModel:
             "capabilities": list(self.capabilities),
             "cache_moe": False,
             "source_type": "package",
-            "source_repo_id": None,
+            "source_repo_id": (self.weights or {}).get("repo_id"),
             "virtual": True,
             "owned_by": self.service_key,
             "model_context_length": self.context_window,
             "max_context_window": self.context_window,
             "package_service": self.service_key,
+            "package_weights": dict(self.weights or {}),
+            "checkpoint_ready": self.checkpoint_ready,
+            "audio_capabilities": dict(self.audio_capabilities or {}),
         }
 
 
@@ -217,7 +301,19 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
             ServiceInstanceStatus.DEGRADED,
         } or not instance.endpoint:
             continue
+        internal_headers: Mapping[str, str] | None = None
+        package_manager = getattr(runtime, "package_manager", None)
+        if package_manager is not None:
+            internal_headers = package_manager.supervisor.internal_headers(
+                service.service_key
+            )
+        checkpoint_rows, _roots = package_manager.supervisor._model_worker_checkpoints(
+            service.config,
+            package_manager.supervisor._huggingface_hub_cache(),
+        ) if package_manager is not None else ((), ())
+        checkpoints = {row["model_id"]: row for row in checkpoint_rows}
         for raw in service.config.get("models", []):
+            checkpoint = checkpoints.get(raw["id"])
             result.append(
                 PackageModel(
                     id=raw["id"],
@@ -228,9 +324,19 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
                     endpoints=dict(raw["endpoints"]),
                     context_window=raw.get("context_window"),
                     metadata=dict(raw.get("metadata", {})),
+                    audio_capabilities=(
+                        dict(raw["audio_capabilities"])
+                        if isinstance(raw.get("audio_capabilities"), dict)
+                        else None
+                    ),
                     service_key=service.service_key,
                     provider_key=instance.provider_key,
                     endpoint=instance.endpoint.rstrip("/"),
+                    checkpoint_ready=(
+                        checkpoint is None or checkpoint.get("path") is not None
+                    ),
+                    weights=dict(raw.get("weights") or {}),
+                    internal_headers=internal_headers,
                 )
             )
     return tuple(sorted(result, key=lambda item: item.id))
@@ -240,9 +346,173 @@ def resolve_package_model(runtime: Any | None, model_id: str) -> PackageModel | 
     return next((model for model in list_package_models(runtime) if model.id == model_id), None)
 
 
+def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, Any], ...]:
+    """Build trusted Host preparation recipes from active Worker manifests.
+
+    This function interprets static data only. It never imports Package code.
+    """
+
+    repository = None if runtime is None else getattr(runtime, "package_repository", None)
+    if repository is None:
+        return ()
+    recipes: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for package in repository.installed():
+        if (
+            getattr(package.status, "value", package.status) != "active"
+            or package.protocol != "ai2apps-model-worker/v1"
+        ):
+            continue
+        package_root = Path(package.store_path).resolve(strict=True)
+        from ai2apps.packages.supervisor import ManagedServiceSupervisor
+
+        checkpoint_rows, _roots = ManagedServiceSupervisor._model_worker_checkpoints(
+            package.manifest,
+            ManagedServiceSupervisor._huggingface_hub_cache(),
+        )
+        checkpoints = {row["model_id"]: row for row in checkpoint_rows}
+        for model in package.manifest.get("models", []):
+            weights = model.get("weights", {}) if isinstance(model, dict) else {}
+            preparation = weights.get("preparation", {})
+            recipe_kind = preparation.get("recipe", "native")
+            if recipe_kind == "native":
+                checkpoint = checkpoints.get(model.get("id"), {})
+                recipe_id = model.get("id")
+                metadata = model.get("metadata", {})
+                if not isinstance(metadata, dict):
+                    raise ModelProviderContractError(
+                        "Native model metadata must be an object"
+                    )
+                required_model_ids = metadata.get("required_model_ids", ())
+                if not isinstance(required_model_ids, (list, tuple)) or any(
+                    not isinstance(item, str) or not item
+                    for item in required_model_ids
+                ):
+                    raise ModelProviderContractError(
+                        "Native model metadata.required_model_ids must be model IDs"
+                    )
+                if not isinstance(recipe_id, str) or not recipe_id or recipe_id in seen:
+                    raise ModelProviderContractError("Invalid or duplicate native model ID")
+                recipes.append(
+                    {
+                        "id": recipe_id,
+                        "name": model.get("display_name", recipe_id),
+                        "description": package.manifest.get("description", ""),
+                        "recipe": "native",
+                        "service_key": package.service_key,
+                        "family": metadata.get("family", "native"),
+                        "internal": bool(metadata.get("internal", False)),
+                        "required_model_ids": tuple(required_model_ids),
+                        "execution_modes": ("full",),
+                        "storage_policies": ("keep_source",),
+                        "storage_estimates": {},
+                        "engine": {},
+                        "sources": (
+                            {
+                                "id": "huggingface",
+                                "label": "HuggingFace",
+                                "repo_id": weights["repo_id"],
+                                "revision": weights["revision"],
+                            },
+                        ),
+                        "memory_tiers": (),
+                        "installed": checkpoint.get("path") is not None,
+                    }
+                )
+                seen.add(recipe_id)
+                continue
+            if recipe_kind != "ai2apps/cache-moe/v1":
+                continue
+            recipe_id = preparation.get("install_id")
+            if not isinstance(recipe_id, str) or not recipe_id or recipe_id in seen:
+                raise ModelProviderContractError("Invalid or duplicate preparation install_id")
+            engine = dict(preparation.get("engine", {}))
+            for field in ("scope_asset", "scope_pack"):
+                relative = engine.get(field)
+                if (
+                    not isinstance(relative, str)
+                    or relative.startswith("/")
+                    or ".." in relative.split("/")
+                ):
+                    raise ModelProviderContractError(
+                        f"Preparation engine.{field} must be Package-relative"
+                    )
+                candidate = (package_root / relative).resolve(strict=True)
+                try:
+                    candidate.relative_to(package_root)
+                except ValueError as exc:
+                    raise ModelProviderContractError(
+                        f"Preparation engine.{field} escapes the Package"
+                    ) from exc
+                if not candidate.is_file():
+                    raise ModelProviderContractError(
+                        f"Preparation engine.{field} is missing"
+                    )
+                engine[field] = str(candidate)
+            recipes.append(
+                {
+                    "id": recipe_id,
+                    "name": model.get("display_name", recipe_id),
+                    "description": package.manifest.get("description", ""),
+                    "family": preparation["family"],
+                    "execution_modes": tuple(preparation.get("execution_modes", ())),
+                    "storage_policies": tuple(preparation.get("storage_policies", ())),
+                    "storage_estimates": dict(preparation.get("storage_estimates", {})),
+                    "engine": engine,
+                    "sources": (
+                        {
+                            "id": "huggingface",
+                            "label": "HuggingFace",
+                            "repo_id": weights["repo_id"],
+                            "revision": weights["revision"],
+                        },
+                    ),
+                    "scope_name": preparation.get("scope_name", "general"),
+                    "conversion": dict(preparation.get("conversion", {})),
+                    "memory_tiers": tuple(preparation.get("memory_tiers", ())),
+                    **(
+                        {"arena_tail_slots": int(preparation["arena_tail_slots"])}
+                        if "arena_tail_slots" in preparation
+                        else {}
+                    ),
+                }
+            )
+            seen.add(recipe_id)
+    recipes_by_id = {recipe["id"]: recipe for recipe in recipes}
+    resolving: set[str] = set()
+
+    def dependencies_ready(recipe: dict[str, Any]) -> bool:
+        recipe_id = recipe["id"]
+        if recipe_id in resolving:
+            return False
+        resolving.add(recipe_id)
+        try:
+            return bool(recipe.get("installed")) and all(
+                required is not None and dependencies_ready(required)
+                for required_id in recipe.get("required_model_ids", ())
+                for required in (recipes_by_id.get(required_id),)
+            )
+        finally:
+            resolving.remove(recipe_id)
+
+    # A model that promises a required helper checkpoint is not ready merely
+    # because its own weights are cached.  This is especially important after
+    # a Package upgrade adds a new dependency to an already-downloaded model.
+    for recipe in recipes:
+        if recipe.get("recipe") == "native":
+            recipe["installed"] = dependencies_ready(recipe)
+    return tuple(recipes)
+
+
 def _response_headers(response: httpx.Response) -> dict[str, str]:
     accepted = {"content-type", "content-disposition", "cache-control", "x-request-id"}
-    return {key: value for key, value in response.headers.items() if key.lower() in accepted}
+    return {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() in accepted
+        or key.lower().startswith("x-ai2apps-audio-")
+        or key.lower().startswith("x-ai2apps-feature-")
+    }
 
 
 async def proxy_package_json(
@@ -261,7 +531,12 @@ async def proxy_package_json(
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
     )
-    request = client.build_request("POST", model.endpoint + path, json=body)
+    request = client.build_request(
+        "POST",
+        model.endpoint + path,
+        json=body,
+        headers=dict(model.internal_headers or {}),
+    )
     try:
         response = await client.send(request, stream=bool(body.get("stream")))
     except httpx.HTTPError as exc:
@@ -307,7 +582,11 @@ async def proxy_package_multipart(
         timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
     )
     request = client.build_request(
-        "POST", model.endpoint + path, data=fields, files=files
+        "POST",
+        model.endpoint + path,
+        data=fields,
+        files=files,
+        headers=dict(model.internal_headers or {}),
     )
     try:
         response = await client.send(request, stream=stream)

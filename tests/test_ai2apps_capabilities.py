@@ -11,6 +11,7 @@ from ai2apps.api.router import create_ai2apps_router
 from ai2apps.capabilities import GrantScope, PolicyEffect
 from ai2apps.chat import ChatRepository
 from ai2apps.config import PlatformConfig
+from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 
 
@@ -195,7 +196,10 @@ async def test_policy_and_grant_management_api(tmp_path):
         evidence={},
     )
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(
+        runtime_provider=lambda: runtime,
+        principal_provider=RequestPrincipal.legacy_local,
+    ))
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"

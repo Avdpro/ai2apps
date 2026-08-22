@@ -14,6 +14,7 @@ from jsonschema.exceptions import SchemaError
 
 from ai2apps.packages.archive import package_digest
 from ai2apps.packages.models import PackageFile
+from ai2apps.localization import validate_app_localizations
 
 from .models import BundleFile, ExtensionError, InspectedBundle, UnitKind
 
@@ -197,6 +198,11 @@ class InteractiveArchive:
             "publisher"
         ].get("id"):
             raise ExtensionError("invalid_publisher", "Publisher identity is required")
+        if "localizations" in manifest:
+            try:
+                validate_app_localizations(manifest["localizations"])
+            except ValueError as error:
+                raise ExtensionError("invalid_manifest", str(error)) from error
         if kind is UnitKind.AGENT:
             if not isinstance(manifest.get("executor", {}).get("key"), str):
                 raise ExtensionError(

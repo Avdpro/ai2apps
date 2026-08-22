@@ -23,6 +23,7 @@ from ai2apps.api.router import create_ai2apps_router
 from ai2apps.chat import ChatRepository
 from ai2apps.config import PlatformConfig
 from ai2apps.core import MessageRole, ResourceConflictError, format_utc
+from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.services import ServiceInstanceStatus, ServiceRuntimeMode
 from ai2apps.storage import MessagePartInput
@@ -567,7 +568,7 @@ def test_per_run_budget_is_bounded_by_agent_definition(tmp_path):
 async def test_agent_api_exposes_budget_usage_and_retry_endpoint(tmp_path):
     runtime = _runtime(tmp_path)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     session_id = _session(runtime)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -983,7 +984,7 @@ def test_uncertain_tool_recovery_requires_explicit_resolution(tmp_path):
 async def test_agent_api_exposes_status_menu_response_and_event_stream_url(tmp_path):
     runtime = _runtime(tmp_path)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:
         async with httpx.AsyncClient(
@@ -1058,7 +1059,7 @@ async def test_agent_manager_api_exposes_lifecycle_runs_and_provenance(tmp_path)
         input={"prompt": "two"},
     )
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -1095,7 +1096,7 @@ async def test_agent_manager_api_exposes_lifecycle_runs_and_provenance(tmp_path)
 async def test_agent_api_pauses_and_resumes_queued_run(tmp_path):
     runtime = _runtime(tmp_path)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -1614,7 +1615,7 @@ async def test_agent_api_defaults_to_general_agent_and_accepts_direct_prompt(tmp
 
     runtime.agent_runtime.bind_model_provider(model_provider)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     session_id = _session(runtime)
     await runtime.start_background_tasks(retention_interval_seconds=60)
     try:

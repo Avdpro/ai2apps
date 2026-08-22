@@ -13,6 +13,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from ai2apps.core import ResourceNotFoundError, RevisionConflictError
 from ai2apps.events import EventStore
+from ai2apps.identity import IdentityBindingError, IdentityRepository
 from ai2apps.storage import PlatformDatabase
 
 from .models import (
@@ -198,6 +199,55 @@ class ToolGateway:
 
         self._secret_resolver = resolver
 
+    def context_for_session(
+        self,
+        *,
+        caller_id: str,
+        session_id: str,
+        granted_capabilities: frozenset[str] = frozenset(),
+        trace_id: str | None = None,
+        progress_reporter=None,
+    ) -> ToolCallContext:
+        """Derive actor metadata from trusted Session ownership when available."""
+
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT i.owner_user_id
+                FROM sessions s
+                JOIN app_instances i ON i.id=s.app_instance_id
+                WHERE s.id=? AND s.status='active'
+                """,
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            raise ToolGatewayError(
+                "session_not_found", f"Active Session not found: {session_id}"
+            )
+        owner_user_id = row["owner_user_id"]
+        if owner_user_id is not None:
+            try:
+                principal = IdentityRepository(self.database).principal_for(owner_user_id)
+            except IdentityBindingError:
+                principal = None
+            if principal is not None:
+                return ToolCallContext.from_principal(
+                    principal,
+                    caller_id=caller_id,
+                    session_id=session_id,
+                    granted_capabilities=granted_capabilities,
+                    trace_id=trace_id,
+                    progress_reporter=progress_reporter,
+                )
+        return ToolCallContext(
+            caller_id=caller_id,
+            session_id=session_id,
+            actor_user_id=owner_user_id,
+            granted_capabilities=granted_capabilities,
+            trace_id=trace_id,
+            progress_reporter=progress_reporter,
+        )
+
     def list_tools(
         self,
         context: ToolCallContext,
@@ -290,6 +340,10 @@ class ToolGateway:
                 trace_id=context.trace_id,
                 payload={
                     "caller_id": context.caller_id,
+                    "actor_user_id": context.actor_user_id,
+                    "installation_id": context.installation_id,
+                    "organization_id": context.organization_id,
+                    "membership_epoch": context.membership_epoch,
                     "invocation_id": invocation_id,
                     "status": status,
                     "duration_ms": duration_ms,

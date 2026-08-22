@@ -1,0 +1,8 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.deepseek-v4-flash-0.2.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.deepseek-v4-flash/0.2.0",
+  "packages": []
+}

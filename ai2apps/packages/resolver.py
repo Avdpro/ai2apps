@@ -59,6 +59,25 @@ class ServiceDependencyResolver:
                 for item in raw
             )
 
+        def required_capabilities(package, service_key: str) -> frozenset[str]:
+            manifest = (
+                package.manifest.raw
+                if isinstance(package, InspectedServicePackage)
+                else package.manifest
+            )
+            for item in manifest.get("requires", {}).get("services", []):
+                if item.get("id") == service_key:
+                    return frozenset(item.get("capabilities", []))
+            return frozenset()
+
+        def package_capabilities(package) -> frozenset[str]:
+            manifest = (
+                package.manifest.raw
+                if isinstance(package, InspectedServicePackage)
+                else package.manifest
+            )
+            return frozenset(manifest.get("capabilities", []))
+
         def walk(package) -> None:
             key = (
                 package.manifest.service_key
@@ -91,11 +110,17 @@ class ServiceDependencyResolver:
                 spec = SpecifierSet(
                     "" if dependency.version_spec == "*" else dependency.version_spec
                 )
+                required = required_capabilities(package, dependency.service_key)
+                version_choices = tuple(
+                    item
+                    for item in available.get(dependency.service_key, [])
+                    if item[0] in spec
+                )
                 choices = sorted(
                     (
                         item
-                        for item in available.get(dependency.service_key, [])
-                        if item[0] in spec
+                        for item in version_choices
+                        if not (required - package_capabilities(item[2]))
                     ),
                     key=lambda item: (item[0], item[1]),
                     reverse=True,
@@ -103,6 +128,15 @@ class ServiceDependencyResolver:
                 if not choices:
                     if dependency.optional:
                         continue
+                    if version_choices and required:
+                        provided = set().union(
+                            *(package_capabilities(item[2]) for item in version_choices)
+                        )
+                        raise PackageError(
+                            "dependency_capability_missing",
+                            f"{dependency.service_key} lacks required capabilities",
+                            details={"missing": sorted(required - provided)},
+                        )
                     raise PackageError(
                         "dependency_unresolved",
                         f"No compatible version for {dependency.service_key} {dependency.version_spec}",

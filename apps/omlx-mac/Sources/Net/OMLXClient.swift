@@ -87,6 +87,67 @@ final class OMLXClient: ObservableObject {
         try await get("/admin/api/server-info")
     }
 
+    func listModelAdapterPackages() async throws -> ModelAdapterPackageListResponse {
+        try await get(AdminAPI.modelAdapterPackages)
+    }
+
+    func inspectModelAdapterPackage(
+        wheelPath: String
+    ) async throws -> ModelAdapterPackageDTO {
+        try await post(
+            AdminAPI.inspectModelAdapterPackage,
+            body: ModelAdapterPackageRequest(wheelPath: wheelPath)
+        )
+    }
+
+    func installModelAdapterPackage(
+        wheelPath: String
+    ) async throws -> ModelAdapterPackageMutationResponse {
+        try await post(
+            AdminAPI.installModelAdapterPackage,
+            body: ModelAdapterPackageRequest(wheelPath: wheelPath)
+        )
+    }
+
+    func listModelAdapterCatalog() async throws -> ModelAdapterCatalogResponse {
+        try await get(AdminAPI.modelAdapterCatalog)
+    }
+
+    func installModelAdapterFromCatalog(
+        packageName: String,
+        version: String
+    ) async throws -> ModelAdapterPackageMutationResponse {
+        try await post(
+            AdminAPI.installModelAdapterFromCatalog,
+            body: ModelAdapterCatalogInstallRequest(
+                packageName: packageName,
+                version: version
+            )
+        )
+    }
+
+    func installModelAdapterCheckpoint(
+        packageName: String,
+        packageVersion: String,
+        recipeId: String
+    ) async throws -> ModelAdapterCheckpointInstallResponse {
+        try await post(
+            AdminAPI.installModelAdapterCheckpoint,
+            body: ModelAdapterCheckpointInstallRequest(
+                packageName: packageName,
+                packageVersion: packageVersion,
+                recipeId: recipeId,
+                memoryTier: "auto"
+            )
+        )
+    }
+
+    func uninstallModelAdapterPackage(
+        name: String
+    ) async throws -> ModelAdapterPackageMutationResponse {
+        try await delete(AdminAPI.modelAdapterPackage(name))
+    }
+
     func getStats(scope: String = "session", model: String = "") async throws -> StatsDTO {
         try await get("/admin/api/stats", query: [
             URLQueryItem(name: "scope", value: scope),
@@ -198,9 +259,13 @@ final class OMLXClient: ObservableObject {
         try await get(AdminAPI.hfTasks)
     }
 
-    func startHFDownload(repoId: String, hfToken: String = "") async throws -> StartHFDownloadResponse {
+    func startHFDownload(
+        repoId: String,
+        hfToken: String = "",
+        revision: String? = nil
+    ) async throws -> StartHFDownloadResponse {
         try await post(AdminAPI.hfDownload, body: StartHFDownloadRequest(
-            repoId: repoId, hfToken: hfToken
+            repoId: repoId, hfToken: hfToken, revision: revision
         ))
     }
 

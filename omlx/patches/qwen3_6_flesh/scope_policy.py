@@ -28,6 +28,7 @@ MEMORY_TIER_EXPERTS = {
 }
 
 _policy_override: tuple[str, str, str, int, str, int] | None = None
+_policy_disabled = False
 
 
 def _validate_resident_experts(count: int) -> int:
@@ -183,7 +184,8 @@ def configure_qwen36_scope_policy(
     backend: str = "flesh",
     arena_tail_slots: int = 24,
 ) -> None:
-    global _policy_override
+    global _policy_disabled, _policy_override
+    _policy_disabled = False
     backend = str(backend).strip().lower()
     if backend not in ("flesh", "arena", "tiered"):
         raise ValueError("Qwen3.6 backend must be 'flesh', 'arena', or 'tiered'")
@@ -206,13 +208,25 @@ def configure_qwen36_scope_policy(
 
 
 def clear_qwen36_scope_policy() -> None:
-    global _policy_override
+    global _policy_disabled, _policy_override
+    _policy_disabled = False
+    _policy_override = None
+    load_qwen36_scope_policy.cache_clear()
+
+
+def disable_qwen36_scope_policy() -> None:
+    """Force full-resident execution even when legacy env vars are present."""
+
+    global _policy_disabled, _policy_override
+    _policy_disabled = True
     _policy_override = None
     load_qwen36_scope_policy.cache_clear()
 
 
 @cache
 def load_qwen36_scope_policy() -> Qwen36ScopePolicy | None:
+    if _policy_disabled:
+        return None
     if _policy_override is not None:
         (
             raw_profile,
@@ -293,6 +307,7 @@ __all__ = [
     "TOP_K",
     "clear_qwen36_scope_policy",
     "configure_qwen36_scope_policy",
+    "disable_qwen36_scope_policy",
     "estimated_resident_bytes",
     "load_qwen36_scope_policy",
 ]

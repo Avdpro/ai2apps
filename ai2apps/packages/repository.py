@@ -221,34 +221,73 @@ class PackageRepository:
                 (inspected.digest,),
             ).fetchone()
             if existing is not None:
-                return self._package(existing)
-            connection.execute(
-                """INSERT INTO service_packages(
-                    id, service_key, package_version, package_digest, publisher_key,
-                    runtime_mode, protocol, entrypoint, archive_path, store_path,
-                    manifest_json, permissions_json, compatibility_json, sbom_json,
-                    verification_json, status, installed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    package_id,
-                    inspected.manifest.service_key,
-                    inspected.manifest.version,
-                    inspected.digest,
-                    inspected.manifest.publisher_key,
-                    inspected.manifest.runtime_mode.value,
-                    inspected.manifest.protocol,
-                    inspected.manifest.entrypoint,
-                    str(inspected.archive_path),
-                    store_path,
-                    _json(inspected.manifest.raw),
-                    _json(inspected.manifest.permissions),
-                    _json(inspected.manifest.compatibility),
-                    _json(inspected.sbom),
-                    _json(verification),
-                    status.value,
-                    now,
-                ),
-            )
+                if existing["status"] != PackageStatus.UNINSTALLED.value:
+                    return self._package(existing)
+                # A failed first activation intentionally keeps an
+                # ``uninstalled`` history row. Reinstalling the same verified
+                # digest must revive that row; returning it unchanged makes
+                # ``activate`` reject the package moments later.
+                package_id = existing["id"]
+                connection.execute(
+                    """UPDATE service_packages SET
+                        service_key = ?, package_version = ?, publisher_key = ?,
+                        runtime_mode = ?, protocol = ?, entrypoint = ?,
+                        archive_path = ?, store_path = ?, manifest_json = ?,
+                        permissions_json = ?, compatibility_json = ?, sbom_json = ?,
+                        verification_json = ?, status = ?, installed_at = ?,
+                        activated_at = NULL, retired_at = NULL
+                       WHERE id = ?""",
+                    (
+                        inspected.manifest.service_key,
+                        inspected.manifest.version,
+                        inspected.manifest.publisher_key,
+                        inspected.manifest.runtime_mode.value,
+                        inspected.manifest.protocol,
+                        inspected.manifest.entrypoint,
+                        str(inspected.archive_path),
+                        store_path,
+                        _json(inspected.manifest.raw),
+                        _json(inspected.manifest.permissions),
+                        _json(inspected.manifest.compatibility),
+                        _json(inspected.sbom),
+                        _json(verification),
+                        status.value,
+                        now,
+                        package_id,
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM service_package_files WHERE package_id = ?",
+                    (package_id,),
+                )
+            else:
+                connection.execute(
+                    """INSERT INTO service_packages(
+                        id, service_key, package_version, package_digest, publisher_key,
+                        runtime_mode, protocol, entrypoint, archive_path, store_path,
+                        manifest_json, permissions_json, compatibility_json, sbom_json,
+                        verification_json, status, installed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        package_id,
+                        inspected.manifest.service_key,
+                        inspected.manifest.version,
+                        inspected.digest,
+                        inspected.manifest.publisher_key,
+                        inspected.manifest.runtime_mode.value,
+                        inspected.manifest.protocol,
+                        inspected.manifest.entrypoint,
+                        str(inspected.archive_path),
+                        store_path,
+                        _json(inspected.manifest.raw),
+                        _json(inspected.manifest.permissions),
+                        _json(inspected.manifest.compatibility),
+                        _json(inspected.sbom),
+                        _json(verification),
+                        status.value,
+                        now,
+                    ),
+                )
             for item in inspected.files:
                 connection.execute(
                     """INSERT INTO service_package_files(
@@ -307,6 +346,68 @@ class PackageRepository:
                     "service_key": service_key,
                     "digest": digest,
                     "version": target["package_version"],
+                },
+            )
+            row = connection.execute(
+                "SELECT * FROM service_packages WHERE package_digest = ?", (digest,)
+            ).fetchone()
+            assert row is not None
+            return self._package(row)
+
+    def activate_with_relocked_dependents(
+        self,
+        service_key: str,
+        digest: str,
+        dependent_digests: tuple[str, ...],
+    ) -> InstalledPackageRecord:
+        """Atomically activate a provider and move compatible active locks to it."""
+
+        now = utc_now_text()
+        with self.database.transaction(write=True) as connection:
+            target = connection.execute(
+                """SELECT * FROM service_packages WHERE service_key = ?
+                   AND package_digest = ? AND status != 'uninstalled'""",
+                (service_key, digest),
+            ).fetchone()
+            if target is None:
+                raise ResourceNotFoundError("service_package", digest)
+            for dependent_digest in dependent_digests:
+                cursor = connection.execute(
+                    """UPDATE service_dependency_locks
+                       SET dependency_version = ?, dependency_digest = ?, created_at = ?
+                       WHERE package_digest = ? AND dependency_key = ? AND optional = 0""",
+                    (
+                        target["package_version"],
+                        digest,
+                        now,
+                        dependent_digest,
+                        service_key,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise ResourceNotFoundError(
+                        "service_dependency_lock",
+                        f"{dependent_digest}:{service_key}",
+                    )
+            connection.execute(
+                """UPDATE service_packages SET status = 'retained', retired_at = ?
+                   WHERE service_key = ? AND status = 'active' AND package_digest != ?""",
+                (now, service_key, digest),
+            )
+            connection.execute(
+                """UPDATE service_packages SET status = 'active', activated_at = ?,
+                   retired_at = NULL WHERE package_digest = ?""",
+                (now, digest),
+            )
+            self.events.append_in_transaction(
+                connection,
+                event_type="service.package.activated",
+                subject_id=target["id"],
+                payload={
+                    "service_key": service_key,
+                    "digest": digest,
+                    "version": target["package_version"],
+                    "relocked_dependents": list(dependent_digests),
                 },
             )
             row = connection.execute(

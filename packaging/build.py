@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
@@ -245,13 +246,7 @@ def _find_target_python() -> str:
     for path in candidates:
         if not path or not Path(path).exists():
             continue
-        # Skip interpreters without pip (e.g. venvstacks runtimes strip it)
-        check = subprocess.run(
-            [path, "-m", "pip", "--version"],
-            capture_output=True,
-        )
-        if check.returncode == 0:
-            return path
+        return path
 
     print(f"  Warning: python{target_minor} not found, using {sys.executable}")
     return sys.executable
@@ -265,12 +260,40 @@ def _build_sdist_wheel(pkg_name: str) -> bool:
     """
     target_python = _find_target_python()
     print(f"  Building wheel for {pkg_name} (sdist-only, using {target_python})...")
-    result = subprocess.run(
-        [target_python, "-m", "pip", "wheel", pkg_name, "--no-deps",
-         "-w", str(WHEELS_DIR)],
-        capture_output=False,
+    pip_check = subprocess.run(
+        [target_python, "-m", "pip", "--version"],
+        capture_output=True,
     )
-    return result.returncode == 0
+    if pip_check.returncode == 0:
+        wheel_python = target_python
+        temporary_venv = None
+    else:
+        # venvstacks intentionally strips pip from its runtime layer. Build
+        # sdist-only wheels in a disposable venv created by that same target
+        # interpreter so extension tags and ABI match (for example cp311),
+        # without contaminating the exported runtime.
+        temporary_venv = tempfile.TemporaryDirectory(
+            prefix="ai2apps-wheel-builder-"
+        )
+        result = subprocess.run(
+            [target_python, "-m", "venv", temporary_venv.name],
+            capture_output=False,
+        )
+        if result.returncode != 0:
+            temporary_venv.cleanup()
+            return False
+        wheel_python = str(Path(temporary_venv.name) / "bin" / "python")
+
+    try:
+        result = subprocess.run(
+            [wheel_python, "-m", "pip", "wheel", pkg_name, "--no-deps",
+             "-w", str(WHEELS_DIR)],
+            capture_output=False,
+        )
+        return result.returncode == 0
+    finally:
+        if temporary_venv is not None:
+            temporary_venv.cleanup()
 
 
 def build_local_wheels(source_toml: Path | None = None):
@@ -294,10 +317,9 @@ def build_local_wheels(source_toml: Path | None = None):
             source_toml = SCRIPT_DIR / "venvstacks.toml"
     git_reqs = _parse_git_requirements(source_toml)
 
-    # Clean and recreate wheels dir for fresh builds
-    if WHEELS_DIR.exists():
-        shutil.rmtree(WHEELS_DIR)
-    WHEELS_DIR.mkdir(parents=True)
+    # Keep sdist-only wheels produced by prior lock retries. Clearing this
+    # directory makes an existing lock impossible to install on the next run.
+    WHEELS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Build wheels from git-pinned packages
     for full_req, git_url in git_reqs:
@@ -377,6 +399,8 @@ def _lock_with_sdist_retry(lock_cmd: list, max_retries: int = 10):
         if not _build_sdist_wheel(pkg):
             print(f"  ✗ Failed to build wheel for {pkg}")
             sys.exit(1)
+        if "--local-wheels" not in lock_cmd:
+            lock_cmd.extend(["--local-wheels", str(WHEELS_DIR)])
         built.add(pkg)
         print(f"  Retrying lock (attempt {attempt + 2})...")
 
@@ -443,6 +467,7 @@ def _write_engine_commits(omlx_pkg_dir: Path):
 # normalized). [bundle] last means a bundle-specific [audio]-extra entry
 # wins over [project]'s plain entry for the same package.
 _LAYER_REQUIREMENTS_SOURCES = {
+    "control-plane": ["control-plane"],
     "mlx-base": ["project", "bundle"],
 }
 
@@ -671,12 +696,16 @@ def build_venvstacks():
         "lock",
         str(resolved_toml),
     ] + local_wheels_args
-    if version_map:
-        # Force re-lock when git packages changed (hashes will differ)
-        lock_cmd += ["--reset-lock", "*"]
-    else:
-        lock_cmd += ["--if-needed"]
+    # Re-resolve against the current pyproject and local wheel cache. This also
+    # guarantees a missing sdist-only wheel is detected and rebuilt even when
+    # requirement files from an earlier interrupted run already exist.
+    lock_cmd += ["--reset-lock", "*"]
     _lock_with_sdist_retry(lock_cmd)
+
+    # The lock retry may have built sdist-only dependencies after the initial
+    # local_wheels_args snapshot was created. Refresh it for installation.
+    if WHEELS_DIR.exists() and any(WHEELS_DIR.glob("*.whl")):
+        local_wheels_args = ["--local-wheels", str(WHEELS_DIR)]
 
     # Step 4: Build environments
     print("\n  Building environments (this may take a while)...")

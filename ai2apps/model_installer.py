@@ -4,21 +4,268 @@ from __future__ import annotations
 
 import asyncio
 import enum
+import fcntl
 import hashlib
 import json
 import os
 import re
+import shutil
 import struct
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from ai2apps.shared_model_cache import (
+    SharedModelReference,
+    configured_shared_model_cache,
+    publish_configured_shared_model_reference,
+    reconcile_configured_shared_model_references,
+    remove_configured_shared_model_reference,
+    shared_model_cache_gate,
+)
 
 _METADATA_DIR = ".ai2apps"
 _LEGACY_METADATA_DIR = ".dynamoe"
 _MODEL_MANIFEST = "ai2apps-model.json"
 _LEGACY_MODEL_MANIFEST = "dynamoe-model.json"
+STORAGE_POLICIES = frozenset({"keep_source", "delete_after", "stream_reclaim"})
+
+
+def installed_shared_model_source_reference(source_dir: Path) -> tuple[str, str] | None:
+    """Return the retained shared source named by one committed install."""
+
+    if configured_shared_model_cache() is None:
+        return None
+    manifest_path = source_dir / _MODEL_MANIFEST
+    if not manifest_path.exists():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("installed model manifest is unreadable") from exc
+    source = manifest.get("source")
+    if (
+        manifest.get("format") != "ai2apps-cache-moe-model"
+        or manifest.get("version") != 2
+        or not isinstance(source, dict)
+        or not isinstance(source.get("repo_id"), str)
+        or not isinstance(source.get("revision"), str)
+    ):
+        raise ValueError("installed model manifest source is invalid")
+    checkpoint_layout = manifest.get("checkpoint_layout")
+    if checkpoint_layout is not None:
+        if not isinstance(checkpoint_layout, dict):
+            raise ValueError("installed model checkpoint layout is invalid")
+        if checkpoint_layout.get("source_retained") is False:
+            return None
+        raise ValueError("installed model source retention is ambiguous")
+    reference = SharedModelReference(
+        "validation", source["repo_id"], source["revision"], 1.0
+    )
+    reference.validate()
+    return reference.repo_id, reference.revision
+
+
+def reconcile_installed_shared_model_references(
+    model_dir: Path, recipes: tuple[dict[str, Any], ...]
+):
+    """Reconcile one cold Local instance from trusted Package/install state."""
+
+    if configured_shared_model_cache() is None:
+        return reconcile_configured_shared_model_references(())
+    expected: list[tuple[str, str]] = []
+    for recipe in recipes:
+        sources = recipe.get("sources", ())
+        if len(sources) != 1:
+            raise ValueError("model preparation recipe must have exactly one source")
+        source = sources[0]
+        repo_id = source.get("repo_id")
+        revision = source.get("revision")
+        if not isinstance(repo_id, str) or not isinstance(revision, str):
+            raise ValueError("model preparation source identity is incomplete")
+        if recipe.get("recipe") == "native":
+            if recipe.get("installed") is True:
+                expected.append((repo_id, revision))
+            continue
+
+        installed_reference = installed_shared_model_source_reference(
+            model_dir / repo_id
+        )
+        if installed_reference is None:
+            continue
+        if installed_reference != (repo_id, revision):
+            raise ValueError("installed model manifest does not match active recipe")
+        expected.append(installed_reference)
+    return reconcile_configured_shared_model_references(expected)
+
+
+@contextmanager
+def _shared_cache_revision_lock(
+    hub_cache: Path, repo_id: str, revision: str
+) -> Iterator[None]:
+    """Serialize publication of one shared Hub snapshot across Local instances."""
+
+    lock_root = hub_cache / ".ai2apps-locks"
+    lock_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(lock_root, 0o700)
+    identity = hashlib.sha256(f"model\0{repo_id}\0{revision}".encode()).hexdigest()
+    lock_path = lock_root / f"{identity}.lock"
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _git_blob_sha1(path: Path, size: int) -> str:
+    digest = hashlib.sha1(usedforsecurity=False)
+    digest.update(f"blob {size}\0".encode())
+    with path.open("rb") as handle:
+        while chunk := handle.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _matches_hf_digest(path: Path, size: int, digest: str, *, lfs: bool) -> bool:
+    if not path.is_file() or path.stat().st_size != size:
+        return False
+    actual = _sha256_file(path) if lfs else _git_blob_sha1(path, size)
+    return actual == digest
+
+
+def _snapshot_matches_hf_tree(snapshot: Path, files: dict[str, Any]) -> bool:
+    """Verify a published snapshot against its pinned local-dir tree record."""
+
+    if not checkpoint_is_complete(snapshot):
+        return False
+    for relative, metadata in files.items():
+        if (
+            not isinstance(relative, str)
+            or relative.startswith("/")
+            or ".." in relative.split("/")
+            or not isinstance(metadata, dict)
+        ):
+            return False
+        size = metadata.get("size")
+        digest = metadata.get("lfs_sha256") or metadata.get("blob_id")
+        if (
+            not isinstance(size, int)
+            or size < 0
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", digest)
+            or not _matches_hf_digest(
+                snapshot / relative,
+                size,
+                digest,
+                lfs=bool(metadata.get("lfs_sha256")),
+            )
+        ):
+            return False
+    return True
+
+
+def _import_local_checkpoint_to_hf_cache_unlocked(
+    source_dir: Path, repo_id: str, revision: str, hub_cache: Path
+) -> Path | None:
+    """No-copy import a verified HF local-dir checkout into the shared cache.
+
+    ``snapshot_download(local_dir=...)`` records an immutable tree containing
+    the commit revision and content hashes. Verify every byte before creating
+    hard-linked cache blobs, then expose the standard snapshot layout expected
+    by the isolated Model Worker. A cross-filesystem source simply falls back
+    to the normal download path.
+    """
+
+    tree_path = source_dir / ".cache" / "huggingface" / "trees" / f"{revision}.json"
+    try:
+        tree = json.loads(tree_path.read_text(encoding="utf-8"))
+        files = tree["files"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+    if tree.get("format_version") != 1 or not isinstance(files, dict) or not files:
+        return None
+    repo_root = hub_cache / ("models--" + repo_id.replace("/", "--"))
+    blobs = repo_root / "blobs"
+    snapshot = repo_root / "snapshots" / revision
+    if snapshot.exists():
+        return snapshot if _snapshot_matches_hf_tree(snapshot, files) else None
+    staged = snapshot.with_name(f".{revision}.{uuid.uuid4().hex}.partial")
+    try:
+        blobs.mkdir(parents=True, exist_ok=True)
+        staged.mkdir(parents=True, exist_ok=False)
+        for relative, metadata in files.items():
+            if (
+                not isinstance(relative, str)
+                or relative.startswith("/")
+                or ".." in relative.split("/")
+                or not isinstance(metadata, dict)
+            ):
+                return None
+            source = source_dir / relative
+            size = metadata.get("size")
+            digest = metadata.get("lfs_sha256") or metadata.get("blob_id")
+            if (
+                not source.is_file()
+                or not isinstance(size, int)
+                or source.stat().st_size != size
+                or not isinstance(digest, str)
+                or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", digest)
+            ):
+                return None
+            is_lfs = bool(metadata.get("lfs_sha256"))
+            if not _matches_hf_digest(source, size, digest, lfs=is_lfs):
+                return None
+            blob = blobs / digest
+            if blob.exists():
+                # Never let a pre-existing, damaged cache blob become trusted
+                # merely because its filename looks like a content digest.
+                if not _matches_hf_digest(blob, size, digest, lfs=is_lfs):
+                    return None
+            else:
+                os.link(source, blob)
+            target = staged / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(Path(os.path.relpath(blob, target.parent)))
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        staged.replace(snapshot)
+        return snapshot if _snapshot_matches_hf_tree(snapshot, files) else None
+    except (OSError, ValueError):
+        return None
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged, ignore_errors=True)
+
+
+def import_local_checkpoint_to_hf_cache(
+    source_dir: Path, repo_id: str, revision: str, hub_cache: Path
+) -> Path | None:
+    """Atomically import a verified checkout into a cross-instance Hub cache."""
+
+    tree_path = source_dir / ".cache" / "huggingface" / "trees" / f"{revision}.json"
+    if not tree_path.is_file():
+        return None
+    with (
+        shared_model_cache_gate(hub_cache, exclusive=False),
+        _shared_cache_revision_lock(hub_cache, repo_id, revision),
+    ):
+        return _import_local_checkpoint_to_hf_cache_unlocked(
+            source_dir, repo_id, revision, hub_cache
+        )
 
 
 def _metadata_dir(source_dir: Path) -> Path:
@@ -39,107 +286,6 @@ def _source_record(source_dir: Path) -> tuple[Path, dict[str, Any]]:
         if isinstance(value, dict):
             return path, value
     return source_dir / _METADATA_DIR / "source.json", {}
-
-CATALOG = (
-    {
-        "id": "deepseek-v4-flash",
-        "name": "DeepSeek V4 Flash",
-        "description": "DeepSeek V4 Flash with the dedicated AI2Apps Flesh engine.",
-        "family": "deepseek_v4",
-        "engine": {
-            "id": "deepseek-v4-flesh",
-            "name": "DeepSeek V4 Flesh",
-            "version": 1,
-            "scope_asset": "engines/deepseek_v4_flash/scope-profile.json",
-            "scope_pack": "engines/deepseek_v4_flash/scope-pack.json",
-        },
-        "sources": (
-            {
-                "id": "huggingface",
-                "label": "HuggingFace",
-                "repo_id": "deepseek-ai/DeepSeek-V4-Flash",
-                "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
-            },
-        ),
-        "scope_name": "general",
-        "conversion": {
-            "format": "omlx-moe-expert-major-set",
-            "version": 1,
-            "variant": "deepseek-v4-expert-major-v1",
-        },
-        "memory_tiers": (
-            {"id": "lean", "label": "Lean", "experts": 20, "estimated_gb": 33},
-            {"id": "compact", "label": "Compact", "experts": 40, "estimated_gb": 43},
-            {"id": "optimal", "label": "Optimal", "experts": 60, "estimated_gb": 54},
-        ),
-    },
-    {
-        "id": "deepseek-v4-flash-2bit",
-        "name": "DeepSeek V4 Flash 2-bit",
-        "description": "MLX 2-bit DQ checkpoint with the dedicated AI2Apps Flesh engine.",
-        "family": "deepseek_v4",
-        "engine": {
-            "id": "deepseek-v4-flesh",
-            "name": "DeepSeek V4 Flesh",
-            "version": 1,
-            "scope_asset": "engines/deepseek_v4_flash/scope-profile.json",
-            "scope_pack": "engines/deepseek_v4_flash/scope-pack.json",
-        },
-        "sources": (
-            {
-                "id": "huggingface",
-                "label": "HuggingFace",
-                "repo_id": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
-                "revision": "722bf559b7de93575b2320973cf2002e05bfe6c9",
-            },
-        ),
-        "scope_name": "general",
-        "conversion": {
-            "format": "omlx-moe-expert-major-set",
-            "version": 1,
-            "variant": "deepseek-v4-expert-major-v1",
-        },
-        "memory_tiers": (
-            {"id": "lean", "label": "Lean", "experts": 20, "estimated_gb": 17},
-            {"id": "compact", "label": "Compact", "experts": 40, "estimated_gb": 24},
-            {"id": "optimal", "label": "Optimal", "experts": 60, "estimated_gb": 30},
-        ),
-    },
-    {
-        "id": "qwen3.6-35b-a3b-4bit",
-        "name": "Qwen3.6 35B A3B 4-bit",
-        "description": "MLX 4-bit checkpoint with the dedicated AI2Apps Tiered engine.",
-        "family": "qwen3_6",
-        "engine": {
-            "id": "qwen3.6-tiered",
-            "name": "Qwen3.6 Tiered",
-            "version": 1,
-            "scope_asset": "engines/qwen3_6_35b_a3b/scope-profile.json",
-            "scope_pack": "engines/qwen3_6_35b_a3b/scope-pack.json",
-            "scope_env": "OMLX_QWEN36_SCOPE_PROFILE",
-        },
-        "sources": (
-            {
-                "id": "huggingface",
-                "label": "HuggingFace",
-                "repo_id": "mlx-community/Qwen3.6-35B-A3B-4bit",
-                "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
-            },
-        ),
-        "scope_name": "general",
-        "conversion": {
-            "format": "omlx-moe-expert-major-set",
-            "version": 1,
-            "variant": "qwen3.6-affine-q4-gate-up-fused-v2",
-        },
-        "arena_tail_slots": 24,
-        "memory_tiers": (
-            {"id": "lean", "label": "Lean", "experts": 80, "estimated_gb": 9},
-            {"id": "compact", "label": "Compact", "experts": 96, "estimated_gb": 10},
-            {"id": "optimal", "label": "Optimal", "experts": 120, "estimated_gb": 12},
-        ),
-    },
-)
 
 _EXPERT_RE = re.compile(
     r"^layers\.(?P<layer>\d+)\.ffn\.experts\.(?P<expert>\d+)\."
@@ -183,6 +329,7 @@ class InstallTask:
     repo_id: str
     revision: str
     memory_tier: str = "auto"
+    storage_policy: str = "delete_after"
     status: InstallStatus = InstallStatus.PENDING
     phase: str = "Queued"
     progress: float = 0.0
@@ -201,6 +348,7 @@ class InstallTask:
             "repo_id": self.repo_id,
             "revision": self.revision,
             "memory_tier": self.memory_tier,
+            "storage_policy": self.storage_policy,
             "status": self.status.value,
             "phase": self.phase,
             "progress": round(self.progress, 1),
@@ -256,6 +404,402 @@ def _read_safetensors_header(path: Path) -> tuple[int, dict[str, dict[str, Any]]
         header = json.loads(handle.read(length))
     header.pop("__metadata__", None)
     return 8 + length, header
+
+
+def _is_externalized_routed_tensor(name: str, family: str) -> bool:
+    """Return whether a tensor is represented by the canonical expert store."""
+
+    if name.startswith("mtp."):
+        # The current DeepSeek V4 runtime intentionally serves the main model
+        # only and sanitize already discards these weights.
+        return family == "deepseek_v4"
+    if family == "qwen3_6":
+        return _QWEN36_STACKED_EXPERT_RE.match(name) is not None
+    return (
+        _EXPERT_RE.match(name) is not None
+        or _STACKED_EXPERT_RE.match(name) is not None
+    )
+
+
+def _copy_safetensors_subset(
+    source: Path,
+    destination: Path,
+    names: set[str],
+) -> tuple[int, dict[str, dict[str, Any]]]:
+    """Copy selected tensors without decoding or allocating their payloads."""
+
+    with source.open("rb") as handle:
+        raw_length = handle.read(8)
+        if len(raw_length) != 8:
+            raise ValueError(f"invalid safetensors header: {source}")
+        (header_length,) = struct.unpack("<Q", raw_length)
+        raw_header = handle.read(header_length)
+        complete_header = json.loads(raw_header)
+    metadata = complete_header.get("__metadata__")
+    source_header = {
+        key: value
+        for key, value in complete_header.items()
+        if key != "__metadata__"
+    }
+    missing = names - set(source_header)
+    if missing:
+        raise ValueError(
+            f"safetensors subset references missing tensors: {sorted(missing)[:3]}"
+        )
+
+    selected = sorted(
+        ((name, source_header[name]) for name in names),
+        key=lambda item: int(item[1]["data_offsets"][0]),
+    )
+    output_header: dict[str, Any] = {}
+    if metadata is not None:
+        output_header["__metadata__"] = metadata
+    cursor = 0
+    for name, spec in selected:
+        start, end = (int(value) for value in spec["data_offsets"])
+        length = end - start
+        output_header[name] = {
+            "dtype": spec["dtype"],
+            "shape": spec["shape"],
+            "data_offsets": [cursor, cursor + length],
+        }
+        cursor += length
+
+    encoded = json.dumps(output_header, separators=(",", ":")).encode()
+    encoded += b" " * (-len(encoded) % 8)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_suffix(destination.suffix + ".partial")
+    source_fd = os.open(source, os.O_RDONLY)
+    output_fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.write(output_fd, struct.pack("<Q", len(encoded)))
+        os.write(output_fd, encoded)
+        source_data_start = 8 + header_length
+        for _name, spec in selected:
+            start, end = (int(value) for value in spec["data_offsets"])
+            offset = source_data_start + start
+            remaining = end - start
+            while remaining:
+                chunk = os.pread(source_fd, min(8 * 1024 * 1024, remaining), offset)
+                if not chunk:
+                    raise EOFError(f"short safetensors read from {source}")
+                view = memoryview(chunk)
+                while view:
+                    written = os.write(output_fd, view)
+                    if written <= 0:
+                        raise OSError(f"short safetensors write to {partial}")
+                    view = view[written:]
+                offset += len(chunk)
+                remaining -= len(chunk)
+        os.fsync(output_fd)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(source_fd)
+        os.close(output_fd)
+    partial.replace(destination)
+    return cursor, {
+        name: output_header[name]
+        for name, _spec in selected
+    }
+
+
+def build_backbone_checkpoint(
+    source_dir: Path,
+    output_dir: Path,
+    family: str,
+) -> dict[str, Any]:
+    """Create a raw-copy backbone checkpoint with routed experts removed."""
+
+    index_path = source_dir / "model.safetensors.index.json"
+    index = json.loads(index_path.read_text())
+    weight_map = index["weight_map"]
+    output_dir.mkdir(parents=True, exist_ok=True)
+    new_weight_map: dict[str, str] = {}
+    shards: dict[str, Any] = {}
+    total_size = 0
+    for shard_name in sorted(set(weight_map.values())):
+        source = source_dir / shard_name
+        _data_start, header = _read_safetensors_header(source)
+        selected = {
+            name
+            for name in header
+            if weight_map.get(name) == shard_name
+            and not _is_externalized_routed_tensor(name, family)
+        }
+        if not selected:
+            shards[shard_name] = {
+                "backbone_file": None,
+                "source_bytes": source.stat().st_size,
+                "backbone_bytes": 0,
+            }
+            continue
+        destination = output_dir / shard_name
+        payload_bytes, _ = _copy_safetensors_subset(source, destination, selected)
+        total_size += payload_bytes
+        new_weight_map.update({name: shard_name for name in selected})
+        shards[shard_name] = {
+            "backbone_file": shard_name,
+            "source_bytes": source.stat().st_size,
+            "backbone_bytes": destination.stat().st_size,
+            "sha256": _sha256_file(destination),
+        }
+    if not new_weight_map:
+        raise ValueError("prepared backbone checkpoint contains no weights")
+    new_index = {
+        **{key: value for key, value in index.items() if key != "weight_map"},
+        "metadata": {
+            **(index.get("metadata") or {}),
+            "total_size": total_size,
+        },
+        "weight_map": new_weight_map,
+    }
+    partial_index = output_dir / "model.safetensors.index.json.partial"
+    partial_index.write_text(json.dumps(new_index, indent=2, sort_keys=True) + "\n")
+    partial_index.replace(output_dir / "model.safetensors.index.json")
+    journal = {
+        "format": "ai2apps-backbone-checkpoint",
+        "version": 1,
+        "family": family,
+        "source_dir": str(source_dir.resolve()),
+        "total_payload_bytes": total_size,
+        "shards": shards,
+    }
+    partial_journal = output_dir / "backbone-manifest.json.partial"
+    partial_journal.write_text(json.dumps(journal, indent=2, sort_keys=True) + "\n")
+    partial_journal.replace(output_dir / "backbone-manifest.json")
+    return journal
+
+
+def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_suffix(path.suffix + ".partial")
+    partial.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    partial.replace(path)
+
+
+def build_storage_transition(
+    source_dir: Path,
+    backbone_dir: Path,
+    offset_manifest: Path,
+    *,
+    repo_id: str,
+    revision: str,
+    policy: str,
+) -> Path:
+    """Create the crash-resumable source-shard reclamation journal."""
+
+    offsets = json.loads(offset_manifest.read_text())
+    last_layers: dict[str, int] = {}
+    for raw_layer, layer in offsets["layers"].items():
+        layer_number = int(raw_layer)
+        for expert in layer.get("experts", ()):
+            for tensor in expert.get("tensors", ()):
+                raw_file = tensor.get("file", layer.get("file"))
+                if raw_file:
+                    shard = Path(raw_file).name
+                    last_layers[shard] = max(last_layers.get(shard, -1), layer_number)
+    backbone = json.loads((backbone_dir / "backbone-manifest.json").read_text())
+    unknown = set(last_layers) - set(backbone["shards"])
+    if unknown:
+        raise ValueError(f"offset references unknown source shards: {sorted(unknown)}")
+    # A shard may contain backbone tensors only. It has no expert consumer and
+    # can therefore be replaced as soon as conversion starts.
+    for shard in backbone["shards"]:
+        last_layers.setdefault(shard, -1)
+    path = _metadata_dir(source_dir) / "storage-transition.json"
+    value = {
+        "format": "ai2apps-storage-transition",
+        "version": 1,
+        "repo_id": repo_id,
+        "revision": revision,
+        "policy": policy,
+        "state": "converting",
+        "offset_manifest": str(offset_manifest.resolve()),
+        "backbone_dir": str(backbone_dir.resolve()),
+        "last_layers": last_layers,
+        "reclaimed_shards": [],
+        "reclaimed_source_bytes": 0,
+        "source_cache_linked": any(
+            (source_dir / shard).is_symlink() for shard in backbone["shards"]
+        ),
+    }
+    _write_json_atomic(path, value)
+    return path
+
+
+def reclaim_stream_shards(
+    source_dir: Path,
+    transition_path: Path,
+    completed_layer: int,
+) -> list[str]:
+    """Replace source shards whose final consumer has committed."""
+
+    transition = json.loads(transition_path.read_text())
+    if transition.get("state") != "converting":
+        return []
+    backbone_dir = Path(transition["backbone_dir"])
+    backbone = json.loads((backbone_dir / "backbone-manifest.json").read_text())
+    reclaimed = set(transition.get("reclaimed_shards", ()))
+    released: list[str] = []
+    for shard, last_layer in sorted(transition["last_layers"].items()):
+        if shard in reclaimed or int(last_layer) > completed_layer:
+            continue
+        source = source_dir / shard
+        expected = backbone["shards"][shard]
+        replacement = backbone_dir / shard
+        if expected["backbone_file"] is not None:
+            if not replacement.is_file():
+                # A crash after os.replace but before the journal commit is
+                # recoverable when the root file already has the expected hash.
+                if not source.is_file() or _sha256_file(source) != expected["sha256"]:
+                    raise FileNotFoundError(f"prepared backbone shard is missing: {shard}")
+            else:
+                source.unlink(missing_ok=True)
+                os.replace(replacement, source)
+        else:
+            source.unlink(missing_ok=True)
+        reclaimed.add(shard)
+        released.append(shard)
+        transition["reclaimed_source_bytes"] = int(
+            transition.get("reclaimed_source_bytes", 0)
+        ) + int(expected["source_bytes"])
+        transition["reclaimed_shards"] = sorted(reclaimed)
+        _write_json_atomic(transition_path, transition)
+    return released
+
+
+def commit_backbone_index(source_dir: Path, transition_path: Path) -> dict[str, Any]:
+    """Commit the prepared index after every source shard was reclaimed."""
+
+    transition = json.loads(transition_path.read_text())
+    if set(transition.get("reclaimed_shards", ())) != set(transition["last_layers"]):
+        raise ValueError("cannot commit backbone index before all shards are reclaimed")
+    backbone_dir = Path(transition["backbone_dir"])
+    prepared_index = backbone_dir / "model.safetensors.index.json"
+    if not prepared_index.is_file():
+        raise FileNotFoundError("prepared backbone index is missing")
+    source_index = source_dir / "model.safetensors.index.json"
+    archived_index = _metadata_dir(source_dir) / "source-model.safetensors.index.json"
+    if not archived_index.exists():
+        os.replace(source_index, archived_index)
+    os.replace(prepared_index, source_index)
+    transition["state"] = "prepared"
+    _write_json_atomic(transition_path, transition)
+    return transition
+
+
+def resume_storage_transition(
+    source_dir: Path,
+    *,
+    repo_id: str,
+    revision: str,
+    policy: str,
+) -> Path | None:
+    """Return a structurally valid interrupted transition, if one exists."""
+
+    path = _metadata_dir(source_dir) / "storage-transition.json"
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, TypeError, json.JSONDecodeError):
+        return None
+    expected = {
+        "format": "ai2apps-storage-transition",
+        "repo_id": repo_id,
+        "revision": revision,
+        "policy": policy,
+        "state": "converting",
+    }
+    if any(value.get(key) != item for key, item in expected.items()):
+        return None
+    offset_manifest = Path(value.get("offset_manifest", ""))
+    backbone_dir = Path(value.get("backbone_dir", ""))
+    try:
+        backbone = json.loads((backbone_dir / "backbone-manifest.json").read_text())
+    except (OSError, TypeError, json.JSONDecodeError):
+        return None
+    if not offset_manifest.is_file():
+        return None
+    reclaimed = set(value.get("reclaimed_shards", ()))
+    for shard, spec in backbone.get("shards", {}).items():
+        root_file = source_dir / shard
+        if shard not in reclaimed and not root_file.is_file():
+            return None
+        if shard in reclaimed and spec.get("backbone_file") is not None:
+            staged = backbone_dir / shard
+            if not root_file.is_file() and not staged.is_file():
+                return None
+    return path
+
+
+def _materialize_linked_files(root: Path) -> int:
+    """Replace cache-backed symlinks with local files before cache eviction."""
+
+    copied = 0
+    for path in root.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = path.resolve(strict=True)
+        partial = path.with_name(path.name + ".materializing")
+        shutil.copy2(target, partial)
+        os.replace(partial, path)
+        copied += 1
+    return copied
+
+
+def release_hf_cache_revision(
+    source_dir: Path,
+    repo_id: str,
+    revision: str,
+    *,
+    cache_linked: bool,
+) -> dict[str, Any]:
+    """Materialize the model view and delete only its exact HF cache revision."""
+
+    result: dict[str, Any] = {
+        "attempted": False,
+        "freed_bytes": 0,
+        "materialized_files": 0,
+    }
+    if not cache_linked:
+        return result
+    result["attempted"] = True
+    try:
+        linked_targets = [path.resolve() for path in source_dir.rglob("*") if path.is_symlink()]
+        cache_repo = next(
+            (
+                parent
+                for target in linked_targets
+                for parent in target.parents
+                if parent.name.startswith("models--")
+            ),
+            None,
+        )
+        if cache_repo is None:
+            raise ValueError("could not identify the linked Hugging Face cache")
+        result["materialized_files"] = _materialize_linked_files(source_dir)
+
+        from huggingface_hub import scan_cache_dir
+
+        cache = scan_cache_dir(cache_repo.parent)
+        repo = next(
+            (item for item in cache.repos if item.repo_id == repo_id and item.repo_type == "model"),
+            None,
+        )
+        if repo is None:
+            raise ValueError(f"Hugging Face cache entry is missing: {repo_id}")
+        matching = [item.commit_hash for item in repo.revisions if item.commit_hash == revision]
+        if len(matching) != 1:
+            raise ValueError("the exact Hugging Face cache revision was not found")
+        strategy = cache.delete_revisions(matching[0])
+        result["freed_bytes"] = int(strategy.expected_freed_size)
+        strategy.execute()
+        result["completed"] = True
+    except Exception as exc:  # Installation remains valid after materialization.
+        result["completed"] = False
+        result["error"] = str(exc)
+    return result
 
 
 def build_deepseek_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
@@ -560,8 +1104,15 @@ def build_qwen36_offset_manifest(source_dir: Path, output_dir: Path) -> Path:
 
 
 class AI2AppsInstaller:
-    def __init__(self, hf_downloader: Any):
+    def __init__(
+        self,
+        hf_downloader: Any,
+        package_recipes: tuple[dict[str, Any], ...] = (),
+        on_ready: Any | None = None,
+    ):
         self.hf_downloader = hf_downloader
+        self.package_recipes = package_recipes
+        self.on_ready = on_ready
         self.tasks: dict[str, InstallTask] = {}
         self._runners: dict[str, asyncio.Task] = {}
         self._cancelled: set[str] = set()
@@ -580,10 +1131,13 @@ class AI2AppsInstaller:
         relative = recipe["engine"].get("scope_pack")
         if not relative:
             return None
-        manifest_path = Path(__file__).parent / relative
-        packaged_profile = (
-            Path(__file__).parent / recipe["engine"]["scope_asset"]
-        ).resolve()
+        manifest_path = Path(relative)
+        if not manifest_path.is_absolute():
+            manifest_path = Path(__file__).parent / manifest_path
+        packaged_profile = Path(recipe["engine"]["scope_asset"])
+        if not packaged_profile.is_absolute():
+            packaged_profile = Path(__file__).parent / packaged_profile
+        packaged_profile = packaged_profile.resolve()
         if profile.resolve() != packaged_profile:
             return None
         if not manifest_path.is_file():
@@ -632,7 +1186,9 @@ class AI2AppsInstaller:
 
     @staticmethod
     def _scope_profile(recipe: dict[str, Any]) -> Path | None:
-        packaged = Path(__file__).parent / recipe["engine"]["scope_asset"]
+        packaged = Path(recipe["engine"]["scope_asset"])
+        if not packaged.is_absolute():
+            packaged = Path(__file__).parent / packaged
         if packaged.is_file():
             profile = packaged.resolve()
             AI2AppsInstaller._scope_pack_metadata(recipe, profile)
@@ -647,10 +1203,61 @@ class AI2AppsInstaller:
             return Path(external).expanduser().resolve()
         return None
 
+    @staticmethod
+    def _materialize_scope_profile(
+        source_dir: Path,
+        scope_profile: Path,
+        scope_pack: dict[str, Any] | None,
+    ) -> Path:
+        """Copy package-owned runtime data into the installed model directory.
+
+        Adapter packages may be upgraded or uninstalled independently.  A
+        prepared checkpoint must therefore never retain a runtime dependency
+        on an adapter package's immutable version directory.
+        """
+        payload = scope_profile.read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        if scope_pack is not None:
+            expected = str(scope_pack["profile"]["sha256"]).lower()
+            if digest != expected:
+                raise RuntimeError(
+                    f"Scope Pack checksum mismatch: expected {expected}, got {digest}"
+                )
+        destination = _metadata_dir(source_dir) / "scope-assets" / f"{digest}.json"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_file():
+            if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
+                raise RuntimeError(f"installed Scope Pack asset is corrupt: {destination}")
+            return destination.resolve()
+        partial = destination.with_suffix(".json.partial")
+        partial.write_bytes(payload)
+        partial.replace(destination)
+        return destination.resolve()
+
     @classmethod
-    def catalog(cls) -> list[dict[str, Any]]:
+    def _recipes(cls) -> tuple[dict[str, Any], ...]:
+        """Read recipes only from active, signed model-adapter packages."""
+        from omlx.model_adapters import get_model_adapter_registry
+
+        return get_model_adapter_registry().installation_recipes()
+
+    @classmethod
+    def catalog(
+        cls, package_recipes: tuple[dict[str, Any], ...] = ()
+    ) -> list[dict[str, Any]]:
         result = []
-        for recipe in CATALOG:
+        recipes = package_recipes or cls._recipes()
+        for recipe in recipes:
+            if recipe.get("internal"):
+                continue
+            if recipe.get("recipe") == "native":
+                item = {key: value for key, value in recipe.items()}
+                item["sources"] = list(item["sources"])
+                item["memory_tiers"] = list(item.get("memory_tiers", ()))
+                item["engine"] = dict(item.get("engine", {}))
+                item["engine_ready"] = True
+                result.append(item)
+                continue
             profile = cls._scope_profile(recipe)
             if profile is None:
                 # A catalog entry is installable by definition. Do not expose
@@ -672,7 +1279,7 @@ class AI2AppsInstaller:
         return result
 
     def _recipe(self, model_id: str) -> dict[str, Any]:
-        for recipe in CATALOG:
+        for recipe in self.package_recipes or self._recipes():
             if recipe["id"] == model_id:
                 return recipe
         raise ValueError(f"unsupported AI2Apps model: {model_id}")
@@ -764,6 +1371,7 @@ class AI2AppsInstaller:
         weight_source: str,
         memory_tier: str,
         token: str,
+        storage_policy: str | None = None,
     ) -> InstallTask:
         recipe = self._recipe(model_id)
         source = next(
@@ -774,6 +1382,35 @@ class AI2AppsInstaller:
             raise ValueError(f"unsupported weight source: {weight_source}")
         if memory_tier not in {"auto", "lean", "compact", "optimal"}:
             raise ValueError(f"unsupported memory tier: {memory_tier}")
+        supported_storage = set(recipe.get("storage_policies", ("keep_source",)))
+        if storage_policy is None:
+            storage_policy = (
+                "delete_after"
+                if "delete_after" in supported_storage
+                else "keep_source"
+            )
+        if storage_policy not in STORAGE_POLICIES:
+            raise ValueError(f"unsupported storage policy: {storage_policy}")
+        if storage_policy not in supported_storage:
+            raise ValueError(
+                f"{model_id} does not support storage policy: {storage_policy}"
+            )
+        if recipe.get("recipe") == "native":
+            task = InstallTask(
+                task_id=str(uuid.uuid4()),
+                model_id=model_id,
+                weight_source=weight_source,
+                repo_id=source["repo_id"],
+                revision=source["revision"],
+                memory_tier="auto",
+                storage_policy="keep_source",
+            )
+            self.tasks[task.task_id] = task
+            self._runners[task.task_id] = asyncio.create_task(
+                self._run_native(task, recipe, token)
+            )
+            return task
+
         scope_profile = self._scope_profile(recipe)
         if scope_profile is None:
             raise ValueError(
@@ -786,12 +1423,118 @@ class AI2AppsInstaller:
             repo_id=source["repo_id"],
             revision=source["revision"],
             memory_tier=memory_tier,
+            storage_policy=storage_policy,
         )
         self.tasks[task.task_id] = task
         self._runners[task.task_id] = asyncio.create_task(
             self._run(task, recipe, token, scope_profile)
         )
         return task
+
+    async def _run_native(
+        self, task: InstallTask, recipe: dict[str, Any], token: str
+    ) -> None:
+        """Download a native checkpoint and its required internal checkpoints."""
+
+        try:
+            async with self._sem:
+                task.status = InstallStatus.DOWNLOADING
+                recipes = {
+                    item["id"]: item
+                    for item in (self.package_recipes or self._recipes())
+                }
+                for required_id in recipe.get("required_model_ids", ()):
+                    required = recipes.get(required_id)
+                    if required is None or required.get("recipe") != "native":
+                        raise RuntimeError(
+                            f"required native model is unavailable: {required_id}"
+                        )
+                    await self._ensure_native_checkpoint(
+                        task, required, token, dependency=True
+                    )
+                    if task.status == InstallStatus.CANCELLED:
+                        return
+                task.cache_hit = await self._ensure_native_checkpoint(
+                    task, recipe, token, dependency=False
+                )
+                if task.status == InstallStatus.CANCELLED:
+                    return
+                task.status = InstallStatus.VALIDATING
+                task.phase = "Activating model Worker"
+                task.progress = 99.0
+                task.status = InstallStatus.COMPLETED
+                task.phase = "Ready"
+                task.progress = 100.0
+                task.detail = f"{task.repo_id}@{task.revision}"
+                task.completed_at = time.time()
+        except asyncio.CancelledError:
+            task.status = InstallStatus.CANCELLED
+            task.phase = "Cancelled"
+        except Exception as exc:
+            task.status = InstallStatus.FAILED
+            task.phase = "Failed"
+            task.error = str(exc)
+
+    async def _ensure_native_checkpoint(
+        self,
+        task: InstallTask,
+        recipe: dict[str, Any],
+        token: str,
+        *,
+        dependency: bool,
+    ) -> bool:
+        """Ensure one pinned native checkpoint exists, then activate its Worker."""
+
+        from ai2apps.packages.supervisor import ManagedServiceSupervisor
+
+        source = recipe["sources"][0]
+        repo_id = source["repo_id"]
+        revision = source["revision"]
+        label = recipe.get("name", recipe["id"])
+        prefix = "Preparing required model" if dependency else "Preparing model"
+        task.phase = f"{prefix}: {label}"
+        source_dir = self.hf_downloader.model_dir / repo_id
+        await asyncio.to_thread(
+            publish_configured_shared_model_reference,
+            repo_id=repo_id,
+            revision=revision,
+        )
+        imported = await asyncio.to_thread(
+            import_local_checkpoint_to_hf_cache,
+            source_dir,
+            repo_id,
+            revision,
+            ManagedServiceSupervisor._huggingface_hub_cache(),
+        )
+        cache_hit = imported is not None
+        if not cache_hit:
+            child = await self.hf_downloader.start_download(
+                repo_id,
+                token,
+                revision=revision,
+                notify_complete=False,
+                cache_mode=True,
+            )
+            task.child_task_id = child.task_id
+            while child.status.value in {"pending", "downloading"}:
+                if task.task_id in self._cancelled:
+                    await self.hf_downloader.cancel_download(child.task_id)
+                    task.status = InstallStatus.CANCELLED
+                    task.phase = "Cancelled"
+                    return False
+                task.progress = child.progress
+                task.detail = (
+                    f"{label}: {child.downloaded_size} / {child.total_size} bytes"
+                )
+                await asyncio.sleep(0.5)
+            if child.status.value != "completed":
+                raise RuntimeError(child.error or f"download {child.status.value}")
+            cache_hit = bool(getattr(child, "cache_hit", False))
+        else:
+            task.detail = f"Reused existing pinned checkpoint for {label}"
+        if self.on_ready is not None:
+            await self.on_ready(recipe)
+        return cache_hit
 
     async def _run(
         self,
@@ -809,17 +1552,47 @@ class AI2AppsInstaller:
 
                 task.status = InstallStatus.DOWNLOADING
                 source_dir = self.hf_downloader.model_dir / task.repo_id
-                task.phase = "Checking local HuggingFace cache"
-                task.cache_hit = await asyncio.to_thread(
-                    self._prepare_cached_checkpoint,
-                    task.repo_id,
-                    task.revision,
-                    token,
-                    source_dir,
+                await asyncio.to_thread(
+                    publish_configured_shared_model_reference,
+                    repo_id=task.repo_id,
+                    revision=task.revision,
                 )
+                task.phase = "Checking local HuggingFace cache"
+                resumed_transition = None
+                if task.storage_policy == "stream_reclaim":
+                    resumed_transition = await asyncio.to_thread(
+                        resume_storage_transition,
+                        source_dir,
+                        repo_id=task.repo_id,
+                        revision=task.revision,
+                        policy=task.storage_policy,
+                    )
+                    _source_path, source_record = _source_record(source_dir)
+                    task.cache_hit = resumed_transition is not None or (
+                        checkpoint_is_complete(source_dir)
+                        and all(
+                            source_record.get(key) == value
+                            for key, value in {
+                                "repo_id": task.repo_id,
+                                "revision": task.revision,
+                            }.items()
+                        )
+                    )
+                else:
+                    task.cache_hit = await asyncio.to_thread(
+                        self._prepare_cached_checkpoint,
+                        task.repo_id,
+                        task.revision,
+                        token,
+                        source_dir,
+                    )
                 if task.cache_hit:
                     task.progress = 55.0
-                    task.detail = "Reused local checkpoint without downloading"
+                    task.detail = (
+                        "Resuming low-disk conversion"
+                        if resumed_transition is not None
+                        else "Reused local checkpoint without downloading"
+                    )
                 else:
                     task.phase = "Downloading checkpoint"
                     child = await self.hf_downloader.start_download(
@@ -827,7 +1600,7 @@ class AI2AppsInstaller:
                         token,
                         revision=task.revision,
                         notify_complete=False,
-                        cache_mode=True,
+                        cache_mode=task.storage_policy != "stream_reclaim",
                     )
                     task.child_task_id = child.task_id
                     while child.status.value in {"pending", "downloading"}:
@@ -863,11 +1636,15 @@ class AI2AppsInstaller:
                     split_store_dir = work_dir / "expert-store-split"
                     store_dir = work_dir / "expert-store-fused"
                 else:
-                    offset_manifest = await asyncio.to_thread(
-                        build_deepseek_offset_manifest,
-                        source_dir,
-                        work_dir / "offsets",
-                    )
+                    if resumed_transition is not None:
+                        transition = json.loads(resumed_transition.read_text())
+                        offset_manifest = Path(transition["offset_manifest"])
+                    else:
+                        offset_manifest = await asyncio.to_thread(
+                            build_deepseek_offset_manifest,
+                            source_dir,
+                            work_dir / "offsets",
+                        )
                     num_layers = int(config["num_hidden_layers"])
                     first_routed_layer = int(
                         config.get("first_k_dense_replace", 0)
@@ -875,6 +1652,26 @@ class AI2AppsInstaller:
                     routed_layers = list(range(first_routed_layer, num_layers))
                     split_store_dir = None
                     store_dir = work_dir / "expert-store"
+                transition_path = resumed_transition
+                if task.storage_policy != "keep_source" and not is_qwen:
+                    if transition_path is None:
+                        backbone_dir = work_dir / "backbone-staging"
+                        task.phase = "Preparing compact backbone"
+                        await asyncio.to_thread(
+                            build_backbone_checkpoint,
+                            source_dir,
+                            backbone_dir,
+                            recipe["family"],
+                        )
+                        transition_path = await asyncio.to_thread(
+                            build_storage_transition,
+                            source_dir,
+                            backbone_dir,
+                            offset_manifest,
+                            repo_id=task.repo_id,
+                            revision=task.revision,
+                            policy=task.storage_policy,
+                        )
                 conversion_identity = {
                     "format": "ai2apps-conversion-state",
                     "version": 1,
@@ -1012,29 +1809,84 @@ class AI2AppsInstaller:
                             )
                         completed_layers.add(layer)
                         write_conversion_state()
+                    if (
+                        transition_path is not None
+                        and task.storage_policy == "stream_reclaim"
+                    ):
+                        released = await asyncio.to_thread(
+                            reclaim_stream_shards,
+                            source_dir,
+                            transition_path,
+                            layer,
+                        )
+                        if released:
+                            task.detail = (
+                                f"MoE layer {index + 1} / {len(routed_layers)} · "
+                                f"reclaimed {len(released)} source shard(s)"
+                            )
                     task.progress = 58.0 + 37.0 * (index + 1) / len(routed_layers)
-                    task.detail = f"MoE layer {index + 1} / {len(routed_layers)}"
+                    if not (
+                        transition_path is not None
+                        and task.storage_policy == "stream_reclaim"
+                        and released
+                    ):
+                        task.detail = f"MoE layer {index + 1} / {len(routed_layers)}"
                 self._write_store_manifest(
                     store_dir, ExpertMajorStore, conversion_identity
                 )
                 write_conversion_state()
 
+                checkpoint_layout = None
+                if transition_path is not None:
+                    if task.storage_policy == "delete_after":
+                        await asyncio.to_thread(
+                            reclaim_stream_shards,
+                            source_dir,
+                            transition_path,
+                            max(routed_layers),
+                        )
+                    transition = await asyncio.to_thread(
+                        commit_backbone_index,
+                        source_dir,
+                        transition_path,
+                    )
+                    checkpoint_layout = {
+                        "format": "ai2apps-backbone-expert-store",
+                        "version": 1,
+                        "source_retained": False,
+                        "storage_policy": task.storage_policy,
+                        "reclaimed_source_bytes": transition[
+                            "reclaimed_source_bytes"
+                        ],
+                    }
+
                 task.status = InstallStatus.CONFIGURING
                 task.phase = "Configuring dedicated engine"
                 task.progress = 97.0
+                scope_pack = self._scope_pack_metadata(recipe, scope_profile)
+                runtime_scope_profile = self._materialize_scope_profile(
+                    source_dir, scope_profile, scope_pack
+                )
                 install_manifest = {
                     "format": "ai2apps-cache-moe-model",
                     "version": 2,
                     "model_id": task.model_id,
                     "family": recipe["family"],
-                    "engine": recipe["engine"],
+                    "execution_modes": list(
+                        recipe.get("execution_modes", ("cached",))
+                    ),
+                    "engine": {
+                        key: value
+                        for key, value in recipe["engine"].items()
+                        if key not in {"scope_asset", "scope_pack", "scope_env"}
+                    },
                     "source": {
                         "provider": task.weight_source,
                         "repo_id": task.repo_id,
                         "revision": task.revision,
                     },
                     "scope": {
-                        "profile": str(scope_profile),
+                        "profile": str(runtime_scope_profile),
                         "default": recipe["scope_name"],
                     },
                     "expert_store": str(store_dir.resolve()),
@@ -1042,7 +1894,8 @@ class AI2AppsInstaller:
                     "memory_tier": task.memory_tier,
                     "installed_at": time.time(),
                 }
-                scope_pack = self._scope_pack_metadata(recipe, scope_profile)
+                if checkpoint_layout is not None:
+                    install_manifest["checkpoint_layout"] = checkpoint_layout
                 if scope_pack is not None:
                     install_manifest["scope"]["pack"] = {
                         "id": scope_pack["id"],
@@ -1064,13 +1917,32 @@ class AI2AppsInstaller:
                 self._validate(
                     source_dir,
                     store_dir,
-                    scope_profile,
+                    runtime_scope_profile,
                     recipe["scope_name"],
                     len(routed_layers),
                     recipe["family"],
                 )
+                if checkpoint_layout is not None:
+                    task.phase = "Releasing original checkpoint"
+                    cleanup = await asyncio.to_thread(
+                        release_hf_cache_revision,
+                        source_dir,
+                        task.repo_id,
+                        task.revision,
+                        cache_linked=bool(transition.get("source_cache_linked")),
+                    )
+                    checkpoint_layout["hf_cache_cleanup"] = cleanup
+                    install_manifest["checkpoint_layout"] = checkpoint_layout
+                    _write_json_atomic(manifest_path, install_manifest)
+                    await asyncio.to_thread(
+                        remove_configured_shared_model_reference,
+                        repo_id=task.repo_id,
+                        revision=task.revision,
+                    )
                 if self.hf_downloader._on_complete:
                     await self.hf_downloader._on_complete()
+                if self.on_ready is not None:
+                    await self.on_ready(recipe)
                 task.status = InstallStatus.COMPLETED
                 task.phase = "Ready"
                 task.progress = 100.0
@@ -1128,6 +2000,8 @@ class AI2AppsInstaller:
         routed_layer_count: int,
         family: str = "deepseek_v4",
     ) -> None:
+        if not checkpoint_is_complete(source_dir):
+            raise ValueError("prepared checkpoint is incomplete")
         profile = json.loads(scope_profile.read_text())
         if family == "qwen3_6":
             from omlx.cache.moe_expert_store import ExpertMajorStore
@@ -1173,7 +2047,11 @@ class AI2AppsInstaller:
         if old is None or old.status not in {InstallStatus.FAILED, InstallStatus.CANCELLED}:
             raise ValueError("task is not retryable")
         return await self.start(
-            old.model_id, old.weight_source, old.memory_tier, token
+            old.model_id,
+            old.weight_source,
+            old.memory_tier,
+            token,
+            old.storage_policy,
         )
 
     def get_tasks(self) -> list[dict[str, Any]]:

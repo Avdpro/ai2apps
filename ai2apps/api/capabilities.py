@@ -5,12 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import (
+    PrincipalProvider,
+    require_app_capability,
+    resolve_request_principal,
+)
+from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.capabilities import (
     CapabilityPolicyRecord,
     GrantLeaseRecord,
@@ -83,8 +89,15 @@ class RevokeRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
-def create_capability_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter()
+def create_capability_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        dependencies=[
+            Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
+        ]
+    )
 
     def repository_or_error():
         runtime = runtime_provider()

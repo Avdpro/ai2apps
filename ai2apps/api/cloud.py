@@ -2,15 +2,66 @@
 
 from __future__ import annotations
 
-from typing import Any
+import json
+import logging
+import re
+import secrets
+from contextvars import ContextVar
+from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import httpx
-from fastapi import APIRouter, Header, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+)
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai2apps.account_capacity import capacity_policy_payload
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
+from ai2apps.cloud_client import AI2APPS_CLOUD_BROWSER_COOKIE
+from ai2apps.cloud_requests import (
+    CloudAIRequestRepository,
+    CloudRequestOwnershipError,
+)
+from ai2apps.http_security import enforce_same_origin_cookie_request
+from ai2apps.identity import IdentityBindingError, RequestPrincipal
+from ai2apps.model_invocation import ModelInvocationContext
+from ai2apps.qr import svg_qr_data_url
+from ai2apps.remote import RemoteAccessError
+
+_RESERVED_IDENTITY_FIELDS = frozenset(
+    {
+        "actorUserId",
+        "actor_user_id",
+        "billingAccountId",
+        "billing_account_id",
+        "installationId",
+        "installation_id",
+        "membershipEpoch",
+        "membership_epoch",
+        "organizationId",
+        "organization_id",
+    }
+)
+
+logger = logging.getLogger(__name__)
+
+_BROWSER_SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+_REQUEST_CLOUD: ContextVar[Any | None] = ContextVar(
+    "ai2apps_request_cloud", default=None
+)
+_PENDING_BROWSER_COOKIE: ContextVar[tuple[str, str, bool] | None] = ContextVar(
+    "ai2apps_pending_browser_cookie", default=None
+)
 
 
 class RegisterRequest(BaseModel):
@@ -30,6 +81,20 @@ class AdminReauthRequest(BaseModel):
     password: str = Field(min_length=12, max_length=128)
 
 
+class CoreDeviceRevokeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    owner_password: str = Field(
+        alias="ownerPassword", min_length=12, max_length=128
+    )
+
+
+class CoreDeviceRenameRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    display_name: str = Field(alias="displayName", min_length=1, max_length=120)
+
+
 class EmailRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
 
@@ -44,7 +109,62 @@ class PasswordResetRequest(EmailCodeRequest):
     new_password: str = Field(alias="newPassword", min_length=12, max_length=128)
 
 
+class MemberInvitationRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: Literal["admin", "developer", "member", "child", "guest"]
+
+
+class MemberChangeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    role: Literal["admin", "developer", "member", "child", "guest"] | None = None
+    status: Literal["active", "suspended", "revoked"] | None = None
+    owner_password: str | None = Field(
+        default=None,
+        alias="ownerPassword",
+        min_length=12,
+        max_length=128,
+    )
+
+
+class OrganizationPolicyChangeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    allowed_app_ids: list[str] | None = Field(alias="allowedAppIds", max_length=200)
+    allowed_model_ids: list[str] | None = Field(alias="allowedModelIds", max_length=200)
+    default_monthly_point_limit: str | None = Field(
+        alias="defaultMonthlyPointLimit",
+        pattern=r"^(0|[1-9][0-9]{0,18})$",
+    )
+    default_concurrency_limit: int = Field(
+        alias="defaultConcurrencyLimit", ge=1, le=100
+    )
+    offline_grace_seconds: int = Field(alias="offlineGraceSeconds", ge=0, le=86400)
+    owner_password: str = Field(
+        alias="ownerPassword", min_length=12, max_length=128
+    )
+
+
+class MemberQuotaChangeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    allowed_model_ids: list[str] | None = Field(alias="allowedModelIds", max_length=200)
+    monthly_point_limit: str | None = Field(
+        alias="monthlyPointLimit",
+        pattern=r"^(0|[1-9][0-9]{0,18})$",
+    )
+    concurrency_limit: int | None = Field(
+        alias="concurrencyLimit", default=None, ge=1, le=100
+    )
+    owner_password: str = Field(
+        alias="ownerPassword", min_length=12, max_length=128
+    )
+
+
 def _cloud_or_error(runtime_provider: PlatformRuntimeProvider):
+    selected = _REQUEST_CLOUD.get()
+    if selected is not None:
+        return selected
     runtime = runtime_provider()
     cloud = None if runtime is None else getattr(runtime, "cloud", None)
     if cloud is None:
@@ -57,6 +177,22 @@ def _cloud_or_error(runtime_provider: PlatformRuntimeProvider):
     return cloud
 
 
+def _apply_browser_cookie(response: Response) -> Response:
+    pending = _PENDING_BROWSER_COOKIE.get()
+    if pending is not None:
+        cookie_name, value, secure = pending
+        response.set_cookie(
+            cookie_name,
+            value,
+            max_age=30 * 24 * 60 * 60,
+            httponly=True,
+            secure=secure,
+            samesite="strict",
+            path="/",
+        )
+    return response
+
+
 def _forward_response(response: httpx.Response) -> Response:
     headers = {}
     content_type = response.headers.get("content-type")
@@ -65,27 +201,419 @@ def _forward_response(response: httpx.Response) -> Response:
         headers["content-type"] = content_type
     if retry_after:
         headers["retry-after"] = retry_after
-    return Response(content=response.content, status_code=response.status_code, headers=headers)
+    etag = response.headers.get("etag")
+    if etag:
+        headers["etag"] = etag
+    return _apply_browser_cookie(
+        Response(content=response.content, status_code=response.status_code, headers=headers)
+    )
 
 
 def _transport_error(error: httpx.HTTPError) -> JSONResponse:
     if isinstance(error, httpx.TimeoutException):
-        return platform_error_response(
+        response = platform_error_response(
             status_code=504,
             code="cloud_timeout",
             message="AI2Apps Cloud did not respond in time.",
             retryable=True,
         )
-    return platform_error_response(
+        return _apply_browser_cookie(response)
+    response = platform_error_response(
         status_code=502,
         code="cloud_unavailable",
         message="AI2Apps Cloud is unavailable.",
         retryable=True,
     )
+    return _apply_browser_cookie(response)
 
 
-def create_cloud_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter(prefix="/cloud", tags=["platform-cloud"])
+def _invitation_response_with_qr(response: Response) -> Response:
+    if response.status_code >= 400:
+        return response
+    try:
+        payload = json.loads(bytes(response.body))
+        invite_url = str(payload["inviteUrl"])
+        parsed_invite_url = urlsplit(invite_url)
+        if (
+            parsed_invite_url.scheme != "https"
+            or not parsed_invite_url.netloc
+            or parsed_invite_url.username is not None
+            or parsed_invite_url.password is not None
+            or parsed_invite_url.path != "/invitations/accept"
+            or not parsed_invite_url.fragment
+        ):
+            raise ValueError("unexpected invitation URL")
+        payload["inviteQrDataUrl"] = svg_qr_data_url(invite_url)
+        return _apply_browser_cookie(
+            JSONResponse(content=payload, status_code=response.status_code)
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "invitation_response_invalid",
+                "message": "Cloud returned an invalid invitation response",
+            },
+        ) from error
+
+
+def create_cloud_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    async def select_browser_cloud(
+        request: Request,
+    ):
+        enforce_same_origin_cookie_request(request)
+        runtime = runtime_provider()
+        cookie_name_resolver = (
+            None
+            if runtime is None
+            else getattr(runtime, "cloud_browser_cookie_name", None)
+        )
+        cookie_reader = (
+            None
+            if runtime is None
+            else getattr(runtime, "cloud_browser_session_from_cookies", None)
+        )
+        cookie_name = (
+            cookie_name_resolver()
+            if cookie_name_resolver is not None
+            else AI2APPS_CLOUD_BROWSER_COOKIE
+        )
+        browser_session_id = (
+            cookie_reader(request.cookies)
+            if cookie_reader is not None
+            else request.cookies.get(AI2APPS_CLOUD_BROWSER_COOKIE)
+        )
+        resolver = (
+            None if runtime is None else getattr(runtime, "cloud_for_browser", None)
+        )
+        created = not (
+            browser_session_id is not None
+            and _BROWSER_SESSION_ID.fullmatch(browser_session_id)
+        )
+        if created:
+            browser_session_id = secrets.token_urlsafe(32)
+        try:
+            cloud = (
+                resolver(browser_session_id)
+                if resolver is not None
+                else None if runtime is None else getattr(runtime, "cloud", None)
+            )
+        except (RuntimeError, ValueError) as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "cloud_client_not_ready",
+                    "message": str(error),
+                },
+            ) from error
+        cloud_token = _REQUEST_CLOUD.set(cloud)
+        cookie_token = _PENDING_BROWSER_COOKIE.set(
+            (
+                cookie_name,
+                browser_session_id,
+                request.url.scheme == "https"
+                or request.url.hostname not in {"127.0.0.1", "localhost", "::1"},
+            )
+            if created
+            else None
+        )
+        try:
+            yield
+        finally:
+            _PENDING_BROWSER_COOKIE.reset(cookie_token)
+            _REQUEST_CLOUD.reset(cloud_token)
+
+    router = APIRouter(
+        prefix="/cloud",
+        tags=["platform-cloud"],
+        dependencies=[Depends(select_browser_cloud)],
+    )
+    principal_dependency = Depends(principal_provider)
+
+    def require_core_account(
+        principal: RequestPrincipal = principal_dependency,
+    ) -> RequestPrincipal:
+        if not principal.is_core:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "core_account_required",
+                    "message": "Only the installation core account may manage Cloud account state",
+                },
+            )
+        return principal
+
+    core_account_only = [Depends(require_core_account)]
+
+    def bound_installation(principal: RequestPrincipal):
+        runtime = runtime_provider()
+        database = None if runtime is None else getattr(runtime, "database", None)
+        if database is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "installation_identity_not_ready",
+                    "message": "Local installation identity is not ready",
+                },
+            )
+        from ai2apps.identity import IdentityRepository
+
+        installation = IdentityRepository(database).get_installation()
+        if (
+            installation is None
+            or installation.id != principal.installation_id
+            or installation.core_user_id != principal.actor_user_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "core_installation_required",
+                    "message": "The bound installation core account is required",
+                },
+            )
+        return installation
+
+    async def refresh_local_access_projection() -> None:
+        runtime = runtime_provider()
+        remote = None if runtime is None else getattr(runtime, "remote", None)
+        refresher = (
+            None if remote is None else getattr(remote, "refresh_access_projection", None)
+        )
+        if refresher is None:
+            return
+        try:
+            await refresher()
+        except (RemoteAccessError, httpx.HTTPError):
+            logger.warning(
+                "Cloud member change succeeded but Local projection refresh failed",
+                exc_info=True,
+            )
+
+    def request_repository() -> CloudAIRequestRepository | None:
+        runtime = runtime_provider()
+        database = None if runtime is None else getattr(runtime, "database", None)
+        return None if database is None else CloudAIRequestRepository(database)
+
+    def begin_owned_request(
+        principal: RequestPrincipal,
+        *,
+        idempotency_key: str,
+        operation: str,
+        model: Any,
+    ) -> CloudAIRequestRepository | None:
+        repository = request_repository()
+        if repository is None:
+            return None
+        try:
+            repository.begin(
+                principal,
+                idempotency_key=idempotency_key,
+                operation=operation,
+                model=str(model or ""),
+            )
+        except CloudRequestOwnershipError as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "cloud_request_idempotency_conflict",
+                    "message": str(error),
+                },
+            ) from error
+        return repository
+
+    def authorize_cloud_request(
+        principal: RequestPrincipal,
+        cloud_request_id: str,
+        *,
+        allow_core_override: bool,
+    ):
+        repository = request_repository()
+        if repository is None:
+            if allow_core_override and principal.is_core:
+                return None, None
+        else:
+            record = repository.authorize(
+                principal,
+                cloud_request_id,
+                allow_core_override=allow_core_override,
+            )
+            if record is not None:
+                return repository, record
+            if allow_core_override and principal.is_core and repository.get_by_cloud_request_id(
+                cloud_request_id
+            ) is None:
+                # Preserve core cancellation for requests created before the ledger.
+                return repository, None
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "cloud_request_not_found",
+                "message": "Cloud model request was not found",
+            },
+        )
+
+    def bind_response_identity(
+        repository: CloudAIRequestRepository | None,
+        idempotency_key: str,
+        payload: Any,
+        *,
+        status: str,
+    ) -> None:
+        if repository is None or not isinstance(payload, dict):
+            return
+        request_id = payload.get("requestId")
+        if isinstance(request_id, str) and request_id:
+            repository.bind_cloud_request_id(
+                idempotency_key,
+                request_id,
+                status=status,
+            )
+
+    def normalized_request_status(value: Any) -> str | None:
+        status = str(value or "")
+        if status == "canceled":
+            status = "cancelled"
+        if status in {
+            "requested",
+            "in_progress",
+            "completed",
+            "failed",
+            "cancel_requested",
+            "cancelled",
+        }:
+            return status
+        return None
+
+    class SSEOwnershipTracker:
+        def __init__(
+            self,
+            repository: CloudAIRequestRepository | None,
+            idempotency_key: str,
+        ) -> None:
+            self.repository = repository
+            self.idempotency_key = idempotency_key
+            self.buffer = b""
+
+        def feed(self, chunk: bytes) -> None:
+            if self.repository is None:
+                return
+            self.buffer += chunk
+            normalized = self.buffer.replace(b"\r\n", b"\n")
+            frames = normalized.split(b"\n\n")
+            self.buffer = frames.pop()
+            for frame in frames:
+                event = "message"
+                data_lines = []
+                for line in frame.split(b"\n"):
+                    if line.startswith(b"event:"):
+                        event = line[6:].strip().decode("ascii", errors="ignore")
+                    elif line.startswith(b"data:"):
+                        data_lines.append(line[5:].strip())
+                if not data_lines:
+                    continue
+                try:
+                    payload = json.loads(b"\n".join(data_lines))
+                except (TypeError, ValueError):
+                    continue
+                status = {
+                    "response.created": "in_progress",
+                    "response.completed": "completed",
+                    "response.failed": "failed",
+                    "response.cancelled": "cancelled",
+                }.get(event)
+                if status is None:
+                    continue
+                bind_response_identity(
+                    self.repository,
+                    self.idempotency_key,
+                    payload,
+                    status=status,
+                )
+                if not isinstance(payload, dict) or not payload.get("requestId"):
+                    self.repository.set_status(self.idempotency_key, status)
+
+    def trusted_ai_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        supplied = sorted(_RESERVED_IDENTITY_FIELDS.intersection(payload))
+        if supplied:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "reserved_identity_field",
+                    "message": "Model identity and billing fields are server-managed",
+                    "fields": supplied,
+                },
+            )
+        return payload
+
+    def cloud_ai_headers(
+        principal: RequestPrincipal,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        result = dict(headers or {})
+        if principal.authentication_type == "legacy_api_key":
+            return result
+        runtime = runtime_provider()
+        resolver = (
+            None
+            if runtime is None
+            else getattr(runtime, "cloud_ai_authorization_headers", None)
+        )
+        if resolver is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "cloud_device_auth_not_ready",
+                    "message": "Cloud Device authorization is not ready",
+                },
+            )
+        try:
+            device_headers = resolver(principal)
+        except (IdentityBindingError, RemoteAccessError) as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "cloud_device_auth_not_ready",
+                    "message": str(error),
+                },
+            ) from error
+        forbidden = {
+            "authorization",
+            "x-ai2apps-actor-user-id",
+            "x-ai2apps-membership-epoch",
+        }
+        if forbidden.intersection(key.lower() for key in result):
+            raise RuntimeError("Cloud Device identity headers are server-managed")
+        result.update(device_headers)
+        return result
+
+    def audit_model_request(
+        principal: RequestPrincipal,
+        *,
+        request_key: str,
+        model: Any,
+        operation: str,
+    ) -> None:
+        runtime = runtime_provider()
+        events = None if runtime is None else getattr(runtime, "events", None)
+        if events is None:
+            return
+        context = ModelInvocationContext.from_principal(
+            principal,
+            session_id=f"cloud-request:{request_key}",
+        )
+        events.append(
+            event_type="cloud.model.invocation.requested",
+            subject_id=request_key,
+            trace_id=request_key,
+            payload={
+                **context.audit_payload(),
+                "model": str(model or ""),
+                "operation": operation,
+            },
+        )
 
     async def call(
         method: str,
@@ -94,13 +622,22 @@ def create_cloud_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
         payload: Any | None = None,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        principal: RequestPrincipal | None = None,
     ) -> Response:
         cloud = _cloud_or_error(runtime_provider)
         if isinstance(cloud, JSONResponse):
             return cloud
         try:
             response = await cloud.request(
-                method, path, json=payload, params=params, headers=headers
+                method,
+                path,
+                json=payload,
+                params=params,
+                headers=(
+                    cloud_ai_headers(principal, headers)
+                    if principal is not None
+                    else headers
+                ),
             )
         except httpx.HTTPError as error:
             return _transport_error(error)
@@ -108,6 +645,39 @@ def create_cloud_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
             return _forward_response(response)
         finally:
             await response.aclose()
+
+    async def owner_grant(
+        installation_id: str,
+        *,
+        purpose: str,
+        password: str,
+    ) -> str | Response:
+        response = await call(
+            "POST",
+            "/v1/owner-reauth/grants",
+            payload={
+                "purpose": purpose,
+                "resourceType": "installation",
+                "resourceId": installation_id,
+                "password": password,
+            },
+        )
+        if response.status_code >= 400:
+            return response
+        try:
+            payload = json.loads(bytes(response.body))
+            grant = str(payload["grant"])
+            if not grant:
+                raise ValueError("empty grant")
+            return grant
+        except (KeyError, TypeError, ValueError) as error:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "owner_reauth_invalid_response",
+                    "message": "Cloud returned an invalid owner reauthentication response",
+                },
+            ) from error
 
     @router.post("/auth/register")
     async def register(request: RegisterRequest):
@@ -127,21 +697,22 @@ def create_cloud_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
     async def login(request: LoginRequest):
         return await call("POST", "/v1/auth/login", payload=request.model_dump())
 
-    @router.post("/auth/logout")
+    @router.post("/auth/logout", dependencies=core_account_only)
     async def logout():
         cloud = _cloud_or_error(runtime_provider)
         if isinstance(cloud, JSONResponse):
             return cloud
         response = await call("POST", "/v1/auth/logout")
-        if response.status_code < 400:
-            await cloud.clear_session()
+        # Local logout is authoritative for this client. Even if Cloud cannot
+        # invalidate the server-side session, never retain its local cookie.
+        await cloud.clear_session()
         return response
 
-    @router.get("/auth/me")
+    @router.get("/auth/me", dependencies=core_account_only)
     async def auth_me():
         return await call("GET", "/v1/auth/me")
 
-    @router.post("/admin/reauth")
+    @router.post("/admin/reauth", dependencies=core_account_only)
     async def admin_reauth(request: AdminReauthRequest):
         return await call(
             "POST", "/v1/admin/reauth", payload=request.model_dump()
@@ -167,39 +738,352 @@ def create_cloud_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
             await cloud.clear_session()
         return response
 
-    @router.get("/levels")
+    @router.get("/levels", dependencies=core_account_only)
     async def levels():
         return await call("GET", "/v1/levels")
 
-    @router.get("/points")
+    @router.get("/capacity-policy", dependencies=core_account_only)
+    async def capacity_policy():
+        """Return the Local compatibility table for Cloud capacity rollout."""
+
+        return capacity_policy_payload()
+
+    @router.get("/account/devices", dependencies=core_account_only)
+    async def account_devices():
+        """List every Cloud device owned by the signed-in Core account."""
+
+        return await call("GET", "/v1/remote/devices")
+
+    @router.patch(
+        "/account/devices/{device_id}", dependencies=core_account_only
+    )
+    async def rename_account_device(
+        request: CoreDeviceRenameRequest,
+        device_id: str = Path(min_length=32, max_length=80),
+    ):
+        response = await call(
+            "PATCH",
+            f"/v1/remote/devices/{device_id}",
+            payload=request.model_dump(by_alias=True),
+        )
+        if response.status_code < 400:
+            try:
+                device = json.loads(bytes(response.body))
+                runtime = runtime_provider()
+                remote = None if runtime is None else getattr(runtime, "remote", None)
+                if remote is not None and remote.repository.get(device_id) is not None:
+                    remote.repository.update_cloud_state(device)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Cloud renamed the device but returned an invalid projection",
+                    exc_info=True,
+                )
+        return response
+
+    @router.post(
+        "/account/devices/{device_id}/revoke", dependencies=core_account_only
+    )
+    async def revoke_account_device(
+        request: CoreDeviceRevokeRequest,
+        device_id: str = Path(min_length=32, max_length=80),
+    ):
+        installations_response = await call("GET", "/v1/installations")
+        if installations_response.status_code >= 400:
+            return installations_response
+        try:
+            installations_payload = json.loads(bytes(installations_response.body))
+            installation = next(
+                item
+                for item in installations_payload.get("items", [])
+                if item.get("cloudDeviceId") == device_id
+                and item.get("role") in {"core", "owner"}
+            )
+            installation_id = str(installation["installationId"])
+        except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
+            return platform_error_response(
+                status_code=404,
+                code="core_device_not_found",
+                message="That device is not owned by the current Core account.",
+                retryable=False,
+            )
+
+        grant = await owner_grant(
+            installation_id,
+            purpose="installation.revoke",
+            password=request.owner_password,
+        )
+        if isinstance(grant, Response):
+            return grant
+        response = await call(
+            "POST",
+            f"/v1/remote/devices/{device_id}/revoke",
+            headers={"X-Owner-Reauth-Grant": grant},
+        )
+        if response.status_code < 400:
+            runtime = runtime_provider()
+            remote = None if runtime is None else getattr(runtime, "remote", None)
+            cloud = _REQUEST_CLOUD.get()
+            if remote is not None and remote.repository.get(device_id) is not None:
+                try:
+                    await remote.stop(device_id)
+                    if remote.identity_repository is not None:
+                        remote.identity_repository.deactivate_installation("revoked")
+                    if cloud is not None:
+                        await remote.reconcile(cloud=cloud)
+                except (RemoteAccessError, httpx.HTTPError):
+                    logger.warning(
+                        "Cloud revoked the current device but Local cleanup failed",
+                        exc_info=True,
+                    )
+        return response
+
+    @router.get("/points", dependencies=core_account_only)
     async def points():
         return await call("GET", "/v1/points")
 
-    @router.get("/points/ledger")
+    @router.get("/points/ledger", dependencies=core_account_only)
     async def point_ledger(limit: int = Query(default=50, ge=1, le=100)):
         return await call("GET", "/v1/points/ledger", params={"limit": limit})
 
-    @router.post("/points/daily-claim")
+    @router.post("/points/daily-claim", dependencies=core_account_only)
     async def daily_claim():
         return await call("POST", "/v1/points/daily-claim")
 
-    @router.get("/account/entitlements")
+    @router.get("/account/entitlements", dependencies=core_account_only)
     async def entitlements():
         return await call("GET", "/v1/account/entitlements")
 
+    @router.get("/installation", dependencies=core_account_only)
+    async def installation_detail(
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        return await call("GET", f"/v1/installations/{installation.id}")
+
+    @router.get("/installation/members", dependencies=core_account_only)
+    async def installation_members(
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        return await call(
+            "GET", f"/v1/installations/{installation.id}/members"
+        )
+
+    @router.get("/installation/invitations", dependencies=core_account_only)
+    async def installation_invitations(
+        status: Literal["pending", "accepted", "rejected", "cancelled", "expired"]
+        | None = Query(default=None),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        return await call(
+            "GET",
+            f"/v1/installations/{installation.id}/invitations",
+            params={"status": status} if status is not None else None,
+        )
+
+    @router.post("/installation/invitations", dependencies=core_account_only)
+    async def invite_installation_member(
+        request: MemberInvitationRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        response = await call(
+            "POST",
+            f"/v1/installations/{installation.id}/invitations",
+            payload=request.model_dump(),
+        )
+        return _invitation_response_with_qr(response)
+
+    @router.post(
+        "/installation/invitations/{invitation_id}/resend",
+        dependencies=core_account_only,
+    )
+    async def resend_installation_invitation(
+        invitation_id: str = Path(min_length=1, max_length=80),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        response = await call(
+            "POST",
+            f"/v1/installations/{installation.id}/invitations/{invitation_id}/resend",
+        )
+        return _invitation_response_with_qr(response)
+
+    @router.post(
+        "/installation/invitations/{invitation_id}/cancel",
+        dependencies=core_account_only,
+    )
+    async def cancel_installation_invitation(
+        invitation_id: str = Path(min_length=1, max_length=80),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        return await call(
+            "POST",
+            f"/v1/installations/{installation.id}/invitations/{invitation_id}/cancel",
+        )
+
+    @router.patch(
+        "/installation/members/{user_id}", dependencies=core_account_only
+    )
+    async def change_installation_member(
+        request: MemberChangeRequest,
+        user_id: str = Path(min_length=1, max_length=80),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        if request.role is None and request.status is None:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "member_change_required",
+                    "message": "A role or status change is required",
+                },
+            )
+        headers = None
+        if request.role is not None:
+            if request.owner_password is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "owner_reauth_required",
+                        "message": "Owner password is required for role changes",
+                    },
+                )
+            grant = await owner_grant(
+                installation.id,
+                purpose="organization.member.role_change",
+                password=request.owner_password,
+            )
+            if isinstance(grant, Response):
+                return grant
+            headers = {"X-Owner-Reauth-Grant": grant}
+        response = await call(
+            "PATCH",
+            f"/v1/installations/{installation.id}/members/{user_id}",
+            payload={
+                **({"role": request.role} if request.role is not None else {}),
+                **({"status": request.status} if request.status is not None else {}),
+            },
+            headers=headers,
+        )
+        if response.status_code < 400:
+            await refresh_local_access_projection()
+        return response
+
+    @router.get("/installation/policy", dependencies=core_account_only)
+    async def installation_policy(
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        return await call("GET", f"/v1/installations/{installation.id}/policy")
+
+    @router.patch("/installation/policy", dependencies=core_account_only)
+    async def change_installation_policy(
+        request: OrganizationPolicyChangeRequest,
+        principal: RequestPrincipal = principal_dependency,
+        if_match: str = Header(
+            alias="If-Match", pattern=r'^"policy-[1-9][0-9]*"$'
+        ),
+    ):
+        installation = bound_installation(principal)
+        grant = await owner_grant(
+            installation.id,
+            purpose="organization.policy.change",
+            password=request.owner_password,
+        )
+        if isinstance(grant, Response):
+            return grant
+        payload = request.model_dump(by_alias=True, exclude={"owner_password"})
+        response = await call(
+            "PATCH",
+            f"/v1/installations/{installation.id}/policy",
+            payload=payload,
+            headers={
+                "If-Match": if_match,
+                "X-Owner-Reauth-Grant": grant,
+            },
+        )
+        if response.status_code < 400:
+            await refresh_local_access_projection()
+        return response
+
+    @router.get(
+        "/installation/members/{user_id}/quota", dependencies=core_account_only
+    )
+    async def installation_member_quota(
+        user_id: str = Path(min_length=1, max_length=80),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        installation = bound_installation(principal)
+        return await call(
+            "GET",
+            f"/v1/installations/{installation.id}/members/{user_id}/quota",
+        )
+
+    @router.patch(
+        "/installation/members/{user_id}/quota", dependencies=core_account_only
+    )
+    async def change_installation_member_quota(
+        request: MemberQuotaChangeRequest,
+        user_id: str = Path(min_length=1, max_length=80),
+        principal: RequestPrincipal = principal_dependency,
+        if_match: str = Header(
+            alias="If-Match", pattern=r'^"policy-[1-9][0-9]*"$'
+        ),
+    ):
+        installation = bound_installation(principal)
+        grant = await owner_grant(
+            installation.id,
+            purpose="organization.member.quota_change",
+            password=request.owner_password,
+        )
+        if isinstance(grant, Response):
+            return grant
+        payload = request.model_dump(by_alias=True, exclude={"owner_password"})
+        response = await call(
+            "PATCH",
+            f"/v1/installations/{installation.id}/members/{user_id}/quota",
+            payload=payload,
+            headers={
+                "If-Match": if_match,
+                "X-Owner-Reauth-Grant": grant,
+            },
+        )
+        if response.status_code < 400:
+            await refresh_local_access_projection()
+        return response
+
     @router.get("/ai/models")
-    async def ai_models():
-        return await call("GET", "/v1/ai/models")
+    async def ai_models(principal: RequestPrincipal = principal_dependency):
+        return await call("GET", "/v1/ai/models", principal=principal)
 
     @router.post("/ai/responses")
     async def ai_response(
         payload: dict[str, Any],
+        principal: RequestPrincipal = principal_dependency,
         idempotency_key: str = Header(
             alias="Idempotency-Key", min_length=8, max_length=160
         ),
     ):
+        payload = trusted_ai_payload(payload)
+        repository = begin_owned_request(
+            principal,
+            idempotency_key=idempotency_key,
+            operation="responses",
+            model=payload.get("model"),
+        )
+        audit_model_request(
+            principal,
+            request_key=idempotency_key,
+            model=payload.get("model"),
+            operation="responses",
+        )
         cloud = _cloud_or_error(runtime_provider)
         if isinstance(cloud, JSONResponse):
+            if repository is not None:
+                repository.set_status(idempotency_key, "failed")
             return cloud
         wants_stream = payload.get("stream", True) is not False
         try:
@@ -207,70 +1091,171 @@ def create_cloud_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
                 "POST",
                 "/v1/ai/responses",
                 json=payload,
-                headers={"Idempotency-Key": idempotency_key},
+                headers=cloud_ai_headers(
+                    principal, {"Idempotency-Key": idempotency_key}
+                ),
                 stream=wants_stream,
             )
         except httpx.HTTPError as error:
+            if repository is not None:
+                repository.set_status(idempotency_key, "failed")
             return _transport_error(error)
         if not wants_stream or response.status_code >= 400:
             try:
                 await response.aread()
+                if repository is not None:
+                    if response.status_code >= 400:
+                        repository.set_status(idempotency_key, "failed")
+                    else:
+                        try:
+                            response_payload = response.json()
+                        except ValueError:
+                            response_payload = None
+                        bind_response_identity(
+                            repository,
+                            idempotency_key,
+                            response_payload,
+                            status="completed",
+                        )
+                        repository.set_status(idempotency_key, "completed")
                 return _forward_response(response)
             finally:
                 await response.aclose()
 
+        tracker = SSEOwnershipTracker(repository, idempotency_key)
+
         async def body():
             try:
                 async for chunk in response.aiter_bytes():
+                    tracker.feed(chunk)
                     yield chunk
             finally:
                 await response.aclose()
 
-        return StreamingResponse(
+        return _apply_browser_cookie(StreamingResponse(
             body(),
             status_code=response.status_code,
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
+        ))
 
     async def ai_image(
         endpoint: str,
         payload: dict[str, Any],
         idempotency_key: str,
+        principal: RequestPrincipal,
     ) -> Response:
         """Forward synchronous image calls without retaining image Data URLs."""
 
-        return await call(
+        payload = trusted_ai_payload(payload)
+        operation = f"images.{endpoint}"
+        repository = begin_owned_request(
+            principal,
+            idempotency_key=idempotency_key,
+            operation=operation,
+            model=payload.get("model"),
+        )
+        audit_model_request(
+            principal,
+            request_key=idempotency_key,
+            model=payload.get("model"),
+            operation=operation,
+        )
+        response = await call(
             "POST",
             f"/v1/ai/images/{endpoint}",
             payload=payload,
             headers={"Idempotency-Key": idempotency_key},
+            principal=principal,
         )
+        if repository is not None:
+            if response.status_code >= 400:
+                repository.set_status(idempotency_key, "failed")
+            else:
+                try:
+                    response_payload = json.loads(bytes(response.body))
+                except (TypeError, ValueError):
+                    response_payload = None
+                bind_response_identity(
+                    repository,
+                    idempotency_key,
+                    response_payload,
+                    status="completed",
+                )
+                repository.set_status(idempotency_key, "completed")
+        return response
 
     @router.post("/ai/images/generations")
     async def ai_image_generation(
         payload: dict[str, Any],
+        principal: RequestPrincipal = principal_dependency,
         idempotency_key: str = Header(
             alias="Idempotency-Key", min_length=8, max_length=160
         ),
     ):
-        return await ai_image("generations", payload, idempotency_key)
+        return await ai_image("generations", payload, idempotency_key, principal)
 
     @router.post("/ai/images/edits")
     async def ai_image_edit(
         payload: dict[str, Any],
+        principal: RequestPrincipal = principal_dependency,
         idempotency_key: str = Header(
             alias="Idempotency-Key", min_length=8, max_length=160
         ),
     ):
-        return await ai_image("edits", payload, idempotency_key)
+        return await ai_image("edits", payload, idempotency_key, principal)
 
     @router.get("/ai/requests/{request_id}")
-    async def ai_request(request_id: str):
-        return await call("GET", f"/v1/ai/requests/{request_id}")
+    async def ai_request(
+        request_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository, record = authorize_cloud_request(
+            principal,
+            request_id,
+            allow_core_override=False,
+        )
+        response = await call(
+            "GET", f"/v1/ai/requests/{request_id}", principal=principal
+        )
+        if repository is not None and record is not None and response.status_code < 400:
+            try:
+                result = json.loads(bytes(response.body))
+            except (TypeError, ValueError):
+                result = None
+            if isinstance(result, dict):
+                status = normalized_request_status(result.get("status"))
+                if status is not None:
+                    repository.set_status(record.idempotency_key, status)
+        return response
 
     @router.post("/ai/requests/{request_id}/cancel")
-    async def cancel_ai_request(request_id: str):
-        return await call("POST", f"/v1/ai/requests/{request_id}/cancel")
+    async def cancel_ai_request(
+        request_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository, record = authorize_cloud_request(
+            principal,
+            request_id,
+            allow_core_override=True,
+        )
+        response = await call(
+            "POST", f"/v1/ai/requests/{request_id}/cancel", principal=principal
+        )
+        if repository is not None and record is not None and response.status_code < 400:
+            try:
+                result = json.loads(bytes(response.body))
+            except (TypeError, ValueError):
+                result = None
+            status = (
+                normalized_request_status(result.get("status"))
+                if isinstance(result, dict)
+                else None
+            )
+            repository.set_status(
+                record.idempotency_key,
+                status or "cancel_requested",
+            )
+        return response
 
     return router

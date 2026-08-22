@@ -938,6 +938,95 @@ class TestEnginePoolAsync:
         assert pool.current_model_memory > 0
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("config_model_type", "engine_id", "clear_target"),
+        (
+            (
+                "deepseek_v4",
+                "deepseek-v4-flesh",
+                "omlx.patches.deepseek_v4.scope_policy.disable_scope_policy",
+            ),
+            (
+                "qwen3_5_moe",
+                "qwen3.6-tiered",
+                "omlx.patches.qwen3_6_flesh.scope_policy.disable_qwen36_scope_policy",
+            ),
+        ),
+    )
+    async def test_full_moe_mode_uses_standard_engine_and_clears_scope_policy(
+        self,
+        pool_with_mock_engines,
+        config_model_type,
+        engine_id,
+        clear_target,
+    ):
+        from omlx.model_settings import ModelSettings
+
+        pool = pool_with_mock_engines
+        entry = pool.get_entry("model-a")
+        entry.config_model_type = config_model_type
+        entry.cache_moe_config = {"engine": {"id": engine_id}}
+        pool._settings_manager = MagicMock()
+        pool._settings_manager.get_settings.return_value = ModelSettings(
+            moe_execution_mode="full"
+        )
+        standard_engine = MagicMock()
+        standard_engine.start = AsyncMock()
+        standard_engine.stop = AsyncMock()
+
+        with (
+            patch("omlx.engine_pool.BatchedEngine", return_value=standard_engine),
+            patch(clear_target) as clear_policy,
+        ):
+            loaded = await pool.get_engine("model-a")
+
+        assert loaded is standard_engine
+        clear_policy.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_prepared_deepseek_full_mode_uses_canonical_expert_store(
+        self, pool_with_mock_engines
+    ):
+        from omlx.model_settings import ModelSettings
+
+        pool = pool_with_mock_engines
+        entry = pool.get_entry("model-a")
+        entry.config_model_type = "deepseek_v4"
+        entry.cache_moe_config = {
+            "engine": {"id": "deepseek-v4-flesh"},
+            "expert_store": "/prepared/experts",
+            "scope": {"profile": "/prepared/scope.json", "default": "general"},
+            "checkpoint_layout": {
+                "format": "ai2apps-backbone-expert-store",
+                "version": 1,
+            },
+        }
+        pool._settings_manager = MagicMock()
+        pool._settings_manager.get_settings.return_value = ModelSettings(
+            moe_execution_mode="full"
+        )
+        standard_engine = MagicMock()
+        standard_engine.start = AsyncMock()
+        standard_engine.stop = AsyncMock()
+
+        with (
+            patch("omlx.engine_pool.BatchedEngine", return_value=standard_engine),
+            patch(
+                "omlx.model_discovery.deepseek_cache_moe_memory_profile",
+                return_value=None,
+            ),
+            patch(
+                "omlx.patches.deepseek_v4.scope_policy.configure_scope_policy"
+            ) as configure,
+        ):
+            loaded = await pool.get_engine("model-a")
+
+        assert loaded is standard_engine
+        configure.assert_called_once_with(
+            "/prepared/scope.json", "general", "/prepared/experts", 256
+        )
+
+    @pytest.mark.asyncio
     async def test_load_failure_is_cached_until_discovery_refresh(
         self, pool_with_mock_engines, small_mock_model_dir
     ):

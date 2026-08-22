@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for load-failure invalidation in admin model settings."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,20 @@ import omlx.server  # noqa: F401 - ensure server module is imported first
 from omlx.admin import routes as admin_routes
 from omlx.engine_pool import EngineEntry, EnginePool
 from omlx.model_settings import ModelSettings
+
+
+def test_web_model_config_exposes_cached_and_full_moe_execution():
+    root = Path(__file__).parents[1]
+    template = (
+        root / "ai2apps/web/templates/dashboard/_modal_model_settings.html"
+    ).read_text()
+    script = (root / "ai2apps/web/static/js/dashboard.js").read_text()
+
+    assert 'x-model="modelSettings.moe_execution_mode"' in template
+    assert '<option value="cached">' in template
+    assert '<option value="full">' in template
+    assert "moe_execution_mode: s.moe_execution_mode || 'cached'" in script
+    assert "moe_execution_mode: this.selectedModel?.cache_moe" in script
 
 
 def _failed_pool() -> tuple[EnginePool, EngineEntry]:
@@ -98,3 +113,24 @@ async def test_sampling_setting_change_keeps_cached_failure():
     assert entry.load_failed is True
     assert entry.load_failure_message == "trust_remote_code=True required"
     assert entry.load_failure_at == 123.0
+
+
+@pytest.mark.asyncio
+async def test_cache_moe_execution_mode_is_model_setting_and_load_signature():
+    pool, entry = _failed_pool()
+    entry.config_model_type = "deepseek_v4"
+    entry.cache_moe_config = {"engine": {"id": "deepseek-v4-flesh"}}
+    settings = ModelSettings()
+
+    result = await _update_settings(
+        pool,
+        settings,
+        admin_routes.ModelSettingsRequest(moe_execution_mode="full"),
+    )
+
+    assert settings.moe_execution_mode == "full"
+    assert entry.load_failed is False
+    assert result["requires_reload"] is False
+    assert pool._engine_runtime_signature(
+        "ling", settings
+    ) != pool._engine_runtime_signature("ling", ModelSettings())

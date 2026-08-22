@@ -298,6 +298,8 @@ class ChatCompletionRequest(BaseModel):
     guided_grammar: Optional[str] = None
     # Chat template kwargs (e.g. enable_thinking, reasoning_effort)
     chat_template_kwargs: Optional[Dict[str, Any]] = None
+    # OpenAI-compatible shorthand forwarded to the model chat template.
+    reasoning_effort: Optional[str] = None
     # Thinking budget (max thinking tokens, None = unlimited)
     thinking_budget: Optional[int] = Field(default=None, ge=0)
     # SpecPrefill: per-request enable/disable (None = use model setting)
@@ -583,6 +585,11 @@ class ModelInfo(BaseModel):
     # effective context window from the listing without a separate call
     # to /v1/models/status (see #1308).
     max_model_len: int | None = None
+    # AI2Apps extension: execution/billing authority is explicit rather than
+    # inferred by clients from a legacy public model-id prefix.
+    source: str | None = None
+    shareable: bool | None = None
+    usage_notice: str | None = None
 
 
 class ModelsResponse(BaseModel):

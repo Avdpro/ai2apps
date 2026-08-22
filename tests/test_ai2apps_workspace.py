@@ -14,6 +14,7 @@ from ai2apps.api.router import create_ai2apps_router
 from ai2apps.chat import ChatRepository
 from ai2apps.config import PlatformConfig
 from ai2apps.core import ResourceNotFoundError
+from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.services import ToolCallContext, ToolGatewayError
 from ai2apps.workspace import WorkspaceError
@@ -32,6 +33,17 @@ def _session(runtime, title="Workspace"):
         ChatRepository(runtime.database, runtime.events)
         .create_thread(title=title)[0]
         .session.id
+    )
+
+
+def _principal(user_id: str, role: MemberRole = MemberRole.MEMBER):
+    return RequestPrincipal(
+        actor_user_id=user_id,
+        installation_id="installation-1",
+        organization_id="organization-1",
+        billing_account_id="billing-core",
+        role=role,
+        membership_epoch=1,
     )
 
 
@@ -197,7 +209,7 @@ async def test_resource_and_artifact_api_round_trip(tmp_path):
     runtime = _runtime(tmp_path)
     session = _session(runtime)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime))
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -226,6 +238,149 @@ async def test_resource_and_artifact_api_round_trip(tmp_path):
         )
         assert download.content == b"hello artifact"
         assert download.headers["content-type"].startswith("text/plain")
+
+
+@pytest.mark.asyncio
+async def test_member_apis_hide_foreign_session_resources_and_events(tmp_path):
+    runtime = _runtime(tmp_path)
+    alice = _principal("user-alice")
+    bob = _principal("user-bob")
+    alice_instance, alice_home, _ = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat", principal=alice
+    )
+    assert alice_home is not None
+
+    alice_app = FastAPI()
+    alice_app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: alice,
+        )
+    )
+    bob_app = FastAPI()
+    bob_app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: bob,
+        )
+    )
+
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=alice_app), base_url="http://alice"
+        ) as alice_client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=bob_app), base_url="http://bob"
+        ) as bob_client,
+    ):
+        written = await alice_client.put(
+            f"/v1/platform/sessions/{alice_home.id}/workspace",
+            json={"path": "private.txt", "content": "alice only"},
+        )
+        attached = await alice_client.post(
+            f"/v1/platform/sessions/{alice_home.id}/attachments",
+            json={
+                "filename": "private.txt",
+                "media_type": "text/plain",
+                "data": base64.b64encode(b"alice attachment").decode(),
+            },
+        )
+        message = await alice_client.post(
+            f"/v1/platform/sessions/{alice_home.id}/messages",
+            json={
+                "role": "user",
+                "parts": [
+                    {"kind": "text", "content": {"text": "alice message"}}
+                ],
+            },
+        )
+
+        foreign_workspace = await bob_client.get(
+            f"/v1/platform/sessions/{alice_home.id}/workspace"
+        )
+        foreign_attachments = await bob_client.get(
+            f"/v1/platform/sessions/{alice_home.id}/attachments"
+        )
+        foreign_messages = await bob_client.get(
+            f"/v1/platform/sessions/{alice_home.id}/messages"
+        )
+        foreign_instance = await bob_client.get(
+            f"/v1/platform/app-instances/{alice_instance.id}/sessions"
+        )
+        foreign_events = await bob_client.get(
+            "/v1/platform/events", params={"session_id": alice_home.id}
+        )
+        unscoped_events = await bob_client.get("/v1/platform/events")
+
+    assert written.status_code == 200
+    assert attached.status_code == 201
+    assert message.status_code == 201
+    assert {
+        foreign_workspace.status_code,
+        foreign_attachments.status_code,
+        foreign_messages.status_code,
+        foreign_instance.status_code,
+        foreign_events.status_code,
+    } == {404}
+    assert unscoped_events.status_code == 403
+    assert unscoped_events.json()["detail"]["code"] == "event_scope_required"
+
+
+@pytest.mark.asyncio
+async def test_agent_run_api_is_filtered_through_session_ownership(tmp_path):
+    runtime = _runtime(tmp_path)
+    alice = _principal("admin-alice", MemberRole.ADMIN)
+    bob = _principal("admin-bob", MemberRole.ADMIN)
+    _, alice_home, _ = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat", principal=alice
+    )
+    _, bob_home, _ = runtime.extension_manager.launch_app(
+        "ai2apps.general-chat", principal=bob
+    )
+    assert alice_home is not None and bob_home is not None
+    alice_run, _ = runtime.agents.create_run(
+        session_id=alice_home.id,
+        agent_key="ai2apps.diagnostic-agent",
+        input={"private": "alice"},
+    )
+    bob_run, _ = runtime.agents.create_run(
+        session_id=bob_home.id,
+        agent_key="ai2apps.diagnostic-agent",
+        input={"private": "bob"},
+    )
+
+    alice_app = FastAPI()
+    alice_app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: alice,
+        )
+    )
+    bob_app = FastAPI()
+    bob_app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=lambda: bob,
+        )
+    )
+
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=alice_app), base_url="http://alice"
+        ) as alice_client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=bob_app), base_url="http://bob"
+        ) as bob_client,
+    ):
+        own = await alice_client.get(f"/v1/platform/agent-runs/{alice_run.id}")
+        foreign = await bob_client.get(f"/v1/platform/agent-runs/{alice_run.id}")
+        alice_list = await alice_client.get("/v1/platform/agent-runs")
+        bob_list = await bob_client.get("/v1/platform/agent-runs")
+
+    assert own.status_code == 200
+    assert foreign.status_code == 404
+    assert {item["id"] for item in alice_list.json()["items"]} == {alice_run.id}
+    assert {item["id"] for item in bob_list.json()["items"]} == {bob_run.id}
 
 
 def test_workspace_service_is_installed_with_expected_tools(tmp_path):

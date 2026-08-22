@@ -114,7 +114,7 @@
         list.innerHTML = '';
         const messages = content?.messages || [];
         if (!messages.length) {
-            list.innerHTML = '<div class="mchat-empty"><i data-lucide="sparkles"></i><h1>Start a conversation</h1><p>This session is shared with the Chat App on your Mac.</p></div>';
+            list.innerHTML = '<div class="mchat-empty"><i data-lucide="sparkles"></i><h1>Start a conversation</h1><p>This conversation stays on this client.</p></div>';
             icons();
             return;
         }
@@ -176,7 +176,7 @@
 
     async function loadModels() {
         try {
-            const payload = await request('/v1/mobile/models');
+            const payload = await request('/v1/mobile/models', { cache: 'no-store' });
             const items = (payload.data || []).filter((item) => item?.id);
             model.innerHTML = items.map((item) => '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.id) + '</option>').join('');
             if (!items.length) model.innerHTML = '<option value="">No models available</option>';

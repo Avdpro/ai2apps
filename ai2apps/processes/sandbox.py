@@ -66,7 +66,6 @@ class MacOSSandboxAdapter:
             '(import "system.sb")',
             "(allow process*)",
             "(allow sysctl-read)",
-            "(allow mach-lookup)",
             "(allow file-read-metadata)",
         ]
         for path in readable + writable:

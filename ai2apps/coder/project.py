@@ -84,7 +84,7 @@ class DevSession:
             "component_id": self.component.id,
             "component": self.component.public(),
             "status": "running",
-            "preview_url": f"/admin/coder-dev/{self.id}/preview",
+            "preview_url": f"/v1/platform/coder/dev-sessions/{self.id}/preview",
         }
 
 

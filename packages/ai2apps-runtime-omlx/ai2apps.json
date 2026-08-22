@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/runtime-omlx",
+    "type": "service",
+    "version": "1.3.7",
+    "displayName": "AI2Apps oMLX Runtime",
+    "description": "Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model Workers."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {"name": "inference-runtime", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

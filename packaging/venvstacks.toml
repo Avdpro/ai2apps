@@ -19,6 +19,15 @@ platforms = [
 ]
 
 [[frameworks]]
+name = "control-plane"
+runtime = "cpython-3.11"
+# Populated from [project.optional-dependencies].control-plane.
+requirements = []
+platforms = [
+    "macosx_arm64",
+]
+
+[[frameworks]]
 name = "mlx-base"
 runtime = "cpython-3.11"
 # Populated by _generate_venvstacks_toml() — do not hand-edit.
@@ -37,6 +46,13 @@ dynlib_exclude = [
     "cv2/.dylibs/liblzma*",
     "cv2/.dylibs/libxcb*",
     "cv2/.dylibs/libXau*",
+    # PyAV and OpenCV both vendor these codecs. Keep each wheel's private
+    # @loader_path copy, but use PyAV as the flattened venv link target.
+    "cv2/.dylibs/libdav1d*",
+    "cv2/.dylibs/libmp3lame*",
+    "cv2/.dylibs/libopencore-amrnb*",
+    "cv2/.dylibs/libopencore-amrwb*",
+    "cv2/.dylibs/libopus*",
 ]
 
 [tool.uv]

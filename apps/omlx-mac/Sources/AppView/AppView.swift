@@ -109,6 +109,7 @@ struct AppView: View {
             } else {
                 ModelsScreen()
             }
+        case .modelAdapters: ModelAdaptersScreen()
         case .downloads:    DownloadsScreen()
         case .integrations: IntegrationsScreen()
         case .quantization: QuantizationScreen()
@@ -455,6 +456,7 @@ private struct SettingsSidebar: View {
             }
             Section {
                 SidebarRow(section: .models)
+                SidebarRow(section: .modelAdapters)
                 SidebarRow(section: .downloads)
                 SidebarRow(section: .integrations)
                 SidebarRow(section: .quantization)

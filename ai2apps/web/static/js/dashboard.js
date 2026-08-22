@@ -63,7 +63,7 @@
     ]);
     const DASHBOARD_MAIN_TABS = new Set(['status', 'settings', 'models', 'logs', 'bench']);
     const DASHBOARD_SETTINGS_TABS = new Set(['global', 'integrations', 'models']);
-    const DASHBOARD_MODELS_TABS = new Set(['defaults', 'manager', 'downloader', 'quantizer', 'uploader']);
+    const DASHBOARD_MODELS_TABS = new Set(['defaults', 'manager']);
     const DASHBOARD_BENCH_TABS = new Set(['throughput', 'accuracy', 'context']);
 
     // Default sort for the settings and manager model tables. Also the target
@@ -116,7 +116,6 @@
                     markitdown_max_files_per_request: 5,
                     markitdown_pdf_processing_engine: 'markitdown',
                 },
-                ui: { language: 'en' },
                 idle_timeout: { idle_timeout_seconds: null },
                 system: { total_memory_bytes: 0, total_memory: '', auto_model_memory: '', ssd_total_bytes: 0, ssd_total: '' },
             },
@@ -163,10 +162,13 @@
 
             // Model settings modal
             showModelSettingsModal: false,
+            showModelPackageModal: false,
+            selectedModelPackage: null,
             selectedModel: null,
             modelSettings: {
                 model_alias: '',
                 model_type_override: '',
+                moe_execution_mode: 'cached',
                 cache_moe_memory_tier: '',
                 kv_cache_policy: 'session',
                 max_context_window: null,
@@ -301,6 +303,9 @@
             modelManager: { cached_moe: [], omlx: [], packages: [], fusion: [], cloud: [] },
             modelManagerLoading: false,
             modelManagerError: '',
+            modelDeveloperEntriesVisible: Boolean(
+                window.AI2APPS_SYSTEM_APP?.developerSurfacesVisible
+            ),
             defaultModels: {
                 work_simple: '',
                 work_standard: '',
@@ -315,7 +320,7 @@
             defaultModelsSaving: false,
             defaultModelsStatus: '',
             defaultModelsError: '',
-            managerSection: 'cached_moe',
+            managerSection: 'cloud',
             showFusionEditor: false,
             fusionEditor: { id: '', alias: '', generator: '', reviewer: '', reviewerBackend: 'local', reviewerProvider: '', editing: false, resolverEnabled: false, resolverProvider: '', resolver: '', gatePolicy: 'adaptive', reviewThreshold: 0.45, forceThreshold: 0.85, longOutputTokens: 512, midGenerationReviewEnabled: true, checkpointTokens: 1024, thinkingAuditEnabled: true, reviewerGuidanceMode: 'off', reviewerMaxTokens: 8192, reasoningHandoffMaxTokens: 256, generatorCacheMoeL1Mode: 'auto', generatorCacheMoePrefillBoost: 'natural', generatorCacheMoeDecodeBoost: 'natural', reviewerCacheMoeL1Mode: 'auto', reviewerCacheMoePrefillBoost: 'natural', reviewerCacheMoeDecodeBoost: 'natural' },
             showCloudEditor: false,
@@ -334,6 +339,63 @@
                 return (this.modelManager.cloud || []).reduce(
                     (count, provider) => count + (provider.enabled_model_count || 0), 0
                 );
+            },
+
+            get modelPackageCount() {
+                const ids = new Set([
+                    ...(this.modelManager.cached_moe || []).map(item => item.id),
+                    ...(this.modelManager.packages || []).map(item => item.id),
+                ]);
+                return ids.size;
+            },
+
+            modelManagerSections() {
+                const sections = [
+                    { id: 'cloud', label: window.t('models.manager.section.cloud') },
+                    { id: 'packages', label: window.t('models.manager.section.packages') },
+                    { id: 'fusion', label: 'Fusion' },
+                ];
+                if (this.modelDeveloperEntriesVisible) {
+                    sections.push(
+                        { id: 'cached_moe', label: 'Cached-MoE' },
+                        { id: 'omlx', label: 'oMLX' },
+                    );
+                }
+                return sections;
+            },
+
+            cloudProviderStatusLabel(provider) {
+                if (provider.managed) {
+                    if (provider.connection_state === 'signed_in') return window.t('models.cloud.status.connected');
+                    if (provider.connection_state === 'unavailable') return window.t('models.cloud.status.unavailable');
+                    return window.t('models.cloud.status.sign_in_required');
+                }
+                return window.t(provider.configured ? 'models.cloud.status.configured' : 'models.cloud.status.key_required');
+            },
+
+            cloudProviderAvailabilityLabel(provider) {
+                const key = provider.managed ? 'models.cloud.account_models' : 'models.cloud.provider_models';
+                return window.t(key)
+                    .replace('{enabled}', provider.enabled_model_count || 0)
+                    .replace('{available}', provider.model_count || 0);
+            },
+
+            modelManagerSectionCount(section) {
+                if (section === 'cloud') return this.cloudEnabledModelCount;
+                if (section === 'packages') return this.modelPackageCount;
+                return this.modelManager[section]?.length || 0;
+            },
+
+            async loadModelManagerVisibility() {
+                this.modelDeveloperEntriesVisible = Boolean(
+                    window.AI2APPS_SYSTEM_APP?.developerSurfacesVisible
+                );
+                if (
+                    !this.modelDeveloperEntriesVisible
+                    && ['cached_moe', 'omlx'].includes(this.managerSection)
+                ) {
+                    this.managerSection = 'cloud';
+                }
             },
 
             defaultModelOptions(purpose) {
@@ -391,8 +453,10 @@
             defaultModelLabel(model) {
                 const name = model.settings?.model_alias || model.display_name || model.id;
                 const source = model.source_type === 'cloud'
-                    ? 'Cloud'
-                    : (model.source_type === 'fusion' ? 'Fusion' : 'Local');
+                    ? window.t('models.defaults.source.cloud')
+                    : (model.source_type === 'fusion'
+                        ? window.t('models.defaults.source.fusion')
+                        : window.t('models.defaults.source.local'));
                 return `${source} · ${name}`;
             },
 
@@ -569,6 +633,7 @@
             dynaSelectedModelId: '',
             dynaWeightSource: 'huggingface',
             dynaMemoryTier: 'auto',
+            dynaStoragePolicy: 'delete_after',
             dynaToken: '',
             dynaPreflight: null,
             dynaPreflightLoading: false,
@@ -783,6 +848,7 @@
                 this.applyTabStateFromUrl();
 
                 await Promise.all([
+                    this.loadModelManagerVisibility(),
                     this.loadGlobalSettings(),
                     this.loadModels(),
                     this.loadServerInfo(),
@@ -794,6 +860,21 @@
                 this.startUpdateCheckTimer();
 
                 await this.handleMainTabChange(this.mainTab);
+
+                if (this.mainTab === 'models') {
+                    const pendingModelPackage = localStorage.getItem('ai2apps.pendingModelPackage');
+                    if (pendingModelPackage) {
+                        const recipe = (this.modelManager.cached_moe || []).find(
+                            model => model.id === pendingModelPackage
+                        );
+                        if (recipe) {
+                            localStorage.removeItem('ai2apps.pendingModelPackage');
+                            this.modelsTab = 'manager';
+                            this.managerSection = 'packages';
+                            await this.openModelPackageConfig(recipe);
+                        }
+                    }
+                }
 
                 // Watch for main tab changes to manage refresh timers
                 this.$watch('mainTab', (value) => {
@@ -816,11 +897,19 @@
                 });
                 window.addEventListener('ai2apps:account-changed', () => {
                     if (this.mainTab !== 'models') return;
-                    Promise.all([this.loadModels(), this.loadModelManager()]);
+                    Promise.all([
+                        this.loadModelManagerVisibility(),
+                        this.loadModels(),
+                        this.loadModelManager(),
+                    ]);
                 });
                 window.addEventListener('ai2apps:host-context', () => {
                     if (this.mainTab !== 'models') return;
-                    Promise.all([this.loadModels(), this.loadModelManager()]);
+                    Promise.all([
+                        this.loadModelManagerVisibility(),
+                        this.loadModels(),
+                        this.loadModelManager(),
+                    ]);
                 });
 
                 this.$watch('hfMlxOnly', () => {
@@ -875,19 +964,6 @@
                 }
                 if (value === 'models') {
                     const loads = [this.loadModelManager(), this.loadHFTasks(), this.loadOQTasks()];
-                    if (this.modelsTab === 'downloader' && !this.hfRecommendedLoaded) {
-                        loads.push(this.loadRecommendedModels());
-                    }
-                    if (this.modelsTab === 'downloader' && this.downloaderSource === 'ai2apps') {
-                        loads.push(
-                            this.loadDynaPreflight(),
-                            this.loadDynaCatalog(),
-                            this.loadDynaTasks(),
-                        );
-                    }
-                    if (this.modelsTab === 'quantizer') {
-                        loads.push(this.loadOQModels());
-                    }
                     if (this.msInitialized && this.msAvailable) {
                         loads.push(this.loadMSTasks());
                     }
@@ -935,7 +1011,14 @@
 
                 this.mainTab = DASHBOARD_MAIN_TABS.has(mainTab) ? mainTab : 'status';
                 this.activeTab = DASHBOARD_SETTINGS_TABS.has(settingsTab) ? settingsTab : 'global';
-                this.modelsTab = DASHBOARD_MODELS_TABS.has(modelsTab) ? modelsTab : 'defaults';
+                if (modelsTab === 'downloader') {
+                    this.modelsTab = 'manager';
+                    this.managerSection = 'packages';
+                } else if (modelsTab === 'quantizer' || modelsTab === 'uploader') {
+                    this.modelsTab = 'manager';
+                } else {
+                    this.modelsTab = DASHBOARD_MODELS_TABS.has(modelsTab) ? modelsTab : 'defaults';
+                }
                 this.benchTab = DASHBOARD_BENCH_TABS.has(benchTab) ? benchTab : 'throughput';
             },
 
@@ -985,13 +1068,6 @@
                 this.modelsTab = tab;
                 this.mainTab = 'models';
                 this.syncTabStateToUrl();
-                if (tab === 'quantizer') {
-                    this.loadOQModels();
-                }
-                if (tab === 'uploader') {
-                    if (!this.uploadOqModelsLoaded) this.loadUploadOqModels();
-                    this.loadUploadTasks();
-                }
             },
 
             async checkForUpdate() {
@@ -1047,7 +1123,6 @@
                             idle_timeout: { ...this.globalSettings.idle_timeout, ...data.idle_timeout },
                             system: { ...this.globalSettings.system, ...data.system },
                         };
-                        this.globalSettings.ui = data.ui || { language: 'en' };
 
                         // Sync idle timeout select value
                         this.idleTimeoutValue = this.globalSettings.idle_timeout?.idle_timeout_seconds != null
@@ -1237,13 +1312,13 @@
                 }
             },
 
-            async deleteSubKey(key) {
+            async deleteSubKey(fingerprint) {
                 if (!confirm(window.t('settings.auth.sub_keys_delete_confirm'))) return;
                 try {
                     const response = await fetch('/admin/api/sub-keys', {
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key }),
+                        body: JSON.stringify({ fingerprint }),
                     });
                     if (response.ok) {
                         await this.loadGlobalSettings();
@@ -1278,7 +1353,7 @@
                 try {
                     const response = await fetch('/admin/api/model-manager');
                     const data = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(data.detail || 'Could not load Model Manager');
+                    if (!response.ok) throw new Error(data.detail || window.t('models.defaults.load_error'));
                     this.modelManager = {
                         cached_moe: data.cached_moe || [],
                         omlx: data.omlx || [],
@@ -1292,7 +1367,7 @@
                     };
                     this.$nextTick(() => lucide.createIcons());
                 } catch (err) {
-                    this.modelManagerError = err.message || 'Could not load Model Manager';
+                    this.modelManagerError = err.message || window.t('models.defaults.load_error');
                 } finally {
                     this.modelManagerLoading = false;
                 }
@@ -1310,29 +1385,52 @@
                     });
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok) {
-                        throw new Error(data.detail || 'Could not save default models');
+                        throw new Error(data.detail || window.t('models.defaults.save_error'));
                     }
                     this.defaultModels = { ...this.defaultModels, ...(data.defaults || {}) };
-                    this.defaultModelsStatus = 'Saved';
+                    this.defaultModelsStatus = window.t('models.defaults.saved');
                 } catch (err) {
-                    this.defaultModelsError = err.message || 'Could not save default models';
+                    this.defaultModelsError = err.message || window.t('models.defaults.save_error');
                 } finally {
                     this.defaultModelsSaving = false;
                 }
             },
 
-            installCachedMoe(model) {
+            async openModelPackageConfig(model) {
+                this.selectedModelPackage = model;
                 this.dynaSelectedModelId = model.id;
                 this.dynaWeightSource = model.sources?.[0]?.id || 'huggingface';
-                this.modelsTab = 'downloader';
-                this.downloaderSource = 'ai2apps';
-                this.syncTabStateToUrl();
-                this.initAI2AppsDownloader();
+                this.dynaMemoryTier = 'auto';
+                this.dynaError = '';
+                this.dynaSuccess = '';
+                this.showModelPackageModal = true;
+                await this.initAI2AppsDownloader();
+                const recipe = this.activeModelPackageRecipe();
+                if (recipe) {
+                    this.dynaWeightSource = recipe.sources?.[0]?.id || 'huggingface';
+                    this.dynaStoragePolicy = this.recommendedDynaStoragePolicy(recipe);
+                }
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            closeModelPackageConfig() {
+                this.showModelPackageModal = false;
+                this.stopDynaRefresh();
+            },
+
+            installCachedMoe(model) {
+                return this.openModelPackageConfig(model);
             },
 
             configureCachedMoe(model) {
-                const runtime = model.runtime_model;
-                if (runtime) this.openModelSettings(runtime);
+                return this.openModelPackageConfig(model);
+            },
+
+            openModelPackageRuntimeSettings() {
+                const runtime = this.selectedModelPackage?.runtime_model;
+                if (!runtime) return;
+                this.closeModelPackageConfig();
+                this.openModelSettings(runtime);
             },
 
             openFusionEditor(model = null) {
@@ -1552,7 +1650,7 @@
                     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) { this.modelManagerError = data.detail || 'Could not save cloud provider'; return; }
+                if (!response.ok) { this.modelManagerError = data.detail || window.t('models.cloud.error.save'); return; }
                 this.showCloudEditor = false;
                 await this.loadModelManager();
             },
@@ -1568,11 +1666,11 @@
                     }
                     const response = await fetch(`/admin/api/model-manager/cloud/${encodeURIComponent(provider.id)}/refresh`, { method: 'POST' });
                     const data = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(data.detail || 'Could not refresh provider models');
+                    if (!response.ok) throw new Error(data.detail || window.t('models.cloud.error.refresh'));
                     await this.loadModelManager();
                     this.cloudExpanded[provider.id] = true;
                 } catch (err) {
-                    this.modelManagerError = err.message || 'Could not refresh provider models';
+                    this.modelManagerError = err.message || window.t('models.cloud.error.refresh');
                     await this.loadModelManager();
                 } finally {
                     this.cloudRefreshing[provider.id] = false;
@@ -1594,20 +1692,20 @@
                         body: JSON.stringify({ model_id: model.id, enabled }),
                     });
                     const data = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(data.detail || 'Could not update cloud model selection');
+                    if (!response.ok) throw new Error(data.detail || window.t('models.cloud.error.selection'));
                 } catch (err) {
                     model.enabled = previous;
                     provider.enabled_model_count = Math.max(
                         0,
                         (provider.enabled_model_count || 0) + (enabled ? -1 : 1)
                     );
-                    this.modelManagerError = err.message || 'Could not update cloud model selection';
+                    this.modelManagerError = err.message || window.t('models.cloud.error.selection');
                 }
             },
 
             async deleteCloudProvider(provider) {
-                const verb = provider.builtin ? 'Reset' : 'Delete';
-                if (!confirm(`${verb} cloud provider “${provider.name}”?`)) return;
+                const key = provider.builtin ? 'models.cloud.confirm.reset' : 'models.cloud.confirm.delete';
+                if (!confirm(window.t(key).replace('{provider}', provider.name))) return;
                 const response = await fetch(`/admin/api/model-manager/cloud/${encodeURIComponent(provider.id)}`, { method: 'DELETE' });
                 if (response.ok) await this.loadModelManager();
             },
@@ -2084,6 +2182,7 @@
                 return {
                     model_alias: s.model_alias || '',
                     model_type_override: s.model_type_override || '',
+                    moe_execution_mode: s.moe_execution_mode || 'cached',
                     cache_moe_memory_tier: s.cache_moe_memory_tier
                         || memoryProfile?.recommended
                         || '',
@@ -2631,6 +2730,9 @@
                             const payload = {
                                 model_alias: this.modelSettings.model_alias?.trim() || null,
                                 model_type_override: this.modelSettings.model_type_override || null,
+                                moe_execution_mode: this.selectedModel?.cache_moe
+                                    ? (this.modelSettings.moe_execution_mode || 'cached')
+                                    : null,
                                 cache_moe_memory_tier: this.modelSettings.cache_moe_memory_tier || null,
                                 kv_cache_policy: this.modelSettings.kv_cache_policy || 'session',
                                 max_context_window: this.modelSettings.max_context_window || null,
@@ -3169,23 +3271,6 @@
                     }
                 } catch (err) {
                     console.error('Failed to save integration settings:', err);
-                }
-            },
-
-            async saveLanguage(lang) {
-                try {
-                    const response = await fetch('/admin/api/global-settings', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ui_language: lang })
-                    });
-                    if (response.ok) {
-                        location.reload();
-                    } else {
-                        console.error('Failed to save language');
-                    }
-                } catch (e) {
-                    console.error('Failed to save language:', e);
                 }
             },
 
@@ -5343,6 +5428,26 @@
                 return this.dynaCatalog.find(model => model.id === this.dynaSelectedModelId) || null;
             },
 
+            activeModelPackageRecipe() {
+                return this.selectedDynaModel() || this.selectedModelPackage;
+            },
+
+            modelPackageTasks() {
+                if (!this.selectedModelPackage) return [];
+                return this.dynaTasks.filter(task => task.model_id === this.selectedModelPackage.id);
+            },
+
+            modelPackageLatestTask() {
+                const tasks = this.modelPackageTasks();
+                return tasks.length ? tasks[tasks.length - 1] : null;
+            },
+
+            modelPackageHasActiveTask() {
+                return this.modelPackageTasks().some(
+                    task => !['completed', 'failed', 'cancelled'].includes(task.status)
+                );
+            },
+
             async initAI2AppsDownloader() {
                 await Promise.all([
                     this.loadDynaPreflight(),
@@ -5351,6 +5456,9 @@
                         : this.loadDynaCatalog(),
                     this.loadDynaTasks(),
                 ]);
+                if (this.dynaTasks.some(task => !['completed', 'failed', 'cancelled'].includes(task.status))) {
+                    this.startDynaRefresh();
+                }
             },
 
             async loadDynaPreflight() {
@@ -5388,6 +5496,7 @@
                     if (!this.dynaSelectedModelId && this.dynaCatalog.length) {
                         this.dynaSelectedModelId = this.dynaCatalog[0].id;
                         this.dynaWeightSource = this.dynaCatalog[0].sources?.[0]?.id || 'huggingface';
+                        this.dynaStoragePolicy = this.recommendedDynaStoragePolicy(this.dynaCatalog[0]);
                     }
                     this.$nextTick(() => lucide.createIcons());
                 } catch (err) {
@@ -5397,8 +5506,19 @@
                 }
             },
 
+            recommendedDynaStoragePolicy(model) {
+                const policies = model?.storage_policies || ['keep_source'];
+                if (!policies.includes('delete_after')) return 'keep_source';
+                const freeGb = Number(this.dynaPreflight?.cache?.free_bytes || 0) / (1024 ** 3);
+                const normalPeak = Number(model?.storage_estimates?.keep_peak_gb || 0);
+                if (freeGb > 0 && normalPeak > 0 && freeGb < normalPeak && policies.includes('stream_reclaim')) {
+                    return 'stream_reclaim';
+                }
+                return 'delete_after';
+            },
+
             async startDynaInstall() {
-                const model = this.selectedDynaModel();
+                const model = this.activeModelPackageRecipe();
                 if (!model) return;
                 if (!this.dynaPreflight?.ready) {
                     const issue = this.dynaPreflight?.issues?.[0];
@@ -5418,6 +5538,7 @@
                             model_id: model.id,
                             weight_source: this.dynaWeightSource,
                             memory_tier: this.dynaMemoryTier,
+                            storage_policy: this.dynaStoragePolicy,
                             token: this.dynaToken,
                         }),
                     });
@@ -5445,6 +5566,15 @@
                         if (this.dynaTasks.some(task => task.status === 'completed')) {
                             await this.loadHFModels();
                             await this.loadModels();
+                            await this.loadModelManager();
+                            if (this.selectedModelPackage) {
+                                this.selectedModelPackage = this.modelManager.cached_moe.find(
+                                    model => model.id === this.selectedModelPackage.id
+                                ) || this.selectedModelPackage;
+                                if (this.modelPackageLatestTask()?.status === 'completed') {
+                                    this.dynaSuccess = '';
+                                }
+                            }
                         }
                     }
                     this.$nextTick(() => lucide.createIcons());

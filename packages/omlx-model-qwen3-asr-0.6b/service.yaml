@@ -1,0 +1,62 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen3-asr-0.6b
+name: Qwen3 ASR 0.6B
+description: Higher-quality multilingual Qwen3-ASR Worker with native punctuation and prompt biasing.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
+attribution:
+  notice: META/NOTICE.md
+  original_model: https://huggingface.co/Qwen/Qwen3-ASR-0.6B
+  conversion: https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-4bit
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.qwen3-asr-0.6b/4bit
+    display_name: Qwen3 ASR 0.6B 4-bit
+    model_type: audio_stt
+    upstream_id: mlx-community/Qwen3-ASR-0.6B-4bit
+    capabilities: [speech_recognition, language_detection, native_punctuation, prompt_biasing]
+    metadata: {family: qwen3-asr, punctuation_native: true}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-ASR-0.6B-4bit
+      revision: 313d850181767edf09f00a9c289becca70e58cd0
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_transcription]
+      languages: [auto, zh, yue, en, de, es, fr, it, pt, ru, ko, ja]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: []}
+      streaming: {mode: unsupported, formats: []}
+      stt:
+        timestamps: {mode: unsupported}
+        punctuation: {mode: native}
+        prompt_biasing: {mode: native}
+        diarization: {mode: unsupported}
+        speaker_recognition: {mode: unsupported}
+        speech_rate: {mode: unsupported}
+        emotion: {mode: unsupported, values: []}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-stt, audio-processing, audio-codecs]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned Qwen3-ASR checkpoint.}
+  accelerator: {metal: true, reason: Run Qwen3-ASR locally with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 45}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

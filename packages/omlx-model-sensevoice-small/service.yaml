@@ -1,0 +1,82 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.sensevoice-small
+name: SenseVoice Small
+description: Isolated SenseVoiceSmall multilingual speech recognition Worker by FunAudioLLM / FunASR for the pinned MLX checkpoint.
+version: 0.2.1
+
+publisher: {id: ai2apps}
+license:
+  name: FunASR Model Open Source License Agreement 1.1
+  id: LicenseRef-FunASR-Model-1.1
+  path: META/licenses/FunASR-MODEL-LICENSE-1.1.txt
+  url: https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE
+attribution:
+  notice: META/NOTICE.md
+  original_model: https://huggingface.co/FunAudioLLM/SenseVoiceSmall
+  source: https://github.com/FunAudioLLM/SenseVoice
+  conversion: https://huggingface.co/mlx-community/SenseVoiceSmall
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.sensevoice-small/default
+    display_name: SenseVoice Small
+    model_type: audio_stt
+    upstream_id: mlx-community/SenseVoiceSmall
+    capabilities: [speech_recognition, timestamps, language_detection]
+    metadata:
+      punctuation_model_id: ai2apps.model.punctuation-restorer/default
+      punctuation_required: true
+      required_model_ids: [ai2apps.model.punctuation-restorer/default]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/SenseVoiceSmall
+      revision: 8ddd966bd96243cff196422f81f0c5d955814792
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_transcription]
+      languages: [auto, zh, en, ja, ko, yue]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: []}
+      streaming: {mode: unsupported, formats: []}
+      stt:
+        timestamps: {mode: native, segment: true, word: false}
+        diarization: {mode: unsupported}
+        speaker_recognition: {mode: unsupported}
+        speech_rate: {mode: unsupported}
+        emotion: {mode: unsupported, values: []}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.1,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-stt, audio-processing, audio-codecs]
+    - id: ai2apps.model.punctuation-restorer
+      version: ">=0.1.0,<1.0.0"
+      optional: false
+      capabilities: [punctuation-restoration]
+  python: ">=3.11,<3.14"
+
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned SenseVoice checkpoint cache.
+  accelerator:
+    metal: true
+    reason: Run speech recognition with the isolated oMLX runtime.
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+  minimum_os_version: "26.2"
+
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
-import asyncio
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
+from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
+from ai2apps.api.ownership import require_session_access
 from ai2apps.api.resources import _runtime_or_error
 from ai2apps.core import RepositoryError
 
@@ -51,8 +53,16 @@ def _decode(value: str) -> bytes:
         raise ValueError("Attachment data must be valid base64") from exc
 
 
-def create_document_router(runtime_provider: PlatformRuntimeProvider) -> APIRouter:
-    router = APIRouter(prefix="/sessions/{session_id}/attachments")
+def create_document_router(
+    runtime_provider: PlatformRuntimeProvider,
+    principal_provider: PrincipalProvider = resolve_request_principal,
+) -> APIRouter:
+    router = APIRouter(
+        prefix="/sessions/{session_id}/attachments",
+        dependencies=[
+            Depends(require_session_access(runtime_provider, principal_provider))
+        ],
+    )
 
     def runtime_or_error():
         return _runtime_or_error(runtime_provider)

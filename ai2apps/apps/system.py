@@ -16,7 +16,7 @@ from ai2apps.events import EventStore
 from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.records import canonical_json
 
-SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
+_SYSTEM_APP_MANIFESTS_BASE: tuple[dict[str, Any], ...] = (
     {
         "schema": "ai2apps.app/v1",
         "id": "ai2apps.dashboard",
@@ -24,6 +24,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "System status and runtime overview",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "mobile": {"ready": True},
         "entry": {"kind": "host", "resource": "ai2apps:system/dashboard"},
         "navigation": {
@@ -41,6 +42,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Connect an optional AI2Apps account and manage Cloud points",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.use"]},
         "mobile": {"ready": True},
         "entry": {"kind": "host", "resource": "ai2apps:system/account"},
         "navigation": {
@@ -53,11 +55,29 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
     },
     {
         "schema": "ai2apps.app/v1",
+        "id": "ai2apps.sharing",
+        "name": "Sharing",
+        "description": "Share selected Local models and Tools on your LAN",
+        "version": "1.0.0",
+        "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.sharing.manage"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/sharing"},
+        "navigation": {
+            "category": "System",
+            "icon": "share-2",
+            "order": 18,
+            "pinned_default": False,
+        },
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
+        "schema": "ai2apps.app/v1",
         "id": "ai2apps.models",
         "name": "Models",
         "description": "Install, configure, and manage models",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/models"},
         "navigation": {
             "category": "AI & Models",
@@ -69,11 +89,29 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
     },
     {
         "schema": "ai2apps.app/v1",
+        "id": "ai2apps.environment",
+        "name": "Environment",
+        "description": "Validate hardware, dependencies, storage, and model readiness",
+        "version": "1.0.0",
+        "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
+        "entry": {"kind": "host", "resource": "ai2apps:system/environment"},
+        "navigation": {
+            "category": "AI & Models",
+            "icon": "stethoscope",
+            "order": 21,
+            "pinned_default": True,
+        },
+        "state": {"version": 1, "defaults": {}},
+    },
+    {
+        "schema": "ai2apps.app/v1",
         "id": "ai2apps.discover",
         "name": "Discover",
         "description": "Discover, verify, install, and manage AI2Apps packages",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/discover"},
         "navigation": {
             "category": "System",
@@ -90,6 +128,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Manage Agents, Runs, packages, and local Patches",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "mobile": {"ready": True},
         "entry": {"kind": "host", "resource": "ai2apps:system/agents"},
         "navigation": {
@@ -107,6 +146,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Chat with local models and Agents",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.chat.use"]},
         "mobile": {"ready": True},
         "mobile_entry": {"kind": "host", "resource": "ai2apps:mobile/chat"},
         "entry": {"kind": "host", "resource": "ai2apps:system/chat"},
@@ -126,6 +166,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Review approvals, permissions, secrets, and Safe Mode",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "mobile": {"ready": True},
         "entry": {"kind": "host", "resource": "ai2apps:system/trust-center"},
         "navigation": {
@@ -143,6 +184,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Configure the AI2Apps system",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/settings"},
         "navigation": {
             "category": "System",
@@ -159,6 +201,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Inspect system and service logs",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/logs"},
         "navigation": {
             "category": "Developer Tools",
@@ -175,6 +218,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Interactive system terminal sessions",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/terminal"},
         "navigation": {
             "category": "Developer Tools",
@@ -191,6 +235,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Build software with terminal-based coding Agents",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "user"},
+        "access": {"capabilities": ["app.coder.use"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/coder"},
         "navigation": {
             "category": "Developer Tools",
@@ -208,6 +253,7 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         "description": "Measure model and device performance",
         "version": "1.0.0",
         "instances": {"mode": "singleton", "scope": "system"},
+        "access": {"capabilities": ["app.system.manage"]},
         "entry": {"kind": "host", "resource": "ai2apps:system/benchmark"},
         "navigation": {
             "category": "Developer Tools",
@@ -217,6 +263,37 @@ SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = (
         },
         "state": {"version": 1, "defaults": {}},
     },
+)
+
+_SYSTEM_APP_ZH: dict[str, tuple[str, str, str]] = {
+    "ai2apps.dashboard": ("仪表盘", "系统状态与运行时概览", "系统"),
+    "ai2apps.account": ("账户", "连接可选的 AI2Apps 账户并管理云端积分", "系统"),
+    "ai2apps.sharing": ("共享", "在局域网中共享选定的本地模型和工具", "系统"),
+    "ai2apps.models": ("模型", "安装、配置和管理模型", "AI 与模型"),
+    "ai2apps.environment": ("环境检查", "验证硬件、依赖、存储与模型运行条件", "AI 与模型"),
+    "ai2apps.discover": ("发现", "发现、验证、安装和管理 AI2Apps 软件包", "系统"),
+    "ai2apps.agents": ("智能体", "管理智能体、运行记录、软件包和本地补丁", "AI 与聊天"),
+    "ai2apps.general-chat": ("聊天", "与本地模型和智能体聊天", "AI 与聊天"),
+    "ai2apps.trust-center": ("信任中心", "检查审批、权限、密钥和安全模式", "系统"),
+    "ai2apps.settings": ("设置", "配置 AI2Apps 系统", "系统"),
+    "ai2apps.logs": ("日志", "检查系统和服务日志", "开发者工具"),
+    "ai2apps.terminal": ("终端", "交互式系统终端会话", "开发者工具"),
+    "ai2apps.coder": ("编程", "使用终端编程智能体构建软件", "开发者工具"),
+    "ai2apps.benchmark": ("基准测试", "测量模型和设备性能", "开发者工具"),
+}
+
+SYSTEM_APP_MANIFESTS: tuple[dict[str, Any], ...] = tuple(
+    {
+        **manifest,
+        "localizations": {
+            "zh": {
+                "name": _SYSTEM_APP_ZH[manifest["id"]][0],
+                "description": _SYSTEM_APP_ZH[manifest["id"]][1],
+                "navigation": {"category": _SYSTEM_APP_ZH[manifest["id"]][2]},
+            }
+        },
+    }
+    for manifest in _SYSTEM_APP_MANIFESTS_BASE
 )
 
 

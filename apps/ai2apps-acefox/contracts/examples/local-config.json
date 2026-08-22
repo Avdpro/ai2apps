@@ -1,0 +1,9 @@
+{
+  "auto_restart": true,
+  "bind_address": "127.0.0.1",
+  "configured_port": 18431,
+  "model_cache_mode": "isolated",
+  "port_mode": "fixed",
+  "schema_version": 1,
+  "start_at_login": true
+}

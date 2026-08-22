@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omlx-model-qwen38"
+version = "0.3.1"
+description = "Qwen3.8 isolated Model Worker Package for AI2Apps"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ai2apps>=0.1.0.dev2,<0.2", "mlx==0.32.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

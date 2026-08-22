@@ -16,6 +16,9 @@ from pathlib import Path, PurePosixPath
 import yaml
 
 from ai2apps.agents import AgentRepository
+from ai2apps.apps.access import can_access_app, required_app_capabilities
+from ai2apps.chat import ChatRepository
+from ai2apps.config import BUILTIN_CHAT_PACKAGE_ID
 from ai2apps.core import (
     AppInstanceMode,
     AppInstanceStatus,
@@ -28,6 +31,8 @@ from ai2apps.core import (
     utc_now_text,
 )
 from ai2apps.events import EventStore
+from ai2apps.identity import RequestPrincipal, user_singleton_key
+from ai2apps.localization import localized_app_metadata
 from ai2apps.packages import PackageFile, PackageRepository, package_digest
 from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.repositories import AppRepository, SessionRepository
@@ -67,6 +72,87 @@ class InteractivePackageManager:
 
     def bind_local_ai_auditor(self, auditor) -> None:
         self._auditor = auditor
+
+    @staticmethod
+    def _principal(value: RequestPrincipal | None) -> RequestPrincipal:
+        return value or RequestPrincipal.legacy_local()
+
+    @staticmethod
+    def _require_app_access(definition, principal: RequestPrincipal) -> None:
+        manifest = json.loads(definition["manifest_json"])
+        if not can_access_app(principal, manifest):
+            raise ExtensionError(
+                "app_access_denied",
+                "Current account cannot access this App",
+                details={
+                    "app_key": definition["package_id"],
+                    "required_capabilities": sorted(
+                        required_app_capabilities(manifest)
+                    ),
+                },
+            )
+
+    def _require_instance_access(
+        self,
+        instance_id: str,
+        principal: RequestPrincipal,
+    ):
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT i.*,d.package_id,d.singleton_scope,d.manifest_json
+                FROM app_instances i
+                JOIN app_definitions d ON d.id=i.app_definition_id
+                WHERE i.id=?
+                """,
+                (instance_id,),
+            ).fetchone()
+        if row is None:
+            raise ResourceNotFoundError("app_instance", instance_id)
+        if row["owner_user_id"] is not None and row["owner_user_id"] != principal.actor_user_id:
+            raise ResourceNotFoundError("app_instance", instance_id)
+        if (
+            row["singleton_scope"] == "user"
+            and principal.actor_user_id != "local"
+            and row["owner_user_id"] != principal.actor_user_id
+        ):
+            raise ResourceNotFoundError("app_instance", instance_id)
+        if (
+            row["package_id"] == BUILTIN_CHAT_PACKAGE_ID
+            and row["singleton_key"]
+            != user_singleton_key(
+                BUILTIN_CHAT_PACKAGE_ID,
+                principal.actor_user_id,
+                principal.client_scope,
+            )
+        ):
+            raise ResourceNotFoundError("app_instance", instance_id)
+        self._require_app_access(row, principal)
+        return row
+
+    def _require_session_access(
+        self,
+        session_id: str,
+        principal: RequestPrincipal,
+    ):
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                "SELECT id,app_instance_id FROM sessions WHERE id=?",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            raise ResourceNotFoundError("session", session_id)
+        self._require_instance_access(row["app_instance_id"], principal)
+        return row
+
+    def require_instance_access(
+        self,
+        instance_id: str,
+        principal: RequestPrincipal,
+    ):
+        """Validate direct instance access without exposing foreign ownership."""
+
+        return self._require_instance_access(instance_id, principal)
 
     async def _audit(self, bundle) -> dict:
         source: dict[str, str] = {}
@@ -713,17 +799,40 @@ class InteractivePackageManager:
             "pending_conflicts": [],
         }
 
-    def launch_app(self, key, *, singleton_identity="local", state=None):
+    def launch_app(
+        self,
+        key,
+        *,
+        singleton_identity="local",
+        state=None,
+        principal: RequestPrincipal | None = None,
+    ):
+        request_principal = self._principal(principal)
         definition = self._active_app_definition(key)
         if definition is None:
             raise ResourceNotFoundError("app_definition", key)
+        self._require_app_access(definition, request_principal)
         mode = AppInstanceMode(definition["instance_mode"])
         scope = definition["singleton_scope"]
+        if principal is not None and scope == "user":
+            singleton_identity = request_principal.actor_user_id
+            if key == BUILTIN_CHAT_PACKAGE_ID and request_principal.is_core:
+                ChatRepository(
+                    self.database,
+                    self.events,
+                    principal=request_principal,
+                ).ensure_builtin()
         singleton_key = (
             None
             if mode is AppInstanceMode.MULTIPLE
             else f"{key}:{scope}:{singleton_identity}"
         )
+        if key == BUILTIN_CHAT_PACKAGE_ID and principal is not None:
+            singleton_key = user_singleton_key(
+                key,
+                request_principal.actor_user_id,
+                request_principal.client_scope,
+            )
         if singleton_key:
             with self.database.transaction() as c:
                 existing = c.execute(
@@ -749,6 +858,12 @@ class InteractivePackageManager:
         instance = self.apps.create_instance(
             app_definition_id=definition["id"],
             singleton_key=singleton_key,
+            owner_user_id=(
+                request_principal.actor_user_id
+                if principal is not None
+                and (scope == "user" or mode is AppInstanceMode.MULTIPLE)
+                else None
+            ),
             status=AppInstanceStatus.ACTIVE,
             state_schema_version=version,
             state=initial,
@@ -761,7 +876,13 @@ class InteractivePackageManager:
         )
         return instance, home, True
 
-    def list_apps(self) -> tuple[dict, ...]:
+    def list_apps(
+        self,
+        *,
+        principal: RequestPrincipal | None = None,
+        locale: str | None = None,
+    ) -> tuple[dict, ...]:
+        request_principal = self._principal(principal)
         with self.database.transaction() as connection:
             rows = connection.execute(
                 "SELECT * FROM app_definitions WHERE status='enabled' "
@@ -782,6 +903,8 @@ class InteractivePackageManager:
             instances_by_definition.setdefault(item["app_definition_id"], []).append(
                 {
                     "id": item["id"],
+                    "owner_user_id": item["owner_user_id"],
+                    "singleton_key": item["singleton_key"],
                     "status": item["status"],
                     "home_session_id": item["home_session_id"],
                     "created_at": item["created_at"],
@@ -791,6 +914,9 @@ class InteractivePackageManager:
         result = []
         for row in rows:
             manifest = json.loads(row["manifest_json"])
+            if not can_access_app(request_principal, manifest):
+                continue
+            localized = localized_app_metadata(manifest, locale or "en")
             navigation = manifest.get("navigation", {})
             testflight = manifest.get("testflight")
             is_testflight = (
@@ -798,7 +924,7 @@ class InteractivePackageManager:
                 and isinstance(testflight, dict)
                 and testflight.get("signed") is False
             )
-            category = str(navigation.get("category", "Third-party"))
+            category = localized["category"]
             if is_testflight:
                 category = "TestFlight"
             elif category == "TestFlight":
@@ -807,13 +933,48 @@ class InteractivePackageManager:
             if not isinstance(entry, dict):
                 entry = {"kind": "host", "resource": str(entry or "")}
             instances = instances_by_definition.get(row["id"], [])
+            if principal is not None:
+                expected_chat_singleton = (
+                    user_singleton_key(
+                        BUILTIN_CHAT_PACKAGE_ID,
+                        request_principal.actor_user_id,
+                        request_principal.client_scope,
+                    )
+                    if row["package_id"] == BUILTIN_CHAT_PACKAGE_ID
+                    else None
+                )
+                instances = [
+                    item
+                    for item in instances
+                    if item["owner_user_id"] in {
+                        None,
+                        request_principal.actor_user_id,
+                    }
+                    and not (
+                        row["singleton_scope"] == "user"
+                        and item["owner_user_id"]
+                        != request_principal.actor_user_id
+                    )
+                    and (
+                        expected_chat_singleton is None
+                        or item["singleton_key"] == expected_chat_singleton
+                    )
+                ]
+            instances = [
+                {
+                    key: value
+                    for key, value in item.items()
+                    if key not in {"owner_user_id", "singleton_key"}
+                }
+                for item in instances
+            ]
             result.append(
                 {
                     "id": row["id"],
                     "app_key": row["package_id"],
                     "version": row["package_version"],
-                    "display_name": row["display_name"],
-                    "description": str(manifest.get("description", "")),
+                    "display_name": localized["name"] if locale else row["display_name"],
+                    "description": localized["description"],
                     "source": row["source"],
                     "instance_mode": row["instance_mode"],
                     "singleton_scope": row["singleton_scope"],
@@ -862,11 +1023,16 @@ class InteractivePackageManager:
             "mobile_entry_missing", "Mobile Ready App has no usable Entry"
         )
 
-    def list_mobile_apps(self) -> tuple[dict, ...]:
+    def list_mobile_apps(
+        self,
+        *,
+        principal: RequestPrincipal | None = None,
+        locale: str | None = None,
+    ) -> tuple[dict, ...]:
         """Return only explicit, launchable Mobile Ready Apps."""
 
         result = []
-        for app in self.list_apps():
+        for app in self.list_apps(principal=principal, locale=locale):
             manifest = {
                 "mobile": app.get("mobile"),
                 "mobile_entry": app.get("mobile_entry"),
@@ -895,14 +1061,19 @@ class InteractivePackageManager:
             )
         return tuple(result)
 
-    def suggest_apps(self, text: str) -> tuple[dict, ...]:
+    def suggest_apps(
+        self,
+        text: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> tuple[dict, ...]:
         """Return conservative manifest-declared natural-language App matches."""
         normalized = " ".join(text.casefold().split())
         if not normalized:
             return ()
         words = {word for word in normalized.replace("，", " ").replace("。", " ").split() if len(word) > 1}
         matches = []
-        for app in self.list_apps():
+        for app in self.list_apps(principal=principal):
             activation = app.get("activation") or {}
             if not isinstance(activation, dict):
                 continue
@@ -940,9 +1111,16 @@ class InteractivePackageManager:
                 )
         return tuple(sorted(matches, key=lambda item: (-item["score"], item["display_name"]))[:3])
 
-    def instance_entry(self, instance_id: str) -> dict:
+    def instance_entry(
+        self,
+        instance_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict:
         """Return the validated current Entry contract for one live instance."""
 
+        request_principal = self._principal(principal)
+        self._require_instance_access(instance_id, request_principal)
         with self.database.transaction() as connection:
             row = connection.execute(
                 """
@@ -976,9 +1154,16 @@ class InteractivePackageManager:
             "effective_digest": row["effective_digest"],
         }
 
-    def mobile_instance_entry(self, instance_id: str) -> dict:
+    def mobile_instance_entry(
+        self,
+        instance_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict:
         """Return the selected Mobile Entry for one live AppInstance."""
 
+        request_principal = self._principal(principal)
+        self._require_instance_access(instance_id, request_principal)
         with self.database.transaction() as connection:
             row = connection.execute(
                 """
@@ -1020,9 +1205,15 @@ class InteractivePackageManager:
             "effective_digest": row["effective_digest"],
         }
 
-    def focus_instance(self, instance_id: str):
+    def focus_instance(
+        self,
+        instance_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ):
         """Resume an existing instance without creating another one."""
 
+        self._require_instance_access(instance_id, self._principal(principal))
         instance = self.apps.get_instance(instance_id)
         if instance.status is AppInstanceStatus.ACTIVE:
             return instance
@@ -1032,7 +1223,13 @@ class InteractivePackageManager:
             status=AppInstanceStatus.ACTIVE,
         )
 
-    def suspend_instance(self, instance_id: str):
+    def suspend_instance(
+        self,
+        instance_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ):
+        self._require_instance_access(instance_id, self._principal(principal))
         instance = self.apps.get_instance(instance_id)
         if instance.status is AppInstanceStatus.SUSPENDED:
             return instance
@@ -1042,7 +1239,13 @@ class InteractivePackageManager:
             status=AppInstanceStatus.SUSPENDED,
         )
 
-    def close_instance(self, instance_id: str):
+    def close_instance(
+        self,
+        instance_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ):
+        self._require_instance_access(instance_id, self._principal(principal))
         instance = self.apps.get_instance(instance_id)
         if instance.status is AppInstanceStatus.CLOSED:
             return instance
@@ -1059,7 +1262,13 @@ class InteractivePackageManager:
             )
         return updated
 
-    def resolve_app_resource(self, instance_id: str, resource: str) -> Path:
+    def resolve_app_resource(
+        self,
+        instance_id: str,
+        resource: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> Path:
         """Resolve and re-hash one installed App resource before serving it."""
 
         safe = PurePosixPath(resource)
@@ -1070,7 +1279,7 @@ class InteractivePackageManager:
             or ".." in safe.parts
         ):
             raise ExtensionError("unsafe_app_resource", "Unsafe App resource path")
-        entry = self.instance_entry(instance_id)
+        entry = self.instance_entry(instance_id, principal=principal)
         if entry["source"] == "local":
             with self.database.transaction() as connection:
                 definition = connection.execute(
@@ -1166,11 +1375,15 @@ class InteractivePackageManager:
         placement="entry",
         interaction_session_id=None,
         context=None,
+        principal: RequestPrincipal | None = None,
     ):
+        self._require_instance_access(instance_id, self._principal(principal))
         instance = self.apps.get_instance(instance_id)
         definition = self.apps.get_definition(instance.app_definition_id)
         if interaction_session_id is not None:
-            self.sessions.get(interaction_session_id)
+            self._require_session_access(
+                interaction_session_id, self._principal(principal)
+            )
         entry_source = "mini_entry" if mini else "entry"
         if placement == "mobile":
             resolved = self.resolve_mobile_entry(definition.manifest)
@@ -1260,10 +1473,16 @@ class InteractivePackageManager:
             "context": mount_context,
         }
 
-    def mount_mobile(self, instance_id: str, *, context=None) -> dict:
+    def mount_mobile(
+        self,
+        instance_id: str,
+        *,
+        context=None,
+        principal: RequestPrincipal | None = None,
+    ) -> dict:
         """Create or focus the durable Mobile mount for an AppInstance."""
 
-        selected = self.mobile_instance_entry(instance_id)
+        selected = self.mobile_instance_entry(instance_id, principal=principal)
         with self.database.transaction() as connection:
             rows = connection.execute(
                 "SELECT id FROM app_mounts WHERE app_instance_id=? "
@@ -1272,7 +1491,7 @@ class InteractivePackageManager:
                 (instance_id,),
             ).fetchall()
         for row in rows:
-            existing = self.mount_entry(row["id"])
+            existing = self.mount_entry(row["id"], principal=principal)
             if (
                 existing["renderer"] == selected["renderer"]
                 and existing["resource"] == selected["resource"]
@@ -1291,19 +1510,37 @@ class InteractivePackageManager:
                     (utc_now_text(), existing["id"]),
                 )
         return {
-            **self.mount(instance_id, placement="mobile", context=context),
+            **self.mount(
+                instance_id,
+                placement="mobile",
+                context=context,
+                principal=principal,
+            ),
             "reused": False,
         }
 
-    def list_mobile_mounts(self) -> tuple[dict, ...]:
+    def list_mobile_mounts(
+        self, *, principal: RequestPrincipal | None = None
+    ) -> tuple[dict, ...]:
         with self.database.transaction() as connection:
             rows = connection.execute(
                 "SELECT id FROM app_mounts WHERE placement='mobile' "
                 "AND status='mounted' ORDER BY updated_at DESC,id DESC"
             ).fetchall()
-        return tuple(self.mount_entry(row["id"]) for row in rows)
+        visible = []
+        for row in rows:
+            try:
+                visible.append(self.mount_entry(row["id"], principal=principal))
+            except (ResourceNotFoundError, ExtensionError):
+                continue
+        return tuple(visible)
 
-    def mount_entry(self, mount_id: str) -> dict:
+    def mount_entry(
+        self,
+        mount_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict:
         with self.database.transaction() as connection:
             row = connection.execute(
                 """
@@ -1319,6 +1556,9 @@ class InteractivePackageManager:
             raise ResourceNotFoundError("app_mount", mount_id)
         if row["status"] != "mounted":
             raise ExtensionError("app_mount_unavailable", "App mount is not active")
+        self._require_instance_access(
+            row["app_instance_id"], self._principal(principal)
+        )
         return {
             "id": row["id"],
             "app_instance_id": row["app_instance_id"],
@@ -1334,19 +1574,34 @@ class InteractivePackageManager:
             "context": json.loads(row["context_json"]),
         }
 
-    def list_mounts(self, interaction_session_id: str) -> tuple[dict, ...]:
-        self.sessions.get(interaction_session_id)
+    def list_mounts(
+        self,
+        interaction_session_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> tuple[dict, ...]:
+        request_principal = self._principal(principal)
+        self._require_session_access(interaction_session_id, request_principal)
         with self.database.transaction() as connection:
             rows = connection.execute(
                 "SELECT id FROM app_mounts WHERE interaction_session_id=? "
                 "AND status='mounted' ORDER BY created_at,id",
                 (interaction_session_id,),
             ).fetchall()
-        return tuple(self.mount_entry(row["id"]) for row in rows)
+        return tuple(
+            self.mount_entry(row["id"], principal=request_principal) for row in rows
+        )
 
-    def instance_can_use_session(self, instance_id: str, session_id: str) -> bool:
-        self.apps.get_instance(instance_id)
-        self.sessions.get(session_id)
+    def instance_can_use_session(
+        self,
+        instance_id: str,
+        session_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> bool:
+        request_principal = self._principal(principal)
+        self._require_instance_access(instance_id, request_principal)
+        self._require_session_access(session_id, request_principal)
         with self.database.transaction() as connection:
             owned = connection.execute(
                 "SELECT 1 FROM sessions WHERE id=? AND app_instance_id=?",
@@ -1359,8 +1614,13 @@ class InteractivePackageManager:
             ).fetchone()
         return owned is not None or mounted is not None
 
-    def unmount(self, mount_id: str) -> dict:
-        entry = self.mount_entry(mount_id)
+    def unmount(
+        self,
+        mount_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> dict:
+        entry = self.mount_entry(mount_id, principal=principal)
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
             connection.execute(

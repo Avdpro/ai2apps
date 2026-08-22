@@ -1,0 +1,64 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen36-35b
+name: Qwen3.6 35B A3B 4-bit
+description: Isolated full and Tiered Cached-MoE Worker for Qwen3.6 35B.
+version: 0.3.1
+publisher: {id: ai2apps}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit
+    display_name: Qwen3.6 35B A3B 4-bit
+    model_type: llm
+    upstream_id: mlx-community/Qwen3.6-35B-A3B-4bit
+    capabilities: [work, conversation]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3.6-35B-A3B-4bit
+      revision: 38740b847e4cb78f352aba30aa41c76e08e6eb46
+      preparation:
+        recipe: ai2apps/cache-moe/v1
+        install_id: qwen3.6-35b-a3b-4bit
+        family: qwen3_6
+        execution_modes: [cached, full]
+        storage_policies: [keep_source]
+        engine:
+          id: qwen3.6-tiered
+          name: Qwen3.6 Tiered
+          version: 1
+          scope_asset: src/omlx_model_qwen36_cached_moe/assets/scope-profile.json
+          scope_pack: src/omlx_model_qwen36_cached_moe/assets/scope-pack.json
+          scope_env: OMLX_QWEN36_SCOPE_PROFILE
+        scope_name: general
+        conversion: {format: omlx-moe-expert-major-set, version: 1, variant: qwen3.6-affine-q4-gate-up-fused-v2}
+        arena_tail_slots: 24
+        memory_tiers:
+          - {id: lean, label: Lean, experts: 80, estimated_gb: 9}
+          - {id: compact, label: Compact, experts: 96, estimated_gb: 10}
+          - {id: optimal, label: Optimal, experts: 120, estimated_gb: 12}
+    metadata:
+      family: qwen3_6
+      quantization: 4bit
+      execution_modes: [cached, full]
+      preparation: cache-moe
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.0.1,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, cached-moe]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Qwen3.6 repository cache.
+  accelerator: {metal: true, reason: Run oMLX on Apple GPU.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

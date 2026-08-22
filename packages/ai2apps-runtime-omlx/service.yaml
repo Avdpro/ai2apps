@@ -1,0 +1,51 @@
+schema: ai2apps.service/v1
+id: ai2apps.runtime.omlx
+name: AI2Apps oMLX Runtime
+description: Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model Workers.
+version: 1.3.7
+
+publisher:
+  id: ai2apps
+
+runtime:
+  mode: process
+  protocol: ai2apps-inference-runtime/v1
+  role: inference_provider
+  descriptor: META/runtime-manifest.json
+
+capabilities:
+  - mlx
+  - model-worker-v1
+  - cached-moe
+  - vlm
+  - nvfp4
+  - metal
+  - audio-stt
+  - audio-tts
+  - audio-processing
+  - text-punctuation
+  - onnx
+  - audio-codecs
+
+requires:
+  services: []
+
+permissions:
+  network: {outbound: false}
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+  minimum_os_version: "26.2"
+
+variants:
+  - id: darwin-arm64
+    priority: 100
+    compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+    files:
+      - variants/darwin-arm64/AI2AppsOmlxRuntime.dmg
+
+health: {}
+restart: {}
+tools: []
+models: []

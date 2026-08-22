@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ai2apps.packages import PackageFile, package_digest
 from ai2apps.packages.archive import ServicePackageArchive
+from ai2apps.secrets.factory import create_secret_backend
 
 EXCLUDED = {
     "META/files.json",
@@ -26,7 +27,26 @@ EXCLUDED = {
 }
 
 
-def _private_key(path: Path | None) -> tuple[Ed25519PrivateKey, bool]:
+def _private_key(
+    path: Path | None,
+    *,
+    keychain_secret: str | None = None,
+    keychain_namespace: str | None = None,
+) -> tuple[Ed25519PrivateKey, bool]:
+    if path is not None and keychain_secret is not None:
+        raise ValueError("Choose either --private-key or --keychain-secret")
+    if keychain_secret is not None:
+        if not keychain_namespace:
+            raise ValueError("--keychain-namespace is required with --keychain-secret")
+        backend = create_secret_backend(
+            Path.home() / ".omlx" / "platform" / "secrets",
+            namespace=keychain_namespace,
+        )
+        encoded = backend.load(keychain_secret).encode("ascii")
+        value = serialization.load_pem_private_key(encoded, password=None)
+        if not isinstance(value, Ed25519PrivateKey):
+            raise TypeError("Publisher key must be Ed25519")
+        return value, False
     if path is None:
         return Ed25519PrivateKey.generate(), True
     value = serialization.load_pem_private_key(path.read_bytes(), password=None)
@@ -39,24 +59,43 @@ def _write_zip_file(archive: zipfile.ZipFile, name: str, content: bytes) -> None
     info = zipfile.ZipInfo(name)
     info.date_time = (1980, 1, 1, 0, 0, 0)
     info.external_attr = (stat.S_IFREG | 0o644) << 16
-    archive.writestr(info, content, compress_type=zipfile.ZIP_DEFLATED)
+    compression = zipfile.ZIP_STORED if name.endswith(".dmg") else zipfile.ZIP_DEFLATED
+    archive.writestr(info, content, compress_type=compression)
 
 
-def build(source: Path, output: Path, key_path: Path | None) -> dict:
+def build(
+    source: Path,
+    output: Path,
+    key_path: Path | None,
+    *,
+    keychain_secret: str | None = None,
+    keychain_namespace: str | None = None,
+    key_id: str | None = None,
+) -> dict:
     source = source.resolve(strict=True)
     manifest_path = source / "service.yaml"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"Missing {manifest_path}")
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     parsed = ServicePackageArchive._manifest(manifest)
-    private, ephemeral = _private_key(key_path)
+    private, ephemeral = _private_key(
+        key_path,
+        keychain_secret=keychain_secret,
+        keychain_namespace=keychain_namespace,
+    )
 
     immutable: dict[str, bytes] = {}
     for path in sorted(source.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
         relative = path.relative_to(source).as_posix()
-        if relative in EXCLUDED or relative.startswith("dist/") or relative == "README.md":
+        if (
+            relative in EXCLUDED
+            or relative.startswith("dist/")
+            or relative == "README.md"
+            or "__pycache__" in path.parts
+            or path.suffix in {".pyc", ".pyo"}
+        ):
             continue
         immutable[relative] = path.read_bytes()
     files = tuple(
@@ -72,7 +111,7 @@ def build(source: Path, output: Path, key_path: Path | None) -> dict:
         serialization.Encoding.Raw,
         serialization.PublicFormat.Raw,
     )
-    key_id = f"{parsed.publisher_key}:local"
+    key_id = key_id or f"{parsed.publisher_key}:local"
     publisher = {
         "publisher_id": parsed.publisher_key,
         "key_id": key_id,
@@ -152,12 +191,22 @@ def main() -> None:
     parser.add_argument("source", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--private-key", type=Path)
+    parser.add_argument("--keychain-secret")
+    parser.add_argument("--keychain-namespace")
+    parser.add_argument("--key-id")
     args = parser.parse_args()
     manifest = yaml.safe_load((args.source / "service.yaml").read_text(encoding="utf-8"))
     output = args.output or (
         args.source / "dist" / f"{manifest['id']}-{manifest['version']}.ai2service"
     )
-    report = build(args.source, output.resolve(), args.private_key)
+    report = build(
+        args.source,
+        output.resolve(),
+        args.private_key,
+        keychain_secret=args.keychain_secret,
+        keychain_namespace=args.keychain_namespace,
+        key_id=args.key_id,
+    )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 

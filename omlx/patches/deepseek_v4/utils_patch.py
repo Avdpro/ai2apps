@@ -263,6 +263,25 @@ def _build_patched_load_model() -> Callable:
                     )
                 )
 
+        if scope_policy is not None:
+            manifest_path = model_path / "ai2apps-model.json"
+            try:
+                prepared_manifest = json.loads(manifest_path.read_text())
+            except (OSError, TypeError, json.JSONDecodeError):
+                prepared_manifest = {}
+            layout = prepared_manifest.get("checkpoint_layout") or {}
+            if layout.get("format") == "ai2apps-backbone-expert-store":
+                from omlx.cache.moe_expert_store import load_expert_major_weights
+
+                store_path = Path(prepared_manifest["expert_store"]).expanduser()
+                if store_path.resolve() != scope_policy.store_path.resolve():
+                    raise ValueError(
+                        "prepared checkpoint expert store differs from scope policy"
+                    )
+                weights.update(
+                    load_expert_major_weights(store_path, scope_experts or ())
+                )
+
         if (model_file := config.get("model_file")) is not None:
             if not trust_remote_code:
                 raise ValueError(

@@ -77,6 +77,8 @@ dependencies = [
     "numpy>=1.24.0,<2.4",
     "tqdm>=4.66.0",
     "pyyaml>=6.0",
+    # Wheel tag, requirement, and version validation for model adapters.
+    "packaging>=24",
     "itsdangerous>=2.0",
     "jinja2>=3.0",
     # mlx-lm 0.31.3 imports rich from mlx_lm.cli_ui for chat/lora entrypoints.
@@ -131,9 +133,47 @@ dependencies = [
     "openpyxl>=3.1.2,<4",
     "reportlab>=4.2.0,<5",
     "pypdf>=5.0.0,<7",
+    "zeroconf>=0.147,<1",
 ]
 
 [project.optional-dependencies]
+# Dependencies embedded in the inference-free AI2Apps Base App. Keep native
+# model runtimes (MLX, transformers, tokenizers, audio, grammar) out of this
+# list: they are delivered by signed Runtime Packages and launched as managed
+# Service processes.
+control-plane = [
+    "regex",
+    # Checkpoint discovery and downloads are Host/control-plane operations.
+    # Keep the Hub client in the Base App even though inference runtimes also
+    # carry it for transformers/MLX compatibility.
+    "huggingface-hub>=1.19.0",
+    "pyyaml>=6.0",
+    "packaging>=24",
+    "itsdangerous>=2.0",
+    "jinja2>=3.0",
+    "requests>=2.28.0",
+    "httpx>=0.27.0,<1",
+    "cryptography>=42.0.0",
+    "socksio>=1.0.0",
+    "tabulate>=0.9.0",
+    "psutil>=5.9.0",
+    "setproctitle>=1.3.3",
+    "fastapi>=0.108.0",
+    "uvicorn>=0.23.0",
+    "websockets>=14.0,<16",
+    "python-multipart>=0.0.5",
+    "jsonschema>=4.0.0",
+    "Pillow>=9.0.0",
+    "qrcode==8.2",
+    "markitdown[pdf,docx,pptx]==0.1.6",
+    "markdownify>=1.2.3,<2",
+    "openpyxl>=3.1.2,<4",
+    "reportlab>=4.2.0,<5",
+    "pypdf>=5.0.0,<7",
+    "zeroconf>=0.147,<1",
+    "selenium>=4.35.0,<5",
+    "mcp>=1.5.0",
+]
 browser = [
     # Selenium Manager resolves the ChromeDriver matching the installed Chrome.
     # websocket-client is included by Selenium and carries the event-only BiDi
@@ -162,6 +202,11 @@ audio = [
     # stt extra: tiktoken, mistral-common[audio]
     # sts extra: tts deps + stt deps + webrtcvad
     "mlx-audio[tts,stt,sts]==0.4.6",
+    # Small native wrapper used by the CT-Transformer punctuation Package.
+    # Wheels are available for the bundled CPython 3.11/arm64 runtime.
+    "sherpa-onnx==1.13.4",
+    # PyPI wheel bundles FFmpeg codecs for common compressed/container audio.
+    "av==18.0.0",
 ]
 paroquant = [
     # ParoQuant runtime loader for paroquant-quantized models. Installed
@@ -199,6 +244,8 @@ bundle = [
     "phonemizer-fork>=3.3.2",
     "espeakng-loader>=0.2.4",
     "webrtcvad>=2.0.10",
+    "sherpa-onnx==1.13.4",
+    "av==18.0.0",
     # [audio] extra on top of pyproject's plain mistral-common>=1.10
     "mistral-common[audio]>=1.10",
 ]

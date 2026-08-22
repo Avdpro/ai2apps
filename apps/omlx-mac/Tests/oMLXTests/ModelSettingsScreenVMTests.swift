@@ -22,6 +22,13 @@ final class ModelSettingsScreenVMTests: XCTestCase {
         )
     }
 
+    func testMoeExecutionModeOptionsMatchServerValues() {
+        XCTAssertEqual(
+            ModelSettingsScreenVM.moeExecutionModeOptions.map(\.0),
+            ["cached", "full"]
+        )
+    }
+
     func testVlmMtpDraftModelOptionsIncludeQwenMtpConfigType() {
         let vm = ModelSettingsScreenVM()
         vm.modelID = "Qwopus3.6-35B-A3B-v1-4bit-MLXVLM-Target"
@@ -77,6 +84,7 @@ final class ModelSettingsScreenVMTests: XCTestCase {
             engineType: nil,
             modelType: nil,
             configModelType: configModelType,
+            cacheMoe: nil,
             modelContextLength: nil,
             thinkingDefault: nil,
             dflashCompatible: nil,

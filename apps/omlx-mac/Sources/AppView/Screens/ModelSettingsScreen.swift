@@ -526,6 +526,22 @@ private struct BasicTab: View {
                     options: ModelSettingsScreenVM.modelTypeOptions
                 )
             }
+            if vm.model?.cacheMoe == true {
+                Row(label: String(localized: "settings.basic.moe_execution.label",
+                                  defaultValue: "MoE Execution",
+                                  comment: "Row label for Cached-MoE versus full-resident execution"),
+                    sublabel: String(localized: "settings.basic.moe_execution.sub",
+                                     defaultValue: "Full resident uses more memory and bypasses the expert cache.",
+                                     comment: "Sublabel describing the MoE execution mode tradeoff")) {
+                    Popup(
+                        selection: vm.bind($vm.moeExecutionMode, save: {
+                            Task { await vm.save(.moeExecutionMode, client: client) }
+                        }),
+                        width: 240,
+                        options: ModelSettingsScreenVM.moeExecutionModeOptions
+                    )
+                }
+            }
             Row(label: String(localized: "settings.basic.context_window.label",
                               defaultValue: "Context Window",
                               comment: "Row label for the context window field"),
