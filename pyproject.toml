@@ -201,7 +201,7 @@ audio = [
     # tts extra: misaki, num2words, spacy, phonemizer-fork, espeakng-loader, sentencepiece
     # stt extra: tiktoken, mistral-common[audio]
     # sts extra: tts deps + stt deps + webrtcvad
-    "mlx-audio[tts,stt,sts]==0.4.6",
+    "mlx-audio[tts,stt,sts]==0.5.0",
     # Small native wrapper used by the CT-Transformer punctuation Package.
     # Wheels are available for the bundled CPython 3.11/arm64 runtime.
     "sherpa-onnx==1.13.4",
