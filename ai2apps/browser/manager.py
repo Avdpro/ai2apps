@@ -134,6 +134,22 @@ class BrowserManager:
             await self._refresh()
             return {**self.status.to_dict(), "tabs": tabs}
 
+    async def accept_cookie_consent(
+        self, *, session_id: str | None, policy: str = "all"
+    ) -> dict[str, Any]:
+        if policy not in {"all", "necessary"}:
+            raise BrowserError("invalid_cookie_policy", policy)
+        async with self._lock:
+            await self._ensure_agent_control(session_id)
+            handler = getattr(self.backend, "accept_cookie_consent", None)
+            result = (
+                await asyncio.to_thread(handler, policy)
+                if handler is not None
+                else {"handled": False, "policy": policy, "label": None}
+            )
+            await self._refresh()
+            return {**self.status.to_dict(), "cookie_consent": result}
+
     async def open_tab(
         self, *, session_id: str | None, url: str | None = None
     ) -> dict[str, Any]:

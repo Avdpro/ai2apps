@@ -1,0 +1,42 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_deepseek_v4_flash_2bit_dq_722bf559_v1",
+  "modelId": "ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit",
+  "repoId": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
+  "revision": "722bf559b7de93575b2320973cf2002e05bfe6c9",
+  "format": "safetensors",
+  "quantization": "2bit-dq",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/LICENSE",
+    "termsHash": "sha256:f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "model-*.safetensors",
+    "model.safetensors.index.json",
+    "config.json",
+    "generation_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "chat_template.jinja"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
+      "revision": "722bf559b7de93575b2320973cf2002e05bfe6c9",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
+      "revision": "f9533813cd22ee5a69f013b70547d2750e41aab4",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_glm5_3_flash_4bit_mtp_06d6c753_v1",
+  "modelId": "ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp",
+  "repoId": "Vontra/GLM-5.3-Flash-MLX-4bit-MTP",
+  "revision": "06d6c7530e8290e20fabdc37a825ce07bdfc490c",
+  "format": "safetensors",
+  "quantization": "4bit-affine",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/Vontra/GLM-5.3-Flash-MLX-4bit-MTP/blob/06d6c7530e8290e20fabdc37a825ce07bdfc490c/LICENSE",
+    "termsHash": "sha256:30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE",
+    "README.md",
+    "chat_template.jinja",
+    "config.json",
+    "generation_config.json",
+    "model-*.safetensors",
+    "model.safetensors.index.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "zai-logo.png"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Vontra/GLM-5.3-Flash-MLX-4bit-MTP",
+      "revision": "06d6c7530e8290e20fabdc37a825ce07bdfc490c",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/GLM-5.3-Flash-MLX-4bit-MTP",
+      "revision": "760a9f63f4553ff1f725bddf63ca9f20577e4441",
+      "access": "public_anonymous"
+    }
+  ]
+}

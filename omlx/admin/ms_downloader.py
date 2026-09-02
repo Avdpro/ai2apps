@@ -680,6 +680,7 @@ class MSDownloader:
         self._progress_tasks: dict[str, asyncio.Task] = {}
         self._on_complete = on_complete
         self._cancelled: set[str] = set()
+        self._download_options: dict[str, dict] = {}
         self._download_sem = asyncio.Semaphore(1)
 
     @property
@@ -691,13 +692,24 @@ class MSDownloader:
         self._model_dir = Path(new_dir)
 
     async def start_download(
-        self, model_id: str, ms_token: str = ""
+        self,
+        model_id: str,
+        ms_token: str = "",
+        *,
+        revision: str | None = None,
+        target_repo_id: str | None = None,
+        allow_patterns: tuple[str, ...] | list[str] | None = None,
+        notify_complete: bool = True,
     ) -> DownloadTask:
         """Start downloading a model from ModelScope.
 
         Args:
             model_id: ModelScope model ID (e.g., "qwen/Qwen2.5-7B-Instruct-MLX").
             ms_token: Optional ModelScope token for private models.
+            revision: Optional pinned ModelScope revision.
+            target_repo_id: Canonical owner/model path below ``model_dir``.
+            allow_patterns: Optional file filter for a curated mirror.
+            notify_complete: Whether to refresh the general model pool.
 
         Returns:
             The created DownloadTask.
@@ -732,6 +744,12 @@ class MSDownloader:
         task_id = str(uuid.uuid4())
         task = DownloadTask(task_id=task_id, repo_id=model_id)
         self._tasks[task_id] = task
+        self._download_options[task_id] = {
+            "revision": revision.strip() if revision else None,
+            "target_repo_id": target_repo_id.strip() if target_repo_id else model_id,
+            "allow_patterns": tuple(allow_patterns or ()),
+            "notify_complete": notify_complete,
+        }
 
         # Start download in background
         self._active_tasks[task_id] = asyncio.create_task(
@@ -796,6 +814,7 @@ class MSDownloader:
             return False
 
         del self._tasks[task_id]
+        self._download_options.pop(task_id, None)
         self._cancelled.discard(task_id)
         return True
 
@@ -825,13 +844,15 @@ class MSDownloader:
 
         model_id = old_task.repo_id
         old_retry_count = old_task.retry_count
+        options = dict(self._download_options.get(task_id, {}))
 
         # Remove old task entry
         del self._tasks[task_id]
+        self._download_options.pop(task_id, None)
         self._cancelled.discard(task_id)
 
         # Start fresh download (snapshot_download resumes from existing files)
-        new_task = await self.start_download(model_id, ms_token)
+        new_task = await self.start_download(model_id, ms_token, **options)
         new_task.retry_count = old_retry_count + 1
         return new_task
 
@@ -869,6 +890,7 @@ class MSDownloader:
         thread while polling the target directory for progress updates.
         """
         task = self._tasks[task_id]
+        options = self._download_options.get(task_id, {})
 
         try:
             async with self._download_sem:
@@ -882,7 +904,9 @@ class MSDownloader:
                 # Preserve {owner}/{model} layout to match other tools
                 # (LMStudio, huggingface-cli) and avoid duplicate downloads
                 # when sharing a model directory.
-                target_dir = self._model_dir / task.repo_id
+                target_dir = self._model_dir / options.get(
+                    "target_repo_id", task.repo_id
+                )
 
                 # Get total file size for progress estimation
                 try:
@@ -914,6 +938,10 @@ class MSDownloader:
                 }
                 if ms_token:
                     dl_kwargs["token"] = ms_token
+                if options.get("revision"):
+                    dl_kwargs["revision"] = options["revision"]
+                if options.get("allow_patterns"):
+                    dl_kwargs["allow_patterns"] = list(options["allow_patterns"])
 
                 # Run snapshot_download in a thread (blocking call)
                 # Note: Thread cannot be interrupted, cancellation is checked after completion
@@ -964,7 +992,7 @@ class MSDownloader:
                 )
 
                 # Trigger model pool refresh
-                if self._on_complete:
+                if self._on_complete and options.get("notify_complete", True):
                     try:
                         await self._on_complete()
                     except Exception as e:

@@ -1,0 +1,50 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_fish_s2_pro_bf16_eccd57bf_v1",
+  "modelId": "ai2apps.model.fish-s2-pro/bf16",
+  "repoId": "mlx-community/fish-audio-s2-pro-bf16",
+  "revision": "eccd57bf5c1ebc13cb2f993df867f4e49931a36a",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-Fish-Audio-Research",
+    "name": "Fish Audio Research License",
+    "termsUrl": "https://huggingface.co/mlx-community/fish-audio-s2-pro-bf16/blob/eccd57bf5c1ebc13cb2f993df867f4e49931a36a/LICENSE.md",
+    "termsHash": "sha256:aa7d9206e9d710590987a3636934f643529c00cd490323594e6206aaa0c32d80",
+    "usagePolicy": "research_noncommercial_only",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "separate_license_required",
+      "attribution": {
+        "required": true,
+        "noticeText": "This model is licensed under the Fish Audio Research License, Copyright © 39 AI, INC. All Rights Reserved. Built with Fish Audio.",
+        "noticeFile": "NOTICE",
+        "productDisplay": "required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I confirm that I have read and accept the Fish Audio Research License for research or non-commercial use, or that I have obtained a separate written license from Fish Audio for my intended use.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "LICENSE.md", "chat_template.jinja", "codec.safetensors", "config.json",
+    "model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors",
+    "model.safetensors.index.json", "special_tokens_map.json", "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "mlx-community/fish-audio-s2-pro-bf16", "revision": "eccd57bf5c1ebc13cb2f993df867f4e49931a36a", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "mlx-community/fish-audio-s2-pro-bf16", "revision": "200c801776e58180e58d971d74e5b3c2bc444205", "access": "public_anonymous"}
+  ]
+}

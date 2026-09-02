@@ -480,3 +480,71 @@ def test_tiered_cache_evicts_least_frequently_used_tail_expert(
     assert lookup[7] == 1
     assert lookup[8] == -1
     assert lookup[9] == 2
+
+
+def test_qwen_arena_direct_decode_bypasses_cpu_staging(tmp_path, monkeypatch):
+    from omlx.patches.qwen3_6_flesh import arena_cache as arena_module
+
+    arena = Qwen36DecodeArena(tmp_path)
+    arena.initialize_layer(0, (0, 1, 2), protected_slots=2)
+    store = SimpleNamespace(record_bytes=4096)
+    calls = []
+    monkeypatch.setattr(arena, "_store", lambda _layer: store)
+    monkeypatch.setattr(
+        arena_module,
+        "direct_load_fused_experts",
+        lambda current, switch, slots, ids, **kwargs: (
+            calls.append((current, switch, tuple(slots), ids, kwargs)),
+            len(ids) * current.record_bytes,
+        )[1],
+    )
+    monkeypatch.setattr(
+        arena,
+        "_read_records",
+        lambda *_args: pytest.fail("direct decode used CPU staging"),
+    )
+
+    switch = object()
+    try:
+        lookup = arena.resolve(0, (3,), switch, expert_count=4)
+    finally:
+        arena._io_pool.shutdown(wait=True)
+
+    assert lookup[3] == 2
+    assert calls == [(store, switch, (2,), (3,), {"io_workers": 4})]
+    assert arena.direct_load_calls == 1
+    assert arena.direct_load_bytes == 4096
+
+
+def test_qwen_tiered_direct_decode_bypasses_cpu_staging(tmp_path, monkeypatch):
+    from omlx.patches.qwen3_6_flesh import tiered_cache as tiered_module
+
+    cache = Qwen36TieredCache(tmp_path)
+    cache.initialize_layer(0, (0, 1), (2, 3))
+    store = SimpleNamespace(record_bytes=4096)
+    calls = []
+    monkeypatch.setattr(cache, "_store", lambda _layer: store)
+    monkeypatch.setattr(
+        tiered_module,
+        "direct_load_fused_experts",
+        lambda current, switch, slots, ids, **kwargs: (
+            calls.append((current, switch, tuple(slots), ids, kwargs)),
+            len(ids) * current.record_bytes,
+        )[1],
+    )
+    monkeypatch.setattr(
+        cache,
+        "_read_records",
+        lambda *_args: pytest.fail("direct tiered decode used CPU staging"),
+    )
+
+    switch = object()
+    try:
+        lookup = cache.resolve(0, (4,), switch, expert_count=5)
+    finally:
+        cache._io_pool.shutdown(wait=True)
+
+    assert lookup[4] == 0
+    assert calls == [(store, switch, (0,), (4,), {"io_workers": 4})]
+    assert cache.direct_load_calls == 1
+    assert cache.direct_load_bytes == 4096

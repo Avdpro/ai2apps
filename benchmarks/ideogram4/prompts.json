@@ -1,0 +1,22 @@
+[
+  {
+    "id": "typography_poster_en",
+    "seed": 20260603,
+    "prompt": "A premium editorial poster with the exact headline 'MAKE IDEAS VISIBLE' in large geometric sans-serif letters, black and warm white with one vermilion accent, strict Swiss grid, generous negative space"
+  },
+  {
+    "id": "typography_poster_zh",
+    "seed": 20260826,
+    "prompt": "现代中文展览海报，准确显示大标题『看见未来』和小字『AI2Apps 创作实验室』，白底、黑色无衬线字体、钴蓝色几何图形、清晰网格排版"
+  },
+  {
+    "id": "product_photo",
+    "seed": 314159,
+    "prompt": "Studio product photograph of a translucent cobalt-blue glass perfume bottle on brushed aluminum, soft morning window light, precise reflections, premium advertising composition"
+  },
+  {
+    "id": "spatial_layout",
+    "seed": 271828,
+    "prompt": "A red ceramic teapot centered on a pale oak table, exactly two green cups to its left and one yellow cup to its right, straight-on view, clean daylight photography"
+  }
+]

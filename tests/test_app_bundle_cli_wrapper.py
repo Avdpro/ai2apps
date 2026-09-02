@@ -79,3 +79,18 @@ def test_app_bundle_cli_wrapper_resolves_symlinked_invocation(tmp_path):
         expected_path,
         expected_args,
     ]
+
+
+def test_custom_kernels_build_with_the_bundled_python_abi():
+    """Native extensions must target the Python interpreter shipped in the app."""
+    build_script = Path("apps/omlx-mac/Scripts/build.sh").read_text()
+
+    assert 'local python_bin="$DONOR_LAYERS/cpython-3.11/bin/python3.11"' in build_script
+    assert '"$kernel_python" setup.py build_ext --inplace --force --with-custom-kernel' in build_script
+    assert 'PYTHONPATH="$custom_kernel_pythonpath" "$kernel_python" - <<\'PYEOF\'' in build_script
+    assert '-DPython_EXECUTABLE=$kernel_python' in build_script
+    assert '-DPython_ROOT_DIR=$kernel_python_root' in build_script
+    assert '_validate_custom_kernel_python_abi' in build_script
+    assert '_ext.cpython-311-darwin.so' in build_script
+    assert '-path "*/omlx/custom_kernels/*"' in build_script
+    assert '"$PYTHON_BIN" setup.py build_ext --inplace --force --with-custom-kernel' not in build_script

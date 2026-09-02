@@ -30,6 +30,7 @@ import importlib
 import inspect
 import json
 import logging
+import os
 import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -1076,6 +1077,8 @@ _QWEN_VISION_MODELS = {
     "qwen2_5_vl",
 }
 
+_GLM5_VISION_MODELS = {"glm5_next"}
+
 
 # Conservative fallback upper bound on image-placeholder tokens per image
 # content part. Used by ``preflight_chat`` only when the actual
@@ -1271,6 +1274,12 @@ class VLMBatchedEngine(BaseEngine):
     support. Uses VLMModelAdapter to inject pre-computed vision embeddings
     during prefill while maintaining full BatchGenerator compatibility.
     """
+
+    # Full-history VLM prompts use segmented image hashes in addition to the
+    # caller-owned session namespace. This makes exact prompt+output KV
+    # continuity safe across same-image follow-ups and prefix-safe when a new
+    # image is appended later in the conversation.
+    supports_kv_continuity = True
 
     def __init__(
         self,
@@ -1510,6 +1519,12 @@ class VLMBatchedEngine(BaseEngine):
         from ..engine_core import get_mlx_executor
 
         def _load_vlm_sync():
+            from ..patches.glm5_next_cache.runtime import (
+                glm5_dynamic_safetensors_on_load,
+            )
+            from ..patches.qwen38_next_cache import (
+                qwen4_dynamic_safetensors_on_load,
+            )
             from ..patches.qwen3_6_flesh.io_patch import (
                 qwen36_scope_safetensors_on_load,
             )
@@ -1522,6 +1537,8 @@ class VLMBatchedEngine(BaseEngine):
                 _drop_gemma4_mlx_shared_kv_extras_on_load(Path(self._model_name)),
                 _force_minimax_m3_moe_sanitize_on_load(Path(self._model_name)),
                 _remap_nested_visual_on_load(Path(self._model_name)),
+                glm5_dynamic_safetensors_on_load(self._model_name),
+                qwen4_dynamic_safetensors_on_load(self._model_name),
                 qwen36_scope_safetensors_on_load(self._model_name),
             ):
                 custom_loaded = maybe_load_custom_quantization(
@@ -2267,6 +2284,24 @@ class VLMBatchedEngine(BaseEngine):
                 return result[0]
             return result
 
+        # Strategy 2b: GLM-5 uses the same flat patch/grid contract but names
+        # the module ``vision_model``. Supporting it here lets repeated image
+        # turns reuse encoded features instead of rerunning all 24 ViT blocks.
+        if model_type in _GLM5_VISION_MODELS:
+            grid_thw = extra_model_inputs.get("image_grid_thw")
+            if grid_thw is None:
+                grid_thw = extra_model_inputs.get("video_grid_thw")
+            if grid_thw is None:
+                return None
+            vision = model.vision_model
+            pv = (
+                mx.array(pixel_values)
+                if not isinstance(pixel_values, mx.array)
+                else pixel_values
+            )
+            pv = pv.astype(vision.patch_embed.proj.weight.dtype)
+            return vision(pv, grid_thw)
+
         # Strategy 3: llava-style (vision_tower → layer select → projector)
         if model_type == "llava":
             pv = pixel_values
@@ -2344,13 +2379,19 @@ class VLMBatchedEngine(BaseEngine):
                 return result
 
         # Qwen: flat (total_merged_tokens, dim) → split using grid_thw
-        if model_type in _QWEN_VISION_MODELS and features.ndim == 2:
+        if (
+            model_type in (_QWEN_VISION_MODELS | _GLM5_VISION_MODELS)
+            and features.ndim == 2
+        ):
             grid_thw = extra_model_inputs.get("image_grid_thw")
             if grid_thw is None:
                 return None
-            spatial_merge_size = getattr(
-                self._vlm_model.vision_tower, "spatial_merge_size", 2
+            vision = getattr(
+                self._vlm_model,
+                "vision_tower",
+                getattr(self._vlm_model, "vision_model", None),
             )
+            spatial_merge_size = getattr(vision, "spatial_merge_size", 2)
             merge_sq = spatial_merge_size**2
             per_image_tokens = []
             for i in range(num_images):
@@ -2371,6 +2412,61 @@ class VLMBatchedEngine(BaseEngine):
             return result
 
         return None
+
+    def _compute_missing_per_image_features(
+        self,
+        pixel_values: Any,
+        extra_model_inputs: dict,
+        cached_per_image: list[Any | None],
+        per_hashes: list[str],
+    ) -> Optional[mx.array]:
+        """Encode only uncached GLM/Qwen images and restore original order."""
+
+        model_type = self.model_type or ""
+        if model_type not in (_QWEN_VISION_MODELS | _GLM5_VISION_MODELS):
+            return None
+        grid_thw = extra_model_inputs.get("image_grid_thw")
+        if grid_thw is None or getattr(pixel_values, "ndim", 0) != 2:
+            return None
+        if len(cached_per_image) != int(grid_thw.shape[0]):
+            return None
+
+        patch_counts = [
+            int(grid_thw[i, 0]) * int(grid_thw[i, 1]) * int(grid_thw[i, 2])
+            for i in range(len(cached_per_image))
+        ]
+        if sum(patch_counts) != int(pixel_values.shape[0]):
+            return None
+
+        pixel_parts = []
+        offset = 0
+        for count in patch_counts:
+            pixel_parts.append(pixel_values[offset : offset + count])
+            offset += count
+
+        missing = [i for i, feature in enumerate(cached_per_image) if feature is None]
+        if not missing or len(missing) == len(cached_per_image):
+            return None
+
+        missing_pixels = mx.concatenate([pixel_parts[i] for i in missing], axis=0)
+        missing_extra = dict(extra_model_inputs)
+        missing_extra["image_grid_thw"] = mx.stack([grid_thw[i] for i in missing])
+        fresh = self._compute_vision_features(missing_pixels, missing_extra)
+        if fresh is None:
+            return None
+        fresh_parts = self._split_vision_features(fresh, len(missing), missing_extra)
+        if fresh_parts is None or len(fresh_parts) != len(missing):
+            return None
+
+        combined_parts = list(cached_per_image)
+        for index, feature in zip(missing, fresh_parts):
+            mx.eval(feature)
+            combined_parts[index] = feature
+            self._vision_cache.put(per_hashes[index], self._model_name, feature)
+
+        if any(feature is None for feature in combined_parts):
+            return None
+        return mx.concatenate(combined_parts, axis=0)
 
     @staticmethod
     def _as_int_list(value: Any) -> Optional[List[int]]:
@@ -2794,6 +2890,33 @@ class VLMBatchedEngine(BaseEngine):
                             image_hash[:16],
                         )
 
+                if not used_cached_features and any(
+                    feature is not None for feature in cached_per_image
+                ):
+                    try:
+                        combined = self._compute_missing_per_image_features(
+                            pixel_values,
+                            extra_model_inputs,
+                            cached_per_image,
+                            per_hashes,
+                        )
+                        if combined is not None and self._vision_features_match_image_tokens(
+                            combined, image_token_count
+                        ):
+                            mx.eval(combined)
+                            call_kwargs["cached_image_features"] = combined
+                            used_cached_features = True
+                            logger.debug(
+                                "Vision feature partial hit: encoded %d/%d new images",
+                                sum(feature is None for feature in cached_per_image),
+                                num_images,
+                            )
+                    except Exception:
+                        logger.debug(
+                            "Partial vision feature reuse failed; encoding all images",
+                            exc_info=True,
+                        )
+
                 if not used_cached_features:
                     # Some or all uncached — compute all, then cache per-image
                     try:
@@ -3038,6 +3161,25 @@ class VLMBatchedEngine(BaseEngine):
             except Exception as e:
                 logger.debug(f"SpecPrefill: system_end calc failed: {e}")
 
+    def _apply_vlm_kv_memory_policy(
+        self, vlm_inputs_embeds: Any, kwargs: dict[str, Any]
+    ) -> None:
+        """Keep GLM-5 vision sessions below the 64 GiB product gate.
+
+        Session identity and per-image Vision Feature Cache remain active, but
+        completion-time full KV snapshots currently add an 8-10 GiB transient
+        copy and produce no cache hit on GLM-5 Next. Keep KV request-local by
+        default; the experimental exact-KV path remains opt-in.
+        """
+
+        if (
+            vlm_inputs_embeds is not None
+            and self.model_type in _GLM5_VISION_MODELS
+            and os.environ.get("OMLX_GLM5_VISION_SESSION_KV", "0") != "1"
+        ):
+            kwargs["skip_cache_store"] = True
+            kwargs["kv_cache_policy"] = "strict"
+
     async def generate(
         self,
         prompt: str | list[int],
@@ -3117,6 +3259,7 @@ class VLMBatchedEngine(BaseEngine):
 
         # SpecPrefill: forward per-request overrides to the engine, mirroring
         # stream_generate so the non-streaming path is not silently ignored.
+        self._apply_vlm_kv_memory_policy(vlm_inputs_embeds, kwargs)
         specprefill_kwargs = self._pop_specprefill_kwargs(kwargs)
 
         output = await self._engine.generate(
@@ -3127,6 +3270,10 @@ class VLMBatchedEngine(BaseEngine):
             vlm_image_hash=vlm_image_hash,
             vlm_cache_key_start=vlm_cache_key_start,
             vlm_cache_key_ranges=vlm_cache_key_ranges,
+            cache_extra_keys=kwargs.get("cache_extra_keys"),
+            kv_cache_policy=kwargs.get("kv_cache_policy", "strict"),
+            exact_prefix_token_count=kwargs.get("exact_prefix_token_count", 0),
+            skip_cache_store=bool(kwargs.get("skip_cache_store", False)),
             **specprefill_kwargs,
         )
 
@@ -3226,6 +3373,7 @@ class VLMBatchedEngine(BaseEngine):
         )
 
         # SpecPrefill: pass per-request overrides
+        self._apply_vlm_kv_memory_policy(vlm_inputs_embeds, kwargs)
         specprefill_kwargs = self._pop_specprefill_kwargs(kwargs)
 
         engine = self._engine
@@ -3239,6 +3387,9 @@ class VLMBatchedEngine(BaseEngine):
             vlm_cache_key_start=vlm_cache_key_start,
             vlm_cache_key_ranges=vlm_cache_key_ranges,
             skip_cache_store=bool(kwargs.get("skip_cache_store", False)),
+            cache_extra_keys=kwargs.get("cache_extra_keys"),
+            kv_cache_policy=kwargs.get("kv_cache_policy", "strict"),
+            exact_prefix_token_count=kwargs.get("exact_prefix_token_count", 0),
             **specprefill_kwargs,
         )
 

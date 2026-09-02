@@ -1,0 +1,16 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.echomimic-v3-mlx-0.1.1",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.echomimic-v3-mlx/0.1.1",
+  "creationInfo": {"created": "2026-08-27T00:00:00Z", "creators": ["Organization: AI2Apps"]},
+  "packages": [
+    {"name": "ai2apps-model-echomimic-v3-mlx", "SPDXID": "SPDXRef-Package", "versionInfo": "0.1.1", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "echomimic-v3-mlx", "SPDXID": "SPDXRef-EchoMimic-MLX", "versionInfo": "ed55d4e304216ce4d5e8bb1636d4807be0871443", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "EchoMimicV3", "SPDXID": "SPDXRef-EchoMimicV3", "versionInfo": "311e176905a8c4c24b240b530488fe636ce4d249", "downloadLocation": "https://huggingface.co/BadToBest/EchoMimicV3", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "Wan2.1-Fun-V1.1-1.3B-InP", "SPDXID": "SPDXRef-WanFun", "versionInfo": "fc913c34361f4ec879e2f9c78b4f11ae50a937d1", "downloadLocation": "https://huggingface.co/alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "umt5-xxl", "SPDXID": "SPDXRef-UMT5XXL", "versionInfo": "NOASSERTION", "downloadLocation": "https://huggingface.co/google/umt5-xxl", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "chinese-wav2vec2-base", "SPDXID": "SPDXRef-ChineseWav2Vec2", "versionInfo": "cb511a6498884e41e35686f4b4d6c5188e181773", "downloadLocation": "https://modelscope.cn/models/TencentGameMate/chinese-wav2vec2-base", "filesAnalyzed": false, "licenseConcluded": "MIT", "licenseDeclared": "MIT", "copyrightText": "NOASSERTION"}
+  ]
+}

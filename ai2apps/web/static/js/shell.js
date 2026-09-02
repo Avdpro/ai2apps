@@ -38,6 +38,8 @@
     const dockContextMenu = root.querySelector('.dock-context-menu');
     const dockContextDismiss = root.querySelector('.dock-context-dismiss');
     const dockTooltipHost = root.querySelector('.dock-tooltip-host');
+    const galleryPreview = root.querySelector('.shell-gallery-preview');
+    const galleryPreviewFrame = galleryPreview?.querySelector('iframe');
 
     let apps = [];
     let byId = new Map();
@@ -68,6 +70,51 @@
     const persistentFrameApps = new Set(['ai2apps.general-chat', 'ai2apps.coder']);
     const appBadges = new Map();
     const capabilityBridgeWaiters = new Map();
+    let galleryPreviewLoadTimer = null;
+    let galleryPreviewCloseTimer = null;
+
+    function openGalleryPreview(options) {
+        if (!galleryPreview || !galleryPreviewFrame) throw new Error('Gallery Preview is unavailable');
+        const assetId = String(options?.assetId || '');
+        if (!assetId) throw new Error('Gallery asset is required');
+        const params = new URLSearchParams({ surface: 'preview', assetId: assetId });
+        if (options.collectionId) params.set('collectionId', String(options.collectionId));
+        if (options.kind) params.set('kind', String(options.kind));
+        if (options.search) params.set('search', String(options.search));
+        window.clearTimeout(galleryPreviewCloseTimer);
+        galleryPreviewCloseTimer = null;
+        galleryPreview.classList.remove('is-ready');
+        galleryPreviewFrame.src = '/admin/app-content/ai2apps.gallery?' + params.toString();
+        galleryPreview.hidden = false;
+        window.clearTimeout(galleryPreviewLoadTimer);
+        galleryPreviewLoadTimer = window.setTimeout(() => {
+            closeGalleryPreview();
+            showToast('Gallery Preview 加载超时');
+        }, 8000);
+    }
+
+    function revealGalleryPreview() {
+        if (!galleryPreview || galleryPreview.hidden) return;
+        window.clearTimeout(galleryPreviewLoadTimer);
+        galleryPreviewLoadTimer = null;
+        galleryPreview.classList.add('is-ready');
+        galleryPreviewFrame?.focus();
+        galleryPreviewFrame?.contentWindow?.focus();
+    }
+
+    function closeGalleryPreview() {
+        if (!galleryPreview || !galleryPreviewFrame) return;
+        window.clearTimeout(galleryPreviewLoadTimer);
+        galleryPreviewLoadTimer = null;
+        galleryPreview.classList.remove('is-ready');
+        window.clearTimeout(galleryPreviewCloseTimer);
+        galleryPreviewCloseTimer = window.setTimeout(() => {
+            galleryPreview.hidden = true;
+            galleryPreviewFrame.src = 'about:blank';
+            galleryPreviewCloseTimer = null;
+        }, 300);
+        frame?.focus();
+    }
 
     function escapeHtml(value) {
         return String(value == null ? '' : value).replace(/[&<>"]/g, (character) => ({
@@ -78,11 +125,13 @@
     async function applyDesktopClientVersion() {
         const getDesktopInfo = window.ai2appsDesktop?.getDesktopInfo;
         if (!desktopClientVersion) return;
-        let rawVersion = '';
+        let rawVersion = String(desktopClientVersion.dataset.version || '').trim();
+        let rawBuild = String(desktopClientVersion.dataset.build || '').trim();
         try {
             if (typeof getDesktopInfo === 'function') {
                 const info = await getDesktopInfo();
-                rawVersion = String(info?.version || '').trim();
+                rawVersion = String(info?.version || rawVersion).trim();
+                rawBuild = String(info?.build || rawBuild).trim();
             }
         } catch (error) {
             console.warn('Unable to read AI2Apps Desktop version', error);
@@ -94,9 +143,12 @@
             rawVersion = String(userAgentVersion?.[1] || '').trim();
         }
         if (!rawVersion || rawVersion.toLowerCase() === 'unknown') return;
-        desktopClientVersion.textContent = ' · ' + (
+        const displayVersion = (
             rawVersion.toLowerCase().startsWith('v') ? rawVersion : `v${rawVersion}`
         );
+        const displayBuild = /^[1-9][0-9]{0,17}$/.test(rawBuild)
+            ? ` (Build ${rawBuild})` : '';
+        desktopClientVersion.textContent = ` · ${displayVersion}${displayBuild}`;
         desktopClientVersion.hidden = false;
     }
 
@@ -192,6 +244,33 @@
         });
     }
 
+    function provisioningReturnApp(session) {
+        const raw = String(session?.intent?.returnTo || '');
+        if (!raw) return '';
+        const target = new URL(raw, window.location.origin);
+        if (target.origin !== window.location.origin) return '';
+        const parts = target.pathname.split('/').filter(Boolean);
+        if (parts[0] === 'apps') return decodeURIComponent(parts[1] || '');
+        if (parts[0] === 'admin' && parts[1] === 'app-content') {
+            return decodeURIComponent(parts[2] || '');
+        }
+        return '';
+    }
+
+    async function resumeProvisioningApp() {
+        try {
+            const result = await request('/v1/platform/provisioning/sessions');
+            const session = (result.items || []).find(item => provisioningReturnApp(item));
+            const appId = provisioningReturnApp(session);
+            if (!appId || !byId.has(appId) || currentId === appId) return false;
+            await launch(appId, { navigate: true });
+            return true;
+        } catch (error) {
+            console.warn('Unable to restore ACPF return App', error);
+            return false;
+        }
+    }
+
     async function refreshAccountStatus() {
         try {
             const result = await request('/admin/api/shell/account-status');
@@ -200,29 +279,73 @@
             accountButton.classList.toggle('is-unavailable', state === 'unavailable');
             if (state === 'signed_in') {
                 accountName.textContent = result.display_name || 'AI2Apps Account';
-                accountDetail.textContent = (result.points || '0') + ' points';
-                accountButton.title = result.email ? result.email + ' · Open Account App' : 'Open Account App';
+                accountDetail.textContent = '';
+                accountDetail.hidden = true;
+                accountButton.dataset.dockTooltip = currencyTooltip(result.currencies);
+                accountButton.setAttribute('aria-label', result.email
+                    ? result.email + ' · Open Account App' : 'Open AI2Apps Account');
             } else if (state === 'local_member') {
                 accountName.textContent = result.display_name || 'Local member';
                 accountDetail.textContent = result.role || 'member';
-                accountButton.title = 'Open Local Account';
+                accountDetail.hidden = false;
+                delete accountButton.dataset.dockTooltip;
+                accountButton.setAttribute('aria-label', 'Open Local Account');
             } else if (state === 'signed_out') {
                 accountName.textContent = 'Not signed in';
                 accountDetail.textContent = 'Local features available';
-                accountButton.title = 'Sign in to AI2Apps Cloud';
+                accountDetail.hidden = false;
+                delete accountButton.dataset.dockTooltip;
+                accountButton.setAttribute('aria-label', 'Sign in to AI2Apps Cloud');
             } else {
                 accountName.textContent = 'Cloud unavailable';
                 accountDetail.textContent = 'Local features available';
-                accountButton.title = 'Open Account App';
+                accountDetail.hidden = false;
+                delete accountButton.dataset.dockTooltip;
+                accountButton.setAttribute('aria-label', 'Open Account App');
             }
             renderHomeAccount(result);
             return result;
-        } catch (_) {
+        } catch (error) {
             accountButton.classList.remove('is-signed-in');
             accountButton.classList.add('is-unavailable');
-            accountName.textContent = 'Cloud unavailable';
-            accountDetail.textContent = 'Local features available';
-            renderHomeAccount({ state: 'unavailable' });
+            const sessionExpired = error.status === 401;
+            accountName.textContent = sessionExpired ? 'Session expired' : 'Cloud unavailable';
+            accountDetail.textContent = sessionExpired ? 'Sign in again' : 'Local features available';
+            accountDetail.hidden = false;
+            delete accountButton.dataset.dockTooltip;
+            accountButton.setAttribute('aria-label', sessionExpired
+                ? 'Sign in to this AI2Apps Installation' : 'Open Account App');
+            renderHomeAccount({ state: sessionExpired ? 'session_expired' : 'unavailable' });
+            return null;
+        }
+    }
+
+    function formatCurrencyAmount(currency) {
+        const raw = String(currency?.amount_minor ?? '0');
+        const exponent = Number(currency?.exponent ?? 0);
+        if (!/^-?[0-9]+$/.test(raw) || !Number.isInteger(exponent) || exponent < 0) return '—';
+        const negative = raw.startsWith('-');
+        const digits = negative ? raw.slice(1) : raw;
+        if (exponent === 0) return (negative ? '-' : '') + digits;
+        const padded = digits.padStart(exponent + 1, '0');
+        return (negative ? '-' : '') + padded.slice(0, -exponent) + '.' + padded.slice(-exponent);
+    }
+
+    function currencyTooltip(currencies) {
+        const values = new Map((Array.isArray(currencies) ? currencies : [])
+            .map((currency) => [currency.code, formatCurrencyAmount(currency)]));
+        return [
+            'Points\t' + (values.get('points') || '0'),
+            'Gas\t' + (values.get('gas') || '0'),
+            'Cash\t' + (values.get('cash') || '0'),
+        ].join('\n');
+    }
+
+    async function refreshLocalSession() {
+        try {
+            return await request('/v1/platform/auth/session/refresh', { method: 'POST' });
+        } catch (error) {
+            if (error.status !== 401) console.warn('Unable to refresh Local session', error);
             return null;
         }
     }
@@ -313,11 +436,13 @@
     }
 
     function renderHomeApps() {
-        const preferred = ['ai2apps.general-chat', 'ai2apps.coder', 'ai2apps.dashboard', 'ai2apps.models'];
-        const visible = [
-            ...preferred.map((id) => byId.get(id)).filter(Boolean),
-            ...apps.filter((app) => !preferred.includes(app.id)),
-        ].slice(0, 4);
+        const preferred = [
+            'ai2apps.general-chat',
+            'ai2apps.imagine-studio',
+            'ai2apps.readaloud',
+            'ai2apps.video-studio',
+        ];
+        const visible = preferred.map((id) => byId.get(id)).filter(Boolean);
         homeApps.innerHTML = visible.map((app) =>
             '<button class="desktop-home-app' + (homeAppsLocked ? ' is-locked' : '') +
                 '" type="button" data-home-app-id="' + escapeHtml(app.id) + '"' +
@@ -1119,7 +1244,26 @@
         dockTooltipTimer = setTimeout(() => {
             if (!button.isConnected) return;
             const bounds = button.getBoundingClientRect();
-            dockTooltipHost.textContent = button.dataset.dockTooltip || '';
+            const tooltip = button.dataset.dockTooltip || '';
+            const rows = tooltip.includes('\n') ? tooltip.split('\n') : [];
+            dockTooltipHost.classList.toggle('is-multiline', rows.length > 0);
+            if (rows.length) {
+                dockTooltipHost.replaceChildren(...rows.map((text) => {
+                    const [label, value = ''] = text.split('\t', 2);
+                    const row = document.createElement('span');
+                    row.className = 'dock-tooltip-row';
+                    const labelElement = document.createElement('span');
+                    labelElement.className = 'dock-tooltip-label';
+                    labelElement.textContent = label;
+                    const valueElement = document.createElement('span');
+                    valueElement.className = 'dock-tooltip-value';
+                    valueElement.textContent = value;
+                    row.append(labelElement, valueElement);
+                    return row;
+                }));
+            } else {
+                dockTooltipHost.textContent = tooltip;
+            }
             dockTooltipHost.hidden = false;
             const width = dockTooltipHost.offsetWidth;
             dockTooltipHost.style.left = Math.max(
@@ -1394,6 +1538,10 @@
         const button = event.target.closest('[data-dock-tooltip]');
         if (button && !button.contains(event.relatedTarget)) hideDockTooltip();
     });
+    accountButton.addEventListener('pointerenter', () => {
+        if (accountButton.dataset.dockTooltip) showDockTooltip(accountButton);
+    });
+    accountButton.addEventListener('pointerleave', hideDockTooltip);
     dockApps.addEventListener('dragstart', (event) => {
         const item = event.target.closest('[data-dock-drag-id]');
         if (!item) return;
@@ -1450,7 +1598,8 @@
     root.querySelector('.app-dock').addEventListener('pointerenter', () => setDockVisible(true));
     root.querySelector('.app-dock').addEventListener('pointerleave', () => setDockVisible(false));
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !dockContextMenu.hidden) closeDockContextMenu();
+        if (event.key === 'Escape' && galleryPreview && !galleryPreview.hidden) closeGalleryPreview();
+        else if (event.key === 'Escape' && !dockContextMenu.hidden) closeDockContextMenu();
         else if (event.key === 'Escape' && launcher.classList.contains('is-open')) closeLauncher();
         else if (event.key === 'Escape' && control.classList.contains('is-open')) closeControl();
     });
@@ -1468,6 +1617,15 @@
         });
     });
     window.addEventListener('message', async (event) => {
+        if (event.source === galleryPreviewFrame?.contentWindow) {
+            if (event.origin === window.location.origin && event.data?.type === 'ai2apps.gallery.preview-ready') revealGalleryPreview();
+            else if (event.origin === window.location.origin && event.data?.type === 'ai2apps.gallery.preview-error') {
+                closeGalleryPreview();
+                showToast(event.data.error || 'Gallery Preview 加载失败');
+            }
+            else if (event.origin === window.location.origin && event.data?.type === 'ai2apps.gallery.preview-close') closeGalleryPreview();
+            return;
+        }
         if (event.source !== frame.contentWindow) return;
         const message = event.data || {};
         if (message.mountToken !== currentMountToken || message.instanceId !== currentInstanceId) return;
@@ -1512,6 +1670,9 @@
                 const appId = String(message.appId || currentId);
                 await launch(appId, { instanceId: message.targetInstanceId || null });
                 respondToFrame(message, true, { appId: appId, instanceId: currentInstanceId });
+            } else if (message.type === 'ai2apps.shell.open-gallery-preview') {
+                openGalleryPreview(message);
+                respondToFrame(message, true, { status: 'opened', assetId: String(message.assetId || '') });
             } else if (message.type === 'ai2apps.shell.mount-mini-entry') {
                 const mount = await createMiniMount(message);
                 respondToFrame(message, true, mount);
@@ -1572,7 +1733,9 @@
 
     document.addEventListener('visibilitychange', () => {
         sendHostContext();
-        if (document.visibilityState === 'visible') synchronizeAccountBoundary();
+        if (document.visibilityState === 'visible') {
+            refreshLocalSession().finally(synchronizeAccountBoundary);
+        }
     });
 
     async function initialize() {
@@ -1584,8 +1747,11 @@
         if (currentId) await launch(currentId, { instanceId: currentInstanceId, navigate: false });
         else showHome({ navigate: false });
         refreshControl().catch(() => {});
+        await refreshLocalSession();
         await synchronizeAccountBoundary();
+        await resumeProvisioningApp();
         window.setInterval(synchronizeAccountBoundary, 60 * 1000);
+        window.setInterval(refreshLocalSession, 6 * 60 * 60 * 1000);
     }
 
     initialize();

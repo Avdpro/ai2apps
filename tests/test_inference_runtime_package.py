@@ -1,26 +1,31 @@
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import subprocess
+import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import yaml
 
-from ai2apps.packages.archive import ServicePackageArchive
+from ai2apps.packages.archive import MAX_PACKAGE_BYTES, ServicePackageArchive
 from ai2apps.packages.inference_runtime import (
+    NATIVE_RUNTIME_PROTOCOL,
     RUNTIME_PROTOCOL,
     InferenceRuntimeInstaller,
     InferenceRuntimeResolver,
 )
-from ai2apps.packages.manager import ServicePackageManager
+from ai2apps.packages.manager import ServicePackageManager, _detect_local_accelerator
 from ai2apps.packages.models import PackageError, PackageStatus
 from ai2apps.packages.resolver import ServiceDependencyResolver
 from ai2apps.packages.supervisor import ManagedServiceSupervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_SOURCE = ROOT / "packages" / "ai2apps-runtime-omlx"
+KNOWLEDGE_RUNTIME_SOURCE = ROOT / "packages" / "ai2apps-runtime-knowledge-rag"
 MODEL_SOURCES = (
     ROOT / "packages" / "omlx-model-qwen38",
     ROOT / "packages" / "omlx-model-qwen36-cached-moe",
@@ -42,7 +47,12 @@ def test_runtime_provider_and_model_dependencies_are_explicit() -> None:
 
     for source in MODEL_SOURCES:
         parsed = ServicePackageArchive._manifest(manifest(source))
-        assert parsed.version == "0.3.1"
+        expected_version = (
+            "0.3.3"
+            if source.name == "omlx-model-deepseek-v4-flash-2bit"
+            else "0.3.2"
+        )
+        assert parsed.version == expected_version
         assert parsed.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
         requirement = parsed.raw["requires"]["services"][0]
         assert requirement["id"] == "ai2apps.runtime.omlx"
@@ -52,13 +62,70 @@ def test_runtime_provider_and_model_dependencies_are_explicit() -> None:
         project_section = pyproject.partition("[project.optional-dependencies]")[0]
         assert "mlx==" not in project_section
         outer = json.loads((source / "ai2apps.json").read_text(encoding="utf-8"))
+        expected_runtime = (
+            ">=1.5.4 <2.0.0"
+            if source.name == "omlx-model-deepseek-v4-flash-2bit"
+            else ">=1.0.1 <2.0.0"
+        )
         assert outer["dependencies"] == [
             {
                 "packageId": "ai2apps/runtime-omlx",
-                "version": ">=1.0.1 <2.0.0",
+                "version": expected_runtime,
                 "optional": False,
             }
         ]
+
+
+def test_knowledge_runtime_and_workers_use_generic_locked_provider_contract() -> None:
+    runtime = ServicePackageArchive._manifest(manifest(KNOWLEDGE_RUNTIME_SOURCE))
+    assert runtime.protocol == NATIVE_RUNTIME_PROTOCOL
+    assert runtime.raw["runtime"]["role"] == "knowledge_backend_provider"
+    assert runtime.command == ()
+    assert {"knowledge-runtime-v1", "lancedb", "mlx-embeddings"}.issubset(
+        runtime.capabilities
+    )
+
+    for source in (
+        ROOT / "packages" / "ai2apps-service-knowledge-lancedb",
+        ROOT / "packages" / "ai2apps-model-multilingual-e5-small",
+    ):
+        worker = ServicePackageArchive._manifest(manifest(source))
+        assert worker.raw["runtime"]["provider"] == "ai2apps.runtime.knowledge-rag"
+        assert worker.command[0] == "{runtime_python}"
+        requirement = worker.raw["requires"]["services"][0]
+        assert requirement["id"] == "ai2apps.runtime.knowledge-rag"
+        assert requirement["optional"] is False
+        assert "knowledge-runtime-v1" in requirement["capabilities"]
+
+    embedding = ServicePackageArchive._manifest(
+        manifest(ROOT / "packages" / "ai2apps-model-multilingual-e5-small")
+    )
+    assert embedding.protocol == "http-json"
+
+
+def test_only_inference_runtime_packages_receive_the_large_archive_limit() -> None:
+    entry = SimpleNamespace(file_size=MAX_PACKAGE_BYTES + 1)
+    runtime = ServicePackageArchive._manifest(manifest(RUNTIME_SOURCE))
+    model = ServicePackageArchive._manifest(
+        manifest(ROOT / "packages" / "omlx-model-qwen38")
+    )
+
+    ServicePackageArchive._enforce_size_limit({"runtime": entry}, runtime)
+    with pytest.raises(PackageError) as error:
+        ServicePackageArchive._enforce_size_limit({"model": entry}, model)
+
+    assert error.value.code == "package_size_limit"
+
+
+def test_package_manager_detects_cuda_for_variant_selection(monkeypatch) -> None:
+    monkeypatch.setattr("ai2apps.packages.manager.platform.system", lambda: "Linux")
+    monkeypatch.setattr("ai2apps.packages.manager.platform.machine", lambda: "aarch64")
+    monkeypatch.setattr(
+        "ai2apps.packages.manager.Path.exists",
+        lambda path: str(path) == "/dev/nvidiactl",
+    )
+
+    assert _detect_local_accelerator() == "cuda"
 
 
 def test_dependency_solver_filters_runtime_capabilities() -> None:
@@ -228,6 +295,169 @@ def test_runtime_command_timeout_reports_install_stage(monkeypatch) -> None:
     }
 
 
+def _linux_runtime_package(tmp_path: Path, archive_bytes: bytes, digest: str | None = None):
+    store = tmp_path / "store"
+    store.joinpath("META").mkdir(parents=True)
+    payload = store / "runtime.tar.gz"
+    payload.write_bytes(archive_bytes)
+    descriptor = {
+        "schema": "ai2apps.inference-runtime/v1",
+        "service_id": "ai2apps.runtime.cuda-torch",
+        "version": "0.1.0",
+        "protocol": "ai2apps-model-worker/v1",
+        "python": "bin/python",
+        "python_home": ".",
+        "framework_site_packages": "site-packages",
+        "launcher": "ai2apps/model_worker/launcher.py",
+        "payload": {
+            "type": "tar.gz",
+            "path": "runtime.tar.gz",
+            "root": "Runtime",
+            "sha256": digest or hashlib.sha256(archive_bytes).hexdigest(),
+            "max_unpacked_bytes": 1024 * 1024,
+        },
+    }
+    store.joinpath("META/runtime-manifest.json").write_text(json.dumps(descriptor))
+    return SimpleNamespace(
+        service_key="ai2apps.runtime.cuda-torch",
+        package_version="0.1.0",
+        package_digest="sha256:abc123",
+        store_path=str(store),
+        manifest={"runtime": {"descriptor": "META/runtime-manifest.json"}},
+    )
+
+
+def _runtime_tar(*, unsafe_name: str | None = None) -> bytes:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+        for name, content, mode in (
+            ("Runtime/bin/python", b"#!/bin/sh\n", 0o755),
+            ("Runtime/site-packages/marker", b"ok\n", 0o644),
+            ("Runtime/ai2apps/model_worker/launcher.py", b"pass\n", 0o644),
+        ):
+            item = tarfile.TarInfo(name)
+            item.size = len(content)
+            item.mode = mode
+            archive.addfile(item, io.BytesIO(content))
+        if unsafe_name is not None:
+            item = tarfile.TarInfo(unsafe_name)
+            item.size = 1
+            archive.addfile(item, io.BytesIO(b"x"))
+    return stream.getvalue()
+
+
+def test_linux_runtime_tar_payload_is_verified_and_materialized(
+    tmp_path: Path, monkeypatch
+) -> None:
+    archive_bytes = _runtime_tar()
+    package = _linux_runtime_package(tmp_path, archive_bytes)
+    resolver = InferenceRuntimeResolver(SimpleNamespace(), tmp_path / "packages")
+    monkeypatch.setattr("ai2apps.packages.inference_runtime.platform.system", lambda: "Linux")
+
+    root = InferenceRuntimeInstaller(resolver).materialize(package)
+
+    assert root.joinpath("bin/python").read_text() == "#!/bin/sh\n"
+    assert root.joinpath("bin/python").stat().st_mode & 0o111
+    assert root.stat().st_mode & 0o222 == 0
+
+
+@pytest.mark.parametrize(
+    ("archive_bytes", "digest", "code"),
+    (
+        (_runtime_tar(unsafe_name="../escape"), None, "runtime_payload_escape"),
+        (_runtime_tar(), "0" * 64, "runtime_payload_digest_mismatch"),
+    ),
+)
+def test_linux_runtime_tar_rejects_untrusted_payloads(
+    tmp_path: Path, monkeypatch, archive_bytes: bytes, digest: str | None, code: str
+) -> None:
+    package = _linux_runtime_package(tmp_path, archive_bytes, digest)
+    resolver = InferenceRuntimeResolver(SimpleNamespace(), tmp_path / "packages")
+    monkeypatch.setattr("ai2apps.packages.inference_runtime.platform.system", lambda: "Linux")
+
+    with pytest.raises(PackageError) as error:
+        InferenceRuntimeInstaller(resolver).materialize(package)
+
+    assert error.value.code == code
+
+
+def test_model_workers_do_not_receive_the_generic_four_gib_address_limit(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr("ai2apps.packages.supervisor.platform.system", lambda: "Linux")
+    monkeypatch.setattr(
+        "ai2apps.packages.supervisor.resource.setrlimit",
+        lambda kind, value: calls.append((kind, value)),
+    )
+
+    ManagedServiceSupervisor._limit_resources(model_worker=True)
+    assert all(kind != __import__("resource").RLIMIT_AS for kind, _ in calls)
+
+    calls.clear()
+    ManagedServiceSupervisor._limit_resources(model_worker=False)
+    assert any(kind == __import__("resource").RLIMIT_AS for kind, _ in calls)
+
+
+def test_linux_model_worker_sandbox_keeps_host_loopback_transport(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("ai2apps.packages.supervisor.platform.system", lambda: "Linux")
+    monkeypatch.setattr("ai2apps.packages.supervisor.shutil.which", lambda _: "/usr/bin/bwrap")
+    package = tmp_path / "package"
+    data = tmp_path / "data"
+    temporary = tmp_path / "temporary"
+    for path in (package, data, temporary):
+        path.mkdir()
+    supervisor = object.__new__(ManagedServiceSupervisor)
+
+    command = supervisor._sandbox_command(
+        ("/bin/true",),
+        package,
+        data,
+        temporary,
+        network=False,
+        host_loopback_transport=True,
+    )
+
+    assert "--unshare-net" not in command
+
+
+def test_linux_cuda_model_worker_uses_docker_sandbox(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("ai2apps.packages.supervisor.platform.system", lambda: "Linux")
+    monkeypatch.setattr("ai2apps.packages.supervisor.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "ai2apps.packages.supervisor.subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+    package = tmp_path / "package"
+    data = tmp_path / "data"
+    temporary = tmp_path / "temporary"
+    for path in (package, data, temporary):
+        path.mkdir()
+    supervisor = object.__new__(ManagedServiceSupervisor)
+
+    command = supervisor._sandbox_command(
+        ("/runtime/python", "--port", "18765"),
+        package,
+        data,
+        temporary,
+        network=False,
+        cuda=True,
+        host_loopback_transport=True,
+        port=18765,
+        unix_socket=data / "model-worker.sock",
+    )
+
+    assert command[:3] == ("/usr/bin/docker", "run", "--rm")
+    assert "none" in command
+    assert "--publish" not in command
+    assert "--gpus" in command
+    assert command[-2:] == ("--uds", str(data / "model-worker.sock"))
+
+
 def test_staged_runtime_activation_moves_locks_before_local_services_start() -> None:
     manifest_value = manifest(RUNTIME_SOURCE)
     pending = SimpleNamespace(
@@ -310,6 +540,10 @@ def test_developer_id_runtime_uses_gatekeeper_without_xcode(
     )
     binaries = [command[0][0] for command in commands]
     assert "/usr/bin/xcrun" not in binaries
+    assert not any(
+        command[0][0] == "/usr/bin/codesign" and str(source) in command[0]
+        for command in commands
+    )
     assert any(
         command[0][:6]
         == (

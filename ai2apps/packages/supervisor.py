@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
 import platform
@@ -11,7 +12,9 @@ import secrets
 import shutil
 import signal
 import socket
+import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from contextlib import suppress
@@ -21,6 +24,8 @@ from typing import Any
 
 import psutil
 
+from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
+from ai2apps.checkpoints import checkpoint_is_complete
 from ai2apps.core import EntityIdKind, new_entity_id, utc_now_text
 from ai2apps.services import ServiceInstanceStatus, ServiceRepository
 
@@ -39,6 +44,9 @@ class _Managed:
     restart_count: int
     tasks: tuple[asyncio.Task[None], ...]
     internal_token: str | None = None
+    proxy_server: asyncio.AbstractServer | None = None
+    unix_socket: Path | None = None
+    started_monotonic: float = 0.0
 
 
 class ManagedServiceSupervisor:
@@ -49,12 +57,17 @@ class ManagedServiceSupervisor:
         packages_root: Path,
         *,
         inference_runtimes: InferenceRuntimeResolver | None = None,
+        model_root: Path | None = None,
     ) -> None:
         self.packages = packages
         self.services = services
         self.packages_root = packages_root
+        self.model_root = model_root
         self.inference_runtimes = inference_runtimes
         self._live: dict[str, _Managed] = {}
+        self._generations: dict[str, int] = {}
+        self._draining: set[str] = set()
+        self._evicted: dict[str, str] = {}
         self._stopping = False
 
     @staticmethod
@@ -69,6 +82,161 @@ class ManagedServiceSupervisor:
         if managed is None or managed.internal_token is None:
             return None
         return {"Authorization": f"Bearer {managed.internal_token}"}
+
+    @staticmethod
+    def _worker_json_request(
+        endpoint: str,
+        path: str,
+        token: str,
+        *,
+        method: str = "GET",
+    ) -> dict[str, Any]:
+        request = urllib.request.Request(
+            endpoint.rstrip("/") + "/" + path.lstrip("/"),
+            headers={"Authorization": f"Bearer {token}"},
+            method=method,
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            content = response.read(256 * 1024)
+        value = json.loads(content or b"{}")
+        if not isinstance(value, dict):
+            raise ValueError("Model Worker returned a non-object status")
+        return value
+
+    async def worker_snapshot(
+        self, package: InstalledPackageRecord, *, probe: bool = True
+    ) -> dict[str, Any]:
+        """Return the Host-authoritative state of one Model Worker package."""
+
+        service_key = package.service_key
+        managed = self._live.get(service_key)
+        generation = self._generations.get(service_key, 0)
+        models = [
+            {
+                "id": model.get("id"),
+                "displayName": model.get("display_name", model.get("id")),
+                "capabilities": list(model.get("capabilities", [])),
+            }
+            for model in package.manifest.get("models", [])
+            if isinstance(model, dict)
+        ]
+        snapshot: dict[str, Any] = {
+            "serviceKey": service_key,
+            "packageVersion": package.package_version,
+            "packageDigest": package.package_digest,
+            "generation": generation,
+            "state": "stopped",
+            "acceptingRequests": False,
+            "activeRequests": 0,
+            "queuedRequests": 0,
+            "pid": None,
+            "residentMemoryBytes": 0,
+            "endpoint": None,
+            "models": models,
+            "lastError": None,
+            "startedAgeSeconds": None,
+            "evictionReason": self._evicted.get(service_key),
+        }
+        if managed is None:
+            if service_key in self._evicted:
+                snapshot["state"] = "evicted"
+            return snapshot
+        snapshot["pid"] = managed.process.pid
+        snapshot["endpoint"] = managed.endpoint
+        snapshot["startedAgeSeconds"] = max(
+            0.0, time.monotonic() - managed.started_monotonic
+        )
+        if managed.process.returncode is not None:
+            snapshot["state"] = "failed" if managed.desired else "stopped"
+            return snapshot
+        snapshot["state"] = "draining" if service_key in self._draining else "ready"
+        snapshot["acceptingRequests"] = service_key not in self._draining
+        with suppress(psutil.Error, ProcessLookupError):
+            snapshot["residentMemoryBytes"] = psutil.Process(
+                managed.process.pid
+            ).memory_info().rss
+        if not probe or managed.internal_token is None:
+            snapshot["activeRequests"] = None
+            snapshot["queuedRequests"] = None
+            return snapshot
+        try:
+            status = await asyncio.to_thread(
+                self._worker_json_request,
+                managed.endpoint,
+                "/v1/status",
+                managed.internal_token,
+            )
+        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as error:
+            snapshot["state"] = (
+                "draining" if service_key in self._draining else "starting"
+            )
+            snapshot["acceptingRequests"] = False
+            snapshot["activeRequests"] = None
+            snapshot["queuedRequests"] = None
+            snapshot["lastError"] = str(error)
+            return snapshot
+        snapshot["activeRequests"] = int(status.get("active_requests", 0))
+        snapshot["queuedRequests"] = int(status.get("queued_requests", 0))
+        snapshot["acceptingRequests"] = bool(status.get("accepting_requests", True))
+        if service_key in self._draining or not snapshot["acceptingRequests"]:
+            snapshot["state"] = "draining"
+        elif snapshot["activeRequests"] or snapshot["queuedRequests"]:
+            snapshot["state"] = "busy"
+        return snapshot
+
+    def assert_worker_generation(self, service_key: str, expected: int | None) -> None:
+        if expected is None:
+            return
+        current = self._generations.get(service_key, 0)
+        if expected != current:
+            raise PackageError(
+                "worker_generation_conflict",
+                "Model Worker state changed; refresh the Dashboard and retry",
+                details={"expectedGeneration": expected, "currentGeneration": current},
+            )
+
+    async def drain_worker(self, service_key: str) -> None:
+        managed = self._live.get(service_key)
+        if managed is None:
+            return
+        if managed.internal_token is None:
+            raise PackageError("not_model_worker", "Service is not a Model Worker")
+        await asyncio.to_thread(
+            self._worker_json_request,
+            managed.endpoint,
+            "/v1/control/drain",
+            managed.internal_token,
+            method="POST",
+        )
+        self._draining.add(service_key)
+
+    async def resume_worker(self, service_key: str) -> None:
+        managed = self._live.get(service_key)
+        if managed is None:
+            self._draining.discard(service_key)
+            return
+        if managed.internal_token is None:
+            raise PackageError("not_model_worker", "Service is not a Model Worker")
+        await asyncio.to_thread(
+            self._worker_json_request,
+            managed.endpoint,
+            "/v1/control/resume",
+            managed.internal_token,
+            method="POST",
+        )
+        self._draining.discard(service_key)
+
+    async def wait_worker_idle(self, package: InstalledPackageRecord) -> None:
+        while package.service_key in self._live:
+            snapshot = await self.worker_snapshot(package)
+            active = snapshot["activeRequests"]
+            queued = snapshot["queuedRequests"]
+            if active is None or queued is None:
+                await asyncio.sleep(0.25)
+                continue
+            if active == 0 and queued == 0:
+                return
+            await asyncio.sleep(0.25)
 
     @staticmethod
     def _trusted_framework_site_packages() -> Path | None:
@@ -170,7 +338,9 @@ class ManagedServiceSupervisor:
 
     @staticmethod
     def _model_worker_checkpoints(
-        manifest: dict[str, Any], hub_cache: Path
+        manifest: dict[str, Any],
+        hub_cache: Path,
+        model_root: Path | None = None,
     ) -> tuple[tuple[dict[str, Any], ...], tuple[Path, ...]]:
         checkpoints: list[dict[str, Any]] = []
         roots: list[Path] = []
@@ -187,21 +357,64 @@ class ManagedServiceSupervisor:
                 raise PackageError(
                     "invalid_model_weights", "Model weight repository escapes the cache"
                 ) from exc
-            snapshot = repo_root / "snapshots" / revision
+            distribution_id = weights.get("distribution_id")
+            preparation = weights.get("preparation", {})
+            if distribution_id is not None:
+                if not isinstance(distribution_id, str):
+                    raise PackageError(
+                        "invalid_model_weights", "Model distribution ID is invalid"
+                    )
+                try:
+                    cache_key = checkpoint_distribution_cache_key(distribution_id)
+                except ValueError as exc:
+                    raise PackageError(
+                        "invalid_model_weights", "Model distribution ID is invalid"
+                    ) from exc
+                snapshot = repo_root / "distributions" / cache_key
+            else:
+                snapshot = repo_root / "snapshots" / revision
             snapshot_path = (
                 snapshot.resolve()
                 if snapshot.is_dir()
                 and ManagedServiceSupervisor._checkpoint_is_complete(snapshot)
                 else None
             )
-            if snapshot_path is not None:
+            if (
+                model_root is not None
+                and isinstance(preparation, dict)
+                and preparation.get("recipe", "native") != "native"
+            ):
+                prepared = (model_root / repo_id).resolve()
                 try:
-                    snapshot_path.relative_to(repo_root)
+                    prepared.relative_to(model_root.resolve())
                 except ValueError as exc:
                     raise PackageError(
-                        "invalid_model_weights", "Model snapshot escapes its repository cache"
+                        "invalid_model_weights",
+                        "Prepared model path escapes the model directory",
                     ) from exc
-                roots.append(repo_root)
+                if (
+                    (prepared / "ai2apps-model.json").is_file()
+                    and ManagedServiceSupervisor._checkpoint_is_complete(prepared)
+                ):
+                    snapshot_path = prepared
+                    roots.append(model_root.resolve())
+                    # Prepared checkpoint files can be no-copy symlinks into
+                    # the pinned Hub snapshot, so grant the Worker read-only
+                    # access to that repository as well.
+                    if repo_root.is_dir():
+                        roots.append(repo_root)
+            if snapshot_path is not None:
+                if model_root is None or not snapshot_path.is_relative_to(
+                    model_root.resolve()
+                ):
+                    try:
+                        snapshot_path.relative_to(repo_root)
+                    except ValueError as exc:
+                        raise PackageError(
+                            "invalid_model_weights",
+                            "Model snapshot escapes its repository cache",
+                        ) from exc
+                    roots.append(repo_root)
             checkpoints.append(
                 {
                     "model_id": model["id"],
@@ -209,58 +422,18 @@ class ManagedServiceSupervisor:
                     "provider": weights["provider"],
                     "repo_id": repo_id,
                     "revision": revision,
+                    "distribution_id": distribution_id,
                     "path": str(snapshot_path) if snapshot_path is not None else None,
-                    "preparation": weights.get("preparation", {}),
+                    "preparation": preparation,
                 }
             )
         return tuple(checkpoints), tuple(dict.fromkeys(roots))
 
     @staticmethod
     def _checkpoint_is_complete(snapshot: Path) -> bool:
-        """Require a complete native checkpoint before granting it to a Worker.
+        """Require a complete supported checkpoint before granting it to a Worker."""
 
-        MLX checkpoints use safetensors, while signed helper Packages may pin
-        native ONNX checkpoints (for example the CT-Transformer punctuation
-        dependency).  Both formats are immutable Hugging Face snapshots and
-        are safe to expose after their required model file is present.
-        """
-
-        onnx_files = tuple(snapshot.glob("*.onnx"))
-        if onnx_files:
-            native_config = next(
-                (
-                    snapshot / name
-                    for name in ("config.json", "config.yaml", "config.yml")
-                    if (snapshot / name).is_file()
-                ),
-                None,
-            )
-            return native_config is not None and any(
-                path.is_file() for path in onnx_files
-            )
-
-        if not (snapshot / "config.json").is_file():
-            return False
-        indexes = sorted(snapshot.glob("*.safetensors.index.json"))
-        if indexes:
-            try:
-                payload = json.loads(indexes[0].read_text(encoding="utf-8"))
-                weight_map = payload.get("weight_map", {})
-                shards = set(weight_map.values())
-            except (OSError, json.JSONDecodeError, AttributeError):
-                return False
-            if not shards:
-                return False
-            for shard in shards:
-                if (
-                    not isinstance(shard, str)
-                    or shard.startswith("/")
-                    or ".." in shard.split("/")
-                    or not (snapshot / shard).is_file()
-                ):
-                    return False
-            return True
-        return any(path.is_file() for path in snapshot.glob("*.safetensors"))
+        return checkpoint_is_complete(snapshot)
 
     def _sandbox_command(
         self,
@@ -272,6 +445,10 @@ class ManagedServiceSupervisor:
         network: bool,
         read_only_roots: tuple[Path, ...] = (),
         metal: bool = False,
+        cuda: bool = False,
+        host_loopback_transport: bool = False,
+        port: int | None = None,
+        unix_socket: Path | None = None,
     ) -> tuple[str, ...]:
         system = platform.system()
         if system == "Darwin":
@@ -344,6 +521,28 @@ class ManagedServiceSupervisor:
             profile.write_text("\n".join(lines) + "\n", encoding="utf-8")
             return (str(executable), "-f", str(profile), "--", *command)
         if system == "Linux":
+            docker = shutil.which("docker")
+            if cuda and docker is not None and host_loopback_transport:
+                if port is None:
+                    raise PackageError(
+                        "sandbox_configuration_invalid",
+                        "Docker Model Worker sandbox requires a Host proxy port",
+                    )
+                if unix_socket is None:
+                    raise PackageError(
+                        "sandbox_configuration_invalid",
+                        "Docker Model Worker sandbox requires a Unix socket",
+                    )
+                return self._docker_sandbox_command(
+                    docker,
+                    command,
+                    package_root,
+                    data_root,
+                    temporary,
+                    network=network,
+                    read_only_roots=read_only_roots,
+                    unix_socket=unix_socket,
+                )
             bwrap = shutil.which("bwrap")
             if bwrap is None:
                 raise PackageError(
@@ -358,7 +557,12 @@ class ManagedServiceSupervisor:
                 "--unshare-ipc",
                 "--unshare-uts",
             ]
-            if not network:
+            # Model Worker v1 currently exposes a random loopback HTTP port to
+            # its Host supervisor. A private network namespace would make that
+            # endpoint unreachable even when bubblewrap can configure its own
+            # loopback device. Keep the host namespace only for this trusted
+            # transport; ordinary no-network Services remain fully unshared.
+            if not network and not host_loopback_transport:
                 value.append("--unshare-net")
             for root in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
                 if Path(root).exists():
@@ -381,10 +585,25 @@ class ManagedServiceSupervisor:
                     for root in ("/usr", "/bin", "/sbin", "/lib", "/lib64")
                 ):
                     value.extend(("--ro-bind", read_root, read_root))
+            value.extend(("--dev", "/dev"))
+            if cuda:
+                cuda_devices = tuple(
+                    path
+                    for path in (
+                        *sorted(Path("/dev").glob("nvidia*")),
+                        Path("/dev/dri"),
+                    )
+                    if path.exists()
+                )
+                if not cuda_devices:
+                    raise PackageError(
+                        "accelerator_unavailable",
+                        "CUDA access was requested but no NVIDIA device is available",
+                    )
+                for device in cuda_devices:
+                    value.extend(("--dev-bind", str(device), str(device)))
             value.extend(
                 (
-                    "--dev",
-                    "/dev",
                     "--proc",
                     "/proc",
                     "--tmpfs",
@@ -410,7 +629,138 @@ class ManagedServiceSupervisor:
         )
 
     @staticmethod
-    def _limit_resources() -> None:
+    def _docker_sandbox_command(
+        docker: str,
+        command: tuple[str, ...],
+        package_root: Path,
+        data_root: Path,
+        temporary: Path,
+        *,
+        network: bool,
+        read_only_roots: tuple[Path, ...],
+        unix_socket: Path,
+    ) -> tuple[str, ...]:
+        image = os.environ.get("AI2APPS_CUDA_WORKER_IMAGE", "ubuntu:24.04")
+        inspected = subprocess.run(
+            (docker, "image", "inspect", image),
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if inspected.returncode:
+            raise PackageError(
+                "sandbox_image_unavailable",
+                f"CUDA Worker sandbox image is not installed: {image}",
+            )
+        value = [
+            docker,
+            "run",
+            "--rm",
+            "--init",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--pids-limit",
+            "1024",
+            "--ipc",
+            "private",
+            "--shm-size",
+            "1g",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--network",
+            "bridge" if network else "none",
+            "--gpus",
+            "all",
+            "--tmpfs",
+            "/tmp:rw,nosuid,nodev,noexec,size=1g",
+        ]
+        for name in (
+            "PATH",
+            "HOME",
+            "TMPDIR",
+            "PYTHONHOME",
+            "PYTHONPATH",
+            "LD_LIBRARY_PATH",
+            "AI2APPS_SERVICE_ID",
+            "AI2APPS_SERVICE_PORT",
+            "AI2APPS_PACKAGE_ROOT",
+            "AI2APPS_DATA_ROOT",
+            "AI2APPS_MODEL_WORKER_TOKEN",
+            "AI2APPS_TRUSTED_FRAMEWORK_SITE_PACKAGES",
+            "AI2APPS_INFERENCE_RUNTIME",
+            "AI2APPS_HF_CACHE_ROOT",
+        ):
+            value.extend(("--env", name))
+        roots = tuple(
+            dict.fromkeys(
+                (
+                    package_root,
+                    *read_only_roots,
+                    Path("/usr/local/cuda"),
+                    Path(f"/lib/{platform.machine().lower()}-linux-gnu"),
+                    Path(f"/usr/lib/{platform.machine().lower()}-linux-gnu"),
+                )
+            )
+        )
+        for root in roots:
+            if root.exists():
+                value.extend(
+                    (
+                        "--mount",
+                        f"type=bind,src={root},dst={root},readonly",
+                    )
+                )
+        for root in dict.fromkeys((data_root, temporary, unix_socket.parent)):
+            value.extend(("--mount", f"type=bind,src={root},dst={root}"))
+        container_command = list(command)
+        try:
+            port_index = container_command.index("--port")
+            del container_command[port_index : port_index + 2]
+        except ValueError as error:
+            raise PackageError(
+                "sandbox_configuration_invalid",
+                "Docker Model Worker command does not declare a port",
+            ) from error
+        container_command.extend(("--uds", str(unix_socket)))
+        value.extend(("--workdir", str(package_root), image, *container_command))
+        return tuple(value)
+
+    @staticmethod
+    async def _proxy_unix_connection(
+        unix_socket: Path,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        try:
+            unix_reader, unix_writer = await asyncio.open_unix_connection(unix_socket)
+        except OSError:
+            writer.close()
+            await writer.wait_closed()
+            return
+
+        async def relay(source: asyncio.StreamReader, target: asyncio.StreamWriter):
+            try:
+                while data := await source.read(64 * 1024):
+                    target.write(data)
+                    await target.drain()
+            except (ConnectionError, OSError):
+                pass
+            finally:
+                target.close()
+
+        await asyncio.gather(
+            relay(reader, unix_writer),
+            relay(unix_reader, writer),
+        )
+        await asyncio.gather(
+            writer.wait_closed(), unix_writer.wait_closed(), return_exceptions=True
+        )
+
+    @staticmethod
+    def _limit_resources(*, model_worker: bool = False) -> None:
         with suppress(OSError, ValueError):
             resource.setrlimit(resource.RLIMIT_CPU, (3600, 3600))
         with suppress(OSError, ValueError):
@@ -418,7 +768,7 @@ class ManagedServiceSupervisor:
             # 4096 hard ceiling. Keep the Service bounded while allowing model
             # providers with sharded checkpoints to initialize.
             resource.setrlimit(resource.RLIMIT_NOFILE, (4096, 4096))
-        if platform.system() != "Darwin":
+        if platform.system() != "Darwin" and not model_worker:
             with suppress(OSError, ValueError):
                 resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, 4 * 1024**3))
 
@@ -427,13 +777,16 @@ class ManagedServiceSupervisor:
         existing = self._live.get(service_key)
         if existing is not None and existing.process.returncode is None:
             return existing.endpoint
+        self._generations[service_key] = self._generations.get(service_key, 0) + 1
+        self._draining.discard(service_key)
+        self._evicted.pop(service_key, None)
         manifest = package.manifest
         runtime = manifest["runtime"]
         command = runtime.get("command", [])
         is_model_worker = package.protocol == "ai2apps-model-worker/v1"
         runtime_provider = manifest.get("runtime", {}).get("provider")
         resolved_runtime = None
-        if is_model_worker and runtime_provider is not None:
+        if runtime_provider is not None:
             if self.inference_runtimes is None:
                 raise PackageError(
                     "runtime_resolver_unavailable",
@@ -466,6 +819,11 @@ class ManagedServiceSupervisor:
             # symlink selects the base interpreter and silently drops the
             # venv's site-packages for every Python Service Package.
             "{python}": str(Path(sys.executable).absolute()),
+            "{runtime_python}": (
+                str(resolved_runtime.python)
+                if resolved_runtime is not None
+                else str(Path(sys.executable).absolute())
+            ),
             "{variant}": str(
                 package.verification.get("signature", {}).get("selected_variant") or ""
             ),
@@ -476,14 +834,15 @@ class ManagedServiceSupervisor:
         hf_hub_cache = self._huggingface_hub_cache()
         worker_checkpoints: tuple[dict[str, Any], ...] = ()
         worker_weight_roots: tuple[Path, ...] = ()
-        if is_model_worker:
+        has_checkpoint_models = any(
+            isinstance(model, dict) and isinstance(model.get("weights"), dict)
+            for model in manifest.get("models", [])
+        )
+        if is_model_worker or has_checkpoint_models:
             declared_weight_permission = manifest.get("permissions", {}).get(
                 "model_weights", {}
             )
-            if any(
-                isinstance(model, dict) and isinstance(model.get("weights"), dict)
-                for model in manifest.get("models", [])
-            ) and not (
+            if has_checkpoint_models and not (
                 isinstance(declared_weight_permission, dict)
                 and declared_weight_permission.get("huggingface_cache") == "read"
             ):
@@ -492,7 +851,7 @@ class ManagedServiceSupervisor:
                     "Declared Hugging Face weights require model_weights.huggingface_cache: read",
                 )
             worker_checkpoints, worker_weight_roots = self._model_worker_checkpoints(
-                manifest, hf_hub_cache
+                manifest, hf_hub_cache, self.model_root
             )
         expanded: list[str]
         if is_model_worker:
@@ -553,7 +912,7 @@ class ManagedServiceSupervisor:
             read_only_roots.append(resolved_runtime.root)
         hf_cache_root: Path | None = None
         if allow_hf_cache:
-            if is_model_worker:
+            if has_checkpoint_models:
                 read_only_roots.extend(worker_weight_roots)
             else:
                 hf_cache_root = hf_hub_cache
@@ -563,6 +922,27 @@ class ManagedServiceSupervisor:
         allow_metal = bool(
             isinstance(accelerator, dict) and accelerator.get("metal") is True
         )
+        allow_cuda = bool(
+            isinstance(accelerator, dict) and accelerator.get("cuda") is True
+        )
+        docker_socket = (
+            Path(
+                os.environ.get(
+                    "XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"
+                )
+            )
+            / "ai2apps-workers"
+            / f"worker-{port}.sock"
+            if platform.system() == "Linux"
+            and is_model_worker
+            and allow_cuda
+            and shutil.which("docker") is not None
+            else None
+        )
+        if docker_socket is not None:
+            docker_socket.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            docker_socket.parent.chmod(0o700)
+            docker_socket.unlink(missing_ok=True)
 
         # Editable development installs keep ai2apps/omlx outside sys.prefix.
         # Installed wheels resolve this path inside site-packages, where it is
@@ -578,6 +958,10 @@ class ManagedServiceSupervisor:
             network=network,
             read_only_roots=tuple(dict.fromkeys(read_only_roots)),
             metal=allow_metal,
+            cuda=allow_cuda,
+            host_loopback_transport=is_model_worker,
+            port=port,
+            unix_socket=docker_socket,
         )
         environment = {
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
@@ -597,8 +981,28 @@ class ManagedServiceSupervisor:
         if resolved_runtime is not None:
             environment["PYTHONHOME"] = str(resolved_runtime.python_home)
             environment["AI2APPS_INFERENCE_RUNTIME"] = str(resolved_runtime.root)
+            if not is_model_worker:
+                # Generic native Runtime workers execute their Package-owned
+                # command directly, so no trusted launcher is present to add
+                # the immutable framework layer to sys.path. Model Worker v1
+                # performs this bootstrap inside its Host-owned launcher.
+                environment["PYTHONPATH"] = str(
+                    resolved_runtime.framework_site_packages
+                )
+        if allow_cuda and Path("/usr/local/cuda").is_dir():
+            environment["LD_LIBRARY_PATH"] = (
+                "/usr/local/cuda/targets/sbsa-linux/lib:/usr/local/cuda/lib64"
+            )
         if hf_cache_root is not None:
             environment["AI2APPS_HF_CACHE_ROOT"] = str(hf_cache_root)
+        if worker_checkpoints and not is_model_worker:
+            # Generic HTTP model providers receive only Host-resolved,
+            # immutable checkpoint paths. They cannot select arbitrary cache
+            # content and the corresponding repository roots are read-only in
+            # the process sandbox.
+            environment["AI2APPS_MODEL_CHECKPOINTS_JSON"] = json.dumps(
+                worker_checkpoints, separators=(",", ":"), sort_keys=True
+            )
         process_id = new_entity_id(EntityIdKind.MANAGED_SERVICE_PROCESS)
         now = utc_now_text()
         with self.packages.database.transaction(write=True) as connection:
@@ -608,16 +1012,33 @@ class ManagedServiceSupervisor:
                 ) VALUES (?, ?, ?, 'starting', ?, ?, ?)""",
                 (process_id, service_key, package.package_digest, endpoint, now, now),
             )
-        process = await asyncio.create_subprocess_exec(
-            *sandboxed,
-            cwd=package_root,
-            env=environment,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-            preexec_fn=self._limit_resources,
-        )
+        proxy_server = None
+        if docker_socket is not None:
+            proxy_server = await asyncio.start_server(
+                functools.partial(self._proxy_unix_connection, docker_socket),
+                "127.0.0.1",
+                port,
+            )
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *sandboxed,
+                cwd=package_root,
+                env=environment,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+                preexec_fn=functools.partial(
+                    self._limit_resources, model_worker=is_model_worker
+                ),
+            )
+        except BaseException:
+            if proxy_server is not None:
+                proxy_server.close()
+                await proxy_server.wait_closed()
+            if docker_socket is not None:
+                docker_socket.unlink(missing_ok=True)
+            raise
         readers = (
             asyncio.create_task(
                 self._logs(service_key, process_id, "stdout", process.stdout)
@@ -635,6 +1056,9 @@ class ManagedServiceSupervisor:
             0,
             readers,
             internal_token,
+            proxy_server,
+            docker_socket,
+            time.monotonic(),
         )
         self._live[service_key] = managed
         with self.packages.database.transaction(write=True) as connection:
@@ -752,6 +1176,11 @@ class ManagedServiceSupervisor:
 
     async def _watch(self, service_key: str, managed: _Managed) -> None:
         return_code = await managed.process.wait()
+        if managed.proxy_server is not None:
+            managed.proxy_server.close()
+            await managed.proxy_server.wait_closed()
+        if managed.unix_socket is not None:
+            managed.unix_socket.unlink(missing_ok=True)
         if self._live.get(service_key) is not managed:
             return
         if not managed.desired or self._stopping:
@@ -806,9 +1235,14 @@ class ManagedServiceSupervisor:
 
     async def stop(self, service_key: str) -> None:
         managed = self._live.pop(service_key, None)
+        self._draining.discard(service_key)
+        self._evicted.pop(service_key, None)
         if managed is None:
             return
         managed.desired = False
+        if managed.proxy_server is not None:
+            managed.proxy_server.close()
+            await managed.proxy_server.wait_closed()
         if managed.process.returncode is None:
             with suppress(ProcessLookupError):
                 os.killpg(managed.process.pid, signal.SIGTERM)
@@ -818,6 +1252,8 @@ class ManagedServiceSupervisor:
                 with suppress(ProcessLookupError):
                     os.killpg(managed.process.pid, signal.SIGKILL)
                 await managed.process.wait()
+        if managed.unix_socket is not None:
+            managed.unix_socket.unlink(missing_ok=True)
         for task in managed.tasks:
             with suppress(asyncio.CancelledError):
                 await task
@@ -828,6 +1264,52 @@ class ManagedServiceSupervisor:
                    stopped_at = ?, updated_at = ? WHERE id = ?""",
                 (now, now, managed.process_id),
             )
+
+    async def evict(
+        self,
+        service_key: str,
+        *,
+        reason: str,
+        expected_generation: int,
+    ) -> dict[str, Any]:
+        """Stop an idle Worker without disabling its active Package."""
+
+        self.assert_worker_generation(service_key, expected_generation)
+        managed = self._live.get(service_key)
+        if managed is None:
+            self._evicted[service_key] = reason
+            return {"serviceKey": service_key, "state": "evicted", "reason": reason}
+        if managed.package.protocol != "ai2apps-model-worker/v1":
+            raise PackageError("not_model_worker", "Service is not a Model Worker")
+        snapshot = await self.worker_snapshot(managed.package)
+        if snapshot["activeRequests"] is None or snapshot["queuedRequests"] is None:
+            raise PackageError(
+                "worker_state_unavailable", "Cannot verify that the Model Worker is idle"
+            )
+        if snapshot["activeRequests"] or snapshot["queuedRequests"]:
+            raise PackageError(
+                "worker_busy",
+                "Active or queued requests prevent Worker eviction",
+                details={
+                    "activeRequests": snapshot["activeRequests"],
+                    "queuedRequests": snapshot["queuedRequests"],
+                },
+            )
+        await self.stop(service_key)
+        self._evicted[service_key] = reason
+        self.packages.append_log(
+            service_key,
+            "info",
+            "system",
+            "Model Worker was evicted",
+            fields={"reason": reason, "generation": expected_generation},
+        )
+        return {
+            "serviceKey": service_key,
+            "state": "evicted",
+            "reason": reason,
+            "generation": expected_generation,
+        }
 
     async def restart(self, package: InstalledPackageRecord) -> str:
         await self.stop(package.service_key)
@@ -842,12 +1324,19 @@ class ManagedServiceSupervisor:
     def recover_orphans(self) -> int:
         now = utc_now_text()
         count = 0
+        live_process_ids = {
+            managed.process.pid
+            for managed in self._live.values()
+            if managed.process.returncode is None
+        }
         with self.packages.database.transaction(write=True) as connection:
             rows = connection.execute(
                 """SELECT id, pid, started_at FROM managed_service_processes
                    WHERE status IN ('starting', 'running')"""
             ).fetchall()
             for row in rows:
+                if row["pid"] in live_process_ids:
+                    continue
                 if row["pid"] and row["started_at"]:
                     with suppress(
                         psutil.Error, ProcessLookupError, PermissionError, OSError

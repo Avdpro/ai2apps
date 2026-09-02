@@ -68,7 +68,7 @@ def _responses_messages(value: Any, instructions: Any) -> list[dict[str, Any]]:
 
 def _generation_kwargs(body: Mapping[str, Any]) -> dict[str, Any]:
     try:
-        return {
+        result = {
             "max_tokens": max(
                 1, min(int(body.get("max_tokens", body.get("max_output_tokens", 256))), 131072)
             ),
@@ -82,6 +82,24 @@ def _generation_kwargs(body: Mapping[str, Any]) -> dict[str, Any]:
             "stop": body.get("stop"),
             "seed": body.get("seed"),
         }
+        session_id = body.get("ai2apps_session_id") or body.get("flesh_session_id")
+        if session_id:
+            session_id = str(session_id)
+            result["flesh_session_id"] = session_id
+            result["flesh_kv_policy"] = str(
+                body.get("flesh_kv_policy") or body.get("kv_cache_policy") or "session"
+            )
+            result["cache_extra_keys"] = ("ai2apps-session-v1", session_id)
+            result["kv_cache_policy"] = result["flesh_kv_policy"]
+        boost = (
+            body.get("ai2apps_fusion_generator_engine_boost")
+            or body.get("ai2apps_engine_boost")
+            or body.get("dynamoe_engine_boost")
+            or body.get("flesh_boost_mode")
+        )
+        if boost:
+            result["flesh_boost_mode"] = str(boost)
+        return result
     except (TypeError, ValueError) as exc:
         raise ModelWorkerError(
             "Generation parameters are invalid", code="invalid_request_error", status_code=400

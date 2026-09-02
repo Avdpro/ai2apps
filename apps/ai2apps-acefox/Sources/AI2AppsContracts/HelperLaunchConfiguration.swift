@@ -100,6 +100,18 @@ public struct HelperLaunchConfiguration: Equatable, Sendable {
     public let appBundleURL: URL?
     public let isPackaged: Bool
 
+    public var runtimeRoot: URL {
+        runtimeExecutable
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    public var runtimePythonExecutable: URL {
+        runtimeRoot.appendingPathComponent(
+            "Python/cpython-3.11/bin/python3.11"
+        )
+    }
+
     public init(
         arguments: [String],
         environment: [String: String] = ProcessInfo.processInfo.environment,

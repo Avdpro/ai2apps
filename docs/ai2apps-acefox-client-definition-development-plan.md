@@ -5,7 +5,6 @@ Last updated: 2026-08-18
 Target platform: macOS arm64 first
 Related: [AI2Apps Platform Architecture](ai2apps-platform-architecture.md),
 [Backend Development Plan](ai2apps-backend-development-plan.md),
-[Electron Desktop Plan](ai2apps-electron-desktop-development-plan.md),
 [Managed Browser Baseline](ai2apps-browser-agent.md),
 [Runtime Isolation on macOS](ai2apps-package-runtime-isolation-macos-v1.md),
 [Local Capability Sharing](ai2apps-local-capability-sharing-v1.md),
@@ -17,8 +16,8 @@ Related: [AI2Apps Platform Architecture](ai2apps-platform-architecture.md),
 进程边界、启动与退出语义、多实例隔离、Local 端口管理、受管浏览器、跨实例调用、共享
 模型缓存、实现拆分、测试要求和阶段性发布门槛。
 
-本文是 AceFox 客户端路线的权威设计输入。现有 Electron Desktop 仍可作为原型、兼容客户端
-或实现参考，但不再决定 AceFox 版 AI2Apps 的窗口、Helper、Local 生命周期和浏览器运行时架构。
+本文是 AI2Apps 桌面客户端路线的权威设计输入。客户端窗口、Helper、Local 生命周期和浏览器
+运行时架构均以 AceFox 实现为准。
 
 ### 1.1 当前实施状态（2026-08-18）
 
@@ -33,7 +32,7 @@ Related: [AI2Apps Platform Architecture](ai2apps-platform-architecture.md),
 - AceFox `--ai2apps-shell` 专用无 Tab/地址栏窗口、Loading、descriptor/bootstrap 校验和本地首页切换；
 - Shell 模式原生 App 菜单收敛为 `AI2Apps / File / Edit / Window / Help`，独立 Agent 仍保留完整浏览器菜单；
 - AI2Apps Launcher：启动 Helper、使用实例专属 Shell Profile，并以 AceFox 替换主进程；
-- 可双击的开发版 `AI2Apps.app` 组装、临时签名和严格 bundle 校验；
+- 固定路径、可双击的开发版 `AI2Apps-dev.app` 组装、临时签名和严格 bundle 校验；
 - 自包含 Release App：内嵌 CPython 3.11、MLX Runtime 和当前 AI2Apps/oMLX 源码，不依赖开发环境；
 - Runtime manifest 路径、大小、SHA-256、协议版本及可执行入口校验器，启动前 fail closed；
 - 认证用户触发的独立 AceFox Agent；Profile ID 同时绑定实例与 actor，重复请求聚焦原进程；

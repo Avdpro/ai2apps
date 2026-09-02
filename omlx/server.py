@@ -40,6 +40,7 @@ The server provides:
 
 import argparse
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
@@ -53,35 +54,44 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, Union
 
-import httpx
-
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Response,
+    UploadFile,
+    WebSocketException,
+)
 from fastapi import Request as FastAPIRequest
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.requests import HTTPConnection
 
 from ai2apps._version import __version__ as _ai2apps_version
 from ai2apps.agents.model_stream import ChatCompletionStreamAccumulator
 from ai2apps.api import create_ai2apps_router
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.federation import create_federation_ingress_router
+from ai2apps.api.messager_peer import create_messager_peer_ingress_router
+from ai2apps.api.model_share_peer import create_model_share_peer_ingress_router
 from ai2apps.api.sharing import create_sharing_data_router
 from ai2apps.cloud_gateway import proxy_cloud_chat_completion, proxy_cloud_image_request
 from ai2apps.config import PlatformConfig
 from ai2apps.development import can_access_developer_surfaces
 from ai2apps.http_security import LocalBrowserSecurityHeadersMiddleware
 from ai2apps.identity import RequestPrincipal
+from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.model_providers import (
     list_package_models,
-    proxy_package_json,
     resolve_package_model,
 )
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.sharing import GatewayDiscovery, LanAccessController, stable_gateway_id
 from ai2apps.upstream import ParentCallContext
+from ai2apps.video import VideoGenerationError
 from omlx._version import __version__ as _omlx_version
 
 from .api.anthropic_models import (
@@ -403,6 +413,15 @@ def start_ai2apps_platform() -> PlatformRuntime:
     runtime = PlatformRuntime(get_ai2apps_platform_config())
     status = runtime.start()
     _server_state.ai2apps_platform_runtime = runtime
+    # The HuggingFace downloader is created by initialize_server(), before the
+    # FastAPI lifespan constructs the PlatformRuntime.  Binding only from the
+    # downloader initialization path therefore misses every normal cold start.
+    # Bind again at the lifecycle boundary so ACPF recovery and a user retry
+    # always see the downloader owned by this Local process.
+    if runtime.provisioning is not None and _server_state.hf_downloader is not None:
+        runtime.provisioning.bind_checkpoint_downloaders(
+            _server_state.hf_downloader, _server_state.ms_downloader
+        )
     if status.status == "ready":
         logger.info(
             "AI2Apps platform database ready: schema v%s, journal=%s",
@@ -487,7 +506,7 @@ async def verify_api_key(
 
 
 async def verify_ai2apps_platform_access(
-    request: FastAPIRequest,
+    request: HTTPConnection,
 ) -> RequestPrincipal | bool:
     """Require an Installation-scoped Local session for Platform APIs.
 
@@ -511,6 +530,36 @@ async def verify_ai2apps_platform_access(
         if principal is not None:
             request.state.ai2apps_principal = principal
             return principal
+
+    if request.scope.get("type") == "websocket":
+        if request.url.path == "/v1/platform/browser/webdriver-bidi":
+            # This upgrade uses a short-lived, one-use ticket issued by the
+            # authenticated HTTP control plane. The endpoint validates it.
+            return True
+        raise WebSocketException(code=4401, reason="Local Session required")
+
+    # The native Helper control loop is authenticated again inside the Client
+    # router with the per-boot AI2APPS_HELPER_TOKEN and rejects browser
+    # Origins.  It does not carry a user's browser Cookie, so do not reject it
+    # at the outer Local Session boundary before that stronger native-channel
+    # check can run.
+    helper_control_route = request.method == "GET" and request.url.path in {
+        "/v1/platform/client/managed-browser/next",
+        "/v1/platform/client/shell-browser-window/next",
+    } or (
+        request.method == "POST"
+        and request.url.path.endswith("/complete")
+        and (
+            request.url.path.startswith(
+                "/v1/platform/client/managed-browser/"
+            )
+            or request.url.path.startswith(
+                "/v1/platform/client/shell-browser-window/"
+            )
+        )
+    )
+    if helper_control_route:
+        return True
 
     # Only readiness and credential-establishment routes are public. They do
     # not expose a control plane: handoff is one-use and high-entropy, while
@@ -943,6 +992,19 @@ app.include_router(
         get_ai2apps_platform_runtime,
         model_chat_handler=_shared_chat_completion,
     )
+)
+
+# Messager peers authenticate with a short-lived Cloud assertion and Noise IK,
+# independently from browser/local API credentials.
+app.include_router(
+    create_messager_peer_ingress_router(get_ai2apps_platform_runtime)
+)
+
+# Model Share peers use an independent protocol-bound Grant. The route stays
+# closed with a metadata-only 503 until the reviewed Provider is explicitly
+# configured; it never falls through to Local API-key or App authentication.
+app.include_router(
+    create_model_share_peer_ingress_router(get_ai2apps_platform_runtime)
 )
 
 # Include MCP routes
@@ -2394,6 +2456,14 @@ def init_server(
             on_complete=_refresh_models_after_download,
         )
         set_hf_downloader(_server_state.hf_downloader)
+        platform_runtime = get_ai2apps_platform_runtime()
+        if (
+            platform_runtime is not None
+            and platform_runtime.provisioning is not None
+        ):
+            platform_runtime.provisioning.bind_hf_downloader(
+                _server_state.hf_downloader
+            )
         logger.info("HF Downloader initialized")
     except (ImportError, AttributeError) as exc:
         _server_state.hf_downloader = None
@@ -2414,6 +2484,16 @@ def init_server(
                 on_complete=_refresh_models_after_download,
             )
             set_ms_downloader(_server_state.ms_downloader)
+            platform_runtime = get_ai2apps_platform_runtime()
+            if (
+                platform_runtime is not None
+                and platform_runtime.provisioning is not None
+                and _server_state.hf_downloader is not None
+            ):
+                platform_runtime.provisioning.bind_checkpoint_downloaders(
+                    _server_state.hf_downloader,
+                    _server_state.ms_downloader,
+                )
             logger.info("ModelScope Downloader initialized")
         else:
             logger.info("ModelScope SDK not installed, MS downloader disabled")
@@ -3179,6 +3259,14 @@ async def list_models(
                     max_model_len=get_max_context_window(model_id),
                     source="local_runtime",
                     shareable=True,
+                    model_type=m.get("model_type"),
+                    capabilities=(
+                        ["work", "conversation", "image_recognition"]
+                        if m.get("model_type") == "vlm"
+                        else ["work", "conversation"]
+                        if m.get("model_type") == "llm"
+                        else None
+                    ),
                 )
             )
         if settings_manager and expose_raw_local_models:
@@ -3187,6 +3275,10 @@ async def list_models(
             for profile in settings_manager.list_exposed_profile_models():
                 source_model_id = profile["source_model_id"]
                 profile_model_id = profile["model_id"]
+                source_entry = next(
+                    (item for item in status["models"] if item["id"] == source_model_id),
+                    {},
+                )
                 if (
                     source_model_id not in physical_ids
                     or source_model_id in excluded_model_ids
@@ -3200,6 +3292,14 @@ async def list_models(
                         max_model_len=get_max_context_window(profile_model_id),
                         source="local_runtime",
                         shareable=True,
+                        model_type=source_entry.get("model_type"),
+                        capabilities=(
+                            ["work", "conversation", "image_recognition"]
+                            if source_entry.get("model_type") == "vlm"
+                            else ["work", "conversation"]
+                            if source_entry.get("model_type") == "llm"
+                            else None
+                        ),
                     )
                 )
                 existing_ids.add(profile_model_id)
@@ -3222,6 +3322,13 @@ async def list_models(
                     source=model_store.model_source(cloud_model["gateway_id"]),
                     shareable=model_store.model_shareable(cloud_model["gateway_id"]),
                     usage_notice="External API usage is billed to the API key stored on this device.",
+                    model_type=(
+                        "vlm"
+                        if isinstance(cloud_model.get("capabilities"), dict)
+                        and cloud_model["capabilities"].get("imageInput")
+                        else "llm"
+                    ),
+                    capabilities=cloud_model.get("capabilities") or None,
                 )
             )
         existing_ids = {model.id for model in models}
@@ -3245,6 +3352,17 @@ async def list_models(
                     source=model_store.model_source(gateway_id),
                     shareable=False,
                     usage_notice="AI2Apps Cloud usage is billed in account points.",
+                    model_type=(
+                        cloud_model.get("modelType")
+                        or cloud_model.get("model_type")
+                        or (
+                            "vlm"
+                            if isinstance(cloud_model.get("capabilities"), dict)
+                            and cloud_model["capabilities"].get("imageInput")
+                            else "llm"
+                        )
+                    ),
+                    capabilities=cloud_model.get("capabilities") or None,
                 )
             )
             existing_ids.add(gateway_id)
@@ -3269,6 +3387,12 @@ async def list_models(
                 max_model_len=package_model.context_window,
                 source="local_runtime",
                 shareable=True,
+                model_type=getattr(package_model, "model_type", None),
+                capabilities=(
+                    list(package_model.capabilities)
+                    if getattr(package_model, "capabilities", None)
+                    else None
+                ),
             )
         )
         existing_ids.add(package_model.id)
@@ -4107,8 +4231,8 @@ async def _create_image(payload: dict[str, Any], *, edit: bool):
     if package_model is not None:
         if package_model.model_type != "image_generation":
             raise HTTPException(status_code=400, detail="Selected model is not an image generator")
-        return await proxy_package_json(
-            package_model,
+        return await _server_state.ai2apps_platform_runtime.model_invocations.invoke_foreground_json(
+            package_model.id,
             "image_edit" if edit else "image_generation",
             payload,
         )
@@ -4143,30 +4267,142 @@ async def create_image_edit(
     return await _create_image(payload, edit=True)
 
 
+def _video_manager():
+    runtime = _server_state.ai2apps_platform_runtime
+    manager = None if runtime is None else runtime.video_tasks
+    if manager is None:
+        raise HTTPException(status_code=503, detail="Video task service is unavailable")
+    return manager
+
+
+def _video_actor(request: FastAPIRequest) -> str:
+    principal = getattr(request.state, "ai2apps_principal", None)
+    actor_user_id = getattr(principal, "actor_user_id", None)
+    if actor_user_id:
+        return f"ai2apps-user:{actor_user_id}"
+    credential = request.headers.get("authorization") or request.headers.get("x-api-key") or "local"
+    return "local-api:" + hashlib.sha256(credential.encode()).hexdigest()[:24]
+
+
+def _video_error(error: VideoGenerationError) -> JSONResponse:
+    return JSONResponse(
+        {"error": {"code": error.code, "type": "video_generation_error", "message": str(error)}},
+        status_code=error.status_code,
+    )
+
+
+async def _video_create_request(request: FastAPIRequest) -> tuple[dict[str, Any], dict]:
+    content_type = request.headers.get("content-type", "").lower()
+    if not content_type.startswith("multipart/form-data"):
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise VideoGenerationError("invalid_request", "Request body must be JSON") from exc
+        if not isinstance(payload, dict):
+            raise VideoGenerationError("invalid_request", "Request body must be an object")
+        return payload, {}
+    uploads = {}
+    payload = None
+    # Ref2VA accepts up to twelve reference assets in addition to the JSON part.
+    async with request.form(max_files=16, max_fields=32, max_part_size=100 * 1024 * 1024) as form:
+        for name, value in form.multi_items():
+            if isinstance(value, UploadFile):
+                data = await value.read(100 * 1024 * 1024 + 1)
+                if len(data) > 100 * 1024 * 1024:
+                    raise VideoGenerationError("input_too_large", "Multipart input exceeds 100 MiB", status_code=413)
+                if name == "request":
+                    try:
+                        payload = json.loads(data)
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                        raise VideoGenerationError("invalid_request", "request part must be JSON") from exc
+                else:
+                    uploads[name] = (
+                        Path(value.filename or f"{name}.bin").name,
+                        data,
+                        (value.content_type or "application/octet-stream").lower(),
+                    )
+            elif name == "request":
+                try:
+                    payload = json.loads(str(value))
+                except json.JSONDecodeError as exc:
+                    raise VideoGenerationError("invalid_request", "request field must be JSON") from exc
+    if not isinstance(payload, dict):
+        raise VideoGenerationError("invalid_request", "Multipart request requires a JSON request part")
+    return payload, uploads
+
+
 @app.post("/v1/videos")
 @app.post("/v1/videos/generations")
 async def create_video_generation(
-    payload: dict[str, Any], _: bool = Depends(verify_api_key)
+    request: FastAPIRequest, _: bool = Depends(verify_api_key)
 ):
-    """Generate video through an installed Model Provider."""
+    """Create a durable asynchronous video-generation task."""
 
-    model_id = str(payload.get("model") or "")
-    model = resolve_package_model(_server_state.ai2apps_platform_runtime, model_id)
-    if model is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Video model provider not found: {model_id or '(missing model)'}",
+    try:
+        payload, uploads = await _video_create_request(request)
+        task = await _video_manager().create(
+            payload,
+            actor_id=_video_actor(request),
+            idempotency_key=request.headers.get("idempotency-key"),
+            uploads=uploads,
         )
-    if model.model_type != "video_generation":
-        raise HTTPException(status_code=400, detail="Selected model is not a video generator")
-    return await proxy_package_json(model, "video_generation", payload)
+        return JSONResponse(task, status_code=202, headers={"Location": f"/v1/videos/generations/{task['id']}"})
+    except VideoGenerationError as error:
+        return _video_error(error)
+
+
+@app.get("/v1/videos/generations")
+async def list_video_generations(
+    request: FastAPIRequest,
+    limit: int = 20,
+    after: str | None = None,
+    _: bool = Depends(verify_api_key),
+):
+    try:
+        return _video_manager().list(actor_id=_video_actor(request), limit=limit, after=after)
+    except VideoGenerationError as error:
+        return _video_error(error)
+
+
+@app.get("/v1/videos/generations/{task_id}")
+async def get_video_generation(
+    task_id: str, request: FastAPIRequest, _: bool = Depends(verify_api_key)
+):
+    try:
+        return _video_manager().get(task_id, actor_id=_video_actor(request))
+    except VideoGenerationError as error:
+        return _video_error(error)
+
+
+@app.delete("/v1/videos/generations/{task_id}")
+async def cancel_video_generation(
+    task_id: str, request: FastAPIRequest, _: bool = Depends(verify_api_key)
+):
+    try:
+        return await _video_manager().cancel(task_id, actor_id=_video_actor(request))
+    except VideoGenerationError as error:
+        return _video_error(error)
+
+
+@app.post("/v1/videos/joins")
+async def join_video_generations(
+    payload: dict[str, Any], request: FastAPIRequest, _: bool = Depends(verify_api_key)
+):
+    """Join completed, compatible video-generation results in caller order."""
+
+    try:
+        return await _video_manager().join(
+            payload.get("task_ids"), actor_id=_video_actor(request)
+        )
+    except VideoGenerationError as error:
+        return _video_error(error)
 
 
 @app.post("/v1/chat/completions")
 async def create_chat_completion(
     request: ChatCompletionRequest,
     http_request: FastAPIRequest,
-    _: bool = Depends(verify_ai2apps_platform_access),
+    principal: RequestPrincipal | bool = Depends(verify_ai2apps_platform_access),
 ):
     """
     Create a chat completion.
@@ -4347,10 +4583,17 @@ async def create_chat_completion(
         package_payload["_ai2apps_model_settings"] = _package_model_runtime_settings(
             request.model
         )
-        return await proxy_package_json(
-            package_model,
+        invocation_context = ModelInvocationContext.from_principal(
+            principal if isinstance(principal, RequestPrincipal) else RequestPrincipal.legacy_local(),
+            session_id=f"chat:{http_request.headers.get('x-request-id') or uuid.uuid4().hex}",
+            consumer_app_id="ai2apps.chat",
+        )
+        return await _server_state.ai2apps_platform_runtime.model_invocations.invoke_interactive_json(
+            package_model.id,
             "chat_completions",
             package_payload,
+            request_id=http_request.headers.get("x-request-id"),
+            context=invocation_context,
         )
 
     resolved_local = resolve_model_id(request.model) or request.model
@@ -6980,10 +7223,17 @@ async def create_response(
         package_payload["_ai2apps_model_settings"] = _package_model_runtime_settings(
             request.model
         )
-        return await proxy_package_json(
-            package_model,
+        invocation_context = ModelInvocationContext.from_principal(
+            RequestPrincipal.legacy_local(),
+            session_id=f"responses:{http_request.headers.get('x-request-id') or uuid.uuid4().hex}",
+            consumer_app_id="ai2apps.responses",
+        )
+        return await _server_state.ai2apps_platform_runtime.model_invocations.invoke_interactive_json(
+            package_model.id,
             "responses",
             package_payload,
+            request_id=http_request.headers.get("x-request-id"),
+            context=invocation_context,
         )
 
     load_start = time.perf_counter()

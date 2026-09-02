@@ -55,6 +55,15 @@ dynlib_exclude = [
     "cv2/.dylibs/libopus*",
 ]
 
+[[frameworks]]
+name = "knowledge-rag"
+runtime = "cpython-3.11"
+# Populated from [project.optional-dependencies].knowledge-rag-runtime.
+requirements = []
+platforms = [
+    "macosx_arm64",
+]
+
 [tool.uv]
 exclude-newer = "2026-04-23T00:00:00Z"
 environments = [

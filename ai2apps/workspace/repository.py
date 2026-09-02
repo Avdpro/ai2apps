@@ -7,6 +7,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import shutil
 import tempfile
 from contextlib import suppress
 from pathlib import Path, PurePosixPath
@@ -576,10 +577,37 @@ class WorkspaceRepository:
         metadata: dict[str, Any] | None = None,
     ):
         source = self._resolve(session_id, source_path)
+        return self.import_artifact(
+            session_id,
+            source,
+            name,
+            run_id=run_id,
+            media_type=media_type,
+            metadata=metadata,
+        )
+
+    def import_artifact(
+        self,
+        session_id: str,
+        source: Path,
+        name: str | None = None,
+        *,
+        run_id: str | None = None,
+        media_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ):
+        """Atomically import a trusted Host file without buffering it in memory."""
+
+        self.ensure_sandbox(session_id)
         if not source.is_file():
             raise WorkspaceError("not_file", "Artifact source must be a file")
-        data = source.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()
+        hasher = hashlib.sha256()
+        size = 0
+        with source.open("rb") as input_file:
+            while chunk := input_file.read(8 * 1024 * 1024):
+                hasher.update(chunk)
+                size += len(chunk)
+        digest = hasher.hexdigest()
         artifact_name = _safe_name(name or source.name)
         storage_key = f"sha256/{digest[:2]}/{digest}"
         destination = self.paths.artifacts_path / storage_key
@@ -589,8 +617,8 @@ class WorkspaceRepository:
                 prefix=".artifact-", dir=destination.parent
             )
             try:
-                with os.fdopen(descriptor, "wb") as output:
-                    output.write(data)
+                with source.open("rb") as input_file, os.fdopen(descriptor, "wb") as output:
+                    shutil.copyfileobj(input_file, output, length=8 * 1024 * 1024)
                     output.flush()
                     os.fsync(output.fileno())
                 os.replace(temporary, destination)
@@ -622,7 +650,7 @@ class WorkspaceRepository:
                     or mimetypes.guess_type(artifact_name)[0]
                     or "application/octet-stream",
                     f"sha256:{digest}",
-                    len(data),
+                    size,
                     storage_key,
                     _json(metadata or {}),
                     now,
@@ -643,7 +671,7 @@ class WorkspaceRepository:
                 payload={
                     "name": artifact_name,
                     "media_type": media_type,
-                    "size_bytes": len(data),
+                    "size_bytes": size,
                     "content_hash": f"sha256:{digest}",
                 },
             )

@@ -77,19 +77,13 @@ async def _run(args: argparse.Namespace) -> None:
         warmup_prompt = encode_messages(
             list(warmup_sample["messages"]), thinking_mode="chat"
         )
-        warmup_ids = engine.tokenizer.encode(
-            warmup_prompt, add_special_tokens=False
-        )
-        await _run_single_test(
-            engine, warmup_ids, args.warmup_gen, len(warmup_ids)
-        )
+        warmup_ids = engine.tokenizer.encode(warmup_prompt, add_special_tokens=False)
+        await _run_single_test(engine, warmup_ids, args.warmup_gen, len(warmup_ids))
         loader.clear_hot()
         mx.clear_cache()
     before = loader.stats()
     try:
-        result = await _run_single_test(
-            engine, prompt_ids, args.gen, len(prompt_ids)
-        )
+        result = await _run_single_test(engine, prompt_ids, args.gen, len(prompt_ids))
         after = loader.stats()
         cache_delta = {
             key: after[key] - before[key]
@@ -105,14 +99,18 @@ async def _run(args: argparse.Namespace) -> None:
                 "lossy_routes_replaced",
                 "lossy_l3_misses_avoided",
                 "lossy_l3_layers_avoided",
+                "direct_load_calls",
+                "direct_load_experts",
+                "direct_load_bytes",
+                "direct_load_seconds",
             )
         }
         payload = {
             "version": 1,
             "runtime": "omlx-scope-top60-hot8",
-            "lossy_mode": os.environ.get(
-                "OMLX_DEEPSEEK_V4_SCOPE_LOSSY_MODE", "exact"
-            ),
+            "direct_l1_mode": os.environ.get("OMLX_MOE_DIRECT_L1", "auto"),
+            "direct_prefill": os.environ.get("OMLX_DEEPSEEK_V4_DIRECT_PREFILL", "0"),
+            "lossy_mode": os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_LOSSY_MODE", "exact"),
             "lossy_threshold": os.environ.get(
                 "OMLX_DEEPSEEK_V4_SCOPE_LOSSY_THRESHOLD", "0.10"
             ),

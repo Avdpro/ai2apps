@@ -1,0 +1,21 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "implementation": {
+    "official_repo": "ideogram-oss/ideogram4",
+    "official_commit": "990fe1c4e950bb9e9dc90e01c0ad98ba434f83c2",
+    "native_backend": "mlx",
+    "runtime_mflux": "0.19.0",
+    "runtime_mlx": "0.32.0"
+  },
+  "weights": {
+    "repo_id": "Comfy-Org/Ideogram-4",
+    "revision": "bbee2ab2b14b2b5223448d12d6e31e5f9cec0546",
+    "base_model": "ideogram-ai/ideogram-4-fp8",
+    "modelscope_repo_id": "Comfy-Org/Ideogram-4",
+    "modelscope_revision": "master"
+  },
+  "qwen_config": {
+    "repo_id": "Qwen/Qwen3-VL-8B-Instruct",
+    "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b"
+  }
+}

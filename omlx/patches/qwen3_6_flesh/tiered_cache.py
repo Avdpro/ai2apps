@@ -13,6 +13,7 @@ from typing import Any
 
 import mlx.core as mx
 
+from omlx.cache.direct_l1 import direct_load_fused_experts, direct_l1_mode
 from omlx.cache.moe_expert_store import ExpertMajorStore
 
 from .arena_cache import Qwen36DecodeArena
@@ -53,6 +54,10 @@ class Qwen36TieredCache:
         self.bytes_loaded = 0
         self.read_seconds = 0.0
         self.patch_seconds = 0.0
+        self.direct_l1_mode = direct_l1_mode()
+        self.direct_load_calls = 0
+        self.direct_load_bytes = 0
+        self.direct_load_seconds = 0.0
         self.lfu_decay_interval = int(
             os.environ.get("OMLX_QWEN36_TIERED_LFU_DECAY", "64")
         )
@@ -66,6 +71,7 @@ class Qwen36TieredCache:
         store = self._stores.get(layer)
         if store is None:
             store = ExpertMajorStore(self.directory / f"layer-{layer:03d}.moe")
+            store.set_no_cache()
             self._stores[layer] = store
         return store
 
@@ -191,14 +197,27 @@ class Qwen36TieredCache:
             self.ssd_refill_calls += 1
             store = self._store(layer)
             read_started = time.perf_counter()
-            records = self._read_records(store, missing)
-            self.read_seconds += time.perf_counter() - read_started
-            Qwen36DecodeArena._patch_switch(
+            direct_bytes = direct_load_fused_experts(
+                store,
                 tail_switch,
                 slots,
                 missing,
-                records,
+                io_workers=self.io_workers,
             )
+            elapsed = time.perf_counter() - read_started
+            if direct_bytes is None:
+                records = self._read_records(store, missing)
+                self.read_seconds += time.perf_counter() - read_started
+                Qwen36DecodeArena._patch_switch(
+                    tail_switch,
+                    slots,
+                    missing,
+                    records,
+                )
+            else:
+                self.direct_load_calls += 1
+                self.direct_load_bytes += direct_bytes
+                self.direct_load_seconds += elapsed
             self.ssd_experts_loaded += len(missing)
             self.bytes_loaded += len(missing) * store.record_bytes
             self.patch_seconds += time.perf_counter() - patch_started
@@ -252,6 +271,10 @@ class Qwen36TieredCache:
             "io_workers": self.io_workers,
             "lfu_decay_interval": self.lfu_decay_interval,
             "lfu_decays": self.lfu_decays,
+            "direct_l1_mode": self.direct_l1_mode,
+            "direct_load_calls": self.direct_load_calls,
+            "direct_load_bytes": self.direct_load_bytes,
+            "direct_load_seconds": self.direct_load_seconds,
         }
 
 

@@ -275,6 +275,15 @@ class InteractivePackageManager:
     async def _install_verified_bundle(
         self, bundle, verification: dict, *, approve_review=False
     ):
+            if bundle.kind is UnitKind.AGENT:
+                from ai2apps.agent_builder.packages import validate_web_agent_package
+
+                try:
+                    validate_web_agent_package(bundle.manifest)
+                except ValueError as error:
+                    raise ExtensionError(
+                        "invalid_web_agent_package", str(error)
+                    ) from error
             audit = await self._audit(bundle)
             if bundle.kind == "patch":
                 return await self.install_patch_bundle(
@@ -1767,6 +1776,24 @@ class InteractivePackageManager:
         if not retained:
             raise ExtensionError("rollback_unavailable", "No retained upstream version")
         target = retained[0]
+        effective = self._assemble(target)
+        if kind is UnitKind.AGENT:
+            self._activate_agent(target, effective)
+        else:
+            self._rollback_app(target, effective)
+        return self.repository.activate_package(target)
+
+    def activate_version(self, kind: UnitKind, key: str, digest: str):
+        """Explicitly activate one already installed immutable Package version."""
+
+        target = self.repository.package(digest)
+        if target.kind is not kind or target.unit_key != key:
+            raise ExtensionError(
+                "package_identity_mismatch",
+                "Package digest does not belong to the requested unit",
+            )
+        if target.status is InteractivePackageStatus.UNINSTALLED:
+            raise ExtensionError("package_not_installed", "Package version is not installed")
         effective = self._assemble(target)
         if kind is UnitKind.AGENT:
             self._activate_agent(target, effective)

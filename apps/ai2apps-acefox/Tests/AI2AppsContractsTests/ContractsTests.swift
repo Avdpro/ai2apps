@@ -329,6 +329,13 @@ private func makePackagedHelperFixture(
     #expect(configuration.instanceID.rawValue == "login-test")
     #expect(configuration.appBundleURL == fixture.app.resolvingSymlinksInPath())
     #expect(configuration.runtimeExecutable == fixture.runtime.resolvingSymlinksInPath())
+    #expect(
+        configuration.runtimePythonExecutable
+            == fixture.runtime
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Python/cpython-3.11/bin/python3.11")
+    )
     #expect(configuration.aceFoxExecutable == fixture.aceFox.resolvingSymlinksInPath())
 }
 

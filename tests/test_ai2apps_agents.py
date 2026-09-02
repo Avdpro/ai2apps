@@ -1470,7 +1470,9 @@ async def test_general_agent_stops_repeated_identical_tool_loop(tmp_path):
             input={"model": "test-model", "message_id": user.message.id},
         )
         runtime.agent_runtime.wake()
-        failed = await _wait_status(runtime, run.id, AgentRunStatus.FAILED)
+        failed = await _wait_status(
+            runtime, run.id, AgentRunStatus.FAILED, timeout=10.0
+        )
         tool_steps = [
             step for step in runtime.agents.list_steps(run.id) if step.kind == "tool"
         ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
@@ -12,9 +13,16 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Literal
 
+from ai2apps.agent_builder import (
+    AgentBuilderRepository,
+    AgentReliabilityService,
+    AgentScheduleRunner,
+    SiteAgentPackageService,
+)
 from ai2apps.agents import (
     AgentRepository,
     AgentRuntime,
+    install_browser_builder_agent,
     install_delegation_service,
     install_diagnostic_agent,
     install_general_agent,
@@ -44,6 +52,7 @@ from ai2apps.config import (
     DEFAULT_SESSION_RETENTION_INTERVAL_SECONDS,
     PlatformConfig,
 )
+from ai2apps.core import utc_now_text
 from ai2apps.documents import (
     DocumentManager,
     DocumentRepository,
@@ -55,6 +64,7 @@ from ai2apps.identity import (
     LOCAL_SESSION_COOKIE,
     IdentityBindingError,
     IdentityRepository,
+    MemberRole,
     RequestPrincipal,
     local_session_cookie_name,
 )
@@ -65,10 +75,23 @@ from ai2apps.installation_security import (
     LocalSecurityIdentityRepository,
     claim_local_security_identity,
 )
+from ai2apps.knowledge import (
+    KnowledgeImportManager,
+    KnowledgePackageRuntime,
+    KnowledgeScope,
+    KnowledgeStore,
+    install_knowledge_service,
+)
+from ai2apps.model_invocation import ModelInvocationService
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.packages import PackageRepository, ServicePackageManager
 from ai2apps.packages.registry import RegistryPackageManager
 from ai2apps.processes import ProcessManager, install_process_service
+from ai2apps.provisioning import (
+    CapabilityProvisioner,
+    ProvisioningSessionRepository,
+)
+from ai2apps.readaloud import ReadAloudTaskManager
 from ai2apps.remote import (
     RemoteAccessError,
     RemoteAccessManager,
@@ -91,6 +114,10 @@ from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.repositories import SessionRepository
 from ai2apps.terminal import TerminalManager, install_terminal_service
 from ai2apps.upstream import UpstreamGatewayManager
+from ai2apps.video import VideoTaskManager
+from ai2apps.worker_management import WorkerManagementRepository
+from ai2apps.worker_resources import WorkerResourceManager
+from ai2apps.worker_scheduler import WorkerJobScheduler
 from ai2apps.workspace import WorkspaceRepository, install_workspace_service
 
 logger = logging.getLogger(__name__)
@@ -134,6 +161,10 @@ class PlatformRuntime:
         self.capability_policy: CapabilityPolicyEngine | None = None
         self.agents: AgentRepository | None = None
         self.agent_runtime: AgentRuntime | None = None
+        self.agent_builder: AgentBuilderRepository | None = None
+        self.agent_schedule_runner: AgentScheduleRunner | None = None
+        self.agent_reliability: AgentReliabilityService | None = None
+        self.site_agent_packages: SiteAgentPackageService | None = None
         self.workspace: WorkspaceRepository | None = None
         self.processes: ProcessManager | None = None
         self.web_provider = None
@@ -142,12 +173,29 @@ class PlatformRuntime:
         self.coder: CoderManager | None = None
         self.documents: DocumentRepository | None = None
         self.document_manager: DocumentManager | None = None
+        self.video_tasks: VideoTaskManager | None = None
+        self.readaloud_tasks: ReadAloudTaskManager | None = None
+        self.model_invocations: ModelInvocationService | None = None
+        self.worker_scheduler: WorkerJobScheduler | None = None
+        self.worker_resources: WorkerResourceManager | None = None
+        self.worker_management: WorkerManagementRepository | None = None
         self.package_repository: PackageRepository | None = None
         self.package_manager: ServicePackageManager | None = None
+        self.knowledge = None
+        self.knowledge_import_manager: KnowledgeImportManager | None = None
+        self.knowledge_package_runtime: KnowledgePackageRuntime | None = None
         self.registry_packages: RegistryPackageManager | None = None
+        self.provisioning: CapabilityProvisioner | None = None
         self.remote: RemoteAccessManager | None = None
         self.extension_repository: ExtensionRepository | None = None
         self.extension_manager: InteractivePackageManager | None = None
+        self.messager_peer = None
+        self.messager_peer_v2 = None
+        self.peer_transport = None
+        self.model_share_provider = None
+        self.model_share_provider_principal = None
+        self.model_share_controller = None
+        self.model_share_provider_error = None
         self._retention_stop: asyncio.Event | None = None
         self._retention_task: asyncio.Task[None] | None = None
 
@@ -165,6 +213,90 @@ class PlatformRuntime:
     @property
     def database_status(self) -> PlatformDatabaseStatus:
         return self._database_status
+
+    def _handle_site_agent_terminal(self, run_id: str) -> None:
+        """Commit P3 health/state and optional scheduled Knowledge output."""
+
+        if self.agents is None or self.agent_reliability is None:
+            return
+        run = self.agents.get_run(run_id)
+        self.agent_reliability.record_terminal_run(run)
+        repair_request = run.input.get("repair_request") if isinstance(run.input, dict) else None
+        if (
+            isinstance(repair_request, dict)
+            and str(getattr(run.status, "value", run.status)) == "completed"
+        ):
+            content = (run.output or {}).get("content")
+            if isinstance(content, list):
+                content = "".join(
+                    str(item.get("text") or "")
+                    for item in content if isinstance(item, dict) and item.get("type") == "text"
+                )
+            if isinstance(content, str):
+                candidate_text = content.strip()
+                if candidate_text.startswith("```"):
+                    candidate_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", candidate_text, flags=re.IGNORECASE)
+                try:
+                    candidate_source = json.loads(candidate_text)
+                except json.JSONDecodeError:
+                    logger.error("Agent repair model returned invalid JSON for %s", run.id)
+                else:
+                    if isinstance(candidate_source, dict):
+                        try:
+                            self.agent_reliability.create_repair(
+                                owner_user_id=str(repair_request["owner_user_id"]),
+                                draft_id=str(repair_request["draft_id"]),
+                                capability_name=str(repair_request["capability_name"]),
+                                source=candidate_source,
+                                strategy=str(repair_request["strategy"]),
+                            )
+                        except Exception:
+                            logger.exception("Agent repair candidate validation failed for %s", run.id)
+        parameters = run.input.get("parameters") if isinstance(run.input, dict) else None
+        if (
+            not isinstance(parameters, dict)
+            or str(getattr(run.status, "value", run.status)) != "completed"
+            or not parameters.get("knowledge_bucket_id")
+            or self.knowledge is None
+            or self.database is None
+        ):
+            return
+        with self.database.transaction() as connection:
+            if connection.execute(
+                "SELECT 1 FROM agent_run_knowledge_exports WHERE run_id=?", (run.id,)
+            ).fetchone() is not None:
+                return
+        result = (run.output or {}).get("result")
+        if not isinstance(result, dict):
+            result = dict(run.output or {})
+        owner_user_id = str(parameters.get("owner_user_id") or "local")
+        installation_id = str(parameters.get("installation_id") or "local")
+        principal = RequestPrincipal(
+            actor_user_id=owner_user_id,
+            installation_id=installation_id,
+            organization_id=installation_id,
+            billing_account_id=installation_id,
+            role=MemberRole.MEMBER,
+            membership_epoch=1,
+            authentication_type="agent_schedule",
+        )
+        item = self.knowledge.create_text_item(
+            principal,
+            scope=KnowledgeScope.PRIVATE,
+            kind="artifact",
+            title=f"Agent result {run.id}",
+            text=json.dumps(result, ensure_ascii=False, indent=2),
+            source_app_id=str(parameters.get("caller_app_id") or "ai2apps.agents.schedule"),
+            source_session_id=run.session_id,
+            source_url=str((parameters.get("browser_context") or {}).get("url") or "") or None,
+            bucket_id=str(parameters["knowledge_bucket_id"]),
+            trusted_source_facets=(("agent_run_id", run.id),),
+        )
+        with self.database.transaction(write=True) as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO agent_run_knowledge_exports(run_id,knowledge_item_id,created_at) VALUES (?,?,?)",
+                (run.id, item.id, utc_now_text()),
+            )
 
     async def start_background_tasks(
         self,
@@ -184,18 +316,112 @@ class PlatformRuntime:
         )
         if self.package_manager is not None:
             await self.package_manager.startup()
+            if self.worker_resources is not None:
+                await self.worker_resources.start(self.package_manager)
+        if self.provisioning is not None:
+            await self.provisioning.startup()
         if self.processes is not None:
             await self.processes.startup()
         if self.terminal is not None:
             await self.terminal.startup()
         if self.agent_runtime is not None:
             await self.agent_runtime.start()
+        if self.agent_schedule_runner is not None:
+            await self.agent_schedule_runner.startup()
         if self.upstreams is not None:
             await self.upstreams.start()
         if self.document_manager is not None:
             await self.document_manager.startup()
+        if self.knowledge_import_manager is not None:
+            await self.knowledge_import_manager.startup()
+        if self.knowledge_package_runtime is not None:
+            await self.knowledge_package_runtime.startup()
+        if self.video_tasks is not None:
+            await self.video_tasks.startup()
+        if self.readaloud_tasks is not None:
+            await self.readaloud_tasks.startup()
         if self.remote is not None:
             await self.remote.startup()
+        if self.messager_peer_v2 is not None:
+            await self.messager_peer_v2.startup()
+        await self._start_model_share_provider()
+
+    async def _start_model_share_provider(self) -> None:
+        """Compose Dashboard-managed Provider offers after Remote and Workers are ready."""
+
+        from ai2apps.model_sharing import (
+            ModelSharePreferencesRepository,
+            ModelShareProviderConfiguration,
+            ModelShareProviderManager,
+        )
+        from ai2apps.model_sharing.cloud import ComputeCloudClient
+        from ai2apps.model_sharing.repository import ModelShareRepository
+
+        try:
+            config = ModelShareProviderConfiguration.from_environment()
+        except (TypeError, ValueError) as error:
+            self.model_share_provider_error = str(error)
+            logger.error("Model Share Provider configuration is invalid: %s", error)
+            return
+        if any(value is None for value in (
+            self.database, self.events, self.cloud, self.remote, self.peer_transport,
+            self.messager_peer, self.model_invocations,
+        )):
+            self.model_share_provider_error = "Local Provider dependencies are unavailable"
+            return
+        identities = IdentityRepository(self.database)
+        installation = identities.get_installation()
+        if installation is None:
+            self.model_share_provider_error = "Installation is not bound to AI2Apps Cloud"
+            return
+        try:
+            principal = identities.principal_for(installation.core_user_id)
+            broker = self.peer_transport.broker_for(principal)
+        except (IdentityBindingError, RemoteAccessError, RuntimeError) as error:
+            self.model_share_provider_error = str(error)
+            return
+        manager = ModelShareProviderManager(
+            preferences=ModelSharePreferencesRepository(self.database, self.events),
+            principal=principal,
+            broker=broker,
+            compute=ComputeCloudClient(self.cloud),
+            peer_sessions=self.peer_transport.sessions,
+            jobs=ModelShareRepository(self.database),
+            signer_factory=self.model_share_signer_for,
+            invocations=self.model_invocations,
+            environment_config=config,
+            peer_core=self.peer_transport,
+            remote=self.remote,
+            cloud_device_id=installation.cloud_device_id,
+        )
+        self.model_share_provider = manager
+        self.model_share_provider_principal = principal
+        self.model_share_controller = manager
+        self.model_share_provider_error = None
+        self.peer_transport.register_direct_handler(
+            "/v1/model-share/peer/v1/inference", manager.direct_inference,
+        )
+        await manager.startup()
+
+    async def model_share_signer_for(self, principal: RequestPrincipal):
+        """Resolve the registered Installation commitment identity without exposing its key."""
+
+        from ai2apps.model_sharing import ComputeCommitmentSigner
+
+        if self.database is None or self.remote is None or self.messager_peer is None:
+            raise RuntimeError("Model Share signing identity is unavailable")
+        installation = IdentityRepository(self.database).get_installation()
+        if installation is None or installation.id != principal.installation_id:
+            raise IdentityBindingError("Model Share principal does not belong to this Installation")
+        registered = await self.messager_peer.ensure_registered(principal)
+        device = self.remote.require_device(installation.cloud_device_id)
+        keys = self.messager_peer.keys.get_or_create(device.device_id)
+        return ComputeCommitmentSigner(
+            installation_id=installation.id,
+            signing_key_id=str(registered["keyId"]),
+            device_access_epoch=int(registered["deviceAccessEpoch"]),
+            private_key=keys.identity_private,
+        )
 
     async def _run_session_retention(self, interval_seconds: float) -> None:
         assert self.database is not None
@@ -215,12 +441,34 @@ class PlatformRuntime:
     async def stop_background_tasks(self) -> None:
         """Stop maintenance loops and wait until their current batch completes."""
 
+        if self.messager_peer_v2 is not None:
+            await self.messager_peer_v2.shutdown()
+        if self.model_share_controller is not None:
+            await self.model_share_controller.shutdown()
+        if self.peer_transport is not None:
+            await self.peer_transport.shutdown()
+        if self.provisioning is not None:
+            await self.provisioning.shutdown()
+        if self.agent_schedule_runner is not None:
+            await self.agent_schedule_runner.shutdown()
         if self.agent_runtime is not None:
             await self.agent_runtime.stop()
         if self.upstreams is not None:
             await self.upstreams.stop()
         if self.document_manager is not None:
             await self.document_manager.shutdown()
+        if self.knowledge_import_manager is not None:
+            await self.knowledge_import_manager.shutdown()
+        if self.knowledge_package_runtime is not None:
+            await self.knowledge_package_runtime.shutdown()
+        if self.video_tasks is not None:
+            await self.video_tasks.shutdown()
+        if self.readaloud_tasks is not None:
+            await self.readaloud_tasks.shutdown()
+        if self.worker_resources is not None:
+            await self.worker_resources.shutdown()
+        if self.worker_scheduler is not None:
+            await self.worker_scheduler.shutdown()
         if self.remote is not None:
             await self.remote.shutdown()
         if self._browser_cloud_clients:
@@ -362,7 +610,10 @@ class PlatformRuntime:
             model_source_resolver=self.model_manager.model_source,
         )
         self.upstreams = UpstreamGatewayManager(
-            database, secret_backend, self.services, self.service_registry,
+            database,
+            secret_backend,
+            self.services,
+            self.service_registry,
             local_node_id=stable_gateway_id(self.config.paths.database_path),
         )
         self.secrets = SecretRepository(database, self.events, secret_backend)
@@ -401,6 +652,28 @@ class PlatformRuntime:
                 secret_backend,
                 unavailable_reason=remote_config_error,
             ),
+        )
+        from ai2apps.messager.peer_service import MessagerPeerService
+
+        self.messager_peer = MessagerPeerService(
+            database=database,
+            events=self.events,
+            cloud=self.cloud,
+            remote=self.remote,
+            secret_backend=secret_backend,
+        )
+        from ai2apps.peer import PeerTransportCore
+
+        self.peer_transport = PeerTransportCore(
+            database=database,
+            cloud=self.cloud,
+            remote=self.remote,
+            secret_backend=secret_backend,
+        )
+        from ai2apps.messager.peer_v2 import MessagerV2SessionCoordinator
+
+        self.messager_peer_v2 = MessagerV2SessionCoordinator(
+            core=self.peer_transport, database=database, events=self.events
         )
         self.tools.bind_secret_resolver(self.secrets.inject_arguments)
         install_echo_service(self.services, self.service_registry)
@@ -449,6 +722,29 @@ class PlatformRuntime:
         self.document_manager = DocumentManager(self.documents)
         install_document_service(
             self.documents, self.workspace, self.services, self.service_registry
+        )
+        self.knowledge = KnowledgeStore(
+            database, blob_root=self.config.paths.artifacts_path / "knowledge"
+        )
+        self.knowledge_import_manager = KnowledgeImportManager(self.knowledge)
+        self.knowledge_package_runtime = KnowledgePackageRuntime(
+            self.knowledge, self.services, runtime=self
+        )
+        self.worker_resources = WorkerResourceManager()
+        self.worker_management = WorkerManagementRepository(database, self.events)
+        self.worker_management.recover_interrupted()
+        for service_key in self.worker_management.pinned_workers():
+            self.worker_resources.restore_pinned(service_key)
+        self.worker_scheduler = WorkerJobScheduler(
+            resource_manager=self.worker_resources
+        )
+        self.worker_resources.bind_scheduler(self.worker_scheduler)
+        self.model_invocations = ModelInvocationService(self)
+        install_knowledge_service(
+            self.knowledge,
+            self.services,
+            self.service_registry,
+            retriever_provider=self.knowledge_package_runtime.ready_retriever,
         )
         install_image_service(
             base_path=self.config.paths.base_path,
@@ -507,14 +803,28 @@ class PlatformRuntime:
             self.service_registry,
         )
         self.package_manager.restore_registry()
+        self.video_tasks = VideoTaskManager(
+            runtime=self,
+            database=database,
+            workspace=self.workspace,
+            root=self.config.paths.base_path / "platform" / "video-tasks",
+        )
+        self.readaloud_tasks = ReadAloudTaskManager(
+            runtime=self,
+            database=database,
+            root=self.config.paths.base_path / "platform" / "readaloud-renders",
+        )
         self.agents = AgentRepository(database, self.events, self.capabilities)
+        self.agent_builder = AgentBuilderRepository(database)
         self.agent_runtime = AgentRuntime(
             self.agents, self.tools, self.capability_policy, self.capabilities
         )
+        self.agent_schedule_runner = AgentScheduleRunner(self, self.agent_builder)
         self.agent_runtime.bind_run_terminal_handler(
             self.processes.schedule_cancel_by_run
         )
         install_diagnostic_agent(self.agents, self.agent_runtime)
+        install_browser_builder_agent(self.agents, self.agent_runtime)
         install_general_agent(
             self.agents,
             self.agent_runtime,
@@ -538,12 +848,21 @@ class PlatformRuntime:
             self.agents,
         )
         self.extension_repository = self.extension_manager.repository
+        self.agent_reliability = AgentReliabilityService(self.agent_builder)
+        self.site_agent_packages = SiteAgentPackageService(
+            self.agent_builder, self.extension_manager
+        )
+        self.agent_runtime.bind_run_terminal_handler(self._handle_site_agent_terminal)
         self.registry_packages = RegistryPackageManager(
             cloud=self.cloud,
             root=self.config.paths.packages_path,
             secrets=self.secrets,
             extension_manager=self.extension_manager,
             service_manager=self.package_manager,
+        )
+        self.provisioning = CapabilityProvisioner(
+            runtime=self,
+            repository=ProvisioningSessionRepository(database),
         )
         self._database_status = PlatformDatabaseStatus(
             configured=True,
@@ -673,6 +992,15 @@ class PlatformRuntime:
             return None
         return IdentityRepository(self.database).authorize_local_session(token)
 
+    def refresh_local_session(
+        self, token: str | None
+    ) -> tuple[str, RequestPrincipal, bool] | None:
+        """Rotate a valid Local session before its device lifetime expires."""
+
+        if self.database is None:
+            return None
+        return IdentityRepository(self.database).refresh_local_session(token)
+
     def local_session_cookie_name(self) -> str:
         """Return this Installation's browser-session cookie name.
 
@@ -710,9 +1038,7 @@ class PlatformRuntime:
             from ai2apps.cloud_client import AI2APPS_CLOUD_BROWSER_COOKIE
 
             return AI2APPS_CLOUD_BROWSER_COOKIE
-        return cloud_browser_cookie_name(
-            self.security_identity.security_instance_id
-        )
+        return cloud_browser_cookie_name(self.security_identity.security_instance_id)
 
     def cloud_browser_session_from_cookies(self, cookies) -> str | None:
         """Read the scoped Cloud browser ID with one-release compatibility."""
@@ -768,9 +1094,7 @@ class PlatformRuntime:
                 raise IdentityBindingError(
                     "This Local instance already has a Core account"
                 )
-            account = await self.remote._request(
-                "GET", "/v1/auth/me", cloud=cloud
-            )
+            account = await self.remote._request("GET", "/v1/auth/me", cloud=cloud)
             user = account.get("user")
             if not isinstance(user, dict):
                 raise RemoteAccessError(
@@ -840,6 +1164,8 @@ class PlatformRuntime:
         Connections are deliberately transaction-scoped in this milestone, so
         shutdown currently has no persistent handle to close.
         """
+        if self.knowledge_import_manager is not None:
+            self.knowledge_import_manager.shutdown_sync()
         if self._instance_lease is not None:
             self._instance_lease.release()
             self._instance_lease = None

@@ -234,6 +234,13 @@ class TestPromptRealism:
         assert first[0] != second[0]
         assert first[1:] == second[1:]
 
+    def test_prompt_can_use_fixed_prefix_for_ab(self, monkeypatch):
+        monkeypatch.setenv("OMLX_BENCH_PROMPT_PREFIX", "BENCH-FIXED")
+        tokenizer = _WordTokenizer()
+        first = _generate_prompt(tokenizer, 512, BenchmarkContextProfile.NOVEL_EN)
+        second = _generate_prompt(tokenizer, 512, BenchmarkContextProfile.NOVEL_EN)
+        assert first == second
+
     def test_prefix_and_corpus_are_encoded_together(self):
         tokenizer = _WordTokenizer()
         encoded_texts = []

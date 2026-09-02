@@ -8,7 +8,15 @@ import json
 import os
 from pathlib import Path
 
-from ai2apps.packages.contract_v1 import build_package, create_signature_envelope, inspect_package
+from ai2apps.checkpoint_package_policy import (
+    require_checkpoint_distributions_from_artifact,
+    require_checkpoint_distributions_from_source,
+)
+from ai2apps.packages.contract_v1 import (
+    build_package,
+    create_signature_envelope,
+    inspect_package,
+)
 from ai2apps.secrets.factory import create_secret_backend
 
 
@@ -35,8 +43,11 @@ def main() -> None:
         if artifact != output:
             raise SystemExit("--artifact must refer to the same path as --output")
         inspected = inspect_package(artifact)
+        require_checkpoint_distributions_from_artifact(artifact)
     else:
-        inspected = build_package(args.source.resolve(strict=True), output)
+        source = args.source.resolve(strict=True)
+        require_checkpoint_distributions_from_source(source)
+        inspected = build_package(source, output)
     backend = create_secret_backend(
         Path.home() / ".omlx" / "platform" / "secrets",
         namespace=args.keychain_namespace,

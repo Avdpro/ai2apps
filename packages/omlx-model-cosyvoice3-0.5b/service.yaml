@@ -1,0 +1,99 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.cosyvoice3-0.5b
+name: CosyVoice 3 0.5B
+description: Native MLX CosyVoice 3 Worker with zero-shot cloning and instruction control.
+version: 0.1.1
+
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/FunAudioLLM/CosyVoice
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.cosyvoice3-0.5b/4bit
+    display_name: CosyVoice 3 0.5B 4-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/Fun-CosyVoice3-0.5B-2512-4bit
+    capabilities: [speech_generation, reference_voice, voice_cloning, voice_instructions, emotion]
+    metadata:
+      family: cosyvoice3
+      variant: 0.5b-2512-4bit
+      reference_audio_required: true
+      required_model_ids: [ai2apps.model.cosyvoice3-0.5b/s3tokenizer-v3]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Fun-CosyVoice3-0.5B-2512-4bit
+      revision: 55a6713d54751f1ec2645aa11294676f2067202a
+      distribution_id: dist_ai2apps_cosyvoice3_0_5b_4bit_55a6713d_v1
+      preparation: {recipe: native}
+    audio_capabilities: &cosy_audio
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en, ja, ko, de, fr, ru, it, es]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: unsupported, voices: []}
+        speed: {mode: fallback, minimum: 0.5, maximum: 2.0, control: instruction}
+        emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited, surprised]}
+        instructions: {mode: native}
+        voice_profiles: {mode: native, reference_audio: true, reference_transcript: optional, transcript_effect: higher_fidelity}
+        multi_speaker: {mode: unsupported}
+
+  - id: ai2apps.model.cosyvoice3-0.5b/8bit
+    display_name: CosyVoice 3 0.5B 8-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/Fun-CosyVoice3-0.5B-2512-8bit
+    capabilities: [speech_generation, reference_voice, voice_cloning, voice_instructions, emotion]
+    metadata:
+      family: cosyvoice3
+      variant: 0.5b-2512-8bit
+      reference_audio_required: true
+      required_model_ids: [ai2apps.model.cosyvoice3-0.5b/s3tokenizer-v3]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Fun-CosyVoice3-0.5B-2512-8bit
+      revision: 177baf277ac75e04e810f7db7f0d9c0ce5a17854
+      distribution_id: dist_ai2apps_cosyvoice3_0_5b_8bit_177baf27_v1
+      preparation: {recipe: native}
+    audio_capabilities: *cosy_audio
+
+  - id: ai2apps.model.cosyvoice3-0.5b/s3tokenizer-v3
+    display_name: CosyVoice 3 S3TokenizerV3
+    model_type: llm
+    upstream_id: mlx-community/S3TokenizerV3
+    capabilities: [speech_tokenizer]
+    metadata:
+      family: s3_tokenizer_v3
+      internal: true
+      parent_model: FunAudioLLM/Fun-CosyVoice3-0.5B-2512
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/S3TokenizerV3
+      revision: b143914b3e912278104824da706edc9c2d317c4e
+      distribution_id: dist_ai2apps_s3tokenizer_v3_b143914b_v1
+      preparation: {recipe: native}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.9,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs, cosyvoice3]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only Host-selected pinned CosyVoice 3 checkpoints.}
+  accelerator: {metal: true, reason: Run CosyVoice 3 speech synthesis with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 90}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "layout",
+    "seed": 2002,
+    "prompt": "Editorial poster for a fictional design conference, strict Swiss grid, title LOCAL INTELLIGENCE, subtitle SHANGHAI 2026, date 18 OCT, navy cream and orange, all text clean and readable"
+  },
+  {
+    "id": "complex",
+    "seed": 2003,
+    "prompt": "An isometric cutaway illustration of a compact solar research cabin in snowy mountains, labeled laboratory, greenhouse, battery room and weather station, two scientists, precise spatial relationships"
+  }
+]

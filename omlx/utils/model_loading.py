@@ -273,6 +273,8 @@ def maybe_apply_pre_load_patches(
       declares ``model_type == "glm_moe_dsa"``. Required because pinned
       mlx-lm exposes it as a bare DeepSeek-V3.2 subclass and cannot load
       checkpoints whose shared DSA layers carry no indexer weights.
+    - GLM-5 Next exact dynamic Cache-MoE patch when a VLM load declares
+      ``model_type == "glm5_next"`` and ``OMLX_GLM5_DYNAMIC_STORE`` is set.
     - Native MTP patch (PR 990 + PR 15) when the config declares MTP heads
       on a supported model_type. Always applied for sanitize correctness;
       head attachment is gated by ``model_settings.mtp_enabled``.
@@ -452,6 +454,29 @@ def maybe_apply_pre_load_patches(
 
         if apply_glm_moe_dsa_patch():
             logger.info("GLM MoE DSA pre-load patch applied for %s", model_name)
+
+    if for_vlm and model_type == "glm5_next":
+        from ..patches.glm5_next_cache.runtime import apply_glm5_dynamic_patch
+
+        if apply_glm5_dynamic_patch():
+            logger.info("GLM5 dynamic Cache-MoE patch applied for %s", model_name)
+
+    if for_vlm and model_type == "qwen4_exp":
+        from ..patches.mlx_vlm_qwen4_exp_compat import (
+            apply_mlx_vlm_qwen4_exp_compat_patch,
+            configure_qwen4_exp_runtime,
+        )
+        from ..patches.qwen38_next_cache import (
+            apply_qwen4_dynamic_patch,
+            apply_qwen4_rmsnorm_compat_patch,
+        )
+
+        if apply_mlx_vlm_qwen4_exp_compat_patch():
+            logger.info("Qwen4-Exp mlx-vlm compatibility patch applied")
+        configure_qwen4_exp_runtime(model_name, mtp_enabled=False)
+        apply_qwen4_rmsnorm_compat_patch()
+        if apply_qwen4_dynamic_patch():
+            logger.info("Qwen4-Exp dynamic Cache-MoE patch applied for %s", model_name)
 
     minimax_m3_types = {"minimax_m3", "minimax_m3_vl"}
     if for_vlm and (

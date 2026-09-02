@@ -8,15 +8,19 @@ payload.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
 import platform
+import posixpath
 import shutil
 import subprocess
+import tarfile
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from packaging.specifiers import SpecifierSet
@@ -34,6 +38,35 @@ RUNTIME_DETACH_TIMEOUT_SECONDS = 30.0
 RUNTIME_PROTOCOL = "ai2apps-inference-runtime/v1"
 RUNTIME_ROLE = "inference_provider"
 RUNTIME_DESCRIPTOR_SCHEMA = "ai2apps.inference-runtime/v1"
+NATIVE_RUNTIME_PROTOCOL = "ai2apps-native-runtime/v1"
+KNOWLEDGE_RUNTIME_ROLE = "knowledge_backend_provider"
+KNOWLEDGE_RUNTIME_DESCRIPTOR_SCHEMA = "ai2apps.knowledge-runtime/v1"
+MAX_RUNTIME_ARCHIVE_FILES = 1_000_000
+MAX_RUNTIME_UNPACKED_BYTES = 64 * 1024**3
+
+_RUNTIME_CONTRACTS = {
+    (RUNTIME_PROTOCOL, RUNTIME_ROLE): {
+        "descriptor_schema": RUNTIME_DESCRIPTOR_SCHEMA,
+        "worker_protocol": "ai2apps-model-worker/v1",
+        "required_capability": "model-worker-v1",
+        "installation_kind": "inference-runtimes",
+        "launcher_required": True,
+    },
+    (NATIVE_RUNTIME_PROTOCOL, KNOWLEDGE_RUNTIME_ROLE): {
+        "descriptor_schema": KNOWLEDGE_RUNTIME_DESCRIPTOR_SCHEMA,
+        "worker_protocol": "ai2apps-knowledge-vector-worker/v1",
+        "required_capability": "knowledge-runtime-v1",
+        "installation_kind": "native-runtimes",
+        "launcher_required": False,
+    },
+}
+
+
+def _runtime_contract(manifest: dict[str, Any]) -> dict[str, Any] | None:
+    runtime = manifest.get("runtime", {})
+    if not isinstance(runtime, dict):
+        return None
+    return _RUNTIME_CONTRACTS.get((runtime.get("protocol"), runtime.get("role")))
 
 
 def is_inference_runtime_manifest(manifest: dict[str, Any]) -> bool:
@@ -43,6 +76,12 @@ def is_inference_runtime_manifest(manifest: dict[str, Any]) -> bool:
         and runtime.get("role") == RUNTIME_ROLE
         and runtime.get("protocol") == RUNTIME_PROTOCOL
     )
+
+
+def is_native_runtime_manifest(manifest: dict[str, Any]) -> bool:
+    """Return true for any Host-materialized, non-executable Runtime Provider."""
+
+    return _runtime_contract(manifest) is not None
 
 
 def validate_inference_runtime_manifest(manifest: dict[str, Any]) -> None:
@@ -85,6 +124,46 @@ def validate_inference_runtime_manifest(manifest: dict[str, Any]) -> None:
         )
 
 
+def validate_native_runtime_manifest(manifest: dict[str, Any]) -> None:
+    """Validate legacy inference and generic native Runtime Providers."""
+
+    if is_inference_runtime_manifest(manifest):
+        validate_inference_runtime_manifest(manifest)
+        return
+    contract = _runtime_contract(manifest)
+    runtime = manifest.get("runtime", {})
+    if contract is None:
+        raise PackageError("invalid_native_runtime", "Native Runtime role is unsupported")
+    if runtime.get("mode") != "process" or runtime.get("command"):
+        raise PackageError(
+            "invalid_native_runtime",
+            "Native Runtime startup is Host-owned; runtime.command is not allowed",
+        )
+    descriptor = runtime.get("descriptor")
+    if (
+        not isinstance(descriptor, str)
+        or not descriptor.startswith("META/")
+        or descriptor.startswith("/")
+        or ".." in descriptor.split("/")
+        or not descriptor.endswith(".json")
+    ):
+        raise PackageError(
+            "invalid_native_runtime",
+            "runtime.descriptor must be an immutable META JSON path",
+        )
+    if manifest.get("models") or manifest.get("tools"):
+        raise PackageError(
+            "invalid_native_runtime",
+            "Native Runtime Providers cannot publish models or Tools",
+        )
+    capabilities = manifest.get("capabilities", [])
+    required = contract["required_capability"]
+    if not isinstance(capabilities, list) or required not in capabilities:
+        raise PackageError(
+            "invalid_native_runtime", f"Native Runtime must provide {required}"
+        )
+
+
 def _safe_relative(value: Any, field: str) -> Path:
     if not isinstance(value, str) or not value or value.startswith("/"):
         raise PackageError("invalid_runtime_descriptor", f"{field} must be relative")
@@ -116,9 +195,15 @@ class InferenceRuntimeResolver:
 
     def installation_root(self, package: InstalledPackageRecord) -> Path:
         digest = package.package_digest.removeprefix("sha256:")
+        contract = _runtime_contract(package.manifest)
+        installation_kind = (
+            str(contract["installation_kind"])
+            if contract is not None
+            else "inference-runtimes"
+        )
         return (
             self.packages_root
-            / "inference-runtimes"
+            / installation_kind
             / package.service_key
             / package.package_version
             / digest
@@ -177,10 +262,12 @@ class InferenceRuntimeResolver:
             raise PackageError(
                 "runtime_version_mismatch", "Active inference Runtime version is incompatible"
             )
-        if not is_inference_runtime_manifest(provider.manifest):
+        if not is_native_runtime_manifest(provider.manifest):
             raise PackageError(
-                "runtime_provider_invalid", "Locked dependency is not an inference Runtime"
+                "runtime_provider_invalid", "Locked dependency is not a native Runtime"
             )
+        contract = _runtime_contract(provider.manifest)
+        assert contract is not None
         provided = frozenset(provider.manifest.get("capabilities", []))
         required = frozenset(requirement.get("capabilities", []))
         if missing := required - provided:
@@ -198,10 +285,10 @@ class InferenceRuntimeResolver:
                 "runtime_descriptor_unreadable", "Inference Runtime descriptor is unreadable"
             ) from error
         if (
-            descriptor.get("schema") != RUNTIME_DESCRIPTOR_SCHEMA
+            descriptor.get("schema") != contract["descriptor_schema"]
             or descriptor.get("service_id") != provider.service_key
             or descriptor.get("version") != provider.package_version
-            or descriptor.get("protocol") != "ai2apps-model-worker/v1"
+            or descriptor.get("protocol") != contract["worker_protocol"]
         ):
             raise PackageError(
                 "runtime_descriptor_mismatch", "Inference Runtime descriptor identity differs"
@@ -227,6 +314,11 @@ class InferenceRuntimeResolver:
             raise PackageError(
                 "runtime_descriptor_invalid", "Runtime Python is not executable"
             )
+        launcher = (
+            inside("launcher")
+            if contract["launcher_required"] or descriptor.get("launcher")
+            else python
+        )
         return ResolvedInferenceRuntime(
             service_key=provider.service_key,
             version=provider.package_version,
@@ -235,7 +327,7 @@ class InferenceRuntimeResolver:
             python=python,
             python_home=inside("python_home", directory=True),
             framework_site_packages=inside("framework_site_packages", directory=True),
-            launcher=inside("launcher"),
+            launcher=launcher,
             capabilities=provided,
         )
 
@@ -255,11 +347,19 @@ class InferenceRuntimeInstaller:
             raise PackageError(
                 "runtime_descriptor_unreadable", "Inference Runtime descriptor is unreadable"
             ) from error
+        contract = _runtime_contract(package.manifest)
+        # Older installer tests and pre-v2 repository rows only persisted the
+        # descriptor path in manifest.runtime.  They are unambiguously legacy
+        # inference Runtime records because generic native providers did not
+        # exist yet; keep their materialization path compatible without
+        # weakening validation for newly imported Packages.
+        if contract is None:
+            contract = _RUNTIME_CONTRACTS[(RUNTIME_PROTOCOL, RUNTIME_ROLE)]
         if (
-            value.get("schema") != RUNTIME_DESCRIPTOR_SCHEMA
+            value.get("schema") != contract["descriptor_schema"]
             or value.get("service_id") != package.service_key
             or value.get("version") != package.package_version
-            or value.get("protocol") != "ai2apps-model-worker/v1"
+            or value.get("protocol") != contract["worker_protocol"]
         ):
             raise PackageError(
                 "runtime_descriptor_mismatch", "Inference Runtime descriptor identity differs"
@@ -302,6 +402,156 @@ class InferenceRuntimeInstaller:
     def _copy_directory(source: Path, destination: Path) -> None:
         shutil.copytree(source, destination, symlinks=True)
 
+    @staticmethod
+    def _verify_payload_digest(source: Path, expected: Any) -> None:
+        if not isinstance(expected, str):
+            raise PackageError(
+                "invalid_runtime_descriptor", "Runtime payload sha256 is required"
+            )
+        expected = expected.removeprefix("sha256:").lower()
+        if len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+            raise PackageError(
+                "invalid_runtime_descriptor", "Runtime payload sha256 is invalid"
+            )
+        digest = hashlib.sha256()
+        with source.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+        if not hmac.compare_digest(digest.hexdigest(), expected):
+            raise PackageError(
+                "runtime_payload_digest_mismatch",
+                "Runtime payload does not match its declared sha256",
+            )
+
+    @staticmethod
+    def _safe_tar_member(member: tarfile.TarInfo) -> PurePosixPath:
+        name = member.name
+        path = PurePosixPath(name)
+        if (
+            not name
+            or path.is_absolute()
+            or ".." in path.parts
+            or "\\" in name
+            or "\x00" in name
+            or name != path.as_posix()
+        ):
+            raise PackageError(
+                "runtime_payload_escape", f"Unsafe Runtime archive path: {name}"
+            )
+        if member.islnk() or member.isdev() or member.isfifo():
+            raise PackageError(
+                "runtime_payload_unsupported_entry",
+                f"Unsupported Runtime archive entry: {name}",
+            )
+        if not (member.isdir() or member.isfile() or member.issym()):
+            raise PackageError(
+                "runtime_payload_unsupported_entry",
+                f"Unsupported Runtime archive entry: {name}",
+            )
+        if member.issym():
+            link = member.linkname
+            if not link or "\\" in link or "\x00" in link:
+                raise PackageError(
+                    "runtime_payload_escape", f"Unsafe Runtime symlink: {name}"
+                )
+            target = posixpath.normpath(posixpath.join(path.parent.as_posix(), link))
+            if link.startswith("/") or target == ".." or target.startswith("../"):
+                raise PackageError(
+                    "runtime_payload_escape", f"Runtime symlink escapes payload: {name}"
+                )
+        return path
+
+    def _copy_tar_archive(
+        self, source: Path, destination: Path, descriptor: dict[str, Any]
+    ) -> None:
+        if platform.system() != "Linux":
+            raise PackageError(
+                "runtime_payload_unsupported", "Tar Runtime payload requires Linux"
+            )
+        payload = descriptor.get("payload", {})
+        self._verify_payload_digest(source, payload.get("sha256"))
+        maximum = payload.get("max_unpacked_bytes")
+        if (
+            not isinstance(maximum, int)
+            or isinstance(maximum, bool)
+            or maximum < 1
+            or maximum > MAX_RUNTIME_UNPACKED_BYTES
+        ):
+            raise PackageError(
+                "invalid_runtime_descriptor",
+                "Runtime max_unpacked_bytes must be a positive bounded integer",
+            )
+        archive_root = _safe_relative(payload.get("root"), "payload.root")
+        extraction = destination.parent / f".{destination.name}-archive"
+        extraction.mkdir()
+        try:
+            try:
+                archive = tarfile.open(source, mode="r:gz")  # noqa: SIM115
+            except (OSError, tarfile.TarError) as error:
+                raise PackageError(
+                    "runtime_payload_verification_failed",
+                    "Runtime payload is not a valid tar.gz archive",
+                ) from error
+            with archive:
+                members = archive.getmembers()
+                if len(members) > MAX_RUNTIME_ARCHIVE_FILES:
+                    raise PackageError(
+                        "runtime_payload_size_limit", "Runtime archive has too many entries"
+                    )
+                paths: set[str] = set()
+                expanded = 0
+                validated: list[tuple[tarfile.TarInfo, PurePosixPath]] = []
+                for member in members:
+                    path = self._safe_tar_member(member)
+                    if path.as_posix() in paths:
+                        raise PackageError(
+                            "runtime_payload_duplicate", "Runtime archive has duplicate paths"
+                        )
+                    paths.add(path.as_posix())
+                    expanded += member.size if member.isfile() else 0
+                    if expanded > maximum:
+                        raise PackageError(
+                            "runtime_payload_size_limit",
+                            "Runtime archive exceeds its declared expanded size limit",
+                        )
+                    validated.append((member, path))
+                for member, path in validated:
+                    target = extraction.joinpath(*path.parts)
+                    if member.isdir():
+                        target.mkdir(parents=True, exist_ok=True)
+                    elif member.isfile():
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        source_stream = archive.extractfile(member)
+                        if source_stream is None:
+                            raise PackageError(
+                                "runtime_payload_verification_failed",
+                                f"Runtime archive file is unreadable: {member.name}",
+                            )
+                        with source_stream, target.open("xb") as output:
+                            shutil.copyfileobj(source_stream, output, length=1024 * 1024)
+                        target.chmod(member.mode & 0o777)
+                for member, path in validated:
+                    if not member.issym():
+                        continue
+                    target = extraction.joinpath(*path.parts)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.symlink_to(member.linkname)
+            candidate = (extraction / archive_root).resolve(strict=True)
+            try:
+                candidate.relative_to(extraction.resolve(strict=True))
+            except ValueError as error:
+                raise PackageError(
+                    "runtime_payload_escape", "Runtime archive root escapes payload"
+                ) from error
+            if not candidate.is_dir() or candidate.is_symlink():
+                raise PackageError(
+                    "runtime_payload_verification_failed",
+                    "Runtime archive root is not a directory",
+                )
+            self._copy_directory(candidate, destination)
+        finally:
+            shutil.rmtree(extraction, ignore_errors=True)
+
     def _copy_dmg(
         self, source: Path, destination: Path, descriptor: dict[str, Any]
     ) -> None:
@@ -315,18 +565,14 @@ class InferenceRuntimeInstaller:
         distribution = descriptor.get("distribution", {})
         signing = distribution.get("signing", "developer-id")
         if signing == "developer-id":
-            self._run(
-                "/usr/bin/codesign",
-                "--verify",
-                "--strict",
-                str(source),
-                stage="disk image signature verification",
-            )
             # Runtime installation must work on a clean consumer Mac.  The
             # xcrun/stapler tool belongs to Xcode's developer toolchain and is
             # therefore unsuitable as an installation-time dependency.
-            # Gatekeeper's system spctl validates the Developer ID signature
-            # and the stapled notarization ticket without requiring Xcode.
+            # Gatekeeper's system spctl validates both the Developer ID
+            # signature and the stapled notarization ticket without requiring
+            # Xcode. Do not additionally run a bare codesign check on the DMG:
+            # stapling appends the ticket after the original signature and can
+            # make codesign reject otherwise valid, Gatekeeper-accepted media.
             self._run(
                 "/usr/sbin/spctl",
                 "--assess",
@@ -440,6 +686,8 @@ class InferenceRuntimeInstaller:
             payload_type = payload.get("type")
             if payload_type == "dmg":
                 self._copy_dmg(source, candidate, descriptor)
+            elif payload_type == "tar.gz":
+                self._copy_tar_archive(source, candidate, descriptor)
             elif (
                 payload_type == "directory"
                 and os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") == "1"
@@ -448,7 +696,7 @@ class InferenceRuntimeInstaller:
             else:
                 raise PackageError(
                     "runtime_payload_unsupported",
-                    "Only verified DMG Runtime payloads are accepted",
+                    "Only verified DMG and tar.gz Runtime payloads are accepted",
                 )
             os.replace(candidate, final)
             self._make_immutable(final)

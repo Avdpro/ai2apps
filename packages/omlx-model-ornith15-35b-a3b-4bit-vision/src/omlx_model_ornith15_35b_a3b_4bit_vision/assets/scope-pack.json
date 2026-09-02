@@ -1,0 +1,32 @@
+{
+  "format": "ai2apps-scope-pack",
+  "version": 1,
+  "id": "ornith1.5-35b-a3b-scope-pack",
+  "pack_version": "2026.08.29.1",
+  "family": "qwen3_6",
+  "engine": "ornith1.5-qwen3.6-vlm",
+  "profile": {
+    "file": "scope-profile.json",
+    "format": "dmoe-joint-hotsets-v3",
+    "sha256": "4c0424ba83c3154c039e2a15f43476363ba29b7668a696d9b5ff45c6b39027c9",
+    "layers": 40,
+    "routed_layers": 40,
+    "experts": 256,
+    "max_ranked_experts": 120,
+    "scopes": 10
+  },
+  "compatibility": {
+    "model_ids": ["ornith-1.5-35b-a3b-mlx-4bit-vision"],
+    "source_revisions": {
+      "ornith-1.5-35b-a3b-mlx-4bit-vision": "31428ce8829c277f9255c59662b8efab58898ecf"
+    },
+    "memory_tiers": [160, 192],
+    "arena_tail_slots": 32
+  },
+  "provenance": {
+    "kind": "derived-router-profile",
+    "source_project": "DMoE research artifacts",
+    "source_artifact": "benchmarks/profiles/ornith15-qwen36-scope-train10-v1.json",
+    "benchmark_document": "docs/ornith15-qwen36-cached-moe-optimization-2026-08-29.md"
+  }
+}

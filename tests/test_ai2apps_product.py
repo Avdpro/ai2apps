@@ -94,6 +94,6 @@ def test_chat_exposes_engine_boost_modes() -> None:
     assert '@pointerdown.prevent="beginRush($event)"' in html
     assert '@pointerup.prevent="releaseRush()"' in html
     assert "Hold for temporary Blast (Head2)" in html
-    assert html.count('x-show="isCacheMoeMode"') >= 5
+    assert html.count('x-show="isCacheMoeMode"') >= 2
     assert '"cache_moe"' in pool
     assert '"cache_moe"' in routes

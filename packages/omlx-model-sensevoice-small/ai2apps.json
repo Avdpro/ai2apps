@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-sensevoice-small",
     "type": "service",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "displayName": "SenseVoice Small",
     "description": "SenseVoiceSmall multilingual speech recognition by FunAudioLLM / FunASR for AI2Apps Chat. FunASR Model License 1.1; license and attribution included."
   },

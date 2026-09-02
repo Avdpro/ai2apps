@@ -12,6 +12,7 @@ import json
 import os
 import secrets
 import shutil
+import stat
 import sys
 import tempfile
 import uuid
@@ -27,6 +28,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.datastructures import UploadFile
 
 from .protocol import (
+    ModelWorkerArtifact,
     ModelWorkerCheckpoint,
     ModelWorkerContext,
     ModelWorkerError,
@@ -50,10 +52,14 @@ OPERATIONS = {
 MAX_JSON_BYTES = 32 * 1024 * 1024
 MAX_MULTIPART_FILE_BYTES = 100 * 1024 * 1024
 MAX_MULTIPART_FIELD_BYTES = 64 * 1024
-MAX_MULTIPART_PARTS = 8
+# Video reference models such as MiniMax H3 Ref2VA accept up to twelve
+# ordered media inputs.  Keep the transport limit aligned with the public
+# capability contract so valid requests are not rejected before the adapter.
+MAX_MULTIPART_PARTS = 12
 MAX_AUDIO_SECONDS = 60 * 60
 MAX_AUDIO_SAMPLE_RATE = 192_000
 MAX_AUDIO_CHANNELS = 2
+MAX_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024
 AUDIO_OPERATIONS = {
     "audio_transcription",
     "audio_speech",
@@ -110,8 +116,8 @@ async def _multipart_payload(
     context: ModelWorkerContext,
     request_id: str,
     operation: str,
+    root: Path,
 ) -> tuple[dict[str, Any], dict[str, ModelWorkerPart], Path]:
-    root = _request_root(context, request_id)
     payload: dict[str, Any] = {}
     parts: dict[str, ModelWorkerPart] = {}
     try:
@@ -305,7 +311,12 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
     expected_token = token if token is not None else os.environ.get("AI2APPS_MODEL_WORKER_TOKEN")
     if not expected_token:
         raise ModelWorkerConfigurationError("Model Worker authentication token is missing")
-    state: dict[str, Any] = {"adapter": None, "invocation_lock": asyncio.Lock()}
+    state: dict[str, Any] = {
+        "adapter": None,
+        "invocation_lock": asyncio.Lock(),
+        "requests": {},
+        "accepting_requests": True,
+    }
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -352,6 +363,55 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             ],
         }
 
+    @app.get("/v1/status")
+    async def worker_status():
+        records = state["requests"].values()
+        return {
+            "status": "ready" if state["adapter"] is not None else "starting",
+            "protocol": PROTOCOL,
+            "service": context.service_id,
+            "accepting_requests": state["accepting_requests"],
+            "active_requests": sum(
+                1 for record in records if record.get("status") == "running"
+            ),
+            "queued_requests": sum(
+                1 for record in records if record.get("status") == "queued"
+            ),
+        }
+
+    @app.post("/v1/control/drain")
+    async def drain():
+        state["accepting_requests"] = False
+        return {"status": "draining"}
+
+    @app.post("/v1/control/resume")
+    async def resume():
+        state["accepting_requests"] = True
+        return {"status": "ready"}
+
+    @app.get("/v1/requests/{request_id}")
+    async def request_status(request_id: str):
+        record = state["requests"].get(request_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Worker request not found")
+        return dict(record)
+
+    @app.delete("/v1/requests/{request_id}")
+    async def cancel_request(request_id: str):
+        record = state["requests"].get(request_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Worker request not found")
+        if record["status"] not in {"queued", "running"}:
+            return dict(record)
+        cancel = getattr(state["adapter"], "cancel", None)
+        if not callable(cancel):
+            raise HTTPException(status_code=409, detail="Worker request is not cancellable")
+        result = cancel(request_id)
+        if inspect.isawaitable(result):
+            await result
+        record["cancel_requested"] = True
+        return dict(record)
+
     @app.exception_handler(ModelWorkerError)
     async def model_worker_error(_request: Request, exc: ModelWorkerError):
         return JSONResponse(
@@ -366,8 +426,50 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
         )
 
     async def invoke(operation: str, request: Request):
+        if not state["accepting_requests"]:
+            raise HTTPException(status_code=503, detail="Model Worker is draining")
         request_id = request.headers.get("x-request-id") or f"worker-{uuid.uuid4().hex}"
-        request_root: Path | None = None
+        records: dict[str, dict[str, Any]] = state["requests"]
+        if len(records) >= 128:
+            completed = next(
+                (key for key, value in records.items()
+                 if value.get("status") not in {"queued", "running"}),
+                None,
+            )
+            if completed is not None:
+                records.pop(completed, None)
+        record: dict[str, Any] = {
+            "request_id": request_id,
+            "operation": operation,
+            "status": "queued",
+            "progress": None,
+            "cancel_requested": False,
+        }
+        async def report_progress(update: Mapping[str, Any]) -> None:
+            if not isinstance(update, Mapping):
+                raise ModelWorkerError("Progress update must be an object")
+            phase = update.get("phase")
+            current = update.get("current")
+            total = update.get("total")
+            if (
+                not isinstance(phase, str) or not phase or len(phase) > 64
+                or not isinstance(current, int) or isinstance(current, bool) or current < 0
+                or not isinstance(total, int) or isinstance(total, bool) or total < 1
+                or current > total
+            ):
+                raise ModelWorkerError("Progress update is invalid")
+            safe = {"phase": phase, "current": current, "total": total}
+            for name in ("segment", "segments"):
+                value = update.get(name)
+                if value is not None:
+                    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                        raise ModelWorkerError("Progress segment is invalid")
+                    safe[name] = value
+            record["progress"] = safe
+
+        request_root = _request_root(context, request_id)
+        output_root = request_root / "output"
+        output_root.mkdir()
         parts: dict[str, ModelWorkerPart] = {}
         content_type = request.headers.get("content-type", "").lower()
         if content_type.startswith("multipart/form-data"):
@@ -376,6 +478,7 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                 context=context,
                 request_id=request_id,
                 operation=operation,
+                root=request_root,
             )
         else:
             content = await request.body()
@@ -392,17 +495,21 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             payload=payload,
             request_id=request_id,
             parts=parts,
+            output_root=output_root,
+            progress=report_progress,
         )
+        records[request_id] = record
         lock: asyncio.Lock = state["invocation_lock"]
         await lock.acquire()
+        record["status"] = "running"
         try:
             result = state["adapter"].invoke(worker_request)
             if inspect.isawaitable(result):
                 result = await result
         except BaseException:
+            record["status"] = "failed"
             lock.release()
-            if request_root is not None:
-                shutil.rmtree(request_root, ignore_errors=True)
+            shutil.rmtree(request_root, ignore_errors=True)
             raise
         if isinstance(result, ModelWorkerStream):
             async def serialized_chunks():
@@ -410,9 +517,9 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                     async for chunk in result.chunks:
                         yield chunk
                 finally:
+                    record["status"] = "succeeded"
                     lock.release()
-                    if request_root is not None:
-                        shutil.rmtree(request_root, ignore_errors=True)
+                    shutil.rmtree(request_root, ignore_errors=True)
 
             return StreamingResponse(
                 serialized_chunks(),
@@ -420,9 +527,70 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                 media_type=result.media_type,
                 headers=dict(result.headers or {}),
             )
+        if isinstance(result, ModelWorkerArtifact):
+            artifact = result.path
+            if artifact.parent != output_root or artifact.name in {"", ".", ".."}:
+                lock.release()
+                shutil.rmtree(request_root, ignore_errors=True)
+                raise ModelWorkerError(
+                    "Artifact must be a direct child of the request output root",
+                    code="invalid_output_artifact",
+                    status_code=500,
+                )
+            root_descriptor = None
+            try:
+                root_descriptor = os.open(
+                    output_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                )
+                descriptor = os.open(
+                    artifact.name,
+                    os.O_RDONLY | os.O_NOFOLLOW,
+                    dir_fd=root_descriptor,
+                )
+            except OSError as exc:
+                lock.release()
+                shutil.rmtree(request_root, ignore_errors=True)
+                raise ModelWorkerError(
+                    "Artifact cannot be opened safely",
+                    code="invalid_output_artifact",
+                    status_code=500,
+                ) from exc
+            finally:
+                if root_descriptor is not None:
+                    os.close(root_descriptor)
+            descriptor_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(descriptor_stat.st_mode) or descriptor_stat.st_size > MAX_ARTIFACT_BYTES:
+                os.close(descriptor)
+                lock.release()
+                shutil.rmtree(request_root, ignore_errors=True)
+                raise ModelWorkerError(
+                    "Artifact is not a supported output file",
+                    code="invalid_output_artifact",
+                    status_code=500,
+                )
+
+            async def artifact_chunks():
+                try:
+                    while chunk := await asyncio.to_thread(os.read, descriptor, 1024 * 1024):
+                        yield chunk
+                finally:
+                    record["status"] = "succeeded"
+                    os.close(descriptor)
+                    lock.release()
+                    shutil.rmtree(request_root, ignore_errors=True)
+
+            filename = (Path(result.filename).name or "result.bin").replace('"', "_")
+            return StreamingResponse(
+                artifact_chunks(),
+                media_type=result.media_type,
+                headers={
+                    "content-length": str(descriptor_stat.st_size),
+                    "content-disposition": f'attachment; filename="{filename}"',
+                },
+            )
         lock.release()
-        if request_root is not None:
-            shutil.rmtree(request_root, ignore_errors=True)
+        shutil.rmtree(request_root, ignore_errors=True)
+        record["status"] = "succeeded"
         if isinstance(result, ModelWorkerResponse):
             return Response(
                 content=result.content,
@@ -445,7 +613,10 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI2Apps system Model Worker")
     parser.add_argument("--config", required=True)
-    parser.add_argument("--port", required=True, type=int)
+    endpoint = parser.add_mutually_exclusive_group(required=True)
+    endpoint.add_argument("--port", type=int)
+    endpoint.add_argument("--uds")
+    parser.add_argument("--host", choices=("127.0.0.1", "0.0.0.0"), default="127.0.0.1")
     args = parser.parse_args()
     try:
         from setproctitle import setproctitle
@@ -454,7 +625,10 @@ def main() -> None:
     except ImportError:  # pragma: no cover - optional in source environments
         pass
     app = create_app(args.config)
-    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
+    if args.uds:
+        uvicorn.run(app, uds=args.uds, access_log=False)
+    else:
+        uvicorn.run(app, host=args.host, port=args.port, access_log=False)
 
 
 if __name__ == "__main__":

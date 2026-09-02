@@ -154,6 +154,28 @@ def _initialize_scope_block(block, policy, layer: int) -> None:
     block.scope_prefill_model_key = None
 
 
+def _bind_vlm_scope_blocks(model, policy) -> tuple:
+    """Bind layer IDs and Prefill ownership independently of sanitize().
+
+    mlx-vlm intentionally skips model sanitizers for native MLX checkpoints.
+    Scope metadata therefore has to be attached after model construction, not
+    only from ``Model.sanitize``.  Otherwise the compact SwitchGLU banks have
+    the right physical shape but no expert-ID-to-slot mapping at first Prefill.
+    """
+
+    from .scope_cache import get_qwen36_fallback_loader
+
+    blocks = tuple(layer.mlp for layer in model.language_model.model.layers)
+    for layer, block in enumerate(blocks):
+        _initialize_scope_block(block, policy, layer)
+    model_key = id(model)
+    loader = get_qwen36_fallback_loader(str(policy.store_path))
+    loader.register_prefill_blocks(model_key, blocks)
+    for block in blocks:
+        block.scope_prefill_model_key = model_key
+    return blocks
+
+
 def apply_qwen36_vlm_flesh_patch() -> bool:
     """Give mlx-vlm's independent Qwen MoE classes the compact runtime."""
 
@@ -169,7 +191,6 @@ def apply_qwen36_vlm_flesh_patch() -> bool:
     from mlx_vlm.models.qwen3_5_moe import qwen3_5_moe as vlm_outer
 
     from .model_patch import _exact_scope_moe, _lossy_replace_routes
-    from .scope_cache import get_qwen36_fallback_loader
 
     block_cls = vlm_language.Qwen3_5MoeSparseMoeBlock
     original_init = block_cls.__init__
@@ -237,6 +258,15 @@ def apply_qwen36_vlm_flesh_patch() -> bool:
     block_cls._ai2apps_qwen36_flesh = True
 
     outer_cls = vlm_outer.Model
+    original_outer_init = outer_cls.__init__
+
+    def compact_outer_init(self, config):
+        original_outer_init(self, config)
+        active = load_qwen36_scope_policy()
+        if active is not None:
+            _bind_vlm_scope_blocks(self, active)
+
+    outer_cls.__init__ = compact_outer_init
     original_sanitize = outer_cls.sanitize
 
     def compact_sanitize(self, weights):
@@ -244,9 +274,8 @@ def apply_qwen36_vlm_flesh_patch() -> bool:
         active = load_qwen36_scope_policy()
         if active is None:
             return sanitized
-        blocks = tuple(layer.mlp for layer in self.language_model.model.layers)
-        for layer, block in enumerate(blocks):
-            _initialize_scope_block(block, active, layer)
+        blocks = _bind_vlm_scope_blocks(self, active)
+        for layer, _block in enumerate(blocks):
             protected_count = active.resident_experts
             physical_count = active.physical_experts
             prefix = f"language_model.model.layers.{layer}.mlp.switch_mlp"
@@ -266,11 +295,6 @@ def apply_qwen36_vlm_flesh_patch() -> bool:
                         tail_key = key.replace(".switch_mlp.", ".tail_switch_mlp.")
                         sanitized[tail_key] = value[protected_count:]
                         sanitized[key] = value[:protected_count]
-        model_key = id(self)
-        loader = get_qwen36_fallback_loader(str(active.store_path))
-        loader.register_prefill_blocks(model_key, blocks)
-        for block in blocks:
-            block.scope_prefill_model_key = model_key
         return sanitized
 
     outer_cls.sanitize = compact_sanitize

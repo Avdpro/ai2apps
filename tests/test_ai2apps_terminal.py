@@ -133,6 +133,6 @@ def test_terminal_app_and_routes_cover_multi_session_transport():
     )[0]
     assert "messageInput?.focus()" not in context_handler
     assert "if (!this.terminalAssistantMode) input.focus();" in chat
-    assert "--terminal-shell-reveal-safe-area: 52px" in styles
-    assert "padding: 0 var(--terminal-shell-reveal-safe-area)" in styles
-    assert "padding: 8px var(--terminal-shell-reveal-safe-area)" in styles
+    assert "terminal-shell-reveal-safe-area" not in styles
+    assert ".terminal-toolbar { height: 60px; padding: 0 18px" in styles
+    assert ".terminal-assistant-header { min-height: 60px; padding: 8px 15px" in styles

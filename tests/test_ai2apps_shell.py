@@ -6,10 +6,11 @@ import plistlib
 import re
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
+from ai2apps.apps import SYSTEM_APP_MANIFESTS
 from ai2apps.config import PlatformConfig
 from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
@@ -37,6 +38,13 @@ def test_system_app_catalog_covers_legacy_omlx_surfaces():
         "ai2apps.discover",
         "ai2apps.agents",
         "ai2apps.general-chat",
+        "ai2apps.ai-browser",
+        "ai2apps.messager",
+        "ai2apps.gallery",
+        "ai2apps.knowledge",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
+        "ai2apps.imagine-studio",
         "ai2apps.trust-center",
         "ai2apps.settings",
         "ai2apps.logs",
@@ -45,6 +53,24 @@ def test_system_app_catalog_covers_legacy_omlx_surfaces():
         "ai2apps.benchmark",
     }
     assert all(app["singleton"] for app in admin_routes.SYSTEM_APPS)
+
+
+def test_default_dock_contains_core_creation_apps():
+    assert {
+        manifest["id"]
+        for manifest in SYSTEM_APP_MANIFESTS
+        if manifest["navigation"].get("pinned_default")
+    } == {
+        "ai2apps.general-chat",
+        "ai2apps.ai-browser",
+        "ai2apps.gallery",
+        "ai2apps.knowledge",
+        "ai2apps.discover",
+        "ai2apps.coder",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
+        "ai2apps.imagine-studio",
+    }
 
 
 def test_shell_router_exposes_singleton_and_instance_urls():
@@ -84,6 +110,7 @@ def test_desktop_home_renders_shell_without_launching_dashboard():
             "initial_app_id": "",
             "initial_instance_id": None,
             "desktop_client_version": None,
+            "desktop_client_build": None,
             "can_manage_system": True,
         },
     )
@@ -109,10 +136,30 @@ def test_desktop_shell_has_a_home_surface_and_root_navigation():
     assert 'href="https://github.com/Avdpro/ai2apps"' in shell
     assert 'rel="noopener noreferrer"' in shell
     assert ".desktop-home-open-source" in styles
+    assert "desktop-home-actions" not in shell
+    assert "shell.home.action.chat" not in shell
+    assert "shell.home.action.browse" not in shell
+    assert "'ai2apps.general-chat',\n            'ai2apps.imagine-studio',\n            'ai2apps.readaloud',\n            'ai2apps.video-studio'," in script
+    assert "const visible = preferred.map((id) => byId.get(id)).filter(Boolean);" in script
     assert 'data-desktop-home-account' in shell
     assert "function renderHomeAccount(result)" in script
     assert "homeAppsLocked" in script
     assert ".desktop-home-app.is-locked" in styles
+    assert "function resumeProvisioningApp()" in script
+    assert "'/v1/platform/provisioning/sessions'" in script
+    assert "acknowledge-return" not in script
+    assert "await resumeProvisioningApp()" in script
+
+
+def test_desktop_dock_home_button_uses_logo_without_visible_wordmark():
+    shell = (WEB_ROOT / "templates" / "shell.html").read_text()
+    styles = (WEB_ROOT / "static" / "css" / "shell.css").read_text()
+
+    assert 'class="dock-launcher-button"' in shell
+    assert 'class="dock-logo"' in shell
+    assert "shell.home.aria" in shell
+    assert 'class="dock-wordmark"' not in shell
+    assert ".dock-wordmark" not in styles
 
 
 def test_desktop_shell_auto_allows_only_chat_microphone_requests():
@@ -142,6 +189,40 @@ def test_desktop_shell_auto_allows_only_chat_microphone_requests():
     assert '"${PROJECT_DIR}/scripts/sign-release-app.sh"' in dev_packager
     assert 'codesign --force --deep --sign - "${SHELL_APP}"' not in dev_packager
     assert "com.apple.security.device.audio-input" in launcher_entitlements
+
+
+def test_desktop_shell_downloads_always_open_the_native_save_dialog():
+    repository_root = Path(__file__).parents[1]
+    launchers = [
+        repository_root
+        / "apps/ai2apps-acefox/Sources/AI2AppsLauncher/main.swift",
+        repository_root
+        / "apps/ai2apps-acefox/Sources/AI2AppsBrowserLauncher/main.swift",
+    ]
+
+    for launcher in launchers:
+        source = launcher.read_text()
+        assert 'user_pref("browser.download.useDownloadDir", false);' in source
+        assert 'user_pref("browser.download.useDownloadDir", true);' not in source
+
+
+def test_desktop_shell_profile_disables_page_pinch_zooming():
+    repository_root = Path(__file__).parents[1]
+    launchers = [
+        repository_root
+        / "apps/ai2apps-acefox/Sources/AI2AppsLauncher/main.swift",
+        repository_root
+        / "apps/ai2apps-acefox/Sources/AI2AppsBrowserLauncher/main.swift",
+    ]
+
+    for launcher in launchers:
+        source = launcher.read_text()
+        assert 'user_pref("apz.allow_zooming", false);' in source
+        assert 'user_pref("apz.allow_double_tap_zooming", false);' in source
+        assert 'user_pref("browser.gesture.pinch.in", "");' in source
+        assert 'user_pref("browser.gesture.pinch.in.shift", "");' in source
+        assert 'user_pref("browser.gesture.pinch.out", "");' in source
+        assert 'user_pref("browser.gesture.pinch.out.shift", "");' in source
 
 
 def test_desktop_packages_one_shared_acefox_bundle_for_shell_and_agents():
@@ -299,8 +380,50 @@ def test_dock_account_status_exposes_only_summary_fields():
 
     class Cloud:
         async def request(self, method, path):
-            assert (method, path) == ("GET", "/v1/auth/me")
+            assert method == "GET"
+            if path == "/v1/currency/balances":
+                return CurrencyResponse(
+                    {
+                        "items": [
+                            {
+                                "assetCode": "PROMO_POINTS",
+                                "available": "42",
+                                "exponent": 0,
+                            },
+                            {
+                                "assetCode": "USD_COMPUTE_CREDIT",
+                                "available": "1250",
+                                "exponent": 3,
+                            },
+                        ]
+                    }
+                )
+            if path == "/v1/currency/provider-balances":
+                return CurrencyResponse(
+                    {
+                        "items": [
+                            {
+                                "assetCode": "USD_PROVIDER_EARNINGS",
+                                "available": "875",
+                                "exponent": 3,
+                            }
+                        ]
+                    }
+                )
+            assert path == "/v1/auth/me"
             return Response()
+
+    class CurrencyResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+        async def aclose(self):
+            return None
 
     with patch.object(
         admin_routes,
@@ -325,6 +448,11 @@ def test_dock_account_status_exposes_only_summary_fields():
         "display_name": "Ada",
         "email": "ada@example.com",
         "points": "42",
+        "currencies": [
+            {"code": "points", "amount_minor": "42", "exponent": 0},
+            {"code": "gas", "amount_minor": "1250", "exponent": 3},
+            {"code": "cash", "amount_minor": "875", "exponent": 3},
+        ],
     }
 
 
@@ -360,6 +488,18 @@ def test_member_cannot_update_installation_language():
         )
 
     assert error.value.status_code == 403
+
+
+def test_member_can_read_device_locale_for_trusted_shell_surface():
+    settings = SimpleNamespace(ui=SimpleNamespace(language="zh"))
+    with patch.object(admin_routes, "_get_global_settings", return_value=settings):
+        result = asyncio.run(
+            admin_routes.shell_ui_locale(_principal=MEMBER_PRINCIPAL)
+        )
+
+    assert result["language"] == "zh"
+    assert result["strings"]["chat"] == "对话"
+    assert result["strings"]["currentPage"] == "当前页面"
 
 
 def test_account_language_is_limited_to_english_and_chinese():
@@ -406,8 +546,18 @@ def test_dock_account_status_uses_the_browser_isolated_cloud_session():
 
     class BrowserCloud:
         async def request(self, method, path):
-            assert (method, path) == ("GET", "/v1/auth/me")
-            return Response()
+            assert method == "GET"
+            if path == "/v1/auth/me":
+                return Response()
+            assert path in {
+                "/v1/currency/balances",
+                "/v1/currency/provider-balances",
+            }
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"items": []},
+                aclose=AsyncMock(),
+            )
 
     global_cloud = MagicMock()
     runtime = SimpleNamespace(
@@ -437,6 +587,11 @@ def test_dock_account_status_uses_the_browser_isolated_cloud_session():
     assert result["display_name"] == "Browser Core"
     assert result["email"] == "core@example.com"
     assert result["points"] == "99"
+    assert result["currencies"] == [
+        {"code": "points", "amount_minor": "99", "exponent": 0},
+        {"code": "gas", "amount_minor": "0", "exponent": 0},
+        {"code": "cash", "amount_minor": "0", "exponent": 0},
+    ]
     global_cloud.request.assert_not_called()
 
 
@@ -607,6 +762,58 @@ def test_model_manager_explains_when_local_provider_takes_priority():
     )
 
 
+def test_model_manager_does_not_treat_runtime_package_as_prepared_weights(tmp_path):
+    recipe = {
+        "id": "demo-cached-moe",
+        "name": "Demo Cached-MoE",
+        "recipe": "cache_moe",
+        "sources": [{"repo_id": "demo/model", "revision": "pinned-revision"}],
+    }
+    runtime_model = {
+        "id": "demo-cached-moe",
+        "source_type": "package",
+        "source_repo_id": "demo/model",
+    }
+    store = SimpleNamespace(
+        list_cloud=lambda: [],
+        list_fusion=lambda: [],
+        default_models=lambda: {},
+    )
+    installer = SimpleNamespace(get_tasks=lambda: [])
+    downloader = SimpleNamespace(model_dir=tmp_path)
+
+    with (
+        patch(
+            "ai2apps.model_installer.AI2AppsInstaller.catalog",
+            return_value=[recipe],
+        ),
+        patch(
+            "ai2apps.model_installer.installed_shared_model_source_reference",
+            return_value=None,
+        ),
+        patch.object(
+            admin_routes,
+            "list_models",
+            new=AsyncMock(return_value={"models": [runtime_model]}),
+        ),
+        patch.object(admin_routes, "_hf_downloader", downloader),
+        patch.object(admin_routes, "_get_ai2apps_installer", return_value=installer),
+        patch.object(admin_routes, "_model_manager_store", return_value=store),
+        patch.object(
+            admin_routes,
+            "_ai2apps_cloud_provider",
+            new=AsyncMock(return_value={"models": []}),
+        ),
+    ):
+        result = asyncio.run(
+            admin_routes.get_model_manager(request=MagicMock(), is_admin=True)
+        )
+
+    cached = result["cached_moe"][0]
+    assert cached["runtime_model"] == runtime_model
+    assert cached["installed"] is False
+
+
 def test_instance_route_preserves_requested_instance_id():
     request = MagicMock()
     manager = MagicMock()
@@ -630,10 +837,11 @@ def test_instance_route_preserves_requested_instance_id():
             "shell.html",
             {
                 "system_apps": admin_routes.SYSTEM_APPS,
-                "initial_app_id": "example.notes",
-                "initial_instance_id": "appi_0123456789abcdef0123456789abcdef",
-                "desktop_client_version": None,
-                "can_manage_system": True,
+            "initial_app_id": "example.notes",
+            "initial_instance_id": "appi_0123456789abcdef0123456789abcdef",
+            "desktop_client_version": None,
+            "desktop_client_build": None,
+            "can_manage_system": True,
             },
         )
 
@@ -654,10 +862,11 @@ def test_system_app_shell_passes_catalog_and_selected_app():
             "shell.html",
             {
                 "system_apps": admin_routes.SYSTEM_APPS,
-                "initial_app_id": "ai2apps.models",
-                "initial_instance_id": None,
-                "desktop_client_version": None,
-                "can_manage_system": True,
+            "initial_app_id": "ai2apps.models",
+            "initial_instance_id": None,
+            "desktop_client_version": None,
+            "desktop_client_build": None,
+            "can_manage_system": True,
             },
         )
 
@@ -678,6 +887,13 @@ def test_member_shell_exposes_only_member_apps_and_no_system_control():
     assert {app["id"] for app in context["system_apps"]} == {
         "ai2apps.account",
         "ai2apps.general-chat",
+        "ai2apps.ai-browser",
+        "ai2apps.messager",
+        "ai2apps.gallery",
+        "ai2apps.knowledge",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
+        "ai2apps.imagine-studio",
     }
     assert context["can_manage_system"] is False
 
@@ -777,6 +993,10 @@ def test_account_app_exposes_core_member_management_without_persisting_grants():
     assert "revokeCoreDevice(device)" in template
     assert "renameCoreDevice(device)" in template
     assert "account.devices.device_name" in template
+    assert template.count('x-model="uiLanguage"') == 1
+    assert "currentCoreDevice.pendingDisplayName" in template
+    assert "renameCoreDevice(currentCoreDevice)" in template
+    assert 'x-if="device.id===currentCloudDeviceId"' in template
     assert "account.capacity.note" in template
     assert "account.members.seats" in template
     assert "account.policy.title" in template
@@ -823,11 +1043,117 @@ def test_account_app_exposes_core_member_management_without_persisting_grants():
     assert "this.user.id === this.localIdentity.actorUserId" in script
     assert "error.status === 404" not in script
     assert "this.isUnregisteredDeviceError(error)" in script
+    assert "typeof payload.detail === 'object'" in script
+    assert "'core_installation_required'" in script
     assert "this.installationAccess = isDeviceCore ? 'manager' : 'member'" in script
     assert ':readonly="!handoffEntryEnabled"' in template
     assert ':readonly="!credentialEntryEnabled"' in template
     assert "ownerPassword: this.memberOwnerPassword" in script
     assert "localStorage" not in script
+
+
+def test_account_sections_preserve_identity_and_step_up_flows():
+    template = (WEB_ROOT / "templates" / "system_apps" / "account.html").read_text()
+    script = (WEB_ROOT / "static" / "js" / "account.js").read_text()
+
+    for section in ("overview", "devices", "organization", "security", "activity"):
+        assert f"setSection('{section}')" in template
+    assert "activeSection: 'overview'" in script
+    assert "installationAccess !== 'manager'" in script
+
+    # Account navigation is presentation-only: every identity recovery and
+    # privileged reauthentication path remains mounted and server-authorized.
+    for action in (
+        'login()',
+        'register()',
+        'verifyEmail()',
+        'resendCode()',
+        'requestReset()',
+        'resetPassword()',
+        'connectLocalMember()',
+        'logoutLocal()',
+        'verifyAdmin()',
+    ):
+        assert action in template
+    for secret_field in (
+        'deviceOwnerPassword',
+        'policyOwnerPassword',
+        'memberOwnerPassword',
+        'adminPassword',
+    ):
+        assert secret_field in template
+    assert "ownerPassword: this.deviceOwnerPassword" in script
+    assert "ownerPassword: this.policyOwnerPassword" in script
+    assert "ownerPassword: this.memberOwnerPassword" in script
+    assert "cloud('/admin/reauth'" in script
+    assert 'x-model.number="adminDurationMinutes"' in template
+    assert 'durationMinutes: this.adminDurationMinutes' in script
+    for duration in (5, 15, 60, 180):
+        assert f'<option value="{duration}">' in template
+    assert "localStorage" not in script
+
+
+def test_account_profile_and_primary_device_use_cloud_projections():
+    template = (WEB_ROOT / "templates" / "system_apps" / "account.html").read_text()
+    script = (WEB_ROOT / "static" / "js" / "account.js").read_text()
+
+    assert "account.public_profile.title" in template
+    assert "profileDraft.visibility==='private'" in template
+    assert "profileDraft.discoverableByEmail=false" in template
+    assert "account.primary_device.note" in template
+    assert "coreDevices.filter(item => item.status==='active')" in template
+    assert "profile?.socialLinks" in template
+    assert "cloud('/profile')" in script
+    assert "cloud('/profile/primary-device'" in script
+    assert "cloud('/profile/social-link-platforms')" in script
+    assert "'/profile/social-links/' + encodeURIComponent" in script
+    assert "body: { deviceId: this.selectedPrimaryDeviceId || null }" in script
+    assert "draft.visibility === 'public' && Boolean(draft.discoverableByEmail)" in script
+    assert "primaryNode.publicOrigin" not in script
+
+
+def test_messager_is_local_first_and_cloud_fallback_is_explicit():
+    template = (WEB_ROOT / "templates" / "system_apps" / "messager.html").read_text()
+    script = (WEB_ROOT / "static" / "js" / "messager.js").read_text()
+    stylesheet = (WEB_ROOT / "static" / "css" / "messager.css").read_text()
+
+    assert 'data-app-id="ai2apps.messager"' in template
+    assert "messager.privacy.local_first" in template
+    assert "messager.status.local_first" in template
+    assert "messager.transport.local_unknown" in template
+    assert "messager.action.rotate_identity" in template
+    assert "request('/social/friends?limit=50')" in script
+    assert "request('/public/profiles/lookup'" in script
+    assert "request('/system-messages?state=all&limit=50')" in script
+    assert "this.selected = { ...friend }" in script
+    assert "if (!this.draftAttachment)" in script
+    assert "localRequest('/send'" in script
+    assert "localRequest('/device-key/rotate'" in script
+    assert "messager.error.local_result_unknown" in script
+    assert "request('/system-messages/offline'" in script
+    assert "this.draftClientMessageId = crypto.randomUUID()" in script
+    assert "this.draftSnapshot !== body" in script
+    assert "this.draftRecipientUserId !== this.selected.userId" in script
+    assert "await this.loadConversation()" in script
+    assert "uploadRequest(this.draftAttachment)" in script
+    assert "SYSTEM_MESSAGE_ATTACHMENT_NOT_AVAILABLE" in script
+    assert "URL.createObjectURL(await response.blob())" in script
+    assert "URL.revokeObjectURL" in script
+    assert 'accept="image/png,image/jpeg,image/webp"' in template
+    assert "localStorage" not in script
+    assert ".messager-search svg{display:block;width:15px;height:15px}" in stylesheet
+    assert ".messager-send svg{display:block;width:17px;height:17px}" in stylesheet
+
+
+def test_messager_i18n_keys_exist_in_english_and_simplified_chinese():
+    template = (WEB_ROOT / "templates" / "system_apps" / "messager.html").read_text()
+    script = (WEB_ROOT / "static" / "js" / "messager.js").read_text()
+    keys = set(re.findall(r"(?<![A-Za-z0-9_])(?:t|tr)\('([^']+)'", template + script))
+
+    for language in ("en", "zh"):
+        translations = json.loads((WEB_ROOT / "i18n" / f"{language}.json").read_text())
+        missing = keys - translations.keys()
+        assert not missing, f"{language}.json is missing Messager keys: {sorted(missing)}"
 
 
 def test_account_app_i18n_keys_exist_in_english_and_simplified_chinese():
@@ -858,6 +1184,13 @@ def test_unsafe_app_identifier_is_not_rendered():
     [
         ("ai2apps.dashboard", "system_apps/dashboard.html", "status"),
         ("ai2apps.account", "system_apps/account.html", "account"),
+        ("ai2apps.ai-browser", "system_apps/ai_browser.html", "ai-browser"),
+        ("ai2apps.messager", "system_apps/messager.html", "messager"),
+        ("ai2apps.gallery", "system_apps/gallery.html", "gallery"),
+        ("ai2apps.knowledge", "system_apps/knowledge.html", "knowledge"),
+        ("ai2apps.readaloud", "system_apps/readaloud.html", "readaloud"),
+        ("ai2apps.video-studio", "system_apps/video_studio.html", "video-studio"),
+        ("ai2apps.imagine-studio", "system_apps/imagine_studio.html", "imagine-studio"),
         ("ai2apps.models", "system_apps/models.html", "models"),
         ("ai2apps.discover", "system_apps/discover.html", "discover"),
         ("ai2apps.agents", "system_apps/agents.html", "agents"),
@@ -899,12 +1232,34 @@ def test_dashboard_capabilities_have_independent_host_entries(
             "principal_actor_user_id": CORE_PRINCIPAL.actor_user_id,
             "principal_is_core": True,
             "developer_surfaces_visible": True,
+            "client_environment": "browser",
         }
-        if app_id == "ai2apps.coder":
-            context["show_dock_reveal"] = False
+        if app_id in {"ai2apps.gallery", "ai2apps.knowledge"}:
+            context.update(
+                {"t": ANY, "locale_json": ANY, "current_lang": ANY}
+            )
         templates.TemplateResponse.assert_called_once_with(
             request, template_name, context
         )
+
+
+def test_system_app_content_marks_authenticated_desktop_shell_environment():
+    request = MagicMock()
+    with (
+        patch.object(admin_routes, "templates") as templates,
+        patch.object(admin_routes, "is_desktop_shell_request", return_value=True),
+    ):
+        templates.TemplateResponse.return_value = MagicMock()
+        asyncio.run(
+            admin_routes.system_app_content(
+                request=request,
+                app_id="ai2apps.video-studio",
+                principal=CORE_PRINCIPAL,
+            )
+        )
+
+    context = templates.TemplateResponse.call_args.args[2]
+    assert context["client_environment"] == "desktop"
 
 
 def test_system_app_templates_mount_only_their_owned_surface():
@@ -957,11 +1312,16 @@ def test_agent_manager_is_an_independent_management_surface():
     source = (WEB_ROOT / "templates" / "system_apps" / "agents.html").read_text()
     script = (WEB_ROOT / "static" / "js" / "agent_manager.js").read_text()
     assert 'data-app-id="ai2apps.agents"' in source
-    assert "Agent Manager" in source
-    assert "Agent Studio" not in source
+    assert "Build, connect and automate system-wide Agents" in source
+    assert ">Studio<" in source
+    assert ">Workflows<" in source
+    assert ">Schedules<" in source
     assert "/agents/' + encodeURIComponent(key) + '/management" in script
     assert "/interactive-packages/install" in script
     assert "/agent-runs?" in script
+    assert "/agent-workflows" in script
+    assert "/agent-schedules" in script
+    assert "implicit AI" in source
 
 
 def test_account_is_an_independent_optional_cloud_surface():
@@ -989,9 +1349,32 @@ def test_account_is_an_independent_optional_cloud_surface():
     assert "localStorage" not in script
     assert "/auth/login" in script
     assert "/auth/password/reset" in script
-    assert "/points/ledger?limit=50" in script
+    for path in (
+        "/currency/assets",
+        "/currency/balances",
+        "/currency/provider-balances",
+        "/currency/ledger?limit=50",
+    ):
+        assert path in script
+    assert "cloud('/points/ledger" not in script
+    assert "formatMinor(value, exponent)" in script
+    assert "Number(entry?.amountMinor)" not in script
+    assert "USD_PROVIDER_EARNINGS" in script
+    assert "account.promotion.title" in source
+    assert "redeemPromotionCode()" in source
+    assert "^A2P(?:-[A-F0-9]{4}){8}$" in script
+    assert "promotion-redeem:" in script
+    assert "'Idempotency-Key': attempt.idempotencyKey" in script
+    assert "cloud('/promotion-codes/redeem'" in script
+    assert "PROMOTION_POINTS_BALANCE_LIMIT" in script
+    assert "cloud('/points')" in script
+    assert "Promise.allSettled" in script
+    assert "console.warn('Promotion code redemption failed'" in script
+    assert "normalizedCode" not in script.split("console.warn('Promotion code redemption failed'", 1)[1].split("});", 1)[0]
     assert 'data-shell-action="account"' in shell
     assert "/admin/api/shell/account-status" in shell_script
+    assert "/v1/platform/auth/session/refresh" in shell_script
+    assert "Session expired" in shell_script
     assert "launch('ai2apps.account')" in shell_script
     assert "broadcastAccountChanged()" in shell_script
     assert "ai2apps.host.account-changed" in shell_script
@@ -1062,6 +1445,9 @@ def test_discover_blocks_target_for_restart_required_dependency():
     assert "pendingRestart(item)" in source
     assert "/v1/platform/client/restart-local" in script
     assert "installDialog?.result?.restartRequired" in source
+    assert "resumeInstallContinuation" in script
+    assert "request('/install-continuation')" in script
+    assert "request('/install-continuation', { method: 'DELETE' })" in script
 
 
 def test_discover_i18n_keys_exist_in_english_and_simplified_chinese():
@@ -1163,10 +1549,116 @@ def test_legacy_dashboard_tab_opens_corresponding_system_app():
         )
 
 
-def test_chat_brand_returns_to_canonical_dashboard_app():
+def test_chat_sidebar_header_keeps_only_conversation_controls():
     chat = (WEB_ROOT / "templates" / "chat.html").read_text()
-    assert chat.count('href="/apps/ai2apps.dashboard" target="_top"') == 2
-    assert 'href="/admin/dashboard"' not in chat
+    assert "navbar-logo-light.svg" not in chat
+    assert "navbar-logo-dark.svg" not in chat
+    assert "runtime: oMLX" not in chat
+    assert '<div class="flex items-center gap-2">' in chat
+    assert 'flex-1 min-w-0 flex items-center gap-2' in chat
+    assert ':data-tooltip="window.t(\'chat.close_sidebar\')"' in chat
+    assert ':data-tooltip="window.t(\'chat.show_sidebar\')"' in chat
+    assert "width: 46px" in chat
+    assert "border-radius: 14px" in chat
+    assert "z-index: 120" in chat
+    assert "z-index: 121" in chat
+    assert 'x-show="!sidebarOpen"' in chat
+    assert "showLeftToggle" not in chat
+
+
+def test_base_template_does_not_inject_a_dock_reveal_button():
+    base = (WEB_ROOT / "templates" / "base.html").read_text(encoding="utf-8")
+
+    assert "ai2apps-shell-reveal" not in base
+    assert "showDockReveal" not in base
+    assert "show_dock_reveal" not in base
+
+
+def test_chat_right_sidebar_consolidates_controls_and_keeps_runtime_options_discoverable():
+    chat = (WEB_ROOT / "templates" / "chat.html").read_text()
+    sidebar_markup, settings_tail = chat.split("<!-- Chat Settings Modal -->", 1)
+    settings_markup = settings_tail.split("<!-- Keyboard Shortcuts Help -->", 1)[0]
+
+    assert "rightSidebarTab: 'chat'" in chat
+    assert "attachMiniEntry(mount, { focus = true } = {})" in chat
+    assert "this.attachMiniEntry(mount, { focus: false })" in chat
+    assert "rightSidebarTab === 'profile'" not in chat
+    assert "rightSidebarTab === 'settings'" not in chat
+    assert "rightSidebarTab = 'profile'" not in chat
+    assert "rightSidebarTab = 'settings'" not in chat
+    assert 'x-show="!rightSidebarOpen"' in chat
+    assert "showRightToggle" not in chat
+    assert ':data-tooltip="window.t(\'chat.show_settings_tooltip\')"' in chat
+    assert ':data-tooltip="window.t(\'chat.close_settings_tooltip\')"' in chat
+    assert ".chat-hover-tip:not(.absolute)" in chat
+    assert "chatSettings.showScrollButton" not in chat
+    assert "chat.show_jump_button" not in chat
+    assert 'x-show="!autoScrollEnabled && isCurrentChatStreaming()"' in chat
+    assert 'x-show="availableAudioModels.length > 0"' in sidebar_markup
+    assert 'x-model="audioSettings.sttModel"' in sidebar_markup
+    assert 'x-model="audioSettings.ttsModel"' in sidebar_markup
+    assert 'x-model="audioSettings.voice"' in sidebar_markup
+    assert '@change="onAudioTtsModelChange()"' in sidebar_markup
+    assert "voiceSettingsExpanded: false" in chat
+    assert 'x-show="voiceSettingsExpanded" x-collapse' in sidebar_markup
+    assert 'x-model.number="audioSettings.speed"' in sidebar_markup
+    assert ':disabled="!audioTtsFeatureSupported(\'speed\')"' in sidebar_markup
+    assert 'x-model="audioSettings.emotion"' in sidebar_markup
+    assert "voice_speed_unavailable_tooltip" in sidebar_markup
+    assert "voice_emotion_unavailable_tooltip" in sidebar_markup
+    assert "isQwen3Tts" in chat
+    assert 'x-model="audioSettings.instructions"' in sidebar_markup
+    assert "loadAudioReference" in sidebar_markup
+    assert 'x-model="audioSettings.referenceText"' in sidebar_markup
+    assert 'x-model="audioSettings.autoSpeak"' in sidebar_markup
+    assert "loadAudioVoices" in chat
+    assert "`/v1/audio/voices?model=${encodeURIComponent(modelId)}`" in chat
+
+    for binding in (
+        "modelSettings.temperature",
+        "modelSettings.max_tokens",
+        "modelSettings.top_p",
+        "modelSettings.top_k",
+        "modelSettings.min_p",
+        "modelSettings.repetition_penalty",
+        "modelSettings.presence_penalty",
+        "activePromptProfile",
+        "systemPrompt",
+        "chatSettings.maxImages",
+        "chatSettings.maxImageSizeMb",
+        "allowSvg",
+    ):
+        assert binding in chat
+
+    assert "chat.fusion_unavailable_tooltip" in chat
+    assert "chat.cached_moe_unavailable_tooltip" in chat
+    assert ':disabled="!isFusionMode"' in chat
+    assert ':disabled="!isCacheMoeMode || isFusionMode"' in chat
+    for runtime_control in (
+        "modelSettings.fusion_gate_policy",
+        "modelSettings.fusion_mid_generation_review",
+        "modelSettings.fusion_thinking_audit",
+        "modelSettings.fusion_reviewer_guidance",
+        "setL1OptimizationMode",
+        "setFusionCacheL1Mode",
+        "setFusionCacheEngineBoost",
+        "setKvPolicy",
+        "setEngineBoostMode",
+    ):
+        assert runtime_control in settings_markup
+        assert runtime_control not in sidebar_markup
+    assert "beginRush" in sidebar_markup
+    assert "beginRush" not in settings_markup
+    assert "chat-hover-tip" in chat
+    assert "chat-runtime-setting" in settings_markup
+    assert ':data-tooltip="isFusionMode ?' in settings_markup
+    assert "chat.save_profile_disabled_tooltip" in settings_markup
+    assert "width: min(520px, calc(100vw - 32px))" in chat
+    assert "height: 90dvh" in chat
+    assert ".chat-settings-layer" in chat
+    assert ".chat-settings-header" in chat
+    assert ".chat-settings-body" in chat
+    assert "overflow-y: auto" in chat
 
 
 def test_first_party_apps_share_a_scoped_readability_floor():
@@ -1183,7 +1675,7 @@ def test_first_party_apps_share_a_scoped_readability_floor():
     assert ".discover-app" in css
     assert ".coder-app" in css
     assert ".terminal-app" in css
-    assert 'data-app-id="ai2apps.chat"' in chat
+    assert 'data-app-id="ai2apps.general-chat"' in chat
 
 
 def test_shell_assets_cover_dock_launcher_pinning_and_bridge():
@@ -1250,11 +1742,29 @@ def test_w4_bridge_mini_entry_trust_and_recovery_surfaces():
     assert "Package Trust" in shell
     assert "Patch Conflicts" in shell
     for bridge_call in (
-        "setBadge", "navigate", "openEntry", "mountMiniEntry",
+        "setBadge", "navigate", "openEntry", "openGalleryPreview", "mountMiniEntry",
         "requestCapability", "createAgentRun", "exportArtifact", "close",
     ):
         assert bridge_call in base
     assert "ai2apps.host.mini-entry-mounted" in shell_js
+    assert 'class="shell-gallery-preview"' in shell
+    assert "ai2apps.shell.open-gallery-preview" in shell_js
+    assert "revealGalleryPreview" in shell_js
+    assert "galleryPreviewFrame?.focus()" in shell_js
+    assert "galleryPreviewCloseTimer" in shell_js
+    assert "ai2apps.gallery.preview-ready" in shell_js
+    assert "ai2apps.gallery.preview-close" in shell_js
+    assert '@click.stop="open = !open"' in chat
+    assert 'class="mini-app-menu" x-show="open"' in chat
+    assert ":data-tooltip=\"open ? '' : 'Open an App Mini-Entry'\"" in chat
+    assert 'class="w-9 h-9 flex items-center justify-center' in chat
+    assert ".mini-app-launcher {" in chat
+    assert "position: absolute" in chat
+    assert "z-index: 300" in chat
+    assert "pointer-events: auto" in chat
+    assert "z-[105]" not in chat
+    assert ".chat-hover-tip:focus-within" not in chat
+    assert "$el.closest('details')" not in chat
     assert "data-patch-resolution" in shell_js
     assert "data-safe-mode" in shell_js
     assert "data-approval-id" in shell_js
@@ -1265,7 +1775,7 @@ def test_w4_bridge_mini_entry_trust_and_recovery_surfaces():
     assert "miniEntriesForMessage" in chat
     assert "moveMiniEntryToSidebar" in chat
     assert "sidebarMiniEntry" in chat
-    assert '<details class="mini-app-launcher' in chat
+    assert '<div class="mini-app-launcher' in chat
 
 
 def test_shell_template_renders_boot_catalog():
@@ -1274,12 +1784,13 @@ def test_shell_template_renders_boot_catalog():
         initial_app_id="ai2apps.dashboard",
         initial_instance_id=None,
         desktop_client_version="153.0.4",
+        desktop_client_build="2242",
     )
     assert 'id="ai2apps-shell"' in rendered
     assert 'initialAppId: "ai2apps.dashboard"' in rendered
     assert '"id": "ai2apps.general-chat"' in rendered
     assert "AI2Apps Local" in rendered
-    assert "· v153.0.4" in rendered
+    assert "· v153.0.4 (Build 2242)" in rendered
 
 
 def test_desktop_client_version_reads_supervised_native_app_bundle(
@@ -1294,7 +1805,10 @@ def test_desktop_client_version_reads_supervised_native_app_bundle(
     run_path.mkdir(parents=True)
     info_path.parent.mkdir(parents=True)
     with info_path.open("wb") as info_file:
-        plistlib.dump({"CFBundleShortVersionString": "153.0.4"}, info_file)
+        plistlib.dump(
+            {"CFBundleShortVersionString": "153.0.4", "CFBundleVersion": "2242"},
+            info_file,
+        )
     (run_path / "shell.json").write_text(
         json.dumps({"app_bundle_path": str(app_path)}),
         encoding="utf-8",
@@ -1306,6 +1820,7 @@ def test_desktop_client_version_reads_supervised_native_app_bundle(
     )
 
     assert admin_routes._desktop_client_version() == "153.0.4"
+    assert admin_routes._desktop_client_release() == ("153.0.4", "2242")
 
 
 def test_chat_template_renders_member_principal_boundary():

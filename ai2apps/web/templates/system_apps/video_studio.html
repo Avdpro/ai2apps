@@ -1,0 +1,127 @@
+{% extends app_base_template|default("base.html") %}
+
+{% block title %}{{ system_app.name }} - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/video_studio.css') }}"><link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}">{% endblock %}
+
+{% block content %}
+<div class="vs-app" x-data="videoStudioApp()" x-init="init()" data-app-id="ai2apps.video-studio" data-client-environment="{{ client_environment|default('browser') }}">
+    <header class="vs-header">
+        <div class="vs-brand"><span class="vs-logo"><i data-lucide="clapperboard"></i></span><div><h1>{{ t('video_studio.title') }}</h1><p>Video Studio · {{ t('video_studio.subtitle') }}</p></div></div>
+        <div class="vs-header-actions"><span class="vs-local"><i data-lucide="shield-check"></i>{{ t('video_studio.local_generation') }}</span><button class="vs-button" @click="refresh()" :disabled="refreshing"><span class="vs-state-icon" :class="{spin: refreshing}"><i data-lucide="refresh-cw"></i></span>{{ t('video_studio.refresh') }}</button></div>
+    </header>
+
+    <div x-show="notice" x-cloak class="vs-notice" :class="noticeTone"><span x-text="notice"></span><button @click="notice=''"><i data-lucide="x"></i></button></div>
+
+    <main class="vs-shell" @dragenter.prevent="galleryDragActive=true" @dragover.prevent="galleryDragActive=true" @dragleave="handleDragLeave($event)" @drop.prevent="handleGalleryDrop($event)">
+        <nav class="vs-studio-sidebar" aria-label="{{ t('video_studio.aria.navigation') }}">
+            <div class="vs-sidebar-switch" role="tablist" aria-label="{{ t('video_studio.aria.switcher') }}">
+                <button type="button" :class="leftView==='pipelines'&&'active'" @click="showLeftView('pipelines')" role="tab" :aria-selected="leftView==='pipelines'"><i data-lucide="workflow"></i><span>Pipeline</span></button>
+                <button type="button" :class="leftView==='assets'&&'active'" @click="showLeftView('assets')" role="tab" :aria-selected="leftView==='assets'"><i data-lucide="images"></i><span>{{ t('video_studio.assets') }}</span></button>
+            </div>
+
+            <section x-show="leftView==='pipelines'" class="vs-sidebar-panel vs-pipeline-list" aria-label="{{ t('video_studio.aria.pipeline_list') }}">
+                <div class="vs-sidebar-heading"><span>{{ t('video_studio.installed') }}</span><small x-text="pipelines.length"></small></div>
+                <template x-for="pipeline in pipelines" :key="pipeline.id">
+                    <button type="button" class="vs-pipeline-card" :class="currentPipeline.id===pipeline.id&&'active'" :aria-current="currentPipeline.id===pipeline.id?'true':null" @click="selectPipeline(pipeline.id)">
+                        <span class="vs-pipeline-icon"><i :data-lucide="pipeline.icon"></i></span>
+                        <span><strong x-text="pipeline.name"></strong><small x-text="pipeline.summary"></small></span>
+                        <i :data-lucide="pipelineReady(pipeline)?'check':'package-open'" :class="pipelineReady(pipeline)?'ready':'setup'"></i>
+                    </button>
+                </template>
+                <div class="vs-sidebar-heading roadmap"><span>{{ t('video_studio.specialized') }}</span><small>COMING</small></div>
+                <article class="vs-pipeline-card planned"><span class="vs-pipeline-icon"><i data-lucide="radio-tower"></i></span><span><strong>{{ t('video_studio.live.title') }}</strong><small>{{ t('video_studio.live.summary') }}</small></span></article>
+                <article class="vs-pipeline-card planned"><span class="vs-pipeline-icon"><i data-lucide="wand-sparkles"></i></span><span><strong>{{ t('video_studio.animation.title') }}</strong><small>{{ t('video_studio.animation.summary') }}</small></span></article>
+                <p class="vs-sidebar-note"><i data-lucide="code-2"></i><span>{{ t('video_studio.coder_note') }}</span></p>
+            </section>
+
+            <section x-show="leftView==='assets'" x-cloak class="vs-sidebar-panel vs-assets-panel" aria-label="{{ t('video_studio.aria.gallery_assets') }}">
+                <div class="vs-sidebar-heading"><span>Gallery</span><button type="button" @click="openGallery()" title="{{ t('video_studio.open_gallery') }}"><i data-lucide="external-link"></i></button></div>
+                <div x-show="galleryMiniLoading" class="vs-gallery-state"><span class="vs-state-icon spin"><i data-lucide="loader-circle"></i></span><p>{{ t('video_studio.gallery_loading') }}</p></div>
+                <div x-show="galleryMiniError" class="vs-gallery-state error"><i data-lucide="image-off"></i><p x-text="galleryMiniError"></p><button class="vs-button" type="button" @click="mountGalleryMini(true)">{{ t('video_studio.retry') }}</button></div>
+                <iframe x-ref="galleryMini" x-show="galleryMiniUrl&&!galleryMiniError" class="vs-gallery-mini" :src="galleryMiniUrl" title="Gallery Mini Entry" loading="lazy"></iframe>
+                <p class="vs-gallery-help"><i data-lucide="grip"></i>{{ t('video_studio.gallery_help') }}</p>
+            </section>
+        </nav>
+
+        <section class="vs-pipeline-workspace" aria-label="{{ t('video_studio.aria.current_pipeline') }}">
+            <header class="vs-pipeline-header">
+                <div><span class="eyebrow">CURRENT PIPELINE</span><h2 x-text="currentPipeline.name"></h2><p x-text="tr('video_studio.builtin_pipeline',{description:currentPipeline.description})"></p></div>
+                <span class="vs-pipeline-ready" :class="selectedProvider?.ready?'ready':'setup'"><i :data-lucide="selectedProvider?.ready?'check-circle-2':'package-open'"></i><span x-text="tr(selectedProvider?.ready?'video_studio.deps_ready':'video_studio.deps_setup')"></span></span>
+            </header>
+
+        <section class="vs-create">
+            <div class="vs-section-title"><div><span class="eyebrow">CREATE</span><h2 x-text="currentPipeline.actionTitle"></h2></div><span class="vs-model-state" :class="selectedProvider?.ready?'ready':'offline'"><i data-lucide="circle"></i><span x-text="tr(selectedProvider?.ready?'video_studio.model_ready':'video_studio.model_first_setup')"></span></span></div>
+
+            <div x-show="mode==='i2v'" x-cloak class="vs-keyframes">
+                <label class="vs-drop" :class="{'has-preview':firstPreview,'drag-target':gallerySlotTarget==='first'}" @dragenter.stop.prevent="enterGallerySlot('first')" @dragover.stop.prevent="enterGallerySlot('first')" @dragleave.stop="leaveGallerySlot($event,'first')" @drop.stop.prevent="handleGalleryDrop($event,'first')">
+                    <input type="file" accept="image/png,image/jpeg,image/webp" @change="setImage('first',$event)">
+                    <img x-show="firstPreview" :src="firstPreview" alt="{{ t('video_studio.start_frame_alt') }}">
+                    <span x-show="!firstPreview"><i data-lucide="image-plus"></i><strong>{{ t('video_studio.start_frame') }}</strong><small>{{ t('video_studio.frame_formats') }}</small></span>
+                    <button x-show="firstPreview" type="button" @click.prevent="clearImage('first')"><i data-lucide="x"></i></button>
+                </label>
+                <span class="vs-keyframe-arrow"><i data-lucide="arrow-right"></i></span>
+                <label class="vs-drop" :class="{'has-preview':lastPreview,'drag-target':gallerySlotTarget==='last'}" @dragenter.stop.prevent="enterGallerySlot('last')" @dragover.stop.prevent="enterGallerySlot('last')" @dragleave.stop="leaveGallerySlot($event,'last')" @drop.stop.prevent="handleGalleryDrop($event,'last')">
+                    <input type="file" accept="image/png,image/jpeg,image/webp" @change="setImage('last',$event)">
+                    <img x-show="lastPreview" :src="lastPreview" alt="{{ t('video_studio.end_frame_alt') }}">
+                    <span x-show="!lastPreview"><i data-lucide="image-plus"></i><strong>{{ t('video_studio.end_frame') }}</strong><small>{{ t('video_studio.frame_transition') }}</small></span>
+                    <button x-show="lastPreview" type="button" @click.prevent="clearImage('last')"><i data-lucide="x"></i></button>
+                </label>
+            </div>
+
+            <div x-show="mode==='r2v'" x-cloak class="vs-references">
+                <label class="vs-reference-picker"><input type="file" multiple accept="image/png,image/jpeg,image/webp" @change="setReferences('Images',$event)"><i data-lucide="images"></i><span><strong>{{ t('video_studio.reference_images') }}</strong><small x-text="referenceImages.length ? tr('video_studio.images_selected',{count:referenceImages.length}) : tr('video_studio.max_images')"></small></span></label>
+                <label class="vs-reference-picker"><input type="file" multiple accept="video/mp4,video/quicktime,video/webm" @change="setReferences('Videos',$event)"><i data-lucide="film"></i><span><strong>{{ t('video_studio.reference_videos') }}</strong><small x-text="referenceVideos.length ? tr('video_studio.items_selected',{count:referenceVideos.length}) : tr('video_studio.max_videos')"></small></span></label>
+                <label class="vs-reference-picker"><input type="file" multiple accept="audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/flac" @change="setReferences('Audios',$event)"><i data-lucide="audio-lines"></i><span><strong>{{ t('video_studio.reference_audio') }}</strong><small x-text="referenceAudios.length ? tr('video_studio.items_selected',{count:referenceAudios.length}) : tr('video_studio.max_audio')"></small></span></label>
+                <p><i data-lucide="info"></i>{{ t('video_studio.references_help') }}</p>
+            </div>
+
+            <label class="vs-field vs-prompt"><span>{{ t('video_studio.prompt') }} <small x-text="prompt.length + ' / 8000'"></small></span><textarea x-model="prompt" maxlength="8000" placeholder="{{ t('video_studio.prompt_placeholder') }}"></textarea></label>
+
+            <div class="vs-controls">
+                <label class="vs-field"><span>{{ t('video_studio.model') }}</span><select x-model="modelId" @change="syncDefaults()"><template x-for="provider in modeProviders" :key="provider.id"><option :value="provider.id" x-text="providerLabel(provider)"></option></template></select><small x-show="selectedProvider" x-text="modelDetail(selectedProvider)"></small></label>
+                <label class="vs-field"><span>{{ t('video_studio.resolution') }}</span><select x-model="resolution"><template x-for="item in resolutions" :key="item"><option :value="item" x-text="resolutionLabel(item)"></option></template></select></label>
+                <label class="vs-field"><span>{{ t('video_studio.duration') }}</span><div class="vs-range"><input type="range" :min="durationMin" :max="durationMax" step="0.5" x-model.number="duration"><output x-text="tr('video_studio.seconds',{count:duration.toFixed(1)})"></output></div><small x-text="frameNote"></small></label>
+            </div>
+
+            <details class="vs-advanced"><summary><span><i data-lucide="sliders-horizontal"></i>{{ t('video_studio.advanced') }}</span><i data-lucide="chevron-down"></i></summary><div class="vs-advanced-grid">
+                <label class="vs-field"><span>{{ t('video_studio.preset') }}</span><select x-model="preset"><template x-for="item in presets" :key="item.id"><option :value="item.id" x-text="presetLabel(item)"></option></template></select><small x-text="presetHelp"></small></label>
+                <label class="vs-field"><span>{{ t('video_studio.steps') }}</span><input type="number" min="1" max="60" step="1" x-model.number="steps"><small>{{ t('video_studio.steps_help') }}</small></label>
+                <label class="vs-field"><span>{{ t('video_studio.seed') }}</span><div class="vs-seed"><input type="number" step="1" x-model.number="seed"><button type="button" @click="randomizeSeed()" title="{{ t('video_studio.seed') }}"><i data-lucide="dices"></i></button></div><small>{{ t('video_studio.seed_help') }}</small></label>
+                <label class="vs-field"><span>{{ t('video_studio.task_label') }}</span><input type="text" maxlength="120" x-model.trim="label" placeholder="{{ t('video_studio.task_label_placeholder') }}"></label>
+            </div></details>
+
+            <div class="vs-submit"><div><strong x-text="currentPipeline.runLabel"></strong><small x-text="tr(selectedProvider?.ready?'video_studio.submit_ready':'video_studio.submit_setup')"></small></div><button class="vs-generate" @click="generate()" :disabled="submitting||!canPrimaryAction"><span class="vs-state-icon" :class="{spin: submitting}"><i :data-lucide="submitting?'loader-circle':'sparkles'"></i></span><span x-text="tr(submitting?'video_studio.preparing':(selectedProvider?.ready?'video_studio.add_queue':'video_studio.configure'))"></span></button></div>
+
+            <details x-show="mode==='t2v'" class="vs-batch"><summary><span><i data-lucide="list-plus"></i>{{ t('video_studio.batch_title') }}</span><i data-lucide="chevron-down"></i></summary><div><p>{{ t('video_studio.batch_help') }}</p><textarea x-model="batchText" placeholder='{"defaults":{"resolution":"512x512","steps":20},"scenes":[{"label":"Shot 1","mode":"t2v","prompt":"…","duration_sec":5}]}'></textarea><div class="vs-batch-actions"><input type="file" accept="application/json,.json" @change="loadBatchFile($event)"><button class="vs-button primary" @click="importBatch()" :disabled="batchSubmitting">{{ t('video_studio.batch_import') }}</button></div></div></details>
+        </section>
+        </section>
+
+        <aside class="vs-results vs-render-workspace" aria-label="{{ t('video_studio.aria.render_workspace') }}">
+            <div class="vs-result-head"><div><span class="eyebrow">OUTPUT</span><h2>{{ t('video_studio.output') }}</h2></div><button class="vs-icon-button" @click="clearFinished()" title="{{ t('video_studio.hide_finished') }}"><i data-lucide="archive-x"></i></button></div>
+            <div class="vs-preview" :class="!activeVideoUrl&&'empty'">
+                <video x-show="activeVideoUrl" :src="activeVideoUrl" controls playsinline></video>
+                <div x-show="!activeVideoUrl"><span><i data-lucide="play"></i></span><h3>{{ t('video_studio.output_empty_title') }}</h3><p>{{ t('video_studio.output_empty_body') }}</p></div>
+                <div x-show="activeVideoUrl" class="vs-preview-actions">
+                    <span class="vs-artifact-drag" draggable="true" @dragstart="dragGeneratedVideo($event,activeVideoUrl,activeTask)" title="{{ t('video_studio.drag_gallery') }}"><i data-lucide="grip-vertical"></i></span>
+                    <button type="button" @click="addActiveVideoToGallery()" :disabled="addingToGallery"><span class="vs-state-icon" :class="{spin:addingToGallery}"><i :data-lucide="addingToGallery?'loader-circle':(galleryAdded?'check':'images')"></i></span><span x-text="tr(galleryAdded?'video_studio.added':'video_studio.add_gallery')"></span></button>
+                    <a :href="activeVideoUrl" download @click="downloadArtifact($event, activeVideoUrl)"><i data-lucide="download"></i>{{ t('video_studio.download_mp4') }}</a>
+                </div>
+            </div>
+
+            <div class="vs-queue-head"><div><h3>{{ t('video_studio.queue') }}</h3><small x-text="queueSummary"></small></div><div class="vs-queue-actions"><span x-show="polling" class="vs-live"><i></i>{{ t('video_studio.live_updates') }}</span><button class="vs-join" @click="joinFinished()" :disabled="joining||completedTasks.length<2" title="{{ t('video_studio.join_title') }}"><span class="vs-state-icon" :class="{spin: joining}"><i :data-lucide="joining?'loader-circle':'combine'"></i></span>{{ t('video_studio.join') }}</button></div></div>
+            <div class="vs-queue">
+                <template x-for="task in visibleTasks" :key="task.id"><article class="vs-task" :class="task.status" :draggable="Boolean(task.result?.video?.download_url)" @dragstart="dragGeneratedVideo($event,task.result?.video?.download_url,task)" @click="selectTask(task)">
+                    <div class="vs-task-thumb"><span class="vs-state-icon" :class="{spin: task.status==='running'}"><i :data-lucide="statusIcon(task.status)"></i></span></div>
+                    <div class="vs-task-main"><div><strong x-text="taskTitle(task)"></strong><span x-text="statusLabel(task.status)"></span></div><p x-text="task.model"></p><div x-show="isActive(task)" class="vs-progress"><i :style="'width:'+task.progress.percent+'%'"></i></div><small><span x-text="phaseLabel(task.progress.phase)"></span><span> · </span><span x-text="timeLabel(task.created_at)"></span></small><div x-show="task.error" class="vs-task-error" x-text="task.error?.message"></div></div>
+                    <button x-show="isActive(task)" class="vs-task-cancel" @click.stop="cancel(task)" title="{{ t('video_studio.cancel') }}"><i data-lucide="square"></i></button>
+                    <a x-show="task.result?.video?.download_url" :href="task.result?.video?.download_url" class="vs-task-open" @click.stop="downloadArtifact($event, task.result?.video?.download_url)" title="{{ t('video_studio.download') }}"><i data-lucide="download"></i></a>
+                </article></template>
+                <div x-show="!visibleTasks.length&&!refreshing" class="vs-empty"><i data-lucide="film"></i><h3>{{ t('video_studio.empty_title') }}</h3><p>{{ t('video_studio.empty_body') }}</p></div>
+            </div>
+        </aside>
+        <div x-show="galleryDragActive" x-cloak class="vs-gallery-drop-overlay" aria-hidden="true"><span><i data-lucide="download"></i><strong>{{ t('video_studio.drop_title') }}</strong><small>{{ t('video_studio.drop_body') }}</small></span></div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ static('js/capability_provisioning.js') }}"></script><script src="{{ static('js/video_studio.js') }}"></script>{% endblock %}

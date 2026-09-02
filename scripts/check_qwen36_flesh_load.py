@@ -120,6 +120,7 @@ async def run(args: argparse.Namespace) -> None:
                 temperature=0.0,
                 top_p=1.0,
                 skip_cache_store=True,
+                **({"flesh_scope": args.scope} if not args.full_resident else {}),
             )
             finished = time.perf_counter()
             ttft = (

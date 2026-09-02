@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('gallery.mini.title') }} - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}">{% endblock %}
+
+{% block content %}
+<div class="gallery-mini" x-data="galleryApp()" x-init="init()" data-app-id="ai2apps.gallery" data-gallery-surface="mini-entry" @dragover.prevent @drop.prevent="dropFiles($event)">
+    <header><div><span><i data-lucide="gallery-horizontal-end"></i></span><div><h1>{{ t('gallery.title') }}</h1><p x-text="isBrowserSidebar ? tr('gallery.mini.browser_subtitle') : tr('gallery.mini.subtitle')">{{ t('gallery.mini.subtitle') }}</p></div></div><div><label title="{{ t('gallery.action.import') }}"><i data-lucide="upload"></i><input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label><button @click="openFullGallery()" title="{{ t('gallery.action.open_full') }}"><i data-lucide="maximize-2"></i></button></div></header>
+    <div class="gallery-mini-tools"><select x-model="selectedCollectionId" @change="activeCollectionChanged()"><template x-for="collection in collections" :key="collection.id"><option :value="collection.id" x-text="collectionName(collection)"></option></template></select><div><i data-lucide="search"></i><input x-model="search" @input.debounce.250ms="loadAssets()" placeholder="{{ t('gallery.search.short_placeholder') }}"></div></div>
+    <div x-show="browserImportStage" x-cloak class="gallery-mini-import-status" role="status" aria-live="polite">
+        <i data-lucide="loader-circle"></i><div><strong x-text="browserImportStatusText"></strong><span><b :class="{'indeterminate':browserImportStage!=='reading'}" :style="browserImportStage==='reading' ? `width:${browserImportProgress}%` : ''"></b></span></div>
+    </div>
+    <div x-show="notice" x-cloak class="gallery-mini-notice" :class="noticeTone" role="alert"><span x-text="notice"></span><button type="button" @click="dismissNotice()" title="{{ t('gallery.action.close') }}" aria-label="{{ t('gallery.action.close') }}"><i data-lucide="x"></i></button></div>
+    <div x-show="loading" class="gallery-mini-loading"><i data-lucide="loader-circle"></i></div>
+    <div x-show="!loading&&!assets.length" class="gallery-mini-empty"><i data-lucide="images"></i><strong>{{ t('gallery.mini.empty.title') }}</strong><small x-text="isBrowserSidebar ? tr('gallery.mini.browser_empty') : tr('gallery.mini.empty.body')">{{ t('gallery.mini.empty.body') }}</small></div>
+    <div x-show="!loading&&assets.length" class="gallery-mini-grid"><template x-for="asset in assets" :key="asset.id"><article role="button" tabindex="0" draggable="true" @dragstart="dragAsset($event,asset)" @dragend="finishBrowserAssetDrag(asset)" @click="previewAssetFromMini(asset)" @keydown.enter.prevent="previewAssetFromMini(asset)" @keydown.space.prevent="previewAssetFromMini(asset)" :title="asset.name"><img x-show="asset.kind==='image'" :src="contentUrl(asset)" :alt="asset.name" loading="lazy"><video x-show="asset.kind==='video'" :src="contentUrl(asset)" muted preload="metadata"></video><span x-show="!['image','video'].includes(asset.kind)"><i :data-lucide="assetIcon(asset)"></i></span><footer x-text="asset.name"></footer></article></template></div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ static('js/browser_bidi_client.js') }}?v=gallery-browser-dnd-7"></script><script src="{{ static('js/gallery.js') }}?v=gallery-browser-dnd-7"></script>{% endblock %}

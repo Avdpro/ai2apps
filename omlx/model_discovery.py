@@ -250,7 +250,9 @@ RERANKER_ARCHITECTURES = SUPPORTED_RERANKER_ARCHITECTURES | UNSUPPORTED_RERANKER
 # multimodal models (e.g., MiniCPM-o) won't trigger this.
 # Note: "whisper" and "qwen3_tts" were previously listed here but are now
 # handled as audio types (audio_stt / audio_tts) — see AUDIO_* sets below.
-UNSUPPORTED_MODEL_TYPES: set[str] = set()
+UNSUPPORTED_MODEL_TYPES: set[str] = {
+    "minimax_h3",
+}
 
 UNSUPPORTED_ARCHITECTURES: set[str] = set()
 

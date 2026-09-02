@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -77,6 +77,8 @@ class ModelWorkerRequest:
     payload: Mapping[str, Any]
     request_id: str
     parts: Mapping[str, ModelWorkerPart] | None = None
+    output_root: Path | None = None
+    progress: Callable[[Mapping[str, Any]], Awaitable[None] | None] | None = None
 
     def part(self, name: str) -> ModelWorkerPart:
         part = (self.parts or {}).get(name)
@@ -98,6 +100,16 @@ class ModelWorkerResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class ModelWorkerArtifact:
+    """A response file created under this request's controlled output root."""
+
+    path: Path
+    media_type: str
+    filename: str
+    metadata: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ModelWorkerStream:
     chunks: AsyncIterator[bytes]
     media_type: str = "text/event-stream"
@@ -113,4 +125,4 @@ class ModelWorkerAdapter(Protocol):
 
     async def invoke(
         self, request: ModelWorkerRequest
-    ) -> Mapping[str, Any] | ModelWorkerResponse | ModelWorkerStream: ...
+    ) -> Mapping[str, Any] | ModelWorkerResponse | ModelWorkerArtifact | ModelWorkerStream: ...

@@ -14,7 +14,6 @@
         <button class="dock-launcher-button" type="button" data-shell-action="home"
                 aria-label="{{ t('shell.home.aria') }}" title="{{ t('shell.home.name') }}">
             <img src="{{ static('favicon.svg') }}" alt="" class="dock-logo">
-            <span class="dock-wordmark">AI2Apps</span>
         </button>
 
         <div class="dock-divider" aria-hidden="true"></div>
@@ -27,7 +26,7 @@
         </div>
 
         <button class="dock-account" type="button" data-shell-action="account"
-                aria-label="Open AI2Apps Account" title="Open Account App">
+                aria-label="Open AI2Apps Account">
             <span class="dock-account-avatar"><i data-lucide="circle-user-round"></i></span>
             <span class="dock-account-copy">
                 <strong data-account-name>Checking account…</strong>
@@ -65,7 +64,9 @@
                     <div class="desktop-home-hero-copy">
                         <p class="desktop-home-eyebrow">
                             <span>{{ t('shell.home.eyebrow') }}</span><span data-desktop-client-version
-                                {% if not desktop_client_version | default('', true) %}hidden{% endif %}>{% if desktop_client_version | default('', true) %} · v{{ desktop_client_version }}{% endif %}</span>
+                                data-version="{{ desktop_client_version | default('', true) }}"
+                                data-build="{{ desktop_client_build | default('', true) }}"
+                                {% if not desktop_client_version | default('', true) %}hidden{% endif %}>{% if desktop_client_version | default('', true) %} · v{{ desktop_client_version }}{% if desktop_client_build | default('', true) %} (Build {{ desktop_client_build }}){% endif %}{% endif %}</span>
                         </p>
                         <h1>{{ t('shell.home.hero.line1') }}<br>{{ t('shell.home.hero.line2_prefix') }}<span data-desktop-device-label>{{ desktop_device_label | default('Device', true) }}</span>{{ t('shell.home.hero.line2_suffix') }}</h1>
                         <p class="desktop-home-intro">{{ t('shell.home.intro') }}</p>
@@ -78,14 +79,6 @@
                             </span>
                             <i data-lucide="arrow-up-right"></i>
                         </a>
-                        <div class="desktop-home-actions">
-                            <button type="button" class="desktop-home-primary" data-home-app-id="ai2apps.general-chat">
-                                <i data-lucide="message-square"></i><span>{{ t('shell.home.action.chat') }}</span>
-                            </button>
-                            <button type="button" class="desktop-home-secondary" data-shell-action="launcher">
-                                <i data-lucide="grid-3x3"></i><span>{{ t('shell.home.action.browse') }}</span>
-                            </button>
-                        </div>
                     </div>
                     <div class="desktop-home-status">
                         <span class="desktop-home-status-mark"><i data-lucide="sparkles"></i></span>
@@ -118,6 +111,9 @@
         </section>
         <iframe class="app-frame" title="Dashboard" allow="clipboard-read; clipboard-write"
                 referrerpolicy="same-origin" hidden></iframe>
+        <section class="shell-gallery-preview" aria-label="Gallery Preview" hidden>
+            <iframe title="Gallery Preview" allow="autoplay" referrerpolicy="same-origin"></iframe>
+        </section>
         <div class="app-loading" aria-live="polite" hidden>
             <span class="app-loading-mark"></span>
             <span>{{ t('shell.opening_app') }}</span>

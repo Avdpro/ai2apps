@@ -96,6 +96,8 @@ def test_models_app_opens_with_default_model_routing_first():
     assert "speech_generation" in script
     assert "audio_processing" in script
     assert "image_generation" in script
+    assert "model.source_type !== 'hf_cache'" in script
+    assert "name.startsWith('Dev: ')" in script
     assert "Installed Model Providers" in template
     assert "packages: data.packages || []" in script
 
@@ -500,7 +502,7 @@ def test_fusion_review_controls_are_available_in_manager_and_chat():
     assert 'x-show="fusionGeneratorIsCachedMoe"' in manager
     assert 'x-show="fusionReviewerIsCachedMoe"' in manager
     assert "mid_generation_review_enabled" in dashboard
-    assert 'x-show="isFusionMode"' in chat
+    assert ':disabled="!isFusionMode"' in chat
     assert "ai2apps_fusion_gate_policy" in chat
     assert "fusion_generator_engine_boost" in chat
     assert "fusion_reviewer_engine_boost" in chat

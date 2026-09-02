@@ -122,6 +122,7 @@ def main() -> None:
         str(candidate_app),
         "--dmg",
         str(candidate_dmg),
+        "--client-runtime",
     )
     run("codesign", "--verify", "--deep", "--strict", str(installed))
 

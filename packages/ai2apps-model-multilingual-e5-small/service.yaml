@@ -1,0 +1,57 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.multilingual-e5-small
+name: Multilingual E5 Small Embeddings
+description: Local 384-dimensional multilingual embeddings for AI2Apps Knowledge.
+version: 0.1.3
+
+publisher:
+  id: ai2apps
+
+runtime:
+  mode: process
+  protocol: http-json
+  provider: ai2apps.runtime.knowledge-rag
+  command: ["{runtime_python}", "{package}/src/server.py", "--port", "{port}"]
+  endpoint: http://127.0.0.1:{port}
+
+models:
+  - id: ai2apps.model.multilingual-e5-small/default
+    display_name: Multilingual E5 Small
+    model_type: embedding
+    upstream_id: mlx-community/multilingual-e5-small-mlx
+    capabilities: [text_embeddings]
+    endpoints: {embeddings: /v1/embeddings}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/multilingual-e5-small-mlx
+      revision: 5030c7625865046d350eeea28f427d80353d0ac0
+      distribution_id: dist_ai2apps_multilingual_e5_small_5030c762_v1
+      preparation: {recipe: native}
+    metadata: {dimension: 384, internal: true, family: multilingual-e5}
+
+capabilities: [text-embeddings]
+
+requires:
+  services:
+    - id: ai2apps.runtime.knowledge-rag
+      version: ">=0.1.0,<1.0.0"
+      optional: false
+      capabilities: [knowledge-runtime-v1, mlx-embeddings]
+  python: ">=3.12,<3.14"
+
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected immutable E5 checkpoint.
+  accelerator:
+    metal: true
+    reason: Generate embeddings locally with MLX on Apple Silicon.
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

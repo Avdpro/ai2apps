@@ -46,4 +46,9 @@
     .agent-package { padding:13px; border:1px solid var(--agent-line); border-radius:12px; margin-bottom:9px; }
     .agent-alert { margin-bottom:14px; padding:10px 12px; border-radius:10px; background:#fff0f0; color:#991b1b; font-size:12px; }
     .agent-install { display:flex; gap:8px; padding:14px; margin-bottom:18px; border:1px solid var(--agent-line); border-radius:14px; background:var(--agent-soft); }
+    .agent-editor-input { width:100%; border:0; outline:0; font-size:18px; font-weight:700; background:transparent; }
+    .agent-editor-label { display:grid; gap:6px; margin-bottom:14px; font-size:11px; font-weight:700; color:var(--agent-muted); text-transform:uppercase; letter-spacing:.06em; }
+    .agent-editor-label input,.agent-editor-label textarea { width:100%; padding:10px 11px; border:1px solid var(--agent-line); border-radius:10px; background:#fff; color:var(--agent-ink); font:12px/1.5 inherit; text-transform:none; letter-spacing:normal; }
+    .agent-source-editor { min-height:330px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important; }
+    .agent-schedule-form { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:18px; padding:14px; border:1px solid var(--agent-line); border-radius:14px; background:var(--agent-soft); }
     @media(max-width:850px){.agent-layout{grid-template-columns:1fr}.agent-stats{grid-template-columns:repeat(2,1fr)}.agent-manager-header{padding:14px 16px;flex-wrap:wrap}.agent-manager-body{padding:18px 16px}.agent-run{grid-template-columns:1fr 90px}.agent-run>*:nth-child(3){display:none}}

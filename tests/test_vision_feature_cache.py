@@ -382,6 +382,26 @@ class TestVLMEngineIntegration:
         assert result is expected
         engine._vlm_model.vision_tower.assert_called_once()
 
+    def test_compute_vision_features_glm5_style(self):
+        """GLM-5 should cache its native vision_model(grid_thw) output."""
+        from omlx.engine.vlm import VLMBatchedEngine
+
+        engine = VLMBatchedEngine.__new__(VLMBatchedEngine)
+        engine._vlm_model = MagicMock(spec=["vision_model", "config"])
+        engine._vlm_model.config.model_type = "glm5_next"
+        expected = mx.ones((49, 16))
+        engine._vlm_model.vision_model.return_value = expected
+        engine._vlm_model.vision_model.patch_embed.proj.weight.dtype = mx.float16
+
+        pixel_values = mx.zeros((196, 1176))
+        grid_thw = mx.array([[1, 14, 14]])
+        result = engine._compute_vision_features(
+            pixel_values, {"image_grid_thw": grid_thw}
+        )
+
+        assert result is expected
+        engine._vlm_model.vision_model.assert_called_once()
+
     def test_compute_vision_features_unsupported(self):
         """Unsupported model should return None."""
         from omlx.engine.vlm import VLMBatchedEngine

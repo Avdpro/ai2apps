@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/runtime-knowledge-rag",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "AI2Apps Knowledge RAG Runtime",
+    "description": "Official on-demand native Runtime for LanceDB and local MLX text embeddings."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"]
+  },
+  "entrypoints": [
+    {"name": "knowledge-runtime", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

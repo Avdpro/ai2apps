@@ -1,17 +1,19 @@
-"""Opt-in local Knowledge Core with no model or App runtime dependency.
+"""System-wide local Knowledge Core with no model runtime dependency."""
 
-The package is intentionally not registered with the platform API yet.  It can
-be developed and tested while other release work continues, then wired into
-the App behind an explicit feature gate.
-"""
-
+from .imports import KnowledgeImportManager
 from .models import (
+    KnowledgeAsset,
+    KnowledgeBucket,
     KnowledgeItem,
     KnowledgeScope,
     KnowledgeSearchHit,
     KnowledgeSpace,
     KnowledgeTag,
 )
+from .profiles import RetrievalMode, RetrievalProfile
+from .retrieval import HybridKnowledgeRetriever, RetrievalDiagnostics
+from .runtime import KnowledgePackageRuntime
+from .service import install_knowledge_service
 from .store import (
     KnowledgeAccessError,
     KnowledgeConflictError,
@@ -21,12 +23,21 @@ from .store import (
 
 __all__ = [
     "KnowledgeAccessError",
+    "KnowledgeAsset",
+    "KnowledgeBucket",
     "KnowledgeConflictError",
     "KnowledgeItem",
+    "KnowledgeImportManager",
     "KnowledgeNotFoundError",
+    "KnowledgePackageRuntime",
     "KnowledgeScope",
     "KnowledgeSearchHit",
     "KnowledgeSpace",
     "KnowledgeStore",
     "KnowledgeTag",
+    "HybridKnowledgeRetriever",
+    "RetrievalDiagnostics",
+    "RetrievalMode",
+    "RetrievalProfile",
+    "install_knowledge_service",
 ]

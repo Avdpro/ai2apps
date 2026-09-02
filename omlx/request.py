@@ -170,6 +170,10 @@ class Request:
         None  # Model-specific kwargs (e.g., position_ids)
     )
     vlm_image_hash: Optional[str] = None  # SHA256 hash of images for prefix cache
+    # Sticky marker: ``vlm_inputs_embeds`` is released after the first decode
+    # token, but request-end cleanup still needs to know that this turn grew a
+    # vision-sized BatchGenerator KV slab.
+    is_vlm_request: bool = False
     vlm_cache_key_start: int = 0  # Token index where image-specific cache keying starts
     vlm_cache_key_ranges: Optional[List[Tuple[int, str]]] = (
         None  # [(token_start, cumulative_image_hash)]

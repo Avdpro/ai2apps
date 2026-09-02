@@ -37,6 +37,7 @@ target_sources(
   ${CMAKE_CURRENT_LIST_DIR}/dspark_gemm.cpp
   ${CMAKE_CURRENT_LIST_DIR}/dspark_qmv.cpp
   ${CMAKE_CURRENT_LIST_DIR}/exact_block_attention.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/expert_loader.cpp
   ${CMAKE_CURRENT_LIST_DIR}/fused_moe.cpp
   ${CMAKE_CURRENT_LIST_DIR}/sparse_mla.cpp)
 target_include_directories(

@@ -151,7 +151,74 @@ class TestListModelsSettings:
 
         model = result["models"][0]
         assert model["id"] == model_id
-        assert model["display_name"] == f"deepsweet/{model_id}"
+        assert model["display_name"] == f"Dev: models/deepsweet/{model_id}"
+
+    def test_list_models_omits_hf_cache_entries(self, tmp_path):
+        model_root = tmp_path / "data" / "models"
+        dev_path = model_root / "mlx-community" / "SenseVoiceSmall"
+        cache_path = tmp_path / "cache" / "models--mlx-community--SenseVoiceSmall"
+        dev_path.mkdir(parents=True)
+        cache_path.mkdir(parents=True)
+        mock_engine_pool = MagicMock()
+        mock_engine_pool.get_status.return_value = {
+            "models": [
+                {
+                    "id": "SenseVoiceSmall",
+                    "model_path": str(dev_path),
+                    "model_type": "audio_stt",
+                    "source_type": "local",
+                },
+                {
+                    "id": "mlx-community--SenseVoiceSmall",
+                    "model_path": str(cache_path),
+                    "model_type": "audio_stt",
+                    "source_type": "hf_cache",
+                    "source_repo_id": "mlx-community/SenseVoiceSmall",
+                },
+            ]
+        }
+        mock_settings_manager = MagicMock()
+        mock_settings_manager.get_all_settings.return_value = {}
+        mock_global_settings = SimpleNamespace(
+            base_path=tmp_path / "data",
+            model=SimpleNamespace(get_model_dirs=lambda base_path: [model_root]),
+        )
+        with (
+            patch.object(admin_routes, "_get_engine_pool", return_value=mock_engine_pool),
+            patch.object(
+                admin_routes,
+                "_get_settings_manager",
+                return_value=mock_settings_manager,
+            ),
+            patch.object(admin_routes, "_get_server_state", return_value=None),
+            patch.object(
+                admin_routes,
+                "_get_global_settings",
+                return_value=mock_global_settings,
+            ),
+            patch.object(
+                admin_routes,
+                "_paroquant_compat_for_model",
+                return_value=(False, None),
+            ),
+            patch.object(
+                admin_routes,
+                "_dflash_compat_for_model",
+                return_value=(False, None),
+            ),
+            patch.object(
+                admin_routes,
+                "_mtp_compat_for_model",
+                return_value=(False, None),
+            ),
+        ):
+            result = asyncio.run(admin_routes.list_models(is_admin=True))
+
+        discovered = [model for model in result["models"] if not model.get("virtual")]
+        assert [model["id"] for model in discovered] == ["SenseVoiceSmall"]
+        assert discovered[0]["display_name"] == (
+            "Dev: data/models/mlx-community/SenseVoiceSmall"
+        )
 
 
 class TestValidateApiKey:

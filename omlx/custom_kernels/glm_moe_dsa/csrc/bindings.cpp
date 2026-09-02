@@ -2,12 +2,14 @@
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/variant.h>
+#include <nanobind/stl/vector.h>
 
 #include "dsa_indexer.h"
 #include "deepseek_v4_sparse_attention.h"
 #include "dspark_gemm.h"
 #include "dspark_qmv.h"
 #include "exact_block_attention.h"
+#include "expert_loader.h"
 #include "fused_moe.h"
 #include "sparse_mla.h"
 
@@ -28,6 +30,23 @@ NB_MODULE(_ext, m) {
         return static_cast<int64_t>(a.size());
       },
       "a"_a);
+
+  m.def(
+      "preadv_fused_experts",
+      &omlx::glm_kernels::preadv_fused_experts,
+      "fd"_a,
+      "data_offset"_a,
+      "record_bytes"_a,
+      "expert_ids"_a,
+      "slots"_a,
+      "gate_up_weight"_a,
+      "gate_up_scales"_a,
+      "gate_up_biases"_a,
+      "down_weight"_a,
+      "down_scales"_a,
+      "down_biases"_a,
+      "io_workers"_a = 4,
+      nb::call_guard<nb::gil_scoped_release>());
 
   m.def(
       "dsa_indexer_scores",

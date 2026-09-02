@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omlx-model-glm5-3-flash-4bit-mtp"
+version = "0.1.0"
+description = "GLM-5.3 Flash 4-bit MTP dynamic Cached-MoE VLM Worker Package"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ai2apps>=0.1.0.dev2,<0.2", "mlx==0.32.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+omlx_model_glm5_3_flash_4bit_mtp = ["assets/*.json"]

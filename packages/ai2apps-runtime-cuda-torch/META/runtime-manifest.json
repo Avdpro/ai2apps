@@ -1,0 +1,21 @@
+{
+  "schema": "ai2apps.inference-runtime/v1",
+  "service_id": "ai2apps.runtime.cuda-torch",
+  "version": "0.2.0",
+  "protocol": "ai2apps-model-worker/v1",
+  "capabilities": ["cuda", "torch", "transformers", "model-worker-v1", "llm", "conversation"],
+  "python": "Python/bin/python3.12",
+  "python_home": "Python",
+  "framework_site_packages": "Python/lib/python3.12/site-packages",
+  "launcher": "app/ai2apps/model_worker/launcher.py",
+  "payload": {
+    "type": "tar.gz",
+    "path": "variants/linux-arm64/AI2AppsCudaTorchRuntime.tar.gz",
+    "root": "AI2AppsCudaTorchRuntime",
+    "sha256": "BUILD_REPLACES_THIS_VALUE",
+    "max_unpacked_bytes": 1
+  },
+  "distribution": {
+    "signing": "ai2apps-package-ed25519"
+  }
+}

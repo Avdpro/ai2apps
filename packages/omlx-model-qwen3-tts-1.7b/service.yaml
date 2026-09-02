@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.qwen3-tts-1.7b
 name: Qwen3 TTS 1.7B
 description: High-quality Qwen3-TTS CustomVoice, reference-voice Base, and VoiceDesign Workers.
-version: 0.1.0
+version: 0.1.1
 
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
@@ -27,6 +27,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
       revision: 41d3337e8b7f2843a75841595fc14e4b9a7a4b96
+      distribution_id: dist_ai2apps_qwen3_tts_1_7b_custom_voice_8bit_41d3337e_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1
@@ -36,7 +37,7 @@ models:
       streaming: {mode: unsupported, formats: []}
       tts:
         named_voices: {mode: native, voices: [serena, vivian, uncle_fu, ryan, aiden, ono_anna, sohee, eric, dylan]}
-        speed: {mode: unsupported}
+        speed: {mode: fallback, minimum: 0.5, maximum: 2.0, control: instruction}
         emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited]}
         instructions: {mode: native}
         voice_profiles: {mode: unsupported}
@@ -52,6 +53,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/Qwen3-TTS-12Hz-1.7B-Base-5bit
       revision: 18103d58b04c292bfd53c4d65013b38487efa411
+      distribution_id: dist_ai2apps_qwen3_tts_1_7b_base_5bit_18103d58_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1
@@ -64,7 +66,7 @@ models:
         speed: {mode: unsupported}
         emotion: {mode: unsupported, values: []}
         instructions: {mode: unsupported}
-        voice_profiles: {mode: native, reference_audio: true, reference_transcript: required}
+        voice_profiles: {mode: native, reference_audio: true, reference_transcript: optional, transcript_effect: higher_fidelity}
         multi_speaker: {mode: unsupported}
 
   - id: ai2apps.model.qwen3-tts-1.7b/voice-design-5bit
@@ -77,6 +79,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-5bit
       revision: 6e936cfb98d95b707bd1f85351874a377230fe83
+      distribution_id: dist_ai2apps_qwen3_tts_1_7b_voice_design_5bit_6e936cfb_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1
@@ -86,7 +89,7 @@ models:
       streaming: {mode: unsupported, formats: []}
       tts:
         named_voices: {mode: unsupported, voices: []}
-        speed: {mode: unsupported}
+        speed: {mode: fallback, minimum: 0.5, maximum: 2.0, control: instruction}
         emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited]}
         instructions: {mode: native, required: true}
         voice_profiles: {mode: unsupported}

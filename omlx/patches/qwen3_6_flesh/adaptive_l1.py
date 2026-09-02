@@ -13,6 +13,7 @@ from typing import Any
 import mlx.core as mx
 
 from omlx.cache.moe_expert_store import ExpertMajorStore
+from omlx.cache.direct_l1 import direct_load_fused_experts, direct_l1_mode
 from omlx.patches.deepseek_v4.adaptive_l1 import (
     AdaptiveL1Config,
     AdaptiveL1Manager,
@@ -46,6 +47,10 @@ class Qwen36AdaptiveBank:
         self.sync_seconds = 0.0
         self.seconds = 0.0
         self.prefill_swaps = 0
+        self.direct_l1_mode = direct_l1_mode()
+        self.direct_load_calls = 0
+        self.direct_load_bytes = 0
+        self.direct_load_seconds = 0.0
 
     def _store(self, layer: int) -> ExpertMajorStore:
         store = self._stores.get(layer)
@@ -53,6 +58,7 @@ class Qwen36AdaptiveBank:
             store = ExpertMajorStore(
                 Path(self.policy.store_path) / f"layer-{layer:03d}.moe"
             )
+            store.set_no_cache()
             self._stores[layer] = store
         return store
 
@@ -138,27 +144,52 @@ class Qwen36AdaptiveBank:
         resident = tuple(expert for expert in requested if expert in sources)
         missing = tuple(expert for expert in requested if expert not in sources)
 
-        # SSD DMA/read and resident-bank Metal gather are independent. Start
-        # the host I/O first, then join it only after the GPU snapshot is safe.
-        read_future = (
-            self._io_pool.submit(self._read_raw_records, layer, missing)
-            if missing
-            else None
-        )
         snapshot_started = time.perf_counter()
         records = self._snapshot_records(sources, resident)
         self.gpu_snapshot_seconds += time.perf_counter() - snapshot_started
         self.experts_reused += len(resident)
 
-        if read_future is not None:
-            store, raw_records, read_seconds = read_future.result()
-            self.ssd_read_seconds += read_seconds
-            records.update(
-                {
-                    expert: store.mlx_tensor_views(raw, copy_record=True)
-                    for expert, raw in raw_records
-                }
-            )
+        direct = False
+        if missing:
+            store = self._store(layer)
+            direct_started = time.perf_counter()
+            direct_bytes = 0
+            direct_calls = 0
+            for switch, slots, expert_ids in patches:
+                direct_pairs = [
+                    (slot, expert)
+                    for slot, expert in zip(slots, expert_ids, strict=True)
+                    if expert in missing
+                ]
+                if not direct_pairs:
+                    continue
+                loaded = direct_load_fused_experts(
+                    store,
+                    switch,
+                    [slot for slot, _ in direct_pairs],
+                    tuple(expert for _, expert in direct_pairs),
+                )
+                if loaded is None:
+                    break
+                direct_bytes += loaded
+                direct_calls += 1
+            else:
+                direct = direct_calls > 0
+            if direct:
+                self.direct_load_calls += direct_calls
+                self.direct_load_bytes += direct_bytes
+                self.direct_load_seconds += time.perf_counter() - direct_started
+            else:
+                store, raw_records, read_seconds = self._read_raw_records(
+                    layer, missing
+                )
+                self.ssd_read_seconds += read_seconds
+                records.update(
+                    {
+                        expert: store.mlx_tensor_views(raw, copy_record=True)
+                        for expert, raw in raw_records
+                    }
+                )
             self.experts_loaded += len(missing)
             self.bytes_loaded += len(missing) * store.record_bytes
 
@@ -166,17 +197,22 @@ class Qwen36AdaptiveBank:
         arrays: list[mx.array] = []
         checks: list[mx.array] = []
         for switch, slots, expert_ids in patches:
-            if slots:
+            resident_pairs = [
+                (slot, expert)
+                for slot, expert in zip(slots, expert_ids, strict=True)
+                if not direct or expert in resident
+            ]
+            if resident_pairs:
                 current_arrays, current_checks = Qwen36DecodeArena._patch_switch(
                     switch,
-                    slots,
-                    expert_ids,
+                    [slot for slot, _ in resident_pairs],
+                    tuple(expert for _, expert in resident_pairs),
                     records,
                     evaluate=False,
                 )
                 arrays.extend(current_arrays)
                 checks.extend(current_checks)
-                self.slots_patched += len(slots)
+            self.slots_patched += len(slots)
         mx.eval(*arrays, *checks)
         if checks and not all(bool(value.item()) for value in checks):
             raise RuntimeError("Qwen adaptive slot write validation failed")
@@ -466,7 +502,7 @@ class Qwen36AdaptiveBank:
             if tiered.lookup_values(layer, NUM_EXPERTS) != tail_lookup:
                 raise RuntimeError(f"Qwen adaptive layer {layer} Tiered map differs")
 
-    def stats(self) -> dict[str, int | float]:
+    def stats(self) -> dict[str, int | float | str]:
         return {
             "commits": self.commits,
             "layers_rewritten": self.layers_rewritten,
@@ -480,6 +516,10 @@ class Qwen36AdaptiveBank:
             "sync_seconds": self.sync_seconds,
             "seconds": self.seconds,
             "prefill_swaps": self.prefill_swaps,
+            "direct_l1_mode": self.direct_l1_mode,
+            "direct_load_calls": self.direct_load_calls,
+            "direct_load_bytes": self.direct_load_bytes,
+            "direct_load_seconds": self.direct_load_seconds,
         }
 
 
@@ -551,7 +591,7 @@ class Qwen36AdaptiveController:
         self._static_active_session_id: str | None = None
         self._in_stable_prefill = False
         self.prefill_backend = os.environ.get(
-            "OMLX_QWEN36_PREFILL_BACKEND", "stable-swap"
+            "OMLX_QWEN36_PREFILL_BACKEND", "workspace256-direct"
         ).strip().lower()
 
     def start(self) -> None:

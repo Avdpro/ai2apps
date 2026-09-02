@@ -87,6 +87,18 @@ rerank、图片理解、音频转写和视频理解作为用户同意后安装�
 25. Base App、Knowledge App 和 FTS5 必须在未安装 Runtime/模型/vector backend 时启动和
     工作。Core Local 不 import installable Package code；语义、OCR、STT、VLM 和原生解析器
     只能通过受管 Service/Worker 调用。
+26. Knowledge App 是系统常驻入口，但增强能力不随 App 启动而安装。`knowledge.lexical_search`
+    由 Core 永久提供；`knowledge.semantic_retrieval`、`knowledge.image_understanding`、
+    `knowledge.audio_understanding` 和 `knowledge.reranking` 通过 ACPF 按操作 probe/ensure，
+    复用 Discover、Package Manager、签名校验、重启恢复和健康验证。
+27. 首个语义栈拆为 `ai2apps/runtime-knowledge-rag` 原生 RAG Runtime Provider、
+    `ai2apps/service-knowledge-lancedb` Vector Service Package、独立 Embedding Provider/Model
+    Package 与版本化 RetrievalProfile。LanceDB/Arrow/MLX text dependencies 只存在于隔离的
+    专用 Knowledge RAG Runtime；Embedding Provider 复用该 Runtime，不加载进 Host，也不捆绑
+    通用 oMLX 图像、音频或 VLM 依赖。
+
+Runtime/Worker 分包和 ACPF 生命周期的实现契约见
+[Knowledge RAG Runtime Package Contract](ai2apps-knowledge-rag-runtime-package-contract.md)。
 
 ## 2. 产品目标
 
@@ -1027,6 +1039,13 @@ tags           user input + App/AI suggestions with visible source
 第一版仅手工保存。后续自动记忆模式为 `off | ask | rules`，默认 `off`。模型只能建议保存，
 不能自行将 private 内容升级为 shared。
 
+P0 接线采用两级 Knowledge Context：`consumer_app_id` 保存 App 默认 buckets，
+`consumer_app_id + session_id` 保存 Conversation/Workflow 覆盖。会话记录一旦存在，即使其
+bucket 列表为空也表示显式禁用，不回退到 App 默认。Chat 与 General Agent 在调用模型前通过
+Knowledge Context Search 获取有界 evidence，将其作为非可信证据而非指令注入，并把稳定
+item/revision citation metadata 保存到最终消息；向量索引尚未 catch-up 或 Runtime 失败时，
+同一调用透明使用 FTS5，而不是阻塞对话。
+
 保存面板将“来自 Chat/某 App、Session、Agent、文件类型”等显示为只读 Source Facet；用户
 可以编辑 user Tag；App/AI 建议以独立样式显示并可逐个接受或删除。不得把模型建议渲染为
 已经确认的用户分类。
@@ -1047,7 +1066,33 @@ Knowledge App 可直接打开，使用：
 
 ### 9.2 增强能力部署
 
-首次使用 semantic/OCR/STT/VLM/rerank 时展示安装清单：
+Knowledge 打开时只通过 ACPF 静默 `probeCapability()`，不得下载。用户首次明确启用语义
+检索，或 Chat/Workflow 对当前操作请求 semantic/OCR/STT/VLM/rerank 时，才展示 ACPF
+Capability Choice Sheet 与 Setup Sheet。建议 capability 拆分为：
+
+```text
+knowledge.lexical_search        Core 内置，始终 ready
+knowledge.semantic_retrieval    LanceDB RAG Runtime + Embedding Provider/Model
+knowledge.image_understanding   OCR/VLM Package
+knowledge.audio_understanding   STT Package
+knowledge.reranking             可选 Reranker Package
+```
+
+`knowledge.semantic_retrieval` 的推荐组件栈为：
+
+```text
+Knowledge App / Chat action
+  -> ACPF probe/ensure
+  -> ai2apps/runtime-knowledge-rag (.ai2service Runtime Provider)
+  -> ai2apps/service-knowledge-lancedb (thin Vector Worker)
+  -> ai2apps/model-multilingual-e5-small (thin Embedding Provider)
+       -> reuse the exact Knowledge RAG Runtime generation
+       -> pinned multilingual-e5-small-mlx checkpoint (384 dimensions)
+  -> health verify + background shadow generation
+  -> activate RetrievalProfile(FTS5 + LanceDB + RRF)
+```
+
+Setup Sheet 展示安装清单：
 
 - 组件和模型名称、publisher、digest；
 - 下载量和预计磁盘占用；
@@ -1056,12 +1101,14 @@ Knowledge App 可直接打开，使用：
 - 首次索引预计时间；
 - 取消、恢复、卸载和数据保留行为。
 
-用户同意后通过现有 signed Service/Model Provider package 流安装，不通过 ingestion code
-执行任意 `pip install`。未安装时 Job 进入 `waiting_dependency`，基础功能保持可用。
+用户同意后通过 ACPF 调用现有 signed Service/Model Provider package 流安装，不通过
+Knowledge ingestion code 执行任意 `pip install`。ACPF Session 只保存 capability、profile、
+Package 操作和 opaque resume token，不保存查询、文档或附件正文。未安装时 Job 进入
+`waiting_dependency`，基础功能保持可用；卸载增强栈只删除可重建索引，不删除 Knowledge。
 
 ### 9.3 资源调度
 
-- embedding/rerank 使用 Model Runtime Service，不直接 import MLX；
+- embedding/rerank 使用隔离的 Model Service 与其声明的 native Runtime，不在 Core 直接 import MLX；
 - indexing 使用低优先级、有界 batch，并响应内存压力与前台生成；
 - 大批量导入可暂停、恢复和限速；
 - 默认 installation Knowledge 存储预算为 10 GiB，由 core 在 Settings 调整；统计实际占用的
@@ -1097,7 +1144,7 @@ Knowledge App 可直接打开，使用：
 
 | 候选 | 优点 | 主要问题 | 决策 |
 | --- | --- | --- | --- |
-| LanceDB OSS | Embedded、Apache-2.0、Rust、面向本地/多模态、支持向量与检索索引 | 增加独立存储目录和 Python/Arrow 二进制；与 Platform SQLite 非同一事务 | 首选可选 vector backend，先做 spike |
+| LanceDB OSS | Embedded、Apache-2.0、Rust、面向本地/多模态、支持向量与检索索引 | 增加独立存储目录和 Python/Arrow 二进制；与 Platform SQLite 非同一事务 | macOS arm64 MVP spike 已通过，作为首个可选 vector backend |
 | sqlite-vec | 极小、C/SQLite、MIT/Apache-2.0、支持 metadata/partition、易备份 | 官方标记 pre-v1；ANN 仍在演进；macOS Python extension 与签名需专项验证 | 备选与实验 backend |
 | Chroma | Persistent embedded/client-server、metadata filtering、生态成熟 | 依赖和内部存储较重；重复一部分文档/collection 管理；JS 仍需 server | 不作为默认，可通过 External Service 支持 |
 | Qdrant | 过滤、ANN、运维能力成熟 | 完整部署通常需要独立进程/容器；不符合零部署默认路径 | 大型/企业 External backend |

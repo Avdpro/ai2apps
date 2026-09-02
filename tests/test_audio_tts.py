@@ -918,6 +918,14 @@ class TestTTSVoiceRouting:
         assert kwargs.get("instruct") == "female, calm, slow"
         assert "voice" not in kwargs
 
+    def test_instructions_route_to_cosyvoice_instruct_text(self, _run_synthesize):
+        call = _run_synthesize(
+            ["instruct_text"],
+            instructions_value="Speak slowly and calmly",
+        )
+        kwargs = call.kwargs if call else {}
+        assert kwargs.get("instruct_text") == "Speak slowly and calmly"
+
     def test_voice_and_instructions_both_passed(self, _run_synthesize):
         """CustomVoice: voice→voice kwarg, instructions→instruct kwarg."""
         call = _run_synthesize(

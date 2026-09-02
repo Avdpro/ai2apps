@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/punctuation-restorer",
     "type": "service",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "displayName": "CT-Transformer Punctuation Restorer",
     "description": "Required local Chinese/English punctuation restoration dependency for ASR Packages."
   },

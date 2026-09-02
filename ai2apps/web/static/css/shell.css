@@ -61,8 +61,8 @@ body {
     height: 48px;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    padding: 5px 10px 5px 6px;
+    justify-content: center;
+    padding: 5px 6px;
     border-radius: 14px;
     background: transparent;
     transition: background 150ms ease, transform 150ms ease;
@@ -71,7 +71,6 @@ body {
 .dock-launcher-button:hover { background: rgba(23, 23, 23, 0.055); }
 .dock-launcher-button:active { transform: scale(.97); }
 .dock-logo { width: 36px; height: 36px; border-radius: 10px; }
-.dock-wordmark { font-size: 14px; font-weight: 680; letter-spacing: -.02em; }
 .dock-divider { width: 1px; height: 30px; background: var(--shell-line); }
 .dock-apps { display: flex; align-items: center; gap: 3px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .dock-apps::-webkit-scrollbar { display: none; }
@@ -116,6 +115,10 @@ body {
 }
 .dock-tooltip-host[hidden] { display: none; }
 .dock-tooltip-host.is-visible { opacity: 1; transform: translateY(0) scale(1); }
+.dock-tooltip-host.is-multiline { min-width: 150px; max-width: 220px; line-height: 1.5; white-space: nowrap; }
+.dock-tooltip-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
+.dock-tooltip-label { text-align: left; }
+.dock-tooltip-value { text-align: right; font-variant-numeric: tabular-nums; }
 .dock-spacer { flex: 1 1 auto; }
 .dock-current { min-width: 96px; display: flex; flex-direction: column; line-height: 1.15; }
 .dock-current-kicker { color: var(--shell-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
@@ -198,14 +201,7 @@ body {
 .desktop-home-open-source strong { font-size: 12px; letter-spacing: -.01em; }
 .desktop-home-open-source small { margin-top: 3px; color: rgba(255,255,255,.58); font-size: 9px; line-height: 1.35; }
 .desktop-home-open-source > svg { width: 15px; height: 15px; color: rgba(255,255,255,.55); }
-.desktop-home-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-.desktop-home-actions button, .desktop-home-section-heading button { border: 0; font: inherit; cursor: pointer; }
-.desktop-home-primary, .desktop-home-secondary { height: 46px; display: inline-flex; align-items: center; gap: 9px; padding: 0 17px; border-radius: 13px; font-size: 13px; font-weight: 680; }
-.desktop-home-primary { color: #171717; background: white; }
-.desktop-home-secondary { color: white; background: rgba(255,255,255,.12); }
-.desktop-home-primary:hover { background: #f5f5f4; }
-.desktop-home-secondary:hover { background: rgba(255,255,255,.19); }
-.desktop-home-primary svg, .desktop-home-secondary svg { width: 17px; height: 17px; }
+.desktop-home-section-heading button { border: 0; font: inherit; cursor: pointer; }
 .desktop-home-status { min-width: 0; padding: 28px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid rgba(23,23,23,.08); border-radius: 30px; background: white; box-shadow: 0 18px 50px rgba(23,23,23,.06); }
 .desktop-home-status-mark { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 17px; color: white; background: #171717; }
 .desktop-home-status-mark svg { width: 25px; height: 25px; }
@@ -272,6 +268,11 @@ body {
 .app-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 12px; justify-items: center; color: var(--shell-muted); font-size: 13px; background: white; }
 .app-loading[hidden] { display: none; }
 .app-frame.is-ready + .app-loading { display: none; }
+.shell-gallery-preview { position: absolute; inset: 0; z-index: 20; opacity: 0; pointer-events: none; background: #111; transition: opacity 280ms cubic-bezier(.4,0,.2,1); }
+.shell-gallery-preview[hidden] { display: none; }
+.shell-gallery-preview.is-ready { opacity: 1; pointer-events: auto; }
+.shell-gallery-preview iframe { width: 100%; height: 100%; display: block; border: 0; background: #0b0b0d; transform: scale(.992); filter: blur(2px); transition: transform 320ms cubic-bezier(.22,1,.36,1),filter 260ms ease; }
+.shell-gallery-preview.is-ready iframe { transform: scale(1); filter: blur(0); }
 .app-loading-mark { width: 26px; height: 26px; border: 2px solid #e5e5e5; border-top-color: #171717; border-radius: 50%; animation: shell-spin .8s linear infinite; }
 @keyframes shell-spin { to { transform: rotate(360deg); } }
 
@@ -384,7 +385,7 @@ body {
 @media (max-width: 700px) {
     :root { --shell-dock-height: 58px; }
     .app-dock { padding: 6px 8px; gap: 5px; }
-    .dock-wordmark, .dock-current, .dock-divider, .dock-account-copy { display: none; }
+    .dock-current, .dock-divider, .dock-account-copy { display: none; }
     .dock-logo { width: 34px; height: 34px; }
     .dock-launcher-button { padding: 4px; }
     .dock-account { width: 41px; padding: 5px; justify-content: center; }

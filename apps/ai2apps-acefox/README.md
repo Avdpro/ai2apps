@@ -122,7 +122,9 @@ INSTANCE_ID=my-dev-instance \
 scripts/build-dev-app.sh
 ```
 
-The default output is `.build/AI2Apps.app`. The copied development entrypoint
+The default output is the stable path `.build/AI2Apps-dev.app`. When that path
+already exists, the build moves the previous App into `.build/archive/` with a
+timestamp before publishing the new build. The copied development entrypoint
 still references its source Python environment through its shebang. Production
 packaging will replace it with a signed, manifest-verified embedded runtime.
 Every packaged App must carry a globally distinct `AI2AppsInstanceID`; this is
@@ -312,11 +314,16 @@ copied outside the App it will replace. It waits for the exact Shell PID to
 exit, copies the candidate to a unique sibling staging path, revalidates both
 the installed and staged App, and then performs same-volume renames. A
 per-directory exclusive lock prevents concurrent transactions. The previous
-verified App remains at the explicit sibling backup path after success. The new
-Launcher supports `--post-update-health-only`, which validates its nested
-Helper identity and complete embedded Runtime without registering a login item,
-starting Helper/Local, or opening UI. Failed signature, copy, replacement, or
-health checks restore the previous App before returning failure. Existing
+verified App remains at the explicit sibling backup path while the replacement
+undergoes its no-UI health check, so failed signature, copy, replacement, or
+health checks can restore it before returning failure. On the subsequent
+post-update handoff, the new Launcher waits for the old Helper to exit, starts
+its replacement Helper and visible Shell, and only then removes the derived
+`<installed-name>.previous.app` directory. A missing backup is harmless, while
+a symbolic link or non-directory fails closed. The Launcher supports
+`--post-update-health-only`, which validates its nested Helper identity and
+complete embedded Runtime without registering a login item, starting
+Helper/Local, or opening UI. Existing
 bundles that predate protocol 1 remain verifiable but cannot claim this update
 capability. The exact installed-App sibling pending marker is passed to the
 external Updater, which removes it on every terminal path. A Helper crash
@@ -338,11 +345,30 @@ Helper publishes only the bounded owner-only `run/update.json` contract. It
 contains instance identity, phase, current/candidate Build Numbers, a safe
 single-line message, a stable error code, and timestamp. Artifact paths,
 signature output, credentials, and raw exceptions are never included.
-The tray exposes **检查已下载更新** and **安装更新并退出 AI2Apps…** for
-writable protocol-1 packages. Inputs live at fixed instance-private paths.
-Staging runs embedded Python and every recursive verifier in isolated,
-no-bytecode mode. Installation requires confirmation, closes only the verified
-current Shell, and leaves Helper and Local running.
+Release builds use
+`https://coder.ai2apps.com/updates/stable.json` by default (override with
+`UPDATE_MANIFEST_URL=https://...`). They expose **检查更新** and also check 30
+seconds after startup and every 24 hours. The black menu-bar glyph uses a circle
+while checking or verifying, a down arrow plus the bare percentage while
+downloading, and an up arrow after the candidate is verified and installable.
+No other update-state text is placed beside the glyph. A user-initiated check
+that finds no newer Build shows a small, three-second popover anchored to the
+menu-bar icon; periodic background checks remain silent. The
+HTTPS manifest is bounded and selects only a matching bundle, instance,
+Runtime profile, architecture and macOS version. A persistent random cohort ID
+and rollout ID produce a stable 0–9999 bucket, so staged percentages do not
+reshuffle clients on every check. Metadata and DMG downloads use owner-only
+`.part` files, HTTP `Range`, mirror failover, exact size and SHA-256 before
+publication; an interrupted download resumes from the same partial file even
+after switching between ModelScope and GitHub. Staging then runs embedded
+Python and every recursive verifier in isolated, no-bytecode mode.
+
+Installation requires confirmation and closes only the verified current Shell.
+After the filesystem transaction, the updated Launcher waits for the old Helper
+to exit, starts the newly installed Helper, and that Helper adopts the still
+running Local service. This prevents old Helper code from remaining resident
+after an App update. See `docs/update-distribution.md` for the static
+manifest/CDN contract and release ordering.
 
 See `docs/ai2apps-acefox-client-definition-development-plan.md` for the product
 definition and phased implementation plan.

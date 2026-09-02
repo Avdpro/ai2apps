@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-qwen36-cached-moe"
-version = "0.3.1"
+version = "0.3.2"
 description = "Qwen3.6 35B isolated Model Worker Package"
 readme = "README.md"
 license = "Apache-2.0"

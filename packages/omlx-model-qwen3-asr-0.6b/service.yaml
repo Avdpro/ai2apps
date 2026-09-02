@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.qwen3-asr-0.6b
 name: Qwen3 ASR 0.6B
 description: Higher-quality multilingual Qwen3-ASR Worker with native punctuation and prompt biasing.
-version: 0.1.0
+version: 0.1.1
 
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
@@ -28,6 +28,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/Qwen3-ASR-0.6B-4bit
       revision: 313d850181767edf09f00a9c289becca70e58cd0
+      distribution_id: dist_ai2apps_qwen3_asr_0_6b_4bit_313d8501_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1

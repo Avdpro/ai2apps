@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.deepseek-v4-flash-2bit
 name: DeepSeek V4 Flash 2-bit
 description: Isolated full and Cached-MoE Worker for the 2-bit DQ checkpoint.
-version: 0.3.1
+version: 0.3.3
 publisher: {id: ai2apps}
 runtime:
   mode: process
@@ -19,6 +19,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/DeepSeek-V4-Flash-2bit-DQ
       revision: 722bf559b7de93575b2320973cf2002e05bfe6c9
+      distribution_id: dist_ai2apps_deepseek_v4_flash_2bit_dq_722bf559_v1
       preparation:
         recipe: ai2apps/cache-moe/v1
         install_id: deepseek-v4-flash-2bit
@@ -47,7 +48,7 @@ capabilities: []
 requires:
   services:
     - id: ai2apps.runtime.omlx
-      version: ">=1.0.1,<2.0.0"
+      version: ">=1.5.4,<2.0.0"
       optional: false
       capabilities: [mlx, model-worker-v1, cached-moe]
   python: ">=3.11,<3.14"

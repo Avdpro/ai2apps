@@ -75,9 +75,16 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "tool_descriptors",
         "tool_invocations",
         "agent_concurrency_groups",
+        "agent_compile_generations",
         "agent_definitions",
+        "agent_drafts",
+        "agent_recipes",
         "agent_interactions",
         "agent_runs",
+        "agent_step_evidence",
+        "agent_workflows",
+        "agent_schedules",
+        "agent_schedule_dispatches",
         "agent_delegations",
         "agent_status_lines",
         "run_steps",
@@ -97,6 +104,8 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "package_attestations",
         "service_dependency_locks",
         "service_operations",
+        "worker_operations",
+        "worker_preferences",
         "service_logs",
         "managed_service_processes",
         "interactive_packages",
@@ -129,6 +138,61 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "upstream_route_settings",
         "federation_pairing_attempts",
         "local_security_identity",
+        "messager_conversations",
+        "messager_messages",
+        "messager_peer_handshake_replays",
+        "readaloud_projects",
+        "readaloud_voice_profiles",
+        "readaloud_characters",
+        "readaloud_segments",
+        "readaloud_render_jobs",
+        "readaloud_render_segments",
+        "video_generation_tasks",
+        "provisioning_sessions",
+        "gallery_assets",
+        "gallery_collections",
+        "gallery_collection_items",
+        "video_studio_drafts",
+        "imagine_studio_results",
+        "knowledge_spaces",
+        "knowledge_items",
+        "knowledge_representations",
+        "knowledge_chunks",
+        "knowledge_fts",
+        "knowledge_fts_config",
+        "knowledge_fts_content",
+        "knowledge_fts_data",
+        "knowledge_fts_docsize",
+        "knowledge_fts_idx",
+        "knowledge_source_facets",
+        "knowledge_tags",
+        "knowledge_item_tags",
+        "knowledge_change_log",
+        "knowledge_settings",
+        "knowledge_buckets",
+        "knowledge_bucket_items",
+        "knowledge_assets",
+        "knowledge_context_buckets",
+        "knowledge_session_contexts",
+        "knowledge_session_context_buckets",
+        "knowledge_index_states",
+        "knowledge_import_jobs",
+        "knowledge_import_job_entries",
+        "knowledge_tag_suggestions",
+        "agent_app_dependencies",
+        "agent_capability_health",
+        "agent_repair_candidates",
+        "agent_run_knowledge_exports",
+        "agent_site_package_bindings",
+        "agent_site_package_events",
+        "agent_site_states",
+        "browser_profiles",
+        "model_share_device_preferences",
+        "model_share_jobs",
+        "model_share_model_preferences",
+        "peer_replay_tokens",
+        "peer_sessions",
+        "registry_install_continuations",
     }
     assert [(row[0], row[1]) for row in ledger] == [
         (1, "platform_bootstrap"),
@@ -166,6 +230,40 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (33, "parent_local_routing"),
         (34, "cloud_relay_parent_transport"),
         (35, "local_security_instance_identity"),
+        (36, "messager_local_conversations"),
+        (37, "messager_image_attachments"),
+        (38, "messager_peer_replay_protection"),
+        (39, "readaloud_studio_projects"),
+        (40, "durable_video_generation_tasks"),
+        (41, "acpf_provisioning_sessions"),
+        (42, "desktop_session_authority_epochs"),
+        (43, "acpf_trusted_app_instance_and_request_identity"),
+        (44, "gallery_assets_and_collections"),
+        (45, "video_studio_acpf_drafts"),
+        (46, "imagine_studio_durable_history"),
+        (47, "readaloud_voice_reference_assets"),
+        (48, "system_knowledge_core"),
+        (49, "knowledge_buckets_assets_and_context"),
+        (50, "knowledge_p0_context_and_index_state"),
+        (51, "knowledge_p1_ask_ingestion_and_citations"),
+        (52, "knowledge_recoverable_import_staging"),
+        (53, "knowledge_import_job_controls"),
+        (54, "knowledge_tag_suggestion_lifecycle"),
+        (55, "worker_management_operations_and_preferences"),
+        (56, "readaloud_durable_render_jobs"),
+        (57, "worker_operation_cancellation"),
+        (58, "browser_agent_builder_drafts"),
+        (59, "universal_agent_workflows_schedules"),
+        (60, "repair_legacy_agent_active_generation"),
+        (61, "site_agents_and_temporary_recipes"),
+        (62, "agent_packages_health_repair_and_site_state"),
+        (63, "site_agent_discovery_and_version_governance"),
+        (64, "repair_knowledge_fts_delete_triggers"),
+        (65, "user_browser_profiles"),
+        (66, "peer_core_and_model_share_ledgers"),
+        (67, "model_share_provider_preferences"),
+        (68, "durable_registry_install_continuations"),
+        (69, "model_share_multimodal_pricing_projection"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -185,6 +283,108 @@ def test_database_bootstrap_is_idempotent(tmp_path):
             "SELECT version, applied_at FROM schema_migrations"
         ).fetchall()
     assert rows == first_rows
+
+
+def test_v60_repairs_legacy_agent_active_generation_pointer(tmp_path):
+    connection = sqlite3.connect(tmp_path / "legacy-agent.sqlite3")
+    apply_migrations(connection, MIGRATIONS[:59])
+    connection.execute(
+        """
+        INSERT INTO agent_drafts(
+            id,owner_user_id,name,description,site_scope_json,source_json,
+            status,active_generation_id,revision,created_at,updated_at
+        ) VALUES ('adraft_legacy','user','Legacy','','[]','{}','editing',NULL,2,
+                  '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO agent_compile_generations(
+            id,draft_id,source_revision,source_digest,compiler_version,
+            policy_version,ir_json,report_json,status,created_at,activated_at
+        ) VALUES ('agen_legacy','adraft_legacy',1,'sha256:test','compiler','policy',
+                  '{}','{}','active','2026-01-01T00:00:00Z','2026-01-01T00:00:01Z')
+        """
+    )
+    connection.commit()
+
+    apply_migrations(connection)
+
+    row = connection.execute(
+        "SELECT status,active_generation_id FROM agent_drafts WHERE id='adraft_legacy'"
+    ).fetchone()
+    assert row == ("active", "agen_legacy")
+    connection.close()
+
+
+def test_schema_v55_adds_durable_worker_management_state(tmp_path):
+    database_path = tmp_path / "worker-management-upgrade.sqlite3"
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    apply_migrations(connection, MIGRATIONS[:54])
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE name='worker_operations'"
+    ).fetchone() is None
+
+    apply_migrations(connection)
+
+    tables = {
+        row[0]
+        for row in connection.execute(
+            """SELECT name FROM sqlite_master WHERE type='table'
+               AND name IN ('worker_operations','worker_preferences')"""
+        )
+    }
+    indexes = {
+        row[0]
+        for row in connection.execute(
+            """SELECT name FROM sqlite_master WHERE type='index'
+               AND tbl_name='worker_operations'"""
+        )
+    }
+    connection.close()
+    assert tables == {"worker_operations", "worker_preferences"}
+    assert "ux_worker_operations_idempotency" in indexes
+
+
+def test_schema_v42_preserves_existing_local_session_authority(tmp_path):
+    database_path = tmp_path / "session-authority-upgrade.sqlite3"
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    apply_migrations(connection, MIGRATIONS[:41])
+    now = "2026-08-25T00:00:00.000000Z"
+    connection.execute(
+        """INSERT INTO installations(
+        id,cloud_device_id,organization_id,organization_type,core_user_id,
+        billing_account_id,access_epoch,status,created_at,updated_at
+        ) VALUES ('installation','device','organization','household','owner',
+                  'billing',7,'active',?,?)""",
+        (now, now),
+    )
+    connection.execute(
+        """INSERT INTO installation_memberships(
+        installation_id,cloud_user_id,role,status,membership_epoch,
+        last_verified_at,created_at,updated_at
+        ) VALUES ('installation','owner','core','active',3,?,?,?)""",
+        (now, now, now),
+    )
+    connection.execute(
+        """INSERT INTO local_login_sessions(
+        token_digest,installation_id,actor_user_id,role_snapshot,
+        membership_epoch,created_at,expires_at,last_access_check_at,client_scope
+        ) VALUES (?,'installation','owner','core',3,?,?,?,'desktop')""",
+        ("d" * 64, now, "2027-02-21T00:00:00.000000Z", now),
+    )
+
+    apply_migrations(connection)
+
+    row = connection.execute(
+        """SELECT access_epoch,local_session_epoch,account_session_epoch
+        FROM local_login_sessions WHERE token_digest=?""",
+        ("d" * 64,),
+    ).fetchone()
+    connection.close()
+    assert tuple(row) == (7, 1, 1)
 
 
 def test_schema_v32_preserves_existing_capability_shares(tmp_path):
@@ -225,21 +425,34 @@ def test_schema_v32_preserves_existing_capability_shares(tmp_path):
     PlatformDatabase(database_path).initialize()
 
     with PlatformDatabase(database_path).connect() as upgraded:
-        assert tuple(upgraded.execute(
-            "SELECT kind,target_id FROM capability_exports WHERE id=?", (export_id,)
-        ).fetchone()) == ("tool", "system.echo")
-        assert tuple(upgraded.execute(
-            "SELECT grant_id,export_id FROM capability_share_grant_exports"
-        ).fetchone()) == (grant_id, export_id)
-        assert upgraded.execute(
-            "SELECT id FROM capability_share_audit"
-        ).fetchone()[0] == audit_id
+        assert tuple(
+            upgraded.execute(
+                "SELECT kind,target_id FROM capability_exports WHERE id=?", (export_id,)
+            ).fetchone()
+        ) == ("tool", "system.echo")
+        assert tuple(
+            upgraded.execute(
+                "SELECT grant_id,export_id FROM capability_share_grant_exports"
+            ).fetchone()
+        ) == (grant_id, export_id)
+        assert (
+            upgraded.execute("SELECT id FROM capability_share_audit").fetchone()[0]
+            == audit_id
+        )
         upgraded.execute(
             """INSERT INTO capability_exports(
             id,kind,target_id,display_name,protocols_json,status,
             created_by_user_id,revision,created_at,updated_at
             ) VALUES (?,?,?,?,?,'active','owner',1,?,?)""",
-            ("exp_" + "n" * 32, "agent", "ai2apps.general-agent", "Agent", '["mcp"]', now, now),
+            (
+                "exp_" + "n" * 32,
+                "agent",
+                "ai2apps.general-agent",
+                "Agent",
+                '["mcp"]',
+                now,
+                now,
+            ),
         )
 
 
@@ -436,12 +649,14 @@ def test_platform_runtime_rejects_two_live_hosts_for_the_same_data_root(tmp_path
 
 def test_platform_runtime_releases_root_lease_after_late_startup_failure(tmp_path):
     failing = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
-    with patch(
-        "ai2apps.platform_runtime.create_secret_backend",
-        side_effect=RuntimeError("simulated secret claim collision"),
+    with (
+        patch(
+            "ai2apps.platform_runtime.create_secret_backend",
+            side_effect=RuntimeError("simulated secret claim collision"),
+        ),
+        pytest.raises(RuntimeError, match="claim collision"),
     ):
-        with pytest.raises(RuntimeError, match="claim collision"):
-            failing.start()
+        failing.start()
 
     recovered = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     recovered.start()
@@ -566,6 +781,28 @@ def test_server_lifecycle_boundary_publishes_ready_health(tmp_path):
     }
 
 
+def test_server_lifecycle_binds_existing_checkpoint_downloader(tmp_path):
+    from omlx.server import (
+        ServerState,
+        start_ai2apps_platform,
+        stop_ai2apps_platform,
+    )
+
+    downloader = SimpleNamespace(model_dir=tmp_path / "models")
+    state = ServerState(
+        global_settings=SimpleNamespace(base_path=tmp_path),
+        hf_downloader=downloader,
+    )
+    with patch("omlx.server._server_state", state):
+        runtime = start_ai2apps_platform()
+        try:
+            assert runtime.provisioning is not None
+            assert runtime.provisioning.hf_downloader is downloader
+            assert runtime.provisioning.model_installer is not None
+        finally:
+            stop_ai2apps_platform()
+
+
 def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
     from omlx.server import ServerState, app, verify_ai2apps_platform_access
     from omlx.settings import GlobalSettings
@@ -581,9 +818,9 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
         patch("omlx.utils.network.detect_server_aliases", return_value=[]),
         TestClient(app) as client,
     ):
-        app.dependency_overrides[
-            verify_ai2apps_platform_access
-        ] = authorize_test_request
+        app.dependency_overrides[verify_ai2apps_platform_access] = (
+            authorize_test_request
+        )
         try:
             response = client.get("/v1/platform/health")
             services = client.get("/v1/platform/services")
@@ -597,6 +834,7 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
                 "ai2apps.diagnostics",
                 "ai2apps.documents",
                 "ai2apps.images",
+                "ai2apps.knowledge-service",
                 "ai2apps.mcp",
                 "ai2apps.model-runtime",
                 "ai2apps.process",

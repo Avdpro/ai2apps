@@ -56,14 +56,13 @@ def _should_route(self: Any, x: mx.array, target_verify: bool, min_tokens: int) 
     if getattr(self, "sharding_group", None) is not None:
         return False
     # The native >=1024-token shortcut owns the complete MoE calculation and
-    # therefore bypasses the cache-aware block's parity observer. Scope exact
-    # refinement needs those Router tensors, so fall through to the wrapped
-    # implementation while the diagnostic observer is active.
+    # calls ``switch_mlp`` with global router IDs. A cache-aware block stores
+    # only its compact physical bank, so this would bypass miss loading and
+    # interpret expert IDs as local slots (long-prefill output corruption).
+    # Its internal exact workspace path may opt into the same native weighted
+    # sum only after it has built a complete local/global mapping.
     if getattr(self, "scope_policy", None) is not None:
-        from .qwen3_6_flesh.model_patch import qwen36_parity_observer_active
-
-        if qwen36_parity_observer_active():
-            return False
+        return False
     if getattr(self, "top_k", None) not in (6, 8):
         return False
     if x.shape[-2] * int(getattr(self, "top_k", 0)) < 64:

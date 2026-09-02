@@ -18,6 +18,7 @@ nodes can expose the same model and Service capabilities.
 
 [中文说明](README.zh.md) ·
 [Platform architecture](docs/ai2apps-platform-architecture.md) ·
+[ACPF capability provisioning](docs/ai2apps-capability-provisioning-framework-v1.md) ·
 [Backend plan](docs/ai2apps-backend-development-plan.md) ·
 [Local Knowledge/RAG](docs/ai2apps-local-knowledge-rag-architecture.md) ·
 [Security baseline](docs/security-authority-baseline.md) ·
@@ -189,6 +190,10 @@ Lossy modes are opt-in. Use `exact` for quality-sensitive serving and evaluate
 other policies with representative prompts before deployment.
 
 ## Development and release gates
+
+Before developing an AI2Apps App or System App, read the
+[AI2Apps App development guide](docs/ai2apps-app-development-guide.md), including
+the shared cross-environment Artifact download UX contract.
 
 Before developing an installable Service or model Package, read the
 [Service/Package runtime and Sandbox development guide](docs/service-package-sandbox-development-guide.md).

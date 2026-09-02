@@ -4,6 +4,9 @@
 日期：2026-08-15
 对接 Local 文档：`docs/ai2apps-multi-user-gateway.md`
 
+AI2Apps Desktop 的公开更新清单端点、双源预检、灰度发布和紧急暂停要求见
+[`ai2apps-desktop-update-cloud-production-requirements.md`](ai2apps-desktop-update-cloud-production-requirements.md)。
+
 账户等级、付费套餐、Core设备数和单设备Member数的新增准入规则见
 [`ai2apps-cloud-account-capacity-v1.md`](ai2apps-cloud-account-capacity-v1.md)。
 Core 设备列表、权威改名和撤销接口的完成契约见

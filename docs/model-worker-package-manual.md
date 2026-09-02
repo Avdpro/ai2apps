@@ -2,6 +2,11 @@
 
 状态：可开发、安装和测试；协议标识 `ai2apps-model-worker/v1`。
 
+如果模型能力需要由 Chat、Read Aloud、Video Studio 或第三方 App 按设备和用户操作进行
+配置，还必须阅读
+[AI2Apps Capability Provisioning Framework（ACPF）v1](ai2apps-capability-provisioning-framework-v1.md)。
+App 推荐栈属于 ACPF，Package 的真实依赖和 checkpoint 声明仍以本文为准。
+
 开始开发前请先阅读
 [Service/Package 运行模式与 Sandbox 开发指南](service-package-sandbox-development-guide.md)。
 特别注意：本地 Harness 不进入 Managed Service Sandbox；只有把真实 Package 安装并由
@@ -235,6 +240,22 @@ from ai2apps.model_worker import ModelWorkerResponse
 
 return ModelWorkerResponse(png_bytes, media_type="image/png")
 ```
+
+视频等大文件不应先整体读入 Python 内存。Adapter 应写入本次请求独占的
+`request.output_root`，然后返回文件 Artifact：
+
+```python
+from ai2apps.model_worker import ModelWorkerArtifact
+
+output = request.output_root / "output.mp4"
+# 由模型流水线写入 output
+return ModelWorkerArtifact(output, media_type="video/mp4", filename="output.mp4")
+```
+
+只允许返回 `output_root` 的直接子文件。Runtime 会防符号链接地打开文件并流式传给
+Host；调用结束后路径失效。生成期间可通过 `await request.progress(...)` 报告阶段，
+Host 的取消信号会取消当前 `invoke`。公共视频 API 是持久化异步任务接口，详见
+[本地视频生成 v1 实现与验收](ai2apps-video-generation-v1-implementation.md)。
 
 流式结果使用：
 

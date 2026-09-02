@@ -7,7 +7,7 @@ PROJECT_DIR=${SCRIPT_DIR:h}
 REPO_ROOT=${PROJECT_DIR:h:h}
 ACEFOX_APP=${ACEFOX_APP:-}
 LOCAL_EXECUTABLE=${LOCAL_EXECUTABLE:-}
-OUTPUT_APP=${OUTPUT_APP:-${PROJECT_DIR}/.build/AI2Apps.app}
+OUTPUT_APP=${OUTPUT_APP:-${PROJECT_DIR}/.build/AI2Apps-dev.app}
 PRODUCT_IDENTIFIER=${PRODUCT_IDENTIFIER:-com.ai2apps.desktop.dev}
 INSTANCE_ID=${INSTANCE_ID:-dev}
 
@@ -15,15 +15,20 @@ if [[ -z ${ACEFOX_APP} || ! -d ${ACEFOX_APP} ]]; then
   print -u2 "Set ACEFOX_APP to a built Acefox.app"
   exit 64
 fi
+ACEFOX_EXECUTABLE="${ACEFOX_APP}/Contents/MacOS/firefox"
+if [[ ! -x ${ACEFOX_EXECUTABLE} ]]; then
+  print -u2 "ACEFOX_APP does not contain an executable Contents/MacOS/firefox"
+  exit 64
+fi
+if ! /usr/bin/strings "${ACEFOX_EXECUTABLE}" | /usr/bin/grep -Fqx 'AI2APPS_BROWSER_ROLE'; then
+  print -u2 "ACEFOX_APP is a plain AceFox build without AI2Apps shell support"
+  print -u2 "Use the patched acefox-firefox-153 build, not sdk/moz/firefox or sdk/moz/pkg"
+  exit 64
+fi
 if [[ -z ${LOCAL_EXECUTABLE} || ! -x ${LOCAL_EXECUTABLE} ]]; then
   print -u2 "Set LOCAL_EXECUTABLE to an executable AI2Apps Local entrypoint"
   exit 64
 fi
-if [[ -e ${OUTPUT_APP} ]]; then
-  print -u2 "Output already exists: ${OUTPUT_APP}"
-  exit 73
-fi
-
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-helper
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-launcher
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-updater
@@ -41,6 +46,38 @@ rsync -aL "${ACEFOX_APP}/" "${SHELL_APP}/"
 find "${SHELL_APP}" -name .purgecaches -type f -delete
 rm -f "${SHELL_APP}/Contents/moz.build"
 mv "${SHELL_APP}/Contents/MacOS/firefox" "${SHELL_APP}/Contents/MacOS/acefox-bin"
+if ! /usr/bin/strings "${SHELL_APP}/Contents/MacOS/acefox-bin" | \
+    /usr/bin/grep -Fqx 'AI2APPS_BROWSER_ROLE'; then
+  print -u2 "Staged AceFox lost the required AI2Apps shell marker"
+  exit 65
+fi
+ACTOR_ROOT="${SHELL_APP}/Contents/Resources/browser/chrome/browser/content/browser/ai2apps"
+ACTOR_PARENT='chrome/browser/content/browser/ai2apps/ManagedBrowserParent.sys.mjs'
+ACTOR_CHILD='chrome/browser/content/browser/ai2apps/ManagedBrowserChild.sys.mjs'
+BROWSER_OMNI="${SHELL_APP}/Contents/Resources/browser/omni.ja"
+ACTOR_CONTRACT_VALID=false
+if [[ -f "${ACTOR_ROOT}/ManagedBrowserParent.sys.mjs" && \
+      -f "${ACTOR_ROOT}/ManagedBrowserChild.sys.mjs" ]] && \
+    /usr/bin/grep -Fq 'export class AI2AppsManagedBrowserParent' \
+      "${ACTOR_ROOT}/ManagedBrowserParent.sys.mjs" && \
+    /usr/bin/grep -Fq 'export class AI2AppsManagedBrowserChild' \
+      "${ACTOR_ROOT}/ManagedBrowserChild.sys.mjs" && \
+    /usr/bin/grep -Fq 'async receiveMessage(message)' \
+      "${ACTOR_ROOT}/ManagedBrowserChild.sys.mjs"; then
+  ACTOR_CONTRACT_VALID=true
+elif [[ -f ${BROWSER_OMNI} ]] && \
+    /usr/bin/unzip -p "${BROWSER_OMNI}" "${ACTOR_PARENT}" | \
+      /usr/bin/grep -Fq 'export class AI2AppsManagedBrowserParent' && \
+    /usr/bin/unzip -p "${BROWSER_OMNI}" "${ACTOR_CHILD}" | \
+      /usr/bin/grep -Fq 'export class AI2AppsManagedBrowserChild' && \
+    /usr/bin/unzip -p "${BROWSER_OMNI}" "${ACTOR_CHILD}" | \
+      /usr/bin/grep -Fq 'async receiveMessage(message)'; then
+  ACTOR_CONTRACT_VALID=true
+fi
+if [[ ${ACTOR_CONTRACT_VALID} != true ]]; then
+  print -u2 "Staged AceFox has an invalid AI2Apps Window Actor contract"
+  exit 65
+fi
 
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${SHELL_APP}/Contents/Info.plist" "${APP}/Contents/Info.plist"
@@ -67,6 +104,12 @@ mkdir -p "${HELPER_APP}/Contents/MacOS" "${HELPER_APP}/Contents/Resources"
 cp "${BUILD_BIN}/ai2apps-helper" "${HELPER_APP}/Contents/MacOS/AI2AppsHelper"
 cp "${REPO_ROOT}/ai2apps/web/static/logo-light.svg" \
   "${HELPER_APP}/Contents/Resources/menubar-logo.svg"
+cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-update.svg" \
+  "${HELPER_APP}/Contents/Resources/menubar-logo-update.svg"
+cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-work.svg" \
+  "${HELPER_APP}/Contents/Resources/menubar-logo-work.svg"
+cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-ready.svg" \
+  "${HELPER_APP}/Contents/Resources/menubar-logo-ready.svg"
 plutil -create xml1 "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${PRODUCT_IDENTIFIER}.helper" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string AI2AppsHelper" "${HELPER_APP}/Contents/Info.plist"
@@ -106,6 +149,7 @@ SHELL_INFO="${SHELL_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsMainBundleIdentifier string ${PRODUCT_IDENTIFIER}" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBuildNumber string development" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeVersion string development" "${HELPER_APP}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopment bool true" "${HELPER_APP}/Contents/Info.plist"
 
 # Localized metadata overrides Info.plist on macOS, including for nested Apps.
 for localized_info in "${SHELL_APP}"/Contents/Resources/*.lproj/InfoPlist.strings(N); do
@@ -121,5 +165,18 @@ APP="${APP}" SIGN_IDENTITY=- MODE=full \
   "${PROJECT_DIR}/scripts/sign-release-app.sh"
 codesign --verify --deep --strict "${APP}"
 mkdir -p "${OUTPUT_APP:h}"
+if [[ -e ${OUTPUT_APP} ]]; then
+  ARCHIVE_DIR="${OUTPUT_APP:h}/archive"
+  ARCHIVE_STEM="${OUTPUT_APP:t:r}-$(date +%Y%m%d-%H%M%S)"
+  ARCHIVE_APP="${ARCHIVE_DIR}/${ARCHIVE_STEM}.app"
+  ARCHIVE_SUFFIX=1
+  mkdir -p "${ARCHIVE_DIR}"
+  while [[ -e ${ARCHIVE_APP} ]]; do
+    ARCHIVE_APP="${ARCHIVE_DIR}/${ARCHIVE_STEM}-${ARCHIVE_SUFFIX}.app"
+    (( ARCHIVE_SUFFIX += 1 ))
+  done
+  mv "${OUTPUT_APP}" "${ARCHIVE_APP}"
+  print "Archived previous development App as ${ARCHIVE_APP}"
+fi
 mv "${APP}" "${OUTPUT_APP}"
 print "Built ${OUTPUT_APP}"

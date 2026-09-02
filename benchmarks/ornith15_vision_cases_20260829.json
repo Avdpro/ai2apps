@@ -1,0 +1,42 @@
+[
+  {
+    "id": "desktop_github_repo",
+    "image": "/var/folders/mf/3xkv5lz5567bwcmb8g33pvz00000gn/T/TemporaryItems/NSIRD_screencaptureui_udtdxm/截屏2026-08-28 10.31.40.png",
+    "prompt": "简洁描述页面、仓库名，并指出页面上最显眼的一条警告或状态信息。"
+  },
+  {
+    "id": "desktop_modelscope_upload",
+    "image": "/var/folders/mf/3xkv5lz5567bwcmb8g33pvz00000gn/T/TemporaryItems/NSIRD_screencaptureui_U6E38l/截屏2026-08-28 10.31.56.png",
+    "prompt": "这是哪个网站的什么弹窗？说出模型名和用户下一步可执行的两个上传操作。"
+  },
+  {
+    "id": "desktop_apple_store",
+    "image": "/var/folders/mf/3xkv5lz5567bwcmb8g33pvz00000gn/T/TemporaryItems/NSIRD_screencaptureui_jUQkj9/截屏2026-08-28 10.32.05.png",
+    "prompt": "识别商品、起售价，并说出当前选中的芯片档位和可见的处理器配置。"
+  },
+  {
+    "id": "natural_watch",
+    "image": "/var/folders/mf/3xkv5lz5567bwcmb8g33pvz00000gn/T/TemporaryItems/NSIRD_screencaptureui_b3e9ez/截屏2026-08-28 10.32.39.png",
+    "prompt": "描述这只表的外观、表盘结构和表圈文字的用途；不要猜测看不清的品牌型号。"
+  },
+  {
+    "id": "mobile_payment_bill",
+    "image": "/Users/avdpropang/Downloads/IMG_4305.PNG",
+    "prompt": "识别应用页面，并准确列出两笔交易的商户、金额与支付卡尾号。"
+  },
+  {
+    "id": "mobile_comics",
+    "image": "/Users/avdpropang/Downloads/IMG_4306.PNG",
+    "prompt": "识别应用类型和搜索词，并列出首屏前四个漫画标题。"
+  },
+  {
+    "id": "mobile_video_feed",
+    "image": "/Users/avdpropang/Downloads/IMG_4307.PNG",
+    "prompt": "识别应用类型、搜索框文字，并概括首屏大图与下方四个内容卡片的主题。"
+  },
+  {
+    "id": "mobile_watch_article",
+    "image": "/Users/avdpropang/Downloads/IMG_4308.PNG",
+    "prompt": "识别应用或站点名称、文章标题和发布日期，并描述头图中的手表。"
+  }
+]

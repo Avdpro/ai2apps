@@ -2080,6 +2080,34 @@ class TestSplitVisionFeatures:
         result = engine._split_vision_features(features, 3, {})
         assert result is None
 
+    def test_partial_image_cache_encodes_only_missing_glm_image(self):
+        """Appending an image must not rerun the historical image's ViT."""
+        engine = _make_loaded_engine(model_type="glm5_next")
+        engine._vlm_model.vision_model = MagicMock()
+        engine._vlm_model.vision_model.spatial_merge_size = 2
+        engine._vision_cache = MagicMock()
+
+        grid_thw = mx.array([[1, 4, 4], [1, 4, 8]])
+        pixels = mx.ones((48, 1176))
+        cached_first = mx.ones((4, 128))
+        fresh_second = mx.ones((8, 128)) * 2
+        engine._compute_vision_features = MagicMock(return_value=fresh_second)
+
+        result = engine._compute_missing_per_image_features(
+            pixels,
+            {"image_grid_thw": grid_thw},
+            [cached_first, None],
+            ["old-hash", "new-hash"],
+        )
+
+        assert result is not None
+        assert result.shape == (12, 128)
+        missing_pixels, missing_extra = engine._compute_vision_features.call_args.args
+        assert missing_pixels.shape == (32, 1176)
+        assert missing_extra["image_grid_thw"].tolist() == [[1, 4, 8]]
+        engine._vision_cache.put.assert_called_once()
+        assert engine._vision_cache.put.call_args.args[0] == "new-hash"
+
 
 # ---------------------------------------------------------------------------
 # TestStopSafety
@@ -2373,6 +2401,42 @@ class TestVLMEngineFrequencyPenalty:
 
         call_kwargs = engine._engine.generate.call_args.kwargs
         assert call_kwargs["sampling_params"].frequency_penalty == 0.0
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not HAS_MLX, reason="mlx is required to import VLMBatchedEngine"
+    )
+    async def test_nonstream_generate_forwards_skip_cache_store(self):
+        engine = _make_loaded_engine(model_type="test-vlm")
+        engine._engine = SimpleNamespace(
+            generate=AsyncMock(return_value=self._fake_output())
+        )
+
+        await engine.generate("a prompt", skip_cache_store=True)
+
+        call_kwargs = engine._engine.generate.call_args.kwargs
+        assert call_kwargs["skip_cache_store"] is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not HAS_MLX, reason="mlx is required to import VLMBatchedEngine"
+    )
+    async def test_glm5_vision_defaults_to_request_local_kv(self, monkeypatch):
+        monkeypatch.delenv("OMLX_GLM5_VISION_SESSION_KV", raising=False)
+        engine = _make_loaded_engine(model_type="glm5_next")
+        engine._engine = SimpleNamespace(
+            generate=AsyncMock(return_value=self._fake_output())
+        )
+
+        await engine.generate(
+            [1, 2],
+            vlm_inputs_embeds=object(),
+            kv_cache_policy="session",
+        )
+
+        call_kwargs = engine._engine.generate.call_args.kwargs
+        assert call_kwargs["skip_cache_store"] is True
+        assert call_kwargs["kv_cache_policy"] == "strict"
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(

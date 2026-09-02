@@ -1,5 +1,9 @@
 # AI2Apps default model routing
 
+模型尚未可用时的按操作配置和设备推荐由
+[AI2Apps Capability Provisioning Framework（ACPF）v1](ai2apps-capability-provisioning-framework-v1.md)
+负责；本文只定义已经可用模型的系统默认路由。
+
 AI2Apps stores system-wide model choices in
 `<base-path>/ai2apps/default-models.json`. The file is written atomically with
 owner-only permissions and uses the schema `ai2apps.model-defaults/v1`.

@@ -45,6 +45,8 @@ public struct LocalLaunchPlan: Equatable, Sendable {
             "AI2APPS_INSTANCE_ID": instanceID.rawValue,
             "AI2APPS_BOOT_ID": bootID.uuidString.lowercased(),
             "AI2APPS_RUN_DESCRIPTOR_PATH": runDescriptorURL.path,
+            "AI2APPS_SHELL_AUTOMATION_PATH": paths.runDirectory
+                .appendingPathComponent("shell-automation.json").path,
             "AI2APPS_SUPERVISED": "helper",
             // Model files are instance-private. Sibling AI2Apps installations
             // consume exported model capability through an authenticated Local

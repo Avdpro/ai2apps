@@ -7,6 +7,7 @@ import mlx.core as mx
 import pytest
 
 from omlx.patches.qwen3_6_flesh.io_patch import (
+    _bind_vlm_scope_blocks,
     _load_qwen36_scope_safetensors,
     apply_qwen36_vlm_flesh_patch,
     qwen36_scope_safetensors_on_load,
@@ -118,3 +119,35 @@ def test_vlm_qwen_constructs_compact_primary_and_tail_banks(tmp_path):
 
     assert block.switch_mlp.gate_proj.weight.shape[0] == 8
     assert block.tail_switch_mlp.gate_proj.weight.shape[0] == 2
+
+
+def test_vlm_scope_binding_does_not_depend_on_sanitize(tmp_path, monkeypatch):
+    policy = _configure_policy(tmp_path, backend="flesh", tail_slots=1)
+    blocks = [SimpleNamespace() for _ in range(3)]
+    model = SimpleNamespace(
+        language_model=SimpleNamespace(
+            model=SimpleNamespace(
+                layers=[SimpleNamespace(mlp=block) for block in blocks]
+            )
+        )
+    )
+
+    registered = {}
+
+    class Loader:
+        def register_prefill_blocks(self, model_key, value):
+            registered[model_key] = value
+
+    monkeypatch.setattr(
+        "omlx.patches.qwen3_6_flesh.scope_cache.get_qwen36_fallback_loader",
+        lambda _path: Loader(),
+    )
+
+    bound = _bind_vlm_scope_blocks(model, policy)
+
+    assert bound == tuple(blocks)
+    assert registered[id(model)] == tuple(blocks)
+    for layer, block in enumerate(blocks):
+        assert block.scope_layer == layer
+        assert block.scope_expert_ids == policy.experts(layer, phase="decode")
+        assert block.scope_prefill_model_key == id(model)

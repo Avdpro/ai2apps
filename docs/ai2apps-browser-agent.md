@@ -1,5 +1,12 @@
 # AI2Apps managed browser baseline
 
+> Legacy note (2026-08-29): this document describes the original managed-Chrome
+> baseline. New AceFox, Sidebar, Knowledge import, and Web Agent work must follow
+> `ai2apps-browser-control-architecture.md`, where native WebDriver BiDi through
+> the authenticated protocol-transparent Gateway is the only browser-control
+> protocol. Do not extend the semantic `browser.*` API catalog below for new
+> AceFox functionality.
+
 AI2Apps provides a visible, user-authorized Chrome runtime for Agent-assisted
 web tasks. The first implementation creates a standard WebDriver session with
 `webSocketUrl` enabled and subscribes to navigation lifecycle events over

@@ -75,6 +75,54 @@ def test_private_items_and_tags_do_not_leak_but_shared_items_are_visible(tmp_pat
         raise AssertionError("private knowledge leaked by direct ID")
 
 
+def test_tag_suggestions_require_explicit_confirm_or_reject(tmp_path):
+    store = KnowledgeStore(tmp_path / "knowledge.sqlite3")
+    store.initialize()
+    alice = _principal("alice")
+    item = store.create_text_item(
+        alice,
+        kind="document",
+        title="Architecture.pdf",
+        text="System Knowledge architecture.",
+    )
+
+    suggestions = store.suggest_tags(alice, item.id)
+    assert [(value["display_name"], value["status"]) for value in suggestions] == [
+        ("PDF", "suggested")
+    ]
+    confirmed = store.decide_tag_suggestion(
+        alice, str(suggestions[0]["id"]), decision="confirm"
+    )
+    assert confirmed["status"] == "confirmed"
+    assert confirmed["confirmed_tag_id"]
+    assert store.list_tag_suggestions(alice, item_id=item.id) == ()
+    assert [hit.item.id for hit in store.search(alice, "architecture", tags=("pdf",))] == [
+        item.id
+    ]
+    webpage = store.create_text_item(
+        alice,
+        kind="webpage",
+        title="Example",
+        text="An imported webpage.",
+        source_url="https://example.com/article",
+    )
+    domain = next(
+        value
+        for value in store.suggest_tags(alice, webpage.id)
+        if value["display_name"] == "example.com"
+    )
+    rejected = store.decide_tag_suggestion(
+        alice, str(domain["id"]), decision="reject"
+    )
+    assert rejected["status"] == "rejected"
+    assert [
+        value["id"]
+        for value in store.list_tag_suggestions(
+            alice, item_id=webpage.id, status="rejected"
+        )
+    ] == [domain["id"]]
+
+
 def test_cross_installation_search_and_direct_id_are_hidden(tmp_path):
     store = KnowledgeStore(tmp_path / "knowledge.sqlite3")
     store.initialize()
@@ -112,10 +160,20 @@ def test_search_filters_literal_fts_syntax_scope_kind_and_tag(tmp_path):
         title="Chat",
         text="Watermelon was mentioned in this chat.",
     )
+    acceptance = store.create_text_item(
+        alice,
+        title="P1.4 FTS Acceptance",
+        text="Aurora Cedar 7319 has the verification color cobalt blue.",
+    )
 
     assert [hit.item.id for hit in store.search(alice, "watermelon", kind="note")] == [note.id]
     assert [hit.item.id for hit in store.search(alice, "watermelon", tags=("food notes",))] == [note.id]
     assert store.search(alice, 'missing"token') == ()
+    natural_question = store.search(
+        alice,
+        "What is the verification color for Aurora Cedar 7319?",
+    )
+    assert natural_question[0].item.id == acceptance.id
 
 
 def test_delete_requires_owner_and_matching_revision_and_removes_search_result(tmp_path):

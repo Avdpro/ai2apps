@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from ai2apps.browser import (
     AuthenticationChallenge,
@@ -15,7 +20,17 @@ from ai2apps.browser import (
     BrowserManager,
     BrowserSnapshot,
 )
+from ai2apps.browser import shell_bidi_gateway as shell_bidi_gateway_module
+from ai2apps.browser.shell_bidi_gateway import (
+    ShellBiDiEndpoint,
+    ShellBiDiGatewayError,
+    ShellBiDiSessionBroker,
+    consume_shell_bidi_ticket,
+    issue_shell_bidi_ticket,
+    websocket_is_same_origin,
+)
 from ai2apps.config import PlatformConfig
+from ai2apps.identity import RequestPrincipal
 from ai2apps.platform_runtime import PlatformRuntime
 
 
@@ -221,6 +236,395 @@ class FakeWorkspace:
             "size_bytes": 10,
             "media_type": "application/pdf",
         }
+
+
+def test_shell_bidi_descriptor_is_loopback_authenticated_and_live(tmp_path):
+    descriptor = tmp_path / "shell-automation.json"
+    descriptor.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "instance_id": "dev",
+                "host": "127.0.0.1",
+                "port": 49152,
+                "token": "a" * 64,
+                "pid": os.getpid(),
+            }
+        )
+    )
+    endpoint = ShellBiDiEndpoint.load(descriptor)
+    assert endpoint.web_socket_url == "ws://127.0.0.1:49152/session"
+    assert endpoint.authorization == f"Bearer {'a' * 64}"
+
+
+def test_shell_bidi_descriptor_rejects_non_loopback(tmp_path):
+    descriptor = tmp_path / "shell-automation.json"
+    descriptor.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "host": "0.0.0.0",
+                "port": 49152,
+                "token": "a" * 64,
+                "pid": os.getpid(),
+            }
+        )
+    )
+    with pytest.raises(ShellBiDiGatewayError, match="unsafe"):
+        ShellBiDiEndpoint.load(descriptor)
+
+
+def test_shell_bidi_gateway_requires_exact_same_origin():
+    allowed = SimpleNamespace(
+        headers={"origin": "http://127.0.0.1:61444", "host": "127.0.0.1:61444"}
+    )
+    denied = SimpleNamespace(
+        headers={"origin": "http://127.0.0.1:61445", "host": "127.0.0.1:61444"}
+    )
+    assert websocket_is_same_origin(allowed) is True
+    assert websocket_is_same_origin(denied) is False
+
+
+def test_shell_bidi_ticket_is_random_and_single_use():
+    principal = RequestPrincipal.legacy_local()
+    ticket = issue_shell_bidi_ticket(principal)
+    assert len(ticket) == 43
+    assert consume_shell_bidi_ticket(ticket) == principal
+    assert consume_shell_bidi_ticket(ticket) is None
+
+
+@pytest.mark.asyncio
+async def test_shell_bidi_broker_creates_one_session_for_multiple_clients():
+    endpoint = ShellBiDiEndpoint(
+        host="127.0.0.1", port=49152, token="a" * 64, pid=os.getpid()
+    )
+
+    class Upstream:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, payload):
+            self.sent.append(json.loads(payload))
+
+        async def recv(self):
+            command = self.sent[-1]
+            if command["method"] == "session.status":
+                result = {"ready": True, "message": ""}
+            else:
+                result = {
+                    "sessionId": "12345678-1234-1234-1234-123456789abc",
+                    "capabilities": {
+                        "browserName": "firefox",
+                        "webSocketUrl": (
+                            "ws://127.0.0.1:49152/session/"
+                            "12345678-1234-1234-1234-123456789abc"
+                        ),
+                    },
+                }
+            return json.dumps(
+                {"type": "success", "id": command["id"], "result": result}
+            )
+
+    class Connection:
+        def __init__(self, upstream):
+            self.upstream = upstream
+
+        async def __aenter__(self):
+            return self.upstream
+
+        async def __aexit__(self, *_args):
+            return False
+
+    upstreams = []
+
+    def connect(*_args, **_kwargs):
+        upstream = Upstream()
+        upstreams.append(upstream)
+        return Connection(upstream)
+
+    broker = ShellBiDiSessionBroker()
+    first = await broker.ensure(endpoint, connect)
+    second = await broker.ensure(endpoint, connect)
+
+    assert first is second
+    assert len(upstreams) == 1
+    assert [item["method"] for item in upstreams[0].sent] == [
+        "session.status",
+        "session.new",
+    ]
+    assert first.web_socket_url.endswith(
+        "/session/12345678-1234-1234-1234-123456789abc"
+    )
+    assert first.new_session_result == {
+        "sessionId": "12345678-1234-1234-1234-123456789abc",
+        "capabilities": {"browserName": "firefox"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_shell_bidi_broker_rejects_foreign_existing_session():
+    endpoint = ShellBiDiEndpoint(
+        host="127.0.0.1", port=49152, token="b" * 64, pid=os.getpid()
+    )
+
+    class Upstream:
+        sent = []
+
+        async def send(self, payload):
+            self.sent.append(json.loads(payload))
+
+        async def recv(self):
+            return json.dumps(
+                {
+                    "type": "success",
+                    "id": self.sent[-1]["id"],
+                    "result": {
+                        "ready": False,
+                        "message": "Session already started",
+                    },
+                }
+            )
+
+    class Connection:
+        async def __aenter__(self):
+            return Upstream()
+
+        async def __aexit__(self, *_args):
+            return False
+
+    broker = ShellBiDiSessionBroker()
+    with pytest.raises(ShellBiDiGatewayError, match="not owned"):
+        await broker.ensure(endpoint, lambda *_args, **_kwargs: Connection())
+
+
+@pytest.mark.asyncio
+async def test_shell_bidi_gateway_virtualizes_lifecycle_for_two_clients(
+    tmp_path, monkeypatch
+):
+    descriptor = tmp_path / "shell-automation.json"
+    descriptor.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "host": "127.0.0.1",
+                "port": 49152,
+                "token": "c" * 64,
+                "pid": os.getpid(),
+            }
+        )
+    )
+    monkeypatch.setenv("AI2APPS_SHELL_AUTOMATION_PATH", str(descriptor))
+    monkeypatch.setattr(
+        shell_bidi_gateway_module,
+        "_shell_session_broker",
+        ShellBiDiSessionBroker(),
+    )
+
+    class BootstrapUpstream:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, payload):
+            self.sent.append(json.loads(payload))
+
+        async def recv(self):
+            command = self.sent[-1]
+            result = (
+                {"ready": True, "message": ""}
+                if command["method"] == "session.status"
+                else {
+                    "sessionId": "abcdefab-1234-1234-1234-abcdefabcdef",
+                    "capabilities": {"browserName": "firefox"},
+                }
+            )
+            return json.dumps(
+                {"type": "success", "id": command["id"], "result": result}
+            )
+
+    class AttachedUpstream:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, payload):
+            self.sent.append(json.loads(payload))
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await asyncio.Future()
+
+    class Connection:
+        def __init__(self, upstream):
+            self.upstream = upstream
+
+        async def __aenter__(self):
+            return self.upstream
+
+        async def __aexit__(self, *_args):
+            return False
+
+    bootstrap_upstreams = []
+    attached_upstreams = []
+
+    def connect(url, **_kwargs):
+        if url.endswith("/session"):
+            upstream = BootstrapUpstream()
+            bootstrap_upstreams.append(upstream)
+        else:
+            upstream = AttachedUpstream()
+            attached_upstreams.append(upstream)
+        return Connection(upstream)
+
+    import websockets.asyncio.client
+
+    monkeypatch.setattr(websockets.asyncio.client, "connect", connect)
+
+    class Downstream:
+        def __init__(self, ticket):
+            self.query_params = {"ticket": ticket}
+            self.headers = {
+                "origin": "http://127.0.0.1:61444",
+                "host": "127.0.0.1:61444",
+            }
+            self.messages = [
+                {"id": 1, "method": "session.status", "params": {}},
+                {"id": 2, "method": "session.new", "params": {}},
+                {"id": 3, "method": "session.end", "params": {}},
+            ]
+            self.sent = []
+            self.accepted = False
+
+        async def accept(self):
+            self.accepted = True
+
+        async def receive(self):
+            if not self.messages:
+                raise WebSocketDisconnect(1000)
+            return {
+                "type": "websocket.receive",
+                "text": json.dumps(self.messages.pop(0)),
+            }
+
+        async def send_text(self, payload):
+            self.sent.append(json.loads(payload))
+
+        async def send_bytes(self, payload):
+            self.sent.append(json.loads(payload))
+
+        async def close(self, **_kwargs):
+            return None
+
+    clients = []
+    for _ in range(2):
+        ticket = issue_shell_bidi_ticket(RequestPrincipal.legacy_local())
+        client = Downstream(ticket)
+        clients.append(client)
+        await shell_bidi_gateway_module.serve_shell_bidi_gateway(client, object())
+
+    assert len(bootstrap_upstreams) == 1
+    assert len(attached_upstreams) == 2
+    assert all(client.accepted for client in clients)
+    assert all([item["id"] for item in client.sent] == [1, 2, 3] for client in clients)
+    assert all(upstream.sent == [] for upstream in attached_upstreams)
+
+
+@pytest.mark.asyncio
+async def test_shell_bidi_gateway_keeps_shared_session_after_attach_failure(
+    tmp_path, monkeypatch
+):
+    descriptor = tmp_path / "shell-automation.json"
+    descriptor.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "host": "127.0.0.1",
+                "port": 49152,
+                "token": "d" * 64,
+                "pid": os.getpid(),
+            }
+        )
+    )
+    monkeypatch.setenv("AI2APPS_SHELL_AUTOMATION_PATH", str(descriptor))
+    broker = ShellBiDiSessionBroker()
+    monkeypatch.setattr(shell_bidi_gateway_module, "_shell_session_broker", broker)
+
+    class BootstrapUpstream:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, payload):
+            self.sent.append(json.loads(payload))
+
+        async def recv(self):
+            command = self.sent[-1]
+            result = (
+                {"ready": True, "message": ""}
+                if command["method"] == "session.status"
+                else {
+                    "sessionId": "abcdefab-1234-1234-1234-abcdefabcdef",
+                    "capabilities": {"browserName": "firefox"},
+                }
+            )
+            return json.dumps(
+                {"type": "success", "id": command["id"], "result": result}
+            )
+
+    class Connection:
+        def __init__(self, upstream=None, failure=None):
+            self.upstream = upstream
+            self.failure = failure
+
+        async def __aenter__(self):
+            if self.failure is not None:
+                raise self.failure
+            return self.upstream
+
+        async def __aexit__(self, *_args):
+            return False
+
+    bootstrap_count = 0
+    attach_count = 0
+
+    def connect(url, **_kwargs):
+        nonlocal bootstrap_count, attach_count
+        if url.endswith("/session"):
+            bootstrap_count += 1
+            return Connection(BootstrapUpstream())
+        attach_count += 1
+        return Connection(failure=OSError("transient attach failure"))
+
+    import websockets.asyncio.client
+
+    monkeypatch.setattr(websockets.asyncio.client, "connect", connect)
+
+    class Downstream:
+        def __init__(self):
+            self.query_params = {
+                "ticket": issue_shell_bidi_ticket(RequestPrincipal.legacy_local())
+            }
+            self.headers = {
+                "origin": "http://127.0.0.1:61444",
+                "host": "127.0.0.1:61444",
+            }
+            self.accepted = False
+            self.closed = None
+
+        async def accept(self):
+            self.accepted = True
+
+        async def close(self, **kwargs):
+            self.closed = kwargs
+
+    first = Downstream()
+    second = Downstream()
+    await shell_bidi_gateway_module.serve_shell_bidi_gateway(first, object())
+    await shell_bidi_gateway_module.serve_shell_bidi_gateway(second, object())
+
+    assert first.accepted and second.accepted
+    assert first.closed["code"] == second.closed["code"] == 1011
+    assert bootstrap_count == 1
+    assert attach_count == 2
 
 
 @pytest.mark.asyncio

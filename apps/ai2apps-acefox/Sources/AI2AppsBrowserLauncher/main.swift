@@ -25,6 +25,13 @@ private func writeShellPreferences(to profile: URL) throws {
     user_pref("browser.sessionstore.resume_from_crash", false);
     user_pref("browser.shell.checkDefaultBrowser", false);
     user_pref("browser.tabs.warnOnClose", false);
+    user_pref("browser.download.useDownloadDir", false);
+    user_pref("apz.allow_zooming", false);
+    user_pref("apz.allow_double_tap_zooming", false);
+    user_pref("browser.gesture.pinch.in", "");
+    user_pref("browser.gesture.pinch.in.shift", "");
+    user_pref("browser.gesture.pinch.out", "");
+    user_pref("browser.gesture.pinch.out.shift", "");
     user_pref("permissions.default.microphone", 1);
     user_pref("media.navigator.permission.disabled", true);
     """

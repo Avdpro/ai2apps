@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-deepseek-v4-flash-2bit",
     "type": "service",
-    "version": "0.3.1",
+    "version": "0.3.3",
     "displayName": "DeepSeek V4 Flash 2-bit",
     "description": "Isolated full and Cached-MoE Worker for the 2-bit DQ checkpoint."
   },
@@ -21,7 +21,7 @@
     {"capability": "accelerator.metal", "reason": "Run the isolated oMLX engine on Apple GPU.", "required": true}
   ],
   "dependencies": [
-    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.0.1 <2.0.0", "optional": false}
+    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.4 <2.0.0", "optional": false}
   ],
   "files": [],
   "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}

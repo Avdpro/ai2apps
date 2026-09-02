@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import json
 import wave
 from pathlib import Path
 
@@ -114,13 +115,24 @@ def test_advanced_audio_packages_pin_real_checkpoints_and_capabilities():
         == "native"
     )
     assert (
+        variants["base"]["audio_capabilities"]["tts"]["voice_profiles"]
+        ["reference_transcript"]
+        == "optional"
+    )
+    assert (
         variants["voice_design"]["audio_capabilities"]["tts"]["instructions"]
         ["required"]
         is True
     )
     assert (
         vibe.models[0]["audio_capabilities"]["tts"]["multi_speaker"]["mode"]
-        == "native"
+        == "unsupported"
+    )
+    assert vibe.models[0]["metadata"]["multi_speaker"] is False
+    assert (
+        vibe.models[0]["audio_capabilities"]["tts"]["long_form"]
+        ["max_duration_minutes"]
+        == 10
     )
 
     for name in (
@@ -133,6 +145,67 @@ def test_advanced_audio_packages_pin_real_checkpoints_and_capabilities():
             (ROOT / "packages" / name / "ai2apps.json").read_text(encoding="utf-8")
         )
         assert outer["dependencies"][0]["packageId"] == "ai2apps/runtime-omlx"
+
+
+def test_fish_and_cosyvoice_packages_use_native_mlx_runtime_contracts():
+    fish = ServicePackageArchive._manifest(
+        _manifest("omlx-model-fish-s2-pro")
+    )
+    cosy = ServicePackageArchive._manifest(
+        _manifest("omlx-model-cosyvoice3-0.5b")
+    )
+
+    assert fish.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
+    assert fish.dependencies[0].version_spec == ">=1.3.9,<2.0.0"
+    assert fish.models[0]["weights"]["revision"] == (
+        "eccd57bf5c1ebc13cb2f993df867f4e49931a36a"
+    )
+    assert fish.raw["version"] == "0.1.1"
+    assert fish.models[0]["weights"]["distribution_id"] == (
+        "dist_ai2apps_fish_s2_pro_bf16_eccd57bf_v1"
+    )
+    assert fish.models[0]["audio_capabilities"]["tts"]["multi_speaker"] == {
+        "mode": "native",
+        "maximum_speakers": 5,
+        "control": "inline_speaker_tags",
+    }
+    assert fish.models[0]["metadata"]["commercial_license_required"] is True
+
+    assert cosy.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
+    assert cosy.dependencies[0].version_spec == ">=1.3.9,<2.0.0"
+    public_cosy_models = [
+        model for model in cosy.models if not model["metadata"].get("internal")
+    ]
+    assert {model["metadata"]["variant"] for model in public_cosy_models} == {
+        "0.5b-2512-4bit",
+        "0.5b-2512-8bit",
+    }
+    assert all(
+        model["audio_capabilities"]["tts"]["voice_profiles"]["mode"]
+        == "native"
+        for model in public_cosy_models
+    )
+    tokenizer = next(
+        model for model in cosy.models if model["metadata"].get("internal")
+    )
+    assert tokenizer["id"] == "ai2apps.model.cosyvoice3-0.5b/s3tokenizer-v3"
+    assert tokenizer["weights"]["revision"] == (
+        "b143914b3e912278104824da706edc9c2d317c4e"
+    )
+    assert all(
+        model["metadata"]["required_model_ids"] == [tokenizer["id"]]
+        for model in public_cosy_models
+    )
+
+    fish_license = (
+        ROOT
+        / "packages/omlx-model-fish-s2-pro/META/licenses/Fish-Audio-Research-License.md"
+    ).read_text(encoding="utf-8")
+    fish_notice = (
+        ROOT / "packages/omlx-model-fish-s2-pro/META/NOTICE.md"
+    ).read_text(encoding="utf-8")
+    assert "requires a separate written license" in fish_license
+    assert "Built with Fish Audio" in fish_notice
 
 
 def test_sensevoice_package_retains_model_license_and_attribution(tmp_path):
@@ -164,15 +237,73 @@ def test_runtime_builder_preserves_audio_capabilities():
     builder = (ROOT / "scripts" / "build_omlx_runtime_package.py").read_text(
         encoding="utf-8"
     )
+    runtime_manifest = (ROOT / "packages/ai2apps-runtime-omlx/service.yaml").read_text(
+        encoding="utf-8"
+    )
     for capability in (
         "audio-stt",
         "audio-tts",
         "audio-processing",
         "audio-codecs",
+        "fish-s2",
+        "cosyvoice3",
     ):
-        assert f'"{capability}"' in builder
+        assert f"  - {capability}" in runtime_manifest
+    assert 'list(manifest.get("capabilities", []))' in builder
     assert '"av==18.0.0"' in (ROOT / "pyproject.toml").read_text()
-    assert 'variant / "AI2AppsOmlxRuntime.dmg"' in builder
+    assert '"AI2AppsOmlxRuntime.dmg"' in builder
+
+
+def test_standard_runtime_builder_supports_release_signed_knowledge_runtime():
+    package_builder = (
+        ROOT / "scripts" / "build_omlx_runtime_package.py"
+    ).read_text(encoding="utf-8")
+    dmg_builder = (ROOT / "scripts" / "build_omlx_runtime_dmg.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "create_knowledge_bundle" in package_builder
+    assert '"ai2apps.runtime.knowledge-rag"' in package_builder
+    assert '"AI2AppsKnowledgeRagRuntime.dmg"' in package_builder
+    assert 'choices=("omlx", "knowledge-rag")' in dmg_builder
+    assert "_signing_image_size_kib" in dmg_builder
+    assert "512 * 1024" in dmg_builder
+    assert 'package_slug = "knowledge-rag" if knowledge_runtime else "omlx"' in (
+        package_builder
+    )
+    assert 'f"ai2apps-runtime-{package_slug}-{version}.ai2service"' in package_builder
+    assert 'running `hdiutil verify` on that signed' in package_builder.lower()
+    contract_manifest = json.loads(
+        (
+            ROOT
+            / "packages/ai2apps-runtime-knowledge-rag/ai2apps.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert contract_manifest["package"] == {
+        "id": "ai2apps/runtime-knowledge-rag",
+        "type": "service",
+        "version": "0.1.1",
+        "displayName": "AI2Apps Knowledge RAG Runtime",
+        "description": (
+            "Official on-demand native Runtime for LanceDB and local MLX text "
+            "embeddings."
+        ),
+    }
+
+
+def test_runtime_build_overlays_only_cosyvoice_backend_modules():
+    build = (ROOT / "packaging" / "build.py").read_text(encoding="utf-8")
+    assert '_MLX_AUDIO_PLUS_VERSION = "0.1.8"' in build
+    assert (
+        '_MLX_AUDIO_PLUS_WHEEL_SHA256 = '
+        '"2e44ad5a65d46391db59b694ad4b9e9b1a739ea79c1e6013ad8f7db5cea9472b"'
+        in build
+    )
+    assert '"mlx_audio/tts/models/cosyvoice3/"' in build
+    assert '"mlx_audio/tts/models/cosyvoice2/speaker_encoder.py"' in build
+    assert '"mlx_audio/codec/models/s3gen/"' in build
+    assert '"mlx_audio/codec/models/s3tokenizer/"' in build
+    assert "wheel.extractall(fw_site, members=members)" in build
 
 
 def test_chat_exposes_wav_voice_input_and_package_tts_controls():
@@ -183,11 +314,46 @@ def test_chat_exposes_wav_voice_input_and_package_tts_controls():
     assert "navigator.mediaDevices.getUserMedia" in chat
     assert "audioInputStarting: false" in chat
     assert "Starting microphone…" in chat
+    assert ':aria-busy="audioInputStarting || audioInputBusy"' in chat
+    assert 'x-show="audioInputStarting || audioInputBusy"' in chat
+    assert "border-t-transparent animate-spin" in chat
     assert "encodePcmWav" in chat
     assert "'/v1/audio/transcriptions'" in chat
     assert "'/v1/audio/speech'" in chat
     assert "availableAudioModelsByType('audio_stt')" in chat
     assert "availableAudioModelsByType('audio_tts')" in chat
+    assert 'x-show="availableAudioModels.length > 0"' in chat
+    assert 'x-model="audioSettings.sttModel"' in chat
+    assert 'x-model="audioSettings.ttsModel"' in chat
+    assert 'x-model="audioSettings.voice"' in chat
+    assert "voiceSettingsExpanded: false" in chat
+    assert 'x-show="voiceSettingsExpanded" x-collapse' in chat
+    assert 'x-model.number="audioSettings.speed"' in chat
+    assert 'x-model="audioSettings.emotion"' in chat
+    assert "voice_speed_unavailable_tooltip" in chat
+    assert "voice_emotion_unavailable_tooltip" in chat
+    assert "isQwen3Tts" in chat
+    assert 'x-model="audioSettings.instructions"' in chat
+    assert 'x-model="audioSettings.referenceText"' in chat
+    assert 'x-model="audioSettings.autoSpeak"' in chat
+    assert "audioVoiceCatalog: {}" in chat
+    assert "loadAudioVoices" in chat
+    assert '<button x-show="availableAudioModelsByType(\'audio_stt\')' not in chat
+    assert '<button x-show="availableAudioModelsByType(\'audio_tts\')' not in chat
+    assert "chat.install_stt_tooltip" in chat
+    assert "chat.install_tts_tooltip" in chat
+    assert '@click="requestSpeechRecognition()"' in chat
+    assert '@click="requestSpeechSynthesis(msg)"' in chat
+    assert ':aria-disabled="availableAudioModelsByType(\'audio_stt\').length === 0"' not in chat
+    assert ':aria-disabled="availableAudioModelsByType(\'audio_tts\').length === 0"' not in chat
+    assert "opacity-40 cursor-not-allowed' : ''" not in chat
+    assert "chat-hover-tip chat-hover-tip-top" in chat
+    assert "chat-hover-tip-align-left" in chat
+    assert "chat-hover-tip-align-right" in chat
+    assert "chat.voice_input_streaming_tooltip" in chat
+    assert "chat.voice_input_starting_tooltip" in chat
+    assert "chat.voice_input_busy_tooltip" in chat
+    assert "chat.tts_busy_tooltip" in chat
     assert "audioEmotionOptions" in chat
     assert "const settings = pipeline?.speechSettings || this.audioSettings" in chat
     assert "const voice = settings.voice || voices[0] || ''" in chat

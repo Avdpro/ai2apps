@@ -15,6 +15,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import tempfile
 from pathlib import Path
 from typing import AsyncIterator, Optional
@@ -50,6 +51,19 @@ MIN_NATIVE_TTS_STREAMING_INTERVAL_SECONDS = 0.01
 _VIDEO_CONTAINERS = {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi"}
 
 
+def _speech_instructions(request: AudioSpeechRequest) -> str | None:
+    """Map the optional UI emotion style onto backends' instruction input."""
+
+    parts: list[str] = []
+    if request.instructions and request.instructions.strip():
+        parts.append(request.instructions.strip())
+    style = request.style if isinstance(request.style, dict) else {}
+    emotion = str(style.get("emotion") or "").strip()
+    if emotion and emotion.lower() != "neutral":
+        parts.append(f"Speak with a {emotion} emotion.")
+    return " ".join(parts) or None
+
+
 # ---------------------------------------------------------------------------
 # Engine pool accessor — patched in tests via omlx.api.audio_routes._get_engine_pool
 # ---------------------------------------------------------------------------
@@ -73,13 +87,32 @@ def _get_engine_pool():
 def _package_model(model_id: str):
     """Resolve an enabled installable Model Provider without importing it at startup."""
 
-    from ai2apps.model_providers import resolve_package_model
     from omlx.server import _server_state, resolve_model_id
 
     resolved = resolve_model_id(model_id) or model_id
     if _server_state.engine_pool is not None and _server_state.engine_pool.get_entry(resolved):
         return None
-    return resolve_package_model(_server_state.ai2apps_platform_runtime, model_id)
+    runtime = _server_state.ai2apps_platform_runtime
+    invocations = None if runtime is None else runtime.model_invocations
+    return None if invocations is None else invocations.model(model_id)
+
+
+def _model_invocations():
+    from omlx.server import _server_state
+
+    runtime = _server_state.ai2apps_platform_runtime
+    if runtime is None or runtime.model_invocations is None:
+        raise HTTPException(status_code=503, detail="Model Runtime is not initialized")
+    return runtime.model_invocations
+
+
+def _audio_invocation_context():
+    invocations = _model_invocations()
+    return invocations.context_for_actor(
+        "local",
+        session_id=f"audio:{secrets.token_hex(16)}",
+        consumer_app_id="ai2apps.audio-api",
+    )
 
 
 def _resolve_model(model_id: str) -> str:
@@ -171,17 +204,12 @@ async def _restore_package_transcription_punctuation(
     restored = ""
     status = "fallback"
     try:
-        from ai2apps.model_providers import proxy_package_json, resolve_package_model
-        from omlx.server import _server_state
-
-        punctuation_model = resolve_package_model(
-            _server_state.ai2apps_platform_runtime,
-            punctuation_model_id,
-        )
+        invocations = _model_invocations()
+        punctuation_model = invocations.model(punctuation_model_id)
         if punctuation_model is None or not punctuation_model.checkpoint_ready:
             raise RuntimeError("Required punctuation Package is unavailable")
-        punctuation_response = await proxy_package_json(
-            punctuation_model,
+        punctuation_response = await invocations.invoke_foreground_json(
+            punctuation_model.id,
             "chat_completions",
             {
                 "model": punctuation_model.id,
@@ -190,6 +218,7 @@ async def _restore_package_transcription_punctuation(
                 "max_tokens": max(64, min(len(raw_text) * 2, 4096)),
                 "stream": False,
             },
+            context=_audio_invocation_context(),
         )
         if not 200 <= punctuation_response.status_code < 300:
             raise RuntimeError("Punctuation Package request failed")
@@ -402,7 +431,7 @@ async def _stream_speech_response(
                     voice=request.voice,
                     language=request.language,
                     speed=request.speed,
-                    instructions=request.instructions,
+                    instructions=_speech_instructions(request),
                     ref_audio=ref_audio_path,
                     ref_text=request.ref_text,
                     temperature=request.temperature,
@@ -451,7 +480,7 @@ async def _stream_speech_response(
                 voice=request.voice,
                 language=request.language,
                 speed=request.speed,
-                instructions=request.instructions,
+                instructions=_speech_instructions(request),
                 ref_audio=ref_audio_path,
                 ref_text=request.ref_text,
                 temperature=request.temperature,
@@ -594,8 +623,6 @@ async def create_transcription(
     if package_model is not None:
         if package_model.model_type != "audio_stt":
             raise HTTPException(status_code=400, detail="Selected model is not speech-to-text")
-        from ai2apps.model_providers import proxy_package_multipart
-
         content = await _read_upload(file)
         wav_content = await _normalize_audio_bytes(
             content,
@@ -603,8 +630,8 @@ async def create_transcription(
             media_type=file.content_type,
             sample_rate=16_000,
         )
-        response = await proxy_package_multipart(
-            package_model,
+        response = await _model_invocations().invoke_foreground_multipart(
+            package_model.id,
             "audio_transcription",
             data={
                 "language": language,
@@ -622,6 +649,7 @@ async def create_transcription(
                     "audio/wav",
                 )
             },
+            context=_audio_invocation_context(),
         )
         return await _restore_package_transcription_punctuation(
             package_model,
@@ -859,8 +887,6 @@ async def create_speech(request: AudioSpeechRequest):
     if package_model is not None:
         if package_model.model_type != "audio_tts":
             raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
-        from ai2apps.model_providers import proxy_package_json, proxy_package_multipart
-
         payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
         payload["response_format"] = "wav"
         if request.ref_audio is not None:
@@ -874,8 +900,8 @@ async def create_speech(request: AudioSpeechRequest):
             )
             payload.pop("ref_audio", None)
             payload.pop("ref_audio_format", None)
-            response = await proxy_package_multipart(
-                package_model,
+            response = await _model_invocations().invoke_foreground_multipart(
+                package_model.id,
                 "audio_speech",
                 data=payload,
                 files={
@@ -885,9 +911,15 @@ async def create_speech(request: AudioSpeechRequest):
                         "audio/wav",
                     )
                 },
+                context=_audio_invocation_context(),
             )
             return await _package_speech_response(response, response_format)
-        response = await proxy_package_json(package_model, "audio_speech", payload)
+        response = await _model_invocations().invoke_foreground_json(
+            package_model.id,
+            "audio_speech",
+            payload,
+            context=_audio_invocation_context(),
+        )
         return await _package_speech_response(response, response_format)
 
     from omlx.engine.tts import TTSEngine
@@ -965,7 +997,7 @@ async def create_speech(request: AudioSpeechRequest):
             voice=request.voice,
             language=request.language,
             speed=request.speed,
-            instructions=request.instructions,
+            instructions=_speech_instructions(request),
             ref_audio=ref_audio_path,
             ref_text=request.ref_text,
             temperature=request.temperature,
@@ -1012,8 +1044,6 @@ async def process_audio(
     if package_model is not None:
         if package_model.model_type != "audio_processing":
             raise HTTPException(status_code=400, detail="Selected model is not audio processing")
-        from ai2apps.model_providers import proxy_package_multipart
-
         content = await _read_upload(file)
         wav_content = await _normalize_audio_bytes(
             content,
@@ -1021,8 +1051,8 @@ async def process_audio(
             media_type=file.content_type,
             sample_rate=48_000,
         )
-        return await proxy_package_multipart(
-            package_model,
+        return await _model_invocations().invoke_foreground_multipart(
+            package_model.id,
             "audio_process",
             data={},
             files={
@@ -1032,6 +1062,7 @@ async def process_audio(
                     "audio/wav",
                 )
             },
+            context=_audio_invocation_context(),
         )
 
     from omlx.engine.sts import STSEngine

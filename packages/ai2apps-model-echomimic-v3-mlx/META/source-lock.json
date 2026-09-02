@@ -1,0 +1,25 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "implementation": {
+    "repository": "echomimic-v3-mlx",
+    "commit": "ed55d4e304216ce4d5e8bb1636d4807be0871443"
+  },
+  "upstream": {
+    "repository": "https://github.com/antgroup/echomimic_v3",
+    "commit": "7e89489ca51c0d008fc1963ec6c03fc5bd0b9397"
+  },
+  "checkpoint_layout": "ai2apps.echomimic-mlx-checkpoint/v1",
+  "checkpoint_publication": {
+    "status": "published",
+    "distribution_id": "dist_ai2apps_echomimic_v3_mlx_c04fb474_v1",
+    "huggingface": {
+      "repo_id": "Avdpro/EchoMimicV3-MLX",
+      "revision": "c04fb47465c0c615681b7d927256f6d5a3a314cc"
+    },
+    "modelscope": {
+      "repo_id": "ai2apps/EchoMimicV3-MLX",
+      "revision": "15f01fd1ab866b9c66b360ca15dc0dded52bc7cc"
+    },
+    "manifest_digest": "sha256:d9d41bf8e7bd3c2b17c35ed2bba8c08e72ab045ec58a16849eb8503baf49f0a4"
+  }
+}

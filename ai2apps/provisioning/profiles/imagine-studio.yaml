@@ -1,0 +1,48 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.imagine-studio
+version: 1
+capabilities:
+  image.generation:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS IMAGINE STUDIO SETUP
+      title: 配置本地绘图模型
+      description: 根据当前 Mac 的统一内存选择并安装本地图片生成与编辑 Runtime、Model Package 和 Checkpoint。确认前不会下载或启动模型。
+      icon: palette
+      confirm_label: 下载并配置
+      ready_label: 本地绘图环境已配置
+      steps:
+        runtime: 配置 MLX 绘图 Runtime
+        provider: 安装本地绘图 Model Package
+        checkpoint: 下载绘图模型 Checkpoint
+        verify: 启动并验证图片生成与编辑
+    requirements:
+      operations: [image_generation, image_edit]
+      output_formats: [png, jpeg, webp]
+    profiles:
+      - id: apple-metal-z-image-turbo
+        label: Z-Image Turbo MLX · 高质量推荐
+        description: 多语言文生图与单图编辑，适合 24 GiB 及以上 Apple Silicon。
+        priority: 110
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 24}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
+          provider: {package_id: ai2apps/model-z-image-mlx, service_key: ai2apps.model.z-image-mlx, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.z-image-mlx/turbo}
+      - id: apple-metal-flux2-klein-4b
+        label: FLUX.2 Klein 4B MLX · 轻量推荐
+        description: 快速文生图、单图编辑与多参考图创作，适合 16–24 GiB Apple Silicon。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 24}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
+          provider: {package_id: ai2apps/model-flux2-klein-mlx, service_key: ai2apps.model.flux2-klein-mlx, version: ">=0.1.2,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.flux2-klein-mlx/4b}

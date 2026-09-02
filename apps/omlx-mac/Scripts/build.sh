@@ -110,6 +110,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
 PACKAGING_DIR="$REPO_ROOT/packaging"
 CUSTOM_KERNEL_DIRS=(
+    "$REPO_ROOT/omlx/custom_kernels/bonsai"
     "$REPO_ROOT/omlx/custom_kernels/glm_moe_dsa"
     "$REPO_ROOT/omlx/custom_kernels/minimax_m3"
     "$REPO_ROOT/omlx/custom_kernels/qwen35_prefill"
@@ -216,14 +217,30 @@ _custom_kernel_deployment_target() {
     printf "%s\n" "${OMLX_CUSTOM_KERNEL_DEPLOYMENT_TARGET:-${MACOSX_DEPLOYMENT_TARGET:-15.0}}"
 }
 
+_custom_kernel_python_bin() {
+    [ -n "${DONOR_LAYERS:-}" ] || die "custom kernel build requires resolved donor layers."
+    local python_bin="$DONOR_LAYERS/cpython-3.11/bin/python3.11"
+    [ -x "$python_bin" ] \
+        || die "donor missing bundled CPython 3.11 interpreter: $python_bin"
+    printf "%s\n" "$python_bin"
+}
+
 _custom_kernel_pythonpath() {
     [ -n "${DONOR_LAYERS:-}" ] || die "custom kernel build requires resolved donor layers."
     local mlx_site="$DONOR_LAYERS/framework-mlx-base/lib/python3.11/site-packages"
+    local build_site
     [ -d "$mlx_site" ] || die "donor missing framework MLX site-packages: $mlx_site"
+    # The bundled CPython intentionally has no build tooling. Reuse only the
+    # host interpreter's pure-Python nanobind package while compiling and link
+    # against/import-test with the exact Python 3.11 + MLX pair that ships.
+    build_site="$("$PYTHON_BIN" -c \
+        'import pathlib, nanobind; print(pathlib.Path(nanobind.__file__).resolve().parent.parent)' \
+        2>/dev/null)" \
+        || die "nanobind is not importable by $PYTHON_BIN — install the pinned build dependency first."
     if [ -n "${PYTHONPATH:-}" ]; then
-        printf "%s:%s\n" "$mlx_site" "$PYTHONPATH"
+        printf "%s:%s:%s\n" "$mlx_site" "$build_site" "$PYTHONPATH"
     else
-        printf "%s\n" "$mlx_site"
+        printf "%s:%s\n" "$mlx_site" "$build_site"
     fi
 }
 
@@ -239,7 +256,19 @@ _clean_custom_kernel_build_artifacts() {
     done
 
     if [ -d "$REPO_ROOT/build" ]; then
+        # setuptools copies every file left in build/lib back into the source
+        # tree during --inplace builds. Purge stale ABI-tagged outputs there,
+        # otherwise an old cp39/cp313 module can reappear after a clean cp311
+        # CMake build and silently enter the Runtime bundle.
+        find "$REPO_ROOT/build" \
+            -type f \
+            -path "*/omlx/custom_kernels/*" \( \
+                -name "*.so" -o \
+                -name "*.dylib" -o \
+                -name "*.metallib" \
+            \) -delete
         for ext_name in \
+            "omlx.custom_kernels.bonsai._ext" \
             "omlx.custom_kernels.glm_moe_dsa._ext" \
             "omlx.custom_kernels.minimax_m3._ext" \
             "omlx.custom_kernels.qwen35_prefill._ext"; do
@@ -250,6 +279,23 @@ _clean_custom_kernel_build_artifacts() {
                 -exec rm -rf {} +
         done
     fi
+}
+
+_validate_custom_kernel_python_abi() {
+    local dir
+    local expected
+    local path
+    for dir in "${CUSTOM_KERNEL_DIRS[@]}"; do
+        [ -d "$dir" ] || continue
+        expected="$dir/_ext.cpython-311-darwin.so"
+        [ -f "$expected" ] \
+            || die "custom kernel missing bundled CPython 3.11 extension: $expected"
+        for path in "$dir"/_ext*.so; do
+            [ -e "$path" ] || continue
+            [ "$path" = "$expected" ] \
+                || die "custom kernel contains a non-bundled Python ABI extension: $path"
+        done
+    done
 }
 
 _sdk_supports_nax() {
@@ -292,13 +338,14 @@ _check_custom_kernel_nanobind() {
     # nanobind NB_DOMAIN: the extensions import and list symbols normally
     # but reject every mlx array at call time (issue #2139).
     local custom_kernel_pythonpath="$1"
+    local kernel_python="$2"
     local expected actual
     expected="$(sed -n 's/^[[:space:]]*"nanobind==\([0-9][0-9.]*\)".*/\1/p' \
         "$REPO_ROOT/pyproject.toml" | head -1)"
     [ -n "$expected" ] || die "could not read the nanobind pin from pyproject.toml [build-system]."
-    actual="$(PYTHONPATH="$custom_kernel_pythonpath" "$PYTHON_BIN" -c \
+    actual="$(PYTHONPATH="$custom_kernel_pythonpath" "$kernel_python" -c \
         'import nanobind; print(nanobind.__version__)' 2>/dev/null)" \
-        || die "nanobind is not importable by $PYTHON_BIN — run: $PYTHON_BIN -m pip install nanobind==$expected"
+        || die "nanobind is not importable by bundled Python 3.11 through the build path."
     [ "$actual" = "$expected" ] \
         || die "nanobind $actual does not match the pyproject build pin $expected; the kernels would reject every mlx array at runtime (issue #2139). Run: $PYTHON_BIN -m pip install nanobind==$expected"
 }
@@ -308,10 +355,11 @@ _check_custom_kernel_abi() {
     # exercise the array type caster once. A metallib existence check cannot
     # catch a nanobind ABI mismatch — only an actual call does.
     local custom_kernel_pythonpath="$1"
+    local kernel_python="$2"
     log "Verifying custom kernel ABI against the bundled MLX…"
     (
         cd "$REPO_ROOT"
-        PYTHONPATH="$custom_kernel_pythonpath" "$PYTHON_BIN" - <<'PYEOF'
+        PYTHONPATH="$custom_kernel_pythonpath" "$kernel_python" - <<'PYEOF'
 import importlib.util
 import pathlib
 import sys
@@ -321,8 +369,8 @@ import mlx.core as mx
 failures = []
 for name in ("glm_moe_dsa", "minimax_m3", "qwen35_prefill"):
     ext_dir = pathlib.Path("omlx/custom_kernels") / name
-    so = next(ext_dir.glob("_ext.*.so"), None)
-    if so is None:
+    so = ext_dir / "_ext.cpython-311-darwin.so"
+    if not so.is_file():
         failures.append(f"{name}: _ext extension missing")
         continue
     # Extension modules must load under their compiled name (PyInit__ext);
@@ -355,11 +403,17 @@ _build_custom_kernels() {
     local deployment_target
     local cmake_args
     local custom_kernel_pythonpath
+    local kernel_python
+    local kernel_python_root
+    local python_cmake_args
     deployment_target="$(_custom_kernel_deployment_target)"
     cmake_args="${CMAKE_ARGS:-}"
     custom_kernel_pythonpath="$(_custom_kernel_pythonpath)"
+    kernel_python="$(_custom_kernel_python_bin)"
+    kernel_python_root="$(dirname "$(dirname "$kernel_python")")"
+    python_cmake_args="-DPython_EXECUTABLE=$kernel_python -DPython_ROOT_DIR=$kernel_python_root -DPython_FIND_STRATEGY=LOCATION"
 
-    _check_custom_kernel_nanobind "$custom_kernel_pythonpath"
+    _check_custom_kernel_nanobind "$custom_kernel_pythonpath" "$kernel_python"
     log "Building optional native custom kernels (macOS deployment target $deployment_target)…"
     _clean_custom_kernel_build_artifacts
     (
@@ -367,10 +421,11 @@ _build_custom_kernels() {
         export PYTHONPATH="$custom_kernel_pythonpath"
         export OMLX_CUSTOM_KERNEL_DEPLOYMENT_TARGET="$deployment_target"
         export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-$deployment_target}"
-        if [[ "$cmake_args" != *"CMAKE_OSX_DEPLOYMENT_TARGET"* ]]; then
-            export CMAKE_ARGS="${cmake_args:+$cmake_args }-DCMAKE_OSX_DEPLOYMENT_TARGET=$deployment_target"
+        export CMAKE_ARGS="${cmake_args:+$cmake_args }$python_cmake_args"
+        if [[ "$CMAKE_ARGS" != *"CMAKE_OSX_DEPLOYMENT_TARGET"* ]]; then
+            export CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=$deployment_target"
         fi
-        "$PYTHON_BIN" setup.py build_ext --inplace --force --with-custom-kernel
+        "$kernel_python" setup.py build_ext --inplace --force --with-custom-kernel
     ) || die "custom kernel build failed; see output above."
     [ -f "$REPO_ROOT/omlx/custom_kernels/glm_moe_dsa/omlx_glm_kernels.metallib" ] \
         || die "custom kernel build finished but GLM metallib is missing."
@@ -388,8 +443,9 @@ _build_custom_kernels() {
     else
         warn "macOS SDK < 26.2: building without the Qwen3.5 NAX metallib; M5 GPUs will use the classic kernels."
     fi
+    _validate_custom_kernel_python_abi
     _validate_custom_kernel_deployment_target "$deployment_target"
-    _check_custom_kernel_abi "$custom_kernel_pythonpath"
+    _check_custom_kernel_abi "$custom_kernel_pythonpath" "$kernel_python"
     ok "  + custom kernels ($deployment_target)"
 }
 

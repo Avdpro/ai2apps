@@ -22,8 +22,13 @@ from ai2apps.api.identity import (
 from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
 from ai2apps.http_security import enforce_same_origin_cookie_request
+from ai2apps.identity import RequestPrincipal
+from ai2apps.model_providers import recommended_model_configuration_id
 from ai2apps.packages import PackageError, TrustStatus
 from ai2apps.packages.contract_v1 import PackageContractError
+from ai2apps.packages.install_continuations import (
+    RegistryInstallContinuationRepository,
+)
 from ai2apps.packages.registry import RegistryError
 
 
@@ -74,6 +79,7 @@ class RegistryInstallRequest(BaseModel):
 
 class RegistryUninstallRequest(BaseModel):
     force: bool = False
+    delete_checkpoints: bool = False
 
 
 class CloudPublisherCreateRequest(BaseModel):
@@ -163,6 +169,9 @@ def _registry_error(error: RegistryError | PackageContractError) -> JSONResponse
         "release_unavailable": 409,
         "repository_metadata_rollback": 409,
         "repository_metadata_expired": 503,
+        "artifact_download_failed": 503,
+        "artifact_download_stalled": 503,
+        "artifact_sources_exhausted": 503,
         "audit_review_required": 409,
         "dependency_restart_required": 409,
         "app_has_instances": 409,
@@ -176,7 +185,11 @@ def _registry_error(error: RegistryError | PackageContractError) -> JSONResponse
     }.get(error.code)
     if status is None and isinstance(error, RegistryError):
         upstream_status = error.details.get("status")
-        status = upstream_status if upstream_status in {400, 401, 403, 404, 409, 413, 422, 429, 503} else None
+        status = (
+            upstream_status
+            if upstream_status in {400, 401, 403, 404, 409, 413, 422, 429, 503}
+            else None
+        )
     status = status or 422
     return platform_error_response(
         status_code=status,
@@ -197,13 +210,15 @@ def _registry_install_result(item, namespace: str, name: str) -> dict[str, Any]:
         package_type = "service"
         version = item.package_version
         digest = item.package_digest
-    model_ids = [
-        model.get("id")
+    models = [
+        model
         for model in getattr(item, "manifest", {}).get("models", [])
         if isinstance(model, dict)
         and isinstance(model.get("id"), str)
         and isinstance(model.get("weights"), dict)
     ]
+    model_ids = [model["id"] for model in models]
+    recommended_model_id = recommended_model_configuration_id(models)
     pending_runtime_restart = bool(
         package_type == "service"
         and getattr(item, "service_key", None) == "ai2apps.runtime.omlx"
@@ -216,7 +231,8 @@ def _registry_install_result(item, namespace: str, name: str) -> dict[str, Any]:
         "digest": digest,
         "status": item.status.value,
         "runtimeKey": getattr(item, "service_key", None),
-        "modelConfigurationId": model_ids[0] if model_ids else None,
+        "modelConfigurationId": recommended_model_id,
+        "modelConfigurationIds": model_ids,
         "restartRequired": pending_runtime_restart,
         "restartScope": "local" if pending_runtime_restart else None,
     }
@@ -226,6 +242,7 @@ def create_package_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
 ) -> APIRouter:
+    principal_dependency = Depends(principal_provider)
     router = APIRouter(
         dependencies=[
             Depends(require_app_capability(principal_provider, APP_SYSTEM_MANAGE))
@@ -247,7 +264,10 @@ def create_package_router(
         namespace: str,
         name: str,
         install_request: RegistryInstallRequest,
+        principal: RequestPrincipal,
     ) -> None:
+        package_id = f"{namespace}/{name}"
+        continuation = install_continuation_repository()
         update_install_operation(operation_id, {"status": "running"})
         try:
             item = await manager.install(
@@ -268,7 +288,29 @@ def create_package_router(
                     "result": _registry_install_result(item, namespace, name),
                 },
             )
+            if continuation is not None:
+                continuation.delete(
+                    principal.actor_user_id,
+                    principal.installation_id,
+                    package_id=package_id,
+                )
         except RegistryError as error:
+            if continuation is not None:
+                if error.code == "dependency_restart_required":
+                    continuation.save(
+                        actor_id=principal.actor_user_id,
+                        installation_id=principal.installation_id,
+                        package_id=package_id,
+                        version=install_request.version,
+                        approve_review=install_request.approve_review,
+                        dependency=error.details.get("dependency", {}),
+                    )
+                else:
+                    continuation.delete(
+                        principal.actor_user_id,
+                        principal.installation_id,
+                        package_id=package_id,
+                    )
             update_install_operation(
                 operation_id,
                 {
@@ -282,6 +324,12 @@ def create_package_router(
                 },
             )
         except Exception as error:
+            if continuation is not None:
+                continuation.delete(
+                    principal.actor_user_id,
+                    principal.installation_id,
+                    package_id=package_id,
+                )
             update_install_operation(
                 operation_id,
                 {
@@ -321,6 +369,13 @@ def create_package_router(
             )
         return runtime.registry_packages
 
+    def install_continuation_repository():
+        runtime = runtime_provider()
+        database = None if runtime is None else getattr(runtime, "database", None)
+        if database is None:
+            return None
+        return RegistryInstallContinuationRepository(database)
+
     def publishing_registry_or_error(request: Request):
         """Return a Registry manager bound to this browser's Cloud session."""
 
@@ -329,9 +384,7 @@ def create_package_router(
             return manager
         runtime = runtime_provider()
         enforce_same_origin_cookie_request(request)
-        cookie_reader = getattr(
-            runtime, "cloud_browser_session_from_cookies", None
-        )
+        cookie_reader = getattr(runtime, "cloud_browser_session_from_cookies", None)
         browser_session_id = (
             cookie_reader(request.cookies) if cookie_reader is not None else None
         )
@@ -369,7 +422,9 @@ def create_package_router(
         q: str = "",
         type: str | None = Query(default=None, pattern="^(app|agent|service)$"),
         publisher: str | None = None,
-        sort: str = Query(default="recommended", pattern="^(recommended|relevance|rating|newest)$"),
+        sort: str = Query(
+            default="recommended", pattern="^(recommended|relevance|rating|newest)$"
+        ),
         limit: int = Query(default=24, ge=1, le=100),
         cursor: str | None = None,
     ):
@@ -377,7 +432,14 @@ def create_package_router(
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            return await manager.search(q=q, type=type, publisher=publisher, sort=sort, limit=limit, cursor=cursor)
+            return await manager.search(
+                q=q,
+                type=type,
+                publisher=publisher,
+                sort=sort,
+                limit=limit,
+                cursor=cursor,
+            )
         except RegistryError as error:
             return _registry_error(error)
 
@@ -457,7 +519,9 @@ def create_package_router(
         except (RegistryError, ValueError) as error:
             if isinstance(error, RegistryError):
                 return _registry_error(error)
-            return platform_error_response(status_code=422, code="publisher_key_invalid", message=str(error))
+            return platform_error_response(
+                status_code=422, code="publisher_key_invalid", message=str(error)
+            )
 
     @router.get("/packages/publisher-keys")
     def registry_keys():
@@ -509,7 +573,9 @@ def create_package_router(
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            return await manager.create_publisher(request.display_name, request.namespace, request.kind)
+            return await manager.create_publisher(
+                request.display_name, request.namespace, request.kind
+            )
         except RegistryError as error:
             return _registry_error(error)
 
@@ -523,8 +589,12 @@ def create_package_router(
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            challenge = await manager.create_key_challenge(publisher_id, request.key_ref)
-            challenge["proofSignature"] = manager.key_proof(challenge["proofPayload"], request.key_ref)
+            challenge = await manager.create_key_challenge(
+                publisher_id, request.key_ref
+            )
+            challenge["proofSignature"] = manager.key_proof(
+                challenge["proofPayload"], request.key_ref
+            )
             return challenge
         except (RegistryError, PackageContractError) as error:
             return _registry_error(error)
@@ -539,7 +609,9 @@ def create_package_router(
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            return await manager.register_key(publisher_id, request.challenge_id, request.signature)
+            return await manager.register_key(
+                publisher_id, request.challenge_id, request.signature
+            )
         except RegistryError as error:
             return _registry_error(error)
 
@@ -662,12 +734,19 @@ def create_package_router(
             return _registry_error(error)
 
     @router.post("/packages/{namespace}/{name}/download")
-    async def registry_download(namespace: str, name: str, request: RegistryInstallRequest):
+    async def registry_download(
+        namespace: str, name: str, request: RegistryInstallRequest
+    ):
         manager = registry_or_error()
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            item, _envelope, release, metadata_version = await manager.download_verified(namespace, name, request.version)
+            (
+                item,
+                _envelope,
+                release,
+                metadata_version,
+            ) = await manager.download_verified(namespace, name, request.version)
             return {
                 "archivePath": str(item.archive_path),
                 "package": item.manifest["package"],
@@ -681,7 +760,9 @@ def create_package_router(
             return _registry_error(error)
 
     @router.post("/packages/{namespace}/{name}/install")
-    async def registry_install(namespace: str, name: str, request: RegistryInstallRequest):
+    async def registry_install(
+        namespace: str, name: str, request: RegistryInstallRequest
+    ):
         manager = registry_or_error()
         if isinstance(manager, JSONResponse):
             return manager
@@ -704,6 +785,7 @@ def create_package_router(
         namespace: str,
         name: str,
         request: RegistryInstallRequest,
+        principal: RequestPrincipal = principal_dependency,
     ):
         manager = registry_or_error()
         if isinstance(manager, JSONResponse):
@@ -734,11 +816,34 @@ def create_package_router(
         }
         install_operations[operation_id] = operation
         task = asyncio.create_task(
-            run_install_operation(operation_id, manager, namespace, name, request)
+            run_install_operation(
+                operation_id, manager, namespace, name, request, principal
+            )
         )
         install_tasks.add(task)
         task.add_done_callback(install_tasks.discard)
         return operation
+
+    @router.get("/packages/install-continuation")
+    async def registry_install_continuation(
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository = install_continuation_repository()
+        continuation = None
+        if repository is not None:
+            continuation = repository.get(
+                principal.actor_user_id, principal.installation_id
+            )
+        return {"continuation": continuation}
+
+    @router.delete("/packages/install-continuation")
+    async def clear_registry_install_continuation(
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        repository = install_continuation_repository()
+        if repository is not None:
+            repository.delete(principal.actor_user_id, principal.installation_id)
+        return {"cleared": True}
 
     @router.get("/packages/install-operations/{operation_id}")
     async def registry_install_operation(operation_id: str):
@@ -752,13 +857,23 @@ def create_package_router(
         return operation
 
     @router.post("/packages/{namespace}/{name}/uninstall")
-    async def registry_uninstall(namespace: str, name: str, request: RegistryUninstallRequest):
+    async def registry_uninstall(
+        namespace: str, name: str, request: RegistryUninstallRequest
+    ):
         manager = registry_or_error()
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            await manager.uninstall(f"{namespace}/{name}", force=request.force)
-            return {"packageId": f"{namespace}/{name}", "status": "uninstalled"}
+            result = await manager.uninstall(
+                f"{namespace}/{name}",
+                force=request.force,
+                delete_checkpoints=request.delete_checkpoints,
+            )
+            return {
+                "packageId": f"{namespace}/{name}",
+                "status": "uninstalled",
+                **result,
+            }
         except RegistryError as error:
             return _registry_error(error)
 

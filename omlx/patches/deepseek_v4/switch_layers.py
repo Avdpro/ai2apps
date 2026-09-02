@@ -394,6 +394,7 @@ class SwitchGLU(nn.Module):
         activation=SwiGLU(),
         bias: bool = False,
         global_num_experts: int | None = None,
+        fused_gate_up: bool = False,
     ):
         super().__init__()
 
@@ -401,8 +402,15 @@ class SwitchGLU(nn.Module):
         if self.global_num_experts < num_experts:
             raise ValueError("global_num_experts cannot be smaller than num_experts")
 
-        self.gate_proj = SwitchLinear(input_dims, hidden_dims, num_experts, bias=bias)
-        self.up_proj = SwitchLinear(input_dims, hidden_dims, num_experts, bias=bias)
+        if fused_gate_up:
+            self.gate_up_proj = SwitchLinear(
+                input_dims, hidden_dims * 2, num_experts, bias=bias
+            )
+        else:
+            self.gate_proj = SwitchLinear(
+                input_dims, hidden_dims, num_experts, bias=bias
+            )
+            self.up_proj = SwitchLinear(input_dims, hidden_dims, num_experts, bias=bias)
         self.down_proj = SwitchLinear(hidden_dims, input_dims, num_experts, bias=bias)
         self.activation = activation
 
@@ -412,8 +420,9 @@ class SwitchGLU(nn.Module):
         # instead of a host-side lookup so both prefill and decode measure the
         # remap cost that a real cache adapter will pay.  Normal models have
         # equal global/physical counts and skip this operation entirely.
-        if self.global_num_experts != self.up_proj.num_experts:
-            indices = indices % self.up_proj.num_experts
+        first_proj = getattr(self, "gate_up_proj", None) or self.up_proj
+        if self.global_num_experts != first_proj.num_experts:
+            indices = indices % first_proj.num_experts
         x = mx.expand_dims(x, (-2, -3))
         original_dtype = x.dtype
 
@@ -424,6 +433,61 @@ class SwitchGLU(nn.Module):
             x, idx, inv_order = _gather_sort(x, indices)
         if self.training:
             idx = mx.stop_gradient(idx)
+
+        gate_up = getattr(self, "gate_up_proj", None)
+        if gate_up is not None:
+            projections = (gate_up, self.down_proj)
+            use_f16_moe = original_dtype == mx.bfloat16 and all(
+                isinstance(p, QuantizedSwitchLinear)
+                and p._has_affine_metadata_dtype(mx.float16)
+                for p in projections
+            )
+            block_plan = None
+            native_kinds = None
+            if do_sort and all(
+                isinstance(p, QuantizedSwitchLinear) for p in projections
+            ):
+                native_kinds = tuple(
+                    p._native_block_kind(x, do_sort) for p in projections
+                )
+                if x.dtype == mx.bfloat16:
+                    f16_kinds = tuple(
+                        p._native_block_kind(x, do_sort, dtype=mx.float16)
+                        for p in projections
+                    )
+                    if all(kind is not None for kind in f16_kinds):
+                        native_kinds = f16_kinds
+                        use_f16_moe = True
+                if all(kind is not None for kind in native_kinds):
+                    block_bm, block_variant = _mxfp4_block_config(idx.size)
+                    block_meta, block_count = _build_mxfp4_blocks(
+                        idx, gate_up.num_experts, block_bm
+                    )
+                    block_plan = (block_meta, block_count, block_variant)
+            if use_f16_moe:
+                x = x.astype(mx.float16)
+            gate_up_value = gate_up(
+                x, idx, sorted_indices=do_sort, block_plan=block_plan
+            )
+            hidden_dims = gate_up.output_dims // 2
+            x_gate = gate_up_value[..., :hidden_dims]
+            x_up = gate_up_value[..., hidden_dims:]
+            x = self.activation(x_up, x_gate)
+            if (
+                block_plan is not None
+                and native_kinds is not None
+                and native_kinds[1] == "affine"
+                and isinstance(self.down_proj, QuantizedSwitchLinear)
+                and x.dtype != self.down_proj["scales"].dtype
+            ):
+                x = x.astype(self.down_proj["scales"].dtype)
+            x = self.down_proj(
+                x, idx, sorted_indices=do_sort, block_plan=block_plan
+            )
+            if do_sort:
+                x = _scatter_unsort(x, inv_order, indices.shape)
+            x = x.squeeze(-2)
+            return x.astype(original_dtype) if use_f16_moe else x
 
         block_plan = None
         native_kinds = None

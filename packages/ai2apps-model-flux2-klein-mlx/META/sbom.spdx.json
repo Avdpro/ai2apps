@@ -1,0 +1,14 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.flux2-klein-mlx-0.1.2",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.flux2-klein-mlx/0.1.2",
+  "creationInfo": {"created": "2026-08-25T00:00:00Z", "creators": ["Organization: AI2Apps"]},
+  "packages": [
+    {"name": "ai2apps-model-flux2-klein-mlx", "SPDXID": "SPDXRef-Package", "versionInfo": "0.1.2", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "mflux", "SPDXID": "SPDXRef-Mflux", "versionInfo": "0.19.0", "downloadLocation": "https://pypi.org/project/mflux/0.19.0/", "filesAnalyzed": false, "licenseConcluded": "MIT", "licenseDeclared": "MIT", "copyrightText": "NOASSERTION", "checksums": [{"algorithm": "SHA256", "checksumValue": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"}]},
+    {"name": "FLUX.2-klein-4B", "SPDXID": "SPDXRef-Flux2Klein4B", "versionInfo": "e7b7dc27f91deacad38e78976d1f2b499d76a294", "downloadLocation": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "FLUX.2-klein-9B", "SPDXID": "SPDXRef-Flux2Klein9B", "versionInfo": "92196c8e11f7b6cf2b7493e037d8c5345c559216", "downloadLocation": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B", "filesAnalyzed": false, "licenseConcluded": "LicenseRef-FLUX-Non-Commercial", "licenseDeclared": "LicenseRef-FLUX-Non-Commercial", "copyrightText": "NOASSERTION"}
+  ]
+}

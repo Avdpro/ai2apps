@@ -10,9 +10,17 @@ actor-bound Web Agent launch separate processes from this same bundle.
 - Each Web Agent uses a profile derived from its Installation and actor.
 - Every Agent receives a unique BiDi port, authentication token, process
   lease, download directory, and browser profile.
-- Agent processes set `AI2APPS_BROWSER_ROLE=agent` and `MOZ_APP_NO_DOCK=1`.
-  AceFox therefore skips signed App-Shell argument injection and keeps the
-  visible Agent window out of the Dock and Command-Tab switcher.
+- Agent processes set `AI2APPS_BROWSER_ROLE=agent`, so AceFox skips signed
+  App-Shell argument injection. Web Agent processes remain accessory processes
+  without their own Dock presence.
+- User-facing AI Browser Profiles are native container identities in the App
+  Shell process, not separate Agent processes. Local validates Profile
+  ownership and hands a lifecycle request to the authenticated Shell; Shell
+  then uses the same `BrowserWindowTracker.openWindow` path as the **Open
+  AceFox Browser** menu command. Each Profile owns an isolated cookie/storage
+  context and an independent AceFox window. Those windows share AI2Apps' Dock
+  icon and appear together in AI2Apps App Exposé. WebDriver BiDi remains the
+  browser-control protocol and is not used as a window-launch RPC.
 
 Program files are shared; mutable profiles, sessions, permissions, and process
 lifecycle are not.

@@ -1,0 +1,14 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.qwen-image-mlx-0.1.1",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.qwen-image-mlx/0.1.1",
+  "creationInfo": {"created": "2026-08-25T00:00:00Z", "creators": ["Organization: AI2Apps"]},
+  "packages": [
+    {"name": "ai2apps-model-qwen-image-mlx", "SPDXID": "SPDXRef-Package", "versionInfo": "0.1.1", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "mflux", "SPDXID": "SPDXRef-Mflux", "versionInfo": "0.19.0", "downloadLocation": "https://pypi.org/project/mflux/0.19.0/", "filesAnalyzed": false, "licenseConcluded": "MIT", "licenseDeclared": "MIT", "copyrightText": "NOASSERTION", "checksums": [{"algorithm": "SHA256", "checksumValue": "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"}]},
+    {"name": "Qwen-Image-2512", "SPDXID": "SPDXRef-QwenImage2512", "versionInfo": "25468b98e3276ca6700de15c6628e51b7de54a26", "downloadLocation": "https://huggingface.co/Qwen/Qwen-Image-2512", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"},
+    {"name": "Qwen-Image-Edit-2511", "SPDXID": "SPDXRef-QwenImageEdit2511", "versionInfo": "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9", "downloadLocation": "https://huggingface.co/Qwen/Qwen-Image-Edit-2511", "filesAnalyzed": false, "licenseConcluded": "Apache-2.0", "licenseDeclared": "Apache-2.0", "copyrightText": "NOASSERTION"}
+  ]
+}

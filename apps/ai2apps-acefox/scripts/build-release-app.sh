@@ -17,6 +17,7 @@ ENTITLEMENTS_DIR=${ENTITLEMENTS_DIR:-${PROJECT_DIR}/entitlements}
 KEEP_FAILED_STAGING=${KEEP_FAILED_STAGING:-0}
 SANDBOX_MODE=${SANDBOX_MODE:-0}
 TEAM_IDENTIFIER=${TEAM_IDENTIFIER:-}
+UPDATE_MANIFEST_URL=${UPDATE_MANIFEST_URL:-https://coder.ai2apps.com/updates/stable.json}
 
 fail() {
   print -u2 "build-release-app: $*"
@@ -41,6 +42,11 @@ set_localized_bundle_name() {
 [[ -n ${ACEFOX_APP} && -d ${ACEFOX_APP} ]] || fail "set ACEFOX_APP to a built Acefox.app"
 [[ -f ${ACEFOX_APP}/Contents/Resources/omni.ja ]] || \
   fail "ACEFOX_APP must be a packaged AceFox bundle with Resources/omni.ja"
+ACEFOX_EXECUTABLE=${ACEFOX_APP}/Contents/MacOS/firefox
+[[ -x ${ACEFOX_EXECUTABLE} ]] || \
+  fail "ACEFOX_APP does not contain an executable Contents/MacOS/firefox"
+/usr/bin/strings "${ACEFOX_EXECUTABLE}" | /usr/bin/grep -Fqx 'AI2APPS_BROWSER_ROLE' || \
+  fail "ACEFOX_APP is a plain AceFox build without AI2Apps shell support; use the patched acefox-firefox-153 build"
 [[ -d ${RUNTIME_LAYERS}/cpython-3.11 ]] || fail "missing cpython-3.11 in RUNTIME_LAYERS"
 [[ ${RUNTIME_PROFILE} == full || ${RUNTIME_PROFILE} == cloud ]] || \
   fail "RUNTIME_PROFILE must be full or cloud"
@@ -56,6 +62,9 @@ fi
 [[ ${INSTANCE_ID[1]} != [.-] && ${INSTANCE_ID[-1]} != [.-] ]] || fail "invalid INSTANCE_ID"
 [[ ${#INSTANCE_ID} -le 64 ]] || fail "INSTANCE_ID is too long"
 [[ ${SANDBOX_MODE} == 0 || ${SANDBOX_MODE} == 1 ]] || fail "SANDBOX_MODE must be 0 or 1"
+if [[ -n ${UPDATE_MANIFEST_URL} ]]; then
+  [[ ${UPDATE_MANIFEST_URL} == https://* ]] || fail "UPDATE_MANIFEST_URL must use HTTPS"
+fi
 if [[ ${SANDBOX_MODE} == 1 ]]; then
   [[ ${SIGN_IDENTITY} != - ]] || \
     fail "Sandbox App Group builds require an Apple signing identity; ad-hoc signing is unsupported"
@@ -100,6 +109,9 @@ find "${SHELL_APP}" -name .purgecaches -type f -delete
 rm -f "${SHELL_APP}/Contents/moz.build"
 
 mv "${SHELL_APP}/Contents/MacOS/firefox" "${SHELL_APP}/Contents/MacOS/acefox-bin"
+/usr/bin/strings "${SHELL_APP}/Contents/MacOS/acefox-bin" | \
+  /usr/bin/grep -Fqx 'AI2APPS_BROWSER_ROLE' || \
+  fail "staged AceFox lost the required AI2Apps shell marker"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${SHELL_APP}/Contents/Info.plist" "${APP}/Contents/Info.plist"
 for icon in "${SHELL_APP}/Contents/Resources"/*.icns(N); do
@@ -125,6 +137,12 @@ mkdir -p "${HELPER_APP}/Contents/MacOS" "${HELPER_APP}/Contents/Resources"
 cp "${BUILD_BIN}/ai2apps-helper" "${HELPER_APP}/Contents/MacOS/AI2AppsHelper"
 cp "${REPO_ROOT}/ai2apps/web/static/logo-light.svg" \
   "${HELPER_APP}/Contents/Resources/menubar-logo.svg"
+cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-update.svg" \
+  "${HELPER_APP}/Contents/Resources/menubar-logo-update.svg"
+cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-work.svg" \
+  "${HELPER_APP}/Contents/Resources/menubar-logo-work.svg"
+cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-ready.svg" \
+  "${HELPER_APP}/Contents/Resources/menubar-logo-ready.svg"
 plutil -create xml1 "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${PRODUCT_IDENTIFIER}.helper" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string AI2AppsHelper" "${HELPER_APP}/Contents/Info.plist"
@@ -194,6 +212,9 @@ INFO_PLIST=${APP}/Contents/Info.plist
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeProfile string ${RUNTIME_PROFILE}" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdaterProtocol integer 1" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdateStagingProtocol integer 1" "${INFO_PLIST}"
+if [[ -n ${UPDATE_MANIFEST_URL} ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdateManifestURL string ${UPDATE_MANIFEST_URL}" "${INFO_PLIST}"
+fi
 if [[ ${SANDBOX_MODE} == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Add :AI2AppsApplicationGroupIdentifier string ${APPLICATION_GROUP_IDENTIFIER}" "${INFO_PLIST}"
 fi

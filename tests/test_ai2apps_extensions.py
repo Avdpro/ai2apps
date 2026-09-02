@@ -173,6 +173,7 @@ def test_runtime_registers_authoritative_builtin_app_catalog(tmp_path):
         "ai2apps.agents",
         "ai2apps.trust-center",
         "ai2apps.general-chat",
+        "ai2apps.messager",
         "ai2apps.settings",
         "ai2apps.logs",
         "ai2apps.benchmark",
@@ -208,6 +209,8 @@ def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
         "ai2apps.account",
         "ai2apps.agents",
         "ai2apps.general-chat",
+        "ai2apps.knowledge",
+        "ai2apps.messager",
         "ai2apps.trust-center",
     }
     assert catalog["ai2apps.general-chat"]["entry_source"] == "mobile_entry"
@@ -235,7 +238,17 @@ def test_builtin_app_catalog_and_launch_are_filtered_by_role(tmp_path):
         for item in runtime.extension_manager.list_apps(principal=core)
     }
 
-    assert member_catalog == {"ai2apps.account", "ai2apps.general-chat"}
+    assert member_catalog == {
+        "ai2apps.account",
+        "ai2apps.ai-browser",
+        "ai2apps.gallery",
+        "ai2apps.general-chat",
+        "ai2apps.imagine-studio",
+        "ai2apps.knowledge",
+        "ai2apps.messager",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
+    }
     assert "ai2apps.coder" in developer_catalog
     assert "ai2apps.agents" not in developer_catalog
     assert {
@@ -734,6 +747,13 @@ async def test_app_api_enforces_principal_catalog_and_launch_policy(tmp_path):
     assert [item["app_key"] for item in catalog.json()["items"]] == [
         "ai2apps.account",
         "ai2apps.general-chat",
+        "ai2apps.ai-browser",
+        "ai2apps.gallery",
+        "ai2apps.messager",
+        "ai2apps.knowledge",
+        "ai2apps.readaloud",
+        "ai2apps.video-studio",
+        "ai2apps.imagine-studio",
     ]
     assert denied.status_code == 403
     assert denied.json()["error"]["code"] == "app_access_denied"

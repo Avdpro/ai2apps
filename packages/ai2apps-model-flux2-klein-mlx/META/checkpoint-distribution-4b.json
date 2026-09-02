@@ -1,0 +1,23 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_flux2_klein_4b_e7b7dc27_v1",
+  "modelId": "ai2apps.model.flux2-klein-mlx/4b",
+  "repoId": "black-forest-labs/FLUX.2-klein-4B",
+  "revision": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0", "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms", "accessPolicy": "public", "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "vae/*", "transformer/*", "text_encoder/*", "tokenizer/*", "model_index.json"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "black-forest-labs/FLUX.2-klein-4B", "revision": "e7b7dc27f91deacad38e78976d1f2b499d76a294", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "black-forest-labs/FLUX.2-klein-4B", "revision": "2bc2e0f64332317d1315dbc51d536f05b75df847", "access": "public_anonymous"}
+  ]
+}

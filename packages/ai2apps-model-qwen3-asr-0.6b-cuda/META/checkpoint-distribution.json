@@ -1,0 +1,31 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen3_asr_0_6b_bf16_e8cb6ff5_v1",
+  "modelId": "ai2apps.model.qwen3-asr-0.6b-cuda/qwen3-asr-0.6b",
+  "repoId": "Qwen/Qwen3-ASR-0.6B-hf",
+  "revision": "e8cb6ff5b151ad5c0e49bf9328a9d628efb5def2",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "generation_config.json",
+    "model.safetensors",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "Qwen/Qwen3-ASR-0.6B-hf", "revision": "e8cb6ff5b151ad5c0e49bf9328a9d628efb5def2", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "Qwen/Qwen3-ASR-0.6B-hf", "revision": "005b749cd1566dc579fe0238316087e2fc1945c0", "access": "public_anonymous"}
+  ]
+}

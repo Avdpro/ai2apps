@@ -1,0 +1,27 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen3_6_35b_a3b_4bit_38740b84_v1",
+  "modelId": "ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit",
+  "repoId": "mlx-community/Qwen3.6-35B-A3B-4bit",
+  "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
+  "format": "safetensors",
+  "quantization": "4bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0", "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms", "accessPolicy": "public", "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "chat_template.jinja", "config.json", "configuration.json", "generation_config.json",
+    "model-00001-of-00004.safetensors", "model-00002-of-00004.safetensors",
+    "model-00003-of-00004.safetensors", "model-00004-of-00004.safetensors",
+    "model.safetensors.index.json", "preprocessor_config.json", "processor_config.json",
+    "tokenizer.json", "tokenizer_config.json", "video_preprocessor_config.json", "vocab.json"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "mlx-community/Qwen3.6-35B-A3B-4bit", "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "mlx-community/Qwen3.6-35B-A3B-4bit", "revision": "b4212ebb5451871e7288cb15a9aab3a8f63c9146", "access": "public_anonymous"}
+  ]
+}

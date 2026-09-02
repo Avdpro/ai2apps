@@ -469,6 +469,7 @@ def _write_engine_commits(omlx_pkg_dir: Path):
 _LAYER_REQUIREMENTS_SOURCES = {
     "control-plane": ["control-plane"],
     "mlx-base": ["project", "bundle"],
+    "knowledge-rag": ["knowledge-rag-runtime"],
 }
 
 
@@ -736,6 +737,12 @@ def build_venvstacks():
     # so it can't go through venvstacks' uv resolver.
     _install_mlx_audio(EXPORT_DIR)
 
+    # Overlay only the CosyVoice 3 MLX backend and the two codec modules it
+    # needs.  Installing the full mlx-audio-plus wheel would overwrite shared
+    # mlx_audio modules with an older fork and regress newer backends such as
+    # Fish S2, Qwen3-TTS, and VibeVoice.
+    _install_cosyvoice_mlx_backend(EXPORT_DIR)
+
     # Install paroquant --no-deps. The official [mlx] extra requires
     # torchvision which the mlx load path doesn't actually use; verified
     # end-to-end on 0.1.14. All real deps (mlx, mlx-lm, mlx-vlm, numpy,
@@ -746,6 +753,11 @@ def build_venvstacks():
     # paths only, and omlx/_torch_stub.py satisfies xgrammar's import-time
     # references to torch so the runtime torch dep is unnecessary.
     _install_xgrammar(EXPORT_DIR)
+
+    # Install the reviewed MLX-native FLUX.2 implementation without its
+    # conversion-only torch/opencv dependencies. The overlay is digest pinned
+    # and patched below so all FLUX.2 inference paths stay MLX-native.
+    _install_mflux(EXPORT_DIR)
 
     # Bundle spacy language model for Kokoro TTS.
     # misaki's en.G2P tries spacy.cli.download() at runtime, which fails in
@@ -761,6 +773,14 @@ def build_venvstacks():
 
 # mlx-audio git commit — aligned with pyproject.toml [audio] extra
 _MLX_AUDIO_GIT = "git+https://github.com/Blaizzy/mlx-audio@51753266e0a4f766fd5e6fbc46652224efc23981"
+_MLX_AUDIO_PLUS_VERSION = "0.1.8"
+_MLX_AUDIO_PLUS_WHEEL_SHA256 = "2e44ad5a65d46391db59b694ad4b9e9b1a739ea79c1e6013ad8f7db5cea9472b"
+_MLX_AUDIO_PLUS_OVERLAY = (
+    "mlx_audio/tts/models/cosyvoice3/",
+    "mlx_audio/tts/models/cosyvoice2/speaker_encoder.py",
+    "mlx_audio/codec/models/s3gen/",
+    "mlx_audio/codec/models/s3tokenizer/",
+)
 
 
 def _install_mlx_audio(export_dir: Path):
@@ -798,6 +818,61 @@ def _install_mlx_audio(export_dir: Path):
 
     shutil.rmtree(audio_wheels)
     print("  ✓ mlx-audio installed")
+
+
+def _install_cosyvoice_mlx_backend(export_dir: Path):
+    """Install the audited CosyVoice 3 MLX modules without replacing mlx-audio."""
+    print("\n  Building CosyVoice 3 MLX backend overlay...")
+    overlay_wheels = SCRIPT_DIR / "_cosyvoice_wheels"
+    if overlay_wheels.exists():
+        shutil.rmtree(overlay_wheels)
+    overlay_wheels.mkdir()
+
+    run_cmd([
+        sys.executable, "-m", "pip", "wheel",
+        "--no-deps", "--wheel-dir", str(overlay_wheels),
+        f"mlx-audio-plus=={_MLX_AUDIO_PLUS_VERSION}",
+    ])
+
+    fw_site = (
+        export_dir
+        / "framework-mlx-base"
+        / "lib"
+        / "python3.11"
+        / "site-packages"
+    )
+    if not fw_site.exists():
+        print(f"  ✗ site-packages not found: {fw_site}")
+        return
+
+    import zipfile
+
+    wheels = list(overlay_wheels.glob("mlx_audio_plus-*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(
+            f"Expected one mlx-audio-plus wheel, found {len(wheels)}"
+        )
+    import hashlib
+
+    wheel_digest = hashlib.sha256(wheels[0].read_bytes()).hexdigest()
+    if wheel_digest != _MLX_AUDIO_PLUS_WHEEL_SHA256:
+        raise RuntimeError(
+            "mlx-audio-plus wheel digest mismatch: "
+            f"expected {_MLX_AUDIO_PLUS_WHEEL_SHA256}, got {wheel_digest}"
+        )
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        members = [
+            member
+            for member in wheel.namelist()
+            if any(member.startswith(prefix) for prefix in _MLX_AUDIO_PLUS_OVERLAY)
+            and not member.endswith(".pyc")
+        ]
+        if not members:
+            raise RuntimeError("mlx-audio-plus wheel has no CosyVoice overlay files")
+        wheel.extractall(fw_site, members=members)
+
+    shutil.rmtree(overlay_wheels)
+    print("  ✓ CosyVoice 3 MLX backend installed")
 
 
 # paroquant version — keep in sync with pyproject.toml [paroquant] extra
@@ -941,6 +1016,196 @@ def _install_xgrammar(export_dir: Path):
     )
     os.replace(sentinel_tmp, sentinel)
     print("  ✓ xgrammar + apache-tvm-ffi installed")
+
+
+_MFLUX_VERSION = "0.19.0"
+_MFLUX_WHEEL_SHA256 = "3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47"
+
+
+def _install_mflux(export_dir: Path):
+    """Install audited mflux without torch and disable conversion-only paths."""
+    import hashlib
+    import zipfile
+
+    fw_site = export_dir / "framework-mlx-base" / "lib" / "python3.11" / "site-packages"
+    if not fw_site.exists():
+        print(f"  ✗ site-packages not found: {fw_site}")
+        return
+    sentinel = fw_site / f"_ai2apps_mflux_{_MFLUX_VERSION}_mlx_only_v3.installed"
+    if sentinel.exists():
+        print(f"  ✓ mflux {_MFLUX_VERSION} already installed, skipping")
+        return
+
+    wheel_dir = SCRIPT_DIR / "_mflux_wheels"
+    if wheel_dir.exists():
+        shutil.rmtree(wheel_dir)
+    wheel_dir.mkdir()
+    print(f"\n  Downloading mflux {_MFLUX_VERSION} wheel...")
+    run_cmd([
+        sys.executable, "-m", "pip", "download", "--no-deps",
+        "--only-binary=:all:", "--dest", str(wheel_dir),
+        f"mflux=={_MFLUX_VERSION}",
+    ])
+    wheels = list(wheel_dir.glob("mflux-*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(f"Expected one mflux wheel, found {len(wheels)}")
+    digest = hashlib.sha256(wheels[0].read_bytes()).hexdigest()
+    if digest != _MFLUX_WHEEL_SHA256:
+        raise RuntimeError(
+            f"mflux wheel digest mismatch: expected {_MFLUX_WHEEL_SHA256}, got {digest}"
+        )
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        wheel.extractall(fw_site)
+    shutil.rmtree(wheel_dir)
+
+    loader = fw_site / "mflux/models/common/weights/loading/weight_loader.py"
+    source = loader.read_text(encoding="utf-8")
+    expected = (
+        "import torch\n",
+        "from safetensors.torch import load_file as torch_load_file\n",
+        "        pt_weights = torch.load(file_path, map_location=\"cpu\", weights_only=False)\n",
+    )
+    if any(fragment not in source for fragment in expected):
+        raise RuntimeError("mflux weight loader changed; review the MLX-only patch")
+    source = source.replace("import torch\n", "")
+    source = source.replace("from safetensors.torch import load_file as torch_load_file\n", "")
+    start = source.index("    @staticmethod\n    def _load_torch_checkpoint")
+    end = source.index("    @staticmethod\n    def _load_safetensors", start)
+    source = source[:start] + (
+        "    @staticmethod\n"
+        "    def _load_torch_checkpoint(file_path: Path) -> dict[str, mx.array]:\n"
+        "        raise RuntimeError('torch checkpoint conversion is not included in AI2Apps oMLX Runtime')\n\n"
+    ) + source[end:]
+    start = source.index("    @staticmethod\n    def _load_torch_convert")
+    end = source.index("    @staticmethod\n    def _load_multi_json", start)
+    source = source[:start] + (
+        "    @staticmethod\n"
+        "    def _load_torch_convert(path: Path, weight_files: list[str] | None = None) -> dict[str, mx.array]:\n"
+        "        raise RuntimeError('torch conversion is not included in AI2Apps oMLX Runtime')\n\n"
+    ) + source[end:]
+    start = source.index("    @staticmethod\n    def _load_torch_bfloat16")
+    end = source.index("    @staticmethod\n    def _load_single", start)
+    source = source[:start] + (
+        "    @staticmethod\n"
+        "    def _load_torch_bfloat16(path: Path) -> dict[str, mx.array]:\n"
+        "        raise RuntimeError('torch conversion is not included in AI2Apps oMLX Runtime')\n\n"
+    ) + source[end:]
+    loader.write_text(source, encoding="utf-8")
+
+    klein = fw_site / "mflux/models/flux2/variants/txt2img/flux2_klein.py"
+    source = klein.read_text(encoding="utf-8")
+    pid_import = "from mflux.models.common.pid_decoder.pid_decoder import pid_decode_latents\n"
+    if pid_import not in source:
+        raise RuntimeError("mflux FLUX.2 PiD import changed; review the MLX-only patch")
+    source = source.replace(pid_import, "")
+    marker = "        if pid_decode:\n"
+    source = source.replace(
+        marker,
+        marker + "            from mflux.models.common.pid_decoder.pid_decoder import pid_decode_latents\n",
+        1,
+    )
+    klein.write_text(source, encoding="utf-8")
+
+    qwen_image = fw_site / "mflux/models/qwen/variants/txt2img/qwen_image.py"
+    source = qwen_image.read_text(encoding="utf-8")
+    if pid_import not in source:
+        raise RuntimeError("mflux Qwen Image PiD import changed; review the MLX-only patch")
+    source = source.replace(pid_import, "")
+    if marker not in source:
+        raise RuntimeError("mflux Qwen Image PiD branch changed; review the MLX-only patch")
+    source = source.replace(
+        marker,
+        marker + "            from mflux.models.common.pid_decoder.pid_decoder import pid_decode_latents\n",
+        1,
+    )
+    qwen_image.write_text(source, encoding="utf-8")
+
+    z_image_variant = fw_site / "mflux/models/z_image/variants/z_image.py"
+    source = z_image_variant.read_text(encoding="utf-8")
+    if pid_import not in source:
+        raise RuntimeError("mflux Z-Image PiD import changed; review the MLX-only patch")
+    source = source.replace(pid_import, "")
+    z_pid_marker = "        if pid_decode:\n"
+    if z_pid_marker not in source:
+        raise RuntimeError("mflux Z-Image PiD branch changed; review the MLX-only patch")
+    source = source.replace(
+        z_pid_marker,
+        z_pid_marker + "            from mflux.models.common.pid_decoder.pid_decoder import pid_decode_latents\n",
+        1,
+    )
+    z_image_variant.write_text(source, encoding="utf-8")
+
+    # Importing plain Z-Image must not eagerly pull the optional OpenCV-backed
+    # ControlNet stack into every text-to-image worker.
+    z_image_variants = fw_site / "mflux/models/z_image/variants/__init__.py"
+    variants_source = z_image_variants.read_text(encoding="utf-8")
+    expected_variants = (
+        "from mflux.models.z_image.variants.controlnet import ZImageTurboControlnet\n"
+        "from mflux.models.z_image.variants.z_image import ZImage\n\n"
+        "ZImageTurbo = ZImage\n\n"
+        '__all__ = ["ZImage", "ZImageTurbo", "ZImageTurboControlnet"]\n'
+    )
+    if variants_source != expected_variants:
+        raise RuntimeError("mflux Z-Image variants imports changed; review optional ControlNet patch")
+    z_image_variants.write_text(
+        "from mflux.models.z_image.variants.z_image import ZImage\n\n"
+        "ZImageTurbo = ZImage\n\n"
+        "def __getattr__(name):\n"
+        '    if name == "ZImageTurboControlnet":\n'
+        "        from mflux.models.z_image.variants.controlnet import ZImageTurboControlnet\n"
+        "        return ZImageTurboControlnet\n"
+        "    raise AttributeError(name)\n\n"
+        '__all__ = ["ZImage", "ZImageTurbo", "ZImageTurboControlnet"]\n',
+        encoding="utf-8",
+    )
+
+    z_image_package = fw_site / "mflux/models/z_image/__init__.py"
+    package_source = z_image_package.read_text(encoding="utf-8")
+    controlnet_import = "from mflux.models.z_image.variants.controlnet import ZImageTurboControlnet\n"
+    if controlnet_import not in package_source:
+        raise RuntimeError("mflux Z-Image package imports changed; review optional ControlNet patch")
+    package_source = package_source.replace(controlnet_import, "")
+    package_source = package_source.replace(
+        '\n__all__ = ["ZImage", "ZImageTurbo", "ZImageTurboControlnet", "ZImageInitializer"]\n',
+        "\ndef __getattr__(name):\n"
+        '    if name == "ZImageTurboControlnet":\n'
+        "        from mflux.models.z_image.variants.controlnet import ZImageTurboControlnet\n"
+        "        return ZImageTurboControlnet\n"
+        "    raise AttributeError(name)\n\n"
+        '__all__ = ["ZImage", "ZImageTurbo", "ZImageTurboControlnet", "ZImageInitializer"]\n',
+    )
+    z_image_package.write_text(package_source, encoding="utf-8")
+
+    z_initializer = fw_site / "mflux/models/z_image/z_image_initializer.py"
+    initializer_source = z_initializer.read_text(encoding="utf-8")
+    controlnet_types_import = (
+        "from mflux.models.z_image.variants.controlnet.transformer_controlnet "
+        "import ZImageControlNet, ZImageControlNetConfig\n"
+    )
+    if controlnet_types_import not in initializer_source:
+        raise RuntimeError("mflux Z-Image initializer changed; review optional ControlNet patch")
+    initializer_source = initializer_source.replace(controlnet_types_import, "")
+    controlnet_marker = "        if model_config.controlnet_model is None:\n"
+    if controlnet_marker not in initializer_source:
+        raise RuntimeError("mflux Z-Image ControlNet init branch changed")
+    initializer_source = initializer_source.replace(
+        controlnet_marker,
+        "        from mflux.models.z_image.variants.controlnet.transformer_controlnet "
+        "import ZImageControlNet, ZImageControlNetConfig\n\n"
+        + controlnet_marker,
+        1,
+    )
+    z_initializer.write_text(initializer_source, encoding="utf-8")
+
+    if "import torch" in loader.read_text(encoding="utf-8"):
+        raise RuntimeError("mflux MLX-only patch left a torch import in WeightLoader")
+    sentinel_tmp = sentinel.with_suffix(".tmp")
+    sentinel_tmp.write_text(
+        f"mflux=={_MFLUX_VERSION}\nsha256={_MFLUX_WHEEL_SHA256}\npatch=mlx-only-v3\n",
+        encoding="utf-8",
+    )
+    os.replace(sentinel_tmp, sentinel)
+    print(f"  ✓ mflux {_MFLUX_VERSION} installed (MLX-only)")
 
 
 # spacy language model — required by misaki (Kokoro TTS G2P)

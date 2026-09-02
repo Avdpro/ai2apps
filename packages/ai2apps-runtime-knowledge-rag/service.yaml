@@ -1,0 +1,43 @@
+schema: ai2apps.service/v1
+id: ai2apps.runtime.knowledge-rag
+name: AI2Apps Knowledge RAG Runtime
+description: On-demand native Runtime for LanceDB and local MLX text embeddings.
+version: 0.1.1
+
+publisher:
+  id: ai2apps
+
+runtime:
+  mode: process
+  protocol: ai2apps-native-runtime/v1
+  role: knowledge_backend_provider
+  descriptor: META/runtime-manifest.json
+
+capabilities:
+  - knowledge-runtime-v1
+  - knowledge-vector-index-v1
+  - lancedb
+  - mlx-embeddings
+  - text-embeddings
+  - metal
+
+requires:
+  services: []
+
+permissions:
+  network: {outbound: false}
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+
+variants:
+  - id: darwin-arm64
+    priority: 100
+    compatibility: {os: [macos], architectures: [arm64], accelerators: [metal]}
+    files: [variants/darwin-arm64/AI2AppsKnowledgeRagRuntime.dmg]
+
+health: {}
+restart: {}
+tools: []
+models: []

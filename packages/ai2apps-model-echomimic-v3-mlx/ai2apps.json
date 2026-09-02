@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {"id": "ai2apps/model-echomimic-v3-mlx", "type": "service", "version": "0.1.1", "displayName": "EchoMimic V3 MLX", "description": "Native MLX reference-image and driving-audio avatar video generation."},
+  "compatibility": {"ai2apps": ">=0.1.0 <2.0.0", "platforms": ["darwin"], "architectures": ["arm64"], "minimumOsVersion": "26.2"},
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned EchoMimic MLX checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run native MLX avatar video generation.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.4.0 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

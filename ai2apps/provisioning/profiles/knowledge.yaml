@@ -1,0 +1,67 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.knowledge
+version: 1
+capabilities:
+  knowledge.semantic_retrieval:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS KNOWLEDGE SETUP
+      title: 配置本地语义知识检索
+      description: 安装隔离的 LanceDB RAG Runtime 和本地 Embedding 模型；基础知识管理与关键词检索无需安装。
+      icon: database-zap
+      confirm_label: 安装语义检索
+      ready_label: 本地语义检索已可用
+      steps:
+        runtime: 安装 LanceDB RAG Runtime
+        provider: 安装本地 Embedding Provider
+        checkpoint: 下载 Embedding 模型
+        verify: 启动并验证混合检索
+    requirements:
+      operations: [semantic_search]
+    profiles:
+      - id: local-lancedb-e5-small-384
+        label: LanceDB + Multilingual E5 Small
+        description: 本地 384 维语义检索，兼顾中文、英文和较低磁盘占用。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        recommendation_memory_gib: {minimum: 8}
+        stack:
+          components:
+            - id: rag-native-runtime
+              kind: package
+              phase: runtime
+              package_id: ai2apps/runtime-knowledge-rag
+              service_key: ai2apps.runtime.knowledge-rag
+              version: ">=0.1.0,<1.0.0"
+            - id: vector-service
+              kind: package
+              phase: provider
+              package_id: ai2apps/service-knowledge-lancedb
+              service_key: ai2apps.knowledge-vector.lancedb
+              version: ">=0.1.0,<1.0.0"
+            - id: embedding-provider
+              kind: package
+              phase: provider
+              package_id: ai2apps/model-multilingual-e5-small
+              service_key: ai2apps.model.multilingual-e5-small
+              version: ">=0.1.0,<1.0.0"
+            - id: embedding-checkpoint
+              kind: checkpoint
+              phase: checkpoint
+              model_id: ai2apps.model.multilingual-e5-small/default
+            - id: vector-runtime-ready
+              kind: verify
+              phase: verify
+              service_key: ai2apps.knowledge-vector.lancedb
+              capabilities: [knowledge-vector-index-v1]
+            - id: embedding-ready
+              kind: verify
+              phase: verify
+              service_key: ai2apps.model.multilingual-e5-small
+              capabilities: [text-embeddings]

@@ -241,6 +241,43 @@ class TestMSDownloader:
 
             await downloader.shutdown()
 
+    @pytest.mark.asyncio
+    async def test_download_supports_pinned_mirror_into_canonical_target(
+        self, model_dir
+    ):
+        model_dir.mkdir(parents=True, exist_ok=True)
+        on_complete = AsyncMock()
+        downloader = MSDownloader(
+            model_dir=str(model_dir), on_complete=on_complete
+        )
+
+        with patch(
+            "omlx.admin.ms_downloader.MS_SDK_AVAILABLE", True
+        ), patch(
+            "omlx.admin.ms_downloader._get_ms_api", return_value=None
+        ), patch(
+            "omlx.admin.ms_downloader.ms_snapshot_download"
+        ) as mock_download:
+            task = await downloader.start_download(
+                "mirror/model",
+                revision="release-v1",
+                target_repo_id="canonical/model",
+                allow_patterns=("transformer/*", "config.json"),
+                notify_complete=False,
+            )
+            await downloader._active_tasks[task.task_id]
+
+            call_kwargs = mock_download.call_args.kwargs
+            assert call_kwargs["revision"] == "release-v1"
+            assert call_kwargs["local_dir"] == str(
+                model_dir / "canonical" / "model"
+            )
+            assert call_kwargs["allow_patterns"] == [
+                "transformer/*",
+                "config.json",
+            ]
+            on_complete.assert_not_awaited()
+
     # --- Cancel Download ---
 
     @pytest.mark.asyncio

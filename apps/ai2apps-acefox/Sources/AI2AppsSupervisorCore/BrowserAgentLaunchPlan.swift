@@ -16,12 +16,30 @@ public struct BrowserAgentProfileID: Equatable, Hashable, Sendable, CustomString
         self.rawValue = rawValue
     }
 
-    public static func derive(instanceID: InstanceID, actorUserID: String) throws -> Self {
+    public static func derive(
+        instanceID: InstanceID,
+        actorUserID: String,
+        profileKey: String = "default"
+    ) throws -> Self {
         let normalizedUserID = actorUserID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...200).contains(normalizedUserID.utf8.count) else {
             throw ContractError.invalidField(field: "actor_user_id", reason: "must contain 1 to 200 UTF-8 bytes")
         }
-        let material = Data("ai2apps-browser-profile-v1\0\(instanceID.rawValue)\0\(normalizedUserID)".utf8)
+        let validCustomKey = profileKey.count == 32 && profileKey.unicodeScalars.allSatisfy { scalar in
+            (scalar.value >= 48 && scalar.value <= 57) ||
+                (scalar.value >= 97 && scalar.value <= 102)
+        }
+        guard profileKey == "default" || validCustomKey else {
+            throw ContractError.invalidField(
+                field: "browser_profile_key",
+                reason: "must be default or a lowercase 128-bit hexadecimal identifier"
+            )
+        }
+        // Preserve the original derivation for the default Profile so existing
+        // authenticated browser state remains available after this feature ships.
+        let material = profileKey == "default"
+            ? Data("ai2apps-browser-profile-v1\0\(instanceID.rawValue)\0\(normalizedUserID)".utf8)
+            : Data("ai2apps-browser-profile-v2\0\(instanceID.rawValue)\0\(normalizedUserID)\0\(profileKey)".utf8)
         let digest = SHA256.hash(data: material).map { String(format: "%02x", $0) }.joined()
         return try Self(rawValue: digest)
     }
@@ -39,6 +57,7 @@ public struct BrowserAgentLaunchPlan: Equatable, Sendable {
         executable: URL,
         instanceID: InstanceID,
         actorUserID: String,
+        profileKey: String = "default",
         paths: InstancePaths,
         initialURL: URL? = nil,
         automation: BrowserAgentAutomation? = nil,
@@ -49,7 +68,8 @@ public struct BrowserAgentLaunchPlan: Equatable, Sendable {
         }
         let profileID = try BrowserAgentProfileID.derive(
             instanceID: instanceID,
-            actorUserID: actorUserID
+            actorUserID: actorUserID,
+            profileKey: profileKey
         )
         self.executable = executable
         if let initialURL,

@@ -8,8 +8,6 @@
     --terminal-hover: #ececee;
     --terminal-selected: #e4e4e7;
     --terminal-canvas: #171719;
-    /* The host injects a 32px Dock reveal control at top:8px/right:10px. */
-    --terminal-shell-reveal-safe-area: 52px;
 }
 
 [data-theme="dark"] {
@@ -53,7 +51,7 @@ button { color: inherit; }
 .terminal-sidebar-footer { min-height: 44px; padding: 13px 18px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--terminal-line); color: var(--terminal-muted); font-size: 11px; }
 .service-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
 .terminal-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.terminal-toolbar { height: 60px; padding: 0 var(--terminal-shell-reveal-safe-area) 0 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--terminal-line); background: var(--terminal-panel); }
+.terminal-toolbar { height: 60px; padding: 0 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--terminal-line); background: var(--terminal-panel); }
 .terminal-current { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .terminal-current strong, .terminal-current span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .terminal-current strong { font-size: 13px; }
@@ -66,7 +64,7 @@ button { color: inherit; }
 .terminal-stage .xterm-viewport { border-radius: 8px; }
 .terminal-assistant { width: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; border-left: 0 solid var(--terminal-line); background: var(--terminal-panel); transition: width .22s ease, min-width .22s ease, border-width .22s ease; }
 .terminal-app.assistant-open .terminal-assistant { width: min(440px, 38vw); min-width: min(440px, 38vw); border-left-width: 1px; }
-.terminal-assistant-header { min-height: 60px; padding: 8px var(--terminal-shell-reveal-safe-area) 8px 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--terminal-line); }
+.terminal-assistant-header { min-height: 60px; padding: 8px 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--terminal-line); }
 .terminal-assistant-header > div { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .terminal-assistant-header strong { font-size: 13px; }
 .terminal-assistant-header [data-assistant-session] { overflow: hidden; color: var(--terminal-muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }

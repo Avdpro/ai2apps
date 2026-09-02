@@ -105,6 +105,8 @@ class ExpertMajorStore:
             if header.get("format") != FORMAT or header.get("version") != VERSION:
                 raise ValueError(f"unsupported expert-major file: {self.path}")
             self.layer = int(header["layer"])
+            self.variant = str(header.get("variant", "legacy"))
+            self.runtime_layout = header.get("runtime_layout")
             self.num_experts = int(header["num_experts"])
             self.record_bytes = int(header["record_bytes"])
             self.data_offset = int(header["data_offset"])
@@ -153,6 +155,13 @@ class ExpertMajorStore:
 
     def set_no_cache(self) -> None:
         set_no_cache(self._fd)
+
+    def fileno(self) -> int:
+        """Return the live descriptor for native direct-to-slot readers."""
+
+        if self._fd < 0:
+            raise ValueError("expert-major store is closed")
+        return self._fd
 
     def read(self, expert_id: int) -> bytes:
         return _read_exact(self._fd, self.record_bytes, self.expert_offset(expert_id))

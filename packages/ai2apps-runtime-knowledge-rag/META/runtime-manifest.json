@@ -1,0 +1,23 @@
+{
+  "schema": "ai2apps.knowledge-runtime/v1",
+  "service_id": "ai2apps.runtime.knowledge-rag",
+  "version": "0.1.1",
+  "protocol": "ai2apps-knowledge-vector-worker/v1",
+  "capabilities": [
+    "knowledge-runtime-v1",
+    "knowledge-vector-index-v1",
+    "lancedb",
+    "mlx-embeddings",
+    "text-embeddings",
+    "metal"
+  ],
+  "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
+  "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",
+  "framework_site_packages": "Contents/Resources/Runtime/Python/framework-knowledge-rag/lib/python3.11/site-packages",
+  "payload": {
+    "type": "dmg",
+    "path": "variants/darwin-arm64/AI2AppsKnowledgeRagRuntime.dmg",
+    "root": "AI2AppsKnowledgeRagRuntime.bundle"
+  },
+  "distribution": {"signing": "development", "team_id": null}
+}

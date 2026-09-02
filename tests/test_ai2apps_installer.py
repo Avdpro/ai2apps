@@ -1,3 +1,4 @@
+import hashlib
 import json
 import struct
 import sys
@@ -6,28 +7,31 @@ from types import SimpleNamespace
 
 import pytest
 
+from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
 from ai2apps.model_installer import (
     AI2AppsInstaller,
+    InstallTask,
     _read_safetensors_header,
     build_backbone_checkpoint,
-    build_storage_transition,
-    commit_backbone_index,
     build_deepseek_offset_manifest,
     build_qwen36_offset_manifest,
+    build_storage_transition,
     checkpoint_is_complete,
+    commit_backbone_index,
     link_cached_snapshot,
     reclaim_stream_shards,
     release_hf_cache_revision,
     resume_storage_transition,
 )
+from ai2apps.packages.supervisor import ManagedServiceSupervisor
 from omlx.cache.moe_expert_store import ExpertMajorStore, create_expert_major_store
 from omlx.model_discovery import cache_moe_engine_id, discover_models
-from omlx.patches.qwen3_6_flesh.checkpoint import create_qwen36_fused_store
 from omlx.patches.deepseek_v4.scope_policy import (
     clear_scope_policy_override,
     configure_scope_policy,
     load_scope_policy_from_env,
 )
+from omlx.patches.qwen3_6_flesh.checkpoint import create_qwen36_fused_store
 
 CACHED_MOE_PACKAGE_SRCS = tuple(
     Path(__file__).parents[1] / "packages" / name / "src"
@@ -37,6 +41,187 @@ CACHED_MOE_PACKAGE_SRCS = tuple(
         "omlx-model-qwen36-cached-moe",
     )
 )
+
+
+@pytest.mark.asyncio
+async def test_native_package_distribution_bypasses_legacy_hub_downloaders(
+    tmp_path, monkeypatch
+):
+    revision = "a" * 40
+    ready = []
+
+    async def on_ready(recipe):
+        ready.append(recipe)
+
+    class FakeDownloader:
+        model_dir = tmp_path / "models"
+
+        async def start_download(self, *_args, **_kwargs):
+            raise AssertionError("trusted distribution must bypass legacy downloader")
+
+    class FakeAcquisition:
+        async def acquire(self, distribution_id, **kwargs):
+            assert distribution_id == "dist_test_v1"
+            progress = kwargs.pop("progress")
+            assert callable(progress)
+            assert kwargs == {"hf_token": "secret"}
+            return SimpleNamespace(
+                cache_hit=False,
+                manifest=SimpleNamespace(
+                    distribution_id=distribution_id,
+                    model_id="provider/model",
+                    repo_id="owner/model",
+                    revision=revision,
+                ),
+                snapshot=tmp_path / "verified",
+            )
+
+        def materialize_worker_snapshot(self, result, hub_cache):
+            assert result.manifest.distribution_id == "dist_test_v1"
+            target = (
+                Path(hub_cache)
+                / "models--owner--model/distributions"
+                / checkpoint_distribution_cache_key("dist_test_v1")
+            )
+            target.mkdir(parents=True)
+            (target / "config.json").write_text("{}")
+            (target / "model.safetensors").write_bytes(b"weights")
+            return target
+
+    monkeypatch.setattr(
+        "ai2apps.model_installer.publish_configured_shared_model_reference",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_hub_cache",
+        lambda: tmp_path / "hub",
+    )
+    installer = AI2AppsInstaller(
+        FakeDownloader(),
+        checkpoint_acquisition=FakeAcquisition(),
+        on_ready=on_ready,
+    )
+    recipe = {
+        "id": "provider/model",
+        "name": "Model",
+        "recipe": "native",
+        "distribution_id": "dist_test_v1",
+        "sources": ({"repo_id": "owner/model", "revision": revision},),
+    }
+    task = InstallTask("task", recipe["id"], "huggingface", "owner/model", revision)
+
+    assert await installer._ensure_native_checkpoint(
+        task, recipe, "secret", dependency=False
+    ) is False
+    assert ready == [recipe]
+    checkpoint, _ = ManagedServiceSupervisor._model_worker_checkpoints(
+        {
+            "models": [
+                {
+                    "id": recipe["id"],
+                    "upstream_id": "owner/model",
+                    "weights": {
+                        "provider": "huggingface",
+                        "repo_id": "owner/model",
+                        "revision": revision,
+                        "distribution_id": "dist_test_v1",
+                    },
+                }
+            ]
+        },
+        tmp_path / "hub",
+    )
+    assert checkpoint[0]["path"].endswith(
+        "/distributions/" + checkpoint_distribution_cache_key("dist_test_v1")
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_package_distribution_reuses_verified_local_checkout(
+    tmp_path, monkeypatch
+):
+    revision = "b" * 40
+    source = tmp_path / "models" / "owner" / "model"
+    source.mkdir(parents=True)
+    contents = {
+        "config.json": b"{}",
+        "model.safetensors": b"existing weights",
+    }
+    tree_files = {}
+    for name, content in contents.items():
+        (source / name).write_bytes(content)
+        tree_files[name] = {
+            "size": len(content),
+            "lfs_sha256": hashlib.sha256(content).hexdigest(),
+        }
+    trees = source / ".cache" / "huggingface" / "trees"
+    trees.mkdir(parents=True)
+    (trees / f"{revision}.json").write_text(
+        json.dumps({"format_version": 1, "files": tree_files})
+    )
+
+    class FakeDownloader:
+        model_dir = tmp_path / "models"
+
+        async def start_download(self, *_args, **_kwargs):
+            raise AssertionError("verified local checkout must avoid Hub I/O")
+
+    class FakeAcquisition:
+        async def acquire(self, distribution_id, **kwargs):
+            local = kwargs.pop("local_snapshot")
+            progress = kwargs.pop("progress")
+            assert callable(progress)
+            assert kwargs == {"hf_token": None}
+            assert distribution_id == "dist_test_v1"
+            assert (local / "model.safetensors").resolve().stat().st_ino == (
+                source / "model.safetensors"
+            ).stat().st_ino
+            return SimpleNamespace(
+                cache_hit=True,
+                manifest=SimpleNamespace(
+                    distribution_id=distribution_id,
+                    model_id="provider/model",
+                    repo_id="owner/model",
+                    revision=revision,
+                ),
+            )
+
+        def materialize_worker_snapshot(self, result, hub_cache):
+            target = (
+                Path(hub_cache)
+                / "models--owner--model/distributions"
+                / checkpoint_distribution_cache_key(result.manifest.distribution_id)
+            )
+            target.mkdir(parents=True)
+            (target / "config.json").write_text("{}")
+            (target / "model.safetensors").write_bytes(b"existing weights")
+            return target
+
+    monkeypatch.setattr(
+        "ai2apps.model_installer.publish_configured_shared_model_reference",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_hub_cache",
+        lambda: tmp_path / "hub",
+    )
+    installer = AI2AppsInstaller(
+        FakeDownloader(), checkpoint_acquisition=FakeAcquisition()
+    )
+    recipe = {
+        "id": "provider/model",
+        "name": "Model",
+        "recipe": "native",
+        "distribution_id": "dist_test_v1",
+        "sources": ({"repo_id": "owner/model", "revision": revision},),
+    }
+    task = InstallTask("task", recipe["id"], "huggingface", "owner/model", revision)
+
+    assert await installer._ensure_native_checkpoint(
+        task, recipe, "", dependency=False
+    ) is True
 for package_src in CACHED_MOE_PACKAGE_SRCS:
     sys.path.insert(0, str(package_src))
 
@@ -503,6 +688,9 @@ def test_model_package_config_exposes_weight_download():
     assert "modelPackageLatestTask" in script
     assert "/admin/api/ai2apps/install" in script
     assert "/admin/api/ai2apps/preflight" in script
+    assert "confirmCheckpointLicenses" in script
+    assert "checkpoint_license_consent_required" in script
+    assert "license_consents: licenseConsents" in script
     assert "dynaPreflight?.ready" in template
 
 
@@ -610,6 +798,31 @@ def test_hf_snapshot_is_reused_as_a_no_copy_model_view(tmp_path: Path):
     assert checkpoint_is_complete(destination)
     assert (destination / "config.json").is_symlink()
     assert (destination / "model-00001.safetensors").resolve() == shard
+
+
+def test_diffusers_snapshot_with_nested_indexed_components_is_complete(tmp_path: Path):
+    snapshot = tmp_path / "diffusers"
+    transformer = snapshot / "transformer"
+    scheduler = snapshot / "scheduler"
+    transformer.mkdir(parents=True)
+    scheduler.mkdir()
+    (snapshot / "model_index.json").write_text(json.dumps({
+        "_class_name": "ExamplePipeline",
+        "transformer": ["diffusers", "ExampleTransformer", {"subfolder": "transformer"}],
+        "scheduler": ["diffusers", "ExampleScheduler", {"subfolder": "scheduler"}],
+    }))
+    (transformer / "config.json").write_text("{}")
+    (scheduler / "scheduler_config.json").write_text("{}")
+    (transformer / "diffusion_pytorch_model.safetensors.index.json").write_text(
+        json.dumps({"weight_map": {"weight": "model-00001.safetensors"}})
+    )
+    shard = transformer / "model-00001.safetensors"
+    shard.write_bytes(b"weights")
+
+    assert checkpoint_is_complete(snapshot)
+
+    shard.unlink()
+    assert not checkpoint_is_complete(snapshot)
 
 
 def test_prepare_checkpoint_prefers_hf_cache(tmp_path: Path, monkeypatch):

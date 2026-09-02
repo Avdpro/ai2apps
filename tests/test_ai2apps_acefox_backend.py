@@ -94,3 +94,36 @@ def test_acefox_failed_bidi_start_releases_the_actor_managed_agent(
     assert helper.released_actor == "user-123"
     assert backend.connection is None
     assert backend._actor_user_id is None
+
+
+def test_acefox_page_stability_waits_for_render_barrier() -> None:
+    backend = AceFoxBrowserBackend(
+        BrowserRuntimeConfig(profile_path="/tmp/unused")
+    )
+    responses = iter(
+        [
+            {"readyState": "complete", "quietMs": 900, "mutations": 2},
+            {
+                "frames": 3,
+                "timedOut": False,
+                "visibilityState": "visible",
+            },
+            {"readyState": "complete", "quietMs": 920, "mutations": 2},
+        ]
+    )
+    backend._call_function = lambda *_args: next(responses)  # type: ignore[method-assign]
+
+    result = backend.wait_for(
+        condition="page_stable",
+        target=None,
+        state="visible",
+        text=None,
+        url_contains=None,
+        timeout_ms=1_000,
+        poll_ms=10,
+        stable_ms=800,
+    )
+
+    assert result["satisfied"] is True
+    assert result["detail"]["render_frames"] == 3
+    assert result["detail"]["render_timed_out"] is False

@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-qwen36-35b",
     "type": "service",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "displayName": "Qwen3.6 35B A3B 4-bit",
     "description": "Isolated full and Tiered Cached-MoE Worker for Qwen3.6 35B."
   },

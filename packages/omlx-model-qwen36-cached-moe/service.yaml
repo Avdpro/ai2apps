@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.qwen36-35b
 name: Qwen3.6 35B A3B 4-bit
 description: Isolated full and Tiered Cached-MoE Worker for Qwen3.6 35B.
-version: 0.3.1
+version: 0.3.2
 publisher: {id: ai2apps}
 runtime:
   mode: process
@@ -19,6 +19,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/Qwen3.6-35B-A3B-4bit
       revision: 38740b847e4cb78f352aba30aa41c76e08e6eb46
+      distribution_id: dist_ai2apps_qwen3_6_35b_a3b_4bit_38740b84_v1
       preparation:
         recipe: ai2apps/cache-moe/v1
         install_id: qwen3.6-35b-a3b-4bit

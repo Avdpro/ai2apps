@@ -1,0 +1,9 @@
+[
+  {
+    "id": "poster_background",
+    "prompt": "保持海报的文字内容、字体、布局和光效不变，只把深蓝色背景改成深红色背景。",
+    "images": [
+      "results/mac-baseline-q8-smoke-r2/chinese_poster.png"
+    ]
+  }
+]

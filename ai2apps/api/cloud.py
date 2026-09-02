@@ -7,21 +7,23 @@ import logging
 import re
 import secrets
 from contextvars import ContextVar
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
 from fastapi import (
     APIRouter,
     Depends,
+    File,
     Header,
     HTTPException,
     Path,
     Query,
     Request,
+    UploadFile,
 )
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai2apps.account_capacity import capacity_policy_payload
 from ai2apps.api.errors import platform_error_response
@@ -34,6 +36,10 @@ from ai2apps.cloud_requests import (
 )
 from ai2apps.http_security import enforce_same_origin_cookie_request
 from ai2apps.identity import IdentityBindingError, RequestPrincipal
+from ai2apps.messager import (
+    MessagerIdempotencyConflictError,
+    MessagerRepository,
+)
 from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.qr import svg_qr_data_url
 from ai2apps.remote import RemoteAccessError
@@ -79,6 +85,92 @@ class LoginRequest(BaseModel):
 
 class AdminReauthRequest(BaseModel):
     password: str = Field(min_length=12, max_length=128)
+    duration_minutes: Literal[5, 15, 60, 180] = Field(
+        default=15, alias="durationMinutes"
+    )
+
+
+class UserProfilePatchRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    public_handle: str | None = Field(
+        default=None,
+        alias="publicHandle",
+        pattern=r"^[a-z0-9][a-z0-9-]{2,31}$",
+    )
+    display_name: str | None = Field(
+        default=None, alias="displayName", min_length=1, max_length=120
+    )
+    avatar_url: str | None = Field(default=None, alias="avatarUrl", max_length=2048)
+    bio: str | None = Field(default=None, max_length=1000)
+    gender: str | None = Field(default=None, max_length=80)
+    visibility: Literal["private", "public"] | None = None
+    discoverable_by_email: bool | None = Field(
+        default=None, alias="discoverableByEmail"
+    )
+    friend_request_policy: Literal["everyone", "mutuals", "nobody"] | None = Field(
+        default=None, alias="friendRequestPolicy"
+    )
+
+
+class PrimaryProfileDeviceRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    device_id: str | None = Field(
+        alias="deviceId",
+        min_length=32,
+        max_length=80,
+    )
+
+
+ProfileSocialPlatform = Literal[
+    "x",
+    "instagram",
+    "facebook",
+    "github",
+    "tiktok",
+    "discord",
+    "reddit",
+    "xiaohongshu",
+    "douyin",
+    "weibo",
+    "bilibili",
+]
+
+
+class ProfileSocialLinkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    handle: str | None = Field(default=None, min_length=1, max_length=120)
+    url: str | None = Field(default=None, min_length=1, max_length=2048)
+
+
+class PublicProfileLookupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    identifier: str = Field(min_length=1, max_length=320)
+
+
+class OfflineMessageRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    recipient_user_id: str = Field(alias="recipientUserId", min_length=32, max_length=80)
+    client_message_id: str = Field(
+        alias="clientMessageId",
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+    )
+    body: str | None = Field(default=None, min_length=1, max_length=4000)
+    attachment_id: str | None = Field(
+        default=None,
+        alias="attachmentId",
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+    )
+
+    @model_validator(mode="after")
+    def require_content(self):
+        if self.body is None and self.attachment_id is None:
+            raise ValueError("body or attachmentId is required")
+        return self
 
 
 class CoreDeviceRevokeRequest(BaseModel):
@@ -107,6 +199,12 @@ class PasswordResetRequest(EmailCodeRequest):
     model_config = ConfigDict(populate_by_name=True)
 
     new_password: str = Field(alias="newPassword", min_length=12, max_length=128)
+
+
+class PromotionCodeRedeemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=128)
 
 
 class MemberInvitationRequest(BaseModel):
@@ -397,6 +495,12 @@ def create_cloud_router(
         database = None if runtime is None else getattr(runtime, "database", None)
         return None if database is None else CloudAIRequestRepository(database)
 
+    def messager_repository() -> MessagerRepository | None:
+        runtime = runtime_provider()
+        database = None if runtime is None else getattr(runtime, "database", None)
+        events = None if runtime is None else getattr(runtime, "events", None)
+        return None if database is None else MessagerRepository(database, events)
+
     def begin_owned_request(
         principal: RequestPrincipal,
         *,
@@ -622,6 +726,7 @@ def create_cloud_router(
         payload: Any | None = None,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        files: dict[str, Any] | None = None,
         principal: RequestPrincipal | None = None,
     ) -> Response:
         cloud = _cloud_or_error(runtime_provider)
@@ -632,6 +737,7 @@ def create_cloud_router(
                 method,
                 path,
                 json=payload,
+                files=files,
                 params=params,
                 headers=(
                     cloud_ai_headers(principal, headers)
@@ -712,10 +818,352 @@ def create_cloud_router(
     async def auth_me():
         return await call("GET", "/v1/auth/me")
 
+    @router.get("/profile", dependencies=core_account_only)
+    async def get_profile():
+        return await call("GET", "/v1/profile")
+
+    @router.patch("/profile", dependencies=core_account_only)
+    async def update_profile(request: UserProfilePatchRequest):
+        payload = request.model_dump(
+            by_alias=True,
+            exclude_unset=True,
+        )
+        if not payload:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "profile_patch_empty",
+                    "message": "At least one profile field is required",
+                },
+            )
+        return await call("PATCH", "/v1/profile", payload=payload)
+
+    @router.put("/profile/primary-device", dependencies=core_account_only)
+    async def set_profile_primary_device(request: PrimaryProfileDeviceRequest):
+        return await call(
+            "PUT",
+            "/v1/profile/primary-device",
+            payload=request.model_dump(by_alias=True),
+        )
+
+    @router.get("/profile/social-link-platforms", dependencies=core_account_only)
+    async def profile_social_link_platforms():
+        return await call("GET", "/v1/profile/social-link-platforms")
+
+    @router.put(
+        "/profile/social-links/{platform}", dependencies=core_account_only
+    )
+    async def put_profile_social_link(
+        request: ProfileSocialLinkRequest,
+        platform: ProfileSocialPlatform,
+    ):
+        payload = request.model_dump(exclude_unset=True)
+        if not payload or not any(value for value in payload.values()):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "profile_social_link_empty",
+                    "message": "A social handle or URL is required",
+                },
+            )
+        return await call(
+            "PUT",
+            f"/v1/profile/social-links/{platform}",
+            payload=payload,
+        )
+
+    @router.delete(
+        "/profile/social-links/{platform}", dependencies=core_account_only
+    )
+    async def delete_profile_social_link(platform: ProfileSocialPlatform):
+        return await call("DELETE", f"/v1/profile/social-links/{platform}")
+
+    @router.post("/public/profiles/lookup", dependencies=core_account_only)
+    async def lookup_public_profile(request: PublicProfileLookupRequest):
+        return await call(
+            "POST",
+            "/v1/public/profiles/lookup",
+            payload=request.model_dump(),
+        )
+
+    @router.get(
+        "/social/relationships/{user_id}", dependencies=core_account_only
+    )
+    async def social_relationship(
+        user_id: str = Path(min_length=32, max_length=80),
+    ):
+        return await call("GET", f"/v1/social/relationships/{user_id}")
+
+    @router.get("/social/friends", dependencies=core_account_only)
+    async def social_friends(
+        limit: int = Query(default=50, ge=1, le=100),
+        cursor: str | None = Query(default=None, max_length=2048),
+    ):
+        return await call(
+            "GET",
+            "/v1/social/friends",
+            params={"limit": limit, **({"cursor": cursor} if cursor else {})},
+        )
+
+    @router.get("/social/friend-requests", dependencies=core_account_only)
+    async def social_friend_requests(
+        direction: Literal["incoming", "outgoing"] = Query(),
+        limit: int = Query(default=50, ge=1, le=100),
+        cursor: str | None = Query(default=None, max_length=2048),
+    ):
+        return await call(
+            "GET",
+            "/v1/social/friend-requests",
+            params={
+                "direction": direction,
+                "limit": limit,
+                **({"cursor": cursor} if cursor else {}),
+            },
+        )
+
+    @router.post(
+        "/social/friend-requests/{user_id}", dependencies=core_account_only
+    )
+    async def create_social_friend_request(
+        user_id: str = Path(min_length=32, max_length=80),
+    ):
+        return await call("POST", f"/v1/social/friend-requests/{user_id}")
+
+    @router.post(
+        "/social/friend-requests/{request_id}/{action}",
+        dependencies=core_account_only,
+    )
+    async def act_on_social_friend_request(
+        request_id: str = Path(min_length=1, max_length=80),
+        action: Literal["accept", "reject", "cancel"] = Path(),
+    ):
+        return await call(
+            "POST", f"/v1/social/friend-requests/{request_id}/{action}"
+        )
+
+    @router.get("/system-messages/unread-count", dependencies=core_account_only)
+    async def system_message_unread_count():
+        return await call("GET", "/v1/system-messages/unread-count")
+
+    @router.get("/system-messages", dependencies=core_account_only)
+    async def system_messages(
+        state: Literal["all", "unread"] = Query(default="all"),
+        limit: int = Query(default=50, ge=1, le=100),
+        cursor: str | None = Query(default=None, max_length=2048),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        response = await call(
+            "GET",
+            "/v1/system-messages",
+            params={
+                "state": state,
+                "limit": limit,
+                **({"cursor": cursor} if cursor else {}),
+            },
+        )
+        if response.status_code < 400:
+            try:
+                payload = json.loads(bytes(response.body))
+                selected = messager_repository()
+                if selected is not None:
+                    for item in payload.get("items", []):
+                        if isinstance(item, dict):
+                            selected.ingest_cloud_message(principal.actor_user_id, item)
+            except (AttributeError, TypeError, ValueError):
+                logger.warning(
+                    "Cloud returned an invalid System Message page",
+                    exc_info=True,
+                )
+        return response
+
+    @router.post(
+        "/system-messages/{message_id}/{action}", dependencies=core_account_only
+    )
+    async def update_system_message(
+        message_id: str = Path(min_length=1, max_length=80),
+        action: Literal["read", "archive"] = Path(),
+    ):
+        return await call("POST", f"/v1/system-messages/{message_id}/{action}")
+
+    @router.post("/system-messages/read-all", dependencies=core_account_only)
+    async def read_all_system_messages():
+        return await call("POST", "/v1/system-messages/read-all")
+
+    @router.post("/system-messages/offline", dependencies=core_account_only)
+    async def send_offline_message(
+        request: OfflineMessageRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        selected = messager_repository()
+        if selected is not None:
+            try:
+                selected.validate_cloud_outgoing(
+                    owner_user_id=principal.actor_user_id,
+                    peer_user_id=request.recipient_user_id,
+                    client_message_id=request.client_message_id,
+                    body=request.body or "",
+                    attachment_id=request.attachment_id,
+                )
+            except MessagerIdempotencyConflictError as error:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "messager_idempotency_conflict",
+                        "message": str(error),
+                    },
+                ) from error
+        response = await call(
+            "POST",
+            "/v1/system-messages/offline",
+            payload=request.model_dump(by_alias=True, exclude_none=True),
+        )
+        if response.status_code < 400:
+            message_payload: dict[str, Any] = {}
+            try:
+                decoded = json.loads(bytes(response.body))
+                if isinstance(decoded, dict):
+                    message_payload = decoded
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Cloud returned an invalid offline message",
+                    exc_info=True,
+                )
+            if selected is not None:
+                selected.record_cloud_outgoing(
+                    owner_user_id=principal.actor_user_id,
+                    peer_user_id=request.recipient_user_id,
+                    client_message_id=request.client_message_id,
+                    body=request.body or "",
+                    remote_message_id=(
+                        str(message_payload["id"])
+                        if message_payload.get("id")
+                        else None
+                    ),
+                    attachment=(
+                        message_payload.get("attachment")
+                        if isinstance(message_payload.get("attachment"), dict)
+                        else None
+                    ),
+                    created_at=(
+                        str(message_payload["createdAt"])
+                        if message_payload.get("createdAt")
+                        else None
+                    ),
+                )
+            runtime = runtime_provider()
+            events = None if runtime is None else getattr(runtime, "events", None)
+            if events is not None:
+                events.append(
+                    event_type="messager.cloud_offline.sent",
+                    subject_id=request.client_message_id,
+                    trace_id=request.client_message_id,
+                    payload={
+                        "actor_user_id": principal.actor_user_id,
+                        "installation_id": principal.installation_id,
+                        "recipient_user_id": request.recipient_user_id,
+                        "client_message_id": request.client_message_id,
+                        "transport": "cloud_offline",
+                    },
+                )
+        return response
+
+    @router.post(
+        "/system-message-attachments",
+        dependencies=core_account_only,
+    )
+    async def upload_system_message_attachment(
+        file: Annotated[UploadFile, File()],
+    ):
+        content = await file.read(2 * 1024 * 1024 + 1)
+        if len(content) > 2 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "code": "system_message_attachment_too_large",
+                    "message": "Attachment exceeds 2 MiB",
+                },
+            )
+        return await call(
+            "POST",
+            "/v1/system-message-attachments",
+            files={
+                "file": (
+                    file.filename or "attachment",
+                    content,
+                    file.content_type or "application/octet-stream",
+                )
+            },
+        )
+
+    @router.get(
+        "/system-message-attachments/{attachment_id}/content",
+        dependencies=core_account_only,
+    )
+    async def system_message_attachment_content(
+        attachment_id: str = Path(
+            pattern=r"^[0-9a-fA-F-]{36}$",
+        ),
+    ):
+        cloud = _cloud_or_error(runtime_provider)
+        if isinstance(cloud, JSONResponse):
+            return cloud
+        try:
+            response = await cloud.request(
+                "GET",
+                f"/v1/system-message-attachments/{attachment_id}/content",
+                stream=True,
+            )
+        except httpx.HTTPError as error:
+            return _transport_error(error)
+        if response.status_code >= 400:
+            try:
+                await response.aread()
+                return _forward_response(response)
+            finally:
+                await response.aclose()
+
+        try:
+            media_type = response.headers.get("content-type", "").split(";", 1)[0]
+            if media_type not in {"image/png", "image/jpeg", "image/webp"}:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "code": "attachment_response_invalid",
+                        "message": "Cloud returned an invalid attachment media type",
+                    },
+                )
+            chunks: list[bytes] = []
+            byte_size = 0
+            async for chunk in response.aiter_bytes():
+                byte_size += len(chunk)
+                if byte_size > 2 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=502,
+                        detail={
+                            "code": "attachment_response_invalid",
+                            "message": "Cloud attachment exceeded the size limit",
+                        },
+                    )
+                chunks.append(chunk)
+        finally:
+            await response.aclose()
+        return _apply_browser_cookie(
+            Response(
+                content=b"".join(chunks),
+                status_code=response.status_code,
+                media_type=media_type,
+                headers={
+                    "Cache-Control": "private, no-store",
+                    "X-Content-Type-Options": "nosniff",
+                    "Content-Security-Policy": "default-src 'none'; sandbox",
+                },
+            )
+        )
+
     @router.post("/admin/reauth", dependencies=core_account_only)
     async def admin_reauth(request: AdminReauthRequest):
         return await call(
-            "POST", "/v1/admin/reauth", payload=request.model_dump()
+            "POST", "/v1/admin/reauth", payload=request.model_dump(by_alias=True)
         )
 
     @router.post("/auth/password/reset-request")
@@ -848,6 +1296,39 @@ def create_cloud_router(
     @router.post("/points/daily-claim", dependencies=core_account_only)
     async def daily_claim():
         return await call("POST", "/v1/points/daily-claim")
+
+    @router.post("/promotion-codes/redeem", dependencies=core_account_only)
+    async def redeem_promotion_code(
+        request: PromotionCodeRedeemRequest,
+        idempotency_key: str = Header(
+            alias="Idempotency-Key",
+            min_length=8,
+            max_length=160,
+            pattern=r"^[A-Za-z0-9._:-]+$",
+        ),
+    ):
+        return await call(
+            "POST",
+            "/v1/promotion-codes/redeem",
+            payload=request.model_dump(),
+            headers={"Idempotency-Key": idempotency_key},
+        )
+
+    @router.get("/currency/assets", dependencies=core_account_only)
+    async def currency_assets():
+        return await call("GET", "/v1/currency/assets")
+
+    @router.get("/currency/balances", dependencies=core_account_only)
+    async def currency_balances():
+        return await call("GET", "/v1/currency/balances")
+
+    @router.get("/currency/provider-balances", dependencies=core_account_only)
+    async def provider_currency_balances():
+        return await call("GET", "/v1/currency/provider-balances")
+
+    @router.get("/currency/ledger", dependencies=core_account_only)
+    async def currency_ledger(limit: int = Query(default=50, ge=1, le=100)):
+        return await call("GET", "/v1/currency/ledger", params={"limit": limit})
 
     @router.get("/account/entitlements", dependencies=core_account_only)
     async def entitlements():

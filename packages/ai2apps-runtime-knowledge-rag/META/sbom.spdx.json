@@ -1,0 +1,12 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps-runtime-knowledge-rag-0.1.1",
+  "dataLicense": "CC0-1.0",
+  "packages": [
+    {"SPDXID": "SPDXRef-LanceDB", "name": "lancedb", "versionInfo": "0.37.1", "downloadLocation": "https://pypi.org/project/lancedb/0.37.1/", "licenseDeclared": "Apache-2.0"},
+    {"SPDXID": "SPDXRef-MLX", "name": "mlx", "versionInfo": "0.32.2", "downloadLocation": "https://pypi.org/project/mlx/0.32.2/", "licenseDeclared": "MIT"},
+    {"SPDXID": "SPDXRef-PyArrow", "name": "pyarrow", "versionInfo": "25.0.1", "downloadLocation": "https://pypi.org/project/pyarrow/25.0.1/", "licenseDeclared": "Apache-2.0"},
+    {"SPDXID": "SPDXRef-Transformers", "name": "transformers", "versionInfo": "5.15.1", "downloadLocation": "https://pypi.org/project/transformers/5.15.1/", "licenseDeclared": "Apache-2.0"}
+  ]
+}

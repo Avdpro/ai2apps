@@ -1,0 +1,57 @@
+schema: ai2apps.service/v1
+id: ai2apps.knowledge-vector.lancedb
+name: AI2Apps Knowledge LanceDB Worker
+description: Disposable, isolated vector index for the system Knowledge service.
+version: 0.1.0
+
+publisher:
+  id: ai2apps
+
+runtime:
+  mode: process
+  protocol: http-json
+  provider: ai2apps.runtime.knowledge-rag
+  command: ["{runtime_python}", "{package}/src/server.py", "--port", "{port}"]
+  endpoint: http://127.0.0.1:{port}
+
+capabilities: [knowledge-vector-index-v1]
+
+requires:
+  services:
+    - id: ai2apps.runtime.knowledge-rag
+      version: ">=0.1.0,<1.0.0"
+      optional: false
+      capabilities: [knowledge-runtime-v1, lancedb]
+  python: ">=3.12,<3.14"
+
+permissions:
+  network: {outbound: false}
+
+compatibility:
+  os: [macos]
+  architectures: [arm64]
+
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+models: []
+tools:
+  - name: ai2apps.knowledge-vector.lancedb.upsert
+    display_name: Index Knowledge chunks
+    path: /v1/upsert
+    input_schema: {type: object}
+    output_schema: {type: object}
+  - name: ai2apps.knowledge-vector.lancedb.delete
+    display_name: Delete Knowledge vectors
+    path: /v1/delete
+    input_schema: {type: object}
+    output_schema: {type: object}
+  - name: ai2apps.knowledge-vector.lancedb.search
+    display_name: Search Knowledge vectors
+    path: /v1/search
+    input_schema: {type: object}
+    output_schema: {type: object}
+  - name: ai2apps.knowledge-vector.lancedb.health
+    display_name: Inspect Knowledge vector health
+    path: /v1/health
+    input_schema: {type: object}
+    output_schema: {type: object}

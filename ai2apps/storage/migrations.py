@@ -2590,6 +2590,1821 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        version=36,
+        name="messager_local_conversations",
+        statements=(
+            """
+            CREATE TABLE messager_conversations (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                peer_user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id, peer_user_id),
+                CHECK (owner_user_id <> peer_user_id)
+            )
+            """,
+            """
+            CREATE TABLE messager_messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES messager_conversations(id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL,
+                peer_user_id TEXT NOT NULL,
+                direction TEXT NOT NULL CHECK (direction IN ('incoming','outgoing')),
+                transport TEXT NOT NULL CHECK (transport IN ('local_e2ee','cloud_offline')),
+                status TEXT NOT NULL CHECK (status IN ('queued','sending','sent','received','result_unknown','failed')),
+                body TEXT NOT NULL CHECK (length(body) BETWEEN 0 AND 4000),
+                client_message_id TEXT,
+                remote_message_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX uq_messager_outgoing_client_message
+            ON messager_messages(owner_user_id, client_message_id)
+            WHERE client_message_id IS NOT NULL
+            """,
+            """
+            CREATE UNIQUE INDEX uq_messager_incoming_remote_message
+            ON messager_messages(owner_user_id, remote_message_id)
+            WHERE remote_message_id IS NOT NULL
+            """,
+            """
+            CREATE INDEX ix_messager_messages_conversation_created
+            ON messager_messages(conversation_id, created_at, id)
+            """,
+        ),
+    ),
+    Migration(
+        version=37,
+        name="messager_image_attachments",
+        statements=(
+            "ALTER TABLE messager_messages ADD COLUMN attachment_id TEXT",
+            "ALTER TABLE messager_messages ADD COLUMN attachment_media_type TEXT",
+            "ALTER TABLE messager_messages ADD COLUMN attachment_byte_size INTEGER",
+            "ALTER TABLE messager_messages ADD COLUMN attachment_width INTEGER",
+            "ALTER TABLE messager_messages ADD COLUMN attachment_height INTEGER",
+            "ALTER TABLE messager_messages ADD COLUMN attachment_content_path TEXT",
+        ),
+    ),
+    Migration(
+        version=38,
+        name="messager_peer_replay_protection",
+        statements=(
+            "DROP INDEX uq_messager_incoming_remote_message",
+            """
+            CREATE UNIQUE INDEX uq_messager_incoming_remote_message
+            ON messager_messages(owner_user_id, peer_user_id, remote_message_id)
+            WHERE remote_message_id IS NOT NULL
+            """,
+            """
+            CREATE TABLE messager_peer_handshake_replays (
+                assertion_jti TEXT PRIMARY KEY,
+                handshake_id TEXT NOT NULL UNIQUE,
+                initiator_user_id TEXT NOT NULL,
+                initiator_device_id TEXT NOT NULL,
+                expires_at INTEGER NOT NULL CHECK (expires_at > 0),
+                accepted_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_messager_peer_replay_expiry
+            ON messager_peer_handshake_replays(expires_at)
+            """,
+        ),
+    ),
+    Migration(
+        version=39,
+        name="readaloud_studio_projects",
+        statements=(
+            """
+            CREATE TABLE readaloud_projects (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 160),
+                purpose TEXT NOT NULL CHECK (purpose IN ('private','noncommercial','commercial')),
+                source_rights TEXT NOT NULL CHECK (
+                    source_rights IN ('user_owned','licensed','public_domain','personal_use')
+                ),
+                source_text TEXT NOT NULL DEFAULT '' CHECK (length(source_text) <= 200000),
+                status TEXT NOT NULL CHECK (status IN ('draft','ready','archived')),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_readaloud_projects_owner_updated
+            ON readaloud_projects(owner_user_id, updated_at DESC)
+            """,
+            """
+            CREATE TABLE readaloud_voice_profiles (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+                source_type TEXT NOT NULL CHECK (
+                    source_type IN ('synthetic_designed','self_voice','authorized_person')
+                ),
+                model_id TEXT,
+                provider_voice_id TEXT,
+                reference_transcript TEXT NOT NULL DEFAULT '' CHECK (
+                    length(reference_transcript) <= 20000
+                ),
+                rights_scope_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                    json_valid(rights_scope_json)
+                ),
+                status TEXT NOT NULL CHECK (
+                    status IN ('unverified','ready','blocked','deleted')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_readaloud_voice_profiles_owner_updated
+            ON readaloud_voice_profiles(owner_user_id, updated_at DESC)
+            """,
+            """
+            CREATE TABLE readaloud_characters (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES readaloud_projects(id) ON DELETE CASCADE,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+                description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 2000),
+                voice_profile_id TEXT REFERENCES readaloud_voice_profiles(id),
+                sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, name)
+            )
+            """,
+            """
+            CREATE INDEX ix_readaloud_characters_project_order
+            ON readaloud_characters(project_id, sort_order, id)
+            """,
+            """
+            CREATE TABLE readaloud_segments (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES readaloud_projects(id) ON DELETE CASCADE,
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                speaker_id TEXT REFERENCES readaloud_characters(id),
+                text TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 10000),
+                emotion TEXT NOT NULL DEFAULT 'neutral' CHECK (length(emotion) BETWEEN 1 AND 80),
+                emotion_strength REAL NOT NULL DEFAULT 1.0 CHECK (
+                    emotion_strength BETWEEN 0.0 AND 2.0
+                ),
+                speed REAL NOT NULL DEFAULT 1.0 CHECK (speed BETWEEN 0.5 AND 2.0),
+                pause_after_ms INTEGER NOT NULL DEFAULT 300 CHECK (
+                    pause_after_ms BETWEEN 0 AND 10000
+                ),
+                review_status TEXT NOT NULL CHECK (
+                    review_status IN ('suggested','needs_review','approved')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, ordinal)
+            )
+            """,
+            """
+            CREATE INDEX ix_readaloud_segments_project_order
+            ON readaloud_segments(project_id, ordinal, id)
+            """,
+        ),
+    ),
+    Migration(
+        version=40,
+        name="durable_video_generation_tasks",
+        statements=(
+            """
+            CREATE TABLE video_generation_tasks (
+                id TEXT PRIMARY KEY,
+                actor_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                model_revision TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (
+                    status IN ('queued','running','succeeded','failed','cancelled','expired')
+                ),
+                request_json TEXT NOT NULL CHECK (json_valid(request_json)),
+                request_hash TEXT NOT NULL,
+                idempotency_key TEXT,
+                progress_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(progress_json)),
+                input_manifest_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                    json_valid(input_manifest_json)
+                ),
+                artifact_id TEXT,
+                artifact_session_id TEXT,
+                error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+                cancel_requested_at TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE SET NULL,
+                FOREIGN KEY (artifact_session_id) REFERENCES sessions(id) ON DELETE SET NULL
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX uq_video_generation_task_idempotency
+            ON video_generation_tasks(actor_id, idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+            """,
+            """
+            CREATE INDEX ix_video_generation_tasks_actor_created
+            ON video_generation_tasks(actor_id, created_at DESC, id DESC)
+            """,
+            """
+            CREATE INDEX ix_video_generation_tasks_status_created
+            ON video_generation_tasks(status, created_at, id)
+            """,
+        ),
+    ),
+    Migration(
+        version=41,
+        name="acpf_provisioning_sessions",
+        statements=(
+            """
+            CREATE TABLE provisioning_sessions (
+                id TEXT PRIMARY KEY CHECK (
+                    length(id) = 36 AND substr(id, 1, 4) = 'prv_'
+                    AND id = lower(id)
+                    AND substr(id, 5) NOT GLOB '*[^0-9a-f]*'
+                ),
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                app_id TEXT NOT NULL CHECK (length(app_id) BETWEEN 1 AND 200),
+                capability TEXT NOT NULL CHECK (length(capability) BETWEEN 1 AND 200),
+                action_id TEXT NOT NULL CHECK (length(action_id) BETWEEN 1 AND 120),
+                status TEXT NOT NULL CHECK (status IN (
+                    'planning','awaiting_confirmation','installing_runtime',
+                    'awaiting_restart','installing_provider','downloading_checkpoint',
+                    'activating','verifying','ready','failed','cancelled','unsupported'
+                )),
+                profile_id TEXT,
+                plan_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(plan_json)),
+                intent_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(intent_json)),
+                operations_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(operations_json)),
+                progress_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(progress_json)),
+                error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            )
+            """,
+            """
+            CREATE INDEX ix_provisioning_sessions_actor_updated
+            ON provisioning_sessions(actor_id, updated_at DESC)
+            """,
+            """
+            CREATE UNIQUE INDEX uq_provisioning_sessions_active_intent
+            ON provisioning_sessions(actor_id, installation_id, app_id, capability, action_id)
+            WHERE status IN (
+                'planning','awaiting_confirmation','installing_runtime',
+                'awaiting_restart','installing_provider','downloading_checkpoint',
+                'activating','verifying'
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=42,
+        name="desktop_session_authority_epochs",
+        statements=(
+            """
+            ALTER TABLE installations
+            ADD COLUMN local_session_epoch INTEGER NOT NULL DEFAULT 1
+                CHECK (local_session_epoch >= 1)
+            """,
+            """
+            ALTER TABLE installation_memberships
+            ADD COLUMN account_session_epoch INTEGER NOT NULL DEFAULT 1
+                CHECK (account_session_epoch >= 1)
+            """,
+            """
+            ALTER TABLE local_login_sessions
+            ADD COLUMN access_epoch INTEGER NOT NULL DEFAULT 1
+                CHECK (access_epoch >= 1)
+            """,
+            """
+            ALTER TABLE local_login_sessions
+            ADD COLUMN local_session_epoch INTEGER NOT NULL DEFAULT 1
+                CHECK (local_session_epoch >= 1)
+            """,
+            """
+            ALTER TABLE local_login_sessions
+            ADD COLUMN account_session_epoch INTEGER NOT NULL DEFAULT 1
+                CHECK (account_session_epoch >= 1)
+            """,
+            """
+            UPDATE local_login_sessions
+            SET access_epoch = COALESCE(
+                    (
+                        SELECT installations.access_epoch
+                        FROM installations
+                        WHERE installations.id = local_login_sessions.installation_id
+                    ),
+                    1
+                ),
+                local_session_epoch = COALESCE(
+                    (
+                        SELECT installations.local_session_epoch
+                        FROM installations
+                        WHERE installations.id = local_login_sessions.installation_id
+                    ),
+                    1
+                ),
+                account_session_epoch = COALESCE(
+                    (
+                        SELECT installation_memberships.account_session_epoch
+                        FROM installation_memberships
+                        WHERE installation_memberships.installation_id =
+                                local_login_sessions.installation_id
+                          AND installation_memberships.cloud_user_id =
+                                local_login_sessions.actor_user_id
+                    ),
+                    1
+                )
+            """,
+        ),
+    ),
+    Migration(
+        version=43,
+        name="acpf_trusted_app_instance_and_request_identity",
+        statements=(
+            """
+            ALTER TABLE provisioning_sessions
+            ADD COLUMN app_instance_id TEXT NOT NULL DEFAULT 'legacy'
+                CHECK (length(app_instance_id) BETWEEN 1 AND 200)
+            """,
+            """
+            ALTER TABLE provisioning_sessions
+            ADD COLUMN request_fingerprint TEXT NOT NULL DEFAULT ''
+                CHECK (
+                    request_fingerprint = '' OR (
+                        length(request_fingerprint) = 64
+                        AND request_fingerprint = lower(request_fingerprint)
+                        AND request_fingerprint NOT GLOB '*[^0-9a-f]*'
+                    )
+                )
+            """,
+            "DROP INDEX uq_provisioning_sessions_active_intent",
+            """
+            CREATE UNIQUE INDEX uq_provisioning_sessions_active_request
+            ON provisioning_sessions(
+                actor_id, installation_id, app_instance_id, app_id,
+                capability, action_id, request_fingerprint
+            )
+            WHERE status IN (
+                'planning','awaiting_confirmation','installing_runtime',
+                'awaiting_restart','installing_provider','downloading_checkpoint',
+                'activating','verifying'
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=44,
+        name="gallery_assets_and_collections",
+        statements=(
+            """
+            CREATE TABLE gallery_assets (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 512),
+                kind TEXT NOT NULL CHECK (
+                    kind IN ('image','video','audio','web','document','file')
+                ),
+                media_type TEXT NOT NULL CHECK (length(media_type) BETWEEN 1 AND 255),
+                content_hash TEXT NOT NULL CHECK (
+                    length(content_hash) = 71 AND substr(content_hash, 1, 7) = 'sha256:'
+                ),
+                size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+                storage_key TEXT NOT NULL CHECK (length(storage_key) > 0),
+                source_app_id TEXT,
+                source_ref TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+                status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','trashed')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                trashed_at TEXT,
+                UNIQUE (owner_user_id, content_hash, name)
+            )
+            """,
+            """
+            CREATE INDEX ix_gallery_assets_owner_status_created
+            ON gallery_assets(owner_user_id, status, created_at DESC, id DESC)
+            """,
+            """
+            CREATE INDEX ix_gallery_assets_blob_reference
+            ON gallery_assets(storage_key)
+            """,
+            """
+            CREATE TABLE gallery_collections (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 200),
+                kind TEXT NOT NULL CHECK (kind IN ('system','custom','project')),
+                system_key TEXT CHECK (
+                    system_key IS NULL OR system_key IN ('downloads','public','personal','trash')
+                ),
+                sort_mode TEXT NOT NULL DEFAULT 'manual' CHECK (
+                    sort_mode IN ('manual','created_desc','name')
+                ),
+                metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (owner_user_id, system_key)
+            )
+            """,
+            """
+            CREATE INDEX ix_gallery_collections_owner_kind
+            ON gallery_collections(owner_user_id, kind, created_at, id)
+            """,
+            """
+            CREATE TABLE gallery_collection_items (
+                collection_id TEXT NOT NULL,
+                asset_id TEXT NOT NULL,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (collection_id, asset_id),
+                FOREIGN KEY (collection_id) REFERENCES gallery_collections(id) ON DELETE CASCADE,
+                FOREIGN KEY (asset_id) REFERENCES gallery_assets(id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE INDEX ix_gallery_collection_items_order
+            ON gallery_collection_items(collection_id, position, added_at, asset_id)
+            """,
+            """
+            CREATE TRIGGER gallery_collection_item_owner_insert
+            BEFORE INSERT ON gallery_collection_items
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM gallery_collections c
+                JOIN gallery_assets a ON a.id = NEW.asset_id
+                WHERE c.id = NEW.collection_id
+                  AND c.owner_user_id = a.owner_user_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'gallery collection and asset owners differ');
+            END
+            """,
+        ),
+    ),
+    Migration(
+        version=45,
+        name="video_studio_acpf_drafts",
+        statements=(
+            """
+            CREATE TABLE video_studio_drafts (
+                id TEXT PRIMARY KEY CHECK (
+                    length(id) = 36 AND substr(id, 1, 4) = 'vsd_'
+                    AND id = lower(id)
+                    AND substr(id, 5) NOT GLOB '*[^0-9a-f]*'
+                ),
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                app_instance_id TEXT NOT NULL CHECK (
+                    length(app_instance_id) BETWEEN 1 AND 200
+                ),
+                action_id TEXT NOT NULL CHECK (length(action_id) BETWEEN 1 AND 120),
+                draft_json TEXT NOT NULL CHECK (json_valid(draft_json)),
+                first_frame_json TEXT CHECK (
+                    first_frame_json IS NULL OR json_valid(first_frame_json)
+                ),
+                last_frame_json TEXT CHECK (
+                    last_frame_json IS NULL OR json_valid(last_frame_json)
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_video_studio_drafts_owner_updated
+            ON video_studio_drafts(
+                actor_id,installation_id,app_instance_id,updated_at DESC
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=46,
+        name="imagine_studio_durable_history",
+        statements=(
+            """
+            CREATE TABLE imagine_studio_results (
+                id TEXT PRIMARY KEY CHECK (
+                    length(id) = 36 AND substr(id, 1, 4) = 'isr_'
+                    AND id = lower(id)
+                    AND substr(id, 5) NOT GLOB '*[^0-9a-f]*'
+                ),
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                app_instance_id TEXT NOT NULL CHECK (length(app_instance_id) BETWEEN 1 AND 200),
+                pipeline_id TEXT NOT NULL CHECK (length(pipeline_id) BETWEEN 1 AND 120),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 120),
+                prompt TEXT NOT NULL CHECK (length(prompt) <= 32000),
+                model_id TEXT NOT NULL CHECK (length(model_id) BETWEEN 1 AND 255),
+                model_label TEXT NOT NULL CHECK (length(model_label) BETWEEN 1 AND 120),
+                image_size TEXT NOT NULL CHECK (length(image_size) BETWEEN 1 AND 40),
+                quality TEXT NOT NULL CHECK (length(quality) BETWEEN 1 AND 40),
+                output_format TEXT NOT NULL CHECK (length(output_format) BETWEEN 1 AND 20),
+                filename TEXT NOT NULL CHECK (length(filename) BETWEEN 1 AND 255),
+                media_type TEXT NOT NULL CHECK (media_type IN ('image/png','image/jpeg','image/webp')),
+                size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 67108864),
+                relative_path TEXT NOT NULL CHECK (length(relative_path) BETWEEN 1 AND 255),
+                created_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_imagine_studio_results_owner_created
+            ON imagine_studio_results(actor_id,installation_id,app_instance_id,created_at DESC,id DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=47,
+        name="readaloud_voice_reference_assets",
+        statements=(
+            """
+            ALTER TABLE readaloud_voice_profiles
+            ADD COLUMN reference_asset_id TEXT
+            """,
+            """
+            CREATE INDEX ix_readaloud_voice_profiles_reference_asset
+            ON readaloud_voice_profiles(owner_user_id, reference_asset_id)
+            """,
+        ),
+    ),
+    Migration(
+        version=48,
+        name="system_knowledge_core",
+        statements=(
+            """
+            CREATE TABLE knowledge_spaces (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL CHECK (kind IN ('private', 'installation')),
+                installation_id TEXT NOT NULL,
+                owner_user_id TEXT,
+                display_name TEXT NOT NULL,
+                shareability TEXT NOT NULL CHECK (shareability IN ('never', 'local_only')),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (
+                    (kind = 'private' AND owner_user_id IS NOT NULL AND shareability = 'never')
+                    OR
+                    (kind = 'installation' AND owner_user_id IS NULL AND shareability = 'local_only')
+                )
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX uq_knowledge_private_space
+            ON knowledge_spaces(installation_id, owner_user_id)
+            WHERE kind = 'private'
+            """,
+            """
+            CREATE UNIQUE INDEX uq_knowledge_installation_space
+            ON knowledge_spaces(installation_id) WHERE kind = 'installation'
+            """,
+            """
+            CREATE TABLE knowledge_items (
+                id TEXT PRIMARY KEY,
+                space_id TEXT NOT NULL REFERENCES knowledge_spaces(id) ON DELETE RESTRICT,
+                installation_id TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                created_by_user_id TEXT NOT NULL,
+                visibility TEXT NOT NULL CHECK (visibility IN ('private', 'installation')),
+                kind TEXT NOT NULL CHECK (kind IN (
+                    'webpage','document','image','audio','video','chat','artifact','note'
+                )),
+                title TEXT NOT NULL,
+                source_time TEXT,
+                source_app_id TEXT,
+                source_session_id TEXT,
+                source_url TEXT,
+                status TEXT NOT NULL CHECK (status IN (
+                    'pending','ready','partial','failed','deleted'
+                )),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            )
+            """,
+            """
+            CREATE INDEX idx_knowledge_items_visible
+            ON knowledge_items(
+                installation_id, visibility, owner_user_id, updated_at DESC
+            )
+            """,
+            """
+            CREATE TABLE knowledge_representations (
+                id TEXT PRIMARY KEY,
+                item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                kind TEXT NOT NULL,
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                text TEXT NOT NULL,
+                producer TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(item_id, ordinal)
+            )
+            """,
+            """
+            CREATE TABLE knowledge_chunks (
+                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT NOT NULL UNIQUE,
+                representation_id TEXT NOT NULL
+                    REFERENCES knowledge_representations(id) ON DELETE RESTRICT,
+                item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                space_id TEXT NOT NULL REFERENCES knowledge_spaces(id) ON DELETE RESTRICT,
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(representation_id, ordinal)
+            )
+            """,
+            """
+            CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+                title, text, tokenize='unicode61 remove_diacritics 2'
+            )
+            """,
+            """
+            CREATE TRIGGER knowledge_chunks_ai AFTER INSERT ON knowledge_chunks BEGIN
+                INSERT INTO knowledge_fts(rowid, title, text)
+                SELECT new.rowid, i.title, new.text
+                FROM knowledge_items i WHERE i.id = new.item_id;
+            END
+            """,
+            """
+            CREATE TRIGGER knowledge_chunks_ad AFTER DELETE ON knowledge_chunks BEGIN
+                INSERT INTO knowledge_fts(knowledge_fts, rowid, title, text)
+                SELECT 'delete', old.rowid, i.title, old.text
+                FROM knowledge_items i WHERE i.id = old.item_id;
+            END
+            """,
+            """
+            CREATE TRIGGER knowledge_chunks_au AFTER UPDATE ON knowledge_chunks BEGIN
+                INSERT INTO knowledge_fts(knowledge_fts, rowid, title, text)
+                SELECT 'delete', old.rowid, i.title, old.text
+                FROM knowledge_items i WHERE i.id = old.item_id;
+                INSERT INTO knowledge_fts(rowid, title, text)
+                SELECT new.rowid, i.title, new.text
+                FROM knowledge_items i WHERE i.id = new.item_id;
+            END
+            """,
+            """
+            CREATE TABLE knowledge_source_facets (
+                item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                facet_key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                authority TEXT NOT NULL CHECK (authority = 'runtime'),
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(item_id, facet_key, value)
+            )
+            """,
+            """
+            CREATE TABLE knowledge_tags (
+                id TEXT PRIMARY KEY,
+                installation_id TEXT NOT NULL,
+                namespace TEXT NOT NULL CHECK (namespace = 'user'),
+                normalized_key TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                visibility TEXT NOT NULL CHECK (visibility IN ('private', 'installation')),
+                status TEXT NOT NULL CHECK (status IN ('active', 'deleted')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(
+                    installation_id, namespace, owner_user_id,
+                    visibility, normalized_key
+                )
+            )
+            """,
+            """
+            CREATE TABLE knowledge_item_tags (
+                item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                tag_id TEXT NOT NULL REFERENCES knowledge_tags(id) ON DELETE RESTRICT,
+                assignment_source TEXT NOT NULL CHECK (assignment_source = 'user'),
+                status TEXT NOT NULL CHECK (status IN ('active', 'rejected')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(item_id, tag_id)
+            )
+            """,
+            """
+            CREATE TABLE knowledge_change_log (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'delete')),
+                item_id TEXT NOT NULL,
+                space_id TEXT NOT NULL,
+                authoritative_revision INTEGER NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE knowledge_settings (
+                installation_id TEXT PRIMARY KEY,
+                budget_bytes INTEGER NOT NULL DEFAULT 10737418240
+                    CHECK (budget_bytes > 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=49,
+        name="knowledge_buckets_assets_and_context",
+        statements=(
+            """
+            CREATE TABLE knowledge_buckets (
+                id TEXT PRIMARY KEY,
+                installation_id TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_by_user_id TEXT NOT NULL,
+                visibility TEXT NOT NULL CHECK (
+                    visibility IN ('private', 'installation')
+                ),
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 200),
+                kind TEXT NOT NULL CHECK (kind IN ('system', 'custom', 'imported')),
+                system_key TEXT CHECK (system_key IN (
+                    'inbox', 'web', 'documents', 'chats', 'shared'
+                )),
+                metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (
+                    (visibility = 'private' AND owner_user_id IS NOT NULL)
+                    OR
+                    (visibility = 'installation' AND owner_user_id IS NULL)
+                ),
+                CHECK (
+                    (kind = 'system' AND system_key IS NOT NULL)
+                    OR
+                    (kind != 'system' AND system_key IS NULL)
+                )
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX uq_knowledge_private_system_bucket
+            ON knowledge_buckets(installation_id, owner_user_id, system_key)
+            WHERE visibility = 'private' AND system_key IS NOT NULL
+            """,
+            """
+            CREATE UNIQUE INDEX uq_knowledge_shared_system_bucket
+            ON knowledge_buckets(installation_id, system_key)
+            WHERE visibility = 'installation' AND system_key IS NOT NULL
+            """,
+            """
+            CREATE INDEX ix_knowledge_buckets_owner
+            ON knowledge_buckets(
+                installation_id, visibility, owner_user_id, kind, created_at
+            )
+            """,
+            """
+            CREATE TABLE knowledge_bucket_items (
+                bucket_id TEXT NOT NULL REFERENCES knowledge_buckets(id) ON DELETE CASCADE,
+                item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                added_at TEXT NOT NULL,
+                PRIMARY KEY(bucket_id, item_id)
+            )
+            """,
+            """
+            CREATE INDEX ix_knowledge_bucket_items_order
+            ON knowledge_bucket_items(bucket_id, position, added_at, item_id)
+            """,
+            """
+            CREATE TRIGGER knowledge_bucket_item_scope_insert
+            BEFORE INSERT ON knowledge_bucket_items
+            WHEN NOT EXISTS (
+                SELECT 1 FROM knowledge_buckets b
+                JOIN knowledge_items i ON i.id = NEW.item_id
+                WHERE b.id = NEW.bucket_id
+                  AND b.installation_id = i.installation_id
+                  AND b.visibility = i.visibility
+                  AND (
+                    b.visibility = 'installation'
+                    OR b.owner_user_id = i.owner_user_id
+                  )
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'knowledge bucket and item scopes differ');
+            END
+            """,
+            """
+            CREATE TABLE knowledge_assets (
+                id TEXT PRIMARY KEY,
+                item_id TEXT NOT NULL UNIQUE
+                    REFERENCES knowledge_items(id) ON DELETE CASCADE,
+                filename TEXT NOT NULL CHECK (length(filename) BETWEEN 1 AND 512),
+                media_type TEXT NOT NULL CHECK (length(media_type) BETWEEN 1 AND 255),
+                content_hash TEXT NOT NULL CHECK (
+                    length(content_hash) = 71 AND substr(content_hash, 1, 7) = 'sha256:'
+                ),
+                size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+                storage_key TEXT NOT NULL CHECK (length(storage_key) > 0),
+                parser TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+                created_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_knowledge_assets_content
+            ON knowledge_assets(content_hash, storage_key)
+            """,
+            """
+            CREATE TABLE knowledge_context_buckets (
+                installation_id TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                consumer_app_id TEXT NOT NULL,
+                bucket_id TEXT NOT NULL REFERENCES knowledge_buckets(id) ON DELETE CASCADE,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(installation_id, actor_user_id, consumer_app_id, bucket_id)
+            )
+            """,
+            """
+            CREATE INDEX ix_knowledge_context_consumer
+            ON knowledge_context_buckets(
+                installation_id, actor_user_id, consumer_app_id, enabled
+            )
+            """,
+            """
+            CREATE TRIGGER knowledge_context_bucket_visibility_insert
+            BEFORE INSERT ON knowledge_context_buckets
+            WHEN NOT EXISTS (
+                SELECT 1 FROM knowledge_buckets b
+                WHERE b.id = NEW.bucket_id
+                  AND b.installation_id = NEW.installation_id
+                  AND (
+                    b.visibility = 'installation'
+                    OR b.owner_user_id = NEW.actor_user_id
+                  )
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'knowledge context bucket is not visible');
+            END
+            """,
+        ),
+    ),
+    Migration(
+        version=50,
+        name="knowledge_p0_context_and_index_state",
+        statements=(
+            """
+            CREATE TABLE knowledge_session_contexts (
+                installation_id TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                consumer_app_id TEXT NOT NULL,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(
+                    installation_id, actor_user_id, consumer_app_id, session_id
+                )
+            )
+            """,
+            """
+            CREATE TRIGGER knowledge_session_context_owner_insert
+            BEFORE INSERT ON knowledge_session_contexts
+            WHEN NOT EXISTS (
+                SELECT 1 FROM sessions s
+                JOIN app_instances i ON i.id=s.app_instance_id
+                JOIN app_definitions d ON d.id=i.app_definition_id
+                WHERE s.id=NEW.session_id
+                  AND s.status='active'
+                  AND i.owner_user_id=NEW.actor_user_id
+                  AND d.package_id=NEW.consumer_app_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'knowledge session context is not owned by actor');
+            END
+            """,
+            """
+            CREATE TABLE knowledge_session_context_buckets (
+                installation_id TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                consumer_app_id TEXT NOT NULL,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                bucket_id TEXT NOT NULL
+                    REFERENCES knowledge_buckets(id) ON DELETE CASCADE,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(
+                    installation_id, actor_user_id, consumer_app_id,
+                    session_id, bucket_id
+                ),
+                FOREIGN KEY(
+                    installation_id, actor_user_id, consumer_app_id, session_id
+                ) REFERENCES knowledge_session_contexts(
+                    installation_id, actor_user_id, consumer_app_id, session_id
+                ) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE INDEX ix_knowledge_session_context
+            ON knowledge_session_context_buckets(
+                installation_id, actor_user_id, consumer_app_id, session_id
+            )
+            """,
+            """
+            CREATE TRIGGER knowledge_session_context_bucket_visibility_insert
+            BEFORE INSERT ON knowledge_session_context_buckets
+            WHEN NOT EXISTS (
+                SELECT 1 FROM knowledge_buckets b
+                WHERE b.id=NEW.bucket_id
+                  AND b.installation_id=NEW.installation_id
+                  AND (
+                    b.visibility='installation'
+                    OR b.owner_user_id=NEW.actor_user_id
+                  )
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'knowledge session bucket is not visible');
+            END
+            """,
+            """
+            CREATE TABLE knowledge_index_states (
+                profile_id TEXT PRIMARY KEY,
+                generation TEXT NOT NULL,
+                sequence INTEGER NOT NULL DEFAULT 0 CHECK (sequence >= 0),
+                target_sequence INTEGER NOT NULL DEFAULT 0
+                    CHECK (target_sequence >= 0),
+                status TEXT NOT NULL DEFAULT 'idle'
+                    CHECK (status IN ('idle', 'indexing', 'ready', 'error')),
+                processed_changes INTEGER NOT NULL DEFAULT 0
+                    CHECK (processed_changes >= 0),
+                indexed_chunks INTEGER NOT NULL DEFAULT 0
+                    CHECK (indexed_chunks >= 0),
+                last_error TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=51,
+        name="knowledge_p1_ask_ingestion_and_citations",
+        statements=(
+            """
+            ALTER TABLE knowledge_chunks
+            ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'
+                CHECK (json_valid(metadata_json))
+            """,
+            """
+            CREATE TABLE knowledge_import_jobs (
+                id TEXT PRIMARY KEY,
+                installation_id TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                bucket_id TEXT NOT NULL
+                    REFERENCES knowledge_buckets(id) ON DELETE CASCADE,
+                source_app_id TEXT,
+                status TEXT NOT NULL
+                    CHECK (status IN ('queued','running','completed','partial','failed')),
+                total_files INTEGER NOT NULL CHECK (total_files > 0),
+                completed_files INTEGER NOT NULL DEFAULT 0
+                    CHECK (completed_files >= 0),
+                failed_files INTEGER NOT NULL DEFAULT 0
+                    CHECK (failed_files >= 0),
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE knowledge_import_job_entries (
+                job_id TEXT NOT NULL
+                    REFERENCES knowledge_import_jobs(id) ON DELETE CASCADE,
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                filename TEXT NOT NULL,
+                status TEXT NOT NULL
+                    CHECK (status IN ('queued','running','completed','failed')),
+                item_id TEXT REFERENCES knowledge_items(id) ON DELETE SET NULL,
+                error TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(job_id, ordinal)
+            )
+            """,
+            """
+            CREATE INDEX ix_knowledge_import_jobs_owner
+            ON knowledge_import_jobs(
+                installation_id, actor_user_id, created_at DESC
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=52,
+        name="knowledge_recoverable_import_staging",
+        statements=(
+            "ALTER TABLE knowledge_import_job_entries ADD COLUMN media_type TEXT",
+            "ALTER TABLE knowledge_import_job_entries ADD COLUMN size_bytes INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0)",
+            "ALTER TABLE knowledge_import_job_entries ADD COLUMN content_hash TEXT",
+            "ALTER TABLE knowledge_import_job_entries ADD COLUMN staging_key TEXT",
+            "ALTER TABLE knowledge_import_job_entries ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0)",
+            """
+            CREATE INDEX ix_knowledge_import_entries_status
+            ON knowledge_import_job_entries(status, updated_at, job_id, ordinal)
+            """,
+        ),
+    ),
+    Migration(
+        version=53,
+        name="knowledge_import_job_controls",
+        statements=(
+            """
+            ALTER TABLE knowledge_import_jobs
+            ADD COLUMN control_state TEXT NOT NULL DEFAULT 'active'
+                CHECK (control_state IN ('active','paused','cancelled'))
+            """,
+            """
+            ALTER TABLE knowledge_import_jobs
+            ADD COLUMN control_updated_at TEXT
+            """,
+            """
+            CREATE INDEX ix_knowledge_import_jobs_control
+            ON knowledge_import_jobs(control_state, status, updated_at)
+            """,
+        ),
+    ),
+    Migration(
+        version=54,
+        name="knowledge_tag_suggestion_lifecycle",
+        statements=(
+            """
+            CREATE TABLE knowledge_tag_suggestions (
+                id TEXT PRIMARY KEY,
+                item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,
+                installation_id TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                normalized_key TEXT NOT NULL,
+                producer TEXT NOT NULL,
+                confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+                evidence_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence_json)),
+                status TEXT NOT NULL DEFAULT 'suggested'
+                    CHECK (status IN ('suggested','confirmed','rejected')),
+                confirmed_tag_id TEXT REFERENCES knowledge_tags(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(item_id, actor_user_id, normalized_key, producer)
+            )
+            """,
+            """
+            CREATE INDEX ix_knowledge_tag_suggestions_actor
+            ON knowledge_tag_suggestions(
+                installation_id, actor_user_id, status, updated_at DESC
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=55,
+        name="worker_management_operations_and_preferences",
+        statements=(
+            """
+            CREATE TABLE worker_preferences (
+                service_key TEXT PRIMARY KEY,
+                pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE worker_operations (
+                id TEXT PRIMARY KEY,
+                service_key TEXT NOT NULL,
+                action TEXT NOT NULL CHECK (action IN (
+                    'load','exit','drain_and_exit','pin','unpin','evict'
+                )),
+                status TEXT NOT NULL CHECK (status IN (
+                    'pending','running','completed','failed','interrupted'
+                )),
+                expected_generation INTEGER CHECK (
+                    expected_generation IS NULL OR expected_generation >= 0
+                ),
+                idempotency_key TEXT,
+                result_json TEXT CHECK (
+                    result_json IS NULL OR json_valid(result_json)
+                ),
+                error_json TEXT CHECK (
+                    error_json IS NULL OR json_valid(error_json)
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            )
+            """,
+            """
+            CREATE INDEX ix_worker_operations_service
+            ON worker_operations(service_key, created_at DESC)
+            """,
+            """
+            CREATE UNIQUE INDEX ux_worker_operations_idempotency
+            ON worker_operations(service_key, action, idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+            """,
+        ),
+    ),
+    Migration(
+        version=56,
+        name="readaloud_durable_render_jobs",
+        statements=(
+            """
+            CREATE TABLE readaloud_render_jobs (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                project_id TEXT NOT NULL REFERENCES readaloud_projects(id) ON DELETE CASCADE,
+                project_revision INTEGER NOT NULL CHECK (project_revision > 0),
+                model_id TEXT NOT NULL CHECK (length(model_id) BETWEEN 1 AND 255),
+                status TEXT NOT NULL CHECK (
+                    status IN ('queued','running','succeeded','failed','cancelled')
+                ),
+                total_segments INTEGER NOT NULL CHECK (total_segments > 0),
+                completed_segments INTEGER NOT NULL DEFAULT 0 CHECK (
+                    completed_segments >= 0 AND completed_segments <= total_segments
+                ),
+                error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+                cancel_requested_at TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            )
+            """,
+            """
+            CREATE INDEX ix_readaloud_render_jobs_owner_created
+            ON readaloud_render_jobs(owner_user_id, created_at DESC, id DESC)
+            """,
+            """
+            CREATE TABLE readaloud_render_segments (
+                job_id TEXT NOT NULL REFERENCES readaloud_render_jobs(id) ON DELETE CASCADE,
+                segment_id TEXT NOT NULL REFERENCES readaloud_segments(id) ON DELETE RESTRICT,
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                status TEXT NOT NULL CHECK (
+                    status IN ('queued','running','succeeded','failed','cancelled')
+                ),
+                request_json TEXT NOT NULL CHECK (json_valid(request_json)),
+                output_path TEXT,
+                error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+                started_at TEXT,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                PRIMARY KEY (job_id, segment_id),
+                UNIQUE (job_id, ordinal)
+            )
+            """,
+            """
+            CREATE INDEX ix_readaloud_render_segments_job_order
+            ON readaloud_render_segments(job_id, ordinal)
+            """,
+        ),
+    ),
+    Migration(
+        version=57,
+        name="worker_operation_cancellation",
+        statements=(
+            "ALTER TABLE worker_operations RENAME TO worker_operations_v56",
+            """
+            CREATE TABLE worker_operations (
+                id TEXT PRIMARY KEY,
+                service_key TEXT NOT NULL,
+                action TEXT NOT NULL CHECK (action IN (
+                    'load','exit','drain_and_exit','pin','unpin','evict'
+                )),
+                status TEXT NOT NULL CHECK (status IN (
+                    'pending','running','completed','failed','interrupted','cancelled'
+                )),
+                expected_generation INTEGER CHECK (
+                    expected_generation IS NULL OR expected_generation >= 0
+                ),
+                idempotency_key TEXT,
+                result_json TEXT CHECK (
+                    result_json IS NULL OR json_valid(result_json)
+                ),
+                error_json TEXT CHECK (
+                    error_json IS NULL OR json_valid(error_json)
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            )
+            """,
+            """
+            INSERT INTO worker_operations(
+                id,service_key,action,status,expected_generation,idempotency_key,
+                result_json,error_json,created_at,updated_at,completed_at
+            ) SELECT
+                id,service_key,action,status,expected_generation,idempotency_key,
+                result_json,error_json,created_at,updated_at,completed_at
+            FROM worker_operations_v56
+            """,
+            "DROP TABLE worker_operations_v56",
+            """
+            CREATE INDEX ix_worker_operations_service
+            ON worker_operations(service_key, created_at DESC)
+            """,
+            """
+            CREATE UNIQUE INDEX ux_worker_operations_idempotency
+            ON worker_operations(service_key, action, idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+            """,
+        ),
+    ),
+    Migration(
+        version=58,
+        name="browser_agent_builder_drafts",
+        statements=(
+            """
+            CREATE TABLE agent_drafts (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 160),
+                description TEXT NOT NULL DEFAULT '',
+                site_scope_json TEXT NOT NULL DEFAULT '[]'
+                    CHECK (
+                        json_valid(site_scope_json)
+                        AND json_type(site_scope_json) = 'array'
+                    ),
+                source_json TEXT NOT NULL CHECK (
+                    json_valid(source_json)
+                    AND json_type(source_json) = 'object'
+                ),
+                status TEXT NOT NULL DEFAULT 'editing'
+                    CHECK (status IN ('editing','compiled','active','archived')),
+                active_generation_id TEXT,
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_drafts_owner_updated
+            ON agent_drafts(owner_user_id, updated_at DESC, id)
+            """,
+            """
+            CREATE TABLE agent_compile_generations (
+                id TEXT PRIMARY KEY,
+                draft_id TEXT NOT NULL REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                source_revision INTEGER NOT NULL CHECK (source_revision >= 1),
+                source_digest TEXT NOT NULL,
+                compiler_version TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                ir_json TEXT NOT NULL CHECK (
+                    json_valid(ir_json) AND json_type(ir_json) = 'object'
+                ),
+                report_json TEXT NOT NULL CHECK (
+                    json_valid(report_json) AND json_type(report_json) = 'object'
+                ),
+                status TEXT NOT NULL CHECK (
+                    status IN ('candidate','validated','active','failed')
+                ),
+                created_at TEXT NOT NULL,
+                activated_at TEXT
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_compile_generations_draft
+            ON agent_compile_generations(draft_id, created_at DESC, id)
+            """,
+            """
+            CREATE TABLE agent_step_evidence (
+                id TEXT PRIMARY KEY,
+                draft_id TEXT NOT NULL REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                generation_id TEXT REFERENCES agent_compile_generations(id) ON DELETE SET NULL,
+                run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL,
+                step_name TEXT NOT NULL,
+                page_fingerprint TEXT NOT NULL DEFAULT '',
+                outcome TEXT NOT NULL CHECK (
+                    outcome IN ('success','not_found','retryable_error',
+                                'needs_user','restricted','failed')
+                ),
+                evidence_json TEXT NOT NULL CHECK (
+                    json_valid(evidence_json) AND json_type(evidence_json) = 'object'
+                ),
+                user_feedback TEXT,
+                created_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_step_evidence_draft_step
+            ON agent_step_evidence(draft_id, step_name, created_at DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=59,
+        name="universal_agent_workflows_schedules",
+        statements=(
+            """
+            ALTER TABLE agent_drafts ADD COLUMN agent_type TEXT NOT NULL
+                DEFAULT 'web' CHECK (agent_type IN (
+                    'web','workflow','knowledge','research','coding','app','composite'
+                ))
+            """,
+            """
+            CREATE INDEX ix_agent_drafts_owner_type_updated
+            ON agent_drafts(owner_user_id, agent_type, updated_at DESC, id)
+            """,
+            """
+            CREATE TABLE agent_workflows (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 160),
+                description TEXT NOT NULL DEFAULT '',
+                definition_json TEXT NOT NULL CHECK (
+                    json_valid(definition_json)
+                    AND json_type(definition_json) = 'object'
+                ),
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','archived')),
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_workflows_owner_updated
+            ON agent_workflows(owner_user_id, updated_at DESC, id)
+            """,
+            """
+            CREATE TABLE agent_schedules (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                draft_id TEXT REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                workflow_id TEXT REFERENCES agent_workflows(id) ON DELETE CASCADE,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 160),
+                kind TEXT NOT NULL CHECK (kind IN ('once','interval')),
+                status TEXT NOT NULL DEFAULT 'enabled'
+                    CHECK (status IN ('enabled','paused','completed')),
+                input_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                    json_valid(input_json) AND json_type(input_json) = 'object'
+                ),
+                knowledge_bucket_id TEXT,
+                interval_seconds INTEGER CHECK (
+                    interval_seconds IS NULL OR interval_seconds >= 60
+                ),
+                run_at TEXT,
+                next_run_at TEXT,
+                last_run_at TEXT,
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK ((draft_id IS NOT NULL) != (workflow_id IS NOT NULL)),
+                CHECK (
+                    (kind='once' AND run_at IS NOT NULL AND interval_seconds IS NULL)
+                    OR
+                    (kind='interval' AND interval_seconds IS NOT NULL)
+                )
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_schedules_due
+            ON agent_schedules(status, next_run_at, id)
+            """,
+            """
+            CREATE INDEX ix_agent_schedules_owner_updated
+            ON agent_schedules(owner_user_id, updated_at DESC, id)
+            """,
+            """
+            CREATE TABLE agent_schedule_dispatches (
+                id TEXT PRIMARY KEY,
+                schedule_id TEXT NOT NULL REFERENCES agent_schedules(id)
+                    ON DELETE CASCADE,
+                run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL,
+                status TEXT NOT NULL CHECK (
+                    status IN ('claimed','dispatched','failed','completed')
+                ),
+                error_json TEXT CHECK (
+                    error_json IS NULL OR json_valid(error_json)
+                ),
+                dispatched_at TEXT NOT NULL,
+                completed_at TEXT
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_schedule_dispatches_schedule
+            ON agent_schedule_dispatches(schedule_id, dispatched_at DESC, id)
+            """,
+        ),
+    ),
+    Migration(
+        version=60,
+        name="repair_legacy_agent_active_generation",
+        statements=(
+            """
+            UPDATE agent_drafts
+            SET active_generation_id=(
+                    SELECT g.id FROM agent_compile_generations g
+                    WHERE g.draft_id=agent_drafts.id AND g.status='active'
+                    ORDER BY g.activated_at DESC,g.created_at DESC,g.id DESC LIMIT 1
+                ),
+                status='active'
+            WHERE active_generation_id IS NULL
+              AND EXISTS(
+                SELECT 1 FROM agent_compile_generations g
+                WHERE g.draft_id=agent_drafts.id AND g.status='active'
+              )
+            """,
+        ),
+    ),
+    Migration(
+        version=61,
+        name="site_agents_and_temporary_recipes",
+        statements=(
+            "ALTER TABLE agent_drafts ADD COLUMN site_key TEXT",
+            """
+            CREATE INDEX ix_agent_drafts_owner_site
+            ON agent_drafts(owner_user_id, site_key, updated_at DESC, id)
+            """,
+            """
+            CREATE TABLE agent_recipes (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                site_key TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 160),
+                description TEXT NOT NULL DEFAULT '',
+                source_json TEXT NOT NULL CHECK (
+                    json_valid(source_json) AND json_type(source_json)='object'
+                ),
+                page_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                    json_valid(page_json) AND json_type(page_json)='object'
+                ),
+                status TEXT NOT NULL DEFAULT 'draft' CHECK (
+                    status IN ('draft','tested','committed','discarded')
+                ),
+                committed_draft_id TEXT REFERENCES agent_drafts(id) ON DELETE SET NULL,
+                committed_capability_id TEXT,
+                revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_recipes_owner_updated
+            ON agent_recipes(owner_user_id, updated_at DESC, id)
+            """,
+        ),
+    ),
+    Migration(
+        version=62,
+        name="agent_packages_health_repair_and_site_state",
+        statements=(
+            """
+            CREATE TABLE agent_site_package_bindings (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                package_key TEXT NOT NULL,
+                package_version TEXT NOT NULL,
+                package_digest TEXT NOT NULL,
+                publisher_id TEXT NOT NULL,
+                site_key TEXT NOT NULL,
+                draft_id TEXT NOT NULL REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                granted_permissions_json TEXT NOT NULL DEFAULT '[]' CHECK (
+                    json_valid(granted_permissions_json)
+                    AND json_type(granted_permissions_json)='array'
+                ),
+                source_digest TEXT NOT NULL,
+                hint_digest TEXT,
+                status TEXT NOT NULL DEFAULT 'installed' CHECK (
+                    status IN ('installed','active','retained','uninstalled','conflicted')
+                ),
+                installed_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id, package_key, package_digest)
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_package_bindings_owner_site
+            ON agent_site_package_bindings(owner_user_id, site_key, updated_at DESC)
+            """,
+            """
+            CREATE TABLE agent_capability_health (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                draft_id TEXT NOT NULL REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                capability_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN (
+                    'unknown','healthy','suspect','drifted','repairing','local_patched',
+                    'needs_user','degraded','failed'
+                )),
+                consecutive_failures INTEGER NOT NULL DEFAULT 0 CHECK (consecutive_failures>=0),
+                success_count INTEGER NOT NULL DEFAULT 0 CHECK (success_count>=0),
+                failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count>=0),
+                last_error_class TEXT,
+                last_error_json TEXT CHECK (last_error_json IS NULL OR json_valid(last_error_json)),
+                structure_fingerprint TEXT NOT NULL DEFAULT '',
+                circuit_open_until TEXT,
+                metrics_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metrics_json)),
+                last_run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL,
+                last_success_at TEXT,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id,draft_id,capability_name)
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_capability_health_status
+            ON agent_capability_health(owner_user_id,status,updated_at DESC)
+            """,
+            """
+            CREATE TABLE agent_site_states (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                draft_id TEXT NOT NULL REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                capability_name TEXT NOT NULL,
+                source_identity TEXT NOT NULL,
+                generation_id TEXT NOT NULL REFERENCES agent_compile_generations(id) ON DELETE CASCADE,
+                checkpoint_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(checkpoint_json)),
+                item_index_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(item_index_json)),
+                structure_fingerprint TEXT NOT NULL DEFAULT '',
+                calibration_status TEXT NOT NULL DEFAULT 'pending' CHECK (
+                    calibration_status IN ('pending','passed','failed')
+                ),
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id,draft_id,capability_name,source_identity)
+            )
+            """,
+            """
+            CREATE TABLE agent_repair_candidates (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                draft_id TEXT NOT NULL REFERENCES agent_drafts(id) ON DELETE CASCADE,
+                capability_name TEXT NOT NULL,
+                base_generation_id TEXT NOT NULL REFERENCES agent_compile_generations(id) ON DELETE CASCADE,
+                candidate_generation_id TEXT REFERENCES agent_compile_generations(id) ON DELETE SET NULL,
+                strategy TEXT NOT NULL CHECK (strategy IN ('deterministic','lightweight','advanced','manual')),
+                source_json TEXT NOT NULL CHECK (json_valid(source_json)),
+                report_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(report_json)),
+                status TEXT NOT NULL DEFAULT 'candidate' CHECK (
+                    status IN ('candidate','validated','activated','rejected','failed')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_repairs_draft
+            ON agent_repair_candidates(draft_id,created_at DESC,id DESC)
+            """,
+            """
+            CREATE TABLE agent_app_dependencies (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                consumer_app_id TEXT NOT NULL,
+                capability_name TEXT NOT NULL,
+                site_scope TEXT NOT NULL DEFAULT '',
+                provider_draft_id TEXT REFERENCES agent_drafts(id) ON DELETE SET NULL,
+                provider_package_key TEXT,
+                version_constraint TEXT NOT NULL DEFAULT '',
+                required INTEGER NOT NULL DEFAULT 1 CHECK (required IN (0,1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id,consumer_app_id,capability_name,site_scope)
+            )
+            """,
+            """
+            CREATE TABLE agent_run_knowledge_exports (
+                run_id TEXT PRIMARY KEY REFERENCES agent_runs(id) ON DELETE CASCADE,
+                knowledge_item_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """,
+            "ALTER TABLE agent_schedules ADD COLUMN installation_id TEXT NOT NULL DEFAULT 'local'",
+            "ALTER TABLE agent_schedules ADD COLUMN max_concurrent_runs INTEGER NOT NULL DEFAULT 1 CHECK (max_concurrent_runs BETWEEN 1 AND 16)",
+            "ALTER TABLE agent_schedules ADD COLUMN max_failures INTEGER NOT NULL DEFAULT 5 CHECK (max_failures BETWEEN 1 AND 100)",
+        ),
+    ),
+    Migration(
+        version=63,
+        name="site_agent_discovery_and_version_governance",
+        statements=(
+            """
+            ALTER TABLE agent_site_package_bindings
+            ADD COLUMN source_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                json_valid(source_json) AND json_type(source_json)='object'
+            )
+            """,
+            """
+            ALTER TABLE agent_site_package_bindings
+            ADD COLUMN update_policy TEXT NOT NULL DEFAULT 'manual' CHECK (
+                update_policy IN ('manual','pinned')
+            )
+            """,
+            """
+            ALTER TABLE agent_site_package_bindings
+            ADD COLUMN pinned_version TEXT
+            """,
+            """
+            ALTER TABLE agent_site_package_bindings
+            ADD COLUMN activated_at TEXT
+            """,
+            """
+            CREATE TABLE agent_site_package_events (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                package_key TEXT NOT NULL,
+                action TEXT NOT NULL CHECK (action IN (
+                    'installed','candidate_created','activated','rolled_back','policy_changed'
+                )),
+                from_digest TEXT,
+                to_digest TEXT,
+                details_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                    json_valid(details_json) AND json_type(details_json)='object'
+                ),
+                created_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_agent_site_package_events_owner_package
+            ON agent_site_package_events(owner_user_id,package_key,created_at DESC,id DESC)
+            """,
+        ),
+    ),
+    Migration(
+        version=64,
+        name="repair_knowledge_fts_delete_triggers",
+        statements=(
+            "DROP TRIGGER knowledge_chunks_ad",
+            "DROP TRIGGER knowledge_chunks_au",
+            """
+            CREATE TRIGGER knowledge_chunks_ad AFTER DELETE ON knowledge_chunks BEGIN
+                DELETE FROM knowledge_fts WHERE rowid = old.rowid;
+            END
+            """,
+            """
+            CREATE TRIGGER knowledge_chunks_au AFTER UPDATE ON knowledge_chunks BEGIN
+                DELETE FROM knowledge_fts WHERE rowid = old.rowid;
+                INSERT INTO knowledge_fts(rowid, title, text)
+                SELECT new.rowid, i.title, new.text
+                FROM knowledge_items i WHERE i.id = new.item_id;
+            END
+            """,
+        ),
+    ),
+    Migration(
+        version=65,
+        name="user_browser_profiles",
+        statements=(
+            """
+            CREATE TABLE browser_profiles (
+                id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                profile_key TEXT NOT NULL CHECK (
+                    length(profile_key)=32 AND profile_key NOT GLOB '*[^0-9a-f]*'
+                ),
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id, profile_key)
+            )
+            """,
+            """
+            CREATE INDEX ix_browser_profiles_owner_created
+            ON browser_profiles(owner_user_id, created_at, id)
+            """,
+        ),
+    ),
+    Migration(
+        version=66,
+        name="peer_core_and_model_share_ledgers",
+        statements=(
+            """
+            CREATE TABLE peer_sessions (
+                session_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                protocol TEXT NOT NULL CHECK (protocol IN ('messager-v2','model-share-v1','checkpoint-v1')),
+                purpose_type TEXT NOT NULL CHECK (purpose_type IN ('conversation','compute_contract','checkpoint_distribution')),
+                purpose_id TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending','active','closed','expired','revoked')),
+                expires_at TEXT NOT NULL,
+                self_user_id TEXT NOT NULL,
+                self_device_id TEXT NOT NULL,
+                self_installation_id TEXT NOT NULL,
+                self_access_epoch INTEGER NOT NULL CHECK (self_access_epoch >= 1),
+                self_key_id TEXT NOT NULL,
+                self_key_epoch INTEGER NOT NULL CHECK (self_key_epoch >= 1),
+                peer_user_id TEXT NOT NULL,
+                peer_device_id TEXT NOT NULL,
+                peer_installation_id TEXT NOT NULL,
+                peer_access_epoch INTEGER NOT NULL CHECK (peer_access_epoch >= 1),
+                peer_key_id TEXT NOT NULL,
+                peer_key_epoch INTEGER NOT NULL CHECK (peer_key_epoch >= 1),
+                allowed_transports TEXT NOT NULL CHECK (allowed_transports IN ('direct_quic','relay_https','direct_quic,relay_https')),
+                max_bytes TEXT NOT NULL CHECK (max_bytes GLOB '[1-9]*' AND max_bytes NOT GLOB '*[^0-9]*'),
+                max_streams INTEGER NOT NULL CHECK (max_streams >= 1),
+                policy_version INTEGER NOT NULL CHECK (policy_version >= 1),
+                fallback_policy TEXT NOT NULL CHECK (fallback_policy IN ('offline_system_message','rematch_or_fail')),
+                updated_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_peer_sessions_owner_status ON peer_sessions(owner_user_id,status,expires_at)",
+            """
+            CREATE TABLE peer_replay_tokens (
+                jti_digest TEXT PRIMARY KEY CHECK (length(jti_digest)=64 AND jti_digest NOT GLOB '*[^0-9a-f]*'),
+                session_id TEXT NOT NULL REFERENCES peer_sessions(session_id) ON DELETE CASCADE,
+                expires_at TEXT NOT NULL,
+                consumed_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_peer_replay_expiry ON peer_replay_tokens(expires_at)",
+            """
+            CREATE TABLE model_share_jobs (
+                contract_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES peer_sessions(session_id) ON DELETE RESTRICT,
+                owner_user_id TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('buyer','provider')),
+                status TEXT NOT NULL CHECK (status IN ('accepted','running','result_committed','completed','result_unknown','failed')),
+                request_digest TEXT NOT NULL CHECK (length(request_digest)=64 AND request_digest NOT GLOB '*[^0-9a-f]*'),
+                result_digest TEXT CHECK (result_digest IS NULL OR (length(result_digest)=64 AND result_digest NOT GLOB '*[^0-9a-f]*')),
+                input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+                output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_model_share_jobs_owner_status ON model_share_jobs(owner_user_id,status,updated_at DESC)",
+        ),
+    ),
+    Migration(
+        version=67,
+        name="model_share_provider_preferences",
+        statements=(
+            """
+            CREATE TABLE model_share_device_preferences (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE model_share_model_preferences (
+                model_id TEXT PRIMARY KEY,
+                service_key TEXT NOT NULL,
+                model_revision TEXT NOT NULL CHECK (
+                    length(model_revision) BETWEEN 40 AND 64
+                    AND model_revision NOT GLOB '*[^0-9a-f]*'
+                ),
+                runtime TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+                rate_card_id TEXT NOT NULL,
+                rate_card_version TEXT NOT NULL,
+                max_concurrency INTEGER NOT NULL DEFAULT 1 CHECK (
+                    max_concurrency BETWEEN 1 AND 32
+                ),
+                estimated_tokens_per_second INTEGER NOT NULL DEFAULT 1 CHECK (
+                    estimated_tokens_per_second >= 1
+                ),
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX ix_model_share_model_preferences_enabled
+            ON model_share_model_preferences(enabled, service_key, model_id)
+            """,
+        ),
+    ),
+    Migration(
+        version=68,
+        name="durable_registry_install_continuations",
+        statements=(
+            """
+            CREATE TABLE registry_install_continuations (
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                package_id TEXT NOT NULL CHECK (
+                    length(package_id) BETWEEN 3 AND 200
+                    AND instr(package_id, '/') > 1
+                ),
+                package_version TEXT,
+                approve_review INTEGER NOT NULL DEFAULT 0 CHECK (
+                    approve_review IN (0, 1)
+                ),
+                dependency_json TEXT NOT NULL DEFAULT '{}' CHECK (
+                    json_valid(dependency_json)
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(actor_id, installation_id)
+            )
+            """,
+        ),
+    ),
+    Migration(
+        version=69,
+        name="model_share_multimodal_pricing_projection",
+        statements=(
+            "ALTER TABLE model_share_jobs ADD COLUMN calculator_type TEXT",
+            "ALTER TABLE model_share_jobs ADD COLUMN maximum_charge_minor TEXT",
+            "ALTER TABLE model_share_jobs ADD COLUMN actual_usage_json TEXT",
+            "ALTER TABLE model_share_jobs ADD COLUMN charged_minor TEXT",
+            "ALTER TABLE model_share_jobs ADD COLUMN released_minor TEXT",
+        ),
+    ),
 )
 
 

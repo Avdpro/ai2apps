@@ -1,0 +1,48 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_deepseek_v4_flash_60d8d707_v1",
+  "modelId": "ai2apps.model.deepseek-v4-flash/deepseek-v4-flash",
+  "repoId": "deepseek-ai/DeepSeek-V4-Flash",
+  "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/LICENSE",
+    "termsHash": "sha256:f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "model-*.safetensors",
+    "model.safetensors.index.json",
+    "config.json",
+    "generation_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "encoding/*.py",
+    "encoding/tests/*.json",
+    "encoding/tests/*.txt",
+    "inference/*.py",
+    "inference/config.json",
+    "inference/requirements.txt",
+    "assets/dsv4_performance.png"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "deepseek-ai/DeepSeek-V4-Flash",
+      "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "deepseek-ai/DeepSeek-V4-Flash",
+      "revision": "4e9bb2457e147f6ebfe2a46f3df047dc9869e224",
+      "access": "public_anonymous"
+    }
+  ]
+}

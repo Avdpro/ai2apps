@@ -49,9 +49,11 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
 from ai2apps._version import __version__ as _ai2apps_version
+from ai2apps.api.client import is_desktop_shell_request
 from ai2apps.apps import SYSTEM_APP_MANIFESTS
 from ai2apps.apps.access import APP_SYSTEM_MANAGE, can_access_app, has_app_capability
 from ai2apps.capabilities import operation_class
+from ai2apps.checkpoint_distribution import CheckpointConsentRequiredError
 from ai2apps.cloud_client import AI2APPS_CLOUD_BROWSER_COOKIE
 from ai2apps.coder import CoderError
 from ai2apps.core import EntityIdKind, RepositoryError, new_entity_id
@@ -451,10 +453,12 @@ class AI2AppsInstallRequest(BaseModel):
     memory_tier: str = "auto"
     storage_policy: Literal["keep_source", "delete_after", "stream_reclaim"] | None = None
     token: str = ""
+    license_consents: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AI2AppsRetryRequest(BaseModel):
     token: str = ""
+    license_consents: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ModelAdapterPackageRequest(BaseModel):
@@ -473,6 +477,7 @@ class ModelAdapterCheckpointInstallRequest(BaseModel):
     memory_tier: Literal["auto", "lean", "compact", "optimal"] = "auto"
     storage_policy: Literal["keep_source", "delete_after", "stream_reclaim"] | None = None
     token: str = ""
+    license_consents: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class FusionModelRequest(BaseModel):
@@ -1263,10 +1268,13 @@ MOBILE_STATIC_FILES = frozenset({
     "css/tailwind.css",
     "css/dashboard.css",
     "css/account.css",
+    "css/messager.css",
     "css/agents.css",
     "css/trust_center.css",
+    "css/video_studio.css",
     "js/alpine.min.js",
     "js/account.js",
+    "js/messager.js",
     "js/agent_manager.js",
     "js/dashboard.js",
     "js/lucide.min.js",
@@ -1276,6 +1284,7 @@ MOBILE_STATIC_FILES = frozenset({
     "js/mobile_chat.js",
     "js/purify.min.js",
     "js/trust_center.js",
+    "js/video_studio.js",
     "omlx_preset.json",
     "img/integrations/claude.png",
     "img/integrations/codex.png",
@@ -1315,6 +1324,13 @@ _SYSTEM_APP_MANIFESTS_BY_ID = {
 _DASHBOARD_APP_TABS = {
     "ai2apps.dashboard": "status",
     "ai2apps.account": "account",
+    "ai2apps.ai-browser": "ai-browser",
+    "ai2apps.messager": "messager",
+    "ai2apps.gallery": "gallery",
+    "ai2apps.knowledge": "knowledge",
+    "ai2apps.readaloud": "readaloud",
+    "ai2apps.video-studio": "video-studio",
+    "ai2apps.imagine-studio": "imagine-studio",
     "ai2apps.sharing": "sharing",
     "ai2apps.models": "models",
     "ai2apps.environment": "environment",
@@ -1330,6 +1346,13 @@ _DASHBOARD_APP_TABS = {
 _DASHBOARD_APP_TEMPLATES = {
     "ai2apps.dashboard": "system_apps/dashboard.html",
     "ai2apps.account": "system_apps/account.html",
+    "ai2apps.ai-browser": "system_apps/ai_browser.html",
+    "ai2apps.messager": "system_apps/messager.html",
+    "ai2apps.gallery": "system_apps/gallery.html",
+    "ai2apps.knowledge": "system_apps/knowledge.html",
+    "ai2apps.readaloud": "system_apps/readaloud.html",
+    "ai2apps.video-studio": "system_apps/video_studio.html",
+    "ai2apps.imagine-studio": "system_apps/imagine_studio.html",
     "ai2apps.sharing": "system_apps/sharing.html",
     "ai2apps.models": "system_apps/models.html",
     "ai2apps.environment": "system_apps/environment.html",
@@ -1348,6 +1371,15 @@ _LEGACY_DASHBOARD_TAB_APPS = {
 _HOST_APP_ENTRIES = {
     "ai2apps:system/dashboard": "/admin/app-content/ai2apps.dashboard",
     "ai2apps:system/account": "/admin/app-content/ai2apps.account",
+    "ai2apps:system/ai-browser": "/admin/app-content/ai2apps.ai-browser",
+    "ai2apps:system/messager": "/admin/app-content/ai2apps.messager",
+    "ai2apps:system/gallery": "/admin/app-content/ai2apps.gallery",
+    "ai2apps:system/knowledge": "/admin/app-content/ai2apps.knowledge",
+    "ai2apps:system/knowledge-mini": "/admin/app-content/ai2apps.knowledge?surface=mini",
+    "ai2apps:system/gallery-mini": "/admin/app-content/ai2apps.gallery?surface=mini",
+    "ai2apps:system/readaloud": "/admin/app-content/ai2apps.readaloud",
+    "ai2apps:system/video-studio": "/admin/app-content/ai2apps.video-studio",
+    "ai2apps:system/imagine-studio": "/admin/app-content/ai2apps.imagine-studio",
     "ai2apps:system/sharing": "/admin/app-content/ai2apps.sharing",
     "ai2apps:system/models": "/admin/app-content/ai2apps.models",
     "ai2apps:system/environment": "/admin/app-content/ai2apps.environment",
@@ -1360,6 +1392,8 @@ _HOST_APP_ENTRIES = {
     "ai2apps:system/coder": "/admin/app-content/ai2apps.coder",
     "ai2apps:system/benchmark": "/admin/app-content/ai2apps.benchmark",
     "ai2apps:system/chat": "/admin/chat?embedded=1",
+    "ai2apps:system/chat-mini": "/admin/chat-mini",
+    "ai2apps:system/agent-mini": "/admin/agent-mini",
     "ai2apps:mobile/chat": "/mobile/chat",
 }
 
@@ -1669,6 +1703,10 @@ def _get_ai2apps_installer():
     from ai2apps.model_providers import installed_model_preparation_recipes
 
     runtime = _get_platform_runtime() if _get_platform_runtime else None
+    if runtime is not None and getattr(runtime, "provisioning", None) is not None:
+        return runtime.provisioning.bind_checkpoint_downloaders(
+            _hf_downloader, _ms_downloader
+        )
     recipes = installed_model_preparation_recipes(runtime)
 
     async def activate_model_worker(recipe: dict[str, Any]) -> None:
@@ -1687,12 +1725,15 @@ def _get_ai2apps_installer():
             _hf_downloader,
             recipes,
             on_ready=activate_model_worker,
+            ms_downloader=_ms_downloader,
         )
     else:
         # Package install/upgrade/uninstall is live; never retain recipes from
         # a Package version that is no longer active.
         _ai2apps_installer.package_recipes = recipes
         _ai2apps_installer.on_ready = activate_model_worker
+        _ai2apps_installer.hf_downloader = _hf_downloader
+        _ai2apps_installer.ms_downloader = _ms_downloader
     return _ai2apps_installer
 
 
@@ -1982,33 +2023,46 @@ def _require_shell_app_access(app_id: str, principal: RequestPrincipal) -> None:
         raise HTTPException(status_code=404, detail="App not found")
 
 
-def _desktop_client_version() -> str | None:
-    """Return the native client bundle version for the supervised local Shell."""
+def _desktop_client_release() -> tuple[str | None, str | None]:
+    """Return the native client version and build for the supervised Shell."""
     raw_version = os.environ.get("AI2APPS_CLIENT_VERSION", "").strip()
-    if not raw_version:
+    raw_build = os.environ.get("AI2APPS_CLIENT_BUILD", "").strip()
+    if not raw_version or not raw_build:
         try:
             settings = _get_global_settings() if _get_global_settings else None
             base_path = Path(settings.base_path) if settings is not None else None
             if base_path is None:
-                return None
+                raise ValueError("desktop client base path is unavailable")
             descriptor_path = (
                 base_path.parent / "run" / "shell.json"
             )
             descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
             app_bundle_path = Path(str(descriptor.get("app_bundle_path", "")))
             if not app_bundle_path.is_absolute():
-                return None
+                raise ValueError("desktop App bundle path is invalid")
             info_path = app_bundle_path / "Contents" / "Info.plist"
             with info_path.open("rb") as info_file:
                 info = plistlib.load(info_file)
-            raw_version = str(info.get("CFBundleShortVersionString", "")).strip()
+            if not raw_version:
+                raw_version = str(
+                    info.get("CFBundleShortVersionString", "")
+                ).strip()
+            if not raw_build:
+                raw_build = str(info.get("CFBundleVersion", "")).strip()
         except (OSError, ValueError, TypeError, json.JSONDecodeError, plistlib.InvalidFileException):
-            return None
+            pass
     if raw_version[:1].lower() == "v":
         raw_version = raw_version[1:]
     if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,63}", raw_version):
-        return None
-    return raw_version
+        raw_version = ""
+    if not re.fullmatch(r"[1-9][0-9]{0,17}", raw_build):
+        raw_build = ""
+    return raw_version or None, raw_build or None
+
+
+def _desktop_client_version() -> str | None:
+    """Return the native client marketing version."""
+    return _desktop_client_release()[0]
 
 
 def _shell_response(
@@ -2022,6 +2076,7 @@ def _shell_response(
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,127}", app_id):
         raise HTTPException(status_code=404, detail="App not found")
     _require_shell_app_access(app_id, principal)
+    desktop_client_version, desktop_client_build = _desktop_client_release()
     return templates.TemplateResponse(
         request,
         "shell.html",
@@ -2029,7 +2084,8 @@ def _shell_response(
             "system_apps": _authorized_system_apps(principal),
             "initial_app_id": app_id,
             "initial_instance_id": instance_id,
-            "desktop_client_version": _desktop_client_version(),
+            "desktop_client_version": desktop_client_version,
+            "desktop_client_build": desktop_client_build,
             "can_manage_system": has_app_capability(
                 principal, APP_SYSTEM_MANAGE
             ),
@@ -2043,6 +2099,7 @@ async def desktop_home(
     principal: RequestPrincipal = Depends(_require_shell_access),
 ):
     """Render the Local desktop Home without launching a system App."""
+    desktop_client_version, desktop_client_build = _desktop_client_release()
     return templates.TemplateResponse(
         request,
         "shell.html",
@@ -2050,7 +2107,8 @@ async def desktop_home(
             "system_apps": _authorized_system_apps(principal),
             "initial_app_id": "",
             "initial_instance_id": None,
-            "desktop_client_version": _desktop_client_version(),
+            "desktop_client_version": desktop_client_version,
+            "desktop_client_build": desktop_client_build,
             "can_manage_system": has_app_capability(
                 principal, APP_SYSTEM_MANAGE
             ),
@@ -2241,14 +2299,12 @@ def _shell_mount_payload(manager, mount: dict[str, Any]) -> dict[str, Any]:
     if renderer == "host":
         if resource == "ai2apps:generic-launcher":
             content_url = f"/admin/app-mini/{mount_id}/generic"
-        elif mount.get("placement") == "mobile":
+        else:
             content_url = _HOST_APP_ENTRIES.get(resource)
             if content_url is None or mount.get("source") != "builtin":
                 raise HTTPException(
-                    status_code=422, detail="Unsupported Mobile host renderer"
+                    status_code=422, detail="Unsupported host mount"
                 )
-        else:
-            raise HTTPException(status_code=422, detail="Unsupported host mount")
     elif renderer in {"schema", "safe-html"}:
         content_url = (
             f"/admin/app-view/{instance_id}/{renderer}?mount_id="
@@ -2365,6 +2421,42 @@ async def shell_account_status(
     if not isinstance(user, dict):
         return {**account_context, "state": "unavailable"}
     points = user.get("points") if isinstance(user.get("points"), dict) else {}
+    currency_payloads = []
+    for path in ("/v1/currency/balances", "/v1/currency/provider-balances"):
+        currency_response = None
+        try:
+            currency_response = await cloud.request("GET", path)
+            value = currency_response.json() if currency_response.status_code == 200 else {}
+            currency_payloads.append(value if isinstance(value, dict) else {})
+        except (TypeError, ValueError, httpx.HTTPError, RuntimeError):
+            logger.debug("Unable to refresh Dock currency summary", exc_info=True)
+            currency_payloads.append({})
+        finally:
+            if currency_response is not None:
+                await currency_response.aclose()
+    spending_items = currency_payloads[0].get("items", [])
+    provider_items = currency_payloads[1].get("items", [])
+    spending = {
+        item.get("assetCode"): item
+        for item in spending_items
+        if isinstance(item, dict) and isinstance(item.get("assetCode"), str)
+    }
+    provider = {
+        item.get("assetCode"): item
+        for item in provider_items
+        if isinstance(item, dict) and isinstance(item.get("assetCode"), str)
+    }
+
+    def currency(code: str, item: dict[str, Any] | None, fallback: str = "0"):
+        value = item or {}
+        amount = str(value.get("available") or fallback)
+        exponent = value.get("exponent", 0)
+        if not re.fullmatch(r"-?[0-9]+", amount):
+            amount = "0"
+        if not isinstance(exponent, int) or exponent < 0 or exponent > 18:
+            exponent = 0
+        return {"code": code, "amount_minor": amount, "exponent": exponent}
+
     return {
         **account_context,
         "state": "signed_in",
@@ -2375,6 +2467,15 @@ async def shell_account_status(
         "display_name": str(user.get("displayName") or user.get("email") or "AI2Apps Account"),
         "email": str(user.get("email") or ""),
         "points": str(points.get("total") or points.get("balance") or "0"),
+        "currencies": [
+            currency(
+                "points",
+                spending.get("PROMO_POINTS"),
+                str(points.get("total") or points.get("balance") or "0"),
+            ),
+            currency("gas", spending.get("USD_COMPUTE_CREDIT")),
+            currency("cash", provider.get("USD_PROVIDER_EARNINGS")),
+        ],
     }
 
 
@@ -2397,6 +2498,30 @@ async def account_ui_language(
         raise HTTPException(status_code=503, detail="Global settings are unavailable")
     language = global_settings.ui.language
     return {"language": language if language in {"en", "zh"} else "en"}
+
+
+@router.get("/api/shell/ui-locale")
+async def shell_ui_locale(
+    _principal: RequestPrincipal = Depends(_require_shell_access),
+):
+    """Return the device locale needed by trusted native Shell surfaces."""
+    language = _current_ui_language()
+    if language not in {"en", "zh"}:
+        language = "en"
+    locale = _load_locale(language)
+    keys = {
+        "chat": "browser.sidebar.chat",
+        "knowledge": "browser.sidebar.knowledge",
+        "agent": "browser.sidebar.agent",
+        "gallery": "browser.sidebar.gallery",
+        "refresh": "browser.sidebar.refresh",
+        "currentPage": "browser.sidebar.current_page",
+        "readingContext": "browser.sidebar.reading_context",
+    }
+    return {
+        "language": language,
+        "strings": {name: locale.get(key, key) for name, key in keys.items()},
+    }
 
 
 @router.post("/api/account/ui-language")
@@ -3984,6 +4109,10 @@ def _system_app_content_response(
 ):
     tab = _DASHBOARD_APP_TABS.get(app_id)
     template_name = _DASHBOARD_APP_TEMPLATES.get(app_id)
+    if app_id == "ai2apps.gallery" and request.query_params.get("surface") == "mini":
+        template_name = "system_apps/gallery_mini.html"
+    if app_id == "ai2apps.knowledge" and request.query_params.get("surface") == "mini":
+        template_name = "system_apps/knowledge_mini.html"
     app = _SYSTEM_APPS_BY_ID.get(app_id)
     if tab is None or template_name is None or app is None:
         raise HTTPException(status_code=404, detail="App content not found")
@@ -3997,7 +4126,26 @@ def _system_app_content_response(
         "principal_actor_user_id": principal.actor_user_id,
         "principal_is_core": principal.is_core,
         "developer_surfaces_visible": can_access_developer_surfaces(principal),
+        "client_environment": (
+            "mobile"
+            if mobile_surface
+            else "desktop"
+            if is_desktop_shell_request(request)
+            else "browser"
+        ),
     }
+    if app_id in {"ai2apps.gallery", "ai2apps.knowledge"}:
+        # Product-owned standalone surfaces resolve locale per render so a
+        # changed installation language cannot use stale globals.
+        app_language = _current_ui_language()
+        app_locale = _load_locale(app_language)
+        context.update(
+            {
+                "t": _make_t(app_locale),
+                "locale_json": json.dumps(app_locale, ensure_ascii=False),
+                "current_lang": app_language,
+            }
+        )
     if mobile_surface:
         context.update(
             {
@@ -4006,8 +4154,6 @@ def _system_app_content_response(
                 "static": _mobile_static_version,
             }
         )
-    if app.get("presentation", {}).get("dock_reveal") is False:
-        context["show_dock_reveal"] = False
     # include_api_key is retained in the private helper signature only to
     # avoid a broad routing refactor. Long-lived API credentials are never
     # rendered into system App HTML.
@@ -4056,6 +4202,60 @@ async def chat_page(
             "principal_actor_user_id": principal.actor_user_id,
             "principal_is_core": principal.is_core,
             "developer_surfaces_visible": can_access_developer_surfaces(principal),
+        },
+    )
+
+
+@router.get("/chat-mini", response_class=HTMLResponse)
+async def chat_mini_page(
+    request: Request,
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
+    """Render the compact Chat Mini-Entry used by the browser sidebar."""
+    _require_system_app_access("ai2apps.general-chat", principal)
+    return templates.TemplateResponse(
+        request,
+        "system_apps/chat_mini.html",
+        {
+            "principal_actor_user_id": principal.actor_user_id,
+            "principal_is_core": principal.is_core,
+            "developer_surfaces_visible": can_access_developer_surfaces(principal),
+        },
+    )
+
+
+@router.get("/agent-mini", response_class=HTMLResponse)
+async def agent_mini_page(
+    request: Request,
+    principal: RequestPrincipal = Depends(_require_shell_access),
+):
+    """Render the actor-scoped browser Agent runner and builder Mini-Entry."""
+    # Development templates and assets are served directly from the checkout.
+    # Refresh the locale alongside them so a newly added key cannot render as
+    # its literal identifier until the whole Local service is restarted.
+    _refresh_i18n_globals()
+    return templates.TemplateResponse(
+        request,
+        "system_apps/agent_mini.html",
+        {
+            "principal_actor_user_id": principal.actor_user_id,
+            "principal_is_core": principal.is_core,
+            "developer_surfaces_visible": can_access_developer_surfaces(principal),
+        },
+        headers={
+            # Presentation images are user-requested, read-only results from
+            # public web pages. Keep this exception scoped to Agent Mini; the
+            # browser-wide HTML policy continues to deny remote images.
+            "Content-Security-Policy": (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob: https:; "
+                "font-src 'self' data:; connect-src 'self' ws: wss:; "
+                "media-src 'self' blob:; worker-src 'self' blob:; "
+                "frame-src 'self'; object-src 'none'; base-uri 'self'; "
+                "form-action 'self'; frame-ancestors 'self'"
+            )
         },
     )
 
@@ -4452,6 +4652,33 @@ def _model_dirs_for_display(global_settings: Any | None) -> list[Path]:
         return []
 
 
+def _development_model_display_name(
+    model_id: str,
+    model_path: str | Path | None,
+    model_dirs: list[Path],
+) -> str:
+    """Label a directly discovered checkpoint as an explicit Dev model."""
+    if not model_path or "://" in str(model_path):
+        return f"Dev: {model_id}"
+    try:
+        path = Path(model_path).expanduser().resolve()
+    except (OSError, RuntimeError):
+        path = Path(model_path).expanduser()
+    for model_dir in model_dirs:
+        try:
+            resolved_dir = model_dir.expanduser().resolve()
+            display_root = (
+                resolved_dir.parent.parent
+                if resolved_dir.parent.name == "data"
+                else resolved_dir.parent
+            )
+            relative = path.relative_to(display_root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        return f"Dev: {relative.as_posix()}"
+    return f"Dev: {path}"
+
+
 def _cloud_model_capabilities(model: dict[str, Any]) -> set[str]:
     """Normalize provider metadata and conservative name hints for routing."""
 
@@ -4657,6 +4884,9 @@ async def list_models(
     # Combine model info with settings
     models = []
     for model_info in models_status:
+        source_type = model_info.get("source_type", "local")
+        if source_type == "hf_cache":
+            continue
         model_id = model_info["id"]
         settings = all_settings.get(model_id)
 
@@ -4667,11 +4897,10 @@ async def list_models(
         model_data = {
             "id": model_id,
             "model_path": model_info.get("model_path", ""),
-            "display_name": _model_display_name(
+            "display_name": _development_model_display_name(
                 model_id,
                 model_info.get("model_path", ""),
                 model_dirs,
-                source_repo_id=model_info.get("source_repo_id"),
             ),
             "loaded": model_info.get("loaded", False),
             "is_loading": model_info.get("is_loading", False),
@@ -4706,7 +4935,7 @@ async def list_models(
             "model_context_length": model_info.get("model_context_length"),
             "thinking_default": model_info.get("thinking_default"),
             "preserve_thinking_default": model_info.get("preserve_thinking_default"),
-            "source_type": model_info.get("source_type", "local"),
+            "source_type": source_type,
             "source_repo_id": model_info.get("source_repo_id"),
             "last_access": model_info.get("last_access"),
             "dflash_compatible": compat_ok,
@@ -5006,7 +5235,10 @@ async def get_model_manager(
 ):
     """Return models grouped by their serving contract, not disk location."""
 
-    from ai2apps.model_installer import AI2AppsInstaller
+    from ai2apps.model_installer import (
+        AI2AppsInstaller,
+        installed_shared_model_source_reference,
+    )
 
     from ai2apps.model_providers import installed_model_preparation_recipes
 
@@ -5052,11 +5284,26 @@ async def get_model_manager(
             ),
             None,
         )
-        installed = (
-            bool(recipe.get("installed"))
-            if recipe.get("recipe") == "native"
-            else runtime_match is not None
-        )
+        if recipe.get("recipe") == "native":
+            installed = bool(recipe.get("installed"))
+        else:
+            installed = False
+            sources = recipe.get("sources", [])
+            if len(sources) == 1 and _hf_downloader is not None:
+                source = sources[0]
+                repo_id = source.get("repo_id")
+                revision = source.get("revision")
+                if isinstance(repo_id, str) and isinstance(revision, str):
+                    try:
+                        installed = installed_shared_model_source_reference(
+                            _hf_downloader.model_dir / repo_id
+                        ) == (repo_id, revision)
+                    except ValueError as exc:
+                        logger.warning(
+                            "Ignoring invalid installed model metadata for %s: %s",
+                            recipe.get("id", repo_id),
+                            exc,
+                        )
         cached_moe.append(
             {
                 **recipe,
@@ -6568,11 +6815,21 @@ async def install_model_adapter_checkpoint(
             request.memory_tier,
             request.token,
             request.storage_policy,
+            request.license_consents,
         )
         return {"success": True, "task": task.to_dict()}
     except Exception as error:
         from ..model_adapters import ModelAdapterPackageError
 
+        if isinstance(error, CheckpointConsentRequiredError):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "checkpoint_license_consent_required",
+                    "message": str(error),
+                    "challenges": list(error.challenges),
+                },
+            ) from error
         if isinstance(error, ModelAdapterPackageError):
             _raise_model_adapter_package_error(error)
         if isinstance(error, ValueError):
@@ -8912,8 +9169,18 @@ async def start_ai2apps_install(
             request.memory_tier,
             request.token,
             request.storage_policy,
+            request.license_consents,
         )
         return {"success": True, "task": task.to_dict()}
+    except CheckpointConsentRequiredError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "checkpoint_license_consent_required",
+                "message": str(exc),
+                "challenges": list(exc.challenges),
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -8943,8 +9210,19 @@ async def retry_ai2apps_install(
     is_admin: bool = Depends(require_admin),
 ):
     try:
-        task = await _get_ai2apps_installer().retry(task_id, request.token)
+        task = await _get_ai2apps_installer().retry(
+            task_id, request.token, request.license_consents
+        )
         return {"success": True, "task": task.to_dict()}
+    except CheckpointConsentRequiredError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "checkpoint_license_consent_required",
+                "message": str(exc),
+                "challenges": list(exc.challenges),
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

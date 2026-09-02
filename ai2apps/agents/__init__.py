@@ -1,5 +1,10 @@
 """Asynchronous Agent Runtime public contracts."""
 
+from .browser_builder import (
+    BROWSER_BUILDER_AGENT_KEY,
+    browser_builder_executor,
+    install_browser_builder_agent,
+)
 from .delegation import install_delegation_service
 from .general import GeneralAgentExecutor, install_general_agent
 from .models import (
@@ -54,5 +59,8 @@ __all__ = [
     "diagnostic_executor",
     "install_diagnostic_agent",
     "install_general_agent",
+    "BROWSER_BUILDER_AGENT_KEY",
+    "browser_builder_executor",
+    "install_browser_builder_agent",
     "install_delegation_service",
 ]

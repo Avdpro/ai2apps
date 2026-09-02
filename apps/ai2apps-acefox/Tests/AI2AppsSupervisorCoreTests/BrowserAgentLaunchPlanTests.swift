@@ -26,6 +26,33 @@ import Testing
     #expect(first.environment["MOZ_APP_NO_DOCK"] == "1")
 }
 
+@Test func customBrowserProfilesAreStableDistinctAndUserBound() throws {
+    let instance = try InstanceID(rawValue: "default")
+    let first = try BrowserAgentProfileID.derive(
+        instanceID: instance,
+        actorUserID: "user-1",
+        profileKey: String(repeating: "a", count: 32)
+    )
+    let same = try BrowserAgentProfileID.derive(
+        instanceID: instance,
+        actorUserID: "user-1",
+        profileKey: String(repeating: "a", count: 32)
+    )
+    let otherProfile = try BrowserAgentProfileID.derive(
+        instanceID: instance,
+        actorUserID: "user-1",
+        profileKey: String(repeating: "b", count: 32)
+    )
+    let otherUser = try BrowserAgentProfileID.derive(
+        instanceID: instance,
+        actorUserID: "user-2",
+        profileKey: String(repeating: "a", count: 32)
+    )
+    #expect(first == same)
+    #expect(first != otherProfile)
+    #expect(first != otherUser)
+}
+
 @Test func browserAgentProfilesDifferAcrossUsersAndInstances() throws {
     let firstInstance = try InstanceID(rawValue: "customer-a")
     let secondInstance = try InstanceID(rawValue: "customer-b")

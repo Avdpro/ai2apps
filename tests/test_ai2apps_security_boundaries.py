@@ -132,6 +132,24 @@ def test_native_helper_never_puts_inference_key_in_browser_url():
     assert 'comps.path = "/admin"' in builder
 
 
+def test_managed_browser_broker_bypasses_cookie_guard_only_for_helper_auth():
+    server = (REPOSITORY_ROOT / "omlx/server.py").read_text(encoding="utf-8")
+    platform_guard = server.split("async def verify_ai2apps_platform_access(", 1)[
+        1
+    ].split("def _reset_boundary_snapshots_for_server", 1)[0]
+    assert '"/v1/platform/client/managed-browser/next"' in platform_guard
+    assert '"/v1/platform/client/shell-browser-window/next"' in platform_guard
+    assert 'request.url.path.endswith("/complete")' in platform_guard
+
+    client_api = (REPOSITORY_ROOT / "ai2apps/api/client.py").read_text(
+        encoding="utf-8"
+    )
+    broker_routes = client_api.split(
+        '@router.get("/client/managed-browser/next"', 1
+    )[1].split("@router.get(\n            \"/client/browser-profile\"", 1)[0]
+    assert broker_routes.count("_require_helper_authorization(request)") == 4
+
+
 def test_legacy_admin_cookie_and_inference_no_auth_cannot_bypass_core_login():
     source = (REPOSITORY_ROOT / "omlx/admin/auth.py").read_text(
         encoding="utf-8"

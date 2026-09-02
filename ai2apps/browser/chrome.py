@@ -14,6 +14,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
+from .cookies import COOKIE_CONSENT_SCRIPT
 from .models import (
     AuthenticationChallenge,
     BrowserArticle,
@@ -924,6 +925,10 @@ class ChromeBrowserBackend:
         if not result:
             return None
         return AuthenticationChallenge(str(result["kind"]), str(result["reason"]))
+
+    def accept_cookie_consent(self, policy: str = "all") -> dict[str, Any]:
+        result = self._driver().execute_script(COOKIE_CONSENT_SCRIPT, policy)
+        return dict(result or {})
 
     def _rendered_text_all_contexts(self) -> str:
         from selenium.webdriver.common.by import By

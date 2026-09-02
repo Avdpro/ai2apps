@@ -1,0 +1,50 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen38_flash_next_4bit_de597762_v1",
+  "modelId": "ai2apps.model.qwen38-flash-next-4bit/qwen3.8-flash-next-mlx-4bit",
+  "repoId": "Vontra/Qwen3.8-Flash-Next-MLX-4bit",
+  "revision": "de597762aa61387c89590a46582222a261ce0387",
+  "format": "safetensors",
+  "quantization": "4bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Qwen-Community-1.0",
+    "name": "Qwen Community License 1.0",
+    "termsUrl": "https://huggingface.co/Vontra/Qwen3.8-Flash-Next-MLX-4bit/blob/de597762aa61387c89590a46582222a261ce0387/LICENSE",
+    "termsHash": "sha256:a0dc422560841fd68e06d974907f8b4c709bca44a67daad2b528437bdf676c08",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE", "README.md", "chat_template.jinja", "config.json",
+    "generation_config.json", "merges.txt",
+    "model-00001-of-00022.safetensors", "model-00002-of-00022.safetensors",
+    "model-00003-of-00022.safetensors", "model-00004-of-00022.safetensors",
+    "model-00005-of-00022.safetensors", "model-00006-of-00022.safetensors",
+    "model-00007-of-00022.safetensors", "model-00008-of-00022.safetensors",
+    "model-00009-of-00022.safetensors", "model-00010-of-00022.safetensors",
+    "model-00011-of-00022.safetensors", "model-00012-of-00022.safetensors",
+    "model-00013-of-00022.safetensors", "model-00014-of-00022.safetensors",
+    "model-00015-of-00022.safetensors", "model-00016-of-00022.safetensors",
+    "model-00017-of-00022.safetensors", "model-00018-of-00022.safetensors",
+    "model-00019-of-00022.safetensors", "model-00020-of-00022.safetensors",
+    "model-00021-of-00022.safetensors", "model-00022-of-00022.safetensors",
+    "model.safetensors.index.json", "preprocessor_config.json",
+    "tokenizer.json", "tokenizer_config.json", "vocab.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Vontra/Qwen3.8-Flash-Next-MLX-4bit",
+      "revision": "de597762aa61387c89590a46582222a261ce0387",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "avdpro/Qwen3.8-Flash-Next-MLX-4bit",
+      "revision": "f1cf2e7a9f6b26170c871f13b72ad467bf16a586",
+      "access": "public_anonymous"
+    }
+  ]
+}

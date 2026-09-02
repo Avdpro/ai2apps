@@ -13,6 +13,17 @@ def test_chat_merges_managed_models_from_admin_catalog():
     assert "const catalogIds = new Set(catalogModels.map(model => model.id));" in chat
     assert "['cloud', 'fusion'].includes(model.source_type)" in chat
     assert "const allModels = [...catalogModels, ...managedModels];" in chat
+
+
+def test_chat_model_picker_only_includes_available_conversation_models():
+    chat = CHAT_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "isConversationModelCandidate" in chat
+    assert "status.load_failed === true" in chat
+    assert "status.checkpoint_ready === false" in chat
+    assert "'image_generation', 'video_generation'" in chat
+    assert "return !type.startsWith('audio_') && !nonConversationTypes.has(type);" in chat
+    assert "return !t.startsWith('audio_')" not in chat
 I18N_DIR = ROOT / "ai2apps/web/i18n"
 TAILWIND_CSS = ROOT / "ai2apps/web/static/css/tailwind.css"
 

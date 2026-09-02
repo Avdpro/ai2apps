@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/runtime-omlx",
     "type": "service",
-    "version": "1.3.7",
+    "version": "1.5.7",
     "displayName": "AI2Apps oMLX Runtime",
     "description": "Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model Workers."
   },

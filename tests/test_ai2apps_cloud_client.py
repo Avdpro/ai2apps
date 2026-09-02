@@ -335,15 +335,406 @@ def test_admin_reauthentication_is_forwarded_without_persisting_password():
     client, backend, _ = _local_client(handler)
     response = client.post(
         "/v1/platform/cloud/admin/reauth",
-        json={"password": "long-password"},
+        json={"password": "long-password", "durationMinutes": 180},
     )
 
     assert response.status_code == 200
     assert captured == {
         "path": "/v1/admin/reauth",
-        "body": {"password": "long-password"},
+        "body": {"password": "long-password", "durationMinutes": 180},
     }
     assert not any("long-password" in value for value in backend.values.values())
+
+
+def test_admin_reauthentication_rejects_an_unsupported_duration():
+    client, _, _ = _local_client(lambda request: httpx.Response(200, json={}))
+
+    response = client.post(
+        "/v1/platform/cloud/admin/reauth",
+        json={"password": "long-password", "durationMinutes": 30},
+    )
+
+    assert response.status_code == 422
+
+
+def test_profile_management_is_forwarded_by_the_local_account_facade():
+    calls = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.content) if request.content else None
+        calls.append((request.method, request.url.path, body))
+        if request.url.path.endswith("social-link-platforms"):
+            return httpx.Response(200, json={"items": [{"platform": "github", "displayName": "GitHub"}]})
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(
+            200,
+            json={
+                "userId": "9df2aa2a-b029-4d10-a9e1-805db637e595",
+                "publicHandle": "alice-lab",
+                "displayName": "Alice",
+                "avatarUrl": None,
+                "bio": "Local apps",
+                "gender": None,
+                "visibility": "public",
+                "discoverableByEmail": False,
+                "friendRequestPolicy": "mutuals",
+                "primaryDevice": None,
+                "social": {"followers": 1, "following": 2, "friends": 3},
+                "socialLinks": [],
+                "updatedAt": "2026-08-23T00:00:00Z",
+            },
+        )
+
+    client, _, _ = _local_client(handler)
+    assert client.get("/v1/platform/cloud/profile").status_code == 200
+    assert client.patch(
+        "/v1/platform/cloud/profile",
+        json={
+            "publicHandle": "alice-lab",
+            "visibility": "public",
+            "discoverableByEmail": False,
+        },
+    ).status_code == 200
+    assert client.put(
+        "/v1/platform/cloud/profile/primary-device",
+        json={"deviceId": None},
+    ).status_code == 200
+    assert client.get(
+        "/v1/platform/cloud/profile/social-link-platforms"
+    ).status_code == 200
+    assert client.put(
+        "/v1/platform/cloud/profile/social-links/github",
+        json={"handle": "alice", "url": "https://github.com/alice"},
+    ).status_code == 200
+    assert client.delete(
+        "/v1/platform/cloud/profile/social-links/github"
+    ).status_code == 204
+
+    assert calls == [
+        ("GET", "/v1/profile", None),
+        (
+            "PATCH",
+            "/v1/profile",
+            {
+                "publicHandle": "alice-lab",
+                "visibility": "public",
+                "discoverableByEmail": False,
+            },
+        ),
+        ("PUT", "/v1/profile/primary-device", {"deviceId": None}),
+        ("GET", "/v1/profile/social-link-platforms", None),
+        (
+            "PUT",
+            "/v1/profile/social-links/github",
+            {"handle": "alice", "url": "https://github.com/alice"},
+        ),
+        ("DELETE", "/v1/profile/social-links/github", None),
+    ]
+
+
+def test_profile_facade_rejects_unknown_fields_and_empty_social_links():
+    client, _, _ = _local_client(
+        lambda request: (_ for _ in ()).throw(
+            AssertionError(f"invalid input reached Cloud: {request.url}")
+        )
+    )
+
+    assert client.patch(
+        "/v1/platform/cloud/profile", json={"userId": "forged"}
+    ).status_code == 422
+
+
+def test_social_inbox_and_offline_message_facade_preserve_contract_fields():
+    calls = []
+    user_id = "9df2aa2a-b029-4d10-a9e1-805db637e595"
+    request_id = "friend-request-1"
+    message_id = "system-message-1"
+    client_message_id = "123e4567-e89b-42d3-a456-426614174000"
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.content) if request.content else None
+        calls.append((request.method, request.url.path, dict(request.url.params), body))
+        return httpx.Response(201 if request.url.path.endswith("/offline") else 200, json={"items": [], "nextCursor": None})
+
+    client, _, _ = _local_client(handler)
+    assert client.post("/v1/platform/cloud/public/profiles/lookup", json={"identifier": "alice@example.com"}).status_code == 200
+    assert client.get(f"/v1/platform/cloud/social/relationships/{user_id}").status_code == 200
+    assert client.get("/v1/platform/cloud/social/friends?limit=25&cursor=opaque").status_code == 200
+    assert client.get("/v1/platform/cloud/social/friend-requests?direction=incoming&limit=10").status_code == 200
+    assert client.post(f"/v1/platform/cloud/social/friend-requests/{user_id}").status_code == 200
+    assert client.post(f"/v1/platform/cloud/social/friend-requests/{request_id}/accept").status_code == 200
+    assert client.get("/v1/platform/cloud/system-messages/unread-count").status_code == 200
+    assert client.get("/v1/platform/cloud/system-messages?state=unread&limit=20").status_code == 200
+    assert client.post(f"/v1/platform/cloud/system-messages/{message_id}/read").status_code == 200
+    assert client.post("/v1/platform/cloud/system-messages/read-all").status_code == 200
+    offline = client.post(
+        "/v1/platform/cloud/system-messages/offline",
+        json={"recipientUserId": user_id, "clientMessageId": client_message_id, "body": "hello"},
+    )
+    assert offline.status_code == 201
+    assert calls[-1] == (
+        "POST",
+        "/v1/system-messages/offline",
+        {},
+        {"recipientUserId": user_id, "clientMessageId": client_message_id, "body": "hello"},
+    )
+
+
+def test_offline_message_local_audit_excludes_message_body(tmp_path):
+    def handler(request: httpx.Request):
+        return httpx.Response(
+            201,
+            json={"id": "message-1", "createdAt": "2026-08-23T00:00:00Z"},
+        )
+
+    client, runtime, _, _, principal = _bound_core_client(tmp_path, handler)
+    client_message_id = "123e4567-e89b-42d3-a456-426614174000"
+    recipient = "121e4567-e89b-42d3-a456-426614174000"
+    body = "private message body"
+
+    response = client.post(
+        "/v1/platform/cloud/system-messages/offline",
+        json={
+            "recipientUserId": recipient,
+            "clientMessageId": client_message_id,
+            "body": body,
+        },
+    )
+
+    assert response.status_code == 201
+    events = runtime.events.list_after(subject_id=client_message_id, limit=10)
+    assert [event.type for event in events] == ["messager.cloud_offline.sent"]
+    assert events[0].payload == {
+        "actor_user_id": principal.actor_user_id,
+        "installation_id": principal.installation_id,
+        "recipient_user_id": recipient,
+        "client_message_id": client_message_id,
+        "transport": "cloud_offline",
+    }
+    assert body not in json.dumps(events[0].payload)
+    history = client.get(
+        f"/v1/platform/messager/conversations/{recipient}/messages"
+    )
+    assert history.status_code == 200
+    assert history.json()["items"] == [
+        {
+            "id": history.json()["items"][0]["id"],
+            "peerUserId": recipient,
+            "direction": "outgoing",
+            "transport": "cloud_offline",
+            "status": "sent",
+            "body": body,
+            "clientMessageId": client_message_id,
+            "remoteMessageId": "message-1",
+            "createdAt": "2026-08-23T00:00:00Z",
+            "updatedAt": "2026-08-23T00:00:00Z",
+            "attachment": None,
+        }
+    ]
+    assert client.patch("/v1/platform/cloud/profile", json={}).status_code == 422
+    assert client.put(
+        "/v1/platform/cloud/profile/social-links/github",
+        json={"handle": None, "url": None},
+    ).status_code == 422
+
+
+def test_cloud_inbox_merges_offline_messages_into_local_history_once(tmp_path):
+    sender = "121e4567-e89b-42d3-a456-426614174000"
+    private_body = "incoming private message"
+
+    def handler(request: httpx.Request):
+        if request.url.path == "/v1/system-messages":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "message-incoming-1",
+                            "kind": "user.offline_message",
+                            "senderUserId": sender,
+                            "title": None,
+                            "body": private_body,
+                            "data": {},
+                            "createdAt": "2026-08-23T00:00:00Z",
+                        }
+                    ],
+                    "nextCursor": None,
+                },
+            )
+        raise AssertionError(f"unexpected Cloud request: {request.url}")
+
+    client, runtime, _, _, _ = _bound_core_client(tmp_path, handler)
+
+    assert client.get("/v1/platform/cloud/system-messages").status_code == 200
+    assert client.get("/v1/platform/cloud/system-messages").status_code == 200
+    history = client.get(
+        f"/v1/platform/messager/conversations/{sender}/messages"
+    )
+
+    assert history.status_code == 200
+    assert len(history.json()["items"]) == 1
+    item = history.json()["items"][0]
+    assert item["body"] == private_body
+    assert item["direction"] == "incoming"
+    assert item["transport"] == "cloud_offline"
+    events = runtime.events.list_after(subject_id=item["id"], limit=10)
+    assert [event.type for event in events] == ["messager.message.received"]
+    assert private_body not in json.dumps(events[0].payload)
+
+
+def test_offline_message_conflicting_retry_is_rejected_before_cloud(tmp_path):
+    calls = 0
+
+    def handler(request: httpx.Request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            201,
+            json={"id": "message-1", "createdAt": "2026-08-23T00:00:00Z"},
+        )
+
+    client, _, _, _, _ = _bound_core_client(tmp_path, handler)
+    client_message_id = "123e4567-e89b-42d3-a456-426614174000"
+    first = client.post(
+        "/v1/platform/cloud/system-messages/offline",
+        json={
+            "recipientUserId": "121e4567-e89b-42d3-a456-426614174000",
+            "clientMessageId": client_message_id,
+            "body": "hello",
+        },
+    )
+    conflict = client.post(
+        "/v1/platform/cloud/system-messages/offline",
+        json={
+            "recipientUserId": "221e4567-e89b-42d3-a456-426614174000",
+            "clientMessageId": client_message_id,
+            "body": "hello",
+        },
+    )
+
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "messager_idempotency_conflict"
+    assert calls == 1
+
+
+def test_system_message_attachment_upload_and_private_download_facade():
+    attachment_id = "323e4567-e89b-42d3-a456-426614174000"
+    image = b"\x89PNG\r\n\x1a\nprivate-image"
+
+    def handler(request: httpx.Request):
+        if request.method == "POST":
+            content_type = request.headers["content-type"]
+            assert content_type.startswith("multipart/form-data; boundary=")
+            assert b'name="file"' in request.content
+            assert image in request.content
+            return httpx.Response(
+                201,
+                json={
+                    "id": attachment_id,
+                    "mediaType": "image/png",
+                    "byteSize": len(image),
+                    "width": 1,
+                    "height": 1,
+                    "contentPath": (
+                        f"/v1/system-message-attachments/{attachment_id}/content"
+                    ),
+                    "expiresAt": "2026-08-23T01:00:00Z",
+                },
+            )
+        assert request.url.path == (
+            f"/v1/system-message-attachments/{attachment_id}/content"
+        )
+        return httpx.Response(
+            200,
+            content=image,
+            headers={"content-type": "image/png", "content-length": str(len(image))},
+        )
+
+    client, _, _ = _local_client(handler)
+    uploaded = client.post(
+        "/v1/platform/cloud/system-message-attachments",
+        files={"file": ("private.png", image, "image/png")},
+    )
+    downloaded = client.get(
+        f"/v1/platform/cloud/system-message-attachments/{attachment_id}/content"
+    )
+
+    assert uploaded.status_code == 201
+    assert uploaded.json()["id"] == attachment_id
+    assert downloaded.status_code == 200
+    assert downloaded.content == image
+    assert downloaded.headers["cache-control"] == "private, no-store"
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+
+
+def test_system_message_attachment_rejects_local_oversize_before_cloud():
+    def handler(request: httpx.Request):
+        raise AssertionError(f"oversize attachment reached Cloud: {request.url}")
+
+    client, _, _ = _local_client(handler)
+    response = client.post(
+        "/v1/platform/cloud/system-message-attachments",
+        files={"file": ("large.png", b"x" * (2 * 1024 * 1024 + 1), "image/png")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"]["code"] == (
+        "system_message_attachment_too_large"
+    )
+
+
+def test_image_only_offline_message_is_persisted_with_attachment(tmp_path):
+    attachment_id = "323e4567-e89b-42d3-a456-426614174000"
+    recipient = "121e4567-e89b-42d3-a456-426614174000"
+
+    def handler(request: httpx.Request):
+        assert json.loads(request.content) == {
+            "recipientUserId": recipient,
+            "clientMessageId": "123e4567-e89b-42d3-a456-426614174000",
+            "attachmentId": attachment_id,
+        }
+        return httpx.Response(
+            201,
+            json={
+                "id": "message-with-image",
+                "body": None,
+                "createdAt": "2026-08-23T00:00:00Z",
+                "attachment": {
+                    "id": attachment_id,
+                    "mediaType": "image/png",
+                    "byteSize": 16,
+                    "width": 1,
+                    "height": 1,
+                    "contentPath": (
+                        f"/v1/system-message-attachments/{attachment_id}/content"
+                    ),
+                },
+            },
+        )
+
+    client, _, _, _, _ = _bound_core_client(tmp_path, handler)
+    response = client.post(
+        "/v1/platform/cloud/system-messages/offline",
+        json={
+            "recipientUserId": recipient,
+            "clientMessageId": "123e4567-e89b-42d3-a456-426614174000",
+            "attachmentId": attachment_id,
+        },
+    )
+    history = client.get(
+        f"/v1/platform/messager/conversations/{recipient}/messages"
+    )
+
+    assert response.status_code == 201
+    assert history.status_code == 200
+    assert history.json()["items"][0]["body"] == ""
+    assert history.json()["items"][0]["attachment"]["id"] == attachment_id
+    assert client.put(
+        "/v1/platform/cloud/profile/social-links/not-a-platform",
+        json={"handle": "alice"},
+    ).status_code == 422
 
 
 def test_core_member_management_uses_bound_installation_id(tmp_path):
@@ -812,6 +1203,163 @@ def test_points_remain_decimal_strings_and_ai_sse_is_forwarded():
     assert captured["body"]["model"] == "openai/gpt-test"
     assert streamed.headers["content-type"].startswith("text/event-stream")
     assert "response.completed" in streamed.text
+
+
+def test_currency_projections_are_forwarded_without_numeric_coercion():
+    responses = {
+        "/v1/currency/assets": {
+            "items": [
+                {"assetCode": "PROMO_POINTS", "exponent": 0},
+                {"assetCode": "USD_COMPUTE_CREDIT", "exponent": 3},
+                {"assetCode": "USD_PROVIDER_EARNINGS", "exponent": 3},
+            ]
+        },
+        "/v1/currency/balances": {
+            "items": [
+                {
+                    "assetCode": "USD_COMPUTE_CREDIT",
+                    "exponent": 3,
+                    "posted": "10001",
+                    "held": "1",
+                    "available": "10000",
+                    "version": 2,
+                }
+            ]
+        },
+        "/v1/currency/provider-balances": {
+            "items": [
+                {
+                    "assetCode": "USD_PROVIDER_EARNINGS",
+                    "exponent": 3,
+                    "available": "8000",
+                    "pending": "1999",
+                    "disputedHeld": "1",
+                }
+            ]
+        },
+        "/v1/currency/ledger": {
+            "items": [
+                {
+                    "journalId": "journal-1",
+                    "assetCode": "USD_COMPUTE_CREDIT",
+                    "amountMinor": "1",
+                    "direction": "credit",
+                }
+            ]
+        },
+    }
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append((request.url.path, request.url.params.get("limit")))
+        return httpx.Response(200, json=responses[request.url.path])
+
+    client, _, _ = _local_client(handler)
+
+    assets = client.get("/v1/platform/cloud/currency/assets")
+    balances = client.get("/v1/platform/cloud/currency/balances")
+    provider = client.get("/v1/platform/cloud/currency/provider-balances")
+    ledger = client.get("/v1/platform/cloud/currency/ledger?limit=50")
+
+    assert assets.json() == responses["/v1/currency/assets"]
+    assert balances.json()["items"][0]["available"] == "10000"
+    assert provider.json()["items"][0]["pending"] == "1999"
+    assert ledger.json()["items"][0]["amountMinor"] == "1"
+    assert calls == [
+        ("/v1/currency/assets", None),
+        ("/v1/currency/balances", None),
+        ("/v1/currency/provider-balances", None),
+        ("/v1/currency/ledger", "50"),
+    ]
+
+
+def test_promotion_code_redemption_forwards_exact_code_and_idempotency_key():
+    captured = {}
+
+    def handler(request: httpx.Request):
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        captured["idempotency"] = request.headers["idempotency-key"]
+        return httpx.Response(
+            200,
+            json={
+                "points": "1000",
+                "balanceAfter": "10999",
+                "bucket": "promotional",
+            },
+        )
+
+    client, _, _ = _local_client(handler)
+    response = client.post(
+        "/v1/platform/cloud/promotion-codes/redeem",
+        headers={"Idempotency-Key": "promotion-redeem:request-123"},
+        json={"code": "A2P-1234-5678-9ABC-DEF0-1234-5678-9ABC-DEF0"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["points"] == "1000"
+    assert captured == {
+        "path": "/v1/promotion-codes/redeem",
+        "body": {"code": "A2P-1234-5678-9ABC-DEF0-1234-5678-9ABC-DEF0"},
+        "idempotency": "promotion-redeem:request-123",
+    }
+
+
+def test_promotion_code_redemption_preserves_cloud_error_and_retry_after():
+    def handler(request: httpx.Request):
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "17"},
+            json={
+                "error": {
+                    "code": "RATE_LIMITED",
+                    "message": "rate limited",
+                    "requestId": "request-1",
+                    "retryable": False,
+                }
+            },
+        )
+
+    client, _, _ = _local_client(handler)
+    response = client.post(
+        "/v1/platform/cloud/promotion-codes/redeem",
+        headers={"Idempotency-Key": "promotion-redeem:request-456"},
+        json={"code": "A2P-1234-5678-9ABC-DEF0-1234-5678-9ABC-DEF0"},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "17"
+    assert response.json()["error"]["requestId"] == "request-1"
+
+
+def test_promotion_code_redemption_preserves_points_balance_limit():
+    def handler(request: httpx.Request):
+        return httpx.Response(
+            409,
+            json={
+                "error": {
+                    "code": "PROMOTION_POINTS_BALANCE_LIMIT",
+                    "message": "promotion points balance limit reached",
+                    "requestId": "request-balance-limit",
+                    "retryable": False,
+                }
+            },
+        )
+
+    client, _, _ = _local_client(handler)
+    response = client.post(
+        "/v1/platform/cloud/promotion-codes/redeem",
+        headers={"Idempotency-Key": "promotion-redeem:balance-limit"},
+        json={"code": "A2P-1234-5678-9ABC-DEF0-1234-5678-9ABC-DEF0"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == {
+        "code": "PROMOTION_POINTS_BALANCE_LIMIT",
+        "message": "promotion points balance limit reached",
+        "requestId": "request-balance-limit",
+        "retryable": False,
+    }
 
 
 def test_cloud_ai_rejects_client_supplied_actor_and_billing_identity():

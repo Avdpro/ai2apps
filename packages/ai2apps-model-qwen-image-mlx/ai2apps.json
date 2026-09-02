@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-qwen-image-mlx",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "Qwen Image MLX",
+    "description": "Optimized Qwen-Image-2512 generation and Qwen-Image-Edit-2511 editing on Apple Silicon."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read pinned Qwen Image checkpoints resolved by the Host.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run native MLX image generation and editing.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.1 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

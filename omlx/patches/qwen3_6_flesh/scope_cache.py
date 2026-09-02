@@ -14,6 +14,7 @@ from typing import Any
 
 import mlx.core as mx
 
+from omlx.cache.direct_l1 import direct_l1_mode, direct_load_fused_experts
 from omlx.cache.moe_expert_store import ExpertMajorStore
 
 
@@ -94,6 +95,13 @@ class Qwen36FallbackLoader:
         self.prefill_dual_build_seconds = 0.0
         self.prefill_dual_patch_seconds = 0.0
         self.prefill_dual_submit_seconds = 0.0
+        self.direct_l1_mode = direct_l1_mode()
+        self.prefill_direct_calls = 0
+        self.prefill_direct_experts = 0
+        self.prefill_direct_bytes = 0
+        self.prefill_direct_seconds = 0.0
+        self.prefill_direct_shared_syncs = 0
+        self.prefill_direct_shared_sync_seconds = 0.0
 
     def register_prefill_blocks(
         self, model_key: int, blocks: tuple[Any, ...]
@@ -155,8 +163,46 @@ class Qwen36FallbackLoader:
         store = self._stores.get(layer)
         if store is None:
             store = ExpertMajorStore(self.directory / f"layer-{layer:03d}.moe")
+            store.set_no_cache()
             self._stores[layer] = store
         return store
+
+    def _load_prefill_slots(
+        self,
+        store: ExpertMajorStore,
+        switch: Any,
+        slots: list[int],
+        expert_ids: tuple[int, ...],
+        *,
+        evaluate_fallback: bool = True,
+    ) -> None:
+        """Populate a fixed prefill bank, preferring SSD-direct slot writes."""
+
+        started = time.perf_counter()
+        direct_bytes = direct_load_fused_experts(
+            store,
+            switch,
+            slots,
+            expert_ids,
+            io_workers=self.io_workers,
+        )
+        if direct_bytes is not None:
+            self.prefill_direct_calls += 1
+            self.prefill_direct_experts += len(expert_ids)
+            self.prefill_direct_bytes += direct_bytes
+            self.prefill_direct_seconds += time.perf_counter() - started
+            return
+
+        records = self._read_records(store, expert_ids)
+        from .arena_cache import Qwen36DecodeArena
+
+        Qwen36DecodeArena._patch_switch(
+            switch,
+            slots,
+            expert_ids,
+            records,
+            evaluate=evaluate_fallback,
+        )
 
     def expert_record_bytes(self, layer: int) -> int:
         return self._store(layer).record_bytes
@@ -422,17 +468,15 @@ class Qwen36FallbackLoader:
             return None
 
         patch_started = time.perf_counter()
+        direct_calls_before = self.prefill_direct_calls
         if missing_ids:
             store = self._store(layer)
-            records = self._read_records(store, missing_ids)
-            from .arena_cache import Qwen36DecodeArena
-
-            Qwen36DecodeArena._patch_switch(
+            self._load_prefill_slots(
+                store,
                 staging,
                 list(range(len(missing_ids))),
                 missing_ids,
-                records,
-                evaluate=False,
+                evaluate_fallback=False,
             )
             self.experts_loaded += len(missing_ids)
             self.prefill_experts_loaded += len(missing_ids)
@@ -517,6 +561,17 @@ class Qwen36FallbackLoader:
             mx.contiguous(inv_order.astype(mx.uint32)),
             mx.contiguous(scores.astype(mx.float32)),
         )
+        # Native direct writes mutate the shared unified-memory backing
+        # immediately.  Materialize this layer before the next layer reuses
+        # that same bank.  Private per-layer banks retain the fully pipelined
+        # lazy graph and need no boundary synchronization.
+        if shared and self.prefill_direct_calls > direct_calls_before:
+            sync_started = time.perf_counter()
+            mx.eval(output)
+            self.prefill_direct_shared_syncs += 1
+            self.prefill_direct_shared_sync_seconds += (
+                time.perf_counter() - sync_started
+            )
         self.prefill_dual_submit_seconds += time.perf_counter() - submit_started
         self.prefill_dual_calls += 1
         return output
@@ -616,20 +671,17 @@ class Qwen36FallbackLoader:
         patch_started = time.perf_counter()
         if missing_ids:
             store = self._store(block.scope_layer)
-            records = self._read_records(store, missing_ids)
             slots = list(
                 range(
                     self._prefill_global_staging_start,
                     self._prefill_global_staging_start + len(missing_ids),
                 )
             )
-            from .arena_cache import Qwen36DecodeArena
-
-            Qwen36DecodeArena._patch_switch(
+            self._load_prefill_slots(
+                store,
                 self._prefill_global_workspace,
                 slots,
                 missing_ids,
-                records,
             )
             self.experts_loaded += len(missing_ids)
             self.prefill_experts_loaded += len(missing_ids)
@@ -760,19 +812,16 @@ class Qwen36FallbackLoader:
         patch_started = time.perf_counter()
         if missing_ids:
             store = self._store(layer)
-            records = self._read_records(store, missing_ids)
-            from .arena_cache import Qwen36DecodeArena
-
             # This bank is private to the layer and is not reused until the
             # next request, after the current generation has completed.  Keep
             # the patch and QMM in one lazy GPU graph instead of synchronizing
             # at every layer boundary.
-            Qwen36DecodeArena._patch_switch(
+            self._load_prefill_slots(
+                store,
                 workspace,
                 list(range(staging_start, staging_start + len(missing_ids))),
                 missing_ids,
-                records,
-                evaluate=False,
+                evaluate_fallback=False,
             )
             self.experts_loaded += len(missing_ids)
             self.prefill_experts_loaded += len(missing_ids)
@@ -850,6 +899,7 @@ class Qwen36FallbackLoader:
         *,
         max_missing: int = 96,
         packed: bool = False,
+        global_slots: bool = False,
     ) -> mx.array | None:
         """Exact single-SwitchGLU prefill through resident reuse + SSD scratch."""
 
@@ -879,24 +929,54 @@ class Qwen36FallbackLoader:
 
         started = time.perf_counter()
         records = self._snapshot_resident_records(sources, resident_ids)
-        if missing_ids:
-            store = self._store(block.scope_layer)
-            records.update(self._read_records(store, missing_ids))
-            self.experts_loaded += len(missing_ids)
-            self.prefill_experts_loaded += len(missing_ids)
-            self.bytes_loaded += len(missing_ids) * store.record_bytes
         from .arena_cache import Qwen36DecodeArena
 
-        slots = list(range(len(requested)))
-        Qwen36DecodeArena._patch_switch(
-            self._prefill_workspace, slots, requested, records
-        )
+        if global_slots:
+            # Preserve the stock 256-expert SwitchGLU shape and global route
+            # IDs.  Only experts used by this layer need valid contents.
+            # Resident rows are gathered from L1/L0; misses go straight from
+            # their SSD records into the matching final unified-memory slots.
+            # The previous layer's output was evaluated before this shared
+            # bank can be reused.  Perform native CPU writes first, while the
+            # destination has no queued GPU mutation; then enqueue resident
+            # gathers and the QMM in order on the Metal stream.
+            if missing_ids:
+                store = self._store(block.scope_layer)
+                self._load_prefill_slots(
+                    store,
+                    self._prefill_workspace,
+                    list(missing_ids),
+                    missing_ids,
+                    evaluate_fallback=False,
+                )
+                self.experts_loaded += len(missing_ids)
+                self.prefill_experts_loaded += len(missing_ids)
+                self.bytes_loaded += len(missing_ids) * store.record_bytes
+            if resident_ids:
+                Qwen36DecodeArena._patch_switch(
+                    self._prefill_workspace,
+                    list(resident_ids),
+                    resident_ids,
+                    records,
+                    evaluate=False,
+                )
+            local = inds
+        else:
+            if missing_ids:
+                store = self._store(block.scope_layer)
+                records.update(self._read_records(store, missing_ids))
+                self.experts_loaded += len(missing_ids)
+                self.prefill_experts_loaded += len(missing_ids)
+                self.bytes_loaded += len(missing_ids) * store.record_bytes
+            slots = list(range(len(requested)))
+            Qwen36DecodeArena._patch_switch(
+                self._prefill_workspace, slots, requested, records
+            )
+            lookup = [-1] * 256
+            for slot, expert_id in enumerate(requested):
+                lookup[expert_id] = slot
+            local = mx.array(lookup, dtype=mx.int32)[inds]
         self.prefill_workspace_patch_seconds += time.perf_counter() - started
-
-        lookup = [-1] * 256
-        for slot, expert_id in enumerate(requested):
-            lookup[expert_id] = slot
-        local = mx.array(lookup, dtype=mx.int32)[inds]
         compute_started = time.perf_counter()
         if packed:
             from omlx.patches.qwen35_moe_weighted_sum import (
@@ -1007,7 +1087,7 @@ class Qwen36FallbackLoader:
         self.decode_experts_loaded += len(loaded_ids)
         return switch, bank_ids
 
-    def stats(self) -> dict[str, float | int]:
+    def stats(self) -> dict[str, float | int | str]:
         return {
             "fallback_calls": self.fallback_calls,
             "experts_loaded": self.experts_loaded,
@@ -1046,6 +1126,13 @@ class Qwen36FallbackLoader:
             "prefill_dual_build_seconds": self.prefill_dual_build_seconds,
             "prefill_dual_patch_seconds": self.prefill_dual_patch_seconds,
             "prefill_dual_submit_seconds": self.prefill_dual_submit_seconds,
+            "direct_l1_mode": self.direct_l1_mode,
+            "prefill_direct_calls": self.prefill_direct_calls,
+            "prefill_direct_experts": self.prefill_direct_experts,
+            "prefill_direct_bytes": self.prefill_direct_bytes,
+            "prefill_direct_seconds": self.prefill_direct_seconds,
+            "prefill_direct_shared_syncs": self.prefill_direct_shared_syncs,
+            "prefill_direct_shared_sync_seconds": self.prefill_direct_shared_sync_seconds,
         }
 
 

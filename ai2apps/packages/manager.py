@@ -8,6 +8,7 @@ import logging
 import os
 import platform
 import shutil
+import stat
 import sys
 import tempfile
 from contextlib import suppress
@@ -31,7 +32,7 @@ from .archive import ServicePackageArchive
 from .inference_runtime import (
     InferenceRuntimeInstaller,
     InferenceRuntimeResolver,
-    is_inference_runtime_manifest,
+    is_native_runtime_manifest,
 )
 from .models import (
     AuditDecision,
@@ -50,6 +51,53 @@ from .supervisor import ManagedServiceSupervisor
 from .trust import PackageTrustVerifier
 
 logger = logging.getLogger(__name__)
+
+
+_RECOVERABLE_DEPENDENCY_START_ERRORS = frozenset(
+    {
+        "runtime_dependency_inactive",
+        "runtime_dependency_unlocked",
+        "runtime_dependency_missing",
+        "runtime_version_mismatch",
+        "runtime_capability_missing",
+    }
+)
+
+
+def _detect_local_accelerator() -> str | None:
+    system = platform.system()
+    machine = platform.machine().lower()
+    if system == "Darwin" and machine in {"arm64", "aarch64"}:
+        return "metal"
+    if system == "Linux" and any(
+        path.exists()
+        for path in (
+            Path("/dev/nvidiactl"),
+            Path("/proc/driver/nvidia/version"),
+        )
+    ):
+        return "cuda"
+    return None
+
+
+def _package_checkpoint_repositories(manifest: dict) -> set[str]:
+    """Return validated Hugging Face repositories owned by a model Package."""
+
+    repositories: set[str] = set()
+    for model in manifest.get("models", []):
+        weights = model.get("weights") if isinstance(model, dict) else None
+        if not isinstance(weights, dict) or weights.get("provider") != "huggingface":
+            continue
+        repo_id = weights.get("repo_id")
+        if isinstance(repo_id, str) and repo_id.count("/") == 1 and "--" not in repo_id:
+            owner, name = repo_id.split("/", 1)
+            if (
+                owner
+                and name
+                and all(part not in {".", ".."} for part in (owner, name))
+            ):
+                repositories.add(repo_id)
+    return repositories
 
 
 class ServicePackageManager:
@@ -79,6 +127,7 @@ class ServicePackageManager:
             services,
             paths.packages_path,
             inference_runtimes=self.inference_runtime_resolver,
+            model_root=paths.base_path / "models",
         )
         self.runtime = PackageRuntimeBinder(services, registry, self.supervisor)
         self.compatibility = compatibility or CompatibilityContext(
@@ -90,6 +139,7 @@ class ServicePackageManager:
                 if platform.system() == "Darwin"
                 else platform.release()
             ),
+            accelerator=_detect_local_accelerator(),
         )
         self._install_lock = asyncio.Lock()
 
@@ -230,9 +280,7 @@ class ServicePackageManager:
                 "platform_incompatible",
                 f"Package does not support OS {context.os_name}",
             )
-        minimum_os = value.get("minimum_os_version") or value.get(
-            "minimumOsVersion"
-        )
+        minimum_os = value.get("minimum_os_version") or value.get("minimumOsVersion")
         maximum_os = value.get("maximum_os_version_exclusive") or value.get(
             "maximumOsVersionExclusive"
         )
@@ -378,6 +426,86 @@ class ServicePackageManager:
             root.chmod(0o755)
         shutil.rmtree(root, ignore_errors=True)
 
+    @staticmethod
+    def _tree_size(root: Path, seen: set[tuple[int, int]] | None = None) -> int:
+        total = 0
+        seen = seen if seen is not None else set()
+        if not root.exists():
+            return total
+        for item in root.rglob("*"):
+            try:
+                info = item.lstat()
+            except OSError:
+                continue
+            identity = (info.st_dev, info.st_ino)
+            if stat.S_ISREG(info.st_mode) and identity not in seen:
+                seen.add(identity)
+                total += info.st_size
+        return total
+
+    @staticmethod
+    def _managed_child(root: Path, relative: Path) -> Path | None:
+        """Resolve a deletion target without accepting symlink escapes."""
+
+        try:
+            resolved_root = root.resolve(strict=True)
+            candidate = (resolved_root / relative).resolve(strict=True)
+            candidate.relative_to(resolved_root)
+            info = candidate.lstat()
+        except (FileNotFoundError, OSError, ValueError):
+            return None
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            return None
+        return candidate
+
+    def checkpoint_deletion_available(self, service_key: str) -> bool:
+        return any(
+            _package_checkpoint_repositories(item.manifest)
+            for item in self.packages.installed(service_key)
+        )
+
+    def _delete_package_checkpoints(
+        self, service_key: str, repositories: set[str]
+    ) -> dict[str, object]:
+        protected = set()
+        for package in self.packages.installed():
+            if package.service_key != service_key:
+                protected.update(_package_checkpoint_repositories(package.manifest))
+
+        deletable = sorted(repositories - protected)
+        retained = sorted(repositories & protected)
+        model_root = self.paths.base_path / "models"
+        hub_root = self.supervisor._huggingface_hub_cache()
+        deleted_paths: list[str] = []
+        reclaimed_bytes = 0
+        seen_files: set[tuple[int, int]] = set()
+        for repo_id in deletable:
+            owner, name = repo_id.split("/", 1)
+            candidates = (
+                self._managed_child(model_root, Path(owner) / name),
+                self._managed_child(
+                    hub_root, Path("models--" + repo_id.replace("/", "--"))
+                ),
+            )
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                reclaimed_bytes += self._tree_size(candidate, seen_files)
+                self._remove_tree(candidate)
+                if not candidate.exists():
+                    deleted_paths.append(str(candidate))
+            owner_root = self._managed_child(model_root, Path(owner))
+            if owner_root is not None:
+                with suppress(OSError):
+                    owner_root.rmdir()
+        return {
+            "requested": True,
+            "deletedRepositories": deletable,
+            "retainedRepositories": retained,
+            "deletedPaths": deleted_paths,
+            "reclaimedBytes": reclaimed_bytes,
+        }
+
     def _store(self, package: InspectedServicePackage) -> tuple[Path, bool]:
         digest = package.digest.removeprefix("sha256:")
         final = (
@@ -468,7 +596,7 @@ class ServicePackageManager:
 
     async def _activate(self, package: InstalledPackageRecord) -> None:
         self._validate_installed(package)
-        if is_inference_runtime_manifest(package.manifest):
+        if is_native_runtime_manifest(package.manifest):
             # DMG verification and the Runtime payload copy are intentionally
             # synchronous filesystem operations. Keep them off the server's
             # event loop so a large Runtime install does not freeze the Local
@@ -552,7 +680,7 @@ class ServicePackageManager:
             item
             for item in self.packages.installed()
             if item.status is PackageStatus.INSTALLED
-            and is_inference_runtime_manifest(item.manifest)
+            and is_native_runtime_manifest(item.manifest)
         ]
         pending.sort(key=lambda item: Version(item.package_version))
         activated = []
@@ -625,8 +753,7 @@ class ServicePackageManager:
                     "Stored package digest no longer matches the installed record",
                 )
             allow_untrusted = (
-                package.verification.get("signature", {}).get("trust")
-                == "untrusted"
+                package.verification.get("signature", {}).get("trust") == "untrusted"
             )
             self.trust.verify_signature(inspected, allow_untrusted=allow_untrusted)
         expected = {
@@ -765,7 +892,7 @@ class ServicePackageManager:
                     package.digest,
                     dependency_locks,
                 )
-                if is_inference_runtime_manifest(package.manifest.raw):
+                if is_native_runtime_manifest(package.manifest.raw):
                     # Runtime Providers are immutable and fully materialized now,
                     # but activation is deferred until the next Local startup so
                     # active model locks can move atomically with the provider.
@@ -837,6 +964,9 @@ class ServicePackageManager:
             for item in plan.packages
         }
         activated: list[InstalledPackageRecord] = []
+        staged_runtimes: list[
+            tuple[InstalledPackageRecord, InstalledPackageRecord | None]
+        ] = []
         try:
             verification: dict[str, tuple[dict, dict]] = {}
             for item in plan.packages:
@@ -876,6 +1006,20 @@ class ServicePackageManager:
             for item in plan.packages:
                 record = installed_records[item.digest]
                 current = previous[item.manifest.service_key]
+                if is_native_runtime_manifest(item.manifest.raw):
+                    # Match Registry installs: a Runtime payload is verified and
+                    # materialized now, but remains staged until Local restarts.
+                    # Startup can then activate it and move every compatible
+                    # model Worker's immutable dependency lock atomically.
+                    self._compatible_runtime_dependents(record)
+                    await asyncio.to_thread(
+                        self.inference_runtime_installer.materialize, record
+                    )
+                    self.packages.set_package_status(
+                        record.package_digest, PackageStatus.INSTALLED
+                    )
+                    staged_runtimes.append((record, current))
+                    continue
                 if (
                     current is not None
                     and current.package_digest == record.package_digest
@@ -888,6 +1032,15 @@ class ServicePackageManager:
             self.packages.settle_operation(operation_id, "completed")
             return self.packages.get_by_digest(root.digest)
         except BaseException as error:
+            for record, prior in reversed(staged_runtimes):
+                if prior is not None:
+                    self.packages.activate(
+                        prior.service_key, prior.package_digest
+                    )
+                else:
+                    self.packages.set_package_status(
+                        record.package_digest, PackageStatus.INSTALLED
+                    )
             for record in reversed(activated):
                 with suppress(Exception):
                     await self.runtime.stop(record)
@@ -946,7 +1099,7 @@ class ServicePackageManager:
         await asyncio.to_thread(self.supervisor.recover_orphans)
         had_pending_runtime = any(
             item.status is PackageStatus.INSTALLED
-            and is_inference_runtime_manifest(item.manifest)
+            and is_native_runtime_manifest(item.manifest)
             for item in self.packages.installed()
         )
         staged = ()
@@ -955,8 +1108,69 @@ class ServicePackageManager:
             for package in self._active_start_order():
                 service = self.services.get_service(package.service_key)
                 if service.status is ServiceStatus.ENABLED:
-                    self._validate_installed(package)
-                    await self.runtime.start(package)
+                    try:
+                        self._validate_installed(package)
+                        await self.runtime.start(package)
+                    except Exception as error:
+                        # Installed Services are an optional extension layer. A
+                        # missing Runtime (or another broken Service Package)
+                        # must not prevent the Base App, Discover, or ACPF from
+                        # starting and repairing the installation.
+                        code = getattr(error, "code", "service_start_failed")
+                        dependency_blocked = (
+                            code in _RECOVERABLE_DEPENDENCY_START_ERRORS
+                        )
+                        status = (
+                            ServiceInstanceStatus.DEGRADED
+                            if dependency_blocked
+                            else ServiceInstanceStatus.FAILED
+                        )
+                        instance = self.services.get_instance_for_service(service.id)
+                        instance = self.services.ensure_instance(
+                            service_id=service.id,
+                            provider_key=instance.provider_key,
+                            status=status,
+                            endpoint=None,
+                            health={
+                                "status": "blocked" if dependency_blocked else "failed",
+                                "reason": (
+                                    "dependency_unavailable"
+                                    if dependency_blocked
+                                    else "service_start_failed"
+                                ),
+                                "error_code": code,
+                                "recoverable": dependency_blocked,
+                            },
+                        )
+                        self.services.set_instance_status(
+                            instance.id,
+                            status,
+                            last_error=str(error),
+                        )
+                        self.packages.append_log(
+                            package.service_key,
+                            "warning" if dependency_blocked else "error",
+                            "system",
+                            "Service startup was isolated from the Base App",
+                            fields={
+                                "error": str(error),
+                                "error_code": code,
+                                "recoverable": dependency_blocked,
+                            },
+                        )
+                        if dependency_blocked:
+                            logger.warning(
+                                "Service Package %s is waiting for dependency repair (%s); "
+                                "continuing Base App startup",
+                                package.service_key,
+                                code,
+                            )
+                        else:
+                            logger.exception(
+                                "Service Package %s failed during startup; "
+                                "continuing Base App startup",
+                                package.service_key,
+                            )
 
         try:
             staged = self._activate_staged_inference_runtimes()
@@ -1116,6 +1330,55 @@ class ServicePackageManager:
             )
             raise
 
+    async def evict(
+        self,
+        service_key: str,
+        *,
+        reason: str,
+        expected_generation: int,
+    ) -> dict:
+        package = self.packages.active(service_key)
+        if package is None:
+            raise ResourceNotFoundError("active_service_package", service_key)
+        if package.protocol != "ai2apps-model-worker/v1":
+            raise PackageError("not_model_worker", "Service is not a Model Worker")
+        operation_id = self.packages.begin_operation(
+            service_key,
+            # Eviction is a policy-driven stop. Keep the persisted operation
+            # compatible with the stable service_operations contract and put
+            # the lifecycle subtype in the operation plan.
+            "stop",
+            from_digest=package.package_digest,
+            to_digest=package.package_digest,
+            plan={
+                "lifecycleAction": "evict",
+                "reason": reason,
+                "generation": expected_generation,
+            },
+        )
+        try:
+            result = await self.supervisor.evict(
+                service_key,
+                reason=reason,
+                expected_generation=expected_generation,
+            )
+            service = self.services.get_service(service_key)
+            instance = self.services.get_instance_for_service(service.id)
+            self.services.set_instance_status(
+                instance.id,
+                ServiceInstanceStatus.STOPPED,
+                health={"status": "evicted", "reason": reason},
+            )
+            self.packages.settle_operation(operation_id, "completed")
+            return result
+        except BaseException as error:
+            self.packages.settle_operation(
+                operation_id,
+                "failed",
+                {"code": "eviction_failed", "message": str(error)},
+            )
+            raise
+
     async def rollback(self, service_key: str) -> InstalledPackageRecord:
         active = self.packages.active(service_key)
         if active is None:
@@ -1153,9 +1416,15 @@ class ServicePackageManager:
             )
             raise
 
-    async def uninstall(self, service_key: str) -> None:
+    async def uninstall(
+        self,
+        service_key: str,
+        *,
+        delete_checkpoints: bool = False,
+        force: bool = False,
+    ) -> dict[str, object]:
         dependents = self.packages.dependents(service_key)
-        if dependents:
+        if dependents and not force:
             raise PackageError(
                 "service_has_dependents",
                 "Required dependents prevent uninstalling this Service",
@@ -1164,6 +1433,12 @@ class ServicePackageManager:
         active = self.packages.active(service_key)
         if active is None:
             raise ResourceNotFoundError("active_service_package", service_key)
+        checkpoint_repositories = set().union(
+            *(
+                _package_checkpoint_repositories(item.manifest)
+                for item in self.packages.installed(service_key)
+            )
+        )
         operation_id = self.packages.begin_operation(
             service_key,
             "uninstall",
@@ -1183,3 +1458,20 @@ class ServicePackageManager:
             )
             self._remove_tree(Path(item.store_path))
         self.packages.settle_operation(operation_id, "completed")
+        checkpoint_cleanup: dict[str, object] = {"requested": False}
+        if delete_checkpoints and checkpoint_repositories:
+            try:
+                checkpoint_cleanup = self._delete_package_checkpoints(
+                    service_key, checkpoint_repositories
+                )
+            except Exception as error:
+                logger.exception("Checkpoint cleanup failed for %s", service_key)
+                checkpoint_cleanup = {
+                    "requested": True,
+                    "error": str(error),
+                    "deletedRepositories": [],
+                    "retainedRepositories": sorted(checkpoint_repositories),
+                    "deletedPaths": [],
+                    "reclaimedBytes": 0,
+                }
+        return {"checkpointCleanup": checkpoint_cleanup}

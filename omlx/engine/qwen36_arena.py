@@ -62,7 +62,7 @@ class Qwen36ArenaEngine(BatchedEngine):
             stream=self._engine.engine.scheduler._stream,
         )
         prefill_backend = os.environ.get(
-            "OMLX_QWEN36_PREFILL_BACKEND", "stable-swap"
+            "OMLX_QWEN36_PREFILL_BACKEND", "workspace256-direct"
         ).strip().lower()
         if prefill_backend.startswith("layer216") or prefill_backend.startswith(
             "layer248"

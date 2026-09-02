@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-multilingual-e5-small",
+    "type": "service",
+    "version": "0.1.3",
+    "displayName": "Multilingual E5 Small Embeddings",
+    "description": "Local 384-dimensional multilingual embeddings for AI2Apps Knowledge."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"]
+  },
+  "entrypoints": [
+    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected immutable E5 checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Generate embeddings locally with MLX on Apple Silicon.", "required": true}
+  ],
+  "dependencies": [
+    {"packageId": "ai2apps/runtime-knowledge-rag", "version": ">=0.1.0 <1.0.0", "optional": false}
+  ],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}
