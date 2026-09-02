@@ -124,3 +124,43 @@ private func withFixture(_ body: (URL, URL, URL) throws -> Void) throws {
         #expect(try marker(installed) == "old")
     }
 }
+
+@Test func authenticatedExistingBackupIsRotated() throws {
+    try withFixture { installed, candidate, backup in
+        try makeApp(backup, marker: "older")
+        let transaction = try AppUpdateTransaction(
+            installedApp: installed,
+            candidateApp: candidate,
+            backupApp: backup
+        )
+        _ = try transaction.execute(
+            installedValidator: { try requireMarker("old", at: $0) },
+            candidateValidator: { try requireMarker("new", at: $0) },
+            existingBackupValidator: { try requireMarker("older", at: $0) },
+            healthCheck: { try marker($0) == "new" }
+        )
+        #expect(try marker(installed) == "new")
+        #expect(try marker(backup) == "old")
+    }
+}
+
+@Test func unauthenticatedExistingBackupIsPreserved() throws {
+    try withFixture { installed, candidate, backup in
+        try makeApp(backup, marker: "unknown")
+        let transaction = try AppUpdateTransaction(
+            installedApp: installed,
+            candidateApp: candidate,
+            backupApp: backup
+        )
+        #expect(throws: Error.self) {
+            try transaction.execute(
+                installedValidator: { _ in },
+                candidateValidator: { _ in },
+                existingBackupValidator: { _ in throw CocoaError(.fileReadCorruptFile) },
+                healthCheck: { _ in true }
+            )
+        }
+        #expect(try marker(installed) == "old")
+        #expect(try marker(backup) == "unknown")
+    }
+}

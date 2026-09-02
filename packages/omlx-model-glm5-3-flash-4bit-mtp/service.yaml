@@ -1,0 +1,67 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.glm5-3-flash-4bit-mtp
+name: GLM-5.3 Flash 4-bit MTP
+description: Multimodal GLM-5.3 Flash Worker with exact dynamic Cached-MoE execution.
+version: 0.1.0
+publisher: {id: ai2apps}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp
+    display_name: GLM-5.3 Flash 4-bit MTP
+    model_type: vlm
+    upstream_id: Vontra/GLM-5.3-Flash-MLX-4bit-MTP
+    capabilities: [work, conversation, image_recognition]
+    weights:
+      provider: huggingface
+      repo_id: Vontra/GLM-5.3-Flash-MLX-4bit-MTP
+      revision: 06d6c7530e8290e20fabdc37a825ce07bdfc490c
+      distribution_id: dist_ai2apps_glm5_3_flash_4bit_mtp_06d6c753_v1
+      preparation:
+        recipe: ai2apps/cache-moe/v1
+        install_id: glm5-3-flash-mlx-4bit-mtp
+        family: glm5_next
+        execution_modes: [cached]
+        storage_policies: [keep_source]
+        storage_estimates: {source_gb: 170, prepared_gb: 165, keep_peak_gb: 335}
+        engine:
+          id: glm5-3-flash-dynamic-cached-moe
+          name: GLM-5.3 Flash Dynamic Cached-MoE
+          version: 1
+          scope_asset: src/omlx_model_glm5_3_flash_4bit_mtp/assets/scope-profile.json
+        scope_name: general
+        conversion: {format: omlx-moe-expert-major-set, version: 1, variant: glm5-next-affine-q4-gate-up-fused-v2}
+        dynamic_slots: 96
+        hot_slots: 16
+        vision_l1_reserve_slots: 16
+        memory_tiers:
+          - {id: lean, label: Lean, experts: 80, estimated_gb: 55}
+          - {id: balanced, label: Balanced, experts: 96, estimated_gb: 62}
+    metadata:
+      family: glm5_next
+      quantization: 4bit-affine
+      execution_modes: [cached]
+      preparation: cache-moe
+      multimodal: true
+      native_mtp: true
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.5.5,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, cached-moe, vlm]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned GLM-5.3 checkpoint and prepared expert store.
+  accelerator: {metal: true, reason: Run the oMLX dynamic Cached-MoE VLM on Apple GPU.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

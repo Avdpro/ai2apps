@@ -224,6 +224,10 @@ def test_qwen_adaptive_bank_stats_start_empty():
         "sync_seconds": 0.0,
         "seconds": 0.0,
         "prefill_swaps": 0,
+        "direct_l1_mode": "auto",
+        "direct_load_calls": 0,
+        "direct_load_bytes": 0,
+        "direct_load_seconds": 0.0,
     }
 
 

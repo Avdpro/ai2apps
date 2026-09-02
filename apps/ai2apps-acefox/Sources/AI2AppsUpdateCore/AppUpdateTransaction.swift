@@ -66,6 +66,7 @@ public struct AppUpdateTransaction: Sendable {
         fileManager: FileManager = .default,
         installedValidator: Validator,
         candidateValidator: Validator,
+        existingBackupValidator: Validator? = nil,
         healthCheck: HealthCheck
     ) throws -> AppUpdateResult {
         guard fileManager.fileExists(atPath: installedApp.path) else {
@@ -73,9 +74,6 @@ public struct AppUpdateTransaction: Sendable {
         }
         guard fileManager.fileExists(atPath: candidateApp.path) else {
             throw AppUpdateTransactionError.missingApp("candidate")
-        }
-        guard !fileManager.fileExists(atPath: backupApp.path) else {
-            throw AppUpdateTransactionError.backupAlreadyExists
         }
         try rejectSymbolicLink(installedApp)
         try rejectSymbolicLink(candidateApp)
@@ -102,6 +100,17 @@ public struct AppUpdateTransaction: Sendable {
         try fileManager.copyItem(at: candidateApp, to: staged)
         try candidateValidator(staged)
         try installedValidator(installedApp)
+
+        if fileManager.fileExists(atPath: backupApp.path) {
+            guard let existingBackupValidator else {
+                throw AppUpdateTransactionError.backupAlreadyExists
+            }
+            try rejectSymbolicLink(backupApp)
+            // Keep exactly one rollback generation. Rotate it only after the
+            // installed and staged Apps have both passed validation.
+            try existingBackupValidator(backupApp)
+            try fileManager.removeItem(at: backupApp)
+        }
 
         try fileManager.moveItem(at: installedApp, to: backupApp)
         do {

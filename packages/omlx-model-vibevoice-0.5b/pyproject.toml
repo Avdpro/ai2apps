@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-vibevoice-0.5b"
-version = "0.1.0"
+version = "0.1.1"
 description = "VibeVoice Model Worker Package for AI2Apps"
 readme = "README.md"
 license = "MIT"

@@ -21,6 +21,7 @@ _PATCHED = False
 _TIERED_TXN = threading.local()
 _STRICT_ARENA_RECORDS: list[tuple[int, mx.array, mx.array]] | None = None
 _ROUTE_OBSERVER = None
+_ROUTE_PROFILE_OBSERVER = None
 _PARITY_OBSERVER = None
 
 
@@ -49,6 +50,18 @@ def set_qwen36_route_observer(observer) -> None:
 
     global _ROUTE_OBSERVER
     _ROUTE_OBSERVER = observer
+
+
+def set_qwen36_route_profile_observer(observer) -> None:
+    """Install an opt-in device-route observer for offline Scope profiling.
+
+    Unlike the adaptive-L1 observer, this hook sees every full-resident route
+    and retains device arrays until the profiler explicitly drains them.  It
+    is unset in serving and therefore adds no synchronization to production.
+    """
+
+    global _ROUTE_PROFILE_OBSERVER
+    _ROUTE_PROFILE_OBSERVER = observer
 
 
 def set_qwen36_parity_observer(observer) -> None:
@@ -658,7 +671,7 @@ def _exact_scope_moe(
     if length == 1 and block.scope_policy.backend == "tiered":
         return _tiered_scope_moe(block, x, inds, scores, lossy_counters)
     prefill_backend = os.environ.get(
-        "OMLX_QWEN36_PREFILL_BACKEND", "stable-swap"
+        "OMLX_QWEN36_PREFILL_BACKEND", "workspace256-direct"
     ).strip().lower()
     if length > 1 and prefill_backend in ("dual128", "dual128-shared"):
         loader = get_qwen36_fallback_loader(str(block.scope_policy.store_path))
@@ -709,7 +722,11 @@ def _exact_scope_moe(
         )
         if global_output is not None:
             return global_output
-    if length > 1 and prefill_backend in ("workspace96", "packed96"):
+    if length > 1 and prefill_backend in (
+        "workspace96",
+        "packed96",
+        "workspace256-direct",
+    ):
         loader = get_qwen36_fallback_loader(str(block.scope_policy.store_path))
         workspace_output = loader.prefill_workspace_forward(
             block,
@@ -717,9 +734,13 @@ def _exact_scope_moe(
             inds,
             scores,
             max_missing=int(
-                os.environ.get("OMLX_QWEN36_PREFILL_WORKSPACE_SLOTS", "96")
+                os.environ.get(
+                    "OMLX_QWEN36_PREFILL_WORKSPACE_SLOTS",
+                    "256" if prefill_backend == "workspace256-direct" else "96",
+                )
             ),
             packed=prefill_backend == "packed96",
+            global_slots=prefill_backend == "workspace256-direct",
         )
         if workspace_output is not None:
             return workspace_output
@@ -847,6 +868,21 @@ def _make_init(original_init):
 def _make_call(original_call):
     def patched(self, x: mx.array):
         if getattr(self, "scope_policy", None) is None:
+            observer = _ROUTE_PROFILE_OBSERVER
+            if observer is not None:
+                gates = mx.softmax(self.gate(x), axis=-1, precise=True)
+                inds = mx.argpartition(
+                    gates, kth=-self.top_k, axis=-1
+                )[..., -self.top_k :]
+                scores = mx.take_along_axis(gates, inds, axis=-1)
+                if self.norm_topk_prob:
+                    scores = scores / scores.sum(axis=-1, keepdims=True)
+                observer(
+                    int(getattr(self, "scope_layer", -1)),
+                    inds,
+                    scores,
+                    "decode" if int(x.shape[-2]) == 1 else "prefill",
+                )
             return original_call(self, x)
         if self.scope_layer < 0 or self.scope_expert_to_slot_values is None:
             raise RuntimeError("Qwen3.6 scope layer was not initialized")
@@ -858,6 +894,14 @@ def _make_call(original_call):
         scores = mx.take_along_axis(gates, inds, axis=-1)
         if self.norm_topk_prob:
             scores = scores / scores.sum(axis=-1, keepdims=True)
+        profile_observer = _ROUTE_PROFILE_OBSERVER
+        if profile_observer is not None:
+            profile_observer(
+                int(self.scope_layer),
+                inds,
+                scores,
+                "decode" if int(x.shape[-2]) == 1 else "prefill",
+            )
         lossy_counters = None
         policy = self.scope_lossy_policy
         if policy is not None:
@@ -985,7 +1029,7 @@ def _make_sanitize(original_sanitize):
 
 def apply_qwen36_flesh_model_patch() -> bool:
     global _PATCHED
-    if load_qwen36_scope_policy() is None:
+    if load_qwen36_scope_policy() is None and _ROUTE_PROFILE_OBSERVER is None:
         return False
     from mlx_lm.models.qwen3_5_moe import Model
     from mlx_lm.models.qwen3_next import Qwen3NextSparseMoeBlock
@@ -1014,5 +1058,6 @@ __all__ = [
     "qwen36_parity_observer_active",
     "Qwen36StrictArenaMiss",
     "set_qwen36_route_observer",
+    "set_qwen36_route_profile_observer",
     "validate_qwen36_strict_arena_run",
 ]

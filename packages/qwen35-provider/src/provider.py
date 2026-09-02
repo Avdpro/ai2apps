@@ -17,12 +17,12 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from huggingface_hub import snapshot_download
 
-MODEL_REPOSITORIES = {
-    "mlx-community/Qwen3.5-2B-4bit",
-    "mlx-community/Qwen3.5-0.8B-4bit",
+MODEL_IDS = {
+    "mlx-community/Qwen3.5-2B-4bit": "ai2apps.qwen35/qwen3.5-2b-4bit",
+    "mlx-community/Qwen3.5-0.8B-4bit": "ai2apps.qwen35/qwen3.5-0.8b-4bit",
 }
+MODEL_REPOSITORIES = frozenset(MODEL_IDS)
 DEFAULT_MODEL = "mlx-community/Qwen3.5-2B-4bit"
 
 
@@ -86,39 +86,36 @@ class QwenProvider:
         self._engine: Any | None = None
         self._repository: str | None = None
         self._lock = asyncio.Lock()
-        self._data_root = Path(os.environ.get("AI2APPS_DATA_ROOT", ".")).resolve()
-        cache = os.environ.get("AI2APPS_HF_CACHE_ROOT")
-        self._shared_hf_cache = Path(cache).resolve() if cache else None
+        raw = os.environ.get("AI2APPS_MODEL_CHECKPOINTS_JSON", "[]")
+        try:
+            checkpoints = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Host checkpoint declaration is invalid") from error
+        if not isinstance(checkpoints, list):
+            raise RuntimeError("Host checkpoint declaration must be an array")
+        self._checkpoints: dict[str, Path] = {}
+        repositories_by_model_id = {
+            model_id: repository for repository, model_id in MODEL_IDS.items()
+        }
+        for item in checkpoints:
+            if not isinstance(item, dict):
+                continue
+            repository = repositories_by_model_id.get(item.get("model_id"))
+            path = item.get("path")
+            if repository is not None and isinstance(path, str) and path:
+                self._checkpoints[repository] = Path(path).resolve()
 
     def _resolve_checkpoint(self, repository: str) -> Path:
         if repository not in MODEL_REPOSITORIES:
             _model_error(f"Unsupported Qwen3.5 checkpoint: {repository}")
-        if self._shared_hf_cache is not None and self._shared_hf_cache.is_dir():
-            # AI2APPS_HF_CACHE_ROOT follows HF_HOME semantics. huggingface_hub's
-            # cache_dir parameter expects the nested hub directory itself.
-            hub_cache = self._shared_hf_cache / "hub"
-            if not hub_cache.is_dir():
-                hub_cache = self._shared_hf_cache
-            try:
-                return Path(
-                    snapshot_download(
-                        repository,
-                        cache_dir=hub_cache,
-                        local_files_only=True,
-                    )
-                ).resolve()
-            except Exception:
-                pass
-        package_cache = self._data_root / "huggingface"
-        package_cache.mkdir(parents=True, exist_ok=True)
-        try:
-            return Path(snapshot_download(repository, cache_dir=package_cache)).resolve()
-        except Exception as exc:
+        checkpoint = self._checkpoints.get(repository)
+        if checkpoint is None or not checkpoint.is_dir():
             _model_error(
-                f"Unable to resolve {repository}. Download it first or allow network access: {exc}",
+                f"Host-managed checkpoint is unavailable for {repository}",
                 status=503,
                 code="model_unavailable",
             )
+        return checkpoint
 
     async def engine(self, repository: str):
         async with self._lock:
@@ -173,6 +170,7 @@ async def health():
         "status": "ready",
         "service": os.environ.get("AI2APPS_SERVICE_ID", "ai2apps.qwen35"),
         "loaded_model": provider._repository,
+        "capabilities": ["work", "conversation", "image_recognition"],
     }
 
 
@@ -253,6 +251,24 @@ async def _chat_stream(model: str, engine: Any, messages: list[dict[str, Any]], 
         "choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
     }
     yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n".encode()
+    stream_options = body.get("stream_options")
+    if isinstance(stream_options, dict) and stream_options.get("include_usage") is True:
+        if final is None:
+            _model_error("Model stream ended without token usage", status=502, code="model_stream_error")
+        usage = {
+            "id": request_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [],
+            "usage": {
+                "prompt_tokens": final.prompt_tokens,
+                "completion_tokens": final.completion_tokens,
+                "total_tokens": final.prompt_tokens + final.completion_tokens,
+                "prompt_tokens_details": {"cached_tokens": final.cached_tokens},
+            },
+        }
+        yield f"data: {json.dumps(usage, ensure_ascii=False)}\n\n".encode()
     yield b"data: [DONE]\n\n"
 
 

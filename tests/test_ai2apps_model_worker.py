@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
 from ai2apps.model_worker.server import create_app
 from ai2apps.packages.archive import ServicePackageArchive
 from ai2apps.packages.supervisor import ManagedServiceSupervisor
@@ -53,7 +54,7 @@ def _worker_files(tmp_path: Path) -> tuple[Path, Path]:
     data.mkdir()
     (package / "src" / "adapter.py").write_text(
         """
-from ai2apps.model_worker import ModelWorkerError, ModelWorkerStream
+from ai2apps.model_worker import ModelWorkerArtifact, ModelWorkerError, ModelWorkerStream
 
 class Adapter:
     def __init__(self, context):
@@ -71,6 +72,11 @@ class Adapter:
                 yield b'data: {"ok":true}\\n\\n'
                 yield b'data: [DONE]\\n\\n'
             return ModelWorkerStream(chunks())
+        if request.payload.get("artifact"):
+            await request.progress({"phase": "encode", "current": 1, "total": 1})
+            output = request.output_root / "avatar.mp4"
+            output.write_bytes(b"fake-mp4")
+            return ModelWorkerArtifact(output, "video/mp4", "avatar.mp4")
         if request.parts:
             part = request.part("file")
             return {
@@ -91,6 +97,8 @@ class Adapter:
             "service": self.context.service_id,
             "started": self.started,
         }
+    async def cancel(self, request_id):
+        self.cancelled = request_id
 
 def create_adapter(context):
     return Adapter(context)
@@ -161,7 +169,7 @@ def test_packaged_entrypoint_declares_trusted_framework_layer():
         / "runtime-entrypoint.sh"
     ).read_text(encoding="utf-8")
 
-    assert 'AI2APPS_TRUSTED_FRAMEWORK_SITE_PACKAGES="$MLX_SITE"' in entrypoint
+    assert 'AI2APPS_TRUSTED_FRAMEWORK_SITE_PACKAGES="$FRAMEWORK_SITE"' in entrypoint
 
 
 def test_host_resolves_exact_pinned_snapshot_for_worker(tmp_path):
@@ -187,6 +195,42 @@ def test_host_resolves_exact_pinned_snapshot_for_worker(tmp_path):
     assert roots == (repo,)
     assert checkpoints[0]["path"] == str(snapshot)
     assert checkpoints[0]["revision"] == revision
+
+
+def test_host_prefers_prepared_cache_moe_checkpoint_for_worker(tmp_path):
+    revision = "c" * 40
+    manifest = _manifest()
+    manifest["models"][0]["weights"] = {
+        "provider": "huggingface",
+        "repo_id": "example/checkpoint",
+        "revision": revision,
+        "distribution_id": "dist_example_v1",
+        "preparation": {"recipe": "ai2apps/cache-moe/v1"},
+    }
+    hub = tmp_path / "hub"
+    distribution = (
+        hub
+        / "models--example--checkpoint"
+        / "distributions"
+        / checkpoint_distribution_cache_key("dist_example_v1")
+    )
+    distribution.mkdir(parents=True)
+    (distribution / "config.json").write_text("{}")
+    (distribution / "model.safetensors").write_bytes(b"weights")
+    model_root = tmp_path / "models"
+    prepared = model_root / "example" / "checkpoint"
+    prepared.mkdir(parents=True)
+    (prepared / "config.json").write_text("{}")
+    (prepared / "model.safetensors").write_bytes(b"weights")
+    (prepared / "ai2apps-model.json").write_text("{}")
+
+    checkpoints, roots = ManagedServiceSupervisor._model_worker_checkpoints(
+        manifest, hub, model_root
+    )
+
+    assert checkpoints[0]["path"] == str(prepared)
+    assert model_root.resolve() in roots
+    assert (hub / "models--example--checkpoint").resolve() in roots
 
 
 def test_host_resolves_exact_pinned_onnx_snapshot_for_worker(tmp_path):
@@ -300,6 +344,38 @@ def test_model_worker_auth_lifecycle_json_and_stream(tmp_path):
         assert streamed.content.endswith(b"data: [DONE]\n\n")
 
 
+def test_model_worker_status_and_drain_gate_new_requests(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, _manifest(), 9123
+    )
+    app = create_app(config_path, token="worker-secret")
+    headers = {"Authorization": "Bearer worker-secret"}
+
+    with TestClient(app) as client:
+        status = client.get("/v1/status", headers=headers)
+        drained = client.post("/v1/control/drain", headers=headers)
+        after = client.get("/v1/status", headers=headers)
+        rejected = client.post(
+            "/v1/chat/completions",
+            headers=headers,
+            json={"model": "example-checkpoint", "messages": []},
+        )
+
+    assert status.json() == {
+        "status": "ready",
+        "protocol": "ai2apps-model-worker/v1",
+        "service": "example.worker",
+        "accepting_requests": True,
+        "active_requests": 0,
+        "queued_requests": 0,
+    }
+    assert drained.json() == {"status": "draining"}
+    assert after.json()["accepting_requests"] is False
+    assert rejected.status_code == 503
+    assert rejected.json()["detail"] == "Model Worker is draining"
+
+
 def _wav_bytes(*, seconds: float = 0.05, sample_rate: int = 16_000) -> bytes:
     output = io.BytesIO()
     with wave.open(output, "wb") as target:
@@ -336,6 +412,66 @@ def test_model_worker_materializes_and_cleans_multipart_parts(tmp_path):
     assert body["part"]["exists"] is True
     assert Path(body["part"]["path"]).suffix == ".wav"
     assert not Path(body["part"]["path"]).exists()
+
+
+def test_model_worker_accepts_twelve_ordered_reference_parts(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, _manifest(), 9123
+    )
+    app = create_app(config_path, token="worker-secret")
+    files = {"file": ("reference-00.png", b"image-00", "image/png")}
+    files.update({
+        f"reference_{index:02d}_image": (
+            f"reference-{index:02d}.png", f"image-{index:02d}".encode(), "image/png"
+        )
+        for index in range(1, 12)
+    })
+
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/v1/videos/generations",
+            headers={"Authorization": "Bearer worker-secret"},
+            data={"model": "example-checkpoint"},
+            files=files,
+        )
+        rejected = client.post(
+            "/v1/videos/generations",
+            headers={"Authorization": "Bearer worker-secret"},
+            data={"model": "example-checkpoint"},
+            files={**files, "reference_12_image": ("reference-12.png", b"image-12", "image/png")},
+        )
+
+    assert accepted.status_code == 200
+    assert rejected.status_code == 400
+    assert "files" in str(rejected.json()).lower()
+
+
+def test_model_worker_streams_controlled_artifact_and_records_progress(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, _manifest(), 9123
+    )
+    app = create_app(config_path, token="worker-secret")
+    headers = {
+        "Authorization": "Bearer worker-secret",
+        "X-Request-Id": "video-request-1",
+    }
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/videos/generations", headers=headers,
+            json={"model": "example-checkpoint", "artifact": True},
+        )
+        status = client.get("/v1/requests/video-request-1", headers=headers)
+
+    assert response.status_code == 200
+    assert response.content == b"fake-mp4"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"] == 'attachment; filename="avatar.mp4"'
+    assert status.json()["status"] == "succeeded"
+    assert status.json()["progress"] == {"phase": "encode", "current": 1, "total": 1}
+    assert not any((data / "requests").iterdir())
 
 
 def test_model_worker_rejects_non_wav_package_audio(tmp_path):

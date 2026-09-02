@@ -1,0 +1,34 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.cosyvoice3-0.5b-0.1.1",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.cosyvoice3-0.5b/0.1.1",
+  "packages": [
+    {
+      "name": "mlx-community/Fun-CosyVoice3-0.5B-2512-4bit",
+      "SPDXID": "SPDXRef-CosyVoice3-4bit",
+      "versionInfo": "55a6713d54751f1ec2645aa11294676f2067202a",
+      "downloadLocation": "https://huggingface.co/mlx-community/Fun-CosyVoice3-0.5B-2512-4bit",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    },
+    {
+      "name": "mlx-community/Fun-CosyVoice3-0.5B-2512-8bit",
+      "SPDXID": "SPDXRef-CosyVoice3-8bit",
+      "versionInfo": "177baf277ac75e04e810f7db7f0d9c0ce5a17854",
+      "downloadLocation": "https://huggingface.co/mlx-community/Fun-CosyVoice3-0.5B-2512-8bit",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    },
+    {
+      "name": "mlx-community/S3TokenizerV3",
+      "SPDXID": "SPDXRef-S3TokenizerV3",
+      "versionInfo": "b143914b3e912278104824da706edc9c2d317c4e",
+      "downloadLocation": "https://huggingface.co/mlx-community/S3TokenizerV3",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "NOASSERTION",
+      "comment": "MLX conversion derived from the Apache-2.0 FunAudioLLM/Fun-CosyVoice3-0.5B-2512 model; the conversion model card does not declare a separate license field."
+    }
+  ]
+}

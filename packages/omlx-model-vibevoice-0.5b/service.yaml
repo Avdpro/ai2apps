@@ -1,8 +1,8 @@
 schema: ai2apps.service/v1
 id: ai2apps.model.vibevoice-0.5b
 name: VibeVoice Realtime 0.5B
-description: Long-form and multi-speaker local VibeVoice synthesis Worker.
-version: 0.1.0
+description: Realtime-oriented, long-form, single-speaker local VibeVoice synthesis Worker.
+version: 0.1.1
 
 publisher: {id: ai2apps}
 license: {name: MIT License, id: MIT, path: META/licenses/MIT.txt}
@@ -22,12 +22,13 @@ models:
     display_name: VibeVoice Realtime 0.5B 4-bit
     model_type: audio_tts
     upstream_id: mlx-community/VibeVoice-Realtime-0.5B-4bit
-    capabilities: [speech_generation, named_voices, long_form, multi_speaker]
-    metadata: {family: vibevoice, variant: realtime, long_form: true, multi_speaker: true}
+    capabilities: [speech_generation, named_voices, long_form]
+    metadata: {family: vibevoice, variant: realtime, long_form: true, max_duration_minutes: 10, multi_speaker: false}
     weights:
       provider: huggingface
       repo_id: mlx-community/VibeVoice-Realtime-0.5B-4bit
       revision: 550877a15358642c1e062aa38ce1fe0623beaa1b
+      distribution_id: dist_ai2apps_vibevoice_realtime_0_5b_4bit_550877a1_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1
@@ -41,8 +42,8 @@ models:
         emotion: {mode: unsupported, values: []}
         instructions: {mode: unsupported}
         voice_profiles: {mode: unsupported}
-        long_form: {mode: native}
-        multi_speaker: {mode: native, max_speakers: 32}
+        long_form: {mode: native, max_duration_minutes: 10}
+        multi_speaker: {mode: unsupported}
 
 capabilities: []
 requires:

@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.qwen3-tts-0.6b
 name: Qwen3 TTS 0.6B CustomVoice
 description: Isolated multilingual speech synthesis Worker with named voices.
-version: 0.2.0
+version: 0.2.1
 
 publisher: {id: ai2apps}
 
@@ -17,11 +17,12 @@ models:
     display_name: Qwen3 TTS 0.6B CustomVoice 6-bit
     model_type: audio_tts
     upstream_id: mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit
-    capabilities: [speech_generation, named_voices, voice_instructions]
+    capabilities: [speech_generation, named_voices, voice_instructions, emotion]
     weights:
       provider: huggingface
       repo_id: mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit
       revision: 7dc92af14613355896fcab13b268c19ede233139
+      distribution_id: dist_ai2apps_qwen3_tts_0_6b_custom_voice_6bit_7dc92af1_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1
@@ -33,7 +34,7 @@ models:
         named_voices:
           mode: native
           voices: [serena, vivian, uncle_fu, ryan, aiden, ono_anna, sohee, eric, dylan]
-        speed: {mode: unsupported}
+        speed: {mode: fallback, minimum: 0.5, maximum: 2.0, control: instruction}
         emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited]}
         instructions: {mode: native}
         voice_profiles: {mode: unsupported}

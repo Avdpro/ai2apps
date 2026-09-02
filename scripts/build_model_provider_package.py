@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import stat
 import zipfile
 from pathlib import Path
@@ -16,6 +17,7 @@ import yaml
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from ai2apps.checkpoint_package_policy import require_checkpoint_distributions
 from ai2apps.packages import PackageFile, package_digest
 from ai2apps.packages.archive import ServicePackageArchive
 from ai2apps.secrets.factory import create_secret_backend
@@ -59,8 +61,36 @@ def _write_zip_file(archive: zipfile.ZipFile, name: str, content: bytes) -> None
     info = zipfile.ZipInfo(name)
     info.date_time = (1980, 1, 1, 0, 0, 0)
     info.external_attr = (stat.S_IFREG | 0o644) << 16
-    compression = zipfile.ZIP_STORED if name.endswith(".dmg") else zipfile.ZIP_DEFLATED
+    compression = (
+        zipfile.ZIP_STORED
+        if name.endswith((".dmg", ".tar.gz"))
+        else zipfile.ZIP_DEFLATED
+    )
     archive.writestr(info, content, compress_type=compression)
+
+
+def _write_zip_path(archive: zipfile.ZipFile, name: str, source: Path) -> None:
+    info = zipfile.ZipInfo(name)
+    info.date_time = (1980, 1, 1, 0, 0, 0)
+    info.external_attr = (stat.S_IFREG | 0o644) << 16
+    info.compress_type = (
+        zipfile.ZIP_STORED
+        if name.endswith((".dmg", ".tar.gz"))
+        else zipfile.ZIP_DEFLATED
+    )
+    info.file_size = source.stat().st_size
+    with source.open("rb") as input_file, archive.open(
+        info, "w", force_zip64=True
+    ) as output_file:
+        shutil.copyfileobj(input_file, output_file, length=1024 * 1024)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def build(
@@ -77,6 +107,7 @@ def build(
     if not manifest_path.is_file():
         raise FileNotFoundError(f"Missing {manifest_path}")
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    require_checkpoint_distributions(manifest)
     parsed = ServicePackageArchive._manifest(manifest)
     private, ephemeral = _private_key(
         key_path,
@@ -84,7 +115,7 @@ def build(
         keychain_namespace=keychain_namespace,
     )
 
-    immutable: dict[str, bytes] = {}
+    immutable: dict[str, Path] = {}
     for path in sorted(source.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
@@ -97,14 +128,14 @@ def build(
             or path.suffix in {".pyc", ".pyo"}
         ):
             continue
-        immutable[relative] = path.read_bytes()
+        immutable[relative] = path
     files = tuple(
         PackageFile(
             path=name,
-            content_hash="sha256:" + hashlib.sha256(content).hexdigest(),
-            size_bytes=len(content),
+            content_hash="sha256:" + _file_sha256(path),
+            size_bytes=path.stat().st_size,
         )
-        for name, content in immutable.items()
+        for name, path in immutable.items()
     )
     digest = package_digest(manifest, files)
     public = private.public_key().public_bytes(
@@ -134,8 +165,8 @@ def build(
     temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
     try:
         with zipfile.ZipFile(temporary, "w") as archive:
-            for name, content in immutable.items():
-                _write_zip_file(archive, name, content)
+            for name, path in immutable.items():
+                _write_zip_path(archive, name, path)
             _write_zip_file(
                 archive,
                 "META/files.json",

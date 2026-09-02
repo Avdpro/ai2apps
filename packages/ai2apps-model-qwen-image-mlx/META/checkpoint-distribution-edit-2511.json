@@ -1,0 +1,44 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen_image_edit_2511_6f3ccc0b_v1",
+  "modelId": "ai2apps.model.qwen-image-mlx/edit-2511",
+  "repoId": "Qwen/Qwen-Image-Edit-2511",
+  "revision": "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "vae/*",
+    "transformer/*",
+    "text_encoder/*",
+    "tokenizer/*",
+    "scheduler/*",
+    "processor/*",
+    "added_tokens.json",
+    "chat_template.jinja",
+    "model_index.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Qwen/Qwen-Image-Edit-2511",
+      "revision": "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "Qwen/Qwen-Image-Edit-2511",
+      "revision": "f8403bcb7b827dab45d845cb71415ec9276e61d6",
+      "access": "public_anonymous"
+    }
+  ]
+}

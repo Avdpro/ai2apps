@@ -70,6 +70,11 @@ def main() -> None:
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--dmg", required=True, type=Path)
+    parser.add_argument(
+        "--client-runtime",
+        action="store_true",
+        help="verify with macOS end-user tools instead of Xcode tools",
+    )
     args = parser.parse_args()
 
     metadata = args.metadata.resolve()
@@ -82,19 +87,22 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="ai2apps-release-verify.") as directory:
         actual_path = Path(directory) / "actual.release.json"
+        command = [
+            sys.executable,
+            "-I",
+            "-B",
+            str(generator),
+            "--app",
+            str(app),
+            "--dmg",
+            str(dmg),
+            "--output",
+            str(actual_path),
+        ]
+        if args.client_runtime:
+            command.append("--client-verification")
         completed = subprocess.run(
-            [
-                sys.executable,
-                "-I",
-                "-B",
-                str(generator),
-                "--app",
-                str(app),
-                "--dmg",
-                str(dmg),
-                "--output",
-                str(actual_path),
-            ],
+            command,
             check=False,
             capture_output=True,
             text=True,

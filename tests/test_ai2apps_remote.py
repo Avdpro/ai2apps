@@ -236,6 +236,7 @@ async def test_access_projection_uses_etag_and_revokes_changed_member(tmp_path):
                 "cloudDeviceId": ids["device_id"],
                 "deviceStatus": "active",
                 "accessEpoch": 7,
+                "localSessionEpoch": 1,
                 "organizationId": ids["organization_id"],
                 "authorizationVersion": 12,
                 "memberships": [
@@ -244,12 +245,14 @@ async def test_access_projection_uses_etag_and_revokes_changed_member(tmp_path):
                         "status": "active",
                         "role": "core",
                         "membershipEpoch": 2,
+                        "accountSessionEpoch": 1,
                     },
                     {
                         "userId": ids["member_user_id"],
                         "status": "active",
                         "role": "guest",
                         "membershipEpoch": 5,
+                        "accountSessionEpoch": 1,
                     },
                 ],
                 "checkedAt": "2026-08-16T00:00:00.000Z",
@@ -359,6 +362,30 @@ async def test_definitive_device_revoke_invalidates_all_local_sessions(tmp_path)
     assert identities.get_installation().status == "revoked"
     assert identities.authorize_local_session(core_token) is None
     assert identities.authorize_local_session(member_token) is None
+    await cloud.close()
+
+
+@pytest.mark.asyncio
+async def test_stable_device_authorization_denial_invalidates_local_sessions(tmp_path):
+    def handler(_request: httpx.Request):
+        return httpx.Response(
+            403,
+            json={
+                "error": {
+                    "code": "REMOTE_DEVICE_AUTHORIZATION_DENIED",
+                    "message": "device authorization was denied",
+                }
+            },
+        )
+
+    manager, identities, cloud, ids = _projection_manager(tmp_path, handler)
+    token, _ = identities.create_local_session(ids["core_user_id"])
+
+    with pytest.raises(RemoteAccessError, match="device authorization was denied"):
+        await manager.refresh_access_projection()
+
+    assert identities.get_installation().status == "suspended"
+    assert identities.authorize_local_session(token) is None
     await cloud.close()
 
 

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-qwen35",
+    "type": "service",
+    "version": "0.1.2",
+    "displayName": "Qwen3.5 Local Provider",
+    "description": "Independently packaged Qwen3.5 MLX model provider for AI2Apps."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"]
+  },
+  "entrypoints": [
+    {"name": "model-provider", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only Host-selected Qwen3.5 checkpoints.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Execute the selected MLX model on the local Apple GPU.", "required": true}
+  ],
+  "dependencies": [],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

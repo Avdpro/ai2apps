@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-qwen3-asr-0-6b-cuda",
+    "type": "service",
+    "version": "0.1.3",
+    "displayName": "Qwen3 ASR 0.6B CUDA",
+    "description": "Isolated CUDA Transformers Worker for multilingual speech recognition."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["linux"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "24.4"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned Qwen3-ASR checkpoint.", "required": true},
+    {"capability": "accelerator.cuda", "reason": "Run Qwen3-ASR locally on the NVIDIA GPU.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-cuda-torch", "version": ">=0.2.0 <1.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

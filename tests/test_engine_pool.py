@@ -1048,6 +1048,11 @@ class TestEnginePoolAsync:
         assert entry is not None
         assert entry.load_failed is True
         assert "broken weights" in (entry.load_failure_message or "")
+        failed_status = next(
+            item for item in pool.get_status()["models"] if item["id"] == "model-a"
+        )
+        assert failed_status["load_failed"] is True
+        assert "broken weights" in failed_status["load_failure_message"]
 
         pool.discover_models(str(small_mock_model_dir))
         refreshed = pool.get_entry("model-a")

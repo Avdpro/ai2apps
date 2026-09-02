@@ -136,6 +136,302 @@
                         </div>
                     </div>
 
+                    <!-- Package Model Workers -->
+                    <div class="bg-white rounded-2xl border border-neutral-200 mb-8 overflow-hidden">
+                        <div class="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 bg-neutral-100 border-b border-neutral-200">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="server-cog" class="w-4 h-4 text-neutral-500"></i>
+                                <div>
+                                    <span class="block text-xs font-bold uppercase tracking-wider text-neutral-600">Model Workers</span>
+                                    <span class="block text-[11px] text-neutral-400 mt-0.5">Package Supervisor processes</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 sm:gap-3">
+                                <span class="px-2 py-1 rounded-md bg-white text-[11px] text-neutral-600"
+                                      x-text="workerScheduler.running + ' running'"></span>
+                                <span class="px-2 py-1 rounded-md bg-white text-[11px] text-neutral-600"
+                                      x-text="workerScheduler.queued + ' queued'"></span>
+                                <span class="hidden sm:inline text-[11px] text-neutral-400"
+                                      x-text="workerScheduler.availableHeavyComputeSlots + '/' + workerScheduler.maxHeavyComputeSlots + ' compute slots free'"></span>
+                                <span class="hidden xl:inline text-[11px] text-neutral-400"
+                                      x-text="formatByteCount(workerResources.reservedTransientBytes) + ' reserved · ' + formatByteCount(workerResources.availableMemoryBytes) + ' available'"></span>
+                                <span class="hidden lg:inline px-2 py-1 rounded-md text-[10px] font-bold uppercase"
+                                      :class="workerResources.pressureLevel === 'hard' ? 'bg-red-100 text-red-700' : workerResources.pressureLevel === 'soft' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'"
+                                      x-text="'memory ' + workerResources.pressureLevel"></span>
+                                <span x-show="workerScheduler.backgroundPaused"
+                                      class="px-2 py-1 rounded-md bg-amber-100 text-[10px] font-bold uppercase text-amber-700"
+                                      :title="(workerScheduler.backgroundPauseReasons || []).join(', ')"
+                                      x-text="'background paused' + ((workerScheduler.backgroundPauseReasons || []).length ? ': ' + workerScheduler.backgroundPauseReasons.join(', ') : '')"></span>
+                                <span x-show="workerResources.onBattery != null"
+                                      class="hidden xl:inline text-[11px] text-neutral-400"
+                                      x-text="(workerResources.onBattery ? 'battery' : 'AC') + (workerResources.batteryPercent == null ? '' : ' ' + Math.round(workerResources.batteryPercent) + '%')"></span>
+                                <span x-show="workerResources.temperatureCelsius != null"
+                                      class="hidden xl:inline text-[11px] text-neutral-400"
+                                      x-text="Math.round(workerResources.temperatureCelsius) + '°C'"></span>
+                                <button @click="loadModelWorkers()"
+                                        :disabled="modelWorkersLoading"
+                                        class="p-2 rounded-lg text-neutral-500 hover:text-neutral-800 hover:bg-white disabled:opacity-40 transition-all"
+                                        aria-label="Refresh Model Workers">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="modelWorkersLoading && 'animate-spin'"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-6 py-4 bg-white border-b border-neutral-100">
+                            <div class="flex items-start gap-3 min-w-0">
+                                <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                                    <i data-lucide="share-2" class="w-4 h-4"></i>
+                                </span>
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="text-sm font-bold text-neutral-900">Share this Device's compute</span>
+                                        <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
+                                              :class="modelShare.enabled && modelShare.transport?.running ? 'bg-emerald-100 text-emerald-700' : modelShare.enabled ? 'bg-amber-100 text-amber-700' : 'bg-neutral-100 text-neutral-500'"
+                                              x-text="modelShare.enabled && modelShare.transport?.running ? 'On' : modelShare.enabled ? 'Paused' : 'Off'"></span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-neutral-500"
+                                       x-text="!modelShare.canEnable ? 'Select at least one shareable model below to enable Device sharing.' : modelShare.enabled && modelShare.transport?.required && !modelShare.transport?.running ? 'Remote Connector is unavailable. Compute sharing is paused and no Offer is published.' : `${modelShare.selectedModelCount} model${modelShare.selectedModelCount === 1 ? '' : 's'} selected · ${modelShare.runningModelCount} Provider${modelShare.runningModelCount === 1 ? '' : 's'} running${modelShare.transport?.required ? ' · Relay connector ready' : ''}`"></p>
+                                </div>
+                            </div>
+                            <button type="button" role="switch"
+                                    :aria-checked="String(modelShare.enabled)"
+                                    :disabled="modelShareSaving || !modelShare.canEnable"
+                                    @click="setDeviceModelSharing(!modelShare.enabled)"
+                                    class="relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-35"
+                                    :class="modelShare.enabled ? 'bg-neutral-900' : 'bg-neutral-300'"
+                                    aria-label="Share this Device's compute">
+                                <span class="inline-block h-5 w-5 translate-y-1 rounded-full bg-white shadow transition-transform"
+                                      :class="modelShare.enabled ? 'translate-x-6' : 'translate-x-1'"></span>
+                            </button>
+                        </div>
+                        <div x-show="modelWorkerError" x-cloak
+                             class="px-4 sm:px-6 py-3 text-xs text-red-700 bg-red-50 border-b border-red-100"
+                             x-text="modelWorkerError"></div>
+                        <div x-show="modelShareError" x-cloak
+                             class="px-4 sm:px-6 py-3 text-xs text-red-700 bg-red-50 border-b border-red-100"
+                             x-text="modelShareError"></div>
+                        <div x-show="modelShare.recentJobs?.length" x-cloak class="border-b border-neutral-100 bg-neutral-50">
+                            <div class="px-4 sm:px-6 py-3">
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-neutral-700">Recent shared compute</h3>
+                                <p class="mt-1 text-[11px] text-neutral-500">Cloud is authoritative for final charge and released hold.</p>
+                            </div>
+                            <div class="divide-y divide-neutral-100 border-t border-neutral-100 bg-white">
+                                <template x-for="job in modelShare.recentJobs" :key="`${job.role}-${job.contractId}`">
+                                    <div class="grid gap-2 px-4 sm:px-6 py-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+                                        <div class="min-w-0">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-xs font-semibold text-neutral-800" x-text="job.calculatorType || 'legacy_units_v1'"></span>
+                                                <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-[9px] font-bold uppercase text-neutral-600" x-text="job.role"></span>
+                                                <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700" x-text="job.status"></span>
+                                            </div>
+                                            <span class="mt-1 block truncate font-mono text-[10px] text-neutral-400" x-text="job.contractId"></span>
+                                            <span x-show="job.actualUsage" class="mt-1 block text-[10px] text-neutral-500" x-text="JSON.stringify(job.actualUsage)"></span>
+                                        </div>
+                                        <div class="text-left sm:text-right">
+                                            <span class="block text-[9px] font-bold uppercase text-neutral-400">最多预锁定</span>
+                                            <span class="text-xs font-semibold text-neutral-800" x-text="job.maximumChargeMinor == null ? '—' : `${job.maximumChargeMinor} Points`"></span>
+                                        </div>
+                                        <div class="text-left sm:text-right">
+                                            <span class="block text-[9px] font-bold uppercase text-neutral-400">Final charge</span>
+                                            <span class="text-xs font-semibold text-neutral-800" x-text="job.chargedMinor == null ? 'Pending' : `${job.chargedMinor} Points`"></span>
+                                        </div>
+                                        <div class="text-left sm:text-right">
+                                            <span class="block text-[9px] font-bold uppercase text-neutral-400">Released</span>
+                                            <span class="text-xs font-semibold text-emerald-700" x-text="job.releasedMinor == null ? 'Pending' : `${job.releasedMinor} Points`"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        <div x-show="!modelWorkersLoading && modelWorkers.length === 0 && modelShareStandaloneModels().length === 0"
+                             class="px-6 py-8 text-center text-sm text-neutral-400">
+                            No active Model Worker Packages are installed.
+                        </div>
+                        <div class="divide-y divide-neutral-100">
+                            <template x-for="worker in modelWorkers" :key="worker.serviceKey">
+                                <div class="px-4 sm:px-6 py-4">
+                                    <div class="flex flex-col lg:flex-row lg:items-center gap-4">
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm font-semibold text-neutral-800 break-all" x-text="worker.serviceKey"></span>
+                                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+                                                      :class="modelWorkerStateClass(worker.state)"
+                                                      x-text="worker.state"></span>
+                                                <span class="text-[10px] text-neutral-400 font-mono"
+                                                      x-text="'generation ' + worker.generation"></span>
+                                            </div>
+                                            <div class="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+                                                <span x-text="worker.models.map(model => model.displayName || model.id).join(', ') || 'No models declared'"></span>
+                                                <span x-show="worker.pid" x-text="'PID ' + worker.pid"></span>
+                                                <span x-show="worker.residentMemoryBytes > 0" x-text="formatByteCount(worker.residentMemoryBytes) + ' RSS'"></span>
+                                                <span x-show="worker.activeRequests != null" x-text="worker.activeRequests + ' active'"></span>
+                                                <span x-show="worker.queuedRequests != null" x-text="worker.queuedRequests + ' queued'"></span>
+                                                <span x-show="worker.scheduler?.queued > 0"
+                                                      class="text-amber-600"
+                                                      x-text="worker.scheduler.queued + ' Host queued'"></span>
+                                                <span x-show="worker.resources?.reservedTransientBytes > 0"
+                                                      class="text-violet-600"
+                                                      x-text="formatByteCount(worker.resources.reservedTransientBytes) + ' transient reserved'"></span>
+                                                <span x-show="worker.resources?.idleAgeSeconds != null"
+                                                      x-text="formatDurationShort(worker.resources.idleAgeSeconds) + ' idle'"></span>
+                                                <span x-show="worker.pinned" class="text-blue-600">pinned</span>
+                                                <span x-show="worker.evictionReason" class="text-violet-600"
+                                                      x-text="'evicted: ' + worker.evictionReason"></span>
+                                            </div>
+                                            <div x-show="modelShareWorkerModels(worker).length" class="mt-3 space-y-2">
+                                                <template x-for="model in modelShareWorkerModels(worker)" :key="`share-${worker.serviceKey}-${model.id}`">
+                                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+                                                        <div class="min-w-0">
+                                                            <div class="flex flex-wrap items-center gap-2">
+                                                                <span class="text-xs font-semibold text-neutral-800 truncate" x-text="model.displayName || model.id"></span>
+                                                                <span x-show="model.sharing?.modality === 'audio_tts'" class="rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-bold uppercase text-sky-700">TTS</span>
+                                                                <span x-show="model.sharing?.calculatorType && model.sharing.calculatorType !== 'legacy_units_v1'" class="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-bold uppercase text-violet-700" x-text="model.sharing.calculatorType"></span>
+                                                                <span x-show="model.sharing?.offerId" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-700">Offer active</span>
+                                                                <span x-show="model.sharing?.lastError" class="text-[10px] font-medium text-red-600" x-text="model.sharing?.lastError"></span>
+                                                            </div>
+                                                            <span class="mt-0.5 block text-[10px] text-neutral-400 font-mono truncate" x-text="model.id"></span>
+                                                        </div>
+                                                        <div class="flex items-center gap-2 shrink-0">
+                                                            <button type="button"
+                                                                    @click="openModelSharePreferences(model)"
+                                                                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-neutral-600 hover:bg-white hover:text-neutral-900 transition-all">
+                                                                Sharing preferences
+                                                            </button>
+                                                            <button type="button" role="switch"
+                                                                    :aria-checked="String(Boolean(model.sharing?.selected))"
+                                                                    :disabled="modelShareSaving"
+                                                                    @click="setModelSharing(model, !model.sharing?.selected)"
+                                                                    class="relative inline-flex h-6 w-10 rounded-full transition-colors disabled:opacity-40"
+                                                                    :class="model.sharing?.selected ? 'bg-violet-600' : 'bg-neutral-300'"
+                                                                    :aria-label="`Share ${model.displayName || model.id}`">
+                                                                <span class="inline-block h-4 w-4 translate-y-1 rounded-full bg-white shadow transition-transform"
+                                                                      :class="model.sharing?.selected ? 'translate-x-5' : 'translate-x-1'"></span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                            <button @click="modelWorkerPin(worker)"
+                                                    :disabled="Boolean(modelWorkerActions[worker.serviceKey])"
+                                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-40 transition-all"
+                                                    :title="worker.pinned ? 'Allow this Worker to be reclaimed by TTL/LRU' : 'Keep this Worker resident'">
+                                                <span x-text="modelWorkerActions[worker.serviceKey] === 'pin' ? 'Saving…' : (worker.pinned ? 'Unpin' : 'Pin')"></span>
+                                            </button>
+                                            <button x-show="['stopped', 'failed', 'evicted'].includes(worker.state)"
+                                                    @click="modelWorkerAction(worker, 'load')"
+                                                    :disabled="Boolean(modelWorkerActions[worker.serviceKey])"
+                                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-neutral-700 disabled:opacity-40 transition-all">
+                                                <span x-text="modelWorkerActions[worker.serviceKey] === 'load' ? 'Loading…' : 'Load'"></span>
+                                            </button>
+                                            <button x-show="!['stopped', 'failed', 'evicted', 'evicting', 'draining'].includes(worker.state)"
+                                                    @click="modelWorkerAction(worker, 'exit', 'drain')"
+                                                    :disabled="Boolean(modelWorkerActions[worker.serviceKey])"
+                                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-40 transition-all">
+                                                <span x-text="modelWorkerActions[worker.serviceKey] === 'exit' ? 'Draining…' : 'Drain & Exit'"></span>
+                                            </button>
+                                            <button x-show="modelWorkerActions[worker.serviceKey] === 'exit' && modelWorkerOperations[worker.serviceKey]"
+                                                    @click="modelWorkerCancelOperation(worker)"
+                                                    :disabled="Boolean(modelWorkerCancelling[worker.serviceKey])"
+                                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-40 transition-all">
+                                                <span x-text="modelWorkerCancelling[worker.serviceKey] ? 'Cancelling…' : 'Cancel Drain'"></span>
+                                            </button>
+                                            <button x-show="!['stopped', 'failed', 'evicted', 'evicting'].includes(worker.state)"
+                                                    @click="modelWorkerAction(worker, 'exit', 'immediate')"
+                                                    :disabled="Boolean(modelWorkerActions[worker.serviceKey]) || worker.activeRequests == null || worker.queuedRequests == null || worker.activeRequests > 0 || worker.queuedRequests > 0"
+                                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-30 transition-all"
+                                                    title="Exit is enabled only when the Worker is confirmed idle">
+                                                Exit
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                        <div x-show="modelShareStandaloneModels().length" class="divide-y divide-neutral-100">
+                            <template x-for="model in modelShareStandaloneModels()" :key="`share-standalone-${model.id}`">
+                                <div class="px-4 sm:px-6 py-4">
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm font-semibold text-neutral-800 break-all" x-text="model.serviceKey"></span>
+                                                <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">Compatible provider</span>
+                                                <span x-show="model.sharing?.modality === 'audio_tts'" class="rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-bold uppercase text-sky-700">TTS</span>
+                                                <span x-show="model.sharing?.calculatorType && model.sharing.calculatorType !== 'legacy_units_v1'" class="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-bold uppercase text-violet-700" x-text="model.sharing.calculatorType"></span>
+                                                <span x-show="model.sharing?.offerId" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-700">Offer active</span>
+                                            </div>
+                                            <p class="mt-1 text-xs font-semibold text-neutral-700" x-text="model.displayName || model.id"></p>
+                                            <span class="mt-0.5 block text-[10px] text-neutral-400 font-mono break-all" x-text="model.id"></span>
+                                            <span x-show="model.sharing?.lastError" class="mt-1 block text-[10px] font-medium text-red-600" x-text="model.sharing?.lastError"></span>
+                                        </div>
+                                        <div class="flex items-center gap-2 shrink-0">
+                                            <button type="button"
+                                                    @click="openModelSharePreferences(model)"
+                                                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 transition-all">
+                                                Sharing preferences
+                                            </button>
+                                            <button type="button" role="switch"
+                                                    :aria-checked="String(Boolean(model.sharing?.selected))"
+                                                    :disabled="modelShareSaving"
+                                                    @click="setModelSharing(model, !model.sharing?.selected)"
+                                                    class="relative inline-flex h-6 w-10 rounded-full transition-colors disabled:opacity-40"
+                                                    :class="model.sharing?.selected ? 'bg-violet-600' : 'bg-neutral-300'"
+                                                    :aria-label="`Share ${model.displayName || model.id}`">
+                                                <span class="inline-block h-4 w-4 translate-y-1 rounded-full bg-white shadow transition-transform"
+                                                      :class="model.sharing?.selected ? 'translate-x-5' : 'translate-x-1'"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div x-show="showModelSharePreferences" x-cloak
+                         @keydown.escape.window="showModelSharePreferences = false; modelShareEnableAfterSave = false"
+                         class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+                         @click.self="showModelSharePreferences = false; modelShareEnableAfterSave = false">
+                        <section role="dialog" aria-modal="true" aria-labelledby="model-share-preferences-title"
+                                 class="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="min-w-0">
+                                    <h3 id="model-share-preferences-title" class="text-lg font-bold text-neutral-900">Sharing preferences</h3>
+                                    <p class="mt-1 text-xs text-neutral-500 truncate" x-text="modelShareEditor.displayName || modelShareEditor.modelId"></p>
+                                </div>
+                                <button @click="showModelSharePreferences = false; modelShareEnableAfterSave = false"
+                                        class="p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                                        aria-label="Close sharing preferences">
+                                    <i data-lucide="x" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <p class="mt-4 rounded-xl bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-800">
+                                Pricing is controlled by the Cloud Rate Card. This Device only chooses capacity and the reviewed Rate Card it accepts.
+                            </p>
+                            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                                <label class="block">
+                                    <span class="block text-xs font-semibold text-neutral-700">Maximum concurrent jobs</span>
+                                    <input x-model.number="modelShareEditor.maxConcurrency" type="number" min="1" max="32"
+                                           class="mt-1.5 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200">
+                                </label>
+                                <label class="block">
+                                    <span class="block text-xs font-semibold text-neutral-700"
+                                          x-text="modelShareEditor.modality === 'audio_tts' ? 'Estimated audio ms / second' : 'Estimated tokens / second'"></span>
+                                    <input x-model.number="modelShareEditor.estimatedTokensPerSecond" type="number" min="1" max="1000000"
+                                           class="mt-1.5 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200">
+                                </label>
+                            </div>
+                            <div x-show="modelShareError" class="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-xs text-red-700" x-text="modelShareError"></div>
+                            <div class="mt-6 flex justify-end gap-2">
+                                <button @click="showModelSharePreferences = false; modelShareEnableAfterSave = false"
+                                        class="px-4 py-2 rounded-xl text-sm font-semibold text-neutral-600 hover:bg-neutral-100">Cancel</button>
+                                <button @click="saveModelSharePreferences()" :disabled="modelShareSaving"
+                                        class="px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm font-semibold disabled:opacity-40">
+                                    <span x-text="modelShareSaving ? 'Saving…' : (modelShareEnableAfterSave ? 'Save & select' : 'Save preferences')"></span>
+                                </button>
+                            </div>
+                        </section>
+                    </div>
+
                     <!-- Active Models -->
                     <div class="bg-white rounded-2xl border border-neutral-200 mb-8">
                         <div class="lg:hidden flex flex-col gap-2 px-4 py-4 bg-neutral-100 border-b border-neutral-200 rounded-t-2xl">

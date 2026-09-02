@@ -15,6 +15,7 @@ from ai2apps.http_security import (
 )
 from ai2apps.identity import (
     LOCAL_SESSION_COOKIE,
+    LOCAL_SESSION_LIFETIME,
     IdentityBindingError,
     RequestPrincipal,
     local_session_cookie_name,
@@ -29,6 +30,9 @@ class MemberHandoffExchangeRequest(BaseModel):
 class CoreBootstrapRequest(BaseModel):
     display_name: str = Field(alias="displayName", min_length=1, max_length=120)
     owner_password: SecretStr = Field(alias="ownerPassword", min_length=12, max_length=128)
+
+
+LOCAL_SESSION_MAX_AGE_SECONDS = int(LOCAL_SESSION_LIFETIME.total_seconds())
 
 
 def create_auth_router(
@@ -83,7 +87,7 @@ def create_auth_router(
         response.set_cookie(
             cookie_name,
             token,
-            max_age=12 * 60 * 60,
+            max_age=LOCAL_SESSION_MAX_AGE_SECONDS,
             httponly=True,
             secure=request.url.scheme == "https" or not loopback,
             samesite="strict",
@@ -288,6 +292,50 @@ def create_auth_router(
             "membershipEpoch": principal.membership_epoch,
             "isCore": principal.is_core,
             "authenticationType": principal.authentication_type,
+        }
+
+    @router.post("/session/refresh")
+    async def refresh_session(
+        request: Request,
+        response: Response,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        """Keep an active desktop device session alive without contacting Cloud."""
+
+        if has_browser_auth_cookie(request):
+            enforce_same_origin_cookie_request(request)
+        runtime = runtime_provider()
+        cookie_reader = (
+            None
+            if runtime is None
+            else getattr(runtime, "local_session_token_from_cookies", None)
+        )
+        token = (
+            cookie_reader(request.cookies)
+            if cookie_reader is not None
+            else request.cookies.get(LOCAL_SESSION_COOKIE)
+        )
+        refresher = (
+            None if runtime is None else getattr(runtime, "refresh_local_session", None)
+        )
+        refreshed = refresher(token) if refresher is not None else None
+        if refreshed is None:
+            return platform_error_response(
+                status_code=401,
+                code="local_session_required",
+                message="This Local session has expired. Sign in again.",
+                retryable=False,
+            )
+        refreshed_token, refreshed_principal, rotated = refreshed
+        if rotated:
+            establish_local_session(
+                request, response, refreshed_token, refreshed_principal
+            )
+        return {
+            "active": True,
+            "rotated": rotated,
+            "actorUserId": principal.actor_user_id,
+            "expiresInSeconds": LOCAL_SESSION_MAX_AGE_SECONDS,
         }
 
     @router.post("/logout", status_code=204)

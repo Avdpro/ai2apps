@@ -69,6 +69,34 @@ def test_schema_v6_seeds_a_durable_echo_service_and_tool(tmp_path):
         )
 
 
+def test_new_service_provider_supersedes_stale_running_instance(tmp_path):
+    runtime = _runtime(tmp_path)
+    service = runtime.services.ensure_service(
+        service_key="example.browser",
+        package_id="example.browser",
+        package_version="1.0.0",
+        display_name="Browser",
+        runtime_mode=ServiceRuntimeMode.IN_PROCESS,
+    )
+    old = runtime.services.ensure_instance(
+        service_id=service.id,
+        provider_key="test:browser-old",
+        status=ServiceInstanceStatus.RUNNING,
+    )
+    current = runtime.services.ensure_instance(
+        service_id=service.id,
+        provider_key="test:browser-current",
+        status=ServiceInstanceStatus.RUNNING,
+    )
+
+    assert runtime.services.get_instance_for_service(service.id).id == current.id
+    with runtime.database.connect() as connection:
+        stale = connection.execute(
+            "SELECT status FROM service_instances WHERE id = ?", (old.id,)
+        ).fetchone()
+    assert stale[0] == "stopped"
+
+
 def test_tool_context_derives_authoritative_actor_from_session(tmp_path):
     runtime = _runtime(tmp_path)
     identities = IdentityRepository(runtime.database)

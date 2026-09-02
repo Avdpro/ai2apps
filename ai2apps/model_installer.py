@@ -19,6 +19,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ai2apps.checkpoint_distribution import (
+    CheckpointConsentRequiredError,
+    require_checkpoint_license_consent,
+)
+from ai2apps.checkpoints import checkpoint_is_complete
 from ai2apps.shared_model_cache import (
     SharedModelReference,
     configured_shared_model_cache,
@@ -335,6 +340,11 @@ class InstallTask:
     progress: float = 0.0
     detail: str = ""
     error: str = ""
+    current_file: str = ""
+    bytes_completed: int = 0
+    bytes_total: int = 0
+    total_bytes_completed: int = 0
+    total_bytes_total: int = 0
     child_task_id: str | None = None
     created_at: float = field(default_factory=time.time)
     completed_at: float = 0.0
@@ -354,27 +364,15 @@ class InstallTask:
             "progress": round(self.progress, 1),
             "detail": self.detail,
             "error": self.error,
+            "current_file": self.current_file,
+            "bytes_completed": self.bytes_completed,
+            "bytes_total": self.bytes_total,
+            "total_bytes_completed": self.total_bytes_completed,
+            "total_bytes_total": self.total_bytes_total,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
             "cache_hit": self.cache_hit,
         }
-
-
-def checkpoint_is_complete(path: Path) -> bool:
-    """Return whether a local checkpoint view contains all indexed shards."""
-
-    if not (path / "config.json").is_file():
-        return False
-    index_path = path / "model.safetensors.index.json"
-    if index_path.is_file():
-        try:
-            weight_map = json.loads(index_path.read_text())["weight_map"]
-        except (KeyError, OSError, TypeError, json.JSONDecodeError):
-            return False
-        return bool(weight_map) and all(
-            (path / shard).is_file() for shard in set(weight_map.values())
-        )
-    return any(path.glob("*.safetensors"))
 
 
 def link_cached_snapshot(snapshot: Path, destination: Path) -> None:
@@ -1109,8 +1107,12 @@ class AI2AppsInstaller:
         hf_downloader: Any,
         package_recipes: tuple[dict[str, Any], ...] = (),
         on_ready: Any | None = None,
+        ms_downloader: Any | None = None,
+        checkpoint_acquisition: Any | None = None,
     ):
         self.hf_downloader = hf_downloader
+        self.ms_downloader = ms_downloader
+        self.checkpoint_acquisition = checkpoint_acquisition
         self.package_recipes = package_recipes
         self.on_ready = on_ready
         self.tasks: dict[str, InstallTask] = {}
@@ -1372,6 +1374,7 @@ class AI2AppsInstaller:
         memory_tier: str,
         token: str,
         storage_policy: str | None = None,
+        license_consents: list[dict[str, Any]] | None = None,
     ) -> InstallTask:
         recipe = self._recipe(model_id)
         source = next(
@@ -1396,6 +1399,9 @@ class AI2AppsInstaller:
                 f"{model_id} does not support storage policy: {storage_policy}"
             )
         if recipe.get("recipe") == "native":
+            consent_map = await self._native_license_consents(
+                recipe, license_consents or []
+            )
             task = InstallTask(
                 task_id=str(uuid.uuid4()),
                 model_id=model_id,
@@ -1407,7 +1413,7 @@ class AI2AppsInstaller:
             )
             self.tasks[task.task_id] = task
             self._runners[task.task_id] = asyncio.create_task(
-                self._run_native(task, recipe, token)
+                self._run_native(task, recipe, token, consent_map)
             )
             return task
 
@@ -1431,8 +1437,53 @@ class AI2AppsInstaller:
         )
         return task
 
+    async def _native_license_consents(
+        self,
+        recipe: dict[str, Any],
+        consents: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        consent_map = {
+            item.get("distributionId"): item
+            for item in consents
+            if isinstance(item, dict) and isinstance(item.get("distributionId"), str)
+        }
+        registry = (
+            None
+            if self.checkpoint_acquisition is None
+            else getattr(self.checkpoint_acquisition, "registry", None)
+        )
+        if registry is None:
+            return consent_map
+        recipes = {
+            item["id"]: item for item in (self.package_recipes or self._recipes())
+        }
+        candidates = [recipe]
+        for required_id in recipe.get("required_model_ids", ()):
+            required = recipes.get(required_id)
+            if required is not None:
+                candidates.append(required)
+        challenges: list[dict[str, Any]] = []
+        for candidate in candidates:
+            distribution_id = candidate.get("distribution_id")
+            if not isinstance(distribution_id, str):
+                continue
+            manifest = await registry.distribution(distribution_id)
+            try:
+                require_checkpoint_license_consent(
+                    manifest, consent_map.get(distribution_id)
+                )
+            except CheckpointConsentRequiredError as error:
+                challenges.extend(error.challenges)
+        if challenges:
+            raise CheckpointConsentRequiredError(tuple(challenges))
+        return consent_map
+
     async def _run_native(
-        self, task: InstallTask, recipe: dict[str, Any], token: str
+        self,
+        task: InstallTask,
+        recipe: dict[str, Any],
+        token: str,
+        license_consents: dict[str, dict[str, Any]],
     ) -> None:
         """Download a native checkpoint and its required internal checkpoints."""
 
@@ -1450,12 +1501,20 @@ class AI2AppsInstaller:
                             f"required native model is unavailable: {required_id}"
                         )
                     await self._ensure_native_checkpoint(
-                        task, required, token, dependency=True
+                        task,
+                        required,
+                        token,
+                        dependency=True,
+                        license_consents=license_consents,
                     )
                     if task.status == InstallStatus.CANCELLED:
                         return
                 task.cache_hit = await self._ensure_native_checkpoint(
-                    task, recipe, token, dependency=False
+                    task,
+                    recipe,
+                    token,
+                    dependency=False,
+                    license_consents=license_consents,
                 )
                 if task.status == InstallStatus.CANCELLED:
                     return
@@ -1482,6 +1541,7 @@ class AI2AppsInstaller:
         token: str,
         *,
         dependency: bool,
+        license_consents: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """Ensure one pinned native checkpoint exists, then activate its Worker."""
 
@@ -1499,6 +1559,85 @@ class AI2AppsInstaller:
             repo_id=repo_id,
             revision=revision,
         )
+        distribution_id = recipe.get("distribution_id")
+        if distribution_id is not None:
+            if self.checkpoint_acquisition is None:
+                raise RuntimeError(
+                    "trusted checkpoint acquisition is unavailable for this Package"
+                )
+            task.phase = f"Downloading verified distribution for {label}"
+            hub_cache = ManagedServiceSupervisor._huggingface_hub_cache()
+            legacy_snapshot = (
+                hub_cache
+                / ("models--" + repo_id.replace("/", "--"))
+                / "snapshots"
+                / revision
+            )
+            if not (
+                legacy_snapshot.is_dir()
+                and ManagedServiceSupervisor._checkpoint_is_complete(
+                    legacy_snapshot
+                )
+            ):
+                imported = await asyncio.to_thread(
+                    import_local_checkpoint_to_hf_cache,
+                    source_dir,
+                    repo_id,
+                    revision,
+                    hub_cache,
+                )
+                if imported is not None:
+                    legacy_snapshot = imported
+            acquire_options: dict[str, Any] = {"hf_token": token or None}
+            if license_consents and distribution_id in license_consents:
+                acquire_options["license_consent"] = license_consents[distribution_id]
+
+            def checkpoint_progress(value: dict[str, Any]) -> None:
+                task.current_file = str(value.get("fileName") or "")
+                task.bytes_completed = int(value.get("bytesCompleted") or 0)
+                task.bytes_total = int(value.get("bytesTotal") or 0)
+                task.total_bytes_completed = int(
+                    value.get("totalBytesCompleted") or task.bytes_completed
+                )
+                task.total_bytes_total = int(
+                    value.get("totalBytesTotal") or task.bytes_total
+                )
+                task.progress = float(value.get("percent") or 0)
+                task.detail = f"Downloading {task.current_file} for {label}"
+
+            acquire_options["progress"] = checkpoint_progress
+            if (
+                legacy_snapshot.is_dir()
+                and ManagedServiceSupervisor._checkpoint_is_complete(legacy_snapshot)
+            ):
+                acquire_options["local_snapshot"] = legacy_snapshot
+                task.phase = f"Verifying existing checkpoint for {label}"
+            acquired = await self.checkpoint_acquisition.acquire(
+                distribution_id, **acquire_options
+            )
+            manifest = acquired.manifest
+            if (
+                manifest.distribution_id != distribution_id
+                or manifest.model_id != recipe["id"]
+                or manifest.repo_id != repo_id
+                or manifest.revision != revision
+            ):
+                raise RuntimeError(
+                    "Registry checkpoint distribution does not match the Package contract"
+                )
+            await asyncio.to_thread(
+                self.checkpoint_acquisition.materialize_worker_snapshot,
+                acquired,
+                hub_cache,
+            )
+            task.detail = (
+                f"Reused verified checkpoint for {label}"
+                if acquired.cache_hit
+                else f"Verified checkpoint distribution for {label}"
+            )
+            if self.on_ready is not None:
+                await self.on_ready(recipe)
+            return acquired.cache_hit
         imported = await asyncio.to_thread(
             import_local_checkpoint_to_hf_cache,
             source_dir,
@@ -1508,12 +1647,92 @@ class AI2AppsInstaller:
         )
         cache_hit = imported is not None
         if not cache_hit:
+            mirrors = source.get("mirrors", ())
+            preferred_modelscope = next(
+                (
+                    mirror for mirror in mirrors
+                    if isinstance(mirror, dict)
+                    and mirror.get("provider") == "modelscope"
+                    and mirror.get("preferred") is True
+                ),
+                None,
+            )
+            modelscope_prefetched = False
+            if preferred_modelscope is not None and not checkpoint_is_complete(source_dir):
+                task.phase = f"Downloading {label} from ModelScope"
+                if self.ms_downloader is not None:
+                    ms_child = await self.ms_downloader.start_download(
+                        preferred_modelscope["repo_id"],
+                        "",
+                        revision=preferred_modelscope.get("revision", "master"),
+                        target_repo_id=repo_id,
+                        allow_patterns=preferred_modelscope.get(
+                            "allow_patterns", ()
+                        ),
+                        notify_complete=False,
+                    )
+                    task.child_task_id = ms_child.task_id
+                    while ms_child.status.value in {"pending", "downloading"}:
+                        if task.task_id in self._cancelled:
+                            await self.ms_downloader.cancel_download(ms_child.task_id)
+                            task.status = InstallStatus.CANCELLED
+                            task.phase = "Cancelled"
+                            return False
+                        task.progress = ms_child.progress
+                        task.detail = (
+                            f"{label}: {ms_child.downloaded_size} / "
+                            f"{ms_child.total_size} bytes from ModelScope"
+                        )
+                        await asyncio.sleep(0.5)
+                    modelscope_prefetched = (
+                        ms_child.status.value == "completed"
+                        and checkpoint_is_complete(source_dir)
+                    )
+                else:
+                    # Standalone maintenance scripts may construct the
+                    # installer without the server-owned task manager.
+                    def prefetch_modelscope() -> bool:
+                        try:
+                            from modelscope import (
+                                snapshot_download as ms_snapshot_download,
+                            )
+
+                            source_dir.parent.mkdir(parents=True, exist_ok=True)
+                            ms_snapshot_download(
+                                preferred_modelscope["repo_id"],
+                                revision=preferred_modelscope.get(
+                                    "revision", "master"
+                                ),
+                                local_dir=str(source_dir),
+                                allow_patterns=list(
+                                    preferred_modelscope.get(
+                                        "allow_patterns", ()
+                                    )
+                                )
+                                or None,
+                                max_workers=2,
+                            )
+                            return checkpoint_is_complete(source_dir)
+                        except Exception:
+                            return False
+
+                    modelscope_prefetched = await asyncio.to_thread(
+                        prefetch_modelscope
+                    )
+                if modelscope_prefetched:
+                    task.detail = (
+                        f"Downloaded {label} from ModelScope; verifying pinned "
+                        "Hugging Face revision"
+                    )
             child = await self.hf_downloader.start_download(
                 repo_id,
                 token,
                 revision=revision,
                 notify_complete=False,
-                cache_mode=True,
+                # A ModelScope checkout is reconciled in place by the pinned
+                # Hugging Face revision. Identical files are reused; the HF
+                # local-dir tree provides immutable per-file verification.
+                cache_mode=not modelscope_prefetched,
             )
             task.child_task_id = child.task_id
             while child.status.value in {"pending", "downloading"}:
@@ -1530,6 +1749,18 @@ class AI2AppsInstaller:
             if child.status.value != "completed":
                 raise RuntimeError(child.error or f"download {child.status.value}")
             cache_hit = bool(getattr(child, "cache_hit", False))
+            if modelscope_prefetched:
+                imported = await asyncio.to_thread(
+                    import_local_checkpoint_to_hf_cache,
+                    source_dir,
+                    repo_id,
+                    revision,
+                    ManagedServiceSupervisor._huggingface_hub_cache(),
+                )
+                if imported is None:
+                    raise RuntimeError(
+                        "ModelScope checkpoint could not be verified against the pinned revision"
+                    )
         else:
             task.detail = f"Reused existing pinned checkpoint for {label}"
         if self.on_ready is not None:
@@ -1579,13 +1810,33 @@ class AI2AppsInstaller:
                         )
                     )
                 else:
-                    task.cache_hit = await asyncio.to_thread(
-                        self._prepare_cached_checkpoint,
+                    # HF local-dir and ModelScope downloads already present in
+                    # the instance model directory carry a pinned HF tree. Import
+                    # that verified checkout into the instance Hub cache without
+                    # copying the checkpoint, then record it as this recipe's
+                    # source. This avoids an unnecessary network download and
+                    # makes externally completed managed downloads immediately
+                    # usable by Cache-MoE preparation.
+                    from ai2apps.packages.supervisor import ManagedServiceSupervisor
+
+                    imported = await asyncio.to_thread(
+                        import_local_checkpoint_to_hf_cache,
+                        source_dir,
                         task.repo_id,
                         task.revision,
-                        token,
-                        source_dir,
+                        ManagedServiceSupervisor._huggingface_hub_cache(),
                     )
+                    if imported is not None and checkpoint_is_complete(source_dir):
+                        self._write_source_record(task, source_dir)
+                        task.cache_hit = True
+                    else:
+                        task.cache_hit = await asyncio.to_thread(
+                            self._prepare_cached_checkpoint,
+                            task.repo_id,
+                            task.revision,
+                            token,
+                            source_dir,
+                        )
                 if task.cache_hit:
                     task.progress = 55.0
                     task.detail = (
@@ -1623,18 +1874,136 @@ class AI2AppsInstaller:
                 task.phase = "Indexing checkpoint"
                 task.progress = 56.0
                 config = json.loads((source_dir / "config.json").read_text())
-                is_qwen = recipe["family"] == "qwen3_6"
-                if is_qwen:
-                    offset_manifest = await asyncio.to_thread(
-                        build_qwen36_offset_manifest,
-                        source_dir,
-                        work_dir / "offsets-qwen36",
-                    )
+                family = recipe["family"]
+                is_qwen36 = family == "qwen3_6"
+                is_qwen4 = family == "qwen4_exp"
+                is_glm5 = family == "glm5_next"
+                is_qwen = is_qwen36 or is_qwen4
+                qwen36_direct = is_qwen36 and str(
+                    recipe.get("conversion", {}).get("variant", "")
+                ).endswith("fused-direct-v3")
+                qwen36_discovered = None
+                qwen4_discovered = None
+                glm5_discovered = None
+                if is_qwen36:
                     text_config = config.get("text_config") or {}
                     num_layers = int(text_config["num_hidden_layers"])
                     routed_layers = list(range(num_layers))
-                    split_store_dir = work_dir / "expert-store-split"
-                    store_dir = work_dir / "expert-store-fused"
+                    if qwen36_direct:
+                        quantization = (
+                            config.get("quantization")
+                            or config.get("quantization_config")
+                            or {}
+                        )
+                        if (
+                            config.get("model_type") != "qwen3_5_moe"
+                            or int(text_config.get("num_experts", 0)) != 256
+                            or int(quantization.get("bits", 0)) != 4
+                            or quantization.get("mode") != "affine"
+                        ):
+                            raise ValueError(
+                                "AI2Apps Qwen3.6 direct recipe requires "
+                                "qwen3_5_moe with 256 experts and affine Q4"
+                            )
+                        from omlx.cache.qwen36_expert_store import (
+                            discover_qwen36_expert_rows,
+                        )
+
+                        qwen36_discovered = await asyncio.to_thread(
+                            discover_qwen36_expert_rows, source_dir
+                        )
+                        if set(qwen36_discovered) != set(routed_layers):
+                            raise ValueError(
+                                "Qwen3.6 routed expert layers are incomplete"
+                            )
+                        offset_manifest = None
+                        split_store_dir = None
+                        store_dir = work_dir / "expert-store-fused-direct-v3"
+                    else:
+                        offset_manifest = await asyncio.to_thread(
+                            build_qwen36_offset_manifest,
+                            source_dir,
+                            work_dir / "offsets-qwen36",
+                        )
+                        split_store_dir = work_dir / "expert-store-split"
+                        store_dir = work_dir / "expert-store-fused"
+                elif is_qwen4:
+                    if task.storage_policy != "keep_source":
+                        raise ValueError(
+                            "Qwen4-Exp 0.1 preparation supports keep_source only"
+                        )
+                    if config.get("model_type") != "qwen4_exp":
+                        raise ValueError(
+                            "AI2Apps Qwen4 recipe expects a qwen4_exp checkpoint"
+                        )
+                    text_config = config.get("text_config") or {}
+                    num_layers = int(text_config["num_hidden_layers"])
+                    num_experts = int(text_config["num_experts"])
+                    quantization = (
+                        config.get("quantization")
+                        or config.get("quantization_config")
+                        or {}
+                    )
+                    if (
+                        num_experts != 512
+                        or int(quantization.get("bits", 0)) != 4
+                        or quantization.get("mode") != "affine"
+                    ):
+                        raise ValueError(
+                            "AI2Apps Qwen4 recipe requires 512 experts and affine Q4"
+                        )
+                    from omlx.cache.qwen4_expert_store import (
+                        discover_qwen4_expert_rows,
+                    )
+
+                    qwen4_discovered = await asyncio.to_thread(
+                        discover_qwen4_expert_rows, source_dir
+                    )
+                    routed_layers = list(range(num_layers))
+                    if set(qwen4_discovered) != set(routed_layers):
+                        raise ValueError("Qwen4 routed expert layers are incomplete")
+                    offset_manifest = None
+                    split_store_dir = None
+                    store_dir = work_dir / "expert-store-qwen4-fused"
+                elif is_glm5:
+                    if task.storage_policy != "keep_source":
+                        raise ValueError(
+                            "GLM-5.3 0.1 preparation supports keep_source only"
+                        )
+                    if config.get("model_type") != "glm5_next":
+                        raise ValueError(
+                            "AI2Apps GLM-5 recipe expects a glm5_next checkpoint"
+                        )
+                    text_config = config.get("text_config") or {}
+                    num_layers = int(text_config["num_hidden_layers"])
+                    num_experts = int(text_config["n_routed_experts"])
+                    quantization = (
+                        config.get("quantization")
+                        or config.get("quantization_config")
+                        or {}
+                    )
+                    if (
+                        num_experts != 288
+                        or int(quantization.get("bits", 0)) != 4
+                        or quantization.get("mode") != "affine"
+                    ):
+                        raise ValueError(
+                            "AI2Apps GLM-5 recipe requires 288 experts and affine Q4"
+                        )
+                    from omlx.cache.glm5_expert_store import discover_glm5_experts
+
+                    glm5_discovered = await asyncio.to_thread(
+                        discover_glm5_experts, source_dir
+                    )
+                    routed_layers = sorted(glm5_discovered)
+                    expected_layers = list(
+                        range(int(text_config.get("first_k_dense_replace", 0)), num_layers)
+                    )
+                    if routed_layers != expected_layers:
+                        raise ValueError("GLM-5 routed expert layers are incomplete")
+                    offset_manifest = None
+                    split_store_dir = None
+                    store_dir = work_dir / "expert-store-glm5-fused-v2"
                 else:
                     if resumed_transition is not None:
                         transition = json.loads(resumed_transition.read_text())
@@ -1653,7 +2022,7 @@ class AI2AppsInstaller:
                     split_store_dir = None
                     store_dir = work_dir / "expert-store"
                 transition_path = resumed_transition
-                if task.storage_policy != "keep_source" and not is_qwen:
+                if task.storage_policy != "keep_source" and not is_qwen and not is_glm5:
                     if transition_path is None:
                         backbone_dir = work_dir / "backbone-staging"
                         task.phase = "Preparing compact backbone"
@@ -1708,7 +2077,7 @@ class AI2AppsInstaller:
                 )
                 split_completed_layers = (
                     set(routed_layers)
-                    if legacy_complete and is_qwen
+                    if legacy_complete and is_qwen36
                     else {
                         int(layer)
                         for layer in previous_conversion.get(
@@ -1762,7 +2131,20 @@ class AI2AppsInstaller:
                     if not valid:
                         completed_layers.discard(layer)
                     if not valid:
-                        if is_qwen:
+                        if qwen36_direct:
+                            from omlx.cache.qwen36_expert_store import (
+                                create_qwen36_direct_store,
+                            )
+
+                            await asyncio.to_thread(
+                                create_qwen36_direct_store,
+                                source_dir,
+                                layer,
+                                output,
+                                force=True,
+                                discovered=qwen36_discovered,
+                            )
+                        elif is_qwen36:
                             from omlx.patches.qwen3_6_flesh.checkpoint import (
                                 create_qwen36_fused_store,
                             )
@@ -1798,6 +2180,32 @@ class AI2AppsInstaller:
                                 split_output,
                                 output,
                                 force=True,
+                            )
+                        elif is_qwen4:
+                            from omlx.cache.qwen4_expert_store import (
+                                create_qwen4_expert_major_store,
+                            )
+
+                            await asyncio.to_thread(
+                                create_qwen4_expert_major_store,
+                                source_dir,
+                                layer,
+                                output,
+                                force=True,
+                                discovered=qwen4_discovered,
+                            )
+                        elif is_glm5:
+                            from omlx.cache.glm5_expert_store import (
+                                create_glm5_expert_major_store,
+                            )
+
+                            await asyncio.to_thread(
+                                create_glm5_expert_major_store,
+                                source_dir,
+                                layer,
+                                output,
+                                force=True,
+                                discovered=glm5_discovered,
                             )
                         else:
                             await asyncio.to_thread(
@@ -1902,9 +2310,23 @@ class AI2AppsInstaller:
                         "version": scope_pack["pack_version"],
                         "sha256": scope_pack["profile"]["sha256"],
                     }
-                if is_qwen:
+                if is_qwen36:
                     install_manifest["arena_tail_slots"] = int(
                         recipe.get("arena_tail_slots", 24)
+                    )
+                elif is_qwen4:
+                    install_manifest["hot_slots"] = int(
+                        recipe.get("hot_slots", 10)
+                    )
+                elif is_glm5:
+                    install_manifest["dynamic_slots"] = int(
+                        recipe.get("dynamic_slots", 96)
+                    )
+                    install_manifest["hot_slots"] = int(
+                        recipe.get("hot_slots", 16)
+                    )
+                    install_manifest["vision_l1_reserve_slots"] = int(
+                        recipe.get("vision_l1_reserve_slots", 16)
                     )
                 manifest_path = source_dir / _MODEL_MANIFEST
                 partial = manifest_path.with_suffix(".json.partial")
@@ -2000,16 +2422,32 @@ class AI2AppsInstaller:
         routed_layer_count: int,
         family: str = "deepseek_v4",
     ) -> None:
+        from omlx.cache.moe_expert_store import ExpertMajorStore
+
         if not checkpoint_is_complete(source_dir):
             raise ValueError("prepared checkpoint is incomplete")
         profile = json.loads(scope_profile.read_text())
         if family == "qwen3_6":
-            from omlx.cache.moe_expert_store import ExpertMajorStore
             from omlx.patches.qwen3_6_flesh.scope_policy import Qwen36ScopeCatalog
 
             catalog = Qwen36ScopeCatalog.load(scope_profile)
             if scope_name not in catalog.scope_ids:
                 raise ValueError("Qwen Scope Pack does not contain the default scope")
+        elif family == "qwen4_exp":
+            if (
+                profile.get("format")
+                != "omlx-qwen38-next-runtime-scope-profile"
+                or int(profile.get("num_experts", 0)) != 512
+                or scope_name not in profile.get("scopes", {})
+            ):
+                raise ValueError("unsupported Qwen4 Scope Pack")
+        elif family == "glm5_next":
+            if (
+                profile.get("format") != "omlx-glm5-dynamic-scope-profile"
+                or int(profile.get("num_experts", 0)) != 288
+                or scope_name not in profile.get("scopes", {})
+            ):
+                raise ValueError("unsupported GLM-5 Scope Pack")
         else:
             if profile.get("format") != "dmoe-deepseek-tiered-policy":
                 raise ValueError("unsupported AI2Apps Scope Pack")
@@ -2018,8 +2456,9 @@ class AI2AppsInstaller:
         manifest = json.loads((store_dir / "manifest.json").read_text())
         if len(manifest.get("layers", {})) != routed_layer_count:
             raise ValueError("expert store layer count mismatch")
-        if family == "qwen3_6":
-            first = store_dir / manifest["layers"]["0"]["file"]
+        if family in {"qwen3_6", "qwen4_exp", "glm5_next"}:
+            first_layer = min(int(value) for value in manifest["layers"])
+            first = store_dir / manifest["layers"][str(first_layer)]["file"]
             with ExpertMajorStore(first) as store:
                 names = {item.name for item in store.tensors}
             if "gate_up_proj.weight" not in names:
@@ -2042,7 +2481,12 @@ class AI2AppsInstaller:
         task.phase = "Cancelled"
         return True
 
-    async def retry(self, task_id: str, token: str) -> InstallTask:
+    async def retry(
+        self,
+        task_id: str,
+        token: str,
+        license_consents: list[dict[str, Any]] | None = None,
+    ) -> InstallTask:
         old = self.tasks.get(task_id)
         if old is None or old.status not in {InstallStatus.FAILED, InstallStatus.CANCELLED}:
             raise ValueError("task is not retryable")
@@ -2052,6 +2496,7 @@ class AI2AppsInstaller:
             old.memory_tier,
             token,
             old.storage_policy,
+            license_consents,
         )
 
     def get_tasks(self) -> list[dict[str, Any]]:

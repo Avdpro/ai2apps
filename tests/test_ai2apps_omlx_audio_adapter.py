@@ -75,6 +75,34 @@ def _context(
     )
 
 
+def _context_with_tts_dependency(tmp_path: Path) -> ModelWorkerContext:
+    context = _context(tmp_path, "example.audio/tts")
+    dependency = tmp_path / "s3tokenizer"
+    dependency.mkdir()
+    model = dict(context.models[0])
+    model["metadata"] = {
+        "required_model_ids": ["example.audio/s3tokenizer-v3"]
+    }
+    return ModelWorkerContext(
+        service_id=context.service_id,
+        package_root=context.package_root,
+        data_root=context.data_root,
+        models=(model,),
+        checkpoints=context.checkpoints
+        + (
+            ModelWorkerCheckpoint(
+                model_id="example.audio/s3tokenizer-v3",
+                upstream_id="mlx-community/S3TokenizerV3",
+                provider="huggingface",
+                repo_id="mlx-community/S3TokenizerV3",
+                revision="b" * 40,
+                path=dependency,
+                preparation={"recipe": "native"},
+            ),
+        ),
+    )
+
+
 def _wav_bytes() -> bytes:
     output = io.BytesIO()
     with wave.open(output, "wb") as target:
@@ -122,6 +150,14 @@ class _TTSEngine:
 class _TTSAdapter(OmlxTTSAdapter):
     async def create_engine(self, checkpoint, runtime_options=None):
         return _TTSEngine()
+
+
+def test_omlx_tts_adapter_resolves_only_declared_dependency_paths(tmp_path):
+    context = _context_with_tts_dependency(tmp_path)
+    adapter = OmlxTTSAdapter(context)
+    assert adapter.dependency_checkpoint_paths(context.checkpoints[0]) == {
+        "mlx-community/S3TokenizerV3": str(context.checkpoints[1].path)
+    }
 
 
 @pytest.mark.asyncio
@@ -297,6 +333,38 @@ async def test_omlx_tts_adapter_authorizes_reference_audio_part(tmp_path):
     )
     assert adapter._engine.kwargs["ref_audio"] == str(reference)
     assert adapter._engine.kwargs["ref_text"] == "参考文本"
+
+
+@pytest.mark.asyncio
+async def test_omlx_tts_adapter_allows_optional_reference_transcript(tmp_path):
+    context = _context(tmp_path, "example.audio/tts")
+    context.models[0]["audio_capabilities"]["tts"]["voice_profiles"] = {
+        "mode": "native",
+        "reference_audio": True,
+        "reference_transcript": "optional",
+    }
+    reference = tmp_path / "reference.wav"
+    reference.write_bytes(_wav_bytes())
+    adapter = _TTSAdapter(context)
+    await adapter.invoke(
+        ModelWorkerRequest(
+            operation="audio_speech",
+            request_id="request-reference-no-transcript",
+            payload={"model": "upstream/audio", "input": "你好"},
+            parts={
+                "reference_audio": ModelWorkerPart(
+                    name="reference_audio",
+                    path=reference,
+                    media_type="audio/wav",
+                    filename="reference.wav",
+                    size=reference.stat().st_size,
+                    sha256="c" * 64,
+                )
+            },
+        )
+    )
+    assert adapter._engine.kwargs["ref_audio"] == str(reference)
+    assert adapter._engine.kwargs["ref_text"] is None
 
 
 @pytest.mark.asyncio

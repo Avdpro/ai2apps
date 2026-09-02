@@ -1,7 +1,7 @@
 # AI2Apps Local Knowledge 与 RAG 开发计划
 
-Status: Implementation in progress v0.6
-Last updated: 2026-08-22
+Status: P1.1 hardening in progress v0.9
+Last updated: 2026-08-27
 Architecture source: [Local Knowledge and RAG Architecture](ai2apps-local-knowledge-rag-architecture.md)
 
 ## 1. 实施原则
@@ -62,6 +62,7 @@ Runtime 原生 payload 必须经过 Developer ID 签名、Apple 公证/staple �
 | Package MVP 时序 | `.ai2knowledge` 在 Knowledge Core 之后作为独立 Release B；不阻塞 K1–K5，但其 schema 扩展点在 K1 预留 | **已接受** |
 | 高风险模块 | v1 Package contract 支持 risk metadata，但官方健康/药品模块发布必须等审核、时效和 stale policy gate 完成 | 待 owner 接受 |
 | 首个 semantic backend | 只做隔离 Service/Runtime 形态的 LanceDB spike；不通过则 Release A 保持 FTS-only，不延期 Knowledge Core | 文档已定 |
+| 增强能力交付 | Knowledge App/FTS5 常驻；LanceDB RAG Runtime、Embedding Provider/Model、OCR/VLM/STT/rerank 统一通过 ACPF 按操作安装，不在 App 打开时下载 | **已接受** |
 | Runtime 安全边界 | Core Local 不 import installable Package code；原生 Runtime 需 Developer ID、公证/staple、Gatekeeper，执行仍须 Worker 隔离 | **已接受** |
 | 语音发布隔离 | RAG 先旁路开发独立 Core/测试，不注册 Router/System App、不改语音发布依赖；语音版本发布后再 feature-gated 接入 | **已接受** |
 | 目标平台 | 首先保证 macOS arm64 本地发行，同时 schema/API 不绑定平台；Release B 前验证 Linux arm64/x86_64 | 待 owner 接受 |
@@ -260,6 +261,71 @@ ai2apps/knowledge/sources/
 Facet 不能伪造；用户 Tag 和建议来源显示正确；未保存的 private Chat 不会因使用
 Knowledge Ask 被自动持久化。
 
+P1 实施状态（2026-08-26）：已完成可运行的首个纵切。Knowledge App 已加入 App-owned Ask
+界面、知识桶多选、现有 Chat Model 调用、FTS/Hybrid evidence 构建、无证据拒答、持久化问答
+历史和可打开 citation；Chat 已加入 message/turn 保存面板，并由服务端从已认证 Chat Session
+读取正文及可选附件，客户端不能伪造可信 Session 来源。URL 导入增加 public-only SSRF gate，
+文件导入复用 Documents parser 并保留 PDF page、PPT slide、XLSX/CSV cell 与代码 section
+位置。批量文件导入建立 durable job/entry 状态，支持 partial 结果；LanceDB 派生索引支持显式
+reset/rebuild、持久进度和错误重试。Search 已支持 bucket、kind、Tag、source App/Session 与
+source time window 的权威层过滤。随后 P1.1/P1.2 已完成 selection/link/Artifact、可恢复后台
+dispatcher、Job 控制、Tag 建议治理及 model-free Release A 安全/Eval 门槛，细节如下。
+
+P1.1 收口状态（2026-08-26）：文件上传现在先写入有 hash/size/media type 的 durable staging，
+API 返回后由有界后台 dispatcher 解析；Runtime 重启会把 running entry 恢复为 queued，已完成
+entry 不重复执行，失败 entry 保留 staging 并可从 Knowledge App 最近导入列表重试。Chat
+保存增加跨消息可见文字 selection、经过 authenticated Chat 内容校验的 public link，以及经过
+Session Workspace 校验的 Artifact；system/tool/隐藏消息与 `<think>` reasoning 不进入知识正文。
+新增 `benchmarks/knowledge/eval_cases.json` 作为第一版 model-free golden fixture，并提供：
+
+```bash
+.venv/bin/python benchmarks/knowledge/evaluate_retrieval.py
+```
+
+P1.2 收口状态（2026-08-26）：durable import Job 已增加独立于执行状态的持久
+`active/paused/cancelled` 控制面，支持 Knowledge App 暂停、继续、取消，Runtime 重启只恢复
+active Job；取消会停止领取新 entry 并清理未处理 staging，正在解析的单个 entry 则安全收尾。
+Tag 建议已从 user Tag 权威表分离为 `suggested → confirmed/rejected` 生命周期，记录 producer、
+confidence 和 evidence；只有用户确认后才创建正式 user assignment，拒绝历史不会伪装成用户
+Tag。当前首个 producer 为保守的 `knowledge.metadata/v1`，后续 RAG/VLM Runtime 可写入同一
+治理层而不改变 UI/API 语义。
+
+Golden fixture 现固定输出 Recall@K、MRR、retrieval citation precision、no-answer accuracy、
+answer citation precision/coverage、claim support 与 citation authorization accuracy，并加入恶意
+指令文档和另一用户 private 文档。全部 model-free P1 floor 由自动化测试锁定；剩余质量工作是
+在具备可用生成 Model 的发布环境加入真实 answer citation/no-answer Eval，而不是让单元测试
+隐式下载或启动模型。
+
+P1.3 Release A gate 状态（2026-08-26）：新增可留存 JSON evidence 的一键门禁：
+
+```bash
+.venv/bin/python scripts/acceptance_knowledge_release_a.py \
+  --output artifacts/knowledge/release-a.json
+```
+
+该命令运行 model-free quality floors、Knowledge 聚焦权限/删除/恢复/SSRF/citation 测试，并将
+源码 commit、dirty 状态、fixture SHA-256 和环境写入报告。真实生成模型不会被隐式发现、下载或
+启动；发布环境须显式提供已运行的 OpenAI-compatible endpoint 和 model：
+
+```bash
+.venv/bin/python scripts/acceptance_knowledge_release_a.py \
+  --live-endpoint http://127.0.0.1:8000/v1 \
+  --live-model <model-id> \
+  --require-live \
+  --output artifacts/knowledge/release-a-live.json
+```
+
+如 endpoint 需要凭据，只从 `AI2APPS_EVAL_API_KEY` 环境变量读取；URL 禁止内嵌 credential、
+query 或 fragment，报告不记录密钥。Live cases 覆盖正常有据回答、恶意 evidence 指令隔离、
+证据不足拒答和冲突证据披露，并使用生产 Ask 相同的 system prompt。证据不足协议固定为
+`INSUFFICIENT_EVIDENCE` 且不得引用，前端会移除协议前缀后保存明确拒答。网页导入除每次 DNS/
+redirect public-only 校验外，连接建立后还校验实际 peer IP，阻止 DNS rebinding 到 loopback、
+private 或 link-local 地址。
+
+Ask 持久化端不信任浏览器提交的 citation：服务端重新执行 Item 可见性、所选 bucket membership、
+revision/title/URI canonicalization 和 chunk location 校验，并要求回答中的每个 `[K#]` 与引用
+集合严格对应；未引用的检索候选不会作为回答来源保存。
+
 ### K5M：可信 Knowledge Module 与 Discovery 安装
 
 目标：让知识集合成为可从 Registry/Discovery 获取、验证、安装、升级和 rollback 的
@@ -319,6 +385,12 @@ Overlay 稳定；卸载后用户可选择保留 Overlay；模块可在 FTS-only 
 目标：验证 LanceDB 是否适合作为可选、可重建、进程隔离的 vector backend Service。本阶段
 不把它写入正式 schema authority，不默认安装，也不允许其原生模块加载进 Core Local。
 
+交付形态冻结为 `ai2apps/runtime-knowledge-rag` 原生 Runtime Provider 加
+`ai2apps/service-knowledge-lancedb` thin Worker Package。Knowledge App 只保留
+系统入口和 FTS5；安装、升级、卸载、重启恢复与健康验证必须走 ACPF，不允许 Knowledge UI
+直接下载 wheel 或启动未登记进程。外层包、Worker 与 ACPF 生命周期契约见
+[Knowledge RAG Runtime Package Contract](ai2apps-knowledge-rag-runtime-package-contract.md)。
+
 产物：
 
 ```text
@@ -355,6 +427,13 @@ docs/ai2apps-knowledge-vector-backend-evaluation.md
 若不通过：仅发布 FTS5 v1，同时启动 K6B 对 `sqlite-vec` 的相同验证，不为赶进度改变
 Knowledge API。
 
+实施状态（2026-08-26）：macOS arm64 MVP spike 已通过真实 Package 安装与端到端 smoke。
+专用 `knowledge-rag` Runtime 层约 676 MB 解包、开发包约 194 MB 压缩；隔离 Worker 已验证
+LanceDB upsert、ACL prefilter、search、delete 与 count。Pinned multilingual E5 Small checkpoint
+通过 MLX 生成 384 维 embedding，Knowledge change-log 可完成增量索引，检索可在 FTS5、vector
+与 RRF hybrid 间工作，并在 Service 故障时返回带诊断信息的 FTS5 结果。跨平台、100k/1M
+性能矩阵、正式 Developer ID/公证与干净 consumer Mac 仍属于 Release C 发布门槛。
+
 ### K6B：VectorIndexBackend 与 semantic capability
 
 目标：在 spike 通过后接入可选 semantic search。
@@ -365,7 +444,11 @@ Knowledge API。
   `RetrievalStrategy`、`RerankerProvider` protocol 和 capability descriptor；
 - 实现 generation create/upsert/delete/search/activate/drop/health；
 - 通过 Model Runtime Service 批量 embedding，保存 model digest/dimension；
-- 增加用户同意的安装、下载、取消、恢复和卸载 UI；
+- 将 ACPF 从固定模型三段式扩展为通用 component stack，使纯 Service Runtime、可复用 Runtime、
+  Provider、Checkpoint、派生索引和 verify step 使用同一个 Provisioning Session；
+- 新增 `knowledge.semantic_retrieval` capability profile：RAG Runtime Provider + LanceDB
+  Vector Service + Embedding Provider/Model；打开 Knowledge 只 probe，用户触发语义操作后才 ensure；
+- 增加 ACPF 统一的用户同意、下载、取消、恢复和卸载 UI；
 - 增加 semantic feature state：disabled/installing/indexing/ready/degraded；
 - Runtime 缺失、不兼容、签名失败或 Worker 不可用时 fail closed 到 FTS-only；
 - FTS/vector 并行召回和 RRF；
@@ -374,8 +457,23 @@ Knowledge API。
 - embedding 模型切换 shadow generation；
 - backend 不可用自动降级 lexical，并在 UI 明示。
 
-验收：未安装、安装中、ready、损坏、卸载五种状态均不破坏基础 Knowledge；混合检索
-在固定 Eval 集上显著优于 FTS-only，且无 ownership regression。
+验收：未安装、安装中、ready、损坏、卸载五种状态均不破坏基础 Knowledge；打开 Knowledge
+不会创建 Provisioning Session 或下载 Package；只有语义操作的显式 ensure/confirm 才产生
+副作用；混合检索在固定 Eval 集上显著优于 FTS-only，且无 ownership regression。
+
+P0 状态（2026-08-27）：Backend/Embedding protocol、通用 ACPF component stack、Package health、
+增量索引、FTS/vector RRF、SQLite 权威 ACL/bucket recheck、UI ready/degraded 状态和 FTS5 降级均
+已接线并通过自动化及真实 Runtime smoke。RetrievalProfile 的 change-log watermark、target、
+状态、累计变更数和错误已持久化到 Platform SQLite；Vector Index 通过 Host event loop 上的
+`local_background` Scheduler Attempt 分批 catch-up，执行前进行请求级内存准入并按需启动 E5
+模型。排队中的 Attempt 可在 Host 退出时取消；正在执行的有界索引块完成后才释放 RequestLease。
+Knowledge Import 的解析、SQLite 与 FTS 路径不调用模型，继续使用有界 I/O 执行池。搜索
+不再同步等待 embedding，失败可从 Knowledge App 重试，Runtime 重启后从 durable watermark
+继续。Chat 与 General Agent 在模型调用前确定性检索当前会话选中的 buckets，并保存稳定
+`knowledge://item/...` citations；App 默认选择与单会话显式覆盖（包括显式空选择）分别持久化。
+文件引入使用可见的顺序队列并允许单文件失败后继续；同一可见范围内的相同 content hash
+复用既有 KnowledgeItem/blob，只补 bucket membership。shadow generation 原子切换和卸载
+保留策略继续归入 K6C。
 
 ### K6C：Backend migration、shadow 与用户选择
 
@@ -672,7 +770,8 @@ Overlay 稳定、普通 ZIP 隔离和 restricted/stale policy 测试通过。
 ### Release C：Semantic Search
 
 包含通过验证的 K6 backend、用户同意安装、embedding generation、hybrid search、
-可选 reranker、RetrievalProfile、backend migration、shadow comparison 和 rollback。
+可选 reranker、RetrievalProfile、backend migration、shadow comparison 和 rollback。Knowledge
+系统入口与 FTS5 随基础产品交付；RAG Runtime 和相关 Provider/Model Package 由 ACPF 按需安装。
 
 发布门槛：backend evaluation、跨平台 packaging、retrieval Eval、双向迁移、权限隔离、
 crash recovery、rollback 和 FTS 降级测试通过。

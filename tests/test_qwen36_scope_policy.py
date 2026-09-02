@@ -75,7 +75,7 @@ def test_full_execution_disables_configured_qwen_scope_policy(tmp_path):
 
 
 def test_qwen_tiers_do_not_reuse_deepseek_top20_40_60():
-    assert MEMORY_TIER_EXPERTS == {"lean": 80, "compact": 96, "optimal": 120}
+    assert MEMORY_TIER_EXPERTS == {"lean": 120, "compact": 160, "optimal": 192}
     assert estimated_resident_bytes(96) == 96 * 40 * 1_769_472
 
 

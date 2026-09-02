@@ -499,16 +499,19 @@ class TestPackageMaxTokens:
             messages=[{"role": "user", "content": "hi"}],
         )
         proxy = AsyncMock(return_value="proxied")
+        self._state.ai2apps_platform_runtime = SimpleNamespace(
+            model_invocations=SimpleNamespace(invoke_interactive_json=proxy)
+        )
         with (
             patch(
                 "omlx.server.resolve_package_model",
-                return_value=SimpleNamespace(model_type="llm"),
+                return_value=SimpleNamespace(id="example.worker/chat", model_type="llm"),
             ),
-            patch("omlx.server.proxy_package_json", proxy),
         ):
             response = await create_chat_completion(request, MagicMock(), True)
 
         assert response == "proxied"
+        assert proxy.await_args.args[0] == "example.worker/chat"
         assert proxy.await_args.args[1] == "chat_completions"
         assert proxy.await_args.args[2]["max_tokens"] == 4096
 
@@ -524,16 +527,19 @@ class TestPackageMaxTokens:
             input="hi",
         )
         proxy = AsyncMock(return_value="proxied")
+        self._state.ai2apps_platform_runtime = SimpleNamespace(
+            model_invocations=SimpleNamespace(invoke_interactive_json=proxy)
+        )
         with (
             patch(
                 "omlx.server.resolve_package_model",
-                return_value=SimpleNamespace(model_type="llm"),
+                return_value=SimpleNamespace(id="example.worker/chat", model_type="llm"),
             ),
-            patch("omlx.server.proxy_package_json", proxy),
         ):
             response = await create_response(request, MagicMock(), True)
 
         assert response == "proxied"
+        assert proxy.await_args.args[0] == "example.worker/chat"
         assert proxy.await_args.args[1] == "responses"
         assert proxy.await_args.args[2]["max_output_tokens"] == 4096
 
@@ -996,6 +1002,7 @@ class TestExposedProfileModels:
                 "displayName": "GPT Test",
                 "contextWindow": 100000,
                 "maxOutputTokens": 4096,
+                "capabilities": {"imageInput": True, "tools": True},
             }
         ]
 
@@ -1003,7 +1010,7 @@ class TestExposedProfileModels:
             patch.object(
                 server_module._server_state,
                 "global_settings",
-                SimpleNamespace(),
+                SimpleNamespace(model=SimpleNamespace(hide_helper_models=False)),
             ),
             patch.object(
                 server_module,
@@ -1028,6 +1035,8 @@ class TestExposedProfileModels:
         assert cloud_model.owned_by == "ai2apps"
         assert cloud_model.source == "ai2apps_cloud"
         assert cloud_model.shareable is False
+        assert cloud_model.model_type == "vlm"
+        assert cloud_model.capabilities == {"imageInput": True, "tools": True}
 
     @pytest.mark.asyncio
     async def test_v1_models_hides_raw_local_models_outside_source_checkout(

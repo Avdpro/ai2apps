@@ -1,6 +1,6 @@
 {
   "schemaVersion": "ai2apps.package-manifest.v1",
-  "package": {"id": "ai2apps/model-vibevoice-05b", "type": "service", "version": "0.1.0", "displayName": "VibeVoice Realtime 0.5B", "description": "Long-form and multi-speaker local speech synthesis."},
+  "package": {"id": "ai2apps/model-vibevoice-05b", "type": "service", "version": "0.1.1", "displayName": "VibeVoice Realtime 0.5B", "description": "Long-form, single-speaker local speech synthesis with selectable voice prompts."},
   "compatibility": {"ai2apps": ">=0.1.0 <2.0.0", "platforms": ["darwin"], "architectures": ["arm64"], "minimumOsVersion": "26.2"},
   "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
   "permissions": [

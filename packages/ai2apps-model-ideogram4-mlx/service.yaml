@@ -1,0 +1,78 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.ideogram4-mlx
+name: Ideogram 4 MLX
+description: Optimized native MLX Ideogram 4 generation and single-image Remix editing on Apple Silicon.
+version: 0.1.1
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.ideogram4-mlx/fp8-q4
+    display_name: Ideogram 4 MLX Q4
+    model_type: image_generation
+    upstream_id: ideogram-ai/ideogram-4-fp8
+    capabilities: [image_generation, image_edit, text_rendering, multilingual, layout_control, local, mlx]
+    weights:
+      provider: huggingface
+      repo_id: Comfy-Org/Ideogram-4
+      revision: bbee2ab2b14b2b5223448d12d6e31e5f9cec0546
+      distribution_id: dist_ai2apps_ideogram4_fp8_bbee2ab2_v1
+      preparation: {recipe: native}
+    metadata:
+      family: ideogram4
+      variant: fp8-to-native-q4
+      implementation: ai2apps-native-mlx-optimized
+      official_source_commit: 990fe1c4e950bb9e9dc90e01c0ad98ba434f83c2
+      model_license: ideogram-non-commercial-model-agreement
+      modelscope:
+        repo_id: Comfy-Org/Ideogram-4
+        revision: 7ce334bb86142cd10c04bbb72d4e871572dd976f
+        resolved_revision: 7ce334bb86142cd10c04bbb72d4e871572dd976f
+        preferred: true
+        allow_patterns:
+          - diffusion_models/ideogram4_fp8_scaled.safetensors
+          - diffusion_models/ideogram4_unconditional_fp8_scaled.safetensors
+          - text_encoders/qwen3vl_8b_fp8_scaled.safetensors
+          - vae/flux2-vae.safetensors
+      device_recommendation: {minimum_memory_gib: 24, preferred_memory_gib: 32, quality_rank: 9}
+    image_capabilities:
+      schema: ai2apps.image-capabilities/v1
+      operations: [image_generation, image_edit]
+      formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
+      geometry:
+        minimum: {width: 256, height: 256}
+        maximum: {width: 2048, height: 2048}
+        multiple_of: 16
+        ratios: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"]
+      defaults: {width: 1024, height: 1024, steps: 12, output_format: png}
+      execution:
+        quantizations: [q4]
+        compiled_denoiser: false
+        compiled_denoiser_optional: true
+        persistent_quantized_cache: true
+        staged_model_lifecycle: true
+        bf16_mlp: true
+        bf16_sdpa: true
+        fused_qk_rms_mrope: true
+        image_to_image: {references: 1, default_strength: 0.75, strength_range: [0.0, 1.0], method: sdedit}
+        max_concurrency_per_device: 1
+capabilities: [image-generation, image-edit, ideogram4]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.5.2,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, metal, image-generation, image-edit]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned Ideogram 4 checkpoint.}
+  accelerator: {metal: true, reason: Run the optimized native MLX image pipeline.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 360}
+restart: {max_attempts: 2, base_delay_seconds: 2}
+tools: []

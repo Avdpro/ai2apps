@@ -183,6 +183,17 @@ do {
                 throw UpdateError.invalidSignature("candidate App changed during update")
             }
         },
+        existingBackupValidator: { app in
+            let backup = try signedIdentity(at: app)
+            guard backup.bundleIdentifier == installed.bundleIdentifier,
+                  backup.instanceID == installed.instanceID,
+                  backup.teamIdentifier == installed.teamIdentifier,
+                  backup.build < installed.build else {
+                throw UpdateError.invalidSignature(
+                    "existing backup is not an older build of the installed product"
+                )
+            }
+        },
         healthCheck: { app in
             let launcher = app.appendingPathComponent("Contents/MacOS/AI2Apps")
             let outcome = try run(launcher.path, ["--post-update-health-only"])

@@ -2,8 +2,8 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps.model.sensevoice-small-0.2.1",
-  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.sensevoice-small/0.2.1",
+  "name": "ai2apps.model.sensevoice-small-0.2.2",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.sensevoice-small/0.2.2",
   "creationInfo": {
     "created": "2026-08-21T00:00:00Z",
     "creators": ["Organization: AI2Apps"]

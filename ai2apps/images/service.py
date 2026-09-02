@@ -125,16 +125,30 @@ def install_image_service(
                     f"{request_fingerprint}"
                 ),
             }
-        package_model = None
-        if runtime is not None:
-            from ai2apps.model_providers import resolve_package_model
-
-            package_model = resolve_package_model(runtime, model)
+        invocations = (
+            None if runtime is None else getattr(runtime, "model_invocations", None)
+        )
+        package_model = None if invocations is None else invocations.model(model)
         if package_model is not None:
-            from ai2apps.model_providers import proxy_package_json
-
-            response = await proxy_package_json(
-                package_model, "image_generation", request_payload
+            scheduling_context = (
+                invocations.context_for_actor(
+                    context.actor_user_id,
+                    session_id=context.session_id,
+                    consumer_app_id=context.caller_id,
+                )
+                if context.actor_user_id is not None
+                and hasattr(invocations, "context_for_actor")
+                else None
+            )
+            response = await invocations.invoke_foreground_json(
+                package_model.id,
+                "image_generation",
+                request_payload,
+                **(
+                    {"context": scheduling_context}
+                    if scheduling_context is not None
+                    else {}
+                ),
             )
             if response.status_code >= 400:
                 raise ToolProviderError(

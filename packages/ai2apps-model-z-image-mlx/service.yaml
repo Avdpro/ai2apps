@@ -1,0 +1,69 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.z-image-mlx
+name: Z-Image MLX
+description: Optimized local Z-Image Turbo generation and image-to-image editing on Apple Silicon.
+version: 0.1.2
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.z-image-mlx/turbo
+    display_name: Z-Image Turbo MLX
+    model_type: image_generation
+    upstream_id: Tongyi-MAI/Z-Image-Turbo
+    capabilities: [image_generation, image_edit, text_rendering, multilingual, local, mlx]
+    weights:
+      provider: huggingface
+      repo_id: Tongyi-MAI/Z-Image-Turbo
+      revision: f332072aa78be7aecdf3ee76d5c247082da564a6
+      distribution_id: dist_ai2apps_z_image_turbo_f332072a_v1
+      preparation: {recipe: native}
+    metadata:
+      family: z-image
+      variant: turbo
+      implementation: mflux-mlx-metal-optimized
+      mflux_version: 0.19.0
+      modelscope:
+        repo_id: Tongyi-MAI/Z-Image-Turbo
+        revision: 805350609339f36273314da004f0ac21eb077ee0
+        resolved_revision: 805350609339f36273314da004f0ac21eb077ee0
+        preferred: true
+        allow_patterns: ["vae/*", "transformer/*", "text_encoder/*", "tokenizer/**", model_index.json]
+      device_recommendation: {minimum_memory_gib: 16, preferred_memory_gib: 24, quality_rank: 8}
+    image_capabilities:
+      schema: ai2apps.image-capabilities/v1
+      operations: [image_generation, image_edit]
+      formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
+      geometry:
+        minimum: {width: 256, height: 256}
+        maximum: {width: 2048, height: 2048}
+        multiple_of: 32
+        ratios: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"]
+      defaults: {width: 1024, height: 1024, steps: 8, guidance: 0.0, output_format: png}
+      execution:
+        quantizations: [q8, q4, bf16]
+        compiled_denoiser: true
+        persistent_quantized_cache: true
+        metal_rms_adaln_fusion: true
+        image_to_image: {references: 1, default_strength: 0.75, strength_range: [0.0, 1.0]}
+        max_concurrency_per_device: 1
+capabilities: [image-generation, image-edit, z-image]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.5.2,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, metal, image-generation, image-edit, z-image]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned Z-Image checkpoint.}
+  accelerator: {metal: true, reason: Run native MLX image generation.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 240}
+restart: {max_attempts: 2, base_delay_seconds: 2}
+tools: []

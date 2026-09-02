@@ -1299,6 +1299,29 @@ class TestDeepseekV4SwitchGLU:
 
         assert mx.array_equal(got, expected)
 
+    def test_fused_gate_up_switch_glu_matches_split(self, applied_patch):
+        mx = pytest.importorskip("mlx.core")
+        from omlx.patches.deepseek_v4 import switch_layers
+
+        mx.random.seed(37)
+        split = switch_layers.SwitchGLU(8, 16, 4)
+        fused = switch_layers.SwitchGLU(8, 16, 4, fused_gate_up=True)
+        fused.gate_up_proj.weight = mx.concatenate(
+            (split.gate_proj.weight, split.up_proj.weight), axis=1
+        )
+        fused.down_proj.weight = split.down_proj.weight
+        x = mx.random.normal((1, 33, 8))
+        indices = mx.array(
+            [[[token % 4, (token + 1) % 4] for token in range(33)]],
+            dtype=mx.int32,
+        )
+
+        expected = split(x, indices)
+        got = fused(x, indices)
+        mx.eval(expected, got)
+
+        assert mx.allclose(got, expected, rtol=1e-5, atol=1e-5)
+
     def test_benchmark_reduced_bank_keeps_global_router(self, applied_patch, monkeypatch):
         dsv4 = sys.modules["mlx_lm.models.deepseek_v4"]
         monkeypatch.setenv("OMLX_DEEPSEEK_V4_BENCH_EXPERT_SLOTS", "2")

@@ -39,6 +39,10 @@
             'discover.error.invalid_review_note': 'The review note must contain 1 to 2000 characters.',
             'discover.confirm.reject_submission': 'Reject {package} {version}? The Publisher must submit a new version.',
             'discover.success.admin_verified': 'Administrator verified for 15 minutes.',
+            'discover.confirm.delete_checkpoints': 'Also delete the downloaded model checkpoints for {package}? Choose Cancel to keep them and continue uninstalling. Reinstalling after deletion requires downloading them again.',
+            'discover.success.uninstalled_with_checkpoints': '{package} was uninstalled and its unused checkpoints were deleted ({size} reclaimed).',
+            'discover.success.uninstalled_checkpoints_retained': '{package} was uninstalled. Its checkpoints are still used by another Package and were retained.',
+            'discover.success.uninstalled_checkpoint_cleanup_failed': '{package} was uninstalled, but checkpoint cleanup failed: {error}',
         },
         zh: {
             'discover.action.upgrade': '升级',
@@ -75,6 +79,10 @@
             'discover.error.invalid_review_note': '审核意见长度必须为 1 到 2000 个字符。',
             'discover.confirm.reject_submission': '确定拒绝 {package} {version} 吗？Publisher 必须提交新版本。',
             'discover.success.admin_verified': '管理员已验证，15 分钟内可以继续操作。',
+            'discover.confirm.delete_checkpoints': '是否同时删除 {package} 已下载的模型 checkpoint？选择“取消”会保留 checkpoint 并继续卸载；删除后重新安装需要再次下载。',
+            'discover.success.uninstalled_with_checkpoints': '{package} 已卸载，并删除了未被其他 Package 使用的 checkpoint（释放 {size}）。',
+            'discover.success.uninstalled_checkpoints_retained': '{package} 已卸载；checkpoint 仍被其他 Package 使用，因此已保留。',
+            'discover.success.uninstalled_checkpoint_cleanup_failed': '{package} 已卸载，但 checkpoint 清理失败：{error}',
         },
     };
 
@@ -152,6 +160,7 @@
             activationStatus: value.activationStatus || value.activation_status || 'active',
             restartScope: value.restartScope || value.restart_scope || null,
             restartRequired: (value.activationStatus || value.activation_status) === 'pending_restart',
+            checkpointDeletionAvailable: Boolean(value.checkpointDeletionAvailable || value.checkpoint_deletion_available),
         };
     }
 
@@ -249,7 +258,10 @@
                 const withinStep = bytesTotal > 0 ? Math.min(1, Number(value.bytesCompleted || 0) / bytesTotal) : 0;
                 return Math.min(99, Math.max(0, ((step - 1 + withinStep) / total) * 100));
             },
-            async init() { await this.reload(); },
+            async init() {
+                await this.reload();
+                await this.resumeInstallContinuation();
+            },
             clearMessage() { this.message = ''; this.messageTone = 'error'; },
             success(text) { this.message = text; this.messageTone = 'info'; },
             showError(error) {
@@ -425,6 +437,28 @@
                     if (!['audit_review_required', 'dependency_restart_required'].includes(error.code)) this.showError(error);
                 } finally { this.working = ''; redraw(); }
             },
+            async resumeInstallContinuation() {
+                try {
+                    const result = await request('/install-continuation');
+                    const pending = result?.continuation;
+                    if (!pending?.packageId || this.working) return;
+                    const installed = this.installedItem(pending.packageId);
+                    if (installed && pending.version && compareVersions(installed.version, pending.version) >= 0) {
+                        await request('/install-continuation', { method: 'DELETE' });
+                        return;
+                    }
+                    const item = this.catalogItem(pending.packageId) || normalize({
+                        packageId: pending.packageId,
+                        version: pending.version || '',
+                        displayName: pending.packageId,
+                        packageType: 'service',
+                        description: '',
+                    });
+                    await this.install(item, pending.approveReview);
+                } catch (error) {
+                    this.showError(error);
+                }
+            },
             installStageLabel(value) {
                 const stage = String(value?.stage || 'preparing');
                 const translated = tr('discover.install.stage.' + stage);
@@ -496,13 +530,33 @@
                 const id = this.split(item.packageId);
                 if (!id.namespace || !id.name || this.working) return;
                 if (!force && !window.confirm(tr('discover.confirm.uninstall', { package: item.displayName }))) return;
+                const installed = this.installedItem(item.packageId) || item;
+                const deleteCheckpoints = Boolean(installed.checkpointDeletionAvailable && window.confirm(
+                    tr('discover.confirm.delete_checkpoints', { package: item.displayName })
+                ));
                 this.working = item.packageId; this.clearMessage();
                 try {
-                    await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/uninstall', { method: 'POST', body: { force: Boolean(force) } });
-                    this.success(tr('discover.success.uninstalled', { package: item.displayName }));
+                    const result = await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/uninstall', {
+                        method: 'POST',
+                        body: { force: Boolean(force), delete_checkpoints: deleteCheckpoints },
+                    });
+                    const cleanup = result?.checkpointCleanup;
+                    this.success(cleanup?.error
+                        ? tr('discover.success.uninstalled_checkpoint_cleanup_failed', {
+                            package: item.displayName,
+                            error: cleanup.error,
+                        })
+                        : cleanup?.requested && cleanup?.deletedRepositories?.length
+                            ? tr('discover.success.uninstalled_with_checkpoints', {
+                            package: item.displayName,
+                            size: this.formatBytes(cleanup.reclaimedBytes || 0),
+                        })
+                            : cleanup?.requested && cleanup?.retainedRepositories?.length
+                                ? tr('discover.success.uninstalled_checkpoints_retained', { package: item.displayName })
+                                : tr('discover.success.uninstalled', { package: item.displayName }));
                     this.selected = null; await this.loadCatalog();
                 } catch (error) {
-                    if (error.code === 'app_has_instances' && !force && window.confirm(tr('discover.confirm.force_uninstall'))) {
+                    if (['app_has_instances', 'service_has_dependents'].includes(error.code) && !force && window.confirm(tr('discover.confirm.force_uninstall'))) {
                         this.working = ''; return this.uninstall(item, true);
                     }
                     this.showError(error);

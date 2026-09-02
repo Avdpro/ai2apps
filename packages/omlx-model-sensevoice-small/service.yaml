@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.sensevoice-small
 name: SenseVoice Small
 description: Isolated SenseVoiceSmall multilingual speech recognition Worker by FunAudioLLM / FunASR for the pinned MLX checkpoint.
-version: 0.2.1
+version: 0.2.2
 
 publisher: {id: ai2apps}
 license:
@@ -36,6 +36,7 @@ models:
       provider: huggingface
       repo_id: mlx-community/SenseVoiceSmall
       revision: 8ddd966bd96243cff196422f81f0c5d955814792
+      distribution_id: dist_ai2apps_sensevoice_small_8ddd966b_v1
       preparation: {recipe: native}
     audio_capabilities:
       schema: ai2apps.audio-capabilities/v1

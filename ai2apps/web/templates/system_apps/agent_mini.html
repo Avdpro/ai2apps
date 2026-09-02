@@ -1,0 +1,50 @@
+{% extends app_base_template|default("base.html") %}
+{% block title %}{{ t('agent.mini.title') }} Mini-Entry - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/agent_mini.css') }}?v=agent-review-2"><link rel="stylesheet" href="{{ static('css/agent_mini_p0.css') }}?v=agent-review-3">{% endblock %}
+{% block content %}
+<main class="agent-mini" data-app-id="ai2apps.agents">
+    <header><div><span><i data-lucide="bot"></i></span><div><h1>{{ t('agent.mini.title') }}</h1><p>{{ t('agent.mini.subtitle') }}</p></div></div><button id="agent-refresh" title="{{ t('agent.mini.refresh') }}"><i data-lucide="refresh-cw"></i></button></header>
+    <nav class="agent-mode"><button class="active" data-mode="run">{{ t('agent.mini.run_mode') }}</button><button data-mode="build">{{ t('agent.mini.build_mode') }}</button></nav>
+    <section id="agent-notice" class="agent-notice" hidden><span id="agent-notice-text"></span><button id="agent-notice-close" type="button" aria-label="{{ t('agent.mini.close') }}">×</button></section>
+    <section id="agent-run-panel">
+        <div id="agent-run-status" class="agent-run-status" hidden>
+            <div><strong id="agent-run-label">AgentRun</strong><small id="agent-run-detail"></small></div>
+            <div><button id="agent-run-pause">{{ t('agent.mini.pause') }}</button><button id="agent-run-continue">{{ t('agent.mini.continue') }}</button><button id="agent-run-stop">{{ t('agent.mini.stop') }}</button></div>
+        </div>
+        <section id="agent-run-result" class="agent-run-result" hidden>
+            <header><div><strong id="agent-run-result-title">{{ t('agent.mini.result') }}</strong><small id="agent-run-result-summary"></small></div><div class="agent-result-view-actions"><button id="agent-result-json" type="button">{{ t('agent.mini.json_view') }}</button><button id="agent-result-ai" type="button">{{ t('agent.mini.ai_beautify') }}</button></div></header>
+            <div id="agent-run-result-content"></div>
+        </section>
+        <div id="agent-run-handoff" class="agent-build-actions" hidden><select id="agent-knowledge-bucket" aria-label="{{ t('agent.mini.knowledge_bucket') }}"><option value="">{{ t('agent.mini.default_bucket') }}</option></select><button id="agent-send-chat">{{ t('agent.mini.send_chat') }}</button><button id="agent-save-knowledge">{{ t('agent.mini.save_knowledge') }}</button></div>
+        <form id="agent-quick-form"><textarea id="agent-quick-input" rows="2" placeholder="{{ t('agent.mini.quick_placeholder') }}"></textarea><button type="submit"><i data-lucide="play"></i>{{ t('agent.mini.build_and_run') }}</button></form>
+        <section id="agent-exploration" class="agent-exploration" hidden>
+            <header><div><strong>{{ t('agent.mini.exploration_title') }}</strong><small id="agent-exploration-summary"></small></div><div><span id="agent-exploration-state"></span><button id="agent-exploration-stop" type="button">{{ t('agent.mini.stop') }}</button></div></header>
+            <div id="agent-exploration-timeline" class="agent-exploration-timeline"></div>
+        </section>
+        <div id="agent-recipe-confirm" class="agent-build-actions agent-single-action" hidden><button id="agent-recipe-test" class="primary">{{ t('agent.mini.test_first') }}</button></div>
+        <section id="agent-recipe-review" class="agent-recipe-review" hidden>
+            <header><div><strong>{{ t('agent.mini.review_title') }}</strong><small id="agent-review-summary"></small></div><span id="agent-review-status"></span></header>
+            <div id="agent-review-steps" class="agent-review-steps"></div>
+            <details class="agent-review-json"><summary>{{ t('agent.mini.review_json') }}</summary><div class="agent-review-json-grid"><div><strong>Source</strong><pre id="agent-review-source"></pre></div><div><strong>IR</strong><pre id="agent-review-ir"></pre></div></div></details>
+            <label class="agent-field"><span>{{ t('agent.mini.review_feedback') }}</span><textarea id="agent-review-feedback" rows="3" placeholder="{{ t('agent.mini.review_feedback_placeholder') }}"></textarea></label>
+            <div class="agent-build-actions agent-review-actions"><button id="agent-review-revise">{{ t('agent.mini.review_revise') }}</button><button id="agent-review-approve" class="primary">{{ t('agent.mini.review_approve') }}</button></div>
+            <div id="agent-review-commit" class="agent-build-actions" hidden><button id="agent-recipe-merge" class="primary">{{ t('agent.mini.merge_site') }}</button><button id="agent-recipe-create">{{ t('agent.mini.create_site') }}</button></div>
+        </section>
+        <div class="agent-section-title"><span>{{ t('agent.mini.my_agents') }}</span><button id="agent-new-from-run">{{ t('agent.mini.new') }}</button></div>
+        <div id="agent-list" class="agent-list"></div>
+    </section>
+    <section id="agent-build-panel" hidden>
+        <label class="agent-field"><span>{{ t('agent.mini.site_agent') }}</span><input id="agent-name" maxlength="160" placeholder="{{ t('agent.mini.site_agent_placeholder') }}"></label>
+        <label class="agent-field"><span>{{ t('agent.mini.scope') }}</span><input id="agent-scope" placeholder="https://example.com/**"></label>
+        <label class="agent-field"><span>{{ t('agent.mini.capability') }}</span><span class="agent-build-actions"><select id="agent-capability"></select><button id="agent-add-capability" type="button">{{ t('agent.mini.add_capability') }}</button></span></label>
+        <div class="agent-section-title"><span>{{ t('agent.mini.steps') }}</span><button id="agent-add-step">{{ t('agent.mini.add_step') }}</button></div>
+        <div id="agent-steps" class="agent-steps"></div>
+        <div class="agent-build-actions"><button id="agent-save">{{ t('agent.mini.save') }}</button><button id="agent-delete" class="danger">{{ t('agent.mini.delete') }}</button><button id="agent-preview">{{ t('agent.mini.preview') }}</button><button id="agent-run-all">{{ t('agent.mini.test_all') }}</button><button id="agent-compile" class="primary">{{ t('agent.mini.compile') }}</button></div>
+    </section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>window.AI2APPS_AGENT_MINI_ACTOR={{ principal_actor_user_id|tojson }};</script>
+<script src="{{ static('js/browser_bidi_client.js') }}?v=browser-context-5"></script>
+<script src="{{ static('js/agent_mini.js') }}?v=agent-context-lock-1"></script>
+{% endblock %}

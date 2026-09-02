@@ -38,6 +38,7 @@ class EntityIdKind(StrEnum):
     PUBLISHER = "pub"
     PACKAGE_ATTESTATION = "att"
     SERVICE_OPERATION = "sop"
+    WORKER_OPERATION = "wop"
     SERVICE_LOG = "slog"
     MANAGED_SERVICE_PROCESS = "msp"
     INTERACTIVE_PACKAGE = "ipkg"
@@ -52,6 +53,19 @@ class EntityIdKind(StrEnum):
     DOCUMENT_BLOB = "dbl"
     DOCUMENT_BLOCK = "dblk"
     SECRET = "sec"
+    AGENT_DRAFT = "adraft"
+    AGENT_GENERATION = "agen"
+    AGENT_EVIDENCE = "aev"
+    AGENT_WORKFLOW = "awf"
+    AGENT_SCHEDULE = "asch"
+    AGENT_SCHEDULE_DISPATCH = "asdp"
+    AGENT_RECIPE = "arec"
+    AGENT_PACKAGE_BINDING = "apb"
+    AGENT_PACKAGE_EVENT = "apev"
+    AGENT_HEALTH = "ahl"
+    AGENT_SITE_STATE = "ast"
+    AGENT_REPAIR = "arep"
+    AGENT_APP_DEPENDENCY = "aadep"
 
     @property
     def prefix(self) -> str:

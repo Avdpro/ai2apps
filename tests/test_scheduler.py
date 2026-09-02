@@ -1042,6 +1042,62 @@ class TestSchedulerAddRequest:
         scheduler.block_aware_cache.restore_exact_prefix.assert_called_once()
         scheduler.block_aware_cache.fetch_cache.assert_not_called()
 
+    def test_vlm_session_lineage_survives_appended_images(
+        self, mock_model, mock_tokenizer
+    ):
+        """Appending a visual turn keeps the prior session lineage discoverable."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        first = Request(
+            request_id="turn-1",
+            prompt=[1, 2, 3],
+            sampling_params=SamplingParams(max_tokens=4),
+            kv_cache_policy="session",
+            cache_extra_keys=("ai2apps-session-v1", "session-1"),
+            vlm_image_hash="image-a",
+            vlm_cache_key_ranges=[(4, "image-a")],
+        )
+        appended = Request(
+            request_id="turn-2",
+            prompt=[1, 2, 3, 4],
+            sampling_params=SamplingParams(max_tokens=4),
+            kv_cache_policy="session",
+            cache_extra_keys=("ai2apps-session-v1", "session-1"),
+            vlm_image_hash="image-a-plus-b",
+            vlm_cache_key_ranges=[(4, "image-a"), (200, "image-a-plus-b")],
+        )
+
+        assert scheduler._session_lineage_key(first) == scheduler._session_lineage_key(
+            appended
+        )
+
+    def test_vlm_session_lineage_isolates_first_image(
+        self, mock_model, mock_tokenizer
+    ):
+        """The stable lineage still separates sessions with different first images."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        common = {
+            "prompt": [1, 2, 3],
+            "sampling_params": SamplingParams(max_tokens=4),
+            "kv_cache_policy": "session",
+            "cache_extra_keys": ("ai2apps-session-v1", "session-1"),
+        }
+        first = Request(
+            request_id="turn-a",
+            vlm_image_hash="image-a",
+            vlm_cache_key_ranges=[(4, "image-a")],
+            **common,
+        )
+        other = Request(
+            request_id="turn-b",
+            vlm_image_hash="image-b",
+            vlm_cache_key_ranges=[(4, "image-b")],
+            **common,
+        )
+
+        assert scheduler._session_lineage_key(first) != scheduler._session_lineage_key(
+            other
+        )
+
     def test_store_worker_registers_short_exact_session_boundary(
         self, mock_model, mock_tokenizer
     ):
@@ -1075,6 +1131,64 @@ class TestSchedulerAddRequest:
             extra_key_ranges=None,
         )
         assert scheduler._session_exact_prefix_tokens[lineage_key] == [1, 2, 3, 4]
+
+    def test_session_lineage_prefers_retokenizable_prompt_boundary(
+        self, mock_model, mock_tokenizer
+    ):
+        """Cleaned assistant text must not hide the prior prompt KV boundary."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.block_aware_cache.store_exact_prefix.return_value = None
+        lineage_key = (("ai2apps-session-v1", "session-1"), None)
+        prompt_store = _ExactPrefixStore(
+            request_id="turn-1:session-prompt",
+            tokens=[1, 2, 3],
+            cache=[],
+            model_cache_config=None,
+        )
+
+        with patch("omlx.scheduler._safe_sync_stream"):
+            scheduler._async_store_cache_worker(
+                "turn-1",
+                [1, 2, 3, 90, 91],
+                [],
+                None,
+                None,
+                ("ai2apps-session-v1", "session-1", "whole-image-hash"),
+                0,
+                [(0, ("image-a",))],
+                exact_session_boundary=True,
+                session_lineage_key=lineage_key,
+                declared_exact_store=prompt_store,
+            )
+
+        assert scheduler._session_exact_prefix_tokens[lineage_key] == [1, 2, 3]
+
+    def test_session_lineage_keeps_prior_safe_hybrid_boundary(
+        self, mock_model, mock_tokenizer
+    ):
+        """A restored short turn must not replace its safe recurrent boundary."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        scheduler.block_aware_cache = MagicMock()
+        scheduler.block_aware_cache.store_exact_prefix.return_value = None
+        lineage_key = (("ai2apps-session-v1", "session-1"), None)
+        scheduler._session_exact_prefix_tokens[lineage_key] = [1, 2, 3]
+
+        with patch("omlx.scheduler._safe_sync_stream"):
+            scheduler._async_store_cache_worker(
+                "turn-2",
+                [1, 2, 3, 4, 5],
+                [],
+                None,
+                None,
+                ("ai2apps-session-v1", "session-1"),
+                None,
+                None,
+                exact_session_boundary=True,
+                session_lineage_key=lineage_key,
+            )
+
+        assert scheduler._session_exact_prefix_tokens[lineage_key] == [1, 2, 3]
 
     def test_declared_exact_prefix_restores_below_physical_block_size(
         self, mock_model, mock_tokenizer
@@ -3219,6 +3333,76 @@ class TestSchedulerRotatingBlockAlignment:
         scheduler._cleanup_finished({"req-remove-active"})
 
         scheduler.batch_generator.remove.assert_called_once_with([uid])
+
+    def test_cleanup_finished_releases_idle_vlm_batch_capacity(
+        self, mock_model, mock_tokenizer
+    ):
+        """A completed vision turn must not retain its long-context KV slab."""
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        request = Request(
+            request_id="req-vlm-idle-reset",
+            prompt=[1, 2],
+            sampling_params=SamplingParams(),
+            is_vlm_request=True,
+            skip_cache_store=True,
+        )
+        request.prompt_token_ids = [1, 2]
+        request.num_prompt_tokens = 2
+        request.output_token_ids = [3]
+        uid = 57
+        scheduler.running[request.request_id] = request
+        scheduler.requests[request.request_id] = request
+        scheduler.request_id_to_uid[request.request_id] = uid
+        scheduler.uid_to_request_id[uid] = request.request_id
+        batch_generator = MagicMock()
+        scheduler.batch_generator = batch_generator
+
+        scheduler._cleanup_finished({request.request_id})
+
+        batch_generator.remove.assert_called_once_with([uid])
+        assert scheduler.batch_generator is None
+        assert scheduler._idle_vlm_batch_reset_pending is False
+        assert scheduler._deferred_clear_at is not None
+
+    def test_idle_vlm_batch_reset_waits_for_active_request(
+        self, mock_model, mock_tokenizer
+    ):
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        scheduler.batch_generator = MagicMock()
+        scheduler._idle_vlm_batch_reset_pending = True
+        scheduler.running["active"] = MagicMock()
+
+        assert scheduler._reset_idle_vlm_batch_generator() is False
+        assert scheduler.batch_generator is not None
+        assert scheduler._idle_vlm_batch_reset_pending is True
+
+        scheduler.running.clear()
+        assert scheduler._reset_idle_vlm_batch_generator() is True
+        assert scheduler.batch_generator is None
+        assert scheduler._idle_vlm_batch_reset_pending is False
+
+    def test_text_turn_keeps_idle_batch_generator(
+        self, mock_model, mock_tokenizer
+    ):
+        scheduler = Scheduler(model=mock_model, tokenizer=mock_tokenizer)
+        request = Request(
+            request_id="req-text-no-reset",
+            prompt=[1, 2],
+            sampling_params=SamplingParams(),
+            skip_cache_store=True,
+        )
+        request.prompt_token_ids = [1, 2]
+        request.num_prompt_tokens = 2
+        request.output_token_ids = [3]
+        scheduler.running[request.request_id] = request
+        scheduler.requests[request.request_id] = request
+        batch_generator = MagicMock()
+        scheduler.batch_generator = batch_generator
+
+        scheduler._cleanup_finished({request.request_id})
+
+        assert scheduler.batch_generator is batch_generator
+        assert scheduler._idle_vlm_batch_reset_pending is False
 
     def test_cleanup_finished_defers_metal_buffer_cache_clear(
         self, mock_model, mock_tokenizer

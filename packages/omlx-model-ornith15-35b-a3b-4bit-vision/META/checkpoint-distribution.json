@@ -1,0 +1,42 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_ornith1_5_35b_a3b_mlx_4bit_vision_31428ce8_v1",
+  "modelId": "ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision",
+  "repoId": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision",
+  "revision": "31428ce8829c277f9255c59662b8efab58898ecf",
+  "format": "safetensors",
+  "quantization": "4bit-language-bf16-vision",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://huggingface.co/Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision/blob/31428ce8829c277f9255c59662b8efab58898ecf/LICENSE",
+    "termsHash": "sha256:0893bd34ce98d74737a7fd62f33cea6b328b3df6e61e47d68ec27e853f774bca",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "CHECKSUMS.sha256", "LICENSE", "README.md", "VISION_SIDECAR.json",
+    "chat_template.jinja", "config.json", "configuration.json", "generation_config.json",
+    "model-00001-of-00004.safetensors", "model-00002-of-00004.safetensors",
+    "model-00003-of-00004.safetensors", "model-00004-of-00004.safetensors",
+    "model.safetensors.index.json", "ornith15_vision_bf16.safetensors",
+    "preprocessor_config.json", "processor_config.json", "tokenizer.json",
+    "tokenizer_config.json", "video_preprocessor_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision",
+      "revision": "31428ce8829c277f9255c59662b8efab58898ecf",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision",
+      "revision": "2ceda9edec98ac813104d04f1fe05ca1b8fdae58",
+      "access": "public_anonymous"
+    }
+  ]
+}

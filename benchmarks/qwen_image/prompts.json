@@ -1,0 +1,18 @@
+[
+  {
+    "id": "zh_text",
+    "prompt": "一张写实的上海街角咖啡馆照片，清晨柔和自然光，门口黑板上清晰写着『AI2Apps 本地智能』，中文必须准确可读，35mm 纪实摄影"
+  },
+  {
+    "id": "people",
+    "prompt": "Documentary photograph of an elderly Chinese couple preparing dumplings in a bright home kitchen, natural skin texture, expressive hands, candid composition, realistic ambient light"
+  },
+  {
+    "id": "layout",
+    "prompt": "Editorial poster for a fictional design conference, strict Swiss grid, title LOCAL INTELLIGENCE, subtitle SHANGHAI 2026, date 18 OCT, navy cream and orange, all text clean and readable"
+  },
+  {
+    "id": "complex",
+    "prompt": "An isometric cutaway illustration of a compact solar research cabin in snowy mountains, labeled laboratory, greenhouse, battery room and weather station, two scientists, precise spatial relationships"
+  }
+]

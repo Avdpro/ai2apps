@@ -1,5 +1,6 @@
 import AI2AppsContracts
 import AI2AppsSupervisorCore
+import AI2AppsUpdateCore
 import AppKit
 import Darwin
 import Foundation
@@ -75,7 +76,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         keyEquivalent: ""
     )
     private let checkUpdateMenuItem = NSMenuItem(
-        title: "检查已下载更新",
+        title: "检查更新",
         action: nil,
         keyEquivalent: ""
     )
@@ -87,18 +88,55 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     private let launchBuild: String
     private let mainBundleIdentifier: String?
     private let sandboxedPackage: Bool
+    private let developmentBuild: Bool
     private var actualPort: Int?
     private var healthMonitor: Task<Void, Never>?
     private var browserAgentLeaseMonitor: Task<Void, Never>?
     private var controlServer: HelperControlServer?
     private var browserAgents: [String: ManagedBrowserAgent] = [:]
     private var updateProcess: Process?
+    private var updateDownloadTask: Task<Void, Never>?
+    private var periodicUpdateTask: Task<Void, Never>?
+    private var updateTipPopover: NSPopover?
+    private var updateTipDismissalTask: Task<Void, Never>?
     private var stagedCandidateBuild: String?
+    private var currentUpdatePhase: UpdatePhase = .idle
+    private var currentUpdateMessage = "尚未检查更新"
     private var terminationTask: Task<Void, Never>?
     private var serviceStoppedForTermination = false
+    private var preserveLocalForUpdateHandoff = false
+    private var currentHelperPhase: HelperPhase = .initializing
+    private var currentHelperMessage = "正在初始化…"
     private lazy var menuBarLogo: NSImage? = {
         guard let url = Bundle.main.url(
             forResource: "menubar-logo",
+            withExtension: "svg"
+        ) else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }()
+    private lazy var menuBarUpdateLogo: NSImage? = {
+        guard let url = Bundle.main.url(
+            forResource: "menubar-logo-update",
+            withExtension: "svg"
+        ) else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }()
+    private lazy var menuBarWorkLogo: NSImage? = {
+        guard let url = Bundle.main.url(
+            forResource: "menubar-logo-work",
+            withExtension: "svg"
+        ) else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }()
+    private lazy var menuBarReadyLogo: NSImage? = {
+        guard let url = Bundle.main.url(
+            forResource: "menubar-logo-ready",
             withExtension: "svg"
         ) else {
             return nil
@@ -125,16 +163,26 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         sandboxedPackage = Bundle.main.object(
             forInfoDictionaryKey: "AI2AppsApplicationGroupIdentifier"
         ) as? String != nil
+        developmentBuild = Bundle.main.object(
+            forInfoDictionaryKey: "AI2AppsDevelopment"
+        ) as? Bool == true
         let configURL = paths.configDirectory.appendingPathComponent("local.json")
         configuration = (try? ContractCodec.load(LocalConfiguration.self, from: configURL)) ?? LocalConfiguration()
+        var supervisorEnvironment = ProcessInfo.processInfo.environment.merging(
+            controlCredentials.environment
+        ) { _, required in required }
+        if developmentBuild {
+            // Development Runtime packages are intentionally accepted only by
+            // the fixed AI2Apps-dev.app build. Release Helpers never receive
+            // the AI2AppsDevelopment marker.
+            supervisorEnvironment["AI2APPS_ALLOW_DEVELOPMENT_RUNTIME"] = "1"
+        }
         supervisor = LocalProcessSupervisor(
             instanceID: arguments.instanceID,
             configuration: configuration,
             paths: paths,
             executable: arguments.runtimeExecutable,
-            baseEnvironment: ProcessInfo.processInfo.environment.merging(
-                controlCredentials.environment
-            ) { _, required in required }
+            baseEnvironment: supervisorEnvironment
         )
         super.init()
     }
@@ -183,9 +231,18 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         adoptOrStartLocal()
+        beginPeriodicUpdateChecks()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        updateDownloadTask?.cancel()
+        updateDownloadTask = nil
+        periodicUpdateTask?.cancel()
+        periodicUpdateTask = nil
+        updateTipDismissalTask?.cancel()
+        updateTipDismissalTask = nil
+        updateTipPopover?.close()
+        updateTipPopover = nil
         browserAgentLeaseMonitor?.cancel()
         browserAgentLeaseMonitor = nil
         NSWorkspace.shared.notificationCenter.removeObserver(
@@ -209,6 +266,11 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if preserveLocalForUpdateHandoff {
+            healthMonitor?.cancel()
+            healthMonitor = nil
+            return .terminateNow
+        }
         guard updateProcess == nil else {
             NSSound.beep()
             return .terminateCancel
@@ -278,7 +340,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(loginItemToggleMenuItem)
         menu.addItem(.separator())
         menu.addItem(updateStatusMenuItem)
-        checkUpdateMenuItem.action = #selector(checkDownloadedUpdate)
+        checkUpdateMenuItem.action = #selector(checkForUpdates)
         checkUpdateMenuItem.target = self
         menu.addItem(checkUpdateMenuItem)
         installUpdateMenuItem.action = #selector(installStagedUpdate)
@@ -301,6 +363,16 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
 
     private var updateDirectory: URL {
         paths.downloadsDirectory.appendingPathComponent("update", isDirectory: true)
+    }
+
+    private var updateManifestURL: URL? {
+        guard let app = arguments.appBundleURL,
+              let value = Bundle(url: app)?.object(
+                  forInfoDictionaryKey: "AI2AppsUpdateManifestURL"
+              ) as? String,
+              let url = URL(string: value), url.scheme?.lowercased() == "https",
+              url.host != nil else { return nil }
+        return url
     }
 
     private var stagedUpdateApp: URL {
@@ -326,18 +398,19 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
               FileManager.default.isWritableFile(atPath: app.deletingLastPathComponent().path) else {
             return false
         }
-        let contents = app.appendingPathComponent("Contents", isDirectory: true)
         let required = [
-            contents.appendingPathComponent("Helpers/AI2AppsUpdater"),
-            contents.appendingPathComponent("Resources/Update/stage-update-candidate.py"),
-            contents.appendingPathComponent("Library/AI2AppsLocal/Python/cpython-3.11/bin/python3.11"),
+            app.appendingPathComponent("Contents/Helpers/AI2AppsUpdater"),
+            app.appendingPathComponent("Contents/Resources/Update/stage-update-candidate.py"),
+            arguments.runtimePythonExecutable,
         ]
         return required.allSatisfy { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
     private func refreshUpdateMenu() {
         checkUpdateMenuItem.isEnabled = canManageUpdates && updateProcess == nil
+            && updateDownloadTask == nil && updateManifestURL != nil
         installUpdateMenuItem.isEnabled = canManageUpdates && updateProcess == nil
+            && updateDownloadTask == nil
             && stagedCandidateBuild != nil
             && FileManager.default.fileExists(atPath: stagedUpdateApp.path)
     }
@@ -360,15 +433,18 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             status,
             to: paths.runDirectory.appendingPathComponent("update.json")
         )
+        currentUpdatePhase = phase
+        currentUpdateMessage = message
         switch phase {
-        case .idle: updateStatusMenuItem.title = "更新：尚未检查"
-        case .checking: updateStatusMenuItem.title = "更新：正在验证"
+        case .idle: updateStatusMenuItem.title = "更新：\(message)"
+        case .checking: updateStatusMenuItem.title = "更新：\(message)"
         case .ready: updateStatusMenuItem.title = "更新：Build \(candidateBuild ?? "?") 可安装"
         case .installing: updateStatusMenuItem.title = "更新：正在安装"
         case .succeeded: updateStatusMenuItem.title = "更新：安装成功"
         case .failed: updateStatusMenuItem.title = "更新：失败"
         }
         refreshUpdateMenu()
+        updateStatusIcon(for: currentHelperPhase)
     }
 
     private func updatePortLabel() {
@@ -562,14 +638,18 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func replaceSupervisor() {
+        var supervisorEnvironment = ProcessInfo.processInfo.environment.merging(
+            controlCredentials.environment
+        ) { _, required in required }
+        if developmentBuild {
+            supervisorEnvironment["AI2APPS_ALLOW_DEVELOPMENT_RUNTIME"] = "1"
+        }
         supervisor = LocalProcessSupervisor(
             instanceID: arguments.instanceID,
             configuration: configuration,
             paths: paths,
             executable: arguments.runtimeExecutable,
-            baseEnvironment: ProcessInfo.processInfo.environment.merging(
-                controlCredentials.environment
-            ) { _, required in required }
+            baseEnvironment: supervisorEnvironment
         )
     }
 
@@ -579,8 +659,8 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         actualPort: Int? = nil,
         errorCode: String? = nil
     ) {
+        currentHelperMessage = message
         updateStatusIcon(for: phase)
-        statusItem.button?.toolTip = "AI2Apps 服务 — \(arguments.instanceID.rawValue) — \(message)"
         let status = HelperStatus(
             instanceID: arguments.instanceID,
             phase: phase,
@@ -601,26 +681,53 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateStatusIcon(for phase: HelperPhase) {
-        guard let source = menuBarLogo else {
+        currentHelperPhase = phase
+        let hasInstallableUpdate = stagedCandidateBuild != nil
+            && FileManager.default.fileExists(atPath: stagedUpdateApp.path)
+        let isDownloading = currentUpdatePhase == .checking
+            && currentUpdateMessage.hasPrefix("正在下载")
+        let isBusy = (currentUpdatePhase == .checking && !isDownloading)
+            || currentUpdatePhase == .installing
+        let activityTitle = updateActivityTitle(
+            isDownloading: isDownloading
+        )
+        let source: NSImage?
+        if hasInstallableUpdate {
+            source = menuBarReadyLogo ?? menuBarUpdateLogo ?? menuBarLogo
+        } else if isDownloading {
+            source = menuBarUpdateLogo ?? menuBarLogo
+        } else if isBusy {
+            source = menuBarWorkLogo ?? menuBarLogo
+        } else {
+            source = menuBarLogo
+        }
+        guard let source else {
             // A packaged build is verified to contain the SVG. Keep the menu
             // reachable in an unpackaged developer run if that resource is
             // deliberately absent.
             statusItem.length = NSStatusItem.variableLength
             statusItem.button?.image = nil
-            statusItem.button?.title = "AI2"
+            statusItem.button?.title = activityTitle.map { "AI2 \($0)" } ?? "AI2"
             return
         }
         let color: NSColor
-        switch phase {
-        case .ready:
+        if hasInstallableUpdate || isDownloading || isBusy {
             color = .black
-        case .initializing, .checking, .starting, .restarting, .stopping,
-             .degraded, .failed:
-            color = NSColor(calibratedWhite: 0.48, alpha: 1)
-        case .stopped, .helperExiting:
-            color = NSColor(calibratedWhite: 0.78, alpha: 1)
+        } else {
+            switch phase {
+            case .ready:
+                color = .black
+            case .initializing, .checking, .starting, .restarting, .stopping,
+                 .degraded, .failed:
+                color = NSColor(calibratedWhite: 0.48, alpha: 1)
+            case .stopped, .helperExiting:
+                color = NSColor(calibratedWhite: 0.78, alpha: 1)
+            }
         }
-        let size = NSSize(width: 18, height: 18)
+        // The logo has generous intrinsic margins. Render it slightly larger
+        // than the conventional 18-point menu-bar glyph so its visible mark
+        // matches neighbouring status icons.
+        let size = NSSize(width: 22, height: 22)
         let image = NSImage(size: size, flipped: false) { rect in
             source.draw(
                 in: rect,
@@ -635,9 +742,34 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         // State color is meaningful, so this must not be converted into a
         // monochrome macOS template image.
         image.isTemplate = false
-        statusItem.length = NSStatusItem.squareLength
-        statusItem.button?.title = ""
+        statusItem.length = activityTitle == nil
+            ? NSStatusItem.squareLength
+            : NSStatusItem.variableLength
+        statusItem.button?.title = activityTitle.map { " \($0)" } ?? ""
+        statusItem.button?.imagePosition = activityTitle == nil ? .imageOnly : .imageLeft
         statusItem.button?.image = image
+        if hasInstallableUpdate {
+            statusItem.button?.toolTip = "AI2Apps — Build \(stagedCandidateBuild ?? "?") 可安装"
+        } else if currentUpdatePhase == .checking || currentUpdatePhase == .installing {
+            statusItem.button?.toolTip = "AI2Apps — \(currentUpdateMessage)"
+        } else {
+            statusItem.button?.toolTip = "AI2Apps 服务 — \(arguments.instanceID.rawValue) — \(currentHelperMessage)"
+        }
+    }
+
+    private func updateActivityTitle(
+        isDownloading: Bool
+    ) -> String? {
+        if isDownloading {
+            if let separator = currentUpdateMessage.lastIndex(of: "：") {
+                let progress = currentUpdateMessage[currentUpdateMessage.index(after: separator)...]
+                if progress.hasSuffix("%") {
+                    return String(progress)
+                }
+            }
+            return "0%"
+        }
+        return nil
     }
 
     private func handleControlRequest(
@@ -651,10 +783,24 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                     result: HelperControlResult(status: "restarting")
                 )
             }
+            let profileKey = request.browserProfileKey ?? "default"
             let profileID = try BrowserAgentProfileID.derive(
                 instanceID: arguments.instanceID,
-                actorUserID: request.actorUserID
+                actorUserID: request.actorUserID,
+                profileKey: profileKey
             ).rawValue
+            if request.operation == "browser.delete" {
+                guard profileKey != "default" else {
+                    return .failure(
+                        requestID: request.requestID,
+                        error: "The default browser Profile cannot be deleted"
+                    )
+                }
+                return try await deleteBrowserProfile(
+                    requestID: request.requestID,
+                    profileID: profileID
+                )
+            }
             if request.operation == "browser.release" {
                 return releaseBrowserAgent(
                     requestID: request.requestID,
@@ -693,13 +839,16 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                 executable: executable,
                 instanceID: arguments.instanceID,
                 actorUserID: request.actorUserID,
+                profileKey: profileKey,
                 paths: paths,
                 initialURL: initialURL,
                 automation: automation,
                 inheritedEnvironment: ProcessInfo.processInfo.environment
             )
             if let existing = browserAgents[profileID], !existing.application.isTerminated {
-                existing.application.activate(options: [.activateAllWindows])
+                existing.application.activate(
+                    options: [.activateAllWindows, .activateIgnoringOtherApps]
+                )
                 auditBrowserEvent(
                     action: "browser.focus",
                     profileID: profileID,
@@ -739,6 +888,13 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             let application = try await openBrowserApplication(
                 at: agentBundleURL,
                 configuration: openConfiguration
+            )
+            let launchDeadline = Date().addingTimeInterval(5)
+            while !application.isFinishedLaunching, Date() < launchDeadline {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            application.activate(
+                options: [.activateAllWindows, .activateIgnoringOtherApps]
             )
             browserAgents[profileID] = ManagedBrowserAgent(
                 application: application,
@@ -815,6 +971,42 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                 profileID: profileID,
                 processID: processID
             )
+        )
+    }
+
+    private func deleteBrowserProfile(
+        requestID: String,
+        profileID: String
+    ) async throws -> HelperControlResponse {
+        if let existing = browserAgents.removeValue(forKey: profileID),
+           !existing.application.isTerminated {
+            existing.application.terminate()
+            let deadline = Date().addingTimeInterval(5)
+            while !existing.application.isTerminated, Date() < deadline {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            guard existing.application.isTerminated else {
+                throw ContractError.invalidField(
+                    field: "browser_profile",
+                    reason: "AceFox did not exit before Profile deletion"
+                )
+            }
+        }
+        let profileDirectory = paths.browserProfilesDirectory
+            .appendingPathComponent("agents", isDirectory: true)
+            .appendingPathComponent(profileID, isDirectory: true)
+        if FileManager.default.fileExists(atPath: profileDirectory.path) {
+            try FileManager.default.removeItem(at: profileDirectory)
+        }
+        auditBrowserEvent(
+            action: "browser.delete",
+            profileID: profileID,
+            processID: 0,
+            outcome: "deleted"
+        )
+        return .success(
+            requestID: requestID,
+            result: HelperControlResult(status: "deleted", profileID: profileID)
         )
     }
 
@@ -1257,14 +1449,216 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         try prepareRealPrivateDirectory(stagedUpdateApp.deletingLastPathComponent())
     }
 
+    private func beginPeriodicUpdateChecks() {
+        guard updateManifestURL != nil else { return }
+        periodicUpdateTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(30))
+                while !Task.isCancelled {
+                    self?.startUpdateCheckIfPossible(audibleFailure: false)
+                    try await Task.sleep(for: .seconds(24 * 60 * 60))
+                }
+            } catch {
+                // Cancellation is expected during Helper shutdown.
+            }
+        }
+    }
+
+    @objc private func checkForUpdates() {
+        startUpdateCheckIfPossible(audibleFailure: true)
+    }
+
+    private func startUpdateCheckIfPossible(audibleFailure: Bool) {
+        guard canManageUpdates, updateProcess == nil, updateDownloadTask == nil,
+              stagedCandidateBuild == nil, updateManifestURL != nil else {
+            if audibleFailure {
+                NSSound.beep()
+            }
+            return
+        }
+        publishUpdateStatus(.checking, message: "正在联网检查更新")
+        updateDownloadTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performOnlineUpdateCheck(showCurrentVersionTip: audibleFailure)
+            self.updateDownloadTask = nil
+            self.refreshUpdateMenu()
+        }
+        refreshUpdateMenu()
+    }
+
+    private func performOnlineUpdateCheck(showCurrentVersionTip: Bool) async {
+        guard let manifestURL = updateManifestURL,
+              let appBundleURL = arguments.appBundleURL,
+              let appBundle = Bundle(url: appBundleURL),
+              let bundleIdentifier = appBundle.bundleIdentifier,
+              let buildText = appBundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+              let currentBuild = Int(buildText), currentBuild > 0,
+              let runtimeProfile = appBundle.object(
+                  forInfoDictionaryKey: "AI2AppsRuntimeProfile"
+              ) as? String else {
+            publishUpdateStatus(.failed, message: "更新配置不完整", errorCode: "update_config_invalid")
+            return
+        }
+        do {
+            publishUpdateStatus(.checking, message: "正在联网检查更新")
+            let manifest = try await fetchUpdateManifest(from: manifestURL)
+            let cohortID = try UpdateManifest.loadOrCreateCohortID(
+                at: paths.configDirectory.appendingPathComponent("update-cohort-id")
+            )
+            let version = ProcessInfo.processInfo.operatingSystemVersion
+            let systemVersion = "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+            #if arch(arm64)
+            let architecture = "arm64"
+            #elseif arch(x86_64)
+            let architecture = "x86_64"
+            #else
+            let architecture = "unsupported"
+            #endif
+            guard let release = try manifest.selectedRelease(
+                bundleIdentifier: bundleIdentifier,
+                instanceID: arguments.instanceID.rawValue,
+                currentBuild: currentBuild,
+                runtimeProfile: runtimeProfile,
+                architecture: architecture,
+                systemVersion: systemVersion,
+                cohortID: cohortID
+            ) else {
+                publishUpdateStatus(.idle, message: "已是最新版本")
+                if showCurrentVersionTip {
+                    presentCurrentVersionTip()
+                }
+                return
+            }
+
+            try prepareUpdateDirectories()
+            let incoming = updateDirectory.appendingPathComponent(
+                "incoming-\(release.bundleVersion)",
+                isDirectory: true
+            )
+            try prepareRealPrivateDirectory(incoming)
+            let metadata = incoming.appendingPathComponent(release.metadata.filename)
+            let dmg = incoming.appendingPathComponent(release.dmg.filename)
+            let downloader = ResumableDownloader()
+            _ = try await downloader.download(
+                release.metadata,
+                to: metadata,
+                progress: updateProgressHandler(build: release.bundleVersion, label: "清单")
+            )
+            _ = try await downloader.download(
+                release.dmg,
+                to: dmg,
+                progress: updateProgressHandler(build: release.bundleVersion, label: "安装包")
+            )
+            try Task.checkCancellation()
+            stageDownloadedUpdate(dmg: dmg, metadata: metadata)
+        } catch is CancellationError {
+            publishUpdateStatus(.idle, message: "更新下载已暂停")
+        } catch {
+            publishUpdateStatus(
+                .failed,
+                message: "联网检查或下载更新失败",
+                errorCode: "online_update_failed"
+            )
+            try? appendUpdateLog("online update failed: \(error)\n")
+        }
+    }
+
+    private func presentCurrentVersionTip() {
+        guard let button = statusItem.button else { return }
+        updateTipDismissalTask?.cancel()
+        updateTipPopover?.close()
+
+        let label = NSTextField(labelWithString: "当前已是最新版本")
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .labelColor
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let controller = NSViewController()
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 176, height: 42))
+        contentView.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            label.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+        controller.view = contentView
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentSize = contentView.frame.size
+        popover.contentViewController = controller
+        updateTipPopover = popover
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+        updateTipDismissalTask = Task { [weak self, weak popover] in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
+            popover?.close()
+            self?.updateTipPopover = nil
+            self?.updateTipDismissalTask = nil
+        }
+    }
+
+    private func fetchUpdateManifest(from url: URL) async throws -> UpdateManifest {
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = 30
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.url?.scheme?.lowercased() == "https" else {
+            throw UpdateManifestError.invalidField("http_status")
+        }
+        var data = Data()
+        data.reserveCapacity(64 * 1024)
+        for try await byte in bytes {
+            guard data.count < 1024 * 1024 else {
+                throw UpdateManifestError.invalidField("manifest_size")
+            }
+            data.append(byte)
+        }
+        let manifest = try JSONDecoder().decode(UpdateManifest.self, from: data)
+        try manifest.validate()
+        return manifest
+    }
+
+    private func updateProgressHandler(
+        build: String,
+        label: String
+    ) -> ResumableDownloader.Progress {
+        { [weak self] received, total in
+            let percent = total > 0 ? min(100, Int(received * 100 / total)) : 0
+            Task { @MainActor in
+                self?.publishUpdateStatus(
+                    .checking,
+                    message: "正在下载 Build \(build) \(label)：\(percent)%"
+                )
+            }
+        }
+    }
+
+    private func appendUpdateLog(_ message: String) throws {
+        let handle = try updateLogHandle()
+        defer { try? handle.close() }
+        try handle.write(contentsOf: Data(message.utf8))
+    }
+
     @objc private func checkDownloadedUpdate() {
+        let dmg = updateDirectory.appendingPathComponent("AI2Apps.dmg")
+        let metadata = updateDirectory.appendingPathComponent("AI2Apps.release.json")
+        stageDownloadedUpdate(dmg: dmg, metadata: metadata)
+    }
+
+    private func stageDownloadedUpdate(dmg: URL, metadata: URL) {
         guard canManageUpdates, updateProcess == nil,
               let appBundle = arguments.appBundleURL else {
             NSSound.beep()
             return
         }
-        let dmg = updateDirectory.appendingPathComponent("AI2Apps.dmg")
-        let metadata = updateDirectory.appendingPathComponent("AI2Apps.release.json")
         guard FileManager.default.fileExists(atPath: dmg.path),
               FileManager.default.fileExists(atPath: metadata.path) else {
             publishUpdateStatus(
@@ -1284,9 +1678,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             }
             stagedCandidateBuild = nil
             let contents = appBundle.appendingPathComponent("Contents", isDirectory: true)
-            let python = contents.appendingPathComponent(
-                "Library/AI2AppsLocal/Python/cpython-3.11/bin/python3.11"
-            )
+            let python = arguments.runtimePythonExecutable
             let script = contents.appendingPathComponent(
                 "Resources/Update/stage-update-candidate.py"
             )
@@ -1387,16 +1779,6 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         let backup = appBundle.deletingLastPathComponent().appendingPathComponent(
             "\(appBundle.deletingPathExtension().lastPathComponent).previous.app"
         )
-        guard !FileManager.default.fileExists(atPath: backup.path) else {
-            publishUpdateStatus(
-                .failed,
-                message: "上一版本备份仍存在，请先处理备份",
-                candidateBuild: candidateBuild,
-                errorCode: "backup_exists"
-            )
-            return
-        }
-
         var externalUpdater: URL?
         var log: FileHandle?
         do {
@@ -1469,7 +1851,19 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                             message: "更新已安装，正在重新打开 AI2Apps",
                             candidateBuild: candidateBuild
                         )
-                        self.openAI2Apps()
+                        do {
+                            try self.launchUpdatedApplicationForHandoff(appBundle: appBundle)
+                            self.preserveLocalForUpdateHandoff = true
+                            NSApp.terminate(nil)
+                        } catch {
+                            self.publishUpdateStatus(
+                                .failed,
+                                message: "更新已安装，但自动重启失败",
+                                candidateBuild: candidateBuild,
+                                errorCode: "handoff_failed"
+                            )
+                            self.presentError(error)
+                        }
                     } else {
                         self.publishUpdateStatus(
                             .failed,
@@ -1509,6 +1903,25 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             )
             presentError(error)
         }
+    }
+
+    private func launchUpdatedApplicationForHandoff(appBundle: URL) throws {
+        let launcher = appBundle.appendingPathComponent("Contents/MacOS/AI2Apps")
+        guard FileManager.default.isExecutableFile(atPath: launcher.path) else {
+            throw ContractError.invalidField(
+                field: "post_update_handoff",
+                reason: "updated Launcher is not executable"
+            )
+        }
+        let process = Process()
+        process.executableURL = launcher
+        process.arguments = [
+            "--post-update-handoff",
+            "--wait-helper-pid", String(ProcessInfo.processInfo.processIdentifier),
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = try updateLogHandle()
+        try process.run()
     }
 
     private func processExecutablePath(pid: pid_t) -> String? {

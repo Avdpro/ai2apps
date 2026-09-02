@@ -1,0 +1,40 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_multilingual_e5_small_5030c762_v1",
+  "modelId": "ai2apps.model.multilingual-e5-small/default",
+  "repoId": "mlx-community/multilingual-e5-small-mlx",
+  "revision": "5030c7625865046d350eeea28f427d80353d0ac0",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://spdx.org/licenses/MIT.txt",
+    "termsHash": "sha256:c3b1b78bc8bd3ea13aa4bc9778442d16560270afa235006d816e5e88cef24db4",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "weights.00.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/multilingual-e5-small-mlx",
+      "revision": "5030c7625865046d350eeea28f427d80353d0ac0",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/multilingual-e5-small-mlx",
+      "revision": "ce3c83d256ffaf0579c93036f5282222f83586e7",
+      "access": "public_anonymous"
+    }
+  ]
+}

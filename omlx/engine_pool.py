@@ -2053,7 +2053,15 @@ class EnginePool:
                         trust_remote_code=trc,
                     )
                 elif effective_type == "vlm":
-                    engine = VLMBatchedEngine(
+                    vlm_engine_class = VLMBatchedEngine
+                    if (
+                        entry.config_model_type == "glm5_next"
+                        and os.environ.get("OMLX_GLM5_DYNAMIC_STORE", "").strip()
+                    ):
+                        from .engine.glm5_dynamic import Glm5DynamicVLMEngine
+
+                        vlm_engine_class = Glm5DynamicVLMEngine
+                    engine = vlm_engine_class(
                         model_name=entry.model_path,
                         trust_remote_code=trc,
                         scheduler_config=self._scheduler_config,
@@ -2446,6 +2454,8 @@ class EnginePool:
                     "model_path": e.model_path,
                     "loaded": e.engine is not None,
                     "is_loading": e.is_loading,
+                    "load_failed": e.load_failed,
+                    "load_failure_message": e.load_failure_message,
                     "loading_started_at": e.loading_started_at,
                     "estimated_size": e.estimated_size,
                     "actual_size": e.actual_size,

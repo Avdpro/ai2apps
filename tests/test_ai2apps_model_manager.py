@@ -96,6 +96,8 @@ def test_models_app_opens_with_default_model_routing_first():
     assert "speech_generation" in script
     assert "audio_processing" in script
     assert "image_generation" in script
+    assert "model.source_type !== 'hf_cache'" in script
+    assert "name.startsWith('Dev: ')" in script
     assert "Installed Model Providers" in template
     assert "packages: data.packages || []" in script
 

@@ -5,6 +5,7 @@ from .omlx_audio import OmlxAudioAdapterBase, OmlxSTTAdapter, OmlxTTSAdapter
 from .omlx_chat import OmlxChatAdapter
 from .protocol import (
     ModelWorkerAdapter,
+    ModelWorkerArtifact,
     ModelWorkerCheckpoint,
     ModelWorkerContext,
     ModelWorkerError,
@@ -16,6 +17,7 @@ from .protocol import (
 
 __all__ = [
     "ModelWorkerAdapter",
+    "ModelWorkerArtifact",
     "ModelWorkerCheckpoint",
     "ModelWorkerContext",
     "ModelWorkerError",

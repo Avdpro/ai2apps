@@ -18,6 +18,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("store", type=Path)
     parser.add_argument("--scope", default="coding")
     parser.add_argument("--backend", choices=("flesh", "arena", "tiered"), default="arena")
+    parser.add_argument("--experts", type=int, default=96)
+    parser.add_argument("--tail", type=int, default=24)
     parser.add_argument("--lengths", default="128,512,1024")
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--max-tokens", type=int, default=1)
@@ -29,8 +31,8 @@ async def run(args: argparse.Namespace) -> None:
     from omlx.patches.qwen3_6_flesh.scope_policy import configure_qwen36_scope_policy
 
     configure_qwen36_scope_policy(
-        args.profile, args.scope, args.store, 96,
-        backend=args.backend, arena_tail_slots=24,
+        args.profile, args.scope, args.store, args.experts,
+        backend=args.backend, arena_tail_slots=args.tail,
     )
     if args.backend == "flesh":
         from omlx.engine.qwen36_flesh import Qwen36FleshEngine as Engine
@@ -59,6 +61,7 @@ async def run(args: argparse.Namespace) -> None:
                     skip_cache_store=True,
                     flesh_session_id="prefill-bench",
                     flesh_l1_mode="off",
+                    flesh_scope=args.scope,
                 )
                 rows.append(
                     {
@@ -75,8 +78,10 @@ async def run(args: argparse.Namespace) -> None:
                 )
         report = {
             "backend": args.backend,
+            "experts": args.experts,
+            "tail": args.tail,
             "prefill_backend": __import__("os").environ.get(
-                "OMLX_QWEN36_PREFILL_BACKEND", "stable-swap"
+                "OMLX_QWEN36_PREFILL_BACKEND", "workspace256-direct"
             ),
             "rows": rows,
             "stats": engine.get_stats().get("flesh", {}),

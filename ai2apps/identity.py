@@ -21,6 +21,9 @@ _IDENTITY = re.compile(r"^[A-Za-z0-9._~-]{1,200}$")
 # to one Installation. New cookies must use local_session_cookie_name().
 LOCAL_SESSION_COOKIE = "ai2apps_local_session"
 LOCAL_SESSION_COOKIE_PREFIX = LOCAL_SESSION_COOKIE
+LOCAL_SESSION_IDLE_TIMEOUT = timedelta(days=30)
+LOCAL_SESSION_LIFETIME = timedelta(days=180)
+LOCAL_SESSION_RENEWAL_WINDOW = timedelta(days=7)
 
 
 class OrganizationType(StrEnum):
@@ -115,6 +118,7 @@ class InstallationIdentity:
     core_user_id: str
     billing_account_id: str
     access_epoch: int
+    local_session_epoch: int
     status: str
     created_at: datetime
     updated_at: datetime
@@ -127,6 +131,7 @@ class InstallationMembership:
     role: MemberRole
     status: str
     membership_epoch: int
+    account_session_epoch: int
     last_verified_at: datetime
     created_at: datetime
     updated_at: datetime
@@ -139,6 +144,9 @@ class LocalLoginSession:
     actor_user_id: str
     role_snapshot: MemberRole
     membership_epoch: int
+    access_epoch: int
+    local_session_epoch: int
+    account_session_epoch: int
     client_scope: str
     created_at: datetime
     expires_at: datetime
@@ -161,6 +169,7 @@ class IdentityRepository:
             core_user_id=row["core_user_id"],
             billing_account_id=row["billing_account_id"],
             access_epoch=int(row["access_epoch"]),
+            local_session_epoch=int(row["local_session_epoch"]),
             status=row["status"],
             created_at=parse_utc(row["created_at"]),
             updated_at=parse_utc(row["updated_at"]),
@@ -174,6 +183,7 @@ class IdentityRepository:
             role=MemberRole(row["role"]),
             status=row["status"],
             membership_epoch=int(row["membership_epoch"]),
+            account_session_epoch=int(row["account_session_epoch"]),
             last_verified_at=parse_utc(row["last_verified_at"]),
             created_at=parse_utc(row["created_at"]),
             updated_at=parse_utc(row["updated_at"]),
@@ -187,6 +197,9 @@ class IdentityRepository:
             actor_user_id=row["actor_user_id"],
             role_snapshot=MemberRole(row["role_snapshot"]),
             membership_epoch=int(row["membership_epoch"]),
+            access_epoch=int(row["access_epoch"]),
+            local_session_epoch=int(row["local_session_epoch"]),
+            account_session_epoch=int(row["account_session_epoch"]),
             client_scope=row["client_scope"],
             created_at=parse_utc(row["created_at"]),
             expires_at=parse_utc(row["expires_at"]),
@@ -218,7 +231,9 @@ class IdentityRepository:
         core_user_id: str,
         billing_account_id: str,
         access_epoch: int,
+        local_session_epoch: int | None = None,
         core_membership_epoch: int | None = None,
+        core_account_session_epoch: int | None = None,
         core_role: MemberRole = MemberRole.CORE,
     ) -> InstallationIdentity:
         """Bind once, allowing only an idempotent refresh of the same authority."""
@@ -233,10 +248,17 @@ class IdentityRepository:
             validate_identity(value, label)
         if access_epoch < 1:
             raise ValueError("access_epoch must be positive")
+        if local_session_epoch is not None and local_session_epoch < 1:
+            raise ValueError("local_session_epoch must be positive")
         if core_membership_epoch is None:
             core_membership_epoch = access_epoch
         if core_membership_epoch < 1:
             raise ValueError("core_membership_epoch must be positive")
+        if (
+            core_account_session_epoch is not None
+            and core_account_session_epoch < 1
+        ):
+            raise ValueError("core_account_session_epoch must be positive")
         if core_role not in {MemberRole.CORE, MemberRole.OWNER}:
             raise ValueError("core_role must be core or owner")
         now = utc_now_text()
@@ -268,22 +290,33 @@ class IdentityRepository:
                     )
                 if access_epoch < int(existing["access_epoch"]):
                     raise IdentityBindingError("Installation access epoch regressed")
+                if local_session_epoch is None:
+                    local_session_epoch = int(existing["local_session_epoch"])
+                if local_session_epoch < int(existing["local_session_epoch"]):
+                    raise IdentityBindingError("Local Session epoch regressed")
                 access_changed = access_epoch != int(existing["access_epoch"])
+                local_session_changed = local_session_epoch != int(
+                    existing["local_session_epoch"]
+                )
                 connection.execute(
                     """
                     UPDATE installations
-                    SET access_epoch=?, status='active', updated_at=? WHERE id=?
+                    SET access_epoch=?,local_session_epoch=?,status='active',
+                        updated_at=? WHERE id=?
                     """,
-                    (access_epoch, now, installation_id),
+                    (access_epoch, local_session_epoch, now, installation_id),
                 )
             else:
+                local_session_epoch = local_session_epoch or 1
+                local_session_changed = False
                 connection.execute(
                     """
                     INSERT INTO installations(
                         id,cloud_device_id,organization_id,organization_type,
-                        core_user_id,billing_account_id,access_epoch,status,
+                        core_user_id,billing_account_id,access_epoch,
+                        local_session_epoch,status,
                         created_at,updated_at
-                    ) VALUES (?,?,?,?,?,?,?,'active',?,?)
+                    ) VALUES (?,?,?,?,?,?,?,?,'active',?,?)
                     """,
                     (
                         installation_id,
@@ -293,6 +326,7 @@ class IdentityRepository:
                         core_user_id,
                         billing_account_id,
                         access_epoch,
+                        local_session_epoch,
                         now,
                         now,
                     ),
@@ -304,6 +338,18 @@ class IdentityRepository:
                 """,
                 (installation_id, core_user_id),
             ).fetchone()
+            if core_account_session_epoch is None:
+                core_account_session_epoch = (
+                    1
+                    if existing_core is None
+                    else int(existing_core["account_session_epoch"])
+                )
+            if (
+                existing_core is not None
+                and core_account_session_epoch
+                < int(existing_core["account_session_epoch"])
+            ):
+                raise IdentityBindingError("Core account Session epoch regressed")
             if (
                 existing_core is not None
                 and core_membership_epoch
@@ -317,19 +363,26 @@ class IdentityRepository:
                     or existing_core["status"] != "active"
                     or int(existing_core["membership_epoch"])
                     != core_membership_epoch
+                    or int(existing_core["account_session_epoch"])
+                    != core_account_session_epoch
                 )
             )
             connection.execute(
                 """
                 INSERT INTO installation_memberships(
                     installation_id,cloud_user_id,role,status,membership_epoch,
+                    account_session_epoch,
                     last_verified_at,created_at,updated_at
-                ) VALUES (?,?,?,'active',?,?,?,?)
+                ) VALUES (?,?,?,'active',?,?,?,?,?)
                 ON CONFLICT(installation_id,cloud_user_id) DO UPDATE SET
                     role=excluded.role,status='active',
                     membership_epoch=MAX(
                         installation_memberships.membership_epoch,
                         excluded.membership_epoch
+                    ),
+                    account_session_epoch=MAX(
+                        installation_memberships.account_session_epoch,
+                        excluded.account_session_epoch
                     ),
                     last_verified_at=excluded.last_verified_at,
                     updated_at=excluded.updated_at
@@ -339,12 +392,13 @@ class IdentityRepository:
                     core_user_id,
                     core_role.value,
                     core_membership_epoch,
+                    core_account_session_epoch,
                     now,
                     now,
                     now,
                 ),
             )
-            if access_changed:
+            if access_changed or local_session_changed:
                 connection.execute(
                     "DELETE FROM local_login_sessions WHERE installation_id=?",
                     (installation_id,),
@@ -370,6 +424,7 @@ class IdentityRepository:
         role: MemberRole,
         status: str,
         membership_epoch: int,
+        account_session_epoch: int | None = None,
     ) -> InstallationMembership:
         """Apply a Cloud-authoritative membership snapshot monotonically."""
 
@@ -378,6 +433,8 @@ class IdentityRepository:
             raise ValueError("membership status is invalid")
         if membership_epoch < 1:
             raise ValueError("membership_epoch must be positive")
+        if account_session_epoch is not None and account_session_epoch < 1:
+            raise ValueError("account_session_epoch must be positive")
         installation = self.get_installation()
         if installation is None:
             raise IdentityBindingError("Installation is not bound")
@@ -399,15 +456,28 @@ class IdentityRepository:
                 existing["membership_epoch"]
             ):
                 raise IdentityBindingError("Membership epoch regressed")
+            if account_session_epoch is None:
+                account_session_epoch = (
+                    1
+                    if existing is None
+                    else int(existing["account_session_epoch"])
+                )
+            if (
+                existing is not None
+                and account_session_epoch < int(existing["account_session_epoch"])
+            ):
+                raise IdentityBindingError("Account Session epoch regressed")
             connection.execute(
                 """
                 INSERT INTO installation_memberships(
                     installation_id,cloud_user_id,role,status,membership_epoch,
+                    account_session_epoch,
                     last_verified_at,created_at,updated_at
-                ) VALUES (?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(installation_id,cloud_user_id) DO UPDATE SET
                     role=excluded.role,status=excluded.status,
                     membership_epoch=excluded.membership_epoch,
+                    account_session_epoch=excluded.account_session_epoch,
                     last_verified_at=excluded.last_verified_at,
                     updated_at=excluded.updated_at
                 """,
@@ -417,6 +487,7 @@ class IdentityRepository:
                     role.value,
                     status,
                     membership_epoch,
+                    account_session_epoch,
                     now,
                     now,
                     now,
@@ -440,6 +511,7 @@ class IdentityRepository:
         organization_id: str,
         device_status: str,
         access_epoch: int,
+        local_session_epoch: int | None = None,
         memberships: Sequence[dict[str, Any]],
     ) -> InstallationIdentity:
         """Atomically apply one complete Cloud authorization projection."""
@@ -454,8 +526,10 @@ class IdentityRepository:
             raise ValueError("device status is invalid")
         if access_epoch < 1:
             raise ValueError("access_epoch must be positive")
+        if local_session_epoch is not None and local_session_epoch < 1:
+            raise ValueError("local_session_epoch must be positive")
 
-        normalized: list[tuple[str, MemberRole, str, int]] = []
+        normalized: list[tuple[str, MemberRole, str, int, int | None]] = []
         seen: set[str] = set()
         for item in memberships:
             try:
@@ -463,6 +537,10 @@ class IdentityRepository:
                 role = MemberRole(str(item["role"]))
                 status = str(item["status"])
                 membership_epoch = int(item["membership_epoch"])
+                raw_account_epoch = item.get("account_session_epoch")
+                account_session_epoch = (
+                    None if raw_account_epoch is None else int(raw_account_epoch)
+                )
             except (KeyError, TypeError, ValueError) as error:
                 raise ValueError("membership projection is invalid") from error
             if user_id in seen:
@@ -471,8 +549,12 @@ class IdentityRepository:
                 raise ValueError("membership status is invalid")
             if membership_epoch < 1:
                 raise ValueError("membership_epoch must be positive")
+            if account_session_epoch is not None and account_session_epoch < 1:
+                raise ValueError("account_session_epoch must be positive")
             seen.add(user_id)
-            normalized.append((user_id, role, status, membership_epoch))
+            normalized.append(
+                (user_id, role, status, membership_epoch, account_session_epoch)
+            )
 
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
@@ -489,8 +571,13 @@ class IdentityRepository:
                     "Cloud access projection changed installation authority"
                 )
             prior_access_epoch = int(installation["access_epoch"])
+            prior_local_session_epoch = int(installation["local_session_epoch"])
             if access_epoch < prior_access_epoch:
                 raise IdentityBindingError("Installation access epoch regressed")
+            if local_session_epoch is None:
+                local_session_epoch = prior_local_session_epoch
+            if local_session_epoch < prior_local_session_epoch:
+                raise IdentityBindingError("Local Session epoch regressed")
 
             core_user_id = str(installation["core_user_id"])
             core = next((item for item in normalized if item[0] == core_user_id), None)
@@ -511,35 +598,57 @@ class IdentityRepository:
                 (installation_id,),
             ).fetchall()
             existing = {str(row["cloud_user_id"]): row for row in existing_rows}
-            for user_id, _role, _status, membership_epoch in normalized:
+            for user_id, _role, _status, membership_epoch, account_epoch in normalized:
                 row = existing.get(user_id)
                 if row is not None and membership_epoch < int(row["membership_epoch"]):
                     raise IdentityBindingError("Membership epoch regressed")
+                if (
+                    row is not None
+                    and account_epoch is not None
+                    and account_epoch < int(row["account_session_epoch"])
+                ):
+                    raise IdentityBindingError("Account Session epoch regressed")
 
             connection.execute(
                 """
                 UPDATE installations
-                SET status=?,access_epoch=?,updated_at=? WHERE id=?
+                SET status=?,access_epoch=?,local_session_epoch=?,updated_at=?
+                WHERE id=?
                 """,
-                (device_status, access_epoch, now, installation_id),
+                (
+                    device_status,
+                    access_epoch,
+                    local_session_epoch,
+                    now,
+                    installation_id,
+                ),
             )
-            for user_id, role, status, membership_epoch in normalized:
+            for user_id, role, status, membership_epoch, account_epoch in normalized:
                 row = existing.get(user_id)
+                resolved_account_epoch = (
+                    account_epoch
+                    if account_epoch is not None
+                    else 1 if row is None else int(row["account_session_epoch"])
+                )
                 authorization_changed = (
                     row is None
                     or row["role"] != role.value
                     or row["status"] != status
                     or int(row["membership_epoch"]) != membership_epoch
+                    or int(row["account_session_epoch"])
+                    != resolved_account_epoch
                 )
                 connection.execute(
                     """
                     INSERT INTO installation_memberships(
                         installation_id,cloud_user_id,role,status,membership_epoch,
+                        account_session_epoch,
                         last_verified_at,created_at,updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?)
+                    ) VALUES (?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(installation_id,cloud_user_id) DO UPDATE SET
                         role=excluded.role,status=excluded.status,
                         membership_epoch=excluded.membership_epoch,
+                        account_session_epoch=excluded.account_session_epoch,
                         last_verified_at=excluded.last_verified_at,
                         updated_at=excluded.updated_at
                     """,
@@ -549,6 +658,7 @@ class IdentityRepository:
                         role.value,
                         status,
                         membership_epoch,
+                        resolved_account_epoch,
                         now,
                         now,
                         now,
@@ -581,7 +691,11 @@ class IdentityRepository:
                     (installation_id, user_id),
                 )
 
-            if access_epoch != prior_access_epoch or device_status != "active":
+            if (
+                access_epoch != prior_access_epoch
+                or local_session_epoch != prior_local_session_epoch
+                or device_status != "active"
+            ):
                 connection.execute(
                     "DELETE FROM local_login_sessions WHERE installation_id=?",
                     (installation_id,),
@@ -656,15 +770,29 @@ class IdentityRepository:
         self,
         cloud_user_id: str,
         *,
-        lifetime: timedelta = timedelta(hours=12),
+        lifetime: timedelta = LOCAL_SESSION_LIFETIME,
         client_scope: str = "desktop",
     ) -> tuple[str, LocalLoginSession]:
         """Create an opaque local cookie for a currently active Cloud member."""
 
-        if lifetime <= timedelta(0) or lifetime > timedelta(days=30):
-            raise ValueError("Local session lifetime must be within 30 days")
+        if lifetime <= timedelta(0) or lifetime > timedelta(days=365):
+            raise ValueError("Local session lifetime must be within 365 days")
         validate_identity(client_scope, "client_scope")
         principal = self.principal_for(cloud_user_id)
+        installation = self.get_installation()
+        if installation is None:
+            raise IdentityBindingError("Installation is not bound")
+        with self.database.transaction() as connection:
+            membership_row = connection.execute(
+                """
+                SELECT * FROM installation_memberships
+                WHERE installation_id=? AND cloud_user_id=?
+                """,
+                (installation.id, cloud_user_id),
+            ).fetchone()
+        if membership_row is None:
+            raise IdentityBindingError("User is not an installation member")
+        membership = self._membership(membership_row)
         token = secrets.token_urlsafe(32)
         digest = self._token_digest(token)
         now_dt = utc_now()
@@ -676,9 +804,10 @@ class IdentityRepository:
                 """
                 INSERT INTO local_login_sessions(
                     token_digest,installation_id,actor_user_id,role_snapshot,
-                    membership_epoch,client_scope,created_at,expires_at,
+                    membership_epoch,access_epoch,local_session_epoch,
+                    account_session_epoch,client_scope,created_at,expires_at,
                     last_access_check_at
-                ) VALUES (?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     digest,
@@ -686,6 +815,9 @@ class IdentityRepository:
                     principal.actor_user_id,
                     principal.role.value,
                     principal.membership_epoch,
+                    installation.access_epoch,
+                    installation.local_session_epoch,
+                    membership.account_session_epoch,
                     client_scope,
                     now,
                     expires,
@@ -716,7 +848,11 @@ class IdentityRepository:
         if row is None:
             return None
         session = self._local_session(row)
-        if session.expires_at <= utc_now():
+        now_dt = utc_now()
+        if (
+            session.expires_at <= now_dt
+            or session.last_access_check_at + LOCAL_SESSION_IDLE_TIMEOUT <= now_dt
+        ):
             self.revoke_local_session(token)
             return None
         try:
@@ -729,6 +865,25 @@ class IdentityRepository:
             or principal.role != session.role_snapshot
         ):
             return None
+        installation = self.get_installation()
+        with self.database.transaction() as connection:
+            membership_row = connection.execute(
+                """
+                SELECT account_session_epoch FROM installation_memberships
+                WHERE installation_id=? AND cloud_user_id=?
+                """,
+                (session.installation_id, session.actor_user_id),
+            ).fetchone()
+        if (
+            installation is None
+            or membership_row is None
+            or installation.access_epoch != session.access_epoch
+            or installation.local_session_epoch != session.local_session_epoch
+            or int(membership_row["account_session_epoch"])
+            != session.account_session_epoch
+        ):
+            self.revoke_local_session(token)
+            return None
         now = utc_now_text()
         with self.database.transaction(write=True) as connection:
             connection.execute(
@@ -739,6 +894,41 @@ class IdentityRepository:
                 (now, digest),
             )
         return replace(principal, client_scope=session.client_scope)
+
+    def refresh_local_session(
+        self,
+        token: str | None,
+        *,
+        renewal_window: timedelta = LOCAL_SESSION_RENEWAL_WINDOW,
+    ) -> tuple[str, RequestPrincipal, bool] | None:
+        """Rotate an active desktop session when its absolute expiry is near."""
+
+        if renewal_window < timedelta(0) or renewal_window > LOCAL_SESSION_LIFETIME:
+            raise ValueError("Local session renewal window is invalid")
+        principal = self.authorize_local_session(token)
+        if principal is None or token is None:
+            return None
+        try:
+            digest = self._token_digest(token)
+        except UnicodeEncodeError:
+            return None
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM local_login_sessions WHERE token_digest=?",
+                (digest,),
+            ).fetchone()
+        if row is None:
+            return None
+        session = self._local_session(row)
+        if session.expires_at > utc_now() + renewal_window:
+            return token, principal, False
+        new_token, _ = self.create_local_session(
+            session.actor_user_id,
+            lifetime=LOCAL_SESSION_LIFETIME,
+            client_scope=session.client_scope,
+        )
+        self.revoke_local_session(token)
+        return new_token, principal, True
 
     def revoke_local_session(self, token: str | None) -> None:
         if not token:

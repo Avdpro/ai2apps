@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-deepseek-v4-flash-2bit"
-version = "0.3.1"
+version = "0.3.3"
 description = "DeepSeek V4 Flash 2-bit isolated Model Worker Package"
 readme = "README.md"
 license = "Apache-2.0"

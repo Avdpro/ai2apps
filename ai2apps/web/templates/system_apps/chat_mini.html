@@ -1,0 +1,13 @@
+{% extends app_base_template|default("base.html") %}
+{% block title %}{{ t('chat.mini.title') }} Mini-Entry - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/chat_mini.css') }}"><style>.chat-mini-screenshot{margin-top:8px;min-height:34px;padding:8px 10px;border:1px solid var(--cm-line);border-radius:8px;background:#fff;display:flex;align-items:center;gap:7px;color:var(--cm-muted);font-size:11px;font-weight:550;line-height:1.35;cursor:pointer}.chat-mini-screenshot[hidden]{display:none}.chat-mini-screenshot input{margin:0;accent-color:#171717}.chat-mini-screenshot span{display:flex;align-items:center;gap:6px}.chat-mini-screenshot svg{width:16px;height:16px;flex:none}</style>{% endblock %}
+{% block content %}
+<main class="chat-mini" data-app-id="ai2apps.general-chat">
+    <header><div><span><i data-lucide="message-square"></i></span><div><h1>{{ t('chat.mini.title') }}</h1><p>{{ t('chat.mini.subtitle') }}</p></div></div><select id="chat-mini-model" aria-label="{{ t('chat.mini.model') }}"></select></header>
+    <label id="chat-mini-screenshot-control" class="chat-mini-screenshot" hidden><input id="chat-mini-include-screenshot" type="checkbox"><span><i data-lucide="camera"></i>{{ t('chat.mini.include_screenshot') }}</span></label>
+    <nav class="chat-mini-actions" aria-label="{{ t('chat.mini.actions') }}"><button type="button" data-prompt="{{ t('chat.mini.prompt.summarize') }}">{{ t('chat.mini.summarize') }}</button><button type="button" data-prompt="{{ t('chat.mini.prompt.explain') }}">{{ t('chat.mini.explain') }}</button><button type="button" data-prompt="{{ t('chat.mini.prompt.translate') }}">{{ t('chat.mini.translate') }}</button></nav>
+    <section id="chat-mini-messages" class="chat-mini-messages" aria-live="polite"><div class="chat-mini-welcome"><i data-lucide="sparkles"></i><strong>{{ t('chat.mini.ready') }}</strong><p>{{ t('chat.mini.ready_help') }}</p></div></section>
+    <form id="chat-mini-form"><textarea id="chat-mini-input" rows="2" placeholder="{{ t('chat.mini.placeholder') }}"></textarea><button id="chat-mini-send" type="submit"><i data-lucide="arrow-up"></i><span>{{ t('chat.mini.send') }}</span></button></form>
+</main>
+{% endblock %}
+{% block scripts %}<script>window.AI2APPS_CHAT_MINI_ACTOR={{ principal_actor_user_id|tojson }};</script><script src="{{ static('js/chat_mini.js') }}?v=webdriver-bidi-p0-3"></script>{% endblock %}

@@ -1,0 +1,90 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen-image-mlx
+name: Qwen Image MLX
+description: Optimized local Qwen-Image-2512 generation and Qwen-Image-Edit-2511 editing on Apple Silicon.
+version: 0.1.1
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.qwen-image-mlx/2512
+    display_name: Qwen Image 2512 MLX
+    model_type: image_generation
+    upstream_id: Qwen/Qwen-Image-2512
+    capabilities: [image_generation, text_rendering, multilingual, local, mlx]
+    weights:
+      provider: huggingface
+      repo_id: Qwen/Qwen-Image-2512
+      revision: 25468b98e3276ca6700de15c6628e51b7de54a26
+      distribution_id: dist_ai2apps_qwen_image_2512_25468b98_v1
+      preparation: {recipe: native}
+    metadata:
+      family: qwen-image
+      variant: "2512"
+      implementation: mflux-mlx-optimized
+      mflux_version: 0.19.0
+      modelscope:
+        repo_id: Qwen/Qwen-Image-2512
+        revision: ee3f7563eefa997af5a07dbe54a57e5babd3768b
+        resolved_revision: ee3f7563eefa997af5a07dbe54a57e5babd3768b
+        preferred: true
+        allow_patterns: ["vae/*", "transformer/*", "text_encoder/*", "tokenizer/**", "scheduler/*", "processor/*", added_tokens.json, chat_template.jinja, model_index.json]
+      device_recommendation: {minimum_memory_gib: 32, preferred_memory_gib: 64, quality_rank: 10}
+    image_capabilities: &qwen_generation_capabilities
+      schema: ai2apps.image-capabilities/v1
+      operations: [image_generation]
+      formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
+      geometry:
+        minimum: {width: 256, height: 256}
+        maximum: {width: 2048, height: 2048}
+        multiple_of: 16
+        ratios: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"]
+      defaults: {width: 1328, height: 1328, steps: 20, guidance: 4.0, output_format: png}
+      execution: {quantizations: [q8, q4, bf16], compiled_denoiser: false, persistent_quantized_cache: true, single_pass_guidance_one: true, edit_kv_cache: false, max_concurrency_per_device: 1}
+  - id: ai2apps.model.qwen-image-mlx/edit-2511
+    display_name: Qwen Image Edit 2511 MLX
+    model_type: image_generation
+    upstream_id: Qwen/Qwen-Image-Edit-2511
+    capabilities: [image_edit, multi_reference, character_consistency, local, mlx]
+    weights:
+      provider: huggingface
+      repo_id: Qwen/Qwen-Image-Edit-2511
+      revision: 6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9
+      distribution_id: dist_ai2apps_qwen_image_edit_2511_6f3ccc0b_v1
+      preparation: {recipe: native}
+    metadata:
+      family: qwen-image
+      variant: edit-2511
+      implementation: mflux-mlx-optimized
+      mflux_version: 0.19.0
+      modelscope:
+        repo_id: Qwen/Qwen-Image-Edit-2511
+        revision: f8403bcb7b827dab45d845cb71415ec9276e61d6
+        resolved_revision: f8403bcb7b827dab45d845cb71415ec9276e61d6
+        preferred: true
+        allow_patterns: ["vae/*", "transformer/*", "text_encoder/*", "tokenizer/**", "scheduler/*", "processor/*", added_tokens.json, chat_template.jinja, model_index.json]
+      device_recommendation: {minimum_memory_gib: 48, preferred_memory_gib: 64, quality_rank: 10}
+    image_capabilities:
+      <<: *qwen_generation_capabilities
+      operations: [image_generation, image_edit]
+      defaults: {width: 1024, height: 1024, steps: 30, guidance: 2.5, output_format: png}
+capabilities: [image-generation, image-edit, qwen-image]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.5.1,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, metal, image-generation, image-edit]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only Host-selected pinned Qwen Image checkpoints.}
+  accelerator: {metal: true, reason: Run native MLX image generation and editing.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 300}
+restart: {max_attempts: 2, base_delay_seconds: 2}
+tools: []

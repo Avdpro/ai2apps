@@ -214,10 +214,37 @@ class OmlxSTTAdapter(OmlxAudioAdapterBase):
 
 
 class OmlxTTSAdapter(OmlxAudioAdapterBase):
+    def dependency_checkpoint_paths(
+        self, checkpoint: ModelWorkerCheckpoint
+    ) -> dict[str, str]:
+        """Resolve only the helper checkpoints declared by the selected model."""
+        declaration = self.model_declaration(checkpoint.model_id)
+        metadata = declaration.get("metadata", {})
+        required_ids = (
+            metadata.get("required_model_ids", ())
+            if isinstance(metadata, Mapping)
+            else ()
+        )
+        dependency_checkpoints: dict[str, str] = {}
+        for required_id in required_ids:
+            required = self.context.checkpoint_for(str(required_id))
+            if required is None or required.path is None:
+                _error(
+                    f"Required checkpoint is not installed: {required_id}",
+                    code="model_unavailable",
+                    status=503,
+                )
+            dependency_checkpoints[required.repo_id] = str(required.path)
+        return dependency_checkpoints
+
     async def create_engine(self, checkpoint, runtime_options=None):
         from omlx.engine.tts import TTSEngine
 
-        return TTSEngine(str(checkpoint.path), **dict(runtime_options or {}))
+        return TTSEngine(
+            str(checkpoint.path),
+            dependency_checkpoints=self.dependency_checkpoint_paths(checkpoint),
+            **dict(runtime_options or {}),
+        )
 
     async def invoke(self, request: ModelWorkerRequest):
         if request.operation != "audio_speech":
@@ -291,10 +318,15 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
         reference_part = (request.parts or {}).get("reference_audio")
         reference_text = body.get("ref_text")
         if reference_part is not None:
-            self.require_feature(
+            voice_profile_feature = self.require_feature(
                 model, "tts", "voice_profiles", requested=True
             )
-            if not isinstance(reference_text, str) or not reference_text.strip():
+            transcript_required = (
+                voice_profile_feature.get("reference_transcript") == "required"
+            )
+            if transcript_required and (
+                not isinstance(reference_text, str) or not reference_text.strip()
+            ):
                 _error("ref_text is required with reference audio")
         try:
             speed = float(body.get("speed", 1.0))
@@ -338,8 +370,12 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
                     f"Emotion is not available for the selected model: {emotion}",
                     code="unsupported_feature",
                 )
-            if not instructions:
-                instructions = f"Speak with a {emotion} emotion."
+            emotion_instruction = f"Speak with a {emotion} emotion."
+            instructions = " ".join(
+                part.strip()
+                for part in (instructions, emotion_instruction)
+                if isinstance(part, str) and part.strip()
+            )
         if instructions:
             self.require_feature(
                 model, "tts", "instructions", requested=True
@@ -361,7 +397,11 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
                 speed=speed,
                 instructions=instructions or None,
                 ref_audio=(str(reference_part.path) if reference_part is not None else None),
-                ref_text=(reference_text.strip() if isinstance(reference_text, str) else None),
+                ref_text=(
+                    reference_text.strip()
+                    if isinstance(reference_text, str) and reference_text.strip()
+                    else None
+                ),
                 temperature=body.get("temperature"),
                 top_k=body.get("top_k"),
                 top_p=body.get("top_p"),

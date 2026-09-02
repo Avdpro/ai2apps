@@ -9,6 +9,7 @@ struct HelperControlRequest: Codable, Sendable {
     let token: String
     let operation: String
     let actorUserID: String
+    let browserProfileKey: String?
     let initialURL: String?
 
     enum CodingKeys: String, CodingKey {
@@ -17,6 +18,7 @@ struct HelperControlRequest: Codable, Sendable {
         case token
         case operation
         case actorUserID = "actor_user_id"
+        case browserProfileKey = "browser_profile_key"
         case initialURL = "initial_url"
     }
 }
@@ -249,6 +251,7 @@ final class HelperControlServer: @unchecked Sendable {
               [
                   "browser.launch",
                   "browser.release",
+                  "browser.delete",
                   "browser.renew",
                   "browser.pause",
                   "browser.resume",

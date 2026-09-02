@@ -391,7 +391,17 @@ class RemoteAccessManager:
                 core_user_id=str(detail["coreUserId"]),
                 billing_account_id=str(detail["billingAccountId"]),
                 access_epoch=int(detail["accessEpoch"]),
+                local_session_epoch=(
+                    None
+                    if detail.get("localSessionEpoch") is None
+                    else int(detail["localSessionEpoch"])
+                ),
                 core_membership_epoch=int(detail["membershipEpoch"]),
+                core_account_session_epoch=(
+                    None
+                    if detail.get("accountSessionEpoch") is None
+                    else int(detail["accountSessionEpoch"])
+                ),
                 core_role=role,
             )
         except (KeyError, TypeError, ValueError) as error:
@@ -474,6 +484,7 @@ class RemoteAccessManager:
                         "role": item["role"],
                         "status": item["status"],
                         "membership_epoch": item["membershipEpoch"],
+                        "account_session_epoch": item.get("accountSessionEpoch"),
                     }
                     for item in raw_memberships
                     if isinstance(item, dict)
@@ -486,6 +497,11 @@ class RemoteAccessManager:
                     organization_id=installation.organization_id,
                     device_status=str(payload["deviceStatus"]),
                     access_epoch=int(payload["accessEpoch"]),
+                    local_session_epoch=(
+                        None
+                        if payload.get("localSessionEpoch") is None
+                        else int(payload["localSessionEpoch"])
+                    ),
                     memberships=memberships,
                 )
             except (KeyError, TypeError, ValueError, IdentityBindingError) as error:
@@ -515,6 +531,7 @@ class RemoteAccessManager:
             "DEVICE_EPOCH_MISMATCH",
             "DEVICE_CREDENTIAL_EXPIRED",
             "REMOTE_DEVICE_SUSPENDED",
+            "REMOTE_DEVICE_AUTHORIZATION_DENIED",
         }
         if error.code in revoked:
             self.identity_repository.deactivate_installation("revoked")

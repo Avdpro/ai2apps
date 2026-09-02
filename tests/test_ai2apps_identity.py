@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from ai2apps.config import PlatformConfig
@@ -167,6 +169,40 @@ def test_local_session_explicit_revoke(identity_repository):
     assert repository.authorize_local_session(token) is None
 
 
+def test_local_session_expires_after_thirty_days_without_activity(identity_repository):
+    runtime, repository = identity_repository
+    _bind(repository)
+    token, session = repository.create_local_session("user-core")
+    stale = (session.last_access_check_at - timedelta(days=31)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+    with runtime.database.transaction(write=True) as connection:
+        connection.execute(
+            "UPDATE local_login_sessions SET last_access_check_at=? WHERE token_digest=?",
+            (stale, session.token_digest),
+        )
+
+    assert repository.authorize_local_session(token) is None
+
+
+def test_local_session_rotates_near_expiry_and_preserves_scope(identity_repository):
+    _, repository = identity_repository
+    _bind(repository)
+    token, _ = repository.create_local_session(
+        "user-core", lifetime=timedelta(days=1), client_scope="desktop"
+    )
+
+    refreshed = repository.refresh_local_session(token)
+
+    assert refreshed is not None
+    new_token, principal, rotated = refreshed
+    assert rotated is True
+    assert new_token != token
+    assert principal.client_scope == "desktop"
+    assert repository.authorize_local_session(token) is None
+    assert repository.authorize_local_session(new_token) == principal
+
+
 def test_two_installations_use_distinct_cookies_and_reject_each_others_sessions(
     tmp_path,
 ):
@@ -302,6 +338,88 @@ def test_access_epoch_change_revokes_every_local_session(identity_repository):
     )
 
     assert repository.authorize_local_session(core_token) is None
+    assert repository.authorize_local_session(member_token) is None
+
+
+def test_local_session_epoch_change_revokes_every_local_session(identity_repository):
+    _, repository = identity_repository
+    _bind(repository)
+    repository.upsert_membership(
+        cloud_user_id="user-member",
+        role=MemberRole.MEMBER,
+        status="active",
+        membership_epoch=4,
+    )
+    core_token, _ = repository.create_local_session("user-core")
+    member_token, _ = repository.create_local_session("user-member")
+
+    repository.apply_access_projection(
+        installation_id="installation-1",
+        cloud_device_id="device-1",
+        organization_id="household-1",
+        device_status="active",
+        access_epoch=3,
+        local_session_epoch=2,
+        memberships=[
+            {
+                "user_id": "user-core",
+                "role": "core",
+                "status": "active",
+                "membership_epoch": 3,
+                "account_session_epoch": 1,
+            },
+            {
+                "user_id": "user-member",
+                "role": "member",
+                "status": "active",
+                "membership_epoch": 4,
+                "account_session_epoch": 1,
+            },
+        ],
+    )
+
+    assert repository.authorize_local_session(core_token) is None
+    assert repository.authorize_local_session(member_token) is None
+
+
+def test_account_session_epoch_change_revokes_only_that_user(identity_repository):
+    _, repository = identity_repository
+    _bind(repository)
+    repository.upsert_membership(
+        cloud_user_id="user-member",
+        role=MemberRole.MEMBER,
+        status="active",
+        membership_epoch=4,
+    )
+    core_token, _ = repository.create_local_session("user-core")
+    member_token, _ = repository.create_local_session("user-member")
+
+    repository.apply_access_projection(
+        installation_id="installation-1",
+        cloud_device_id="device-1",
+        organization_id="household-1",
+        device_status="active",
+        access_epoch=3,
+        local_session_epoch=1,
+        memberships=[
+            {
+                "user_id": "user-core",
+                "role": "core",
+                "status": "active",
+                "membership_epoch": 3,
+                "account_session_epoch": 1,
+            },
+            {
+                "user_id": "user-member",
+                "role": "member",
+                "status": "active",
+                "membership_epoch": 4,
+                "account_session_epoch": 2,
+            },
+        ],
+    )
+
+    assert repository.authorize_local_session(core_token) is not None
     assert repository.authorize_local_session(member_token) is None
 
 

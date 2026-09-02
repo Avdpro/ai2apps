@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.fish-s2-pro-0.1.1",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.fish-s2-pro/0.1.1",
+  "packages": [
+    {
+      "name": "mlx-community/fish-audio-s2-pro-bf16",
+      "SPDXID": "SPDXRef-FishS2ProBF16",
+      "versionInfo": "eccd57bf5c1ebc13cb2f993df867f4e49931a36a",
+      "downloadLocation": "https://huggingface.co/mlx-community/fish-audio-s2-pro-bf16",
+      "licenseConcluded": "LicenseRef-Fish-Audio-Research",
+      "licenseDeclared": "LicenseRef-Fish-Audio-Research",
+      "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:huggingface/mlx-community/fish-audio-s2-pro-bf16@eccd57bf5c1ebc13cb2f993df867f4e49931a36a"}]
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Fish-Audio-Research",
+      "name": "Fish Audio Research License",
+      "extractedText": "See META/licenses/Fish-Audio-Research-License.md; commercial use requires a separate written license from Fish Audio."
+    }
+  ]
+}

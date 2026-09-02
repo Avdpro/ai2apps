@@ -72,6 +72,7 @@ def test_handoff_exchange_sets_host_only_http_only_cookie():
     assert "omlx_admin_session=\"\"" in cookie
     assert "Max-Age=0" in cookie
     assert "HttpOnly" in cookie
+    assert "Max-Age=15552000" in cookie
     assert "SameSite=strict" in cookie
     assert "Domain=" not in cookie
 
@@ -106,6 +107,37 @@ def test_auth_me_uses_authoritative_principal_and_logout_revokes_cookie():
     }
     assert logout.status_code == 204
     assert revoked == ["member-session"]
+
+
+def test_desktop_session_refresh_rotates_cookie_without_cloud():
+    principal = _member()
+    captured = []
+    runtime = SimpleNamespace(
+        local_session_cookie_name=_member_cookie_name,
+        local_session_token_from_cookies=lambda cookies: cookies.get(
+            _member_cookie_name()
+        ),
+        refresh_local_session=lambda token: (
+            captured.append(token) or ("rotated-session", principal, True)
+        ),
+    )
+    app = FastAPI()
+    app.include_router(
+        create_auth_router(lambda: runtime, principal_provider=lambda: principal),
+        prefix="/v1/platform",
+    )
+    client = TestClient(app)
+    client.cookies.set(_member_cookie_name(), "member-session")
+
+    response = client.post("/v1/platform/auth/session/refresh")
+
+    assert response.status_code == 200
+    assert response.json()["rotated"] is True
+    assert captured == ["member-session"]
+    cookie = "\n".join(response.headers.get_list("set-cookie"))
+    assert f"{_member_cookie_name()}=rotated-session" in cookie
+    assert "Max-Age=15552000" in cookie
+    assert "HttpOnly" in cookie
 
 
 def test_cross_origin_logout_cannot_revoke_ambient_local_session():

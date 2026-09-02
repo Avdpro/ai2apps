@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-fish-s2-pro",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "Fish Audio S2 Pro",
+    "description": "Local MLX Fish S2 Pro speech synthesis, voice cloning, expression control, and multi-speaker dialogue."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned Fish S2 Pro MLX checkpoint selected by the Host.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run local Fish speech synthesis with MLX.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.3.9 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

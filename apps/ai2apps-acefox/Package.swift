@@ -30,11 +30,16 @@ let package = Package(
             dependencies: [
                 "AI2AppsContracts",
                 "AI2AppsSupervisorCore",
+                "AI2AppsUpdateCore",
             ]
         ),
         .executableTarget(
             name: "AI2AppsLauncher",
-            dependencies: ["AI2AppsContracts", "AI2AppsSupervisorCore"]
+            dependencies: [
+                "AI2AppsContracts",
+                "AI2AppsSupervisorCore",
+                "AI2AppsUpdateCore",
+            ]
         ),
         .executableTarget(
             name: "AI2AppsUpdater",

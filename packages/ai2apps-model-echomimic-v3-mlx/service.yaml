@@ -1,0 +1,87 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.echomimic-v3-mlx
+name: EchoMimic V3 MLX
+description: Local reference-image and driving-audio avatar video generation on Apple Silicon.
+version: 0.1.1
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/antgroup/echomimic_v3
+  conversion_source: https://github.com/ai2apps/echomimic-v3-mlx
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.echomimic-v3-mlx/default
+    display_name: EchoMimic V3 MLX
+    model_type: video_generation
+    upstream_id: Avdpro/EchoMimicV3-MLX
+    capabilities: [video_generation, avatar_video, reference_image, driving_audio, long_video]
+    weights:
+      provider: huggingface
+      repo_id: Avdpro/EchoMimicV3-MLX
+      revision: c04fb47465c0c615681b7d927256f6d5a3a314cc
+      distribution_id: dist_ai2apps_echomimic_v3_mlx_c04fb474_v1
+      preparation: {recipe: native}
+    metadata:
+      family: echomimic-v3
+      implementation: native-mlx
+      upstream_commit: 7e89489ca51c0d008fc1963ec6c03fc5bd0b9397
+      checkpoint_layout: ai2apps.echomimic-mlx-checkpoint/v1
+      checkpoint_status: published-registry-distribution
+      modelscope:
+        repo_id: ai2apps/EchoMimicV3-MLX
+        revision: 15f01fd1ab866b9c66b360ca15dc0dded52bc7cc
+        preferred: true
+    video_capabilities:
+      schema: ai2apps.video-capabilities/v1
+      operations: [video_generation]
+      content_combinations:
+        - id: reference_image_driving_audio
+          required:
+            - {type: image_url, role: reference_image, min: 1, max: 1}
+            - {type: audio_url, role: driving_audio, min: 1, max: 1}
+          optional: [{type: text, role: prompt, min: 0, max: 1}]
+          unsupported_roles: [negative_prompt, first_frame, last_frame, mask, reference_video, source_video, reference_audio, soundtrack]
+      formats:
+        image_input: [png, jpeg, webp]
+        audio_input: [wav]
+        video_input: []
+        video_output: [mp4]
+        video_codecs: [h264]
+        audio_codecs: [aac]
+      geometry: {resolutions: [512x512, 768x768], ratios: ["1:1"], framespersecond: [25], alpha: false}
+      duration: {mode: driving_audio, minimum_seconds: 3.24, maximum_seconds: null, long_video: segmented, native_window_frames: 81}
+      audio: {modes: [preserve_driving_audio], default_mode: preserve_driving_audio, generated_audio: false}
+      presets:
+        - {id: exact, display_name: Exact, deterministic: true, approximate: false, cancellable: true, resumable: single_window}
+        - {id: fast, display_name: Fast, deterministic: false, approximate: true, cancellable: true, resumable: unsupported}
+      defaults: {resolution: 512x512, ratio: "1:1", framespersecond: 25, preset: exact, seed: 43, output_format: mp4, audio_output_mode: preserve_driving_audio}
+      execution:
+        asynchronous: true
+        streaming_preview: false
+        progress: phase
+        max_concurrency_per_device: 1
+        memory_profiles:
+          compact: {minimum_unified_memory_gib: 32, resolutions: [512x512]}
+          standard: {minimum_unified_memory_gib: 64, resolutions: [512x512, 768x768]}
+          performance: {minimum_unified_memory_gib: 96, resolutions: [512x512, 768x768]}
+capabilities: [video-generation]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.4.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, metal, video-generation, video-codecs, audio-codecs]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned EchoMimic MLX checkpoint.}
+  accelerator: {metal: true, reason: Run native MLX avatar video generation.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 2}
+tools: []

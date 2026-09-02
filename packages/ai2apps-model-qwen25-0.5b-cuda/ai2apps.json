@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-qwen25-0-5b-cuda",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "Qwen2.5 0.5B Instruct CUDA",
+    "description": "Isolated CUDA Transformers Worker for the pinned Qwen2.5 0.5B Instruct checkpoint."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["linux"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "24.4"
+  },
+  "entrypoints": [
+    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned Qwen checkpoint cache.", "required": true},
+    {"capability": "accelerator.cuda", "reason": "Run Transformers inference on the local NVIDIA GPU.", "required": true}
+  ],
+  "dependencies": [
+    {"packageId": "ai2apps/runtime-cuda-torch", "version": ">=0.1.0 <1.0.0", "optional": false}
+  ],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

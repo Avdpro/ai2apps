@@ -1,0 +1,67 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.fish-s2-pro
+name: Fish Audio S2 Pro
+description: Native MLX Fish S2 Pro Worker with reference cloning and expressive multi-speaker synthesis.
+version: 0.1.1
+
+publisher: {id: ai2apps}
+license: {name: Fish Audio Research License, id: LicenseRef-Fish-Audio-Research, path: META/licenses/Fish-Audio-Research-License.md}
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/fishaudio/fish-speech
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.fish-s2-pro/bf16
+    display_name: Fish Audio S2 Pro BF16
+    model_type: audio_tts
+    upstream_id: mlx-community/fish-audio-s2-pro-bf16
+    capabilities: [speech_generation, reference_voice, voice_cloning, voice_instructions, emotion, multi_speaker]
+    metadata:
+      family: fish-s2
+      variant: s2-pro-bf16
+      license_use: research_noncommercial_only
+      commercial_license_required: true
+      attribution_display: Built with Fish Audio
+      maximum_speakers: 5
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/fish-audio-s2-pro-bf16
+      revision: eccd57bf5c1ebc13cb2f993df867f4e49931a36a
+      distribution_id: dist_ai2apps_fish_s2_pro_bf16_eccd57bf_v1
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en, ja, ko, es, pt, ar, ru, fr, de, sv, it, tr, "no", nl, cy, eu, ca, da, gl, ta, hu, fi, pl, et, hi, ur, th, vi, bn, cs, sw, he, ms, uk, id]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: unsupported, voices: []}
+        speed: {mode: native, minimum: 0.5, maximum: 2.0}
+        emotion: {mode: native, values: [neutral, happy, sad, angry, calm, excited, surprised, whisper, shouting]}
+        instructions: {mode: native, control: inline_tags}
+        voice_profiles: {mode: native, reference_audio: true, reference_transcript: optional, transcript_effect: higher_fidelity}
+        multi_speaker: {mode: native, maximum_speakers: 5, control: inline_speaker_tags}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.3.9,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs, fish-s2]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only Host-selected pinned Fish S2 Pro checkpoints.}
+  accelerator: {metal: true, reason: Run Fish S2 Pro speech synthesis with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 90}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -67,3 +68,25 @@ def test_package_discovery_does_not_import_mlx():
     imports = "; ".join(f"from {module} import {class_name}; assert len({class_name}().installation_recipes()) == 1" for _, module, class_name, _ in PACKAGES)
     result = subprocess.run([sys.executable, "-c", f"import sys; {imports}; assert 'mlx.core' not in sys.modules"], env={"PYTHONPATH": python_path}, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
+
+
+def test_deepseek_2bit_worker_enables_direct_paths_with_host_override(monkeypatch):
+    path = ROOT / "packages" / "omlx-model-deepseek-v4-flash-2bit" / "src" / "worker_adapter.py"
+    spec = importlib.util.spec_from_file_location("deepseek_2bit_worker_adapter", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    sentinel = object()
+    monkeypatch.setattr(module, "DeepseekV4ChatAdapter", lambda context: sentinel)
+
+    monkeypatch.delenv("OMLX_MOE_DIRECT_L1", raising=False)
+    monkeypatch.delenv("OMLX_DEEPSEEK_V4_DIRECT_PREFILL", raising=False)
+    assert module.create_adapter(object()) is sentinel
+    assert module.os.environ["OMLX_MOE_DIRECT_L1"] == "1"
+    assert module.os.environ["OMLX_DEEPSEEK_V4_DIRECT_PREFILL"] == "1"
+
+    monkeypatch.setenv("OMLX_MOE_DIRECT_L1", "0")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_DIRECT_PREFILL", "0")
+    assert module.create_adapter(object()) is sentinel
+    assert module.os.environ["OMLX_MOE_DIRECT_L1"] == "0"
+    assert module.os.environ["OMLX_DEEPSEEK_V4_DIRECT_PREFILL"] == "0"

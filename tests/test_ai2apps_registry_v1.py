@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -27,6 +28,7 @@ from ai2apps.packages.contract_v1 import (
 from ai2apps.packages.models import TrustStatus
 from ai2apps.packages.registry import RegistryError, RegistryPackageManager
 from ai2apps.secrets import MemorySecretBackend
+from ai2apps.storage.database import PlatformDatabase
 
 
 class _Secrets:
@@ -43,9 +45,10 @@ class _PublishingManager:
 
 
 def test_official_punctuation_package_maps_to_model_service_identity():
-    assert RegistryPackageManager._service_dependency_key(
-        "ai2apps/punctuation-restorer"
-    ) == "ai2apps.model.punctuation-restorer"
+    assert (
+        RegistryPackageManager._service_dependency_key("ai2apps/punctuation-restorer")
+        == "ai2apps.model.punctuation-restorer"
+    )
 
 
 class _BoundPublishingManager:
@@ -150,9 +153,13 @@ def _service_source(tmp_path):
 
 def _repository_key():
     private = Ed25519PrivateKey.generate()
-    public_pem = private.public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
+    public_pem = (
+        private.public_key()
+        .public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        .decode()
+    )
     fingerprint = public_key_fingerprint(public_pem)
     return private, public_pem, fingerprint
 
@@ -166,9 +173,11 @@ def _snapshot(private, fingerprint, release, version=7):
         "expiresAt": (now + timedelta(hours=24)).isoformat().replace("+00:00", "Z"),
         "releases": [release],
     }
-    signature = base64.urlsafe_b64encode(
-        private.sign(REPOSITORY_PREFIX + jcs_bytes(payload))
-    ).decode().rstrip("=")
+    signature = (
+        base64.urlsafe_b64encode(private.sign(REPOSITORY_PREFIX + jcs_bytes(payload)))
+        .decode()
+        .rstrip("=")
+    )
     return {
         "schemaVersion": "ai2apps.repository-snapshot-envelope.v1",
         "payload": payload,
@@ -311,7 +320,9 @@ async def test_registry_blocks_incompatible_release_before_package_download(
 async def test_registry_download_verifies_snapshot_publisher_and_bytes(tmp_path):
     artifact_path = tmp_path / "verified.ai2app"
     inspected = build_package(_source(tmp_path), artifact_path)
-    publisher_private, publisher_public, publisher_fingerprint = generate_publisher_key()
+    publisher_private, publisher_public, publisher_fingerprint = (
+        generate_publisher_key()
+    )
     envelope = create_signature_envelope(
         inspected,
         publisher_private,
@@ -353,12 +364,18 @@ async def test_registry_download_verifies_snapshot_publisher_and_bytes(tmp_path)
         if request.url.path.endswith("/envelope"):
             return httpx.Response(200, json=envelope)
         if request.url.path.endswith("/artifact"):
-            return httpx.Response(200, content=artifact_path.read_bytes(), headers={"content-type": inspected.media_type})
+            return httpx.Response(
+                200,
+                content=artifact_path.read_bytes(),
+                headers={"content-type": inspected.media_type},
+            )
         raise AssertionError(request.url)
 
     cloud = AI2AppsCloudClient(
         base_url="https://coder.ai2apps.test",
-        session_store=CloudSessionStore(MemorySecretBackend(), "https://coder.ai2apps.test"),
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
         transport=httpx.MockTransport(handler),
     )
     manager = RegistryPackageManager(
@@ -369,9 +386,12 @@ async def test_registry_download_verifies_snapshot_publisher_and_bytes(tmp_path)
         service_manager=None,
         repository_fingerprint=repository_fingerprint,
     )
-    downloaded, downloaded_envelope, downloaded_release, metadata_version = await manager.download_verified(
-        "example", "verified-app", "1.2.3"
-    )
+    (
+        downloaded,
+        downloaded_envelope,
+        downloaded_release,
+        metadata_version,
+    ) = await manager.download_verified("example", "verified-app", "1.2.3")
     assert downloaded.sha256 == inspected.sha256
     assert downloaded_envelope == envelope
     assert downloaded_release["publisher"]["displayName"] == "Fixture Publisher"
@@ -386,13 +406,329 @@ async def test_registry_download_verifies_snapshot_publisher_and_bytes(tmp_path)
     await cloud.close()
 
 
+def _multi_source_download_fixture(tmp_path, *, source_count=2):
+    artifact_path = tmp_path / "multi-source.ai2app"
+    inspected = build_package(_source(tmp_path), artifact_path)
+    publisher_private, publisher_public, publisher_fingerprint = (
+        generate_publisher_key()
+    )
+    publisher_id = "21bfc1af-dfbd-45fb-a648-bc3fe306b569"
+    publisher_key_id = "eff821e4-7612-4c3e-9fb4-6d116e8170c3"
+    envelope = create_signature_envelope(
+        inspected,
+        publisher_private,
+        publisher_id=publisher_id,
+        publisher_key_id=publisher_key_id,
+    )
+    content = artifact_path.read_bytes()
+    piece_size = max(1, (len(content) + 1) // 2)
+    piece_hashes = [
+        hashlib.sha256(content[start : start + piece_size]).hexdigest()
+        for start in range(0, len(content), piece_size)
+    ]
+    sources = [
+        {
+            "id": "src_cloud",
+            "kind": "cloud",
+            "url": "https://coder.ai2apps.test/v1/registry/packages/example/verified-app/versions/1.2.3/artifact",
+        },
+        {
+            "id": "src_mirror",
+            "kind": "modelscope",
+            "url": "https://mirror.ai2apps.test/releases/verified-app.ai2app",
+        },
+        *[
+            {
+                "id": f"src_mirror_{index}",
+                "kind": "github" if index % 2 == 0 else "other",
+                "url": f"https://mirror-{index}.ai2apps.test/releases/verified-app.ai2app",
+            }
+            for index in range(2, source_count)
+        ],
+    ][:source_count]
+    release = {
+        "packageId": "example/verified-app",
+        "packageType": "app",
+        "version": "1.2.3",
+        "status": "published",
+        "statusReason": None,
+        "artifact": {
+            "sha256": inspected.sha256,
+            "size": inspected.size,
+            "mediaType": inspected.media_type,
+            "url": sources[0]["url"],
+            "pieces": {
+                "schema": "ai2apps.artifact-pieces.v1",
+                "algorithm": "sha256",
+                "pieceSize": piece_size,
+                "hashes": piece_hashes,
+            },
+            "sources": sources,
+        },
+        "envelopeUrl": "https://coder.ai2apps.test/v1/registry/packages/example/verified-app/versions/1.2.3/envelope",
+        "publisher": {
+            "id": publisher_id,
+            "displayName": "Fixture Publisher",
+            "key": {
+                "id": publisher_key_id,
+                "algorithm": "Ed25519",
+                "fingerprintSha256": publisher_fingerprint,
+                "publicKeyPem": publisher_public,
+            },
+        },
+    }
+    repository_private, repository_public, repository_fingerprint = _repository_key()
+    snapshot = _snapshot(repository_private, repository_fingerprint, release)
+    return {
+        "content": content,
+        "envelope": envelope,
+        "inspected": inspected,
+        "pieceSize": piece_size,
+        "repositoryPublic": repository_public,
+        "repositoryFingerprint": repository_fingerprint,
+        "snapshot": snapshot,
+    }
+
+
+def _range_response(request: httpx.Request, content: bytes) -> httpx.Response:
+    value = request.headers["range"].removeprefix("bytes=")
+    start_text, end_text = value.split("-", 1)
+    start, end = int(start_text), int(end_text)
+    piece = content[start : end + 1]
+    return httpx.Response(
+        206,
+        content=piece,
+        headers={
+            "content-range": f"bytes {start}-{end}/{len(content)}",
+            "content-length": str(len(piece)),
+            "content-encoding": "identity",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_registry_multi_source_disqualifies_bad_cloud_and_uses_valid_mirror(
+    tmp_path,
+):
+    fixture = _multi_source_download_fixture(tmp_path)
+    requested_ranges: list[tuple[str, str]] = []
+    progress: list[dict] = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/repository-key"):
+            return httpx.Response(
+                200, json={"publicKeyPem": fixture["repositoryPublic"]}
+            )
+        if request.url.path.endswith("/metadata/latest"):
+            return httpx.Response(200, json=fixture["snapshot"])
+        if request.url.path.endswith("/envelope"):
+            return httpx.Response(200, json=fixture["envelope"])
+        requested_ranges.append((request.url.host, request.headers.get("range", "")))
+        if request.url.host == "coder.ai2apps.test":
+            return httpx.Response(200, content=fixture["content"])
+        return _range_response(request, fixture["content"])
+
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+        repository_fingerprint=fixture["repositoryFingerprint"],
+    )
+
+    downloaded, _envelope, _release, _version = await manager.download_verified(
+        "example", "verified-app", "1.2.3", progress=progress.append
+    )
+
+    assert downloaded.sha256 == fixture["inspected"].sha256
+    assert any(host == "mirror.ai2apps.test" for host, _range in requested_ranges)
+    assert all(value.startswith("bytes=") for _host, value in requested_ranges)
+    assert progress[-2]["downloadMode"] == "piece_race"
+    assert progress[-2]["sourceId"] == "src_mirror"
+    await cloud.close()
+
+
+@pytest.mark.asyncio
+async def test_registry_multi_source_supports_more_than_race_concurrency(tmp_path):
+    fixture = _multi_source_download_fixture(tmp_path, source_count=5)
+    requested_hosts: list[str] = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/repository-key"):
+            return httpx.Response(
+                200, json={"publicKeyPem": fixture["repositoryPublic"]}
+            )
+        if request.url.path.endswith("/metadata/latest"):
+            return httpx.Response(200, json=fixture["snapshot"])
+        if request.url.path.endswith("/envelope"):
+            return httpx.Response(200, json=fixture["envelope"])
+        requested_hosts.append(request.url.host)
+        if request.url.host == "mirror-4.ai2apps.test":
+            return _range_response(request, fixture["content"])
+        if request.url.host == "mirror.ai2apps.test":
+            return _range_response(request, b"\0" * len(fixture["content"]))
+        return httpx.Response(503)
+
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+        repository_fingerprint=fixture["repositoryFingerprint"],
+    )
+
+    downloaded, _envelope, _release, _version = await manager.download_verified(
+        "example", "verified-app", "1.2.3"
+    )
+
+    assert downloaded.sha256 == fixture["inspected"].sha256
+    assert "mirror-4.ai2apps.test" in requested_hosts
+    await cloud.close()
+
+
+@pytest.mark.asyncio
+async def test_registry_multi_source_does_not_wait_for_hanging_loser(tmp_path):
+    fixture = _multi_source_download_fixture(tmp_path)
+
+    class HangingStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            await asyncio.sleep(60)
+            yield b""
+
+        async def aclose(self):
+            return None
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/repository-key"):
+            return httpx.Response(
+                200, json={"publicKeyPem": fixture["repositoryPublic"]}
+            )
+        if request.url.path.endswith("/metadata/latest"):
+            return httpx.Response(200, json=fixture["snapshot"])
+        if request.url.path.endswith("/envelope"):
+            return httpx.Response(200, json=fixture["envelope"])
+        if request.url.host == "coder.ai2apps.test":
+            value = request.headers["range"].removeprefix("bytes=")
+            start_text, end_text = value.split("-", 1)
+            start, end = int(start_text), int(end_text)
+            return httpx.Response(
+                206,
+                stream=HangingStream(),
+                headers={
+                    "content-range": f'bytes {start}-{end}/{len(fixture["content"])}',
+                    "content-length": str(end - start + 1),
+                },
+            )
+        return _range_response(request, fixture["content"])
+
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+        repository_fingerprint=fixture["repositoryFingerprint"],
+    )
+
+    downloaded, _envelope, _release, _version = await asyncio.wait_for(
+        manager.download_verified("example", "verified-app", "1.2.3"),
+        timeout=1,
+    )
+
+    assert downloaded.sha256 == fixture["inspected"].sha256
+    await cloud.close()
+
+
+@pytest.mark.asyncio
+async def test_registry_multi_source_resumes_from_last_verified_piece(tmp_path):
+    fixture = _multi_source_download_fixture(tmp_path, source_count=1)
+    requested_ranges: list[str] = []
+    fail_second_piece = {"value": True}
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/repository-key"):
+            return httpx.Response(
+                200, json={"publicKeyPem": fixture["repositoryPublic"]}
+            )
+        if request.url.path.endswith("/metadata/latest"):
+            return httpx.Response(200, json=fixture["snapshot"])
+        if request.url.path.endswith("/envelope"):
+            return httpx.Response(200, json=fixture["envelope"])
+        requested_ranges.append(request.headers["range"])
+        if (
+            fail_second_piece["value"]
+            and request.headers["range"].startswith(
+                f'bytes={fixture["pieceSize"]}-'
+            )
+        ):
+            return httpx.Response(503)
+        return _range_response(request, fixture["content"])
+
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+        repository_fingerprint=fixture["repositoryFingerprint"],
+    )
+
+    with pytest.raises(RegistryError) as error:
+        await manager.download_verified("example", "verified-app", "1.2.3")
+    assert error.value.code == "artifact_sources_exhausted"
+    first_range = f'bytes=0-{fixture["pieceSize"] - 1}'
+    assert requested_ranges.count(first_range) == 1
+
+    fail_second_piece["value"] = False
+    downloaded, _envelope, _release, _version = await manager.download_verified(
+        "example", "verified-app", "1.2.3"
+    )
+
+    assert downloaded.sha256 == fixture["inspected"].sha256
+    assert requested_ranges.count(first_range) == 1
+    assert not list((tmp_path / "packages" / "registry-v1" / "quarantine").glob("*.part*"))
+    await cloud.close()
+
+
 @pytest.mark.asyncio
 async def test_registry_service_install_registers_verified_publisher_first(
     tmp_path, monkeypatch
 ):
     artifact_path = tmp_path / "verified-service.ai2service"
     inspected = build_package(_service_source(tmp_path), artifact_path)
-    publisher_private, publisher_public, publisher_fingerprint = generate_publisher_key()
+    publisher_private, publisher_public, publisher_fingerprint = (
+        generate_publisher_key()
+    )
     publisher_id = "21bfc1af-dfbd-45fb-a648-bc3fe306b569"
     publisher_key_id = "eff821e4-7612-4c3e-9fb4-6d116e8170c3"
     envelope = create_signature_envelope(
@@ -549,13 +885,19 @@ def test_registry_service_bundle_normalizes_cloud_dependency_range(tmp_path):
 @pytest.mark.asyncio
 async def test_registry_snapshot_rollback_is_rejected(tmp_path):
     repository_private, repository_public, repository_fingerprint = _repository_key()
-    current = {"value": _snapshot(repository_private, repository_fingerprint, {}, version=4)}
+    current = {
+        "value": _snapshot(repository_private, repository_fingerprint, {}, version=4)
+    }
     current["value"]["payload"]["releases"] = []
     # Re-sign after changing releases.
     payload = current["value"]["payload"]
-    current["value"]["signature"]["value"] = base64.urlsafe_b64encode(
-        repository_private.sign(REPOSITORY_PREFIX + jcs_bytes(payload))
-    ).decode().rstrip("=")
+    current["value"]["signature"]["value"] = (
+        base64.urlsafe_b64encode(
+            repository_private.sign(REPOSITORY_PREFIX + jcs_bytes(payload))
+        )
+        .decode()
+        .rstrip("=")
+    )
 
     def handler(request: httpx.Request):
         if request.url.path.endswith("/repository-key"):
@@ -564,7 +906,9 @@ async def test_registry_snapshot_rollback_is_rejected(tmp_path):
 
     cloud = AI2AppsCloudClient(
         base_url="https://coder.ai2apps.test",
-        session_store=CloudSessionStore(MemorySecretBackend(), "https://coder.ai2apps.test"),
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
         transport=httpx.MockTransport(handler),
     )
     manager = RegistryPackageManager(
@@ -576,12 +920,18 @@ async def test_registry_snapshot_rollback_is_rejected(tmp_path):
         repository_fingerprint=repository_fingerprint,
     )
     assert (await manager.trusted_snapshot())["version"] == 4
-    current["value"] = _snapshot(repository_private, repository_fingerprint, {}, version=3)
+    current["value"] = _snapshot(
+        repository_private, repository_fingerprint, {}, version=3
+    )
     current["value"]["payload"]["releases"] = []
     payload = current["value"]["payload"]
-    current["value"]["signature"]["value"] = base64.urlsafe_b64encode(
-        repository_private.sign(REPOSITORY_PREFIX + jcs_bytes(payload))
-    ).decode().rstrip("=")
+    current["value"]["signature"]["value"] = (
+        base64.urlsafe_b64encode(
+            repository_private.sign(REPOSITORY_PREFIX + jcs_bytes(payload))
+        )
+        .decode()
+        .rstrip("=")
+    )
     with pytest.raises(RegistryError) as error:
         await manager.trusted_snapshot()
     assert error.value.code == "repository_metadata_rollback"
@@ -599,7 +949,9 @@ async def test_publishing_workflow_proxies_cloud_state_transitions(tmp_path):
 
     cloud = AI2AppsCloudClient(
         base_url="https://coder.ai2apps.test",
-        session_store=CloudSessionStore(MemorySecretBackend(), "https://coder.ai2apps.test"),
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
         transport=httpx.MockTransport(handler),
     )
     manager = RegistryPackageManager(
@@ -649,6 +1001,88 @@ async def test_publishing_workflow_proxies_cloud_state_transitions(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_checkpoint_publishing_workflow_proxies_cloud_state_transitions(tmp_path):
+    requests: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        return httpx.Response(200, json={"id": "checkpoint-submission-1"})
+
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+    )
+    envelope = {"schemaVersion": "ai2apps.checkpoint-distribution-envelope.v1"}
+    receipt = {
+        "builder": "ai2apps-local/1",
+        "fileCount": 2,
+        "pieceCount": 3,
+        "estimatedSizeBytes": "42",
+        "verifiedProviders": ["huggingface", "modelscope"],
+    }
+
+    await manager.submit_checkpoint_distribution(envelope, receipt)
+    await manager.publisher_checkpoint_submissions(limit=25)
+    await manager.review_checkpoint_submissions(status="review_pending", limit=25)
+    await manager.checkpoint_submission("checkpoint-submission-1")
+    await manager.request_checkpoint_review("checkpoint-submission-1")
+    await manager.review_checkpoint_submission(
+        "checkpoint-submission-1", "approved", "Verified fixture"
+    )
+    await manager.publish_checkpoint_submission("checkpoint-submission-1")
+    await manager.change_checkpoint_distribution_status(
+        "qwen-image-2512", "yank", "Superseded"
+    )
+
+    assert requests == [
+        (
+            "POST",
+            "/v1/checkpoint-distribution-submissions",
+            {"envelope": envelope, "verificationReceipt": receipt},
+        ),
+        ("GET", "/v1/publisher-checkpoint-distribution-submissions", None),
+        ("GET", "/v1/prototype/checkpoint-distribution-submissions", None),
+        (
+            "GET",
+            "/v1/checkpoint-distribution-submissions/checkpoint-submission-1",
+            None,
+        ),
+        (
+            "POST",
+            "/v1/prototype/checkpoint-distribution-submissions/checkpoint-submission-1/review-request",
+            None,
+        ),
+        (
+            "POST",
+            "/v1/prototype/checkpoint-distribution-submissions/checkpoint-submission-1/reviews",
+            {"decision": "approved", "note": "Verified fixture"},
+        ),
+        (
+            "POST",
+            "/v1/prototype/checkpoint-distribution-submissions/checkpoint-submission-1/publication",
+            None,
+        ),
+        (
+            "POST",
+            "/v1/prototype/checkpoint-distributions/qwen-image-2512/yank",
+            {"reason": "Superseded"},
+        ),
+    ]
+    await cloud.close()
+
+
+@pytest.mark.asyncio
 async def test_platform_runtime_submission_uses_admin_large_artifact_route(tmp_path):
     source = _service_source(tmp_path)
     manifest_path = source / "ai2apps.json"
@@ -666,7 +1100,9 @@ async def test_platform_runtime_submission_uses_admin_large_artifact_route(tmp_p
 
     cloud = AI2AppsCloudClient(
         base_url="https://coder.ai2apps.test",
-        session_store=CloudSessionStore(MemorySecretBackend(), "https://coder.ai2apps.test"),
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
         transport=httpx.MockTransport(handler),
     )
     manager = RegistryPackageManager(
@@ -1062,12 +1498,8 @@ async def test_publishing_routes_use_the_current_browser_cloud_session():
     assert missing.json()["error"]["code"] == "cloud_browser_session_required"
     assert missing_reauth.status_code == 409
     assert missing_reauth.json()["error"]["code"] == "cloud_browser_session_required"
-    assert browser_a.json() == {
-        "cloud": "cloud:browser_session_a_1234567890123456"
-    }
-    assert browser_b.json() == {
-        "cloud": "cloud:browser_session_b_1234567890123456"
-    }
+    assert browser_a.json() == {"cloud": "cloud:browser_session_a_1234567890123456"}
+    assert browser_b.json() == {"cloud": "cloud:browser_session_b_1234567890123456"}
     assert reauth.json() == {
         "cloud": "cloud:browser_session_b_1234567890123456",
         "passwordLength": 28,
@@ -1129,9 +1561,7 @@ async def test_registry_install_operation_reports_progress_and_result():
         assert started.status_code == 202
         operation_id = started.json()["operationId"]
         for _ in range(10):
-            status = await client.get(
-                f"/packages/install-operations/{operation_id}"
-            )
+            status = await client.get(f"/packages/install-operations/{operation_id}")
             if status.json()["status"] == "completed":
                 break
             await asyncio.sleep(0)
@@ -1182,9 +1612,7 @@ async def test_registry_install_operation_preserves_restart_dependency_details()
         )
         operation_id = started.json()["operationId"]
         for _ in range(10):
-            status = await client.get(
-                f"/packages/install-operations/{operation_id}"
-            )
+            status = await client.get(f"/packages/install-operations/{operation_id}")
             if status.json()["status"] == "failed":
                 break
             await asyncio.sleep(0)
@@ -1192,3 +1620,137 @@ async def test_registry_install_operation_preserves_restart_dependency_details()
     error = status.json()["error"]
     assert error["code"] == "dependency_restart_required"
     assert error["details"]["dependency"] == dependency
+
+
+@pytest.mark.asyncio
+async def test_registry_install_continuation_survives_restart_and_clears_on_success(
+    tmp_path,
+):
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    dependency = {
+        "packageId": "ai2apps/runtime-omlx",
+        "availableVersion": "1.5.7",
+        "restartScope": "local",
+        "pendingRestart": False,
+    }
+
+    class BlockedManager:
+        async def install(self, *_args, **_kwargs):
+            raise RegistryError(
+                "dependency_restart_required",
+                "Install or upgrade Runtime first",
+                details={"dependency": dependency},
+            )
+
+    first_app = FastAPI()
+    first_app.include_router(
+        create_package_router(
+            lambda: SimpleNamespace(
+                registry_packages=BlockedManager(), database=database
+            ),
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=first_app), base_url="http://test"
+    ) as client:
+        started = await client.post(
+            "/packages/ai2apps/model-sensevoice-small/install-operations",
+            json={"version": "0.2.0"},
+        )
+        operation_id = started.json()["operationId"]
+        for _ in range(10):
+            status = await client.get(f"/packages/install-operations/{operation_id}")
+            if status.json()["status"] == "failed":
+                break
+            await asyncio.sleep(0)
+        continuation = await client.get("/packages/install-continuation")
+
+    pending = continuation.json()["continuation"]
+    assert pending["packageId"] == "ai2apps/model-sensevoice-small"
+    assert pending["version"] == "0.2.0"
+    assert pending["approveReview"] is False
+    assert pending["dependency"] == dependency
+    assert pending["createdAt"].endswith("Z")
+    assert pending["updatedAt"].endswith("Z")
+
+    class RuntimeManager:
+        async def install(self, _namespace, _name, version, **_kwargs):
+            return SimpleNamespace(
+                package_version=version,
+                package_digest="sha256:runtime",
+                service_key="ai2apps.runtime.omlx",
+                status=SimpleNamespace(value="installed"),
+                manifest={},
+            )
+
+    runtime_app = FastAPI()
+    runtime_app.include_router(
+        create_package_router(
+            lambda: SimpleNamespace(
+                registry_packages=RuntimeManager(), database=database
+            ),
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=runtime_app), base_url="http://test"
+    ) as client:
+        started = await client.post(
+            "/packages/ai2apps/runtime-omlx/install-operations",
+            json={"version": "1.5.7"},
+        )
+        operation_id = started.json()["operationId"]
+        for _ in range(10):
+            status = await client.get(f"/packages/install-operations/{operation_id}")
+            if status.json()["status"] == "completed":
+                break
+            await asyncio.sleep(0)
+        still_pending = await client.get("/packages/install-continuation")
+
+    assert status.json()["result"]["restartRequired"] is True
+    assert still_pending.json()["continuation"]["packageId"] == (
+        "ai2apps/model-sensevoice-small"
+    )
+
+    class ResumedManager:
+        async def install(self, _namespace, _name, version, **_kwargs):
+            return SimpleNamespace(
+                package_version=version,
+                package_digest="sha256:resumed",
+                service_key="ai2apps.model.sensevoice-small",
+                status=SimpleNamespace(value="active"),
+                manifest={},
+            )
+
+    restarted_app = FastAPI()
+    restarted_app.include_router(
+        create_package_router(
+            lambda: SimpleNamespace(
+                registry_packages=ResumedManager(), database=database
+            ),
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=restarted_app), base_url="http://test"
+    ) as client:
+        restored = await client.get("/packages/install-continuation")
+        assert restored.json()["continuation"]["packageId"] == (
+            "ai2apps/model-sensevoice-small"
+        )
+        started = await client.post(
+            "/packages/ai2apps/model-sensevoice-small/install-operations",
+            json={"version": "0.2.0"},
+        )
+        operation_id = started.json()["operationId"]
+        for _ in range(10):
+            status = await client.get(f"/packages/install-operations/{operation_id}")
+            if status.json()["status"] == "completed":
+                break
+            await asyncio.sleep(0)
+        cleared = await client.get("/packages/install-continuation")
+
+    assert status.json()["status"] == "completed"
+    assert cleared.json() == {"continuation": None}

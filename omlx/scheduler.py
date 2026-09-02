@@ -1706,6 +1706,12 @@ class Scheduler:
         # mid-decode. GIL-atomic flag; the enforcer never touches Metal
         # directly.
         self._pending_pressure_clear: bool = False
+        # Vision turns can grow BatchGenerator's cache arrays by thousands of
+        # tokens. mlx-lm keeps that capacity after the last row is removed, so
+        # an unrelated next image otherwise charges both slabs (observed as
+        # 61.7 -> 70.5 GiB on GLM-5). Recreate the empty generator once all
+        # owners, including async cache-store workers, have released it.
+        self._idle_vlm_batch_reset_pending: bool = False
 
         # Lock-free admin snapshot. Published at the end of each step() while
         # the engine thread is the sole writer of running/waiting; the admin
@@ -2410,8 +2416,29 @@ class Scheduler:
                 and session_lineage_key is not None
             ):
                 with self._session_exact_prefix_lock:
+                    previous_lineage_tokens = self._session_exact_prefix_tokens.get(
+                        session_lineage_key
+                    )
+                    if declared_exact_store is not None:
+                        lineage_tokens = declared_exact_store.tokens
+                    elif (
+                        previous_lineage_tokens
+                        and len(previous_lineage_tokens) < len(token_sequence_to_store)
+                        and list(token_sequence_to_store)[
+                            : len(previous_lineage_tokens)
+                        ]
+                        == list(previous_lineage_tokens)
+                    ):
+                        # A cache-restored hybrid turn may not cross another
+                        # physical recurrent-state boundary, so it has no new
+                        # safe declared exact store. Keep the older restorable
+                        # boundary instead of replacing it with a cleaned-output
+                        # token sequence that the next API turn cannot reproduce.
+                        lineage_tokens = previous_lineage_tokens
+                    else:
+                        lineage_tokens = token_sequence_to_store
                     self._session_exact_prefix_tokens[session_lineage_key] = list(
-                        token_sequence_to_store
+                        lineage_tokens
                     )
             if block_table is None and self.paged_cache_manager is not None:
                 block_table = self.paged_cache_manager.get_block_table(request_id)
@@ -2506,6 +2533,7 @@ class Scheduler:
             # reclaim them and leaves the next route preflight charging both
             # requests until macOS eventually settles the footprint.
             self._schedule_deferred_metal_clear()
+        self._reset_idle_vlm_batch_generator()
         return drained
 
     def _calculate_max_blocks(self) -> int:
@@ -7470,14 +7498,25 @@ class Scheduler:
 
     @staticmethod
     def _session_lineage_key(request: Request) -> tuple[Any, ...]:
-        ranges = tuple(
-            (int(start), tuple(keys))
-            for start, keys in (request.vlm_extra_key_ranges_for_cache or [])
-        )
+        """Return the stable identity of one conversational KV lineage.
+
+        Per-turn VLM metadata is deliberately not part of this identity.  A
+        later turn may append another image, which extends ``extra_key_ranges``
+        and changes the whole-request image hash even though the preceding KV
+        chain is still the same session.  Exact-prefix restore independently
+        re-hashes every block with the current segmented image keys, so keeping
+        only the first visual boundary here cannot make mismatched image KV
+        reusable; it merely lets a valid growing multimodal conversation find
+        its previously stored token boundary.
+        """
+        ranges = request.vlm_extra_key_ranges_for_cache or []
+        first_visual_boundary = None
+        if ranges:
+            start, keys = ranges[0]
+            first_visual_boundary = (int(start), tuple(keys))
         return (
-            tuple(request.extra_keys_for_cache or ()),
-            request.vlm_extra_key_token_start_for_cache,
-            ranges,
+            tuple(request.cache_extra_keys or ()),
+            first_visual_boundary,
         )
 
     def _restore_session_exact_prefix(self, request: Request) -> bool:
@@ -8503,6 +8542,34 @@ class Scheduler:
         with mx.stream(self._stream):
             self.batch_generator.remove([uid])
 
+    def _reset_idle_vlm_batch_generator(self) -> bool:
+        """Release an empty vision-grown BatchGenerator between turns.
+
+        Prefix KV and vision features live in their dedicated cache managers,
+        so the empty generator itself carries no reusable session state.  It
+        can still retain the maximum sequence capacity of the previous image
+        turn.  Reset only after every active row and async cache-store owner is
+        gone; queued requests are safe because they have not received UIDs.
+        """
+
+        if not self._idle_vlm_batch_reset_pending:
+            return False
+        if self.running or self.prefilling or self._pending_async_removes:
+            return False
+        if self.request_id_to_uid or self.uid_to_request_id:
+            return False
+
+        had_generator = self.batch_generator is not None
+        self.batch_generator = None
+        self._current_sampler_params = None
+        self._idle_vlm_batch_reset_pending = False
+        if had_generator:
+            # Return buffers only through the existing delayed, synchronized
+            # Metal clear path; an immediate clear can race IOKit callbacks.
+            self._schedule_deferred_metal_clear()
+            logger.debug("Released idle VLM BatchGenerator capacity between turns")
+        return had_generator
+
     def _check_pending_aborts_for_uids(self, uids: list[int]) -> list[int]:
         """Return UIDs that have pending aborts.
 
@@ -8655,6 +8722,8 @@ class Scheduler:
         request = self.requests.get(request_id)
         if request is None:
             return False
+        if request.is_vlm_request:
+            self._idle_vlm_batch_reset_pending = True
 
         self._clear_request_admission_bookkeeping(request_id)
 
@@ -8763,6 +8832,7 @@ class Scheduler:
         # counts the pending clear, so an idle engine loop keeps stepping
         # until it fires.
         self._schedule_deferred_metal_clear()
+        self._reset_idle_vlm_batch_generator()
 
         logger.debug(f"Aborted request {request_id}")
         return True
@@ -10416,6 +10486,8 @@ class Scheduler:
 
         for request_id in finished_ids:
             request = self.running.get(request_id)
+            if request is not None and request.is_vlm_request:
+                self._idle_vlm_batch_reset_pending = True
 
             # Store cache for future reuse (G2-async): submit to background
             # executor so the post-finish 28GB+ memcpy doesn't block response
@@ -10516,6 +10588,75 @@ class Scheduler:
                                     getattr(request, "_model_cache_config", None),
                                 )
                             )
+                            # VLM/API responses are cleaned before they are put
+                            # back into ``messages``. Their re-tokenized assistant
+                            # text therefore need not reproduce the raw generated
+                            # token stream (think/control tokens are a common
+                            # example). Preserve the already captured prompt
+                            # boundary as an exact session fallback: the next turn
+                            # can restore the full vision-heavy prompt and prefill
+                            # only the short assistant/user suffix. The complete
+                            # turn is still stored below for token-exact clients.
+                            if (
+                                declared_exact_store is None
+                                and exact_continuity_candidate
+                                and prompt_boundary_store is not None
+                            ):
+                                (
+                                    prompt_tokens_to_store,
+                                    prompt_cache_to_store,
+                                    prompt_model_cache_config,
+                                    _,
+                                ) = prompt_boundary_store
+                                declared_exact_store = _ExactPrefixStore(
+                                    request_id=f"{request.request_id}:session-prompt",
+                                    tokens=list(prompt_tokens_to_store),
+                                    cache=prompt_cache_to_store,
+                                    model_cache_config=prompt_model_cache_config,
+                                )
+                            elif (
+                                declared_exact_store is None
+                                and exact_continuity_candidate
+                            ):
+                                # Hybrid GDN/ArraysCache models can only capture
+                                # recurrent state at a physical prefill boundary.
+                                # Their prompt length is usually not block-aligned,
+                                # so the prompt-only helper above may decline the
+                                # live tail after decode extraction. Register the
+                                # latest safe boundary instead, filling its
+                                # sliceable KV placeholders from the full cache.
+                                boundary_fallback = self._get_boundary_store_override(
+                                    request_id,
+                                    list(request.prompt_token_ids or []),
+                                )
+                                if boundary_fallback is not None:
+                                    (
+                                        boundary_tokens,
+                                        boundary_cache,
+                                        boundary_model_cache_config,
+                                        _,
+                                    ) = boundary_fallback
+                                    boundary_cache = (
+                                        self._merge_boundary_with_full_cache(
+                                            boundary_cache,
+                                            request._extracted_cache,
+                                        )
+                                    )
+                                    declared_exact_store = _ExactPrefixStore(
+                                        request_id=(
+                                            f"{request.request_id}:session-boundary"
+                                        ),
+                                        tokens=list(boundary_tokens),
+                                        cache=boundary_cache,
+                                        model_cache_config=(
+                                            boundary_model_cache_config
+                                            or getattr(
+                                                request,
+                                                "_model_cache_config",
+                                                None,
+                                            )
+                                        ),
+                                    )
 
                             # Inference-thread store_cache prep, timed as
                             # three sub-phases (boundary / collect / dispatch)
@@ -10873,6 +11014,7 @@ class Scheduler:
         # Schedule deferred Metal cache cleanup after request completion.
         if finished_ids:
             self._schedule_deferred_metal_clear()
+            self._reset_idle_vlm_batch_generator()
 
     def _schedule_deferred_metal_clear(self) -> None:
         """Schedule the deferred Metal cache clear for a just-ended request.

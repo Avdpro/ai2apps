@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-glm5-3-flash-4bit-mtp",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "GLM-5.3 Flash 4-bit MTP",
+    "description": "Multimodal GLM-5.3 Flash Worker with exact dynamic Cached-MoE execution."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+  ],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned GLM-5.3 checkpoint and prepared expert store.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run the oMLX dynamic Cached-MoE VLM on Apple GPU.", "required": true}
+  ],
+  "dependencies": [
+    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.5 <2.0.0", "optional": false}
+  ],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

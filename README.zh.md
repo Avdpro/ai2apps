@@ -15,6 +15,7 @@ AMD/ROCm 节点也可以暴露相同的模型与 Service 能力。
 
 [English](README.md) ·
 [平台架构](docs/ai2apps-platform-architecture.md) ·
+[ACPF 能力配置框架](docs/ai2apps-capability-provisioning-framework-v1.md) ·
 [后端计划](docs/ai2apps-backend-development-plan.md) ·
 [本地 Knowledge/RAG](docs/ai2apps-local-knowledge-rag-architecture.md) ·
 [安全基线](docs/security-authority-baseline.md) ·
@@ -172,6 +173,10 @@ ai2apps serve --model-dir /path/to/models
 真实 Prompt 完成评估。
 
 ## 开发与发布门槛
+
+开发 AI2Apps App 或 System App 前，请先阅读
+[AI2Apps App 开发指南](docs/ai2apps-app-development-guide.md)，其中包括统一的跨宿主
+Artifact 下载 UE 约定。
 
 开发可安装 Service 或模型 Package 前，请先阅读
 [Service/Package 运行模式与 Sandbox 开发指南](docs/service-package-sandbox-development-guide.md)；

@@ -74,6 +74,10 @@ def test_moe_weighted_sum_route_gate(monkeypatch):
     sharded.sharding_group = object()
     assert not patch._should_route(sharded, x, False, min_tokens=1024)
 
+    cached = _Block()
+    cached.scope_policy = object()
+    assert not patch._should_route(cached, x, False, min_tokens=1024)
+
 
 @pytest.mark.skipif(not mx.metal.is_available(), reason="Metal is required")
 def test_external_prefill_evaluates_native_weighted_sum_on_engine_stream():

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-qwen3-tts-1.7b"
-version = "0.1.0"
+version = "0.1.1"
 description = "Qwen3-TTS 1.7B Model Worker Package for AI2Apps"
 readme = "README.md"
 license = "Apache-2.0"

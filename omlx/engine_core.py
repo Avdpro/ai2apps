@@ -590,6 +590,7 @@ class EngineCore:
             vlm_inputs_embeds=vlm_inputs_embeds,
             vlm_extra_kwargs=vlm_extra_kwargs,
             vlm_image_hash=vlm_image_hash,
+            is_vlm_request=vlm_inputs_embeds is not None,
             vlm_cache_key_start=vlm_cache_key_start,
             vlm_cache_key_ranges=vlm_cache_key_ranges,
             skip_cache_store=skip_cache_store,

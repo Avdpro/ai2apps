@@ -1,8 +1,10 @@
 import AI2AppsContracts
 import AI2AppsSupervisorCore
+import AI2AppsUpdateCore
 import AppKit
 import Darwin
 import Foundation
+import Security
 import ServiceManagement
 
 private struct LauncherConfiguration {
@@ -246,6 +248,13 @@ private func launchAceFox(configuration: LauncherConfiguration) throws {
     user_pref("browser.sessionstore.resume_from_crash", false);
     user_pref("browser.shell.checkDefaultBrowser", false);
     user_pref("browser.tabs.warnOnClose", false);
+    user_pref("browser.download.useDownloadDir", false);
+    user_pref("apz.allow_zooming", false);
+    user_pref("apz.allow_double_tap_zooming", false);
+    user_pref("browser.gesture.pinch.in", "");
+    user_pref("browser.gesture.pinch.in.shift", "");
+    user_pref("browser.gesture.pinch.out", "");
+    user_pref("browser.gesture.pinch.out.shift", "");
     user_pref("permissions.default.microphone", 1);
     user_pref("media.navigator.permission.disabled", true);
     """
@@ -262,15 +271,36 @@ private func launchAceFox(configuration: LauncherConfiguration) throws {
     let workspaceConfiguration = NSWorkspace.OpenConfiguration()
     workspaceConfiguration.activates = true
     workspaceConfiguration.addsToRecentItems = false
-    // The signed Shell launcher derives its profile and Gecko arguments from
-    // its own Info.plist and App Group. LaunchServices only selects the
-    // independent application identity; no security boundary depends on
-    // cross-application argument or environment delivery.
+    let automation = try BrowserAgentAutomation(
+        port: availableLoopbackPort(),
+        token: randomToken()
+    )
+    workspaceConfiguration.arguments = [
+        "--remote-debugging-port", String(automation.port),
+        "--remote-allow-hosts", "localhost,127.0.0.1",
+    ]
+    workspaceConfiguration.environment = ProcessInfo.processInfo.environment.merging([
+        "AI2APPS_APP_SHELL": "1",
+        "AI2APPS_DISABLE_REMOTE_SERVER": "1",
+        "AI2APPS_REMOTE_AGENT_TOKEN": automation.token,
+        "AI2APPS_BROWSER_ROLE": "shell",
+    ]) { _, required in required }
     workspaceConfiguration.createsNewApplicationInstance = true
     let application = try openApplication(
         at: shellBundle,
         configuration: workspaceConfiguration,
         field: "acefox_launch"
+    )
+    try ContractCodec.save(
+        ShellAutomationDescriptor(
+            instanceID: configuration.instanceID,
+            port: automation.port,
+            token: automation.token,
+            processID: application.processIdentifier
+        ),
+        to: paths.runDirectory.appendingPathComponent(
+            "shell-automation.json"
+        )
     )
     try ContractCodec.save(
         ShellRunDescriptor(
@@ -281,6 +311,61 @@ private func launchAceFox(configuration: LauncherConfiguration) throws {
         ),
         to: paths.runDirectory.appendingPathComponent("shell.json")
     )
+}
+
+private func randomToken() throws -> String {
+    var random = [UInt8](repeating: 0, count: 32)
+    guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
+        throw ContractError.invalidField(
+            field: "shell_automation.token",
+            reason: "secure random generation failed"
+        )
+    }
+    return random.map { String(format: "%02x", $0) }.joined()
+}
+
+private func availableLoopbackPort() throws -> Int {
+    let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+    guard descriptor >= 0 else {
+        throw ContractError.invalidField(
+            field: "shell_automation.port",
+            reason: "socket creation failed"
+        )
+    }
+    defer { close(descriptor) }
+    var address = sockaddr_in()
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = 0
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    let bound = withUnsafePointer(to: &address) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+            Darwin.bind(
+                descriptor,
+                socketAddress,
+                socklen_t(MemoryLayout<sockaddr_in>.size)
+            )
+        }
+    }
+    guard bound == 0 else {
+        throw ContractError.invalidField(
+            field: "shell_automation.port",
+            reason: "ephemeral bind failed"
+        )
+    }
+    var result = sockaddr_in()
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let resolved = withUnsafeMutablePointer(to: &result) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+            getsockname(descriptor, socketAddress, &length)
+        }
+    }
+    guard resolved == 0 else {
+        throw ContractError.invalidField(
+            field: "shell_automation.port",
+            reason: "getsockname failed"
+        )
+    }
+    return Int(UInt16(bigEndian: result.sin_port))
 }
 
 private func rejectOrdinaryLaunchDuringUpdate(arguments: [String]) throws {
@@ -297,7 +382,42 @@ private func rejectOrdinaryLaunchDuringUpdate(arguments: [String]) throws {
     }
 }
 
+private func waitForHelperHandoffIfRequested(arguments: [String]) throws {
+    guard arguments.dropFirst().contains("--post-update-handoff") else { return }
+    guard let index = arguments.firstIndex(of: "--wait-helper-pid"),
+          index + 1 < arguments.count,
+          let pid = pid_t(arguments[index + 1]), pid > 1 else {
+        throw ContractError.invalidField(
+            field: "post_update_handoff",
+            reason: "requires a positive --wait-helper-pid"
+        )
+    }
+    let deadline = Date().addingTimeInterval(60)
+    while kill(pid, 0) == 0 || errno == EPERM {
+        guard Date() < deadline else {
+            throw ContractError.invalidField(
+                field: "post_update_handoff",
+                reason: "timed out waiting for the previous Helper"
+            )
+        }
+        usleep(100_000)
+    }
+    guard errno == ESRCH else {
+        throw ContractError.invalidField(
+            field: "post_update_handoff",
+            reason: "cannot verify the previous Helper exit"
+        )
+    }
+}
+
+private func removePostUpdateBackupIfRequested(arguments: [String]) throws {
+    guard arguments.dropFirst().contains("--post-update-handoff") else { return }
+    let cleanup = try PostUpdateBackupCleanup(installedApp: Bundle.main.bundleURL)
+    try cleanup.removeIfPresent()
+}
+
 do {
+    try waitForHelperHandoffIfRequested(arguments: CommandLine.arguments)
     try rejectOrdinaryLaunchDuringUpdate(arguments: CommandLine.arguments)
     let configuration = try LauncherConfiguration()
     if CommandLine.arguments.dropFirst().contains("--post-update-health-only") {
@@ -329,6 +449,10 @@ do {
     }
     try launchHelper(configuration: configuration)
     try launchAceFox(configuration: configuration)
+    // The old App remains available for the updater's immediate health-check
+    // rollback. Remove it only after the replacement has launched both its
+    // Helper and visible Shell successfully.
+    try removePostUpdateBackupIfRequested(arguments: CommandLine.arguments)
 } catch {
     FileHandle.standardError.write(Data("AI2Apps Launcher: \(error)\n".utf8))
     exit(EXIT_FAILURE)

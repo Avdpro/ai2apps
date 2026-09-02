@@ -1,0 +1,66 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen38-flash-next-4bit
+name: Qwen3.8 Flash Next 4-bit
+description: Multimodal Qwen4-Exp Worker with full and Cached-MoE execution.
+version: 0.1.0
+publisher: {id: ai2apps}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.qwen38-flash-next-4bit/qwen3.8-flash-next-mlx-4bit
+    display_name: Qwen3.8 Flash Next 4-bit
+    model_type: vlm
+    upstream_id: Vontra/Qwen3.8-Flash-Next-MLX-4bit
+    capabilities: [work, conversation, image_recognition]
+    weights:
+      provider: huggingface
+      repo_id: Vontra/Qwen3.8-Flash-Next-MLX-4bit
+      revision: de597762aa61387c89590a46582222a261ce0387
+      distribution_id: dist_ai2apps_qwen38_flash_next_4bit_de597762_v1
+      preparation:
+        recipe: ai2apps/cache-moe/v1
+        install_id: qwen3.8-flash-next-mlx-4bit
+        family: qwen4_exp
+        execution_modes: [cached, full]
+        storage_policies: [keep_source]
+        engine:
+          id: qwen3.8-flash-next-cached-moe
+          name: Qwen3.8 Flash Next Cached-MoE
+          version: 1
+          scope_asset: src/omlx_model_qwen38_flash_next_4bit/assets/scope-profile.json
+          scope_pack: src/omlx_model_qwen38_flash_next_4bit/assets/scope-pack.json
+          scope_env: OMLX_QWEN4_SCOPE_PROFILE
+        scope_name: general
+        conversion: {format: omlx-moe-expert-major-set, version: 1, variant: qwen4-exp-affine-q4-gate-up-fused-v1}
+        hot_slots: 10
+        memory_tiers:
+          - {id: lean, label: Lean, experts: 128, estimated_gb: 41}
+          - {id: balanced, label: Balanced, experts: 160, estimated_gb: 44}
+          - {id: performance, label: Performance, experts: 224, estimated_gb: 50}
+    metadata:
+      family: qwen4_exp
+      quantization: 4bit
+      execution_modes: [cached, full]
+      preparation: cache-moe
+      multimodal: true
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.5.5,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, cached-moe, vlm]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights:
+    huggingface_cache: read
+    reason: Read only the Host-selected pinned Qwen3.8 Flash Next checkpoint.
+  accelerator: {metal: true, reason: Run oMLX on Apple GPU.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 30}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

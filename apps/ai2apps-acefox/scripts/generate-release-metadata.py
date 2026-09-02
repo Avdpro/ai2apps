@@ -75,6 +75,11 @@ def main() -> None:
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--dmg", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--client-verification",
+        action="store_true",
+        help="use only macOS end-user tools and the arm64-only product contract",
+    )
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -126,8 +131,25 @@ def main() -> None:
         fail("invalid AI2AppsInstanceID")
 
     executable = app / "Contents" / "MacOS" / "AI2Apps"
-    architectures = run("lipo", "-archs", str(executable)).stdout.split()
-    stapled = run("xcrun", "stapler", "validate", str(dmg), check=False).returncode == 0
+    if args.client_verification:
+        # AI2Apps Desktop is an Apple-silicon-only product. The signed release
+        # pipeline still inspects the executable with lipo, but an end-user Mac
+        # must not need Xcode Command Line Tools merely to install an update.
+        architectures = ["arm64"]
+        stapled = run(
+            "/usr/sbin/spctl",
+            "--assess",
+            "--type",
+            "open",
+            "--context",
+            "context:primary-signature",
+            "-v",
+            str(dmg),
+            check=False,
+        ).returncode == 0
+    else:
+        architectures = run("lipo", "-archs", str(executable)).stdout.split()
+        stapled = run("xcrun", "stapler", "validate", str(dmg), check=False).returncode == 0
     metadata = {
         "schema_version": 1,
         "product": "AI2Apps",

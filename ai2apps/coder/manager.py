@@ -48,10 +48,6 @@ Mini-Apps, Agents, and Services. Read `.ai2apps/project.json` first.
 - Submit the development Bundle to TestFlight when the user needs to exercise
   the App through the real Launcher and Shell. TestFlight is local-only and
   does not make an unsigned App formally installed.
-- The floating Dock reveal is optional presentation chrome. Apps may set
-  `presentation.dock_reveal: false` and may call the Shell Bridge from their
-  own appropriately placed control instead.
-
 ## Mobile-ready App requirements
 
 Treat `mobile.ready: true` as a tested compatibility claim, not as a request

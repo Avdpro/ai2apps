@@ -1,0 +1,32 @@
+{
+  "format": "ai2apps-scope-pack",
+  "version": 1,
+  "id": "qwen3.8-flash-next-scope-pack",
+  "pack_version": "2026.08.29.1",
+  "family": "qwen4_exp",
+  "engine": "qwen3.8-flash-next-cached-moe",
+  "profile": {
+    "file": "scope-profile.json",
+    "format": "omlx-qwen38-next-runtime-scope-profile",
+    "sha256": "690afb37b6b2c1a607091aae4f5c733582a7d25cffa90eabbe928bf6914b9fa0",
+    "layers": 48,
+    "routed_layers": 48,
+    "experts": 512,
+    "max_ranked_experts": 224,
+    "scopes": 10
+  },
+  "compatibility": {
+    "model_ids": ["qwen3.8-flash-next-mlx-4bit"],
+    "source_revisions": {
+      "qwen3.8-flash-next-mlx-4bit": "de597762aa61387c89590a46582222a261ce0387"
+    },
+    "memory_tiers": [128, 160, 224],
+    "hot_slots": 10
+  },
+  "provenance": {
+    "kind": "derived-router-profile",
+    "source_project": "oMLX MoE Cache Experiment",
+    "source_artifact": "benchmarks/results/qwen38_next/scope-ten-runtime-top224-v1.json",
+    "benchmark_document": "docs/qwen38-next-cached-moe-checkpoint-2026-08-28.md"
+  }
+}

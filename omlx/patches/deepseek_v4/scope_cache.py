@@ -6,15 +6,18 @@ import copy
 import os
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import mlx.core as mx
 
+from omlx.cache.direct_l1 import direct_l1_mode, use_direct_l1
 from omlx.cache.moe_expert_store import ExpertMajorStore
+from omlx.custom_kernels.glm_moe_dsa import fast as glm_fast
 
 from .switch_layers import SwitchGLU
 
@@ -33,6 +36,12 @@ class _PreparedTransientRecords:
     buffers: dict[int, bytearray]
     record_bytes: int
     read_seconds: float
+
+
+@dataclass(frozen=True)
+class _PreparedDirectRequest:
+    layer: int
+    ids: tuple[int, ...]
 
 
 class ScopeFallbackLoader:
@@ -55,14 +64,10 @@ class ScopeFallbackLoader:
         self.no_cache = os.environ.get(
             "OMLX_DEEPSEEK_V4_SCOPE_NOCACHE", ""
         ).strip().lower() in ("1", "true", "yes", "on")
-        self.hot_slots = int(
-            os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS", "8")
-        )
+        self.hot_slots = int(os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS", "8"))
         if not 0 <= self.hot_slots <= 32:
             raise ValueError("OMLX_DEEPSEEK_V4_SCOPE_HOT_SLOTS must be 0..32")
-        self.io_workers = int(
-            os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_IO_WORKERS", "4")
-        )
+        self.io_workers = int(os.environ.get("OMLX_DEEPSEEK_V4_SCOPE_IO_WORKERS", "4"))
         if not 1 <= self.io_workers <= 16:
             raise ValueError("OMLX_DEEPSEEK_V4_SCOPE_IO_WORKERS must be 1..16")
         self._io_pool = (
@@ -106,6 +111,14 @@ class ScopeFallbackLoader:
         self.prefetch_hits = 0
         self.prefetch_wait_seconds = 0.0
         self.prefetch_read_seconds = 0.0
+        self.direct_l1_mode = direct_l1_mode()
+        self.direct_load_calls = 0
+        self.direct_load_experts = 0
+        self.direct_load_bytes = 0
+        self.direct_load_seconds = 0.0
+        self.direct_prefill = os.environ.get(
+            "OMLX_DEEPSEEK_V4_DIRECT_PREFILL", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
 
     def set_decode_miss_observer(
         self, observer: Callable[[int, list[int]], None] | None
@@ -292,6 +305,84 @@ class ScopeFallbackLoader:
             setattr(fallback, projection_name, projection)
         return fallback
 
+    @staticmethod
+    def _direct_store_compatible(store: ExpertMajorStore) -> bool:
+        return tuple(tensor.name for tensor in store.tensors) == (
+            "gate_proj.weight",
+            "gate_proj.scales",
+            "down_proj.weight",
+            "down_proj.scales",
+            "up_proj.weight",
+            "up_proj.scales",
+        )
+
+    def _direct_enabled(self) -> bool:
+        return use_direct_l1(
+            native_available=("preadv_fused_experts" in glm_fast.native_symbols())
+        )
+
+    def _make_fixed_hot_switch(
+        self,
+        resident: SwitchGLU,
+        ids: tuple[int, ...],
+        records: dict[int, dict[str, Any]] | None = None,
+        source: SwitchGLU | None = None,
+        source_ids: tuple[int, ...] = (),
+    ) -> SwitchGLU:
+        """Allocate Hot8's final capacity once, optionally seeding loaded IDs."""
+
+        tensors: dict[str, mx.array] = {}
+        arrays: list[mx.array] = []
+        for projection_name in ("gate_proj", "down_proj", "up_proj"):
+            projection = getattr(resident, projection_name)
+            for tensor_name in ("weight", "scales"):
+                current = projection.get(tensor_name)
+                value = mx.zeros(
+                    (self.hot_slots, *current.shape[1:]), dtype=current.dtype
+                )
+                if records is not None:
+                    for slot, expert_id in enumerate(ids):
+                        selected = records[expert_id][
+                            f"{projection_name}.{tensor_name}"
+                        ]
+                        if selected.dtype != value.dtype:
+                            selected = selected.astype(value.dtype)
+                        value[slot] = selected
+                elif source is not None:
+                    source_slots = {
+                        expert_id: slot for slot, expert_id in enumerate(source_ids)
+                    }
+                    source_projection = getattr(source, projection_name)
+                    source_tensor = source_projection.get(tensor_name)
+                    for slot, expert_id in enumerate(ids):
+                        selected = source_tensor[source_slots[expert_id]]
+                        if selected.dtype != value.dtype:
+                            selected = selected.astype(value.dtype)
+                        value[slot] = selected
+                tensors[f"{projection_name}.{tensor_name}"] = value
+                arrays.append(value)
+        mx.eval(*arrays)
+        switch = self._make_switch(resident, ids, tensors)
+        switch._omlx_direct_hot_capacity = self.hot_slots
+        return switch
+
+    def _make_empty_direct_switch(
+        self,
+        resident: SwitchGLU,
+        ids: tuple[int, ...],
+    ) -> SwitchGLU:
+        tensors: dict[str, mx.array] = {}
+        arrays: list[mx.array] = []
+        for projection_name in ("gate_proj", "down_proj", "up_proj"):
+            projection = getattr(resident, projection_name)
+            for tensor_name in ("weight", "scales"):
+                current = projection.get(tensor_name)
+                value = mx.zeros((len(ids), *current.shape[1:]), dtype=current.dtype)
+                tensors[f"{projection_name}.{tensor_name}"] = value
+                arrays.append(value)
+        mx.eval(*arrays)
+        return self._make_switch(resident, ids, tensors)
+
     def _read_records(
         self,
         layer: int,
@@ -360,13 +451,19 @@ class ScopeFallbackLoader:
         self,
         layer: int,
         expert_ids: list[int],
-    ) -> Future[_PreparedTransientRecords]:
+    ) -> Future[_PreparedTransientRecords | _PreparedDirectRequest]:
         """Start pure CPU/SSD preparation for the next Prefill bank."""
 
         ids = tuple(expert_ids)
         if not ids:
             raise ValueError("cannot prefetch an empty fallback expert bank")
         self.prefetch_submits += 1
+        if self.direct_prefill and self._direct_enabled():
+            future: Future[_PreparedTransientRecords | _PreparedDirectRequest] = (
+                Future()
+            )
+            future.set_result(_PreparedDirectRequest(layer=layer, ids=ids))
+            return future
         return self._prefetch_pool.submit(
             self._read_transient_records_detached,
             layer,
@@ -388,7 +485,8 @@ class ScopeFallbackLoader:
         expert_ids: list[int],
         resident: SwitchGLU,
         seed_ids: list[int] | None = None,
-        prepared: Future[_PreparedTransientRecords] | None = None,
+        prepared: Future[_PreparedTransientRecords | _PreparedDirectRequest]
+        | None = None,
     ) -> tuple[SwitchGLU, tuple[int, ...]]:
         """Build a Prefill-only tail bank and seed Decode's rolling Top8."""
 
@@ -397,12 +495,38 @@ class ScopeFallbackLoader:
         started = time.perf_counter()
         with self._lock:
             ids = tuple(expert_ids)
-            if prepared is None:
+            prefetched = prepared.result() if prepared is not None else None
+            direct = (
+                self.direct_prefill
+                and self._direct_enabled()
+                and self._direct_store_compatible(self._store(layer))
+                and (
+                    prefetched is None or isinstance(prefetched, _PreparedDirectRequest)
+                )
+            )
+            records = None
+            if direct:
+                if isinstance(prefetched, _PreparedDirectRequest) and (
+                    prefetched.layer != layer or prefetched.ids != ids
+                ):
+                    raise ValueError("prefetched direct bank does not match request")
+                store = self._store(layer)
+                fallback = self._make_empty_direct_switch(resident, ids)
+                if not self._direct_load_slots(
+                    store,
+                    fallback,
+                    list(range(len(ids))),
+                    list(ids),
+                ):
+                    raise RuntimeError("direct Prefill unexpectedly fell back")
+                record_bytes = store.record_bytes
+            elif prefetched is None:
                 records, record_bytes = self._read_records(layer, expert_ids)
             else:
                 wait_started = time.perf_counter()
-                prefetched = prepared.result()
                 self.prefetch_wait_seconds += time.perf_counter() - wait_started
+                if isinstance(prefetched, _PreparedDirectRequest):
+                    raise RuntimeError("direct Prefill marker reached legacy path")
                 if prefetched.layer != layer or prefetched.ids != ids:
                     raise ValueError("prefetched expert bank does not match request")
                 store = self._store(layer)
@@ -415,9 +539,11 @@ class ScopeFallbackLoader:
                 record_bytes = prefetched.record_bytes
                 self.prefetch_hits += 1
                 self.prefetch_read_seconds += prefetched.read_seconds
-            stacked = self._stack_records(ids, records)
-            mx.eval(*stacked.values())
-            fallback = self._make_switch(resident, ids, stacked)
+            if not direct:
+                assert records is not None
+                stacked = self._stack_records(ids, records)
+                mx.eval(*stacked.values())
+                fallback = self._make_switch(resident, ids, stacked)
 
             seeds = (
                 tuple(dict.fromkeys(seed_ids or ()))[-self.hot_slots :]
@@ -425,17 +551,27 @@ class ScopeFallbackLoader:
                 else ()
             )
             if seeds:
-                hot_tensors = {
-                    name: mx.stack(
-                        [records[expert_id][name] for expert_id in seeds]
+                store = self._store(layer)
+                if self._direct_enabled() and self._direct_store_compatible(store):
+                    hot_switch = (
+                        self._make_fixed_hot_switch(
+                            resident,
+                            seeds,
+                            source=fallback,
+                            source_ids=ids,
+                        )
+                        if direct
+                        else self._make_fixed_hot_switch(resident, seeds, records)
                     )
-                    for name in records[seeds[0]]
-                }
-                self._hot[layer] = _HotBank(
-                    seeds,
-                    list(seeds),
-                    self._make_switch(resident, seeds, hot_tensors),
-                )
+                else:
+                    hot_tensors = {
+                        name: mx.stack(
+                            [records[expert_id][name] for expert_id in seeds]
+                        )
+                        for name in records[seeds[0]]
+                    }
+                    hot_switch = self._make_switch(resident, seeds, hot_tensors)
+                self._hot[layer] = _HotBank(seeds, list(seeds), hot_switch)
 
         elapsed = time.perf_counter() - started
         self.experts_loaded += len(expert_ids)
@@ -504,6 +640,57 @@ class ScopeFallbackLoader:
         self.l1_patch_prepare_layers += 1
         self.l1_patch_prepare_seconds += time.perf_counter() - started
 
+    def _direct_load_slots(
+        self,
+        store: ExpertMajorStore,
+        switch: SwitchGLU,
+        slots: list[int],
+        expert_ids: list[int],
+    ) -> bool:
+        """Read DSV4F's six disk-ready segments into final Metal-visible slots."""
+
+        if not self._direct_enabled():
+            return False
+        if not self._direct_store_compatible(store):
+            if self.direct_l1_mode == "on":
+                raise ValueError(
+                    "direct DSV4F loading requires compute-ready six-segment records"
+                )
+            return False
+        arrays = (
+            switch.gate_proj.weight,
+            switch.gate_proj.scales,
+            switch.down_proj.weight,
+            switch.down_proj.scales,
+            switch.up_proj.weight,
+            switch.up_proj.scales,
+        )
+        # The native writer mutates unified-memory backing directly. Drain all
+        # prior Metal consumers before exposing those slots to POSIX preadv.
+        mx.synchronize()
+        started = time.perf_counter()
+        loaded = glm_fast.preadv_expert_segments(
+            store.fileno(),
+            store.data_offset,
+            store.record_bytes,
+            expert_ids,
+            slots,
+            *arrays,
+            io_workers=self.io_workers,
+        )
+        elapsed = time.perf_counter() - started
+        expected_bytes = len(expert_ids) * store.record_bytes
+        if loaded != expected_bytes:
+            raise RuntimeError(
+                f"native DSV4F loader reported {loaded} bytes, "
+                f"expected {expected_bytes}"
+            )
+        self.direct_load_calls += 1
+        self.direct_load_experts += len(expert_ids)
+        self.direct_load_bytes += loaded
+        self.direct_load_seconds += elapsed
+        return True
+
     def patch_resident_switch(
         self,
         layer: int,
@@ -516,48 +703,47 @@ class ScopeFallbackLoader:
         if not slots or len(slots) != len(expert_ids):
             raise ValueError("adaptive L1 slot patch has mismatched inputs")
         expected = int(resident.up_proj.num_experts)
-        if (
-            len(set(slots)) != len(slots)
-            or min(slots) < 0
-            or max(slots) >= expected
-        ):
+        if len(set(slots)) != len(slots) or min(slots) < 0 or max(slots) >= expected:
             raise ValueError("adaptive L1 slot patch contains invalid slots")
+        num_experts = self._store(layer).num_experts
         if (
             len(set(expert_ids)) != len(expert_ids)
             or min(expert_ids) < 0
-            or max(expert_ids) >= 256
+            or max(expert_ids) >= num_experts
         ):
             raise ValueError("adaptive L1 slot patch contains invalid expert IDs")
         started = time.perf_counter()
         with self._lock:
             self._prepare_mutable_switch(resident)
             ids = tuple(expert_ids)
-            records, record_bytes = self._read_records(layer, expert_ids)
-            stacked = self._stack_records(ids, records)
-            slot_array = mx.array(slots, dtype=mx.int32)
-            arrays: list[mx.array] = []
-            checks: list[mx.array] = []
-            validate = os.environ.get(
-                "OMLX_DEEPSEEK_V4_L1_PATCH_VALIDATE", ""
-            ).strip().lower() in ("1", "true", "yes", "on")
-            for projection_name in ("gate_proj", "down_proj", "up_proj"):
-                projection = getattr(resident, projection_name)
-                for tensor_name in ("weight", "scales", "biases"):
-                    current = projection.get(tensor_name)
-                    replacement = stacked.get(
-                        f"{projection_name}.{tensor_name}"
-                    )
-                    if current is None or replacement is None:
-                        continue
-                    if replacement.dtype != current.dtype:
-                        replacement = replacement.astype(current.dtype)
-                    current[slot_array] = replacement
-                    arrays.append(current)
-                    if validate:
-                        checks.append(mx.all(current[slot_array] == replacement))
-            mx.eval(*arrays, *checks)
-            if checks and not all(bool(value.item()) for value in checks):
-                raise RuntimeError("DeepSeek adaptive L1 slot validation failed")
+            store = self._store(layer)
+            direct = self._direct_load_slots(store, resident, slots, expert_ids)
+            record_bytes = store.record_bytes
+            if not direct:
+                records, record_bytes = self._read_records(layer, expert_ids)
+                stacked = self._stack_records(ids, records)
+                slot_array = mx.array(slots, dtype=mx.int32)
+                arrays: list[mx.array] = []
+                checks: list[mx.array] = []
+                validate = os.environ.get(
+                    "OMLX_DEEPSEEK_V4_L1_PATCH_VALIDATE", ""
+                ).strip().lower() in ("1", "true", "yes", "on")
+                for projection_name in ("gate_proj", "down_proj", "up_proj"):
+                    projection = getattr(resident, projection_name)
+                    for tensor_name in ("weight", "scales", "biases"):
+                        current = projection.get(tensor_name)
+                        replacement = stacked.get(f"{projection_name}.{tensor_name}")
+                        if current is None or replacement is None:
+                            continue
+                        if replacement.dtype != current.dtype:
+                            replacement = replacement.astype(current.dtype)
+                        current[slot_array] = replacement
+                        arrays.append(current)
+                        if validate:
+                            checks.append(mx.all(current[slot_array] == replacement))
+                mx.eval(*arrays, *checks)
+                if checks and not all(bool(value.item()) for value in checks):
+                    raise RuntimeError("DeepSeek adaptive L1 slot validation failed")
         elapsed = time.perf_counter() - started
         loaded_bytes = len(ids) * record_bytes
         self.experts_loaded += len(ids)
@@ -602,9 +788,20 @@ class ScopeFallbackLoader:
         record_bytes = 0
         with self._lock:
             state = self._hot.get(layer)
+            if state is None and self._direct_enabled():
+                store = self._store(layer)
+                if self._direct_store_compatible(store):
+                    state = _HotBank(
+                        ids=(),
+                        recency=[],
+                        switch=self._make_fixed_hot_switch(resident, ()),
+                    )
+                    self._hot[layer] = state
             old_ids = state.ids if state is not None else ()
             old_slots = {expert_id: slot for slot, expert_id in enumerate(old_ids)}
-            new_ids = [expert_id for expert_id in requested if expert_id not in old_slots]
+            new_ids = [
+                expert_id for expert_id in requested if expert_id not in old_slots
+            ]
 
             recency = list(state.recency) if state is not None else []
             for expert_id in requested:
@@ -617,33 +814,72 @@ class ScopeFallbackLoader:
                 state.recency = recency[-self.hot_slots :]
                 self.hot_only_calls += 1
                 self.fallback_calls += 1
-                self.max_request_experts = max(
-                    self.max_request_experts, len(requested)
-                )
+                self.max_request_experts = max(self.max_request_experts, len(requested))
                 return state.switch, state.ids
 
-            new_records, record_bytes = self._read_records(layer, new_ids)
-            loaded = len(new_ids)
-            bank_ids = tuple(recency[-self.hot_slots :])
-            tensors: dict[str, mx.array] = {}
-            sample = next(iter(new_records.values()))
-            for name in sample:
-                projection_name, tensor_name = name.split(".", 1)
-                old_tensor = (
-                    getattr(getattr(state.switch, projection_name), tensor_name)
-                    if state is not None
-                    else None
-                )
-                values = []
-                for expert_id in bank_ids:
-                    if expert_id in new_records:
-                        values.append(new_records[expert_id][name])
-                    else:
-                        values.append(old_tensor[old_slots[expert_id]])
-                tensors[name] = mx.stack(values)
-            mx.eval(*tensors.values())
-            switch = self._make_switch(resident, bank_ids, tensors)
-            self._hot[layer] = _HotBank(bank_ids, list(bank_ids), switch)
+            # A direct bank has its final Hot8 capacity from creation onward.
+            # Fill empty slots first, then replace only LRU victims; neither
+            # case reconstructs or reorders the six backing arrays.
+            direct_hot = (
+                state is not None
+                and getattr(state.switch, "_omlx_direct_hot_capacity", 0)
+                == self.hot_slots
+                and self._direct_enabled()
+            )
+            if direct_hot:
+                desired_recency = recency[-self.hot_slots :]
+                desired = set(desired_recency)
+                victims = [
+                    expert_id for expert_id in old_ids if expert_id not in desired
+                ]
+                slots = [old_slots[expert_id] for expert_id in victims]
+                slots.extend(range(len(old_ids), self.hot_slots))
+                slots = slots[: len(new_ids)]
+                if len(slots) != len(new_ids):
+                    raise RuntimeError("rolling Hot8 could not select enough slots")
+                store = self._store(layer)
+                if self._direct_load_slots(store, state.switch, slots, new_ids):
+                    physical_ids = list(old_ids) + [-1] * (
+                        self.hot_slots - len(old_ids)
+                    )
+                    for slot, expert_id in zip(slots, new_ids, strict=True):
+                        physical_ids[slot] = expert_id
+                    state.ids = tuple(
+                        expert_id for expert_id in physical_ids if expert_id >= 0
+                    )
+                    # Preserve the legacy rebuild path's exact LRU ordering,
+                    # including requests that interleave hits and new IDs.
+                    state.recency = desired_recency
+                    loaded = len(new_ids)
+                    record_bytes = store.record_bytes
+                    bank_ids = state.ids
+                    switch = state.switch
+                else:
+                    direct_hot = False
+
+            if not direct_hot:
+                new_records, record_bytes = self._read_records(layer, new_ids)
+                loaded = len(new_ids)
+                bank_ids = tuple(recency[-self.hot_slots :])
+                tensors: dict[str, mx.array] = {}
+                sample = next(iter(new_records.values()))
+                for name in sample:
+                    projection_name, tensor_name = name.split(".", 1)
+                    old_tensor = (
+                        getattr(getattr(state.switch, projection_name), tensor_name)
+                        if state is not None
+                        else None
+                    )
+                    values = []
+                    for expert_id in bank_ids:
+                        if expert_id in new_records:
+                            values.append(new_records[expert_id][name])
+                        else:
+                            values.append(old_tensor[old_slots[expert_id]])
+                    tensors[name] = mx.stack(values)
+                mx.eval(*tensors.values())
+                switch = self._make_switch(resident, bank_ids, tensors)
+                self._hot[layer] = _HotBank(bank_ids, list(bank_ids), switch)
 
         elapsed = time.perf_counter() - started
         self.experts_loaded += loaded
@@ -654,7 +890,7 @@ class ScopeFallbackLoader:
         self.max_request_experts = max(self.max_request_experts, len(expert_ids))
         return switch, bank_ids
 
-    def stats(self) -> dict[str, float | int]:
+    def stats(self) -> dict[str, float | int | str]:
         return {
             "fallback_calls": self.fallback_calls,
             "hot_only_calls": self.hot_only_calls,
@@ -684,6 +920,12 @@ class ScopeFallbackLoader:
             "hot_layers": len(self._hot),
             "hot_slots": self.hot_slots,
             "io_workers": self.io_workers,
+            "direct_l1_mode": self.direct_l1_mode,
+            "direct_prefill": int(self.direct_prefill),
+            "direct_load_calls": self.direct_load_calls,
+            "direct_load_experts": self.direct_load_experts,
+            "direct_load_bytes": self.direct_load_bytes,
+            "direct_load_seconds": self.direct_load_seconds,
             "prefetch_submits": self.prefetch_submits,
             "prefetch_hits": self.prefetch_hits,
             "prefetch_wait_seconds": self.prefetch_wait_seconds,

@@ -1,0 +1,10 @@
+{
+  "omlx-model-ornith15-35b-a3b-4bit-vision@0.1.0": [{
+    "source": "huggingface",
+    "repoId": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision",
+    "revision": "31428ce8829c277f9255c59662b8efab58898ecf",
+    "displayName": "Ornith 1.5 35B A3B 4-bit Vision",
+    "installMode": "cache-moe",
+    "recipeId": "ornith-1.5-35b-a3b-mlx-4bit-vision"
+  }]
+}

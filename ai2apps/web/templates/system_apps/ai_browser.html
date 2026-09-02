@@ -1,0 +1,30 @@
+{% extends "system_apps/base.html" %}
+
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ static('css/ai_browser.css') }}">
+{% endblock %}
+
+{% block system_app_content %}
+<section class="aib-app" x-data="aiBrowserApp()" x-init="init()">
+    <header class="aib-header">
+        <div><span class="aib-kicker">ACEFOX PROFILES</span><h1>AI Browser</h1><p>每个 Profile 拥有独立的 Cookie、登录状态和 AceFox 窗口。</p></div>
+        <button class="aib-primary" type="button" @click="showCreate=true; $nextTick(()=>$refs.profileName?.focus())"><i data-lucide="plus"></i><span>新建 Profile</span></button>
+    </header>
+    <div x-show="notice" x-cloak class="aib-notice" :data-tone="noticeTone"><i :data-lucide="noticeTone==='error'?'triangle-alert':'circle-check'"></i><span x-text="notice"></span><button type="button" @click="notice=''" aria-label="关闭"><i data-lucide="x"></i></button></div>
+    <div x-show="loading" class="aib-loading"><i data-lucide="loader-circle"></i><span>正在读取 Profile…</span></div>
+    <div x-show="!loading" x-cloak class="aib-grid">
+        <template x-for="profile in profiles" :key="profile.key">
+            <article class="aib-card" :class="profile.is_default && 'is-default'">
+                <div class="aib-card-icon"><i :data-lucide="profile.is_default?'user-round-check':'user-round'"></i></div>
+                <div class="aib-card-main"><div class="aib-card-title"><h2 x-text="profile.is_default ? '默认 Profile' : profile.name"></h2><span x-show="profile.is_default">当前用户</span></div><p x-text="profile.is_default ? '与当前登录用户稳定绑定，不可删除。' : '独立浏览数据与登录状态。'"></p><small x-show="profile.lastStatus" x-text="profile.lastStatus"></small></div>
+                <div class="aib-actions"><button class="aib-launch" type="button" @click="launch(profile)" :disabled="busyKey===profile.key"><i :data-lucide="busyKey===profile.key?'loader-circle':'external-link'"></i><span x-text="busyKey===profile.key?'正在启动…':'打开浏览器'"></span></button><button x-show="!profile.is_default" class="aib-delete" type="button" @click="requestDelete(profile)" :disabled="busyKey===profile.key" :aria-label="'删除 '+profile.name"><i data-lucide="trash-2"></i></button></div>
+            </article>
+        </template>
+    </div>
+    <div x-show="showCreate" x-cloak class="aib-modal" @click.self="showCreate=false"><form class="aib-dialog" @submit.prevent="createProfile()"><div class="aib-dialog-icon"><i data-lucide="user-round-plus"></i></div><h2>新建浏览器 Profile</h2><p>新的 Profile 将使用独立的 Cookie、缓存与登录状态。</p><label><span>名称</span><input x-ref="profileName" x-model.trim="newName" maxlength="80" required placeholder="例如：工作、测试、客户演示"></label><div class="aib-dialog-actions"><button type="button" @click="showCreate=false">取消</button><button class="aib-primary" type="submit" :disabled="creating||!newName"><span x-text="creating?'创建中…':'创建'"></span></button></div></form></div>
+    <div x-show="deleteTarget" x-cloak class="aib-modal" @click.self="deleteTarget=null"><div class="aib-dialog"><div class="aib-dialog-icon is-danger"><i data-lucide="trash-2"></i></div><h2>删除 Profile？</h2><p>将关闭对应的 AceFox 窗口，并永久删除其中的 Cookie、历史记录和登录状态。</p><strong class="aib-delete-name" x-text="deleteTarget?.name"></strong><div class="aib-dialog-actions"><button type="button" @click="deleteTarget=null">取消</button><button class="aib-danger" type="button" @click="deleteProfile()">删除 Profile</button></div></div></div>
+</section>
+{% endblock %}
+
+{% block scripts %}{{ super() }}<script src="{{ static('js/ai_browser.js') }}"></script>{% endblock %}

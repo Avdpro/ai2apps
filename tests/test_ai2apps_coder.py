@@ -15,7 +15,6 @@ import yaml
 from fastapi import FastAPI
 
 from ai2apps.api.coder import create_coder_router
-from ai2apps.apps import SYSTEM_APP_MANIFESTS
 from ai2apps.coder import CoderError, CoderManager
 from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.storage import PlatformDatabase
@@ -91,20 +90,6 @@ def test_coder_has_collapsible_sidebar_context_actions_and_local_ide():
     assert '@router.delete("/api/coder/threads/{thread_id}")' in routes
     assert 'data-action="testflight"' in template
     assert '@router.post("/api/coder/projects/{project_id}/testflight")' in routes
-
-
-def test_coder_opts_out_of_optional_floating_dock_reveal():
-    root = Path(__file__).parents[1]
-    coder = next(
-        item
-        for item in SYSTEM_APP_MANIFESTS
-        if item["id"] == "ai2apps.coder"
-    )
-    base = (root / "ai2apps/web/templates/base.html").read_text(encoding="utf-8")
-
-    assert coder["presentation"] == {"dock_reveal": False}
-    assert "show_dock_reveal | default(true)" in base
-    assert "if (showDockReveal)" in base
 
 
 @pytest.fixture

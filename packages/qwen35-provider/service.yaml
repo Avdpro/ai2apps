@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.qwen35
 name: Qwen3.5 Local Provider
 description: Independently packaged Qwen3.5 MLX model provider for AI2Apps.
-version: 0.1.0
+version: 0.1.2
 
 publisher:
   id: ai2apps.local
@@ -27,6 +27,12 @@ models:
       - conversation
       - image_recognition
     context_window: 262144
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3.5-2B-4bit
+      revision: 674aaa7240b91e8012fcad5d791b7dfe5ba90207
+      distribution_id: dist_ai2apps_qwen3_5_2b_4bit_674aaa72_v1
+      preparation: {recipe: native}
     metadata:
       family: qwen3.5
       parameters: 2B
@@ -41,6 +47,12 @@ models:
       - conversation
       - image_recognition
     context_window: 262144
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3.5-0.8B-4bit
+      revision: da28692b5f139cb0ec58a356b437486b7dac7462
+      distribution_id: dist_ai2apps_qwen3_5_0_8b_4bit_da28692b_v1
+      preparation: {recipe: native}
     metadata:
       family: qwen3.5
       parameters: 0.8B
@@ -55,8 +67,7 @@ requires:
 
 permissions:
   network:
-    outbound: true
-    reason: Download a selected checkpoint only when it is absent from the local HF cache.
+    outbound: false
   model_weights:
     huggingface_cache: read
     reason: Reuse already downloaded Qwen3.5 checkpoints without copying weights into the Package.

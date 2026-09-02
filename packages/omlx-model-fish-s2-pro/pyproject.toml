@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omlx-model-fish-s2-pro"
+version = "0.1.1"
+description = "Fish Audio S2 Pro MLX Model Worker Package for AI2Apps"
+readme = "README.md"
+license = "LicenseRef-Fish-Audio-Research"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[tool.setuptools]
+py-modules = []

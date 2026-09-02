@@ -1432,6 +1432,14 @@ class TestDiscoverModelsFromDirs:
 class TestUnsupportedModels:
     """Tests for _is_unsupported_model() — audio models are now supported."""
 
+    def test_minimax_h3_video_audio_model_is_not_a_chat_model(self, tmp_path):
+        config = {
+            "model_type": "minimax_h3",
+            "tasks": ["t2va", "fl2va"],
+        }
+        (tmp_path / "config.json").write_text(json.dumps(config))
+        assert _is_unsupported_model(tmp_path) is True
+
     def test_whisper_not_unsupported(self, tmp_path):
         """Whisper is now an audio_stt model, not unsupported."""
         config = {

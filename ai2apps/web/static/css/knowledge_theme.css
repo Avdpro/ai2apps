@@ -1,0 +1,111 @@
+/* Knowledge brand color is an identity preference, independent of UI theme. */
+:root {
+    --kn-accent: #171717;
+    --kn-on-accent: #fff;
+    --kn-accent-soft: color-mix(in srgb, var(--kn-accent) 9%, transparent);
+    --kn-accent-ink: color-mix(in srgb, var(--kn-accent) 82%, #111 18%);
+}
+
+.knowledge-brand > span,
+.knowledge-mini > header > div > span,
+.knowledge-search button,
+.knowledge-primary,
+.knowledge-new-bucket button,
+.knowledge-context-toggle.enabled {
+    color: var(--kn-on-accent);
+}
+
+.knowledge-state.empty > span,
+.knowledge-bucket-row.active,
+.knowledge-ask-message.user {
+    background: var(--kn-accent-soft);
+}
+
+.knowledge-bucket-row.active { color: var(--kn-accent-ink); }
+.knowledge-appearance { position: relative; }
+.knowledge-appearance-trigger { width: 40px; padding: 0; }
+.knowledge-color-swatch {
+    width: 15px;
+    height: 15px;
+    border: 1px solid color-mix(in srgb, var(--kn-on-accent) 25%, transparent);
+    border-radius: 5px;
+    background: var(--kn-accent);
+    box-shadow: 0 0 0 1px #0001;
+}
+.knowledge-appearance-trigger > svg { width: 12px; }
+.knowledge-appearance-popover {
+    position: absolute;
+    z-index: 70;
+    top: calc(100% + 9px);
+    right: 0;
+    width: 224px;
+    padding: 14px;
+    border: 1px solid var(--kn-line);
+    border-radius: 13px;
+    background: #fff;
+    box-shadow: 0 18px 50px #0002;
+}
+.knowledge-appearance-popover strong { font-size: 12px; }
+.knowledge-appearance-popover p {
+    margin: 5px 0 12px;
+    color: var(--kn-muted);
+    font-size: 10px;
+    line-height: 1.45;
+}
+.knowledge-color-presets {
+    display: grid;
+    grid-template-columns: repeat(7, 25px);
+    gap: 6px;
+}
+.knowledge-color-presets button,
+.knowledge-color-presets label {
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    border: 1px solid #0002;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: var(--swatch, #fff);
+    color: #fff;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.knowledge-color-presets button.selected {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--kn-accent);
+}
+.knowledge-color-presets svg {
+    width: 12px;
+    filter: drop-shadow(0 1px 1px #0006);
+}
+.knowledge-color-presets label { color: #57534e; background: #f5f5f4; }
+.knowledge-color-presets input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.knowledge-appearance-reset {
+    margin-top: 12px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--kn-muted);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+[data-theme="dark"] { --kn-accent-ink: color-mix(in srgb, var(--kn-accent) 58%, #fff 42%); }
+[data-theme="dark"] .knowledge-brand > span,
+[data-theme="dark"] .knowledge-mini > header > div > span {
+    box-shadow: inset 0 0 0 1px #ffffff38, 0 5px 16px #0005;
+}
+[data-theme="dark"] .knowledge-appearance-popover {
+    background: #1d1d20;
+    color: #f5f5f5;
+    box-shadow: 0 18px 55px #0008;
+}
+[data-theme="dark"] .knowledge-appearance-popover p,
+[data-theme="dark"] .knowledge-appearance-reset { color: #a3a3a3; }
+
+@media (max-width: 850px) {
+    .knowledge-header-actions .knowledge-appearance,
+    .knowledge-header-actions .knowledge-appearance-trigger { display: flex; }
+    .knowledge-appearance-popover { position: fixed; top: 72px; right: 12px; }
+}

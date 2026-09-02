@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.deepseek-v4-flash
 name: DeepSeek V4 Flash
 description: Isolated full and Cached-MoE Worker for DeepSeek V4 Flash.
-version: 0.3.1
+version: 0.3.2
 publisher: {id: ai2apps}
 runtime:
   mode: process
@@ -19,6 +19,7 @@ models:
       provider: huggingface
       repo_id: deepseek-ai/DeepSeek-V4-Flash
       revision: 60d8d70770c6776ff598c94bb586a859a38244f1
+      distribution_id: dist_ai2apps_deepseek_v4_flash_60d8d707_v1
       preparation:
         recipe: ai2apps/cache-moe/v1
         install_id: deepseek-v4-flash

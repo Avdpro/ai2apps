@@ -66,3 +66,32 @@ class KnowledgeSearchHit:
     rank: float
     tags: tuple[KnowledgeTag, ...]
     source_facets: tuple[tuple[str, str], ...]
+    location: dict[str, object] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeBucket:
+    id: str
+    installation_id: str
+    owner_user_id: str | None
+    created_by_user_id: str
+    visibility: KnowledgeScope
+    name: str
+    kind: str
+    system_key: str | None
+    item_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeAsset:
+    id: str
+    item_id: str
+    filename: str
+    media_type: str
+    content_hash: str
+    size_bytes: int
+    storage_key: str
+    parser: str
+    created_at: datetime

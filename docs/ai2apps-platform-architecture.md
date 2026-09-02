@@ -102,8 +102,41 @@ flowchart TB
     discovery, memory budgeting, model placement, and scheduling use reported
     device capabilities rather than OS/vendor assumptions. Apple Silicon,
     NVIDIA Linux, and AMD Linux are peer target families.
+11. **Worker scheduling is invisible above the platform model boundary.** Apps,
+    Agents and domain services express a model operation and execution intent
+    through the Host-owned Model Invocation Service. They must not import or
+    operate Worker schedulers, workload classes, queue tickets, leases, resource
+    estimates, process lifecycle APIs, endpoints, or internal Worker credentials.
 
-### 3.1 Deployment and hardware profile
+### 3.1 Model invocation and Worker encapsulation
+
+The required dependency direction for every local Model Worker call is:
+
+```text
+App / Agent / domain service
+  -> Model Invocation Service
+  -> WorkerJobScheduler + WorkerResourceManager
+  -> Package Supervisor
+  -> isolated Model Worker
+```
+
+The caller may select only a platform-level execution intent such as interactive,
+foreground, or background. The Model Invocation Service derives the authoritative
+Workload Class and owns admission, queueing, lazy startup, endpoint routing,
+progress/cancellation transport, lease release, and retry-safe cleanup.
+
+Reading a model's public capability descriptor—for example model type, supported
+media roles, geometry, voices, or context limits—is allowed. Depending on Worker
+runtime state or implementation details is not. ACPF remains a capability,
+Package, Checkpoint, and Service-lifecycle orchestrator; health and protocol
+verification does not enter the inference queue. If ACPF ever requires real smoke
+inference, it must submit that operation through the same Model Invocation Service.
+
+This is a release invariant, not an implementation preference. Adding a new App
+must not require changes because the Host changes scheduling policy, resource
+estimation, Worker placement, local/P2P routing, or process lifecycle behavior.
+
+### 3.2 Deployment and hardware profile
 
 Each AI2Apps node exposes a normalized `HardwareProfile` containing at least:
 
@@ -2217,6 +2250,10 @@ in an expandable detail area so the primary UI remains consistent across Apple,
 NVIDIA, and AMD devices.
 
 ### 15.2 App runtime
+
+App UI implementation conventions, including the trusted host-environment
+signal and Desktop/browser/mobile Artifact download behavior, are maintained in
+the [AI2Apps App development guide](ai2apps-app-development-guide.md).
 
 ```text
 /apps                                      App launcher

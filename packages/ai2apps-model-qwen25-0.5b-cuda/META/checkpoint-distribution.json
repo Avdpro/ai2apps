@@ -1,0 +1,32 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen2_5_0_5b_instruct_c89bee90_v1",
+  "modelId": "ai2apps.model.qwen25-0.5b-cuda/qwen2.5-0.5b-instruct",
+  "repoId": "Qwen/Qwen2.5-0.5B-Instruct",
+  "revision": "c89bee90d9f811437d9735454613c35b4a3c4dc8",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "generation_config.json",
+    "merges.txt",
+    "model.safetensors",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.json"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "Qwen/Qwen2.5-0.5B-Instruct", "revision": "c89bee90d9f811437d9735454613c35b4a3c4dc8", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "Qwen/Qwen2.5-0.5B-Instruct", "revision": "186d8559ad54c32cf47dc3a8225f993742c507b8", "access": "public_anonymous"}
+  ]
+}

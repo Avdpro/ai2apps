@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.qwen38
 name: Qwen3.8 27B NVFP4
 description: Isolated oMLX Worker Package for the pinned Qwen3.8 27B NVFP4 checkpoint.
-version: 0.3.1
+version: 0.3.2
 
 publisher:
   id: ai2apps
@@ -24,6 +24,7 @@ models:
       provider: huggingface
       repo_id: unsloth/Qwen3.8-27B-NVFP4
       revision: 16b6615af3548b88e2d8e382457bc705b00479cf
+      distribution_id: dist_ai2apps_qwen3_8_27b_nvfp4_16b6615a_v1
       preparation:
         recipe: native
     metadata:

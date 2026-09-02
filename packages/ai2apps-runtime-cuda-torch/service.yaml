@@ -1,0 +1,49 @@
+schema: ai2apps.service/v1
+id: ai2apps.runtime.cuda-torch
+name: AI2Apps CUDA Torch Runtime
+description: Isolated PyTorch and Transformers Runtime for AI2Apps CUDA Model Workers.
+version: 0.2.0
+
+publisher:
+  id: ai2apps
+
+runtime:
+  mode: process
+  protocol: ai2apps-inference-runtime/v1
+  role: inference_provider
+  descriptor: META/runtime-manifest.json
+
+capabilities:
+  - cuda
+  - torch
+  - transformers
+  - model-worker-v1
+  - llm
+  - conversation
+  - vlm
+  - audio-stt
+
+requires:
+  services: []
+
+permissions:
+  network: {outbound: false}
+
+compatibility:
+  os: [linux]
+  architectures: [arm64, aarch64]
+
+variants:
+  - id: linux-arm64-cuda
+    priority: 100
+    compatibility:
+      os: [linux]
+      architectures: [arm64, aarch64]
+      accelerators: [cuda]
+    files:
+      - variants/linux-arm64/AI2AppsCudaTorchRuntime.tar.gz
+
+health: {}
+restart: {}
+tools: []
+models: []

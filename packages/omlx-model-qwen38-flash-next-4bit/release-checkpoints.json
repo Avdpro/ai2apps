@@ -1,0 +1,10 @@
+{
+  "omlx-model-qwen38-flash-next-4bit@0.1.0": [{
+    "source": "huggingface",
+    "repoId": "Vontra/Qwen3.8-Flash-Next-MLX-4bit",
+    "revision": "de597762aa61387c89590a46582222a261ce0387",
+    "displayName": "Qwen3.8 Flash Next 4-bit",
+    "installMode": "cache-moe",
+    "recipeId": "qwen3.8-flash-next-mlx-4bit"
+  }]
+}

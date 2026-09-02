@@ -11,8 +11,10 @@ when mlx-audio is not installed.
 import asyncio
 import gc
 import logging
+import math
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import mlx.core as mx
@@ -48,6 +50,34 @@ def _infer_kokoro_lang_code(voice: Optional[str]) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _qwen3_speed_instruction(speed: float) -> Optional[str]:
+    """Translate Qwen3-TTS's placeholder speed value into a real instruction.
+
+    mlx-audio exposes ``speed`` on Qwen3-TTS for API compatibility, but the
+    backend currently documents it as not directly supported and does not use
+    the value during generation.  Qwen3-TTS does support speaking-rate control
+    through its natural-language ``instruct`` input, so use qualitative wording
+    that the model was trained to follow instead of pretending the multiplier
+    is an exact DSP control.
+    """
+    if speed < 0.75:
+        return "Speak much more slowly than normal."
+    if speed < 0.95:
+        return "Speak more slowly than normal."
+    if speed > 1.5:
+        return "Speak much faster than normal."
+    if speed > 1.05:
+        return "Speak faster than normal."
+    return None
+
+
+def _append_instruction(
+    current: Optional[str], addition: Optional[str]
+) -> Optional[str]:
+    parts = [part.strip() for part in (current, addition) if part and part.strip()]
+    return " ".join(parts) or None
+
+
 class TTSEngine(BaseNonStreamingEngine):
     """
     Engine for speech synthesis (Text-to-Speech).
@@ -59,7 +89,13 @@ class TTSEngine(BaseNonStreamingEngine):
     since synthesis is computed in a single forward pass.
     """
 
-    def __init__(self, model_name: str, **kwargs):
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        dependency_checkpoints: Optional[Mapping[str, str]] = None,
+        **kwargs,
+    ):
         """
         Initialize the TTS engine.
 
@@ -70,7 +106,29 @@ class TTSEngine(BaseNonStreamingEngine):
         super().__init__()
         self._model_name = model_name
         self._model = None
+        self._dependency_checkpoints = dict(dependency_checkpoints or {})
         self._kwargs = kwargs
+
+    def _load_declared_cosyvoice_dependencies(self, model: Any) -> None:
+        """Attach pinned helper checkpoints without Hugging Face cache lookup."""
+        tokenizer_root = self._dependency_checkpoints.get(
+            "mlx-community/S3TokenizerV3"
+        )
+        if tokenizer_root is None:
+            return
+        tokenizer_weights = Path(tokenizer_root) / "model.safetensors"
+        if not tokenizer_weights.is_file():
+            raise FileNotFoundError(
+                f"Declared S3TokenizerV3 checkpoint is incomplete: {tokenizer_weights}"
+            )
+
+        from mlx_audio.codec.models.s3tokenizer import S3TokenizerV3
+
+        tokenizer = S3TokenizerV3("speech_tokenizer_v3")
+        weights = mx.load(str(tokenizer_weights), format="safetensors")
+        tokenizer.load_weights(list(weights.items()))
+        mx.eval(tokenizer.parameters())
+        model._s3_tokenizer = tokenizer
 
     @staticmethod
     def _audio_array_to_pcm_bytes(audio: Any) -> bytes:
@@ -94,6 +152,28 @@ class TTSEngine(BaseNonStreamingEngine):
         except (TypeError, ValueError):
             return False
         return "stream" in gen_params and "streaming_interval" in gen_params
+
+    @staticmethod
+    def _reference_audio_array(path: str, sample_rate: int) -> mx.array:
+        """Decode an authorized reference file for array-based MLX backends."""
+        from scipy.signal import resample_poly
+
+        from mlx_audio.audio_io import read
+
+        audio, source_rate = read(path, always_2d=False, dtype="float32")
+        audio = np.asarray(audio, dtype=np.float32)
+        if audio.ndim == 2:
+            audio = audio.mean(axis=1)
+        if audio.ndim != 1 or audio.size == 0:
+            raise ValueError("Reference audio must contain at least one mono sample")
+        if int(source_rate) != int(sample_rate):
+            divisor = math.gcd(int(source_rate), int(sample_rate))
+            audio = resample_poly(
+                audio,
+                int(sample_rate) // divisor,
+                int(source_rate) // divisor,
+            ).astype(np.float32, copy=False)
+        return mx.array(audio, dtype=mx.float32)
 
     async def start(self) -> None:
         """Start the engine (load model if not loaded).
@@ -124,7 +204,7 @@ class TTSEngine(BaseNonStreamingEngine):
 
         def _load_sync():
             try:
-                return _load_model(model_name, strict=True)
+                model = _load_model(model_name, strict=True)
             except ValueError as exc:
                 if "Expected shape" not in str(exc):
                     raise
@@ -139,7 +219,10 @@ class TTSEngine(BaseNonStreamingEngine):
                     model_name,
                     exc,
                 )
-                return _load_model(model_name, strict=False)
+                model = _load_model(model_name, strict=False)
+            if "cosyvoice" in type(model).__module__.lower():
+                self._load_declared_cosyvoice_dependencies(model)
+            return model
 
         loop = asyncio.get_running_loop()
         self._model = await loop.run_in_executor(get_mlx_executor(), _load_sync)
@@ -214,10 +297,32 @@ class TTSEngine(BaseNonStreamingEngine):
 
         model = self._model
         t0 = time.monotonic()
+        model_module = type(model).__module__.lower()
+        is_qwen3_tts = "qwen3_tts" in model_module or (
+            "qwen3" in self._model_name.lower()
+            and "tts" in self._model_name.lower()
+        )
+        is_fish_tts = "fish_qwen3_omni" in model_module
+        is_cosyvoice = "cosyvoice" in model_module
 
         def _build_generate_kwargs() -> Dict[str, Any]:
+            effective_text: str | list[str] = text
+            if is_fish_tts and isinstance(text, list):
+                voices = voice if isinstance(voice, list) else []
+                speaker_ids: Dict[str, int] = {}
+                turns = []
+                for index, turn_text in enumerate(text):
+                    speaker = voices[index] if index < len(voices) else str(index)
+                    speaker_id = speaker_ids.setdefault(speaker, len(speaker_ids))
+                    if speaker_id >= 5:
+                        raise ValueError("Fish S2 supports at most five speakers")
+                    turns.append(f"<|speaker:{speaker_id}|>{turn_text}")
+                effective_text = " ".join(turns)
+            if is_fish_tts and instructions:
+                instruction_tag = instructions.strip().strip("[]")
+                effective_text = f"[{instruction_tag}] {effective_text}"
             gen_kwargs: Dict[str, Any] = {
-                "text": text,
+                "text": effective_text,
                 "verbose": False,
             }
             import inspect
@@ -232,8 +337,15 @@ class TTSEngine(BaseNonStreamingEngine):
                     gen_kwargs["voice"] = voice
                 elif "instruct" in gen_params:
                     gen_kwargs["instruct"] = voice
-            if instructions is not None and "instruct" in gen_params:
-                gen_kwargs["instruct"] = instructions
+            effective_instructions = instructions
+            if is_qwen3_tts or is_cosyvoice:
+                effective_instructions = _append_instruction(
+                    effective_instructions, _qwen3_speed_instruction(speed)
+                )
+            if effective_instructions is not None and "instruct" in gen_params:
+                gen_kwargs["instruct"] = effective_instructions
+            elif effective_instructions is not None and "instruct_text" in gen_params:
+                gen_kwargs["instruct_text"] = effective_instructions
             if "lang_code" in gen_params:
                 if language:
                     gen_kwargs["lang_code"] = language
@@ -241,11 +353,27 @@ class TTSEngine(BaseNonStreamingEngine):
                     inferred = _infer_kokoro_lang_code(voice)
                     if inferred:
                         gen_kwargs["lang_code"] = inferred
-            if speed != 1.0:
+            if speed != 1.0 and "speed" in gen_params and not is_qwen3_tts:
                 gen_kwargs["speed"] = speed
             if ref_audio is not None and "ref_audio" in gen_params:
-                gen_kwargs["ref_audio"] = ref_audio
-                gen_kwargs["ref_text"] = ref_text
+                if is_fish_tts or is_cosyvoice:
+                    target_rate = int(getattr(model, "sample_rate", _DEFAULT_SAMPLE_RATE))
+                    gen_kwargs["ref_audio"] = self._reference_audio_array(
+                        ref_audio, target_rate
+                    )
+                else:
+                    gen_kwargs["ref_audio"] = ref_audio
+                # The published CosyVoice3 MLX implementation selects
+                # zero-shot before instruct mode when both values are set.
+                # Prefer the explicitly requested style instruction.
+                gen_kwargs["ref_text"] = (
+                    None if is_cosyvoice and effective_instructions else ref_text
+                )
+            if is_cosyvoice and "stt_model" in gen_params:
+                # Model Packages may only load Host-selected checkpoints. Do
+                # not let the backend silently download Whisper when the user
+                # intentionally omits a reference transcript.
+                gen_kwargs["stt_model"] = None
             # Generation params (only add non-None values)
             if temperature is not None:
                 gen_kwargs["temperature"] = temperature
@@ -348,6 +476,11 @@ class TTSEngine(BaseNonStreamingEngine):
 
         model = self._model
         t0 = time.monotonic()
+        model_module = type(model).__module__.lower()
+        is_qwen3_tts = "qwen3_tts" in model_module or (
+            "qwen3" in self._model_name.lower()
+            and "tts" in self._model_name.lower()
+        )
 
         def _build_generate_kwargs() -> Dict[str, Any]:
             gen_kwargs: Dict[str, Any] = {
@@ -363,8 +496,13 @@ class TTSEngine(BaseNonStreamingEngine):
                     gen_kwargs["voice"] = voice
                 elif "instruct" in gen_params:
                     gen_kwargs["instruct"] = voice
-            if instructions is not None and "instruct" in gen_params:
-                gen_kwargs["instruct"] = instructions
+            effective_instructions = instructions
+            if is_qwen3_tts:
+                effective_instructions = _append_instruction(
+                    effective_instructions, _qwen3_speed_instruction(speed)
+                )
+            if effective_instructions is not None and "instruct" in gen_params:
+                gen_kwargs["instruct"] = effective_instructions
             if "lang_code" in gen_params:
                 if language:
                     gen_kwargs["lang_code"] = language
@@ -372,7 +510,7 @@ class TTSEngine(BaseNonStreamingEngine):
                     inferred = _infer_kokoro_lang_code(voice)
                     if inferred:
                         gen_kwargs["lang_code"] = inferred
-            if speed != 1.0:
+            if speed != 1.0 and "speed" in gen_params and not is_qwen3_tts:
                 gen_kwargs["speed"] = speed
             if ref_audio is not None and "ref_audio" in gen_params:
                 gen_kwargs["ref_audio"] = ref_audio

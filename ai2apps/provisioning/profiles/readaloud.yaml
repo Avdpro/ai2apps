@@ -1,0 +1,120 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.readaloud
+version: 1
+capabilities:
+  audio.speech_recognition:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS CHARACTER TRAINING SETUP
+      title: 配置本地语音识别
+      description: 为角色训练素材安装本地 ASR Runtime、Model Package 与 Checkpoint。也可以跳过 ASR，直接手工输入参考文本。
+      icon: mic
+      confirm_label: 同意并配置
+      ready_label: 本地语音识别已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装语音识别 Package
+        checkpoint: 下载语音识别模型
+        verify: 启动并验证语音识别
+    requirements:
+      operations: [speech_recognition]
+    profiles:
+      - id: apple-metal-qwen3-asr-06b-4bit
+        label: Qwen3 ASR 0.6B · 轻量语音识别
+        description: 4-bit 多语言识别与原生标点，适合整理角色训练录音。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 8}}
+        recommendation_memory_gib: {minimum: 8}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-asr-06b, service_key: ai2apps.model.qwen3-asr-0.6b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-asr-0.6b/4bit}
+  audio.speech_generation:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS READ ALOUD SETUP
+      title: 配置本地语音合成
+      description: 为快速朗读、有声书和多角色演播安装本地 TTS Runtime、Model Package 与 Checkpoint。确认前不会下载或启动模型。
+      icon: volume-2
+      confirm_label: 同意并配置
+      ready_label: 本地语音合成已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装语音合成 Package
+        checkpoint: 下载语音合成模型
+        verify: 启动并验证语音合成
+    requirements:
+      operations: [speech_generation]
+    profiles:
+      - id: apple-metal-qwen3-tts-17b-custom-voice
+        label: Qwen3 TTS 1.7B · 高质量
+        description: 高质量多语言 CustomVoice，适合 16 GiB 及以上 Apple Silicon。
+        priority: 110
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/custom-voice-8bit}
+      - id: apple-metal-qwen3-tts-06b-custom-voice
+        label: Qwen3 TTS 0.6B · 轻量推荐
+        description: 多语言角色、语速和情绪控制，适合 8–16 GiB Apple Silicon。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 8}}
+        recommendation_memory_gib: {minimum: 8, maximum_exclusive: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-06b, service_key: ai2apps.model.qwen3-tts-0.6b, version: ">=0.2.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-0.6b/custom-voice-6bit}
+  audio.voice_clone:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VOICE PROFILE SETUP
+      title: 配置音色设计与克隆
+      description: 安装支持参考音频和音色克隆的本地模型。配置能力不代表已获得任何真人声音的使用授权。
+      icon: audio-waveform
+      confirm_label: 同意并配置
+      ready_label: 音色克隆环境已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装音色克隆 Package
+        checkpoint: 下载音色克隆模型
+        verify: 启动并验证音色能力
+    requirements:
+      operations: [voice_cloning]
+    profiles:
+      - id: apple-metal-qwen3-tts-17b-base-voice-clone
+        label: Qwen3 TTS 1.7B Base · 音色克隆
+        description: 参考音频驱动的多语言音色克隆，适合 16 GiB 及以上 Apple Silicon。
+        priority: 110
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/base-5bit}
+      - id: apple-metal-cosyvoice3-05b-4bit-voice-clone
+        label: CosyVoice 3 0.5B 4-bit · 轻量音色克隆
+        description: 支持参考音频、情绪和指令控制，适合 8–16 GiB Apple Silicon。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 8}}
+        recommendation_memory_gib: {minimum: 8, maximum_exclusive: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.9,<2.0.0"}
+          provider: {package_id: ai2apps/model-cosyvoice3-05b, service_key: ai2apps.model.cosyvoice3-0.5b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.cosyvoice3-0.5b/4bit}

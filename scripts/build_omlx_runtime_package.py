@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import plistlib
@@ -16,6 +17,8 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import yaml
+from build_model_provider_package import build as build_local_service_package
+
 from ai2apps.packages.contract_v1 import build_package, create_signature_envelope
 from ai2apps.secrets.factory import create_secret_backend
 
@@ -141,7 +144,13 @@ def sign_runtime(bundle: Path, identity: str) -> str | None:
     raise RuntimeError("Developer ID Runtime bundle has no TeamIdentifier")
 
 
-def create_bundle(layers: Path, destination: Path, version: str) -> Path:
+def create_bundle(
+    layers: Path,
+    destination: Path,
+    version: str,
+    *,
+    runtime_source_root: Path = REPO,
+) -> Path:
     cpython = layers / "cpython-3.11"
     framework = layers / "framework-mlx-base"
     if not cpython.is_dir() or not framework.is_dir():
@@ -153,9 +162,13 @@ def create_bundle(layers: Path, destination: Path, version: str) -> Path:
     runtime.mkdir(parents=True)
     executable = contents / "MacOS" / "AI2AppsOmlxRuntime"
     # A macOS code bundle needs a Mach-O main executable for deterministic
-    # bundle sealing. The Runtime is never launched through this marker; Model
-    # Workers use the descriptor's private CPython path.
-    shutil.copyfile("/usr/bin/true", executable)
+    # bundle sealing. Do not copy a sealed system executable such as
+    # /usr/bin/true: current macOS ships it as a universal arm64e system binary
+    # whose reconstructed signature does not survive an HFS+ DMG round trip.
+    # The exported arm64 CPython launcher is ordinary Mach-O code and is already
+    # part of this Runtime. The bundle is never launched through this marker;
+    # Model Workers use the descriptor's private CPython path.
+    shutil.copyfile(cpython / "bin" / "python3.11", executable)
     executable.chmod(0o755)
     (contents / "Info.plist").write_bytes(
         plistlib.dumps(
@@ -171,32 +184,67 @@ def create_bundle(layers: Path, destination: Path, version: str) -> Path:
     )
     copy_tree(cpython, runtime / "Python" / "cpython-3.11")
     copy_tree(framework, runtime / "Python" / "framework-mlx-base")
-    copy_tree(REPO / "ai2apps", runtime / "app" / "ai2apps", runtime_source=True)
-    copy_tree(REPO / "omlx", runtime / "app" / "omlx", runtime_source=True)
+    copy_tree(
+        runtime_source_root / "ai2apps",
+        runtime / "app" / "ai2apps",
+        runtime_source=True,
+    )
+    copy_tree(
+        runtime_source_root / "omlx",
+        runtime / "app" / "omlx",
+        runtime_source=True,
+    )
     sanitize_symlinks(bundle)
     return bundle
 
 
-def descriptor(version: str, signing: str, team_id: str | None) -> dict:
+def create_knowledge_bundle(layers: Path, destination: Path, version: str) -> Path:
+    """Build the isolated LanceDB/embedding Runtime using the release signer."""
+
+    cpython = layers / "cpython-3.11"
+    framework = layers / "framework-knowledge-rag"
+    if not cpython.is_dir() or not framework.is_dir():
+        raise FileNotFoundError(
+            "Export cpython-3.11 and framework-knowledge-rag first"
+        )
+    bundle = destination / "AI2AppsKnowledgeRagRuntime.bundle"
+    contents = bundle / "Contents"
+    runtime = contents / "Resources" / "Runtime" / "Python"
+    (contents / "MacOS").mkdir(parents=True)
+    runtime.mkdir(parents=True)
+    executable = contents / "MacOS" / "AI2AppsKnowledgeRagRuntime"
+    shutil.copyfile(cpython / "bin" / "python3.11", executable)
+    executable.chmod(0o755)
+    (contents / "Info.plist").write_bytes(
+        plistlib.dumps(
+            {
+                "CFBundleIdentifier": "com.ai2apps.runtime.knowledge-rag",
+                "CFBundleName": "AI2Apps Knowledge RAG Runtime",
+                "CFBundleExecutable": "AI2AppsKnowledgeRagRuntime",
+                "CFBundlePackageType": "BNDL",
+                "CFBundleShortVersionString": version,
+                "CFBundleVersion": version,
+            }
+        )
+    )
+    copy_tree(cpython, runtime / "cpython-3.11")
+    copy_tree(framework, runtime / "framework-knowledge-rag")
+    sanitize_symlinks(bundle)
+    return bundle
+
+
+def descriptor(
+    version: str,
+    signing: str,
+    team_id: str | None,
+    capabilities: list[str],
+) -> dict:
     return {
         "schema": "ai2apps.inference-runtime/v1",
         "service_id": "ai2apps.runtime.omlx",
         "version": version,
         "protocol": "ai2apps-model-worker/v1",
-        "capabilities": [
-            "mlx",
-            "model-worker-v1",
-            "cached-moe",
-            "vlm",
-            "nvfp4",
-            "metal",
-            "audio-stt",
-            "audio-tts",
-            "audio-processing",
-            "text-punctuation",
-            "onnx",
-            "audio-codecs",
-        ],
+        "capabilities": capabilities,
         "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
         "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",
         "framework_site_packages": "Contents/Resources/Runtime/Python/framework-mlx-base/lib/python3.11/site-packages",
@@ -205,6 +253,33 @@ def descriptor(version: str, signing: str, team_id: str | None) -> dict:
             "type": "dmg",
             "path": "variants/darwin-arm64/AI2AppsOmlxRuntime.dmg",
             "root": "AI2AppsOmlxRuntime.bundle",
+        },
+        "distribution": {"signing": signing, "team_id": team_id},
+    }
+
+
+def knowledge_descriptor(
+    version: str,
+    signing: str,
+    team_id: str | None,
+    capabilities: list[str],
+) -> dict:
+    return {
+        "schema": "ai2apps.knowledge-runtime/v1",
+        "service_id": "ai2apps.runtime.knowledge-rag",
+        "version": version,
+        "protocol": "ai2apps-knowledge-vector-worker/v1",
+        "capabilities": capabilities,
+        "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
+        "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",
+        "framework_site_packages": (
+            "Contents/Resources/Runtime/Python/framework-knowledge-rag/"
+            "lib/python3.11/site-packages"
+        ),
+        "payload": {
+            "type": "dmg",
+            "path": "variants/darwin-arm64/AI2AppsKnowledgeRagRuntime.dmg",
+            "root": "AI2AppsKnowledgeRagRuntime.bundle",
         },
         "distribution": {"signing": signing, "team_id": team_id},
     }
@@ -233,6 +308,13 @@ def main() -> None:
     parser.add_argument("--publisher-id")
     parser.add_argument("--key-id")
     parser.add_argument(
+        "--development-publisher-id",
+        help=(
+            "Override service.yaml publisher.id for an ad-hoc development "
+            "artifact so it does not replace the production trust record"
+        ),
+    )
+    parser.add_argument(
         "--work-directory",
         type=Path,
         help="Preserve an explicit empty build directory for diagnostics",
@@ -240,8 +322,24 @@ def main() -> None:
     args = parser.parse_args()
     source = args.source.resolve(strict=True)
     manifest = yaml.safe_load((source / "service.yaml").read_text(encoding="utf-8"))
+    service_id = str(manifest["id"])
+    if service_id not in {
+        "ai2apps.runtime.omlx",
+        "ai2apps.runtime.knowledge-rag",
+    }:
+        raise ValueError(f"unsupported native Runtime service: {service_id}")
+    knowledge_runtime = service_id == "ai2apps.runtime.knowledge-rag"
+    payload_name = (
+        "AI2AppsKnowledgeRagRuntime.dmg"
+        if knowledge_runtime
+        else "AI2AppsOmlxRuntime.dmg"
+    )
     version = str(manifest["version"])
-    output = (args.output or source / "dist" / f"ai2apps-runtime-omlx-{version}.ai2service").resolve()
+    package_slug = "knowledge-rag" if knowledge_runtime else "omlx"
+    output = (
+        args.output
+        or source / "dist" / f"ai2apps-runtime-{package_slug}-{version}.ai2service"
+    ).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     if args.work_directory is not None:
         root = args.work_directory.resolve()
@@ -253,9 +351,14 @@ def main() -> None:
         root = Path(temporary)
         if args.prepared_dmg is not None:
             dmg = args.prepared_dmg.resolve(strict=True)
-            run("/usr/bin/hdiutil", "verify", str(dmg))
             signing = args.prepared_signing
             team_id = args.team_id
+            # The standard DMG builder verifies the image checksum before it
+            # signs the final file. Running `hdiutil verify` on that signed
+            # artifact can update image metadata and invalidate the outer
+            # signature, so prepared release artifacts are authenticated by
+            # their whole-file code signature instead.
+            run("/usr/bin/codesign", "--verify", "--strict", str(dmg))
             if signing == "developer-id":
                 if not team_id:
                     raise ValueError("--team-id is required for a Developer ID DMG")
@@ -273,8 +376,6 @@ def main() -> None:
                     "context:primary-signature",
                     str(dmg),
                 )
-            else:
-                run("/usr/bin/codesign", "--verify", "--strict", str(dmg))
         else:
             if args.sign_identity != "-":
                 raise ValueError(
@@ -283,11 +384,17 @@ def main() -> None:
                 )
             image_source = root / "image"
             image_source.mkdir()
-            bundle = create_bundle(
-                args.layers.resolve(strict=True), image_source, version
+            bundle = (
+                create_knowledge_bundle(
+                    args.layers.resolve(strict=True), image_source, version
+                )
+                if knowledge_runtime
+                else create_bundle(
+                    args.layers.resolve(strict=True), image_source, version
+                )
             )
             team_id = sign_runtime(bundle, args.sign_identity)
-            dmg = root / "AI2AppsOmlxRuntime.dmg"
+            dmg = root / payload_name
             run(
                 "/usr/bin/hdiutil",
                 "create",
@@ -311,26 +418,82 @@ def main() -> None:
             signing = "development"
         stage = root / "package"
         shutil.copytree(source, stage, ignore=shutil.ignore_patterns("dist", "README.md"))
+        if args.development_publisher_id:
+            if signing != "development":
+                raise ValueError(
+                    "--development-publisher-id is only valid for development signing"
+                )
+            staged_service_path = stage / "service.yaml"
+            staged_service = yaml.safe_load(staged_service_path.read_text(encoding="utf-8"))
+            staged_service.setdefault("publisher", {})["id"] = (
+                args.development_publisher_id
+            )
+            staged_service_path.write_text(
+                yaml.safe_dump(staged_service, sort_keys=False),
+                encoding="utf-8",
+            )
         variant = stage / "variants" / "darwin-arm64"
         variant.mkdir(parents=True)
         # The runtime descriptor and variant contract deliberately use a stable
         # in-package payload path. Release build filenames may contain versions
         # or signing suffixes, but those names must not leak into the archive or
         # variant selection will reject the otherwise compatible payload.
-        shutil.copy2(dmg, variant / "AI2AppsOmlxRuntime.dmg")
+        shutil.copy2(dmg, variant / payload_name)
         (stage / "META" / "runtime-manifest.json").write_text(
-            json.dumps(descriptor(version, signing, team_id), indent=2) + "\n",
+            json.dumps(
+                (
+                    knowledge_descriptor
+                    if knowledge_runtime
+                    else descriptor
+                )(
+                    version,
+                    signing,
+                    team_id,
+                    list(manifest.get("capabilities", [])),
+                ),
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
         )
-        inspected = build_package(stage, output)
-        result = {
-            "artifact": str(output),
-            "packageId": inspected.manifest["package"]["id"],
-            "version": inspected.manifest["package"]["version"],
-            "sha256": inspected.sha256,
-            "size": inspected.size,
-        }
-        if args.private_key is not None or args.keychain_secret is not None:
+        if signing == "development":
+            local = build_local_service_package(
+                stage,
+                output,
+                args.private_key.resolve(strict=True) if args.private_key is not None else None,
+                keychain_secret=args.keychain_secret,
+                keychain_namespace=args.keychain_namespace,
+                key_id=args.key_id,
+            )
+            artifact_hash = hashlib.sha256()
+            with output.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    artifact_hash.update(chunk)
+            result = {
+                "artifact": str(output),
+                "publisher": local["publisher"],
+                "packageId": (
+                    "ai2apps/runtime-knowledge-rag"
+                    if knowledge_runtime
+                    else "ai2apps/runtime-omlx"
+                ),
+                "version": version,
+                "packageDigest": local["digest"],
+                "sha256": artifact_hash.hexdigest(),
+                "size": output.stat().st_size,
+            }
+        else:
+            inspected = build_package(stage, output)
+            result = {
+                "artifact": str(output),
+                "packageId": inspected.manifest["package"]["id"],
+                "version": inspected.manifest["package"]["version"],
+                "sha256": inspected.sha256,
+                "size": inspected.size,
+            }
+        if signing != "development" and (
+            args.private_key is not None or args.keychain_secret is not None
+        ):
             if not args.publisher_id or not args.key_id:
                 raise ValueError("--publisher-id and --key-id are required for release signing")
             if args.private_key is not None and args.keychain_secret is not None:

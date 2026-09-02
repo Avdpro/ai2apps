@@ -1,0 +1,50 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_echomimic_v3_mlx_c04fb474_v1",
+  "modelId": "ai2apps.model.echomimic-v3-mlx/default",
+  "repoId": "Avdpro/EchoMimicV3-MLX",
+  "revision": "c04fb47465c0c615681b7d927256f6d5a3a314cc",
+  "format": "safetensors",
+  "quantization": "bf16-mlx",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-EchoMimicV3-MLX-Composite",
+    "name": "EchoMimicV3 MLX Composite License",
+    "termsUrl": "https://huggingface.co/Avdpro/EchoMimicV3-MLX/blob/c04fb47465c0c615681b7d927256f6d5a3a314cc/COMPOSITE-LICENSE.txt",
+    "termsHash": "sha256:58aba5065296ddf87ca63c90e0126b49d8169df96b137f4c8dbf236ee2cf1f62",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "COMPOSITE-LICENSE.txt",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "Wan2.1_VAE.safetensors",
+    "ai2apps-checkpoint.json",
+    "chinese-wav2vec2-base/config.json",
+    "chinese-wav2vec2-base/model.safetensors",
+    "chinese-wav2vec2-base/preprocessor_config.json",
+    "echomimicv3-flash-pro/config.json",
+    "echomimicv3-flash-pro/diffusion_pytorch_model.safetensors",
+    "models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors",
+    "models_t5_umt5-xxl-enc-bf16-local.safetensors",
+    "umt5-xxl/tokenizer.json",
+    "umt5-xxl/tokenizer_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/EchoMimicV3-MLX",
+      "revision": "c04fb47465c0c615681b7d927256f6d5a3a314cc",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/EchoMimicV3-MLX",
+      "revision": "15f01fd1ab866b9c66b360ca15dc0dded52bc7cc",
+      "access": "public_anonymous"
+    }
+  ]
+}

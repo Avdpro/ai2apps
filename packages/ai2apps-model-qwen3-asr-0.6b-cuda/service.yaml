@@ -1,0 +1,58 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen3-asr-0.6b-cuda
+name: Qwen3 ASR 0.6B CUDA
+description: Isolated CUDA Transformers Worker for multilingual speech recognition.
+version: 0.1.3
+
+publisher: {id: ai2apps}
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.qwen3-asr-0.6b-cuda/qwen3-asr-0.6b
+    display_name: Qwen3 ASR 0.6B CUDA
+    model_type: audio_stt
+    upstream_id: Qwen/Qwen3-ASR-0.6B-hf
+    capabilities: [speech_recognition, language_detection, native_punctuation, prompt_biasing]
+    metadata: {family: qwen3-asr, precision: bfloat16, punctuation_native: true}
+    weights:
+      provider: huggingface
+      repo_id: Qwen/Qwen3-ASR-0.6B-hf
+      revision: e8cb6ff5b151ad5c0e49bf9328a9d628efb5def2
+      distribution_id: dist_ai2apps_qwen3_asr_0_6b_bf16_e8cb6ff5_v1
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_transcription]
+      languages: [auto, zh, yue, en, ar, de, fr, es, pt, id, it, ko, ru, th, vi, ja, tr, hi, ms, nl, sv, da, fi, pl, cs, fil, fa, el, hu, mk, ro]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: []}
+      streaming: {mode: unsupported, formats: []}
+      stt:
+        timestamps: {mode: unsupported}
+        punctuation: {mode: native}
+        prompt_biasing: {mode: native}
+        diarization: {mode: unsupported}
+        speaker_recognition: {mode: unsupported}
+        speech_rate: {mode: unsupported}
+        emotion: {mode: unsupported, values: []}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.cuda-torch
+      version: ">=0.2.0,<1.0.0"
+      optional: false
+      capabilities: [cuda, torch, transformers, model-worker-v1, audio-stt]
+  python: ">=3.12,<3.13"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned Qwen3-ASR checkpoint.}
+  accelerator: {cuda: true, reason: Run Qwen3-ASR locally on the NVIDIA GPU.}
+compatibility: {os: [linux], architectures: [arm64, aarch64]}
+health: {path: /health, startup_timeout_seconds: 45}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

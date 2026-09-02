@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from types import ModuleType
 
 import pytest
 
 from ai2apps.model_worker import ModelWorkerCheckpoint, ModelWorkerContext
-from ai2apps.model_worker.cache_moe import DeepseekV4ChatAdapter, Qwen36ChatAdapter
+from ai2apps.model_worker.cache_moe import (
+    DeepseekV4ChatAdapter,
+    Qwen36ChatAdapter,
+    Qwen4ExpChatAdapter,
+)
 
 
 class _Engine:
@@ -127,3 +132,32 @@ async def test_qwen36_worker_selects_full_and_tiered_engines(monkeypatch, tmp_pa
     assert configured[0][1] == {"backend": "flesh", "arena_tail_slots": 0}
     assert configured[1][0][-1] == 96
     assert configured[1][1] == {"backend": "tiered", "arena_tail_slots": 24}
+
+
+@pytest.mark.asyncio
+async def test_qwen4_worker_configures_exact_cached_vlm(monkeypatch, tmp_path):
+    checkpoint, context = _checkpoint(tmp_path)
+    vlm = ModuleType("omlx.engine.vlm")
+    vlm.VLMBatchedEngine = type("VLMEngine", (_Engine,), {})
+    monkeypatch.setitem(sys.modules, "omlx.engine.vlm", vlm)
+    boost = ModuleType("omlx.patches.qwen38_next_cache.boost")
+    boost.normalize_qwen4_boost = lambda value: value
+    monkeypatch.setitem(sys.modules, "omlx.patches.qwen38_next_cache.boost", boost)
+
+    adapter = Qwen4ExpChatAdapter(context)
+    cached = await adapter.create_engine(
+        checkpoint,
+        {
+            "moe_execution_mode": "cached",
+            "cache_moe_memory_tier": "balanced",
+            "cache_moe_boost_mode": "natural",
+        },
+    )
+
+    assert type(cached).__name__ == "VLMEngine"
+    assert cached.model_name == str(checkpoint.path)
+    assert os.environ["OMLX_QWEN4_DYNAMIC_SLOTS"] == "160"
+    assert os.environ["OMLX_QWEN4_HOT_SLOTS"] == "10"
+    assert os.environ["OMLX_QWEN4_BOOST_MODE"] == "natural"
+    assert os.environ["OMLX_QWEN4_PREFILL_CANONICAL_REUSE"] == "1"
+    assert os.environ["OMLX_QWEN4_PREFILL_RETAIN_L1"] == "1"

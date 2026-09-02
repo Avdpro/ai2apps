@@ -1,0 +1,39 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_sensevoice_small_8ddd966b_v1",
+  "modelId": "ai2apps.model.sensevoice-small/default",
+  "repoId": "mlx-community/SenseVoiceSmall",
+  "revision": "8ddd966bd96243cff196422f81f0c5d955814792",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-FunASR-Model-1.1",
+    "name": "FunASR Model Open Source License Agreement 1.1",
+    "termsUrl": "https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE",
+    "termsHash": "sha256:7dba975a2069691db4992b0592d70828b330d2f8a30a71450f4e152a554e84f8",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "model.safetensors",
+    "am.mvn",
+    "config.json",
+    "chn_jpn_yue_eng_ko_spectok.bpe.model"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/SenseVoiceSmall",
+      "revision": "8ddd966bd96243cff196422f81f0c5d955814792",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/SenseVoiceSmall",
+      "revision": "7d9a178bb5531aac8267967687f66826842f797c",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -18,7 +18,7 @@ from ai2apps.services import (
     ToolProviderError,
 )
 
-from .inference_runtime import is_inference_runtime_manifest
+from .inference_runtime import is_native_runtime_manifest
 from .models import InstalledPackageRecord, PackageError
 from .supervisor import ManagedServiceSupervisor
 
@@ -146,7 +146,7 @@ class PackageRuntimeBinder:
         self._require_isolated_runtime(package)
         service = self.services.get_service(package.service_key)
         instance = self.services.get_instance_for_service(service.id)
-        if is_inference_runtime_manifest(package.manifest):
+        if is_native_runtime_manifest(package.manifest):
             self.services.ensure_instance(
                 service_id=service.id,
                 provider_key=instance.provider_key,
@@ -192,7 +192,7 @@ class PackageRuntimeBinder:
             )
 
     async def stop(self, package: InstalledPackageRecord) -> None:
-        if is_inference_runtime_manifest(package.manifest):
+        if is_native_runtime_manifest(package.manifest):
             return
         if package.runtime_mode is ServiceRuntimeMode.MANAGED_PROCESS:
             await self.supervisor.stop(package.service_key)

@@ -1,0 +1,143 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.video-studio
+version: 1
+capabilities:
+  video.generation:
+    trigger: on_action
+    presentation:
+      eyebrow: AI2APPS CAPABILITY SETUP
+      title: 配置本地视频生成
+      description: 根据当前设备安装并验证可信的视频生成 Runtime、模型服务和 Checkpoint。
+      icon: clapperboard
+      confirm_label: 下载并配置
+      ready_label: 视频生成环境已配置
+      steps:
+        runtime: 配置推理 Runtime
+        provider: 安装视频模型 Service Package
+        checkpoint: 下载视频模型 Checkpoint
+        verify: 启动并验证视频生成服务
+    requirements:
+      operations: [text_to_video, image_to_video]
+      output_formats: [mp4]
+      synchronized_audio: true
+    profiles:
+      - id: apple-metal-h3-q8
+        label: MiniMax H3 Q8 · 高质量
+        description: 推荐 64 GiB 及以上设备使用。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 48}
+        recommendation_memory_gib: {minimum: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.7.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/fl2va-8bit}
+      - id: apple-metal-h3-q4
+        label: MiniMax H3 Q4 · 节省内存
+        description: 推荐 32–64 GiB 设备使用。
+        priority: 90
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 32}
+        recommendation_memory_gib: {minimum: 32, maximum_exclusive: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.7.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/fl2va-4bit}
+      # H3 BF16/FP16 is temporarily excluded pending output-quality validation.
+  video.reference_generation:
+    trigger: on_action
+    presentation:
+      eyebrow: AI2APPS CAPABILITY SETUP
+      title: 配置参考素材视频生成
+      description: 安装 MiniMax H3 Ref2VA，并根据当前设备选择 8Bit 或 4Bit Checkpoint。
+      icon: scan-search
+      confirm_label: 下载并配置
+      ready_label: 参考素材生成环境已配置
+      steps:
+        runtime: 配置推理 Runtime
+        provider: 升级 MiniMax H3 模型服务
+        checkpoint: 下载 Ref2VA Checkpoint
+        verify: 启动并验证参考素材生成服务
+    requirements:
+      operations: [reference_to_video]
+      required_inputs: [reference_image_or_video]
+      output_formats: [mp4]
+      synchronized_audio: true
+    profiles:
+      - id: apple-metal-h3-ref2va-q8
+        label: MiniMax H3 Ref2VA Q8 · 高质量
+        description: 推荐 96 GiB 及以上统一内存设备使用。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 64}
+        recommendation_memory_gib: {minimum: 96}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.8.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/ref2va-8bit}
+      - id: apple-metal-h3-ref2va-q4
+        label: MiniMax H3 Ref2VA Q4 · 节省内存
+        description: 推荐 48–96 GiB 统一内存设备使用。
+        priority: 90
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 48}
+        recommendation_memory_gib: {minimum: 48, maximum_exclusive: 96}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.8.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/ref2va-4bit}
+  video.digital_human:
+    trigger: on_action
+    presentation:
+      eyebrow: AI2APPS CAPABILITY SETUP
+      title: 配置数字人生成
+      description: 根据当前设备安装并验证可信的数字人 Runtime、模型服务和 Checkpoint。
+      icon: person-standing
+      confirm_label: 下载并配置
+      ready_label: 数字人生成环境已配置
+      steps:
+        runtime: 配置推理 Runtime
+        provider: 安装数字人模型 Service Package
+        checkpoint: 下载数字人模型 Checkpoint
+        verify: 启动并验证数字人服务
+    requirements:
+      operations: [audio_driven_portrait]
+      required_inputs: [portrait, audio]
+      output_formats: [mp4]
+    profiles:
+      - id: apple-metal-echomimic-v3
+        label: EchoMimic V3 · 数字人
+        description: 音频驱动人像生成，至少需要 32 GiB 统一内存。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 32}
+        recommendation_memory_gib: {minimum: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-echomimic-v3-mlx, service_key: ai2apps.model.echomimic-v3-mlx, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.echomimic-v3-mlx/default}

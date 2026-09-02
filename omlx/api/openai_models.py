@@ -590,6 +590,10 @@ class ModelInfo(BaseModel):
     source: str | None = None
     shareable: bool | None = None
     usage_notice: str | None = None
+    # AI2Apps discovery extensions. Clients use these explicit declarations
+    # instead of guessing multimodal support from a model name.
+    model_type: str | None = None
+    capabilities: list[str] | dict[str, Any] | None = None
 
 
 class ModelsResponse(BaseModel):

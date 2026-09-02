@@ -87,3 +87,42 @@ def test_deep_check_adds_network_and_isolated_metal_probes(tmp_path: Path):
     checks = {item["id"]: item for item in report["checks"]}
     assert checks["huggingface_network"]["status"] == "pass"
     assert checks["metal_runtime"]["detail"] == "metal ready"
+
+
+def test_linux_nvidia_host_uses_control_plane_dependencies_and_cuda_probe(
+    tmp_path: Path,
+):
+    memory = SimpleNamespace(total=128 * GIB, available=100 * GIB, percent=21.9)
+    swap = SimpleNamespace(total=0, used=0, percent=0.0)
+    nvidia = {
+        "status": "pass",
+        "kind": "cuda",
+        "available": True,
+        "name": "NVIDIA GB10",
+        "driver_version": "580.95.05",
+        "device_memory_bytes": None,
+        "memory_model": "unified",
+        "message": "NVIDIA GB10，驱动 580.95.05。",
+    }
+    with (
+        patch("ai2apps.environment_check.sys.platform", "linux"),
+        patch("ai2apps.environment_check.platform.machine", return_value="aarch64"),
+        patch("ai2apps.environment_check.psutil.virtual_memory", return_value=memory),
+        patch("ai2apps.environment_check.psutil.swap_memory", return_value=swap),
+        patch("ai2apps.environment_check.psutil.cpu_count", return_value=20),
+        patch("ai2apps.environment_check._nvidia_check", return_value=nvidia),
+        patch("ai2apps.environment_check._network_check", return_value={"status": "pass", "message": "ok"}),
+    ):
+        report = collect_environment_report(
+            model_dir=tmp_path,
+            hf_cache_dir=tmp_path,
+            check_network=True,
+        )
+
+    checks = {item["id"]: item for item in report["checks"]}
+    assert report["host"]["nvidia_cuda"] is True
+    assert report["accelerator"]["name"] == "NVIDIA GB10"
+    assert checks["platform"]["status"] == "pass"
+    assert checks["cuda_runtime"]["status"] == "pass"
+    assert "metal_runtime" not in checks
+    assert not any(item["id"] == "mlx" for item in report["components"])

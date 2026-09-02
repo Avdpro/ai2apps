@@ -15,7 +15,10 @@
     }
 
     function errorMessage(payload, status) {
-        const error = payload && payload.error;
+        const error = payload && (
+            payload.error
+            || (payload.detail && typeof payload.detail === 'object' ? payload.detail : null)
+        );
         const code = error && error.code;
         const known = {
             AUTHENTICATION_REQUIRED: tr('account.error.authentication_required'),
@@ -23,6 +26,11 @@
             EMAIL_NOT_VERIFIED: tr('account.error.email_not_verified'),
             EMAIL_ALREADY_REGISTERED: tr('account.error.email_already_registered'),
             INVALID_VERIFICATION_CODE: tr('account.error.invalid_verification_code'),
+            INVALID_PUBLIC_HANDLE: tr('account.error.invalid_public_handle'),
+            PUBLIC_HANDLE_UNAVAILABLE: tr('account.error.public_handle_unavailable'),
+            INVALID_PROFILE: tr('account.error.invalid_profile'),
+            PROFILE_EMAIL_DISCOVERY_REQUIRES_PUBLIC: tr('account.error.profile_email_discovery_public'),
+            REMOTE_DEVICE_NOT_FOUND: tr('account.error.profile_device_not_found'),
             ADMIN_REQUIRED: tr('account.error.admin_required'),
             ADMIN_REAUTH_REQUIRED: tr('account.error.admin_reauth_required'),
             RATE_LIMITED: tr('account.error.rate_limited'),
@@ -36,6 +44,16 @@
             AI_MODEL_NOT_ALLOWED: tr('account.error.model_not_allowed'),
             AI_MEMBER_MONTHLY_POINT_LIMIT: tr('account.error.monthly_point_limit'),
             AI_MEMBER_CONCURRENCY_LIMIT: tr('account.error.concurrency_limit'),
+            INVALID_PROMOTION_CODE: tr('account.promotion.error.invalid'),
+            INVALID_IDEMPOTENCY_KEY: tr('account.promotion.error.invalid_request'),
+            PROMOTION_CODE_NOT_FOUND: tr('account.promotion.error.not_found'),
+            PROMOTION_CODE_DISABLED: tr('account.promotion.error.disabled'),
+            PROMOTION_CODE_NOT_STARTED: tr('account.promotion.error.not_started'),
+            PROMOTION_CODE_EXPIRED: tr('account.promotion.error.expired'),
+            PROMOTION_CODE_EXHAUSTED: tr('account.promotion.error.exhausted'),
+            PROMOTION_CODE_USER_LIMIT: tr('account.promotion.error.user_limit'),
+            PROMOTION_POINTS_BALANCE_LIMIT: tr('account.promotion.error.balance_limit'),
+            IDEMPOTENCY_CONFLICT: tr('account.promotion.error.idempotency_conflict'),
             owner_reauth_required: tr('account.error.owner_password_role'),
             core_device_limit_reached: tr('account.error.core_device_limit'),
             installation_member_limit_reached: tr('account.error.member_limit'),
@@ -67,7 +85,13 @@
         if (!response.ok) {
             const error = new Error(errorMessage(payload, response.status));
             error.status = response.status;
-            error.code = payload && payload.error && payload.error.code;
+            error.code = payload && (
+                payload.error?.code
+                || (typeof payload.detail === 'object' ? payload.detail?.code : null)
+            );
+            error.requestId = payload?.error?.requestId || payload?.detail?.requestId || '';
+            error.retryable = Boolean(payload?.error?.retryable || payload?.detail?.retryable);
+            error.retryAfter = response.headers.get('retry-after') || '';
             throw error;
         }
         return includeMetadata ? { payload, etag: response.headers.get('etag') || '' } : payload;
@@ -131,11 +155,16 @@
     window.accountApp = function () {
         return {
             mode: 'login', signedIn: false, cloudUnavailable: false, busy: false,
-            user: null, points: {}, entitlements: [], ledger: [], capacityPolicy: null,
+            activeSection: 'overview',
+            user: null, currencyAssets: [], currencyBalances: [], providerBalances: [], entitlements: [], ledger: [], capacityPolicy: null,
+            profile: null,
+            profileDraft: { publicHandle: '', displayName: '', avatarUrl: '', bio: '', gender: '', visibility: 'private', discoverableByEmail: false, friendRequestPolicy: 'everyone' },
+            socialPlatforms: [], socialLinkDraft: { platform: 'github', handle: '', url: '' },
+            selectedPrimaryDeviceId: '',
             localIdentity: null, handoffInput: '',
             handoffEntryEnabled: false, credentialEntryEnabled: false,
             displayName: '', email: '', password: '', code: '', newPassword: '',
-            adminPassword: '', adminVerifiedUntil: '',
+            adminPassword: '', adminDurationMinutes: 15, adminVerifiedUntil: '',
             installation: null, members: [], pendingInvitations: [], memberOwnerPassword: '',
             coreDevices: [], deviceOwnerPassword: '',
             installationAccess: 'unknown',
@@ -144,6 +173,9 @@
             policyDraft: { allowedAppIds: '', allowedModelIds: '', defaultMonthlyPointLimit: '', defaultConcurrencyLimit: 1, offlineGraceSeconds: 0 },
             remote: { devices: [], connector: {}, usage: {} }, remoteName: tr('account.remote.this_mac'), pairingUrl: '', pairingQr: '', pairingExpiresAt: '', remotePolling: false, remotePollTimer: null,
             registrationNotice: '',
+            promotionCode: '', promotionSubmitting: false, promotionAttempt: null,
+            promotionResult: null, promotionMessage: '', promotionTone: 'error',
+            promotionRetrySeconds: 0, promotionRetryTimer: null,
             uiLanguage: document.documentElement.lang === 'zh' ? 'zh' : 'en',
             message: '', messageTone: 'error',
 
@@ -158,6 +190,23 @@
             clearNotice() { this.message = ''; this.messageTone = 'error'; },
             success(text) { this.message = text; this.messageTone = 'success'; },
             fail(error) { this.message = error.message || String(error); this.messageTone = 'error'; },
+            clearPromotionState() {
+                this.promotionCode = '';
+                this.promotionSubmitting = false;
+                this.promotionAttempt = null;
+                this.promotionResult = null;
+                this.promotionMessage = '';
+                this.promotionRetrySeconds = 0;
+                if (this.promotionRetryTimer) clearInterval(this.promotionRetryTimer);
+                this.promotionRetryTimer = null;
+            },
+            setSection(section) {
+                const allowed = ['overview', 'devices', 'organization', 'security', 'activity'];
+                if (!allowed.includes(section)) return;
+                if (['devices', 'organization'].includes(section) && this.installationAccess !== 'manager') return;
+                this.activeSection = section;
+                this.clearNotice();
+            },
             setMode(mode) { this.clearNotice(); this.password = ''; this.code = ''; this.newPassword = ''; this.mode = mode; },
             async loadLocalIdentity() {
                 try { this.localIdentity = await localAuth('/me'); }
@@ -200,7 +249,7 @@
                 try {
                     this.localIdentity = await localAuth('/handoff/exchange', { method: 'POST', body: { handoff } });
                     this.handoffInput = '';
-                    this.applyUser(null); this.ledger = [];
+                    this.applyUser(null); this.clearCurrency();
                     this.success(tr('account.success.local_account_selected'));
                     notifyShell();
                 } catch (error) { this.fail(error); }
@@ -210,7 +259,7 @@
                 const identity = await localAuth('/cloud-member/activate', { method: 'POST' });
                 this.localIdentity = identity;
                 this.applyUser(null);
-                this.ledger = [];
+                this.clearCurrency();
                 this.password = '';
                 this.success(tr('account.success.member_verified'));
                 notifyShell();
@@ -228,6 +277,7 @@
                     'MEMBERSHIP_NOT_FOUND',
                     'installation_not_found',
                     'membership_not_found',
+                    'core_installation_required',
                 ].includes(error?.code);
             },
             async activateCloudAccountIfMember() {
@@ -252,6 +302,7 @@
                 this.busy = true; this.clearNotice();
                 try {
                     await localAuth('/logout', { method: 'POST' });
+                    this.clearPromotionState();
                     notifyShell();
                     // A member handoff clears any dormant administrator cookie,
                     // so returning to Core always requires explicit local auth.
@@ -267,7 +318,8 @@
                     if (await this.activateCloudAccountIfMember()) return;
                     await this.loadMembership();
                     if (!this.signedIn) return;
-                    await this.loadLedger();
+                    await this.loadProfile();
+                    await this.loadCurrency();
                     if (this.installationAccess === 'manager') await this.loadRemote();
                 } catch (error) {
                     this.signedIn = false;
@@ -279,8 +331,11 @@
                 this.user = user || null;
                 this.signedIn = Boolean(user);
                 this.cloudUnavailable = false;
-                this.points = (user && user.points) || {};
                 this.entitlements = Array.isArray(user && user.entitlements) ? user.entitlements : [];
+                if (!this.signedIn) {
+                    this.applyProfile(null);
+                    this.clearCurrency();
+                }
             },
             async loadCapacityPolicy() {
                 try { this.capacityPolicy = await cloud('/capacity-policy'); }
@@ -326,6 +381,9 @@
                 return Number.isInteger(number) && number >= 0 ? number : null;
             },
             get currentCloudDeviceId() { return this.installation?.cloudDeviceId || ''; },
+            get currentCoreDevice() {
+                return this.coreDevices.find(device => device.id === this.currentCloudDeviceId) || null;
+            },
             get membersUsed() {
                 const authoritative = this.installation?.capacity?.usage?.members;
                 if (Number.isInteger(Number(authoritative)) && Number(authoritative) >= 0) return Number(authoritative);
@@ -367,30 +425,272 @@
                     const me = await cloud('/auth/me');
                     this.applyUser(me.user);
                     if (await this.activateCloudAccountIfMember()) return;
-                    const [pointResult, ledgerResult] = await Promise.all([
-                        cloud('/points'), cloud('/points/ledger?limit=50'),
-                    ]);
-                    this.points = pointResult || this.points;
-                    this.ledger = Array.isArray(ledgerResult && ledgerResult.items) ? ledgerResult.items : [];
+                    await this.loadCurrency();
                     await this.loadMembership();
                     if (!this.signedIn) return;
+                    await this.loadProfile();
                     if (this.installationAccess === 'manager') await this.loadRemote();
                 } catch (error) {
                     if (error.status === 401) { this.applyUser(null); this.mode = 'login'; notifyShell(); }
                     this.fail(error);
                 } finally { this.busy = false; }
             },
-            async loadLedger() {
+            clearCurrency() {
+                this.currencyAssets = [];
+                this.currencyBalances = [];
+                this.providerBalances = [];
+                this.ledger = [];
+            },
+            async loadCurrency() {
                 try {
-                    const result = await cloud('/points/ledger?limit=50');
-                    this.ledger = Array.isArray(result && result.items) ? result.items : [];
+                    const [assets, balances, providerBalances, ledger] = await Promise.all([
+                        cloud('/currency/assets'),
+                        cloud('/currency/balances'),
+                        cloud('/currency/provider-balances'),
+                        cloud('/currency/ledger?limit=50'),
+                    ]);
+                    this.currencyAssets = Array.isArray(assets?.items) ? assets.items : [];
+                    this.currencyBalances = Array.isArray(balances?.items) ? balances.items : [];
+                    this.providerBalances = Array.isArray(providerBalances?.items) ? providerBalances.items : [];
+                    this.ledger = Array.isArray(ledger?.items) ? ledger.items : [];
                 } catch (error) { if (error.status !== 401) this.fail(error); }
+            },
+            get normalizedPromotionCode() { return String(this.promotionCode || '').trim().toUpperCase(); },
+            get promotionCodeValid() { return /^A2P(?:-[A-F0-9]{4}){8}$/.test(this.normalizedPromotionCode); },
+            get canRedeemPromotionCode() {
+                return this.signedIn && !this.cloudUnavailable && !this.busy && !this.promotionSubmitting
+                    && this.promotionRetrySeconds === 0 && this.promotionCodeValid;
+            },
+            onPromotionCodeInput() {
+                if (this.promotionAttempt && this.promotionCode !== this.promotionAttempt.inputValue) this.promotionAttempt = null;
+                this.promotionResult = null;
+                this.promotionMessage = '';
+            },
+            promotionIdempotencyKey() {
+                let id = '';
+                if (crypto.randomUUID) id = crypto.randomUUID();
+                else {
+                    const bytes = crypto.getRandomValues(new Uint8Array(16));
+                    bytes[6] = (bytes[6] & 15) | 64;
+                    bytes[8] = (bytes[8] & 63) | 128;
+                    id = [...bytes].map((value, index) => (index === 4 || index === 6 || index === 8 || index === 10 ? '-' : '') + value.toString(16).padStart(2, '0')).join('');
+                }
+                return 'promotion-redeem:' + id;
+            },
+            formatPoints(value) {
+                const raw = String(value == null ? '' : value);
+                return /^[0-9]+$/.test(raw) ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : raw;
+            },
+            applyPromotionBalance(balanceAfter) {
+                if (!/^[0-9]+$/.test(String(balanceAfter))) return;
+                const index = this.currencyBalances.findIndex(item => item.assetCode === 'PROMO_POINTS');
+                if (index >= 0) this.currencyBalances[index] = { ...this.currencyBalances[index], available: String(balanceAfter) };
+                else this.currencyBalances.push({ assetCode: 'PROMO_POINTS', exponent: 0, available: String(balanceAfter), held: '0' });
+            },
+            async refreshPromotionBalances() {
+                const results = await Promise.allSettled([
+                    cloud('/currency/assets'),
+                    cloud('/currency/balances'),
+                    cloud('/currency/provider-balances'),
+                    cloud('/currency/ledger?limit=50'),
+                    cloud('/points'),
+                ]);
+                if (results[0].status === 'fulfilled') this.currencyAssets = Array.isArray(results[0].value?.items) ? results[0].value.items : [];
+                if (results[1].status === 'fulfilled') this.currencyBalances = Array.isArray(results[1].value?.items) ? results[1].value.items : [];
+                if (results[2].status === 'fulfilled') this.providerBalances = Array.isArray(results[2].value?.items) ? results[2].value.items : [];
+                if (results[3].status === 'fulfilled') this.ledger = Array.isArray(results[3].value?.items) ? results[3].value.items : [];
+                return results[1].status === 'fulfilled' && results[4].status === 'fulfilled';
+            },
+            setPromotionRateLimit(retryAfter) {
+                if (this.promotionRetryTimer) clearInterval(this.promotionRetryTimer);
+                const numeric = String(retryAfter || '').trim() === '' ? NaN : Number(retryAfter);
+                const seconds = Number.isFinite(numeric) && numeric >= 0
+                    ? Math.ceil(numeric)
+                    : Math.max(1, Math.ceil((Date.parse(retryAfter) - Date.now()) / 1000) || 60);
+                this.promotionRetrySeconds = seconds;
+                this.promotionRetryTimer = setInterval(() => {
+                    this.promotionRetrySeconds = Math.max(0, this.promotionRetrySeconds - 1);
+                    if (!this.promotionRetrySeconds) {
+                        clearInterval(this.promotionRetryTimer);
+                        this.promotionRetryTimer = null;
+                    }
+                }, 1000);
+            },
+            focusPromotionCode() { requestAnimationFrame(() => this.$refs.promotionCodeInput?.focus()); },
+            async redeemPromotionCode() {
+                if (this.promotionSubmitting) return;
+                if (!this.promotionCodeValid) {
+                    this.promotionMessage = tr('account.promotion.error.invalid');
+                    this.promotionTone = 'error';
+                    this.focusPromotionCode();
+                    return;
+                }
+                const inputValue = this.promotionCode;
+                const normalizedCode = this.normalizedPromotionCode;
+                const attempt = this.promotionAttempt
+                    && this.promotionAttempt.inputValue === inputValue
+                    && this.promotionAttempt.normalizedCode === normalizedCode
+                    && Date.now() - Date.parse(this.promotionAttempt.createdAt) < 24 * 60 * 60 * 1000
+                    ? this.promotionAttempt
+                    : { inputValue, normalizedCode, idempotencyKey: this.promotionIdempotencyKey(), createdAt: new Date().toISOString() };
+                this.promotionAttempt = attempt;
+                this.promotionSubmitting = true;
+                this.promotionResult = null;
+                this.promotionMessage = '';
+                try {
+                    const result = await cloud('/promotion-codes/redeem', {
+                        method: 'POST',
+                        headers: { 'Idempotency-Key': attempt.idempotencyKey },
+                        body: { code: attempt.normalizedCode },
+                    });
+                    this.applyPromotionBalance(result?.balanceAfter);
+                    this.promotionCode = '';
+                    this.promotionAttempt = null;
+                    this.promotionResult = {
+                        points: this.formatPoints(result?.points),
+                        balanceAfter: this.formatPoints(result?.balanceAfter),
+                    };
+                    this.promotionTone = 'success';
+                    const synchronized = await this.refreshPromotionBalances();
+                    this.promotionMessage = synchronized ? '' : tr('account.promotion.sync_pending');
+                    notifyShell();
+                } catch (error) {
+                    if (error.requestId) {
+                        console.warn('Promotion code redemption failed', {
+                            status: error.status,
+                            errorCode: error.code,
+                            requestId: error.requestId,
+                            idempotencyKey: attempt.idempotencyKey,
+                        });
+                    }
+                    if (error.status === 401) {
+                        this.applyUser(null);
+                        this.mode = 'login';
+                        this.fail(error);
+                        notifyShell();
+                    } else if (error.status >= 400 && error.status < 500) {
+                        this.promotionAttempt = null;
+                    }
+                    if (error.code === 'cloud_unavailable') this.cloudUnavailable = true;
+                    if (error.status === 429) this.setPromotionRateLimit(error.retryAfter);
+                    const uncertain = !error.status || error.status >= 500;
+                    this.promotionMessage = error.code === 'cloud_unavailable'
+                        ? tr('account.promotion.cloud_unavailable')
+                        : (uncertain ? tr('account.promotion.uncertain') : (error.message || String(error)));
+                    this.promotionTone = 'error';
+                    if (error.code === 'INVALID_PROMOTION_CODE') this.focusPromotionCode();
+                } finally {
+                    this.promotionSubmitting = false;
+                }
+            },
+            applyProfile(profile) {
+                this.profile = profile || null;
+                const value = profile || {};
+                this.profileDraft = {
+                    publicHandle: value.publicHandle || '',
+                    displayName: value.displayName || '',
+                    avatarUrl: value.avatarUrl || '',
+                    bio: value.bio || '',
+                    gender: value.gender || '',
+                    visibility: value.visibility === 'public' ? 'public' : 'private',
+                    discoverableByEmail: Boolean(value.discoverableByEmail),
+                    friendRequestPolicy: ['everyone', 'mutuals', 'nobody'].includes(value.friendRequestPolicy) ? value.friendRequestPolicy : 'everyone',
+                };
+                this.selectedPrimaryDeviceId = value.primaryDevice?.deviceId || '';
+            },
+            async loadProfile() {
+                if (!this.signedIn) return;
+                try {
+                    const [profile, platforms] = await Promise.all([
+                        cloud('/profile'),
+                        cloud('/profile/social-link-platforms'),
+                    ]);
+                    this.applyProfile(profile);
+                    this.socialPlatforms = Array.isArray(platforms?.items) ? platforms.items : [];
+                    if (!this.socialPlatforms.some(item => item.platform === this.socialLinkDraft.platform)) {
+                        this.socialLinkDraft.platform = this.socialPlatforms[0]?.platform || 'github';
+                    }
+                } catch (error) { if (error.status !== 401) this.fail(error); }
+            },
+            nullableProfileText(value) {
+                const text = String(value || '').trim();
+                return text || null;
+            },
+            profilePatch() {
+                if (!this.profile) return {};
+                const draft = this.profileDraft;
+                const desired = {
+                    publicHandle: this.nullableProfileText(draft.publicHandle),
+                    displayName: String(draft.displayName || '').trim(),
+                    avatarUrl: this.nullableProfileText(draft.avatarUrl),
+                    bio: this.nullableProfileText(draft.bio),
+                    gender: this.nullableProfileText(draft.gender),
+                    visibility: draft.visibility === 'public' ? 'public' : 'private',
+                    discoverableByEmail: draft.visibility === 'public' && Boolean(draft.discoverableByEmail),
+                    friendRequestPolicy: draft.friendRequestPolicy,
+                };
+                return Object.fromEntries(Object.entries(desired).filter(([key, value]) => value !== (this.profile[key] ?? null)));
+            },
+            async saveProfile() {
+                const patch = this.profilePatch();
+                if (!String(this.profileDraft.displayName || '').trim()) {
+                    this.fail(new Error(tr('account.error.profile_display_name_required')));
+                    return;
+                }
+                if (!Object.keys(patch).length) {
+                    this.success(tr('account.success.profile_unchanged'));
+                    return;
+                }
+                this.busy = true; this.clearNotice();
+                try {
+                    this.applyProfile(await cloud('/profile', { method: 'PATCH', body: patch }));
+                    this.success(tr('account.success.profile_updated'));
+                } catch (error) { this.fail(error); }
+                finally { this.busy = false; }
+            },
+            async setPrimaryDevice() {
+                this.busy = true; this.clearNotice();
+                try {
+                    this.applyProfile(await cloud('/profile/primary-device', {
+                        method: 'PUT',
+                        body: { deviceId: this.selectedPrimaryDeviceId || null },
+                    }));
+                    this.success(tr('account.success.primary_device_updated'));
+                } catch (error) { this.fail(error); }
+                finally { this.busy = false; }
+            },
+            async saveSocialLink() {
+                const handle = this.nullableProfileText(this.socialLinkDraft.handle);
+                const url = this.nullableProfileText(this.socialLinkDraft.url);
+                if (!handle && !url) {
+                    this.fail(new Error(tr('account.error.social_link_required')));
+                    return;
+                }
+                this.busy = true; this.clearNotice();
+                try {
+                    await cloud('/profile/social-links/' + encodeURIComponent(this.socialLinkDraft.platform), {
+                        method: 'PUT', body: { handle, url },
+                    });
+                    this.socialLinkDraft.handle = ''; this.socialLinkDraft.url = '';
+                    await this.loadProfile();
+                    this.success(tr('account.success.social_link_updated'));
+                } catch (error) { this.fail(error); }
+                finally { this.busy = false; }
+            },
+            async deleteSocialLink(link) {
+                this.busy = true; this.clearNotice();
+                try {
+                    await cloud('/profile/social-links/' + encodeURIComponent(link.platform), { method: 'DELETE' });
+                    await this.loadProfile();
+                    this.success(tr('account.success.social_link_removed'));
+                } catch (error) { this.fail(error); }
+                finally { this.busy = false; }
             },
             async login() {
                 this.busy = true; this.clearNotice();
                 try {
                     const result = await cloud('/auth/login', { method: 'POST', body: { email: this.email, password: this.password } });
-                    this.password = ''; this.registrationNotice = ''; this.applyUser(result.user); if (await this.activateCloudAccountIfMember()) return; await this.loadMembership(); if (!this.signedIn) return; await this.loadLedger(); if (this.installationAccess === 'manager') await this.loadRemote(); notifyShell();
+                    this.password = ''; this.registrationNotice = ''; this.applyUser(result.user); if (await this.activateCloudAccountIfMember()) return; await this.loadMembership(); if (!this.signedIn) return; await this.loadProfile(); await this.loadCurrency(); if (this.installationAccess === 'manager') await this.loadRemote(); notifyShell();
                 } catch (error) {
                     if (error.code === 'EMAIL_NOT_VERIFIED') this.mode = 'verify';
                     this.fail(error);
@@ -436,7 +736,7 @@
                 this.busy = true; this.clearNotice();
                 try { await cloud('/auth/logout', { method: 'POST' }); }
                 catch (error) { if (error.status !== 401) this.fail(error); }
-                finally { this.applyUser(null); this.ledger = []; this.email = ''; this.password = ''; this.handoffInput = ''; this.credentialEntryEnabled = false; this.handoffEntryEnabled = false; this.registrationNotice = ''; this.clearInstallationAccess('unknown'); this.remote = { devices: [], connector: {}, usage: {} }; this.pairingUrl = ''; this.pairingQr = ''; this.pairingExpiresAt = ''; this.mode = 'login'; this.busy = false; notifyShell(); }
+                finally { this.clearPromotionState(); this.applyUser(null); this.clearCurrency(); this.email = ''; this.password = ''; this.handoffInput = ''; this.credentialEntryEnabled = false; this.handoffEntryEnabled = false; this.registrationNotice = ''; this.clearInstallationAccess('unknown'); this.remote = { devices: [], connector: {}, usage: {} }; this.pairingUrl = ''; this.pairingQr = ''; this.pairingExpiresAt = ''; this.mode = 'login'; this.busy = false; notifyShell(); }
             },
             get memberRoles() {
                 return this.installation?.organizationType === 'business'
@@ -462,13 +762,14 @@
             },
             async rejectUnregisteredCloudAccount() {
                 try { await cloud('/auth/logout', { method: 'POST' }); } catch (_) {}
+                this.clearPromotionState();
                 this.applyUser(null);
                 this.email = '';
                 this.password = '';
                 this.handoffInput = '';
                 this.credentialEntryEnabled = false;
                 this.handoffEntryEnabled = false;
-                this.ledger = [];
+                this.clearCurrency();
                 this.clearInstallationAccess('unregistered');
                 this.clearRemoteAccess();
                 this.registrationNotice = tr('account.notice.unregistered_account');
@@ -744,9 +1045,9 @@
             async verifyAdmin() {
                 this.busy = true; this.clearNotice();
                 try {
-                    const result = await cloud('/admin/reauth', { method: 'POST', body: { password: this.adminPassword } });
+                    const result = await cloud('/admin/reauth', { method: 'POST', body: { password: this.adminPassword, durationMinutes: this.adminDurationMinutes } });
                     this.adminVerifiedUntil = result.expiresAt || '';
-                    this.success(tr('account.success.admin_verified'));
+                    this.success(tr('account.success.admin_verified', { minutes: this.adminDurationMinutes }));
                 } catch (error) { this.fail(error); }
                 finally { this.adminPassword = ''; this.busy = false; }
             },
@@ -781,9 +1082,65 @@
                 const text = String(value || '');
                 return text.length > 18 ? text.slice(0, 8) + '…' + text.slice(-6) : text;
             },
-            signedDelta(value) {
-                const text = String(value == null ? '0' : value);
-                return text.startsWith('-') || text === '0' ? text : '+' + text;
+            assetLabel(assetCode) {
+                const key = {
+                    PROMO_POINTS: 'account.currency.points',
+                    USD_COMPUTE_CREDIT: 'account.currency.gas',
+                    USD_PROVIDER_EARNINGS: 'account.currency.cash',
+                }[assetCode];
+                return key ? tr(key) : String(assetCode || '—');
+            },
+            formatMinor(value, exponent) {
+                const raw = String(value == null ? '0' : value);
+                const precision = Number(exponent);
+                if (!/^-?[0-9]+$/.test(raw) || !Number.isInteger(precision) || precision < 0) return '—';
+                const negative = raw.startsWith('-');
+                const digits = negative ? raw.slice(1) : raw;
+                if (precision === 0) return (negative ? '-' : '') + digits;
+                const padded = digits.padStart(precision + 1, '0');
+                return (negative ? '-' : '') + padded.slice(0, -precision) + '.' + padded.slice(-precision);
+            },
+            get currencyCards() {
+                const order = ['PROMO_POINTS', 'USD_COMPUTE_CREDIT', 'USD_PROVIDER_EARNINGS'];
+                const codes = new Set(order);
+                this.currencyAssets.forEach(item => codes.add(item.assetCode));
+                this.currencyBalances.forEach(item => codes.add(item.assetCode));
+                this.providerBalances.forEach(item => codes.add(item.assetCode));
+                return [...codes].sort((left, right) => {
+                    const leftIndex = order.indexOf(left);
+                    const rightIndex = order.indexOf(right);
+                    return (leftIndex < 0 ? order.length : leftIndex) - (rightIndex < 0 ? order.length : rightIndex) || left.localeCompare(right);
+                }).map(assetCode => {
+                    const asset = this.currencyAssets.find(item => item.assetCode === assetCode) || {};
+                    const spending = this.currencyBalances.find(item => item.assetCode === assetCode);
+                    const provider = this.providerBalances.find(item => item.assetCode === assetCode);
+                    const exponent = asset.exponent ?? spending?.exponent ?? provider?.exponent ?? 0;
+                    const primary = assetCode === 'USD_PROVIDER_EARNINGS' ? provider : spending;
+                    return {
+                        assetCode,
+                        label: this.assetLabel(assetCode),
+                        exponent,
+                        available: this.formatMinor(primary?.available ?? '0', exponent),
+                        held: this.formatMinor(assetCode === 'USD_PROVIDER_EARNINGS' ? provider?.disputedHeld ?? '0' : spending?.held ?? '0', exponent),
+                        pending: this.formatMinor(provider?.pending ?? '0', exponent),
+                        hasPending: Boolean(provider),
+                        providerAvailable: this.formatMinor(provider?.available ?? '0', exponent),
+                        providerHeld: this.formatMinor(provider?.disputedHeld ?? '0', exponent),
+                        isProviderAsset: assetCode === 'USD_PROVIDER_EARNINGS',
+                    };
+                });
+            },
+            ledgerDescription(entry) {
+                return String(entry?.reasonCode || entry?.journalType || '—').replaceAll('_', ' ');
+            },
+            ledgerDelta(entry) {
+                const exponent = this.currencyAssets.find(item => item.assetCode === entry?.assetCode)?.exponent
+                    ?? this.currencyBalances.find(item => item.assetCode === entry?.assetCode)?.exponent
+                    ?? this.providerBalances.find(item => item.assetCode === entry?.assetCode)?.exponent
+                    ?? 0;
+                const amount = this.formatMinor(entry?.amountMinor, exponent);
+                if (amount === '—') return amount;
+                return entry?.direction === 'debit' ? '-' + amount : '+' + amount;
             },
             formatTime(value) {
                 if (!value) return '—';

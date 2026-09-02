@@ -1,0 +1,164 @@
+.knowledge-header {
+    grid-template-columns: minmax(210px, 1fr) auto minmax(260px, 520px) auto;
+    gap: 14px;
+}
+.knowledge-view-switch {
+    padding: 3px;
+    border: 1px solid var(--kn-line);
+    border-radius: 11px;
+    background: #f5f5f4;
+    display: flex;
+}
+.knowledge-view-switch button {
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--kn-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.knowledge-view-switch button.active {
+    background: #fff;
+    color: var(--kn-accent);
+    box-shadow: 0 2px 7px #1c191712;
+}
+.knowledge-view-switch svg { width: 13px; }
+.knowledge-ask {
+    height: calc(100vh - 130px);
+    min-height: 620px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.knowledge-ask-head {
+    min-height: 86px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--kn-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.knowledge-ask-head h2 { margin: 4px 0 0; font-size: 20px; }
+.knowledge-ask-head p { margin: 4px 0 0; color: var(--kn-muted); font-size: 10px; }
+.knowledge-ask-head select {
+    max-width: 260px;
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--kn-line);
+    border-radius: 10px;
+    background: #fafaf9;
+}
+.knowledge-ask-messages {
+    padding: 22px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.knowledge-ask-messages > .knowledge-state { min-height: 100%; align-self: stretch; }
+.knowledge-ask-message {
+    max-width: min(760px, 88%);
+    padding: 14px 16px;
+    border: 1px solid var(--kn-line);
+    border-radius: 15px;
+    background: #fff;
+    box-shadow: 0 5px 18px #1c191708;
+}
+.knowledge-ask-message.user { align-self: flex-end; background: var(--kn-accent-soft); border-color: color-mix(in srgb, var(--kn-accent) 18%, var(--kn-line)); }
+.knowledge-ask-message.assistant { align-self: flex-start; }
+.knowledge-ask-message.pending { display: flex; align-items: center; gap: 8px; color: var(--kn-muted); }
+.knowledge-ask-message.pending svg { width: 15px; }
+.knowledge-ask-role {
+    margin-bottom: 7px;
+    color: var(--kn-muted);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+.knowledge-ask-answer { line-height: 1.65; overflow-wrap: anywhere; }
+.knowledge-ask-answer > :first-child { margin-top: 0; }
+.knowledge-ask-answer > :last-child { margin-bottom: 0; }
+.knowledge-ask-citations {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--kn-line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.knowledge-ask-citations button {
+    max-width: 250px;
+    padding: 6px 8px;
+    border: 1px solid var(--kn-line);
+    border-radius: 9px;
+    background: #fafaf9;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 6px;
+    text-align: left;
+    color: #57534e;
+    cursor: pointer;
+}
+.knowledge-ask-citations button span { grid-row: 1 / 3; color: var(--kn-accent); font: 700 9px ui-monospace, monospace; }
+.knowledge-ask-citations button b,
+.knowledge-ask-citations button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knowledge-ask-citations button b { font-size: 9px; }
+.knowledge-ask-citations button small { color: #a3a3a3; font-size: 8px; }
+.knowledge-ask-composer {
+    padding: 14px 18px;
+    border-top: 1px solid var(--kn-line);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 10px;
+}
+.knowledge-ask-composer textarea {
+    width: 100%;
+    min-height: 68px;
+    max-height: 180px;
+    padding: 11px 12px;
+    border: 1px solid var(--kn-line);
+    border-radius: 12px;
+    background: #fafaf9;
+    resize: vertical;
+    box-sizing: border-box;
+    font: inherit;
+    outline: 0;
+}
+.knowledge-ask-composer textarea:focus { border-color: color-mix(in srgb, var(--kn-accent) 52%, var(--kn-line)); box-shadow: 0 0 0 3px var(--kn-accent-soft); }
+.knowledge-ask-composer button:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 1050px) {
+    .knowledge-header { grid-template-columns: minmax(190px, 1fr) auto auto; }
+    .knowledge-search { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 850px) {
+    .knowledge-view-switch button { padding: 0 8px; }
+    .knowledge-view-switch button svg { display: none; }
+    .knowledge-ask { height: auto; }
+    .knowledge-ask-composer { grid-template-columns: 1fr; }
+}
+
+.knowledge-import-history { margin: .75rem; padding-top: .75rem; border-top: 1px solid var(--kn-line); display: grid; gap: .45rem; }
+.knowledge-import-history > header { display: flex; align-items: center; justify-content: space-between; color: var(--kn-muted); font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.knowledge-import-history > header button { padding: .2rem; border-radius: .4rem; }
+.knowledge-import-history article { display: flex; gap: .4rem; align-items: center; justify-content: space-between; padding: .5rem; border: 1px solid var(--kn-line); border-radius: .7rem; background: var(--kn-card); }
+.knowledge-import-history article > div { display: flex; gap: .45rem; min-width: 0; align-items: center; }
+.knowledge-import-history article svg { width: .85rem; height: .85rem; flex: 0 0 auto; }
+.knowledge-import-history article span { min-width: 0; display: grid; }
+.knowledge-import-history article b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .68rem; }
+.knowledge-import-history article small { color: var(--kn-muted); font-size: .6rem; }
+.knowledge-import-history article > button { color: var(--kn-accent); font-size: .62rem; font-weight: 800; }
+.knowledge-import-actions { display: flex !important; grid-auto-flow: column; gap: .35rem; flex: 0 0 auto; }
+.knowledge-import-actions button { color: var(--kn-accent); font-size: .62rem; font-weight: 800; }
+.knowledge-tag-suggestions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.knowledge-tag-suggestions > span { display: flex; align-items: center; border: 1px dashed color-mix(in srgb, var(--kn-accent) 55%, var(--kn-line)); border-radius: 999px; color: var(--kn-accent); }
+.knowledge-tag-suggestions button { display: inline-flex; align-items: center; gap: .2rem; padding: .18rem .35rem; font-size: .64rem; }
+.knowledge-tag-suggestions svg { width: .72rem; height: .72rem; }

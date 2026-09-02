@@ -7,6 +7,7 @@ import hashlib
 import json
 import mimetypes
 import re
+import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -31,6 +32,7 @@ from .models import (
 
 MAX_PACKAGE_FILES = 10_000
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
+MAX_INFERENCE_RUNTIME_PACKAGE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_METADATA_BYTES = 4 * 1024 * 1024
 _SERVICE_KEY = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$")
 _INDEX_EXCLUSIONS = frozenset({"META/files.json"})
@@ -127,6 +129,7 @@ class ServicePackageArchive:
                     archive, entries, "service.yaml", yaml.safe_load
                 )
                 manifest = cls._manifest(manifest_raw)
+                cls._enforce_size_limit(entries, manifest)
                 index_raw = cls._metadata(
                     archive, entries, "META/files.json", json.loads
                 )
@@ -204,17 +207,33 @@ class ServicePackageArchive:
                 raise PackageError(
                     "archive_symlink_denied", f"Package symlink denied: {item.filename}"
                 )
-            if item.file_size < 0 or item.file_size > MAX_PACKAGE_BYTES:
+            if item.file_size < 0 or item.file_size > MAX_INFERENCE_RUNTIME_PACKAGE_BYTES:
                 raise PackageError(
                     "package_size_limit", "Package entry exceeds size limit"
                 )
             total += item.file_size
             entries[item.filename] = item
-        if len(entries) > MAX_PACKAGE_FILES or total > MAX_PACKAGE_BYTES:
+        if len(entries) > MAX_PACKAGE_FILES or total > MAX_INFERENCE_RUNTIME_PACKAGE_BYTES:
             raise PackageError(
                 "package_size_limit", "Package exceeds bounded file or byte limit"
             )
         return entries
+
+    @staticmethod
+    def _enforce_size_limit(
+        entries: dict[str, zipfile.ZipInfo], manifest: ServicePackageManifest
+    ) -> None:
+        limit = (
+            MAX_INFERENCE_RUNTIME_PACKAGE_BYTES
+            if manifest.protocol == "ai2apps-inference-runtime/v1"
+            else MAX_PACKAGE_BYTES
+        )
+        if any(item.file_size > limit for item in entries.values()) or sum(
+            item.file_size for item in entries.values()
+        ) > limit:
+            raise PackageError(
+                "package_size_limit", "Package exceeds bounded file or byte limit"
+            )
 
     @staticmethod
     def _metadata(archive, entries, name: str, parser):
@@ -282,6 +301,7 @@ class ServicePackageArchive:
             "internal-asgi",
             "ai2apps-model-worker/v1",
             "ai2apps-inference-runtime/v1",
+            "ai2apps-native-runtime/v1",
         }:
             raise PackageError("invalid_protocol", "Unsupported Service protocol")
         command = runtime.get("command", [])
@@ -294,9 +314,12 @@ class ServicePackageArchive:
         entrypoint = runtime.get("entrypoint")
         endpoint = runtime.get("endpoint")
         model_worker = protocol == "ai2apps-model-worker/v1"
-        inference_runtime = protocol == "ai2apps-inference-runtime/v1"
+        native_runtime = protocol in {
+            "ai2apps-inference-runtime/v1",
+            "ai2apps-native-runtime/v1",
+        }
         if mode is ServiceRuntimeMode.MANAGED_PROCESS and not command and not (
-            model_worker or inference_runtime
+            model_worker or native_runtime
         ):
             raise PackageError(
                 "missing_entrypoint", "Managed Service requires runtime.command"
@@ -324,10 +347,10 @@ class ServicePackageArchive:
                     "invalid_model_worker",
                     "runtime.adapter must be a package-relative path and factory, for example src/adapter.py:create_adapter",
                 )
-        if inference_runtime:
-            from .inference_runtime import validate_inference_runtime_manifest
+        if native_runtime:
+            from .inference_runtime import validate_native_runtime_manifest
 
-            validate_inference_runtime_manifest(raw)
+            validate_native_runtime_manifest(raw)
         if mode is ServiceRuntimeMode.MANAGED_PROCESS:
             endpoint = _validate_managed_endpoint(endpoint)
         if mode is ServiceRuntimeMode.EXTERNAL:
@@ -457,8 +480,11 @@ class ServicePackageArchive:
             item = entries.get(path)
             if item is None or item.file_size != size:
                 raise PackageError("file_index_mismatch", f"File size mismatch: {path}")
-            content = archive.read(item)
-            actual = hashlib.sha256(content).hexdigest()
+            content_hash = hashlib.sha256()
+            with archive.open(item) as content:
+                while chunk := content.read(1024 * 1024):
+                    content_hash.update(chunk)
+            actual = content_hash.hexdigest()
             expected = digest.removeprefix("sha256:")
             if actual != expected:
                 raise PackageError("file_hash_mismatch", f"File hash mismatch: {path}")
@@ -596,9 +622,8 @@ class ServicePackageArchive:
                 for name, item in entries.items():
                     target = destination.joinpath(*PurePosixPath(name).parts)
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(archive.read(item))
+                    with archive.open(item) as source, target.open("xb") as output:
+                        shutil.copyfileobj(source, output, length=1024 * 1024)
         except BaseException:
-            import shutil
-
             shutil.rmtree(destination, ignore_errors=True)
             raise

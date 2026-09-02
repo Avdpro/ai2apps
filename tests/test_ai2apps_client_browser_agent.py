@@ -75,6 +75,30 @@ def test_browser_agent_launch_uses_authenticated_actor() -> None:
     assert helper.initial_url == "https://example.com/"
 
 
+def test_in_process_browser_profile_is_bound_to_authenticated_actor() -> None:
+    principal = RequestPrincipal(
+        actor_user_id="browser-profile-user",
+        installation_id="device-one",
+        organization_id="household-one",
+        billing_account_id="billing-one",
+        role=MemberRole.MEMBER,
+        membership_epoch=1,
+    )
+    app = FastAPI()
+    app.include_router(
+        create_client_router(lambda: None, lambda: principal),
+        prefix="/v1/platform",
+    )
+    client = TestClient(app)
+
+    first = client.get("/v1/platform/client/browser-profile")
+    second = client.get("/v1/platform/client/browser-profile")
+
+    assert first.status_code == 200
+    assert first.json() == second.json()
+    assert len(first.json()["profile_key"]) == 64
+
+
 def test_local_restart_uses_helper_and_requires_device_owner() -> None:
     helper = FakeHelperControl()
     owner = RequestPrincipal(

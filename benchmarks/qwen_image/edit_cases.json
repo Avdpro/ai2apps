@@ -1,0 +1,15 @@
+[
+  {
+    "id": "identity_color",
+    "prompt": "Keep the typography, layout and lighting unchanged. Change only the poster background to cobalt blue.",
+    "images": ["results/mac-baseline-q8-smoke-r2/chinese_poster.png"]
+  },
+  {
+    "id": "two_image_replace",
+    "prompt": "Replace the main title styling in Image 1 with the styling from Image 2 while preserving Image 1's composition, lighting and background.",
+    "images": [
+      "results/mac-baseline-q8-smoke-r2/chinese_poster.png",
+      "results/mac-optimized-q4-smoke/chinese_poster.png"
+    ]
+  }
+]

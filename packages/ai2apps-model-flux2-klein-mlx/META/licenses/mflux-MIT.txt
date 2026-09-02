@@ -1,0 +1,4 @@
+mflux 0.19.0 is distributed under the MIT License.
+Source package: https://pypi.org/project/mflux/0.19.0/
+Pinned wheel SHA-256: 3214044d36dc9e3a371f40ac5206f4449974ad57bc7bd3763385c8ed5abf5e47
+

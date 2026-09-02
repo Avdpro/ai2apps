@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-qwen38"
-version = "0.3.1"
+version = "0.3.2"
 description = "Qwen3.8 isolated Model Worker Package for AI2Apps"
 readme = "README.md"
 license = "Apache-2.0"

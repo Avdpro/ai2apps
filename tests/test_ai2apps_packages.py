@@ -25,7 +25,11 @@ from ai2apps.capabilities import GrantScope
 from ai2apps.chat import ChatRepository
 from ai2apps.config import PlatformConfig
 from ai2apps.identity import RequestPrincipal
-from ai2apps.model_providers import list_package_models, proxy_package_json
+from ai2apps.model_providers import (
+    list_package_models,
+    proxy_package_json,
+    resolve_package_model,
+)
 from ai2apps.packages import (
     PackageError,
     PackageFile,
@@ -63,6 +67,43 @@ def _publisher(
         public_key=base64.b64encode(public).decode(),
         trust_status=status,
     )
+
+
+@pytest.mark.asyncio
+async def test_local_native_runtime_install_is_staged_until_restart(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    archive, digest = _build_package(
+        tmp_path,
+        private,
+        service_key="example.runtime-local",
+    )
+    manager = runtime.package_manager
+
+    monkeypatch.setattr(
+        "ai2apps.packages.manager.is_native_runtime_manifest",
+        lambda manifest: manifest.get("id") == "example.runtime-local",
+    )
+    monkeypatch.setattr(manager, "_validate_installed", lambda _package: None)
+    monkeypatch.setattr(
+        manager.inference_runtime_installer,
+        "materialize",
+        lambda _package: tmp_path / "runtime",
+    )
+
+    async def unexpected_start(_package):
+        raise AssertionError("a staged Runtime must not start before Local restarts")
+
+    monkeypatch.setattr(manager.runtime, "start", unexpected_start)
+
+    installed = await manager.install(archive, approve_audit_review=True)
+
+    assert installed.package_digest == digest
+    assert installed.status.value == "installed"
+    assert runtime.package_repository.active("example.runtime-local") is None
 
 
 def _build_package(
@@ -421,6 +462,7 @@ async def test_registry_verified_service_stores_active_dependency_locks(
     tmp_path, monkeypatch
 ):
     runtime = _runtime(tmp_path)
+
     async def no_runtime_start(_package):
         return None
 
@@ -430,9 +472,7 @@ async def test_registry_verified_service_stores_active_dependency_locks(
     dependency, dependency_digest = _build_package(
         tmp_path, private, service_key="example.registry-base", version="1.2.0"
     )
-    await runtime.package_manager.install(
-        dependency, approve_audit_review=True
-    )
+    await runtime.package_manager.install(dependency, approve_audit_review=True)
     root, root_digest = _build_package(
         tmp_path,
         private,
@@ -490,6 +530,180 @@ async def test_dependencies_lock_order_and_prevent_disable_uninstall(tmp_path):
         await runtime.package_manager.uninstall("example.base")
     assert uninstall.value.code == "service_has_dependents"
 
+    await runtime.package_manager.uninstall("example.base", force=True)
+    assert runtime.package_repository.active("example.base") is None
+    assert runtime.package_repository.active("example.consumer") is not None
+
+
+@pytest.mark.asyncio
+async def test_startup_isolates_missing_runtime_and_continues_base_app(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+
+    async def no_runtime_start(_package):
+        return None
+
+    monkeypatch.setattr(runtime.package_manager.runtime, "start", no_runtime_start)
+    blocked_archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.blocked-model",
+    )
+    healthy_archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.healthy-service",
+    )
+    await runtime.package_manager.install(blocked_archive, approve_audit_review=True)
+    await runtime.package_manager.install(healthy_archive, approve_audit_review=True)
+
+    started = []
+
+    async def start_with_missing_runtime(package):
+        if package.service_key == "example.blocked-model":
+            raise PackageError(
+                "runtime_dependency_inactive",
+                "The locked inference Runtime Provider is not active",
+            )
+        started.append(package.service_key)
+
+    monkeypatch.setattr(
+        runtime.package_manager.runtime, "start", start_with_missing_runtime
+    )
+
+    await runtime.package_manager.startup()
+
+    assert "example.healthy-service" in started
+    service = runtime.services.get_service("example.blocked-model")
+    instance = runtime.services.get_instance_for_service(service.id)
+    assert instance.status is ServiceInstanceStatus.DEGRADED
+    assert instance.endpoint is None
+    assert instance.health == {
+        "error_code": "runtime_dependency_inactive",
+        "reason": "dependency_unavailable",
+        "recoverable": True,
+        "status": "blocked",
+    }
+    assert instance.last_error == (
+        "The locked inference Runtime Provider is not active"
+    )
+
+
+@pytest.mark.asyncio
+async def test_model_package_uninstall_can_delete_exclusive_checkpoints(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+
+    async def no_start_or_stop(_package):
+        return None
+
+    monkeypatch.setattr(runtime.package_manager.runtime, "start", no_start_or_stop)
+    monkeypatch.setattr(runtime.package_manager.runtime, "stop", no_start_or_stop)
+    hub_root = tmp_path / "model-cache" / "huggingface" / "hub"
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_root))
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    repo_id = "example/checkpoint"
+    revision = "a" * 40
+    archive, _ = _build_package(
+        tmp_path,
+        private,
+        service_key="example.model-worker",
+        model_worker=True,
+        models=[
+            {
+                "id": "example.model-worker/chat",
+                "display_name": "Example checkpoint",
+                "model_type": "llm",
+                "upstream_id": repo_id,
+                "weights": {
+                    "provider": "huggingface",
+                    "repo_id": repo_id,
+                    "revision": revision,
+                    "preparation": {"recipe": "native"},
+                },
+            }
+        ],
+    )
+    await runtime.package_manager.install(archive, approve_audit_review=True)
+
+    source = runtime.config.paths.base_path / "models" / "example" / "checkpoint"
+    cached = hub_root / "models--example--checkpoint" / "snapshots" / revision
+    source.mkdir(parents=True)
+    cached.mkdir(parents=True)
+    (source / "model.safetensors").write_bytes(b"source-weights")
+    (cached / "model.safetensors").write_bytes(b"cached-weights")
+
+    result = await runtime.package_manager.uninstall(
+        "example.model-worker", delete_checkpoints=True
+    )
+
+    cleanup = result["checkpointCleanup"]
+    assert cleanup["requested"] is True
+    assert cleanup["deletedRepositories"] == [repo_id]
+    assert cleanup["retainedRepositories"] == []
+    assert cleanup["reclaimedBytes"] == len(b"source-weightscached-weights")
+    assert not source.exists()
+    assert not (hub_root / "models--example--checkpoint").exists()
+
+
+@pytest.mark.asyncio
+async def test_model_package_uninstall_retains_shared_checkpoint_repository(
+    tmp_path, monkeypatch
+):
+    runtime = _runtime(tmp_path)
+
+    async def no_start_or_stop(_package):
+        return None
+
+    monkeypatch.setattr(runtime.package_manager.runtime, "start", no_start_or_stop)
+    monkeypatch.setattr(runtime.package_manager.runtime, "stop", no_start_or_stop)
+    hub_root = tmp_path / "model-cache" / "huggingface" / "hub"
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_root))
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    repo_id = "example/shared-checkpoint"
+    revision = "b" * 40
+    model = {
+        "id": "placeholder/chat",
+        "display_name": "Shared checkpoint",
+        "model_type": "llm",
+        "upstream_id": repo_id,
+        "weights": {
+            "provider": "huggingface",
+            "repo_id": repo_id,
+            "revision": revision,
+            "preparation": {"recipe": "native"},
+        },
+    }
+    for service_key in ("example.first-model", "example.second-model"):
+        package_model = {**model, "id": f"{service_key}/chat"}
+        archive, _ = _build_package(
+            tmp_path,
+            private,
+            service_key=service_key,
+            model_worker=True,
+            models=[package_model],
+        )
+        await runtime.package_manager.install(archive, approve_audit_review=True)
+
+    source = runtime.config.paths.base_path / "models" / "example" / "shared-checkpoint"
+    source.mkdir(parents=True)
+    (source / "model.safetensors").write_bytes(b"shared")
+
+    result = await runtime.package_manager.uninstall(
+        "example.first-model", delete_checkpoints=True
+    )
+
+    cleanup = result["checkpointCleanup"]
+    assert cleanup["deletedRepositories"] == []
+    assert cleanup["retainedRepositories"] == [repo_id]
+    assert source.exists()
+
 
 @pytest.mark.asyncio
 async def test_provider_activation_and_dependent_relock_are_atomic(
@@ -538,9 +752,9 @@ async def test_provider_activation_and_dependent_relock_are_atomic(
     assert runtime.package_repository.active("example.provider").package_digest == (
         provider_v2_digest
     )
-    assert runtime.package_repository.get_by_digest(provider_v1_digest).status.value == (
-        "retained"
-    )
+    assert runtime.package_repository.get_by_digest(
+        provider_v1_digest
+    ).status.value == ("retained")
     locks = runtime.package_repository.locks(consumer_digest)
     assert [(item.dependency_version, item.dependency_digest) for item in locks] == [
         ("1.1.0", provider_v2_digest)
@@ -622,7 +836,9 @@ HTTPServer(("127.0.0.1",int(sys.argv[1])),Handler).serve_forever()
 
 
 @pytest.mark.asyncio
-async def test_system_model_worker_package_install_route_and_auth(tmp_path, monkeypatch):
+async def test_system_model_worker_package_install_route_and_auth(
+    tmp_path, monkeypatch
+):
     runtime = _runtime(tmp_path)
     monkeypatch.setattr(
         runtime.package_manager.supervisor,
@@ -659,6 +875,29 @@ async def test_system_model_worker_package_install_route_and_auth(tmp_path, monk
     )
     assert response.status_code == 200
     assert json.loads(response.body)["model"] == "example-checkpoint"
+
+    package = runtime.package_repository.active("example.worker")
+    before = await runtime.package_manager.supervisor.worker_snapshot(package)
+    await runtime.package_manager.evict(
+        "example.worker",
+        reason="test_idle_timeout",
+        expected_generation=before["generation"],
+    )
+    evicted = await runtime.package_manager.supervisor.worker_snapshot(package)
+    dormant_model = resolve_package_model(runtime, model.id)
+    assert evicted["state"] == "evicted"
+    assert dormant_model is not None
+    assert dormant_model.endpoint is None
+
+    restarted = await proxy_package_json(
+        model,
+        "chat_completions",
+        {"model": model.id, "messages": [{"role": "user", "content": "again"}]},
+    )
+    after = await runtime.package_manager.supervisor.worker_snapshot(package)
+    assert restarted.status_code == 200
+    assert after["state"] == "ready"
+    assert after["generation"] == before["generation"] + 1
     await runtime.package_manager.shutdown()
 
 
@@ -869,7 +1108,12 @@ async def test_package_management_api_inspect_audit_install_and_detail(tmp_path)
     )
     archive, digest = _build_package(tmp_path, private)
     app = FastAPI()
-    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
+    app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:

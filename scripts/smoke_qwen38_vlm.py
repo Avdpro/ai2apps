@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import logging
 import mimetypes
 import time
 from pathlib import Path
@@ -20,6 +21,13 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-tokens", type=int, default=24)
     parser.add_argument("--image", type=Path)
+    parser.add_argument("--repeat-prompt", type=int, default=1)
+    parser.add_argument("--prefill-step-size", type=int)
+    parser.add_argument(
+        "--log-level",
+        choices=("DEBUG", "INFO", "WARNING", "ERROR"),
+        default="WARNING",
+    )
     return parser.parse_args()
 
 
@@ -28,16 +36,21 @@ async def _run(args: argparse.Namespace) -> None:
 
     from omlx.engine.vlm import VLMBatchedEngine
     from omlx.model_adapters import get_model_adapter_registry
+    from omlx.scheduler import SchedulerConfig
 
     adapters = get_model_adapter_registry().adapters()
     print(f"adapters={[adapter.adapter_id for adapter in adapters]}")
 
-    engine = VLMBatchedEngine(args.model)
+    scheduler_config = None
+    if args.prefill_step_size is not None:
+        scheduler_config = SchedulerConfig(prefill_step_size=args.prefill_step_size)
+    engine = VLMBatchedEngine(args.model, scheduler_config=scheduler_config)
+    prompt = args.prompt * max(1, args.repeat_prompt)
     started = time.perf_counter()
     try:
         if args.image is None:
             output = await engine.generate(
-                prompt=args.prompt,
+                prompt=prompt,
                 max_tokens=args.max_tokens,
                 temperature=0.0,
                 top_p=1.0,
@@ -56,7 +69,7 @@ async def _run(args: argparse.Namespace) -> None:
                                     "url": f"data:{media_type};base64,{encoded}"
                                 },
                             },
-                            {"type": "text", "text": args.prompt},
+                            {"type": "text", "text": prompt},
                         ],
                     }
                 ],
@@ -78,7 +91,9 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    asyncio.run(_run(_parse_args()))
+    args = _parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level))
+    asyncio.run(_run(args))
 
 
 if __name__ == "__main__":

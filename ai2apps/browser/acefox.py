@@ -18,6 +18,7 @@ from .chrome import (
     _SNAPSHOT_SCRIPT,
     _TARGET_INFO_SCRIPT,
 )
+from .cookies import COOKIE_CONSENT_SCRIPT
 from .models import (
     AuthenticationChallenge,
     BrowserArticle,
@@ -27,6 +28,36 @@ from .models import (
 )
 
 HelperProvider = Callable[[], HelperControlClient | None]
+
+_RENDER_BARRIER_SCRIPT = r"""
+return new Promise(resolve => {
+  let settled = false;
+  let frames = 0;
+  const finish = timedOut => {
+    if (settled) return;
+    settled = true;
+    const root = document.documentElement;
+    if (root) {
+      void root.getBoundingClientRect();
+      void getComputedStyle(root).display;
+    }
+    resolve({frames, timedOut, visibilityState: document.visibilityState});
+  };
+  const nextFrame = () => requestAnimationFrame(() => {
+    frames += 1;
+    if (frames < 2) {
+      nextFrame();
+      return;
+    }
+    setTimeout(() => requestAnimationFrame(() => {
+      frames += 1;
+      finish(false);
+    }), 0);
+  });
+  nextFrame();
+  setTimeout(() => finish(true), 2500);
+});
+"""
 
 
 def _local_value(value: Any) -> dict[str, Any]:
@@ -297,6 +328,9 @@ class AceFoxBrowserBackend:
         if not result:
             return None
         return AuthenticationChallenge(str(result["kind"]), str(result["reason"]))
+
+    def accept_cookie_consent(self, policy: str = "all") -> dict[str, Any]:
+        return dict(self._call_function(COOKIE_CONSENT_SCRIPT, policy) or {})
 
     def snapshot(
         self,
@@ -645,6 +679,26 @@ class AceFoxBrowserBackend:
                         "quiet_ms": round(stability["quietMs"]),
                         "mutations": stability["mutations"],
                     }
+                    if satisfied:
+                        barrier = self._call_function(_RENDER_BARRIER_SCRIPT)
+                        stability = self._call_function(
+                            _INSTALL_STABILITY_OBSERVER_SCRIPT
+                        )
+                        satisfied = (
+                            not barrier["timedOut"]
+                            and barrier["frames"] >= 3
+                            and stability["readyState"] == "complete"
+                            and stability["quietMs"] >= stable_ms
+                        )
+                        detail.update(
+                            {
+                                "quiet_ms": round(stability["quietMs"]),
+                                "mutations": stability["mutations"],
+                                "render_frames": barrier["frames"],
+                                "render_timed_out": barrier["timedOut"],
+                                "visibility_state": barrier["visibilityState"],
+                            }
+                        )
                 if satisfied:
                     return {
                         "satisfied": True,

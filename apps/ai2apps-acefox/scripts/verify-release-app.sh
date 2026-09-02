@@ -33,9 +33,17 @@ fi
 [[ -x ${APP}/Contents/Library/LoginItems/AI2AppsHelper.app/Contents/MacOS/AI2AppsHelper ]] || fail "missing Helper"
 HELPER_APP=${APP}/Contents/Library/LoginItems/AI2AppsHelper.app
 [[ -s ${HELPER_APP}/Contents/Resources/menubar-logo.svg ]] || fail "Helper is missing its menu bar SVG logo"
+[[ -s ${HELPER_APP}/Contents/Resources/menubar-logo-update.svg ]] || \
+  fail "Helper is missing its update-download menu bar SVG logo"
+[[ -s ${HELPER_APP}/Contents/Resources/menubar-logo-work.svg ]] || \
+  fail "Helper is missing its update-busy menu bar SVG logo"
+[[ -s ${HELPER_APP}/Contents/Resources/menubar-logo-ready.svg ]] || \
+  fail "Helper is missing its update-ready menu bar SVG logo"
 RUNTIME_ROOT=${HELPER_APP}/Contents/Resources/AI2AppsLocal
 SHELL_APP=${APP}/Contents/Applications/AI2AppsShell.app
 [[ -x ${RUNTIME_ROOT}/bin/omlx ]] || fail "missing Helper-owned Local entrypoint"
+[[ -x ${RUNTIME_ROOT}/Python/cpython-3.11/bin/python3.11 ]] || \
+  fail "missing Helper-owned update staging Python"
 [[ -f ${RUNTIME_ROOT}/runtime-manifest.json ]] || fail "missing Runtime manifest"
 RUNTIME_PROFILE=$(/usr/libexec/PlistBuddy -c 'Print :AI2AppsRuntimeProfile' "${APP}/Contents/Info.plist" 2>/dev/null || print full)
 MANIFEST_RUNTIME_PROFILE=$(plutil -extract runtime_profile raw "${RUNTIME_ROOT}/runtime-manifest.json" 2>/dev/null || print full)
@@ -169,14 +177,15 @@ else
     FRAMEWORK_SITE=${PYTHON_ROOT}/framework-mlx-base/lib/python3.11/site-packages
   fi
   env \
+    AI2APPS_RUNTIME_PROFILE="${RUNTIME_PROFILE}" \
     PYTHONHOME="${CPYTHON}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONNOUSERSITE=1 \
     PYTHONPATH="${RUNTIME_ROOT}/app:${FRAMEWORK_SITE}" \
     PATH="${CPYTHON}/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     "${CPYTHON}/bin/python3" -c \
-      'from importlib.metadata import version; from packaging.version import Version; import huggingface_hub; assert Version(version("huggingface-hub")) >= Version("1.19.0")' || \
-    fail "embedded Host checkpoint downloader is unavailable or too old"
+      'from importlib.metadata import version; from packaging.version import Version; import av, huggingface_hub, omlx.server, rfc8785; assert Version(version("huggingface-hub")) >= Version("1.19.0"); assert Version(version("rfc8785")) >= Version("0.1.4")' || \
+    fail "embedded Host dependencies are unavailable or too old"
   "${RUNTIME_ROOT}/bin/omlx" info >/dev/null
 fi
 codesign --verify --deep --strict "${APP}" || fail "Runtime probe modified the signed bundle"

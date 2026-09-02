@@ -259,6 +259,61 @@
                 avg_generation_tps: 0.0,
                 total_requests: 0,
             },
+            modelWorkers: [],
+            workerScheduler: {
+                queued: 0,
+                running: 0,
+                maxHeavyComputeSlots: 1,
+                availableHeavyComputeSlots: 1,
+                queuedByClass: {},
+                runningByClass: {},
+                backgroundPaused: false,
+                backgroundPauseReasons: [],
+            },
+            workerResources: {
+                pressureLevel: 'unknown',
+                availableMemoryBytes: 0,
+                reservedTransientBytes: 0,
+                activeReservations: 0,
+                onBattery: null,
+                batteryPercent: null,
+                temperatureCelsius: null,
+            },
+            modelWorkersLoading: false,
+            modelWorkerActions: {},
+            modelWorkerOperations: {},
+            modelWorkerCancelling: {},
+            modelWorkerError: '',
+            modelShare: {
+                enabled: false,
+                canEnable: false,
+                selectedModelCount: 0,
+                runningModelCount: 0,
+                transport: {
+                    required: false,
+                    available: true,
+                    running: true,
+                    deviceId: null,
+                    diagnostic: null,
+                },
+                models: [],
+                recentJobs: [],
+                lastError: null,
+            },
+            modelShareSaving: false,
+            modelShareError: '',
+            modelShareActivationComplete: false,
+            modelShareLastActivationAt: 0,
+            showModelSharePreferences: false,
+            modelShareEnableAfterSave: false,
+            modelShareEditor: {
+                modelId: '',
+                displayName: '',
+                modality: 'text',
+                maxConcurrency: 1,
+                estimatedTokensPerSecond: 1,
+            },
+            _statsRefreshTicks: 0,
             // Server connectivity info (from /admin/api/server-info)
             serverAliases: [],
             selectedAlias: '',
@@ -400,7 +455,7 @@
 
             defaultModelOptions(purpose) {
                 const models = (this.models || []).filter(model =>
-                    !model.is_hidden && !model.is_helper
+                    !model.is_hidden && !model.is_helper && model.source_type !== 'hf_cache'
                 );
                 const hasCapability = (model, capability) =>
                     (model.capabilities || []).includes(capability);
@@ -452,6 +507,9 @@
 
             defaultModelLabel(model) {
                 const name = model.settings?.model_alias || model.display_name || model.id;
+                if (model.source_type === 'local') {
+                    return name.startsWith('Dev: ') ? name : `Dev: ${name}`;
+                }
                 const source = model.source_type === 'cloud'
                     ? window.t('models.defaults.source.cloud')
                     : (model.source_type === 'fusion'
@@ -3293,6 +3351,8 @@
                         return;
                     }
 
+                    await this.loadModelWorkers();
+
                     // Load all-time stats
                     const alltimeParams = new URLSearchParams({ scope: 'alltime' });
                     if (this.selectedStatsModel) {
@@ -3307,6 +3367,319 @@
                 } catch (err) {
                     console.error('Failed to load stats:', err);
                 }
+            },
+
+            async loadModelWorkers() {
+                if (this.modelWorkersLoading) return;
+                this.modelWorkersLoading = true;
+                try {
+                    const [response, schedulerResponse, resourcesResponse, sharingResponse] = await Promise.all([
+                        fetch('/v1/platform/workers'),
+                        fetch('/v1/platform/worker-scheduler'),
+                        fetch('/v1/platform/worker-resources'),
+                        fetch('/v1/platform/model-share/provider'),
+                    ]);
+                    if (!response.ok) throw new Error(`Worker status request failed (${response.status})`);
+                    const data = await response.json();
+                    this.modelWorkers = Array.isArray(data.items) ? data.items : [];
+                    if (schedulerResponse.ok) {
+                        this.workerScheduler = {
+                            ...this.workerScheduler,
+                            ...(await schedulerResponse.json()),
+                        };
+                    }
+                    if (resourcesResponse.ok) {
+                        this.workerResources = {
+                            ...this.workerResources,
+                            ...(await resourcesResponse.json()),
+                        };
+                    }
+                    if (sharingResponse.ok) {
+                        this.modelShare = {
+                            ...this.modelShare,
+                            ...(await sharingResponse.json()),
+                        };
+                        this.modelShareError = '';
+                    }
+                    const activationDue = !this.modelShareActivationComplete
+                        && Date.now() - this.modelShareLastActivationAt >= 60000;
+                    if (activationDue) {
+                        this.modelShareLastActivationAt = Date.now();
+                        const activationResponse = await fetch('/v1/platform/model-share/provider/activate', {
+                            method: 'POST',
+                        });
+                        if (activationResponse.ok) {
+                            const activationData = await activationResponse.json();
+                            this.modelShare = {
+                                ...this.modelShare,
+                                ...activationData,
+                            };
+                            this.modelShareActivationComplete = Boolean(activationData.rateCardDiscoveryAvailable);
+                            this.modelShareError = '';
+                        } else if (activationResponse.status !== 409) {
+                            const activationError = await activationResponse.json();
+                            this.modelShareError = activationError.error?.message || `Rate Card sync failed (${activationResponse.status})`;
+                        }
+                    }
+                    this.modelWorkerError = '';
+                } catch (err) {
+                    this.modelWorkerError = err.message || String(err);
+                } finally {
+                    this.modelWorkersLoading = false;
+                }
+            },
+
+            modelShareModel(modelId) {
+                return (this.modelShare.models || []).find(item => item.modelId === modelId) || null;
+            },
+
+            modelShareWorkerModels(worker) {
+                return (worker.models || []).map(model => ({
+                    ...model,
+                    sharing: this.modelShareModel(model.id),
+                })).filter(model => model.sharing?.shareable);
+            },
+
+            modelShareStandaloneModels() {
+                const workerModelIds = new Set(
+                    (this.modelWorkers || []).flatMap(worker =>
+                        (worker.models || []).map(model => model.id),
+                    ),
+                );
+                return (this.modelShare.models || [])
+                    .filter(model => model.shareable && !workerModelIds.has(model.modelId))
+                    .map(model => ({
+                        id: model.modelId,
+                        displayName: model.displayName || model.modelId,
+                        serviceKey: model.serviceKey,
+                        sharing: model,
+                    }));
+            },
+
+            async setDeviceModelSharing(enabled) {
+                if (this.modelShareSaving || (enabled && !this.modelShare.canEnable)) return;
+                this.modelShareSaving = true;
+                this.modelShareError = '';
+                try {
+                    const response = await fetch('/v1/platform/model-share/provider/device-preference', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled }),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error?.message || `Sharing update failed (${response.status})`);
+                    this.modelShare = { ...this.modelShare, ...data };
+                } catch (err) {
+                    this.modelShareError = err.message || String(err);
+                } finally {
+                    this.modelShareSaving = false;
+                }
+            },
+
+            async setModelSharing(model, enabled) {
+                if (this.modelShareSaving) return;
+                this.modelShareSaving = true;
+                this.modelShareError = '';
+                try {
+                    const response = await fetch('/v1/platform/model-share/provider/model-selection', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ modelId: model.id, enabled }),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error?.message || `Model sharing update failed (${response.status})`);
+                    this.modelShare = { ...this.modelShare, ...data };
+                } catch (err) {
+                    this.modelShareError = err.message || String(err);
+                } finally {
+                    this.modelShareSaving = false;
+                }
+            },
+
+            openModelSharePreferences(model, enableAfterSave = false) {
+                const sharing = this.modelShareModel(model.id) || {};
+                this.modelShareEditor = {
+                    modelId: model.id,
+                    displayName: model.displayName || model.id,
+                    modality: sharing.modality || 'text',
+                    maxConcurrency: sharing.maxConcurrency || 1,
+                    estimatedTokensPerSecond: sharing.estimatedTokensPerSecond || 1,
+                };
+                this.modelShareEnableAfterSave = enableAfterSave;
+                this.modelShareError = '';
+                this.showModelSharePreferences = true;
+                this.$nextTick(() => window.lucide?.createIcons());
+            },
+
+            async saveModelSharePreferences() {
+                if (this.modelShareSaving) return;
+                this.modelShareSaving = true;
+                this.modelShareError = '';
+                try {
+                    const response = await fetch('/v1/platform/model-share/provider/model-preferences', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            modelId: this.modelShareEditor.modelId,
+                            maxConcurrency: Number(this.modelShareEditor.maxConcurrency),
+                            estimatedTokensPerSecond: Number(this.modelShareEditor.estimatedTokensPerSecond),
+                        }),
+                    });
+                    let data = await response.json();
+                    if (!response.ok) throw new Error(data.error?.message || `Preferences update failed (${response.status})`);
+                    this.modelShare = { ...this.modelShare, ...data };
+                    if (this.modelShareEnableAfterSave) {
+                        const selection = await fetch('/v1/platform/model-share/provider/model-selection', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ modelId: this.modelShareEditor.modelId, enabled: true }),
+                        });
+                        data = await selection.json();
+                        if (!selection.ok) throw new Error(data.error?.message || `Model sharing update failed (${selection.status})`);
+                        this.modelShare = { ...this.modelShare, ...data };
+                    }
+                    this.showModelSharePreferences = false;
+                    this.modelShareEnableAfterSave = false;
+                } catch (err) {
+                    this.modelShareError = err.message || String(err);
+                } finally {
+                    this.modelShareSaving = false;
+                }
+            },
+
+            async modelWorkerAction(worker, action, mode = null) {
+                if (this.modelWorkerActions[worker.serviceKey]) return;
+                this.modelWorkerActions = { ...this.modelWorkerActions, [worker.serviceKey]: action };
+                this.modelWorkerError = '';
+                try {
+                    const body = {
+                        expectedGeneration: worker.generation,
+                        idempotencyKey: `${action}-${crypto.randomUUID()}`,
+                    };
+                    if (mode) body.mode = mode;
+                    const response = await fetch(
+                        `/v1/platform/workers/${encodeURIComponent(worker.serviceKey)}/${action}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body),
+                        },
+                    );
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error?.message || `Worker action failed (${response.status})`);
+                    }
+                    if (response.status === 202 && data.operationId) {
+                        this.modelWorkerOperations = {
+                            ...this.modelWorkerOperations,
+                            [worker.serviceKey]: data.operationId,
+                        };
+                        await this.pollModelWorkerOperation(data.operationId);
+                    }
+                    await this.loadModelWorkers();
+                } catch (err) {
+                    this.modelWorkerError = err.message || String(err);
+                    await this.loadModelWorkers();
+                } finally {
+                    const next = { ...this.modelWorkerActions };
+                    delete next[worker.serviceKey];
+                    this.modelWorkerActions = next;
+                    const operations = { ...this.modelWorkerOperations };
+                    delete operations[worker.serviceKey];
+                    this.modelWorkerOperations = operations;
+                }
+            },
+
+            async modelWorkerCancelOperation(worker) {
+                const operationId = this.modelWorkerOperations[worker.serviceKey];
+                if (!operationId || this.modelWorkerCancelling[worker.serviceKey]) return;
+                this.modelWorkerCancelling = {
+                    ...this.modelWorkerCancelling,
+                    [worker.serviceKey]: true,
+                };
+                this.modelWorkerError = '';
+                try {
+                    const response = await fetch(
+                        `/v1/platform/worker-operations/${encodeURIComponent(operationId)}/cancel`,
+                        { method: 'POST' },
+                    );
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error?.message || `Worker cancellation failed (${response.status})`);
+                    }
+                    await this.loadModelWorkers();
+                } catch (err) {
+                    this.modelWorkerError = err.message || String(err);
+                } finally {
+                    const next = { ...this.modelWorkerCancelling };
+                    delete next[worker.serviceKey];
+                    this.modelWorkerCancelling = next;
+                }
+            },
+
+            async modelWorkerPin(worker) {
+                if (this.modelWorkerActions[worker.serviceKey]) return;
+                this.modelWorkerActions = { ...this.modelWorkerActions, [worker.serviceKey]: 'pin' };
+                this.modelWorkerError = '';
+                try {
+                    const response = await fetch(
+                        `/v1/platform/workers/${encodeURIComponent(worker.serviceKey)}/pin`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                expectedGeneration: worker.generation,
+                                pinned: !worker.pinned,
+                                idempotencyKey: `pin-${crypto.randomUUID()}`,
+                            }),
+                        },
+                    );
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error?.message || `Worker pin action failed (${response.status})`);
+                    }
+                    await this.loadModelWorkers();
+                } catch (err) {
+                    this.modelWorkerError = err.message || String(err);
+                    await this.loadModelWorkers();
+                } finally {
+                    const next = { ...this.modelWorkerActions };
+                    delete next[worker.serviceKey];
+                    this.modelWorkerActions = next;
+                }
+            },
+
+            async pollModelWorkerOperation(operationId) {
+                for (;;) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const response = await fetch(
+                        `/v1/platform/worker-operations/${encodeURIComponent(operationId)}`,
+                    );
+                    if (!response.ok) throw new Error(`Worker operation failed (${response.status})`);
+                    const operation = await response.json();
+                    await this.loadModelWorkers();
+                    if (operation.status === 'completed') return operation;
+                    if (operation.status === 'cancelled') return operation;
+                    if (operation.status === 'failed') {
+                        throw new Error(operation.error?.message || 'Worker operation failed');
+                    }
+                    if (operation.status === 'interrupted') {
+                        throw new Error(operation.error?.message || 'Worker operation was interrupted');
+                    }
+                }
+            },
+
+            modelWorkerStateClass(state) {
+                return {
+                    ready: 'bg-emerald-100 text-emerald-700',
+                    busy: 'bg-blue-100 text-blue-700',
+                    starting: 'bg-amber-100 text-amber-700',
+                    draining: 'bg-orange-100 text-orange-700',
+                    evicting: 'bg-violet-100 text-violet-700',
+                    evicted: 'bg-violet-100 text-violet-700',
+                    failed: 'bg-red-100 text-red-700',
+                    stopped: 'bg-neutral-100 text-neutral-600',
+                }[state] || 'bg-neutral-100 text-neutral-600';
             },
 
             async clearStats() {
@@ -3360,6 +3733,8 @@
                 this.loadStats();
                 this._statsRefreshTimer = setInterval(() => {
                     this.loadStats(false);
+                    this._statsRefreshTicks += 1;
+                    if (this._statsRefreshTicks % 10 === 0) this.loadModelWorkers();
                 }, 500);
             },
 
@@ -5517,6 +5892,66 @@
                 return 'delete_after';
             },
 
+            async confirmCheckpointLicenses(challenges) {
+                const consents = [];
+                for (const challenge of challenges || []) {
+                    const license = challenge.license || {};
+                    const overlay = document.createElement('div');
+                    overlay.className = 'fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm grid place-items-center p-5';
+                    overlay.innerHTML = '<section class="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">' +
+                        '<p class="text-[10px] tracking-[.18em] font-bold text-neutral-400">CHECKPOINT LICENSE</p>' +
+                        '<h2 data-license-title class="mt-1 text-xl font-semibold"></h2>' +
+                        '<p data-license-usage class="mt-2 text-xs font-semibold text-red-700"></p>' +
+                        '<pre data-license-terms class="mt-4 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border bg-neutral-50 p-3 text-[11px] leading-relaxed"></pre>' +
+                        '<a data-license-link target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-xs font-semibold text-blue-700">查看完整许可条款</a>' +
+                        '<p data-license-attribution class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed"></p>' +
+                        '<fieldset data-license-options class="mt-4 grid gap-2"></fieldset>' +
+                        '<label class="mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed"><input data-license-confirm type="checkbox" class="mt-0.5 accent-neutral-900"><span data-license-attestation></span></label>' +
+                        '<div class="mt-5 flex justify-end gap-2"><button data-license-action="cancel" class="rounded-lg border px-4 py-2 text-xs font-semibold">取消</button>' +
+                        '<button data-license-action="accept" disabled class="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">确认许可并开始下载</button></div></section>';
+                    document.body.appendChild(overlay);
+                    overlay.querySelector('[data-license-title]').textContent = license.name || '模型许可确认';
+                    overlay.querySelector('[data-license-usage]').textContent = `用途限制：${license.usagePolicy || '以许可条款为准'}`;
+                    overlay.querySelector('[data-license-terms]').textContent = license.termsText || '完整许可由签名 envelope 中的固定 URL 与 SHA-256 绑定。请打开链接阅读全部条款。';
+                    const link = overlay.querySelector('[data-license-link]');
+                    link.href = license.termsUrl || '#'; link.hidden = !license.termsUrl;
+                    const attribution = license.redistributionConditions?.attribution?.noticeText;
+                    const attributionNode = overlay.querySelector('[data-license-attribution]');
+                    attributionNode.textContent = attribution ? `必要署名：${attribution}` : '';
+                    attributionNode.hidden = !attribution;
+                    const labels = {
+                        accepted_license_terms: '我接受许可条款，并将在许可允许的用途范围内使用',
+                        obtained_separate_license: '我已为预期用途取得权利方的单独许可或授权',
+                    };
+                    const options = overlay.querySelector('[data-license-options]');
+                    for (const [index, option] of (challenge.acceptanceOptions || []).entries()) {
+                        const row = document.createElement('label'); row.className = 'flex items-start gap-2 text-xs';
+                        const input = document.createElement('input'); input.type = 'radio';
+                        input.name = `models-license-${challenge.distributionId}`; input.value = option;
+                        input.checked = index === 0; input.className = 'mt-0.5 accent-neutral-900';
+                        const copy = document.createElement('span'); copy.textContent = labels[option] || option;
+                        row.append(input, copy); options.append(row);
+                    }
+                    const checkbox = overlay.querySelector('[data-license-confirm]');
+                    const accept = overlay.querySelector('[data-license-action="accept"]');
+                    overlay.querySelector('[data-license-attestation]').textContent = challenge.attestationText || '我确认已经同意或获得所需许可。';
+                    checkbox.addEventListener('change', () => { accept.disabled = !checkbox.checked; });
+                    const consent = await new Promise((resolve, reject) => {
+                        overlay.addEventListener('click', event => {
+                            const action = event.target.closest('[data-license-action]')?.dataset.licenseAction;
+                            if (action === 'cancel') reject(new Error('未确认模型许可，Checkpoint 不会开始下载'));
+                            if (action === 'accept' && checkbox.checked) {
+                                const decision = overlay.querySelector('input[type="radio"]:checked')?.value;
+                                if (!decision) return;
+                                resolve({ distributionId: challenge.distributionId, manifestDigest: challenge.manifestDigest, termsHash: license.termsHash, decision, confirmed: true });
+                            }
+                        });
+                    }).finally(() => overlay.remove());
+                    consents.push(consent);
+                }
+                return consents;
+            },
+
             async startDynaInstall() {
                 const model = this.activeModelPackageRecipe();
                 if (!model) return;
@@ -5531,19 +5966,28 @@
                 this.dynaError = '';
                 this.dynaSuccess = '';
                 try {
-                    const response = await fetch('/admin/api/ai2apps/install', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            model_id: model.id,
-                            weight_source: this.dynaWeightSource,
-                            memory_tier: this.dynaMemoryTier,
-                            storage_policy: this.dynaStoragePolicy,
-                            token: this.dynaToken,
-                        }),
-                    });
-                    const data = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(data.detail || 'Could not start installation');
+                    const start = async licenseConsents => {
+                        const response = await fetch('/admin/api/ai2apps/install', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                model_id: model.id,
+                                weight_source: this.dynaWeightSource,
+                                memory_tier: this.dynaMemoryTier,
+                                storage_policy: this.dynaStoragePolicy,
+                                token: this.dynaToken,
+                                license_consents: licenseConsents,
+                            }),
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        return { response, data };
+                    };
+                    let { response, data } = await start([]);
+                    if (response.status === 409 && data.detail?.code === 'checkpoint_license_consent_required') {
+                        const consents = await this.confirmCheckpointLicenses(data.detail.challenges || []);
+                        ({ response, data } = await start(consents));
+                    }
+                    if (!response.ok) throw new Error(data.detail?.message || data.detail || 'Could not start installation');
                     this.dynaSuccess = `Installing ${model.name}`;
                     await this.loadDynaTasks();
                     this.startDynaRefresh();
@@ -5599,12 +6043,29 @@
             },
 
             async retryDynaInstall(taskId) {
-                const response = await fetch(`/admin/api/ai2apps/tasks/${taskId}/retry`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: this.dynaToken }),
-                });
-                if (response.ok) this.startDynaRefresh();
+                const retry = async licenseConsents => {
+                    const response = await fetch(`/admin/api/ai2apps/tasks/${taskId}/retry`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            token: this.dynaToken,
+                            license_consents: licenseConsents,
+                        }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    return { response, data };
+                };
+                try {
+                    let { response, data } = await retry([]);
+                    if (response.status === 409 && data.detail?.code === 'checkpoint_license_consent_required') {
+                        const consents = await this.confirmCheckpointLicenses(data.detail.challenges || []);
+                        ({ response, data } = await retry(consents));
+                    }
+                    if (!response.ok) throw new Error(data.detail?.message || data.detail || 'Retry failed');
+                    this.startDynaRefresh();
+                } catch (err) {
+                    this.dynaError = err.message || 'Retry failed';
+                }
                 await this.loadDynaTasks();
             },
 

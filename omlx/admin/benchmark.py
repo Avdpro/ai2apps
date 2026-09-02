@@ -477,7 +477,12 @@ def _generate_prompt(
     if target_tokens <= 0:
         raise ValueError("target_tokens must be positive")
 
-    unique_prefix = f"BENCH-{uuid.uuid4().hex} "
+    configured_prefix = os.environ.get("OMLX_BENCH_PROMPT_PREFIX")
+    unique_prefix = (
+        f"{configured_prefix} "
+        if configured_prefix is not None
+        else f"BENCH-{uuid.uuid4().hex} "
+    )
     profile = BenchmarkContextProfile(context_profile)
     spec = BENCHMARK_CONTEXT_PROFILES[profile]
     corpus = _load_bench_corpus(profile)

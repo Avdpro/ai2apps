@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -207,3 +208,84 @@ class Qwen36ChatAdapter(OmlxChatAdapter):
             arena_tail_slots=tail_slots,
         )
         return Qwen36TieredEngine(str(checkpoint.path), trust_remote_code=False)
+
+
+class Qwen4ExpChatAdapter(OmlxChatAdapter):
+    """Run Qwen3.8 Flash Next through the exact Qwen4-Exp Cached-MoE VLM."""
+
+    _TIER_SLOTS = {"lean": 128, "balanced": 160, "performance": 224}
+
+    async def create_engine(
+        self,
+        checkpoint: ModelWorkerCheckpoint,
+        runtime_options: Mapping[str, Any] | None = None,
+    ) -> Any:
+        if checkpoint.path is None:
+            return await super().create_engine(checkpoint, runtime_options)
+        options = dict(runtime_options or {})
+        mode = str(options.get("moe_execution_mode", "cached")).lower()
+        if mode not in {"cached", "full"}:
+            raise ModelWorkerError(
+                f"Unsupported MoE execution mode: {mode}",
+                code="invalid_request_error",
+                status_code=400,
+            )
+
+        from omlx.engine.vlm import VLMBatchedEngine
+
+        if mode == "full":
+            os.environ.pop("OMLX_QWEN4_DYNAMIC_STORE", None)
+            os.environ.pop("OMLX_QWEN4_SCOPE_PROFILE", None)
+            return VLMBatchedEngine(str(checkpoint.path), trust_remote_code=False)
+
+        prepared = _prepared_manifest(checkpoint)
+        if prepared is None:
+            raise ModelWorkerError(
+                "Checkpoint must be prepared before Qwen4 Cached-MoE execution",
+                code="model_not_prepared",
+                status_code=503,
+            )
+        scope = prepared.get("scope", {})
+        profile = _authorized_path(checkpoint, scope.get("profile"), "scope profile")
+        expert_store = _authorized_path(
+            checkpoint, prepared.get("expert_store"), "expert store"
+        )
+        default_scope = str(scope.get("default") or "")
+        if not profile.is_file() or not expert_store.is_dir() or not default_scope:
+            raise ModelWorkerError(
+                "Prepared Qwen4 Cached-MoE assets are incomplete",
+                code="invalid_prepared_checkpoint",
+                status_code=503,
+            )
+
+        tier = str(options.get("cache_moe_memory_tier", "balanced") or "balanced")
+        if tier == "auto":
+            tier = "balanced"
+        slots = self._TIER_SLOTS.get(tier)
+        if slots is None:
+            raise ModelWorkerError(
+                f"Unsupported Qwen4 memory tier: {tier}",
+                code="invalid_request_error",
+                status_code=400,
+            )
+        from omlx.patches.qwen38_next_cache.boost import normalize_qwen4_boost
+
+        boost = normalize_qwen4_boost(
+            str(options.get("cache_moe_boost_mode", "natural"))
+        )
+        os.environ["OMLX_QWEN4_DYNAMIC_STORE"] = str(expert_store)
+        os.environ["OMLX_QWEN4_SCOPE_PROFILE"] = str(profile)
+        os.environ["OMLX_QWEN4_SCOPE"] = default_scope
+        os.environ["OMLX_QWEN4_DYNAMIC_SLOTS"] = str(slots)
+        os.environ["OMLX_QWEN4_HOT_SLOTS"] = str(
+            int(prepared.get("hot_slots", 10))
+        )
+        os.environ["OMLX_QWEN4_L1_PROMOTIONS_PER_LAYER"] = "4"
+        os.environ["OMLX_QWEN4_L1_PROMOTION_ENABLE_AFTER"] = "128"
+        os.environ["OMLX_QWEN4_DYNAMIC_IO_WORKERS"] = "4"
+        os.environ["OMLX_QWEN4_BOOST_MODE"] = boost
+        os.environ["OMLX_QWEN4_PREFILL_RESIDENT_FIRST"] = "0"
+        os.environ["OMLX_QWEN4_PREFILL_CANONICAL_REUSE"] = "1"
+        os.environ["OMLX_QWEN4_PREFILL_RETAIN_L1"] = "1"
+        os.environ.setdefault("OMLX_QWEN4_PLE_MODE", "auto")
+        return VLMBatchedEngine(str(checkpoint.path), trust_remote_code=False)

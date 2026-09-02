@@ -1,0 +1,50 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_ideogram4_fp8_bbee2ab2_v1",
+  "modelId": "ai2apps.model.ideogram4-mlx/fp8-q4",
+  "repoId": "Comfy-Org/Ideogram-4",
+  "revision": "bbee2ab2b14b2b5223448d12d6e31e5f9cec0546",
+  "format": "safetensors",
+  "quantization": "fp8",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-Ideogram-Non-Commercial-Model-Agreement",
+    "name": "Ideogram Non-Commercial Model Agreement",
+    "termsUrl": "https://huggingface.co/ideogram-ai/ideogram-4-fp8/blob/ee79a7237b519f1402ceacf952f30c8a31ec5073/LICENSE.md",
+    "termsHash": "sha256:29125fd78316409de65039259cd2f811237a3690f0aebfd959ac1f75d783fe12",
+    "usagePolicy": "noncommercial_only",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "same_or_more_restrictive",
+      "commercialUse": "separate_license_required",
+      "attribution": {
+        "required": true,
+        "noticeText": "Ideogram 4 is provided under and subject to the Ideogram Non-Commercial Model Agreement available at https://github.com/ideogram-oss/ideogram-4/model_licenses/LICENSE-IDEOGRAM-4-NON-COMMERCIAL. All rights reserved. Copyright © Ideogram, Inc.",
+        "noticeFile": "NOTICE",
+        "productDisplay": "not_required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I confirm that I have read and accept the Ideogram Non-Commercial Model Agreement for an allowed non-commercial purpose, or that I have obtained separate permission from Ideogram for my intended use.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "diffusion_models/ideogram4_fp8_scaled.safetensors",
+    "diffusion_models/ideogram4_unconditional_fp8_scaled.safetensors",
+    "text_encoders/qwen3vl_8b_fp8_scaled.safetensors",
+    "vae/flux2-vae.safetensors"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "Comfy-Org/Ideogram-4", "revision": "bbee2ab2b14b2b5223448d12d6e31e5f9cec0546", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "Comfy-Org/Ideogram-4", "revision": "7ce334bb86142cd10c04bbb72d4e871572dd976f", "access": "public_anonymous"}
+  ]
+}

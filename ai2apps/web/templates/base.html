@@ -78,30 +78,6 @@
 
         [x-cloak] { display: none !important; }
 
-        .ai2apps-shell-reveal {
-            position: fixed;
-            z-index: 2147483000;
-            top: 8px;
-            right: 10px;
-            width: 32px;
-            height: 32px;
-            display: grid;
-            place-items: center;
-            border: 1px solid rgba(0,0,0,.09);
-            border-radius: 10px;
-            color: #737373;
-            background: rgba(255,255,255,.76);
-            -webkit-backdrop-filter: blur(14px);
-            backdrop-filter: blur(14px);
-            box-shadow: 0 5px 16px rgba(0,0,0,.08);
-            opacity: .38;
-            cursor: pointer;
-            transition: opacity .15s ease, color .15s ease;
-        }
-        .ai2apps-shell-reveal:hover,
-        .ai2apps-shell-reveal:focus-visible { opacity: 1; color: #171717; }
-        .ai2apps-shell-reveal svg { width: 15px; height: 15px; }
-
         /* Subtle grain texture for background */
         .bg-grain {
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
@@ -195,6 +171,9 @@
                         instanceId: instanceId
                     }));
                 },
+                openGalleryPreview: function(options) {
+                    return request('ai2apps.shell.open-gallery-preview', options || {});
+                },
                 mountMiniEntry: function(options) {
                     options = options || {};
                     return request('ai2apps.shell.mount-mini-entry', Object.assign({}, options, {
@@ -230,17 +209,6 @@
                 }
             });
             document.addEventListener('DOMContentLoaded', function() {
-                var showDockReveal = {{ show_dock_reveal | default(true) | tojson }};
-                if (showDockReveal) {
-                    var button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'ai2apps-shell-reveal';
-                    button.setAttribute('aria-label', 'Show AI2Apps Dock');
-                    button.setAttribute('title', 'Show AI2Apps Dock');
-                    button.innerHTML = '<i data-lucide="panel-top-open"></i>';
-                    button.addEventListener('click', window.ai2appsShell.showDock);
-                    document.body.appendChild(button);
-                }
                 window.ai2appsShell.ready();
             });
         })();

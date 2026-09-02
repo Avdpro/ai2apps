@@ -191,6 +191,7 @@
                                             </div>
                                             <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
                                                 <span class="px-2 py-1 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 whitespace-nowrap">Model Package</span>
+                                                <span x-show="model.recommended" class="px-2 py-1 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 whitespace-nowrap">Recommended for this Mac</span>
                                                 <span :class="model.installed ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'" class="px-2 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap" x-text="model.installed ? 'Ready' : 'Weights required'"></span>
                                             </div>
                                         </div>

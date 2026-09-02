@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-qwen3-tts-06b",
     "type": "service",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "displayName": "Qwen3 TTS 0.6B CustomVoice",
     "description": "Multilingual named-voice speech synthesis for AI2Apps Chat."
   },

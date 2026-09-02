@@ -384,6 +384,20 @@ class ServiceRepository:
                     "SELECT * FROM service_instances WHERE id = ?", (instance_id,)
                 ).fetchone()
                 assert row is not None
+                if status in {
+                    ServiceInstanceStatus.STARTING,
+                    ServiceInstanceStatus.RUNNING,
+                    ServiceInstanceStatus.DEGRADED,
+                }:
+                    connection.execute(
+                        """
+                        UPDATE service_instances
+                        SET status = 'stopped', revision = revision + 1, updated_at = ?
+                        WHERE service_id = ? AND id != ?
+                          AND status IN ('starting', 'running', 'degraded')
+                        """,
+                        (now, service_id, instance_id),
+                    )
                 return self._instance(row)
         except sqlite3.IntegrityError as exc:
             raise ResourceConflictError(str(exc)) from exc
@@ -393,7 +407,16 @@ class ServiceRepository:
             row = connection.execute(
                 """
                 SELECT * FROM service_instances WHERE service_id = ?
-                ORDER BY created_at LIMIT 1
+                ORDER BY
+                    CASE status
+                        WHEN 'running' THEN 0
+                        WHEN 'degraded' THEN 1
+                        WHEN 'starting' THEN 2
+                        ELSE 3
+                    END,
+                    updated_at DESC,
+                    created_at DESC
+                LIMIT 1
                 """,
                 (service_id,),
             ).fetchone()

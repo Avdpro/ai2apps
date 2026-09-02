@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.punctuation-restorer
 name: CT-Transformer Punctuation Restorer
 description: Internal Chinese/English punctuation restoration dependency for local ASR Packages.
-version: 0.1.0
+version: 0.1.1
 
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
@@ -31,6 +31,7 @@ models:
       provider: huggingface
       repo_id: ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8
       revision: 5cccf43af83e4fc50d1d55b8410312e87709be70
+      distribution_id: dist_ai2apps_punctuation_restorer_5cccf43a_v1
       preparation: {recipe: native}
 
 capabilities: [punctuation-restoration]

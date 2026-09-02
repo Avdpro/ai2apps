@@ -1,0 +1,362 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.general-chat
+version: 1
+capabilities:
+  text.chat.local:
+    trigger: recommended_optional
+    selection_mode: multiple
+    presentation:
+      eyebrow: AI2APPS LOCAL AI
+      title: 选择并安装本地聊天模型
+      description: 云端模型仍可继续使用；本向导只为当前设备增加离线、低延迟的本地聊天能力。
+      icon: hard-drive-download
+      confirm_label: 安装所选模型
+      ready_label: 本地聊天模型已可用
+      steps:
+        runtime: 配置本地推理 Runtime
+        provider: 安装本地聊天模型 Package
+        checkpoint: 下载推荐模型 Checkpoint
+        verify: 启动并验证本地聊天能力
+    requirements:
+      operations: [conversation]
+    profiles:
+      - id: apple-metal-deepseek-v4-flash
+        label: DeepSeek V4 Flash · 高质量 Cached-MoE
+        description: 高质量本地推理档，至少需要 48 GiB，推荐 64 GiB 及以上设备。
+        priority: 120
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 48}
+        recommendation_memory_gib: {minimum: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-deepseek-v4-flash, service_key: ai2apps.model.deepseek-v4-flash, version: ">=0.3.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.deepseek-v4-flash/deepseek-v4-flash}
+      - id: apple-metal-deepseek-v4-flash-2bit
+        label: DeepSeek V4 Flash 2-bit · 平衡档
+        description: 节省内存的 Cached-MoE 档，适合 32–64 GiB 设备。
+        priority: 110
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 32}
+        recommendation_memory_gib: {minimum: 32, maximum_exclusive: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-deepseek-v4-flash-2bit, service_key: ai2apps.model.deepseek-v4-flash-2bit, version: ">=0.3.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit}
+      - id: apple-metal-qwen36-35b-4bit
+        label: Qwen3.6 35B · 本地聊天
+        description: Cached-MoE 4-bit，适合 16 GiB 及以上 Apple Silicon。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen36-35b, service_key: ai2apps.model.qwen36-35b, version: ">=0.3.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit}
+      - id: apple-metal-qwen35-2b-4bit
+        label: Qwen3.5 2B 4-bit · 轻量多模态
+        description: 轻量聊天和图片理解模型，适合 8 GiB 及以上 Apple Silicon。
+        priority: 95
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        stack:
+          components:
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen35, service_key: ai2apps.qwen35, version: ">=0.1.1,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.qwen35/qwen3.5-2b-4bit}
+            - {id: verify, kind: verify, phase: verify, service_key: ai2apps.qwen35, capabilities: [conversation]}
+      - id: apple-metal-qwen35-08b-4bit
+        label: Qwen3.5 0.8B 4-bit · 超轻量多模态
+        description: 更小的聊天和图片理解模型，适合 8 GiB 设备快速启动。
+        priority: 94
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        stack:
+          components:
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen35, service_key: ai2apps.qwen35, version: ">=0.1.1,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.qwen35/qwen3.5-0.8b-4bit}
+            - {id: verify, kind: verify, phase: verify, service_key: ai2apps.qwen35, capabilities: [conversation]}
+      - id: apple-metal-qwen38-27b-nvfp4
+        label: Qwen3.8 27B NVFP4 · 多模态
+        description: 27B 多模态本地模型，支持聊天和图片理解；新模型，暂不作为默认推荐。
+        priority: 99
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 24}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen38, service_key: ai2apps.model.qwen38, version: ">=0.3.2,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen38/qwen3.8-27b-nvfp4}
+      - id: apple-metal-qwen38-flash-next-4bit
+        label: Qwen3.8 Flash Next 4-bit · 多模态 Cached-MoE
+        description: 支持聊天和图片理解的 Cached-MoE 模型；Lean 档约 41 GiB，至少需要 48 GiB 统一内存。
+        priority: 97
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 48}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.5,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen38-flash-next-4bit, service_key: ai2apps.model.qwen38-flash-next-4bit, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen38-flash-next-4bit/qwen3.8-flash-next-mlx-4bit}
+      - id: apple-metal-ornith15-35b-vision-4bit
+        label: Ornith 1.5 35B A3B 4-bit · 视觉
+        description: 支持聊天和图片理解的 Cached-MoE 模型；至少需要 32 GiB 统一内存。
+        priority: 98
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.6,<2.0.0"}
+          provider: {package_id: ai2apps/model-ornith15-35b-a3b-4bit-vision, service_key: ai2apps.model.ornith15-35b-a3b-4bit-vision, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision}
+      - id: apple-metal-glm53-flash-4bit-mtp
+        label: GLM-5.3 Flash 4-bit MTP · 多模态 Cached-MoE
+        description: 动态 Cached-MoE 多模态模型，Lean 档约 55 GiB；至少需要 64 GiB 统一内存。
+        priority: 96
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.5,<2.0.0"}
+          provider: {package_id: ai2apps/model-glm5-3-flash-4bit-mtp, service_key: ai2apps.model.glm5-3-flash-4bit-mtp, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp}
+  audio.speech_recognition:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VOICE SETUP
+      title: 配置语音识别
+      description: 需要下载并配置语音识别模型后才能使用麦克风输入。确认前不会下载或启动模型。
+      icon: mic
+      confirm_label: 同意并配置
+      ready_label: 语音识别已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装语音识别 Package
+        checkpoint: 下载语音识别模型
+        verify: 启动并验证语音识别
+    requirements:
+      operations: [speech_recognition]
+    profiles:
+      - id: apple-metal-qwen3-asr-06b-4bit
+        label: Qwen3 ASR 0.6B · 轻量语音识别
+        description: 4-bit 多语言识别，原生标点，适合 8 GiB 及以上设备。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        recommendation_memory_gib: {minimum: 8}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-asr-06b, service_key: ai2apps.model.qwen3-asr-0.6b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-asr-0.6b/4bit}
+      - id: apple-metal-sensevoice-small
+        label: SenseVoice Small · 多语言语音识别
+        description: 支持中英日韩粤语、时间戳和语言检测，并使用独立标点恢复模型。
+        priority: 90
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-sensevoice-small, service_key: ai2apps.model.sensevoice-small, version: ">=0.2.2,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.sensevoice-small/default}
+  audio.speech_generation:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VOICE SETUP
+      title: 配置语音合成
+      description: 需要下载并配置语音合成模型后才能朗读回复。确认前不会下载或启动模型。
+      icon: volume-2
+      confirm_label: 同意并配置
+      ready_label: 语音合成已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装语音合成 Package
+        checkpoint: 下载语音合成模型
+        verify: 启动并验证语音合成
+    requirements:
+      operations: [speech_generation]
+    profiles:
+      - id: apple-metal-qwen3-tts-17b-custom-voice
+        label: Qwen3 TTS 1.7B · 高质量
+        description: 更高质量的多语言 CustomVoice，适合 16 GiB 及以上设备。
+        priority: 110
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        recommendation_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/custom-voice-8bit}
+      - id: apple-metal-qwen3-tts-06b-custom-voice
+        label: Qwen3 TTS 0.6B · 轻量推荐
+        description: 多语言角色、语速、情绪与 Instructions，适合 8–16 GiB 设备。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        recommendation_memory_gib: {minimum: 8, maximum_exclusive: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-06b, service_key: ai2apps.model.qwen3-tts-0.6b, version: ">=0.2.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-0.6b/custom-voice-6bit}
+      - id: apple-metal-qwen3-tts-17b-base-5bit
+        label: Qwen3 TTS 1.7B Base 5-bit · 声音克隆
+        description: 使用参考音频进行声音克隆，适合 16 GiB 及以上设备。
+        priority: 95
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/base-5bit}
+      - id: apple-metal-qwen3-tts-17b-voice-design-5bit
+        label: Qwen3 TTS 1.7B VoiceDesign 5-bit · 声音设计
+        description: 根据文字指令设计声音并控制情绪，适合 16 GiB 及以上设备。
+        priority: 94
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/voice-design-5bit}
+      - id: apple-metal-cosyvoice3-05b-4bit
+        label: CosyVoice 3 0.5B 4-bit · 轻量声音克隆
+        description: 支持零样本声音克隆、情绪和指令控制，需要参考音频。
+        priority: 93
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.9,<2.0.0"}
+          provider: {package_id: ai2apps/model-cosyvoice3-05b, service_key: ai2apps.model.cosyvoice3-0.5b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.cosyvoice3-0.5b/4bit}
+      - id: apple-metal-cosyvoice3-05b-8bit
+        label: CosyVoice 3 0.5B 8-bit · 高质量声音克隆
+        description: 更高精度的零样本声音克隆、情绪和指令控制，需要参考音频。
+        priority: 92
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 12}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.9,<2.0.0"}
+          provider: {package_id: ai2apps/model-cosyvoice3-05b, service_key: ai2apps.model.cosyvoice3-0.5b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.cosyvoice3-0.5b/8bit}
+      - id: apple-metal-vibevoice-realtime-05b-4bit
+        label: VibeVoice Realtime 0.5B 4-bit · 英文长文本
+        description: 英文长文本单说话人合成，支持内置英文角色，适合 8 GiB 及以上设备。
+        priority: 91
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 8}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-vibevoice-05b, service_key: ai2apps.model.vibevoice-0.5b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.vibevoice-0.5b/realtime-4bit}
+      - id: apple-metal-fish-s2-pro-bf16
+        label: Fish Audio S2 Pro BF16 · 表达与多说话人
+        description: 支持声音克隆、情绪和多说话人；研究/非商业许可，商业用途需另行授权。
+        priority: 90
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.9,<2.0.0"}
+          provider: {package_id: ai2apps/model-fish-s2-pro, service_key: ai2apps.model.fish-s2-pro, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.fish-s2-pro/bf16}

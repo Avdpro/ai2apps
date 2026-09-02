@@ -1,9 +1,9 @@
 {
   "schema": "ai2apps.inference-runtime/v1",
   "service_id": "ai2apps.runtime.omlx",
-  "version": "1.3.7",
+  "version": "1.5.7",
   "protocol": "ai2apps-model-worker/v1",
-  "capabilities": ["mlx", "model-worker-v1", "cached-moe", "vlm", "nvfp4", "metal", "audio-stt", "audio-tts", "audio-processing", "text-punctuation", "onnx", "audio-codecs"],
+  "capabilities": ["mlx", "model-worker-v1", "cached-moe", "vlm", "nvfp4", "metal", "audio-stt", "audio-tts", "audio-processing", "text-punctuation", "onnx", "audio-codecs", "fish-s2", "cosyvoice3", "video-generation", "video-codecs", "image-generation", "image-edit", "flux2-klein", "z-image"],
   "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
   "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",
   "framework_site_packages": "Contents/Resources/Runtime/Python/framework-mlx-base/lib/python3.11/site-packages",

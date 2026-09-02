@@ -1,0 +1,88 @@
+{% extends app_base_template|default("base.html") %}
+
+{% block title %}{{ t('gallery.title') }} - AI2Apps{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}">{% endblock %}
+
+{% block content %}
+<div class="gallery-app" x-data="galleryApp()" x-init="init()" data-app-id="ai2apps.gallery" data-client-environment="{{ client_environment|default('browser') }}" data-gallery-surface="{{ request.query_params.get('surface', 'full') }}" data-preview-asset-id="{{ request.query_params.get('assetId', '') }}" data-preview-collection-id="{{ request.query_params.get('collectionId', '') }}" data-preview-kind="{{ request.query_params.get('kind', '') }}" data-preview-search="{{ request.query_params.get('search', '') }}">
+    <header class="gallery-header">
+        <div class="gallery-brand"><span class="gallery-mark"><i data-lucide="gallery-horizontal-end"></i></span><div><h1>{{ t('gallery.title') }}</h1><p>{{ t('gallery.subtitle') }}</p></div></div>
+        <div class="gallery-search"><i data-lucide="search"></i><input x-model="search" @input.debounce.250ms="loadAssets()" placeholder="{{ t('gallery.search.placeholder') }}"></div>
+        <label class="gallery-button primary"><i data-lucide="upload"></i><span>{{ t('gallery.action.import') }}</span><input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label>
+    </header>
+
+    <div x-show="notice" x-cloak class="gallery-notice" :class="noticeTone"><span x-text="notice"></span><button @click="notice=''" aria-label="{{ t('gallery.action.close') }}"><i data-lucide="x"></i></button></div>
+
+    <main class="gallery-shell" @dragover.prevent @drop.prevent="dropFiles($event)">
+        <aside class="gallery-sidebar">
+            <div class="gallery-side-head"><span>{{ t('gallery.library') }}</span><button @click="creatingCollection=!creatingCollection" title="{{ t('gallery.action.new_collection') }}"><i data-lucide="folder-plus"></i></button></div>
+            <form x-show="creatingCollection" x-cloak class="gallery-new-collection" @submit.prevent="createCollection()"><input x-model.trim="newCollectionName" maxlength="200" placeholder="{{ t('gallery.collection.name_placeholder') }}" autofocus><select x-model="newCollectionKind"><option value="custom">{{ t('gallery.collection.kind.custom') }}</option><option value="project">{{ t('gallery.collection.kind.project') }}</option></select><button :disabled="!newCollectionName||busy">{{ t('gallery.action.create') }}</button></form>
+            <nav class="gallery-collections">
+                <template x-for="collection in systemCollections" :key="collection.id"><button :class="selectedCollectionId===collection.id&&'active'" @click="selectCollection(collection)" @dragover.prevent @drop.prevent.stop="dropOnCollection($event,collection)"><i :data-lucide="collectionIcon(collection)"></i><span x-text="collectionName(collection)"></span><small x-text="collection.asset_count||''"></small></button></template>
+                <div x-show="userCollections.length" class="gallery-divider"><span>{{ t('gallery.collection.heading') }}</span></div>
+                <template x-for="collection in userCollections" :key="collection.id"><div class="gallery-collection-row" :class="selectedCollectionId===collection.id&&'active'" @dragover.prevent @drop.prevent.stop="dropOnCollection($event,collection)"><button class="gallery-collection-open" @click="selectCollection(collection)" :title="collectionName(collection)"><i :data-lucide="collection.kind==='project'?'briefcase-business':'folder'"></i><span x-text="collectionName(collection)"></span><small x-text="collection.asset_count||''"></small></button><button class="gallery-collection-delete" @click.stop="deleteCollection(collection)" :title="tr('gallery.action.delete_collection',{name:collectionName(collection)})" :aria-label="tr('gallery.action.delete_collection',{name:collectionName(collection)})"><i data-lucide="trash-2"></i></button></div></template>
+            </nav>
+            <div class="gallery-storage"><i data-lucide="hard-drive"></i><div><strong>{{ t('gallery.storage.local') }}</strong><small>{{ t('gallery.storage.detail') }}</small></div></div>
+        </aside>
+
+        <section class="gallery-content">
+            <div class="gallery-toolbar" :class="selectedIds.length&&'selection-mode'">
+                <div x-show="!selectedIds.length" class="gallery-toolbar-summary"><span class="gallery-eyebrow" x-text="tr(selectedCollection?.kind==='project'?'gallery.kicker.project':'gallery.kicker.collection')"></span><h2 x-text="selectedCollectionName"></h2><p x-text="tr('gallery.assets_count',{count:assets.length})"></p></div>
+                <div x-show="!selectedIds.length" class="gallery-toolbar-actions">
+                    <select x-model="kind" @change="loadAssets()" aria-label="{{ t('gallery.filter.kind') }}"><option value="">{{ t('gallery.filter.all') }}</option><option value="image">{{ t('gallery.kind.image') }}</option><option value="video">{{ t('gallery.kind.video') }}</option><option value="audio">{{ t('gallery.kind.audio') }}</option><option value="web">{{ t('gallery.kind.web') }}</option><option value="document">{{ t('gallery.kind.document') }}</option><option value="file">{{ t('gallery.kind.file') }}</option></select>
+                    <button :class="view==='grid'&&'active'" @click="view='grid'" title="{{ t('gallery.view.grid') }}"><i data-lucide="grid-2x2"></i></button><button :class="view==='list'&&'active'" @click="view='list'" title="{{ t('gallery.view.list') }}"><i data-lucide="list"></i></button>
+                </div>
+                <div x-show="selectedIds.length" x-cloak class="gallery-selection-bar gallery-toolbar-selection">
+                    <div class="gallery-selection-context"><span class="gallery-eyebrow">{{ t('gallery.kicker.selected') }}</span><h2 x-text="tr('gallery.selected_count',{count:selectedIds.length})"></h2><p x-text="selectedCollectionName"></p></div>
+                    <div class="gallery-selection-actions"><select class="gallery-operation-select" x-model="selectionOperation" @change="selectionOperationChanged()" aria-label="{{ t('gallery.operation') }}"><option value="copy">{{ t('gallery.action.copy') }}</option><option value="move" :disabled="!canMoveFromCurrent">{{ t('gallery.action.move') }}</option></select><select class="gallery-target-select" x-model="targetCollectionId" aria-label="{{ t('gallery.target_collection') }}"><option value="">{{ t('gallery.target_placeholder') }}</option><template x-for="collection in writableCollections" :key="collection.id"><option :value="collection.id" x-text="collectionName(collection)"></option></template></select><button class="gallery-transfer-button" @click="executeSelectedTransfer()" :disabled="busy||!targetCollectionId"><i :data-lucide="selectionOperation==='move'?'folder-input':'copy'"></i><span x-text="tr(selectionOperation==='move'?'gallery.action.move':'gallery.action.copy')"></span></button><button x-show="selectedCollection?.system_key!=='trash'" class="danger" @click="trashSelected()"><i data-lucide="trash-2"></i>{{ t('gallery.action.trash') }}</button><button x-show="selectedCollection?.system_key==='trash'" @click="restoreSelected()"><i data-lucide="undo-2"></i>{{ t('gallery.action.restore') }}</button><button x-show="selectedCollection?.system_key==='trash'" class="danger" @click="deleteSelected()"><i data-lucide="shield-alert"></i>{{ t('gallery.action.delete_permanently') }}</button><button class="icon" @click="selectedIds=[];targetCollectionId=''" title="{{ t('gallery.action.cancel_selection') }}"><i data-lucide="x"></i></button></div>
+                </div>
+            </div>
+
+            <div x-show="loading" class="gallery-loading"><i data-lucide="loader-circle"></i><span>{{ t('gallery.loading') }}</span></div>
+            <div x-show="!loading&&!assets.length" class="gallery-empty"><span><i data-lucide="images"></i></span><h3>{{ t('gallery.empty.title') }}</h3><p>{{ t('gallery.empty.body') }}</p><label class="gallery-button primary"><i data-lucide="upload"></i>{{ t('gallery.action.choose_files') }}<input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label></div>
+
+            <div x-show="!loading&&assets.length" class="gallery-assets" :class="view">
+                <template x-for="asset in assets" :key="asset.id"><article class="gallery-card" :class="selectedIds.includes(asset.id)&&'selected'" draggable="true" @dragstart="dragAsset($event,asset)" @dragover.prevent @drop.prevent.stop="dropBeforeAsset($event,asset)" @click="openPreview(asset)">
+                    <div class="gallery-preview" :class="asset.kind">
+                        <img x-show="asset.kind==='image'" :src="contentUrl(asset)" :alt="asset.name" loading="lazy">
+                        <video x-show="asset.kind==='video'" :src="contentUrl(asset)" muted preload="metadata"></video>
+                        <div x-show="!['image','video'].includes(asset.kind)" class="gallery-file-icon"><i :data-lucide="assetIcon(asset)"></i><span x-text="extension(asset.name)"></span></div>
+                        <button class="gallery-check" :aria-label="tr(selectedIds.includes(asset.id)?'gallery.action.cancel_selection':'gallery.action.select')" @click.stop="toggleAsset(asset,$event)"><i :data-lucide="selectedIds.includes(asset.id)?'check':'circle'"></i></button>
+                        <span class="gallery-kind" x-text="kindLabel(asset.kind)"></span>
+                    </div>
+                    <div class="gallery-card-info"><div><strong x-text="asset.name"></strong><small><span x-text="formatSize(asset.size_bytes)"></span> · <span x-text="formatTime(asset.created_at)"></span></small></div><a :href="contentUrl(asset,true)" download @click.stop title="{{ t('gallery.action.save_as') }}"><i data-lucide="download"></i></a></div>
+                </article></template>
+            </div>
+        </section>
+    </main>
+
+    <section x-show="previewAsset" x-cloak x-ref="previewDialog" tabindex="-1" class="gallery-preview-dialog" role="dialog" aria-modal="true" aria-label="{{ t('gallery.preview.aria') }}" @click.self="closePreview()">
+        <header class="gallery-preview-head">
+            <div class="gallery-preview-title">
+                <span class="gallery-preview-type" x-text="kindLabel(previewAsset?.kind)"></span>
+                <div x-show="!previewRenaming"><strong x-text="previewAsset?.name"></strong><button type="button" @click="beginPreviewRename()" title="{{ t('gallery.action.rename') }}"><i data-lucide="pencil"></i></button></div>
+                <form x-show="previewRenaming" @submit.prevent="savePreviewName()"><input x-ref="previewNameInput" x-model.trim="previewName" maxlength="512" aria-label="{{ t('gallery.preview.filename') }}"><button type="submit" :disabled="previewSavingName||!previewName"><i data-lucide="check"></i></button><button type="button" @click="previewRenaming=false"><i data-lucide="x"></i></button></form>
+                <small><span x-text="previewPosition"></span><span> · </span><span x-text="formatSize(previewAsset?.size_bytes)"></span></small>
+            </div>
+            <div class="gallery-preview-tools">
+                <template x-if="previewAsset?.kind==='image'"><div class="gallery-zoom-tools"><button type="button" @click="changePreviewZoom(-.25)" :disabled="previewZoom<=.25" title="{{ t('gallery.action.zoom_out') }}"><i data-lucide="zoom-out"></i></button><output x-text="Math.round(previewZoom*100)+'%'"></output><button type="button" @click="changePreviewZoom(.25)" :disabled="previewZoom>=6" title="{{ t('gallery.action.zoom_in') }}"><i data-lucide="zoom-in"></i></button><button type="button" @click="resetPreviewTransform()" title="{{ t('gallery.action.reset') }}"><i data-lucide="scan"></i></button></div></template>
+                <a :href="previewAsset?contentUrl(previewAsset,true):'#'" download @click="downloadAsset($event,previewAsset)" title="{{ t('gallery.action.save_as') }}"><i data-lucide="download"></i><span>{{ t('gallery.action.download') }}</span></a>
+                <button type="button" @click="closePreview()" title="{{ t('gallery.action.close') }}"><i data-lucide="x"></i></button>
+            </div>
+        </header>
+
+        <div class="gallery-preview-stage">
+            <button type="button" class="gallery-preview-nav previous" @click="movePreview(-1)" :disabled="!hasPreviousPreview" title="{{ t('gallery.action.previous') }}"><i data-lucide="chevron-left"></i></button>
+            <div class="gallery-preview-media" :class="previewAsset?.kind">
+                <template x-if="previewAsset?.kind==='image'"><img x-ref="previewImage" :src="contentUrl(previewAsset)" :alt="previewAsset.name" :style="previewImageTransform" draggable="false" @dblclick.prevent="togglePreviewZoom()" @wheel.prevent="wheelPreview($event)" @pointerdown="startPreviewPan($event)" @pointermove="movePreviewPan($event)" @pointerup="endPreviewPan($event)" @pointercancel="endPreviewPan($event)"></template>
+                <template x-if="previewAsset?.kind==='video'"><video x-ref="previewVideo" :src="contentUrl(previewAsset)" controls playsinline autoplay></video></template>
+                <template x-if="previewAsset?.kind==='audio'"><div class="gallery-audio-preview"><span><i data-lucide="audio-lines"></i></span><strong x-text="previewAsset.name"></strong><audio x-ref="previewAudio" :src="contentUrl(previewAsset)" controls autoplay></audio></div></template>
+                <template x-if="previewAsset&&!['image','video','audio'].includes(previewAsset.kind)"><div class="gallery-generic-preview"><span><i :data-lucide="assetIcon(previewAsset)"></i></span><strong x-text="previewAsset.name"></strong><p>{{ t('gallery.preview.unavailable') }}</p></div></template>
+            </div>
+            <button type="button" class="gallery-preview-nav next" @click="movePreview(1)" :disabled="!hasNextPreview" title="{{ t('gallery.action.next') }}"><i data-lucide="chevron-right"></i></button>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ static('js/gallery.js') }}"></script>{% endblock %}

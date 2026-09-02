@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import psutil
 from fastapi import HTTPException
 from fastapi.responses import Response, StreamingResponse
 
@@ -24,7 +25,19 @@ from ai2apps.model_worker.audio_capabilities import (
     default_audio_capabilities,
     validate_audio_capabilities,
 )
+from ai2apps.model_worker.image_capabilities import (
+    ImageCapabilitiesError,
+    default_image_capabilities,
+    validate_image_capabilities,
+)
+from ai2apps.model_worker.video_capabilities import (
+    VideoCapabilitiesError,
+    validate_video_capabilities,
+)
 from ai2apps.services import ServiceInstanceStatus, ServiceStatus
+from ai2apps.video_policy import is_temporarily_disabled_video_model
+from ai2apps.worker_resources import GIB, MIB, estimate_request_transient_bytes
+from ai2apps.worker_scheduler import SchedulerLease, WorkerJobScheduler, WorkloadClass
 
 MODEL_TYPES = frozenset(
     {
@@ -35,6 +48,7 @@ MODEL_TYPES = frozenset(
         "audio_tts",
         "audio_processing",
         "video_generation",
+        "embedding",
     }
 )
 
@@ -46,6 +60,7 @@ DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "audio_tts": ("speech_generation",),
     "audio_processing": ("audio_processing",),
     "video_generation": ("video_generation",),
+    "embedding": ("text_embeddings",),
 }
 
 DEFAULT_PATHS = {
@@ -57,6 +72,7 @@ DEFAULT_PATHS = {
     "audio_speech": "/v1/audio/speech",
     "audio_process": "/v1/audio/process",
     "video_generation": "/v1/videos/generations",
+    "embeddings": "/v1/embeddings",
 }
 
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$")
@@ -66,6 +82,7 @@ _HF_REPOSITORY = re.compile(
 )
 _IMMUTABLE_REVISION = re.compile(r"^[0-9a-fA-F]{40,64}$")
 _PREPARATION_RECIPE = re.compile(r"^[a-z][a-z0-9._/-]{0,127}$")
+_DISTRIBUTION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$")
 
 
 class ModelProviderContractError(ValueError):
@@ -80,6 +97,7 @@ def _validate_model_weights(value: Any, *, field: str) -> dict[str, Any] | None:
         "repo_id",
         "revision",
         "preparation",
+        "distribution_id",
     }:
         raise ModelProviderContractError(f"{field} is invalid")
     provider = value.get("provider")
@@ -106,12 +124,20 @@ def _validate_model_weights(value: Any, *, field: str) -> dict[str, Any] | None:
             f"{field}.preparation must contain JSON values"
         ) from exc
     normalized_preparation["recipe"] = recipe
-    return {
+    normalized = {
         "provider": provider,
         "repo_id": repo_id,
         "revision": revision.lower(),
         "preparation": normalized_preparation,
     }
+    distribution_id = value.get("distribution_id")
+    if distribution_id is not None:
+        if not isinstance(distribution_id, str) or not _DISTRIBUTION_ID.fullmatch(
+            distribution_id
+        ):
+            raise ModelProviderContractError(f"{field}.distribution_id is invalid")
+        normalized["distribution_id"] = distribution_id
+    return normalized
 
 
 def validate_package_models(
@@ -214,6 +240,26 @@ def validate_package_models(
                 raise ModelProviderContractError(
                     f"models[{index}].audio_capabilities is invalid: {exc}"
                 ) from exc
+        video_capabilities = None
+        if model_type == "video_generation":
+            try:
+                video_capabilities = validate_video_capabilities(
+                    raw.get("video_capabilities")
+                )
+            except VideoCapabilitiesError as exc:
+                raise ModelProviderContractError(
+                    f"models[{index}].video_capabilities is invalid: {exc}"
+                ) from exc
+        image_capabilities = None
+        if model_type == "image_generation":
+            try:
+                image_capabilities = validate_image_capabilities(
+                    raw.get("image_capabilities") or default_image_capabilities()
+                )
+            except ImageCapabilitiesError as exc:
+                raise ModelProviderContractError(
+                    f"models[{index}].image_capabilities is invalid: {exc}"
+                ) from exc
         normalized.append(
             {
                 "id": model_id,
@@ -225,6 +271,8 @@ def validate_package_models(
                 "context_window": context_window,
                 "weights": weights,
                 "audio_capabilities": audio_capabilities,
+                "video_capabilities": video_capabilities,
+                "image_capabilities": image_capabilities,
                 "metadata": raw.get("metadata", {}) if isinstance(raw.get("metadata", {}), dict) else {},
             }
         )
@@ -242,12 +290,16 @@ class PackageModel:
     context_window: int | None
     metadata: Mapping[str, Any]
     audio_capabilities: Mapping[str, Any] | None
+    video_capabilities: Mapping[str, Any] | None
+    image_capabilities: Mapping[str, Any] | None
     service_key: str
     provider_key: str
-    endpoint: str
+    endpoint: str | None
     checkpoint_ready: bool = True
     weights: Mapping[str, Any] | None = None
     internal_headers: Mapping[str, str] | None = None
+    scheduler: WorkerJobScheduler | None = None
+    runtime: Any | None = None
 
     def public_catalog_entry(self) -> dict[str, Any]:
         return {
@@ -281,7 +333,10 @@ class PackageModel:
             "package_service": self.service_key,
             "package_weights": dict(self.weights or {}),
             "checkpoint_ready": self.checkpoint_ready,
+            "worker_running": self.endpoint is not None,
             "audio_capabilities": dict(self.audio_capabilities or {}),
+            "video_capabilities": dict(self.video_capabilities or {}),
+            "image_capabilities": dict(self.image_capabilities or {}),
         }
 
 
@@ -296,13 +351,22 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
             instance = runtime.services.get_instance_for_service(service.id)
         except Exception:
             continue
-        if instance.status not in {
+        running = instance.status in {
             ServiceInstanceStatus.RUNNING,
             ServiceInstanceStatus.DEGRADED,
-        } or not instance.endpoint:
-            continue
+        } and bool(instance.endpoint)
         internal_headers: Mapping[str, str] | None = None
         package_manager = getattr(runtime, "package_manager", None)
+        if not running:
+            if instance.status is not ServiceInstanceStatus.STOPPED:
+                continue
+            package = (
+                package_manager.packages.active(service.service_key)
+                if package_manager is not None
+                else None
+            )
+            if package is None or package.protocol != "ai2apps-model-worker/v1":
+                continue
         if package_manager is not None:
             internal_headers = package_manager.supervisor.internal_headers(
                 service.service_key
@@ -310,6 +374,7 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
         checkpoint_rows, _roots = package_manager.supervisor._model_worker_checkpoints(
             service.config,
             package_manager.supervisor._huggingface_hub_cache(),
+            package_manager.supervisor.model_root,
         ) if package_manager is not None else ((), ())
         checkpoints = {row["model_id"]: row for row in checkpoint_rows}
         for raw in service.config.get("models", []):
@@ -329,14 +394,30 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
                         if isinstance(raw.get("audio_capabilities"), dict)
                         else None
                     ),
+                    video_capabilities=(
+                        dict(raw["video_capabilities"])
+                        if isinstance(raw.get("video_capabilities"), dict)
+                        else None
+                    ),
+                    image_capabilities=(
+                        dict(raw["image_capabilities"])
+                        if isinstance(raw.get("image_capabilities"), dict)
+                        else None
+                    ),
                     service_key=service.service_key,
                     provider_key=instance.provider_key,
-                    endpoint=instance.endpoint.rstrip("/"),
+                    endpoint=(
+                        instance.endpoint.rstrip("/")
+                        if running and instance.endpoint
+                        else None
+                    ),
                     checkpoint_ready=(
                         checkpoint is None or checkpoint.get("path") is not None
                     ),
                     weights=dict(raw.get("weights") or {}),
                     internal_headers=internal_headers,
+                    scheduler=getattr(runtime, "worker_scheduler", None),
+                    runtime=runtime,
                 )
             )
     return tuple(sorted(result, key=lambda item: item.id))
@@ -344,6 +425,141 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
 
 def resolve_package_model(runtime: Any | None, model_id: str) -> PackageModel | None:
     return next((model for model in list_package_models(runtime) if model.id == model_id), None)
+
+
+async def _ensure_package_model_ready(model: PackageModel) -> PackageModel:
+    if model.endpoint is not None:
+        return model
+    runtime = model.runtime
+    package_manager = getattr(runtime, "package_manager", None)
+    if package_manager is None:
+        raise HTTPException(status_code=503, detail="Model Worker is not running")
+    try:
+        await package_manager.start(model.service_key)
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": getattr(error, "code", "worker_start_failed"),
+                "message": str(error),
+            },
+        ) from error
+    resources = getattr(runtime, "worker_resources", None)
+    if resources is not None:
+        resources.mark_started(model.service_key)
+    refreshed = resolve_package_model(runtime, model.id)
+    if (
+        refreshed is None
+        or refreshed.endpoint is None
+    ):
+        raise HTTPException(status_code=503, detail="Model Worker did not become ready")
+    return refreshed
+
+
+async def ensure_package_model_ready(model: PackageModel) -> PackageModel:
+    """Start a dormant Package Model Worker and return its refreshed contract."""
+
+    return await _ensure_package_model_ready(model)
+
+
+def estimate_model_resident_bytes(
+    model_type: str, metadata: Mapping[str, Any] | None = None
+) -> int:
+    """Return a bounded Host-owned cold-start estimate for one model."""
+
+    value = (metadata or {}).get("estimated_resident_bytes")
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return min(value, 256 * GIB)
+    return {
+        "llm": 2 * GIB,
+        "vlm": 3 * GIB,
+        "image_generation": 2 * GIB,
+        "video_generation": 4 * GIB,
+        "audio_stt": 1 * GIB,
+        "audio_tts": 1 * GIB,
+        "audio_processing": 1 * GIB,
+        "embedding": 512 * MIB,
+    }.get(model_type, 2 * GIB)
+
+
+def estimate_service_models_resident_bytes(models: Any) -> int:
+    """Estimate a Service cold start using its largest declared model."""
+
+    if not isinstance(models, (list, tuple)):
+        return 512 * MIB
+    estimates = [
+        estimate_model_resident_bytes(
+            raw.get("model_type", raw.get("type", "")),
+            raw.get("metadata") if isinstance(raw.get("metadata"), dict) else None,
+        )
+        for raw in models
+        if isinstance(raw, dict)
+    ]
+    return max(estimates, default=512 * MIB)
+
+
+def recommended_model_configuration_id(
+    models: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    *,
+    total_memory_bytes: int | None = None,
+) -> str | None:
+    """Choose the highest-fidelity variant that is a practical device default.
+
+    Packages opt in through ``metadata.device_recommendation``.  Minimum memory
+    describes an expert-only lower bound; preferred memory is deliberately more
+    conservative and controls the automatic recommendation.
+    """
+
+    weighted = [
+        model
+        for model in models
+        if isinstance(model, dict)
+        and isinstance(model.get("id"), str)
+        and isinstance(model.get("weights"), dict)
+        and not is_temporarily_disabled_video_model(model)
+    ]
+    if not weighted:
+        return None
+    profiles: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for model in weighted:
+        metadata = model.get("metadata")
+        recommendation = (
+            metadata.get("device_recommendation")
+            if isinstance(metadata, dict)
+            else None
+        )
+        if isinstance(recommendation, dict):
+            profiles.append((model, recommendation))
+    if not profiles:
+        return weighted[0]["id"]
+
+    memory_gib = (
+        total_memory_bytes
+        if total_memory_bytes is not None
+        else int(psutil.virtual_memory().total)
+    ) / (1024**3)
+    preferred = [
+        item
+        for item in profiles
+        if memory_gib >= float(item[1].get("preferred_memory_gib", float("inf")))
+    ]
+    if preferred:
+        chosen = max(
+            preferred,
+            key=lambda item: (
+                float(item[1].get("quality_rank", 0)),
+                float(item[1].get("preferred_memory_gib", 0)),
+            ),
+        )
+    else:
+        chosen = min(
+            profiles,
+            key=lambda item: (
+                float(item[1].get("minimum_memory_gib", float("inf"))),
+                float(item[1].get("quality_rank", 0)),
+            ),
+        )
+    return chosen[0]["id"]
 
 
 def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, Any], ...]:
@@ -360,7 +576,7 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
     for package in repository.installed():
         if (
             getattr(package.status, "value", package.status) != "active"
-            or package.protocol != "ai2apps-model-worker/v1"
+            or not package.manifest.get("models")
         ):
             continue
         package_root = Path(package.store_path).resolve(strict=True)
@@ -413,9 +629,32 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
                                 "label": "HuggingFace",
                                 "repo_id": weights["repo_id"],
                                 "revision": weights["revision"],
+                                "mirrors": (
+                                    {
+                                        "provider": "modelscope",
+                                        "repo_id": metadata["modelscope"]["repo_id"],
+                                        "revision": metadata["modelscope"].get("revision", "master"),
+                                        "preferred": metadata["modelscope"].get("preferred", True) is True,
+                                        "allow_patterns": tuple(
+                                            item
+                                            for item in metadata["modelscope"].get("allow_patterns", ())
+                                            if isinstance(item, str) and item
+                                        ),
+                                    },
+                                ) if isinstance(metadata.get("modelscope"), dict) else (),
                             },
                         ),
+                        **(
+                            {"distribution_id": weights["distribution_id"]}
+                            if "distribution_id" in weights
+                            else {}
+                        ),
                         "memory_tiers": (),
+                        "device_recommendation": dict(
+                            metadata.get("device_recommendation")
+                            if isinstance(metadata.get("device_recommendation"), dict)
+                            else {}
+                        ),
                         "installed": checkpoint.get("path") is not None,
                     }
                 )
@@ -467,6 +706,11 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
                             "revision": weights["revision"],
                         },
                     ),
+                    **(
+                        {"distribution_id": weights["distribution_id"]}
+                        if "distribution_id" in weights
+                        else {}
+                    ),
                     "scope_name": preparation.get("scope_name", "general"),
                     "conversion": dict(preparation.get("conversion", {})),
                     "memory_tiers": tuple(preparation.get("memory_tiers", ())),
@@ -501,7 +745,22 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
     for recipe in recipes:
         if recipe.get("recipe") == "native":
             recipe["installed"] = dependencies_ready(recipe)
-    return tuple(recipes)
+    recommended_ids: set[str] = set()
+    for package in repository.installed():
+        models = package.manifest.get("models", [])
+        has_profiles = isinstance(models, list) and any(
+            isinstance(model, dict)
+            and isinstance(model.get("metadata"), dict)
+            and isinstance(model["metadata"].get("device_recommendation"), dict)
+            for model in models
+        )
+        if has_profiles and (
+            recommended := recommended_model_configuration_id(models)
+        ):
+            recommended_ids.add(recommended)
+    for recipe in recipes:
+        recipe["recommended"] = recipe["id"] in recommended_ids
+    return tuple(sorted(recipes, key=lambda item: (not item["recommended"], item["name"])))
 
 
 def _response_headers(response: httpx.Response) -> dict[str, str]:
@@ -519,37 +778,92 @@ async def proxy_package_json(
     model: PackageModel,
     operation: str,
     payload: Mapping[str, Any],
+    *,
+    workload_class: WorkloadClass = WorkloadClass.LOCAL_FOREGROUND,
+    request_id: str | None = None,
+    actor_id: str | None = None,
+    app_id: str | None = None,
+    session_id: str | None = None,
+    queue_timeout_seconds: float | None = None,
 ) -> Response:
+    if model.runtime is not None:
+        model = resolve_package_model(model.runtime, model.id) or model
     path = model.endpoints.get(operation)
     if not path:
         raise HTTPException(status_code=400, detail=f"Model does not support {operation}")
     body = dict(payload)
     body["model"] = model.upstream_id
+    lease: SchedulerLease | None = None
+    if model.scheduler is not None:
+        try:
+            lease = await model.scheduler.acquire(
+                model.service_key,
+                workload_class,
+                request_id=request_id or body.get("idempotencyKey"),
+                timeout_seconds=queue_timeout_seconds,
+                actor_id=actor_id,
+                app_id=app_id,
+                session_id=session_id,
+                estimated_resident_bytes=(
+                    estimate_model_resident_bytes(model.model_type, model.metadata)
+                    if model.endpoint is None
+                    else 0
+                ),
+                estimated_transient_bytes=estimate_request_transient_bytes(
+                    operation, body
+                ),
+            )
+        except TimeoutError as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "worker_resource_unavailable",
+                    "message": "Worker resources are temporarily unavailable",
+                },
+                headers={"Retry-After": "5"},
+            ) from error
     # Provider endpoints are platform-managed loopback addresses. Inheriting
     # HTTP_PROXY/HTTPS_PROXY can send these private calls to a system proxy,
     # producing synthetic 502/503 responses that never reach the Service.
-    client = httpx.AsyncClient(
-        timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
-    )
-    request = client.build_request(
-        "POST",
-        model.endpoint + path,
-        json=body,
-        headers=dict(model.internal_headers or {}),
-    )
+    client: httpx.AsyncClient | None = None
     try:
+        model = await _ensure_package_model_ready(model)
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
+        )
+        request = client.build_request(
+            "POST",
+            model.endpoint + path,
+            json=body,
+            headers=dict(model.internal_headers or {}),
+        )
         response = await client.send(request, stream=bool(body.get("stream")))
     except httpx.HTTPError as exc:
-        await client.aclose()
+        if client is not None:
+            await client.aclose()
+        if lease is not None:
+            await lease.release(failed=True)
         raise HTTPException(status_code=502, detail=f"Model provider request failed: {exc}") from exc
+    except BaseException:
+        if client is not None:
+            await client.aclose()
+        if lease is not None:
+            await lease.release(failed=True)
+        raise
     if body.get("stream"):
         async def chunks():
+            failed = response.status_code >= 400
             try:
                 async for chunk in response.aiter_bytes():
                     yield chunk
+            except BaseException:
+                failed = True
+                raise
             finally:
                 await response.aclose()
                 await client.aclose()
+                if lease is not None:
+                    await lease.release(failed=failed)
 
         return StreamingResponse(
             chunks(),
@@ -557,11 +871,20 @@ async def proxy_package_json(
             media_type=response.headers.get("content-type"),
             headers=_response_headers(response),
         )
-    content = await response.aread()
-    headers = _response_headers(response)
     status = response.status_code
+    try:
+        content = await response.aread()
+        headers = _response_headers(response)
+    except BaseException:
+        await response.aclose()
+        await client.aclose()
+        if lease is not None:
+            await lease.release(failed=True)
+        raise
     await response.aclose()
     await client.aclose()
+    if lease is not None:
+        await lease.release(failed=status >= 400)
     return Response(content=content, status_code=status, headers=headers)
 
 
@@ -571,36 +894,92 @@ async def proxy_package_multipart(
     *,
     data: Mapping[str, Any],
     files: Mapping[str, tuple[str, bytes, str]],
+    workload_class: WorkloadClass = WorkloadClass.LOCAL_FOREGROUND,
+    request_id: str | None = None,
+    actor_id: str | None = None,
+    app_id: str | None = None,
+    session_id: str | None = None,
+    queue_timeout_seconds: float | None = None,
 ) -> Response:
+    if model.runtime is not None:
+        model = resolve_package_model(model.runtime, model.id) or model
     path = model.endpoints.get(operation)
     if not path:
         raise HTTPException(status_code=400, detail=f"Model does not support {operation}")
     fields = {key: str(value) for key, value in data.items() if value is not None}
     fields["model"] = model.upstream_id
+    lease: SchedulerLease | None = None
+    if model.scheduler is not None:
+        try:
+            lease = await model.scheduler.acquire(
+                model.service_key,
+                workload_class,
+                request_id=request_id or fields.get("idempotencyKey"),
+                timeout_seconds=queue_timeout_seconds,
+                actor_id=actor_id,
+                app_id=app_id,
+                session_id=session_id,
+                estimated_resident_bytes=(
+                    estimate_model_resident_bytes(model.model_type, model.metadata)
+                    if model.endpoint is None
+                    else 0
+                ),
+                estimated_transient_bytes=estimate_request_transient_bytes(
+                    operation,
+                    fields,
+                    file_bytes=sum(len(value[1]) for value in files.values()),
+                ),
+            )
+        except TimeoutError as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "worker_resource_unavailable",
+                    "message": "Worker resources are temporarily unavailable",
+                },
+                headers={"Retry-After": "5"},
+            ) from error
     stream = fields.get("stream", "").lower() == "true"
-    client = httpx.AsyncClient(
-        timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
-    )
-    request = client.build_request(
-        "POST",
-        model.endpoint + path,
-        data=fields,
-        files=files,
-        headers=dict(model.internal_headers or {}),
-    )
+    client: httpx.AsyncClient | None = None
     try:
+        model = await _ensure_package_model_ready(model)
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(300.0, connect=15.0), trust_env=False
+        )
+        request = client.build_request(
+            "POST",
+            model.endpoint + path,
+            data=fields,
+            files=files,
+            headers=dict(model.internal_headers or {}),
+        )
         response = await client.send(request, stream=stream)
     except httpx.HTTPError as exc:
-        await client.aclose()
+        if client is not None:
+            await client.aclose()
+        if lease is not None:
+            await lease.release(failed=True)
         raise HTTPException(status_code=502, detail=f"Model provider request failed: {exc}") from exc
+    except BaseException:
+        if client is not None:
+            await client.aclose()
+        if lease is not None:
+            await lease.release(failed=True)
+        raise
     if stream:
         async def chunks():
+            failed = response.status_code >= 400
             try:
                 async for chunk in response.aiter_bytes():
                     yield chunk
+            except BaseException:
+                failed = True
+                raise
             finally:
                 await response.aclose()
                 await client.aclose()
+                if lease is not None:
+                    await lease.release(failed=failed)
 
         return StreamingResponse(
             chunks(),
@@ -608,11 +987,20 @@ async def proxy_package_multipart(
             media_type=response.headers.get("content-type"),
             headers=_response_headers(response),
         )
-    content = await response.aread()
     status = response.status_code
-    headers = _response_headers(response)
+    try:
+        content = await response.aread()
+        headers = _response_headers(response)
+    except BaseException:
+        await response.aclose()
+        await client.aclose()
+        if lease is not None:
+            await lease.release(failed=True)
+        raise
     await response.aclose()
     await client.aclose()
+    if lease is not None:
+        await lease.release(failed=status >= 400)
     return Response(
         content=content,
         status_code=status,

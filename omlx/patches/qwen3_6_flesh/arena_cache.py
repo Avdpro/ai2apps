@@ -13,6 +13,7 @@ from typing import Any
 
 import mlx.core as mx
 
+from omlx.cache.direct_l1 import direct_load_fused_experts, direct_l1_mode
 from omlx.cache.moe_expert_store import ExpertMajorStore
 
 
@@ -44,6 +45,10 @@ class Qwen36DecodeArena:
         self.bytes_loaded = 0
         self.load_seconds = 0.0
         self.patch_seconds = 0.0
+        self.direct_l1_mode = direct_l1_mode()
+        self.direct_load_calls = 0
+        self.direct_load_bytes = 0
+        self.direct_load_seconds = 0.0
 
     @staticmethod
     def prepare_switch_backing(switch: Any) -> None:
@@ -69,6 +74,7 @@ class Qwen36DecodeArena:
         store = self._stores.get(layer)
         if store is None:
             store = ExpertMajorStore(self.directory / f"layer-{layer:03d}.moe")
+            store.set_no_cache()
             self._stores[layer] = store
         return store
 
@@ -152,13 +158,26 @@ class Qwen36DecodeArena:
 
             store = self._store(layer)
             load_started = time.perf_counter()
-            records = self._read_records(store, missing)
-            self.load_seconds += time.perf_counter() - load_started
-            patch_started = time.perf_counter()
             if os.environ.get("OMLX_QWEN36_ARENA_SYNC_OVERWRITE", "0") == "1":
                 mx.synchronize()
-            self._patch_switch(switch, victim_slots, missing, records)
-            self.patch_seconds += time.perf_counter() - patch_started
+            direct_bytes = direct_load_fused_experts(
+                store,
+                switch,
+                victim_slots,
+                missing,
+                io_workers=self.io_workers,
+            )
+            elapsed = time.perf_counter() - load_started
+            if direct_bytes is None:
+                records = self._read_records(store, missing)
+                self.load_seconds += time.perf_counter() - load_started
+                patch_started = time.perf_counter()
+                self._patch_switch(switch, victim_slots, missing, records)
+                self.patch_seconds += time.perf_counter() - patch_started
+            else:
+                self.direct_load_calls += 1
+                self.direct_load_bytes += direct_bytes
+                self.direct_load_seconds += elapsed
 
             for slot, old, new in zip(
                 victim_slots, victims[: len(missing)], missing, strict=True
@@ -304,6 +323,10 @@ class Qwen36DecodeArena:
             "read_seconds": self.load_seconds,
             "patch_seconds": self.patch_seconds,
             "io_workers": self.io_workers,
+            "direct_l1_mode": self.direct_l1_mode,
+            "direct_load_calls": self.direct_load_calls,
+            "direct_load_bytes": self.direct_load_bytes,
+            "direct_load_seconds": self.direct_load_seconds,
         }
 
 

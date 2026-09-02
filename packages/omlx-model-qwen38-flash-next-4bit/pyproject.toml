@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omlx-model-qwen38-flash-next-4bit"
+version = "0.1.0"
+description = "Qwen3.8 Flash Next 4-bit isolated Cached-MoE VLM Worker Package"
+readme = "README.md"
+license = "Qwen-Community-1.0"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ai2apps>=0.1.0.dev2,<0.2", "mlx==0.32.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+omlx_model_qwen38_flash_next_4bit = ["assets/*.json"]

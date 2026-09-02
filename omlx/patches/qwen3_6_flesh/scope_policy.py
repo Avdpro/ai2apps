@@ -19,12 +19,13 @@ SCOPE_ENV = "OMLX_QWEN36_SCOPE_NAME"
 STORE_ENV = "OMLX_QWEN36_EXPERT_STORE"
 RESIDENT_ENV = "OMLX_QWEN36_RESIDENT_EXPERTS"
 
-# These are Qwen-specific working points found by the existing DMoE scope
-# sweep. They must not inherit DeepSeek's Top20/40/60 tiers.
+# Validated on the 40-layer/256-expert Ornith 1.5 Qwen3.6 layout.  Top160 is
+# the compact default-quality point; Top192 is the performance tier.  They
+# must not inherit DeepSeek's much smaller Top20/40/60 banks.
 MEMORY_TIER_EXPERTS = {
-    "lean": 80,
-    "compact": 96,
-    "optimal": 120,
+    "lean": 120,
+    "compact": 160,
+    "optimal": 192,
 }
 
 _policy_override: tuple[str, str, str, int, str, int] | None = None
@@ -182,7 +183,7 @@ def configure_qwen36_scope_policy(
     resident_experts: int,
     *,
     backend: str = "flesh",
-    arena_tail_slots: int = 24,
+    arena_tail_slots: int = 32,
 ) -> None:
     global _policy_disabled, _policy_override
     _policy_disabled = False
@@ -254,7 +255,7 @@ def load_qwen36_scope_policy() -> Qwen36ScopePolicy | None:
             raise ValueError(f"{RESIDENT_ENV} must be an integer") from exc
         resident_experts = _validate_resident_experts(resident_experts)
         backend = "flesh"
-        arena_tail_slots = 24
+        arena_tail_slots = 32
 
     profile_path = Path(raw_profile).expanduser().resolve()
     store_path = Path(raw_store).expanduser().resolve()

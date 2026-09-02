@@ -10,8 +10,13 @@
 <div class="agent-manager" x-data="agentManager()" x-init="init()" data-app-id="ai2apps.agents">
     <header class="agent-manager-header">
         <div class="agent-avatar"><i data-lucide="bot"></i></div>
-        <div><div class="agent-manager-title">Agent Manager</div><div class="text-[11px] text-neutral-500">Definitions, Runs, Packages and Patches</div></div>
+        <div><div class="agent-manager-title">Agents</div><div class="text-[11px] text-neutral-500">Build, connect and automate system-wide Agents</div></div>
         <nav class="agent-manager-tabs ml-auto">
+            <button class="agent-manager-tab" :class="tab==='studio'&&'active'" @click="tab='studio'; loadStudio()">Studio</button>
+            <button class="agent-manager-tab" :class="tab==='workflows'&&'active'" @click="tab='workflows'; loadWorkflows()">Workflows</button>
+            <button class="agent-manager-tab" :class="tab==='schedules'&&'active'" @click="tab='schedules'; loadSchedules()">Schedules</button>
+            <button class="agent-manager-tab" :class="tab==='discovery'&&'active'" @click="tab='discovery'; loadDiscovery()">Discovery</button>
+            <button class="agent-manager-tab" :class="tab==='health'&&'active'" @click="tab='health'; loadHealth()">Health</button>
             <button class="agent-manager-tab" :class="tab==='catalog'&&'active'" @click="tab='catalog'">Catalog</button>
             <button class="agent-manager-tab" :class="tab==='runs'&&'active'" @click="tab='runs'; loadRuns()">Runs</button>
             <button class="agent-manager-tab" :class="tab==='packages'&&'active'" @click="tab='packages'">Packages</button>
@@ -21,6 +26,105 @@
 
     <main class="agent-manager-body">
         <div x-show="error" x-cloak class="agent-alert" x-text="error"></div>
+
+        <section x-show="tab==='studio'" x-cloak>
+            <div class="agent-toolbar"><button class="agent-button primary" @click="createDraft()">New Site Agent</button><select class="agent-search !w-44" x-model="newDraftType"><option value="web">Web Agent</option><option value="knowledge">Knowledge Agent</option><option value="research">Research Agent</option><option value="coding">Coding Agent</option><option value="app">App Agent</option><option value="composite">Composite Agent</option></select><span class="text-xs text-neutral-500">A Web Site Agent contains multiple Capabilities. No implicit AI calls.</span></div>
+            <div class="agent-layout">
+                <div class="agent-panel"><template x-for="draft in drafts" :key="draft.id"><button class="agent-list-item" :class="selectedDraft?.id===draft.id&&'active'" @click="selectDraft(draft)"><span class="agent-avatar"><i data-lucide="wand-sparkles"></i></span><span class="min-w-0 flex-1"><span class="flex items-center gap-2"><span class="agent-name" x-text="draft.name"></span><span class="agent-badge" :class="draft.status" x-text="draft.status"></span></span><span class="agent-subtitle" x-text="draft.agent_type + ' · ' + (draft.site_scope||[]).join(', ')"></span></span></button></template><div x-show="!drafts.length" class="agent-empty">Create an Agent or send a task from Chat Mini-Entry.</div></div>
+                <div class="agent-panel" x-show="selectedDraft">
+                    <div class="agent-detail-head"><div class="min-w-0 flex-1"><input class="agent-editor-input" x-model="selectedDraft.name" aria-label="Agent name"><div class="text-xs text-neutral-500 mt-1" x-text="(selectedDraft.site_key || 'unscoped') + ' · ' + selectedDraft.id + ' · revision ' + selectedDraft.revision"></div></div><button class="agent-button" @click="saveDraft()">Save</button><button class="agent-button primary" :disabled="selectedDraft.agent_type!=='web'" @click="compileDraft()">Compile</button><button class="agent-button danger" @click="archiveDraft()">Archive</button></div>
+                    <div class="agent-detail-content">
+                        <label class="agent-editor-label">Description<textarea x-model="selectedDraft.description" rows="2"></textarea></label>
+                        <label class="agent-editor-label">Site scope<input x-model="draftScopeText" placeholder="https://example.com/**"></label>
+                        <div class="agent-section"><div class="agent-section-title flex items-center">Capabilities <button class="agent-button ml-auto" @click="addCapability()">+ Add Capability</button></div><template x-for="capability in draftCapabilities()" :key="capability.id"><div class="agent-package flex items-center gap-2"><div class="min-w-0 flex-1"><strong x-text="capability.title || capability.name || capability.id"></strong><div class="agent-run-id" x-text="capability.id + ' · ' + (capability.steps||[]).length + ' steps' + (capability.enabled===false ? ' · disabled' : '')"></div></div><button class="agent-button danger" @click="removeCapability(capability.id)">Remove</button></div></template><div x-show="!draftCapabilities().length" class="text-xs text-neutral-500">No Capabilities in this Site Agent.</div></div>
+                        <label class="agent-editor-label">Site Agent Source<textarea class="agent-source-editor" x-model="draftSourceText" spellcheck="false"></textarea></label>
+                        <div class="agent-section"><div class="agent-section-title">Package export</div><div class="flex flex-wrap gap-2"><input class="agent-search" x-model="exportPackageId" placeholder="publisher/site-agent"><input class="agent-search !w-28" x-model="exportVersion" placeholder="1.0.0"><input class="agent-search" x-model="exportPublisher" placeholder="Publisher ID"><button class="agent-button" @click="exportPackageSource()">Build unsigned candidate</button></div><div class="text-xs text-neutral-500 mt-2">Creates a Contract v1 .ai2agent candidate. Signing and publishing continue through the standard release scripts.</div></div>
+                        <div class="agent-section"><div class="agent-section-title">Compile report and generations</div><template x-for="generation in generations" :key="generation.id"><div class="agent-package"><div class="flex items-center gap-2"><span class="agent-badge" :class="generation.status" x-text="generation.status"></span><span class="agent-run-id" x-text="generation.id"></span><button class="agent-button ml-auto" x-show="generation.id!==selectedDraft.active_generation_id && generation.status!=='failed'" @click="activateGeneration(generation)">Activate / Roll back</button></div><div class="text-xs text-neutral-500 mt-2" x-text="(generation.report?.errors||[]).length + ' errors · ' + (generation.report?.fixture_results||[]).length + ' fixtures · ' + (generation.report?.validator_results||[]).length + ' validators'"></div></div></template><div x-show="!generations.length" class="text-xs text-neutral-500">Compile to create an immutable local generation.</div></div>
+                    </div>
+                </div>
+                <div class="agent-panel agent-empty" x-show="!selectedDraft">Select an Agent to edit its source.</div>
+            </div>
+        </section>
+
+        <section x-show="tab==='discovery'" x-cloak>
+            <div class="agent-toolbar">
+                <input class="agent-search flex-1" x-model="discoveryUrl" placeholder="https://example.com/path">
+                <input class="agent-search" x-model="discoveryCapability" placeholder="web.article_feed">
+                <input class="agent-search" x-model="discoveryOutputSchema" placeholder="ArticleList/v1">
+                <button class="agent-button primary" @click="loadDiscovery()">Find Site Agents</button>
+                <span class="text-xs text-neutral-500">Exact origin/path/capability/schema lookup; no implicit AI.</span>
+            </div>
+            <div class="agent-layout">
+                <div class="agent-panel">
+                    <div class="agent-section-title p-3">Installed versions</div>
+                    <template x-for="pkg in installedSitePackages" :key="pkg.digest">
+                        <div class="agent-package m-3">
+                            <div class="flex items-center gap-2">
+                                <strong x-text="pkg.package_key"></strong>
+                                <span class="agent-badge" x-text="'v'+pkg.version"></span>
+                                <span class="agent-badge" :class="pkg.binding?.status" x-text="pkg.binding?.status || 'not compiled'"></span>
+                                <button class="agent-button primary ml-auto" x-show="!pkg.binding" @click="provisionPackage(pkg)">Review &amp; compile</button>
+                                <button class="agent-button primary ml-auto" x-show="pkg.binding?.status==='installed'" @click="activateSitePackage(pkg)">Activate candidate</button>
+                                <button class="agent-button ml-auto" x-show="pkg.binding" @click="openLifecycle(pkg)">Manage</button>
+                            </div>
+                            <div class="text-xs text-neutral-500 mt-2" x-text="pkg.site_key+' · '+(pkg.capabilities||[]).join(', ')"></div>
+                            <div class="text-xs text-neutral-500 mt-1" x-text="'Permissions: '+(pkg.permissions||[]).join(', ')"></div>
+                            <div class="text-xs text-neutral-500 mt-1">Publisher Hint is untrusted and will not execute.</div>
+                        </div>
+                    </template>
+                    <div x-show="!installedSitePackages.length" class="agent-empty">No installed Site Agent Package matches.</div>
+                </div>
+                <div class="agent-panel">
+                    <div class="agent-section-title p-3">AI2Apps Discovery</div>
+                    <template x-for="pkg in registrySitePackages" :key="registryPackageId(pkg)">
+                        <div class="agent-package m-3">
+                            <div class="flex items-center gap-2">
+                                <strong x-text="pkg.displayName||registryPackageId(pkg)"></strong>
+                                <span class="agent-badge" x-text="pkg.version ? 'v'+pkg.version : 'Registry'"></span>
+                                <button class="agent-button primary ml-auto" :disabled="working" @click="installRegistryPackage(pkg)">Review &amp; install</button>
+                            </div>
+                            <div class="text-xs text-neutral-500 mt-2" x-text="pkg.description||''"></div>
+                            <div class="text-xs text-neutral-500 mt-1" x-text="'Permissions: '+registryPermissions(pkg).join(', ')"></div>
+                            <div class="text-xs text-neutral-500 mt-1">Artifact signature and audit are verified before local Source compilation.</div>
+                        </div>
+                    </template>
+                    <div x-show="!registrySitePackages.length" class="agent-empty">No compatible Registry result.</div>
+                </div>
+            </div>
+            <div class="agent-panel mt-4" x-show="selectedLifecycle">
+                <div class="agent-detail-head">
+                    <div class="min-w-0 flex-1"><strong x-text="selectedLifecycle?.package_key"></strong><div class="text-xs text-neutral-500 mt-1" x-text="'Active v'+(selectedLifecycle?.active_binding?.package_version||'—')"></div></div>
+                    <button class="agent-button" :class="selectedLifecycle?.update_policy==='manual'&&'primary'" @click="setLifecyclePolicy('manual')">Manual updates</button>
+                    <button class="agent-button" :class="selectedLifecycle?.update_policy==='pinned'&&'primary'" @click="setLifecyclePolicy('pinned')" x-text="selectedLifecycle?.update_policy==='pinned' ? 'Pinned v'+selectedLifecycle?.pinned_version : 'Pin active version'"></button>
+                    <button class="agent-button" @click="selectedLifecycle=null">Close</button>
+                </div>
+                <div class="agent-detail-content">
+                    <div class="agent-section-title">Installed and retained versions</div>
+                    <template x-for="version in (selectedLifecycle?.versions||[])" :key="version.digest">
+                        <div class="agent-package">
+                            <div class="flex items-center gap-2"><strong x-text="'v'+version.version"></strong><span class="agent-badge" :class="version.binding?.status||version.package_status" x-text="version.binding?.status||version.package_status"></span><span class="agent-run-id" x-text="version.digest"></span><button class="agent-button ml-auto" x-show="version.binding?.status==='installed'" @click="activateSitePackage(version)">Activate</button><button class="agent-button" x-show="version.binding?.status==='retained'" @click="rollbackSitePackage(version)">Roll back</button></div>
+                        </div>
+                    </template>
+                    <div class="agent-section-title mt-4">Lifecycle audit</div>
+                    <template x-for="event in (selectedLifecycle?.events||[])" :key="event.id"><div class="agent-run"><div><strong x-text="event.action"></strong><div class="agent-run-id" x-text="event.to_digest||event.from_digest||'—'"></div></div><span class="text-neutral-500" x-text="event.details?.version||event.details?.update_policy||''"></span><span class="text-neutral-500" x-text="formatTime(event.created_at)"></span><span></span></div></template>
+                </div>
+            </div>
+        </section>
+
+        <section x-show="tab==='health'" x-cloak>
+            <div class="agent-toolbar"><button class="agent-button" @click="loadHealth()">Refresh health</button><span class="text-xs text-neutral-500">Three structural failures open a one-hour circuit. Repairs create a candidate generation and never overwrite the active version.</span></div>
+            <div class="agent-panel"><template x-for="item in healthItems" :key="item.id"><div class="agent-run"><div><strong x-text="item.capability_name"></strong><div class="agent-run-id" x-text="item.draft_id"></div></div><span class="agent-badge" :class="item.status" x-text="item.status"></span><span class="text-neutral-500" x-text="item.success_count+' success · '+item.failure_count+' failed'"></span><span class="flex gap-1 justify-end"><button class="agent-button" x-show="['suspect','drifted','failed'].includes(item.status)" @click="repairFromCurrentSource(item)">Create repair candidate</button></span></div></template><div x-show="!healthItems.length" class="agent-empty">Health appears after the first terminal capability run.</div></div>
+        </section>
+
+        <section x-show="tab==='workflows'" x-cloak>
+            <div class="agent-toolbar"><input class="agent-search" x-model="workflowName" placeholder="Workflow name"><button class="agent-button primary" @click="createWorkflow()">Create from selected Agents</button><span class="text-xs text-neutral-500">Select active Web Agents below in execution order.</span></div>
+            <div class="agent-layout"><div class="agent-panel"><template x-for="draft in drafts.filter(item=>item.active_generation_id)" :key="draft.id"><label class="agent-list-item"><input type="checkbox" :value="draft.id" x-model="workflowDraftIds"><span><span class="agent-name" x-text="draft.name"></span><span class="agent-subtitle" x-text="draft.agent_type"></span></span></label></template></div><div class="agent-panel"><template x-for="workflow in workflows" :key="workflow.id"><div class="agent-package m-3"><div class="flex items-center gap-2"><strong x-text="workflow.name"></strong><span class="agent-badge" x-text="workflow.status"></span><button class="agent-button ml-auto" @click="runWorkflow(workflow)">Run once</button></div><div class="text-xs text-neutral-500 mt-2" x-text="(workflow.definition?.steps||[]).length + ' Agents · revision ' + workflow.revision"></div></div></template><div x-show="!workflows.length" class="agent-empty">No Workflows yet.</div></div></div>
+        </section>
+
+        <section x-show="tab==='schedules'" x-cloak>
+            <div class="agent-schedule-form"><input class="agent-search" x-model="scheduleName" placeholder="Schedule name"><select class="agent-search" x-model="scheduleTarget"><option value="">Select Agent or Workflow</option><optgroup label="Agents"><template x-for="draft in drafts.filter(item=>item.active_generation_id)" :key="draft.id"><option :value="'draft:'+draft.id" x-text="draft.name"></option></template></optgroup><optgroup label="Workflows"><template x-for="workflow in workflows" :key="workflow.id"><option :value="'workflow:'+workflow.id" x-text="workflow.name"></option></template></optgroup></select><select class="agent-search !w-40" x-model="scheduleKind"><option value="interval">Interval</option><option value="once">Once</option></select><input x-show="scheduleKind==='interval'" class="agent-search !w-40" type="number" min="60" x-model.number="scheduleInterval" placeholder="Seconds"><input x-show="scheduleKind==='once'" class="agent-search" type="datetime-local" x-model="scheduleRunAt"><select class="agent-search" x-model="scheduleBucket"><option value="">Do not auto-save</option><template x-for="bucket in knowledgeBuckets" :key="bucket.id"><option :value="bucket.id" x-text="'Knowledge: '+bucket.name"></option></template></select><button class="agent-button primary" @click="createSchedule()">Create Schedule</button></div>
+            <div class="agent-panel"><template x-for="schedule in schedules" :key="schedule.id"><div class="agent-run"><div><strong x-text="schedule.name"></strong><div class="agent-run-id" x-text="schedule.id"></div></div><span><span class="agent-badge" :class="schedule.status" x-text="schedule.status"></span></span><span class="text-neutral-500" x-text="schedule.next_run_at ? formatTime(schedule.next_run_at) : '—'"></span><span class="flex gap-1 justify-end"><button class="agent-button" @click="runSchedule(schedule)">Run</button><button class="agent-button" x-show="schedule.status==='enabled'" @click="scheduleAction(schedule,'pause')">Pause</button><button class="agent-button" x-show="schedule.status==='paused'" @click="scheduleAction(schedule,'resume')">Resume</button></span></div></template><div x-show="!schedules.length" class="agent-empty">No Schedules yet.</div></div>
+        </section>
 
         <section x-show="tab==='catalog'" x-cloak>
             <div class="agent-toolbar">

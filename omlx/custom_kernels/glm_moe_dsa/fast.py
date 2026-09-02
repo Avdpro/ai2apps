@@ -88,6 +88,7 @@ NATIVE_SYMBOLS = (
     "deepseek_mxfp4_gather_qmm_expert",
     "deepseek_affine_gather_qmm_blocks",
     "deepseek_affine_gather_qmm_pair_concat_blocks",
+    "preadv_fused_experts",
 )
 
 
@@ -111,6 +112,19 @@ def native_symbols() -> tuple[str, ...]:
 
 def missing_symbols(required: tuple[str, ...]) -> list[str]:
     return [name for name in required if not has_symbol(name)]
+
+
+def preadv_fused_experts(*args, **kwargs) -> int:
+    """Read fused expert records directly into evaluated MLX L1 slots."""
+
+    if _ext is None or not hasattr(_ext, "preadv_fused_experts"):
+        raise RuntimeError("native fused expert loader is unavailable")
+    return int(_ext.preadv_fused_experts(*args, **kwargs))
+
+
+# The native primitive is record-layout agnostic: its historical GLM name is
+# retained for ABI compatibility while DSV4F uses this descriptive alias.
+preadv_expert_segments = preadv_fused_experts
 
 
 def _native_stream_kwargs(stream) -> dict[str, object]:

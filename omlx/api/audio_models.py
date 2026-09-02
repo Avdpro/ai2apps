@@ -36,6 +36,7 @@ class AudioSpeechRequest(BaseModel):
     voice: Optional[str] = None
     language: Optional[str] = None
     instructions: Optional[str] = None
+    style: Optional[dict[str, Any]] = None
     speed: Optional[float] = 1.0
     response_format: Optional[str] = "wav"
     ref_audio: Optional[str] = None

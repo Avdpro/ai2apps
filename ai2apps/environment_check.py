@@ -34,6 +34,14 @@ _COMPONENTS: tuple[tuple[str, str, str, bool], ...] = (
     ("modelscope", "modelscope", "1.10.0", False),
 )
 
+_CONTROL_PLANE_COMPONENTS: tuple[tuple[str, str, str, bool], ...] = (
+    ("huggingface_hub", "huggingface-hub", "1.19.0", True),
+    ("fastapi", "fastapi", "0.108.0", True),
+    ("uvicorn", "uvicorn", "0.23.0", True),
+    ("psutil", "psutil", "5.9.0", True),
+    ("modelscope", "modelscope", "1.10.0", False),
+)
+
 
 def _sysctl(name: str) -> str | None:
     if sys.platform != "darwin":
@@ -143,6 +151,72 @@ def _metal_check() -> dict[str, Any]:
     }
 
 
+def _nvidia_check() -> dict[str, Any]:
+    """Probe the NVIDIA driver without importing a CUDA Python framework."""
+
+    executable = shutil.which("nvidia-smi")
+    if executable is None:
+        return {
+            "status": "fail",
+            "kind": "cuda",
+            "available": False,
+            "message": "nvidia-smi is not installed or is not on PATH",
+        }
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                "--query-gpu=name,driver_version,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "fail",
+            "kind": "cuda",
+            "available": False,
+            "message": "nvidia-smi probe timed out",
+        }
+    except OSError as error:
+        return {
+            "status": "fail",
+            "kind": "cuda",
+            "available": False,
+            "message": str(error)[:240],
+        }
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        return {
+            "status": "fail",
+            "kind": "cuda",
+            "available": False,
+            "message": detail[-1][:240] if detail else "NVIDIA driver probe failed",
+        }
+    first = next((line for line in result.stdout.splitlines() if line.strip()), "")
+    fields = [field.strip() for field in first.split(",")]
+    name = fields[0] if fields else "NVIDIA GPU"
+    driver = fields[1] if len(fields) > 1 else None
+    memory_mib: float | None = None
+    if len(fields) > 2:
+        with suppress(ValueError):
+            memory_mib = float(fields[2])
+    is_gb10 = "GB10" in name.upper()
+    return {
+        "status": "pass",
+        "kind": "cuda",
+        "available": True,
+        "name": name,
+        "driver_version": driver,
+        "device_memory_bytes": int(memory_mib * 1024**2) if memory_mib else None,
+        "memory_model": "unified" if is_gb10 else "device-local",
+        "message": f"{name}，驱动 {driver or 'unknown'}。",
+    }
+
+
 def _model_recommendation(total_memory: int, free_disk: int) -> dict[str, Any]:
     memory_gib = total_memory / GIB
     if memory_gib < 16:
@@ -206,6 +280,16 @@ def collect_environment_report(
     components = [_package_check(*item) for item in _COMPONENTS]
     machine = platform.machine().lower()
     is_apple_silicon = sys.platform == "darwin" and machine in {"arm64", "aarch64"}
+    is_linux = sys.platform.startswith("linux")
+    nvidia = _nvidia_check() if is_linux else {
+        "status": "skipped",
+        "kind": None,
+        "available": False,
+        "message": "NVIDIA probe is only used on Linux",
+    }
+    is_nvidia_linux = is_linux and bool(nvidia.get("available"))
+    if is_nvidia_linux:
+        components = [_package_check(*item) for item in _CONTROL_PLANE_COMPONENTS]
     python_supported = (3, 11) <= sys.version_info[:2] < (3, 14)
     logical_cores = psutil.cpu_count(logical=True) or 1
     try:
@@ -220,14 +304,22 @@ def collect_environment_report(
     def add(check_id: str, status: str, title: str, detail: str) -> None:
         checks.append({"id": check_id, "status": status, "title": title, "detail": detail})
 
-    add(
-        "platform",
-        "pass" if is_apple_silicon else "fail",
-        "Apple Silicon 与 Metal",
-        "已检测到 Apple Silicon，共享内存可供 Metal 使用。"
-        if is_apple_silicon
-        else "本地 oMLX 推理需要支持 Metal 的 Apple Silicon Mac。",
-    )
+    if is_nvidia_linux:
+        add(
+            "platform",
+            "pass",
+            "NVIDIA CUDA 主机",
+            f"已检测到 {nvidia.get('name', 'NVIDIA GPU')}；模型由托管 CUDA Runtime Service 运行。",
+        )
+    else:
+        add(
+            "platform",
+            "pass" if is_apple_silicon else "fail",
+            "Apple Silicon 与 Metal",
+            "已检测到 Apple Silicon，共享内存可供 Metal 使用。"
+            if is_apple_silicon
+            else "未检测到受支持的 Apple Silicon/Metal 或 Linux/NVIDIA CUDA 主机。",
+        )
     add(
         "python",
         "pass" if python_supported else "fail",
@@ -277,8 +369,12 @@ def collect_environment_report(
     )
     if check_network:
         add("huggingface_network", network["status"], "Hugging Face 网络", network["message"])
-        metal = _metal_check()
-        add("metal_runtime", metal["status"], "Metal / MLX 运行时", metal["message"])
+        if is_nvidia_linux:
+            metal = {"status": "skipped", "message": "CUDA 主机不使用 Metal/MLX"}
+            add("cuda_runtime", nvidia["status"], "NVIDIA CUDA 运行时", nvidia["message"])
+        else:
+            metal = _metal_check()
+            add("metal_runtime", metal["status"], "Metal / MLX 运行时", metal["message"])
     else:
         metal = {"status": "skipped", "message": "深度检查时执行隔离的 MLX 分配探针"}
 
@@ -331,6 +427,7 @@ def collect_environment_report(
             "cpu_load_capacity_percent": load_percent,
             "apple_silicon": is_apple_silicon,
             "metal_memory_is_unified": is_apple_silicon,
+            "nvidia_cuda": is_nvidia_linux,
         },
         "memory": {
             "total_bytes": memory.total,
@@ -351,6 +448,13 @@ def collect_environment_report(
             "network": network,
         },
         "components": components,
+        "accelerator": nvidia if is_linux else {
+            "status": "pass" if is_apple_silicon else "fail",
+            "kind": "metal" if is_apple_silicon else None,
+            "available": is_apple_silicon,
+            "name": _sysctl("machdep.cpu.brand_string") if is_apple_silicon else None,
+            "memory_model": "unified" if is_apple_silicon else None,
+        },
         "metal": metal,
         "checks": checks,
         "recommendation": recommendation,

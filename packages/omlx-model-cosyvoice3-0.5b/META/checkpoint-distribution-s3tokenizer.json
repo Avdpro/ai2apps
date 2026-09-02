@@ -1,0 +1,21 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_s3tokenizer_v3_b143914b_v1",
+  "modelId": "ai2apps.model.cosyvoice3-0.5b/s3tokenizer-v3",
+  "repoId": "mlx-community/S3TokenizerV3",
+  "revision": "b143914b3e912278104824da706edc9c2d317c4e",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0", "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms", "accessPolicy": "public", "redistributionPolicy": "allowed"
+  },
+  "includePatterns": ["config.json", "model.safetensors"],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "mlx-community/S3TokenizerV3", "revision": "b143914b3e912278104824da706edc9c2d317c4e", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "mlx-community/S3TokenizerV3", "revision": "fb5d56cf1274f5f491f63ab322393897a3705ae2", "access": "public_anonymous"}
+  ]
+}

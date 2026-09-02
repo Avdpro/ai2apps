@@ -1,0 +1,44 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen3_asr_0_6b_4bit_313d8501_v1",
+  "modelId": "ai2apps.model.qwen3-asr-0.6b/4bit",
+  "repoId": "mlx-community/Qwen3-ASR-0.6B-4bit",
+  "revision": "313d850181767edf09f00a9c289becca70e58cd0",
+  "format": "safetensors",
+  "quantization": "4bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "chat_template.json",
+    "config.json",
+    "generation_config.json",
+    "merges.txt",
+    "model.safetensors",
+    "model.safetensors.index.json",
+    "preprocessor_config.json",
+    "tokenizer_config.json",
+    "vocab.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/Qwen3-ASR-0.6B-4bit",
+      "revision": "313d850181767edf09f00a9c289becca70e58cd0",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/Qwen3-ASR-0.6B-4bit",
+      "revision": "70ccd0ba0c24b0c78efc313ce81c1c78c64a3dd7",
+      "access": "public_anonymous"
+    }
+  ]
+}

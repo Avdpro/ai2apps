@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 _TOKEN = re.compile(r"^[0-9a-f]{64}$")
+_BROWSER_PROFILE_KEY = re.compile(r"^(?:default|[0-9a-f]{32})$")
 _MAX_MESSAGE_BYTES = 64 * 1024
 
 
@@ -68,8 +69,10 @@ class HelperControlClient:
         *,
         actor_user_id: str,
         initial_url: str | None = None,
+        profile_key: str = "default",
     ) -> dict[str, Any]:
         self._validate_actor_user_id(actor_user_id)
+        self._validate_browser_profile_key(profile_key)
         if initial_url is not None:
             parsed = urlparse(initial_url)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -82,6 +85,7 @@ class HelperControlClient:
             "token": self.token,
             "operation": "browser.launch",
             "actor_user_id": actor_user_id,
+            "browser_profile_key": profile_key,
         }
         if initial_url is not None:
             request["initial_url"] = initial_url
@@ -96,14 +100,18 @@ class HelperControlClient:
         self._validate_browser_agent_result(result)
         return result
 
-    def release_browser_agent(self, *, actor_user_id: str) -> dict[str, Any]:
+    def release_browser_agent(
+        self, *, actor_user_id: str, profile_key: str = "default"
+    ) -> dict[str, Any]:
         self._validate_actor_user_id(actor_user_id)
+        self._validate_browser_profile_key(profile_key)
         request: dict[str, Any] = {
             "version": 1,
             "request_id": str(uuid.uuid4()),
             "token": self.token,
             "operation": "browser.release",
             "actor_user_id": actor_user_id,
+            "browser_profile_key": profile_key,
         }
         response = self._exchange(request)
         if response.get("request_id") != request["request_id"]:
@@ -114,6 +122,34 @@ class HelperControlClient:
         if not isinstance(result, dict):
             raise HelperControlError("Helper response result is invalid")
         self._validate_browser_release_result(result)
+        return result
+
+    def delete_browser_profile(
+        self, *, actor_user_id: str, profile_key: str
+    ) -> dict[str, Any]:
+        self._validate_actor_user_id(actor_user_id)
+        self._validate_browser_profile_key(profile_key)
+        if profile_key == "default":
+            raise HelperControlError("The default browser Profile cannot be deleted")
+        request = {
+            "version": 1,
+            "request_id": str(uuid.uuid4()),
+            "token": self.token,
+            "operation": "browser.delete",
+            "actor_user_id": actor_user_id,
+            "browser_profile_key": profile_key,
+        }
+        response = self._exchange(request)
+        if response.get("request_id") != request["request_id"]:
+            raise HelperControlError("Helper response request_id mismatch")
+        if response.get("ok") is not True:
+            raise HelperControlError(str(response.get("error") or "Helper rejected request"))
+        result = response.get("result")
+        if not isinstance(result, dict) or result.get("status") != "deleted":
+            raise HelperControlError("Helper browser Profile delete status is invalid")
+        self._validate_result_profile_id(result)
+        if result.get("automation") is not None:
+            raise HelperControlError("Helper browser Profile delete leaked automation data")
         return result
 
     def restart_local(self, *, actor_user_id: str) -> dict[str, Any]:
@@ -192,12 +228,21 @@ class HelperControlClient:
             raise HelperControlError("actor_user_id must contain 1 to 200 UTF-8 bytes")
 
     @staticmethod
-    def _validate_browser_agent_result(result: dict[str, Any]) -> None:
-        if result.get("status") not in {"launched", "focused"}:
-            raise HelperControlError("Helper browser status is invalid")
+    def _validate_browser_profile_key(profile_key: str) -> None:
+        if not isinstance(profile_key, str) or not _BROWSER_PROFILE_KEY.fullmatch(profile_key):
+            raise HelperControlError("browser_profile_key is invalid")
+
+    @staticmethod
+    def _validate_result_profile_id(result: dict[str, Any]) -> None:
         profile_id = result.get("profile_id")
         if not isinstance(profile_id, str) or not _TOKEN.fullmatch(profile_id):
             raise HelperControlError("Helper browser profile_id is invalid")
+
+    @staticmethod
+    def _validate_browser_agent_result(result: dict[str, Any]) -> None:
+        if result.get("status") not in {"launched", "focused"}:
+            raise HelperControlError("Helper browser status is invalid")
+        HelperControlClient._validate_result_profile_id(result)
         pid = result.get("pid")
         if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
             raise HelperControlError("Helper browser pid is invalid")

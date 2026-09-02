@@ -1,0 +1,44 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.qwen3-vl-2b-cuda
+name: Qwen3 VL 2B Instruct CUDA
+description: Isolated CUDA Transformers Worker for text, image, and video understanding.
+version: 0.1.1
+
+publisher: {id: ai2apps}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.cuda-torch
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.qwen3-vl-2b-cuda/qwen3-vl-2b-instruct
+    display_name: Qwen3 VL 2B Instruct CUDA
+    model_type: vlm
+    upstream_id: Qwen/Qwen3-VL-2B-Instruct
+    capabilities: [work, conversation, image_recognition, video_recognition]
+    context_window: 262144
+    weights:
+      provider: huggingface
+      repo_id: Qwen/Qwen3-VL-2B-Instruct
+      revision: 89644892e4d85e24eaac8bacfd4f463576704203
+      distribution_id: dist_ai2apps_qwen3_vl_2b_instruct_89644892_v1
+      preparation: {recipe: native}
+    metadata: {family: qwen3-vl, precision: bfloat16, local_media_only: true}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.cuda-torch
+      version: ">=0.2.0,<1.0.0"
+      optional: false
+      capabilities: [cuda, torch, transformers, model-worker-v1, vlm]
+  python: ">=3.12,<3.13"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned Qwen3-VL checkpoint.}
+  accelerator: {cuda: true, reason: Run multimodal Transformers inference on the local NVIDIA GPU.}
+compatibility: {os: [linux], architectures: [arm64, aarch64]}
+health: {path: /health, startup_timeout_seconds: 45}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

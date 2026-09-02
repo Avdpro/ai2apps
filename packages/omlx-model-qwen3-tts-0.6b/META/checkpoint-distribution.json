@@ -1,0 +1,47 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen3_tts_0_6b_custom_voice_6bit_7dc92af1_v1",
+  "modelId": "ai2apps.model.qwen3-tts-0.6b/custom-voice-6bit",
+  "repoId": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit",
+  "revision": "7dc92af14613355896fcab13b268c19ede233139",
+  "format": "safetensors",
+  "quantization": "6bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "model.safetensors",
+    "model.safetensors.index.json",
+    "config.json",
+    "generation_config.json",
+    "preprocessor_config.json",
+    "tokenizer_config.json",
+    "merges.txt",
+    "vocab.json",
+    "speech_tokenizer/config.json",
+    "speech_tokenizer/configuration.json",
+    "speech_tokenizer/model.safetensors",
+    "speech_tokenizer/preprocessor_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit",
+      "revision": "7dc92af14613355896fcab13b268c19ede233139",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit",
+      "revision": "e23bed7ae1058f5d4f3902ee92b8c34482cc1c46",
+      "access": "public_anonymous"
+    }
+  ]
+}

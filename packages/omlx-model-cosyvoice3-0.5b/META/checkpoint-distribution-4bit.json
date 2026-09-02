@@ -1,0 +1,21 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_cosyvoice3_0_5b_4bit_55a6713d_v1",
+  "modelId": "ai2apps.model.cosyvoice3-0.5b/4bit",
+  "repoId": "mlx-community/Fun-CosyVoice3-0.5B-2512-4bit",
+  "revision": "55a6713d54751f1ec2645aa11294676f2067202a",
+  "format": "safetensors",
+  "quantization": "4bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0", "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms", "accessPolicy": "public", "redistributionPolicy": "allowed"
+  },
+  "includePatterns": ["config.json", "model.safetensors", "tokenizer.json", "tokenizer_config.json"],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "mlx-community/Fun-CosyVoice3-0.5B-2512-4bit", "revision": "55a6713d54751f1ec2645aa11294676f2067202a", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "mlx-community/Fun-CosyVoice3-0.5B-2512-4bit", "revision": "c72b5b9850cf378b21cb2f6c125970f096b71697", "access": "public_anonymous"}
+  ]
+}

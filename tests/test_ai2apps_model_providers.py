@@ -14,6 +14,7 @@ import httpx
 import pytest
 import yaml
 
+from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
 from ai2apps.config import PlatformConfig
 from ai2apps.model_installer import (
     AI2AppsInstaller,
@@ -26,6 +27,7 @@ from ai2apps.model_providers import (
     installed_model_preparation_recipes,
     list_package_models,
     proxy_package_json,
+    recommended_model_configuration_id,
     validate_package_models,
 )
 from ai2apps.packages.archive import ServicePackageArchive
@@ -41,12 +43,74 @@ from ai2apps.shared_model_cache import (
 
 
 def _model(service: str, suffix: str, model_type: str) -> dict:
-    return {
+    model = {
         "id": f"{service}/{suffix}",
         "display_name": suffix,
         "model_type": model_type,
         "upstream_id": f"upstream-{suffix}",
     }
+    if model_type == "video_generation":
+        model["video_capabilities"] = {
+            "schema": "ai2apps.video-capabilities/v1",
+            "operations": ["video_generation"],
+            "content_combinations": [{
+                "id": "text_to_video",
+                "required": [{"type": "text", "role": "prompt", "min": 1, "max": 1}],
+                "optional": [],
+            }],
+            "formats": {
+                "image_input": [], "audio_input": [], "video_input": [],
+                "video_output": ["mp4"], "video_codecs": ["h264"],
+                "audio_codecs": ["aac"],
+            },
+            "geometry": {
+                "resolutions": ["512x512"], "ratios": ["1:1"],
+                "framespersecond": [24], "alpha": False,
+            },
+            "audio": {
+                "modes": ["generated"], "default_mode": "generated",
+                "generated_audio": True,
+            },
+            "presets": [{"id": "exact", "resumable": "unsupported"}],
+            "defaults": {"preset": "exact", "audio_output_mode": "generated"},
+            "execution": {
+                "asynchronous": True, "progress": "phase",
+                "max_concurrency_per_device": 1,
+            },
+        }
+    return model
+
+
+def test_device_recommendation_uses_practical_memory_not_manifest_order():
+    def variant(model_id: str, preferred: int, rank: int) -> dict:
+        return {
+            "id": model_id,
+            "weights": {"provider": "huggingface"},
+            "metadata": {"device_recommendation": {
+                "minimum_memory_gib": preferred // 2,
+                "preferred_memory_gib": preferred,
+                "quality_rank": rank,
+            }},
+        }
+
+    models = [
+        variant("h3/bf16", 192, 3),
+        variant("h3/q8", 64, 2),
+        variant("h3/q4", 48, 1),
+    ]
+
+    assert recommended_model_configuration_id(
+        models, total_memory_bytes=32 * 1024**3
+    ) == "h3/q4"
+    assert recommended_model_configuration_id(
+        models, total_memory_bytes=64 * 1024**3
+    ) == "h3/q8"
+    assert recommended_model_configuration_id(
+        models, total_memory_bytes=128 * 1024**3
+    ) == "h3/q8"
+    assert recommended_model_configuration_id(
+        models, total_memory_bytes=192 * 1024**3
+    ) == "h3/q8"
 
 
 def test_model_manifest_supports_conversation_image_audio_and_video():
@@ -78,6 +142,20 @@ def test_model_manifest_supports_conversation_image_audio_and_video():
     assert next(item for item in models if item["model_type"] == "audio_stt")[
         "audio_capabilities"
     ]["schema"] == "ai2apps.audio-capabilities/v1"
+    assert next(item for item in models if item["model_type"] == "video_generation")[
+        "video_capabilities"
+    ]["schema"] == "ai2apps.video-capabilities/v1"
+
+
+def test_video_model_manifest_rejects_missing_capabilities():
+    model = _model("example.video", "generator", "video_generation")
+    model.pop("video_capabilities")
+
+    with pytest.raises(ModelProviderContractError, match="video_capabilities"):
+        validate_package_models(
+            "example.video", [model], runtime_mode="process",
+            protocol="ai2apps-model-worker/v1",
+        )
 
 
 def test_audio_model_manifest_validates_signed_capability_profile():
@@ -270,6 +348,25 @@ async def test_json_proxy_rewrites_public_id_to_provider_upstream(monkeypatch, t
     )
     assert response.status_code == 200
     assert json.loads(response.body)["model"] == "upstream-assistant"
+    scheduler = await runtime.worker_scheduler.snapshot()
+    assert scheduler["running"] == 0
+    assert scheduler["completed"] == 1
+
+    streamed = await proxy_package_json(
+        model,
+        "chat_completions",
+        {
+            "model": model.id,
+            "messages": [{"role": "user", "content": "stream"}],
+            "stream": True,
+        },
+    )
+    scheduler = await runtime.worker_scheduler.snapshot()
+    assert scheduler["running"] == 1
+    _ = b"".join([chunk async for chunk in streamed.body_iterator])
+    scheduler = await runtime.worker_scheduler.snapshot()
+    assert scheduler["running"] == 0
+    assert scheduler["completed"] == 2
 
 
 def test_qwen35_provider_is_a_standalone_model_package():
@@ -285,6 +382,11 @@ def test_qwen35_provider_is_a_standalone_model_package():
     }
     assert parsed.permissions["model_weights"]["huggingface_cache"] == "read"
     assert parsed.permissions["accelerator"]["metal"] is True
+    assert parsed.permissions["network"]["outbound"] is False
+    assert {item["weights"]["distribution_id"] for item in parsed.models} == {
+        "dist_ai2apps_qwen3_5_0_8b_4bit_da28692b_v1",
+        "dist_ai2apps_qwen3_5_2b_4bit_674aaa72_v1",
+    }
     assert not list(source.rglob("*.safetensors"))
 
 
@@ -354,7 +456,107 @@ def test_host_exposes_native_worker_checkpoint_as_downloadable_package_recipe(
     (snapshot / "config.json").write_text("{}")
     (snapshot / "model.safetensors").write_bytes(b"weights")
 
-    assert installed_model_preparation_recipes(runtime)[0]["installed"] is True
+    assert installed_model_preparation_recipes(runtime)[0]["installed"] is False
+
+
+def test_host_exposes_checkpoint_recipe_for_native_runtime_http_provider(
+    tmp_path, monkeypatch
+):
+    package_root = (
+        Path(__file__).resolve().parents[1]
+        / "packages"
+        / "ai2apps-model-multilingual-e5-small"
+    )
+    manifest = yaml.safe_load((package_root / "service.yaml").read_text())
+    record = SimpleNamespace(
+        status=SimpleNamespace(value="active"),
+        protocol="http-json",
+        service_key=manifest["id"],
+        store_path=str(package_root),
+        manifest=manifest,
+    )
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(installed=lambda: (record,))
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_hub_cache",
+        lambda: tmp_path / "hub",
+    )
+
+    recipe = installed_model_preparation_recipes(runtime)[0]
+
+    assert recipe["id"] == "ai2apps.model.multilingual-e5-small/default"
+    assert recipe["service_key"] == "ai2apps.model.multilingual-e5-small"
+    assert recipe["sources"][0]["repo_id"] == "mlx-community/multilingual-e5-small-mlx"
+
+
+def test_package_distribution_id_is_validated_and_propagated(tmp_path, monkeypatch):
+    package_root = Path(__file__).resolve().parents[1] / "packages/omlx-model-qwen38"
+    manifest = yaml.safe_load((package_root / "service.yaml").read_text())
+    manifest["models"][0]["weights"]["distribution_id"] = "dist_qwen38_v1"
+    parsed_models = validate_package_models(
+        manifest["id"],
+        manifest["models"],
+        runtime_mode=manifest["runtime"]["mode"],
+        protocol=manifest["runtime"]["protocol"],
+    )
+    manifest["models"] = list(parsed_models)
+    record = SimpleNamespace(
+        status=SimpleNamespace(value="active"),
+        service_key=manifest["id"],
+        store_path=str(package_root),
+        manifest=manifest,
+    )
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(installed=lambda: (record,))
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_hub_cache",
+        lambda: tmp_path / "hub",
+    )
+
+    recipe = installed_model_preparation_recipes(runtime)[0]
+
+    assert parsed_models[0]["weights"]["distribution_id"] == "dist_qwen38_v1"
+    assert recipe["distribution_id"] == "dist_qwen38_v1"
+
+
+def test_flux_native_recipe_prefers_filtered_modelscope_mirror(tmp_path, monkeypatch):
+    package_root = (
+        Path(__file__).resolve().parents[1]
+        / "packages"
+        / "ai2apps-model-flux2-klein-mlx"
+    )
+    manifest = yaml.safe_load((package_root / "service.yaml").read_text())
+    record = SimpleNamespace(
+        status=SimpleNamespace(value="active"),
+        protocol="ai2apps-model-worker/v1",
+        service_key=manifest["id"],
+        store_path=str(package_root),
+        manifest=manifest,
+    )
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(installed=lambda: (record,))
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_hub_cache",
+        lambda: tmp_path / "hub",
+    )
+
+    recipes = installed_model_preparation_recipes(runtime)
+
+    assert {recipe["id"] for recipe in recipes} == {
+        "ai2apps.model.flux2-klein-mlx/4b",
+        "ai2apps.model.flux2-klein-mlx/9b",
+    }
+    mirror = recipes[0]["sources"][0]["mirrors"][0]
+    assert mirror["provider"] == "modelscope"
+    assert mirror["preferred"] is True
+    assert "transformer/*" in mirror["allow_patterns"]
+    assert "flux-2-klein-4b.safetensors" not in mirror["allow_patterns"]
 
 
 def test_sensevoice_recipe_keeps_hidden_punctuation_checkpoint_dependency(
@@ -430,11 +632,16 @@ def test_sensevoice_recipe_is_ready_only_after_required_checkpoint(
     for record in records:
         model = record.manifest["models"][0]
         weights = model["weights"]
+        repo_root = hub / ("models--" + weights["repo_id"].replace("/", "--"))
+        # The helper is present under its distribution identity, while the
+        # primary model exists only in the legacy revision cache.  Once a
+        # Package binds a distribution, that legacy directory must not satisfy it.
         snapshot = (
-            hub
-            / ("models--" + weights["repo_id"].replace("/", "--"))
-            / "snapshots"
-            / weights["revision"]
+            repo_root
+            / "distributions"
+            / checkpoint_distribution_cache_key(weights["distribution_id"])
+            if model["id"] == "ai2apps.model.punctuation-restorer/default"
+            else repo_root / "snapshots" / weights["revision"]
         )
         snapshot.mkdir(parents=True)
         if model["id"] == "ai2apps.model.punctuation-restorer/default":
@@ -449,7 +656,7 @@ def test_sensevoice_recipe_is_ready_only_after_required_checkpoint(
         for recipe in installed_model_preparation_recipes(runtime)
     }
     assert recipes["ai2apps.model.punctuation-restorer/default"]["installed"] is True
-    assert recipes["ai2apps.model.sensevoice-small/default"]["installed"] is True
+    assert recipes["ai2apps.model.sensevoice-small/default"]["installed"] is False
 
 
 @pytest.mark.asyncio
@@ -862,7 +1069,13 @@ def test_registry_model_service_build_preserves_runtime_identity_and_policy(tmp_
     )
     bundle = manager._service_bundle(
         inspected,
-        {"payload": {"publisherId": "ai2apps"}, "signature": {"value": "fixture"}},
+        {
+            "payload": {
+                "publisherId": "ai2apps",
+                "publisherKeyId": "fixture-key",
+            },
+            "signature": {"value": "fixture"},
+        },
     )
 
     assert bundle.manifest.service_key == "ai2apps.model.qwen38"
