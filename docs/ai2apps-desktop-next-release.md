@@ -70,6 +70,10 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
   ModelScope 本次因速度未胜出，但其独立 Range 206 和分片摘要验证已经通过。
 - 客户端专项测试（2026-09-03）：Registry 与 Provisioning 共 63 项测试通过，覆盖多源
   竞速、超过并发数的候选源、停滞源淘汰、坏源回退、已验证分片断点恢复和旧单源兼容。
+- 客户端全量回归（2026-09-03）：已将 App Catalog、Checkpoint 进度回调、Chat/Fusion
+  UI、FLUX.2 4B 发布范围、Local Session 认证、Knowledge Service、Runtime 1.5.7 与
+  Browser Agent 无 Dock 行为的旧测试断言同步到当前合同；AI2Apps Python `1146/1146`
+  与 Swift `69/69` 通过。
 - Build 2249 对照：直接检查 Build 2249 已公证 DMG 内嵌
   `AI2AppsLocal/app/ai2apps`，上述三项客户端实现未包含在 2249 中。
 - 源码可复现性（2026-09-03）：`ai2apps/provisioning/orchestrator.py` 与

@@ -649,12 +649,14 @@ def test_platform_runtime_rejects_two_live_hosts_for_the_same_data_root(tmp_path
 
 def test_platform_runtime_releases_root_lease_after_late_startup_failure(tmp_path):
     failing = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
-    with patch(
-        "ai2apps.platform_runtime.create_secret_backend",
-        side_effect=RuntimeError("simulated secret claim collision"),
+    with (
+        patch(
+            "ai2apps.platform_runtime.create_secret_backend",
+            side_effect=RuntimeError("simulated secret claim collision"),
+        ),
+        pytest.raises(RuntimeError, match="claim collision"),
     ):
-        with pytest.raises(RuntimeError, match="claim collision"):
-            failing.start()
+        failing.start()
 
     recovered = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
     recovered.start()
@@ -832,6 +834,7 @@ def test_fastapi_lifespan_starts_and_stops_platform_runtime(tmp_path):
                 "ai2apps.diagnostics",
                 "ai2apps.documents",
                 "ai2apps.images",
+                "ai2apps.knowledge-service",
                 "ai2apps.mcp",
                 "ai2apps.model-runtime",
                 "ai2apps.process",

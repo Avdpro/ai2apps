@@ -502,7 +502,7 @@ def test_fusion_review_controls_are_available_in_manager_and_chat():
     assert 'x-show="fusionGeneratorIsCachedMoe"' in manager
     assert 'x-show="fusionReviewerIsCachedMoe"' in manager
     assert "mid_generation_review_enabled" in dashboard
-    assert 'x-show="isFusionMode"' in chat
+    assert ':disabled="!isFusionMode"' in chat
     assert "ai2apps_fusion_gate_policy" in chat
     assert "fusion_generator_engine_boost" in chat
     assert "fusion_reviewer_engine_boost" in chat

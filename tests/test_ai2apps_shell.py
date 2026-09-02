@@ -247,7 +247,7 @@ def test_desktop_packages_one_shared_acefox_bundle_for_shell_and_agents():
 
     assert "Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin" in contracts
     assert "Resources/AceFoxAgent.app/Contents/MacOS/acefox-bin" not in contracts
-    assert '"MOZ_APP_NO_DOCK": "1"' not in launch_plan
+    assert '"MOZ_APP_NO_DOCK": "1"' in launch_plan
     assert "ditto \"${SHELL_APP}\" \"${AGENT_APP}\"" not in dev_packager
     assert "ditto \"${SHELL_APP}\" \"${AGENT_APP}\"" not in release_packager
     assert "AI2AppsSharedBrowserBundle bool true" in dev_packager

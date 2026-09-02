@@ -19,7 +19,7 @@ def test_runtime_manifests_are_synchronized_for_video():
     package = json.loads((RUNTIME / "ai2apps.json").read_text())
     descriptor = json.loads((RUNTIME / "META" / "runtime-manifest.json").read_text())
 
-    assert service["version"] == package["package"]["version"] == descriptor["version"] == "1.5.3"
+    assert service["version"] == package["package"]["version"] == descriptor["version"] == "1.5.7"
     for capability in ("video-generation", "video-codecs", "audio-codecs", "z-image"):
         assert capability in service["capabilities"]
         assert capability in descriptor["capabilities"]

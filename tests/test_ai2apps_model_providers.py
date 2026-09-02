@@ -550,7 +550,6 @@ def test_flux_native_recipe_prefers_filtered_modelscope_mirror(tmp_path, monkeyp
 
     assert {recipe["id"] for recipe in recipes} == {
         "ai2apps.model.flux2-klein-mlx/4b",
-        "ai2apps.model.flux2-klein-mlx/9b",
     }
     mirror = recipes[0]["sources"][0]["mirrors"][0]
     assert mirror["provider"] == "modelscope"

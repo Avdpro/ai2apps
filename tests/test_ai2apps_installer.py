@@ -62,6 +62,8 @@ async def test_native_package_distribution_bypasses_legacy_hub_downloaders(
     class FakeAcquisition:
         async def acquire(self, distribution_id, **kwargs):
             assert distribution_id == "dist_test_v1"
+            progress = kwargs.pop("progress")
+            assert callable(progress)
             assert kwargs == {"hf_token": "secret"}
             return SimpleNamespace(
                 cache_hit=False,
@@ -168,6 +170,8 @@ async def test_native_package_distribution_reuses_verified_local_checkout(
     class FakeAcquisition:
         async def acquire(self, distribution_id, **kwargs):
             local = kwargs.pop("local_snapshot")
+            progress = kwargs.pop("progress")
+            assert callable(progress)
             assert kwargs == {"hf_token": None}
             assert distribution_id == "dist_test_v1"
             assert (local / "model.safetensors").resolve().stat().st_ino == (

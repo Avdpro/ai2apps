@@ -101,7 +101,7 @@ def test_embedded_platform_health_uses_existing_omlx_data_root(tmp_path):
     assert not (tmp_path / "platform").exists()
 
 
-def test_embedded_platform_router_reuses_existing_api_key_authentication():
+def test_embedded_platform_health_remains_public_with_existing_api_key():
     from omlx.server import ServerState, app
 
     state = ServerState(api_key="platform-secret")
@@ -114,12 +114,11 @@ def test_embedded_platform_router_reuses_existing_api_key_authentication():
             headers={"Authorization": "Bearer platform-secret"},
         )
 
-    assert unauthorized.status_code == 401
-    assert unauthorized.json()["error"]["code"] == "authentication_required"
+    assert unauthorized.status_code == 200
     assert authorized.status_code == 200
 
 
-def test_embedded_platform_validation_uses_platform_error_envelope(tmp_path):
+def test_embedded_platform_requires_local_session_before_validation(tmp_path):
     from omlx.server import ServerState, app
 
     runtime = PlatformRuntime(PlatformConfig.from_base_path(tmp_path))
@@ -131,8 +130,8 @@ def test_embedded_platform_validation_uses_platform_error_envelope(tmp_path):
             params={"limit": 0},
         )
 
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "validation_error"
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_required"
 
 
 def test_platform_health_is_published_in_openapi_schema():
