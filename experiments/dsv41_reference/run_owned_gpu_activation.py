@@ -1,0 +1,62 @@
+"""Single-owner MLX FP8 weights; avoid CPU cache and per-step parameter loads."""
+import hashlib,json,sys,time,types
+from pathlib import Path
+import numpy as np
+import torch
+import mlx.core as mx
+import cached_store,cpu_kernel,run_reference,run_native_benchmark
+from metal_expert import act_quant as metal_act_quant
+
+stats=dict(modules=0,loads=0,calls=0,payload_bytes=0,seconds=0.,cpu_bypass_reads=0)
+def main():
+    output=Path(sys.argv[sys.argv.index('--output')+1]);owned=set();stores=[]
+    original_store=cached_store.CachedStore
+    raw_read=run_reference.Store.read
+    class Store(original_store):
+        def __init__(self,*a,**kw):super().__init__(*a,**kw);stores.append(self)
+        def read(self,name,rows=None):
+            if rows is None and (name in owned or name=='head.weight' or '.attn.wo_a.' in name):
+                stats['cpu_bypass_reads']+=1
+                return raw_read(self,name)
+            return super().read(name,rows)
+    cached_store.CachedStore=Store
+    sys.modules['kernel']=cpu_kernel
+    sys.path.insert(0,str(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/inference').resolve()))
+    import model
+    import mlx_sdpa_attention
+    model.sparse_attn=mlx_sdpa_attention.sparse_attn
+    original_init=model.Transformer.__init__
+    def forward(self,x):
+        if model.world_size!=1:raise ValueError('single-device ownership prototype')
+        start=time.perf_counter();k=self.in_features;n=self.out_features
+        if self._mlx_owned is None:
+            b=stores[-1].read(self._owned_name+'.weight');sb=stores[-1].read(self._owned_name+'.scale')
+            raw=b.view(torch.uint8).contiguous().numpy().view(np.uint32).reshape(n,k//4)
+            scales=sb.view(torch.uint8).repeat_interleave(32,dim=0)[:n].contiguous().numpy()
+            w=mx.array(raw);sw=mx.array(scales);mx.eval(w,sw)
+            self._mlx_owned=(w,sw);stats['loads']+=1;stats['payload_bytes']+=raw.nbytes+scales.nbytes
+        w,sw=self._mlx_owned
+        if model.fp8_block_size!=32:raise ValueError('group32 activation required')
+        inp=mx.array(x.contiguous().view(torch.uint16).numpy()).view(mx.bfloat16) if x.dtype==torch.bfloat16 else mx.array(x.float().numpy())
+        a,sa=metal_act_quant(inp.reshape(-1,k))
+        z=(a.reshape(-1,k//32,32)*sa[:,:,None]).reshape(-1,k).astype(mx.bfloat16)
+        y=mx.quantized_matmul(z,w,sw,group_size=32,bits=8,mode='mxfp8');mx.eval(y)
+        result=torch.from_numpy(np.array(y.astype(mx.float32))).bfloat16().reshape(*x.shape[:-1],n)
+        stats['calls']+=1;stats['seconds']+=time.perf_counter()-start
+        return result.to(x.dtype) if isinstance(self,model.RowParallelLinear) else result
+    def init(self,*a,**kw):
+        original_init(self,*a,**kw)
+        for name,m in self.named_modules():
+            if isinstance(m,model.Linear) and isinstance(m._parameters.get('weight'),torch.Tensor) and m.weight.dtype==torch.float8_e4m3fn:
+                if m.bias is not None:raise ValueError('unexpected FP8 bias')
+                owned.update([name+'.weight',name+'.scale'])
+                m._parameters.clear();m._owned_name=name;m._mlx_owned=None
+                m.forward=types.MethodType(forward,m);stats['modules']+=1
+    model.Transformer.__init__=init
+    try:run_native_benchmark.main()
+    finally:
+        path=output/'manifest.json'
+        if path.exists():
+            r=json.loads(path.read_text());r['native_owned_gpu_activation']={'statistics':stats,'scope':'FP8 linears owned solely by MLX; head and wo_a bypass CPU cache; group32 activation quantization on Metal; remaining CPU operations unchanged','source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+            path.write_text(json.dumps(r,indent=2))
+if __name__=='__main__':main()
