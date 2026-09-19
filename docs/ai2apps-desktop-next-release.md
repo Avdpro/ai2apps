@@ -2,9 +2,19 @@
 
 状态：滚动维护中的唯一下一版入口
 
-## Build 2251 候选范围冻结（2026-09-20）
+## Build 2251 已发布（2026-09-20）
 
-- 生产基线：`0.1.0 (2249)`；候选：`0.1.0 (2251)`，`arm64`、`cloud` Runtime profile、
+- Build 2251 已从已推送源码 commit
+  `12af6aa9bfd7bf853fbdbe752fbc8712e60bdbde` 构建，完成 Developer ID 签名、Apple
+  公证与 Staple，并发布到 GitHub tag `v0.1.0-build2251` 和 ModelScope immutable
+  revision `900bb17bee0d80949da98675dc369e9e28a1846c`。
+- Cloud 先以 0 basis points 原子登记并完成公网 GET/HEAD/ETag/304 与双源完整预检，随后将
+  同一 `build2251-test` rollout 提升至 `10000`。最终生产清单 SHA-256 为
+  `3e3cecaa8a2aaf4f58e6c7a2ac5de4331ff28b026ad2f155f0b8ecb937e1a5dd`。
+- 完整不可变回执见 `docs/ai2apps-desktop-build-2251-release-receipt-2026-09-20.md`。剩余验收只包括
+  目标 Mac 的 2249→2251 自动发现、下载、安装、启动与更新后清理；不影响分发发布已完成的事实。
+
+- 发布前生产基线：`0.1.0 (2249)`；正式版本：`0.1.0 (2251)`，`arm64`、`cloud` Runtime profile、
   `com.ai2apps.desktop`、instance `default`、`SANDBOX_MODE=0`。Build 2250 保持内部候选，
   不提升、不覆盖。
 - 纳入本版的 Desktop/Local 用户能力：
