@@ -1,7 +1,7 @@
 {
   "spdxVersion": "SPDX-2.3",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps-runtime-omlx-1.5.7",
+  "name": "ai2apps-runtime-omlx-1.7.8",
   "dataLicense": "CC0-1.0",
   "packages": [
     {

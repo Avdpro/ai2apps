@@ -560,13 +560,20 @@ class TestExceptionHandlers:
 
     def test_validation_error_logged(self, client, caplog):
         """Test that request validation errors (422) are logged."""
+        from omlx.server import verify_ai2apps_platform_access
+
+        previous = app.dependency_overrides.copy()
+        app.dependency_overrides[verify_ai2apps_platform_access] = lambda: True
         # POST to /v1/chat/completions with invalid body triggers validation
-        response = client.post(
-            "/v1/chat/completions",
-            json={"invalid_field": "bad"},
-        )
-        # Should be 422 (validation error) or 500 (server not initialized)
-        assert response.status_code in (422, 500)
+        try:
+            response = client.post(
+                "/v1/chat/completions",
+                json={"invalid_field": "bad"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+            app.dependency_overrides.update(previous)
+        assert response.status_code == 422
 
     def test_exception_handler_returns_json(self, client):
         """Test that exception handlers return proper JSON responses."""
@@ -968,6 +975,11 @@ class TestExposedProfileModels:
             id="ai2apps.qwen/model",
             service_key="ai2apps.qwen",
             context_window=32768,
+            model_type="llm",
+            capabilities=("conversation",),
+            inference_provider_key="ai2apps.runtime.omlx",
+            provider_key="package:ai2apps.qwen",
+            display_name="Qwen Model",
         )
 
         http_response = Response()
@@ -980,6 +992,10 @@ class TestExposedProfileModels:
         assert "Local Qwen" not in model_ids
         assert "qwen-base:thinking" not in model_ids
         assert "ai2apps.qwen/model" in model_ids
+        package_entry = next(
+            model for model in response.data if model.id == "ai2apps.qwen/model"
+        )
+        assert package_entry.display_name == "(Local) AI2Apps-MLX · Qwen Model"
         assert http_response.headers["cache-control"] == "no-store"
         assert http_response.headers["vary"] == "Cookie, Authorization"
 

@@ -3,6 +3,8 @@
 
     const API = '/v1/platform/packages';
     const apiKey = '';
+    const CATALOG_PAGE_SIZE = 24;
+    const LOCAL_PAGE_CURSOR = '__ai2apps_local_page__';
     const fallbackText = {
         en: {
             'discover.action.upgrade': 'Upgrade',
@@ -14,9 +16,9 @@
             'discover.install.dependency_required': 'A required Runtime must be installed or upgraded first.',
             'discover.install.dependency_install': 'Install dependency',
             'discover.install.dependency_upgrade': 'Upgrade dependency',
-            'discover.install.restart_local': 'Restart Local',
+            'discover.install.restart_local': 'Restart AI2Apps',
             'discover.install.restart_later': 'Later',
-            'discover.install.pending_restart': 'Installed · Restart Local to activate',
+            'discover.install.pending_restart': 'Installed · Restart AI2Apps to activate',
             'discover.publish.auth.title': 'Sign in to publish Packages',
             'discover.publish.auth.description': 'Sign in to AI2Apps Cloud in Account, then refresh this page.',
             'discover.publish.auth.action': 'Open Account',
@@ -43,6 +45,40 @@
             'discover.success.uninstalled_with_checkpoints': '{package} was uninstalled and its unused checkpoints were deleted ({size} reclaimed).',
             'discover.success.uninstalled_checkpoints_retained': '{package} was uninstalled. Its checkpoints are still used by another Package and were retained.',
             'discover.success.uninstalled_checkpoint_cleanup_failed': '{package} was uninstalled, but checkpoint cleanup failed: {error}',
+            'discover.filter.models': 'Models',
+            'discover.filter.mini_apps': 'Mini-Apps',
+            'discover.type.model': 'Model',
+            'discover.model_category.all': 'All models',
+            'discover.model_category.text': 'Text',
+            'discover.model_category.speech': 'Speech',
+            'discover.model_category.multimodal': 'Multimodal',
+            'discover.model_category.image': 'Image',
+            'discover.model_category.video': 'Video',
+            'discover.model_category.embedding': 'Embedding',
+            'discover.model_task.all_speech': 'All speech',
+            'discover.model_task.speech_synthesis': 'TTS · Speech synthesis',
+            'discover.model_task.speech_recognition': 'ASR · Speech recognition',
+            'discover.profile.size': 'Size {value}',
+            'discover.profile.memory': 'Memory {value}',
+            'discover.profile.speed': 'Speed {value}/5',
+            'discover.profile.capability': 'Capability {value}/5',
+            'discover.profile.source.manifest': 'Publisher benchmark',
+            'discover.profile.source.legacy-map': 'Estimated',
+            'discover.action.install_model': 'Install model',
+            'discover.action.package_only': 'Package only',
+            'discover.success.model_ready': '{package} and its checkpoint are ready.',
+            'discover.type.mini-app': 'Mini-App',
+            'discover.mini_app_category.all': 'All Mini-Apps',
+            'discover.mini_app_category.productivity': 'Productivity',
+            'discover.mini_app_category.image': 'Image',
+            'discover.mini_app_category.video': 'Video',
+            'discover.mini_app_category.audio': 'Audio',
+            'discover.mini_app_category.document': 'Document',
+            'discover.mini_app_category.automation': 'Automation',
+            'discover.mini_app_category.developer': 'Developer',
+            'discover.mini_app_category.utility': 'Utilities',
+            'discover.pagination.load_more': 'Load more',
+            'discover.pagination.loading': 'Loading…',
         },
         zh: {
             'discover.action.upgrade': '升级',
@@ -54,9 +90,9 @@
             'discover.install.dependency_required': '需要先安装或升级所需的 Runtime。',
             'discover.install.dependency_install': '安装依赖',
             'discover.install.dependency_upgrade': '升级依赖',
-            'discover.install.restart_local': '重启 Local',
+            'discover.install.restart_local': '重启 AI2Apps',
             'discover.install.restart_later': '稍后',
-            'discover.install.pending_restart': '已安装 · 重启 Local 后激活',
+            'discover.install.pending_restart': '已安装 · 重启 AI2Apps 后激活',
             'discover.publish.auth.title': '登录后发布 Package',
             'discover.publish.auth.description': '请先在账户 App 登录 AI2Apps Cloud，然后刷新本页。',
             'discover.publish.auth.action': '打开账户 App',
@@ -83,6 +119,40 @@
             'discover.success.uninstalled_with_checkpoints': '{package} 已卸载，并删除了未被其他 Package 使用的 checkpoint（释放 {size}）。',
             'discover.success.uninstalled_checkpoints_retained': '{package} 已卸载；checkpoint 仍被其他 Package 使用，因此已保留。',
             'discover.success.uninstalled_checkpoint_cleanup_failed': '{package} 已卸载，但 checkpoint 清理失败：{error}',
+            'discover.filter.models': '模型',
+            'discover.filter.mini_apps': 'Mini-App',
+            'discover.type.model': '模型',
+            'discover.model_category.all': '全部模型',
+            'discover.model_category.text': '文本',
+            'discover.model_category.speech': '语音',
+            'discover.model_category.multimodal': '多模态',
+            'discover.model_category.image': '图像',
+            'discover.model_category.video': '视频',
+            'discover.model_category.embedding': '向量',
+            'discover.model_task.all_speech': '全部语音',
+            'discover.model_task.speech_synthesis': 'TTS · 语音合成',
+            'discover.model_task.speech_recognition': 'ASR · 语音识别',
+            'discover.profile.size': '大小 {value}',
+            'discover.profile.memory': '内存 {value}',
+            'discover.profile.speed': '速度 {value}/5',
+            'discover.profile.capability': '能力 {value}/5',
+            'discover.profile.source.manifest': 'Publisher 基准',
+            'discover.profile.source.legacy-map': '估算',
+            'discover.action.install_model': '安装模型',
+            'discover.action.package_only': '仅安装 Package',
+            'discover.success.model_ready': '{package} 与 Checkpoint 已就绪。',
+            'discover.type.mini-app': 'Mini-App',
+            'discover.mini_app_category.all': '全部 Mini-App',
+            'discover.mini_app_category.productivity': '效率',
+            'discover.mini_app_category.image': '图像',
+            'discover.mini_app_category.video': '视频',
+            'discover.mini_app_category.audio': '音频',
+            'discover.mini_app_category.document': '文档',
+            'discover.mini_app_category.automation': '自动化',
+            'discover.mini_app_category.developer': '开发',
+            'discover.mini_app_category.utility': '工具',
+            'discover.pagination.load_more': '加载更多',
+            'discover.pagination.loading': '正在加载…',
         },
     };
 
@@ -100,6 +170,8 @@
 
     async function apiRequest(base, path, options) {
         const headers = { Accept: 'application/json' };
+        const instanceId = window.AI2AppsCapabilities?.appInstanceId?.() || '';
+        if (instanceId) headers['X-AI2Apps-App-Instance'] = instanceId;
         if (apiKey) headers.Authorization = 'Bearer ' + apiKey;
         if (options && options.body !== undefined) headers['Content-Type'] = 'application/json';
         const response = await fetch(base + path, {
@@ -161,7 +233,30 @@
             restartScope: value.restartScope || value.restart_scope || null,
             restartRequired: (value.activationStatus || value.activation_status) === 'pending_restart',
             checkpointDeletionAvailable: Boolean(value.checkpointDeletionAvailable || value.checkpoint_deletion_available),
+            discovery: value.discovery || manifest.discovery || null,
+            modelProfile: value.modelProfile || manifest.modelProfile || null,
+            modelInstall: value.modelInstall || manifest.modelInstall || null,
+            modelReady: Boolean(value.modelReady || value.model_ready),
+            readyModelConfigurationIds: value.readyModelConfigurationIds || value.ready_model_configuration_ids || [],
+            miniApps: value.miniApps || manifest.miniApps || [],
+            cardId: id,
         };
+    }
+
+    function expandPackages(value) {
+        return rows(value).map(normalize).filter(item => item.packageId).flatMap(item => [
+            item,
+            ...(item.miniApps || []).map(component => ({
+                ...item,
+                cardId: item.packageId + '#' + component.componentId,
+                discoveryKind: 'mini-app',
+                componentId: component.componentId,
+                componentVersion: component.version,
+                displayName: component.displayName,
+                description: component.description || item.description,
+                miniApp: component,
+            })),
+        ]);
     }
 
     function rows(value) {
@@ -170,6 +265,25 @@
             if (Array.isArray(value?.[key])) return value[key];
         }
         return [];
+    }
+
+    function catalogPage(value) {
+        if (Array.isArray(value)) return { items: value, nextCursor: '' };
+        const pagination = value?.pagination || {};
+        const cursor = value?.nextCursor ?? value?.next_cursor ?? pagination.nextCursor ?? pagination.next_cursor ?? '';
+        return { items: rows(value), nextCursor: cursor == null ? '' : String(cursor) };
+    }
+
+    function mergeCards(existing, incoming) {
+        const merged = [];
+        const indexes = new Map();
+        for (const item of [...existing, ...incoming]) {
+            const key = item.cardId || item.packageId;
+            if (!key) continue;
+            if (indexes.has(key)) merged[indexes.get(key)] = item;
+            else { indexes.set(key, merged.length); merged.push(item); }
+        }
+        return merged;
     }
 
     function compareVersions(left, right) {
@@ -211,8 +325,8 @@
 
     window.discoverApp = function () {
         return {
-            tab: 'discover', type: '', query: '', busy: false, working: '',
-            items: [], installed: [], selected: null, message: '', messageTone: 'error',
+            tab: 'discover', type: '', modelCategory: '', modelTask: '', miniAppCategory: '', query: '', busy: false, loadingMore: false, working: '',
+            items: [], installed: [], nextCursor: '', localRemainder: [], deferredCursor: '', catalogCache: {}, selected: null, message: '', messageTone: 'error',
             installDialog: null,
             publishers: [], localKeys: [], submissions: [], reviewSubmissions: [], publishingContext: null, publishingLoaded: false,
             selectedPublisherId: '', selectedKeyRef: '',
@@ -223,15 +337,49 @@
             get filters() { return [
                 { value: '', label: tr('discover.filter.all') },
                 { value: 'app', label: tr('discover.filter.apps') },
+                { value: 'mini-app', label: tr('discover.filter.mini_apps') },
                 { value: 'agent', label: tr('discover.filter.agents') },
+                { value: 'model', label: tr('discover.filter.models') },
                 { value: 'service', label: tr('discover.filter.services') },
+            ]; },
+            get miniAppFilters() {
+                const known = [
+                { value: '', icon: 'layout-grid', label: tr('discover.mini_app_category.all') },
+                { value: 'productivity', icon: 'list-checks', label: tr('discover.mini_app_category.productivity') },
+                { value: 'image', icon: 'image', label: tr('discover.mini_app_category.image') },
+                { value: 'video', icon: 'video', label: tr('discover.mini_app_category.video') },
+                { value: 'audio', icon: 'audio-lines', label: tr('discover.mini_app_category.audio') },
+                { value: 'document', icon: 'files', label: tr('discover.mini_app_category.document') },
+                { value: 'automation', icon: 'workflow', label: tr('discover.mini_app_category.automation') },
+                { value: 'developer', icon: 'code-2', label: tr('discover.mini_app_category.developer') },
+                { value: 'utility', icon: 'wrench', label: tr('discover.mini_app_category.utility') },
+                ];
+                const available = new Set(this.items.filter(item => this.isMiniApp(item)).flatMap(item => item.miniApp?.categories || []));
+                const extra = [...available].filter(value => !known.some(item => item.value === value)).sort().map(value => ({ value, icon: 'shapes', label: value.replaceAll('-', ' ').replace(/\b\w/g, letter => letter.toUpperCase()) }));
+                return [...known, ...extra];
+            },
+            get modelFilters() { return [
+                { value: '', icon: 'layout-grid', label: tr('discover.model_category.all') },
+                { value: 'text', icon: 'text-cursor-input', label: tr('discover.model_category.text') },
+                { value: 'speech', icon: 'audio-lines', label: tr('discover.model_category.speech') },
+                { value: 'multimodal', icon: 'scan-eye', label: tr('discover.model_category.multimodal') },
+                { value: 'image', icon: 'image', label: tr('discover.model_category.image') },
+                { value: 'video', icon: 'video', label: tr('discover.model_category.video') },
+                { value: 'embedding', icon: 'binary', label: tr('discover.model_category.embedding') },
+            ]; },
+            get modelTaskFilters() { return [
+                { value: '', icon: 'audio-lines', label: tr('discover.model_task.all_speech') },
+                { value: 'speech-synthesis', icon: 'volume-2', label: tr('discover.model_task.speech_synthesis') },
+                { value: 'speech-recognition', icon: 'audio-waveform', label: tr('discover.model_task.speech_recognition') },
             ]; },
             get visibleItems() {
                 const source = this.tab === 'installed' ? this.installed : this.items;
                 const query = this.query.trim().toLowerCase();
-                return source.filter(item => (!this.type || item.packageType === this.type) &&
-                    (!query || (item.displayName + ' ' + item.packageId + ' ' + item.description + ' ' + item.publisherName).toLowerCase().includes(query)));
+                return source.filter(item => this.matchesType(item) && this.matchesModelCategory(item) && this.matchesModelTask(item) && this.matchesMiniAppCategory(item) &&
+                    (!query || (item.displayName + ' ' + item.packageId + ' ' + (item.componentId || '') + ' ' + item.description + ' ' + item.publisherName).toLowerCase().includes(query)));
             },
+            get installedPackageCount() { return new Set(this.installed.map(item => item.packageId)).size; },
+            get hasMore() { return this.tab === 'discover' && Boolean(this.nextCursor); },
             get selectedPublisher() { return this.publishers.find(item => item.id === this.selectedPublisherId) || null; },
             get canReviewPackages() {
                 const role = this.publishingContext?.user?.systemRole;
@@ -259,10 +407,31 @@
                 return Math.min(99, Math.max(0, ((step - 1 + withinStep) / total) * 100));
             },
             async init() {
+                try { this.testCandidatesEnabled = (await request('/test-candidates')).enabled === true; } catch (_) {}
                 await this.reload();
                 await this.resumeInstallContinuation();
+                await this.resumeModelInstall();
             },
             clearMessage() { this.message = ''; this.messageTone = 'error'; },
+            testCandidatesEnabled: false, candidatePath: '', candidateReview: null, candidateBusy: false,
+            async inspectCandidate() {
+                this.candidateBusy = true; this.candidateReview = null;
+                try { this.candidateReview = await request('/test-candidates', { method: 'POST', body: { archive_path: this.candidatePath } }); }
+                catch (error) { this.showError(error); }
+                finally { this.candidateBusy = false; }
+            },
+            async installCandidate() {
+                if (!this.candidateReview || this.candidateBusy) return;
+                if (!confirm('Install this signed candidate in Test only? Review the displayed audit before approving. This does not publish the Package.')) return;
+                this.candidateBusy = true;
+                try {
+                    await request('/test-candidates', { method: 'POST', body: { archive_path: this.candidatePath, expected_digest: this.candidateReview.sha256 } });
+                    this.candidateReview = null;
+                    this.success('Candidate installed in Test only. Open its Studio to view the Mini-Apps.');
+                    await this.reload();
+                } catch (error) { this.showError(error); }
+                finally { this.candidateBusy = false; }
+            },
             success(text) { this.message = text; this.messageTone = 'info'; },
             showError(error) {
                 const friendly = {
@@ -299,13 +468,80 @@
                 }
                 finally { this.busy = false; redraw(); }
             },
+            catalogKey() {
+                return JSON.stringify([this.type, this.modelCategory, this.modelTask, this.miniAppCategory, this.query.trim(), this.query.trim() ? 'relevance' : 'recommended']);
+            },
+            async loadCatalogPage(append, force) {
+                const key = this.catalogKey();
+                const cached = this.catalogCache[key];
+                if (!append && !force && cached) {
+                    this.items = cached.items;
+                    this.nextCursor = cached.nextCursor;
+                    this.localRemainder = cached.localRemainder || [];
+                    this.deferredCursor = cached.deferredCursor || '';
+                    return;
+                }
+                const cursor = append ? this.nextCursor : '';
+                if (append && !cursor) return;
+                if (append && cursor === LOCAL_PAGE_CURSOR) {
+                    const incoming = this.localRemainder.slice(0, CATALOG_PAGE_SIZE);
+                    const remainder = this.localRemainder.slice(CATALOG_PAGE_SIZE);
+                    const nextCursor = remainder.length ? LOCAL_PAGE_CURSOR : this.deferredCursor;
+                    const entry = {
+                        items: mergeCards(this.items, incoming), nextCursor: nextCursor,
+                        localRemainder: remainder, deferredCursor: remainder.length ? this.deferredCursor : '',
+                    };
+                    this.catalogCache = { ...this.catalogCache, [key]: entry };
+                    this.items = entry.items;
+                    this.nextCursor = entry.nextCursor;
+                    this.localRemainder = entry.localRemainder;
+                    this.deferredCursor = entry.deferredCursor;
+                    return;
+                }
+                const query = this.query.trim();
+                const params = new URLSearchParams({ limit: String(CATALOG_PAGE_SIZE) });
+                if (query) {
+                    params.set('q', query);
+                    params.set('sort', 'relevance');
+                }
+                if (cursor) params.set('cursor', cursor);
+                this.applyCatalogFilters(params);
+                const endpoint = query ? '/catalog/search?' : '/catalog/recommendations?';
+                let page = catalogPage(await request(endpoint + params.toString()));
+                let legacyFallback = false;
+                if (!append && !page.nextCursor && page.items.length >= CATALOG_PAGE_SIZE) {
+                    const legacyParams = new URLSearchParams(params);
+                    legacyParams.set('limit', '100');
+                    const legacyPage = catalogPage(await request(endpoint + legacyParams.toString()));
+                    if (legacyPage.items.length > page.items.length) {
+                        page = legacyPage;
+                        legacyFallback = true;
+                    }
+                }
+                const expanded = expandPackages(page.items);
+                const incoming = legacyFallback ? expanded.slice(0, CATALOG_PAGE_SIZE) : expanded;
+                const localRemainder = legacyFallback ? expanded.slice(CATALOG_PAGE_SIZE) : [];
+                const items = append ? mergeCards(this.items, incoming) : mergeCards([], incoming);
+                const entry = {
+                    items: items,
+                    nextCursor: localRemainder.length ? LOCAL_PAGE_CURSOR : page.nextCursor,
+                    localRemainder: localRemainder,
+                    deferredCursor: localRemainder.length ? page.nextCursor : '',
+                };
+                this.catalogCache = { ...this.catalogCache, [key]: entry };
+                if (key === this.catalogKey()) {
+                    this.items = entry.items;
+                    this.nextCursor = entry.nextCursor;
+                    this.localRemainder = entry.localRemainder;
+                    this.deferredCursor = entry.deferredCursor;
+                }
+            },
             async loadCatalog() {
-                const [catalog, installed] = await Promise.all([
-                    request('/catalog/recommendations?limit=48' + (this.type ? '&type=' + encodeURIComponent(this.type) : '')),
+                const [, installed] = await Promise.all([
+                    this.loadCatalogPage(false, true),
                     request('/installed'),
                 ]);
-                this.items = rows(catalog).map(normalize).filter(item => item.packageId);
-                this.installed = rows(installed).map(normalize).filter(item => item.packageId);
+                this.installed = expandPackages(installed);
             },
             async loadPublishing() {
                 this.publishingLoaded = false;
@@ -334,24 +570,75 @@
                 if (this.tab !== 'discover') return;
                 this.busy = true; this.clearMessage();
                 try {
-                    const params = new URLSearchParams({ q: this.query, sort: this.query ? 'relevance' : 'recommended', limit: '48' });
-                    if (this.type) params.set('type', this.type);
-                    const result = await request('/catalog/search?' + params.toString());
-                    this.items = rows(result).map(normalize).filter(item => item.packageId);
+                    await this.loadCatalogPage(false, false);
                 } catch (error) { this.showError(error); }
                 finally { this.busy = false; redraw(); }
             },
+            async loadMore() {
+                if (this.tab !== 'discover' || !this.nextCursor || this.loadingMore) return;
+                this.loadingMore = true; this.clearMessage();
+                try { await this.loadCatalogPage(true, false); }
+                catch (error) { this.showError(error); }
+                finally { this.loadingMore = false; redraw(); }
+            },
             async setTab(tab) {
-                this.tab = tab; this.clearMessage(); this.query = ''; this.type = '';
+                this.tab = tab; this.clearMessage(); this.query = ''; this.type = ''; this.modelCategory = ''; this.modelTask = ''; this.miniAppCategory = '';
                 if (tab === 'publish') await this.reload();
                 else if (!this.items.length || tab === 'installed') await this.loadCatalog();
                 redraw();
             },
             async setType(type) {
                 this.type = type;
+                this.modelCategory = '';
+                this.modelTask = '';
+                this.miniAppCategory = '';
                 if (this.tab === 'discover') await this.search(); else redraw();
             },
+            async setModelCategory(category) {
+                this.modelCategory = category;
+                this.modelTask = '';
+                if (this.tab === 'discover') await this.search(); else redraw();
+            },
+            async setModelTask(task) {
+                this.modelTask = task;
+                if (this.tab === 'discover') await this.search(); else redraw();
+            },
+            async setMiniAppCategory(category) {
+                this.miniAppCategory = category;
+                if (this.tab === 'discover') await this.search(); else redraw();
+            },
+            applyCatalogFilters(params) {
+                if (this.type === 'model' || this.type === 'service') params.set('content', this.type);
+                else if (this.type === 'mini-app') params.set('type', 'app');
+                else if (this.type) params.set('type', this.type);
+                if (this.type === 'model' && this.modelCategory) params.set('model_category', this.modelCategory);
+                if (this.type === 'model' && this.modelTask) params.set('model_task', this.modelTask);
+            },
+            isModel(item) { return item?.discovery?.kind === 'model'; },
+            isMiniApp(item) { return item?.discoveryKind === 'mini-app'; },
+            matchesType(item) {
+                if (!this.type) return true;
+                if (this.type === 'model') return this.isModel(item);
+                if (this.type === 'mini-app') return this.isMiniApp(item);
+                if (this.type === 'service') return item.packageType === 'service' && !this.isModel(item);
+                if (this.type === 'app') return item.packageType === 'app' && !this.isMiniApp(item);
+                return item.packageType === this.type && !this.isMiniApp(item);
+            },
+            matchesModelCategory(item) {
+                if (!this.modelCategory) return true;
+                const discovery = item?.discovery || {};
+                if ((discovery.categories || []).includes(this.modelCategory)) return true;
+                return this.modelCategory === 'text'
+                    && (discovery.tasks || []).includes('multimodal-conversation');
+            },
+            matchesModelTask(item) {
+                return !this.modelTask || (item?.discovery?.tasks || []).includes(this.modelTask);
+            },
+            matchesMiniAppCategory(item) {
+                return !this.miniAppCategory || (item?.miniApp?.categories || []).includes(this.miniAppCategory);
+            },
             isInstalled(id) { return Boolean(id && this.installed.some(item => item.packageId === id)); },
+            isModelReady(item) { return Boolean(this.installedItem(item?.packageId)?.modelReady); },
             translate(key, values) { return tr(key, values); },
             installedItem(id) { return this.installed.find(item => item.packageId === id) || null; },
             pendingRestart(item) { return Boolean(this.installedItem(item?.packageId)?.restartRequired); },
@@ -366,13 +653,22 @@
             localVersionLabel(item) { return tr('discover.version.local', { version: this.localVersion(item) || '—' }); },
             cloudVersionLabel(item) { return tr('discover.version.cloud', { version: this.cloudVersion(item) || '—' }); },
             open(item) {
+                if (this.isMiniApp(item)) {
+                    const studio = item?.miniApp?.placements?.[0];
+                    if (studio) window.top.location.href = '/apps/' + encodeURIComponent(studio);
+                    return;
+                }
                 const installed = this.installedItem(item.packageId) || item;
                 if (installed.packageType !== 'app' || !installed.runtimeKey) return;
                 window.top.location.href = '/apps/' + encodeURIComponent(installed.runtimeKey);
             },
             openAccount() { window.top.location.href = '/apps/ai2apps.account'; },
+            validAccountPassword(value) {
+                const bytes = new TextEncoder().encode(String(value || '')).length;
+                return bytes >= 8 && bytes <= 128;
+            },
             async verifyAdministrator() {
-                if (!this.isPlatformAdmin || this.adminPassword.length < 12 || this.working) return;
+                if (!this.isPlatformAdmin || !this.validAccountPassword(this.adminPassword) || this.working) return;
                 this.working = 'admin-reauth'; this.clearMessage();
                 try {
                     await request('/publishing/admin/reauth', { method: 'POST', body: { password: this.adminPassword } });
@@ -389,11 +685,16 @@
                 if (!id.namespace || !id.name) return;
                 try {
                     const detail = await request('/catalog/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name));
-                    this.selected = { ...item, ...normalize(detail), raw: detail };
+                    const detailed = expandPackages([detail]);
+                    const match = item.componentId
+                        ? detailed.find(value => value.componentId === item.componentId)
+                        : detailed.find(value => !value.componentId);
+                    this.selected = { ...item, ...(match || normalize(detail)), raw: detail };
                 } catch (error) { this.showError(error); }
                 redraw();
             },
-            async install(item, approved) {
+            async install(item, approved, packageOnly) {
+                if (this.isModel(item) && !packageOnly) return this.installModel(item);
                 const id = this.split(item.packageId);
                 if (!id.namespace || !id.name || this.working || !this.canInstall(item)) return;
                 const upgrading = this.hasUpgrade(item);
@@ -411,11 +712,18 @@
                         method: 'POST', body: { version: item.version || null, approve_review: Boolean(approved) },
                     });
                     this.installDialog = { ...this.installDialog, ...operation, item: item };
+                    const transferMeter = window.AI2AppsCapabilities.createTransferMeter();
+                    const transferText = value => {
+                        const active = value.status === 'running' && String(value.stage).startsWith('downloading_');
+                        if (value.download) return window.AI2AppsCapabilities.formatDownloadProgress(value.download, active);
+                        return active ? transferMeter(`${value.packageId}:${value.fileName}:${value.bytesTotal}`, value.bytesCompleted, value.bytesTotal) : '';
+                    };
+                    this.installDialog.transferText = transferText(operation);
                     let current = operation;
                     while (current.status === 'pending' || current.status === 'running') {
-                        await new Promise(resolve => window.setTimeout(resolve, 750));
+                        await new Promise(resolve => window.setTimeout(resolve, 500));
                         current = await request('/install-operations/' + encodeURIComponent(operation.operationId));
-                        this.installDialog = { ...this.installDialog, ...current, item: item };
+                        this.installDialog = { ...this.installDialog, ...current, item: item, transferText: transferText(current) };
                     }
                     if (current.status === 'failed') {
                         const error = new Error(current.error?.message || tr('discover.install.failed'));
@@ -436,6 +744,45 @@
                     }
                     if (!['audit_review_required', 'dependency_restart_required'].includes(error.code)) this.showError(error);
                 } finally { this.working = ''; redraw(); }
+            },
+            async installModel(item) {
+                const id = this.split(item.packageId);
+                if (!id.namespace || !id.name || this.working || !this.canInstall(item)) return;
+                this.working = item.packageId; this.clearMessage();
+                try {
+                    const suffix = item.version ? '?version=' + encodeURIComponent(item.version) : '';
+                    const plan = await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/model-install-plan' + suffix);
+                    const modelId = await window.AI2AppsCapabilities.chooseProfile(plan);
+                    const result = await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/model-install-sessions', {
+                        method: 'POST', body: { version: item.version || null, modelId: modelId },
+                    });
+                    this.selected = null;
+                    let completed = result;
+                    if (result.status !== 'ready') {
+                        completed = await window.AI2AppsCapabilities.runSession(result.session, 'ai2apps.discover');
+                    }
+                    if (completed?.session) {
+                        await window.AI2AppsCapabilities.acknowledge(completed.session, { appId: 'ai2apps.discover' });
+                    }
+                    this.success(tr('discover.success.model_ready', { package: item.displayName }));
+                    await this.loadCatalog();
+                } catch (error) {
+                    if (!String(error?.message || '').includes('已取消')) this.showError(error);
+                } finally { this.working = ''; redraw(); }
+            },
+            async resumeModelInstall() {
+                try {
+                    const completed = await window.AI2AppsCapabilities.resume(
+                        'ai2apps.discover', { capability: 'model.package.install' }
+                    );
+                    if (!completed) return;
+                    if (completed.session) {
+                        await window.AI2AppsCapabilities.acknowledge(completed.session, { appId: 'ai2apps.discover' });
+                    }
+                    await this.loadCatalog();
+                } catch (error) {
+                    if (!String(error?.message || '').includes('已取消')) this.showError(error);
+                }
             },
             async resumeInstallContinuation() {
                 try {
@@ -672,6 +1019,61 @@
             formatBytes(value) { const size = Number(value || 0); return size < 1024 ? size + ' B' : size < 1048576 ? (size / 1024).toFixed(1) + ' KiB' : (size / 1048576).toFixed(1) + ' MiB'; },
             formatTime(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(); },
             packageTypeLabel(type) { return tr('discover.type.' + (type || 'app')); },
+            packageKindLabel(item) { return this.packageTypeLabel(this.isModel(item) ? 'model' : this.isMiniApp(item) ? 'mini-app' : item?.packageType); },
+            miniAppCategoryLabel(item) {
+                const category = item?.miniApp?.categories?.[0];
+                if (!category) return '';
+                const key = 'discover.mini_app_category.' + category;
+                const label = tr(key);
+                return label === key ? category.replaceAll('-', ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : label;
+            },
+            miniAppPlacementLabel(item) {
+                const placements = item?.miniApp?.placements || [];
+                return placements.map(value => value.split('.').pop().replaceAll('-', ' ')).join(' · ');
+            },
+            modelCategoryLabel(item) {
+                const category = item?.discovery?.categories?.[0];
+                return category ? tr('discover.model_category.' + category) : '';
+            },
+            primaryModelTask(item) {
+                const tasks = item?.discovery?.tasks || [];
+                if (tasks.includes('speech-synthesis')) return 'speech_synthesis';
+                if (tasks.includes('speech-recognition')) return 'speech_recognition';
+                return '';
+            },
+            primaryModelTaskLabel(item) {
+                const task = this.primaryModelTask(item);
+                return task ? tr('discover.model_task.' + task) : '';
+            },
+            modelProfile(item) { return item?.modelProfile || null; },
+            formatModelBytes(value) {
+                const bytes = Number(value || 0);
+                if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+                const gib = bytes / (1024 ** 3);
+                if (gib >= 1) return gib.toFixed(1).replace('.0', '') + ' GiB';
+                const mib = bytes / (1024 ** 2);
+                return (mib >= 10 ? mib.toFixed(0) : mib.toFixed(1)).replace('.0', '') + ' MiB';
+            },
+            modelProfileSizeLabel(item) {
+                const profile = this.modelProfile(item);
+                const prefix = profile?.source === 'legacy-map' ? '≈' : '';
+                return tr('discover.profile.size', { value: prefix + this.formatModelBytes(profile?.sizeBytes) });
+            },
+            modelProfileMemoryLabel(item) {
+                const profile = this.modelProfile(item);
+                // Missing runtime evidence must not be replaced with system RAM requirements.
+                return tr('discover.profile.memory', { value: profile?.runtimeMemoryBytes ? '≈' + this.formatModelBytes(profile.runtimeMemoryBytes) : '—' });
+            },
+            modelProfileScoreLabel(item, name) {
+                return tr('discover.profile.' + name, { value: this.modelProfile(item)?.scores?.[name] || '—' });
+            },
+            modelProfileSourceLabel(item) {
+                return tr('discover.profile.source.' + (this.modelProfile(item)?.source || 'manifest'));
+            },
+            modelProfileSourceTitle(item) {
+                const benchmark = this.modelProfile(item)?.benchmark;
+                return [benchmark?.label, benchmark?.device].filter(Boolean).join(' · ');
+            },
             canInstall(item) { return item?.installability?.installable !== false; },
             compatibilityMessage(item) {
                 const blocker = item?.installability?.blockers?.[0];
@@ -687,7 +1089,7 @@
                 if (blocker.code === 'ai2apps_incompatible') return tr('discover.compatibility.ai2apps_incompatible');
                 return blocker.message || tr('discover.compatibility.incompatible');
             },
-            iconFor(type) { return type === 'agent' ? 'bot' : type === 'service' ? 'server-cog' : 'app-window'; },
+            iconFor(type) { return type === 'model' ? 'brain-circuit' : type === 'mini-app' ? 'panels-top-left' : type === 'agent' ? 'bot' : type === 'service' ? 'server-cog' : 'app-window'; },
             ratingText(item) { return (item.rating || 0).toFixed(1) + ' (' + item.ratingCount + ')'; },
         };
     };

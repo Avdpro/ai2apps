@@ -23,11 +23,19 @@ from ai2apps.secrets.factory import create_secret_backend
 
 
 def _browser_session_namespace(cookie_db: Path, security_instance_id: str) -> str:
-    connection = sqlite3.connect(f"file:{cookie_db}?mode=ro&immutable=1", uri=True)
+    cookie_name = cloud_browser_cookie_name(security_instance_id)
+    # Firefox may keep the newest administrator step-up session in the WAL
+    # after the Shell exits.  immutable=1 ignores that WAL and can therefore
+    # select an older session.  Normal read-only mode includes the WAL while
+    # leaving the exact authorized browser profile unchanged.
+    connection = sqlite3.connect(
+        f"{cookie_db.as_uri()}?mode=ro",
+        uri=True,
+    )
     try:
         row = connection.execute(
             "SELECT value FROM moz_cookies WHERE name=? ORDER BY lastAccessed DESC LIMIT 1",
-            (cloud_browser_cookie_name(security_instance_id),),
+            (cookie_name,),
         ).fetchone()
     finally:
         connection.close()

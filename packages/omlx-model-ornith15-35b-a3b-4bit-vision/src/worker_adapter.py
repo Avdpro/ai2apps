@@ -61,12 +61,15 @@ class Ornith15VisionChatAdapter(OmlxChatAdapter):
             disable_qwen36_scope_policy,
         )
 
-        if mode == "full":
-            disable_qwen36_scope_policy()
-            return VLMBatchedEngine(str(checkpoint.path), trust_remote_code=False)
-
         prepared = _prepared_manifest(checkpoint)
         if prepared is None:
+            if mode == "full":
+                # Compatibility for a complete legacy checkpoint whose routed
+                # experts still live in the main safetensors shards.
+                disable_qwen36_scope_policy()
+                return VLMBatchedEngine(
+                    str(checkpoint.path), trust_remote_code=False
+                )
             raise ModelWorkerError(
                 "Checkpoint must be prepared before Ornith Cached-MoE execution",
                 code="model_not_prepared",
@@ -84,6 +87,20 @@ class Ornith15VisionChatAdapter(OmlxChatAdapter):
                 code="invalid_prepared_checkpoint",
                 status_code=503,
             )
+
+        if mode == "full":
+            # SSD checkpoints deliberately omit the 40 stacked routed-expert
+            # triples from their backbone shards.  Full mode is still exact,
+            # but it must inject all 256 experts from the external store while
+            # mlx-vlm constructs and loads the model.
+            configure_qwen36_scope_policy(
+                profile,
+                default_scope,
+                expert_store,
+                256,
+                backend="flesh",
+            )
+            return VLMBatchedEngine(str(checkpoint.path), trust_remote_code=False)
 
         from omlx.model_discovery import resolve_qwen36_cache_moe_experts
 

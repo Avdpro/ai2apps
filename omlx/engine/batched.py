@@ -352,19 +352,24 @@ class BatchedEngine(BaseEngine):
         from ..engine_core import get_mlx_executor
 
         def _load_model_sync():
-            custom_loaded = maybe_load_custom_quantization(
-                self._model_name,
-                is_vlm=False,
+            from ..patches.qwen3_6_flesh.io_patch import (
+                qwen36_scope_safetensors_on_load,
             )
-            if custom_loaded is not None:
-                model, processor = custom_loaded
-                return model, getattr(processor, "tokenizer", processor)
 
-            return lm_load_compat(
-                self._model_name,
-                tokenizer_config=tokenizer_config,
-                trust_remote_code=self._trust_remote_code,
-            )
+            with qwen36_scope_safetensors_on_load(self._model_name):
+                custom_loaded = maybe_load_custom_quantization(
+                    self._model_name,
+                    is_vlm=False,
+                )
+                if custom_loaded is not None:
+                    model, processor = custom_loaded
+                    return model, getattr(processor, "tokenizer", processor)
+
+                return lm_load_compat(
+                    self._model_name,
+                    tokenizer_config=tokenizer_config,
+                    trust_remote_code=self._trust_remote_code,
+                )
 
         loop = asyncio.get_running_loop()
         self._model, self._tokenizer = await loop.run_in_executor(

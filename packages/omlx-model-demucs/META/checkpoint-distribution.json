@@ -1,0 +1,34 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_mlx_demucs_htdemucs_d4519e24_v1",
+  "modelId": "ai2apps.model.demucs-mlx/default",
+  "repoId": "mlx-community/demucs-mlx",
+  "revision": "d4519e24ddc2dd4a11d56a193092433d852c3961",
+  "format": "safetensors",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://github.com/facebookresearch/demucs/blob/main/LICENSE",
+    "termsHash": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": ["htdemucs.safetensors", "htdemucs_config.json"],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/demucs-mlx",
+      "revision": "d4519e24ddc2dd4a11d56a193092433d852c3961",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/demucs-mlx",
+      "revision": "3e2b356248c71ec999090ca6e5eebc65654b8893",
+      "access": "public_anonymous"
+    }
+  ]
+}

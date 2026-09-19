@@ -1,0 +1,15 @@
+{
+  "schema": "ai2apps.mlx-ghostv2-checkpoint/v1",
+  "architecture": "ghostv2",
+  "implementation": "native-nhwc-mlx",
+  "components": {
+    "detector": "models/face_detection_yunet_2023mar.omlx",
+    "recognizer": "models/ghostv2_cvlface.omlx",
+    "generator": "models/ghostv2_generator.native"
+  },
+  "precision_profiles": ["fp16"],
+  "license": {
+    "id": "BSD-3-Clause",
+    "redistribution": "allowed"
+  }
+}

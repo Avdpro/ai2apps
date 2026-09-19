@@ -24,6 +24,12 @@ private func instanceID(_ value: String = "default") throws -> InstanceID {
     #expect(plan.environment["HF_HUB_CACHE"] == "/Users/test/Library/Caches/AI2Apps/instances/default/model-weights/huggingface/hub")
     #expect(plan.environment["AI2APPS_MODEL_CACHE_ROOT"] == "/Users/test/Library/Caches/AI2Apps/instances/default/model-weights")
     #expect(plan.environment["AI2APPS_MODEL_CACHE_MODE"] == "isolated")
+    #expect(plan.environment["AI2APPS_CHECKPOINT_CACHE_ROOT"] == "/Users/test/Library/Caches/AI2Apps/shared/checkpoint-cache-v1")
+    #expect(plan.environment["AI2APPS_INSTANCE_SUPPORT_ROOT"] == "/Users/test/Library/Application Support/AI2Apps/instances")
+    #expect(plan.environment["AI2APPS_PRESERVED_CHECKPOINT_CACHE_ROOT"] == "/Users/test/Library/Caches/AI2Apps/shared/legacy-checkpoint-cache-v1")
+    #expect(plan.environment["PYTHONDONTWRITEBYTECODE"] == "1")
+    #expect(plan.environment["PYTHONNOUSERSITE"] == "1")
+    #expect(plan.environment["AI2APPS_HF_IMPORT_HUB_CACHE"] == "/Users/test/.cache/huggingface/hub")
     #expect(plan.runDescriptorURL.path.hasSuffix("/run/local.json"))
 }
 
@@ -41,6 +47,9 @@ private func instanceID(_ value: String = "default") throws -> InstanceID {
             "HF_TOKEN": "must-not-leak",
             "HUGGING_FACE_HUB_TOKEN": "must-not-leak-either",
             "TRANSFORMERS_CACHE": "/tmp/untrusted-transformers",
+            "AI2APPS_CHECKPOINT_CACHE_ROOT": "/tmp/untrusted-checkpoints",
+            "AI2APPS_INSTANCE_SUPPORT_ROOT": "/tmp/untrusted-instances",
+            "AI2APPS_PRESERVED_CHECKPOINT_CACHE_ROOT": "/tmp/untrusted-legacy",
             "HOME": "/Users/test",
         ]
     )
@@ -51,11 +60,48 @@ private func instanceID(_ value: String = "default") throws -> InstanceID {
     #expect(plan.environment["HF_TOKEN"] == nil)
     #expect(plan.environment["HUGGING_FACE_HUB_TOKEN"] == nil)
     #expect(plan.environment["TRANSFORMERS_CACHE"] == nil)
+    #expect(plan.environment["AI2APPS_CHECKPOINT_CACHE_ROOT"] == paths.sharedCheckpointCacheDirectory.path)
+    #expect(plan.environment["AI2APPS_INSTANCE_SUPPORT_ROOT"] == paths.supportRoot.deletingLastPathComponent().path)
+    #expect(plan.environment["AI2APPS_PRESERVED_CHECKPOINT_CACHE_ROOT"] == paths.preservedLegacyCheckpointCacheDirectory.deletingLastPathComponent().path)
+    #expect(plan.environment["AI2APPS_HF_IMPORT_HUB_CACHE"] == "/Users/test/.cache/huggingface/hub")
     #expect(plan.environment["HOME"] == "/Users/test")
     #expect(plan.arguments.contains(paths.dataDirectory.path))
 }
 
-@Test func twoInstancesKeepAllRuntimeAndModelStorageSeparate() throws {
+@Test func developmentSourceRootRequiresExplicitTrustedInput() throws {
+    let id = try instanceID("app-dev")
+    let paths = InstancePaths(
+        instanceID: id,
+        homeDirectory: URL(fileURLWithPath: "/Users/test")
+    )
+    let inherited = [
+        "AI2APPS_DEVELOPMENT_SOURCE_ROOT": "/tmp/untrusted-source"
+    ]
+    let releasePlan = try LocalLaunchPlan(
+        executable: URL(fileURLWithPath: "/usr/bin/true"),
+        instanceID: id,
+        configuration: LocalConfiguration(),
+        paths: paths,
+        inheritedEnvironment: inherited
+    )
+    #expect(releasePlan.environment["AI2APPS_DEVELOPMENT_SOURCE_ROOT"] == nil)
+
+    let sourceRoot = URL(fileURLWithPath: "/Users/test/src/ai2apps-sdk")
+    let developmentPlan = try LocalLaunchPlan(
+        executable: URL(fileURLWithPath: "/usr/bin/true"),
+        instanceID: id,
+        configuration: LocalConfiguration(),
+        paths: paths,
+        inheritedEnvironment: inherited,
+        developmentSourceRoot: sourceRoot
+    )
+    #expect(
+        developmentPlan.environment["AI2APPS_DEVELOPMENT_SOURCE_ROOT"]
+            == "/Users/test/src/ai2apps-sdk"
+    )
+}
+
+@Test func twoInstancesShareOnlyImmutableCheckpointStorage() throws {
     let home = URL(fileURLWithPath: "/Users/test")
     let firstID = try instanceID("customer-a")
     let secondID = try instanceID("customer-b")
@@ -83,6 +129,8 @@ private func instanceID(_ value: String = "default") throws -> InstanceID {
     #expect(first.environment["HF_TOKEN_PATH"] != second.environment["HF_TOKEN_PATH"])
     #expect(first.environment["HF_HUB_CACHE"] != second.environment["HF_HUB_CACHE"])
     #expect(first.environment["AI2APPS_MODEL_CACHE_ROOT"] != second.environment["AI2APPS_MODEL_CACHE_ROOT"])
+    #expect(first.environment["AI2APPS_CHECKPOINT_CACHE_ROOT"] == second.environment["AI2APPS_CHECKPOINT_CACHE_ROOT"])
+    #expect(first.environment["AI2APPS_CHECKPOINT_CACHE_ROOT"] == firstPaths.sharedCheckpointCacheDirectory.path)
     #expect(first.environment["AI2APPS_MODEL_CACHE_MODE"] == "isolated")
     #expect(second.environment["AI2APPS_MODEL_CACHE_MODE"] == "isolated")
     #expect(first.arguments.contains(firstPaths.dataDirectory.path))

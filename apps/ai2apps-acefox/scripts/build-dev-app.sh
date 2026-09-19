@@ -10,6 +10,7 @@ LOCAL_EXECUTABLE=${LOCAL_EXECUTABLE:-}
 OUTPUT_APP=${OUTPUT_APP:-${PROJECT_DIR}/.build/AI2Apps-dev.app}
 PRODUCT_IDENTIFIER=${PRODUCT_IDENTIFIER:-com.ai2apps.desktop.dev}
 INSTANCE_ID=${INSTANCE_ID:-dev}
+DEVELOPMENT_SOURCE_ROOT=${DEVELOPMENT_SOURCE_ROOT:-${REPO_ROOT}}
 
 if [[ -z ${ACEFOX_APP} || ! -d ${ACEFOX_APP} ]]; then
   print -u2 "Set ACEFOX_APP to a built Acefox.app"
@@ -27,6 +28,11 @@ if ! /usr/bin/strings "${ACEFOX_EXECUTABLE}" | /usr/bin/grep -Fqx 'AI2APPS_BROWS
 fi
 if [[ -z ${LOCAL_EXECUTABLE} || ! -x ${LOCAL_EXECUTABLE} ]]; then
   print -u2 "Set LOCAL_EXECUTABLE to an executable AI2Apps Local entrypoint"
+  exit 64
+fi
+if [[ ${DEVELOPMENT_SOURCE_ROOT} != /* || \
+      ! -f ${DEVELOPMENT_SOURCE_ROOT}/ai2apps/__init__.py ]]; then
+  print -u2 "DEVELOPMENT_SOURCE_ROOT must be absolute and contain ai2apps/__init__.py"
   exit 64
 fi
 swift build --package-path "${PROJECT_DIR}" --product ai2apps-helper
@@ -128,6 +134,7 @@ INFO_PLIST="${APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable AI2Apps" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName AI2Apps" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopment bool true" "${INFO_PLIST}"
+/usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopmentSourceRoot string ${DEVELOPMENT_SOURCE_ROOT}" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsInstanceID string ${INSTANCE_ID}" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdaterProtocol integer 1" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdateStagingProtocol integer 1" "${INFO_PLIST}"
@@ -150,6 +157,7 @@ SHELL_INFO="${SHELL_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBuildNumber string development" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeVersion string development" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopment bool true" "${HELPER_APP}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopmentSourceRoot string ${DEVELOPMENT_SOURCE_ROOT}" "${HELPER_APP}/Contents/Info.plist"
 
 # Localized metadata overrides Info.plist on macOS, including for nested Apps.
 for localized_info in "${SHELL_APP}"/Contents/Resources/*.lproj/InfoPlist.strings(N); do

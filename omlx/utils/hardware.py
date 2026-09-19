@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import platform
 import re
 import subprocess
@@ -82,8 +83,9 @@ def get_total_memory_bytes() -> int:
 
     Fallback chain:
     1. sysctl hw.memsize (most reliable)
-    2. mlx.metal.device_info()["memory_size"]
-    3. DEFAULT_MEMORY_BYTES (8GB)
+    2. POSIX sysconf page count (works in restricted App processes)
+    3. mlx.metal.device_info()["memory_size"]
+    4. DEFAULT_MEMORY_BYTES (8GB)
 
     Returns:
         Total memory in bytes.
@@ -98,6 +100,18 @@ def get_total_memory_bytes() -> int:
         )
         return int(result.stdout.strip())
     except Exception:
+        pass
+
+    # Some sandboxed or restricted App processes cannot launch ``sysctl`` even
+    # though the kernel still exposes the physical page count.  This path also
+    # keeps control-plane Python, which intentionally has no MLX dependency,
+    # from silently treating a large-memory Mac as an 8 GiB machine.
+    try:
+        physical_pages = int(os.sysconf("SC_PHYS_PAGES"))
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        if physical_pages > 0 and page_size > 0:
+            return physical_pages * page_size
+    except (OSError, TypeError, ValueError):
         pass
 
     # Fallback: MLX Metal

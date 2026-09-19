@@ -80,6 +80,18 @@ def _make_pool(entries: list) -> MagicMock:
 class TestModelsListAudio:
     """GET /v1/models must include audio models with correct fields."""
 
+    @pytest.fixture(autouse=True)
+    def authenticated_platform_access(self):
+        from omlx.server import app, verify_ai2apps_platform_access
+
+        previous = app.dependency_overrides.copy()
+        app.dependency_overrides[verify_ai2apps_platform_access] = lambda: True
+        try:
+            yield
+        finally:
+            app.dependency_overrides.clear()
+            app.dependency_overrides.update(previous)
+
     @pytest.fixture
     def stt_entry(self):
         return _make_engine_entry(

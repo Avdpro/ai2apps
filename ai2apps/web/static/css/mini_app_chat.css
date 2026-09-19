@@ -1,0 +1,6 @@
+.mini-app-chat-panel{height:100%;min-height:0;padding:0!important;overflow:hidden}.mini-app-chat-frame{display:block;width:100%;height:100%;min-height:420px;border:0;background:var(--bg-primary,#f7f7f5)}
+
+/* Keep optional Chat in the same single-row switcher as the other sidebar tabs. */
+.ra-sidebar-switch,.vs-sidebar-switch{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.ra-sidebar-switch button,.vs-sidebar-switch button{min-width:0;gap:5px;white-space:nowrap}
+.ra-sidebar-switch svg,.vs-sidebar-switch svg{flex:none}

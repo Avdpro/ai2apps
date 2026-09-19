@@ -360,7 +360,7 @@ class ZImageAdapter:
         return path, strength
 
     async def invoke(self, request: ModelWorkerRequest) -> dict[str, Any]:
-        if request.operation not in {"image_generation", "image_edit"}:
+        if request.operation != "image_generation":
             raise ModelWorkerError(
                 "Unsupported operation",
                 code="operation_not_supported",

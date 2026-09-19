@@ -217,7 +217,7 @@ class ProvisioningSessionRepository:
     def list_returnable(
         self, *, actor_id: str | None = None
     ) -> tuple[dict[str, Any], ...]:
-        """List active or just-finished sessions whose return intent is unconsumed."""
+        """List active, retryable-failed, or ready sessions with an unconsumed return."""
 
         placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
         query = f"""SELECT * FROM provisioning_sessions
@@ -225,6 +225,12 @@ class ProvisioningSessionRepository:
                 status IN ({placeholders})
                 OR (
                     status = 'ready'
+                    AND json_extract(intent_json, '$.returnTo') IS NOT NULL
+                    AND json_extract(intent_json, '$.returnAcknowledgedAt') IS NULL
+                )
+                OR (
+                    status = 'failed'
+                    AND json_extract(error_json, '$.retryable') = 1
                     AND json_extract(intent_json, '$.returnTo') IS NOT NULL
                     AND json_extract(intent_json, '$.returnAcknowledgedAt') IS NULL
                 )

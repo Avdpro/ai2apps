@@ -22,9 +22,23 @@ def reject_mlx(name, *args, **kwargs):
 
 builtins.__import__ = reject_mlx
 import omlx.server
+from fastapi.testclient import TestClient
 
 assert omlx.server._CLOUD_RUNTIME_PROFILE is True
 assert omlx.server._server_state.engine_pool is None
+audio_paths = {
+    "/v1/audio/transcriptions",
+    "/v1/audio/speech",
+    "/v1/audio/process",
+}
+registered_paths = set(omlx.server.app.openapi()["paths"])
+assert audio_paths <= registered_paths
+response = TestClient(omlx.server.app).post(
+    "/v1/audio/speech",
+    json={"model": "unknown-audio-model", "input": "route probe", "voice": "default"},
+)
+assert response.status_code == 503, response.text
+assert "Legacy in-process audio engines are unavailable" in response.text
 """
     environment = dict(os.environ)
     environment["AI2APPS_RUNTIME_PROFILE"] = "cloud"

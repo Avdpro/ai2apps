@@ -106,3 +106,16 @@ def test_rejects_profile_too_short_for_selected_bank(tmp_path):
 
     with pytest.raises(ValueError, match="Top-96 requested"):
         load_qwen36_scope_policy()
+
+
+def test_full_flesh_policy_uses_canonical_ids_beyond_profile_depth(tmp_path):
+    profile = _profile(tmp_path)
+    store = tmp_path / "experts"
+    store.mkdir()
+    configure_qwen36_scope_policy(profile, "coding", store, 256, backend="flesh")
+
+    policy = load_qwen36_scope_policy()
+
+    assert policy is not None
+    assert policy.experts(0, phase="prefill") == tuple(range(256))
+    assert policy.experts(39, phase="decode") == tuple(range(256))

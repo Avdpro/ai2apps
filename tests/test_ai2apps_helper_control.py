@@ -132,6 +132,60 @@ def test_helper_control_client_requests_local_restart_without_secrets() -> None:
     assert captured["token"] == "b" * 64
 
 
+def test_helper_control_client_requests_confirmed_test_instance_reset() -> None:
+    temporary_directory = tempfile.TemporaryDirectory(dir="/tmp")
+    endpoint_path = Path(temporary_directory.name) / "helper-control.json"
+    listener = _tcp_listener(endpoint_path)
+    captured: dict[str, object] = {}
+
+    def serve() -> None:
+        with listener, listener.accept()[0] as connection:
+            request = json.loads(connection.recv(65536).split(b"\n", 1)[0])
+            captured.update(request)
+            response = {
+                "request_id": request["request_id"],
+                "ok": True,
+                "result": {"status": "resetting"},
+            }
+            connection.sendall(json.dumps(response).encode() + b"\n")
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    client = HelperControlClient(str(endpoint_path), "b" * 64)
+    result = client.reset_instance_data(
+        actor_user_id="ai2apps-test-harness", confirm_instance_id="test"
+    )
+    thread.join(timeout=2)
+    temporary_directory.cleanup()
+
+    assert result == {"status": "resetting"}
+    assert captured["operation"] == "instance.reset"
+    assert captured["actor_user_id"] == "ai2apps-test-harness"
+    assert captured["confirm_instance_id"] == "test"
+
+
+def test_helper_control_client_rejects_unconfirmed_instance_reset() -> None:
+    client = HelperControlClient("/tmp/missing-helper-control.json", "b" * 64)
+    with pytest.raises(HelperControlError, match="must be test"):
+        client.reset_instance_data(
+            actor_user_id="ai2apps-test-harness", confirm_instance_id="default"
+        )
+
+
+def test_helper_limits_remote_reset_to_signed_test_identity() -> None:
+    helper_source = (
+        Path(__file__).parents[1]
+        / "apps/ai2apps-acefox/Sources/AI2AppsHelper/main.swift"
+    ).read_text()
+    reset_start = helper_source.index('if request.operation == "instance.reset"')
+    reset_end = helper_source.index("let profileKey", reset_start)
+    reset_source = helper_source[reset_start:reset_end]
+    assert 'arguments.instanceID.rawValue == "test"' in reset_source
+    assert 'mainBundleIdentifier == "com.ai2apps.desktop.test"' in reset_source
+    assert 'request.confirmInstanceID == "test"' in reset_source
+    assert "beginInstanceDataReset()" in reset_source
+
+
 def test_helper_control_client_rejects_release_automation_secret() -> None:
     with pytest.raises(HelperControlError, match="leaked automation"):
         HelperControlClient._validate_browser_release_result(
@@ -157,6 +211,25 @@ def test_helper_control_client_rejects_non_loopback_automation_endpoint() -> Non
     }
     with pytest.raises(HelperControlError, match="not safe"):
         HelperControlClient._validate_browser_agent_result(result)
+
+
+def test_helper_uses_one_supervisor_factory_for_initial_launch_and_restart() -> None:
+    helper_source = (
+        Path(__file__).parents[1]
+        / "apps/ai2apps-acefox/Sources/AI2AppsHelper/main.swift"
+    ).read_text()
+
+    factory_start = helper_source.index("private func makeLocalSupervisor(")
+    factory_end = helper_source.index("private func validatePackagedRuntime", factory_start)
+    factory_source = helper_source[factory_start:factory_end]
+    restart_start = helper_source.index("    private func replaceSupervisor()")
+    restart_end = helper_source.index("    private func publishStatus(", restart_start)
+    restart_source = helper_source[restart_start:restart_end]
+
+    assert helper_source.count("LocalProcessSupervisor(") == 1
+    assert helper_source.count("makeLocalSupervisor(") == 3
+    assert "developmentSourceRoot: developmentSourceRoot" in factory_source
+    assert "supervisor = makeLocalSupervisor(" in restart_source
 
 
 @pytest.mark.parametrize("status", ["renewed", "paused", "resumed"])

@@ -1,0 +1,150 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.detailed-transcription-mlx
+name: MLX WhisperX Detailed Transcription
+description: Standalone subtitle and meeting transcription; deliberately excluded from Chat STT.
+version: 0.1.2
+
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
+attribution:
+  notice: META/NOTICE.md
+  qwen_asr: https://huggingface.co/Qwen/Qwen3-ASR-1.7B
+  qwen_aligner: https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B
+  sortformer: https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.detailed-transcription-mlx/compact
+    display_name: MLX Detailed Transcription Compact
+    model_type: audio_detailed_transcription
+    upstream_id: mlx-community/Qwen3-ASR-0.6B-4bit
+    capabilities: [speech_recognition, word_timestamps, diarization, speech_rate]
+    metadata:
+      family: mlx-detailed-transcription
+      profile: compact
+      chat_eligible: false
+      operation_class: audio_detailed_transcription
+      modelscope:
+        repo_id: mlx-community/Qwen3-ASR-0.6B-4bit
+        revision: 70ccd0ba0c24b0c78efc313ce81c1c78c64a3dd7
+        preferred: true
+        allow_patterns: &qwen_files
+          - chat_template.json
+          - config.json
+          - generation_config.json
+          - merges.txt
+          - model.safetensors
+          - model.safetensors.index.json
+          - preprocessor_config.json
+          - tokenizer_config.json
+          - vocab.json
+      required_model_ids: &helpers
+        - ai2apps.model.detailed-transcription-mlx/forced-aligner
+        - ai2apps.model.detailed-transcription-mlx/diarizer
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-ASR-0.6B-4bit
+      revision: 313d850181767edf09f00a9c289becca70e58cd0
+      distribution_id: dist_ai2apps_detailed_transcription_qwen3_asr_0_6b_4bit_313d8501_v1
+      preparation: {recipe: native}
+    audio_capabilities: &detailed_audio
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_detailed_transcription]
+      languages: [zh, yue, en, de, es, fr, it, pt, ru, ko, ja]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: []}
+      streaming: {mode: unsupported, formats: []}
+      stt:
+        timestamps: {mode: pipeline, levels: [segment, word]}
+        punctuation: {mode: native}
+        prompt_biasing: {mode: native}
+        diarization: {mode: pipeline, maximum_speakers: 4, identity: anonymous_global_slots}
+        speaker_recognition: {mode: unsupported}
+        speech_rate: {mode: pipeline}
+        emotion: {mode: fallback, values: [neutral], policy_required: compatibility}
+
+  - id: ai2apps.model.detailed-transcription-mlx/quality
+    display_name: MLX Detailed Transcription Quality
+    model_type: audio_detailed_transcription
+    upstream_id: mlx-community/Qwen3-ASR-1.7B-4bit
+    capabilities: [speech_recognition, word_timestamps, diarization, speech_rate]
+    metadata:
+      family: mlx-detailed-transcription
+      profile: quality
+      chat_eligible: false
+      operation_class: audio_detailed_transcription
+      modelscope:
+        repo_id: mlx-community/Qwen3-ASR-1.7B-4bit
+        revision: 8b78681d8e7ca07a7ef7c87e053dfa2476d37b6b
+        preferred: true
+        allow_patterns: *qwen_files
+      required_model_ids: *helpers
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-ASR-1.7B-4bit
+      revision: 78a389c776a5483b2d0d4ea5494e11012e0d6159
+      distribution_id: dist_ai2apps_qwen3_asr_1_7b_4bit_78a389c7_v1
+      preparation: {recipe: native}
+    audio_capabilities: *detailed_audio
+
+  - id: ai2apps.model.detailed-transcription-mlx/forced-aligner
+    display_name: Qwen3 Forced Aligner 0.6B 8-bit
+    model_type: audio_processing
+    upstream_id: mlx-community/Qwen3-ForcedAligner-0.6B-8bit
+    capabilities: [forced_alignment]
+    metadata:
+      family: qwen3-forced-aligner
+      internal: true
+      modelscope:
+        repo_id: mlx-community/Qwen3-ForcedAligner-0.6B-8bit
+        revision: 998b617c695f61865d444c62051fe51030acef6f
+        preferred: true
+        allow_patterns: *qwen_files
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/Qwen3-ForcedAligner-0.6B-8bit
+      revision: 0e1a68e91d815300c7c9754b2a7639378b23db15
+      distribution_id: dist_ai2apps_qwen3_forced_aligner_0_6b_8bit_0e1a68e9_v1
+      preparation: {recipe: native}
+
+  - id: ai2apps.model.detailed-transcription-mlx/diarizer
+    display_name: Sortformer 4 Speaker v2.1 fp16
+    model_type: audio_processing
+    upstream_id: mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16
+    capabilities: [speaker_diarization]
+    metadata:
+      family: sortformer
+      internal: true
+      maximum_speakers: 4
+      modelscope:
+        repo_id: mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16
+        revision: 4dcec436677a71e352b8d8bc6ee09c1faf60854d
+        preferred: true
+        allow_patterns: [config.json, model.safetensors]
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16
+      revision: e23e6404bd9859e93edbf94a740eb1c7fc58f12e
+      distribution_id: dist_ai2apps_sortformer_4spk_v2_1_fp16_e23e6404_v1
+      preparation: {recipe: native}
+
+capabilities: [audio-detailed-transcription-v1]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.6.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-processing, audio-codecs, audio-detailed-transcription-v1]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only Host-selected pinned detailed-transcription checkpoints.}
+  accelerator: {metal: true, reason: Run the pipeline locally with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

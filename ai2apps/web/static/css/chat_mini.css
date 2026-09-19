@@ -2,3 +2,13 @@
 
 /* Browser sidebar typography: keep all functional copy readable at narrow widths. */
 :root{--cm-muted:#68645e}.chat-mini{font-size:13px;line-height:1.4}.chat-mini>header>div{gap:8px}.chat-mini>header>div>span{width:34px;height:34px}.chat-mini h1{font-size:15px;line-height:1.2}.chat-mini header p{margin-top:3px;color:var(--cm-muted);font-size:11px;line-height:1.3}.chat-mini select{height:34px;padding:0 8px;font-size:12px}.chat-mini-context{padding:10px}.chat-mini-context strong{font-size:12px}.chat-mini-context small{color:var(--cm-muted);font-size:10px}.chat-mini-context p{max-height:72px;padding:8px;color:#57534e;font-size:11px;line-height:1.5}.chat-mini-actions button{min-height:34px;height:auto;padding:4px 6px;color:#44403c;font-size:12px}.chat-mini-welcome{color:var(--cm-muted)}.chat-mini-welcome strong{color:#44403c;font-size:13px}.chat-mini-welcome p{max-width:240px;font-size:11px;line-height:1.55}.chat-mini-message{padding:9px 10px;font-size:12px;line-height:1.58}.chat-mini-citations{color:var(--cm-muted);font-size:10px}.chat-mini form{padding:8px}.chat-mini textarea{font-size:12px;line-height:1.5}.chat-mini form button{height:34px;font-size:12px}
+
+/* Mini-App identity and model selection use separate rows at sidebar widths. */
+.chat-mini>header{justify-content:flex-start;align-items:flex-start}
+.chat-mini>header>div{width:100%}
+.chat-mini>header>div>div{min-width:0}
+.chat-mini h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-mini header p{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.chat-mini-model{display:grid;gap:5px;margin-top:10px;color:var(--cm-muted);font-size:10px;font-weight:700}
+.chat-mini-model>span{padding-left:1px;text-transform:uppercase;letter-spacing:.06em}
+.chat-mini-model select{display:block;width:100%;max-width:none;color:var(--cm-ink)}

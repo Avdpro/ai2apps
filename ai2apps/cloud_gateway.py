@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md.
 """OpenAI-compatible gateway for user-enabled cloud models."""
 
 from __future__ import annotations
@@ -121,6 +123,7 @@ async def request_cloud_image(
     edit: bool,
     base_path: Any,
     cloud_client: Any | None = None,
+    cloud_headers: dict[str, str] | None = None,
     model_manager: ModelManagerStore | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, Any]:
@@ -156,16 +159,16 @@ async def request_cloud_image(
                 }
             }
             cloud_body["model"] = managed_model
+            request_headers = dict(cloud_headers or {})
+            request_headers["Idempotency-Key"] = str(
+                payload.get("idempotencyKey") or f"local-image-{uuid.uuid4()}"
+            )
             try:
                 upstream = await cloud_client.request(
                     "POST",
                     f"/v1/ai/images/{'edits' if edit else 'generations'}",
                     json=cloud_body,
-                    headers={
-                        "Idempotency-Key": str(
-                            payload.get("idempotencyKey") or f"local-image-{uuid.uuid4()}"
-                        )
-                    },
+                    headers=request_headers,
                 )
             except httpx.TimeoutException as exc:
                 raise HTTPException(status_code=504, detail="AI2Apps Cloud timed out") from exc
@@ -580,7 +583,7 @@ async def proxy_cloud_chat_completion(
         local_provider = next(
             (item for item in store.list_cloud() if item["id"] == provider_id), None
         )
-        if local_provider is None or not local_provider["configured"]:
+        if request.model.startswith(AI2APPS_CLOUD_MODEL_PREFIX) or local_provider is None or not local_provider["configured"]:
             original_model = request.model
             request.model = f"{AI2APPS_CLOUD_MODEL_PREFIX}{managed_model}"
             try:

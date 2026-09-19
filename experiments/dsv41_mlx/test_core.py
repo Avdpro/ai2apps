@@ -10,7 +10,7 @@ from kernels import rope_freq
 from engram import HashState
 from model import Model
 
-root=Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash');config=json.loads((root/'inference/config.json').read_text())
+root=Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD');config=json.loads((root/'inference/config.json').read_text())
 old=torch.get_default_dtype();torch.set_default_dtype(torch.bfloat16)
 try:
     tree=ast.parse((root/'inference/model.py').read_text());nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='precompute_freqs_cis']

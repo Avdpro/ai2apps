@@ -19,10 +19,26 @@ def test_runtime_manifests_are_synchronized_for_video():
     package = json.loads((RUNTIME / "ai2apps.json").read_text())
     descriptor = json.loads((RUNTIME / "META" / "runtime-manifest.json").read_text())
 
-    assert service["version"] == package["package"]["version"] == descriptor["version"] == "1.5.7"
+    assert (
+        service["version"]
+        == package["package"]["version"]
+        == descriptor["version"]
+        == "1.7.8"
+    )
     for capability in ("video-generation", "video-codecs", "audio-codecs", "z-image"):
         assert capability in service["capabilities"]
         assert capability in descriptor["capabilities"]
+
+
+def test_runtime_advertises_detailed_transcription_separately_from_chat_stt():
+    service = yaml.safe_load((RUNTIME / "service.yaml").read_text())
+    descriptor = json.loads((RUNTIME / "META" / "runtime-manifest.json").read_text())
+
+    assert "audio-stt" in service["capabilities"]
+    assert "audio-detailed-transcription-v1" in service["capabilities"]
+    assert "audio-reference-input-v1" in service["capabilities"]
+    assert "audio-voice-training-v1" in service["capabilities"]
+    assert service["capabilities"] == descriptor["capabilities"]
 
 
 def test_runtime_source_exposes_worker_lifecycle_control_routes():

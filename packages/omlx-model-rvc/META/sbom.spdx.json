@@ -1,0 +1,18 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.rvc-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.rvc-mlx/0.1.0",
+  "packages": [
+    {
+      "name": "Retrieval-based-Voice-Conversion-WebUI",
+      "SPDXID": "SPDXRef-RVC",
+      "versionInfo": "81eed5e8f68b6bed1789f682fe78cdd324495afc",
+      "downloadLocation": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) RVC contributors"
+    }
+  ]
+}

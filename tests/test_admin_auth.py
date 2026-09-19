@@ -109,6 +109,8 @@ class TestDashboardPage:
                     "system_apps": admin_routes.SYSTEM_APPS,
                     "initial_app_id": "ai2apps.dashboard",
                     "initial_instance_id": None,
+                    "desktop_client_version": None,
+                    "desktop_client_build": None,
                     "can_manage_system": True,
                 },
             )

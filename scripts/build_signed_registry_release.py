@@ -34,6 +34,22 @@ def main() -> None:
     parser.add_argument("--publisher-key-id", required=True)
     parser.add_argument("--keychain-secret", required=True)
     parser.add_argument("--keychain-namespace", required=True)
+    parser.add_argument(
+        "--omit-mini-app-catalog",
+        action="store_true",
+        help=(
+            "Keep Mini-App declarations only in the signed app.yaml for "
+            "compatibility with Registry schemas predating top-level miniApps"
+        ),
+    )
+    parser.add_argument(
+        "--omit-model-install-catalog",
+        action="store_true",
+        help=(
+            "Keep modelInstall in Package source but omit its top-level "
+            "Registry projection for compatibility with older Cloud schemas"
+        ),
+    )
     args = parser.parse_args()
 
     output = args.output.resolve()
@@ -47,7 +63,12 @@ def main() -> None:
     else:
         source = args.source.resolve(strict=True)
         require_checkpoint_distributions_from_source(source)
-        inspected = build_package(source, output)
+        inspected = build_package(
+            source,
+            output,
+            include_mini_app_catalog=not args.omit_mini_app_catalog,
+            include_model_install_catalog=not args.omit_model_install_catalog,
+        )
     backend = create_secret_backend(
         Path.home() / ".omlx" / "platform" / "secrets",
         namespace=args.keychain_namespace,

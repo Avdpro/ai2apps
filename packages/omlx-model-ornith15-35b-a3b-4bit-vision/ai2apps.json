@@ -3,26 +3,81 @@
   "package": {
     "id": "ai2apps/model-ornith15-35b-a3b-4bit-vision",
     "type": "service",
-    "version": "0.1.0",
+    "version": "0.1.4",
     "displayName": "Ornith 1.5 35B A3B 4-bit Vision",
     "description": "Multimodal Ornith 1.5 Worker with full and exact Cached-MoE execution."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["darwin"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "26.2"
   },
   "entrypoints": [
-    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
   "permissions": [
-    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned Ornith checkpoint and prepared expert store.", "required": true},
-    {"capability": "accelerator.metal", "reason": "Run the oMLX multimodal engine on Apple GPU.", "required": true}
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read only the Host-selected pinned Ornith checkpoint and prepared expert store.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run the oMLX multimodal engine on Apple GPU.",
+      "required": true
+    }
   ],
   "dependencies": [
-    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.6 <2.0.0", "optional": false}
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.7.5 <2.0.0",
+      "optional": false
+    }
   ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "multimodal"
+    ],
+    "tasks": [
+      "multimodal-conversation",
+      "image-understanding"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 20422831594,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 3,
+      "capability": 5
+    },
+    "benchmark": {
+      "label": "SSD-ready Cached-MoE Top160/Hot32 VLM; runtime estimate",
+      "device": "AI2Apps runtime tier / reference-host measurement"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.ornith15-35b-a3b-4bit-vision",
+    "models": [
+      {
+        "id": "ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision",
+        "label": "Ornith 1.5 35B A3B 4-bit Vision",
+        "recommended": true
+      }
+    ]
+  }
 }

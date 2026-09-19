@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360">
+  <rect width="960" height="360" rx="24" fill="#f5f5f4"/>
+  <defs>
+    <symbol id="a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.25 10.25 12 14.5l7.75-4.25"/><path d="M4.25 10.25v6.25L12 21l7.75-4.5v-6.25"/><path d="m4.25 10.25 3.8-2.5L12 10l3.95-2.25 3.8 2.5"/><path d="M12 2.25c.2 1.1.9 1.8 2 2-1.1.2-1.8.9-2 2-.2-1.1-.9-1.8-2-2 1.1-.2 1.8-.9 2-2Z" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="b" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="15" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M12 8.25c.32 2.13 1.37 3.18 3.5 3.5-2.13.32-3.18 1.37-3.5 3.5-.32-2.13-1.37-3.18-3.5-3.5 2.13-.32 3.18-1.37 3.5-3.5Z" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2.75 21.25 12 12 21.25 2.75 12 12 2.75Z"/><path d="M12 7.25 16.75 12 12 16.75 7.25 12 12 7.25Z"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 4h10a2 2 0 0 1 2 2v8"/><rect x="4" y="7" width="12" height="13" rx="2"/><path d="M7.5 11h5M7.5 14h3"/><path d="M18.5 15.25c.25 1.55.95 2.25 2.5 2.5-1.55.25-2.25.95-2.5 2.5-.25-1.55-.95-2.25-2.5-2.5 1.55-.25 2.25-.95 2.5-2.5Z" fill="currentColor" stroke="none"/>
+    </symbol>
+  </defs>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" text-anchor="middle">
+    <g transform="translate(30 30)"><rect width="210" height="300" rx="18" fill="white"/><text x="105" y="34" font-size="14" font-weight="650" fill="#171717">A · Package Spark</text><use href="#a" x="57" y="58" width="96" height="96" color="#171717"/><rect x="50" y="210" width="46" height="46" rx="14" fill="transparent"/><use href="#a" x="62" y="222" width="22" height="22" color="#171717"/><rect x="114" y="210" width="46" height="46" rx="14" fill="#171717"/><use href="#a" x="126" y="222" width="22" height="22" color="white"/><text x="105" y="282" font-size="11" fill="#737373">22px · inactive / active</text></g>
+    <g transform="translate(260 30)"><rect width="210" height="300" rx="18" fill="white"/><text x="105" y="34" font-size="14" font-weight="650" fill="#171717">B · Module Spark</text><use href="#b" x="57" y="58" width="96" height="96" color="#171717"/><rect x="50" y="210" width="46" height="46" rx="14" fill="transparent"/><use href="#b" x="62" y="222" width="22" height="22" color="#171717"/><rect x="114" y="210" width="46" height="46" rx="14" fill="#171717"/><use href="#b" x="126" y="222" width="22" height="22" color="white"/><text x="105" y="282" font-size="11" fill="#737373">22px · inactive / active</text></g>
+    <g transform="translate(490 30)"><rect width="210" height="300" rx="18" fill="white"/><text x="105" y="34" font-size="14" font-weight="650" fill="#171717">C · Layered Portal</text><use href="#c" x="57" y="58" width="96" height="96" color="#171717"/><rect x="50" y="210" width="46" height="46" rx="14" fill="transparent"/><use href="#c" x="62" y="222" width="22" height="22" color="#171717"/><rect x="114" y="210" width="46" height="46" rx="14" fill="#171717"/><use href="#c" x="126" y="222" width="22" height="22" color="white"/><text x="105" y="282" font-size="11" fill="#737373">22px · inactive / active</text></g>
+    <g transform="translate(720 30)"><rect width="210" height="300" rx="18" fill="white"/><text x="105" y="34" font-size="14" font-weight="650" fill="#171717">D · Card Spark</text><use href="#d" x="57" y="58" width="96" height="96" color="#171717"/><rect x="50" y="210" width="46" height="46" rx="14" fill="transparent"/><use href="#d" x="62" y="222" width="22" height="22" color="#171717"/><rect x="114" y="210" width="46" height="46" rx="14" fill="#171717"/><use href="#d" x="126" y="222" width="22" height="22" color="white"/><text x="105" y="282" font-size="11" fill="#737373">22px · inactive / active</text></g>
+  </g>
+</svg>

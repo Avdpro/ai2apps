@@ -1,0 +1,36 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.liveportrait-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.liveportrait-mlx/0.1.0",
+  "packages": [
+    {
+      "name": "LivePortrait",
+      "SPDXID": "SPDXRef-LivePortrait",
+      "versionInfo": "82a4fa6735ca58432b6ce39301b4b9ee066dea47",
+      "downloadLocation": "https://huggingface.co/KlingTeam/LivePortrait",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2024 Kuaishou Visual Generation and Interaction Center"
+    },
+    {
+      "name": "fasterliveportrait-mlx",
+      "SPDXID": "SPDXRef-FasterLivePortraitMLX",
+      "versionInfo": "d5361f4806c14fe2051eecb1dd5a89930f46db0d",
+      "downloadLocation": "https://github.com/ivanfioravanti/fasterliveportrait-mlx",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2026 Ivan Fioravanti"
+    },
+    {
+      "name": "YuNet",
+      "SPDXID": "SPDXRef-YuNet",
+      "versionInfo": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+      "downloadLocation": "https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2020 Shiqi Yu"
+    }
+  ]
+}

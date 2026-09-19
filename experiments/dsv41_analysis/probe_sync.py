@@ -4,7 +4,9 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'dsv41_mlx'))
 import run
 KEEP='--keep-layer-eval' in sys.argv
-if KEEP:sys.argv.remove('--keep-layer-eval')
+if KEEP:
+    sys.argv.remove('--keep-layer-eval')
+    sys.argv.append('--layer-progress')
 if '--trace' in sys.argv:raise ValueError('Timing probe must not use --trace')
 class Probe(run.Model):
     def emit(self,name,x):

@@ -3,22 +3,86 @@
   "package": {
     "id": "ai2apps/model-qwen-image-mlx",
     "type": "service",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "displayName": "Qwen Image MLX",
-    "description": "Optimized Qwen-Image-2512 generation and Qwen-Image-Edit-2511 editing on Apple Silicon."
+    "description": "Separate Qwen Image 2512 generation and Qwen Image Edit 2511 editing (1–3 references)."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["darwin"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "26.2"
   },
-  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
-  "permissions": [
-    {"capability": "model-weights.huggingface-cache.read", "reason": "Read pinned Qwen Image checkpoints resolved by the Host.", "required": true},
-    {"capability": "accelerator.metal", "reason": "Run native MLX image generation and editing.", "required": true}
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
-  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.1 <2.0.0", "optional": false}],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read pinned Qwen Image checkpoints resolved by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX image generation and editing.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.5.1 <2.0.0",
+      "optional": false
+    }
+  ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "image-generation",
+      "image-edit"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 42949672960,
+    "minimumMemoryBytes": 51539607552,
+    "scores": {
+      "speed": 2,
+      "capability": 5
+    },
+    "benchmark": {
+      "label": "Existing package estimates; not a new hardware benchmark",
+      "device": "Apple Silicon reference hardware"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.qwen-image-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.qwen-image-mlx/2512",
+        "label": "Qwen Image 2512 MLX",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.qwen-image-mlx/edit-2511",
+        "label": "Qwen Image Edit 2511 MLX",
+        "recommended": false
+      }
+    ]
+  }
 }

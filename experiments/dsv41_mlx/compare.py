@@ -8,7 +8,8 @@ from safetensors.numpy import load_file
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('reference',type=Path);ap.add_argument('candidate',type=Path);a=ap.parse_args()
     r=json.loads((a.reference/'manifest.json').read_text());c=json.loads((a.candidate/'manifest.json').read_text())
-    assert r['status']==c['status']=='complete' and r['input_ids']==c['input_ids'] and r['checkpoint_index_sha256']==c['checkpoint_index_sha256']
+    assert r['status']==c['status']=='complete' and r['input_ids']==c['input_ids']
+    assert r.get('source_checkpoint_index_sha256',r['checkpoint_index_sha256'])==c.get('source_checkpoint_index_sha256',c['checkpoint_index_sha256'])
     assert {Path(k).name:v for k,v in r['source_sha256'].items()}==c['official_source_sha256']
     report={'scope':'full MLX vs previous reference; normal floating differences, not bitwise gate','reference':str(a.reference),'candidate':str(a.candidate),'reference_text':r['generated_text'],'candidate_text':c['generated_text'],'generated_ids_equal':r['generated_ids']==c['generated_ids'],'steps':[]}
     for i in range(min(len(r['generated_ids']),len(c['generated_ids']))):

@@ -48,6 +48,10 @@ public struct InstancePaths: Equatable, Sendable {
     public let supportRoot: URL
     public let cacheRoot: URL
     public let storageContainerDirectory: URL?
+    /// The conventional user-owned Hugging Face Hub cache may be inspected as
+    /// a read-only import source. AI2Apps never writes tokens, mutable state,
+    /// or unverified artifacts here.
+    public let externalHuggingFaceHubDirectory: URL?
 
     public init(
         instanceID: InstanceID,
@@ -55,6 +59,11 @@ public struct InstancePaths: Equatable, Sendable {
         containerDirectory: URL? = nil
     ) {
         storageContainerDirectory = containerDirectory?.standardizedFileURL
+        externalHuggingFaceHubDirectory = containerDirectory == nil
+            ? homeDirectory
+                .appendingPathComponent(".cache/huggingface/hub", isDirectory: true)
+                .standardizedFileURL
+            : nil
         let library = storageContainerDirectory?.appendingPathComponent(
             "Library",
             isDirectory: true
@@ -108,9 +117,9 @@ public struct InstancePaths: Equatable, Sendable {
     public var runDirectory: URL { supportRoot.appendingPathComponent("run", isDirectory: true) }
     public var downloadsDirectory: URL { supportRoot.appendingPathComponent("downloads", isDirectory: true) }
     public var browserProfilesDirectory: URL { supportRoot.appendingPathComponent("browser-profiles", isDirectory: true) }
-    /// Model checkpoints and download caches are private to this instance.
-    /// Other instances consume model capability through an authenticated Local
-    /// upstream and never receive filesystem access to this directory.
+    /// Mutable preparation output and Worker-facing model views remain private
+    /// to this instance. Verified Registry checkpoint bytes live in the shared
+    /// content-addressed cache below.
     public var instanceModelWeightsDirectory: URL {
         cacheRoot.appendingPathComponent("model-weights", isDirectory: true)
     }
@@ -119,6 +128,30 @@ public struct InstancePaths: Equatable, Sendable {
     }
     public var instanceHuggingFaceHubDirectory: URL {
         instanceModelWeightsDirectory.appendingPathComponent("huggingface/hub", isDirectory: true)
+    }
+    /// Immutable, verified checkpoint bytes shared by every AI2Apps instance
+    /// in this storage container. Instances retain separate install metadata,
+    /// mutable preparation output, and Worker-facing views.
+    public var sharedCheckpointCacheDirectory: URL {
+        cacheRoot
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("shared/checkpoint-cache-v1", isDirectory: true)
+    }
+    /// Registry checkpoint cache used before machine-wide sharing was added.
+    public var legacyCheckpointCacheDirectory: URL {
+        dataDirectory.appendingPathComponent(
+            "platform/packages/checkpoint-cache-v1",
+            isDirectory: true
+        )
+    }
+    /// A reset moves an existing legacy cache here in O(1) time so its verified
+    /// bytes remain available as an import source for every local instance.
+    public var preservedLegacyCheckpointCacheDirectory: URL {
+        sharedCheckpointCacheDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("legacy-checkpoint-cache-v1", isDirectory: true)
+            .appendingPathComponent(supportRoot.lastPathComponent, isDirectory: true)
     }
     public var privateDirectories: [URL] {
         [
@@ -135,6 +168,7 @@ public struct InstancePaths: Equatable, Sendable {
             cacheRoot,
             instanceModelWeightsDirectory,
             instanceHuggingFaceHubDirectory,
+            sharedCheckpointCacheDirectory,
         ]
     }
 

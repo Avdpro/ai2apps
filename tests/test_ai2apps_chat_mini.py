@@ -1,9 +1,70 @@
 from pathlib import Path
+import subprocess
 
 from ai2apps.apps.system import SYSTEM_APP_MANIFESTS
 from omlx.admin.routes import _shell_mount_payload
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_mini_model_install_action_restores_selection_and_uses_acpf():
+    script = (ROOT / 'ai2apps/web/static/js/mini_app_chat.js').read_text()
+    method = script.split('    function createModelInstaller(select, reload, onError) {', 1)[1].split(
+        '    function startChatEntry()', 1)[0]
+    program = 'function createModelInstaller(select, reload, onError) {' + method + r'''
+const assert = require('node:assert/strict');
+const calls = [];
+global.document = {createElement:()=>({})};
+global.window = {t:()=> 'Install more models', AI2AppsCapabilities:{
+ appInstanceId:()=> 'chat-instance',
+ ensure: async (body, options)=>{calls.push([body, options]); throw new Error('已取消能力配置');}
+}};
+const select = {value:'chosen', options:[], append(option){this.options.push(option);}};
+const installer = createModelInstaller(select, ()=>{throw new Error('unexpected reload');}, error=>{throw error;});
+installer.sync();
+assert.equal(select.options.at(-1).value,'__install_more__');
+select.value = '__install_more__';
+assert.equal(installer.handleChange(),true);
+assert.equal(select.value,'chosen');
+assert.equal(calls[0][0].appInstanceId,'chat-instance');
+assert.equal(calls[0][1].installMore,true);
+select.value='manual';
+assert.equal(installer.handleChange(),false);
+'''
+    subprocess.run(['node','-e',program],check=True,capture_output=True,text=True)
+
+
+def test_mini_chat_default_selection_preserves_points_route_and_manual_choice():
+    script = (ROOT / 'ai2apps/web/static/js/mini_app_chat.js').read_text()
+    method = script.split('    async function resolveModelSelection(catalog, saved) {', 1)[1].split(
+        '    function startChatEntry()', 1)[0]
+    program = 'async function resolveModelSelection(catalog, saved) {' + method + r'''
+const assert = require('node:assert/strict');
+let standard = '';
+let apiDefault = {modelId: 'provider/model', displayName: 'Default'};
+global.fetch = async url => ({ok: true, json: async () => url.includes('model-manager')
+    ? {defaults: {work_standard: standard}} : {policy: {apiDefault}}});
+(async () => {
+    const catalog = [{id:'cloud/provider/model', capabilities:['chat']}, {id:'manual'}];
+    let result = await resolveModelSelection(catalog, null);
+    assert.equal(result.selected, 'cloud/ai2apps/provider/model');
+    assert.equal(catalog.length, 2);
+    assert.deepEqual(result.models[2].capabilities, ['chat']);
+    standard = 'manual';
+    assert.equal((await resolveModelSelection(catalog, null)).selected, 'manual');
+    assert.equal((await resolveModelSelection(catalog, 'cloud/provider/model')).selected, 'cloud/provider/model');
+    assert.equal((await resolveModelSelection(catalog, 'missing')).selected, 'manual');
+    standard = ''; apiDefault = null;
+    assert.equal((await resolveModelSelection(catalog, null)).selected, '');
+    assert.equal((await resolveModelSelection([], null)).selected, '');
+})().catch(error => {console.error(error); process.exitCode = 1;});
+'''
+    subprocess.run(['node', '-e', program], check=True, capture_output=True, text=True)
+    browser = (ROOT / 'ai2apps/web/static/js/chat_mini.js').read_text()
+    assert 'window.AI2AppsMiniAppChat.resolveModelSelection(' in browser
+    assert 'const liveSelection = modelSelect.value;' in browser
+    assert 'availableModels.has(liveSelection) ? liveSelection : selected' in browser
+    assert 'models.some(model => model.id === liveSelection) ? liveSelection : selected' in script
 
 
 def test_chat_exposes_browser_sidebar_mini_entry():

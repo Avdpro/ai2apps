@@ -55,6 +55,9 @@ def _physical_expert_ids(policy: Qwen36ScopePolicy, layer: int) -> tuple[int, ..
 def _load_qwen36_scope_safetensors(
     path: str | Path,
     policy: Qwen36ScopePolicy | None = None,
+    *,
+    external_reader=None,
+    external_injection_file: str | None = None,
 ) -> dict[str, mx.array]:
     """Load non-expert tensors and only the physical Qwen expert bank.
 
@@ -110,7 +113,35 @@ def _load_qwen36_scope_safetensors(
             mlx_value = mx.array(value)
             if view_dtype is not None:
                 mlx_value = mlx_value.view(view_dtype)
-            selected[key] = mlx_value
+            if expert_ids is not None and policy.backend == "tiered":
+                protected_count = policy.resident_experts
+                tail_key = key.replace(".switch_mlp.", ".tail_switch_mlp.")
+                selected[key] = mlx_value[:protected_count]
+                selected[tail_key] = mlx_value[protected_count:]
+            else:
+                selected[key] = mlx_value
+
+    if (
+        external_reader is not None
+        and Path(path).name == external_injection_file
+    ):
+        for key in external_reader.tensors:
+            match = _STACKED_EXPERT_RE.search(key)
+            if match is None:
+                raise ValueError(
+                    f"Unexpected external Qwen3.6 tensor name: {key}"
+                )
+            layer = int(match.group(1))
+            value = external_reader.mlx_array(
+                key, _physical_expert_ids(policy, layer)
+            )
+            if policy.backend == "tiered":
+                protected_count = policy.resident_experts
+                tail_key = key.replace(".switch_mlp.", ".tail_switch_mlp.")
+                selected[key] = value[:protected_count]
+                selected[tail_key] = value[protected_count:]
+            else:
+                selected[key] = value
 
     return selected
 
@@ -286,13 +317,21 @@ def apply_qwen36_vlm_flesh_patch() -> bool:
                     if value is None:
                         continue
                     count = int(value.shape[0])
+                    tail_key = key.replace(".switch_mlp.", ".tail_switch_mlp.")
+                    if (
+                        active.backend == "tiered"
+                        and count == protected_count
+                        and tail_key in sanitized
+                        and int(sanitized[tail_key].shape[0])
+                        == physical_count - protected_count
+                    ):
+                        continue
                     if count != physical_count:
                         raise ValueError(
                             f"Qwen3.6 VLM layer {layer} {projection}.{tensor_name} "
                             f"has {count} compact experts; expected {physical_count}"
                         )
                     if active.backend == "tiered":
-                        tail_key = key.replace(".switch_mlp.", ".tail_switch_mlp.")
                         sanitized[tail_key] = value[protected_count:]
                         sanitized[key] = value[:protected_count]
         return sanitized
@@ -306,7 +345,7 @@ def apply_qwen36_vlm_flesh_patch() -> bool:
 
 @contextlib.contextmanager
 def qwen36_scope_safetensors_on_load(model_path: str | Path):
-    """Temporarily install the subset reader for one serialized VLM load."""
+    """Temporarily install the compact reader for one LM or VLM load."""
 
     policy = load_qwen36_scope_policy()
     if policy is None or not _is_qwen36_moe_model(model_path):
@@ -315,14 +354,58 @@ def qwen36_scope_safetensors_on_load(model_path: str | Path):
 
     apply_qwen36_vlm_flesh_patch()
 
+    import mlx_lm.utils as lm_utils
     import mlx_vlm.utils as vlm_utils
 
-    original = vlm_utils._load_safetensors
+    external_reader = None
+    external_injection_file = None
+    root = Path(model_path)
+    if (root / "ssd-checkpoint.json").is_file():
+        from omlx.ssd_checkpoint import ExternalTensorReader
+
+        external_reader = ExternalTensorReader(root, expected_family="qwen3_6")
+        index = json.loads(
+            (root / "model.safetensors.index.json").read_text(encoding="utf-8")
+        )
+        shards = sorted(set(index.get("weight_map", {}).values()))
+        if not shards:
+            raise ValueError("Qwen3.6 SSD checkpoint has no backbone shards")
+        external_injection_file = Path(shards[0]).name
+
+    originals = {vlm_utils: vlm_utils._load_safetensors}
 
     def scoped_loader(path: str):
-        return _load_qwen36_scope_safetensors(path, policy)
+        return _load_qwen36_scope_safetensors(
+            path,
+            policy,
+            external_reader=external_reader,
+            external_injection_file=external_injection_file,
+        )
 
     vlm_utils._load_safetensors = scoped_loader
+    lm_original_loader = getattr(lm_utils, "_load_safetensors", None)
+    lm_original_mx = None
+    if lm_original_loader is not None:
+        originals[lm_utils] = lm_original_loader
+        lm_utils._load_safetensors = scoped_loader
+    else:
+        lm_original_mx = lm_utils.mx
+
+        class _ScopedMx:
+            def __getattr__(self, name):
+                return getattr(lm_original_mx, name)
+
+            def load(self, path, *args, **kwargs):
+                candidate = Path(path).resolve()
+                try:
+                    candidate.relative_to(root.resolve())
+                except ValueError:
+                    return lm_original_mx.load(path, *args, **kwargs)
+                if candidate.suffix == ".safetensors":
+                    return scoped_loader(path)
+                return lm_original_mx.load(path, *args, **kwargs)
+
+        lm_utils.mx = _ScopedMx()
     logger.info(
         "Qwen3.6 scope safetensors reader enabled: Top%d + %d tail (%s)",
         policy.resident_experts,
@@ -332,5 +415,8 @@ def qwen36_scope_safetensors_on_load(model_path: str | Path):
     try:
         yield
     finally:
-        if vlm_utils._load_safetensors is scoped_loader:
-            vlm_utils._load_safetensors = original
+        for module, original in originals.items():
+            if module._load_safetensors is scoped_loader:
+                module._load_safetensors = original
+        if lm_original_mx is not None:
+            lm_utils.mx = lm_original_mx

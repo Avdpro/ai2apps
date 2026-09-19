@@ -1,0 +1,114 @@
+diff --git a/train/train.py b/train/train.py
+index 3a5c51b..0fa247f 100644
+--- a/train/train.py
++++ b/train/train.py
+@@ -127,17 +127,25 @@ def load_pretrained_generator(model, path):
+     return target.load_state_dict(saved_state)
+
+
++def training_device(rank=0):
++    if torch.cuda.is_available():
++        return torch.device("cuda", rank)
++    if torch.backends.mps.is_available():
++        return torch.device("mps")
++    return torch.device("cpu")
++
++
+ def main():
+     n_gpus = torch.cuda.device_count()
+     single_cuda = torch.cuda.is_available() and n_gpus == 1
++    single_mps = not torch.cuda.is_available() and torch.backends.mps.is_available()
+
+     if n_gpus < 1:
+-        # patch to unblock people without gpus. there is probably a better way.
+-        print(i18n("未检测到可用显卡，将使用CPU训练，耗时可能较长"))
+         n_gpus = 1
+     logger = utils.get_logger(hps.model_dir)
+     logger.info(i18n("训练设备规则选择的精度：%s"), training_dtype)
+-    if single_cuda:
++    logger.info("Training device: %s", training_device())
++    if single_cuda or single_mps:
+         run(0, 1, hps, logger, False)
+         return
+     os.environ["MASTER_ADDR"] = "localhost"
+@@ -171,6 +179,7 @@ def run(rank, n_gpus, hps, logger, use_ddp):
+     torch.manual_seed(hps.train.seed)
+     if torch.cuda.is_available():
+         torch.cuda.set_device(rank)
++    device = training_device(rank)
+
+     if hps.if_f0 == 1:
+         train_dataset = TextAudioLoaderMultiNSFsid(hps.data.training_files, hps.data)
+@@ -216,11 +225,9 @@ def run(rank, n_gpus, hps, logger, use_ddp):
+             **hps.model,
+             is_half=training_is_half,
+         )
+-    if torch.cuda.is_available():
+-        net_g = net_g.cuda(rank)
++    net_g = net_g.to(device)
+     net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm)
+-    if torch.cuda.is_available():
+-        net_d = net_d.cuda(rank)
++    net_d = net_d.to(device)
+     optim_g = torch.optim.AdamW(
+         net_g.parameters(),
+         hps.train.learning_rate,
+@@ -368,18 +375,17 @@ def train_and_evaluate(
+                         wave_lengths,
+                         sid,
+                     ) = info
+-                # Load on CUDA
+-                if torch.cuda.is_available():
+-                    phone = phone.cuda(rank, non_blocking=True)
+-                    phone_lengths = phone_lengths.cuda(rank, non_blocking=True)
+-                    if hps.if_f0 == 1:
+-                        pitch = pitch.cuda(rank, non_blocking=True)
+-                        pitchf = pitchf.cuda(rank, non_blocking=True)
+-                    sid = sid.cuda(rank, non_blocking=True)
+-                    spec = spec.cuda(rank, non_blocking=True)
+-                    spec_lengths = spec_lengths.cuda(rank, non_blocking=True)
+-                    wave = wave.cuda(rank, non_blocking=True)
+-                    wave_lengths = wave_lengths.cuda(rank, non_blocking=True)
++                device = training_device(rank)
++                phone = phone.to(device)
++                phone_lengths = phone_lengths.to(device)
++                if hps.if_f0 == 1:
++                    pitch = pitch.to(device)
++                    pitchf = pitchf.to(device)
++                sid = sid.to(device)
++                spec = spec.to(device)
++                spec_lengths = spec_lengths.to(device)
++                wave = wave.to(device)
++                wave_lengths = wave_lengths.to(device)
+                 # Cache on list
+                 if hps.if_f0 == 1:
+                     cache.append(
+@@ -439,18 +445,17 @@ def train_and_evaluate(
+             ) = info
+         else:
+             phone, phone_lengths, spec, spec_lengths, wave, wave_lengths, sid = info
+-        ## Load on CUDA
+-        if (hps.if_cache_data_in_gpu == False) and torch.cuda.is_available():
+-            phone = phone.cuda(rank, non_blocking=True)
+-            phone_lengths = phone_lengths.cuda(rank, non_blocking=True)
++        if hps.if_cache_data_in_gpu == False:
++            device = training_device(rank)
++            phone = phone.to(device)
++            phone_lengths = phone_lengths.to(device)
+             if hps.if_f0 == 1:
+-                pitch = pitch.cuda(rank, non_blocking=True)
+-                pitchf = pitchf.cuda(rank, non_blocking=True)
+-            sid = sid.cuda(rank, non_blocking=True)
+-            spec = spec.cuda(rank, non_blocking=True)
+-            spec_lengths = spec_lengths.cuda(rank, non_blocking=True)
+-            wave = wave.cuda(rank, non_blocking=True)
+-            # wave_lengths = wave_lengths.cuda(rank, non_blocking=True)
++                pitch = pitch.to(device)
++                pitchf = pitchf.to(device)
++            sid = sid.to(device)
++            spec = spec.to(device)
++            spec_lengths = spec_lengths.to(device)
++            wave = wave.to(device)
+
+         # Calculate
+         with autocast(enabled=training_is_half):

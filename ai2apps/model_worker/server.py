@@ -45,8 +45,10 @@ OPERATIONS = {
     "image_generation": "/v1/images/generations",
     "image_edit": "/v1/images/edits",
     "audio_transcription": "/v1/audio/transcriptions",
+    "audio_detailed_transcription": "/v1/audio/transcriptions/detailed",
     "audio_speech": "/v1/audio/speech",
     "audio_process": "/v1/audio/process",
+    "audio_voice_training": "/v1/audio/voices/train",
     "video_generation": "/v1/videos/generations",
 }
 MAX_JSON_BYTES = 32 * 1024 * 1024
@@ -62,6 +64,7 @@ MAX_AUDIO_CHANNELS = 2
 MAX_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024
 AUDIO_OPERATIONS = {
     "audio_transcription",
+    "audio_detailed_transcription",
     "audio_speech",
     "audio_process",
 }
@@ -74,7 +77,9 @@ class ModelWorkerConfigurationError(RuntimeError):
 def _request_root(context: ModelWorkerContext, request_id: str) -> Path:
     base = context.data_root / "requests"
     base.mkdir(parents=True, exist_ok=True)
-    safe_id = hashlib.sha256(request_id.encode("utf-8", errors="replace")).hexdigest()[:16]
+    safe_id = hashlib.sha256(request_id.encode("utf-8", errors="replace")).hexdigest()[
+        :16
+    ]
     return Path(tempfile.mkdtemp(prefix=f"{safe_id}-", dir=base))
 
 
@@ -169,7 +174,9 @@ async def _multipart_payload(
                                 )
                             digest.update(chunk)
                             target.write(chunk)
-                    media_type = (value.content_type or "application/octet-stream").lower()
+                    media_type = (
+                        value.content_type or "application/octet-stream"
+                    ).lower()
                     if operation in AUDIO_OPERATIONS:
                         if media_type not in {
                             "audio/wav",
@@ -213,7 +220,9 @@ def _load_config(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ModelWorkerConfigurationError("Model Worker config is unreadable") from exc
+        raise ModelWorkerConfigurationError(
+            "Model Worker config is unreadable"
+        ) from exc
     if not isinstance(value, dict) or value.get("protocol") != PROTOCOL:
         raise ModelWorkerConfigurationError("Unsupported Model Worker config")
     return value
@@ -233,7 +242,9 @@ def _context(config: Mapping[str, Any]) -> ModelWorkerContext:
     except ValueError as exc:
         raise ModelWorkerConfigurationError("Adapter escapes the Package root") from exc
     models = config.get("models", [])
-    if not isinstance(models, list) or not all(isinstance(item, dict) for item in models):
+    if not isinstance(models, list) or not all(
+        isinstance(item, dict) for item in models
+    ):
         raise ModelWorkerConfigurationError("Model declarations are invalid")
     checkpoints_raw = config.get("checkpoints", [])
     if not isinstance(checkpoints_raw, list) or not all(
@@ -288,7 +299,9 @@ async def _load_adapter(config: Mapping[str, Any], context: ModelWorkerContext) 
     spec.loader.exec_module(module)
     factory = getattr(module, factory_name, None)
     if not callable(factory):
-        raise ModelWorkerConfigurationError(f"Adapter factory is missing: {factory_name}")
+        raise ModelWorkerConfigurationError(
+            f"Adapter factory is missing: {factory_name}"
+        )
     adapter = factory(context)
     if inspect.isawaitable(adapter):
         adapter = await adapter
@@ -308,9 +321,13 @@ async def _maybe_call(target: Any, name: str) -> None:
 def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
     config = _load_config(Path(config_path))
     context = _context(config)
-    expected_token = token if token is not None else os.environ.get("AI2APPS_MODEL_WORKER_TOKEN")
+    expected_token = (
+        token if token is not None else os.environ.get("AI2APPS_MODEL_WORKER_TOKEN")
+    )
     if not expected_token:
-        raise ModelWorkerConfigurationError("Model Worker authentication token is missing")
+        raise ModelWorkerConfigurationError(
+            "Model Worker authentication token is missing"
+        )
     state: dict[str, Any] = {
         "adapter": None,
         "invocation_lock": asyncio.Lock(),
@@ -379,6 +396,22 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             ),
         }
 
+    @app.post("/v1/control/engine-boost")
+    async def engine_boost(request: Request):
+        body = await request.json()
+        if (not isinstance(body, dict) or not isinstance(body.get("mode"), str)
+                or body["mode"] not in {"auto", "natural", "turbo", "blast"}):
+            raise HTTPException(status_code=400, detail="Invalid Engine Boost mode")
+        if not isinstance(body.get("model"), str) or not body["model"]:
+            raise HTTPException(status_code=400, detail="model is required")
+        if not isinstance(body.get("session_id"), str) or not body["session_id"]:
+            raise HTTPException(status_code=400, detail="session_id is required")
+        setter = getattr(state["adapter"], "request_engine_boost", None)
+        if not callable(setter):
+            raise HTTPException(status_code=409, detail="Worker does not support Engine Boost")
+        # Control must not queue behind the generation it is controlling.
+        return setter(body.get("model"), body["session_id"], body["mode"])
+
     @app.post("/v1/control/drain")
     async def drain():
         state["accepting_requests"] = False
@@ -405,7 +438,9 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             return dict(record)
         cancel = getattr(state["adapter"], "cancel", None)
         if not callable(cancel):
-            raise HTTPException(status_code=409, detail="Worker request is not cancellable")
+            raise HTTPException(
+                status_code=409, detail="Worker request is not cancellable"
+            )
         result = cancel(request_id)
         if inspect.isawaitable(result):
             await result
@@ -432,8 +467,11 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
         records: dict[str, dict[str, Any]] = state["requests"]
         if len(records) >= 128:
             completed = next(
-                (key for key, value in records.items()
-                 if value.get("status") not in {"queued", "running"}),
+                (
+                    key
+                    for key, value in records.items()
+                    if value.get("status") not in {"queued", "running"}
+                ),
                 None,
             )
             if completed is not None:
@@ -445,6 +483,7 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             "progress": None,
             "cancel_requested": False,
         }
+
         async def report_progress(update: Mapping[str, Any]) -> None:
             if not isinstance(update, Mapping):
                 raise ModelWorkerError("Progress update must be an object")
@@ -452,9 +491,15 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             current = update.get("current")
             total = update.get("total")
             if (
-                not isinstance(phase, str) or not phase or len(phase) > 64
-                or not isinstance(current, int) or isinstance(current, bool) or current < 0
-                or not isinstance(total, int) or isinstance(total, bool) or total < 1
+                not isinstance(phase, str)
+                or not phase
+                or len(phase) > 64
+                or not isinstance(current, int)
+                or isinstance(current, bool)
+                or current < 0
+                or not isinstance(total, int)
+                or isinstance(total, bool)
+                or total < 1
                 or current > total
             ):
                 raise ModelWorkerError("Progress update is invalid")
@@ -462,7 +507,11 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             for name in ("segment", "segments"):
                 value = update.get(name)
                 if value is not None:
-                    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                    if (
+                        not isinstance(value, int)
+                        or isinstance(value, bool)
+                        or value < 1
+                    ):
                         raise ModelWorkerError("Progress segment is invalid")
                     safe[name] = value
             record["progress"] = safe
@@ -487,9 +536,13 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             try:
                 payload = json.loads(content or b"{}")
             except json.JSONDecodeError as exc:
-                raise HTTPException(status_code=400, detail="Request body must be JSON") from exc
+                raise HTTPException(
+                    status_code=400, detail="Request body must be JSON"
+                ) from exc
             if not isinstance(payload, dict):
-                raise HTTPException(status_code=400, detail="Request body must be an object")
+                raise HTTPException(
+                    status_code=400, detail="Request body must be an object"
+                )
         worker_request = ModelWorkerRequest(
             operation=operation,
             payload=payload,
@@ -512,6 +565,7 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             shutil.rmtree(request_root, ignore_errors=True)
             raise
         if isinstance(result, ModelWorkerStream):
+
             async def serialized_chunks():
                 try:
                     async for chunk in result.chunks:
@@ -559,7 +613,10 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                 if root_descriptor is not None:
                     os.close(root_descriptor)
             descriptor_stat = os.fstat(descriptor)
-            if not stat.S_ISREG(descriptor_stat.st_mode) or descriptor_stat.st_size > MAX_ARTIFACT_BYTES:
+            if (
+                not stat.S_ISREG(descriptor_stat.st_mode)
+                or descriptor_stat.st_size > MAX_ARTIFACT_BYTES
+            ):
                 os.close(descriptor)
                 lock.release()
                 shutil.rmtree(request_root, ignore_errors=True)
@@ -571,7 +628,9 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
 
             async def artifact_chunks():
                 try:
-                    while chunk := await asyncio.to_thread(os.read, descriptor, 1024 * 1024):
+                    while chunk := await asyncio.to_thread(
+                        os.read, descriptor, 1024 * 1024
+                    ):
                         yield chunk
                 finally:
                     record["status"] = "succeeded"
@@ -600,9 +659,12 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             )
         if isinstance(result, Mapping):
             return JSONResponse(dict(result))
-        raise HTTPException(status_code=500, detail="Adapter returned an unsupported result")
+        raise HTTPException(
+            status_code=500, detail="Adapter returned an unsupported result"
+        )
 
     for operation, path in OPERATIONS.items():
+
         async def endpoint(request: Request, _operation: str = operation):
             return await invoke(_operation, request)
 

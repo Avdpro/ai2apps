@@ -3,22 +3,80 @@
   "package": {
     "id": "ai2apps/model-z-image-mlx",
     "type": "service",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "displayName": "Z-Image MLX",
-    "description": "Optimized Z-Image Turbo generation and image-to-image editing on Apple Silicon."
+    "description": "Z-Image Turbo text-to-image generation only; image editing is disabled pending acceptance."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["darwin"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "26.2"
   },
-  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
-  "permissions": [
-    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned Z-Image checkpoint resolved by the Host.", "required": true},
-    {"capability": "accelerator.metal", "reason": "Run native MLX image generation.", "required": true}
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
-  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.2 <2.0.0", "optional": false}],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the pinned Z-Image checkpoint resolved by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX image generation.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.5.2 <2.0.0",
+      "optional": false
+    }
+  ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "image-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 12884901888,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {
+      "speed": 4,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Existing package estimates; not a new hardware benchmark",
+      "device": "Apple Silicon reference hardware"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.z-image-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.z-image-mlx/turbo",
+        "label": "Z-Image MLX",
+        "recommended": true
+      }
+    ]
+  }
 }

@@ -1,0 +1,99 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.rvc-mlx
+name: MLX-RVC
+description: Native MLX RVC voice conversion and trainable local voice profiles for Apple Silicon.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license: {name: MIT License, id: MIT, path: META/licenses/RVC-MIT.txt}
+attribution:
+  notice: META/NOTICE.md
+  upstream: https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI
+  checkpoint: https://huggingface.co/Avdpro/MLX-RVC-Serena-E70
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.rvc-mlx/serena-e70
+    display_name: MLX-RVC Serena e70
+    model_type: audio_processing
+    upstream_id: Avdpro/MLX-RVC-Serena-E70
+    capabilities: [voice_conversion, voice_training, pitch_control, feature_retrieval]
+    metadata:
+      family: rvc-v2
+      sample_rate: 48000
+      synthetic_test_voice: true
+      voice_subdir: voice
+      contentvec_subdir: contentvec
+      rmvpe_subdir: rmvpe
+      training_subdir: training
+      modelscope:
+        repo_id: ai2apps/MLX-RVC-Serena-E70
+        revision: 643998a0bf604279e9f9463d4be1e5423a878038
+        preferred: true
+        allow_patterns: &rvc_files
+          - LICENSE
+          - NOTICE.md
+          - README.md
+          - ai2apps-checkpoint.json
+          - config.json
+          - model.safetensors
+          - contentvec/config.json
+          - contentvec/manifest.json
+          - contentvec/model.safetensors
+          - rmvpe/manifest.json
+          - rmvpe/mel_basis.safetensors
+          - rmvpe/model.safetensors
+          - training/discriminator.safetensors
+          - training/generator.safetensors
+          - training/manifest.json
+          - voice/index.json
+          - voice/index.safetensors
+          - voice/model.json
+          - voice/model.safetensors
+    weights:
+      provider: huggingface
+      repo_id: Avdpro/MLX-RVC-Serena-E70
+      revision: 738acad9f58c074d9f817eeac8c7dac9e2eafa1f
+      distribution_id: dist_ai2apps_mlx_rvc_serena_e70_training_738acad9_v1
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_process, audio_voice_training]
+      languages: []
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav]}
+      streaming: {mode: unsupported, formats: []}
+      processing:
+        separation: {mode: unsupported, native_stems: [], profiles: []}
+        voice_conversion:
+          mode: native
+          target_sources: [named_voice, trained_voice]
+          profiles:
+            - {id: serena_e70, mode: native, voice: serena, training_epoch: 70}
+          controls: [semitones, retrieval_rate, protect, speaker_id, seed]
+        voice_training:
+          mode: native
+          input_sources: [wav_zip]
+          controls: [epochs, batch_size, precision]
+          output: voice_bundle
+
+capabilities: [audio-voice-training-v1]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.6.2,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-processing, audio-codecs, audio-voice-training-v1]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned MLX-RVC composite checkpoint.}
+  accelerator: {metal: true, reason: Run voice conversion and training locally with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

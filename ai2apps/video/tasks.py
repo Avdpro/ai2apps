@@ -757,6 +757,11 @@ class VideoTaskManager:
             self._artifact_session_id = row["id"]
         return self._artifact_session_id
 
+    def artifact_session(self) -> str:
+        """Return the durable media Artifact session for first-party Studio tools."""
+
+        return self._artifact_session()
+
     def _row(self, task_id: str, actor_id: str | None = None):
         query = "SELECT * FROM video_generation_tasks WHERE id=?"
         parameters: tuple[Any, ...] = (task_id,)
@@ -825,6 +830,61 @@ class VideoTaskManager:
             "has_more": has_more,
             "next_after": items[-1]["id"] if has_more and items else None,
         }
+
+    async def retry(self, task_id: str, *, actor_id: str) -> dict[str, Any]:
+        """Create a new task from a terminal task and its frozen private inputs."""
+
+        row = self._row(task_id, actor_id)
+        if row is None:
+            raise VideoGenerationError("task_not_found", "Video task was not found", status_code=404)
+        if row["status"] not in {"failed", "cancelled", "expired"}:
+            raise VideoGenerationError(
+                "task_not_retryable", "Only failed, cancelled, or expired tasks can retry", status_code=409
+            )
+        payload = json.loads(row["request_json"])
+        prompt = str(payload.get("prompt") or "").strip()
+        content: list[dict[str, Any]] = []
+        if prompt:
+            content.append({"type": "text", "role": "prompt", "text": prompt})
+        reference_roles = {
+            str(item.get("part_name")): f"reference_{item.get('kind')}"
+            for item in payload.get("reference_parts", [])
+            if isinstance(item, dict)
+        }
+        role_types = {
+            "first_frame": "image_url", "last_frame": "image_url",
+            "driving_audio": "audio_url", "reference_image": "image_url",
+            "reference_video": "video_url", "reference_audio": "audio_url",
+        }
+        uploads: dict[str, tuple[str, bytes, str]] = {}
+        task_root = (self.root / task_id).resolve()
+        manifest = json.loads(row["input_manifest_json"])
+        if not isinstance(manifest, list):
+            raise VideoGenerationError(
+                "retry_input_unavailable", "The frozen inputs for this task are invalid", status_code=409
+            )
+        for descriptor in manifest:
+            part_name = str(descriptor.get("part_name") or "")
+            role = reference_roles.get(part_name) or {
+                "first_frame": "first_frame", "last_frame": "last_frame", "audio": "driving_audio",
+            }.get(part_name)
+            item_type = role_types.get(str(role))
+            source = (task_root / str(descriptor.get("path") or "")).resolve()
+            if not part_name or item_type is None or task_root not in source.parents or not source.is_file():
+                raise VideoGenerationError(
+                    "retry_input_unavailable", "A frozen input required by this task is unavailable", status_code=409
+                )
+            data = source.read_bytes()
+            uploads[part_name] = (
+                str(descriptor.get("filename") or part_name), data,
+                str(descriptor.get("media_type") or "application/octet-stream"),
+            )
+            content.append({item_type: {"url": f"multipart://{part_name}"}, "type": item_type, "role": role})
+        payload["content"] = content
+        payload.pop("prompt", None)
+        payload.pop("reference_parts", None)
+        payload["metadata"] = dict(payload.get("metadata") or {}) | {"retry_of": task_id}
+        return await self.create(payload, actor_id=actor_id, uploads=uploads)
 
     async def cancel(
         self, task_id: str, *, actor_id: str | None, shutdown: bool = False

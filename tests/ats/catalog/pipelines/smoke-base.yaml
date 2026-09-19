@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: smoke-base
+name: Smoke-Base
+description: 基本功能简单测试
+enabled: true
+steps:
+- id: step-1
+  type: case
+  caseId: component.app.ai2apps.agents.launch-smoke
+  expectedStatus: passed
+- id: step-2
+  type: case
+  caseId: component.app.ai2apps.agents.primary-flow
+  expectedStatus: passed
+- id: step-3
+  type: case
+  caseId: component.app.ai2apps.agents.release-persistence
+  expectedStatus: passed

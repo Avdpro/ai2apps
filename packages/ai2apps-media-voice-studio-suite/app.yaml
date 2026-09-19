@@ -1,0 +1,226 @@
+schema: ai2apps.app/v1
+id: ai2apps.media-voice-studio-suite
+name: Media Voice Studio Suite
+description: Local-first transcription, separation, voice replacement, and subtitle tools.
+version: 0.1.1
+publisher:
+  id: ai2apps
+instances:
+  mode: singleton
+  scope: user
+entry:
+  kind: sandbox
+  resource: web/index.html
+navigation:
+  launcher: false
+  category: Creative
+  icon: audio-waveform
+  order: 80
+localizations:
+  zh-CN:
+    name: 音视频语音工作室套件
+    description: 本地优先的转写、音轨分离、角色换声和视频字幕工具。
+    navigation:
+      category: 创作
+
+mini_apps:
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.media-voice.transcription
+    name: Detailed Transcription
+    version: 0.1.1
+    kind: project
+    icon: captions
+    description: Create timestamped transcripts, detect speakers, and let the user assign names.
+    catalog:
+      categories: [audio, video]
+    entry:
+      kind: sandbox
+      resource: web/transcription.html
+      placements: [inline, sidebar]
+    placements:
+      - studio: ai2apps.readaloud
+        category: transcription
+        order: 20
+      - studio: ai2apps.video-studio
+        category: audio
+        order: 20
+    inputs:
+      - {id: source_audio, kind: audio, required: true}
+    outputs:
+      - {id: transcript, kind: transcript, final: true}
+      - {id: subtitles, kind: subtitle, optional: true}
+    executor:
+      operation: detailed_transcription
+    requirements:
+      capabilities:
+        - audio.detailed_transcription
+        - audio.speaker_diarization
+    chat:
+      schema: ai2apps.mini-app-chat/v1
+      enabled: true
+      system_prompt: Help the user prepare a detailed transcription and name detected speakers.
+      context: {transport: studio-bridge}
+      help: {resource: help/transcription/help.md, max_bytes: 32768}
+      tools: []
+
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.media-voice.source-separation
+    name: Voice and Background Separation
+    version: 0.1.1
+    kind: clip
+    icon: split
+    description: Separate vocals or dialogue from music and background audio.
+    catalog:
+      categories: [audio, video]
+    entry:
+      kind: sandbox
+      resource: web/separation.html
+      placements: [inline, sidebar]
+    placements:
+      - studio: ai2apps.readaloud
+        category: audio-tools
+        order: 30
+      - studio: ai2apps.video-studio
+        category: audio
+        order: 30
+    inputs:
+      - {id: source_audio, kind: audio, required: true}
+    outputs:
+      - {id: vocals, kind: audio, final: true}
+      - {id: background, kind: audio, final: true}
+    executor:
+      operation: source_separation
+    requirements:
+      capabilities:
+        - audio.source_separation
+    chat:
+      schema: ai2apps.mini-app-chat/v1
+      enabled: true
+      system_prompt: Help the user separate voices from music and background audio.
+      context: {transport: studio-bridge}
+      help: {resource: help/separation/help.md, max_bytes: 32768}
+      tools: []
+
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.media-voice.audio-speaker-replacement
+    name: Audio Speaker Voice Replacement
+    version: 0.1.1
+    kind: project
+    icon: audio-lines
+    description: Replace one selected speaker in an audio recording with an authorized target voice.
+    catalog:
+      categories: [audio]
+    entry:
+      kind: sandbox
+      resource: web/audio-voice-replacement.html
+      placements: [inline, sidebar]
+    placements:
+      - studio: ai2apps.readaloud
+        category: voice-tools
+        order: 40
+    inputs:
+      - {id: source_audio, kind: audio, required: true}
+      - {id: target_voice, kind: voice-profile, required: true}
+    outputs:
+      - {id: replaced_audio, kind: audio, final: true}
+    executor:
+      operation: speaker_voice_replacement
+    requirements:
+      capabilities:
+        - audio.speaker_voice_replacement
+        - audio.detailed_transcription
+        - audio.speaker_diarization
+        - audio.source_separation
+        - audio.voice_conversion
+    chat:
+      schema: ai2apps.mini-app-chat/v1
+      enabled: true
+      system_prompt: Help the user replace one consenting speaker's voice in an audio recording.
+      context: {transport: studio-bridge}
+      help: {resource: help/audio-voice-replacement/help.md, max_bytes: 32768}
+      tools: []
+
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.media-voice.video-subtitles
+    name: Video Subtitles and Translation
+    version: 0.1.1
+    kind: project
+    icon: subtitles
+    description: Generate, translate, export, or burn subtitles into a video.
+    catalog:
+      categories: [video]
+    entry:
+      kind: sandbox
+      resource: web/video-subtitles.html
+      placements: [inline, sidebar]
+    placements:
+      - studio: ai2apps.video-studio
+        category: localization
+        order: 40
+    inputs:
+      - {id: source_video, kind: video, required: true}
+    outputs:
+      - {id: subtitle_file, kind: subtitle, optional: true}
+      - {id: subtitled_video, kind: video, optional: true}
+    executor:
+      operation: video_subtitles
+    requirements:
+      capabilities:
+        - media.video_subtitles
+        - audio.detailed_transcription
+        - {capability: text.translation, optional: true}
+        - media.subtitle.export
+        - media.video.subtitle_burn_in
+    chat:
+      schema: ai2apps.mini-app-chat/v1
+      enabled: true
+      system_prompt: Help the user generate, translate, export, or burn subtitles into a video.
+      context: {transport: studio-bridge}
+      help: {resource: help/video-subtitles/help.md, max_bytes: 32768}
+      tools: []
+
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.media-voice.video-speaker-replacement
+    name: Video Speaker Voice Replacement
+    version: 0.1.1
+    kind: project
+    icon: refresh-cw
+    description: Replace one selected speaker in a video while preserving its picture and ambience.
+    catalog:
+      categories: [audio, video]
+    entry:
+      kind: sandbox
+      resource: web/video-voice-replacement.html
+      placements: [inline, sidebar]
+    placements:
+      - studio: ai2apps.video-studio
+        category: localization
+        order: 50
+      - studio: ai2apps.readaloud
+        category: video-voice
+        order: 50
+    inputs:
+      - {id: source_video, kind: video, required: true}
+      - {id: target_voice, kind: voice-profile, required: true}
+    outputs:
+      - {id: replaced_video, kind: video, final: true}
+      - {id: replaced_audio, kind: audio, optional: true}
+    executor:
+      operation: video_speaker_voice_replacement
+    requirements:
+      capabilities:
+        - media.video_speaker_voice_replacement
+        - audio.speaker_voice_replacement
+        - media.audio.extract
+        - audio.detailed_transcription
+        - audio.speaker_diarization
+        - audio.source_separation
+        - audio.voice_conversion
+        - media.video.audio_mux
+    chat:
+      schema: ai2apps.mini-app-chat/v1
+      enabled: true
+      system_prompt: Help the user replace one consenting speaker's voice while preserving the video.
+      context: {transport: studio-bridge}
+      help: {resource: help/video-voice-replacement/help.md, max_bytes: 32768}
+      tools: []

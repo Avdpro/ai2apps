@@ -219,10 +219,20 @@ def _compact_safetensors(
     original: Any,
     *,
     slots: int,
+    external_reader=None,
+    external_injection_file: str | None = None,
 ) -> dict[str, mx.array]:
     """Retain non-experts and alias one cold placeholder into every L1 slot."""
 
     loaded = original(path)
+    if (
+        external_reader is not None
+        and Path(path).name == external_injection_file
+    ):
+        for key in external_reader.tensors:
+            match = _EXPERT_RE.search(key)
+            if match is not None and int(match.group(2)) == 0:
+                loaded[key] = external_reader.mlx_array(key)
     compact: dict[str, mx.array] = {}
     for key, value in loaded.items():
         match = _EXPERT_RE.search(key)
@@ -741,9 +751,29 @@ def glm5_dynamic_safetensors_on_load(model_path: str | os.PathLike[str]):
     import mlx_vlm.utils as vlm_utils
 
     original = vlm_utils._load_safetensors
+    external_reader = None
+    external_injection_file = None
+    root = Path(model_path)
+    if (root / "ssd-checkpoint.json").is_file():
+        from omlx.ssd_checkpoint import ExternalTensorReader
+
+        external_reader = ExternalTensorReader(root, expected_family="glm5_next")
+        index = json.loads(
+            (root / "model.safetensors.index.json").read_text(encoding="utf-8")
+        )
+        shards = sorted(set(index.get("weight_map", {}).values()))
+        if not shards:
+            raise ValueError("GLM-5 SSD checkpoint has no backbone shards")
+        external_injection_file = Path(shards[0]).name
 
     def compact_loader(path: str):
-        return _compact_safetensors(path, original, slots=_slots())
+        return _compact_safetensors(
+            path,
+            original,
+            slots=_slots(),
+            external_reader=external_reader,
+            external_injection_file=external_injection_file,
+        )
 
     vlm_utils._load_safetensors = compact_loader
     try:

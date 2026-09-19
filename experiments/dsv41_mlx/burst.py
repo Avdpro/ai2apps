@@ -37,18 +37,7 @@ class BurstModel(AdaptiveModel):
     def prepare_decode(self):
         # Maintenance is outside transactions, based only on previously committed routes.
         for layer,bank in self.banks.items():
-            if self.decode_step>1 and (self.decode_step-1)%16==0:
-                scores=self.frequency[layer].tolist();main=dict(bank.main)
-                candidates=sorted((e for e in range(self.c.n_routed_experts) if e not in main),key=lambda e:(-scores[e],e))
-                victims=sorted(main,key=lambda e:(scores[e],e));pairs=[]
-                for new,old in zip(candidates[:4],victims[:4]):
-                    if scores[new]>=3 and scores[new]>scores[old]+2:pairs.append((new,old,main[old]))
-                if pairs:
-                    bank._load([p[0] for p in pairs],[p[2] for p in pairs])
-                    for new,old,slot in pairs:
-                        del bank.main[old];bank.main[new]=slot;bank.hot.pop(new,None)
-                    self.promotions.append(dict(step=self.decode_step,layer=layer,pairs=pairs))
-                self.frequency[layer]=self.frequency[layer]*.5
+            self.maintain(layer,bank)
             mapping=[-1]*self.c.n_routed_experts
             for e,s in {**bank.main,**bank.hot}.items():mapping[e]=s
             self.lookups[layer]=mx.array(mapping,dtype=mx.int32)
@@ -70,13 +59,13 @@ class BurstModel(AdaptiveModel):
         weights=mx.take_along_axis(weights,order,axis=-1)[0]
         required=(order[0]<self.burst_top)
         mapped=self.lookups[l][ids];missing=required&(mapped<0)
-        record=dict(ids=ids,required=required,before=mapped,missing=mx.any(missing))
-        if not self.speculative and bool(record['missing'].item()):
-            host=ids.tolist();needed=required.tolist();slots=mapped.tolist();ages=self.ages[l].tolist()
+        record=dict(ids=ids,required=required,before=mapped,missing=mx.any(missing),cache_counts=self.route_cache_counts(l,mapped))
+        if not self.speculative and not self.routes_all_hit(l,ids,mapped,required):
+            host,needed,slots,ages,promotion_scores=self.burst_miss_metadata(l,ids,required,mapped)
             bank.hot=dict(sorted(bank.hot.items(),key=lambda pair:ages[pair[1]]))
             requested=[e for e,must,slot in zip(host,needed,slots) if must or slot>=0]
             self.burst_stats['mandatory_loads']+=sum(must and slot<0 for must,slot in zip(needed,slots))
-            bank.prepare(requested)
+            self.prepare_miss(l,bank,requested,promotion_scores)
             mapping=[-1]*c.n_routed_experts
             for e,s in {**bank.main,**bank.hot}.items():mapping[e]=s
             self.lookups[l]=mx.array(mapping,dtype=mx.int32);mapped=self.lookups[l][ids]
@@ -108,8 +97,8 @@ class BurstModel(AdaptiveModel):
 
     def commit(self,l):
         r=self.records[l];ids=r['ids'];mapped=r['mapped'];valid=r['valid'];before=r['before']
-        self.frequency[l][ids]=self.frequency[l][ids]+1
-        self.cache_counters[l]=self.cache_counters[l]+mx.stack([mx.sum((before>=0)&(before<self.main_slots)),mx.sum(before>=self.main_slots),mx.sum(before<0)]).astype(mx.uint32)
+        self.observe(l,ids)
+        self.cache_counters[l]=self.cache_counters[l]+r['cache_counts']
         self.burst_counts[l]=self.burst_counts[l]+mx.stack([mx.sum(r['required']&(before<0)),mx.sum((~r['required'])&(~valid)),mx.sum(valid),mx.sum(r['required'])]).astype(mx.uint32)
         self.ticks[l]+=self.c.n_activated_experts
         updates=self.ticks[l]+mx.arange(self.c.n_activated_experts,dtype=mx.int32)
@@ -156,7 +145,7 @@ class BurstModel(AdaptiveModel):
         self.speculative=False
         h=self.norm('norm',self.hc_pre(h,pre))
         logits=h[:,-1].astype(mx.float32)@self.w('head.weight',mx.float32).T
-        mx.eval(*self.frequency.values(),self.burst_counts)
+        mx.eval(*self.frequency.values(),*self.fast.values(),*self.slow.values(),*self.recent.values(),self.burst_counts)
         return logits
 
     def close(self):

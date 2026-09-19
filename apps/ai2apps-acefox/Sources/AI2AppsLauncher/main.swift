@@ -227,6 +227,87 @@ private func launchHelper(configuration: LauncherConfiguration) throws {
     )
 }
 
+private func processExecutablePath(processID: Int32) -> String? {
+    guard processID > 1,
+          kill(pid_t(processID), 0) == 0 || errno == EPERM else {
+        return nil
+    }
+    // proc_pidpath documents a buffer of up to 4 * MAXPATHLEN. The macro
+    // itself is not imported by Swift because it is an expression macro.
+    var buffer = [CChar](repeating: 0, count: 4096)
+    let length = proc_pidpath(pid_t(processID), &buffer, UInt32(buffer.count))
+    guard length > 0 else { return nil }
+    let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+    return String(decoding: bytes, as: UTF8.self)
+}
+
+private func containingAppBundle(forExecutablePath path: String) -> URL? {
+    var candidate = URL(fileURLWithPath: path).deletingLastPathComponent()
+    while candidate.path != "/" {
+        if candidate.pathExtension == "app" {
+            return candidate.standardizedFileURL
+        }
+        candidate.deleteLastPathComponent()
+    }
+    return nil
+}
+
+private func activateRunningAceFoxIfPresent(
+    configuration: LauncherConfiguration
+) -> Bool {
+    let descriptorURL = configuration.paths.runDirectory.appendingPathComponent(
+        "shell.json"
+    )
+    let shellBundleURL = configuration.aceFoxExecutable
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    guard let descriptor = try? ContractCodec.load(
+        ShellRunDescriptor.self,
+        from: descriptorURL
+    ),
+        let expectedMainBundleIdentifier = Bundle.main.bundleIdentifier,
+        let expectedShellBundleIdentifier = Bundle(
+            url: shellBundleURL
+        )?.bundleIdentifier,
+        let application = NSRunningApplication(
+            processIdentifier: descriptor.processID
+        ),
+        !application.isTerminated,
+        let liveExecutablePath = processExecutablePath(
+            processID: descriptor.processID
+        ),
+        let liveShellBundleURL = containingAppBundle(
+            forExecutablePath: liveExecutablePath
+        ),
+        let liveShellBundle = Bundle(url: liveShellBundleURL),
+        let rawLiveInstanceID = liveShellBundle.object(
+            forInfoDictionaryKey: "AI2AppsInstanceID"
+        ) as? String,
+        let liveInstanceID = try? InstanceID(rawValue: rawLiveInstanceID) else {
+        return false
+    }
+    let liveMainBundleURL = liveShellBundleURL
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    guard ShellProcessIdentityValidator().validateForActivation(
+        descriptor,
+        expectedInstanceID: configuration.instanceID,
+        expectedShellBundleIdentifier: expectedShellBundleIdentifier,
+        expectedMainBundleIdentifier: expectedMainBundleIdentifier,
+        liveShellBundleIdentifier: application.bundleIdentifier,
+        liveMainBundleIdentifier: Bundle(url: liveMainBundleURL)?.bundleIdentifier,
+        liveInstanceID: liveInstanceID,
+        liveExecutablePath: liveExecutablePath,
+        liveBundleExecutablePath: liveShellBundle.executableURL?.standardizedFileURL.path
+    ) else {
+        return false
+    }
+    application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+    return true
+}
+
 private func launchAceFox(configuration: LauncherConfiguration) throws {
     let paths = configuration.paths
     let profile = paths.browserProfilesDirectory.appendingPathComponent(
@@ -448,6 +529,13 @@ do {
         exit(loginItemUpdateSucceeded ? EXIT_SUCCESS : EXIT_FAILURE)
     }
     try launchHelper(configuration: configuration)
+    let postUpdateHandoff = CommandLine.arguments.dropFirst().contains(
+        "--post-update-handoff"
+    )
+    if !postUpdateHandoff,
+       activateRunningAceFoxIfPresent(configuration: configuration) {
+        exit(EXIT_SUCCESS)
+    }
     try launchAceFox(configuration: configuration)
     // The old App remains available for the updater's immediate health-check
     // rollback. Remove it only after the replacement has launched both its

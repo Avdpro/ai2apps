@@ -19,8 +19,10 @@ DTYPES = {'F32': torch.float32, 'BF16': torch.bfloat16, 'F8_E4M3': torch.float8_
 
 class Store:
     def __init__(self, root):
+        root = Path(root)
         self.entries, self.fds = {}, {}
         self.bytes = self.reads = 0
+        self.source_index_sha256 = hashlib.sha256((root/'model.safetensors.index.json').read_bytes()).hexdigest()
         for path in sorted(root.glob('*.safetensors')):
             fd = os.open(path, os.O_RDONLY)
             self.fds[path.name] = fd
@@ -30,6 +32,26 @@ class Store:
                 if name == '__metadata__': continue
                 if name in self.entries: raise ValueError(f'duplicate {name}')
                 self.entries[name] = (fd, size+8, entry)
+        if (root/'ssd-checkpoint.json').is_file():
+            from omlx.cache.ssd_checkpoint import ExternalTensorReader
+            reader = ExternalTensorReader(root)
+            if reader.manifest['family'] != 'deepseek_v41':
+                raise ValueError('Expected DS4.1 SSD checkpoint')
+            self.source_index_sha256 = reader.manifest['source']['index_sha256']
+            for name, tensor in reader.tensors.items():
+                path = reader.path(tensor['file'])
+                if name in self.entries or 'count' in tensor:
+                    raise ValueError('Invalid DS4.1 external tensor')
+                size = tensor['nbytes']; offset = tensor['offset']
+                if offset < 0 or size <= 0 or offset+size > path.stat().st_size:
+                    raise ValueError('External tensor outside expert file')
+                key = str(path)
+                if key not in self.fds:
+                    self.fds[key] = os.open(path, os.O_RDONLY)
+                self.entries[name] = (self.fds[key], offset, {
+                    'dtype': tensor['dtype'], 'shape': tensor['shape'],
+                    'data_offsets': [0, size],
+                })
     def read(self, name, rows=None):
         fd, base, e = self.entries[name]
         lo, hi = e['data_offsets']
@@ -53,7 +75,7 @@ class Store:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--checkpoint', type=Path, default=Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash'))
+    ap.add_argument('--checkpoint', type=Path, default=Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD'))
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--prompt', default='The capital of France is')
     ap.add_argument('--decode', type=int, default=3, help='number of one-token decode forwards after prefill')
@@ -158,6 +180,7 @@ def main():
     receipt['source_commit'] = subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
     receipt['checkpoint'] = str(args.checkpoint.resolve())
     receipt['checkpoint_index_sha256'] = hashlib.sha256((args.checkpoint/'model.safetensors.index.json').read_bytes()).hexdigest()
+    receipt['source_checkpoint_index_sha256'] = store.source_index_sha256
     receipt['sampling'] = 'greedy; prefill yields first output token, each decode forward yields one more'
     (args.output/'manifest.json').write_text(json.dumps(receipt,indent=2))
     started=time.time(); generated=[]; timings=[]; pos=0

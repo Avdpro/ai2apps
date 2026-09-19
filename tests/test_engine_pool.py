@@ -983,9 +983,13 @@ class TestEnginePoolAsync:
         assert loaded is standard_engine
         clear_policy.assert_called_once_with()
 
+    @pytest.mark.parametrize(
+        "checkpoint_format",
+        ["ai2apps-backbone-expert-store", "ai2apps-ssd-checkpoint"],
+    )
     @pytest.mark.asyncio
     async def test_prepared_deepseek_full_mode_uses_canonical_expert_store(
-        self, pool_with_mock_engines
+        self, pool_with_mock_engines, checkpoint_format
     ):
         from omlx.model_settings import ModelSettings
 
@@ -997,7 +1001,7 @@ class TestEnginePoolAsync:
             "expert_store": "/prepared/experts",
             "scope": {"profile": "/prepared/scope.json", "default": "general"},
             "checkpoint_layout": {
-                "format": "ai2apps-backbone-expert-store",
+                "format": checkpoint_format,
                 "version": 1,
             },
         }

@@ -30,6 +30,17 @@ EXCLUDED_PARTS = {
     "node_modules",
     ".build",
 }
+RUNTIME_ONLY_EXCLUDED_PARTS = {
+    "test",
+    "tests",
+}
+RUNTIME_HOST_ONLY_DISTRIBUTIONS = {
+    "mcp",
+    "mcp_types",
+    "modelscope",
+    "modelscope_hub",
+    "selenium",
+}
 
 
 def run(*command: str) -> subprocess.CompletedProcess[str]:
@@ -59,15 +70,61 @@ def run_codesign(*arguments: str) -> subprocess.CompletedProcess[str]:
     raise AssertionError("unreachable")
 
 
-def copy_tree(source: Path, destination: Path, *, runtime_source: bool = False) -> None:
+def copy_tree(
+    source: Path,
+    destination: Path,
+    *,
+    runtime_source: bool = False,
+    runtime_payload: bool = False,
+) -> None:
     def ignore(directory: str, names: list[str]) -> set[str]:
         ignored = {name for name in names if name in EXCLUDED_PARTS}
+        if runtime_payload:
+            ignored.update(name for name in names if name in RUNTIME_ONLY_EXCLUDED_PARTS)
         if runtime_source and Path(directory).name == "omlx":
             ignored.update(name for name in names if name == "eval")
         ignored.update(name for name in names if name.endswith((".pyc", ".pyo")))
         return ignored
 
     shutil.copytree(source, destination, symlinks=True, ignore=ignore)
+
+
+def copy_model_worker_source(source_root: Path, destination: Path) -> None:
+    """Copy only the system-owned source required by isolated Model Workers."""
+
+    ai2apps_source = source_root / "ai2apps"
+    destination.mkdir(parents=True)
+    for name in ("__init__.py", "_version.py"):
+        shutil.copy2(ai2apps_source / name, destination / name)
+    copy_tree(
+        ai2apps_source / "model_worker",
+        destination / "model_worker",
+        runtime_source=True,
+    )
+
+
+def prune_runtime_framework(framework: Path) -> None:
+    """Remove Host/build-only files after copying the shared MLX layer."""
+
+    site_packages = framework / "lib" / "python3.11" / "site-packages"
+    if not site_packages.is_dir():
+        raise FileNotFoundError("framework-mlx-base site-packages is missing")
+
+    for item in tuple(site_packages.iterdir()):
+        excluded = item.name in RUNTIME_HOST_ONLY_DISTRIBUTIONS or any(
+            item.name.startswith(f"{name}-") and item.name.endswith(".dist-info")
+            for name in RUNTIME_HOST_ONLY_DISTRIBUTIONS
+        )
+        if excluded:
+            if item.is_dir() and not item.is_symlink():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+
+    # The wheel ships this archive for downstream native linking. Runtime
+    # grammar inference loads libxgrammar_bindings.dylib and never links the
+    # static archive, which otherwise contributes about 22 MB compressed.
+    (site_packages / "xgrammar" / "lib" / "libxgrammar.a").unlink(missing_ok=True)
 
 
 def sanitize_symlinks(root: Path) -> None:
@@ -182,13 +239,15 @@ def create_bundle(
             }
         )
     )
-    copy_tree(cpython, runtime / "Python" / "cpython-3.11")
-    copy_tree(framework, runtime / "Python" / "framework-mlx-base")
     copy_tree(
-        runtime_source_root / "ai2apps",
-        runtime / "app" / "ai2apps",
-        runtime_source=True,
+        cpython,
+        runtime / "Python" / "cpython-3.11",
+        runtime_payload=True,
     )
+    runtime_framework = runtime / "Python" / "framework-mlx-base"
+    copy_tree(framework, runtime_framework, runtime_payload=True)
+    prune_runtime_framework(runtime_framework)
+    copy_model_worker_source(runtime_source_root, runtime / "app" / "ai2apps")
     copy_tree(
         runtime_source_root / "omlx",
         runtime / "app" / "omlx",

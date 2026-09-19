@@ -19,5 +19,12 @@ Major AI2Apps modifications include scope-aware DeepSeek V4 expert banks,
 dynamic MoE cache policies, lossy expert replacement experiments, expert-store
 I/O, session-aware scope selection, observability, and product/API surfaces.
 
-This distribution is licensed under the Apache License, Version 2.0. See the
-LICENSE file. The oMLX name is used only to identify the origin of the work.
+Except for specifically identified components and third-party material, this
+distribution is licensed under the Apache License, Version 2.0. The AI2Apps
+Official Cloud Connector is licensed under the Business Source License 1.1
+until its Change Date and then under Apache-2.0. See LICENSE,
+LICENSE-POLICY.md, LICENSES/, and TRADEMARKS.md. The oMLX name is used only to
+identify the origin of the work.
+
+The software licenses do not grant rights to the AI2Apps name, logo, or other
+AI2Apps trademarks. All such trademark rights are reserved.

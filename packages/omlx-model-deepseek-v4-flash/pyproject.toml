@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-deepseek-v4-flash"
-version = "0.3.2"
+version = "0.3.4"
 description = "DeepSeek V4 Flash isolated Model Worker Package"
 readme = "README.md"
 license = "Apache-2.0"
@@ -18,4 +18,4 @@ dev = ["ai2apps>=0.1.0.dev2,<0.2", "mlx==0.32.0"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-omlx_model_deepseek_v4_flash = ["assets/*.json"]
+omlx_model_deepseek_v4_flash = ["assets/*.json", "assets/*.jinja"]

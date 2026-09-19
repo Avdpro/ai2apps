@@ -1,0 +1,58 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.flux2-klein-9b-mlx
+name: FLUX.2 Klein 9B MLX
+description: FLUX.2 Klein 9B generation and editing with 1–4 reference images.
+version: 0.1.0
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.flux2-klein-9b-mlx/9b
+    display_name: FLUX.2 Klein 9B MLX
+    model_type: image_generation
+    upstream_id: black-forest-labs/FLUX.2-klein-9B
+    capabilities: [image_generation, image_edit, multi_reference, local, mlx]
+    weights:
+      provider: huggingface
+      repo_id: black-forest-labs/FLUX.2-klein-9B
+      revision: 92196c8e11f7b6cf2b7493e037d8c5345c559216
+      distribution_id: dist_ai2apps_flux2_klein_9b_92196c8e_v1
+      preparation: {recipe: native}
+    metadata:
+      family: flux2-klein
+      variant: 9b
+      implementation: mflux-mlx-optimized
+      mflux_version: 0.19.0
+      device_recommendation: {minimum_memory_gib: 32, preferred_memory_gib: 48, quality_rank: 4}
+    image_capabilities: &image_capabilities
+      schema: ai2apps.image-capabilities/v1
+      operations: [image_generation, image_edit]
+      inputs: {reference_images: {minimum: 1, maximum: 4}}
+      formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
+      geometry:
+        minimum: {width: 256, height: 256}
+        maximum: {width: 2048, height: 2048}
+        multiple_of: 32
+        ratios: ["1:1", "4:3", "3:4", "16:9", "9:16"]
+      defaults: {width: 1024, height: 1024, steps: 4, guidance: 1.0, output_format: png}
+      execution: {quantizations: [q8, bf16, q4], compiled_denoiser: true, persistent_quantized_cache: true, edit_kv_cache: true, max_concurrency_per_device: 1}
+capabilities: [image-generation, image-edit, flux2-klein]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.5.0,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, metal, image-generation, image-edit, flux2-klein]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned FLUX.2 checkpoint.}
+  accelerator: {metal: true, reason: Run native MLX image generation and editing.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 180}
+restart: {max_attempts: 2, base_delay_seconds: 2}
+tools: []

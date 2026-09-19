@@ -29,6 +29,7 @@ from ai2apps.extensions.patching import canonical_digest
 from ai2apps.identity import MemberRole, RequestPrincipal
 from ai2apps.packages import PackageFile, TrustStatus, package_digest
 from ai2apps.platform_runtime import PlatformRuntime
+from ai2apps.studio import StudioMiniAppRegistry
 
 
 def _runtime(tmp_path):
@@ -188,6 +189,17 @@ def test_runtime_registers_authoritative_builtin_app_catalog(tmp_path):
         "kind": "host",
         "resource": "ai2apps:system/account",
     }
+    assert {
+        app_id
+        for app_id, item in catalog.items()
+        if item["navigation"]["status"] == "development"
+    } == {
+        "ai2apps.sharing",
+        "ai2apps.environment",
+        "ai2apps.messager",
+        "ai2apps.benchmark",
+        "ai2apps.agents",
+    }
 
     zh_catalog = {
         item["app_key"]: item
@@ -207,10 +219,8 @@ def test_mobile_catalog_is_explicit_and_excludes_desktop_only_apps(tmp_path):
     assert set(catalog) == {
         "ai2apps.dashboard",
         "ai2apps.account",
-        "ai2apps.agents",
         "ai2apps.general-chat",
         "ai2apps.knowledge",
-        "ai2apps.messager",
         "ai2apps.trust-center",
     }
     assert catalog["ai2apps.general-chat"]["entry_source"] == "mobile_entry"
@@ -263,6 +273,12 @@ def test_builtin_app_catalog_and_launch_are_filtered_by_role(tmp_path):
             "ai2apps.agents", principal=member
         )
     assert denied.value.code == "app_access_denied"
+
+    with pytest.raises(ExtensionError) as unavailable:
+        runtime.extension_manager.launch_app(
+            "ai2apps.messager", principal=member
+        )
+    assert unavailable.value.code == "app_unavailable"
 
 
 def test_user_app_instance_ownership_blocks_direct_id_access(tmp_path):
@@ -903,3 +919,145 @@ async def test_app_patch_and_safe_mode_switch_effective_definition(tmp_path):
         ]
         == "My Notes"
     )
+
+
+@pytest.mark.asyncio
+async def test_installed_app_declares_discovers_and_mounts_studio_mini_app(tmp_path):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    manifest = _app()
+    manifest["navigation"] = {"launcher": False}
+    manifest["mini_apps"] = [
+        {
+            "schema": "ai2apps.mini-app/v1",
+            "id": "example.audio.transcribe",
+            "version": "1.0.0",
+            "kind": "project",
+            "entry": {
+                "kind": "sandbox",
+                "resource": "ui/transcribe.html",
+                "placements": ["inline", "sidebar"],
+            },
+            "placements": [
+                {
+                    "studio": "ai2apps.video-studio",
+                    "category": "audio",
+                    "order": 80,
+                }
+            ],
+            "requirements": {"capabilities": ["audio.transcription"]},
+        }
+    ]
+    resources = {
+        "ui/entry.html": b"<main>Notes</main>",
+        "ui/mini.json": b"{}",
+        "ui/transcribe.html": b"<main>Transcribe</main>",
+    }
+    archive, _ = _write_bundle(tmp_path, private, manifest, ".ai2app", resources)
+    await runtime.extension_manager.install(archive, approve_review=True)
+
+    assert all(
+        item["app_key"] != "example.notes"
+        for item in runtime.extension_manager.list_apps()
+    )
+
+    catalog = StudioMiniAppRegistry(runtime.extension_manager).list(
+        "ai2apps.video-studio",
+        builtins=({"id": "builtin.video", "entry": {"kind": "host-adapter"}},),
+    )
+    installed = next(
+        item for item in catalog["items"] if item["id"] == "example.audio.transcribe"
+    )
+    studio_instance, studio_home, _ = runtime.extension_manager.launch_app(
+        "ai2apps.video-studio"
+    )
+    mount = runtime.extension_manager.mount_studio_mini_app(
+        "ai2apps.video-studio",
+        "example.audio.transcribe",
+        placement="sidebar",
+        interaction_session_id=studio_home.id,
+        context={"studioInstanceId": studio_instance.id},
+    )
+
+    assert installed["source"] == "package"
+    assert installed["provider"]["appId"] == "example.notes"
+    assert mount["renderer"] == "sandbox"
+    assert mount["resource"] == "ui/transcribe.html"
+    assert mount["entry_source"] == "mini_entry"
+    assert mount["context"]["miniAppId"] == "example.audio.transcribe"
+    assert runtime.extension_manager.mount_entry(mount["id"])["id"] == mount["id"]
+
+    app = FastAPI()
+    app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/v1/platform/studios/ai2apps.video-studio/mini-apps"
+        )
+        mounted = await client.post(
+            "/v1/platform/studios/ai2apps.video-studio/mini-app-mounts",
+            headers={"X-AI2Apps-App-Instance": studio_instance.id},
+            json={
+                "miniAppId": "example.audio.transcribe",
+                "placement": "inline",
+                "interactionSessionId": studio_home.id,
+            },
+        )
+
+    assert response.status_code == 200
+    assert any(
+        item["id"] == "example.audio.transcribe"
+        for item in response.json()["items"]
+    )
+    assert mounted.status_code == 201
+    assert mounted.json()["content_url"].startswith(
+        "/admin/api/shell/app-instances/"
+    )
+
+
+@pytest.mark.asyncio
+async def test_studio_mini_app_rejects_host_adapter_and_missing_resource(tmp_path):
+    runtime = _runtime(tmp_path)
+    private = Ed25519PrivateKey.generate()
+    _publisher(runtime, private)
+    manifest = _app()
+    manifest["mini_apps"] = [
+        {
+            "schema": "ai2apps.mini-app/v1",
+            "id": "example.audio.unsafe",
+            "version": "1.0.0",
+            "entry": {"kind": "host-adapter", "resource": "ui/missing.html"},
+            "placements": [{"studio": "ai2apps.video-studio"}],
+        }
+    ]
+    resources = {"ui/entry.html": b"entry", "ui/mini.json": b"{}"}
+    archive, _ = _write_bundle(tmp_path, private, manifest, ".ai2app", resources)
+
+    with pytest.raises(ExtensionError) as denied:
+        await runtime.extension_manager.install(archive, approve_review=True)
+    assert denied.value.code == "invalid_studio_mini_app_entry"
+
+
+def test_studio_registry_reserves_builtin_ids_and_hides_package_conflicts():
+    class FakeManager:
+        def list_studio_mini_apps(self, _studio_id, *, principal=None):
+            del principal
+            return (
+                {"id": "builtin.video", "source": "package"},
+                {"id": "duplicate", "source": "package"},
+                {"id": "duplicate", "source": "package"},
+            )
+
+    result = StudioMiniAppRegistry(FakeManager()).list(
+        "ai2apps.video-studio", builtins=({"id": "builtin.video"},)
+    )
+
+    assert [item["id"] for item in result["items"]] == ["builtin.video"]
+    assert result["conflicts"] == ["builtin.video", "duplicate"]

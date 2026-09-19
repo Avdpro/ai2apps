@@ -114,6 +114,9 @@ def _wav_bytes() -> bytes:
 
 
 class _STTEngine:
+    def __init__(self):
+        self.kwargs = None
+
     async def start(self):
         return None
 
@@ -122,6 +125,7 @@ class _STTEngine:
 
     async def transcribe(self, path, **kwargs):
         assert Path(path).is_file()
+        self.kwargs = kwargs
         return {
             "text": "你好",
             "language": kwargs["language"],
@@ -189,6 +193,34 @@ async def test_omlx_stt_adapter_uses_authorized_request_part(tmp_path):
 
     assert result["text"] == "你好"
     assert result["features"]["timestamps"]["status"] == "native"
+    assert "max_tokens" not in adapter._engine.kwargs
+
+
+@pytest.mark.asyncio
+async def test_omlx_stt_adapter_forwards_explicit_max_tokens(tmp_path):
+    path = tmp_path / "speech.wav"
+    path.write_bytes(_wav_bytes())
+    adapter = _STTAdapter(_context(tmp_path, "example.audio/stt"))
+
+    await adapter.invoke(
+        ModelWorkerRequest(
+            operation="audio_transcription",
+            request_id="request-max-tokens",
+            payload={"model": "upstream/audio", "max_tokens": "4096"},
+            parts={
+                "file": ModelWorkerPart(
+                    name="file",
+                    path=path,
+                    media_type="audio/wav",
+                    filename="speech.wav",
+                    size=path.stat().st_size,
+                    sha256="a" * 64,
+                )
+            },
+        )
+    )
+
+    assert adapter._engine.kwargs["max_tokens"] == 4096
 
 
 @pytest.mark.asyncio

@@ -39,7 +39,7 @@ def test_image_capabilities_normalize_runtime_optimizations():
     "mutation",
     [
         lambda value: value.update(schema="wrong"),
-        lambda value: value.update(operations=["image_edit"]),
+        lambda value: value.update(operations=["unknown_operation"]),
         lambda value: value["geometry"].update(multiple_of=0),
         lambda value: value["defaults"].update(width=4096),
     ],

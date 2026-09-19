@@ -96,7 +96,10 @@ def main() -> None:
             verbose=False,
         ):
             last = response
-            if response.token is not None:
+            if (
+                response.token is not None
+                and len(token_ids) < int(response.generation_tokens)
+            ):
                 token_ids.append(int(response.token))
             if response.text:
                 chunks.append(response.text)

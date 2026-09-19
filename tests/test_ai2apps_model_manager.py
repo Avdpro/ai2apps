@@ -97,7 +97,7 @@ def test_models_app_opens_with_default_model_routing_first():
     assert "audio_processing" in script
     assert "image_generation" in script
     assert "model.source_type !== 'hf_cache'" in script
-    assert "name.startsWith('Dev: ')" in script
+    assert "model.identity?.displayName" in script
     assert "Installed Model Providers" in template
     assert "packages: data.packages || []" in script
 
@@ -423,7 +423,7 @@ def test_fusion_credential_reference_resolves_privately(tmp_path):
 def test_chat_model_picker_displays_fusion_aliases():
     template = (WEB_ROOT / "templates" / "chat.html").read_text()
 
-    assert "['cloud', 'fusion'].includes(adminModel?.source_type)" in template
+    assert "adminModel?.identity?.displayName" in template
 
 
 def test_fusion_profile_persists_optional_external_resolver(tmp_path):

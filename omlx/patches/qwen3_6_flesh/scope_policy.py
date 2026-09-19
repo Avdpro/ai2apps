@@ -167,6 +167,11 @@ class Qwen36ScopePolicy:
         return self.arena_tail_slots if self.backend == "tiered" else self.physical_experts
 
     def experts(self, layer: int, *, phase: str = "decode") -> tuple[int, ...]:
+        # A full-resident Flesh bank is laid out by canonical global expert
+        # ID. Scope profiles intentionally stop at the largest cache tier, so
+        # they need not contain a ranked Top-256 list for exact Full mode.
+        if self.backend == "flesh" and self.resident_experts == NUM_EXPERTS:
+            return tuple(range(NUM_EXPERTS))
         experts = self.catalog.experts(self.scope_name, layer, phase=phase)
         if len(experts) < self.resident_experts:
             raise ValueError(

@@ -50,6 +50,7 @@ One Project Bundle may contain multiple source components. The v1 descriptor is:
   "version": "0.1.0-dev",
   "components": [
     {"type": "app", "manifest": "app/app.yaml"},
+    {"type": "mini-app", "manifest": "mini-app/mini-app.yaml"},
     {"type": "agent", "manifest": "agent/agent.yaml"},
     {"type": "service", "manifest": "service/service.yaml"}
   ]
@@ -59,6 +60,78 @@ One Project Bundle may contain multiple source components. The v1 descriptor is:
 An App's `mini_entry` is discovered as a Mini-App component. A standalone
 Mini-App may instead use `mini-app.yaml` and `type: "mini-app"`. The older
 `{"kind": "app", "path": "."}` descriptor remains accepted.
+
+A Mini-App is a user-facing interactive component with its own UI entry. It is
+not a headless Pipeline and not an Agent Tool. A Studio may mount Mini-Apps,
+but does not own them: one canonical Mini-App installation may declare explicit
+placements in multiple Studios while retaining one package identity and
+version. `mini_entry` is an embeddable App surface; it becomes a synthetic
+Mini-App component during discovery, but the two terms are not synonyms.
+
+### Recommended Help and Mini-App Chat capabilities
+
+Help and conversational control are recommended authoring capabilities, not
+requirements of the Mini-App definition. A Mini-App remains valid and can be
+installed, discovered, mounted, and run without either capability.
+
+Authors should nevertheless provide at least a concise, task-oriented
+`help.md` when practical. It should explain the Mini-App's purpose, required
+inputs, normal workflow, important settings, and common failure recovery. Help
+must not contain secrets or grant authority. The current Studio Package
+integration declares this bounded Markdown resource inside the optional
+`ai2apps.mini-app-chat/v1` contract so the host loads it only when the user asks
+for help; the Markdown is not included in normal model Context.
+
+There are two recommended adoption levels:
+
+- **Help-only:** declare `help.md`, return an empty or minimal current Context,
+  and expose no operation Tools (`tools: []`). The shared Chat-Mini-Entry can
+  answer usage questions but cannot change or run the Mini-App.
+- **Chat-control:** additionally provide useful current-state Context and an
+  explicit allowlist of operation Tools. Effectful Tools remain subject to
+  host validation, capability checks, and confirmation policy.
+
+`Mini-App-Chat` must never be inferred merely because a component is a
+Mini-App. Studio displays the Chat entry only when the selected Mini-App
+explicitly declares the capability. The versioned Package form and security
+rules are defined in `docs/ai2apps-studio-mini-app-package-contract-v1.md` and
+`docs/ai2apps-mini-app-chat-architecture.md`.
+
+If an App Package is only a container/provider for Studio Mini-Apps and has no
+coherent standalone App surface, its `app.yaml` should declare
+`navigation.launcher: false`. This hides only the provider Package from App
+Launcher and Dock; it does not hide its Mini-App placements. Mixed Packages
+that intentionally provide both an App and Mini-Apps remain launcher-visible.
+
+## Shared capability target
+
+The target Studio authoring model allows one Project/Package to contain
+multiple Mini-Apps plus shared headless Pipeline and Service components. A
+Mini-App consumes a versioned Capability contract; it does not call another
+Mini-App or import another component's private implementation. Providers use
+`provides`, consumers use `requirements.capabilities`, and runtime invocation
+goes through the Host-owned Capability Broker with Resource Handles and
+Artifacts rather than private paths or endpoints.
+
+The future descriptor may therefore include components such as:
+
+```json
+{
+  "components": [
+    {"type": "pipeline", "manifest": "pipelines/extract-audio.yaml"},
+    {"type": "mini-app", "manifest": "mini-apps/video-subtitles.yaml"},
+    {"type": "mini-app", "manifest": "mini-apps/voice-replacement.yaml"},
+    {"type": "mini-app", "manifest": "mini-apps/multilingual-dubbing.yaml"}
+  ]
+}
+```
+
+This is a target contract, not current Coder behavior. The current source
+validator accepts only `app`, `mini-app`, `agent`, and `service`; it does not
+yet accept `pipeline`, resolve Capability providers, or validate atomic
+multi-component installation graphs. Those features require versioned schemas,
+validators, Package lifecycle support, and the Host Capability Broker before
+Coder may advertise them as runnable.
 
 ## Source development runtime
 

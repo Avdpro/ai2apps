@@ -4,7 +4,7 @@ import mlx.core as mx
 from metal_bank import MetalBank
 from metal_expert import act_quant
 from native_mx_bf16 import linear
-bank=MetalBank('artifacts/dsv41-full-expert-store/layer-0.bin',[0,1,2,3],l0_slots=0)
+bank=MetalBank('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/experts/layer-0.bin',[0,1,2,3],l0_slots=0)
 try:
     rng=np.random.default_rng(37);records=[]
     for per in [32,128,512]:

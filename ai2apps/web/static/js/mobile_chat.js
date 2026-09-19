@@ -178,7 +178,7 @@
         try {
             const payload = await request('/v1/mobile/models', { cache: 'no-store' });
             const items = (payload.data || []).filter((item) => item?.id);
-            model.innerHTML = items.map((item) => '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.id) + '</option>').join('');
+            model.innerHTML = items.map((item) => '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.identity?.displayName || item.display_name || item.name || item.id) + '</option>').join('');
             if (!items.length) model.innerHTML = '<option value="">No models available</option>';
         } catch (error) {
             model.innerHTML = '<option value="">Models unavailable</option>';

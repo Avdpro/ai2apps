@@ -1,5 +1,6 @@
 (() => {
     'use strict';
+    if (window.AI2AppsMiniAppChat?.startChatEntry?.()) return;
     const modelSelect = document.getElementById('chat-mini-model');
     const screenshotControl = document.getElementById('chat-mini-screenshot-control');
     const includeScreenshot = document.getElementById('chat-mini-include-screenshot');
@@ -12,6 +13,8 @@
     let availableModels = new Map();
     let bidiConnectionPromise = null;
     const conversation = [];
+    const modelInstaller = window.AI2AppsMiniAppChat.createModelInstaller(modelSelect, loadModels,
+        error => addMessage('assistant', error?.message || String(error), 'error'));
     const tr = (key, values = {}) => Object.entries(values).reduce(
         (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
         typeof window.t === 'function' ? window.t(key) : key);
@@ -76,22 +79,27 @@
                 const ids = [status.id, status.model_alias].filter(Boolean);
                 return ids.map(id => [id, status]);
             }));
-            const models = (payload.data || []).filter(model =>
+            const catalog = (payload.data || []).filter(model =>
                 modelSupportsConversation(model) && modelIsAvailable(model, statusById));
+            const { models, selected } = await window.AI2AppsMiniAppChat.resolveModelSelection(
+                catalog, localStorage.getItem('ai2apps.chat-mini.model.v1'));
             availableModels = new Map(models.map(model => [model.id, model]));
+            const liveSelection = modelSelect.value;
             modelSelect.replaceChildren(...models.map(model => {
                 const option = document.createElement('option');
                 option.value = model.id;
                 option.textContent = model.name || model.id;
                 return option;
             }));
-            const saved = localStorage.getItem('ai2apps.chat-mini.model.v1');
-            if (saved && models.some(model => model.id === saved)) modelSelect.value = saved;
+            modelSelect.value = availableModels.has(liveSelection) ? liveSelection : selected;
+            modelInstaller.sync();
             updateScreenshotControl();
         } catch (error) {
             const option = document.createElement('option');
             option.textContent = tr('chat.mini.no_model');
+            option.value = '';
             modelSelect.replaceChildren(option);
+            modelInstaller.sync();
         }
     }
     function modelSupportsVision(model) {
@@ -355,6 +363,7 @@
 
     window.addEventListener('hashchange', setBoundPageContext);
     modelSelect.addEventListener('change', () => {
+        if (modelInstaller.handleChange()) return;
         localStorage.setItem('ai2apps.chat-mini.model.v1', modelSelect.value);
         updateScreenshotControl();
     });

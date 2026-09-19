@@ -1,24 +1,32 @@
-"""Local-first APIs for the built-in Read Aloud Studio App."""
+"""Local-first APIs for the built-in Voice Studio App."""
 
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
+from ai2apps.api.ownership import authorize_app_instance
 from ai2apps.core import RepositoryError, utc_now_text
 from ai2apps.gallery import GalleryRepository
 from ai2apps.identity import RequestPrincipal
+from ai2apps.model_identity import build_model_identity
 from ai2apps.model_providers import list_package_models
 from ai2apps.readaloud import (
     ReadAloudRenderError,
     ReadAloudRepository,
     ReadAloudTaskManager,
+)
+from ai2apps.studio import (
+    StudioMiniAppRegistry,
+    StudioRepository,
+    StudioRepositoryError,
 )
 
 ProjectPurpose = Literal["private", "noncommercial", "commercial"]
@@ -26,6 +34,15 @@ SourceRights = Literal["user_owned", "licensed", "public_domain", "personal_use"
 VoiceSource = Literal["synthetic_designed", "self_voice", "authorized_person"]
 ReviewStatus = Literal["suggested", "needs_review", "approved"]
 VOICE_RIGHTS_POLICY_VERSION = "ai2apps.voice-rights/v1"
+READALOUD_STUDIO_ID = "ai2apps.readaloud"
+READALOUD_MINI_APPS: tuple[dict[str, Any], ...] = (
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.quick-read", "version": "1.0.0", "kind": "clip", "mode": "quick", "icon": "volume-2", "title_key": "readaloud.mini_app.quick.name", "summary_key": "readaloud.mini_app.quick.summary", "description_key": "readaloud.mini_app.quick.description", "entry": {"kind": "host-adapter", "adapter": "quick-read"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "script", "accepts": ["text"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "quick", "order": 10}], "inputs": [{"id": "script", "kind": "text", "required": True}], "outputs": [{"id": "speech", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.audiobook", "version": "1.0.0", "kind": "project", "mode": "audiobook", "icon": "book-headphones", "title_key": "readaloud.mini_app.audiobook.name", "summary_key": "readaloud.mini_app.audiobook.summary", "description_key": "readaloud.mini_app.audiobook.description", "entry": {"kind": "host-adapter", "adapter": "audiobook"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "book", "accepts": ["text"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "projects", "order": 20}], "inputs": [{"id": "book", "kind": "text", "required": True}], "outputs": [{"id": "chapters", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.ensemble-drama", "version": "1.0.0", "kind": "project", "mode": "drama", "icon": "users-round", "title_key": "readaloud.mini_app.drama.name", "summary_key": "readaloud.mini_app.drama.summary", "description_key": "readaloud.mini_app.drama.description", "entry": {"kind": "host-adapter", "adapter": "ensemble-drama"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "script", "accepts": ["text", "project"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "projects", "order": 30}], "inputs": [{"id": "script", "kind": "project", "required": True}], "outputs": [{"id": "dialogue", "kind": "audio", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.speech-generation"]}, "requirements": {"capabilities": ["audio.speech_generation"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.voice-design", "version": "1.0.0", "kind": "project", "mode": "voice", "icon": "audio-waveform", "title_key": "readaloud.mini_app.voice.name", "summary_key": "readaloud.mini_app.voice.summary", "description_key": "readaloud.mini_app.voice.description", "entry": {"kind": "host-adapter", "adapter": "voice-design"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "reference", "accepts": ["audio", "voice-profile"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "voices", "order": 40}], "inputs": [{"id": "voice_spec", "kind": "project", "required": True}], "outputs": [{"id": "voice_profile", "kind": "voice-profile", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.voice-design"]}, "requirements": {"capabilities": ["audio.voice_clone"]}},
+    {"schema": "ai2apps.mini-app/v1", "id": "ai2apps.audio.character-training", "version": "1.0.0", "kind": "project", "mode": "training", "icon": "mic-2", "title_key": "readaloud.mini_app.training.name", "summary_key": "readaloud.mini_app.training.summary", "description_key": "readaloud.mini_app.training.description", "entry": {"kind": "host-adapter", "adapter": "character-training"}, "ui": {"minimum_width": 520, "drop_targets": [{"id": "reference_audio", "accepts": ["audio"]}]}, "placements": [{"studio": READALOUD_STUDIO_ID, "category": "voices", "order": 50}], "inputs": [{"id": "reference_audio", "kind": "audio", "required": True}], "outputs": [{"id": "training_material", "kind": "voice-profile", "final": True}], "executor": {"pipelines": ["ai2apps.pipeline.voice-training"]}, "requirements": {"capabilities": ["audio.voice_clone"]}},
+)
+READALOUD_MINI_APP_BY_ID = {item["id"]: item for item in READALOUD_MINI_APPS}
 
 
 class ProjectCreateRequest(BaseModel):
@@ -81,6 +98,25 @@ class SegmentUpdateRequest(BaseModel):
 class RenderCreateRequest(BaseModel):
     model_id: str = Field(min_length=1, max_length=255)
     segment_ids: list[str] | None = Field(default=None, max_length=10_000)
+    mini_app_id: str = Field(
+        default="ai2apps.audio.audiobook", min_length=1, max_length=255
+    )
+    placement: str = Field(default=READALOUD_STUDIO_ID, min_length=1, max_length=255)
+
+
+class StudioDraftRequest(BaseModel):
+    draft: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioRunCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mini_app_id: str = Field(alias="miniAppId", min_length=3, max_length=255)
+    project_id: str = Field(alias="projectId", min_length=1, max_length=255)
+    model_id: str = Field(alias="modelId", min_length=1, max_length=255)
+    segment_ids: list[str] | None = Field(default=None, alias="segmentIds")
+    title: str = Field(default="Voice Studio", min_length=1, max_length=160)
+    retry_of: str | None = Field(default=None, alias="retryOf", max_length=80)
 
 
 def _camel(value: dict[str, Any]) -> dict[str, Any]:
@@ -113,12 +149,23 @@ def _camel(value: dict[str, Any]) -> dict[str, Any]:
         "completed_at": "completedAt",
         "segment_id": "segmentId",
         "output_path": "outputPath",
+        "artifact_id": "artifactId",
+        "artifact_session_id": "artifactSessionId",
+        "mini_app_id": "miniAppId",
+        "model_revision": "modelRevision",
+        "download_url": "downloadUrl",
+        "media_type": "mediaType",
+        "session_id": "sessionId",
+        "resource_handle": "resourceHandle",
+        "asset_id": "assetId",
     }
     result = {mapping.get(key, key): item for key, item in value.items()}
     if isinstance(result.get("characters"), list):
         result["characters"] = [_camel(item) for item in result["characters"]]
     if isinstance(result.get("segments"), list):
         result["segments"] = [_camel(item) for item in result["segments"]]
+    if isinstance(result.get("artifact"), dict):
+        result["artifact"] = _camel(result["artifact"])
     return result
 
 
@@ -164,7 +211,7 @@ def create_readaloud_router(
             return platform_error_response(
                 status_code=503,
                 code="platform_not_ready",
-                message="Read Aloud persistence is not ready.",
+                message="Voice Studio persistence is not ready.",
                 retryable=True,
             )
         return ReadAloudRepository(database, events)
@@ -176,10 +223,42 @@ def create_readaloud_router(
             return platform_error_response(
                 status_code=503,
                 code="platform_not_ready",
-                message="Read Aloud render queue is not ready.",
+                message="Voice Studio render queue is not ready.",
                 retryable=True,
             )
         return manager
+
+    def studio(principal: RequestPrincipal, app_instance_id: str) -> StudioRepository:
+        runtime = runtime_provider()
+        database = None if runtime is None else getattr(runtime, "database", None)
+        extension_manager = (
+            None if runtime is None else getattr(runtime, "extension_manager", None)
+        )
+        if database is None or extension_manager is None:
+            raise HTTPException(
+                status_code=503, detail="Voice Studio storage is not ready"
+            )
+        authorize_app_instance(runtime, principal, app_instance_id)
+        entry = extension_manager.instance_entry(app_instance_id, principal=principal)
+        if entry.get("app_key") != READALOUD_STUDIO_ID:
+            raise HTTPException(status_code=404, detail="Voice Studio was not found")
+        return StudioRepository(database)
+
+    def scoped_kwargs(
+        principal: RequestPrincipal, app_instance_id: str
+    ) -> dict[str, str]:
+        return {
+            "actor_id": principal.actor_user_id,
+            "installation_id": principal.installation_id,
+            "app_instance_id": app_instance_id,
+            "studio_id": READALOUD_STUDIO_ID,
+        }
+
+    def studio_error(error: StudioRepositoryError):
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={"code": error.code, "message": str(error)},
+        ) from error
 
     def guarded(call):
         try:
@@ -192,6 +271,164 @@ def create_readaloud_router(
                 code="readaloud_request_invalid",
                 message=str(error),
             )
+
+    @router.get("/mini-apps")
+    def mini_apps(principal: RequestPrincipal = principal_dependency):
+        runtime = runtime_provider()
+        manager = None if runtime is None else getattr(runtime, "extension_manager", None)
+        if manager is None:
+            return {
+                "schema": "ai2apps.studio-mini-app-list/v1",
+                "studioId": READALOUD_STUDIO_ID,
+                "items": list(READALOUD_MINI_APPS),
+            }
+        return StudioMiniAppRegistry(manager).list(
+            READALOUD_STUDIO_ID,
+            builtins=READALOUD_MINI_APPS,
+            principal=principal,
+        )
+
+    @router.get("/drafts/{mini_app_id:path}")
+    def get_studio_draft(
+        mini_app_id: str,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        if mini_app_id not in READALOUD_MINI_APP_BY_ID:
+            raise HTTPException(status_code=404, detail="Voice Studio Mini-App was not found")
+        return studio(principal, app_instance_id).get_draft(
+            mini_app_id=mini_app_id,
+            **scoped_kwargs(principal, app_instance_id),
+        ) or {"miniAppId": mini_app_id, "draft": {}}
+
+    @router.put("/drafts/{mini_app_id:path}")
+    def save_studio_draft(
+        mini_app_id: str,
+        request: StudioDraftRequest,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        if mini_app_id not in READALOUD_MINI_APP_BY_ID:
+            raise HTTPException(status_code=404, detail="Voice Studio Mini-App was not found")
+        if len(json.dumps(request.draft, ensure_ascii=False).encode("utf-8")) > 128 * 1024:
+            raise HTTPException(status_code=413, detail="Voice Studio Mini-App draft is too large")
+        return studio(principal, app_instance_id).save_draft(
+            mini_app_id=mini_app_id,
+            draft=request.draft,
+            **scoped_kwargs(principal, app_instance_id),
+        )
+
+    @router.get("/runs")
+    def list_studio_runs(
+        limit: int = Query(default=50, ge=1, le=100),
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        return {
+            "items": list(
+                studio(principal, app_instance_id).list_runs(
+                    limit=limit, **scoped_kwargs(principal, app_instance_id)
+                )
+            )
+        }
+
+    @router.get("/runs/{run_id}")
+    def get_studio_run(
+        run_id: str,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        try:
+            return studio(principal, app_instance_id).get_run(
+                run_id, **scoped_kwargs(principal, app_instance_id)
+            )
+        except StudioRepositoryError as error:
+            return studio_error(error)
+
+    @router.post("/runs", status_code=202)
+    async def create_studio_run(
+        request: StudioRunCreateRequest,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        definition = READALOUD_MINI_APP_BY_ID.get(request.mini_app_id)
+        if definition is None:
+            raise HTTPException(status_code=404, detail="Voice Studio Mini-App was not found")
+        selected_studio = studio(principal, app_instance_id)
+        scope = scoped_kwargs(principal, app_instance_id)
+        try:
+            run = selected_studio.create_run(
+                mini_app_id=request.mini_app_id,
+                mini_app_version=definition["version"],
+                placement=READALOUD_STUDIO_ID,
+                title=request.title,
+                input_data={
+                    "projectId": request.project_id,
+                    "modelId": request.model_id,
+                    "segmentIds": request.segment_ids,
+                },
+                retry_of=request.retry_of,
+                step_label="Render audio",
+                **scope,
+            )
+            manager = render_manager()
+            if isinstance(manager, JSONResponse):
+                raise ReadAloudRenderError(
+                    "platform_not_ready", "Voice Studio render queue is not ready", status_code=503
+                )
+            await manager.create(
+                owner_user_id=principal.actor_user_id,
+                project_id=request.project_id,
+                model_id=request.model_id,
+                segment_ids=request.segment_ids,
+                mini_app_id=request.mini_app_id,
+                placement=READALOUD_STUDIO_ID,
+                run_id=run["id"],
+            )
+            return selected_studio.get_run(run["id"], **scope)
+        except StudioRepositoryError as error:
+            return studio_error(error)
+        except (RepositoryError, ReadAloudRenderError) as error:
+            if "run" in locals():
+                selected_studio.update_run(
+                    run["id"],
+                    status="failed",
+                    progress=0,
+                    detail=str(error),
+                    error={"code": getattr(error, "code", "render_failed"), "message": str(error)},
+                    **scope,
+                )
+            if isinstance(error, RepositoryError):
+                return repository_error_response(error)
+            return platform_error_response(
+                status_code=error.status_code,
+                code=error.code,
+                message=str(error),
+                retryable=error.status_code >= 500,
+            )
+
+    @router.post("/runs/{run_id}/cancel")
+    async def cancel_studio_run(
+        run_id: str,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        selected_studio = studio(principal, app_instance_id)
+        try:
+            selected_studio.get_run(
+                run_id, **scoped_kwargs(principal, app_instance_id)
+            )
+            manager = render_manager()
+            if isinstance(manager, JSONResponse):
+                return manager
+            await manager.cancel(run_id, owner_user_id=principal.actor_user_id)
+            return selected_studio.get_run(
+                run_id, **scoped_kwargs(principal, app_instance_id)
+            )
+        except StudioRepositoryError as error:
+            return studio_error(error)
+        except RepositoryError as error:
+            return repository_error_response(error)
 
     def reference_audio_asset(
         asset_id: str | None,
@@ -222,10 +459,17 @@ def create_readaloud_router(
         for model in list_package_models(runtime):
             if model.model_type not in {"audio_tts", "audio_stt"}:
                 continue
+            identity = build_model_identity(
+                source="package",
+                provider_id=model.inference_provider_key or model.provider_key,
+                model_id=model.id,
+                display_name=model.display_name,
+            )
             installed.append(
                 {
                     "id": model.id,
-                    "displayName": model.display_name,
+                    "displayName": identity["displayName"],
+                    "identity": identity,
                     "modelType": model.model_type,
                     "capabilities": list(model.capabilities),
                     "audioCapabilities": dict(model.audio_capabilities or {}),
@@ -442,6 +686,8 @@ def create_readaloud_router(
                 project_id=project_id,
                 model_id=request.model_id,
                 segment_ids=request.segment_ids,
+                mini_app_id=request.mini_app_id,
+                placement=request.placement,
             )
             return _camel(job)
         except RepositoryError as error:
@@ -453,6 +699,26 @@ def create_readaloud_router(
                 message=str(error),
                 retryable=error.status_code >= 500,
             )
+
+    @router.get("/render-jobs")
+    def list_render_jobs(
+        project_id: str | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        manager = render_manager()
+        if isinstance(manager, JSONResponse):
+            return manager
+        return {
+            "items": [
+                _camel(item)
+                for item in manager.list(
+                    owner_user_id=principal.actor_user_id,
+                    project_id=project_id,
+                    limit=limit,
+                )
+            ]
+        }
 
     @router.get("/render-jobs/{job_id}")
     def get_render_job(
@@ -481,5 +747,26 @@ def create_readaloud_router(
             )
         except RepositoryError as error:
             return repository_error_response(error)
+
+    @router.post("/render-jobs/{job_id}/retry", status_code=202)
+    async def retry_render_job(
+        job_id: str,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        manager = render_manager()
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            return _camel(
+                await manager.retry(job_id, owner_user_id=principal.actor_user_id)
+            )
+        except RepositoryError as error:
+            return repository_error_response(error)
+        except ReadAloudRenderError as error:
+            return platform_error_response(
+                status_code=error.status_code,
+                code=error.code,
+                message=str(error),
+            )
 
     return router

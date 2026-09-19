@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -328,6 +329,69 @@ async def test_video_task_idempotency_conflict_and_queued_cancel(tmp_path):
     cancelled = await manager.cancel(created["id"], actor_id="actor-1")
     assert cancelled["status"] == "cancelled"
     assert manager.list(actor_id="actor-1")["data"][0]["id"] == created["id"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_video_task_can_retry_from_frozen_request(tmp_path):
+    manager = _manager(tmp_path)
+    original = await manager.create(
+        {
+            "model": "example/video",
+            "content": [
+                {"type": "text", "role": "prompt", "text": "retry this shot"}
+            ],
+            "metadata": {"mode": "t2v", "pipeline_id": "ai2apps.video.text-to-video"},
+        },
+        actor_id="actor-1",
+    )
+    await manager.cancel(original["id"], actor_id="actor-1")
+
+    retried = await manager.retry(original["id"], actor_id="actor-1")
+
+    assert retried["id"] != original["id"]
+    assert retried["status"] == "queued"
+    assert retried["metadata"] == original["metadata"] | {"retry_of": original["id"]}
+    with pytest.raises(VideoGenerationError, match="Only failed, cancelled, or expired"):
+        await manager.retry(retried["id"], actor_id="actor-1")
+
+
+@pytest.mark.asyncio
+async def test_video_retry_copies_frozen_private_inputs(tmp_path):
+    manager = _manager(tmp_path)
+    model = manager._model("example/video")
+    model.video_capabilities["content_combinations"] = [{
+        "required": [
+            {"type": "text", "role": "prompt", "min": 1, "max": 1},
+            {"type": "image_url", "role": "first_frame", "min": 1, "max": 1},
+        ],
+        "optional": [],
+    }]
+    buffer = BytesIO()
+    Image.new("RGB", (32, 32), "blue").save(buffer, format="PNG")
+    image = buffer.getvalue()
+    original = await manager.create(
+        {
+            "model": model.id,
+            "content": [
+                {"type": "text", "role": "prompt", "text": "animate this frame"},
+                {"type": "image_url", "role": "first_frame", "image_url": {"url": "multipart://first_frame"}},
+            ],
+        },
+        actor_id="actor-1",
+        uploads={"first_frame": ("frame.png", image, "image/png")},
+    )
+    await manager.cancel(original["id"], actor_id="actor-1")
+
+    retried = await manager.retry(original["id"], actor_id="actor-1")
+
+    with manager.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT input_manifest_json FROM video_generation_tasks WHERE id=?",
+            (retried["id"],),
+        ).fetchone()
+    descriptor = json.loads(row["input_manifest_json"])[0]
+    copied = manager.root / retried["id"] / descriptor["path"]
+    assert copied.read_bytes() == image
 
 
 @pytest.mark.asyncio

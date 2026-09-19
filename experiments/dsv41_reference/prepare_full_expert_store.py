@@ -4,9 +4,11 @@ from pathlib import Path
 from run_reference import Store
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--checkpoint',type=Path,default=Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash'));p.add_argument('--output',type=Path,default=Path('artifacts/dsv41-full-expert-store'));a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--checkpoint',type=Path,default=Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD'));p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+
+    if a.output.resolve()==(a.checkpoint/'experts').resolve():raise ValueError('Refusing to overwrite checkpoint experts; choose a separate output directory')
     a.output.mkdir(parents=True,exist_ok=True);source=Store(a.checkpoint)
-    source_hash=hashlib.sha256((a.checkpoint/'model.safetensors.index.json').read_bytes()).hexdigest()
+    source_hash=source.source_index_sha256
     started=time.time();completed=[]
     for layer in range(40):
         path=a.output/f'layer-{layer}.bin';meta=Path(str(path)+'.json')

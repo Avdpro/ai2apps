@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import copy
 import hashlib
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
+import ai2apps.checkpoint_distribution as checkpoint_distribution
 from ai2apps.checkpoint_acquisition import CheckpointAcquisitionService
 from ai2apps.checkpoint_distribution import (
     CheckpointCache,
@@ -157,6 +160,148 @@ async def test_acquisition_builds_snapshot_then_reuses_it_without_hub_io(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_acquisition_reuses_identical_blobs_across_distribution_identities(
+    tmp_path,
+):
+    payload = b"shared checkpoint bytes"
+    first = _manifest(payload)
+    second_raw = copy.deepcopy(first.raw)
+    second_raw["distributionId"] = "dist_acquire_alias"
+    second_raw["modelId"] = "ai2apps.model/another-package"
+    second = parse_checkpoint_distribution_manifest(second_raw)
+
+    async def distribution(distribution_id):
+        return {
+            first.distribution_id: first,
+            second.distribution_id: second,
+        }[distribution_id]
+
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        value = request.headers["Range"]
+        start, end = (int(item) for item in value.removeprefix("bytes=").split("-"))
+        return httpx.Response(
+            206,
+            headers={"Content-Range": f"bytes {start}-{end}/{len(payload)}"},
+            content=payload[start : end + 1],
+        )
+
+    service = CheckpointAcquisitionService(
+        registry=SimpleNamespace(distribution=distribution),
+        cache=CheckpointCache(tmp_path / "cache"),
+        transport=httpx.MockTransport(respond),
+    )
+    await service.acquire(first.distribution_id)
+    request_count = len(requests)
+
+    reused = await service.acquire(second.distribution_id)
+
+    assert reused.cache_hit is True
+    assert reused.source_bytes == {}
+    assert reused.manifest.distribution_id == second.distribution_id
+    assert (reused.snapshot / "model.safetensors").read_bytes() == payload
+    assert len(requests) == request_count
+
+
+@pytest.mark.asyncio
+async def test_concurrent_instances_share_one_checkpoint_download(tmp_path):
+    payload = b"machine-shared-checkpoint"
+    manifest = _manifest(payload)
+
+    async def distribution(_distribution_id):
+        return manifest
+
+    baseline_requests = []
+    requests = []
+
+    async def baseline_respond(request: httpx.Request) -> httpx.Response:
+        baseline_requests.append(request)
+        value = request.headers["Range"]
+        start, end = (
+            int(item) for item in value.removeprefix("bytes=").split("-")
+        )
+        return httpx.Response(
+            206,
+            headers={"Content-Range": f"bytes {start}-{end}/{len(payload)}"},
+            content=payload[start : end + 1],
+        )
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        await asyncio.sleep(0.05)
+        value = request.headers["Range"]
+        start, end = (
+            int(item) for item in value.removeprefix("bytes=").split("-")
+        )
+        return httpx.Response(
+            206,
+            headers={"Content-Range": f"bytes {start}-{end}/{len(payload)}"},
+            content=payload[start : end + 1],
+        )
+
+    baseline_service = CheckpointAcquisitionService(
+        registry=SimpleNamespace(distribution=distribution),
+        cache=CheckpointCache(tmp_path / "baseline-checkpoint-cache"),
+        transport=httpx.MockTransport(baseline_respond),
+    )
+    baseline = await baseline_service.acquire(manifest.distribution_id)
+
+    shared_root = tmp_path / "shared-checkpoint-cache"
+    services = [
+        CheckpointAcquisitionService(
+            registry=SimpleNamespace(distribution=distribution),
+            cache=CheckpointCache(shared_root),
+            transport=httpx.MockTransport(respond),
+        )
+        for _ in range(2)
+    ]
+
+    results = await asyncio.gather(
+        *(service.acquire(manifest.distribution_id) for service in services)
+    )
+
+    assert sorted(result.cache_hit for result in results) == [False, True]
+    assert baseline.cache_hit is False
+    assert len(requests) == len(baseline_requests)
+    assert results[0].snapshot == results[1].snapshot
+    assert (results[0].snapshot / "model.safetensors").read_bytes() == payload
+
+
+@pytest.mark.asyncio
+async def test_shared_cache_imports_legacy_instance_snapshot_without_network(
+    tmp_path,
+):
+    payload = b"legacy-instance-checkpoint"
+    manifest = _manifest(payload)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "model.safetensors").write_bytes(payload)
+    legacy = CheckpointCache(tmp_path / "legacy-cache")
+    legacy.import_local_snapshot(manifest, source)
+
+    async def distribution(_distribution_id):
+        return manifest
+
+    def reject_network(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("legacy checkpoint import must not access the network")
+
+    service = CheckpointAcquisitionService(
+        registry=SimpleNamespace(distribution=distribution),
+        cache=CheckpointCache(tmp_path / "shared-cache"),
+        legacy_caches=(legacy,),
+        transport=httpx.MockTransport(reject_network),
+    )
+
+    result = await service.acquire(manifest.distribution_id)
+
+    assert result.cache_hit is True
+    assert result.source_bytes == {}
+    assert (result.snapshot / "model.safetensors").read_bytes() == payload
+
+
+@pytest.mark.asyncio
 async def test_conditional_acquisition_requires_consent_before_any_checkpoint_io(
     tmp_path,
 ):
@@ -265,3 +410,36 @@ def test_worker_snapshot_rejects_repository_symlink_escape(tmp_path):
         service.materialize_worker_snapshot(
             SimpleNamespace(manifest=manifest, snapshot=tmp_path / "unused"), hub
         )
+
+
+def test_verified_snapshot_receipt_avoids_rehash_and_detects_changes(
+    tmp_path, monkeypatch
+):
+    payload = b"checkpoint"
+    manifest = _manifest(payload)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "model.safetensors").write_bytes(payload)
+    cache = CheckpointCache(tmp_path / "cache")
+    snapshot = cache.import_local_snapshot(manifest, source)
+
+    assert (snapshot / ".ai2apps/verification.json").is_file()
+    with monkeypatch.context() as context:
+        context.setattr(
+            checkpoint_distribution,
+            "_sha256_file",
+            lambda _path: (_ for _ in ()).throw(
+                AssertionError("verified snapshot must use its receipt")
+            ),
+        )
+        assert cache.verified_snapshot(manifest) == snapshot
+        worker = cache.materialize_snapshot_view(
+            manifest, snapshot, tmp_path / "worker"
+        )
+        assert (worker / "model.safetensors").read_bytes() == payload
+
+    checkpoint = snapshot / "model.safetensors"
+    checkpoint.chmod(0o644)
+    checkpoint.write_bytes(b"checkpoinx")
+    checkpoint.chmod(0o444)
+    assert cache.verified_snapshot(manifest) is None

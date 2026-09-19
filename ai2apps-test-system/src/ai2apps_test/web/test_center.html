@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI2Apps Test Center</title>
+  <style>/* __TEST_CENTER_STYLE__ */</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div><h1>AI2Apps Test Center</h1><p>自动化测试控制台</p></div>
+    </div>
+    <nav class="top-nav" aria-label="主导航">
+      <button class="nav-item active" data-view="selection">运行测试</button>
+      <button class="nav-item" data-view="management">测试库</button>
+      <button class="nav-item" data-view="pipelines">Pipeline</button>
+      <button class="nav-item" data-view="diagnostics">覆盖诊断</button>
+    </nav>
+    <div class="header-status"><span class="status-dot"></span>本机安全连接</div>
+  </header>
+
+  <main>
+    <section id="selection" class="view selection-view">
+      <div class="page-heading">
+        <div><p class="eyebrow">RUN TESTS</p><h2>选择本次测试范围</h2><p>优先级预设会累计包含更低级别；按需测试只在手动选择时运行。</p></div>
+        <button id="manage" class="button secondary">管理测试库</button>
+      </div>
+      <div class="selection-toolbar card">
+        <div id="presets" class="segmented" aria-label="测试优先级">
+          <button data-p="P0">P0 <span>快速门禁</span></button>
+          <button data-p="P1">P1 <span>核心回归</span></button>
+          <button data-p="P2">P2 <span>全量产品</span></button>
+          <button data-p="P3">P3 <span>发布候选</span></button>
+        </div>
+        <label class="search-wrap"><span>⌕</span><input id="search" class="search" placeholder="搜索 App、Package、Mini-App 或 Case"></label>
+        <div class="toolbar-buttons"><button id="all" class="button quiet">全选当前范围</button><button id="none" class="button quiet">清空</button></div>
+      </div>
+      <div class="summary-strip">
+        <span class="summary-chip blue" id="priority"></span>
+        <span class="summary-chip" id="selected"></span>
+        <span class="summary-chip" id="scope"></span>
+      </div>
+      <div class="selection-layout">
+        <div id="groups" class="selection-groups"></div>
+        <aside class="manifest-card card">
+          <div class="panel-heading"><div><p class="eyebrow">RUN MANIFEST</p><h3>本次执行清单</h3></div><span id="manifest-count" class="count-badge">0</span></div>
+          <p id="manifest-summary" class="muted">尚未选择测试。</p>
+          <div id="manifest" class="manifest-list"></div>
+          <div class="manifest-note"><span>i</span><p>运行开始后会固化 Catalog 快照，后续编辑不会影响本次测试。</p></div>
+        </aside>
+      </div>
+      <div class="bottom-actions"><button id="cancel" class="button quiet">取消</button><button id="start" class="button primary">开始测试 <span>→</span></button></div>
+    </section>
+
+    <section id="pipelines" class="view pipelines-view hidden">
+      <div class="page-heading compact"><div><p class="eyebrow">CUSTOM TRAJECTORIES</p><h2>Pipeline 测试轨迹</h2><p>把 Case 和 Test 实例动作编排为可重复执行的严格顺序轨迹。</p></div><div class="heading-actions"><button id="refresh-pipelines" class="icon-button">↻</button><button id="new-pipeline" class="button primary">＋ 新建 Pipeline</button></div></div>
+      <div id="pipeline-alert" class="catalog-alert"></div>
+      <div class="pipeline-shell">
+        <aside class="pipeline-list-panel panel"><div class="panel-heading"><h3>Pipeline</h3><span id="pipeline-count" class="count-badge">0</span></div><div id="pipeline-list"></div></aside>
+        <section class="pipeline-editor panel">
+          <div id="empty-pipeline" class="empty-state"><div class="empty-icon">⌁</div><h3>选择或新建 Pipeline</h3><p>每一步可以是 Case，也可以是受限的 Test App 生命周期动作。</p></div>
+          <div id="pipeline-editor-shell" class="hidden">
+            <div class="pipeline-editor-scroll">
+              <div class="inspector-head"><div><span class="type-badge">PIPELINE</span><h3 id="pipeline-title"></h3><p id="pipeline-id-label" class="mono muted"></p></div></div>
+              <div class="form-grid pipeline-meta"><label class="field full">稳定 ID<input id="pipeline-id"></label><label class="field full">显示名称<input id="pipeline-name"></label><label class="field full">说明<textarea id="pipeline-description"></textarea></label><label class="field check-field"><input id="pipeline-enabled" type="checkbox">启用 Pipeline</label></div>
+              <div class="pipeline-toolbar"><button id="append-cases" class="button secondary">＋ 添加 Case</button><button id="insert-cases" class="button secondary">↳ 插入到选中步骤前</button><select id="pipeline-action"><option value="restart-app">重启 App</option><option value="restart-local">重启 Local</option><option value="quit-all-relaunch">全部退出再启动</option><option value="reset-data">重置数据</option></select><button id="append-action" class="button secondary">＋ 添加动作</button></div>
+              <div id="pipeline-steps" class="pipeline-steps"></div>
+              <div id="pipeline-errors" class="form-errors hidden"></div>
+              <div id="pipeline-diff-shell" class="diff-shell hidden"><div class="diff-head"><span>Pipeline Diff</span><button id="close-pipeline-diff" class="icon-button">×</button></div><pre id="pipeline-diff" class="diff"></pre></div>
+            </div>
+            <div class="inspector-actions"><button id="run-pipeline" class="button secondary">▶ 运行 Pipeline</button><span class="action-spacer"></span><button id="validate-pipeline" class="button secondary">校验与 Diff 预览</button><button id="save-pipeline" class="button primary">保存</button></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="management" class="view management-view hidden">
+      <div class="page-heading compact">
+        <div><p class="eyebrow">TEST LIBRARY</p><h2>测试资产管理</h2><p>组织 Group、维护 Case，并通过校验和试运行控制发布质量。</p></div>
+        <div class="heading-actions"><button id="refresh-catalog" class="icon-button" title="刷新">↻</button><button id="new-group" class="button secondary">＋ 新建 Group</button><button id="new-case" class="button primary">＋ 新建 Case</button></div>
+      </div>
+      <div id="catalog-alert" class="catalog-alert"></div>
+      <div class="library-shell">
+        <aside class="group-sidebar panel">
+          <div class="panel-heading"><h3>测试组</h3><span id="group-total" class="count-badge">0</span></div>
+          <button class="group-filter active" data-group="all"><span class="filter-icon">▦</span><span>全部测试</span><b id="all-case-count">0</b></button>
+          <div class="sidebar-label">常规测试</div><div id="regular-groups"></div>
+          <div class="sidebar-label">按需测试</div><div id="ondemand-groups"></div>
+          <div class="sidebar-label">其他</div>
+          <button class="group-filter" data-group="archived"><span class="filter-icon">⌁</span><span>已归档</span><b id="archived-count">0</b></button>
+        </aside>
+
+        <section class="case-panel panel">
+          <div class="case-toolbar">
+            <label class="search-wrap wide"><span>⌕</span><input id="catalog-search" class="search" placeholder="搜索 Case 名称或 ID"></label>
+            <select id="source-filter" aria-label="来源筛选"><option value="all">全部来源</option><option value="user-authored">自定义</option><option value="built-in">内置</option><option value="generated">自动生成</option></select>
+            <select id="executor-filter" aria-label="执行器筛选"><option value="all">全部执行器</option><option value="codex-ui">Codex UI</option><option value="builtin">Builtin</option><option value="command">Command</option></select>
+          </div>
+          <div class="table-heading"><div><h3 id="case-list-title">全部 Case</h3><p id="case-list-subtitle">选择一个 Case 查看详细定义</p></div><span id="visible-case-count" class="muted"></span></div>
+          <div class="case-table-head"><span>测试用例</span><span>优先级</span><span>执行器</span><span>状态</span></div>
+          <div id="catalog-items" class="case-list"></div>
+        </section>
+
+        <aside class="inspector panel">
+          <div id="empty-inspector" class="empty-state"><div class="empty-icon">◇</div><h3>选择一个测试资产</h3><p>在左侧选择 Group，或在中间选择 Case，查看定义与维护操作。</p></div>
+          <div id="editor-shell" class="hidden">
+            <div class="inspector-scroll">
+              <div class="inspector-head"><div><span id="editor-kind" class="type-badge"></span><h3 id="editor-title">Catalog 编辑器</h3><p id="editor-id" class="mono muted"></p></div><button id="close-editor" class="icon-button" title="关闭">×</button></div>
+              <div id="readonly-notice" class="notice hidden">此资产的结构字段只读。Case 可通过“编辑共享内容”修改名称、说明、步骤、预期结果和清理动作；同 ID 的所有引用同步更新。</div>
+              <div id="lifecycle-stepper" class="lifecycle"></div>
+              <form id="catalog-form" autocomplete="off"></form>
+              <details id="advanced-editor" class="advanced"><summary>高级：查看原始 JSON</summary><textarea id="catalog-editor" spellcheck="false"></textarea></details>
+              <div id="catalog-errors" class="form-errors hidden"></div>
+              <div id="catalog-diff-shell" class="diff-shell hidden"><div class="diff-head"><strong>Diff 预览</strong><button id="close-diff" type="button" class="icon-button">×</button></div><pre id="catalog-diff" class="diff"></pre></div>
+            </div>
+            <div class="inspector-actions">
+              <button id="archive-object" type="button" class="button danger quiet hidden">归档</button>
+              <button id="restore-object" type="button" class="button secondary hidden">恢复</button>
+              <button id="copy-object" type="button" class="button secondary hidden">复制为自定义</button>
+              <button id="edit-shared-content" type="button" class="button primary hidden">编辑共享内容</button>
+              <button id="trial-object" type="button" class="button secondary hidden">试运行</button>
+              <span class="action-spacer"></span>
+              <button id="validate-object" type="button" class="button secondary">校验与 Diff 预览</button>
+              <button id="save-object" type="button" class="button primary">保存</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="diagnostics" class="view diagnostics-view hidden">
+      <div class="page-heading compact"><div><p class="eyebrow">COVERAGE DIAGNOSTICS</p><h2>覆盖健康度</h2><p>识别新组件、覆盖缺口、失效引用与测试合同变化。</p></div><button id="refresh-diagnostics" class="button secondary">↻ 刷新诊断</button></div>
+      <div id="diagnostic-cards" class="diagnostic-cards"></div>
+      <div id="diagnostic-sections" class="diagnostic-sections"></div>
+    </section>
+
+    <section id="progress" class="view progress-view hidden">
+      <div class="page-heading"><div><p class="eyebrow">LIVE RUN</p><h2>测试运行状态</h2><p id="current">正在创建测试运行…</p></div><div class="heading-actions"><button id="improve-case" class="button primary hidden">✦ 让 Codex 改进 Case</button><button id="return-to-case" class="button secondary hidden">← 返回编辑 Case</button><button id="stop" class="button danger">中止测试</button></div></div>
+      <div class="run-overview card">
+        <div class="summary-strip"><span class="summary-chip blue" id="run-status">准备启动</span><span class="summary-chip" id="run-id">等待 Run ID</span><span class="summary-chip" id="run-priority"></span></div>
+        <div class="progress-shell"><div id="progress-bar" class="progress-bar"></div></div>
+        <div class="metrics"><div class="metric"><strong id="completed">0</strong><span>已完成</span></div><div class="metric success"><strong id="passed">0</strong><span>通过</span></div><div class="metric failed"><strong id="failed">0</strong><span>失败</span></div><div class="metric warning"><strong id="blocked">0</strong><span>阻断</span></div><div class="metric"><strong id="skipped">0</strong><span>跳过</span></div><div class="metric"><strong id="remaining">0</strong><span>剩余</span></div></div>
+      </div>
+      <section id="issues" class="issues hidden"><div class="issues-head"><span>当前发现的问题 · <span id="issue-count">0</span></span><span>测试默认继续，可随时中止</span></div><div id="issue-list"></div></section>
+      <div id="account" class="current hidden"></div><div id="driver" class="current hidden"></div>
+      <section id="codex-console" class="codex-console hidden"><div class="codex-console-head"><span>Codex CLI 实时输出</span><span id="codex-output-time"></span></div><div id="codex-output" class="codex-output"></div></section>
+      <div id="handoff" class="current hidden"><div id="handoff-text"></div><button id="copy-handoff" class="button secondary">复制接管指令</button></div>
+      <div id="progress-groups"></div><p id="report" class="muted report"></p>
+    </section>
+  </main>
+
+  <div id="copy-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="copy-dialog-title">
+    <div class="modal-card"><div class="modal-head"><h3 id="copy-dialog-title">复制为自定义 Case</h3><button id="close-copy" class="icon-button">×</button></div><p class="muted">副本会保存为停用草稿，需要校验并试运行后才能启用。</p><label>新 Case ID<input id="copy-id"></label><label>目标 Group<select id="copy-group"></select></label><div id="copy-error" class="form-errors hidden"></div><div class="modal-actions"><button id="cancel-copy" class="button quiet">取消</button><button id="confirm-copy" class="button primary">创建副本</button></div></div>
+  </div>
+  <div id="generate-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="generate-dialog-title">
+    <div class="modal-card generate-card">
+      <div class="modal-head"><div><p class="eyebrow">CODEX DRAFT</p><h3 id="generate-dialog-title">描述要测试什么</h3></div><button id="close-generate" class="icon-button">×</button></div>
+      <p class="muted">用自然语言说明测试目标、关键操作和期望结果。Codex 会生成结构化参数，但不会保存、启用或执行 Case。</p>
+      <label>测试描述<textarea id="generate-description" maxlength="4000" placeholder="例如：登录后打开 Gallery，把第一张图片拖入 Video Composer，确认目标轨道出现 Clip，并在结束后删除临时工程。"></textarea></label>
+      <label>目标 Group<select id="generate-group"></select></label>
+      <div class="generate-guidance"><span>✦</span><p>不要输入密码、Token、Cookie、Credential 或其他秘密。生成后仍可逐项修改。</p></div>
+      <div id="generate-error" class="form-errors hidden"></div>
+      <div id="generate-status" class="generation-status hidden"><span class="spinner"></span><div><strong>Codex 正在生成 Case 草稿</strong><p>正在整理 ID、步骤、预期、依赖和超时参数…</p></div></div>
+      <div class="modal-actions"><button id="cancel-generate" class="button quiet">取消</button><button id="confirm-generate" class="button primary">✦ 由 Codex 生成参数</button></div>
+    </div>
+  </div>
+  <div id="review-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="review-dialog-title">
+    <div class="modal-card review-card">
+      <div class="modal-head"><div><p class="eyebrow">TRIAL REVIEW</p><h3 id="review-dialog-title">Codex 试运行复盘</h3></div><button id="close-review" class="icon-button">×</button></div>
+      <p class="muted">Codex 会区分 Case 修订、需要用户补充和非 Case 问题。候选修改不会自动保存，也不会为了通过而降低预期。上传素材会进入测试仓库，请勿选择含隐私、账号信息或秘密的文件。</p>
+      <div id="review-loading" class="generation-status hidden"><span class="spinner"></span><div><strong>Codex 正在复盘本次试运行</strong><p>正在分析执行过程、结果、证据和测试合同…</p></div></div>
+      <div id="review-error" class="form-errors hidden"></div>
+      <div id="review-content" class="hidden">
+        <section class="review-section"><h4>复盘结论</h4><p id="review-summary"></p><p id="review-assessment" class="muted"></p></section>
+        <section class="review-section"><h4>可自动修订</h4><div id="review-changes"></div></section>
+        <section id="review-user-section" class="review-section needs-user hidden"><h4>需要用户补充</h4><p>请提供以下材料或判断标准。必需项齐全后，Codex 才会生成可应用的最终修订。</p><div id="review-user-requests"></div></section>
+        <section id="review-noncase-section" class="review-section hidden"><h4>非 Case 问题</h4><div id="review-noncase"></div></section>
+        <section class="review-section"><div class="diff-head"><span>候选 Case Diff</span></div><pre id="review-diff" class="diff"></pre></section>
+      </div>
+      <div class="modal-actions"><button id="cancel-review" class="button quiet">关闭</button><button id="reanalyze-review" class="button secondary hidden">补充完成，重新分析</button><button id="apply-review" class="button primary hidden">应用到编辑器</button></div>
+    </div>
+  </div>
+  <div id="pipeline-cases-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pipeline-cases-title">
+    <div class="modal-card pipeline-case-picker"><div class="modal-head"><div><p class="eyebrow">ADD CASES</p><h3 id="pipeline-cases-title">选择要加入的 Case</h3></div><button id="close-pipeline-cases" class="icon-button">×</button></div><label>先选择 Group<select id="pipeline-case-group"></select></label><div id="pipeline-case-options" class="pipeline-case-options"></div><div class="modal-actions"><button id="cancel-pipeline-cases" class="button quiet">取消</button><button id="confirm-pipeline-cases" class="button primary">加入选中的 Case</button></div></div>
+  </div>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <div id="pipeline-case-edit-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pipeline-case-edit-title">
+    <div class="modal-card pipeline-case-edit-card">
+      <div class="modal-head"><h3 id="pipeline-case-edit-title">编辑 Case 内容</h3><button id="close-pipeline-case-edit" class="icon-button" aria-label="关闭 Case 编辑">×</button></div>
+      <p class="muted">保存会更新共享 Case，所有 Pipeline 中相同 ID 的引用都会使用新内容。ID、Group、执行器和能力依赖保持不变；历史 Run 保留原快照。</p>
+      <div class="pipeline-case-edit-body">
+        <div id="pipeline-case-identity" class="pipeline-case-identity"></div>
+        <label>显示名称<input id="pipeline-case-name"></label>
+        <label>说明<textarea id="pipeline-case-description"></textarea></label>
+        <label>操作步骤（每行一步）<textarea id="pipeline-case-instructions"></textarea></label>
+        <label>预期结果（每行一项）<textarea id="pipeline-case-expectations"></textarea></label>
+        <label>清理动作（每行一项）<textarea id="pipeline-case-cleanup"></textarea></label>
+        <p id="pipeline-case-edit-error" role="alert"></p>
+      </div>
+      <div class="modal-actions"><button id="cancel-pipeline-case-edit" class="button secondary">取消</button><button id="apply-pipeline-case-edit" class="button primary">保存共享 Case</button></div>
+    </div>
+  </div>
+  <script>/* __TEST_CENTER_SCRIPT__ */</script>
+</body>
+</html>

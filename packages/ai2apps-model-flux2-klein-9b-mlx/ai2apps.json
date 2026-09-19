@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-flux2-klein-9b-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "FLUX.2 Klein 9B MLX",
+    "description": "FLUX.2 Klein 9B generation and editing. Weights subject to the FLUX Non-Commercial License."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read a pinned FLUX.2 checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX image inference.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.5.0 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "image-generation",
+      "image-edit"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 35433480192,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Estimated requirements; not a new Mac benchmark",
+      "device": "Apple Silicon reference hardware"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.flux2-klein-9b-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.flux2-klein-9b-mlx/9b",
+        "label": "FLUX.2 Klein 9B MLX",
+        "recommended": true
+      }
+    ]
+  }
+}

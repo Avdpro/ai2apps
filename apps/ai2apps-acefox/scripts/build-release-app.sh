@@ -17,7 +17,17 @@ ENTITLEMENTS_DIR=${ENTITLEMENTS_DIR:-${PROJECT_DIR}/entitlements}
 KEEP_FAILED_STAGING=${KEEP_FAILED_STAGING:-0}
 SANDBOX_MODE=${SANDBOX_MODE:-0}
 TEAM_IDENTIFIER=${TEAM_IDENTIFIER:-}
-UPDATE_MANIFEST_URL=${UPDATE_MANIFEST_URL:-https://coder.ai2apps.com/updates/stable.json}
+# An explicitly empty value disables update discovery for isolated development
+# bundles. An unset value retains the production default.
+UPDATE_MANIFEST_URL=${UPDATE_MANIFEST_URL-https://coder.ai2apps.com/updates/stable.json}
+APP_DISPLAY_NAME=${APP_DISPLAY_NAME:-AI2Apps}
+APP_ICON_UPPER_COLOR=${APP_ICON_UPPER_COLOR:-}
+DEVELOPMENT_BUILD=${DEVELOPMENT_BUILD:-0}
+DEVELOPMENT_SOURCE_ROOT=${DEVELOPMENT_SOURCE_ROOT:-}
+MENUBAR_ICON_BADGE=${MENUBAR_ICON_BADGE:-none}
+ALLOW_INSTANCE_DATA_RESET=${ALLOW_INSTANCE_DATA_RESET:-0}
+ACEFOX_SHELL_SOURCE=${ACEFOX_SHELL_SOURCE:-}
+SHELL_TITLE_PREFIX=${SHELL_TITLE_PREFIX:-AI2Apps}
 
 fail() {
   print -u2 "build-release-app: $*"
@@ -62,6 +72,82 @@ fi
 [[ ${INSTANCE_ID[1]} != [.-] && ${INSTANCE_ID[-1]} != [.-] ]] || fail "invalid INSTANCE_ID"
 [[ ${#INSTANCE_ID} -le 64 ]] || fail "INSTANCE_ID is too long"
 [[ ${SANDBOX_MODE} == 0 || ${SANDBOX_MODE} == 1 ]] || fail "SANDBOX_MODE must be 0 or 1"
+[[ ${DEVELOPMENT_BUILD} == 0 || ${DEVELOPMENT_BUILD} == 1 ]] || \
+  fail "DEVELOPMENT_BUILD must be 0 or 1"
+[[ ${ALLOW_INSTANCE_DATA_RESET} == 0 || ${ALLOW_INSTANCE_DATA_RESET} == 1 ]] || \
+  fail "ALLOW_INSTANCE_DATA_RESET must be 0 or 1"
+
+# The two fixed non-production identities own fixed visual contracts.  Resolve
+# these centrally instead of trusting every wrapper/caller to remember a tint
+# and badge argument.  A partial use of either reserved identity is rejected so
+# an ad-hoc build cannot accidentally look like another AI2Apps instance.
+ICON_CONTRACT=standard
+if [[ ${INSTANCE_ID} == test && ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.test && \
+      ${APP_DISPLAY_NAME} == AI2Apps-test ]]; then
+  ICON_CONTRACT=test
+elif [[ ${INSTANCE_ID} == app-dev && ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.appdev && \
+        ${APP_DISPLAY_NAME} == AI2Apps-App-Dev ]]; then
+  ICON_CONTRACT=app-dev
+elif [[ ${INSTANCE_ID} == test || ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.test || \
+        ${APP_DISPLAY_NAME} == AI2Apps-test || ${INSTANCE_ID} == app-dev || \
+        ${PRODUCT_IDENTIFIER} == com.ai2apps.desktop.appdev || \
+        ${APP_DISPLAY_NAME} == AI2Apps-App-Dev ]]; then
+  fail "reserved Test/App-Dev identity fields must use their complete fixed identity tuple"
+fi
+
+case ${ICON_CONTRACT} in
+  test)
+    APP_ICON_UPPER_COLOR='#C7E7FA'
+    MENUBAR_ICON_BADGE=test
+    [[ ${DEVELOPMENT_BUILD} == 0 && ${ALLOW_INSTANCE_DATA_RESET} == 1 ]] || \
+      fail "the fixed Test identity must be non-development and resettable"
+    ;;
+  app-dev)
+    APP_ICON_UPPER_COLOR='#E2D5F8'
+    MENUBAR_ICON_BADGE=app-dev
+    [[ ${DEVELOPMENT_BUILD} == 1 && ${ALLOW_INSTANCE_DATA_RESET} == 1 ]] || \
+      fail "the fixed App-Dev identity must be a resettable Development Bundle"
+    ;;
+  standard)
+    [[ -z ${APP_ICON_UPPER_COLOR} && ${MENUBAR_ICON_BADGE} == none ]] || \
+      fail "special App/tray icons are reserved for the fixed Test and App-Dev identities"
+    ;;
+esac
+
+[[ ${MENUBAR_ICON_BADGE} == none || ${MENUBAR_ICON_BADGE} == app-dev || \
+   ${MENUBAR_ICON_BADGE} == test ]] || \
+  fail "MENUBAR_ICON_BADGE must be none, app-dev, or test"
+[[ ${MENUBAR_ICON_BADGE} != app-dev || ${DEVELOPMENT_BUILD} == 1 ]] || \
+  fail "the app-dev menu bar badge requires DEVELOPMENT_BUILD=1"
+[[ ${MENUBAR_ICON_BADGE} != test || ( ${DEVELOPMENT_BUILD} == 0 && \
+   ${ALLOW_INSTANCE_DATA_RESET} == 1 ) ]] || \
+  fail "the test menu bar badge requires a non-development resettable build"
+[[ -n ${APP_DISPLAY_NAME} && ${APP_DISPLAY_NAME} != *$'\n'* && ${APP_DISPLAY_NAME} != *$'\r'* ]] || \
+  fail "APP_DISPLAY_NAME must be a non-empty single-line value"
+if [[ -n ${APP_ICON_UPPER_COLOR} ]]; then
+  print -r -- "${APP_ICON_UPPER_COLOR}" | /usr/bin/grep -Eq '^#[0-9A-Fa-f]{6}$' || \
+    fail "APP_ICON_UPPER_COLOR must use #RRGGBB"
+fi
+[[ -n ${SHELL_TITLE_PREFIX} ]] || fail "SHELL_TITLE_PREFIX must not be empty"
+print -r -- "${SHELL_TITLE_PREFIX}" | /usr/bin/grep -Eq '^[A-Za-z0-9._ -]+$' || \
+  fail "SHELL_TITLE_PREFIX contains unsupported characters"
+if [[ -n ${DEVELOPMENT_SOURCE_ROOT} ]]; then
+  [[ ${DEVELOPMENT_BUILD} == 1 ]] || \
+    fail "DEVELOPMENT_SOURCE_ROOT requires DEVELOPMENT_BUILD=1"
+  [[ ${DEVELOPMENT_SOURCE_ROOT} == /* ]] || \
+    fail "DEVELOPMENT_SOURCE_ROOT must be absolute"
+  [[ -f ${DEVELOPMENT_SOURCE_ROOT}/ai2apps/__init__.py ]] || \
+    fail "DEVELOPMENT_SOURCE_ROOT must contain ai2apps/__init__.py"
+fi
+if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
+  [[ ${DEVELOPMENT_BUILD} == 1 ]] || \
+    fail "ACEFOX_SHELL_SOURCE requires DEVELOPMENT_BUILD=1"
+  [[ -f ${ACEFOX_SHELL_SOURCE} ]] || \
+    fail "ACEFOX_SHELL_SOURCE is not a file: ${ACEFOX_SHELL_SOURCE}"
+  /usr/bin/grep -Fq 'function setShellTitle(deviceName, localOrigin)' \
+    "${ACEFOX_SHELL_SOURCE}" || \
+    fail "ACEFOX_SHELL_SOURCE lacks the Local-aware Shell title contract"
+fi
 if [[ -n ${UPDATE_MANIFEST_URL} ]]; then
   [[ ${UPDATE_MANIFEST_URL} == https://* ]] || fail "UPDATE_MANIFEST_URL must use HTTPS"
 fi
@@ -108,11 +194,47 @@ find "${SHELL_APP}" -name .purgecaches -type f -delete
 # classifies the .build suffix as a nested code object under Developer ID.
 rm -f "${SHELL_APP}/Contents/moz.build"
 
+if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
+  # The packaged AceFox input is intentionally immutable, but its browser
+  # omni.ja can lag behind the current App-Shell source used by the objdir Dev
+  # App. Overlay the Shell and its native prompt actor into this Development
+  # bundle so window and dialog titles match the current source.
+  BROWSER_OMNI=${SHELL_APP}/Contents/Resources/browser/omni.ja
+  [[ -f ${BROWSER_OMNI} ]] || fail "packaged AceFox is missing browser/omni.ja"
+  SHELL_RESOURCE=chrome/browser/content/browser/ai2apps/shell.mjs
+  PROMPT_RESOURCE=actors/PromptParent.sys.mjs
+  PROMPT_SOURCE=${ACEFOX_SHELL_SOURCE:h:h:h:h}/actors/PromptParent.sys.mjs
+  [[ -f ${PROMPT_SOURCE} ]] || fail "matching AceFox PromptParent source is missing"
+  SHELL_OVERLAY_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai2apps-shell-overlay.XXXXXX")
+  mkdir -p "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE:h}"
+  mkdir -p "${SHELL_OVERLAY_ROOT}/${PROMPT_RESOURCE:h}"
+  cp "${PROMPT_SOURCE}" "${SHELL_OVERLAY_ROOT}/${PROMPT_RESOURCE}"
+  /usr/bin/sed \
+    "s@const title = \`AI2Apps: \${deviceName} \${localAddress}\`;@const title = \`${SHELL_TITLE_PREFIX}: \${deviceName} \${localAddress}\`;@" \
+    "${ACEFOX_SHELL_SOURCE}" > "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE}"
+  /usr/bin/grep -Fq \
+    "const title = \`${SHELL_TITLE_PREFIX}: \${deviceName} \${localAddress}\`;" \
+    "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE}" || \
+    fail "could not apply SHELL_TITLE_PREFIX to ACEFOX_SHELL_SOURCE"
+  (
+    cd "${SHELL_OVERLAY_ROOT}"
+    /usr/bin/zip -q -X "${BROWSER_OMNI}" "${SHELL_RESOURCE}" "${PROMPT_RESOURCE}"
+  )
+  rm -rf "${SHELL_OVERLAY_ROOT}"
+fi
+
 mv "${SHELL_APP}/Contents/MacOS/firefox" "${SHELL_APP}/Contents/MacOS/acefox-bin"
 /usr/bin/strings "${SHELL_APP}/Contents/MacOS/acefox-bin" | \
   /usr/bin/grep -Fqx 'AI2APPS_BROWSER_ROLE' || \
   fail "staged AceFox lost the required AI2Apps shell marker"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
+LICENSE_ROOT=${APP}/Contents/Resources/Licenses
+mkdir -p "${LICENSE_ROOT}/LICENSES"
+for license_file in LICENSE LICENSE-POLICY.md NOTICE TRADEMARKS.md; do
+  [[ -s ${REPO_ROOT}/${license_file} ]] || fail "missing release license ${license_file}"
+  cp "${REPO_ROOT}/${license_file}" "${LICENSE_ROOT}/${license_file}"
+done
+cp "${REPO_ROOT}/LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md" "${LICENSE_ROOT}/LICENSES/"
 cp "${SHELL_APP}/Contents/Info.plist" "${APP}/Contents/Info.plist"
 for icon in "${SHELL_APP}/Contents/Resources"/*.icns(N); do
   cp "${icon}" "${APP}/Contents/Resources/${icon:t}"
@@ -143,6 +265,26 @@ cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-work.svg" \
   "${HELPER_APP}/Contents/Resources/menubar-logo-work.svg"
 cp "${REPO_ROOT}/ai2apps/web/static/menubar-logo-ready.svg" \
   "${HELPER_APP}/Contents/Resources/menubar-logo-ready.svg"
+if [[ ${MENUBAR_ICON_BADGE} == app-dev ]]; then
+  # Keep the normal icon and its status variants recognizable, while making
+  # the isolated App-Shell development Helper obvious in the menu bar.
+  for menubar_icon in "${HELPER_APP}/Contents/Resources"/menubar-logo*.svg; do
+    badge_staging=${menubar_icon}.badge
+    /usr/bin/sed 's@</svg>@  <circle id="ai2apps-app-dev-badge" cx="7.5" cy="7.5" r="6.25" fill="#FF9500" stroke="#FFF" stroke-width="1.5"/>\
+</svg>@' "${menubar_icon}" > "${badge_staging}"
+    mv "${badge_staging}" "${menubar_icon}"
+  done
+elif [[ ${MENUBAR_ICON_BADGE} == test ]]; then
+  # Purple diamonds in both top corners distinguish the release-shaped test
+  # Helper from production and single-badge App-Dev at menu-bar size.
+  for menubar_icon in "${HELPER_APP}/Contents/Resources"/menubar-logo*.svg; do
+    badge_staging=${menubar_icon}.badge
+    /usr/bin/sed 's@</svg>@  <path id="ai2apps-test-badge-left" d="M7.5 1.25 13.75 7.5 7.5 13.75 1.25 7.5Z" fill="#AF52DE" stroke="#FFF" stroke-width="1.5" stroke-linejoin="round"/>\
+  <path id="ai2apps-test-badge-right" d="M45.416666 1.25 51.666666 7.5 45.416666 13.75 39.166666 7.5Z" fill="#AF52DE" stroke="#FFF" stroke-width="1.5" stroke-linejoin="round"/>\
+</svg>@' "${menubar_icon}" > "${badge_staging}"
+    mv "${badge_staging}" "${menubar_icon}"
+  done
+fi
 plutil -create xml1 "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${PRODUCT_IDENTIFIER}.helper" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string AI2AppsHelper" "${HELPER_APP}/Contents/Info.plist"
@@ -192,6 +334,47 @@ find "${RUNTIME_ROOT}/app" -type f -name '*.cpython-*.so' \
 # stripped from the release export. They are unusable and make strict bundle
 # verification fail with a misleading top-level "No such file" error.
 find -L "${RUNTIME_ROOT}/Python" -type l -exec rm -f {} +
+if [[ -n ${APP_ICON_UPPER_COLOR} ]]; then
+  ICON_TINT_PYTHON=${RUNTIME_ROOT}/Python/cpython-3.11/bin/python3.11
+  ICON_TINT_SITE=${RUNTIME_ROOT}/Python/${FRAMEWORK_LAYER}/lib/python3.11/site-packages
+  for app_icon in \
+    "${APP}/Contents/Resources/firefox.icns" \
+    "${SHELL_APP}/Contents/Resources/firefox.icns"; do
+    [[ -f ${app_icon} ]] || fail "missing App icon to tint: ${app_icon}"
+    env \
+      PYTHONHOME="${RUNTIME_ROOT}/Python/cpython-3.11" \
+      PYTHONNOUSERSITE=1 \
+      PYTHONDONTWRITEBYTECODE=1 \
+      PYTHONPATH="${ICON_TINT_SITE}" \
+      "${ICON_TINT_PYTHON}" "${SCRIPT_DIR}/tint_app_icon.py" \
+      --icns "${app_icon}" --color "${APP_ICON_UPPER_COLOR}"
+  done
+fi
+
+# Fail before signing if a future build path drops, duplicates, or mixes the
+# fixed visual identities.  Both Dock icons must be byte-identical, and every
+# Helper state must carry exactly the badge assigned to its instance role.
+/usr/bin/cmp -s \
+  "${APP}/Contents/Resources/firefox.icns" \
+  "${SHELL_APP}/Contents/Resources/firefox.icns" || \
+  fail "main App and embedded Shell icons do not match"
+for menubar_icon in "${HELPER_APP}/Contents/Resources"/menubar-logo*.svg; do
+  case ${ICON_CONTRACT} in
+    test)
+      /usr/bin/grep -Fq 'id="ai2apps-test-badge-left"' "${menubar_icon}" && \
+        /usr/bin/grep -Fq 'id="ai2apps-test-badge-right"' "${menubar_icon}" || \
+        fail "Test Helper icon is missing its two dedicated badges: ${menubar_icon:t}"
+      ;;
+    app-dev)
+      /usr/bin/grep -Fq 'id="ai2apps-app-dev-badge"' "${menubar_icon}" || \
+        fail "App-Dev Helper icon is missing its dedicated badge: ${menubar_icon:t}"
+      ;;
+    standard)
+      ! /usr/bin/grep -Eq 'id="ai2apps-(test|app-dev)-badge' "${menubar_icon}" || \
+        fail "standard Helper icon unexpectedly contains a reserved badge: ${menubar_icon:t}"
+      ;;
+  esac
+done
 cp "${SCRIPT_DIR}/runtime-entrypoint.sh" "${RUNTIME_ROOT}/bin/omlx"
 chmod 755 "${RUNTIME_ROOT}/bin/omlx"
 /usr/bin/python3 "${SCRIPT_DIR}/generate-runtime-manifest.py" \
@@ -207,9 +390,16 @@ INFO_PLIST=${APP}/Contents/Info.plist
 /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 13.0" "${INFO_PLIST}" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Delete :AI2AppsDevelopment" "${INFO_PLIST}" 2>/dev/null || true
+if [[ ${DEVELOPMENT_BUILD} == 1 ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopment bool true" "${INFO_PLIST}"
+fi
+if [[ -n ${DEVELOPMENT_SOURCE_ROOT} ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopmentSourceRoot string ${DEVELOPMENT_SOURCE_ROOT}" "${INFO_PLIST}"
+fi
 /usr/libexec/PlistBuddy -c "Add :AI2AppsInstanceID string ${INSTANCE_ID}" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeVersion string ${RUNTIME_VERSION}" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeProfile string ${RUNTIME_PROFILE}" "${INFO_PLIST}"
+/usr/libexec/PlistBuddy -c "Add :AI2AppsIconContract string ${ICON_CONTRACT}" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdaterProtocol integer 1" "${INFO_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsUpdateStagingProtocol integer 1" "${INFO_PLIST}"
 if [[ -n ${UPDATE_MANIFEST_URL} ]]; then
@@ -218,19 +408,22 @@ fi
 if [[ ${SANDBOX_MODE} == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Add :AI2AppsApplicationGroupIdentifier string ${APPLICATION_GROUP_IDENTIFIER}" "${INFO_PLIST}"
 fi
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AI2Apps" "${INFO_PLIST}" 2>/dev/null || \
-  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string AI2Apps" "${INFO_PLIST}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_DISPLAY_NAME}" "${INFO_PLIST}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_DISPLAY_NAME}" "${INFO_PLIST}" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_DISPLAY_NAME}" "${INFO_PLIST}"
 
 SHELL_INFO=${SHELL_APP}/Contents/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${PRODUCT_IDENTIFIER}.shell" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable acefox-bin" "${SHELL_INFO}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName AI2Apps" "${SHELL_INFO}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AI2Apps" "${SHELL_INFO}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_DISPLAY_NAME}" "${SHELL_INFO}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_DISPLAY_NAME}" "${SHELL_INFO}" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_DISPLAY_NAME}" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsInstanceID string ${INSTANCE_ID}" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBrowserRole string shell" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsSharedBrowserBundle bool true" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsDisableRemoteServer bool true" "${SHELL_INFO}"
-set_localized_bundle_name "${SHELL_APP}" "AI2Apps"
+/usr/libexec/PlistBuddy -c "Add :AI2AppsIconContract string ${ICON_CONTRACT}" "${SHELL_INFO}"
+set_localized_bundle_name "${SHELL_APP}" "${APP_DISPLAY_NAME}"
 if [[ ${SANDBOX_MODE} == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Add :AI2AppsStorageMode string app-group" "${SHELL_INFO}"
   /usr/libexec/PlistBuddy -c "Add :AI2AppsApplicationGroupIdentifier string ${APPLICATION_GROUP_IDENTIFIER}" "${SHELL_INFO}"
@@ -243,6 +436,16 @@ fi
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBuildNumber string ${BUILD_NUMBER}" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeVersion string ${RUNTIME_VERSION}" "${HELPER_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsRuntimeProfile string ${RUNTIME_PROFILE}" "${HELPER_APP}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :AI2AppsIconContract string ${ICON_CONTRACT}" "${HELPER_APP}/Contents/Info.plist"
+if [[ ${ALLOW_INSTANCE_DATA_RESET} == 1 ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsAllowInstanceDataReset bool true" "${HELPER_APP}/Contents/Info.plist"
+fi
+if [[ ${DEVELOPMENT_BUILD} == 1 ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopment bool true" "${HELPER_APP}/Contents/Info.plist"
+fi
+if [[ -n ${DEVELOPMENT_SOURCE_ROOT} ]]; then
+  /usr/libexec/PlistBuddy -c "Add :AI2AppsDevelopmentSourceRoot string ${DEVELOPMENT_SOURCE_ROOT}" "${HELPER_APP}/Contents/Info.plist"
+fi
 
 APP="${APP}" SIGN_IDENTITY="${SIGN_IDENTITY}" \
   ENTITLEMENTS_DIR="${ENTITLEMENTS_DIR}" MODE=full \

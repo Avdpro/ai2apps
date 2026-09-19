@@ -1,10 +1,243 @@
 """Regression guards for the chat UI overhaul follow-up."""
 
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_TEMPLATE = ROOT / "ai2apps/web/templates/chat.html"
+
+
+def test_required_reasoning_model_disables_off_and_forces_request_on():
+    html = CHAT_TEMPLATE.read_text()
+
+    assert (
+        'value="off" :disabled="thinkingPolicyMode() === \'required\'"'
+        in html
+    )
+    assert "reasoning: adminModel?.reasoning || m.reasoning || null" in html
+    snapshot = html.split("            snapshotGenerationSettings() {", 1)[1].split(
+        "            resolveStreamProfile", 1
+    )[0]
+    assert "if (reasoningMode === 'required')" in snapshot
+    assert "gen.chat_template_kwargs = { enable_thinking: true };" in snapshot
+
+
+def test_first_send_creates_session_with_selected_model_not_default():
+    html = CHAT_TEMPLATE.read_text()
+    start = html.split('    async startNewChat({ initialModel = null } = {}) {', 1)[1].split(
+        '    async loadChat(', 1)[0].strip().removesuffix(',')
+    send = html.split('    async sendMessage() {', 1)[1].split(
+        '        const sourceSystemPrompt', 1)[0]
+    program = 'const startNewChat = async function({ initialModel = null } = {}) {' + start + ';\n'
+    program += 'const sendMessage = async function() {' + send + 'return sourceModel;};\n'
+    program += r'''
+const assert = require('node:assert/strict');
+let chatAudioPipeline = null;
+global.window = {innerWidth: 1200};
+function state() {
+ return {currentModel:'local-choice', currentChatId:null, preferredChatModel:'cloud-default',
+ inputMessage:'hello', uploadImages:[], uploadDocuments:[], chatSessions:{}, promptProfiles:[],
+ backendChatReady:false, $refs:{},
+ startNewChat, hasPendingUploads:()=>false, isCurrentChatStreaming:()=>false,
+ cancelPersistModelSettingsTimer(){}, defaultAgentKey:()=> 'agent',
+ async loadModels(){ this.currentModel='cloud-default'; },
+ resolveGatewayModelId:id=>id, resolvePreferredDefaultModel:id=>id,
+ async ensureSessionModelSettings(){}, saveModelSettingsForModel(){},
+ resetStreamSession(){}, getStreamSession:()=>({}), emptyStats:()=>({}),
+ stopStatsPollingIfIdle(){}, saveCurrentChat(){}, $nextTick(){}};
+}
+(async()=>{
+ const first = state();
+ assert.equal(await sendMessage.call(first), 'local-choice');
+ assert.equal(first.chatSessions[first.currentChatId].model,'local-choice');
+ const explicit = state();
+ await explicit.startNewChat();
+ assert.equal(explicit.currentModel,'cloud-default');
+ const existing = state(); existing.currentChatId='existing';
+ existing.startNewChat=()=>{throw new Error('must not recreate existing chat');};
+ assert.equal(await sendMessage.call(existing),'local-choice');
+})().catch(error=>{console.error(error);process.exitCode=1;});
+'''
+    subprocess.run(['node','-e',program],check=True,capture_output=True,text=True)
+
+
+def test_conversation_install_menu_does_not_change_model():
+    html = CHAT_TEMPLATE.read_text()
+    method = html.split('    onConversationModelSelect(select) {', 1)[1].split(
+        '    async installRecommendedLocalModel', 1)[0].strip().removesuffix(',')
+    program = 'const change = function(select) {' + method + ';\n' + r'''
+const assert = require('node:assert/strict');
+const calls = [];
+const state = {currentModel:'chosen', installRecommendedLocalModel: value=>calls.push(value),
+ selectModel: value=>calls.push(value)};
+const select = {value:'__install_more__'};
+change.call(state, select);
+assert.equal(select.value,'chosen');
+assert.equal(state.currentModel,'chosen');
+assert.deepEqual(calls,[true]);
+change.call(state,{value:'another'});
+assert.deepEqual(calls,[true,'another']);
+'''
+    subprocess.run(['node','-e',program],check=True,capture_output=True,text=True)
+
+
+def test_audio_install_menu_action_preserves_selected_model():
+    html = CHAT_TEMPLATE.read_text()
+    method = html.split('    onAudioModelSelect(kind, select) {', 1)[1].split(
+        '    onAudioTtsModelChange()', 1)[0].strip().removesuffix(',')
+    script = 'const change = function(kind, select) {' + method + ';\n' + r'''
+const assert = require('node:assert/strict');
+const calls = [];
+const state = {audioSettings:{sttModel:'asr',ttsModel:'voice'},
+ requestAudioCapabilitySetup:(...args)=>calls.push(args),
+ saveAudioSettings:()=>calls.push('save'), onAudioTtsModelChange:()=>calls.push('tts')};
+for (const kind of ['stt','tts']) {
+ const select = {value:'__install_more__'};
+ change.call(state, kind, select);
+ assert.equal(select.value, kind === 'stt' ? 'asr' : 'voice');
+}
+assert.deepEqual(state.audioSettings, {sttModel:'asr',ttsModel:'voice'});
+assert.deepEqual(calls, [['stt',true],['tts',true]]);
+change.call(state, 'tts', {value:'new-voice'});
+assert.equal(state.audioSettings.ttsModel,'new-voice');
+assert.equal(calls.at(-1),'tts');
+change.call(state, 'stt', {value:'new-asr'});
+assert.equal(state.audioSettings.sttModel,'new-asr');
+assert.equal(calls.at(-1),'save');
+'''
+    subprocess.run(['node', '-e', script], check=True, capture_output=True, text=True)
+
+
+def test_chat_audio_picker_only_offers_ready_checkpoints():
+    html = CHAT_TEMPLATE.read_text()
+    methods = html.split('    availableAudioModelsByType(modelType) {', 1)[1].split(
+        '    reconcileAudioModels()', 1)[0].strip().removesuffix(',')
+    program = 'const state = {availableAudioModelsByType(modelType) {' + methods + '};\n' + r'''
+const assert = require('node:assert/strict');
+const ready = {id:'custom', model_type:'audio_tts', source_type:'package', checkpoint_ready:true};
+const missing = {...ready, id:'base', checkpoint_ready:false};
+assert.equal(state.audioCatalogModelReady(ready, null, null), true);
+assert.equal(state.audioCatalogModelReady(missing, null, null), false);
+assert.equal(state.audioCatalogModelReady(ready, null, {checkpoint_ready:false}), false);
+assert.equal(state.audioCatalogModelReady(ready, {is_hidden:true}, null), false);
+assert.equal(state.audioCatalogModelReady(ready, null, {load_failed:true}), false);
+assert.equal(state.audioCatalogModelReady({source_type:'package'}, null, null), false);
+assert.equal(state.audioCatalogModelReady({model_type:'audio_tts', loaded:false}, null, null), true);
+state.availableAudioModels = [ready, missing, {...ready,id:'hidden',is_hidden:true}];
+assert.deepEqual(state.availableAudioModelsByType('audio_tts').map(m=>m.id), ['custom']);
+assert.equal(state.audioModelReady(null), false);
+'''
+    subprocess.run(['node', '-e', program], check=True, capture_output=True, text=True)
+    assert '&& this.audioCatalogModelReady(m, adminModel, status)' in html
+
+
+def test_chat_has_only_one_settings_modal_entry():
+    html = CHAT_TEMPLATE.read_text()
+    assert html.count('@click="showChatSettingsModal = true"') == 1
+    assert "<!-- Sidebar Footer -->" not in html
+    assert 'data-inference-attribution' in html
+    assert "{{ t('chat.inference_attribution') }}" in html
+    for path in (ROOT / "ai2apps/web/i18n").glob("*.json"):
+        assert "oMLX" in json.loads(path.read_text())["chat.inference_attribution"]
+
+
+def test_chat_registers_points_default_from_legacy_provider_catalog():
+    html = CHAT_TEMPLATE.read_text()
+    method = html.split("            registerCloudDefaultModel(apiDefault, models = this.availableModels) {", 1)[1].split(
+        "            resolvePreferredDefaultModel", 1
+    )[0].strip().removesuffix(",")
+    script = "const register = function(apiDefault, models = this.availableModels) {" + method + ";\n" + r'''
+const assert = require('node:assert/strict');
+const original = {id: 'cloud/deepseek/deepseek-v4-flash', name: 'DeepSeek', capabilities: ['chat']};
+const state = {availableModels: [original], dedupeAvailableModels: models => models};
+const policy = {modelId: 'deepseek/deepseek-v4-flash', displayName: 'DeepSeek V4 Flash'};
+const next = register.call(state, policy);
+assert.equal(state.availableModels.length, 1); // No intermediate reactive catalog mutation.
+state.availableModels = next;
+assert.equal(state.availableModels.length, 2);
+assert.equal(state.availableModels[0], original);
+assert.equal(state.availableModels[1].id, 'cloud/ai2apps/deepseek/deepseek-v4-flash');
+assert.deepEqual(state.availableModels[1].capabilities, ['chat']);
+register.call(state, policy);
+register.call(state, null);
+register.call(state, {modelId: 'absent/model'});
+assert.equal(state.availableModels.length, 2);
+'''
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    assert html.index("this.registerCloudDefaultModel(cloudDefaultsData.policy?.apiDefault, nextModels)") < html.index(
+        "this.reconcileCurrentModelAfterLoad(this.preferredChatModel)"
+    )
+    load = html.split('async loadModels() {', 1)[1].split('localConversationModels()', 1)[0]
+    assert load.count('this.availableModels =') == 1
+    assert "await this.$nextTick();" in load
+    assert "this.$refs.activeModelSelect.value = this.currentModel || '';" in load
+
+
+def test_chat_defaults_follow_standard_work_then_cloud_api_default():
+    html = CHAT_TEMPLATE.read_text()
+    assignment = html.split("            const apiDefaultId =", 1)[1].split(
+        "            this.reconcileCurrentModelAfterLoad", 1
+    )[0]
+    methods = html.split("            resolvePreferredDefaultModel(defaultModel) {", 1)[1].split(
+        "            /** Keep messages", 1
+    )[0].strip().removesuffix(",")
+    script = "const methods = {resolvePreferredDefaultModel(defaultModel) {" + methods + "};\n"
+    script += "function preferred(defaultsData, cloudDefaultsData) {const apiDefaultId =" + assignment
+    script += "return this.preferredChatModel;}\n" + r'''
+const assert = require('node:assert/strict');
+const policy = {policy: {apiDefault: {modelId: 'provider/api'}}};
+assert.equal(preferred.call({}, {defaults: {work_standard: 'standard'}}, policy), 'standard');
+assert.equal(preferred.call({}, {defaults: {work_standard: ''}}, policy), 'cloud/ai2apps/provider/api');
+assert.equal(preferred.call({}, {}, {}), null);
+const state = {...methods, availableModels: [{id: 'standard'}, {id: 'manual'}],
+    resolveGatewayModelId: id => id === 'alias' ? 'standard' : id,
+    isModelAvailableOnServer: id => ['standard', 'manual'].includes(id), currentModel: null};
+state.reconcileCurrentModelAfterLoad('alias');
+assert.equal(state.currentModel, 'standard');
+state.currentModel = 'manual';
+state.reconcileCurrentModelAfterLoad('standard');
+assert.equal(state.currentModel, 'manual');
+assert.equal(state.resolvePreferredDefaultModel(null), null);
+assert.equal(state.resolvePreferredDefaultModel('missing'), null);
+state.availableModels = [];
+state.reconcileCurrentModelAfterLoad('standard');
+assert.equal(state.currentModel, null);
+'''
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    new_chat = html.split("async startNewChat({ initialModel = null } = {}) {", 1)[1].split("const session =", 1)[0]
+    assert "await this.loadModels();" in new_chat
+    assert ": this.resolvePreferredDefaultModel(this.preferredChatModel);" in new_chat
+    assert "fetch('/admin/api/model-manager'," in html
+    assert "fetch('/v1/platform/cloud/ai/defaults'," in html
+
+
+def test_chat_vision_support_uses_catalog_capabilities_without_runtime_status():
+    html = CHAT_TEMPLATE.read_text()
+    method = html.split("    hasVisionSupport() {", 1)[1].split(
+        "    hasDocumentSupport()", 1
+    )[0].strip().removesuffix(",")
+    script = "const hasVisionSupport = function() {" + method + ";\n" + r'''
+const assert = require('node:assert/strict');
+function check(model, expected, typeMap = {}) {
+    const state = {
+        currentModel: 'gpt-5.6-luna',
+        resolveGatewayModelId: id => id,
+        availableModels: model ? [{ id: 'gpt-5.6-luna', ...model }] : [],
+        modelStatusMap: {}, modelTypeMap: typeMap,
+    };
+    assert.equal(hasVisionSupport.call(state), expected);
+}
+check({model_type: 'vlm'}, true);
+check({model_type: 'llm', capabilities: ['image_recognition']}, true);
+check({capabilities: {imageInput: true}}, true);
+check({capabilities: {imageInput: false}}, false);
+check({model_type: 'llm', capabilities: ['work']}, false);
+check({capabilities: ['image_generation']}, false);
+check(null, true, {'gpt-5.6-luna': 'vlm'});
+check(null, false);
+'''
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
 
 
 def test_chat_merges_managed_models_from_admin_catalog():
@@ -35,6 +268,10 @@ NEW_I18N_KEYS = {
     "chat.regenerate_creative",
     "chat.regenerate_with",
     "chat.chat_tab",
+    "chat.knowledge.use",
+    "chat.knowledge.enabled_hint",
+    "chat.knowledge.disabled_hint",
+    "chat.knowledge.open_sidebar",
 }
 
 
@@ -176,6 +413,71 @@ def test_chat_backend_is_authoritative_with_revisioned_snapshot_sync():
     assert "backendChatSyncState = error?.status === 409 ? 'conflict'" in sync
 
 
+def test_chat_knowledge_toggle_is_session_scoped_and_opens_sidebar():
+    html = _template()
+    retrieval = _section(
+        html,
+        "async retrieveChatKnowledge(messages, context)",
+        "createThinkingState()",
+    )
+    sidebar = _section(
+        html,
+        "async openKnowledgeSidebar()",
+        "setKnowledgeEnabled(enabled)",
+    )
+
+    assert '@click="setKnowledgeEnabled(!knowledgeEnabled)"' in html
+    assert 'role="switch"' in html
+    assert 'data-lucide="chevron-right"' in html
+    assert '<p x-show="false" class="text-[10px]"' in html
+    assert '<span x-show="false" class="block text-[10px] truncate"' in html
+    assert "session?.knowledgeEnabled !== true" in retrieval
+    assert "(mount.app_key || mount.app_id) === 'ai2apps.knowledge'" in sidebar
+    assert "await this.remountMiniEntry(existing, 'sidebar')" in sidebar
+    assert "await this.mountMiniApp(app, 'sidebar')" in sidebar
+    mount = _section(
+        html,
+        "async mountMiniApp(app, placement = 'inline')",
+        "async openKnowledgeSidebar()",
+    )
+    assert "|| !this.currentChatId" not in mount
+    assert "if (this.currentChatId) request.sessionId = this.currentChatId" in mount
+    assert (
+        "knowledgeEnabled: source.knowledgeEnabled ?? chat?.knowledgeEnabled ?? false"
+        in html
+    )
+    assert "knowledgeEnabled: true" not in html
+    assert "this.knowledgeEnabled = true" not in html
+    assert "knowledgeEnabled !== false" not in html
+    assert "this.knowledgeEnabled = session.knowledgeEnabled === true" in html
+    assert "knowledgeEnabled: branchSession.knowledgeEnabled === true" in html
+
+
+def test_chat_mini_entry_picker_excludes_apps_without_mini_entry():
+    catalog = _section(
+        _template(),
+        "async loadMiniAppCatalog()",
+        "latestUserMessageId()",
+    )
+
+    assert "app.mini_entry" in catalog
+    assert "typeof app.mini_entry === 'object'" in catalog
+    assert "(app.app_key || app.id) !== 'ai2apps.general-chat'" in catalog
+
+
+def test_chat_right_sidebar_open_state_survives_refresh_and_port_changes():
+    html = _template()
+
+    assert "const CHAT_RIGHT_SIDEBAR_STORAGE_KEY = 'ai2apps_chat_right_sidebar_open_v1'" in html
+    assert "function readChatRightSidebarOpen()" in html
+    assert "function writeChatRightSidebarOpen(open)" in html
+    assert "rightSidebarOpen: readChatRightSidebarOpen() ?? (window.innerWidth >= 1200)" in html
+    assert "this.$watch('rightSidebarOpen', value =>" in html
+    assert "writeChatRightSidebarOpen(value)" in html
+    assert "Max-Age=31536000; Path=/; SameSite=Strict" in html
+    assert "if (!this.terminalAssistantMode)" in html
+
+
 def test_chat_lifecycle_actions_call_backend_before_local_commit():
     html = _template()
     delete_chat = _section(html, "    async deleteChat(", "    // Clear all history")
@@ -191,7 +493,7 @@ def test_chat_lifecycle_actions_call_backend_before_local_commit():
 
 def test_chat_navigation_preserves_the_previous_chat_timestamp():
     html = _template()
-    start_new = _section(html, "    async startNewChat()", "    async loadChat(chatId)")
+    start_new = _section(html, "    async startNewChat(", "    async loadChat(chatId)")
     load = _section(
         html,
         "    async loadChat(chatId, { skipBackendSelect = false } = {})",

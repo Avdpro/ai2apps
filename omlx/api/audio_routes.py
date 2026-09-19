@@ -6,6 +6,7 @@ This module provides OpenAI-compatible audio endpoints:
 - POST /v1/audio/transcriptions  - Speech-to-Text
 - POST /v1/audio/speech          - Text-to-Speech
 - POST /v1/audio/process         - Speech-to-Speech / audio processing
+- POST /v1/audio/voices/train    - Package-backed local voice training
 """
 
 import asyncio
@@ -17,15 +18,14 @@ import os
 import re
 import secrets
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
 from ai2apps.audio_codecs import OUTPUT_MEDIA_TYPES as _SPEECH_RESPONSE_FORMATS
 
-from ..engine.audio_utils import wav_bytes_to_pcm_frames, wav_header
 from ..server_metrics import get_server_metrics
 from .audio_models import AudioSpeechRequest, AudioTranscriptionResponse
 
@@ -38,6 +38,55 @@ MAX_AUDIO_UPLOAD_BYTES = 100 * 1024 * 1024
 
 # Maximum base64-encoded ref_audio size (~15 MB raw audio, enough for ~60s).
 MAX_REF_AUDIO_BASE64_BYTES = 20 * 1024 * 1024
+
+
+@router.post("/v1/audio/voices/train")
+async def train_audio_voice(
+    model: str = Form(...),
+    dataset: UploadFile = File(...),
+    epochs: int = Form(30),
+    batch_size: int = Form(4),
+    precision: str = Form("float16"),
+):
+    """Train an RVC voice from a bounded WAV-only ZIP in a Model Package."""
+
+    package_model = _package_model(model)
+    if package_model is None or package_model.model_type != "audio_processing":
+        raise HTTPException(
+            status_code=400, detail="Selected model cannot train voices"
+        )
+    operations = (package_model.audio_capabilities or {}).get("operations", [])
+    if "audio_voice_training" not in operations:
+        raise HTTPException(
+            status_code=400, detail="Selected model does not support voice training"
+        )
+    if not 1 <= epochs <= 10_000 or not 1 <= batch_size <= 64:
+        raise HTTPException(status_code=400, detail="Invalid voice training dimensions")
+    if precision not in {"float32", "float16", "bfloat16"}:
+        raise HTTPException(
+            status_code=400,
+            detail="precision must be float32, float16, or bfloat16",
+        )
+    content = await _read_upload(dataset)
+    if not content.startswith(b"PK"):
+        raise HTTPException(
+            status_code=400, detail="dataset must be a ZIP of WAV files"
+        )
+    return await _model_invocations().invoke_background_multipart(
+        package_model.id,
+        "audio_voice_training",
+        data={
+            "model": package_model.id,
+            "epochs": str(epochs),
+            "batch_size": str(batch_size),
+            "precision": precision,
+        },
+        files={
+            "dataset": (dataset.filename or "dataset.zip", content, "application/zip")
+        },
+        context=_audio_invocation_context(),
+    )
+
 
 # Default native TTS chunk cadence. Keep this below the mlx-audio default to
 # improve TTFT while still letting the model process the full input at once.
@@ -76,7 +125,13 @@ def _get_engine_pool():
     Can be replaced in tests via patch('omlx.api.audio_routes._get_engine_pool').
     """
     # Import here to avoid circular imports at module load
-    from omlx.server import _server_state
+    from omlx.server import _CLOUD_RUNTIME_PROFILE, _server_state
+
+    if _CLOUD_RUNTIME_PROFILE:
+        raise HTTPException(
+            status_code=503,
+            detail="Legacy in-process audio engines are unavailable in the Base App",
+        )
 
     pool = _server_state.engine_pool
     if pool is None:
@@ -90,7 +145,9 @@ def _package_model(model_id: str):
     from omlx.server import _server_state, resolve_model_id
 
     resolved = resolve_model_id(model_id) or model_id
-    if _server_state.engine_pool is not None and _server_state.engine_pool.get_entry(resolved):
+    if _server_state.engine_pool is not None and _server_state.engine_pool.get_entry(
+        resolved
+    ):
         return None
     runtime = _server_state.ai2apps_platform_runtime
     invocations = None if runtime is None else runtime.model_invocations
@@ -104,6 +161,25 @@ def _model_invocations():
     if runtime is None or runtime.model_invocations is None:
         raise HTTPException(status_code=503, detail="Model Runtime is not initialized")
     return runtime.model_invocations
+
+
+def _package_transcription_max_tokens(
+    package_model, requested: int | None
+) -> int | None:
+    """Bridge old Qwen3-ASR Runtime adapters that forwarded an explicit None."""
+
+    if requested is not None:
+        return requested
+    metadata = package_model.metadata
+    configured = metadata.get("default_max_tokens")
+    if isinstance(configured, int) and configured > 0:
+        return configured
+    # Runtime 1.5.7 forwarded max_tokens=None, bypassing this backend's 8192
+    # default and causing a None/int comparison. Keep installed Runtimes usable
+    # while the corrected adapter rolls out.
+    if metadata.get("family") == "qwen3-asr":
+        return 8192
+    return None
 
 
 def _audio_invocation_context():
@@ -173,7 +249,7 @@ async def _read_upload(file: UploadFile) -> bytes:
     return b"".join(chunks)
 
 
-def _terminal_punctuation(text: str, language: Optional[str]) -> str:
+def _terminal_punctuation(text: str, language: str | None) -> str:
     """Guarantee a readable sentence terminator when a restorer is unavailable."""
 
     value = text.strip()
@@ -230,7 +306,9 @@ async def _restore_package_transcription_punctuation(
             raise RuntimeError("Punctuation Package returned empty text")
         status = "native"
     except Exception as exc:
-        logger.warning("Punctuation restoration fallback for %s: %s", package_model.id, exc)
+        logger.warning(
+            "Punctuation restoration fallback for %s: %s", package_model.id, exc
+        )
         restored = _terminal_punctuation(raw_text, payload.get("language"))
 
     payload["raw_text"] = raw_text
@@ -253,7 +331,7 @@ async def _restore_package_transcription_punctuation(
     )
 
 
-def _decode_ref_audio_base64(request: AudioSpeechRequest) -> Optional[bytes]:
+def _decode_ref_audio_base64(request: AudioSpeechRequest) -> bytes | None:
     """Validate and decode optional base64 ref_audio from a TTS request."""
     if request.ref_audio is None:
         return None
@@ -310,7 +388,7 @@ async def _normalize_audio_bytes(
         raise HTTPException(status_code=415, detail=str(exc)) from exc
 
 
-def _write_ref_audio_tempfile(audio_bytes: Optional[bytes]) -> Optional[str]:
+def _write_ref_audio_tempfile(audio_bytes: bytes | None) -> str | None:
     """Persist decoded ref audio to a temp file if present."""
     if audio_bytes is None:
         return None
@@ -322,7 +400,7 @@ def _write_ref_audio_tempfile(audio_bytes: Optional[bytes]) -> Optional[str]:
         tmp.close()
 
 
-def _cleanup_tempfile(path: Optional[str]) -> None:
+def _cleanup_tempfile(path: str | None) -> None:
     if path and os.path.exists(path):
         try:
             os.unlink(path)
@@ -410,10 +488,15 @@ def _split_tts_text(text: str, max_chars: int = 300) -> list[str]:
 async def _stream_speech_response(
     engine,
     request: AudioSpeechRequest,
-    ref_audio_path: Optional[str],
+    ref_audio_path: str | None,
     streaming_interval: float,
 ) -> AsyncIterator[bytes]:
     """Stream sentence-level TTS as a single WAV header plus PCM chunks."""
+    # Keep the Package-provider audio gateway importable by the inference-free
+    # Base App.  These helpers pull in ``omlx.engine`` (and therefore MLX), but
+    # they are only needed by the legacy in-process streaming path below.
+    from ..engine.audio_utils import wav_bytes_to_pcm_frames, wav_header
+
     try:
         if (
             hasattr(engine, "supports_native_tts_streaming")
@@ -422,11 +505,19 @@ async def _stream_speech_response(
         ):
             logger.info(
                 "TTS native streaming start: model=%s, text_len=%d, voice=%s, language=%s",
-                request.model, len(request.input), request.voice, request.language or "auto",
+                request.model,
+                len(request.input),
+                request.voice,
+                request.language or "auto",
             )
-            stream_format: Optional[tuple[int, int, int]] = None
+            stream_format: tuple[int, int, int] | None = None
             try:
-                async for sample_rate, channels, sample_width, pcm_bytes in engine.stream_synthesize_pcm(
+                async for (
+                    sample_rate,
+                    channels,
+                    sample_width,
+                    pcm_bytes,
+                ) in engine.stream_synthesize_pcm(
                     request.input,
                     voice=request.voice,
                     language=request.language,
@@ -470,10 +561,14 @@ async def _stream_speech_response(
         segments = _split_tts_text(request.input)
         logger.info(
             "TTS streaming start: model=%s, text_len=%d, segments=%d, voice=%s, language=%s",
-            request.model, len(request.input), len(segments), request.voice, request.language or "auto",
+            request.model,
+            len(request.input),
+            len(segments),
+            request.voice,
+            request.language or "auto",
         )
 
-        stream_format: Optional[tuple[int, int, int]] = None
+        stream_format: tuple[int, int, int] | None = None
         for idx, segment in enumerate(segments, start=1):
             wav_bytes = await engine.synthesize(
                 segment,
@@ -489,11 +584,17 @@ async def _stream_speech_response(
                 repetition_penalty=request.repetition_penalty,
                 max_tokens=request.max_tokens,
             )
-            sample_rate, channels, sample_width, pcm_bytes = wav_bytes_to_pcm_frames(wav_bytes)
+            sample_rate, channels, sample_width, pcm_bytes = wav_bytes_to_pcm_frames(
+                wav_bytes
+            )
             fmt = (sample_rate, channels, sample_width)
             if stream_format is None:
                 stream_format = fmt
-                yield wav_header(sample_rate=sample_rate, channels=channels, sample_width=sample_width)
+                yield wav_header(
+                    sample_rate=sample_rate,
+                    channels=channels,
+                    sample_width=sample_width,
+                )
             elif fmt != stream_format:
                 raise RuntimeError(
                     "Inconsistent WAV format across TTS segments: "
@@ -501,7 +602,10 @@ async def _stream_speech_response(
                 )
             logger.debug(
                 "TTS streaming segment %d/%d: text_len=%d, pcm_bytes=%d",
-                idx, len(segments), len(segment), len(pcm_bytes),
+                idx,
+                len(segments),
+                len(segment),
+                len(pcm_bytes),
             )
             if pcm_bytes:
                 yield pcm_bytes
@@ -552,9 +656,7 @@ async def _stream_transcription_events(
         async for chunk in engine.transcribe_stream(tmp_path, **transcribe_kwargs):
             # Cumulative totals arrive on the chunks that know them
             # (typically the final one); keep the max seen.
-            prompt_tokens = max(
-                prompt_tokens, int(chunk.get("prompt_tokens") or 0)
-            )
+            prompt_tokens = max(prompt_tokens, int(chunk.get("prompt_tokens") or 0))
             generation_tokens = max(
                 generation_tokens, int(chunk.get("generation_tokens") or 0)
             )
@@ -582,12 +684,12 @@ async def _stream_transcription_events(
 async def create_transcription(
     file: UploadFile = File(...),
     model: str = Form(...),
-    language: Optional[str] = Form(None),
-    prompt: Optional[str] = Form(None),
+    language: str | None = Form(None),
+    prompt: str | None = Form(None),
     response_format: str = Form("json"),
     temperature: float = Form(0.0),
     stream: bool = Form(False),
-    max_tokens: Optional[int] = Form(None),
+    max_tokens: int | None = Form(None),
     word_timestamps: bool = Form(False),
 ):
     """OpenAI-compatible audio transcription endpoint (Speech-to-Text).
@@ -622,7 +724,9 @@ async def create_transcription(
     package_model = _package_model(model)
     if package_model is not None:
         if package_model.model_type != "audio_stt":
-            raise HTTPException(status_code=400, detail="Selected model is not speech-to-text")
+            raise HTTPException(
+                status_code=400, detail="Selected model is not speech-to-text"
+            )
         content = await _read_upload(file)
         wav_content = await _normalize_audio_bytes(
             content,
@@ -630,18 +734,23 @@ async def create_transcription(
             media_type=file.content_type,
             sample_rate=16_000,
         )
+        package_max_tokens = _package_transcription_max_tokens(
+            package_model, max_tokens
+        )
+        data = {
+            "language": language,
+            "prompt": prompt,
+            "response_format": response_format,
+            "temperature": temperature,
+            "stream": str(stream).lower(),
+            "word_timestamps": str(word_timestamps).lower(),
+        }
+        if package_max_tokens is not None:
+            data["max_tokens"] = package_max_tokens
         response = await _model_invocations().invoke_foreground_multipart(
             package_model.id,
             "audio_transcription",
-            data={
-                "language": language,
-                "prompt": prompt,
-                "response_format": response_format,
-                "temperature": temperature,
-                "stream": str(stream).lower(),
-                "max_tokens": max_tokens,
-                "word_timestamps": str(word_timestamps).lower(),
-            },
+            data=data,
             files={
                 "file": (
                     "audio.wav",
@@ -656,10 +765,10 @@ async def create_transcription(
             response,
         )
 
+    pool = _get_engine_pool()
     from omlx.engine.stt import STTEngine
     from omlx.exceptions import ModelNotFoundError
 
-    pool = _get_engine_pool()
     resolved_model = _resolve_model(model)
 
     # Load the engine via pool (handles model loading and LRU eviction)
@@ -762,7 +871,7 @@ async def create_transcription(
 
 
 @router.get("/v1/audio/voices")
-async def list_model_voices(model: Optional[str] = None):
+async def list_model_voices(model: str | None = None):
     """List built-in speaker/voice names for a TTS model.
 
     Reads static metadata only — a ``voices/`` directory (Kokoro-style)
@@ -778,7 +887,9 @@ async def list_model_voices(model: Optional[str] = None):
     package_model = _package_model(model)
     if package_model is not None:
         if package_model.model_type != "audio_tts":
-            raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
+            raise HTTPException(
+                status_code=400, detail="Selected model is not text-to-speech"
+            )
         capabilities = dict(package_model.audio_capabilities or {})
         named = capabilities.get("tts", {}).get("named_voices", {})
         voices = named.get("voices", []) if isinstance(named, dict) else []
@@ -791,19 +902,19 @@ async def list_model_voices(model: Optional[str] = None):
     resolved = _resolve_model(model)
     entry = pool.get_entry(resolved)
     if entry is None:
-        raise HTTPException(
-            status_code=404, detail=f"Model '{resolved}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Model '{resolved}' not found")
 
     model_dir = Path(entry.model_path)
     voices: list[str] = []
     voices_dir = model_dir / "voices"
     if voices_dir.is_dir():
-        voices = sorted({
-            f.stem
-            for f in voices_dir.iterdir()
-            if f.suffix in (".safetensors", ".pt")
-        })
+        voices = sorted(
+            {
+                f.stem
+                for f in voices_dir.iterdir()
+                if f.suffix in (".safetensors", ".pt")
+            }
+        )
     else:
         try:
             config = json.loads((model_dir / "config.json").read_text())
@@ -822,9 +933,13 @@ async def get_model_audio_capabilities(model: str):
 
     package_model = _package_model(model)
     if package_model is None:
-        raise HTTPException(status_code=404, detail=f"Package audio model '{model}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Package audio model '{model}' not found"
+        )
     if not package_model.model_type.startswith("audio_"):
-        raise HTTPException(status_code=400, detail="Selected model is not an audio model")
+        raise HTTPException(
+            status_code=400, detail="Selected model is not an audio model"
+        )
     return {
         "model": package_model.id,
         "source": "signed_package_metadata",
@@ -886,7 +1001,9 @@ async def create_speech(request: AudioSpeechRequest):
     package_model = _package_model(request.model)
     if package_model is not None:
         if package_model.model_type != "audio_tts":
-            raise HTTPException(status_code=400, detail="Selected model is not text-to-speech")
+            raise HTTPException(
+                status_code=400, detail="Selected model is not text-to-speech"
+            )
         payload = request.model_dump(mode="json", by_alias=True, exclude_none=True)
         payload["response_format"] = "wav"
         if request.ref_audio is not None:
@@ -922,9 +1039,6 @@ async def create_speech(request: AudioSpeechRequest):
         )
         return await _package_speech_response(response, response_format)
 
-    from omlx.engine.tts import TTSEngine
-    from omlx.exceptions import ModelNotFoundError
-
     if not request.input or not request.input.strip():
         raise HTTPException(status_code=400, detail="'input' field must not be empty")
     streaming_interval = DEFAULT_NATIVE_TTS_STREAMING_INTERVAL_SECONDS
@@ -947,6 +1061,9 @@ async def create_speech(request: AudioSpeechRequest):
         )
 
     pool = _get_engine_pool()
+    from omlx.engine.tts import TTSEngine
+    from omlx.exceptions import ModelNotFoundError
+
     resolved_model = _resolve_model(request.model)
 
     try:
@@ -1032,18 +1149,33 @@ async def create_speech(request: AudioSpeechRequest):
 @router.post("/v1/audio/process")
 async def process_audio(
     file: UploadFile = File(...),
+    reference: UploadFile | None = File(None),
     model: str = Form(...),
+    task: str | None = Form(None),
+    profile: str | None = Form(None),
+    mode: str | None = Form(None),
+    diffusion_steps: int | None = Form(None),
+    guidance_intelligibility: float | None = Form(None),
+    guidance_similarity: float | None = Form(None),
+    length_adjust: float | None = Form(None),
+    semitones: float | None = Form(None),
+    retrieval_rate: float | None = Form(None),
+    protect: float | None = Form(None),
+    speaker_id: int | None = Form(None),
+    seed: int | None = Form(None),
 ):
-    """Audio processing endpoint (speech enhancement, source separation, STS).
+    """Process audio with an installed audio-processing Package or native STS.
 
-    Accepts a multipart audio file upload and a model identifier, processes
-    the audio through an STS engine (e.g. DeepFilterNet, MossFormer2,
-    SAMAudio, LFM2.5-Audio), and returns WAV bytes of the processed audio.
+    Package-backed requests may include a request-scoped reference voice and
+    model-specific controls for source separation or voice conversion. Native
+    fallback keeps the legacy single-file STS behavior.
     """
     package_model = _package_model(model)
     if package_model is not None:
         if package_model.model_type != "audio_processing":
-            raise HTTPException(status_code=400, detail="Selected model is not audio processing")
+            raise HTTPException(
+                status_code=400, detail="Selected model is not audio processing"
+            )
         content = await _read_upload(file)
         wav_content = await _normalize_audio_bytes(
             content,
@@ -1051,24 +1183,83 @@ async def process_audio(
             media_type=file.content_type,
             sample_rate=48_000,
         )
+        if retrieval_rate is not None and not 0 <= retrieval_rate <= 1:
+            raise HTTPException(
+                status_code=400, detail="retrieval_rate must be between 0 and 1"
+            )
+        if protect is not None and not 0 <= protect <= 0.5:
+            raise HTTPException(
+                status_code=400, detail="protect must be between 0 and 0.5"
+            )
+        if speaker_id is not None and speaker_id < 0:
+            raise HTTPException(
+                status_code=400, detail="speaker_id must be non-negative"
+            )
+        if diffusion_steps is not None and not 1 <= diffusion_steps <= 100:
+            raise HTTPException(
+                status_code=400, detail="diffusion_steps must be between 1 and 100"
+            )
+        if guidance_intelligibility is not None and guidance_intelligibility < 0:
+            raise HTTPException(
+                status_code=400, detail="guidance_intelligibility must be non-negative"
+            )
+        if guidance_similarity is not None and guidance_similarity < 0:
+            raise HTTPException(
+                status_code=400, detail="guidance_similarity must be non-negative"
+            )
+        if length_adjust is not None and length_adjust <= 0:
+            raise HTTPException(
+                status_code=400, detail="length_adjust must be positive"
+            )
+        data = {
+            key: str(value)
+            for key, value in {
+                "task": task,
+                "profile": profile,
+                "mode": mode,
+                "diffusion_steps": diffusion_steps,
+                "guidance_intelligibility": guidance_intelligibility,
+                "guidance_similarity": guidance_similarity,
+                "length_adjust": length_adjust,
+                "semitones": semitones,
+                "retrieval_rate": retrieval_rate,
+                "protect": protect,
+                "speaker_id": speaker_id,
+                "seed": seed,
+            }.items()
+            if value is not None
+        }
+        files = {
+            "file": (
+                "audio.wav",
+                wav_content,
+                "audio/wav",
+            )
+        }
+        if reference is not None:
+            reference_content = await _read_upload(reference)
+            files["reference"] = (
+                "reference.wav",
+                await _normalize_audio_bytes(
+                    reference_content,
+                    filename=reference.filename,
+                    media_type=reference.content_type,
+                    sample_rate=48_000,
+                ),
+                "audio/wav",
+            )
         return await _model_invocations().invoke_foreground_multipart(
             package_model.id,
             "audio_process",
-            data={},
-            files={
-                "file": (
-                    "audio.wav",
-                    wav_content,
-                    "audio/wav",
-                )
-            },
+            data=data,
+            files=files,
             context=_audio_invocation_context(),
         )
 
+    pool = _get_engine_pool()
     from omlx.engine.sts import STSEngine
     from omlx.exceptions import ModelNotFoundError
 
-    pool = _get_engine_pool()
     resolved_model = _resolve_model(model)
 
     # Load the engine via pool (handles model loading and LRU eviction)

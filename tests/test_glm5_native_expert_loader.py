@@ -64,6 +64,26 @@ def test_preadv_fused_experts_writes_final_mlx_slots(tmp_path):
     assert all(bool(check.item()) for check in checks)
 
 
+def test_copy_expert_slots_moves_all_resident_segments_on_device():
+    if "copy_expert_slots" not in glm_fast.native_symbols():
+        pytest.skip("native expert slot copy is not built")
+
+    arrays = [
+        mx.arange(6 * width, dtype=mx.uint32).astype(mx.uint8).reshape(6, width)
+        for width in (4, 2, 7, 3, 5, 1)
+    ]
+    mx.eval(*arrays)
+    expected = [array[[1, 4]].tolist() for array in arrays]
+
+    copied = glm_fast.copy_expert_slots([1, 4], [3, 0], arrays)
+    checks = []
+    for array, rows in zip(arrays, expected):
+        checks.extend((array[3].tolist() == rows[0], array[0].tolist() == rows[1]))
+
+    assert copied == sum(2 * int(array[0].nbytes) for array in arrays)
+    assert all(checks)
+
+
 def test_decode_resolve_publishes_native_direct_load(monkeypatch, tmp_path):
     cache = Glm5DynamicCache(tmp_path, capacity=2, num_experts=4, io_workers=1)
 
@@ -325,6 +345,10 @@ def test_persistent_tail_reuses_misses_without_promotion(monkeypatch, tmp_path):
 
 def test_native_weighted_sum_matches_route_materialization(monkeypatch):
     from omlx.patches.glm5_next_cache.runtime import _weighted_switch
+    from omlx.custom_kernels.glm_moe_dsa import fast as native_fast
+
+    if "glm_moe_weighted_sum" not in native_fast.native_symbols():
+        pytest.skip("native GLM weighted-sum kernel is not built for this test interpreter")
 
     monkeypatch.setenv("OMLX_GLM5_WEIGHTED_SUM", "1")
     mx.random.seed(53)

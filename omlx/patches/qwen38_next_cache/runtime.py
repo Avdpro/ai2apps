@@ -594,6 +594,16 @@ def qwen4_dynamic_safetensors_on_load(model_path: str | os.PathLike[str]):
     original = vlm_utils._load_safetensors
     original_safe_open = safetensors.safe_open
     target_dir = Path(model_path).expanduser().resolve()
+    external = None
+    if (target_dir / "ssd-checkpoint.json").is_file():
+        from omlx.ssd_checkpoint import ExternalTensorReader
+
+        external = ExternalTensorReader(target_dir)
+        if external.manifest["family"] != "qwen4_exp":
+            raise ValueError("Qwen loader received a different SSD model family")
+        if dynamic_enabled and _store_path() != target_dir / "experts":
+            raise ValueError("SSD Qwen cache must use this checkpoint's experts directory")
+    external_loaded = False
 
     class _SafeOpenMetadataWrapper:
         def __init__(self, inner):
@@ -627,9 +637,18 @@ def qwen4_dynamic_safetensors_on_load(model_path: str | os.PathLike[str]):
         return handle
 
     def compact_loader(path: str):
-        return _compact_safetensors(path, original, slots=_slots())
+        nonlocal external_loaded
+        if not _is_checkpoint_safetensor(path, target_dir):
+            return original(path)
+        if external is None:
+            return _compact_safetensors(path, original, slots=_slots())
+        loaded = original(path)
+        if not external_loaded:
+            loaded.update(_ssd_expert_weights(external, slots=_slots() if dynamic_enabled else None))
+            external_loaded = True
+        return loaded
 
-    if dynamic_enabled:
+    if dynamic_enabled or external is not None:
         vlm_utils._load_safetensors = compact_loader
     safetensors.safe_open = patched_safe_open
     try:
@@ -637,8 +656,32 @@ def qwen4_dynamic_safetensors_on_load(model_path: str | os.PathLike[str]):
     finally:
         if safetensors.safe_open is patched_safe_open:
             safetensors.safe_open = original_safe_open
-        if dynamic_enabled and vlm_utils._load_safetensors is compact_loader:
+        if vlm_utils._load_safetensors is compact_loader:
             vlm_utils._load_safetensors = original
+
+
+def _ssd_expert_weights(reader, *, slots: int | None):
+    """Restore packed Full tensors or allocate empty, fixed Cached slots.
+
+    Cache tags start empty; the existing direct loader installs every requested
+    expert before execution. Placeholder values never represent cache hits.
+    """
+    if slots is None:
+        for name, value in reader.iter_mlx_weights():
+            if _EXPERT_RE.search(name) is None:
+                raise ValueError(f"unexpected external Qwen tensor: {name}")
+            mx.eval(value)
+            yield name, value
+        return
+    dtypes = {"U32": mx.uint32, "F16": mx.float16, "BF16": mx.bfloat16}
+    for name, tensor in reader.tensors.items():
+        shape = tensor["shape"]
+        if _EXPERT_RE.search(name) is None or shape[0] != 512:
+            raise ValueError(f"unexpected external Qwen expert geometry: {name}")
+        dtype = dtypes.get(tensor["dtype"])
+        if dtype is None:
+            raise ValueError(f"unsupported Qwen quantized tensor dtype: {tensor['dtype']}")
+        yield name, mx.zeros((slots, *shape[1:]), dtype=dtype)
 
 
 __all__ = [

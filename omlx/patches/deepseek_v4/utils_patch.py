@@ -270,7 +270,10 @@ def _build_patched_load_model() -> Callable:
             except (OSError, TypeError, json.JSONDecodeError):
                 prepared_manifest = {}
             layout = prepared_manifest.get("checkpoint_layout") or {}
-            if layout.get("format") == "ai2apps-backbone-expert-store":
+            if layout.get("format") in {
+                "ai2apps-backbone-expert-store",
+                "ai2apps-ssd-checkpoint",
+            }:
                 from omlx.cache.moe_expert_store import load_expert_major_weights
 
                 store_path = Path(prepared_manifest["expert_store"]).expanduser()

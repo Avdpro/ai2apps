@@ -1,0 +1,91 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.seed-vc-v2-mlx
+name: MLX Seed-VC v2
+description: Native MLX zero-shot voice conversion with request-scoped reference audio.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license: {name: GNU General Public License v3.0 only, id: GPL-3.0-only, path: META/licenses/Seed-VC-GPL-3.0.txt}
+attribution:
+  notice: META/NOTICE.md
+  upstream: https://github.com/Plachtaa/seed-vc
+  checkpoint: https://huggingface.co/Avdpro/MLX-Seed-VC-v2
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.seed-vc-v2-mlx/default
+    display_name: MLX Seed-VC v2
+    model_type: audio_processing
+    upstream_id: Avdpro/MLX-Seed-VC-v2
+    capabilities: [voice_conversion, zero_shot_voice_reference, timbre_mode, autoregressive_voice_mode]
+    metadata:
+      family: seed-vc-v2
+      sample_rate: 22050
+      reference_audio_required: true
+      default_profile: timbre_quality
+      modelscope:
+        repo_id: ai2apps/MLX-Seed-VC-v2
+        revision: f1c5ab39dbea53e68829d0c3ff8321acdcee16fa
+        preferred: true
+        allow_patterns: &seed_files
+          - LICENSE
+          - NOTICE.md
+          - README.md
+          - ai2apps-checkpoint.json
+          - config.json
+          - ar.safetensors
+          - ar_length_regulator.safetensors
+          - astral_narrow.safetensors
+          - astral_wide.safetensors
+          - bigvgan/config.json
+          - bigvgan/model.safetensors
+          - campplus.safetensors
+          - cfm.safetensors
+          - cfm_length_regulator.safetensors
+          - hubert/config.json
+          - hubert/model.safetensors
+    weights:
+      provider: huggingface
+      repo_id: Avdpro/MLX-Seed-VC-v2
+      revision: 2122cee1aff2b0e17a843dfa7cdc0464271c43b4
+      distribution_id: dist_ai2apps_mlx_seed_vc_v2_2122cee1_v1
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_process]
+      languages: []
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav]}
+      streaming: {mode: unsupported, formats: []}
+      processing:
+        separation: {mode: unsupported, native_stems: [], profiles: []}
+        voice_conversion:
+          mode: native
+          target_sources: [reference_audio]
+          profiles:
+            - {id: timbre_fast, mode: native, inference_mode: timbre, diffusion_steps: 10}
+            - {id: timbre_quality, mode: native, inference_mode: timbre, diffusion_steps: 30}
+            - {id: voice_quality, mode: native, inference_mode: voice, diffusion_steps: 30}
+          controls: [mode, diffusion_steps, guidance_intelligibility, guidance_similarity, length_adjust, seed]
+        voice_training: {mode: unsupported, input_sources: [], controls: [], output: null}
+
+capabilities: [audio-reference-input-v1]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.6.2,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-processing, audio-codecs, audio-reference-input-v1]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned MLX Seed-VC v2 checkpoint.}
+  accelerator: {metal: true, reason: Run zero-shot voice conversion locally with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

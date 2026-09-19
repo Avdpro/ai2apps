@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'dsv41_mlx'))
 import mlx.core as mx
 from model import Model,LRUMetalBank
-bank=LRUMetalBank('artifacts/dsv41-full-expert-store/layer-0.bin',[0,1,2,3],l0_slots=0)
+bank=LRUMetalBank('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/experts/layer-0.bin',[0,1,2,3],l0_slots=0)
 m=Model.__new__(Model);m.matrix_prefill=True;mx.random.seed(19)
 reports=[]
 for segments in [[(0,16),(1,32)],[(0,128),(1,32)],[(0,128),(1,128)]]:

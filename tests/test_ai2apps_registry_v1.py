@@ -44,10 +44,209 @@ class _PublishingManager:
         return _BoundPublishingManager(cloud)
 
 
+class _DiscoverExtensionManager:
+    def require_instance_access(self, instance_id, _principal):
+        assert instance_id == "appi_discover"
+
+    def instance_entry(self, instance_id, *, principal):
+        self.require_instance_access(instance_id, principal)
+        return {"app_key": "ai2apps.discover"}
+
+
 def test_official_punctuation_package_maps_to_model_service_identity():
     assert (
         RegistryPackageManager._service_dependency_key("ai2apps/punctuation-restorer")
         == "ai2apps.model.punctuation-restorer"
+    )
+
+
+@pytest.mark.asyncio
+async def test_installed_registry_models_report_checkpoint_readiness(monkeypatch):
+    manager = SimpleNamespace(
+        installed=lambda **_kwargs: [
+            {
+                "packageId": "ai2apps/model-qwen38",
+                "packageType": "service",
+                "version": "0.3.2",
+                "modelInstall": {
+                    "serviceKey": "ai2apps.model.qwen38",
+                    "models": [
+                        {
+                            "id": "ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
+                            "label": "Qwen3.8 27B NVFP4",
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+    runtime = SimpleNamespace(registry_packages=manager)
+    monkeypatch.setattr(
+        "ai2apps.api.packages.list_package_models",
+        lambda _runtime: (
+            SimpleNamespace(
+                id="ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
+                checkpoint_ready=True,
+            ),
+        ),
+    )
+    app = FastAPI()
+    app.include_router(
+        create_package_router(
+            lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/packages/installed")
+
+    assert response.status_code == 200
+    installed = response.json()["items"][0]
+    assert installed["modelReady"] is True
+    assert installed["readyModelConfigurationIds"] == [
+        "ai2apps.model.qwen38/qwen3.8-27b-nvfp4"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_discover_model_install_route_creates_acpf_session_from_catalog():
+    catalog = {
+        "version": "1.2.3",
+        "displayName": "Example Model",
+        "modelProfile": {"minimumMemoryBytes": 1024},
+        "modelInstall": {
+            "serviceKey": "example.model",
+            "models": [
+                {
+                    "id": "example.model/default",
+                    "label": "Default",
+                    "recommended": True,
+                }
+            ],
+        },
+    }
+    captured = {}
+
+    async def get_catalog(_namespace, _name):
+        return catalog
+
+    def ensure_model_package(**kwargs):
+        captured.update(kwargs)
+        return {"status": "setup_required", "sessionId": "prv_1", "session": {"id": "prv_1"}}
+
+    runtime = SimpleNamespace(
+        registry_packages=SimpleNamespace(catalog=get_catalog),
+        provisioning=SimpleNamespace(ensure_model_package=ensure_model_package),
+        extension_manager=_DiscoverExtensionManager(),
+    )
+    app = FastAPI()
+    app.include_router(
+        create_package_router(
+            lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/packages/example/model/model-install-sessions",
+            headers={"X-AI2Apps-App-Instance": "appi_discover"},
+            json={"version": "1.2.3", "modelId": "example.model/default"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["sessionId"] == "prv_1"
+    assert captured["package_id"] == "example/model"
+    assert captured["selected_model_id"] == "example.model/default"
+    assert captured["app_instance_id"] == "appi_discover"
+
+
+@pytest.mark.parametrize("name,version,model_suffix", [
+    ("qwen38", "0.3.2", "qwen3.8-27b-nvfp4"),
+    ("flux2-klein-mlx", "0.1.4", "4b"),
+    ("flux2-klein-9b-mlx", "0.1.0", "9b"),
+    ("ideogram4-mlx", "0.1.2", "fp8-q4"),
+    ("qwen-image-mlx", "0.1.2", "2512"),
+    ("z-image-mlx", "0.1.3", "turbo"),
+    ("z-image-base-mlx", "0.1.0", "base"),
+])
+@pytest.mark.asyncio
+async def test_discover_model_install_accepts_cloud_catalog_detail_shape(name, version, model_suffix):
+    package_id = f"ai2apps/model-{name}"
+    service_key = f"ai2apps.model.{name}"
+    model_id = f"{service_key}/{model_suffix}"
+    catalog = RegistryPackageManager._decorate_catalog_compatibility(
+        {
+            "package": {
+                "packageId": package_id,
+                "packageType": "service",
+                "displayName": "Qwen3.8 27B NVFP4",
+                "latestVersion": version,
+            },
+            "releases": [
+                {
+                    "packageId": package_id,
+                    "version": version,
+                    "status": "published",
+                }
+            ],
+        }
+    )
+    captured = {}
+
+    async def get_catalog(_namespace, _name):
+        return catalog
+
+    def ensure_model_package(**kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "setup_required",
+            "sessionId": "prv_qwen38",
+            "session": {"id": "prv_qwen38"},
+        }
+
+    runtime = SimpleNamespace(
+        registry_packages=SimpleNamespace(catalog=get_catalog),
+        provisioning=SimpleNamespace(ensure_model_package=ensure_model_package),
+        extension_manager=_DiscoverExtensionManager(),
+    )
+    app = FastAPI()
+    app.include_router(
+        create_package_router(
+            lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        plan = await client.get(
+            f"/packages/{package_id}/model-install-plan?version={version}",
+            headers={"X-AI2Apps-App-Instance": "appi_discover"},
+        )
+        response = await client.post(
+            f"/packages/{package_id}/model-install-sessions",
+            headers={"X-AI2Apps-App-Instance": "appi_discover"},
+            json={
+                "version": version,
+                "modelId": model_id,
+            },
+        )
+
+    assert plan.status_code == 200
+    assert plan.json()["profileOptions"][0]["recommended"] is True
+    assert response.status_code == 200
+    assert captured["package_version"] == version
+    assert captured["display_name"] == "Qwen3.8 27B NVFP4"
+    assert captured["service_key"] == service_key
+    assert captured["selected_model_id"] == (
+        model_id
     )
 
 
@@ -406,7 +605,9 @@ async def test_registry_download_verifies_snapshot_publisher_and_bytes(tmp_path)
     await cloud.close()
 
 
-def _multi_source_download_fixture(tmp_path, *, source_count=2):
+def _multi_source_download_fixture(
+    tmp_path, *, source_count=2, modelscope_url: str | None = None
+):
     artifact_path = tmp_path / "multi-source.ai2app"
     inspected = build_package(_source(tmp_path), artifact_path)
     publisher_private, publisher_public, publisher_fingerprint = (
@@ -435,7 +636,8 @@ def _multi_source_download_fixture(tmp_path, *, source_count=2):
         {
             "id": "src_mirror",
             "kind": "modelscope",
-            "url": "https://mirror.ai2apps.test/releases/verified-app.ai2app",
+            "url": modelscope_url
+            or "https://mirror.ai2apps.test/releases/verified-app.ai2app",
         },
         *[
             {
@@ -491,6 +693,10 @@ def _multi_source_download_fixture(tmp_path, *, source_count=2):
 
 
 def _range_response(request: httpx.Request, content: bytes) -> httpx.Response:
+    # Immutable source URLs plus signed piece hashes are the trust anchor.
+    # A synthetic If-Range value does not match a CDN's real ETag and makes
+    # standards-compliant origins fall back to a full HTTP 200 response.
+    assert "if-range" not in request.headers
     value = request.headers["range"].removeprefix("bytes=")
     start_text, end_text = value.split("-", 1)
     start, end = int(start_text), int(end_text)
@@ -504,6 +710,70 @@ def _range_response(request: httpx.Request, content: bytes) -> httpx.Response:
             "content-encoding": "identity",
         },
     )
+
+
+def _modelscope_range_200_response(
+    request: httpx.Request, content: bytes
+) -> httpx.Response:
+    response = _range_response(request, content)
+    return httpx.Response(
+        200,
+        content=response.content,
+        headers=response.headers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_registry_accepts_strict_modelscope_range_200(tmp_path):
+    modelscope_url = (
+        "https://modelscope.cn/models/ai2apps/desktop-releases/resolve/"
+        + "a" * 40
+        + "/verified-app.ai2app"
+    )
+    fixture = _multi_source_download_fixture(
+        tmp_path,
+        modelscope_url=modelscope_url,
+    )
+    requested_ranges: list[str] = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/repository-key"):
+            return httpx.Response(
+                200, json={"publicKeyPem": fixture["repositoryPublic"]}
+            )
+        if request.url.path.endswith("/metadata/latest"):
+            return httpx.Response(200, json=fixture["snapshot"])
+        if request.url.path.endswith("/envelope"):
+            return httpx.Response(200, json=fixture["envelope"])
+        requested_ranges.append(request.headers["range"])
+        if request.url.host == "modelscope.cn":
+            return _modelscope_range_200_response(request, fixture["content"])
+        return httpx.Response(200, content=fixture["content"])
+
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=CloudSessionStore(
+            MemorySecretBackend(), "https://coder.ai2apps.test"
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+        repository_fingerprint=fixture["repositoryFingerprint"],
+    )
+
+    downloaded, _envelope, _release, _version = await manager.download_verified(
+        "example", "verified-app", "1.2.3"
+    )
+
+    assert downloaded.sha256 == fixture["inspected"].sha256
+    assert requested_ranges
+    assert all(value.startswith("bytes=") for value in requested_ranges)
+    await cloud.close()
 
 
 @pytest.mark.asyncio
@@ -1754,3 +2024,163 @@ async def test_registry_install_continuation_survives_restart_and_clears_on_succ
 
     assert status.json()["status"] == "completed"
     assert cleared.json() == {"continuation": None}
+
+
+def _parallel_artifact_options(tmp_path, content, piece_size, progress=None):
+    return dict(
+        artifact={'size': len(content), 'sha256': hashlib.sha256(content).hexdigest(),
+                  'mediaType': 'application/octet-stream'},
+        sources=[{'id': 'cloud', 'kind': 'cloud', 'url': 'https://example.test/file'}],
+        piece_size=piece_size,
+        piece_hashes=[hashlib.sha256(content[i:i + piece_size]).hexdigest()
+                      for i in range(0, len(content), piece_size)],
+        partial=tmp_path / 'artifact.part', state_path=tmp_path / 'artifact.json',
+        progress=progress, progress_step=2, download_stage='downloading_package',
+        package_id='example/test', file_name='test.ai2service',
+    )
+
+
+@pytest.mark.asyncio
+async def test_artifact_parallel_window_orders_writes_and_bounds_progress(tmp_path):
+    content = bytes(range(10)) * 1000
+    events = []
+    options = _parallel_artifact_options(tmp_path, content, 1000, events.append)
+    manager = RegistryPackageManager.__new__(RegistryPackageManager)
+    active = 0
+    peak = 0
+    four_started = asyncio.Event()
+
+    async def race(sources, *, start, end, observed, **kwargs):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        if active == 4:
+            four_started.set()
+        try:
+            await asyncio.wait_for(four_started.wait(), 2)
+            if start == 0:
+                await asyncio.sleep(0.02)
+            data = content[start:end + 1]
+            observed(sources[0], len(data))
+            return sources[0], data
+        finally:
+            active -= 1
+
+    manager._race_artifact_piece = race
+    path, size, digest, state_path = await manager._download_multisource_artifact(**options)
+    assert path.read_bytes() == content
+    assert size == len(content)
+    assert digest == options['artifact']['sha256']
+    assert peak == 4
+    assert json.loads(state_path.read_text())['verifiedPieces'] == 10
+    assert all(0 <= e['bytesVerified'] <= e['bytesCompleted'] <= len(content) for e in events)
+    assert events[-1]['bytesCompleted'] == len(content)
+
+
+@pytest.mark.asyncio
+async def test_artifact_parallel_failure_cancels_other_ranges(tmp_path):
+    options = _parallel_artifact_options(tmp_path, b'a' * 10000, 1000)
+    manager = RegistryPackageManager.__new__(RegistryPackageManager)
+    active = 0
+    four_started = asyncio.Event()
+
+    async def race(sources, *, start, **kwargs):
+        nonlocal active
+        active += 1
+        if active == 4:
+            four_started.set()
+        try:
+            await asyncio.wait_for(four_started.wait(), 2)
+            if start == 0:
+                raise OSError('source failed')
+            await asyncio.Event().wait()
+        finally:
+            active -= 1
+
+    manager._race_artifact_piece = race
+    with pytest.raises(OSError, match='source failed'):
+        await manager._download_multisource_artifact(**options)
+    assert active == 0
+    assert options['partial'].read_bytes() == b''
+    assert json.loads(options['state_path'].read_text())['verifiedPieces'] == 0
+
+
+@pytest.mark.asyncio
+async def test_artifact_cancel_waits_for_durable_commit(tmp_path):
+    import threading
+
+    content = b'a' * 2000
+    options = _parallel_artifact_options(tmp_path, content, 1000)
+    manager = RegistryPackageManager.__new__(RegistryPackageManager)
+    committing = threading.Event()
+    release = threading.Event()
+    original = manager._write_partial_state
+
+    def write_state(*args, **kwargs):
+        if kwargs['verified_pieces'] == 1:
+            committing.set()
+            assert release.wait(5)
+        original(*args, **kwargs)
+
+    async def race(sources, *, start, end, **kwargs):
+        return sources[0], content[start:end + 1]
+
+    manager._write_partial_state = write_state
+    manager._race_artifact_piece = race
+    task = asyncio.create_task(manager._download_multisource_artifact(**options))
+    try:
+        assert await asyncio.to_thread(committing.wait, 5)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert json.loads(options['state_path'].read_text())['verifiedPieces'] == 1
+    assert options['partial'].read_bytes() == content[:1000]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('alternate,fail_preferred', [(False, False), (True, False), (False, True)])
+async def test_artifact_two_race_wins_select_source_and_failure_reopens_race(
+    tmp_path, alternate, fail_preferred
+):
+    content = b'a' * 20000
+    events = []
+    options = _parallel_artifact_options(tmp_path, content, 1000, events.append)
+    mirror = {'id': 'mirror', 'kind': 'mirror', 'url': 'https://mirror.test/file'}
+    options['sources'].append(mirror)
+    manager = RegistryPackageManager.__new__(RegistryPackageManager)
+    calls = []
+    failed = False
+
+    async def race(sources, *, start, end, observed, **kwargs):
+        nonlocal failed
+        ids = [s['id'] for s in sources]
+        calls.append((start // 1000, ids))
+        if fail_preferred and ids == ['cloud'] and not failed:
+            failed = True
+            raise RegistryError('artifact_sources_exhausted', 'bad hash or transport')
+        wanted = 'mirror' if failed or (alternate and start // 1000 % 2) else 'cloud'
+        winner = next((s for s in sources if s['id'] == wanted), sources[0])
+        observed(winner, end - start + 1)
+        await asyncio.sleep(0)
+        return winner, content[start:end + 1]
+
+    manager._race_artifact_piece = race
+    path, *_ = await manager._download_multisource_artifact(**options)
+    assert path.read_bytes() == content
+    if alternate:
+        assert all(len(ids) == 2 for _, ids in calls)
+        assert all(e.get('sourceSelection') != 'preferred' for e in events)
+    else:
+        assert any(ids == ['cloud'] for _, ids in calls)
+        if fail_preferred:
+            assert failed
+            failure_call = next(i for i, (_, ids) in enumerate(calls) if ids == ['cloud'])
+            assert any(len(ids) == 2 for _, ids in calls[failure_call + 1:])
+            assert calls[-1][1] == ['mirror']
+        else:
+            assert all(ids == ['cloud'] for index, ids in calls if index >= 5)
+            assert events[-1]['preferredSourceId'] == 'cloud'

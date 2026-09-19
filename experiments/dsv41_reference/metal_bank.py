@@ -12,13 +12,19 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'artifacts/dsv41-nativ
 import _dsv41_loader as native
 
 class MetalBank:
-    def __init__(self,path,l1_ids,l0_slots=6,io_workers=4):
+    def __init__(self,path,l1_ids,l0_slots=6,io_workers=4,no_cache=False):
         self.info=json.loads(Path(str(path)+'.json').read_text())
         self.fd=os.open(path,os.O_RDONLY)
+        if no_cache:
+            import fcntl
+            try:fcntl.fcntl(self.fd,48,1)  # Darwin F_NOCACHE; no global cache purge.
+            except BaseException:os.close(self.fd);raise
         self.records={int(k):v for k,v in self.info['expert_to_record'].items()}
         if len(l1_ids)!=len(set(l1_ids)): raise ValueError('duplicate L1 ids')
         self.main={e:i for i,e in enumerate(l1_ids)}; self.hot={}; self.l0_slots=l0_slots
         self.workers=io_workers; self.pending=[]; self.loads=self.bytes=0; self.io_seconds=0
+        self.fence_calls=0
+        self.copy_bytes=self.copy_experts=0;self.copy_seconds=0
         self.capacity=len(l1_ids)+l0_slots
         self.arrays=tuple(mx.zeros((self.capacity,*shape),dtype=mx.uint8) for shape in self.info['shapes'])
         mx.eval(*self.arrays);mx.synchronize()
@@ -27,14 +33,40 @@ class MetalBank:
     def _load(self,ids,slots):
         if not ids:return
         if len(set(slots))!=len(slots): raise ValueError('duplicate native destinations')
+        self._fence()
+        self._read_ready(ids,slots)
+    def _fence(self):
+        self.fence_calls+=1
         # Materialize every lazy consumer before waiting; synchronize alone is insufficient.
         if self.pending: mx.eval(*self.pending)
         mx.synchronize(); self.pending.clear()
+    def _read_ready(self,ids,slots):
+        if not ids:return
         start=time.perf_counter()
         count=native.preadv_fused_experts(self.fd,0,self.info['record_bytes'],[self.records[i] for i in ids],slots,*self.arrays,self.workers)
         self.io_seconds+=time.perf_counter()-start
         if count!=len(ids)*self.info['record_bytes']: raise IOError('native byte count mismatch')
         self.loads+=1; self.bytes+=count
+    def _copy_ready(self,sources,slots):
+        if not sources:return
+        start=time.perf_counter()
+        count=native.copy_expert_slots(sources,slots,list(self.arrays))
+        self.copy_seconds+=time.perf_counter()-start
+        if count!=len(sources)*self.info['record_bytes']:raise RuntimeError('promotion copy byte mismatch')
+        self.copy_bytes+=count;self.copy_experts+=len(sources)
+    def load_promotions(self,ids,slots):
+        if not hasattr(native,'copy_expert_slots'):raise RuntimeError('rebuild dsv41 native loader: promotion copy support is required')
+        if len(ids)!=len(slots) or len(set(ids))!=len(ids) or len(set(slots))!=len(slots):raise ValueError('invalid promotion list')
+        if any(i not in self.records or i in self.main for i in ids):raise ValueError('invalid promotion expert')
+        if any(s<0 or s>=len(self.main) for s in slots):raise ValueError('promotion destination must be Main')
+        resident=[(self.hot[e],s) for e,s in zip(ids,slots) if e in self.hot]
+        disk=[(e,s) for e,s in zip(ids,slots) if e not in self.hot]
+        if not ids:return {'copied':0,'ssd':0}
+        self._fence()
+        # Destinations are disjoint, all publication happens after both operations.
+        self._read_ready([e for e,s in disk],[s for e,s in disk])
+        self._copy_ready([e for e,s in resident],[s for e,s in resident])
+        return {'copied':len(resident),'ssd':len(disk)}
     def prepare(self,ids):
         ids=list(dict.fromkeys(ids)); missing=[i for i in ids if i not in self.main and i not in self.hot]
         if len([i for i in ids if i not in self.main])>self.l0_slots:raise ValueError('route exceeds L0 capacity')

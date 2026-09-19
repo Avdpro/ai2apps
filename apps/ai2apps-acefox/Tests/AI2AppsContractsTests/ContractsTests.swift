@@ -42,9 +42,12 @@ import Testing
     #expect(paths.runDirectory.path == "/Users/test/Library/Application Support/AI2Apps/instances/customer-a/run")
     #expect(paths.browserProfilesDirectory.path.hasPrefix(paths.supportRoot.path))
     #expect(paths.instanceHuggingFaceHubDirectory.path == "/Users/test/Library/Caches/AI2Apps/instances/customer-a/model-weights/huggingface/hub")
+    #expect(paths.sharedCheckpointCacheDirectory.path == "/Users/test/Library/Caches/AI2Apps/shared/checkpoint-cache-v1")
+    #expect(paths.legacyCheckpointCacheDirectory.path == "/Users/test/Library/Application Support/AI2Apps/instances/customer-a/data/platform/packages/checkpoint-cache-v1")
+    #expect(paths.preservedLegacyCheckpointCacheDirectory.path == "/Users/test/Library/Caches/AI2Apps/shared/legacy-checkpoint-cache-v1/customer-a")
 }
 
-@Test func instancesNeverShareModelStoragePaths() throws {
+@Test func instancesShareOnlyImmutableCheckpointStoragePath() throws {
     let home = URL(fileURLWithPath: "/Users/test", isDirectory: true)
     let first = InstancePaths(instanceID: try InstanceID(rawValue: "customer-a"), homeDirectory: home)
     let second = InstancePaths(instanceID: try InstanceID(rawValue: "customer-b"), homeDirectory: home)
@@ -55,6 +58,8 @@ import Testing
     #expect(first.dataDirectory != second.dataDirectory)
     #expect(first.cacheRoot != second.cacheRoot)
     #expect(first.browserProfilesDirectory != second.browserProfilesDirectory)
+    #expect(first.sharedCheckpointCacheDirectory == second.sharedCheckpointCacheDirectory)
+    #expect(first.preservedLegacyCheckpointCacheDirectory != second.preservedLegacyCheckpointCacheDirectory)
 }
 
 @Test func sandboxContainersRelocateEveryInstancePath() throws {
@@ -105,6 +110,172 @@ import Testing
     }
 
     try? FileManager.default.removeItem(at: home)
+}
+
+@Test func instanceDataResetDeletesOnlyPrivateInstanceRoots() throws {
+    let fileManager = FileManager.default
+    let home = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let paths = InstancePaths(
+        instanceID: try InstanceID(rawValue: "test"),
+        homeDirectory: home
+    )
+    try paths.preparePrivateDirectories(fileManager: fileManager)
+    let privateState = paths.dataDirectory.appendingPathComponent("account.json")
+    let privateModel = paths.instanceHuggingFaceHubDirectory.appendingPathComponent("model.bin")
+    let publicHub = try #require(paths.externalHuggingFaceHubDirectory)
+    let publicModel = publicHub.appendingPathComponent("public-model.bin")
+    let sharedCheckpoint = paths.sharedCheckpointCacheDirectory
+        .appendingPathComponent("blobs/shared-model.bin")
+    try Data("private".utf8).write(to: privateState)
+    try Data("private-model".utf8).write(to: privateModel)
+    try fileManager.createDirectory(
+        at: publicModel.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("public-model".utf8).write(to: publicModel)
+    try fileManager.createDirectory(
+        at: sharedCheckpoint.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("shared-checkpoint".utf8).write(to: sharedCheckpoint)
+
+    let reset = InstanceDataReset(paths: paths)
+    #expect(try reset.validatedTargets() == [paths.supportRoot, paths.cacheRoot])
+    try reset.perform(fileManager: fileManager)
+
+    #expect(!fileManager.fileExists(atPath: paths.supportRoot.path))
+    #expect(!fileManager.fileExists(atPath: paths.cacheRoot.path))
+    #expect(fileManager.fileExists(atPath: publicModel.path))
+    #expect(fileManager.fileExists(atPath: sharedCheckpoint.path))
+    try? fileManager.removeItem(at: home)
+}
+
+@Test func instanceDataResetRejectsSymbolicLinkParent() throws {
+    let fileManager = FileManager.default
+    let home = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let victim = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let paths = InstancePaths(
+        instanceID: try InstanceID(rawValue: "test"),
+        homeDirectory: home
+    )
+    let supportInstances = paths.supportRoot.deletingLastPathComponent()
+    try fileManager.createDirectory(
+        at: supportInstances.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try fileManager.createDirectory(
+        at: victim.appendingPathComponent("test"),
+        withIntermediateDirectories: true
+    )
+    try fileManager.createSymbolicLink(at: supportInstances, withDestinationURL: victim)
+
+    #expect(throws: ContractError.self) {
+        try InstanceDataReset(paths: paths).perform(fileManager: fileManager)
+    }
+    #expect(fileManager.fileExists(atPath: victim.appendingPathComponent("test").path))
+    try? fileManager.removeItem(at: home)
+    try? fileManager.removeItem(at: victim)
+}
+
+@Test func instanceDataResetPreservesPreSharingCheckpointCache() throws {
+    let fileManager = FileManager.default
+    let home = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let paths = InstancePaths(
+        instanceID: try InstanceID(rawValue: "app-dev"),
+        homeDirectory: home
+    )
+    try paths.preparePrivateDirectories(fileManager: fileManager)
+    let legacyBlob = paths.legacyCheckpointCacheDirectory
+        .appendingPathComponent("blobs/aa/legacy.bin")
+    try fileManager.createDirectory(
+        at: legacyBlob.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("legacy-checkpoint".utf8).write(to: legacyBlob)
+
+    try InstanceDataReset(paths: paths).perform(fileManager: fileManager)
+
+    let preservedBlob = paths.preservedLegacyCheckpointCacheDirectory
+        .appendingPathComponent("blobs/aa/legacy.bin")
+    #expect(!fileManager.fileExists(atPath: paths.supportRoot.path))
+    #expect(!fileManager.fileExists(atPath: paths.cacheRoot.path))
+    #expect(fileManager.fileExists(atPath: preservedBlob.path))
+    #expect(try Data(contentsOf: preservedBlob) == Data("legacy-checkpoint".utf8))
+    try? fileManager.removeItem(at: home)
+}
+
+@Test func instanceDataResetDeletesReadOnlyInstalledArtifacts() throws {
+    let fileManager = FileManager.default
+    let home = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let paths = InstancePaths(
+        instanceID: try InstanceID(rawValue: "app-dev"),
+        homeDirectory: home
+    )
+    try paths.preparePrivateDirectories(fileManager: fileManager)
+    let installedRuntime = paths.dataDirectory
+        .appendingPathComponent("platform/packages/runtime/snapshot", isDirectory: true)
+    let installedModel = paths.instanceHuggingFaceHubDirectory
+        .appendingPathComponent("models--example/distributions/digest", isDirectory: true)
+    let sharedCheckpoint = paths.sharedCheckpointCacheDirectory
+        .appendingPathComponent("blobs/aa/checkpoint.bin")
+    for directory in [installedRuntime, installedModel] {
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("immutable".utf8).write(
+            to: directory.appendingPathComponent("artifact.bin")
+        )
+        try fileManager.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o555))],
+            ofItemAtPath: directory.path
+        )
+    }
+    try fileManager.createDirectory(
+        at: sharedCheckpoint.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("immutable-shared".utf8).write(to: sharedCheckpoint)
+    try fileManager.setAttributes(
+        [.posixPermissions: NSNumber(value: Int16(0o444))],
+        ofItemAtPath: sharedCheckpoint.path
+    )
+
+    try InstanceDataReset(paths: paths).perform(fileManager: fileManager)
+
+    #expect(!fileManager.fileExists(atPath: paths.supportRoot.path))
+    #expect(!fileManager.fileExists(atPath: paths.cacheRoot.path))
+    #expect(fileManager.fileExists(atPath: sharedCheckpoint.path))
+    try? fileManager.removeItem(at: home)
+}
+
+@Test func instanceDataResetDoesNotFollowInternalSymbolicLinks() throws {
+    let fileManager = FileManager.default
+    let home = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let victim = fileManager.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let paths = InstancePaths(
+        instanceID: try InstanceID(rawValue: "app-dev"),
+        homeDirectory: home
+    )
+    try paths.preparePrivateDirectories(fileManager: fileManager)
+    try fileManager.createDirectory(at: victim, withIntermediateDirectories: true)
+    let preserved = victim.appendingPathComponent("preserved.txt")
+    try Data("preserved".utf8).write(to: preserved)
+    try fileManager.createSymbolicLink(
+        at: paths.dataDirectory.appendingPathComponent("external-link"),
+        withDestinationURL: victim
+    )
+
+    try InstanceDataReset(paths: paths).perform(fileManager: fileManager)
+
+    #expect(!fileManager.fileExists(atPath: paths.supportRoot.path))
+    #expect(fileManager.fileExists(atPath: preserved.path))
+    try? fileManager.removeItem(at: home)
+    try? fileManager.removeItem(at: victim)
 }
 
 @Test func diagnosticSnapshotContainsOnlyBoundedOperationalMetadata() throws {

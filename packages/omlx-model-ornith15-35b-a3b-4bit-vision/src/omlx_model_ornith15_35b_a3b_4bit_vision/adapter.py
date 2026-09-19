@@ -39,8 +39,8 @@ RECIPE = {
         {
             "id": "huggingface",
             "label": "Hugging Face",
-            "repo_id": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision",
-            "revision": "31428ce8829c277f9255c59662b8efab58898ecf",
+            "repo_id": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision-SSD",
+            "revision": "114f31e6c416027b78488a4b8afa1e12c2156275",
         },
         {
             "id": "modelscope",

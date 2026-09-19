@@ -1,5 +1,5 @@
 """Original safetensor bytes -> MLX. CPU work is limited to I/O and addressing."""
-import json,os,struct
+import hashlib,json,os,struct
 from pathlib import Path
 from collections import OrderedDict
 import numpy as np
@@ -8,6 +8,16 @@ import mlx.core as mx
 class Storage:
     def __init__(self,root):
         self.root=Path(root);self.entries={};self.fds=[];self.params={};self.rows=OrderedDict();self.row_bytes=0
+        self.source_index_sha256=hashlib.sha256((self.root/'model.safetensors.index.json').read_bytes()).hexdigest()
+        marker=self.root/'ssd-checkpoint.json'
+        if marker.is_file():
+            info=json.loads(marker.read_text())
+            if (info.get('schema')!='ai2apps.ssd-checkpoint/v1' or info.get('family')!='deepseek_v41'
+                or info.get('layout')!='dsv41-original-fp4-six-segment-v1'
+                or info.get('index_sha256')!=self.source_index_sha256
+                or info.get('verification')!='all_tensor_payloads_equal'):
+                raise ValueError('unsupported or inconsistent SSD checkpoint')
+            self.source_index_sha256=info['source']['index_sha256']
         self.read_bytes=0;self.read_calls=0;self.payload_bytes=0
         for p in sorted(self.root.glob('*.safetensors')):
             fd=os.open(p,os.O_RDONLY);self.fds.append(fd);n=struct.unpack('<Q',os.pread(fd,8,0))[0]

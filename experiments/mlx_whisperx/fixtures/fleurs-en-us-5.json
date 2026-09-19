@@ -1,0 +1,46 @@
+{
+  "schema": "ai2apps.mlx-whisperx-benchmark-manifest/v1",
+  "dataset": "FluidInference/fleurs-full",
+  "upstream_dataset": "google/fleurs",
+  "revision": "1cca811bb8ea4d370345f108f00518167040282c",
+  "config": "en_us",
+  "split": "test",
+  "license": "cc-by-4.0",
+  "cases": [
+    {
+      "id": "en_us_0000",
+      "language": "en-US",
+      "audio": "en_us/en_us_0000.wav",
+      "audio_sha256": "7835bd6ffb54ce38a2a9bcde3905ba424faed94d50a474f21a9cbe9209b869df",
+      "reference": "however due to the slow communication channels styles in the west could lag behind by 25 to 30 year"
+    },
+    {
+      "id": "en_us_0001",
+      "language": "en-US",
+      "audio": "en_us/en_us_0001.wav",
+      "audio_sha256": "ffd32e9953ffb14bed7f4e3a2d037ea7ac7de1ba5ad25d4c0f678fd06b24aab0",
+      "reference": "all nouns alongside the word sie for you always begin with a capital letter even in the middle of a sentence"
+    },
+    {
+      "id": "en_us_0002",
+      "language": "en-US",
+      "audio": "en_us/en_us_0002.wav",
+      "audio_sha256": "b722d537c7eac36e3438f45e609676732ce4526b415d829347485a61030d6922",
+      "reference": "to the north and within easy reach is the romantic and fascinating town of sintra and which was made famous to foreigners after a glowing account of its splendours recorded by lord byron"
+    },
+    {
+      "id": "en_us_0003",
+      "language": "en-US",
+      "audio": "en_us/en_us_0003.wav",
+      "audio_sha256": "f4e95852e336403001191b6dbfc9f00c5263cea304c10761608d6d5fce23da3f",
+      "reference": "the cabbage juice changes color depending on how acidic or basic alkaline the chemical is"
+    },
+    {
+      "id": "en_us_0004",
+      "language": "en-US",
+      "audio": "en_us/en_us_0004.wav",
+      "audio_sha256": "5a03997a964d1246207b2345564783cadc33d3e62810546bb4b1238c0e8b82f0",
+      "reference": "many people don't think about them as dinosaurs because they have feathers and can fly"
+    }
+  ]
+}

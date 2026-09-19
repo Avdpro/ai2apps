@@ -1,3 +1,6 @@
+> 0.1.4 capability contract: FLUX.2 Klein 4B generation and editing with 1–4 reference images.
+> Earlier edit/Remix descriptions below, where present, are historical and do not enable a public operation.
+
 # FLUX.2 Klein MLX
 
 AI2Apps model package for local FLUX.2 Klein image generation and editing on

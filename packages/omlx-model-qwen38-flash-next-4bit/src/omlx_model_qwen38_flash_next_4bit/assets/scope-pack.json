@@ -16,11 +16,17 @@
     "scopes": 10
   },
   "compatibility": {
-    "model_ids": ["qwen3.8-flash-next-mlx-4bit"],
+    "model_ids": [
+      "qwen3.8-flash-next-mlx-4bit"
+    ],
     "source_revisions": {
-      "qwen3.8-flash-next-mlx-4bit": "de597762aa61387c89590a46582222a261ce0387"
+      "qwen3.8-flash-next-mlx-4bit": "23c6ed09ef3ec9bec2f31039f0e23e94dfacd1b5"
     },
-    "memory_tiers": [128, 160, 224],
+    "memory_tiers": [
+      128,
+      160,
+      224
+    ],
     "hot_slots": 10
   },
   "provenance": {

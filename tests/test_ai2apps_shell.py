@@ -71,6 +71,52 @@ def test_default_dock_contains_core_creation_apps():
         "ai2apps.video-studio",
         "ai2apps.imagine-studio",
     }
+    manifests = {manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS}
+    assert manifests["ai2apps.readaloud"]["name"] == "Voice Studio"
+
+
+def test_discover_uses_builtin_satellite_dish_without_dock_rebuilds():
+    manifests = {manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS}
+    icon_script = (WEB_ROOT / "static/js/ai2apps_icons.js").read_text()
+    base_template = (WEB_ROOT / "templates/base.html").read_text()
+    shell_script = (WEB_ROOT / "static/js/shell.js").read_text()
+    lucide_script = (WEB_ROOT / "static/js/lucide.min.js").read_text()
+    discover_template = (
+        WEB_ROOT / "templates/system_apps/discover.html"
+    ).read_text()
+
+    assert manifests["ai2apps.discover"]["navigation"]["icon"] == "satellite-dish"
+    assert "SatelliteDish" in lucide_script
+    assert "const icons = window.ai2appsIcons" in icon_script
+    assert "icons.DiscoverRocket" not in icon_script
+    assert "window.ai2appsIcons?.[key] || lucide.icons[key]" in base_template
+    assert "window.ai2appsProcessIcons = processAll" in base_template
+    assert "window.ai2appsProcessIcons();\n            return;" in shell_script
+    assert "function updateDockSelection()" in shell_script
+    assert "wrap.dataset.dockDragId === currentId" in shell_script
+    assert shell_script.count("updateDockSelection();") == 2
+    assert "data-lucide=\"satellite-dish\"" in discover_template
+    assert "data-lucide=\"discover-rocket\"" not in discover_template
+    assert "data-lucide=\"compass\"" not in discover_template
+
+
+def test_incomplete_system_apps_are_visible_but_marked_unavailable():
+    manifests = {manifest["id"]: manifest for manifest in SYSTEM_APP_MANIFESTS}
+    assert {
+        app_id
+        for app_id, manifest in manifests.items()
+        if manifest["navigation"].get("status") == "development"
+    } == {
+        "ai2apps.sharing",
+        "ai2apps.environment",
+        "ai2apps.messager",
+        "ai2apps.benchmark",
+        "ai2apps.agents",
+    }
+    system_apps = {app["id"]: app for app in admin_routes.SYSTEM_APPS}
+    assert all(system_apps[app_id]["status"] == "development" for app_id in {
+        "ai2apps.sharing", "ai2apps.environment", "ai2apps.messager", "ai2apps.benchmark", "ai2apps.agents"
+    })
 
 
 def test_shell_router_exposes_singleton_and_instance_urls():
@@ -94,6 +140,25 @@ def test_shell_router_exposes_singleton_and_instance_urls():
     assert "/v1/mobile/chat/threads/{thread_id}/agent-runs" in paths
     assert "/v1/mobile/agent-runs/{run_id}" in paths
     assert "/mobile/chat" in paths
+
+
+def test_source_mounted_sandbox_csp_supports_authenticated_hot_development():
+    origin = "http://127.0.0.1:43123"
+    policy = admin_routes._sandbox_app_resource_csp(origin, development=True)
+
+    assert (
+        "sandbox allow-scripts allow-forms allow-downloads allow-same-origin" in policy
+    )
+    assert f"connect-src {origin}" in policy
+    assert "connect-src 'none'" not in policy
+
+
+def test_installed_package_sandbox_csp_remains_strict():
+    origin = "http://127.0.0.1:43123"
+    policy = admin_routes._sandbox_app_resource_csp(origin, development=False)
+
+    assert "allow-same-origin" not in policy
+    assert "connect-src 'none'" in policy
 
 
 def test_desktop_home_renders_shell_without_launching_dashboard():
@@ -146,9 +211,22 @@ def test_desktop_shell_has_a_home_surface_and_root_navigation():
     assert "homeAppsLocked" in script
     assert ".desktop-home-app.is-locked" in styles
     assert "function resumeProvisioningApp()" in script
+    assert "session?.capability === 'model.package.install'" in script
     assert "'/v1/platform/provisioning/sessions'" in script
     assert "acknowledge-return" not in script
     assert "await resumeProvisioningApp()" in script
+
+
+def test_launcher_disables_apps_that_are_still_in_development():
+    script = (WEB_ROOT / "static" / "js" / "shell.js").read_text()
+    styles = (WEB_ROOT / "static" / "css" / "shell.css").read_text()
+
+    assert "status: navigation.status || item.status || 'active'" in script
+    assert "const development = app.status === 'development';" in script
+    assert "disabled aria-disabled=\"true\"" in script
+    assert "tr('shell.launcher.in_development')" in script
+    assert "if (app.status !== 'active')" in script
+    assert ".launcher-app.is-development" in styles
 
 
 def test_desktop_dock_home_button_uses_logo_without_visible_wordmark():
@@ -253,6 +331,76 @@ def test_desktop_packages_one_shared_acefox_bundle_for_shell_and_agents():
     assert "AI2AppsSharedBrowserBundle bool true" in dev_packager
     assert "AI2AppsSharedBrowserBundle bool true" in release_packager
     assert "duplicated Agent Gecko bundle is still packaged" in verifier
+
+
+def test_release_shaped_test_app_has_an_isolated_resettable_instance():
+    repository_root = Path(__file__).parents[1]
+    test_builder = (
+        repository_root / "apps/ai2apps-acefox/scripts/build-test-app.sh"
+    ).read_text()
+    release_builder = (
+        repository_root / "apps/ai2apps-acefox/scripts/build-release-app.sh"
+    ).read_text()
+    helper = (
+        repository_root / "apps/ai2apps-acefox/Sources/AI2AppsHelper/main.swift"
+    ).read_text()
+
+    assert "OUTPUT_APP=${PROJECT_DIR}/.build/AI2Apps-test.app" in test_builder
+    assert "PRODUCT_IDENTIFIER=com.ai2apps.desktop.test" in test_builder
+    assert "INSTANCE_ID=test" in test_builder
+    assert "RUNTIME_PROFILE=cloud" in test_builder
+    assert "APP_ICON_UPPER_COLOR='#C7E7FA'" in test_builder
+    assert "DEVELOPMENT_BUILD=0" in test_builder
+    assert "ALLOW_INSTANCE_DATA_RESET=1" in test_builder
+    assert "MENUBAR_ICON_BADGE=test" in test_builder
+    assert 'id="ai2apps-test-badge-left"' in test_builder
+    assert 'id="ai2apps-test-badge-right"' in test_builder
+    assert '"${SCRIPT_DIR}/build-release-app.sh"' in test_builder
+    assert "AI2AppsAllowInstanceDataReset bool true" in release_builder
+    assert 'withTitle: "重置数据…"' in helper
+    assert "InstanceDataReset(paths: paths).perform()" in helper
+    assert "本机共享的已验证 Checkpoint 与公共 Hugging Face cache 不会被删除" in helper
+    assert "shellApplication?.forceTerminate()" in helper
+    assert "请重新打开 \\(appDisplayName) 后再试" in helper
+
+
+def test_app_dev_has_its_own_icon_tint_and_data_reset_capability():
+    repository_root = Path(__file__).parents[1]
+    builder = (
+        repository_root
+        / "apps/ai2apps-acefox/scripts/build-app-dev-environment.sh"
+    ).read_text()
+
+    assert "APP_ICON_UPPER_COLOR='#E2D5F8'" in builder
+    assert "ALLOW_INSTANCE_DATA_RESET=1" in builder
+    assert "AI2AppsAllowInstanceDataReset" in builder
+
+
+def test_release_builder_enforces_fixed_instance_visual_contracts_centrally():
+    repository_root = Path(__file__).parents[1]
+    builder = (
+        repository_root / "apps/ai2apps-acefox/scripts/build-release-app.sh"
+    ).read_text()
+
+    assert "ICON_CONTRACT=test" in builder
+    assert "ICON_CONTRACT=app-dev" in builder
+    assert "reserved Test/App-Dev identity fields" in builder
+    assert "APP_ICON_UPPER_COLOR='#C7E7FA'" in builder
+    assert "APP_ICON_UPPER_COLOR='#E2D5F8'" in builder
+    assert 'id="ai2apps-app-dev-badge"' in builder
+    assert 'id="ai2apps-test-badge-left"' in builder
+    assert 'id="ai2apps-test-badge-right"' in builder
+    assert "main App and embedded Shell icons do not match" in builder
+    assert "special App/tray icons are reserved" in builder
+    assert "AI2AppsIconContract string ${ICON_CONTRACT}" in builder
+
+    verifier = (
+        repository_root / "apps/ai2apps-acefox/scripts/verify-release-app.sh"
+    ).read_text()
+    assert "EXPECTED_ICON_CONTRACT=standard" in verifier
+    assert "signed App icon contract does not match its instance identity" in verifier
+    assert 'id="ai2apps-app-dev-badge"' in verifier
+    assert 'id="ai2apps-test-badge-left"' in verifier
 
 
 def test_shell_recovers_if_firefox_restores_the_iframe_before_load_listener():
@@ -1185,7 +1333,6 @@ def test_unsafe_app_identifier_is_not_rendered():
         ("ai2apps.dashboard", "system_apps/dashboard.html", "status"),
         ("ai2apps.account", "system_apps/account.html", "account"),
         ("ai2apps.ai-browser", "system_apps/ai_browser.html", "ai-browser"),
-        ("ai2apps.messager", "system_apps/messager.html", "messager"),
         ("ai2apps.gallery", "system_apps/gallery.html", "gallery"),
         ("ai2apps.knowledge", "system_apps/knowledge.html", "knowledge"),
         ("ai2apps.readaloud", "system_apps/readaloud.html", "readaloud"),
@@ -1193,13 +1340,11 @@ def test_unsafe_app_identifier_is_not_rendered():
         ("ai2apps.imagine-studio", "system_apps/imagine_studio.html", "imagine-studio"),
         ("ai2apps.models", "system_apps/models.html", "models"),
         ("ai2apps.discover", "system_apps/discover.html", "discover"),
-        ("ai2apps.agents", "system_apps/agents.html", "agents"),
         ("ai2apps.trust-center", "system_apps/trust_center.html", "trust"),
         ("ai2apps.settings", "system_apps/settings.html", "settings"),
         ("ai2apps.logs", "system_apps/logs.html", "logs"),
         ("ai2apps.terminal", "system_apps/terminal.html", "terminal"),
         ("ai2apps.coder", "system_apps/coder.html", "coder"),
-        ("ai2apps.benchmark", "system_apps/benchmark.html", "bench"),
     ],
 )
 def test_dashboard_capabilities_have_independent_host_entries(
@@ -1241,6 +1386,22 @@ def test_dashboard_capabilities_have_independent_host_entries(
         templates.TemplateResponse.assert_called_once_with(
             request, template_name, context
         )
+
+
+@pytest.mark.parametrize(
+    "app_id",
+    ["ai2apps.sharing", "ai2apps.environment", "ai2apps.messager", "ai2apps.benchmark", "ai2apps.agents"],
+)
+def test_development_system_apps_reject_direct_content_access(app_id):
+    with pytest.raises(admin_routes.HTTPException) as error:
+        asyncio.run(
+            admin_routes.system_app_content(
+                request=MagicMock(),
+                app_id=app_id,
+                principal=CORE_PRINCIPAL,
+            )
+        )
+    assert error.value.status_code == 404
 
 
 def test_system_app_content_marks_authenticated_desktop_shell_environment():
@@ -1433,6 +1594,10 @@ def test_discover_compares_local_and_cloud_versions_for_upgrades():
     assert "isInstalled(item.packageId)&&hasUpgrade(item)" in source
     assert "discover.action.upgrade" in source
     assert "isInstalled(item.packageId)&&!hasUpgrade(item)" in source
+    assert "isModelReady(item)" in source
+    assert "isModelReady(selected)" in source
+    assert "readyModelConfigurationIds" in script
+    assert "modelReady: Boolean" in script
 
 
 def test_discover_blocks_target_for_restart_required_dependency():
@@ -1448,6 +1613,7 @@ def test_discover_blocks_target_for_restart_required_dependency():
     assert "resumeInstallContinuation" in script
     assert "request('/install-continuation')" in script
     assert "request('/install-continuation', { method: 'DELETE' })" in script
+    assert ".acpf-error.is-notice" in source
 
 
 def test_discover_i18n_keys_exist_in_english_and_simplified_chinese():
@@ -1595,10 +1761,11 @@ def test_chat_right_sidebar_consolidates_controls_and_keeps_runtime_options_disc
     assert "chat.show_jump_button" not in chat
     assert 'x-show="!autoScrollEnabled && isCurrentChatStreaming()"' in chat
     assert 'x-show="availableAudioModels.length > 0"' in sidebar_markup
-    assert 'x-model="audioSettings.sttModel"' in sidebar_markup
-    assert 'x-model="audioSettings.ttsModel"' in sidebar_markup
+    assert ':value="audioSettings.sttModel"' in sidebar_markup
+    assert ':value="audioSettings.ttsModel"' in sidebar_markup
     assert 'x-model="audioSettings.voice"' in sidebar_markup
-    assert '@change="onAudioTtsModelChange()"' in sidebar_markup
+    assert "onAudioModelSelect('stt', $event.target)" in sidebar_markup
+    assert "onAudioModelSelect('tts', $event.target)" in sidebar_markup
     assert "voiceSettingsExpanded: false" in chat
     assert 'x-show="voiceSettingsExpanded" x-collapse' in sidebar_markup
     assert 'x-model.number="audioSettings.speed"' in sidebar_markup

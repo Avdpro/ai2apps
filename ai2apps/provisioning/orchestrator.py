@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import uuid
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from packaging.specifiers import SpecifierSet
@@ -70,13 +72,67 @@ class CapabilityProvisioner:
         registry_packages = getattr(self.runtime, "registry_packages", None)
         if registry_packages is not None and self.checkpoint_acquisition is None:
             registry_root = registry_packages.root.parent
+            legacy_root = registry_root / "checkpoint-cache-v1"
+            configured_root = os.environ.get("AI2APPS_CHECKPOINT_CACHE_ROOT", "")
+            if configured_root:
+                cache_root = Path(configured_root).expanduser()
+                if not cache_root.is_absolute():
+                    raise ValueError(
+                        "AI2APPS_CHECKPOINT_CACHE_ROOT must be an absolute path"
+                    )
+                cache_root = cache_root.resolve()
+            else:
+                cache_root = legacy_root
+            legacy_roots = [legacy_root]
+            active_instances_root = os.environ.get(
+                "AI2APPS_INSTANCE_SUPPORT_ROOT", ""
+            )
+            if active_instances_root:
+                support_root = Path(active_instances_root).expanduser()
+                if not support_root.is_absolute():
+                    raise ValueError(
+                        "AI2APPS_INSTANCE_SUPPORT_ROOT must be an absolute path"
+                    )
+                if support_root.is_dir() and not support_root.is_symlink():
+                    legacy_roots.extend(
+                        instance / "data/platform/packages/checkpoint-cache-v1"
+                        for instance in support_root.iterdir()
+                        if instance.is_dir() and not instance.is_symlink()
+                    )
+            preserved_root_value = os.environ.get(
+                "AI2APPS_PRESERVED_CHECKPOINT_CACHE_ROOT", ""
+            )
+            if preserved_root_value:
+                preserved_root = Path(preserved_root_value).expanduser()
+                if not preserved_root.is_absolute():
+                    raise ValueError(
+                        "AI2APPS_PRESERVED_CHECKPOINT_CACHE_ROOT must be absolute"
+                    )
+                if preserved_root.is_dir() and not preserved_root.is_symlink():
+                    legacy_roots.extend(
+                        item
+                        for item in preserved_root.iterdir()
+                        if item.is_dir() and not item.is_symlink()
+                    )
+            resolved_cache_root = cache_root.resolve()
+            unique_legacy_roots: dict[Path, None] = {}
+            for candidate in legacy_roots:
+                if not candidate.is_dir() or candidate.is_symlink():
+                    continue
+                resolved = candidate.resolve()
+                if resolved != resolved_cache_root:
+                    unique_legacy_roots[resolved] = None
+            legacy_caches = tuple(
+                CheckpointCache(candidate) for candidate in unique_legacy_roots
+            )
             self.checkpoint_acquisition = CheckpointAcquisitionService(
                 registry=CheckpointRegistryClient(
                     cloud=registry_packages.cloud,
                     root=registry_root,
                     repository_fingerprint=registry_packages.repository_fingerprint,
                 ),
-                cache=CheckpointCache(registry_root / "checkpoint-cache-v1"),
+                cache=CheckpointCache(cache_root),
+                legacy_caches=legacy_caches,
             )
 
         async def activate(recipe: dict[str, Any]) -> None:
@@ -454,6 +510,11 @@ class CapabilityProvisioner:
     def resolve_plan_ready(self, plan: dict[str, Any]) -> dict[str, Any] | None:
         """Resolve every provider selected by a single- or multi-profile plan."""
 
+        if plan.get("source") == "discover-model-package":
+            return self._resolve_component_stack(
+                {"id": plan["profileId"], "stack": plan["stack"]},
+                plan["capability"],
+            )
         profile_ids = plan.get("profileIds")
         if not isinstance(profile_ids, list):
             return self.resolve_ready(
@@ -561,6 +622,16 @@ class CapabilityProvisioner:
                     None,
                 )
             option_id = str(option.get("id") or "")
+            checkpoint_ids = [
+                component.get("model_id")
+                for component in option_stack.get("components", ())
+                if component.get("kind") == "checkpoint"
+            ] or ([option_model_id] if option_model_id else [])
+            installed = bool(checkpoint_ids) and all(
+                (model := resolve_package_model(self.runtime, model_id)) is not None
+                and model.checkpoint_ready
+                for model_id in checkpoint_ids
+            )
             label = option.get("label")
             description = option.get("description")
             profile_options.append(
@@ -578,6 +649,7 @@ class CapabilityProvisioner:
                     ),
                     "modelId": option_model_id,
                     "compatible": compatible,
+                    "installed": installed,
                     "recommended": compatible and option_id in recommended_ids,
                     "selected": (
                         option_id in preferred_profile_ids
@@ -713,6 +785,127 @@ class CapabilityProvisioner:
             "sessionId": session["id"],
             "session": session,
         }
+
+    def ensure_model_package(
+        self,
+        *,
+        actor_id: str,
+        installation_id: str,
+        app_instance_id: str,
+        package_id: str,
+        package_version: str,
+        display_name: str,
+        service_key: str,
+        models: list[dict[str, Any]],
+        selected_model_id: str,
+        model_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a durable ACPF plan from trusted Registry model metadata."""
+
+        selected = next(
+            (item for item in models if item.get("id") == selected_model_id), None
+        )
+        if selected is None:
+            raise ValueError("Selected model is not declared by this Package")
+        profile_id = "registry:" + hashlib.sha256(
+            f"{package_id}@{package_version}:{selected_model_id}".encode()
+        ).hexdigest()[:24]
+        minimum_memory_gib = None
+        if isinstance(model_profile, dict):
+            minimum_bytes = model_profile.get("minimumMemoryBytes")
+            if isinstance(minimum_bytes, int) and minimum_bytes > 0:
+                minimum_memory_gib = minimum_bytes / (1024**3)
+        options = [
+            {
+                "profileId": item["id"],
+                "label": item["label"],
+                "description": "",
+                "modelId": item["id"],
+                "compatible": True,
+                "recommended": bool(item.get("recommended")),
+                "selected": item["id"] == selected_model_id,
+                "disabledReasons": [],
+                "minimumMemoryGiB": minimum_memory_gib,
+            }
+            for item in models
+        ]
+        components = [
+            {
+                "id": "provider",
+                "kind": "package",
+                "phase": "provider",
+                "package_id": package_id,
+                "service_key": service_key,
+                "version": f"=={package_version}",
+            },
+            {
+                "id": "checkpoint",
+                "kind": "checkpoint",
+                "phase": "checkpoint",
+                "model_id": selected_model_id,
+            },
+            {
+                "id": "verify",
+                "kind": "verify",
+                "phase": "verify",
+                "service_key": service_key,
+                "capabilities": [],
+            },
+        ]
+        plan = self._component_plan(
+            app_id="ai2apps.discover",
+            capability="model.package.install",
+            requirements={"modelId": selected_model_id},
+            profile={"id": profile_id, "stack": {"components": components}},
+            presentation={
+                "eyebrow": "AI2APPS MODEL INSTALL",
+                "title": f"安装 {display_name}",
+                "description": "安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。",
+                "icon": "box",
+                "confirm_label": "安装 Package 并下载模型",
+                "ready_label": "模型已安装并可用",
+                "steps": {
+                    "provider": "安装模型 Service Package",
+                    "checkpoint": "下载所选模型 Checkpoint",
+                    "verify": "启动并验证模型服务",
+                },
+            },
+            device=device_profile(),
+            profile_options=options,
+        )
+        plan["source"] = "discover-model-package"
+        ready = self.resolve_plan_ready(plan)
+        if ready is not None:
+            return {"status": "ready", "provider": ready, "plan": plan}
+        request_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "packageId": package_id,
+                    "version": package_version,
+                    "modelId": selected_model_id,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        session = self.repository.create(
+            actor_id=actor_id,
+            installation_id=installation_id,
+            app_instance_id=app_instance_id,
+            app_id="ai2apps.discover",
+            capability="model.package.install",
+            action_id=f"install:{package_id}",
+            status="awaiting_confirmation",
+            profile_id=profile_id,
+            request_fingerprint=request_fingerprint,
+            plan=plan,
+            intent={
+                "returnTo": "/apps/ai2apps.discover",
+                "resumeToken": request_fingerprint,
+                "completionPolicy": "configure_only",
+            },
+        )
+        return {"status": "setup_required", "sessionId": session["id"], "session": session}
 
     def select_profile(
         self, session_id: str, profile_id: str
@@ -893,9 +1086,13 @@ class CapabilityProvisioner:
             else progress_end
         )
         mapped_percent = progress_start
+        last_download = None
 
         def progress(value: dict[str, Any]) -> None:
-            nonlocal mapped_percent
+            nonlocal mapped_percent, last_download
+            last_download = value.get("download") or last_download
+            if last_download is not None:
+                value = {**value, "download": last_download}
             operation = {
                 "kind": "package",
                 "packageId": descriptor["package_id"],
@@ -925,18 +1122,43 @@ class CapabilityProvisioner:
                 },
             )
 
-        await self.runtime.registry_packages.install(
-            namespace,
-            name,
-            selected_version,
-            # The Installation owner explicitly approved this signed,
-            # device-recommended stack through the ACPF confirmation sheet.
-            # Keep the approval scoped to this exact Registry install call;
-            # Package signature, compatibility, and audit verification still
-            # run normally.
-            approve_review=True,
-            progress=progress,
-        )
+        try:
+            await self.runtime.registry_packages.install(
+                namespace,
+                name,
+                selected_version,
+                # The Installation owner explicitly approved this signed,
+                # device-recommended stack through the ACPF confirmation sheet.
+                # Keep the approval scoped to this exact Registry install call;
+                # Package signature, compatibility, and audit verification still
+                # run normally.
+                approve_review=True,
+                progress=progress,
+            )
+        except RegistryError as exc:
+            dependency = exc.details.get("dependency", {})
+            dependency_id = dependency.get("packageId")
+            dependency_version = dependency.get("availableVersion")
+            should_stage_restart_dependency = bool(
+                exc.code == "dependency_restart_required"
+                and dependency.get("pendingRestart") is False
+                and dependency.get("restartScope") in {"local", "app"}
+                and isinstance(dependency_id, str)
+                and "/" in dependency_id
+                and isinstance(dependency_version, str)
+                and dependency_version
+            )
+            if not should_stage_restart_dependency:
+                raise
+            dependency_namespace, dependency_name = dependency_id.split("/", 1)
+            await self.runtime.registry_packages.install(
+                dependency_namespace,
+                dependency_name,
+                dependency_version,
+                approve_review=True,
+                progress=progress,
+            )
+            return False
         return self._package_fact(descriptor)["ready"]
 
     async def _install_component_checkpoint(
@@ -1008,6 +1230,7 @@ class CapabilityProvisioner:
                 session_id,
                 status=status,
                 progress={"phase": status, "percent": percent},
+                clear_error=True,
             )
             next_percent = 5 + int(
                 (index + 1) / max(1, len(packages)) * 40
@@ -1027,6 +1250,7 @@ class CapabilityProvisioner:
                         "percent": percent,
                         "runtimeEpoch": self._runtime_epoch,
                     },
+                    clear_error=True,
                 )
                 return
         for component in components:
@@ -1086,6 +1310,7 @@ class CapabilityProvisioner:
                         "percent": 20,
                         "runtimeEpoch": self._runtime_epoch,
                     },
+                    clear_error=True,
                 )
                 return
 
@@ -1110,6 +1335,7 @@ class CapabilityProvisioner:
                         "percent": 40,
                         "runtimeEpoch": self._runtime_epoch,
                     },
+                    clear_error=True,
                 )
                 return
 

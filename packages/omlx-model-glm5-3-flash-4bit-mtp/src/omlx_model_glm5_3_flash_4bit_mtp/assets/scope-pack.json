@@ -1,0 +1,37 @@
+{
+  "format": "ai2apps-scope-pack",
+  "version": 1,
+  "id": "glm5-3-flash-runtime-scope-pack",
+  "pack_version": "2026.09.19.1",
+  "family": "glm5_next",
+  "engine": "glm5-3-flash-dynamic-cached-moe",
+  "profile": {
+    "file": "scope-profile.json",
+    "format": "omlx-glm5-dynamic-scope-profile",
+    "sha256": "5aeb4e3e53eb3a35400a4eee5f852029df5675119dcf4c282d675ac91ee0a3a5",
+    "layers": 45,
+    "routed_layers": 42,
+    "experts": 288,
+    "max_ranked_experts": 16,
+    "scopes": 1
+  },
+  "compatibility": {
+    "model_ids": [
+      "glm5-3-flash-mlx-4bit-mtp"
+    ],
+    "source_revisions": {
+      "glm5-3-flash-mlx-4bit-mtp": "a4d3f3e489a12893e0056a5b9494cc76194a220a"
+    },
+    "memory_tiers": [
+      80,
+      96
+    ],
+    "hot_slots": 16,
+    "vision_l1_reserve_slots": 16
+  },
+  "provenance": {
+    "kind": "validated-runtime-defaults",
+    "source_project": "oMLX MoE Cache Experiment",
+    "benchmark_document": "docs/glm5-3-cached-moe-optimization-2026-08-28.md"
+  }
+}

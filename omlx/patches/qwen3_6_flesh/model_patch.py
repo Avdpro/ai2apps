@@ -988,13 +988,26 @@ def _make_sanitize(original_sanitize):
                     if value is not None:
                         loaded_experts = int(value.shape[0])
                         physical_experts = len(expert_ids) + len(tail_ids)
+                        tail_key = key.replace(
+                            ".switch_mlp.", ".tail_switch_mlp."
+                        )
+                        if (
+                            policy.backend == "tiered"
+                            and loaded_experts == len(expert_ids)
+                            and tail_key in sanitized
+                            and int(sanitized[tail_key].shape[0])
+                            == len(tail_ids)
+                        ):
+                            # The scoped safetensors reader already places
+                            # protected and replaceable experts into the two
+                            # banks consumed by the tiered runtime.  Accept
+                            # that pre-split representation instead of
+                            # requiring the transient combined bank.
+                            continue
                         if loaded_experts == NUM_EXPERTS:
                             # Compatibility with the stock/full checkpoint
                             # reader and older pre-compacted artifacts.
                             if policy.backend == "tiered":
-                                tail_key = key.replace(
-                                    ".switch_mlp.", ".tail_switch_mlp."
-                                )
                                 sanitized[tail_key] = value[list(tail_ids)]
                             sanitized[key] = value[list(expert_ids)]
                         elif loaded_experts == physical_experts:
@@ -1002,9 +1015,6 @@ def _make_sanitize(original_sanitize):
                             # protected + tail. Split by local offsets so global
                             # expert IDs never index the compact tensor.
                             if policy.backend == "tiered":
-                                tail_key = key.replace(
-                                    ".switch_mlp.", ".tail_switch_mlp."
-                                )
                                 sanitized[tail_key] = value[len(expert_ids) :]
                                 sanitized[key] = value[: len(expert_ids)]
                             else:

@@ -1,0 +1,8 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=${0:A:h}
+REPO_ROOT=${SCRIPT_DIR:h}
+
+exec "${REPO_ROOT}/ai2apps-test-system/bin/ai2apps-test" "$@"

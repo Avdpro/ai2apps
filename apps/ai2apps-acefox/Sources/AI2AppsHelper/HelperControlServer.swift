@@ -11,6 +11,7 @@ struct HelperControlRequest: Codable, Sendable {
     let actorUserID: String
     let browserProfileKey: String?
     let initialURL: String?
+    let confirmInstanceID: String?
 
     enum CodingKeys: String, CodingKey {
         case version
@@ -20,6 +21,7 @@ struct HelperControlRequest: Codable, Sendable {
         case actorUserID = "actor_user_id"
         case browserProfileKey = "browser_profile_key"
         case initialURL = "initial_url"
+        case confirmInstanceID = "confirm_instance_id"
     }
 }
 
@@ -256,6 +258,7 @@ final class HelperControlServer: @unchecked Sendable {
                   "browser.pause",
                   "browser.resume",
                   "local.restart",
+                  "instance.reset",
               ].contains(request.operation),
               constantTimeEqual(request.token, credentials.token),
               (1...200).contains(request.actorUserID.utf8.count) else {

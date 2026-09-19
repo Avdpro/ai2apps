@@ -3,26 +3,81 @@
   "package": {
     "id": "ai2apps/model-glm5-3-flash-4bit-mtp",
     "type": "service",
-    "version": "0.1.0",
+    "version": "0.1.5",
     "displayName": "GLM-5.3 Flash 4-bit MTP",
     "description": "Multimodal GLM-5.3 Flash Worker with exact dynamic Cached-MoE execution."
   },
   "compatibility": {
     "ai2apps": ">=0.1.0 <2.0.0",
-    "platforms": ["darwin"],
-    "architectures": ["arm64"],
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
     "minimumOsVersion": "26.2"
   },
   "entrypoints": [
-    {"name": "model-worker", "kind": "service", "path": "service.yaml"}
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
   ],
   "permissions": [
-    {"capability": "model-weights.huggingface-cache.read", "reason": "Read only the Host-selected pinned GLM-5.3 checkpoint and prepared expert store.", "required": true},
-    {"capability": "accelerator.metal", "reason": "Run the oMLX dynamic Cached-MoE VLM on Apple GPU.", "required": true}
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read only the Host-selected pinned GLM-5.3 checkpoint and prepared expert store.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run the oMLX dynamic Cached-MoE VLM on Apple GPU.",
+      "required": true
+    }
   ],
   "dependencies": [
-    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.5.5 <2.0.0", "optional": false}
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.7.5 <2.0.0",
+      "optional": false
+    }
   ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "multimodal"
+    ],
+    "tasks": [
+      "multimodal-conversation",
+      "image-understanding"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 181750094029,
+    "minimumMemoryBytes": 77309411328,
+    "scores": {
+      "speed": 3,
+      "capability": 5
+    },
+    "benchmark": {
+      "label": "SSD-ready Cached-MoE Top80/Hot16; runtime estimate",
+      "device": "AI2Apps runtime tier / reference-host measurement"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.glm5-3-flash-4bit-mtp",
+    "models": [
+      {
+        "id": "ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp",
+        "label": "GLM-5.3 Flash 4-bit MTP",
+        "recommended": true
+      }
+    ]
+  }
 }

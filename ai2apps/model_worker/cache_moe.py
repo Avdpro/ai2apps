@@ -113,7 +113,10 @@ class DeepseekV4ChatAdapter(OmlxChatAdapter):
 
         if mode == "full":
             layout = prepared.get("checkpoint_layout", {})
-            if layout.get("format") == "ai2apps-backbone-expert-store":
+            if layout.get("format") in {
+                "ai2apps-backbone-expert-store",
+                "ai2apps-ssd-checkpoint",
+            }:
                 configure_scope_policy(profile, default_scope, expert_store, 256)
             else:
                 disable_scope_policy()
@@ -130,6 +133,58 @@ class DeepseekV4ChatAdapter(OmlxChatAdapter):
             profile, default_scope, expert_store, resident_experts
         )
         return DeepseekV4FleshEngine(str(checkpoint.path), trust_remote_code=False)
+
+
+class DeepseekV41ChatAdapter(OmlxChatAdapter):
+    """Run the dedicated lossless DeepSeek V4.1 SSD engine."""
+
+    async def create_engine(
+        self,
+        checkpoint: ModelWorkerCheckpoint,
+        runtime_options: Mapping[str, Any] | None = None,
+    ) -> Any:
+        if checkpoint.path is None:
+            return await super().create_engine(checkpoint, runtime_options)
+        options = dict(runtime_options or {})
+        mode = str(options.get("moe_execution_mode", "cached")).lower()
+        if mode != "cached":
+            raise ModelWorkerError(
+                "DeepSeek V4.1 currently supports the lossless Cached mode",
+                code="invalid_request_error",
+                status_code=400,
+            )
+        prepared = _prepared_manifest(checkpoint)
+        if prepared is None or prepared.get("family") != "deepseek_v41":
+            raise ModelWorkerError(
+                "DeepSeek V4.1 SSD checkpoint is not activated",
+                code="model_not_prepared",
+                status_code=503,
+            )
+        layout = prepared.get("checkpoint_layout") or {}
+        if (
+            layout.get("format") != "ai2apps-ssd-checkpoint"
+            or layout.get("layout") != "dsv41-original-fp4-six-segment-v1"
+        ):
+            raise ModelWorkerError(
+                "DeepSeek V4.1 checkpoint layout is invalid",
+                code="invalid_prepared_checkpoint",
+                status_code=503,
+            )
+        expert_store = _authorized_path(
+            checkpoint, prepared.get("expert_store"), "expert store"
+        )
+        if expert_store != (checkpoint.path / "experts").resolve():
+            raise ModelWorkerError(
+                "DeepSeek V4.1 expert store must belong to the checkpoint",
+                code="invalid_prepared_checkpoint",
+                status_code=503,
+            )
+        from omlx.patches.deepseek_v41 import DeepseekV41Engine
+
+        return DeepseekV41Engine(
+            checkpoint.path,
+            stream_codec=self.create_stream_codec(checkpoint, runtime_options),
+        )
 
 
 class Qwen36ChatAdapter(OmlxChatAdapter):
@@ -187,7 +242,6 @@ class Qwen36ChatAdapter(OmlxChatAdapter):
                 expert_store,
                 256,
                 backend="flesh",
-                arena_tail_slots=0,
             )
             return BatchedEngine(str(checkpoint.path), trust_remote_code=False)
 

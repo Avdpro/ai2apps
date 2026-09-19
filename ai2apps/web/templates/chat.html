@@ -3,8 +3,8 @@
 {% block title %}{{ t('chat.title') }}{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}">
-<script src="{{ static('js/capability_provisioning.js') }}"></script>
+<link rel="stylesheet" href="{{ static('css/capability_provisioning.css') }}?v=action-breathe-v1">
+<script src="{{ static('js/capability_provisioning.js') }}?v=completion-v1"></script>
 <!-- Markdown rendering -->
 <script src="/admin/static/js/purify.min.js"></script>
 <script src="/admin/static/js/marked.umd.js"></script>
@@ -1432,7 +1432,7 @@
         document.documentElement.setAttribute('data-theme', theme);
     })();
 </script>
-<div class="chat-shell flex overflow-hidden{% if terminal_assistant | default(false) %} terminal-assistant-chat{% endif %}" data-app-id="ai2apps.general-chat" x-data="chatApp()" x-init="init()"
+<div class="chat-shell flex overflow-hidden{% if terminal_assistant | default(false) %} terminal-assistant-chat{% endif %}" data-app-id="ai2apps.general-chat" x-data="chatApp()"
     @keydown.window="handleGlobalKeydown($event)">
     <!-- External Review progress and confirmation dialog -->
     <div x-show="externalReviewDialog.show" x-cloak
@@ -1647,13 +1647,10 @@
             </template>
         </div>
 
-        <!-- Sidebar Footer -->
-        <div class="p-2 border-t border-line flex-shrink-0">
-            <button @click="showChatSettingsModal = true"
-                class="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-fg-tertiary hover:bg-surface-muted rounded">
-                <i data-lucide="settings" class="w-3 h-3"></i>
-                {{ t('chat.chat_settings') }}
-            </button>
+        <div class="px-3 py-3 border-t border-line flex-shrink-0">
+            <p class="text-[10px] leading-relaxed text-fg-tertiary" data-inference-attribution>
+                {{ t('chat.inference_attribution') }}
+            </p>
         </div>
     </div>
 
@@ -1733,6 +1730,10 @@
                                 style="color: var(--timeline-accent);"></i>
                         </button>
                     </template>
+                    <button type="button" @click="modelMenuOpen = false; installRecommendedLocalModel(true)"
+                        :disabled="localModelRecommendation.status === 'installing'"
+                        class="w-full px-3 py-2 text-xs text-left border-t border-line hover:bg-surface-muted"
+                        x-text="window.t('chat.install_more_models')"></button>
                 </div>
                 </div>
             </div>
@@ -3064,13 +3065,16 @@
                     <label class="text-[10px] font-bold uppercase tracking-wider block"
                         style="color: var(--text-secondary);">{{ t('chat.active_model') }}</label>
                     <div class="relative">
-                        <select x-model="currentModel"
-                            @change="selectModel($event.target.value)"
+                        <select :value="currentModel" x-ref="activeModelSelect"
+                            x-effect="$el.value = currentModel || ''"
+                            @change="onConversationModelSelect($event.target)"
                             class="w-full px-3 py-2 text-xs border border-line rounded-xl font-medium cursor-pointer appearance-none focus:outline-none focus:border-line-strong transition-colors bg-surface-muted hover:bg-surface-alt"
                             style="color: var(--text-primary);">
                             <template x-for="model in availableModels" :key="model.id">
                                 <option :value="model.id" x-text="model.name"></option>
                             </template>
+                            <option value="__install_more__" :disabled="localModelRecommendation.status === 'installing'"
+                                x-text="window.t('chat.install_more_models')"></option>
                         </select>
                         <i data-lucide="chevron-down"
                             class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -3128,30 +3132,42 @@
                         <label x-show="availableAudioModelsByType('audio_stt').length" class="block space-y-1">
                             <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);"
                                 x-text="window.t('chat.speech_recognition_model')"></span>
-                            <select x-model="audioSettings.sttModel" @change="saveAudioSettings()"
+                            <select :value="audioSettings.sttModel" x-effect="$el.value = audioSettings.sttModel"
+                                @change="onAudioModelSelect('stt', $event.target)"
                                 class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
                                 <template x-for="model in availableAudioModelsByType('audio_stt')" :key="model.id">
                                     <option :value="model.id" x-text="model.name"></option>
                                 </template>
+                                <option value="__install_more__" :disabled="audioCapabilitySetupBusy.stt"
+                                    x-text="window.t('chat.install_more_models')"></option>
                             </select>
                         </label>
                         <label x-show="availableAudioModelsByType('audio_tts').length" class="block space-y-1">
                             <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);"
                                 x-text="window.t('chat.speech_synthesis_model')"></span>
-                            <select x-model="audioSettings.ttsModel" @change="onAudioTtsModelChange()"
+                            <select :value="audioSettings.ttsModel"
+                                x-effect="$el.value = audioSettings.ttsModel"
+                                @change="onAudioModelSelect('tts', $event.target)"
                                 class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
                                 <template x-for="model in availableAudioModelsByType('audio_tts')" :key="model.id">
-                                    <option :value="model.id" x-text="model.name"></option>
+                                    <option :value="model.id"
+                                        :selected="model.id === audioSettings.ttsModel"
+                                        x-text="model.name"></option>
                                 </template>
+                                <option value="__install_more__" :disabled="audioCapabilitySetupBusy.tts"
+                                    x-text="window.t('chat.install_more_models')"></option>
                             </select>
                         </label>
                         <label x-show="audioVoiceOptions().length" class="block space-y-1">
                             <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);"
                                 x-text="window.t('chat.voice_role')"></span>
-                            <select x-model="audioSettings.voice" @change="audioError = ''; saveAudioSettings()"
+                            <select x-model="audioSettings.voice"
+                                x-effect="$el.value = audioSettings.voice"
+                                @change="audioError = ''; saveAudioSettings()"
                                 class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface">
                                 <template x-for="voice in audioVoiceOptions()" :key="voice">
-                                    <option :value="voice" x-text="voice"></option>
+                                    <option :value="voice" :selected="voice === audioSettings.voice"
+                                        x-text="voice"></option>
                                 </template>
                             </select>
                         </label>
@@ -3173,13 +3189,17 @@
                                 ? window.t('chat.voice_emotion_unavailable_tooltip') : ''">
                             <span class="text-[10px] font-bold uppercase tracking-wider block" style="color:var(--text-secondary);"
                                 x-text="window.t('chat.voice_emotion')"></span>
-                            <select x-model="audioSettings.emotion" @change="saveAudioSettings()"
+                            <select x-model="audioSettings.emotion"
+                                x-effect="$el.value = audioSettings.emotion"
+                                @change="saveAudioSettings()"
                                 :disabled="audioEmotionOptions().length === 0"
                                 class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface disabled:opacity-50 disabled:cursor-not-allowed">
-                                <option x-show="audioEmotionOptions().length === 0" value="neutral"
-                                    x-text="window.t('chat.not_supported')"></option>
+                                <template x-if="audioEmotionOptions().length === 0">
+                                    <option value="neutral" x-text="window.t('chat.not_supported')"></option>
+                                </template>
                                 <template x-for="emotion in audioEmotionOptions()" :key="emotion">
-                                    <option :value="emotion" x-text="emotion"></option>
+                                    <option :value="emotion" :selected="emotion === audioSettings.emotion"
+                                        x-text="emotion"></option>
                                 </template>
                             </select>
                         </div>
@@ -3292,7 +3312,7 @@
                         <option value="auto">{{ t('chat.thinking_mode.auto') }}</option>
                         <option value="on_unlimit">{{ t('chat.thinking_mode.on_unlimited') }}</option>
                         <option value="on_limit">{{ t('chat.thinking_mode.on_limited') }}</option>
-                        <option value="off">{{ t('chat.thinking_mode.off') }}</option>
+                        <option value="off" :disabled="thinkingPolicyMode() === 'required'">{{ t('chat.thinking_mode.off') }}</option>
                     </select>
                     <div x-show="thinkingModeValue() === 'on_limit'" x-collapse class="space-y-1">
                         <label class="text-[10px] font-bold uppercase tracking-wider block"
@@ -3307,9 +3327,34 @@
                             class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface thinking-budget-input"
                             style="color: var(--text-primary);">
                     </div>
-                    <p class="text-[10px]" style="color: var(--text-tertiary);">
+                    <p x-show="false" class="text-[10px]" style="color: var(--text-tertiary);">
                         {{ t('chat.model_settings_advanced_hint') }}
                     </p>
+                    <div class="flex items-center gap-2 pt-2 border-t border-line">
+                        <div class="min-w-0 flex-1 flex items-center justify-between gap-3">
+                            <span class="min-w-0">
+                                <span class="block text-[10px] font-bold uppercase tracking-wider"
+                                    style="color: var(--text-secondary);">{{ t('chat.knowledge.use') }}</span>
+                                <span x-show="false" class="block text-[10px] truncate" style="color: var(--text-tertiary);"
+                                    x-text="knowledgeEnabled ? window.t('chat.knowledge.enabled_hint') : window.t('chat.knowledge.disabled_hint')"></span>
+                            </span>
+                            <button type="button" role="switch" :aria-checked="knowledgeEnabled ? 'true' : 'false'"
+                                :disabled="isCurrentChatStreaming()"
+                                @click="setKnowledgeEnabled(!knowledgeEnabled)"
+                                :aria-label="window.t('chat.knowledge.use')"
+                                class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-50"
+                                :class="knowledgeEnabled ? 'bg-accent' : 'bg-neutral-300 dark:bg-neutral-700'">
+                                <span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
+                                    :class="knowledgeEnabled ? 'translate-x-4' : ''" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                        <button type="button" @click="openKnowledgeSidebar()" :disabled="knowledgeSidebarBusy"
+                            class="chat-hover-tip chat-hover-tip-align-right p-1.5 rounded-lg border border-line bg-surface hover:bg-surface-alt disabled:opacity-50"
+                            :data-tooltip="window.t('chat.knowledge.open_sidebar')"
+                            :aria-label="window.t('chat.knowledge.open_sidebar')">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
@@ -3361,7 +3406,7 @@
                         style="color: var(--text-tertiary);">{{ t('chat.stats.prefill') }}</span>
                     <div class="flex items-end justify-between">
                         <div class="text-sm font-semibold" style="color: var(--text-primary);"
-                            x-text="recentStats?.avg_prefill_tps ? Number(recentStats.avg_prefill_tps).toFixed(1) : '0.0'">
+                            x-text="recentStats?.avg_prefill_tps > 0 ? Number(recentStats.avg_prefill_tps).toFixed(1) : '—'">
                         </div>
                         <div class="text-[10px]" style="color: var(--text-primary);"
                             x-show="recentStats?.prompt_tokens > 0" x-text="recentStats.prompt_tokens + ' ' + window.t('chat.stats.token_suffix')"></div>
@@ -3372,7 +3417,7 @@
                         style="color: var(--text-tertiary);">{{ t('chat.stats.token_generation') }}</span>
                     <div class="flex items-end justify-between">
                         <div class="text-sm font-semibold" style="color: var(--text-primary);"
-                            x-text="recentStats?.avg_generation_tps ? Number(recentStats.avg_generation_tps).toFixed(1) : '0.0'">
+                            x-text="recentStats?.avg_generation_tps > 0 ? Number(recentStats.avg_generation_tps).toFixed(1) : '—'">
                         </div>
                         <div class="text-[10px]" style="color: var(--text-primary);"
                             x-show="recentStats?.total_tokens > 0" x-text="recentStats.total_tokens + ' ' + window.t('chat.stats.token_suffix')"></div>
@@ -3679,7 +3724,30 @@
     const SYSTEM_PROMPT_STORAGE_KEY = 'omlx_chat_system_prompt';
     const PROMPT_PROFILES_STORAGE_KEY = 'omlx_chat_prompt_profiles';
     const ACTIVE_AGENT_RUNS_STORAGE_KEY = 'ai2apps_active_agent_runs_v1';
+    const CHAT_RIGHT_SIDEBAR_STORAGE_KEY = 'ai2apps_chat_right_sidebar_open_v1';
     const AGENT_TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
+
+    function readChatRightSidebarOpen() {
+        try {
+            const cookie = document.cookie
+                .split('; ')
+                .find(row => row.startsWith(`${CHAT_RIGHT_SIDEBAR_STORAGE_KEY}=`));
+            const value = cookie
+                ? decodeURIComponent(cookie.split('=', 2)[1] || '')
+                : localStorage.getItem(CHAT_RIGHT_SIDEBAR_STORAGE_KEY);
+            if (value === 'true') return true;
+            if (value === 'false') return false;
+        } catch (_) { /* use the responsive default */ }
+        return null;
+    }
+
+    function writeChatRightSidebarOpen(open) {
+        const value = open ? 'true' : 'false';
+        try { localStorage.setItem(CHAT_RIGHT_SIDEBAR_STORAGE_KEY, value); } catch (_) { /* best effort */ }
+        try {
+            document.cookie = `${CHAT_RIGHT_SIDEBAR_STORAGE_KEY}=${value}; Max-Age=31536000; Path=/; SameSite=Strict`;
+        } catch (_) { /* best effort */ }
+    }
 
     class StatusRendererRegistry {
         constructor() {
@@ -3848,6 +3916,8 @@
             l1OptimizationMode: 'auto',
             engineBoostMode: 'natural',
             kvPolicy: 'session',
+            knowledgeEnabled: false,
+            knowledgeSidebarBusy: false,
             rushActive: false,
             rushRestoreMode: null,
             rushSessionId: null,
@@ -3860,6 +3930,7 @@
             audioVoiceCatalog: {},
             voiceSettingsExpanded: false,
             currentModel: null,
+            preferredChatModel: null,
             localModelRecommendation: { status: 'idle', plan: null, error: '' },
 
             // Voice I/O is deliberately independent from the active LLM/VLM.
@@ -3881,6 +3952,20 @@
                     };
                 } catch (_) {
                     return defaults;
+                }
+            })(),
+            audioTtsPreferences: (() => {
+                try {
+                    const cookie = document.cookie
+                        .split('; ')
+                        .find(row => row.startsWith('ai2apps_chat_audio_tts_preferences_v1='));
+                    const serialized = cookie
+                        ? decodeURIComponent(cookie.split('=', 2)[1] || '')
+                        : localStorage.getItem('ai2apps-chat-audio-tts-preferences-v1');
+                    const stored = JSON.parse(serialized || '{}');
+                    return stored && typeof stored === 'object' ? stored : {};
+                } catch (_) {
+                    return {};
                 }
             })(),
             audioRecording: false,
@@ -3979,7 +4064,7 @@
             mcpTools: [],                // OpenAI-format tool definitions loaded from /v1/mcp/tools
 
             // Right Sidebar State
-            rightSidebarOpen: window.innerWidth >= 1200,
+            rightSidebarOpen: readChatRightSidebarOpen() ?? (window.innerWidth >= 1200),
             modelSettingsDirty: false,
             speculativeEngine: 'none',
             speculativeDraftModel: '',
@@ -4053,6 +4138,11 @@
             },
 
             thinkingModeValue() {
+                const policy = this.thinkingPolicyMode();
+                if (policy === 'required') {
+                    return this.modelSettings.thinking_budget_enabled ? 'on_limit' : 'on_unlimit';
+                }
+                if (policy === 'none') return 'off';
                 if (this.modelSettings.enable_thinking === false) return 'off';
                 if (this.modelSettings.enable_thinking === true) {
                     return this.modelSettings.thinking_budget_enabled ? 'on_limit' : 'on_unlimit';
@@ -4119,6 +4209,12 @@
             },
 
             setThinkingMode(mode) {
+                const policy = this.thinkingPolicyMode();
+                if (policy === 'required' && (mode === 'off' || mode === 'auto')) {
+                    mode = 'on_unlimit';
+                } else if (policy === 'none') {
+                    mode = 'off';
+                }
                 if (mode === 'on_unlimit') {
                     this.modelSettings.enable_thinking = true;
                     this.modelSettings.thinking_budget_enabled = false;
@@ -4139,6 +4235,14 @@
                     this.modelSettings.thinking_budget_tokens = null;
                 }
                 this.onModelSettingsChange();
+            },
+
+            currentModelReasoning() {
+                return this.availableModels.find(model => model.id === this.currentModel)?.reasoning || null;
+            },
+
+            thinkingPolicyMode() {
+                return String(this.currentModelReasoning()?.mode || 'optional');
             },
 
             captureSessionModelSettings() {
@@ -4351,6 +4455,22 @@
                 });
             },
 
+            registerCloudDefaultModel(apiDefault, models = this.availableModels) {
+                if (!apiDefault?.modelId) return models;
+                const id = `cloud/ai2apps/${apiDefault.modelId}`;
+                if (models.some(model => model.id === id)) return models;
+                // Older catalogs expose the same model via the generic provider route.
+                // Keep that route for explicit choices; inheritance must use Points.
+                const catalogModel = models.find(
+                    model => model.id === `cloud/${apiDefault.modelId}`
+                );
+                if (!catalogModel) return models;
+                return this.dedupeAvailableModels([
+                    ...models,
+                    { ...catalogModel, id, name: `${apiDefault.displayName || catalogModel.name} (API Default)` },
+                ]);
+            },
+
             resolvePreferredDefaultModel(defaultModel) {
                 if (!this.availableModels?.length) return null;
                 if (defaultModel) {
@@ -4359,7 +4479,8 @@
                         return candidate;
                     }
                 }
-                return this.availableModels[0].id;
+                // Missing/unavailable defaults require an explicit choice, not a random model.
+                return null;
             },
 
             reconcileCurrentModelAfterLoad(defaultModel) {
@@ -4705,6 +4826,7 @@
             snapshotGenerationSettings() {
                 const gen = {};
                 const s = this.modelSettings;
+                const reasoningMode = this.thinkingPolicyMode();
                 const scalarKeys = [
                     'temperature', 'max_tokens', 'top_p', 'top_k', 'min_p',
                     'repetition_penalty', 'presence_penalty'
@@ -4712,7 +4834,14 @@
                 for (const key of scalarKeys) {
                     if (s[key] != null) gen[key] = s[key];
                 }
-                if (s.enable_thinking === true) {
+                if (reasoningMode === 'required') {
+                    gen.chat_template_kwargs = { enable_thinking: true };
+                    if (s.thinking_budget_enabled) {
+                        gen.thinking_budget = this.normalizeThinkingBudgetTokens(s.thinking_budget_tokens);
+                    }
+                } else if (reasoningMode === 'none') {
+                    gen.chat_template_kwargs = { enable_thinking: false };
+                } else if (s.enable_thinking === true) {
                     gen.chat_template_kwargs = { enable_thinking: true };
                     if (s.thinking_budget_enabled) {
                         gen.thinking_budget = this.normalizeThinkingBudgetTokens(s.thinking_budget_tokens);
@@ -4958,6 +5087,8 @@
             },
 
             async retrieveChatKnowledge(messages, context) {
+                const session = this.getChatSession(context.chatId, false);
+                if (session?.knowledgeEnabled !== true) return null;
                 const userMessage = [...messages].reverse().find(message => message.role === 'user');
                 const query = userMessage ? this.getTextContent(userMessage.content).trim() : '';
                 if (!query) return null;
@@ -5497,6 +5628,7 @@
                         l1OptimizationMode: historyChat?.l1OptimizationMode ?? 'auto',
                         engineBoostMode: historyChat?.engineBoostMode ?? 'natural',
                         kvPolicy: historyChat?.kvPolicy ?? 'session',
+                        knowledgeEnabled: historyChat?.knowledgeEnabled === true,
                         agentMode: historyChat?.agentMode ?? false,
                         agentKey: historyChat?.agentKey ?? 'ai2apps.general-agent',
                         agentParametersByKey: this.cloneData(
@@ -5839,7 +5971,9 @@
                     if (!response.ok) throw new Error('App catalog unavailable');
                     const result = await response.json();
                     this.miniAppCatalog = (result.items || []).filter((app) =>
-                        (app.app_key || app.id) !== 'ai2apps.general-chat');
+                        app.mini_entry
+                        && typeof app.mini_entry === 'object'
+                        && (app.app_key || app.id) !== 'ai2apps.general-chat');
                 } catch (error) {
                     this.miniAppCatalog = [];
                     console.warn('Unable to load Mini-Entry catalog', error);
@@ -5916,22 +6050,69 @@
             },
 
             async mountMiniApp(app, placement = 'inline') {
-                if (!window.ai2appsShell?.mountMiniEntry || !this.currentChatId) return;
+                if (!window.ai2appsShell?.mountMiniEntry) return;
                 const appId = app.app_key || app.id;
                 const messageId = this.latestUserMessageId();
                 const effectivePlacement = messageId ? placement : 'sidebar';
                 try {
-                    const mount = await window.ai2appsShell.mountMiniEntry({
+                    const request = {
                         appId: appId,
                         placement: effectivePlacement,
-                        sessionId: this.currentChatId,
-                        messageId: messageId,
                         requestedBy: 'chat-user',
-                    });
+                    };
+                    if (this.currentChatId) request.sessionId = this.currentChatId;
+                    if (messageId) request.messageId = messageId;
+                    const mount = await window.ai2appsShell.mountMiniEntry(request);
                     this.attachMiniEntry(mount);
                 } catch (error) {
                     console.warn('Unable to mount App Mini-Entry', error);
                 }
+            },
+
+            async openKnowledgeSidebar() {
+                if (this.knowledgeSidebarBusy) return;
+                this.knowledgeSidebarBusy = true;
+                this.rightSidebarOpen = true;
+                this.rightSidebarTab = 'apps';
+                try {
+                    const existing = this.miniEntryMounts.find((mount) =>
+                        (mount.app_key || mount.app_id) === 'ai2apps.knowledge');
+                    if (existing) {
+                        if (existing.placement === 'sidebar') {
+                            this.sidebarMiniEntry = existing;
+                        } else {
+                            await this.remountMiniEntry(existing, 'sidebar');
+                        }
+                        return;
+                    }
+                    let app = this.miniAppCatalog.find((item) =>
+                        (item.app_key || item.id) === 'ai2apps.knowledge');
+                    if (!app) {
+                        await this.loadMiniAppCatalog();
+                        app = this.miniAppCatalog.find((item) =>
+                            (item.app_key || item.id) === 'ai2apps.knowledge');
+                    }
+                    if (!app) throw new Error('Knowledge Mini-Entry is unavailable');
+                    await this.mountMiniApp(app, 'sidebar');
+                } catch (error) {
+                    console.warn('Unable to open Knowledge sidebar', error);
+                } finally {
+                    this.knowledgeSidebarBusy = false;
+                    this.$nextTick(() => window.lucide?.createIcons());
+                }
+            },
+
+            setKnowledgeEnabled(enabled) {
+                this.knowledgeEnabled = Boolean(enabled);
+                const session = this.getChatSession(this.currentChatId, false);
+                if (session) session.knowledgeEnabled = this.knowledgeEnabled;
+                this.saveCurrentChat(
+                    this.currentChatId,
+                    null,
+                    null,
+                    null,
+                    { touchUpdatedAt: false }
+                );
             },
 
             miniSuggestionsForMessage(message) {
@@ -6235,7 +6416,8 @@
             this.computeTimelineActive();
         });
 
-        this.$watch('rightSidebarOpen', () => {
+        this.$watch('rightSidebarOpen', value => {
+            if (!this.terminalAssistantMode) writeChatRightSidebarOpen(value);
             this.$nextTick(() => this.computeTimelineDots());
             clearTimeout(this._sidebarTransitionTimer);
             this._sidebarTransitionTimer = setTimeout(() => this.computeTimelineDots(), 260);
@@ -6351,7 +6533,18 @@
 
     hasVisionSupport() {
         const id = this.resolveGatewayModelId(this.currentModel);
-        return this.modelTypeMap[id] === 'vlm';
+        if (!id) return false;
+        const model = this.availableModels.find(model => model.id === id);
+        const status = this.modelStatusMap[id];
+        return [model, status, { model_type: this.modelTypeMap[id] }].some(entry => {
+            if (entry?.model_type === 'vlm') return true;
+            const capabilities = entry?.capabilities;
+            const imageCapabilities = ['image_recognition', 'image_input', 'imageInput', 'vision'];
+            if (Array.isArray(capabilities)) {
+                return imageCapabilities.some(name => capabilities.includes(name));
+            }
+            return imageCapabilities.some(name => capabilities?.[name] === true);
+        });
     },
 
     hasDocumentSupport() {
@@ -6939,26 +7132,44 @@
     },
 
     availableAudioModelsByType(modelType) {
-        return this.availableAudioModels.filter(model => model.model_type === modelType);
+        return this.availableAudioModels.filter(model =>
+            model.model_type === modelType && this.audioModelReady(model));
+    },
+
+    audioModelReady(model) {
+        return Boolean(model) && model.checkpoint_ready !== false
+            && model.is_hidden !== true && model.load_failed !== true;
+    },
+
+    audioCatalogModelReady(model, adminModel, status) {
+        const entries = [model, adminModel, status].filter(Boolean);
+        if (entries.some(entry => entry.checkpoint_ready === false
+            || entry.is_hidden === true || entry.load_failed === true)) return false;
+        // Package registration alone does not mean its pinned weights are installed.
+        if (entries.some(entry => entry.source_type === 'package' || entry.engine_type === 'package')) {
+            return entries.some(entry => entry.checkpoint_ready === true);
+        }
+        return true;
     },
 
     reconcileAudioModels() {
         const stt = this.availableAudioModelsByType('audio_stt');
         const tts = this.availableAudioModelsByType('audio_tts');
-        if (!stt.some(model => model.id === this.audioSettings.sttModel)) {
-            this.audioSettings.sttModel = stt[0]?.id || '';
+        const readyStt = stt.find(model => this.audioModelReady(model));
+        const readyTts = tts.find(model => this.audioModelReady(model));
+        const selectedStt = stt.find(model => model.id === this.audioSettings.sttModel);
+        const selectedTts = tts.find(model => model.id === this.audioSettings.ttsModel);
+        if (!selectedStt || (!this.audioModelReady(selectedStt) && readyStt)) {
+            this.audioSettings.sttModel = readyStt?.id || stt[0]?.id || '';
         }
-        if (!tts.some(model => model.id === this.audioSettings.ttsModel)) {
-            this.audioSettings.ttsModel = tts[0]?.id || '';
+        const previousTtsModel = this.audioSettings.ttsModel;
+        if (!selectedTts || (!this.audioModelReady(selectedTts) && readyTts)) {
+            this.audioSettings.ttsModel = readyTts?.id || tts[0]?.id || '';
         }
-        const voices = this.audioVoiceOptions();
-        if (!voices.includes(this.audioSettings.voice)) {
-            this.audioSettings.voice = voices[0] || '';
-        }
-        const emotions = this.audioEmotionOptions();
-        if (!emotions.includes(this.audioSettings.emotion)) {
-            this.audioSettings.emotion = emotions[0] || 'neutral';
-        }
+        this.restoreAudioTtsPreferences(
+            this.audioSettings.ttsModel,
+            { preferCurrent: previousTtsModel === this.audioSettings.ttsModel }
+        );
         this.saveAudioSettings();
         void this.loadAudioVoices(this.audioSettings.ttsModel);
     },
@@ -6988,27 +7199,87 @@
             const voices = Array.isArray(body?.voices) ? body.voices : [];
             this.audioVoiceCatalog = { ...this.audioVoiceCatalog, [modelId]: voices };
             if (this.audioSettings.ttsModel !== modelId) return;
-            if (!voices.includes(this.audioSettings.voice)) {
-                this.audioSettings.voice = voices[0] || '';
-                this.saveAudioSettings();
-            }
+            const preferred = this.audioTtsPreferences[modelId]?.voice
+                || this.audioSettings.voice;
+            this.audioSettings.voice = voices.includes(preferred)
+                ? preferred
+                : (voices[0] || '');
+            this.saveAudioSettings();
         } catch (_) {
             // Static signed Package metadata remains the fallback.
         }
     },
 
+    onAudioModelSelect(kind, select) {
+        const key = kind === 'stt' ? 'sttModel' : 'ttsModel';
+        if (select.value === '__install_more__') {
+            select.value = this.audioSettings[key] || '';
+            void this.requestAudioCapabilitySetup(kind, true);
+            return;
+        }
+        this.audioSettings[key] = select.value;
+        if (kind === 'tts') this.onAudioTtsModelChange();
+        else this.saveAudioSettings();
+    },
+
     onAudioTtsModelChange() {
         this.audioError = '';
-        const voices = this.audioVoiceOptions();
-        this.audioSettings.voice = voices[0] || '';
-        const emotions = this.audioEmotionOptions();
-        this.audioSettings.emotion = emotions[0] || 'neutral';
+        this.restoreAudioTtsPreferences(this.audioSettings.ttsModel);
         this.saveAudioSettings();
         void this.loadAudioVoices(this.audioSettings.ttsModel);
     },
 
-    audioEmotionOptions() {
-        const feature = this.audioTtsFeature('emotion');
+    restoreAudioTtsPreferences(modelId, { preferCurrent = false } = {}) {
+        if (!modelId) return;
+        const saved = this.audioTtsPreferences[modelId] || null;
+        const voices = this.audioVoiceOptions(modelId);
+        const preferredVoice = saved?.voice
+            || (preferCurrent ? this.audioSettings.voice : '');
+        this.audioSettings.voice = voices.includes(preferredVoice)
+            ? preferredVoice
+            : (voices[0] || '');
+
+        const emotions = this.audioEmotionOptions(modelId);
+        const preferredEmotion = saved?.emotion
+            || (preferCurrent ? this.audioSettings.emotion : 'neutral');
+        this.audioSettings.emotion = emotions.includes(preferredEmotion)
+            ? preferredEmotion
+            : 'neutral';
+
+        const speed = Number(saved?.speed
+            ?? (preferCurrent ? this.audioSettings.speed : 1));
+        const speedFeature = this.audioTtsFeature('speed', modelId);
+        const minimum = Number(speedFeature?.minimum ?? 0.5);
+        const maximum = Number(speedFeature?.maximum ?? 2);
+        this.audioSettings.speed = Number.isFinite(speed)
+            ? Math.min(maximum, Math.max(minimum, speed))
+            : 1;
+    },
+
+    rememberAudioTtsPreferences(modelId = this.audioSettings.ttsModel) {
+        if (!modelId) return;
+        this.audioTtsPreferences = {
+            ...this.audioTtsPreferences,
+            [modelId]: {
+                voice: this.audioSettings.voice || '',
+                emotion: this.audioSettings.emotion || 'neutral',
+                speed: Number(this.audioSettings.speed) || 1,
+            },
+        };
+        localStorage.setItem(
+            'ai2apps-chat-audio-tts-preferences-v1',
+            JSON.stringify(this.audioTtsPreferences)
+        );
+        document.cookie = [
+            `ai2apps_chat_audio_tts_preferences_v1=${encodeURIComponent(JSON.stringify(this.audioTtsPreferences))}`,
+            'Max-Age=31536000',
+            'Path=/',
+            'SameSite=Strict',
+        ].join('; ');
+    },
+
+    audioEmotionOptions(modelId = this.audioSettings.ttsModel) {
+        const feature = this.audioTtsFeature('emotion', modelId);
         if (!feature || feature.mode === 'unsupported') return [];
         const values = Array.isArray(feature.values) ? feature.values : [];
         return [...new Set(['neutral', ...values])];
@@ -7070,6 +7341,7 @@
     },
 
     saveAudioSettings() {
+        this.rememberAudioTtsPreferences();
         localStorage.setItem('ai2apps-chat-audio-v1', JSON.stringify(this.audioSettings));
         if (!this.audioSettings.autoSpeak && chatAudioPipeline?.automatic) {
             this.stopSpeechOutput();
@@ -7125,7 +7397,7 @@
         this.audioError = '';
     },
 
-    async requestAudioCapabilitySetup(kind) {
+    async requestAudioCapabilitySetup(kind, installMore = false) {
         if (this.audioCapabilitySetupBusy[kind]) return;
         this.audioCapabilitySetupBusy[kind] = true;
         this.audioError = '';
@@ -7134,7 +7406,7 @@
             // the shared explanation sheet. Download/install starts only when
             // the user explicitly confirms that sheet.
             const result = await window.AI2AppsCapabilities.ensure(
-                this.audioCapabilityRequest(kind)
+                this.audioCapabilityRequest(kind), { installMore }
             );
             await this.finishAudioCapabilitySetup(kind, result);
         } catch (error) {
@@ -7584,16 +7856,17 @@
             const apiHeaders = this.getApiKey()
                 ? { 'Authorization': `Bearer ${this.getApiKey()}` }
                 : {};
-            // Fetch models, admin model list, server health, and integration settings in parallel
-            const [modelsResponse, adminModelsResponse, healthResponse, settingsResponse] = await Promise.all([
+            // Use the same work-standard and API-default sources as Model App.
+            const [modelsResponse, adminModelsResponse, defaultsResponse, settingsResponse, cloudDefaultsResponse] = await Promise.all([
                 fetch('/v1/models', {
                     headers: apiHeaders,
                     credentials: 'same-origin',
                     cache: 'no-store',
                 }),
                 fetch('/admin/api/models', { credentials: 'same-origin', headers: apiHeaders }),
-                fetch('/health'),
-                fetch('/admin/api/global-settings', { credentials: 'same-origin' })
+                fetch('/admin/api/model-manager', { credentials: 'same-origin', headers: apiHeaders }).catch(() => null),
+                fetch('/admin/api/global-settings', { credentials: 'same-origin' }),
+                fetch('/v1/platform/cloud/ai/defaults', { credentials: 'same-origin', headers: apiHeaders }).catch(() => null)
             ]);
 
             if (!modelsResponse.ok) {
@@ -7647,7 +7920,7 @@
             const managedModels = (this._adminModelsList || [])
                 .filter(model => ['cloud', 'fusion'].includes(model.source_type))
                 .filter(model => !catalogIds.has(model.id))
-                .map(model => ({ id: model.id, owned_by: 'ai2apps' }));
+                .map(model => ({ ...model, owned_by: 'ai2apps' }));
             const allModels = [...catalogModels, ...managedModels];
 
             // Favorite gateway ids from the admin list; used to sort favorites first
@@ -7658,7 +7931,10 @@
             this.availableAudioModels = this.dedupeAvailableModels(
                 allModels.filter(m => {
                     const gatewayId = this.aliasToGateway[m.id] || m.id;
-                    return (this.modelTypeMap[gatewayId] || '').toLowerCase().startsWith('audio_');
+                    const adminModel = (this._adminModelsList || []).find(model => model.id === gatewayId);
+                    const status = this.modelStatusMap[gatewayId] || this.modelStatusMap[m.id];
+                    return (adminModel?.model_type || m.model_type || this.modelTypeMap[gatewayId] || '').toLowerCase().startsWith('audio_')
+                        && this.audioCatalogModelReady(m, adminModel, status);
                 }).map(m => {
                     const gatewayId = this.aliasToGateway[m.id] || m.id;
                     const adminModel = (this._adminModelsList || []).find(
@@ -7666,8 +7942,11 @@
                     );
                     return {
                         id: gatewayId,
-                        name: adminModel?.display_name || m.id,
+                        name: adminModel?.identity?.displayName || adminModel?.display_name
+                            || m.identity?.displayName || m.display_name || m.name || m.id,
                         model_type: adminModel?.model_type || this.modelTypeMap[gatewayId],
+                        checkpoint_ready: adminModel?.checkpoint_ready !== false
+                            && m.checkpoint_ready !== false,
                         audio_capabilities: adminModel?.audio_capabilities || m.audio_capabilities || null,
                     };
                 })
@@ -7676,7 +7955,7 @@
 
             // Build available models with gateway id (directory name) as the value
             // Store alias for display (in case we want to show it later)
-            this.availableModels = this.dedupeAvailableModels(
+            const nextModels = this.dedupeAvailableModels(
                 allModels.filter(m => {
                     const gatewayId = this.aliasToGateway[m.id] || m.id;
                     const adminModel = (this._adminModelsList || []).find(
@@ -7690,30 +7969,35 @@
                     );
                     return {
                         id: gatewayId, // stable id used for API calls
-                        name: ['cloud', 'fusion'].includes(adminModel?.source_type)
-                            ? (adminModel.display_name || m.id)
-                            : m.id,
+                        name: adminModel?.identity?.displayName || adminModel?.display_name
+                            || m.identity?.displayName || m.display_name || m.name || m.id,
                         owned_by: m.owned_by,
                         model_type: adminModel?.model_type || m.model_type || this.modelTypeMap[gatewayId] || 'llm',
-                        capabilities: adminModel?.capabilities || [],
+                        capabilities: adminModel?.capabilities ?? m.capabilities ?? [],
                         cache_moe: Boolean(adminModel?.cache_moe),
                         fusion_cached_moe_roles: adminModel?.fusion_cached_moe_roles || [],
                         source_type: adminModel?.source_type || 'local',
                         cloud_protocol: adminModel?.cloud_protocol || null,
                         fusion_config: adminModel?.fusion_config || null,
+                        reasoning: adminModel?.reasoning || m.reasoning || null,
                         is_favorite: favoriteIds.has(gatewayId)
                     };
                 })
             );
 
-            // Get default model from health endpoint
-            let defaultModel = null;
-            if (healthResponse.ok) {
-                const healthData = await healthResponse.json();
-                defaultModel = healthData.default_model;
+            const defaultsData = defaultsResponse?.ok ? await defaultsResponse.json() : {};
+            const cloudDefaultsData = cloudDefaultsResponse?.ok ? await cloudDefaultsResponse.json() : {};
+            this.availableModels = this.registerCloudDefaultModel(cloudDefaultsData.policy?.apiDefault, nextModels);
+            const apiDefaultId = cloudDefaultsData.policy?.apiDefault?.modelId;
+            this.preferredChatModel = defaultsData.defaults?.work_standard
+                || (apiDefaultId ? `cloud/ai2apps/${apiDefaultId}` : null);
+            this.reconcileCurrentModelAfterLoad(this.preferredChatModel);
+            // x-for can replace options without changing currentModel, so x-model
+            // alone does not restore the native select after a catalog refresh.
+            await this.$nextTick();
+            if (this.$refs.activeModelSelect) {
+                this.$refs.activeModelSelect.value = this.currentModel || '';
             }
-
-            this.reconcileCurrentModelAfterLoad(defaultModel);
         } catch (error) {
             console.error('Error loading models:', error);
         }
@@ -7801,7 +8085,16 @@
         }
     },
 
-    async installRecommendedLocalModel() {
+    onConversationModelSelect(select) {
+        if (select.value === '__install_more__') {
+            select.value = this.currentModel || '';
+            void this.installRecommendedLocalModel(true);
+            return;
+        }
+        this.selectModel(select.value);
+    },
+
+    async installRecommendedLocalModel(installMore = false) {
         if (this.localModelRecommendation.status === 'installing') return;
         this.localModelRecommendation = {
             ...this.localModelRecommendation,
@@ -7810,7 +8103,7 @@
         };
         try {
             const result = await window.AI2AppsCapabilities.ensure(
-                this.localModelCapabilityRequest('install-recommended-local-model')
+                this.localModelCapabilityRequest('install-recommended-local-model'), { installMore }
             );
             await this.finishLocalModelRecommendation(result);
         } catch (error) {
@@ -9043,6 +9336,7 @@
             l1OptimizationMode: source.l1OptimizationMode ?? chat?.l1OptimizationMode ?? 'auto',
             engineBoostMode: source.engineBoostMode ?? chat?.engineBoostMode ?? 'natural',
             kvPolicy: source.kvPolicy ?? chat?.kvPolicy ?? 'session',
+            knowledgeEnabled: source.knowledgeEnabled ?? chat?.knowledgeEnabled ?? false,
             agentMode: source.agentMode ?? chat?.agentMode ?? false,
             agentKey: source.agentKey ?? chat?.agentKey ?? 'ai2apps.general-agent',
             agentParametersByKey: this.cloneData(
@@ -9315,7 +9609,7 @@
         }
     },
 
-    async startNewChat() {
+    async startNewChat({ initialModel = null } = {}) {
         this.cancelPersistModelSettingsTimer();
         const prevChatId = this.currentChatId;
         if (chatAudioPipeline?.chatId === prevChatId) this.stopSpeechOutput();
@@ -9351,12 +9645,19 @@
         }
         const sysDefault = this.promptProfiles.find(p => p.name === 'System Default');
         const systemPrompt = sysDefault ? sysDefault.content : '';
+        await this.loadModels();
+        // First-send materialization must not replace the model chosen on the
+        // empty page. Only an explicit New Chat adopts the configured default.
+        this.currentModel = initialModel
+            ? this.resolveGatewayModelId(initialModel)
+            : this.resolvePreferredDefaultModel(this.preferredChatModel);
         this.currentChatId = chatId;
         this.agentMode = false;
         this.currentAgentKey = this.defaultAgentKey();
         this.l1OptimizationMode = 'auto';
         this.engineBoostMode = 'natural';
         this.kvPolicy = 'session';
+        this.knowledgeEnabled = false;
         this.uploadImages = [];
         this.uploadDocuments = [];
         this.inputMessage = '';
@@ -9381,6 +9682,7 @@
             l1OptimizationMode: 'auto',
             engineBoostMode: 'natural',
             kvPolicy: 'session',
+            knowledgeEnabled: false,
             agentMode: false,
             agentKey: this.currentAgentKey,
             agentParametersByKey: {},
@@ -9400,6 +9702,7 @@
         this.saveCurrentChat(chatId);
 
         this.$nextTick(() => {
+            if (this.$refs.activeModelSelect) this.$refs.activeModelSelect.value = this.currentModel || '';
             const input = this.$refs.messageInput;
             if (input) {
                 this.resetTextareaHeight(input);
@@ -9467,6 +9770,7 @@
             this.l1OptimizationMode = session.l1OptimizationMode ?? 'auto';
             this.engineBoostMode = session.engineBoostMode ?? 'natural';
             this.kvPolicy = session.kvPolicy ?? 'session';
+            this.knowledgeEnabled = session.knowledgeEnabled === true;
             this.agentMode = session.agentMode ?? false;
             this.currentAgentKey = this.availableAgents.some(
                 agent => agent.agent_key === session.agentKey
@@ -9586,6 +9890,7 @@
             l1OptimizationMode: session?.l1OptimizationMode ?? 'auto',
             engineBoostMode: session?.engineBoostMode ?? 'natural',
             kvPolicy: session?.kvPolicy ?? 'session',
+            knowledgeEnabled: session?.knowledgeEnabled === true,
             agentMode: session?.agentMode ?? this.agentMode,
             agentKey: session?.agentKey ?? this.currentAgentKey,
             agentParametersByKey: this.cloneData(session?.agentParametersByKey || {}),
@@ -9606,6 +9911,7 @@
             session.l1OptimizationMode = session.l1OptimizationMode ?? this.l1OptimizationMode;
             session.engineBoostMode = session.engineBoostMode ?? this.engineBoostMode;
             session.kvPolicy = session.kvPolicy ?? this.kvPolicy;
+            session.knowledgeEnabled = session.knowledgeEnabled ?? this.knowledgeEnabled;
             session.agentMode = session.agentMode ?? this.agentMode;
             session.agentKey = session.agentKey ?? this.currentAgentKey;
             session.agentParametersByKey = session.agentParametersByKey || {};
@@ -9667,7 +9973,7 @@
         if (!this.currentModel || this.isCurrentChatStreaming()) return;
 
         if (!this.currentChatId) {
-            await this.startNewChat();
+            await this.startNewChat({ initialModel: this.currentModel });
         }
 
         const chatId = this.currentChatId;
@@ -11199,6 +11505,7 @@
             speculativeDraftModel: session.speculativeDraftModel ?? null,
             modelSettingsByModel: session.modelSettingsByModel
                 ? this.cloneData(session.modelSettingsByModel) : {},
+            knowledgeEnabled: session.knowledgeEnabled === true,
             agentMode: session.agentMode ?? false,
             agentKey: session.agentKey ?? 'ai2apps.general-agent',
             agentParametersByKey: this.cloneData(session.agentParametersByKey || {}),
@@ -11244,6 +11551,7 @@
             speculativeEngine: branchSession.speculativeEngine,
             speculativeDraftModel: branchSession.speculativeDraftModel,
             modelSettingsByModel: this.cloneData(branchSession.modelSettingsByModel || {}),
+            knowledgeEnabled: branchSession.knowledgeEnabled === true,
             agentMode: branchSession.agentMode,
             agentKey: branchSession.agentKey,
             agentParametersByKey: this.cloneData(branchSession.agentParametersByKey || {}),

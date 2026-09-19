@@ -20,6 +20,23 @@ capabilities:
     requirements:
       operations: [conversation]
     profiles:
+      - id: apple-metal-deepseek-v41-flash
+        label: DeepSeek V4.1 Flash · 无损 SSD Cached-MoE
+        description: 原始 FP4/FP8 精度的多模态本地模型；标准路径峰值控制在 65 GiB 以内，适合 96 GiB 及以上设备。
+        priority: 125
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 96}
+        recommendation_memory_gib: {minimum: 96}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-deepseek-v41-flash, service_key: ai2apps.model.deepseek-v41-flash, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.deepseek-v41-flash/deepseek-v41-flash}
       - id: apple-metal-deepseek-v4-flash
         label: DeepSeek V4 Flash · 高质量 Cached-MoE
         description: 高质量本地推理档，至少需要 48 GiB，推荐 64 GiB 及以上设备。
@@ -33,7 +50,7 @@ capabilities:
             unified_memory_gib: {minimum: 48}
         recommendation_memory_gib: {minimum: 64}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
           provider: {package_id: ai2apps/model-deepseek-v4-flash, service_key: ai2apps.model.deepseek-v4-flash, version: ">=0.3.1,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.deepseek-v4-flash/deepseek-v4-flash}
       - id: apple-metal-deepseek-v4-flash-2bit
@@ -49,7 +66,7 @@ capabilities:
             unified_memory_gib: {minimum: 32}
         recommendation_memory_gib: {minimum: 32, maximum_exclusive: 64}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
           provider: {package_id: ai2apps/model-deepseek-v4-flash-2bit, service_key: ai2apps.model.deepseek-v4-flash-2bit, version: ">=0.3.1,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit}
       - id: apple-metal-qwen36-35b-4bit
@@ -65,7 +82,7 @@ capabilities:
             unified_memory_gib: {minimum: 16}
         recommendation_memory_gib: {minimum: 16, maximum_exclusive: 32}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
           provider: {package_id: ai2apps/model-qwen36-35b, service_key: ai2apps.model.qwen36-35b, version: ">=0.3.1,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit}
       - id: apple-metal-qwen35-2b-4bit
@@ -131,7 +148,7 @@ capabilities:
             api: metal
             unified_memory_gib: {minimum: 48}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.5,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
           provider: {package_id: ai2apps/model-qwen38-flash-next-4bit, service_key: ai2apps.model.qwen38-flash-next-4bit, version: ">=0.1.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.qwen38-flash-next-4bit/qwen3.8-flash-next-mlx-4bit}
       - id: apple-metal-ornith15-35b-vision-4bit
@@ -147,7 +164,7 @@ capabilities:
             api: metal
             unified_memory_gib: {minimum: 32}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.6,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
           provider: {package_id: ai2apps/model-ornith15-35b-a3b-4bit-vision, service_key: ai2apps.model.ornith15-35b-a3b-4bit-vision, version: ">=0.1.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision}
       - id: apple-metal-glm53-flash-4bit-mtp
@@ -163,8 +180,8 @@ capabilities:
             api: metal
             unified_memory_gib: {minimum: 64}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.5,<2.0.0"}
-          provider: {package_id: ai2apps/model-glm5-3-flash-4bit-mtp, service_key: ai2apps.model.glm5-3-flash-4bit-mtp, version: ">=0.1.0,<1.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-glm5-3-flash-4bit-mtp, service_key: ai2apps.model.glm5-3-flash-4bit-mtp, version: ">=0.1.5,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp}
   audio.speech_recognition:
     trigger: on_feature_request

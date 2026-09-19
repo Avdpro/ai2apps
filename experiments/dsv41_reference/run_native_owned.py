@@ -20,7 +20,7 @@ def main():
             return super().read(name,rows)
     cached_store.CachedStore=Store
     sys.modules['kernel']=cpu_kernel
-    sys.path.insert(0,str(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/inference').resolve()))
+    sys.path.insert(0,str(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/inference').resolve()))
     import model
     import mlx_sdpa_attention
     model.sparse_attn=mlx_sdpa_attention.sparse_attn

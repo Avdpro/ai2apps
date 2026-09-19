@@ -4,6 +4,10 @@
 #include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
+#include <cstring>
+#include <set>
+#include <stdexcept>
+
 #include "dsa_indexer.h"
 #include "deepseek_v4_sparse_attention.h"
 #include "dspark_gemm.h"
@@ -15,6 +19,63 @@
 
 namespace nb = nanobind;
 using namespace nb::literals;
+
+namespace {
+// The caller must materialize lazy consumers and synchronize before mutation.
+int64_t copy_expert_slots(const std::vector<int>& sources,
+                          const std::vector<int>& targets,
+                          const std::vector<mlx::core::array>& arrays) {
+  if (sources.size() != targets.size() || arrays.size() != 6) {
+    throw std::invalid_argument(
+        "copy requires matching slots and six expert buffers");
+  }
+  if (sources.empty()) return 0;
+  if (arrays[0].ndim() < 1 || arrays[0].shape(0) <= 0) {
+    throw std::invalid_argument("invalid copy capacity");
+  }
+  const int capacity = arrays[0].shape(0);
+  std::set<int> destinations(targets.begin(), targets.end());
+  if (destinations.size() != targets.size()) {
+    throw std::invalid_argument("duplicate copy destinations");
+  }
+  for (int source : sources) {
+    if (source < 0 || source >= capacity || destinations.count(source)) {
+      throw std::invalid_argument(
+          "copy source invalid or overlaps destinations");
+    }
+  }
+  for (int destination : targets) {
+    if (destination < 0 || destination >= capacity) {
+      throw std::invalid_argument("copy destination out of range");
+    }
+  }
+  struct Buffer {
+    uint8_t* pointer;
+    size_t stride;
+  };
+  std::vector<Buffer> buffers;
+  for (const auto& array : arrays) {
+    if (array.ndim() < 1 || array.shape(0) != capacity ||
+        array.dtype() != mlx::core::uint8 || !array.flags().row_contiguous ||
+        !array.is_available() || array.nbytes() % capacity) {
+      throw std::invalid_argument(
+          "copy needs evaluated contiguous uint8 expert buffers");
+    }
+    buffers.push_back({const_cast<mlx::core::array&>(array).data<uint8_t>(),
+                       array.nbytes() / capacity});
+  }
+  int64_t bytes = 0;
+  for (size_t index = 0; index < sources.size(); ++index) {
+    for (const auto& buffer : buffers) {
+      std::memcpy(buffer.pointer + targets[index] * buffer.stride,
+                  buffer.pointer + sources[index] * buffer.stride,
+                  buffer.stride);
+      bytes += buffer.stride;
+    }
+  }
+  return bytes;
+}
+}  // namespace
 
 NB_MODULE(_ext, m) {
   m.doc() = "Native GLM kernels for oMLX";
@@ -46,6 +107,13 @@ NB_MODULE(_ext, m) {
       "down_scales"_a,
       "down_biases"_a,
       "io_workers"_a = 4,
+      nb::call_guard<nb::gil_scoped_release>());
+  m.def(
+      "copy_expert_slots",
+      &copy_expert_slots,
+      "sources"_a,
+      "targets"_a,
+      "arrays"_a,
       nb::call_guard<nb::gil_scoped_release>());
 
   m.def(

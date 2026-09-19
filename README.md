@@ -230,8 +230,18 @@ AI2Apps is based on oMLX commit
 and retains upstream copyright and attribution notices. Modified files and the
 repository history identify AI2Apps changes.
 
-This project is licensed under the [Apache License 2.0](LICENSE). Copyright
-2025 oMLX contributors; Copyright 2026 AI2Apps contributors. Apache-2.0 does
-not grant broad rights to upstream trade names or marks. AI2Apps does not use
-the oMLX name or logo as its product identity and makes no claim of upstream
+This is a [multi-license distribution](LICENSE-POLICY.md). Its default license
+is the [Apache License 2.0](LICENSE). The AI2Apps Official Cloud Connector is
+source-available under the [Business Source License 1.1](LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md):
+production clients may use it without a separate commercial license when they
+connect exclusively to an Official AI2Apps Cloud Service. Using it to
+implement, connect to, or provide an Alternative Cloud Service requires a
+commercial license. This version changes to Apache-2.0 on 2029-09-07. Earlier
+versions keep the license terms under which they were distributed.
+
+Copyright 2025 oMLX contributors; Copyright 2026 AI2Apps contributors. No
+software license grants rights to the AI2Apps name, logo, or other marks; see
+the [AI2Apps trademark policy](TRADEMARKS.md). Apache-2.0 also does not grant
+broad rights to upstream trade names or marks. AI2Apps does not use the oMLX
+name or logo as its product identity and makes no claim of upstream
 affiliation, sponsorship, certification, or endorsement.

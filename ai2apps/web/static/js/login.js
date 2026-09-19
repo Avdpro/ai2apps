@@ -25,7 +25,7 @@
   document.getElementById("login-subtitle").textContent = installationBound
     ? "Sign in with an account authorized for this device"
     : "Sign in or register to set up the Core user";
-  deviceName.value = (navigator.platform || "Mac") + " · AI2Apps";
+  deviceName.value = "Mac";
 
   function showError(message) {
     errorBox.textContent = message || "Something went wrong";
@@ -35,6 +35,11 @@
   function clearError() {
     errorBox.textContent = "";
     errorBox.hidden = true;
+  }
+
+  function validPassword(value) {
+    var bytes = new TextEncoder().encode(String(value || "")).length;
+    return bytes >= 8 && bytes <= 128;
   }
 
   function setLoading(value) {
@@ -85,6 +90,17 @@
     return { response: response, data: data };
   }
 
+  async function loadDefaultDeviceName() {
+    var initialValue = deviceName.value;
+    try {
+      var result = await json("/v1/platform/client/bootstrap");
+      var candidate = String(result.data?.device_name || "").trim();
+      if (result.response.ok && candidate && deviceName.value === initialValue) {
+        deviceName.value = candidate;
+      }
+    } catch (_) { /* Keep the editable fallback when hardware lookup fails. */ }
+  }
+
   function finish() {
     var requested = new URLSearchParams(location.search).get("redirect");
     location.href = requested && requested.startsWith("/") &&
@@ -111,9 +127,13 @@
   accountStage.addEventListener("submit", async function (event) {
     event.preventDefault();
     clearError();
-    setLoading(true);
     email = emailInput.value.trim();
     password = passwordInput.value;
+    if (!validPassword(password)) {
+      showError("Password must contain 8–128 UTF-8 bytes.");
+      return;
+    }
+    setLoading(true);
     try {
       if (mode === "register") {
         var registration = await json("/v1/platform/cloud/auth/register", {
@@ -202,4 +222,5 @@
 
   setMode("login");
   setStage("account");
+  loadDefaultDeviceName();
 })();

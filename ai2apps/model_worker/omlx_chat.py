@@ -11,6 +11,8 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
 from typing import Any
 
+from omlx.api.thinking import ThinkingParser, extract_thinking
+
 from .protocol import (
     ModelWorkerCheckpoint,
     ModelWorkerContext,
@@ -66,7 +68,9 @@ def _responses_messages(value: Any, instructions: Any) -> list[dict[str, Any]]:
     return _messages(result)
 
 
-def _generation_kwargs(body: Mapping[str, Any]) -> dict[str, Any]:
+def _generation_kwargs(
+    body: Mapping[str, Any], reasoning: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     try:
         result = {
             "max_tokens": max(
@@ -99,11 +103,46 @@ def _generation_kwargs(body: Mapping[str, Any]) -> dict[str, Any]:
         )
         if boost:
             result["flesh_boost_mode"] = str(boost)
+        template_kwargs = body.get("chat_template_kwargs")
+        if template_kwargs is None:
+            template_kwargs = {}
+        elif not isinstance(template_kwargs, Mapping):
+            raise TypeError("chat_template_kwargs must be an object")
+        else:
+            template_kwargs = dict(template_kwargs)
+        mode = str((reasoning or {}).get("mode") or "")
+        if mode == "required":
+            template_kwargs["enable_thinking"] = True
+        elif mode == "none":
+            template_kwargs["enable_thinking"] = False
+        elif mode == "optional" and "enable_thinking" not in template_kwargs:
+            default_enabled = (reasoning or {}).get("default_enabled")
+            if isinstance(default_enabled, bool):
+                template_kwargs["enable_thinking"] = default_enabled
+        if template_kwargs:
+            result["chat_template_kwargs"] = template_kwargs
+        thinking_budget = body.get("thinking_budget", body.get("thinking_budget_tokens"))
+        if thinking_budget is not None and mode != "none":
+            result["thinking_budget"] = max(1, int(thinking_budget))
         return result
     except (TypeError, ValueError) as exc:
         raise ModelWorkerError(
             "Generation parameters are invalid", code="invalid_request_error", status_code=400
         ) from exc
+
+
+def _thinking_enabled(
+    generation_kwargs: Mapping[str, Any],
+    reasoning: Mapping[str, Any] | None,
+) -> bool:
+    """Resolve whether the rendered prompt opens a model reasoning block."""
+
+    template_kwargs = generation_kwargs.get("chat_template_kwargs")
+    if isinstance(template_kwargs, Mapping):
+        enabled = template_kwargs.get("enable_thinking")
+        if isinstance(enabled, bool):
+            return enabled
+    return bool(reasoning and reasoning.get("mode") == "required")
 
 
 def _usage(output: Any) -> dict[str, Any]:
@@ -113,6 +152,8 @@ def _usage(output: Any) -> dict[str, Any]:
         "prompt_tokens": prompt,
         "completion_tokens": completion,
         "total_tokens": prompt + completion,
+        "prompt_tokens_per_second": getattr(output, "prompt_tps", None),
+        "generation_tokens_per_second": getattr(output, "generation_tps", None),
         "prompt_tokens_details": {
             "cached_tokens": int(getattr(output, "cached_tokens", 0) or 0)
         },
@@ -172,6 +213,39 @@ class OmlxChatAdapter:
 
         return BatchedEngine(str(checkpoint.path), trust_remote_code=False)
 
+    def create_stream_codec(
+        self,
+        checkpoint: ModelWorkerCheckpoint,
+        runtime_options: Mapping[str, Any] | None = None,
+    ) -> Any | None:
+        """Return an optional signed-Package, pure-Python stream codec.
+
+        Specialized Runtime engines may consume this hook. Returning ``None``
+        preserves that engine's Runtime-owned decoder, which keeps all already
+        published model Packages backward compatible.
+        """
+
+        return None
+
+    async def configure_engine(
+        self,
+        engine: Any,
+        checkpoint: ModelWorkerCheckpoint,
+        runtime_options: Mapping[str, Any],
+    ) -> None:
+        """Apply Package-specific tokenizer/processor policy after engine load."""
+
+    def reasoning_contract(self, model_id: str) -> Mapping[str, Any] | None:
+        for model in self.context.models:
+            if model_id not in {model.get("id"), model.get("upstream_id")}:
+                continue
+            metadata = model.get("metadata")
+            if not isinstance(metadata, Mapping):
+                return None
+            reasoning = metadata.get("reasoning")
+            return reasoning if isinstance(reasoning, Mapping) else None
+        return None
+
     def engine_key(
         self,
         checkpoint: ModelWorkerCheckpoint,
@@ -209,6 +283,7 @@ class OmlxChatAdapter:
                     result = start()
                     if hasattr(result, "__await__"):
                         await result
+                await self.configure_engine(engine, checkpoint, options)
             except ModelWorkerError:
                 raise
             except Exception as exc:
@@ -221,6 +296,17 @@ class OmlxChatAdapter:
             self._checkpoint = checkpoint
             self._engine_key = requested_key
             return engine, checkpoint
+
+    def request_engine_boost(self, model: str, session_id: str, mode: str):
+        if self._checkpoint is None or model not in {self._checkpoint.model_id, self._checkpoint.upstream_id}:
+            _error("Model is not loaded", code="model_unavailable", status=409)
+        setter = getattr(self._engine, "request_engine_boost", None)
+        if not callable(setter):
+            _error("Active execution mode does not support Engine Boost", status=409)
+        result = setter(session_id, mode)
+        if not result.get("accepted"):
+            _error(result.get("reason", "Engine Boost rejected"), status=409)
+        return {"status": "queued", "model_id": model, **result}
 
     async def invoke(self, request: ModelWorkerRequest):
         body = dict(request.payload)
@@ -245,17 +331,28 @@ class OmlxChatAdapter:
         request_id: str,
     ):
         messages = _messages(body.get("messages"))
+        reasoning = self.reasoning_contract(model)
         response_id = request_id if request_id.startswith("chatcmpl-") else f"chatcmpl-{request_id}"
         if body.get("stream"):
             return ModelWorkerStream(
-                self._chat_stream(engine, model, messages, body, response_id),
+                self._chat_stream(
+                    engine, model, messages, body, response_id, reasoning
+                ),
                 headers={"Cache-Control": "no-cache"},
             )
-        output = await engine.chat(messages, **_generation_kwargs(body))
+        generation_kwargs = _generation_kwargs(body, reasoning)
+        output = await engine.chat(messages, **generation_kwargs)
+        raw_text = str(getattr(output, "text", ""))
+        thinking = ""
+        content = raw_text
+        if reasoning and reasoning.get("format") == "think_tags":
+            thinking, content = extract_thinking(raw_text)
         message: dict[str, Any] = {
             "role": "assistant",
-            "content": str(getattr(output, "text", "")),
+            "content": content,
         }
+        if thinking:
+            message["reasoning_content"] = thinking
         tool_calls = getattr(output, "tool_calls", None)
         if tool_calls:
             message["tool_calls"] = tool_calls
@@ -281,6 +378,7 @@ class OmlxChatAdapter:
         messages: list[dict[str, Any]],
         body: Mapping[str, Any],
         response_id: str,
+        reasoning: Mapping[str, Any] | None,
     ) -> AsyncIterator[bytes]:
         created = int(time.time())
         yield _sse(
@@ -292,13 +390,35 @@ class OmlxChatAdapter:
                 "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
             }
         )
-        stream = engine.stream_chat(messages, **_generation_kwargs(body))
+        generation_kwargs = _generation_kwargs(body, reasoning)
+        stream = engine.stream_chat(messages, **generation_kwargs)
+        thinking_parser = (
+            ThinkingParser(
+                start_in_thinking=_thinking_enabled(generation_kwargs, reasoning)
+            )
+            if reasoning and reasoning.get("format") == "think_tags"
+            else None
+        )
         final: Any = None
+        started_at = time.perf_counter()
+        first_token_at = None
+        first_completion_tokens = 0
         try:
             async for output in stream:
                 final = output
+                if first_token_at is None and (getattr(output, "completion_tokens", 0) or getattr(output, "new_text", "")):
+                    first_token_at = time.perf_counter()
+                    first_completion_tokens = int(getattr(output, "completion_tokens", 0) or 0)
                 text = getattr(output, "new_text", "")
-                if text:
+                thinking_delta, content_delta = (
+                    thinking_parser.feed(text) if thinking_parser else ("", text)
+                )
+                for field, delta in (
+                    ("reasoning_content", thinking_delta),
+                    ("content", content_delta),
+                ):
+                    if not delta:
+                        continue
                     yield _sse(
                         {
                             "id": response_id,
@@ -306,7 +426,11 @@ class OmlxChatAdapter:
                             "created": created,
                             "model": model,
                             "choices": [
-                                {"index": 0, "delta": {"content": text}, "finish_reason": None}
+                                {
+                                    "index": 0,
+                                    "delta": {field: delta},
+                                    "finish_reason": None,
+                                }
                             ],
                         }
                     )
@@ -315,6 +439,28 @@ class OmlxChatAdapter:
             if callable(close):
                 with suppress(Exception):
                     await close()
+        if thinking_parser:
+            thinking_delta, content_delta = thinking_parser.finish()
+            for field, delta in (
+                ("reasoning_content", thinking_delta),
+                ("content", content_delta),
+            ):
+                if delta:
+                    yield _sse(
+                        {
+                            "id": response_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {field: delta},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                    )
         yield _sse(
             {
                 "id": response_id,
@@ -330,6 +476,23 @@ class OmlxChatAdapter:
                 ],
             }
         )
+        usage = _usage(final)
+        if first_token_at is not None:
+            ttft = first_token_at - started_at
+            decode_time = time.perf_counter() - first_token_at
+            usage["time_to_first_token"] = ttft
+            # Prefer engine-native timings. Legacy engines expose only counts;
+            # mark Worker-observed estimates rather than inventing native TPS.
+            if not usage["prompt_tokens_per_second"] and ttft > 0:
+                usage["prompt_tokens_per_second"] = usage["prompt_tokens"] / ttft
+                usage["prompt_timing_source"] = "worker_ttft_estimate"
+            if not usage["generation_tokens_per_second"] and decode_time > 0 and usage["completion_tokens"] > first_completion_tokens:
+                usage["generation_tokens_per_second"] = (usage["completion_tokens"] - first_completion_tokens) / decode_time
+                usage["generation_timing_source"] = "worker_observed_estimate"
+        yield _sse({
+            "id": response_id, "object": "chat.completion.chunk",
+            "created": created, "model": model, "choices": [], "usage": usage,
+        })
         yield b"data: [DONE]\n\n"
 
     async def _responses(
@@ -340,14 +503,21 @@ class OmlxChatAdapter:
         request_id: str,
     ):
         messages = _responses_messages(body.get("input"), body.get("instructions"))
+        reasoning = self.reasoning_contract(model)
         response_id = request_id if request_id.startswith("resp_") else f"resp_{request_id}"
         if body.get("stream"):
             return ModelWorkerStream(
-                self._responses_stream(engine, model, messages, body, response_id),
+                self._responses_stream(
+                    engine, model, messages, body, response_id, reasoning
+                ),
                 headers={"Cache-Control": "no-cache"},
             )
-        output = await engine.chat(messages, **_generation_kwargs(body))
-        text = str(getattr(output, "text", ""))
+        generation_kwargs = _generation_kwargs(body, reasoning)
+        output = await engine.chat(messages, **generation_kwargs)
+        raw_text = str(getattr(output, "text", ""))
+        text = raw_text
+        if reasoning and reasoning.get("format") == "think_tags":
+            _thinking, text = extract_thinking(raw_text)
         usage = _usage(output)
         return {
             "id": response_id,
@@ -379,6 +549,7 @@ class OmlxChatAdapter:
         messages: list[dict[str, Any]],
         body: Mapping[str, Any],
         response_id: str,
+        reasoning: Mapping[str, Any] | None,
     ) -> AsyncIterator[bytes]:
         created = int(time.time())
         message_id = "msg_" + uuid.uuid4().hex
@@ -398,13 +569,26 @@ class OmlxChatAdapter:
                 "item": {"id": message_id, "type": "message", "status": "in_progress", "role": "assistant", "content": []},
             }
         )
-        stream = engine.stream_chat(messages, **_generation_kwargs(body))
+        generation_kwargs = _generation_kwargs(body, reasoning)
+        stream = engine.stream_chat(messages, **generation_kwargs)
+        thinking_parser = (
+            ThinkingParser(
+                start_in_thinking=_thinking_enabled(generation_kwargs, reasoning)
+            )
+            if reasoning and reasoning.get("format") == "think_tags"
+            else None
+        )
         final: Any = None
         text_parts: list[str] = []
         try:
             async for output in stream:
                 final = output
-                delta = str(getattr(output, "new_text", "") or "")
+                raw_delta = str(getattr(output, "new_text", "") or "")
+                _thinking_delta, delta = (
+                    thinking_parser.feed(raw_delta)
+                    if thinking_parser
+                    else ("", raw_delta)
+                )
                 if delta:
                     text_parts.append(delta)
                     yield _sse(
@@ -421,6 +605,19 @@ class OmlxChatAdapter:
             if callable(close):
                 with suppress(Exception):
                     await close()
+        if thinking_parser:
+            _thinking_delta, delta = thinking_parser.finish()
+            if delta:
+                text_parts.append(delta)
+                yield _sse(
+                    {
+                        "type": "response.output_text.delta",
+                        "item_id": message_id,
+                        "output_index": 0,
+                        "content_index": 0,
+                        "delta": delta,
+                    }
+                )
         text = "".join(text_parts)
         yield _sse(
             {

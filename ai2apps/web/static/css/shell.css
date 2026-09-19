@@ -116,6 +116,7 @@ body {
 .dock-tooltip-host[hidden] { display: none; }
 .dock-tooltip-host.is-visible { opacity: 1; transform: translateY(0) scale(1); }
 .dock-tooltip-host.is-multiline { min-width: 150px; max-width: 220px; line-height: 1.5; white-space: nowrap; }
+.dock-tooltip-host.is-description { max-width: min(260px, calc(100vw - 16px)); line-height: 1.5; font-weight: 500; white-space: pre-line; overflow-wrap: anywhere; }
 .dock-tooltip-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
 .dock-tooltip-label { text-align: left; }
 .dock-tooltip-value { text-align: right; font-variant-numeric: tabular-nums; }
@@ -329,14 +330,18 @@ body {
 .launcher-category { padding: 7px 11px; border-radius: 99px; color: #525252; background: #f5f5f4; font-size: 12px; }
 .launcher-category.is-active { color: white; background: #171717; }
 .launcher-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 11px; }
-.launcher-app { position: relative; min-height: 142px; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 18px; background: #f7f7f6; transition: transform 160ms ease, background 160ms ease, border-color 160ms ease; }
+.launcher-app { position: relative; min-height: 112px; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 18px; background: #f7f7f6; transition: transform 160ms ease, background 160ms ease, border-color 160ms ease; }
 .launcher-app:hover { transform: translateY(-2px); border-color: #dededb; background: white; box-shadow: 0 12px 30px rgba(0,0,0,.06); }
-.launcher-app-open { appearance: none; width: 100%; min-height: 142px; padding: 18px; display: flex; flex-direction: column; align-items: flex-start; text-align: left; border: 0; color: inherit; background: transparent; cursor: pointer; }
-.launcher-app-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; color: white; background: #171717; }
+.launcher-app.is-development { opacity: .48; filter: grayscale(1); }
+.launcher-app.is-development:hover { transform: none; border-color: transparent; background: #f7f7f6; box-shadow: none; }
+.launcher-app.is-development .launcher-app-open { cursor: not-allowed; }
+.launcher-app-icon-row { display: flex; align-items: flex-end; gap: 7px; max-width: 100%; }
+.launcher-app-experimental { display: inline-block; min-width: 0; padding: 2px 6px; border-radius: 5px; color: #92400e; background: #fef3c7; font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }
+.launcher-app.is-development .launcher-app-icon { background: #737373; }
+.launcher-app-open { appearance: none; width: 100%; min-height: 112px; padding: 18px; display: flex; flex-direction: column; align-items: flex-start; text-align: left; border: 0; color: inherit; background: transparent; cursor: pointer; }
+.launcher-app-icon { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border-radius: 13px; color: white; background: #171717; }
 .launcher-app-icon svg { width: 22px; }
-.launcher-app-name { margin-top: 17px; font-size: 14px; font-weight: 700; }
-.launcher-app-description { margin-top: 4px; color: var(--shell-muted); font-size: 11px; line-height: 1.35; }
-.launcher-app-meta { margin-top: auto; padding-top: 11px; color: #a3a3a3; font-size: 10px; }
+.launcher-app-name { margin-top: 10px; font-size: 14px; font-weight: 700; }
 .launcher-instances { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 14px 14px; }
 .launcher-instance { max-width: 100%; padding: 5px 8px; overflow: hidden; border: 1px solid #e5e5e5; border-radius: 8px; color: #525252; background: white; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .launcher-instance:hover { color: #171717; border-color: #a3a3a3; }
@@ -395,7 +400,7 @@ body {
     .control-panel { inset: 6px; width: auto; }
     .launcher-panel { width: calc(100% - 16px); margin: 8px auto; max-height: calc(100dvh - 16px); padding: 19px; border-radius: 21px; }
     .launcher-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .launcher-app { min-height: 132px; }
+    .launcher-app { min-height: 112px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

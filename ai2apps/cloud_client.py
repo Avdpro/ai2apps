@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md.
 """Native AI2Apps Cloud client with a private, persistent session cookie."""
 
 from __future__ import annotations

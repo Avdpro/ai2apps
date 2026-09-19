@@ -25,3 +25,7 @@ only the selected repository's read-only cache and the exact snapshot path;
 it has no outbound network or Host Secret access. Upgrading or removing this
 Package changes Qwen3.8 support independently of the desktop application or
 pip-installed AI2Apps runtime release.
+
+Version 0.3.3 declares optional reasoning, enabled by default, and requires
+AI2Apps oMLX Runtime 1.7.5 or later so thinking can be toggled explicitly and
+transported separately from the answer.

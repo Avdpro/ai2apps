@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ContractError: Error, Equatable, Sendable, CustomStringConvertible {
+public enum ContractError: Error, Equatable, Sendable, CustomStringConvertible, LocalizedError {
     case unsupportedSchema(contract: String, version: Int)
     case invalidField(field: String, reason: String)
     case identityMismatch(expected: String, actual: String)
@@ -15,6 +15,8 @@ public enum ContractError: Error, Equatable, Sendable, CustomStringConvertible {
             return "Instance identity mismatch: expected \(expected), got \(actual)"
         }
     }
+
+    public var errorDescription: String? { description }
 }
 
 public protocol ValidatedContract: Codable, Sendable {

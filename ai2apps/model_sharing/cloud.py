@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md.
 """Narrow Account-authenticated Cloud client for Compute contracts."""
 
 from __future__ import annotations

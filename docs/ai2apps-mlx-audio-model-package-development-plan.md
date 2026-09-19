@@ -1,6 +1,6 @@
 # AI2Apps MLX TTS/STT Model Package 开发技术方案
 
-状态：执行中（阶段 1 完成；阶段 2 与 Chat 非实时闭环已落地源码）
+状态：执行中（阶段 1、2 与 Chat 非实时闭环已落地；Detailed Transcription 隔离原型完成）
 日期：2026-08-21
 适用范围：Apple Silicon 上的 `ai2apps.runtime.omlx`、Model Worker Package、Chat 语音输入/朗读、文章朗读与后续实时语音交互。
 
@@ -82,6 +82,215 @@ TTS/STT 应建立在现有 **Inference Runtime Provider + Model Worker Package**
 源码验证。CT-Transformer 已用真实模型完成中文标点冒烟；大型 ASR/TTS
 权重仍需在发布候选 Runtime、Apple Silicon/Metal 与目标内存档位上完成
 下载、质量和压力验收后才可进入正式仓库。
+
+### 1.4 2026-09-04 WhisperX 能力路线决策
+
+项目采用“先实现底层模型的 MLX/Metal 推理，再实现可组合流水线，最后形成端到端 MLX-WhisperX”的路线。目标是实现 WhisperX 的能力和兼容输出，而不是把原版基于 PyTorch、faster-whisper/CTranslate2 和 pyannote 的 Python 包直接塞入 oMLX Runtime。
+
+工作名称 `MLX-WhisperX` 表示 AI2Apps 的 MLX/Metal 原生实现；在没有形成对上游代码的实质性兼容或移植关系前，对外应使用“WhisperX-compatible MLX pipeline”，避免让用户误认为它是 WhisperX 官方发行版。若复用上游源码或算法实现，必须保留 BSD-2-Clause 许可和归属说明。
+
+产品边界：这套能力属于字幕、会议纪要、媒体索引等 **Detailed Transcription**，
+不作为 Chat 的 STT 后端。Chat 优先低首字延迟和实时交互；Detailed Transcription
+优先完整上下文、强制对齐、说话人归属和可审计的批处理结果。两者可以复用底层 Qwen
+ASR checkpoint，但使用不同 endpoint、默认参数、延迟预算和能力声明。
+
+这一路线遵循以下原则：
+
+- 能力优先：以准确转写、VAD、词级强制对齐、说话人分离、长音频批处理和兼容结果结构为验收目标；
+- MLX 原生：核心模型优先使用 MLX/Metal，不在 `ai2apps.runtime.omlx` 中引入 Torch/CUDA/CTranslate2；
+- 模型可替换：不把“WhisperX 能力”等同于某一组 gated checkpoint，允许选用许可证和离线分发更合适的等价底层模型；
+- 流水线可组合：Whisper、VAD、Aligner、Diarizer 和 Speaker Assignment 是独立能力，供其他 STT 模型复用；
+- 离线默认可用：默认发行组合不得要求 Hugging Face Token 或运行时联网。需要用户另行接受协议的模型只能作为可选导入源；
+- 结果可追溯：每个 segment/word 的时间戳和 speaker 字段必须标明来自 native 模型还是 pipeline，以及对应模型 revision。
+
+### 1.5 2026-09-04 MLX-WhisperX 隔离 MVP 实施快照
+
+已在 `experiments/mlx_whisperx/` 落地完全独立于 App、Runtime、Package 注册和
+实例模型库的可运行 MVP：
+
+- 使用当前开发环境的 `mlx-audio` Whisper 在 Metal 上完成转写和 native
+  attention word timestamps；
+- 使用确定性 Energy VAD 完成低配前置切段；高配完整路径已使用同一次 MLX
+  Sortformer 推理同时提供训练型 speech activity 与 diarization；
+- 使用 MLX Sortformer 完成最多四说话人的 diarization，并按时间交集将匿名 speaker
+  回填到 segment/word；零时长 word 确定性继承 segment speaker；
+- 输出 `ai2apps.mlx-whisperx-result/v1`；英文逐词与简体中文逐字的独立 MLX
+  Wav2Vec2 CTC forced alignment 已落地并完成真实 Metal 验证，未配置或不支持的语言默认拒绝，可显式
+  选择 Whisper native attention timing fallback，且不会把 fallback 冒充 CTC；
+- checkpoint 采用公开、无需认证的仓库，锁定 immutable revision、权重 SHA-256 和
+  本地实验路径；模型二进制与生成物均不进入 Git；
+- 自动测试 38 项通过；真实 M5 Max Metal 单说话人、双说话人以及
+  Whisper + CTC forced alignment + Sortformer 三模型完整链路通过。
+
+第二轮隔离验证又增加公开真人 LibriSpeech FLAC：Whisper 固定 greedy 解码，VAD
+region 与最终时间轴双重裁剪；CTC 使用默认最长 30 秒的相邻 segment 窗口，使长音频
+激活内存受窗口约束。同参数完整流水线复跑 JSON 逐字节一致。CTC word score 过滤为
+显式可选参数，默认 `0.0` 不静默删词；启用时 effective threshold 写入 feature
+execution。
+
+第三轮以中文和英文为首要语言补齐中文对齐路径。公开免认证中文 checkpoint 经相同
+adapter 直接运行在 MLX/Metal；4.138 秒简体中文样本得到 19 个逐字 timestamp、CTC
+score 和匿名 speaker，进程总耗时 2.88 秒、最大 RSS 约 2.01 GiB，重复运行 JSON
+逐字节一致。中文按字构造 target，不插入英文 word delimiter。英文公开真人样本同步
+回归，4 段/42 词输出与此前逐字节一致。当前中文词表为 `Hans`，Whisper 简体提示已
+通过 smoke，但不能代替通用繁简转换；繁体语义字符继续 fail closed，后续应将文本
+normalizer 作为独立、版本化 pipeline capability。
+
+第四轮建立固定 revision、逐文件 SHA-256 的中英文 FLEURS 真人 mini-benchmark，
+并加入公开免认证的 `whisper-small-asr-6bit` 与 `whisper-large-v3-turbo-asr-4bit`
+候选。5 条中文上 tiny/small/turbo CER 分别为 155.38%/40.51%/6.67%；5 条英文上
+WER 分别为 15.53%/18.45%/6.80%。Turbo 的中文/英文 RTF 为 0.056/0.073，含
+Sortformer 进程最大 RSS 约 1.21 GiB，是当前 M5 Max 档技术首选。其转换仓库未填写
+license 元数据，正式 Package 前必须完成来源和再分发审查；低内存档尚无中文质量
+通过者。该样本量只用于快速筛选，不能替代完整测试集。Small 的英文聚合值被一条
+局部重复拉高，不能据此否定 larger checkpoint。
+评测确认裸 Whisper 会受尾部静音诱发重复，Energy VAD 会过切和漏音，因此完整质量
+路径应使用训练型 VAD。同期修复 BCP-47 到 Whisper 主语言码的接口映射；并确认当前
+`mlx-audio 0.4.3` 的 beam decoder 尚未实现，不能虚假声明 beam search 支持。
+
+第五轮完成 full split 与十分钟级长音频门槛。Turbo 4-bit + Sortformer 在完整
+FLEURS-derived test split 上处理中文 945 条/3.07 小时、英文 647 条/1.77 小时，
+分别得到 CER 16.48%、WER 7.82%，RTF 0.02655/0.02845；mini-set 的中文 6.67%
+被证实偏乐观。十分钟级 `Whisper -> CTC -> speaker assignment` 中英文均通过
+Metal、时间戳边界和单调性校验；敏感 Energy VAD 与 30 秒窗口 Sortformer 解耦时，
+合成长测 CER/WER 为 20.92%/18.65%。长测同时增加原子 checkpoint/resume、固定
+长音频 composer、CTC 词表外字符的 `skip/reject` 策略，以及有界 Sortformer
+窗口。窗口化返回 `speaker_identity=window_local`：它解决四槽模型在任意多人长
+录音上的漏检/错误合并，但跨窗口同人聚类、真实会议 DER、噪声和重叠语音仍未通过。
+因此当前结论是批处理 MLX-WhisperX 核心能力成立，尚不进入 App/Runtime 集成。
+
+第六轮将已经发布的 `Qwen3-ASR 0.6B 4-bit` MLX Package 后端接入同一独立能力
+流水线，而非重复移植模型。完整 FLEURS-derived split 上，Qwen 中文 CER 12.67%，
+较 Whisper Turbo 的 16.48% 相对减少 23.1%；Qwen RTF 0.01408，也快于 Whisper
+的 0.02655。英文则是 Whisper 7.82% 优于 Qwen 8.97%，因此确定“中文 Qwen、英文
+Whisper”的语言感知主模型路由。十分钟完整 `ASR -> CTC -> speaker assignment`
+压力测试中，Qwen 中文 CER 8.87%、英文 WER 16.59%，均生成与 Whisper 相同的
+segment、字词时间戳、score 和 speaker 结构且通过边界校验。Qwen 本身不必原生
+输出 WhisperX 全字段；统一 pipeline 负责补齐并逐字段报告 provider。数字书写规范、
+中英混说、技术编号、真实会议 DER 和跨窗口 speaker clustering 仍需继续验证。
+
+第七轮完成此前 1～4 项推进目标。新增公开免认证的 Qwen3-ASR 1.7B 4-bit 高质量档：
+完整 FLEURS-derived split 中文 CER 11.99%、英文 WER 7.04%，RTF 0.01888/0.02362，
+均优于本机 Whisper Turbo 基线；0.6B 保留为 compact 档。Qwen3 ForcedAligner 0.6B
+8-bit 已接入，真实中文 23/23 字有效，10 分钟中文覆盖率 98.93%，并能处理数字和
+拉丁单位；输出显式报告 total/aligned/coverage，不隐藏零长度预测。
+
+Sortformer 不再默认使用 window-local speaker ID，而是复用 `mlx-audio 0.4.3` 已有
+AOSC speaker cache/FIFO streaming API，在 5 秒块之间保持最多四个全局匿名 speaker
+slot。AMI IS1001a 四人真实会议产生四个全局 slot；阈值 0.20、0.25 秒 collar 下含
+重叠 DER 34.23%，其中 confusion 1.52%、miss 30.05%。因此跨块身份能力成立，但
+会议弱语音/重叠召回仍需优化，不能标为最终生产质量；超过四人只能显式选择
+window-local，不能假装具有全局身份。
+
+独立开发 Package/API 已落地 `package.manifest.json`、能力查询和
+`POST /v1/audio/transcriptions/detailed`。API 支持 compact/quality、segment/word
+timestamps、匿名 diarization、语速分析与 `reject|compatibility` 策略；情绪兼容模式
+只能返回带 `status=fallback` 的 neutral，严格模式返回 `unsupported_feature`；未经
+授权的 speaker recognition 一律拒绝。真实 HTTP multipart 成功/拒绝路径均已验收，
+自动测试 45 项通过。该服务明确 `chat_integration=false`、`streaming=unsupported`，
+本轮没有修改或注册 AI2Apps App、Runtime、Chat 或实例模型库。
+
+第八轮补齐两场 AMI 会议端到端门槛、噪声回归和 ACPF 候选源码。Sortformer 阈值
+0.20 在 IS1001a/IS1009a 的含重叠 DER 为 34.23%/20.26%；Qwen3-ASR 1.7B +
+Qwen3 ForcedAligner + MeetingEnergyVAD 严格对齐正文的全文 WER 为 32.63%/32.95%，正确词
+speaker accuracy 为 92.66%/84.73%，permutation-aware cpWER 为 37.29%/52.53%。
+第二场暴露的重复幻觉已通过“只有正时长 forced-alignment 单元才能进入最终字幕”
+修复，丢弃数量和移除字符数写入 feature provenance。固定 5 条 FLEURS 白噪声回归
+中，英文 WER 从 5.83% 增至 10/5 dB 的 8.74%，中文 CER 从 10.26% 增至
+10.26%/11.79%。
+
+同 speaker 短缺口的 0.25/0.5/1/2 秒补偿也完成联合验证。1 秒可把两场 DER 降至
+24.67%/14.05%，但联合词归属 cpWER 反而升至 39.17%/54.31%；0.25 秒在第二场也
+退化。因此正式默认保持模型原生 0.12 秒，更长桥接仅作为显式实验参数，不能用单一
+DER 指标覆盖字幕 speaker attribution 的退化。
+
+`package_candidate/` 与 `stage_package_candidate.py` 已固化 compact/quality、两个
+内部辅助 checkpoint、Worker Adapter 和自包含源码 staging。候选使用 dedicated
+`audio_detailed_transcription` model type/operation、`chat_eligible=false`，并要求
+`audio-detailed-transcription-v1`。Runtime 1.6.0 已正式发布，Host schema、专用路由与
+能力验证现已接受该类型，同时仍以精确类型隔离 Chat `audio_stt`。正式 Package 源码已
+staging 到 `packages/omlx-model-detailed-transcription/`；四个 checkpoint 均声明真实
+distribution ID，四个 identity-matched distribution 已在 Registry 发布并完成匿名回读，可以进入
+正式 Package 签署。0.1.1 已发布并完成真实安装，但首次推理发现上传音频路径在 macOS
+沙箱内不能调用 `Path.resolve()`；0.1.2 已修复该问题，并补充 multipart 布尔参数解析。
+相关合同、流水线、Host、Discover mapping 与发布脚本联合回归 136 项通过。0.1.2 已用注册 Publisher 私钥正式发布，
+并通过匿名 Snapshot v109、完整 artifact/envelope 等值校验以及公共下载件的中英文真实
+managed-service 推理；发布回执见
+`docs/ai2apps-mlx-whisperx-detailed-transcription-0.1.2-release.md`。
+
+四个固定 HF checkpoint 均已找到 ModelScope `mlx-community` 同名 MLX 镜像。对
+MS Git HEAD、LFS object SHA-256 与本地固定 HF 快照逐文件核验后，全部运行必需文件
+一致；MS 只额外包含 `configuration.json`，通过 `allow_patterns` 排除。0.6B ASR、
+1.7B ASR、ForcedAligner 和 Sortformer 的四份 identity-matched 双源 distribution
+已用现有正式 Publisher key 完成 metadata-verified 构建、Cloud
+发布与匿名回读。Sortformer 按 NVIDIA Open Model License 使用条件式分发、许可证
+交付、明确同意和规定署名，不把它误标成 Apache-2.0。
+
+真实命令、冷启动耗时、峰值内存、checkpoint 锁定信息、已知识别误差和未通过门槛见
+`experiments/mlx_whisperx/VALIDATION.md`。Host 的 dedicated model type 属于可交付的
+Desktop 合同变更，已登记到 Desktop 下一版本账本 NXR-016；Package 本身继续独立发布。
+
+### 1.6 2026-09-05 双轨人声提取隔离实验
+
+`experiments/mlx_demucs/` 已建立独立于 App、Runtime、Registry 和已安装 Package 的
+双轨分离实验。统一结果为 `ai2apps.audio-separation-result/v1`，输出等长的
+`dialogue.wav`、`background.wav` 与 `separation.json`。背景轨固定采用
+`mixture - dialogue`，确保模型没有识别为人声的能量不会丢失，并保持原始时间轴。
+
+官方 PyTorch `htdemucs` 仅作为转换与质量 oracle；它不进入 Runtime。公开 80.2 MiB
+checkpoint 已成功加载，确认 533 个 tensor、41,984,456 个参数，并可导出为仓库外的
+原始布局 NPZ。13.69 秒真人语音加确定性合成伴奏的 CPU smoke 中，输入/输出 dialogue
+SI-SDR 为 3.12/17.19 dB，提升 14.07 dB，RTF 0.2485，残差双轨重构最大误差
+`7.45e-9`。这些结果建立了双轨合同和 PyTorch 质量基线。
+
+该路线继续复用 Runtime 1.6.0；只有确认缺少不可由 Package 提供的 MLX/Metal 算子时
+才考虑升级 Runtime。
+
+同日已经完成第一个 MLX 数值门槛：`n_fft=4096`、reflection-centered padding、periodic
+Hann window、orthonormal FFT 的 STFT/iSTFT 已在 Metal 实跑。44,032 点双声道输入对
+PyTorch spectrum 最大绝对误差 `5.34e-8`，MLX 往返最大绝对误差 `1.34e-7`。下一步从
+单个 encoder/decoder block 开始逐层对齐。
+
+第一组 block parity 随后通过：MLX 已覆盖 time/frequency HEncLayer、HDecLayer、两层
+dilated DConv、PyTorch-compatible GroupNorm、GELU/GLU/LayerScale，以及四种卷积权重
+布局转换。固定 checkpoint 的第一层 encoder 和最终 decoder 共六个输出形状全部一致；
+peak-normalized error 与 relative RMSE 均低于 1%，最差项为 frequency decoder 输出的
+0.557%/0.646%。
+
+四层完整网络随后完成：MLX 已覆盖精确 1D/2D 位置编码、五层交替 self/cross
+Transformer、bottom channel projection、全部 skip connection、复数频谱重排和最终
+iSTFT。完整 7.8 秒窗口输出 `[1,4,2,343980]` 与 PyTorch 形状一致，最终波形的
+peak-normalized error 为 0.389%，relative RMSE 为 0.316%。`MlxDemucsBackend` 也已
+实现官方兼容的居中补齐、25% 重叠、三角权重和任意长度 overlap-add；9 秒双分块输出
+相对 PyTorch 的 relative RMSE 为 0.548%。至此 MLX-native 推理原型成立，且没有发现
+需要升级 Runtime 1.6.0 的算子缺口。
+
+同机纯 MLX 7.8 秒窗口冷/热耗时为 0.279/0.244 秒，对应 RTF 0.0358/0.0313；MLX
+allocator 报告峰值统一内存 1,611,263,336 bytes，完成后 active memory 回落至 24 bytes。
+该数字随后作为首版 Package 的 Publisher benchmark 基础；更广泛硬件与
+whole-process RSS 对照仍属于后续目录评测。
+
+checkpoint 已找到无需认证的同仓库双源：Hugging Face 与 ModelScope 的
+`mlx-community/demucs-mlx` 均提供 `htdemucs.safetensors` 和配置文件。两边完整下载后
+逐字节一致；权重为 168,005,865 bytes、SHA-256
+`339d267a7a6983a11eedbdc00413c602a65e9b9103f695fb5c2b2a481cd9d297`。该制品采用
+MLX-native 卷积布局和 split Q/K/V，实验已增加只在内存中执行的格式适配器；适配后
+与官方 PyTorch state 的 533 个 key、shape 和 float32 value 全部一致，因此 Package
+无需再发布一份重复 raw NPZ。固定 revision 分别为 HF
+`d4519e24ddc2dd4a11d56a193092433d852c3961` 与 MS
+`3e2b356248c71ec999090ca6e5eebc65654b8893`。正式 distribution
+`dist_ai2apps_mlx_demucs_htdemucs_d4519e24_v1` 已完成全双端下载校验、签名发布和
+匿名 Index v54 回读；许可证审查记录了 HF/model card 标注 MIT、MS 仓库 metadata
+标注 `other` 的不一致，Package 随附上游 MIT notice。
+
+现有英文和中文语音 smoke 分别叠加确定性伴奏后，通过该 safetensors MLX 路径得到
++17.22 dB 和 +18.73 dB dialogue SI-SDR 提升，RTF 为 0.0500 和 0.0440；这证明中英文
+短语音的基础人声提取有效，但仍不能替代真实会议/影视数据和分离前后 CER/WER 评估。
+
+独立 `ai2apps/model-demucs-mlx` 0.1.0 已于 2026-09-06 发布，并通过 Runtime 1.6.2、
+公开双源 checkpoint、干净实例 Managed Service Sandbox 和 9 秒 multipart 推理验收。
+后续质量门槛是扩大真实中文/英文会议与视频的分块连续性数据集，并评估分离前后
+CER/WER；这些指标不改变首版已经冻结的三种 profile 语义。
 
 ## 2. 目标与非目标
 
@@ -603,6 +812,43 @@ rejected    请求未执行并返回 unsupported_feature
 
 该文件必须是 manifest 的一等字段或受索引引用的签名资产，不能只藏在任意 `metadata` 中。Host 在安装时校验 schema，并可在不加载 checkpoint 的情况下用于 Discover、模型选择、voice 列表和请求 preflight。运行时以静态能力与 Adapter 自检结果的交集为准。Adapter 不得在运行时宣称超出签名 Package 元数据的权限或能力。
 
+### 7.6 音轨分离能力声明
+
+音轨分离不新增绑定具体模型的顶层类型，继续使用 `model_type: audio_processing` 和
+`operation: audio_process`，在请求中以 `task: source_separation` 选择任务。模型必须在
+`audio_capabilities.processing.separation` 声明：
+
+- `native_stems`：checkpoint 真正直接预测的 stem；
+- `profiles[]`：调用方可请求的稳定输出拓扑，每项包含 `id`、`mode`、`stems`；
+- `derivation`：pipeline/fallback profile 的每条输出如何从原生 stem 或 mixture 得到；
+- `default_profile` 与 `unsupported_profile_policy`：未支持 profile 是明确拒绝，还是经调用方
+  授权后回退到默认 profile；
+- `preserves_timeline`、`max_input_channels` 和可选采样率/长度限制。
+
+首个 HTDemucs 声明原生 `drums/bass/other/vocals`，提供 `music_4stem` native profile，
+以及 `vocals_instrumental`、`dialogue_background` pipeline profile。由于 vocals 并不严格
+等于影视对白，后者必须携带限制说明；未知 profile 采用 `reject`，不静默替换语义。
+
+统一执行结果继续使用 `ai2apps.audio-separation-result/v1` 的 `stems[]`，并在
+`features.source_separation` 返回 requested/effective profile、status、derivation、provider
+和 revision。这样未来接入原生 `dialogue/music/effects/ambience` 或更多 stem 的模型时，
+只扩展声明和模型 Package，不改变上层结果容器。
+
+### 7.7 音色转换能力声明
+
+RVC、Seed-VC 等音色转换模型同样复用 `audio_processing` / `audio_process`，请求使用
+`task: voice_conversion`。模型在 `audio_capabilities.processing.voice_conversion` 声明
+`mode`、目标音色来源、是否支持检索、半音变调、清辅音保护、多说话人 ID、长音频分块和
+流式模式。首个 MLX-RVC 后端接受 `semitones`、`retrieval_rate`、`protect`、`speaker_id`
+和可复现 `seed`；不支持的参数必须拒绝，不能静默忽略。
+
+`POST /v1/audio/process` 将上述通用字段作为 multipart form 数据转发给隔离 Model Worker。
+RVC 的目标音色由所选签名模型 Package 决定。Seed-VC v2 则接收请求作用域内的
+`reference` multipart 音频，并支持 `mode=timbre|voice`、扩散步数、语义/音色双 CFG、长度
+调整与随机种子；参考音频不落为隐式 Voice Profile，也不允许用本地路径替换 checkpoint。
+旧 FAISS 索引及 Seed-VC 的 PyTorch 权重仅可在可信离线构建环境转换；生产 Worker 只读取
+safetensors，因此 Runtime 不包含 FAISS、Torch 或 torchaudio。
+
 ## 8. 声音克隆、训练音源与隐私
 
 “训练音源”应拆成两个产品能力：
@@ -643,6 +889,72 @@ rejected    请求未执行并返回 unsupported_feature
 - voice cloning、情绪和角色能力不作为首个 TTS Package 的准入条件。
 
 最终模型不是按参数量直接决定，而应通过统一基准选择：中文/英文 WER 或 CER、首字/首音延迟、实时率、峰值内存、长音频稳定性、长文一致性、许可证、模型来源和 MLX 后端成熟度。
+
+### 9.2 MLX-WhisperX 能力分解与实施顺序
+
+WhisperX 不是单一 checkpoint。目标实现应拆成五个可独立验证、可被其他 STT 复用的组件：
+
+| 组件 | 首选实现方向 | 主要输出 | Package/Runtime 边界 |
+|---|---|---|---|
+| Whisper ASR | `mlx-audio` Whisper，MLX/Metal | 文本、segment、语言、置信信息 | 独立 `audio_stt` Model Package |
+| VAD | 将选定的开放 VAD 模型转换/实现为 MLX | 语音区间和置信度 | 独立辅助模型；不得依赖系统 Python/Torch |
+| Forced Aligner | 语言相关 CTC/wav2vec2 类模型的 MLX 实现，或经验证的等价模型 | word/char start、end、score | 按语言拆分的辅助 Model Package |
+| Speaker Diarization | MLX segmentation + speaker embedding + clustering | 匿名 speaker 时间区间 | 独立辅助 Model Package；身份识别另行授权 |
+| Assignment/Formatter | 确定性区间匹配和结果格式化 | WhisperX-compatible segments/words | 可信 Worker framework 或签名 pipeline 代码 |
+
+实施顺序固定为：
+
+1. **底层模型 MLX 化**：先分别证明 Whisper、VAD、Aligner、Diarizer 在 Metal 上结果正确、内存有界、可取消；每个组件都有独立 fixture 和基准，不能在流水线里掩盖单模型错误。
+2. **流水线正确性**：实现一次解码/重采样、VAD 切段、批量 Whisper、语言选择、强制对齐、diarization、speaker assignment 和最终合并。中间结果使用版本化内部 schema，禁止组件间传递任意文件路径。
+3. **端到端 MLX-WhisperX**：消除重复音频解码和复制，复用 Mel/PCM buffer，按阶段加载/卸载辅助模型，优化 Metal command 调度，并加入长音频分块、断点恢复、进度和取消。
+4. **兼容接口**：提供 WhisperX 风格 `segments[].words[]`、`speaker` 和 score 字段，同时在 AI2Apps `features` 中标出每项结果的 provider、revision 与 `native/pipeline` 状态。
+
+目标流水线：
+
+```text
+audio bytes
+  -> trusted decode/resample (mono float32 PCM)
+  -> MLX VAD
+  -> MLX Whisper batched transcription
+  -> language-aware MLX forced alignment
+  -> MLX speaker segmentation/embedding + CPU clustering
+  -> deterministic word/speaker assignment
+  -> WhisperX-compatible + AI2Apps provenance response
+```
+
+第一版可先交付 `Whisper + native word timestamps + VAD`，随后加入独立强制对齐，最后加入 diarization。Whisper 自身 attention alignment 可以作为早期 word timestamp 能力，但不能在精度报告中等同于独立 CTC forced alignment。
+
+#### Package 组合建议
+
+目标上保持以下逻辑身份：
+
+```text
+ai2apps.model.whisper/<variant>
+ai2apps.model.audio-vad/<variant>
+ai2apps.model.audio-aligner-<language>/<variant>
+ai2apps.model.speaker-diarization/<variant>
+ai2apps.pipeline.whisperx-mlx/default
+```
+
+流水线由 Host 的受控 model invocation/composition 能力编排；如果该跨 Worker 协议尚未完成，首版可以使用一个 composite Model Worker，并通过 `required_model_ids` 获得多个精确 checkpoint 授权。composite 只是交付过渡，不应把底层组件 API 永久耦合在一个 Adapter 中。
+
+#### 离线和许可证约束
+
+原版 WhisperX 默认 diarization 路径使用可能要求 Hugging Face Token 和点击接受协议的 pyannote checkpoint。AI2Apps 默认组合不能依赖这种运行时认证。处理顺序为：
+
+1. 优先选择允许随 Package 目录发布元数据、由 Host 按固定 revision 下载的 ungated 权重；
+2. 如果唯一可接受模型是 gated checkpoint，只允许用户显式导入已获授权的本地权重，不把个人 Token交给 Worker；
+3. capability 查询必须说明 diarization 是否已安装、许可证来源和当前是否可用；
+4. 没有 diarization 模型时返回 `unsupported_feature`，不能伪造单一 speaker 结果。
+
+#### 验收指标
+
+- ASR：WER/CER、VAD 前后 WER、幻觉和漏字率；
+- Alignment：词/字边界误差分布、未对齐 token 比例、数字和标点处理；
+- Diarization：DER、speaker count error、重叠语音表现；
+- Pipeline：长音频总实时率、首段结果延迟、峰值统一内存、阶段切换内存回落；
+- Compatibility：对同一 fixture 与上游 WhisperX 比较 schema、segment、word timing 和 speaker assignment，不要求底层数值逐字节一致；
+- Reliability：取消、Worker 重启、辅助 checkpoint 缺失、语言无对齐模型等情况下 fail closed，并保留已经完成阶段的可诊断状态。
 
 ## 10. 四阶段实施与验收
 

@@ -18,7 +18,7 @@ prefill_executor = None  # Optional experimental scheduler; default path unchang
 
 def main():
     parser=argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--expert-store',type=Path,default=Path('artifacts/dsv41-metal-fixtures'))
+    parser.add_argument('--expert-store',type=Path,default=Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/experts'))
     options,remaining=parser.parse_known_args()
     sys.argv=[sys.argv[0],*remaining]
     fixtures=options.expert_store
@@ -27,8 +27,8 @@ def main():
         manifest=json.loads((fixtures/'manifest.json').read_text())
         full=manifest.get('status')=='complete' and manifest.get('layers')==list(range(40))
         if full:
-            index=Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/model.safetensors.index.json')
-            digest=hashlib.sha256(index.read_bytes()).hexdigest()
+            index=Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/model.safetensors.index.json')
+            digest=json.loads((index.parent/'ssd-checkpoint.json').read_text())['source']['index_sha256'] if (index.parent/'ssd-checkpoint.json').is_file() else hashlib.sha256(index.read_bytes()).hexdigest()
             if manifest.get('checkpoint_index_sha256')!=digest:raise ValueError('expert store checkpoint mismatch')
             for layer in range(40):
                 path=fixtures/f'layer-{layer}.bin';info=json.loads(Path(str(path)+'.json').read_text())
@@ -39,7 +39,7 @@ def main():
     output=Path(sys.argv[sys.argv.index('--output')+1])
     root=Path('artifacts/dsv41-reference-baseline-20260913')
     sys.modules['kernel']=cpu_kernel
-    sys.path.insert(0,str(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/inference').resolve()))
+    sys.path.insert(0,str(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/inference').resolve()))
     import model
     banks={};compute_seconds=0.;route_calls=0
     def forward(self,x,image_mask=None):

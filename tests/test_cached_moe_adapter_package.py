@@ -34,24 +34,17 @@ def test_each_package_exposes_exactly_one_recipe_and_self_contained_assets():
         recipe = recipes[0]
         assert recipe["id"] == recipe_id
         assert recipe["execution_modes"] == ("cached", "full")
-        if recipe_id.startswith("deepseek-"):
-            assert recipe["storage_policies"] == (
-                "keep_source",
-                "delete_after",
-                "stream_reclaim",
-            )
-        else:
-            assert recipe["storage_policies"] == ("keep_source",)
+        assert recipe["storage_policies"] == ("keep_source",)
         profile = Path(recipe["engine"]["scope_asset"])
         pack_path = Path(recipe["engine"]["scope_pack"])
         pack = json.loads(pack_path.read_text())
         assert profile.is_file() and pack_path.is_file()
         assert hashlib.sha256(profile.read_bytes()).hexdigest() == pack["profile"]["sha256"]
         manifest = json.loads((ROOT / "packages" / package / "release-checkpoints.json").read_text())
-        checkpoints = manifest[f"{package}@0.1.0"]
+        checkpoints = manifest["models"]
         assert len(checkpoints) == 1
-        assert checkpoints[0]["recipeId"] == recipe_id
-        assert checkpoints[0]["installMode"] == "cache-moe"
+        assert checkpoints[0]["preparation_recipe"] == "ai2apps/cache-moe/v1"
+        assert checkpoints[0]["ssd_layout"] == recipe["conversion"]["variant"]
 
 
 def test_registry_combines_three_independent_packages_without_match_overlap():
@@ -77,7 +70,7 @@ def test_deepseek_2bit_worker_enables_direct_paths_with_host_override(monkeypatc
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     sentinel = object()
-    monkeypatch.setattr(module, "DeepseekV4ChatAdapter", lambda context: sentinel)
+    monkeypatch.setattr(module, "DeepSeekV4Flash2BitWorkerAdapter", lambda context: sentinel)
 
     monkeypatch.delenv("OMLX_MOE_DIRECT_L1", raising=False)
     monkeypatch.delenv("OMLX_DEEPSEEK_V4_DIRECT_PREFILL", raising=False)

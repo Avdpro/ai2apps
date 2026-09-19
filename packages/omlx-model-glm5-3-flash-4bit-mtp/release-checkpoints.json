@@ -1,22 +1,18 @@
 {
   "schema": "ai2apps.model-release-checkpoints/v1",
   "package_id": "ai2apps/model-glm5-3-flash-4bit-mtp",
-  "package_version": "0.1.0",
-  "runtime_dependency": ">=1.5.5 <2.0.0",
+  "package_version": "0.1.3",
+  "runtime_dependency": ">=1.7.4 <2.0.0",
   "models": [
     {
       "model_id": "ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp",
-      "repo_id": "Vontra/GLM-5.3-Flash-MLX-4bit-MTP",
-      "revision": "06d6c7530e8290e20fabdc37a825ce07bdfc490c",
-      "modelscope_repo_id": "ai2apps/GLM-5.3-Flash-MLX-4bit-MTP",
-      "modelscope_revision": "760a9f63f4553ff1f725bddf63ca9f20577e4441",
-      "distribution_id": "dist_ai2apps_glm5_3_flash_4bit_mtp_06d6c753_v1",
+      "repo_id": "Avdpro/GLM-5.3-Flash-MLX-4bit-MTP-SSD",
+      "revision": "a4d3f3e489a12893e0056a5b9494cc76194a220a",
+      "modelscope_repo_id": "ai2apps/GLM-5.3-Flash-MLX-4bit-MTP-SSD",
+      "modelscope_revision": "f928d2572dc6d5706d61d43acf27e613cc28320a",
+      "distribution_id": "dist_ai2apps_glm5_3_flash_4bit_mtp_ssd_a4d3f3e4_v1",
       "preparation_recipe": "ai2apps/cache-moe/v1",
-      "conversion_variant": "glm5-next-affine-q4-gate-up-fused-v2",
-      "default_boost": "natural",
-      "default_main_slots": 64,
-      "hot_slots": 16,
-      "memory_budget_gib": 64
+      "ssd_layout": "glm5-next-affine-q4-gate-up-fused-v2"
     }
   ]
 }

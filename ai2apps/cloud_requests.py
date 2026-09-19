@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md.
 """Local ownership ledger for requests billed through AI2Apps Cloud."""
 
 from __future__ import annotations

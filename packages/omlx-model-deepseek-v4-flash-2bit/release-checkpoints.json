@@ -1,10 +1,18 @@
 {
-  "omlx-model-deepseek-v4-flash-2bit@0.1.0": [{
-    "source": "huggingface",
-    "repoId": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
-    "revision": "722bf559b7de93575b2320973cf2002e05bfe6c9",
-    "displayName": "DeepSeek V4 Flash 2-bit DQ",
-    "installMode": "cache-moe",
-    "recipeId": "deepseek-v4-flash-2bit"
-  }]
+  "schema": "ai2apps.model-release-checkpoints/v1",
+  "package_id": "ai2apps/model-deepseek-v4-flash-2bit",
+  "package_version": "0.3.4",
+  "runtime_dependency": ">=1.7.0 <2.0.0",
+  "models": [
+    {
+      "model_id": "ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit",
+      "repo_id": "Avdpro/DeepSeek-V4-Flash-2bit-DQ-SSD",
+      "revision": "19116161696aa83be5de1915df9f7dd5c6c23c48",
+      "modelscope_repo_id": "ai2apps/DeepSeek-V4-Flash-2bit-DQ-SSD",
+      "modelscope_revision": "1c3ceacb711d39c33b628d226935e448f6f8ac4e",
+      "distribution_id": "dist_ai2apps_deepseek_v4_flash_2bit_dq_ssd_19116161_v1",
+      "preparation_recipe": "ai2apps/cache-moe/v1",
+      "ssd_layout": "deepseek-v4-expert-major-v1"
+    }
+  ]
 }

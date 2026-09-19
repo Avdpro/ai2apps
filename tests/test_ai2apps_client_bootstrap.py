@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ def test_bootstrap_reports_supervised_instance_and_boot(monkeypatch) -> None:
     boot_id = uuid4()
     monkeypatch.setenv("AI2APPS_INSTANCE_ID", "customer-a")
     monkeypatch.setenv("AI2APPS_BOOT_ID", str(boot_id))
+    monkeypatch.setattr("ai2apps.api.client._hardware_device_name", lambda: "")
     monkeypatch.setattr("ai2apps.api.client.platform.node", lambda: "MyMacBook")
     runtime = SimpleNamespace(
         database_status=PlatformDatabaseStatus(
@@ -48,7 +50,9 @@ def test_bootstrap_reports_supervised_instance_and_boot(monkeypatch) -> None:
 def test_bootstrap_stays_starting_before_runtime_is_ready(monkeypatch) -> None:
     monkeypatch.delenv("AI2APPS_INSTANCE_ID", raising=False)
     monkeypatch.delenv("AI2APPS_BOOT_ID", raising=False)
-    monkeypatch.setattr("ai2apps.api.client.platform.node", lambda: "MyMacBook")
+    monkeypatch.setattr(
+        "ai2apps.api.client._hardware_device_name", lambda: "M5Max-128G"
+    )
     app = FastAPI()
     app.include_router(create_client_router(lambda: None), prefix="/v1/platform")
 
@@ -58,8 +62,36 @@ def test_bootstrap_stays_starting_before_runtime_is_ready(monkeypatch) -> None:
     assert payload["status"] == "starting"
     assert payload["instance_id"] == "unconfigured"
     assert payload["installation_id"] is None
-    assert payload["device_name"] == "MyMacBook"
+    assert payload["device_name"] == "M5Max-128G"
     assert payload["capabilities"] == ["shell"]
+
+
+def test_bootstrap_falls_back_to_hostname_when_hardware_is_unknown(monkeypatch) -> None:
+    monkeypatch.setattr("ai2apps.api.client._hardware_device_name", lambda: "")
+    monkeypatch.setattr("ai2apps.api.client.platform.node", lambda: "MyMacBook")
+    app = FastAPI()
+    app.include_router(create_client_router(lambda: None), prefix="/v1/platform")
+
+    payload = TestClient(app).get("/v1/platform/client/bootstrap").json()
+
+    assert payload["device_name"] == "MyMacBook"
+
+
+def test_hardware_device_name_compacts_chip_and_memory(monkeypatch) -> None:
+    monkeypatch.setattr("omlx.utils.hardware.get_chip_name", lambda: "Apple M5 Max")
+    monkeypatch.setattr("omlx.utils.hardware.get_total_memory_gb", lambda: 128.0)
+
+    from ai2apps.api.client import _hardware_device_name
+
+    assert _hardware_device_name() == "M5Max-128G"
+
+
+def test_login_uses_local_bootstrap_device_name_instead_of_browser_platform() -> None:
+    repository = Path(__file__).resolve().parents[1]
+    script = (repository / "ai2apps/web/static/js/login.js").read_text()
+
+    assert 'json("/v1/platform/client/bootstrap")' in script
+    assert "navigator.platform" not in script
 
 
 def test_bootstrap_uses_registered_device_display_name(monkeypatch) -> None:

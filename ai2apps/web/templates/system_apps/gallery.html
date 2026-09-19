@@ -1,12 +1,12 @@
 {% extends app_base_template|default("base.html") %}
 
 {% block title %}{{ t('gallery.title') }} - AI2Apps{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static('css/gallery.css') }}?v=gallery-context-menu-1">{% endblock %}
 
 {% block content %}
-<div class="gallery-app" x-data="galleryApp()" x-init="init()" data-app-id="ai2apps.gallery" data-client-environment="{{ client_environment|default('browser') }}" data-gallery-surface="{{ request.query_params.get('surface', 'full') }}" data-preview-asset-id="{{ request.query_params.get('assetId', '') }}" data-preview-collection-id="{{ request.query_params.get('collectionId', '') }}" data-preview-kind="{{ request.query_params.get('kind', '') }}" data-preview-search="{{ request.query_params.get('search', '') }}">
+<div class="gallery-app" x-data="galleryApp()" x-init="init()" data-app-id="ai2apps.gallery" data-client-environment="{{ client_environment|default('browser') }}" data-gallery-surface="{{ request.query_params.get('surface', 'full') }}" data-preview-asset-id="{{ request.query_params.get('assetId', '') }}" data-preview-collection-id="{{ request.query_params.get('collectionId', '') }}" data-preview-kind="{{ request.query_params.get('kind', '') }}" data-preview-search="{{ request.query_params.get('search', '') }}" @click="closeAssetContextMenu()">
     <header class="gallery-header">
-        <div class="gallery-brand"><span class="gallery-mark"><i data-lucide="gallery-horizontal-end"></i></span><div><h1>{{ t('gallery.title') }}</h1><p>{{ t('gallery.subtitle') }}</p></div></div>
+        <div class="gallery-brand"><span class="gallery-mark"><i data-lucide="gallery-stacked-horizontal"></i></span><div><h1>{{ t('gallery.title') }}</h1><p>{{ t('gallery.subtitle') }}</p></div></div>
         <div class="gallery-search"><i data-lucide="search"></i><input x-model="search" @input.debounce.250ms="loadAssets()" placeholder="{{ t('gallery.search.placeholder') }}"></div>
         <label class="gallery-button primary"><i data-lucide="upload"></i><span>{{ t('gallery.action.import') }}</span><input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label>
     </header>
@@ -39,10 +39,10 @@
             </div>
 
             <div x-show="loading" class="gallery-loading"><i data-lucide="loader-circle"></i><span>{{ t('gallery.loading') }}</span></div>
-            <div x-show="!loading&&!assets.length" class="gallery-empty"><span><i data-lucide="images"></i></span><h3>{{ t('gallery.empty.title') }}</h3><p>{{ t('gallery.empty.body') }}</p><label class="gallery-button primary"><i data-lucide="upload"></i>{{ t('gallery.action.choose_files') }}<input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label></div>
+            <div x-show="!loading&&!assets.length" class="gallery-empty" @contextmenu.prevent.stop="showCollectionContextMenu($event)"><span><i data-lucide="images"></i></span><h3>{{ t('gallery.empty.title') }}</h3><p>{{ t('gallery.empty.body') }}</p><label class="gallery-button primary"><i data-lucide="upload"></i>{{ t('gallery.action.choose_files') }}<input type="file" multiple @change="importFiles($event.target.files);$event.target.value=''" hidden></label></div>
 
-            <div x-show="!loading&&assets.length" class="gallery-assets" :class="view">
-                <template x-for="asset in assets" :key="asset.id"><article class="gallery-card" :class="selectedIds.includes(asset.id)&&'selected'" draggable="true" @dragstart="dragAsset($event,asset)" @dragover.prevent @drop.prevent.stop="dropBeforeAsset($event,asset)" @click="openPreview(asset)">
+            <div x-show="!loading&&assets.length" class="gallery-assets" :class="view" @contextmenu.prevent.stop="showCollectionContextMenu($event)">
+                <template x-for="asset in assets" :key="asset.id"><article class="gallery-card" :class="selectedIds.includes(asset.id)&&'selected'" tabindex="0" draggable="true" @dragstart="dragAsset($event,asset)" @dragover.prevent @drop.prevent.stop="dropBeforeAsset($event,asset)" @click="openPreview(asset)" @contextmenu.prevent.stop="showAssetContextMenu($event,asset)" @keydown="handleAssetContextKey($event,asset)">
                     <div class="gallery-preview" :class="asset.kind">
                         <img x-show="asset.kind==='image'" :src="contentUrl(asset)" :alt="asset.name" loading="lazy">
                         <video x-show="asset.kind==='video'" :src="contentUrl(asset)" muted preload="metadata"></video>
@@ -56,33 +56,10 @@
         </section>
     </main>
 
-    <section x-show="previewAsset" x-cloak x-ref="previewDialog" tabindex="-1" class="gallery-preview-dialog" role="dialog" aria-modal="true" aria-label="{{ t('gallery.preview.aria') }}" @click.self="closePreview()">
-        <header class="gallery-preview-head">
-            <div class="gallery-preview-title">
-                <span class="gallery-preview-type" x-text="kindLabel(previewAsset?.kind)"></span>
-                <div x-show="!previewRenaming"><strong x-text="previewAsset?.name"></strong><button type="button" @click="beginPreviewRename()" title="{{ t('gallery.action.rename') }}"><i data-lucide="pencil"></i></button></div>
-                <form x-show="previewRenaming" @submit.prevent="savePreviewName()"><input x-ref="previewNameInput" x-model.trim="previewName" maxlength="512" aria-label="{{ t('gallery.preview.filename') }}"><button type="submit" :disabled="previewSavingName||!previewName"><i data-lucide="check"></i></button><button type="button" @click="previewRenaming=false"><i data-lucide="x"></i></button></form>
-                <small><span x-text="previewPosition"></span><span> · </span><span x-text="formatSize(previewAsset?.size_bytes)"></span></small>
-            </div>
-            <div class="gallery-preview-tools">
-                <template x-if="previewAsset?.kind==='image'"><div class="gallery-zoom-tools"><button type="button" @click="changePreviewZoom(-.25)" :disabled="previewZoom<=.25" title="{{ t('gallery.action.zoom_out') }}"><i data-lucide="zoom-out"></i></button><output x-text="Math.round(previewZoom*100)+'%'"></output><button type="button" @click="changePreviewZoom(.25)" :disabled="previewZoom>=6" title="{{ t('gallery.action.zoom_in') }}"><i data-lucide="zoom-in"></i></button><button type="button" @click="resetPreviewTransform()" title="{{ t('gallery.action.reset') }}"><i data-lucide="scan"></i></button></div></template>
-                <a :href="previewAsset?contentUrl(previewAsset,true):'#'" download @click="downloadAsset($event,previewAsset)" title="{{ t('gallery.action.save_as') }}"><i data-lucide="download"></i><span>{{ t('gallery.action.download') }}</span></a>
-                <button type="button" @click="closePreview()" title="{{ t('gallery.action.close') }}"><i data-lucide="x"></i></button>
-            </div>
-        </header>
+    {% include "system_apps/_gallery_asset_context_menu.html" %}
 
-        <div class="gallery-preview-stage">
-            <button type="button" class="gallery-preview-nav previous" @click="movePreview(-1)" :disabled="!hasPreviousPreview" title="{{ t('gallery.action.previous') }}"><i data-lucide="chevron-left"></i></button>
-            <div class="gallery-preview-media" :class="previewAsset?.kind">
-                <template x-if="previewAsset?.kind==='image'"><img x-ref="previewImage" :src="contentUrl(previewAsset)" :alt="previewAsset.name" :style="previewImageTransform" draggable="false" @dblclick.prevent="togglePreviewZoom()" @wheel.prevent="wheelPreview($event)" @pointerdown="startPreviewPan($event)" @pointermove="movePreviewPan($event)" @pointerup="endPreviewPan($event)" @pointercancel="endPreviewPan($event)"></template>
-                <template x-if="previewAsset?.kind==='video'"><video x-ref="previewVideo" :src="contentUrl(previewAsset)" controls playsinline autoplay></video></template>
-                <template x-if="previewAsset?.kind==='audio'"><div class="gallery-audio-preview"><span><i data-lucide="audio-lines"></i></span><strong x-text="previewAsset.name"></strong><audio x-ref="previewAudio" :src="contentUrl(previewAsset)" controls autoplay></audio></div></template>
-                <template x-if="previewAsset&&!['image','video','audio'].includes(previewAsset.kind)"><div class="gallery-generic-preview"><span><i :data-lucide="assetIcon(previewAsset)"></i></span><strong x-text="previewAsset.name"></strong><p>{{ t('gallery.preview.unavailable') }}</p></div></template>
-            </div>
-            <button type="button" class="gallery-preview-nav next" @click="movePreview(1)" :disabled="!hasNextPreview" title="{{ t('gallery.action.next') }}"><i data-lucide="chevron-right"></i></button>
-        </div>
-    </section>
+    {% include "system_apps/_gallery_preview_dialog.html" %}
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ static('js/gallery.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ static('js/gallery.js') }}?v=gallery-context-menu-1"></script>{% endblock %}

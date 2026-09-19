@@ -47,11 +47,12 @@ def test_runtime_provider_and_model_dependencies_are_explicit() -> None:
 
     for source in MODEL_SOURCES:
         parsed = ServicePackageArchive._manifest(manifest(source))
-        expected_version = (
-            "0.3.3"
-            if source.name == "omlx-model-deepseek-v4-flash-2bit"
-            else "0.3.2"
-        )
+        expected_version = {
+            "omlx-model-qwen38": "0.3.3",
+            "omlx-model-qwen36-cached-moe": "0.3.4",
+            "omlx-model-deepseek-v4-flash": "0.3.4",
+            "omlx-model-deepseek-v4-flash-2bit": "0.3.5",
+        }[source.name]
         assert parsed.version == expected_version
         assert parsed.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
         requirement = parsed.raw["requires"]["services"][0]
@@ -62,11 +63,7 @@ def test_runtime_provider_and_model_dependencies_are_explicit() -> None:
         project_section = pyproject.partition("[project.optional-dependencies]")[0]
         assert "mlx==" not in project_section
         outer = json.loads((source / "ai2apps.json").read_text(encoding="utf-8"))
-        expected_runtime = (
-            ">=1.5.4 <2.0.0"
-            if source.name == "omlx-model-deepseek-v4-flash-2bit"
-            else ">=1.0.1 <2.0.0"
-        )
+        expected_runtime = ">=1.7.5 <2.0.0"
         assert outer["dependencies"] == [
             {
                 "packageId": "ai2apps/runtime-omlx",

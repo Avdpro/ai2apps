@@ -26,4 +26,24 @@ export PATH="$CPYTHON/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 unset PYTHONSTARTUP PYTHONUSERBASE PYTHONEXECUTABLE __PYVENV_LAUNCHER__
 unset VIRTUAL_ENV CONDA_PREFIX OPENSSL_CONF
 
+if [ -n "${AI2APPS_DEVELOPMENT_SOURCE_ROOT:-}" ]; then
+  DEVELOPMENT_PACKAGE="$AI2APPS_DEVELOPMENT_SOURCE_ROOT/ai2apps/__init__.py"
+  if [ ! -f "$DEVELOPMENT_PACKAGE" ]; then
+    echo "AI2Apps development source is unavailable: $DEVELOPMENT_PACKAGE" >&2
+    exit 66
+  fi
+  # Import the embedded omlx package before adding the repository root. This
+  # keeps the Runtime/model/network layer frozen while ai2apps and its WebUI
+  # are loaded live from the App development checkout.
+  exec "$PYTHON" -c '
+import os
+import sys
+import omlx  # lock omlx.__path__ to the embedded Runtime snapshot
+sys.path.insert(0, os.environ["AI2APPS_DEVELOPMENT_SOURCE_ROOT"])
+from ai2apps.cli import main
+sys.argv[0] = "omlx"
+main()
+' "$@"
+fi
+
 exec "$PYTHON" -m ai2apps.cli "$@"

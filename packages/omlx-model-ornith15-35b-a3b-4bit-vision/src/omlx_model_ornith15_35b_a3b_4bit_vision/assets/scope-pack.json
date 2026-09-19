@@ -16,11 +16,16 @@
     "scopes": 10
   },
   "compatibility": {
-    "model_ids": ["ornith-1.5-35b-a3b-mlx-4bit-vision"],
+    "model_ids": [
+      "ornith-1.5-35b-a3b-mlx-4bit-vision"
+    ],
     "source_revisions": {
-      "ornith-1.5-35b-a3b-mlx-4bit-vision": "31428ce8829c277f9255c59662b8efab58898ecf"
+      "ornith-1.5-35b-a3b-mlx-4bit-vision": "114f31e6c416027b78488a4b8afa1e12c2156275"
     },
-    "memory_tiers": [160, 192],
+    "memory_tiers": [
+      160,
+      192
+    ],
     "arena_tail_slots": 32
   },
   "provenance": {

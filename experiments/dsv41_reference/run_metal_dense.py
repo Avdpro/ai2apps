@@ -13,7 +13,7 @@ def main():
     # Preserve exact recorded sublayer boundaries while migrating inner GEMMs.
     # This rule applies to every layer, not to selected failing samples/layers.
     sys.modules['kernel']=cpu_kernel
-    sys.path.insert(0,str(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/inference').resolve()))
+    sys.path.insert(0,str(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/inference').resolve()))
     import model
     original_init=model.Block.__init__
     def init(self,*args,**kwargs):

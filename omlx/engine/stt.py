@@ -318,7 +318,12 @@ class STTEngine(BaseNonStreamingEngine):
         def _transcribe_sync():
             # Call model.generate() directly instead of
             # generate_transcription() which writes files to disk.
-            gen_kwargs = dict(kwargs)
+            # Optional API fields must be omitted, rather than forwarded as
+            # explicit None, so backend defaults such as Qwen3-ASR's numeric
+            # max_tokens remain effective.
+            gen_kwargs = {
+                key: value for key, value in kwargs.items() if value is not None
+            }
             generate_language = _normalize_stt_generate_language(model, language)
             if generate_language is not None:
                 gen_kwargs["language"] = generate_language
@@ -442,7 +447,9 @@ class STTEngine(BaseNonStreamingEngine):
         model = self._model
         t0 = time.monotonic()
 
-        gen_kwargs = dict(kwargs)
+        gen_kwargs = {
+            key: value for key, value in kwargs.items() if value is not None
+        }
         generate_language = _normalize_stt_generate_language(model, language)
         if generate_language is not None:
             gen_kwargs["language"] = generate_language

@@ -286,7 +286,8 @@ async def test_admin_catalog_starts_signed_cached_moe_recipe(monkeypatch):
             }
 
         async def start(
-            self, recipe_id, source, memory_tier, token, storage_policy=None
+            self, recipe_id, source, memory_tier, token, storage_policy=None,
+            license_consents=None,
         ):
             captured.update(
                 started=recipe_id,
@@ -294,6 +295,7 @@ async def test_admin_catalog_starts_signed_cached_moe_recipe(monkeypatch):
                 memory_tier=memory_tier,
                 token=token,
                 storage_policy=storage_policy,
+                license_consents=license_consents,
             )
             return FakeTask()
 

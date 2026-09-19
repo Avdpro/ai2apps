@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from ai2apps.api.errors import platform_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
@@ -20,6 +20,7 @@ from ai2apps.identity import (
     RequestPrincipal,
     local_session_cookie_name,
 )
+from ai2apps.password_policy import PASSWORD_SCHEMA, SecretPassword
 from ai2apps.remote import RemoteAccessError
 
 
@@ -29,7 +30,10 @@ class MemberHandoffExchangeRequest(BaseModel):
 
 class CoreBootstrapRequest(BaseModel):
     display_name: str = Field(alias="displayName", min_length=1, max_length=120)
-    owner_password: SecretStr = Field(alias="ownerPassword", min_length=12, max_length=128)
+    owner_password: SecretPassword = Field(
+        alias="ownerPassword",
+        json_schema_extra=PASSWORD_SCHEMA,
+    )
 
 
 LOCAL_SESSION_MAX_AGE_SECONDS = int(LOCAL_SESSION_LIFETIME.total_seconds())

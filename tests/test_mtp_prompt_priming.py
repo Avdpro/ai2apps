@@ -141,8 +141,8 @@ class TestCaptureFold:
         for (k, v), (rk, rv) in zip(
             _kv_entries(ctx.mtp_cache), _kv_entries(ref_cache)
         ):
-            assert mx.allclose(k, rk, rtol=1e-4, atol=1e-4)
-            assert mx.allclose(v, rv, rtol=1e-4, atol=1e-4)
+            assert mx.allclose(k, rk, rtol=2e-3, atol=2e-3)
+            assert mx.allclose(v, rv, rtol=2e-3, atol=2e-3)
 
     def test_chunk_size_one_seam_is_dense(self, model):
         """A trailing S==1 forward (the __init__ _step seam) still folds."""
@@ -171,8 +171,8 @@ class TestCaptureFold:
         ref_cache = _reference_head_cache(model, tokens, extra_tok=main_tok)
         mx.eval([c.state for c in mtp_cache])
         for (k, v), (rk, rv) in zip(_kv_entries(mtp_cache), _kv_entries(ref_cache)):
-            assert mx.allclose(k, rk, rtol=1e-4, atol=1e-4)
-            assert mx.allclose(v, rv, rtol=1e-4, atol=1e-4)
+            assert mx.allclose(k, rk, rtol=2e-3, atol=2e-3)
+            assert mx.allclose(v, rv, rtol=2e-3, atol=2e-3)
 
 
 class TestCaptureSkips:

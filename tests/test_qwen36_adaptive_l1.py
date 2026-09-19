@@ -208,7 +208,8 @@ def test_qwen_tail_removes_promoted_duplicates_without_moving_retained_slots():
     assert len(set(tail)) == 3
 
 
-def test_qwen_adaptive_bank_stats_start_empty():
+def test_qwen_adaptive_bank_stats_start_empty(monkeypatch):
+    monkeypatch.delenv("OMLX_MOE_DIRECT_L1", raising=False)
     policy = SimpleNamespace(store_path="/tmp", backend="flesh")
     bank = Qwen36AdaptiveBank(SimpleNamespace(), policy)
     assert bank.stats() == {

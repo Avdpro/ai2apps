@@ -1,0 +1,17 @@
+{
+  "schema": "ai2apps.mlx-whisperx-benchmark-manifest/v1",
+  "dataset": "FluidInference/fleurs-full",
+  "upstream_dataset": "google/fleurs",
+  "revision": "1cca811bb8ea4d370345f108f00518167040282c",
+  "config": "en_us",
+  "split": "test",
+  "license": "cc-by-4.0",
+  "language": "en-US",
+  "expected_cases": 647,
+  "transcript": {
+    "path": "en_us/en_us.trans.txt",
+    "sha256": "fcd41997fbec03a8f0c068bf8e914dbf89c31406cfed19af2f21d8dca5b78388",
+    "audio_directory": "en_us",
+    "audio_suffix": ".wav"
+  }
+}

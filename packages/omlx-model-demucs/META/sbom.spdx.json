@@ -1,0 +1,27 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.demucs-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.demucs-mlx/0.1.0",
+  "packages": [
+    {
+      "name": "AI2Apps native MLX HTDemucs implementation",
+      "SPDXID": "SPDXRef-AI2AppsMLXDemucs",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright 2026 AI2Apps contributors"
+    },
+    {
+      "name": "Demucs HTDemucs architecture and checkpoint",
+      "SPDXID": "SPDXRef-DemucsHTDemucs",
+      "versionInfo": "htdemucs",
+      "downloadLocation": "https://github.com/facebookresearch/demucs",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) Meta Platforms, Inc. and affiliates."
+    }
+  ]
+}

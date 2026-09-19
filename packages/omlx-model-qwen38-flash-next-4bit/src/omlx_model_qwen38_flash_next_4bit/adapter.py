@@ -38,8 +38,8 @@ RECIPE = {
         {
             "id": "huggingface",
             "label": "Hugging Face",
-            "repo_id": "Vontra/Qwen3.8-Flash-Next-MLX-4bit",
-            "revision": "de597762aa61387c89590a46582222a261ce0387",
+            "repo_id": "Avdpro/Qwen3.8-Flash-Next-MLX-4bit-SSD",
+            "revision": "23c6ed09ef3ec9bec2f31039f0e23e94dfacd1b5",
         },
     ),
     "scope_name": "general",

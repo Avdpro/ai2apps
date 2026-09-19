@@ -6,15 +6,18 @@ import asyncio
 import base64
 import ctypes
 import errno
+import fcntl
 import hashlib
 import itertools
 import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
@@ -25,6 +28,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from ai2apps.download_progress import DownloadProgress
+from ai2apps.http_range import (
+    StrictRangeResponseError,
+    validate_strict_range_response_headers,
+)
 from ai2apps.packages.contract_v1 import jcs_bytes, public_key_fingerprint
 
 _DIGEST = re.compile(r"^(?:sha256:)?([0-9a-f]{64})$")
@@ -42,8 +50,8 @@ _CONSENT_DECISIONS = frozenset(
     {"accepted_license_terms", "obtained_separate_license"}
 )
 _SIGNING_DOMAIN = b"AI2APPS-CHECKPOINT-DISTRIBUTION-V1\n"
-_CONTENT_RANGE = re.compile(r"^bytes (\d+)-(\d+)/(\d+)$")
 _ED25519_SIGNATURE = re.compile(r"^[A-Za-z0-9_-]{86}$")
+_SNAPSHOT_VERIFICATION_FILE = ".ai2apps/verification.json"
 
 
 class CheckpointManifestError(ValueError):
@@ -679,6 +687,7 @@ class HTTPRangePieceSource:
         *,
         headers: dict[str, str] | None = None,
         max_piece_size: int = 64 * 1024 * 1024,
+        expected_size: int | None = None,
     ) -> None:
         parsed = urlsplit(endpoint_url)
         if (
@@ -693,6 +702,8 @@ class HTTPRangePieceSource:
             )
         if max_piece_size <= 0 or max_piece_size > 64 * 1024 * 1024:
             raise ValueError("max_piece_size is invalid")
+        if expected_size is not None and expected_size <= 0:
+            raise ValueError("expected_size is invalid")
         self.provider = source.provider
         self.file_path = source.path
         self.source = source
@@ -700,15 +711,67 @@ class HTTPRangePieceSource:
         self.client = client
         self.headers = dict(headers or {})
         self.max_piece_size = max_piece_size
+        self.expected_size = expected_size
+        self._observed_size: int | None = None
+
+    @property
+    def _allows_http_200_range(self) -> bool:
+        return self.provider == "modelscope"
+
+    async def _request_range(
+        self, offset: int, length: int,
+        observed: Callable[[int], None] | None = None,
+    ) -> tuple[bytes, int]:
+        end = offset + length - 1
+        request = self.client.build_request(
+            "GET",
+            self.endpoint_url,
+            headers={
+                **self.headers,
+                "Accept-Encoding": "identity",
+                "Range": f"bytes={offset}-{end}",
+            },
+        )
+        response = await self.client.send(
+            request,
+            stream=True,
+            follow_redirects=True,
+        )
+        try:
+            validated = validate_strict_range_response_headers(
+                response,
+                start=offset,
+                end=end,
+                expected_total=self.expected_size or self._observed_size,
+                allow_http_200=self._allows_http_200_range,
+            )
+            content = bytearray()
+            async for chunk in response.aiter_bytes(
+                chunk_size=min(64 * 1024, length + 1)
+            ):
+                remaining = length - len(content)
+                content.extend(chunk[: remaining + 1])
+                if len(chunk) > remaining or len(content) > length:
+                    raise StrictRangeResponseError(
+                        "range_body_excess",
+                        "Range source exceeded the requested range",
+                    )
+                if observed is not None:
+                    observed(len(content))
+            if len(content) != length:
+                raise StrictRangeResponseError(
+                    "range_body_short",
+                    "Range source ended before the requested range completed",
+                )
+            self._observed_size = validated.total_size
+            return bytes(content), validated.total_size
+        finally:
+            await response.aclose()
 
     async def probe(self) -> SourceCapability:
         started = time.monotonic()
         try:
-            response = await self.client.get(
-                self.endpoint_url,
-                headers={**self.headers, "Range": "bytes=0-0"},
-                follow_redirects=True,
-            )
+            _content, total_size = await self._request_range(0, 1)
         except httpx.TimeoutException:
             return SourceCapability(
                 available=False,
@@ -721,70 +784,34 @@ class HTTPRangePieceSource:
                 range_supported=False,
                 error_code="unreachable",
             )
-        if response.status_code == 206:
-            parsed = self._content_range(response)
-            if parsed is None or parsed[:2] != (0, 0) or len(response.content) != 1:
-                return SourceCapability(
-                    available=False,
-                    range_supported=False,
-                    error_code="invalid_range_response",
-                )
+        except StrictRangeResponseError as error:
             return SourceCapability(
-                available=True,
-                range_supported=True,
-                content_length=parsed[2],
-                latency_ms=(time.monotonic() - started) * 1000,
-            )
-        if response.status_code == 200:
-            length = response.headers.get("Content-Length")
-            return SourceCapability(
-                available=True,
+                available=error.code != "range_status_unsupported",
                 range_supported=False,
-                content_length=int(length) if length and length.isdigit() else None,
-                latency_ms=(time.monotonic() - started) * 1000,
-                error_code="range_unsupported",
+                error_code=error.code,
             )
         return SourceCapability(
-            available=False,
-            range_supported=False,
-            error_code=f"http_{response.status_code}",
+            available=True,
+            range_supported=True,
+            content_length=total_size,
+            latency_ms=(time.monotonic() - started) * 1000,
         )
 
-    async def fetch_piece(self, file_path: str, offset: int, length: int) -> bytes:
+    async def fetch_piece(
+        self, file_path: str, offset: int, length: int, *,
+        observed: Callable[[int], None] | None = None,
+    ) -> bytes:
         if file_path != self.source.path:
             raise CheckpointManifestError("piece source is bound to another file")
         if offset < 0 or length <= 0 or length > self.max_piece_size:
             raise ValueError("piece range is invalid")
-        end = offset + length - 1
-        response = await self.client.get(
-            self.endpoint_url,
-            headers={**self.headers, "Range": f"bytes={offset}-{end}"},
-            follow_redirects=True,
-        )
-        if response.status_code != 206:
+        try:
+            content, _total_size = await self._request_range(offset, length, observed)
+        except StrictRangeResponseError as error:
             raise CheckpointManifestError(
-                f"{self.provider} source did not honor the requested range"
-            )
-        parsed = self._content_range(response)
-        if parsed is None or parsed[:2] != (offset, end):
-            raise CheckpointManifestError(
-                f"{self.provider} source returned a mismatched content range"
-            )
-        if len(response.content) != length:
-            raise CheckpointManifestError(
-                f"{self.provider} source returned a short piece"
-            )
-        return response.content
-
-    @staticmethod
-    def _content_range(response: httpx.Response) -> tuple[int, int, int] | None:
-        match = _CONTENT_RANGE.fullmatch(response.headers.get("Content-Range", ""))
-        if match is None:
-            return None
-        start, end, total = (int(value) for value in match.groups())
-        if start > end or end >= total:
-            return None
-        return start, end, total
+                f"{self.provider} source returned an invalid range: {error.code}"
+            ) from error
+        return content
 
 
 class HubSourceResolver:
@@ -824,6 +851,7 @@ class HubSourceResolver:
         source: CheckpointSource,
         *,
         user_token: str | None = None,
+        expected_size: int | None = None,
     ) -> HTTPRangePieceSource:
         if user_token is not None and (
             not user_token or "\r" in user_token or "\n" in user_token
@@ -872,6 +900,7 @@ class HubSourceResolver:
             endpoint_url,
             self.client,
             headers=headers,
+            expected_size=expected_size,
         )
 
 
@@ -949,8 +978,50 @@ class CheckpointCache:
 
     def __init__(self, root: str | Path):
         self.root = Path(root)
-        for name in ("blobs", "snapshots", "partial", "manifests"):
-            (self.root / name).mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.root.chmod(0o700)
+        for name in ("blobs", "snapshots", "partial", "manifests", ".locks"):
+            directory = self.root / name
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            directory.chmod(0o700)
+
+    def try_acquire_distribution_lock(
+        self, manifest: CheckpointDistributionManifest
+    ) -> int | None:
+        """Acquire one nonblocking cross-process distribution lock."""
+
+        identity = f"{manifest.distribution_id}\0{manifest.digest}"
+        name = hashlib.sha256(identity.encode("utf-8")).hexdigest() + ".lock"
+        path = self.root / ".locks" / name
+        descriptor = os.open(
+            path,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+        )
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+                raise CheckpointManifestError(
+                    "checkpoint cache lock is not owner-controlled"
+                )
+            os.fchmod(descriptor, 0o600)
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(descriptor)
+                return None
+            return descriptor
+        except Exception:
+            with suppress(OSError):
+                os.close(descriptor)
+            raise
+
+    @staticmethod
+    def release_distribution_lock(descriptor: int) -> None:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
     def blob_path(self, sha256: str) -> Path:
         digest = _digest(sha256, "blob digest")
@@ -985,6 +1056,26 @@ class CheckpointCache:
             if snapshot.is_dir() and self._snapshot_matches(manifest, snapshot)
             else None
         )
+
+    def verified_blobs(
+        self, manifest: CheckpointDistributionManifest
+    ) -> dict[str, Path]:
+        """Return content-addressed files already verified in this cache."""
+
+        blobs: dict[str, Path] = {}
+        for checkpoint_file in manifest.files:
+            blob = self.blob_path(checkpoint_file.sha256)
+            if not blob.exists():
+                continue
+            if (
+                blob.is_symlink()
+                or not blob.is_file()
+                or blob.stat().st_size != checkpoint_file.size
+                or _sha256_file(blob) != checkpoint_file.sha256
+            ):
+                raise CheckpointManifestError("verified cache blob is corrupt")
+            blobs[checkpoint_file.path] = blob
+        return blobs
 
     def promote_verified_file(
         self, partial: str | Path, *, sha256: str, size: int
@@ -1075,6 +1166,7 @@ class CheckpointCache:
                 + "\n",
                 encoding="utf-8",
             )
+            self._write_snapshot_verification(manifest, staging)
             for path in sorted(staging.rglob("*"), reverse=True):
                 path.chmod(0o555 if path.is_dir() else 0o444)
             staging.chmod(0o555)
@@ -1193,8 +1285,103 @@ class CheckpointCache:
         return target.resolve()
 
     @staticmethod
+    def _snapshot_file_stat(snapshot: Path, relative: str) -> dict[str, int] | None:
+        target = snapshot
+        for part in PurePosixPath(relative).parts:
+            target = target / part
+            if target.is_symlink():
+                return None
+        try:
+            info = target.stat()
+        except OSError:
+            return None
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o222:
+            return None
+        return {
+            "device": int(info.st_dev),
+            "inode": int(info.st_ino),
+            "size": int(info.st_size),
+            "mtimeNs": int(info.st_mtime_ns),
+        }
+
+    @classmethod
+    def _write_snapshot_verification(
+        cls, manifest: CheckpointDistributionManifest, snapshot: Path
+    ) -> None:
+        files: dict[str, dict[str, int]] = {}
+        for checkpoint_file in manifest.files:
+            target = snapshot / checkpoint_file.path
+            info = target.stat()
+            files[checkpoint_file.path] = {
+                "device": int(info.st_dev),
+                "inode": int(info.st_ino),
+                "size": int(info.st_size),
+                "mtimeNs": int(info.st_mtime_ns),
+            }
+        destination = snapshot / _SNAPSHOT_VERIFICATION_FILE
+        parent = destination.parent
+        original_mode = stat.S_IMODE(parent.stat().st_mode)
+        if not original_mode & 0o200:
+            parent.chmod(original_mode | 0o200)
+        try:
+            temporary = destination.with_suffix(".json.partial")
+            temporary.write_text(
+                json.dumps(
+                    {
+                        "format": "ai2apps-checkpoint-verification",
+                        "version": 1,
+                        "manifestDigest": manifest.digest,
+                        "files": files,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            temporary.chmod(0o444)
+            os.replace(temporary, destination)
+        finally:
+            parent.chmod(original_mode)
+
+    @classmethod
+    def _snapshot_verification_matches(
+        cls, manifest: CheckpointDistributionManifest, snapshot: Path
+    ) -> bool:
+        try:
+            value = json.loads(
+                (snapshot / _SNAPSHOT_VERIFICATION_FILE).read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, json.JSONDecodeError):
+            return False
+        if (
+            not isinstance(value, dict)
+            or value.get("format") != "ai2apps-checkpoint-verification"
+            or value.get("version") != 1
+            or value.get("manifestDigest") != manifest.digest
+            or not isinstance(value.get("files"), dict)
+        ):
+            return False
+        files = value["files"]
+        if set(files) != {item.path for item in manifest.files}:
+            return False
+        for checkpoint_file in manifest.files:
+            recorded = files.get(checkpoint_file.path)
+            current = cls._snapshot_file_stat(snapshot, checkpoint_file.path)
+            if (
+                not isinstance(recorded, dict)
+                or current is None
+                or recorded != current
+                or current["size"] != checkpoint_file.size
+            ):
+                return False
+        return True
+
+    @classmethod
     def _snapshot_matches(
-        manifest: CheckpointDistributionManifest, snapshot: Path
+        cls, manifest: CheckpointDistributionManifest, snapshot: Path
     ) -> bool:
         try:
             metadata = json.loads(
@@ -1210,6 +1397,9 @@ class CheckpointCache:
             *(item.path for item in manifest.files),
             ".ai2apps/distribution.json",
         }
+        verification = snapshot / _SNAPSHOT_VERIFICATION_FILE
+        if verification.is_file() and not verification.is_symlink():
+            expected_files.add(_SNAPSHOT_VERIFICATION_FILE)
         actual_files = {
             path.relative_to(snapshot).as_posix()
             for path in snapshot.rglob("*")
@@ -1217,6 +1407,10 @@ class CheckpointCache:
         }
         if actual_files != expected_files:
             return False
+        if verification.is_file() and cls._snapshot_verification_matches(
+            manifest, snapshot
+        ):
+            return True
         for checkpoint_file in manifest.files:
             target = snapshot / checkpoint_file.path
             if (
@@ -1226,6 +1420,8 @@ class CheckpointCache:
                 or _sha256_file(target) != checkpoint_file.sha256
             ):
                 return False
+        with suppress(OSError):
+            cls._write_snapshot_verification(manifest, snapshot)
         return True
 
 
@@ -1307,7 +1503,7 @@ class PieceDownloadScheduler:
         cache: CheckpointCache,
         sources: tuple[PieceSource, ...] | list[PieceSource],
         *,
-        concurrency: int = 4,
+        concurrency: int = 8,
         max_source_attempts: int = 16,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
@@ -1326,20 +1522,38 @@ class PieceDownloadScheduler:
         self.progress = progress
         self._completed_bytes_by_file: dict[str, int] = {}
         self._map_lock = asyncio.Lock()
+        self._inflight: dict[int, dict[str, int]] = {}
+        self._progress_at = 0.0
+        self._download_meter = DownloadProgress()
+        self._source_rates: dict[str, float] = {}
+        self._source_active: dict[str, int] = {}
+        self._source_retry_at: dict[str, float] = {}
 
     async def download(self) -> dict[str, Path]:
-        candidates = await self._probe_sources()
+        cached_blobs = await asyncio.to_thread(
+            self.cache.verified_blobs, self.manifest
+        )
+        self._prepare_partial_files(cached_blobs)
+        completed = await asyncio.to_thread(self._validated_completed_pieces)
+        completed.update(
+            piece.index
+            for piece in self.pieces
+            if all(segment.file_path in cached_blobs for segment in piece.segments)
+        )
+        self.piece_map.completed = completed
+        self.piece_map.store()
+        pending = [piece for piece in self.pieces if piece.index not in completed]
+        required_paths = {
+            segment.file_path for piece in pending for segment in piece.segments
+        }
+        candidates = await self._probe_sources(required_paths)
         missing_sources = {
-            item.path for item in self.manifest.files if not candidates.get(item.path)
+            path for path in required_paths if not candidates.get(path)
         }
         if missing_sources:
             raise CheckpointDownloadError(
                 f"no usable range source for: {', '.join(sorted(missing_sources))}"
             )
-        self._prepare_partial_files()
-        completed = await asyncio.to_thread(self._validated_completed_pieces)
-        self.piece_map.completed = completed
-        self.piece_map.store()
         self._completed_bytes_by_file = {
             checkpoint_file.path: 0 for checkpoint_file in self.manifest.files
         }
@@ -1347,15 +1561,22 @@ class PieceDownloadScheduler:
             for segment in self.pieces[index].segments:
                 self._completed_bytes_by_file[segment.file_path] += segment.length
 
-        semaphore = asyncio.Semaphore(self.concurrency)
+        queue = iter(pending)
 
-        async def run(piece: CheckpointPiece) -> None:
-            if piece.index in completed:
-                return
-            async with semaphore:
+        async def worker() -> None:
+            for piece in queue:
                 await self._download_piece(piece, candidates)
 
-        await asyncio.gather(*(run(piece) for piece in self.pieces))
+        workers = [
+            asyncio.create_task(worker())
+            for _ in range(min(self.concurrency, len(pending)))
+        ]
+        try:
+            await asyncio.gather(*workers)
+        finally:
+            for task in workers:
+                task.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
 
         blobs: dict[str, Path] = {}
         for checkpoint_file in self.manifest.files:
@@ -1372,14 +1593,26 @@ class PieceDownloadScheduler:
         self.cache.write_manifest(self.manifest)
         return blobs
 
-    async def _probe_sources(self) -> dict[str, list[PieceSource]]:
+    async def _probe_sources(
+        self, required_paths: set[str] | None = None
+    ) -> dict[str, list[PieceSource]]:
+        sources = tuple(
+            source
+            for source in self.sources
+            if required_paths is None or source.file_path in required_paths
+        )
+        semaphore = asyncio.Semaphore(self.concurrency)
+
+        async def probe(source: PieceSource) -> SourceCapability:
+            async with semaphore:
+                return await asyncio.wait_for(source.probe(), timeout=15)
+
         results = await asyncio.gather(
-            *(source.probe() for source in self.sources),
-            return_exceptions=True,
+            *(probe(source) for source in sources), return_exceptions=True
         )
         file_sizes = {item.path: item.size for item in self.manifest.files}
         ranked: dict[str, list[tuple[float, PieceSource]]] = {}
-        for source, result in zip(self.sources, results, strict=True):
+        for source, result in zip(sources, results, strict=True):
             if (
                 isinstance(result, Exception)
                 or not result.available
@@ -1402,13 +1635,22 @@ class PieceDownloadScheduler:
             for path, items in ranked.items()
         }
 
-    def _prepare_partial_files(self) -> None:
+    def _prepare_partial_files(
+        self, cached_blobs: dict[str, Path] | None = None
+    ) -> None:
+        cached_blobs = cached_blobs or {}
         reset_map = False
         for checkpoint_file in self.manifest.files:
             partial = self.cache.partial_path(
                 self.manifest.distribution_id, checkpoint_file.path
             )
             partial.parent.mkdir(parents=True, exist_ok=True)
+            cached_blob = cached_blobs.get(checkpoint_file.path)
+            if cached_blob is not None:
+                partial.unlink(missing_ok=True)
+                _clone_or_copy_file(cached_blob, partial)
+                partial.chmod(0o600)
+                continue
             if partial.exists() and partial.stat().st_size != checkpoint_file.size:
                 partial.unlink()
                 reset_map = True
@@ -1447,17 +1689,62 @@ class PieceDownloadScheduler:
             return None
         return bytes(payload)
 
+    def _report_progress(self, file_path: str, provider: str, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if self.progress is None or (not force and now - self._progress_at < 0.1):
+            return
+        self._progress_at = now
+        received = dict(self._completed_bytes_by_file)
+        for pending in self._inflight.values():
+            for path, size in pending.items():
+                received[path] += size
+        file_sizes = {item.path: item.size for item in self.manifest.files}
+        total = sum(file_sizes.values())
+        completed = sum(received.values())
+        self.progress(self._download_meter.update({
+            "stage": "downloading_checkpoint",
+            "distributionId": self.manifest.distribution_id,
+            "fileName": file_path,
+            "bytesCompleted": received[file_path],
+            "bytesVerified": self._completed_bytes_by_file[file_path],
+            "bytesTotal": file_sizes[file_path],
+            "totalBytesCompleted": completed,
+            "totalBytesVerified": sum(self._completed_bytes_by_file.values()),
+            "totalBytesTotal": total,
+            "percent": completed / total * 100 if total else 100,
+            "provider": provider,
+        }))
+
+    def _source_priority(self, source: PieceSource) -> tuple[int, float]:
+        provider = source.provider
+        active = self._source_active.get(provider, 0)
+        if self._source_retry_at.get(provider, 0) > time.monotonic():
+            return (3, self._source_retry_at[provider])
+        rate = self._source_rates.get(provider)
+        if rate is None:
+            return (0, 0) if active == 0 else (2, active)
+        return (1, (active + 1) / rate)
+
+    def _record_source_rate(self, provider: str, size: int, elapsed: float) -> None:
+        rate = size / max(elapsed, 0.001)
+        previous = self._source_rates.get(provider, rate)
+        self._source_rates[provider] = previous * 0.7 + rate * 0.3
+        self._source_retry_at.pop(provider, None)
+
     async def _download_piece(
         self,
         piece: CheckpointPiece,
         candidates: dict[str, list[PieceSource]],
     ) -> None:
-        choices_per_segment = [candidates[item.file_path] for item in piece.segments]
+        choices_per_segment = [
+            sorted(candidates[item.file_path], key=self._source_priority)
+            for item in piece.segments
+        ]
         vectors: list[tuple[int, ...]] = []
         seen_vectors: set[tuple[int, ...]] = set()
         for rotation in range(max(len(items) for items in choices_per_segment)):
             vector = tuple(
-                (piece.index + rotation) % len(items) for items in choices_per_segment
+                rotation % len(items) for items in choices_per_segment
             )
             if vector not in seen_vectors:
                 seen_vectors.add(vector)
@@ -1473,50 +1760,60 @@ class PieceDownloadScheduler:
         errors: list[str] = []
         for vector in vectors[: self.max_source_attempts]:
             payload = bytearray()
-            contributions: list[tuple[str, int]] = []
+            self._inflight[piece.index] = {}
+            contributions: list[tuple[str, int, float]] = []
             try:
-                for segment, source_index in zip(piece.segments, vector, strict=True):
-                    source = candidates[segment.file_path][source_index]
-                    chunk = await source.fetch_piece(
-                        segment.file_path, segment.file_offset, segment.length
-                    )
+                for segment, choices, source_index in zip(
+                    piece.segments, choices_per_segment, vector, strict=True
+                ):
+                    source = choices[source_index]
+                    pending = self._inflight[piece.index]
+                    previous = pending.get(segment.file_path, 0)
+
+                    def observed(size: int) -> None:
+                        pending[segment.file_path] = previous + size
+                        self._report_progress(segment.file_path, source.provider)
+
+                    options = {"observed": observed} if isinstance(source, HTTPRangePieceSource) else {}
+                    provider = source.provider
+                    self._source_active[provider] = self._source_active.get(provider, 0) + 1
+                    started = time.monotonic()
+                    try:
+                        chunk = await source.fetch_piece(
+                            segment.file_path, segment.file_offset, segment.length, **options
+                        )
+                    except Exception:
+                        self._source_retry_at[provider] = time.monotonic() + 30
+                        raise
+                    finally:
+                        self._source_active[provider] -= 1
+                    observed(len(chunk))
                     payload.extend(chunk)
-                    contributions.append((source.provider, len(chunk)))
+                    contributions.append((provider, len(chunk), time.monotonic() - started))
             except Exception as error:
+                self._inflight.pop(piece.index, None)
                 errors.append(str(error))
                 continue
-            if hashlib.sha256(payload).hexdigest() != piece.sha256:
+            digest = await asyncio.to_thread(lambda: hashlib.sha256(payload).hexdigest())
+            if digest != piece.sha256:
+                self._inflight.pop(piece.index, None)
+                for provider, _size, _elapsed in contributions:
+                    self._source_retry_at[provider] = time.monotonic() + 30
                 errors.append("piece digest mismatch")
                 continue
+            for provider, size, elapsed in contributions:
+                self._record_source_rate(provider, size, elapsed)
             await asyncio.to_thread(self._write_piece, piece, bytes(payload))
             async with self._map_lock:
-                self.piece_map.mark(piece.index)
+                await asyncio.to_thread(self.piece_map.mark, piece.index)
+                self._inflight.pop(piece.index, None)
                 for segment in piece.segments:
                     self._completed_bytes_by_file[segment.file_path] += segment.length
-                for provider, size in contributions:
+                for provider, size, _elapsed in contributions:
                     self.source_bytes[provider] = self.source_bytes.get(provider, 0) + size
-                if self.progress is not None:
-                    current = piece.segments[-1]
-                    file_sizes = {
-                        item.path: item.size for item in self.manifest.files
-                    }
-                    completed_total = sum(self._completed_bytes_by_file.values())
-                    total = sum(file_sizes.values())
-                    self.progress(
-                        {
-                            "stage": "downloading_checkpoint",
-                            "distributionId": self.manifest.distribution_id,
-                            "fileName": current.file_path,
-                            "bytesCompleted": self._completed_bytes_by_file[
-                                current.file_path
-                            ],
-                            "bytesTotal": file_sizes[current.file_path],
-                            "totalBytesCompleted": completed_total,
-                            "totalBytesTotal": total,
-                            "percent": (completed_total / total * 100) if total else 100,
-                            "provider": contributions[-1][0],
-                        }
-                    )
+                self._report_progress(
+                    piece.segments[-1].file_path, contributions[-1][0], force=True
+                )
             return
         detail = errors[-1] if errors else "no source attempt succeeded"
         raise CheckpointDownloadError(

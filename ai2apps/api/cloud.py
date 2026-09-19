@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md.
 """Local native-network facade for the AI2Apps Cloud v1 API."""
 
 from __future__ import annotations
@@ -40,7 +42,9 @@ from ai2apps.messager import (
     MessagerIdempotencyConflictError,
     MessagerRepository,
 )
+from ai2apps.model_identity import build_model_identity
 from ai2apps.model_invocation import ModelInvocationContext
+from ai2apps.password_policy import PASSWORD_SCHEMA, Password
 from ai2apps.qr import svg_qr_data_url
 from ai2apps.remote import RemoteAccessError
 
@@ -75,16 +79,16 @@ class RegisterRequest(BaseModel):
 
     display_name: str = Field(alias="displayName", min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=320)
-    password: str = Field(min_length=12, max_length=128)
+    password: Password = Field(json_schema_extra=PASSWORD_SCHEMA)
 
 
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
-    password: str = Field(min_length=12, max_length=128)
+    password: Password = Field(json_schema_extra=PASSWORD_SCHEMA)
 
 
 class AdminReauthRequest(BaseModel):
-    password: str = Field(min_length=12, max_length=128)
+    password: Password = Field(json_schema_extra=PASSWORD_SCHEMA)
     duration_minutes: Literal[5, 15, 60, 180] = Field(
         default=15, alias="durationMinutes"
     )
@@ -176,8 +180,9 @@ class OfflineMessageRequest(BaseModel):
 class CoreDeviceRevokeRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    owner_password: str = Field(
-        alias="ownerPassword", min_length=12, max_length=128
+    owner_password: Password = Field(
+        alias="ownerPassword",
+        json_schema_extra=PASSWORD_SCHEMA,
     )
 
 
@@ -198,7 +203,10 @@ class EmailCodeRequest(EmailRequest):
 class PasswordResetRequest(EmailCodeRequest):
     model_config = ConfigDict(populate_by_name=True)
 
-    new_password: str = Field(alias="newPassword", min_length=12, max_length=128)
+    new_password: Password = Field(
+        alias="newPassword",
+        json_schema_extra=PASSWORD_SCHEMA,
+    )
 
 
 class PromotionCodeRedeemRequest(BaseModel):
@@ -217,11 +225,10 @@ class MemberChangeRequest(BaseModel):
 
     role: Literal["admin", "developer", "member", "child", "guest"] | None = None
     status: Literal["active", "suspended", "revoked"] | None = None
-    owner_password: str | None = Field(
+    owner_password: Password | None = Field(
         default=None,
         alias="ownerPassword",
-        min_length=12,
-        max_length=128,
+        json_schema_extra=PASSWORD_SCHEMA,
     )
 
 
@@ -238,8 +245,9 @@ class OrganizationPolicyChangeRequest(BaseModel):
         alias="defaultConcurrencyLimit", ge=1, le=100
     )
     offline_grace_seconds: int = Field(alias="offlineGraceSeconds", ge=0, le=86400)
-    owner_password: str = Field(
-        alias="ownerPassword", min_length=12, max_length=128
+    owner_password: Password = Field(
+        alias="ownerPassword",
+        json_schema_extra=PASSWORD_SCHEMA,
     )
 
 
@@ -254,8 +262,9 @@ class MemberQuotaChangeRequest(BaseModel):
     concurrency_limit: int | None = Field(
         alias="concurrencyLimit", default=None, ge=1, le=100
     )
-    owner_password: str = Field(
-        alias="ownerPassword", min_length=12, max_length=128
+    owner_password: Password = Field(
+        alias="ownerPassword",
+        json_schema_extra=PASSWORD_SCHEMA,
     )
 
 
@@ -1536,9 +1545,34 @@ def create_cloud_router(
             await refresh_local_access_projection()
         return response
 
+    @router.get("/ai/defaults")
+    async def ai_defaults(principal: RequestPrincipal = principal_dependency):
+        runtime = runtime_provider()
+        store = getattr(runtime, "model_manager", None)
+        return {"policy": store.cloud_default_policy() if store is not None else {}}
+
     @router.get("/ai/models")
     async def ai_models(principal: RequestPrincipal = principal_dependency):
-        return await call("GET", "/v1/ai/models", principal=principal)
+        response = await call("GET", "/v1/ai/models", principal=principal)
+        if response.status_code >= 400:
+            return response
+        try:
+            payload = json.loads(bytes(response.body))
+            for model in payload.get("items", []):
+                if not isinstance(model, dict) or not model.get("id"):
+                    continue
+                provider_id = model.get("provider") or str(model["id"]).split("/", 1)[0]
+                identity = build_model_identity(
+                    source="ai2apps_cloud",
+                    provider_id=provider_id,
+                    model_id=str(model["id"]),
+                    display_name=model.get("displayName") or model.get("name"),
+                )
+                model["identity"] = identity
+                model["displayName"] = identity["displayName"]
+            return JSONResponse(content=payload, status_code=response.status_code)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return response
 
     @router.post("/ai/responses")
     async def ai_response(

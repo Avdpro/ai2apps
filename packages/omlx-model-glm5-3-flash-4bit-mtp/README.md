@@ -2,12 +2,21 @@
 
 Adds the immutable Vontra MLX affine 4-bit checkpoint recipe and multimodal,
 session-aware dynamic Cached-MoE Worker adapter required by AI2Apps oMLX
-Runtime 1.5.5 or later.
+Runtime 1.7.5 or later.
+
+Version 0.1.5 declares GLM-5.3 as a required-reasoning model and restores the
+Package-owned scope-pack declaration required by checkpoint preparation. Its native
+template always opens `<think>`; Runtime 1.7.5 exposes that content through the
+structured reasoning channel rather than the answer body.
 
 Natural/exact inference is the default. Turbo (Top-5 protected) and Blast
 (Top-3 protected) remain explicit per-request or per-session choices and apply
 to both Prefill and Decode. The multimodal memory profile uses Main64 + Hot16
 inside a 96-slot bank; the native MTP drafter remains opt-in.
+
+Automatic memory selection keeps the established Balanced Top96 default when
+the standard system/KV reserve fits, and downgrades to Lean Top80 on smaller
+supported systems.
 
 The checkpoint and SSD-ready fused-v2 expert store are acquired and prepared
 at install time. They are not embedded in this Package.

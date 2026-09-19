@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-seed-vc-v2-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "MLX Seed-VC v2",
+    "description": "Native MLX zero-shot voice conversion with request-scoped reference audio."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned MLX Seed-VC v2 checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run local zero-shot voice conversion.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.6.2 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+}

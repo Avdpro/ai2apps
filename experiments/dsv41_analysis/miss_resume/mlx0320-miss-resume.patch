@@ -1,0 +1,155 @@
+diff --git a/mlx/backend/metal/device.cpp b/mlx/backend/metal/device.cpp
+index 29eecf5..8cc734e 100644
+--- a/mlx/backend/metal/device.cpp
++++ b/mlx/backend/metal/device.cpp
+@@ -337,6 +337,7 @@ void CommandEncoder::set_buffer(
+   // buffers
+   all_inputs_.insert((void*)buf);
+   all_outputs_.insert((void*)buf);
++  if (miss_resume_range_) get_command_encoder()->useResource(buf, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+   get_command_encoder()->setBuffer(buf, offset, idx);
+ }
+
+@@ -352,6 +353,7 @@ void CommandEncoder::set_input_array(
+   needs_barrier_ =
+       needs_barrier_ | (prev_outputs_.find(r_buf) != prev_outputs_.end());
+   auto a_buf = static_cast<const MTL::Buffer*>(a.buffer().ptr());
++  if (miss_resume_range_) get_command_encoder()->useResource(a_buf, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+   get_command_encoder()->setBuffer(a_buf, a.offset() + offset, idx);
+ }
+
+@@ -407,7 +409,8 @@ void CommandEncoder::dispatch_threadgroups(
+     MTL::Size group_dims) {
+   maybeInsertBarrier();
+   buffer_ops_++;
+-  get_command_encoder()->dispatchThreadgroups(grid_dims, group_dims);
++  if (miss_resume_range_) guarded_dispatch(grid_dims, group_dims, false);
++  else get_command_encoder()->dispatchThreadgroups(grid_dims, group_dims);
+ }
+
+ void CommandEncoder::dispatch_threads(
+@@ -415,7 +418,36 @@ void CommandEncoder::dispatch_threads(
+     MTL::Size group_dims) {
+   maybeInsertBarrier();
+   buffer_ops_++;
+-  get_command_encoder()->dispatchThreads(grid_dims, group_dims);
++  if (miss_resume_range_) guarded_dispatch(grid_dims, group_dims, true);
++  else get_command_encoder()->dispatchThreads(grid_dims, group_dims);
++}
++
++const char* miss_resume_backend_version() { return "icb-gate-barrier-v2-mlx0320"; }
++
++void CommandEncoder::guarded_dispatch(MTL::Size grid, MTL::Size group, bool threads) {
++  std::string key=std::to_string(reinterpret_cast<uintptr_t>(current_pipeline_))+":"+
++    std::to_string(threads)+":"+std::to_string(grid.width)+":"+std::to_string(grid.height)+":"+
++    std::to_string(grid.depth)+":"+std::to_string(group.width)+":"+std::to_string(group.height)+":"+std::to_string(group.depth);
++  auto found=guarded_cache_.find(key);
++  if(found==guarded_cache_.end()) {
++    auto desc = NS::TransferPtr(MTL::IndirectCommandBufferDescriptor::alloc()->init());
++    desc->setCommandTypes(threads ? MTL::IndirectCommandTypeConcurrentDispatchThreads : MTL::IndirectCommandTypeConcurrentDispatch);
++    // Inherited pipeline state fails for dense GEMM on this tested device.
++    desc->setInheritPipelineState(false);
++    desc->setInheritBuffers(true);
++    auto icb = NS::TransferPtr(device_.mtl_device()->newIndirectCommandBuffer(desc.get(), 1, MTL::ResourceStorageModeShared));
++    if (!icb) throw std::runtime_error("miss-resume: ICB allocation failed");
++    auto cmd = icb->indirectComputeCommand(0);
++    cmd->setComputePipelineState(current_pipeline_);
++    if (threads) cmd->concurrentDispatchThreads(grid, group);
++    else cmd->concurrentDispatchThreadgroups(grid, group);
++    found=guarded_cache_.emplace(key,std::move(icb)).first;
++  }
++  auto enc = get_command_encoder();
++  enc->useResource(found->second.get(), MTL::ResourceUsageRead);
++  enc->useResource(miss_resume_range_, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
++  enc->executeCommandsInBuffer(found->second.get(), miss_resume_range_, 0);
++  // Cache entries are immutable and owned by the stream until synchronize/destruction.
+ }
+
+ void CommandEncoder::barrier() {
+@@ -739,8 +771,11 @@ NS::SharedPtr<MTL::ComputePipelineState> Device::get_kernel_(
+   NS::SharedPtr<MTL::ComputePipelineState> kernel;
+
+   if (mtl_function) {
+-    kernel =
+-        NS::TransferPtr(device_->newComputePipelineState(mtl_function, &error));
++    auto desc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
++    desc->setComputeFunction(mtl_function);
++    desc->setSupportIndirectCommandBuffers(true);
++    kernel = NS::TransferPtr(device_->newComputePipelineState(
++        desc.get(), MTL::PipelineOptionNone, nullptr, &error));
+   }
+
+   // Throw error if unable to compile metal function
+@@ -777,6 +812,7 @@ NS::SharedPtr<MTL::ComputePipelineState> Device::get_kernel_(
+   auto desc = MTL::ComputePipelineDescriptor::alloc()->init()->autorelease();
+   desc->setComputeFunction(mtl_function);
+   desc->setLinkedFunctions(linked_functions);
++  desc->setSupportIndirectCommandBuffers(true);
+
+   // Compile kernel to compute pipeline
+   NS::Error* error = nullptr;
+diff --git a/mlx/backend/metal/device.h b/mlx/backend/metal/device.h
+index 871e95c..587e781 100644
+--- a/mlx/backend/metal/device.h
++++ b/mlx/backend/metal/device.h
+@@ -20,6 +20,8 @@ namespace mlx::core::metal {
+ using MTLFCList =
+     std::vector<std::tuple<const void*, MTL::DataType, NS::UInteger>>;
+
++MLX_API const char* miss_resume_backend_version();
++
+ class Device;
+ class EventImpl;
+
+@@ -57,8 +59,12 @@ class MLX_API CommandEncoder {
+   void dispatch_threadgroups(MTL::Size grid_dims, MTL::Size group_dims);
+   void dispatch_threads(MTL::Size grid_dims, MTL::Size group_dims);
+   void maybeInsertBarrier();
++  bool miss_resume_active() const { return miss_resume_range_ != nullptr; }
++  void set_miss_resume_range(MTL::Buffer* range) { miss_resume_range_ = range; }
++  void guarded_dispatch(MTL::Size grid, MTL::Size group, bool threads);
+
+   void set_compute_pipeline_state(MTL::ComputePipelineState* kernel) {
++    current_pipeline_ = kernel;
+     get_command_encoder()->setComputePipelineState(kernel);
+   }
+
+@@ -105,6 +111,9 @@ class MLX_API CommandEncoder {
+  private:
+   MTL::ComputeCommandEncoder* get_command_encoder();
+
++  std::unordered_map<std::string, NS::SharedPtr<MTL::IndirectCommandBuffer>> guarded_cache_;
++  MTL::ComputePipelineState* current_pipeline_{nullptr};
++  MTL::Buffer* miss_resume_range_{nullptr};
+   Device& device_;
+   bool exiting_{false};
+
+diff --git a/mlx/backend/metal/eval.cpp b/mlx/backend/metal/eval.cpp
+index e682625..d48ca8c 100644
+--- a/mlx/backend/metal/eval.cpp
++++ b/mlx/backend/metal/eval.cpp
+@@ -37,7 +37,7 @@ void eval(array& arr) {
+     // If the array is a tracer hold a reference
+     // to its inputs so they don't get donated
+     std::vector<array> inputs;
+-    if (arr.is_tracer()) {
++    if (arr.is_tracer() || encoder.miss_resume_active()) {
+       inputs = arr.inputs();
+     }
+
+diff --git a/mlx/backend/metal/kernels/CMakeLists.txt b/mlx/backend/metal/kernels/CMakeLists.txt
+index edc169e..93eb6d5 100644
+--- a/mlx/backend/metal/kernels/CMakeLists.txt
++++ b/mlx/backend/metal/kernels/CMakeLists.txt
+@@ -1,3 +1,11 @@
++# Experimental backend: reuse the exact installed wheel's immutable kernels.
++if(MLX_USE_EXISTING_METALLIB)
++  if(NOT EXISTS "${MLX_METAL_PATH}/mlx.metallib")
++    message(FATAL_ERROR "Existing MLX metallib was not found")
++  endif()
++  return()
++endif()
++
+ set(BASE_HEADERS
+     bf16.h
+     bf16_math.h

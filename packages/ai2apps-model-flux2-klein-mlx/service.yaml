@@ -1,8 +1,8 @@
 schema: ai2apps.service/v1
 id: ai2apps.model.flux2-klein-mlx
 name: FLUX.2 Klein MLX
-description: Optimized local FLUX.2 Klein text-to-image and multi-reference editing on MLX.
-version: 0.1.3
+description: FLUX.2 Klein 4B generation and editing with 1–4 reference images.
+version: 0.1.4
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
 runtime:
@@ -36,6 +36,7 @@ models:
     image_capabilities: &image_capabilities
       schema: ai2apps.image-capabilities/v1
       operations: [image_generation, image_edit]
+      inputs: {reference_images: {minimum: 1, maximum: 4}}
       formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
       geometry:
         minimum: {width: 256, height: 256}

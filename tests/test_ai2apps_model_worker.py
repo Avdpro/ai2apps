@@ -78,7 +78,7 @@ class Adapter:
             output.write_bytes(b"fake-mp4")
             return ModelWorkerArtifact(output, "video/mp4", "avatar.mp4")
         if request.parts:
-            part = request.part("file")
+            part = request.parts.get("file") or next(iter(request.parts.values()))
             return {
                 "operation": request.operation,
                 "model": request.payload.get("model"),
@@ -315,6 +315,12 @@ def test_model_worker_auth_lifecycle_json_and_stream(tmp_path):
         health = client.get("/health", headers=headers)
         assert health.json()["protocol"] == "ai2apps-model-worker/v1"
 
+        control = {"model": "example-checkpoint", "session_id": "chat-1", "mode": "blast"}
+        assert client.post("/v1/control/engine-boost", json=control).status_code == 401
+        assert client.post("/v1/control/engine-boost", headers=headers, json=control).status_code == 409
+        for invalid in ({**control, "mode": []}, {**control, "model": []}, {**control, "session_id": ""}):
+            assert client.post("/v1/control/engine-boost", headers=headers, json=invalid).status_code == 400
+
         response = client.post(
             "/v1/chat/completions",
             headers=headers,
@@ -412,6 +418,49 @@ def test_model_worker_materializes_and_cleans_multipart_parts(tmp_path):
     assert body["part"]["exists"] is True
     assert Path(body["part"]["path"]).suffix == ".wav"
     assert not Path(body["part"]["path"]).exists()
+
+
+def test_model_worker_routes_voice_training_zip_without_audio_decoding(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, _manifest(), 9123
+    )
+    app = create_app(config_path, token="worker-secret")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/audio/voices/train",
+            headers={"Authorization": "Bearer worker-secret"},
+            data={"model": "example-checkpoint", "precision": "float16"},
+            files={"dataset": ("voice.zip", b"PK fixture", "application/zip")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["operation"] == "audio_voice_training"
+    assert body["part"]["filename"] == "voice.zip"
+    assert body["part"]["media_type"] == "application/zip"
+    assert not Path(body["part"]["path"]).exists()
+
+
+def test_model_worker_routes_detailed_transcription_as_audio(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, _manifest(), 9123
+    )
+    app = create_app(config_path, token="worker-secret")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/audio/transcriptions/detailed",
+            headers={"Authorization": "Bearer worker-secret"},
+            data={"model": "example-checkpoint", "timestamps": "word"},
+            files={"file": ("speech.wav", _wav_bytes(), "audio/wav")},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["operation"] == "audio_detailed_transcription"
+    assert Path(response.json()["part"]["path"]).suffix == ".wav"
 
 
 def test_model_worker_accepts_twelve_ordered_reference_parts(tmp_path):

@@ -1,0 +1,36 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.seed-vc-v2-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.seed-vc-v2-mlx/0.1.0",
+  "packages": [
+    {
+      "name": "seed-vc",
+      "SPDXID": "SPDXRef-SeedVC",
+      "versionInfo": "51383efd921027683c89e5348211d93ff12ac2a8",
+      "downloadLocation": "https://github.com/Plachtaa/seed-vc",
+      "licenseConcluded": "GPL-3.0-only",
+      "licenseDeclared": "GPL-3.0-only",
+      "copyrightText": "Copyright Seed-VC contributors"
+    },
+    {
+      "name": "BigVGAN-v2",
+      "SPDXID": "SPDXRef-BigVGAN",
+      "versionInfo": "633ff708ed5b74903e86ff1298cf4a98e921c513",
+      "downloadLocation": "https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright NVIDIA Corporation"
+    },
+    {
+      "name": "CAMPPlus",
+      "SPDXID": "SPDXRef-CAMPPlus",
+      "versionInfo": "e4b6ede7ce16997aff4ae69fbca1f0175e2afede",
+      "downloadLocation": "https://huggingface.co/funasr/campplus",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

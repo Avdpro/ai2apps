@@ -20,4 +20,30 @@ public struct ShellProcessIdentityValidator: Sendable {
         }
         return true
     }
+
+    public func validateForActivation(
+        _ descriptor: ShellRunDescriptor,
+        expectedInstanceID: InstanceID,
+        expectedShellBundleIdentifier: String,
+        expectedMainBundleIdentifier: String,
+        liveShellBundleIdentifier: String?,
+        liveMainBundleIdentifier: String?,
+        liveInstanceID: InstanceID?,
+        liveExecutablePath: String?,
+        liveBundleExecutablePath: String?
+    ) -> Bool {
+        guard (try? descriptor.validate()) != nil,
+              descriptor.instanceID == expectedInstanceID,
+              liveShellBundleIdentifier == expectedShellBundleIdentifier,
+              liveMainBundleIdentifier == expectedMainBundleIdentifier,
+              liveInstanceID == expectedInstanceID,
+              let liveExecutablePath,
+              let liveBundleExecutablePath,
+              liveExecutablePath == liveBundleExecutablePath,
+              URL(fileURLWithPath: descriptor.executablePath).lastPathComponent
+                == URL(fileURLWithPath: liveExecutablePath).lastPathComponent else {
+            return false
+        }
+        return true
+    }
 }

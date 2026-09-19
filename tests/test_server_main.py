@@ -84,9 +84,9 @@ def test_main_wires_global_settings(module_entry):
     assert server._server_state.global_settings is not None
 
 
-def test_admin_api_key_setup_succeeds(module_entry):
-    # Reporter's repro for #2282: boot via python -m, submit the initial
-    # API-key setup form. Must not 500 on a missing GlobalSettings.
+def test_admin_api_key_setup_is_retired(module_entry):
+    # The historical #2282 endpoint must now fail closed, not create a
+    # legacy web session or crash because module-entry settings are absent.
     from fastapi.testclient import TestClient
 
     server, _ = module_entry
@@ -95,12 +95,12 @@ def test_admin_api_key_setup_succeeds(module_entry):
         "/admin/api/setup-api-key",
         json={"api_key": "test-key-1234", "api_key_confirm": "test-key-1234"},
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json().get("success") is True
-    assert server._server_state.api_key == "test-key-1234"
+    assert resp.status_code == 410, resp.text
+    assert resp.json()["detail"]["code"] == "api_key_web_setup_retired"
+    assert server._server_state.api_key != "test-key-1234"
 
 
-def test_module_entry_api_key_setup_end_to_end(tmp_path):
+def test_module_entry_retired_api_key_setup_end_to_end(tmp_path):
     # The double-import layer of #2282 only exists when the module runs
     # as ``__main__``, so this must be a real ``python -m omlx.server``
     # subprocess; every in-process test is structurally blind to it.
@@ -152,12 +152,10 @@ def test_module_entry_api_key_setup_end_to_end(tmp_path):
             ).encode(),
             headers={"Content-Type": "application/json"},
         )
-        try:
-            resp = urllib.request.urlopen(req, timeout=10)
-        except urllib.error.HTTPError as e:
-            pytest.fail(f"setup-api-key returned {e.code}: {e.read().decode()}")
-        assert resp.status == 200
-        assert json.load(resp).get("success") is True
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=10)
+        assert exc.value.code == 410
+        assert json.load(exc.value)["detail"]["code"] == "api_key_web_setup_retired"
     finally:
         proc.terminate()
         try:

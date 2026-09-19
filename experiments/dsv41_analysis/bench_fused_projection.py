@@ -6,7 +6,7 @@ import mlx.core as mx
 from model import LRUMetalBank
 from expert_dispatch import Dispatch
 from kernels import quant
-bank=LRUMetalBank('artifacts/dsv41-full-expert-store/layer-0.bin',list(range(8)),l0_slots=0)
+bank=LRUMetalBank('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/experts/layer-0.bin',list(range(8)),l0_slots=0)
 a=bank.arrays;w=mx.concatenate([a[0],a[4]],axis=1);s=mx.concatenate([a[1],a[5]],axis=1);mx.eval(w,s)
 reports=[]
 for n in [16,128,256]:

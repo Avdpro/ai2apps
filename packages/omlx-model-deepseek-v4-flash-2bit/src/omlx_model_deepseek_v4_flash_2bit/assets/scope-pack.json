@@ -22,9 +22,13 @@
     ],
     "source_revisions": {
       "deepseek-v4-flash": "60d8d70770c6776ff598c94bb586a859a38244f1",
-      "deepseek-v4-flash-2bit": "722bf559b7de93575b2320973cf2002e05bfe6c9"
+      "deepseek-v4-flash-2bit": "19116161696aa83be5de1915df9f7dd5c6c23c48"
     },
-    "memory_tiers": [20, 40, 60]
+    "memory_tiers": [
+      20,
+      40,
+      60
+    ]
   },
   "provenance": {
     "kind": "derived-router-profile",

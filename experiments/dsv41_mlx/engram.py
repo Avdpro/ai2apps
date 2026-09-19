@@ -36,9 +36,12 @@ class HashState:
         self.kernel=mx.fast.metal_kernel(name='dsv41_ngram_uint64',input_names=['cache','mult','primes','offsets','start'],output_names=['hashes'],source=r'''
           uint i=thread_position_in_grid.x;
           uint col=i%C,layer=(i/C)%L,pos=i/(C*L)+uint(start[0]);
-          uint n=col/H+2;ulong rolling=0;
+          uint n=col/H+2;ulong rolling=0;bool blocked=false;
           for(uint j=0;j<n;j++){
+            blocked=blocked||(pos<j);
             uint token=pos>=j?uint(cache[pos-j]):PAD;
+            blocked=blocked||(token==0xffffffffu);
+            if(blocked)token=PAD;
             uint mi=(layer*N+j)*2;
             ulong m=(ulong(mult[mi+1])<<32)|ulong(mult[mi]);
             rolling^=ulong(token)*m;
@@ -46,8 +49,10 @@ class HashState:
           uint k=layer*C+col;
           hashes[i]=int(rolling%ulong(primes[k])+ulong(offsets[k]));
         ''')
-    def __call__(self,ids,start):
+    def __call__(self,ids,start,token_mask=None):
         if ids.shape[0]!=1:raise ValueError('batch1')
-        self.cache[start:start+ids.shape[1]]=self.map[ids[0]]
+        mapped=self.map[ids[0]]
+        if token_mask is not None:mapped=mx.where(token_mask[0],mapped,-1)
+        self.cache[start:start+ids.shape[1]]=mapped
         shape=(1,ids.shape[1],self.layers,self.cols)
         return self.kernel(inputs=[self.cache,self.mult,self.primes,self.offsets,mx.array([start],dtype=mx.uint32)],template=[('C',self.cols),('L',self.layers),('H',self.heads),('N',self.ngram),('PAD',self.pad)],grid=(ids.shape[1]*self.layers*self.cols,1,1),threadgroup=(128,1,1),output_shapes=[shape],output_dtypes=[mx.int32])[0]

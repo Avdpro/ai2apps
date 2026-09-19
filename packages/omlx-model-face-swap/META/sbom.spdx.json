@@ -1,0 +1,36 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.face-swap-mlx-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.face-swap-mlx/0.1.0",
+  "packages": [
+    {
+      "name": "AI2Apps MLX actor replacement implementation",
+      "SPDXID": "SPDXRef-AI2AppsFaceSwapMLX",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "GhostV2",
+      "SPDXID": "SPDXRef-GhostV2",
+      "versionInfo": "bc53ed086dbe8ea38e165aec7aaac90d1749a335",
+      "downloadLocation": "https://github.com/dimitribarbot/ghostv2",
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseDeclared": "BSD-3-Clause",
+      "copyrightText": "Copyright (c) 2017 Dimitri Barbot"
+    },
+    {
+      "name": "YuNet",
+      "SPDXID": "SPDXRef-YuNet",
+      "versionInfo": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+      "downloadLocation": "https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2020 Shiqi Yu"
+    }
+  ]
+}

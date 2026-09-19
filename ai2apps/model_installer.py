@@ -67,7 +67,12 @@ def installed_shared_model_source_reference(source_dir: Path) -> tuple[str, str]
             raise ValueError("installed model checkpoint layout is invalid")
         if checkpoint_layout.get("source_retained") is False:
             return None
-        raise ValueError("installed model source retention is ambiguous")
+        if (
+            checkpoint_layout.get("format") != "ai2apps-ssd-checkpoint"
+            or checkpoint_layout.get("version") != 1
+            or checkpoint_layout.get("source_retained") is not True
+        ):
+            raise ValueError("installed model source retention is ambiguous")
     reference = SharedModelReference(
         "validation", source["repo_id"], source["revision"], 1.0
     )
@@ -281,6 +286,47 @@ def _metadata_dir(source_dir: Path) -> Path:
     return legacy
 
 
+@contextmanager
+def _writable_model_metadata(source_dir: Path) -> Iterator[Path]:
+    """Temporarily open only the metadata surface of a read-only model view.
+
+    Checkpoint Distribution payloads are published as read-only hard-linked
+    views.  Activation still needs to add the Package-owned Scope profile and
+    the local ``ai2apps-model.json`` descriptor.  Keep every payload file
+    read-only, open the model root and metadata directory only for that atomic
+    metadata write, and restore their original modes even when activation
+    fails.
+    """
+
+    root_mode = source_dir.stat().st_mode & 0o7777
+    source_dir.chmod(root_mode | 0o200)
+    metadata = _metadata_dir(source_dir)
+    metadata_existed = metadata.exists()
+    if not metadata_existed:
+        metadata.mkdir(parents=True)
+    metadata_mode = metadata.stat().st_mode & 0o7777
+    metadata.chmod(metadata_mode | 0o200)
+    try:
+        yield metadata
+    finally:
+        if not root_mode & 0o200:
+            scope_assets = metadata / "scope-assets"
+            if scope_assets.is_dir():
+                for path in sorted(scope_assets.rglob("*"), reverse=True):
+                    path.chmod(0o555 if path.is_dir() else 0o444)
+                scope_assets.chmod(0o555)
+            manifest = source_dir / _MODEL_MANIFEST
+            if manifest.is_file():
+                manifest.chmod(0o444)
+        restored_metadata_mode = (
+            metadata_mode
+            if metadata_existed
+            else (0o555 if not root_mode & 0o200 else 0o755)
+        )
+        metadata.chmod(restored_metadata_mode)
+        source_dir.chmod(root_mode)
+
+
 def _source_record(source_dir: Path) -> tuple[Path, dict[str, Any]]:
     for directory in (_METADATA_DIR, _LEGACY_METADATA_DIR):
         path = source_dir / directory / "source.json"
@@ -341,6 +387,7 @@ class InstallTask:
     detail: str = ""
     error: str = ""
     current_file: str = ""
+    download: dict[str, Any] | None = None
     bytes_completed: int = 0
     bytes_total: int = 0
     total_bytes_completed: int = 0
@@ -365,6 +412,7 @@ class InstallTask:
             "detail": self.detail,
             "error": self.error,
             "current_file": self.current_file,
+            "download": self.download,
             "bytes_completed": self.bytes_completed,
             "bytes_total": self.bytes_total,
             "total_bytes_completed": self.total_bytes_completed,
@@ -1171,18 +1219,19 @@ class AI2AppsInstaller:
                 f"Scope Pack checksum mismatch for {recipe['id']}: "
                 f"expected {expected or '<missing>'}, got {actual}"
             )
+        scope_model_id = recipe.get("install_id", recipe["id"])
         compatible = manifest.get("compatibility", {}).get("model_ids", [])
-        if recipe["id"] not in compatible:
+        if scope_model_id not in compatible:
             raise RuntimeError(
-                f"Scope Pack does not declare support for {recipe['id']}"
+                f"Scope Pack does not declare support for {scope_model_id}"
             )
         source_revisions = manifest.get("compatibility", {}).get(
             "source_revisions", {}
         )
         expected_revision = recipe["sources"][0]["revision"]
-        if source_revisions.get(recipe["id"]) != expected_revision:
+        if source_revisions.get(scope_model_id) != expected_revision:
             raise RuntimeError(
-                f"Scope Pack checkpoint revision mismatch for {recipe['id']}"
+                f"Scope Pack checkpoint revision mismatch for {scope_model_id}"
             )
         return manifest
 
@@ -1225,16 +1274,133 @@ class AI2AppsInstaller:
                 raise RuntimeError(
                     f"Scope Pack checksum mismatch: expected {expected}, got {digest}"
                 )
-        destination = _metadata_dir(source_dir) / "scope-assets" / f"{digest}.json"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.is_file():
-            if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
-                raise RuntimeError(f"installed Scope Pack asset is corrupt: {destination}")
+        with _writable_model_metadata(source_dir) as metadata:
+            destination = metadata / "scope-assets" / f"{digest}.json"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.is_file():
+                if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
+                    raise RuntimeError(
+                        f"installed Scope Pack asset is corrupt: {destination}"
+                    )
+                return destination.resolve()
+            partial = destination.with_suffix(".json.partial")
+            partial.write_bytes(payload)
+            partial.replace(destination)
             return destination.resolve()
-        partial = destination.with_suffix(".json.partial")
-        partial.write_bytes(payload)
-        partial.replace(destination)
-        return destination.resolve()
+
+    def _activate_ssd_checkpoint(
+        self,
+        task: InstallTask,
+        recipe: dict[str, Any],
+        source_dir: Path,
+        scope_profile: Path,
+    ) -> None:
+        """Commit a verified SSD-ready checkpoint without reconversion."""
+
+        from omlx.ssd_checkpoint import inspect_ssd_checkpoint
+
+        if task.storage_policy != "keep_source":
+            raise ValueError(
+                "SSD-ready checkpoints use their bundled expert store and require "
+                "the keep_source storage policy"
+            )
+        family = str(recipe["family"])
+        conversion = recipe["conversion"]
+        layout = str(conversion.get("variant") or "")
+        marker = inspect_ssd_checkpoint(
+            source_dir,
+            expected_family=family,
+            expected_layout=layout,
+        )
+        expert_store = (source_dir / str(marker["expert_store"])).resolve()
+        expert_manifest = json.loads(
+            (expert_store / "manifest.json").read_text(encoding="utf-8")
+        )
+        layers = expert_manifest.get("layers")
+        if family == "deepseek_v41":
+            valid_layers = isinstance(layers, list) and layers == list(range(len(layers)))
+        else:
+            valid_layers = isinstance(layers, dict) and bool(layers)
+        if not valid_layers:
+            raise ValueError("SSD-ready expert store has no routed layers")
+
+        scope_pack = self._scope_pack_metadata(recipe, scope_profile)
+        runtime_scope_profile = self._materialize_scope_profile(
+            source_dir, scope_profile, scope_pack
+        )
+        install_manifest: dict[str, Any] = {
+            "format": "ai2apps-cache-moe-model",
+            "version": 2,
+            "model_id": task.model_id,
+            "family": family,
+            "execution_modes": list(recipe.get("execution_modes", ("cached",))),
+            "engine": {
+                key: value
+                for key, value in recipe["engine"].items()
+                if key not in {"scope_asset", "scope_pack", "scope_env"}
+            },
+            "source": {
+                "provider": task.weight_source,
+                "repo_id": task.repo_id,
+                "revision": task.revision,
+            },
+            "scope": {
+                "profile": str(runtime_scope_profile),
+                "default": recipe["scope_name"],
+            },
+            "expert_store": str(expert_store),
+            "conversion": conversion,
+            "memory_tier": task.memory_tier,
+            "installed_at": time.time(),
+            "checkpoint_layout": {
+                "format": "ai2apps-ssd-checkpoint",
+                "version": 1,
+                "layout": layout,
+                "source_retained": True,
+                "storage_policy": "keep_source",
+                "manifest_sha256": hashlib.sha256(
+                    (source_dir / "ssd-checkpoint.json").read_bytes()
+                ).hexdigest(),
+            },
+        }
+        if scope_pack is not None:
+            install_manifest["scope"]["pack"] = {
+                "id": scope_pack["id"],
+                "version": scope_pack["pack_version"],
+                "sha256": scope_pack["profile"]["sha256"],
+            }
+        if family == "qwen3_6":
+            install_manifest["arena_tail_slots"] = int(
+                recipe.get("arena_tail_slots", 24)
+            )
+        elif family == "qwen4_exp":
+            install_manifest["hot_slots"] = int(recipe.get("hot_slots", 10))
+        elif family == "glm5_next":
+            install_manifest["dynamic_slots"] = int(
+                recipe.get("dynamic_slots", 96)
+            )
+            install_manifest["hot_slots"] = int(recipe.get("hot_slots", 16))
+            install_manifest["vision_l1_reserve_slots"] = int(
+                recipe.get("vision_l1_reserve_slots", 16)
+            )
+        elif family == "deepseek_v41":
+            install_manifest["main_slots"] = int(recipe.get("main_slots", 40))
+            install_manifest["hot_slots"] = int(recipe.get("hot_slots", 8))
+            install_manifest["prefill_slots"] = int(
+                recipe.get("prefill_slots", 64)
+            )
+
+        with _writable_model_metadata(source_dir):
+            _write_json_atomic(source_dir / _MODEL_MANIFEST, install_manifest)
+        self._validate(
+            source_dir,
+            expert_store,
+            runtime_scope_profile,
+            recipe["scope_name"],
+            len(layers),
+            family,
+            ssd_ready=True,
+        )
 
     @classmethod
     def _recipes(cls) -> tuple[dict[str, Any], ...]:
@@ -1431,9 +1597,14 @@ class AI2AppsInstaller:
             memory_tier=memory_tier,
             storage_policy=storage_policy,
         )
+        consent_map = (
+            await self._native_license_consents(recipe, license_consents or [])
+            if recipe.get("distribution_id") is not None
+            else {}
+        )
         self.tasks[task.task_id] = task
         self._runners[task.task_id] = asyncio.create_task(
-            self._run(task, recipe, token, scope_profile)
+            self._run(task, recipe, token, scope_profile, consent_map)
         )
         return task
 
@@ -1579,6 +1750,27 @@ class AI2AppsInstaller:
                     legacy_snapshot
                 )
             ):
+                import_hub = ManagedServiceSupervisor._huggingface_import_hub_cache()
+                if import_hub is not None and import_hub != hub_cache:
+                    external_snapshot = (
+                        import_hub
+                        / ("models--" + repo_id.replace("/", "--"))
+                        / "snapshots"
+                        / revision
+                    )
+                    if (
+                        external_snapshot.is_dir()
+                        and ManagedServiceSupervisor._checkpoint_is_complete(
+                            external_snapshot
+                        )
+                    ):
+                        legacy_snapshot = external_snapshot
+            if not (
+                legacy_snapshot.is_dir()
+                and ManagedServiceSupervisor._checkpoint_is_complete(
+                    legacy_snapshot
+                )
+            ):
                 imported = await asyncio.to_thread(
                     import_local_checkpoint_to_hf_cache,
                     source_dir,
@@ -1593,6 +1785,7 @@ class AI2AppsInstaller:
                 acquire_options["license_consent"] = license_consents[distribution_id]
 
             def checkpoint_progress(value: dict[str, Any]) -> None:
+                task.download = value.get("download")
                 task.current_file = str(value.get("fileName") or "")
                 task.bytes_completed = int(value.get("bytesCompleted") or 0)
                 task.bytes_total = int(value.get("bytesTotal") or 0)
@@ -1773,24 +1966,80 @@ class AI2AppsInstaller:
         recipe: dict,
         token: str,
         scope_profile: Path,
+        license_consents: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         try:
             async with self._sem:
-                from omlx.cache.moe_expert_store import (
-                    ExpertMajorStore,
-                    create_expert_major_store,
-                )
-
                 task.status = InstallStatus.DOWNLOADING
                 source_dir = self.hf_downloader.model_dir / task.repo_id
-                await asyncio.to_thread(
-                    publish_configured_shared_model_reference,
-                    repo_id=task.repo_id,
-                    revision=task.revision,
-                )
+                distribution_id = recipe.get("distribution_id")
+                if distribution_id is not None:
+                    if self.checkpoint_acquisition is None:
+                        raise RuntimeError(
+                            "trusted checkpoint acquisition is unavailable for this Package"
+                        )
+                    from ai2apps.packages.supervisor import ManagedServiceSupervisor
+
+                    task.phase = "Checking shared checkpoint cache"
+                    task.detail = "Checking for a verified machine-shared checkpoint"
+
+                    def checkpoint_progress(value: dict[str, Any]) -> None:
+                        task.download = value.get("download")
+                        task.current_file = str(value.get("fileName") or "")
+                        task.bytes_completed = int(value.get("bytesCompleted") or 0)
+                        task.bytes_total = int(value.get("bytesTotal") or 0)
+                        task.total_bytes_completed = int(
+                            value.get("totalBytesCompleted") or task.bytes_completed
+                        )
+                        task.total_bytes_total = int(
+                            value.get("totalBytesTotal") or task.bytes_total
+                        )
+                        task.progress = float(value.get("percent") or 0) * 0.95
+                        task.detail = f"Downloading {task.current_file}"
+
+                    acquire_options: dict[str, Any] = {
+                        "hf_token": token or None,
+                        "progress": checkpoint_progress,
+                    }
+                    if license_consents and distribution_id in license_consents:
+                        acquire_options["license_consent"] = license_consents[
+                            distribution_id
+                        ]
+                    acquired = await self.checkpoint_acquisition.acquire(
+                        distribution_id, **acquire_options
+                    )
+                    distribution = acquired.manifest
+                    if (
+                        distribution.distribution_id != distribution_id
+                        or distribution.model_id != recipe["id"]
+                        or distribution.repo_id != task.repo_id
+                        or distribution.revision != task.revision
+                    ):
+                        raise RuntimeError(
+                            "Registry checkpoint distribution does not match the Package contract"
+                        )
+                    materialized = await asyncio.to_thread(
+                        self.checkpoint_acquisition.materialize_worker_snapshot,
+                        acquired,
+                        ManagedServiceSupervisor._huggingface_hub_cache(),
+                    )
+                    source_dir = Path(materialized).resolve()
+                    if not checkpoint_is_complete(source_dir):
+                        raise RuntimeError(
+                            "verified checkpoint distribution materialized an incomplete snapshot"
+                        )
+                    task.cache_hit = bool(acquired.cache_hit)
+                else:
+                    await asyncio.to_thread(
+                        publish_configured_shared_model_reference,
+                        repo_id=task.repo_id,
+                        revision=task.revision,
+                    )
                 task.phase = "Checking local HuggingFace cache"
                 resumed_transition = None
-                if task.storage_policy == "stream_reclaim":
+                if distribution_id is not None:
+                    pass
+                elif task.storage_policy == "stream_reclaim":
                     resumed_transition = await asyncio.to_thread(
                         resume_storage_transition,
                         source_dir,
@@ -1837,7 +2086,14 @@ class AI2AppsInstaller:
                             token,
                             source_dir,
                         )
-                if task.cache_hit:
+                if distribution_id is not None:
+                    task.progress = 95.0
+                    task.detail = (
+                        "Reused verified checkpoint distribution"
+                        if task.cache_hit
+                        else "Verified checkpoint distribution"
+                    )
+                elif task.cache_hit:
                     task.progress = 55.0
                     task.detail = (
                         "Resuming low-disk conversion"
@@ -1868,6 +2124,36 @@ class AI2AppsInstaller:
                             child.error or f"download {child.status.value}"
                         )
                     self._write_source_record(task, source_dir)
+
+                if (source_dir / "ssd-checkpoint.json").is_file():
+                    task.status = InstallStatus.CONFIGURING
+                    task.phase = "Activating SSD-ready checkpoint"
+                    task.progress = 97.0
+                    await asyncio.to_thread(
+                        self._activate_ssd_checkpoint,
+                        task,
+                        recipe,
+                        source_dir,
+                        scope_profile,
+                    )
+                    task.status = InstallStatus.VALIDATING
+                    task.phase = "Validating SSD-ready checkpoint"
+                    task.progress = 99.0
+                    if self.hf_downloader._on_complete:
+                        await self.hf_downloader._on_complete()
+                    if self.on_ready is not None:
+                        await self.on_ready(recipe)
+                    task.status = InstallStatus.COMPLETED
+                    task.phase = "Ready"
+                    task.progress = 100.0
+                    task.detail = str(source_dir)
+                    task.completed_at = time.time()
+                    return
+
+                from omlx.cache.moe_expert_store import (
+                    ExpertMajorStore,
+                    create_expert_major_store,
+                )
 
                 work_dir = _metadata_dir(source_dir)
                 task.status = InstallStatus.INDEXING
@@ -2421,9 +2707,9 @@ class AI2AppsInstaller:
         scope_name: str,
         routed_layer_count: int,
         family: str = "deepseek_v4",
+        *,
+        ssd_ready: bool = False,
     ) -> None:
-        from omlx.cache.moe_expert_store import ExpertMajorStore
-
         if not checkpoint_is_complete(source_dir):
             raise ValueError("prepared checkpoint is incomplete")
         profile = json.loads(scope_profile.read_text())
@@ -2448,6 +2734,14 @@ class AI2AppsInstaller:
                 or scope_name not in profile.get("scopes", {})
             ):
                 raise ValueError("unsupported GLM-5 Scope Pack")
+        elif family == "deepseek_v41":
+            if (
+                profile.get("format")
+                != "ai2apps-deepseek-v41-runtime-profile"
+                or profile.get("version") != 1
+                or scope_name != "standard"
+            ):
+                raise ValueError("unsupported DeepSeek V4.1 Runtime profile")
         else:
             if profile.get("format") != "dmoe-deepseek-tiered-policy":
                 raise ValueError("unsupported AI2Apps Scope Pack")
@@ -2456,7 +2750,15 @@ class AI2AppsInstaller:
         manifest = json.loads((store_dir / "manifest.json").read_text())
         if len(manifest.get("layers", {})) != routed_layer_count:
             raise ValueError("expert store layer count mismatch")
-        if family in {"qwen3_6", "qwen4_exp", "glm5_next"}:
+        if family == "deepseek_v41":
+            if (
+                manifest.get("status") != "complete"
+                or manifest.get("layers") != list(range(routed_layer_count))
+            ):
+                raise ValueError("DeepSeek V4.1 expert store is incomplete")
+        elif family in {"qwen3_6", "qwen4_exp", "glm5_next"} and not ssd_ready:
+            from omlx.cache.moe_expert_store import ExpertMajorStore
+
             first_layer = min(int(value) for value in manifest["layers"])
             first = store_dir / manifest["layers"][str(first_layer)]["file"]
             with ExpertMajorStore(first) as store:
@@ -2477,6 +2779,10 @@ class AI2AppsInstaller:
         self._cancelled.add(task_id)
         if task.child_task_id:
             await self.hf_downloader.cancel_download(task.child_task_id)
+        runner = self._runners.get(task_id)
+        if runner is not None and not runner.done():
+            runner.cancel()
+            await asyncio.gather(runner, return_exceptions=True)
         task.status = InstallStatus.CANCELLED
         task.phase = "Cancelled"
         return True

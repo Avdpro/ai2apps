@@ -35,8 +35,22 @@ from omlx.api.markitdown_pdf_fallback import (
 )
 from omlx.api.openai_models import ChatCompletionRequest, Message
 from omlx.engine_pool import EngineEntry, EnginePool
-from omlx.server import ServerState, app
+from omlx.server import ServerState, app, verify_ai2apps_platform_access
 from omlx.settings import GlobalSettings
+
+
+@pytest.fixture(autouse=True)
+def _authenticated_platform_client():
+    """Exercise protected model APIs as an authenticated Installation client."""
+    previous = app.dependency_overrides.get(verify_ai2apps_platform_access)
+    app.dependency_overrides[verify_ai2apps_platform_access] = lambda: True
+    try:
+        yield
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(verify_ai2apps_platform_access, None)
+        else:
+            app.dependency_overrides[verify_ai2apps_platform_access] = previous
 
 
 def _data_uri(payload: bytes = b"doc", mime_type: str = "application/pdf") -> str:

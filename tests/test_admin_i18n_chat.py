@@ -46,10 +46,9 @@ def test_chat_sidebar_model_settings_use_i18n_keys():
     html = _chat_template()
 
     expected_keys = [
-        "chat.model_tab",
-        "chat.profile_tab",
+        "chat.chat_settings",
+        "chat.save_settings",
         "chat.active_profile",
-        "chat.active_model",
         "modal.model_settings.temperature",
         "modal.model_settings.max_tokens",
         "modal.model_settings.top_p",

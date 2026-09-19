@@ -34,8 +34,8 @@
       <input id="email" class="auth-input w-full rounded-xl border px-4 py-3 text-sm"
              type="email" autocomplete="username" placeholder="Email" required>
       <input id="password" class="auth-input w-full rounded-xl border px-4 py-3 text-sm"
-             type="password" autocomplete="current-password" minlength="12"
-             placeholder="Password (12+ characters)" required>
+             type="password" autocomplete="current-password" maxlength="128"
+             placeholder="Password (8–128 UTF-8 bytes)" required>
       <button id="account-submit" class="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-50">
         Sign in
       </button>

@@ -41,13 +41,15 @@ def _indexed_shards_are_complete(root: Path) -> bool:
     return True
 
 
-def _diffusers_checkpoint_is_complete(root: Path) -> bool:
+def _diffusers_checkpoint_is_complete(root: Path, runtime_components: frozenset[str]) -> bool:
     model_index = _read_json_object(root / "model_index.json")
     if model_index is None or not isinstance(model_index.get("_class_name"), str):
         return False
 
     component_count = 0
     for name, specification in model_index.items():
+        if name in runtime_components:
+            continue
         if name.startswith("_") or not isinstance(specification, list):
             continue
         if not specification or specification[0] is None:
@@ -71,12 +73,22 @@ def _diffusers_checkpoint_is_complete(root: Path) -> bool:
     )
 
 
-def checkpoint_is_complete(path: Path) -> bool:
+def checkpoint_is_complete(
+    path: Path, *, runtime_components: frozenset[str] = frozenset()
+) -> bool:
     """Return whether a native or multi-component Diffusers checkpoint is complete."""
 
     root = path.resolve()
+    if (root / "ssd-checkpoint.json").is_file():
+        try:
+            from omlx.ssd_checkpoint import inspect_ssd_checkpoint
+
+            inspect_ssd_checkpoint(root)
+        except (OSError, TypeError, ValueError):
+            return False
+        return True
     if (root / "model_index.json").is_file():
-        return _diffusers_checkpoint_is_complete(root)
+        return _diffusers_checkpoint_is_complete(root, runtime_components)
 
     onnx_files = tuple(root.glob("*.onnx"))
     if onnx_files:
@@ -98,8 +110,63 @@ def checkpoint_is_complete(path: Path) -> bool:
         ),
         None,
     )
+    # Safe multi-model repositories can pair names such as
+    # ``htdemucs.safetensors`` and ``htdemucs_config.json`` instead of using
+    # the Transformer-oriented root config convention. Keep this fallback
+    # root-local and require an exact weights/config basename match.
+    safetensors = tuple(root.glob("*.safetensors"))
+    if native_config is None:
+        native_config = next(
+            (
+                root / f"{weights.stem}_config.json"
+                for weights in safetensors
+                if (root / f"{weights.stem}_config.json").is_file()
+            ),
+            None,
+        )
     if native_config is None:
         return False
     return _indexed_shards_are_complete(root) and any(
-        path.is_file() for path in root.glob("*.safetensors")
+        path.is_file() for path in safetensors
+    )
+
+
+# Input layouts belong to the adapter contract, not to a universal HF layout.
+_RUNTIME_SCHEDULERS = frozenset({
+    ("z-image", "mflux-mlx-metal-optimized"),
+    ("z-image", "mflux-native-cfg"),
+    ("flux2-klein", "mflux-mlx-optimized"),
+    ("qwen-image", "mflux-mlx-optimized"),
+})
+_IDEOGRAM_COMPONENTS = (
+    "diffusion_models/ideogram4_fp8_scaled.safetensors",
+    "diffusion_models/ideogram4_unconditional_fp8_scaled.safetensors",
+    "text_encoders/qwen3vl_8b_fp8_scaled.safetensors",
+    "vae/flux2-vae.safetensors",
+)
+
+
+def model_checkpoint_is_complete(path: Path, model: dict[str, Any]) -> bool:
+    """Validate the exact adapter input layout, including Runtime-owned config."""
+
+    metadata = model.get("metadata") or {}
+    backend = (metadata.get("family"), metadata.get("implementation"))
+    if backend == ("ideogram4", "ai2apps-native-mlx-optimized"):
+        # Configuration/tokenizer assets ship in this Package. Every source
+        # tensor is nevertheless mandatory; one nested tensor is not enough.
+        root = path.resolve()
+        for relative in _IDEOGRAM_COMPONENTS:
+            component = root / relative
+            try:
+                component.resolve().relative_to(root)
+                if not component.is_file() or component.stat().st_size == 0:
+                    return False
+            except (OSError, ValueError):
+                return False
+        return _indexed_shards_are_complete(root)
+    return checkpoint_is_complete(
+        path,
+        runtime_components=(
+            frozenset({"scheduler"}) if backend in _RUNTIME_SCHEDULERS else frozenset()
+        ),
     )

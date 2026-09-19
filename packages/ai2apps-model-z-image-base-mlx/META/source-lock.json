@@ -1,0 +1,13 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "model": {
+    "repo_id": "Tongyi-MAI/Z-Image",
+    "revision": "04cc4abb7c5069926f75c9bfde9ef43d49423021",
+    "modelscope_repo_id": "Tongyi-MAI/Z-Image",
+    "modelscope_revision": "77e77d0c115ea46c072f7f3f0f5aa82381f84c5b"
+  },
+  "runtime": {
+    "mflux": "0.19.0",
+    "mlx": "0.32.0"
+  }
+}

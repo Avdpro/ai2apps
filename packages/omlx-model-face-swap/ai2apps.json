@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-face-swap-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "MLX Actor Replacement",
+    "description": "Native MLX GhostV2 image and video actor replacement for Apple Silicon."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned MLX GhostV2 checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run native GhostV2 actor replacement with MLX.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.6.2 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {
+    "kind": "model",
+    "categories": ["image", "video"],
+    "tasks": ["image-editing", "video-generation", "face-swap"]
+  },
+  "modelProfile": {
+    "sizeBytes": 599153766,
+    "minimumMemoryBytes": 17179869184,
+    "scores": {"speed": 5, "capability": 5},
+    "benchmark": {
+      "label": "Native MLX FP16: 39.91 FPS quality / 53.07 FPS fast export at 960x540",
+      "device": "Apple M5 Max"
+    }
+  }
+}

@@ -247,8 +247,21 @@ class CapabilityProfileRegistry:
                 ):
                     raise CapabilityProfileError(f"Unsupported ACPF schema: {path}")
                 app_id = document.get("app_id")
+                app_ids = document.get("app_ids")
                 entries = document.get("capabilities")
-                if not isinstance(app_id, str) or not isinstance(entries, dict):
+                if isinstance(app_id, str) and app_ids is None:
+                    target_app_ids = (app_id,)
+                elif (
+                    app_id is None
+                    and isinstance(app_ids, list)
+                    and app_ids
+                    and all(isinstance(item, str) and item for item in app_ids)
+                    and len(set(app_ids)) == len(app_ids)
+                ):
+                    target_app_ids = tuple(app_ids)
+                else:
+                    raise CapabilityProfileError(f"Incomplete ACPF profile: {path}")
+                if not isinstance(entries, dict):
                     raise CapabilityProfileError(f"Incomplete ACPF profile: {path}")
                 for capability, value in entries.items():
                     if not isinstance(capability, str) or not isinstance(value, dict):
@@ -264,20 +277,21 @@ class CapabilityProfileRegistry:
                         else profile
                         for profile in profiles
                     ]
-                    key = (app_id, capability)
-                    if key in capabilities:
-                        raise CapabilityProfileError(
-                            f"Duplicate ACPF capability: {key}"
-                        )
-                    capabilities[key] = {
-                        **value,
-                        "profiles": normalized_profiles,
-                        "presentation": _validated_presentation(
-                            value.get("presentation"), path
-                        ),
-                        "app_id": app_id,
-                        "capability": capability,
-                    }
+                    for target_app_id in target_app_ids:
+                        key = (target_app_id, capability)
+                        if key in capabilities:
+                            raise CapabilityProfileError(
+                                f"Duplicate ACPF capability: {key}"
+                            )
+                        capabilities[key] = {
+                            **value,
+                            "profiles": normalized_profiles,
+                            "presentation": _validated_presentation(
+                                value.get("presentation"), path
+                            ),
+                            "app_id": target_app_id,
+                            "capability": capability,
+                        }
         self._capabilities = capabilities
 
     def capability(self, app_id: str, capability: str) -> dict[str, Any] | None:

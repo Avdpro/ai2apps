@@ -1,8 +1,11 @@
+> 0.1.2 capability contract: Ideogram 4 text-to-image generation only; Remix editing is disabled pending acceptance.
+
 # Ideogram 4 MLX Model Package
 
 AI2Apps Model Worker package for the optimized native MLX Ideogram 4 pipeline.
-It supports text-to-image generation and single-reference SDEdit/Remix on Apple
-Silicon. The default Q4 Quality path uses staged model residency, BF16 MLP and
+It supports text-to-image generation on Apple Silicon. Public SDEdit/Remix editing
+is rejected before model loading pending editing acceptance.
+The default Q4 Quality path uses staged model residency, BF16 MLP and
 SDPA boundaries, fused QK RMSNorm/MRoPE, and prepared static conditioning.
 
 The first request converts the pinned Comfy-Org FP8 source files into a

@@ -131,7 +131,11 @@ def sample_system_memory() -> SystemMemorySnapshot:
 
 
 def _positive_int(value: Any) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+    return (
+        value
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        else None
+    )
 
 
 def _geometry_bytes(value: Any, *, bytes_per_pixel: int) -> int:
@@ -156,9 +160,10 @@ def estimate_request_transient_bytes(
 
     safe_file_bytes = max(0, int(file_bytes))
     if operation in {"chat_completions", "responses"}:
-        max_tokens = _positive_int(
-            payload.get("max_tokens", payload.get("max_output_tokens"))
-        ) or 2048
+        max_tokens = (
+            _positive_int(payload.get("max_tokens", payload.get("max_output_tokens")))
+            or 2048
+        )
         serialized_chars = len(str(payload.get("messages", payload.get("input", ""))))
         input_tokens = max(1, serialized_chars // 4)
         token_budget = min(131_072, input_tokens + max_tokens)
@@ -174,6 +179,8 @@ def estimate_request_transient_bytes(
         return max(4 * GIB, geometry * min(frames, 32) + safe_file_bytes * 6)
     if operation in {"audio_transcription", "audio_speech", "audio_process"}:
         return max(512 * MIB, safe_file_bytes * 6)
+    if operation == "audio_voice_training":
+        return max(6 * GIB, safe_file_bytes * 12)
     if operation == "embeddings":
         return max(256 * MIB, len(str(payload.get("input", ""))) * 1024)
     return max(512 * MIB, safe_file_bytes * 4)
@@ -343,15 +350,10 @@ class WorkerResourceManager:
         conditions = self._condition_sampler()
         self._last_conditions = conditions
         if self._scheduler is not None:
-            await self._scheduler.set_background_gate(
-                "memory_pressure", under_pressure
-            )
+            await self._scheduler.set_background_gate("memory_pressure", under_pressure)
             await self._scheduler.set_background_gate(
                 "battery",
-                bool(
-                    self.config.pause_background_on_battery
-                    and conditions.on_battery
-                ),
+                bool(self.config.pause_background_on_battery and conditions.on_battery),
             )
             await self._scheduler.set_background_gate(
                 "low_battery",
@@ -486,12 +488,8 @@ class WorkerResourceManager:
             "onBattery": self._last_conditions.on_battery,
             "batteryPercent": self._last_conditions.battery_percent,
             "temperatureCelsius": self._last_conditions.temperature_celsius,
-            "softCeilingBytes": int(
-                memory.total_bytes * self.config.soft_memory_ratio
-            ),
-            "hardCeilingBytes": int(
-                memory.total_bytes * self.config.hard_memory_ratio
-            ),
+            "softCeilingBytes": int(memory.total_bytes * self.config.soft_memory_ratio),
+            "hardCeilingBytes": int(memory.total_bytes * self.config.hard_memory_ratio),
             "safetyMarginBytes": safety_margin,
             "reservedTotalBytes": self.reserved_bytes,
             "reservedTransientBytes": transient_reserved,

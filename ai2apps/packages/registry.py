@@ -22,9 +22,14 @@ import yaml
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
+from ai2apps.download_progress import DownloadProgress
 from ai2apps.cloud_client import AI2AppsCloudClient
 from ai2apps.extensions import ExtensionError, UnitKind
 from ai2apps.extensions.models import BundleFile, InspectedBundle
+from ai2apps.http_range import (
+    StrictRangeResponseError,
+    validate_strict_range_response_headers,
+)
 from ai2apps.localization import (
     localized_package_metadata,
     package_localizations_for_manifest,
@@ -47,10 +52,12 @@ from .contract_v1 import (
     create_signature_envelope,
     generate_publisher_key,
     inspect_package,
+    mini_app_catalog_from_app_manifest,
     public_key_fingerprint,
     verify_repository_snapshot,
     verify_signed_package,
 )
+from .discovery import catalog_discovery, catalog_model_install, catalog_model_profile
 from .repository_config import AI2APPS_REPOSITORY_FINGERPRINT
 
 # Backwards-compatible public name; the authoritative value lives in the
@@ -63,11 +70,15 @@ ARTIFACT_PIECES_SCHEMA = "ai2apps.artifact-pieces.v1"
 ARTIFACT_PIECE_MAX_BYTES = 64 * 1024 * 1024
 ARTIFACT_SOURCE_LIMIT = 16
 ARTIFACT_RACE_CONCURRENCY = 4
+ARTIFACT_PIECE_CONCURRENCY = 4
+ARTIFACT_PREFETCH_MAX_BYTES = 32 * 1024 * 1024
 ARTIFACT_CONNECT_TIMEOUT_SECONDS = 10.0
 ARTIFACT_NO_PROGRESS_TIMEOUT_SECONDS = 15.0
-ARTIFACT_PROGRESS_CHUNK_BYTES = 256 * 1024
 ARTIFACT_PROGRESS_INTERVAL_SECONDS = 0.25
 _ARTIFACT_SHA256 = re.compile(r"[0-9a-f]{64}")
+_MODELSCOPE_IMMUTABLE_PACKAGE_PATH = re.compile(
+    r"^/models/[^/]+/[^/]+/resolve/[0-9a-f]{40}/.+$"
+)
 
 
 class RegistryError(RuntimeError):
@@ -488,6 +499,23 @@ class RegistryPackageManager:
         netloc = host if port in {None, 443} else f"{host}:{port}"
         return urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
 
+    @staticmethod
+    def _allows_modelscope_range_200(source: dict[str, str]) -> bool:
+        if source.get("kind") != "modelscope":
+            return False
+        try:
+            parsed = urlsplit(source["url"])
+            port = parsed.port
+        except (KeyError, ValueError):
+            return False
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname == "modelscope.cn"
+            and port in {None, 443}
+            and not parsed.query
+            and _MODELSCOPE_IMMUTABLE_PACKAGE_PATH.fullmatch(parsed.path) is not None
+        )
+
     def _multi_source_contract(
         self,
         artifact: dict[str, Any],
@@ -692,7 +720,6 @@ class RegistryPackageManager:
         start: int,
         end: int,
         artifact_size: int,
-        artifact_sha256: str,
         media_type: str,
         expected_hash: str,
         observed: Callable[[dict[str, str], int], None],
@@ -708,7 +735,6 @@ class RegistryPackageManager:
                     "Accept": media_type,
                     "Accept-Encoding": "identity",
                     "Range": f"bytes={start}-{end}",
-                    "If-Range": f'"sha256-{artifact_sha256}"',
                 },
             )
             try:
@@ -742,35 +768,20 @@ class RegistryPackageManager:
         expected_length = end - start + 1
         content = bytearray()
         try:
-            if response.status_code != 206:
-                raise _ArtifactSourceError(
-                    "range_not_supported",
-                    f"Artifact source returned HTTP {response.status_code}",
-                )
-            if response.headers.get("content-range", "").lower() != (
-                f"bytes {start}-{end}/{artifact_size}"
-            ):
-                raise _ArtifactSourceError(
-                    "content_range_mismatch", "Artifact source returned a wrong range"
-                )
             try:
-                content_length = int(response.headers.get("content-length", ""))
-            except ValueError as error:
+                validated = validate_strict_range_response_headers(
+                    response,
+                    start=start,
+                    end=end,
+                    expected_total=artifact_size,
+                    allow_http_200=self._allows_modelscope_range_200(source),
+                )
+            except StrictRangeResponseError as error:
                 raise _ArtifactSourceError(
-                    "content_length_invalid",
-                    "Artifact source omitted the range length",
+                    error.code,
+                    str(error),
                 ) from error
-            if content_length != expected_length:
-                raise _ArtifactSourceError(
-                    "content_length_mismatch",
-                    "Artifact source returned a wrong range length",
-                )
-            encoding = response.headers.get("content-encoding", "identity").lower()
-            if encoding not in {"", "identity"}:
-                raise _ArtifactSourceError(
-                    "content_encoding_invalid",
-                    "Artifact source transformed the signed bytes",
-                )
+            assert validated.length == expected_length
             iterator = response.aiter_bytes(chunk_size=64 * 1024).__aiter__()
             while len(content) < expected_length:
                 try:
@@ -787,20 +798,22 @@ class RegistryPackageManager:
                         "no_progress_timeout",
                         "Artifact source stopped making progress",
                     ) from error
-                content.extend(chunk)
-                if len(content) > expected_length:
+                remaining = expected_length - len(content)
+                content.extend(chunk[: remaining + 1])
+                if len(chunk) > remaining or len(content) > expected_length:
                     raise _ArtifactSourceError(
-                        "piece_size_mismatch",
+                        "range_body_excess",
                         "Artifact source exceeded the requested range",
                     )
                 observed(source, len(content))
             if len(content) != expected_length:
                 raise _ArtifactSourceError(
-                    "piece_size_mismatch",
+                    "range_body_short",
                     "Artifact source ended before the requested range completed",
                 )
             result = bytes(content)
-            if hashlib.sha256(result).hexdigest() != expected_hash:
+            digest = await asyncio.to_thread(lambda: hashlib.sha256(result).hexdigest())
+            if digest != expected_hash:
                 raise _ArtifactSourceError(
                     "piece_hash_mismatch",
                     "Artifact source returned bytes with a wrong piece hash",
@@ -816,7 +829,6 @@ class RegistryPackageManager:
         start: int,
         end: int,
         artifact_size: int,
-        artifact_sha256: str,
         media_type: str,
         expected_hash: str,
         observed: Callable[[dict[str, str], int], None],
@@ -836,7 +848,6 @@ class RegistryPackageManager:
                     start=start,
                     end=end,
                     artifact_size=artifact_size,
-                    artifact_sha256=artifact_sha256,
                     media_type=media_type,
                     expected_hash=expected_hash,
                     observed=observed,
@@ -925,107 +936,138 @@ class RegistryPackageManager:
             pieceCount=len(piece_hashes),
         )
         ordered_sources = list(sources)
-        last_reported_bytes = verified_bytes
-        last_reported_at = time.monotonic()
+        piece_concurrency = min(
+            ARTIFACT_PIECE_CONCURRENCY,
+            max(1, ARTIFACT_PREFETCH_MAX_BYTES // piece_size),
+        )
+        received: dict[int, int] = {}
+        last_reported_at = 0.0
+        pending: dict[int, asyncio.Task] = {}
+        preferred_source: dict[str, str] | None = None
+        last_winner_id: str | None = None
+        winning_streak = 0
+        selection_epoch = 0
 
-        def make_observer(
-            piece_start: int,
-            piece_end: int,
-            piece_index: int,
-            source_order: tuple[dict[str, str], ...],
-        ) -> Callable[[dict[str, str], int], None]:
-            observed_by_source: dict[str, int] = {}
-
-            def observed(source: dict[str, str], piece_bytes: int) -> None:
-                nonlocal last_reported_at, last_reported_bytes
-                observed_by_source[source["id"]] = piece_bytes
-                leading_id, leading_bytes = max(
-                    observed_by_source.items(), key=lambda item: item[1]
-                )
-                total_received = piece_start + leading_bytes
-                now = time.monotonic()
-                if (
-                    total_received - last_reported_bytes
-                    < ARTIFACT_PROGRESS_CHUNK_BYTES
-                    and now - last_reported_at
-                    < ARTIFACT_PROGRESS_INTERVAL_SECONDS
-                    and total_received < piece_end + 1
-                ):
-                    return
-                leading_source = next(
-                    item for item in source_order if item["id"] == leading_id
-                )
-                last_reported_bytes = max(last_reported_bytes, total_received)
-                last_reported_at = now
-                self._report_install_progress(
-                    progress,
-                    currentStep=progress_step,
-                    stage=download_stage,
-                    packageId=package_id,
-                    fileName=file_name,
-                    bytesCompleted=last_reported_bytes,
-                    bytesVerified=piece_start,
-                    bytesTotal=artifact_size,
-                    downloadMode="piece_race",
-                    sourceCount=len(source_order),
-                    sourceId=leading_source["id"],
-                    sourceKind=leading_source["kind"],
-                    pieceIndex=piece_index,
-                    pieceCount=len(piece_hashes),
-                )
-
-            return observed
-
-        for index in range(verified_pieces, len(piece_hashes)):
-            start = index * piece_size
-            end = min(start + piece_size, artifact_size) - 1
-            observed = make_observer(start, end, index, tuple(ordered_sources))
-
-            winner, content = await self._race_artifact_piece(
-                ordered_sources,
-                start=start,
-                end=end,
-                artifact_size=artifact_size,
-                artifact_sha256=artifact_sha256,
-                media_type=str(artifact["mediaType"]),
-                expected_hash=piece_hashes[index],
-                observed=observed,
-            )
-            with partial.open("ab") as output:
-                output.write(content)
-                output.flush()
-                os.fsync(output.fileno())
-            verified_pieces = index + 1
-            verified_bytes = end + 1
-            await asyncio.to_thread(
-                self._write_partial_state,
-                state_path,
-                artifact_sha256=artifact_sha256,
-                artifact_size=artifact_size,
-                piece_size=piece_size,
-                verified_pieces=verified_pieces,
-            )
+        def report(index: int, source: dict[str, str], *, force: bool = False) -> None:
+            nonlocal last_reported_at
+            now = time.monotonic()
+            if not force and now - last_reported_at < ARTIFACT_PROGRESS_INTERVAL_SECONDS:
+                return
+            last_reported_at = now
             self._report_install_progress(
                 progress,
                 currentStep=progress_step,
                 stage=download_stage,
                 packageId=package_id,
                 fileName=file_name,
-                bytesCompleted=verified_bytes,
+                bytesCompleted=verified_bytes + sum(received.values()),
                 bytesVerified=verified_bytes,
                 bytesTotal=artifact_size,
                 downloadMode="piece_race",
-                sourceCount=len(ordered_sources),
-                sourceId=winner["id"],
-                sourceKind=winner["kind"],
+                pieceConcurrency=piece_concurrency,
+                sourceSelection="preferred" if preferred_source else "race",
+                preferredSourceId=preferred_source["id"] if preferred_source else None,
+                sourceCount=len(sources),
+                sourceId=source["id"],
+                sourceKind=source["kind"],
                 pieceIndex=index,
                 pieceCount=len(piece_hashes),
             )
-            last_reported_bytes = verified_bytes
-            last_reported_at = time.monotonic()
-            ordered_sources = [winner] + [
-                item for item in ordered_sources if item["id"] != winner["id"]
-            ]
+
+        def launch(index: int) -> None:
+            start = index * piece_size
+            end = min(start + piece_size, artifact_size) - 1
+            observed_by_source: dict[str, int] = {}
+
+            def observed(source: dict[str, str], size: int) -> None:
+                observed_by_source[source["id"]] = size
+                received[index] = max(observed_by_source.values())
+                report(index, source)
+
+            selected = preferred_source
+            epoch = selection_epoch
+
+            async def fetch() -> tuple[dict[str, str], bytes, int, bool]:
+                nonlocal preferred_source, last_winner_id, winning_streak, selection_epoch
+                request_options = dict(
+                    start=start,
+                    end=end,
+                    artifact_size=artifact_size,
+                    media_type=str(artifact["mediaType"]),
+                    expected_hash=piece_hashes[index],
+                    observed=observed,
+                )
+                try:
+                    winner, content = await self._race_artifact_piece(
+                        [selected] if selected else list(ordered_sources),
+                        **request_options,
+                    )
+                    return winner, content, epoch, selected is None
+                except RegistryError as error:
+                    if selected is None or error.code != "artifact_sources_exhausted":
+                        raise
+                    if epoch == selection_epoch:
+                        preferred_source = None
+                        last_winner_id = None
+                        winning_streak = 0
+                        selection_epoch += 1
+                    retry_epoch = selection_epoch
+                    observed_by_source.clear()
+                    received.pop(index, None)
+                    winner, content = await self._race_artifact_piece(
+                        [item for item in ordered_sources if item["id"] != selected["id"]]
+                        + [selected],
+                        **request_options,
+                    )
+                    return winner, content, retry_epoch, True
+
+            pending[index] = asyncio.create_task(fetch())
+
+        def commit_piece(index: int, content: bytes) -> None:
+            with partial.open("ab") as output:
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+            self._write_partial_state(
+                state_path,
+                artifact_sha256=artifact_sha256,
+                artifact_size=artifact_size,
+                piece_size=piece_size,
+                verified_pieces=index + 1,
+            )
+
+        next_index = verified_pieces
+        try:
+            for index in range(verified_pieces, len(piece_hashes)):
+                while next_index < min(index + piece_concurrency, len(piece_hashes)):
+                    launch(next_index)
+                    next_index += 1
+                winner, content, epoch, competed = await pending[index]
+                del pending[index]
+                if competed and epoch == selection_epoch and preferred_source is None:
+                    winning_streak = winning_streak + 1 if winner["id"] == last_winner_id else 1
+                    last_winner_id = winner["id"]
+                    if winning_streak >= 2:
+                        preferred_source = winner
+                # Keep the durable resume state a contiguous, verified prefix.
+                commit = asyncio.create_task(
+                    asyncio.to_thread(commit_piece, index, content)
+                )
+                try:
+                    await asyncio.shield(commit)
+                except asyncio.CancelledError:
+                    await commit
+                    raise
+                verified_bytes = min((index + 1) * piece_size, artifact_size)
+                received.pop(index, None)
+                report(index, winner, force=True)
+                ordered_sources = [winner] + [
+                    item for item in ordered_sources if item["id"] != winner["id"]
+                ]
+        finally:
+            for task in pending.values():
+                task.cancel()
+            await asyncio.gather(*pending.values(), return_exceptions=True)
 
         def hash_partial() -> tuple[int, str]:
             digest = hashlib.sha256()
@@ -1080,6 +1122,10 @@ class RegistryPackageManager:
         progress_step: int = 2,
         dependency: bool = False,
     ):
+        if progress is not None:
+            callback = progress
+            meter = DownloadProgress()
+            progress = lambda value: callback(meter.update(value))
         package_id = f"{namespace}/{name}"
         snapshot = await self.trusted_snapshot()
         release = self._release(snapshot, package_id, version)
@@ -1459,6 +1505,17 @@ class RegistryPackageManager:
         compatibility = result.get("compatibility")
         if isinstance(compatibility, dict):
             result["installability"] = cls._compatibility_status(compatibility)
+        discovery = catalog_discovery(result)
+        if discovery is not None:
+            result["discovery"] = discovery
+        # Each projection has its own signed declaration / legacy version cap.
+        # Missing category metadata must not suppress a valid install plan.
+        model_profile = catalog_model_profile(result)
+        if model_profile is not None:
+            result["modelProfile"] = model_profile
+        model_install = catalog_model_install(result)
+        if model_install is not None:
+            result["modelInstall"] = model_install
         return result
 
     def _interactive_bundle(self, inspected, envelope) -> InspectedBundle:
@@ -1541,6 +1598,16 @@ class RegistryPackageManager:
                     )
                     if runtime_localizations:
                         app_manifest["localizations"] = runtime_localizations
+                declared_mini_apps = manifest.get("miniApps")
+                if (
+                    declared_mini_apps is not None
+                    and declared_mini_apps
+                    != mini_app_catalog_from_app_manifest(app_manifest)
+                ):
+                    raise RegistryError(
+                        "mini_app_catalog_mismatch",
+                        "Signed Mini-App catalog does not match app.yaml",
+                    )
             else:
                 try:
                     raw = archive.read(entrypoint["path"]).decode("utf-8", "strict")
@@ -2037,6 +2104,39 @@ class RegistryPackageManager:
             ),
             "installedAt": datetime.now(UTC).isoformat(),
         }
+        discovery = catalog_discovery(
+            {
+                "manifest": inspected.manifest,
+                "packageId": inspected.manifest["package"]["id"],
+                "packageType": kind,
+                "version": inspected.manifest["package"]["version"],
+            }
+        )
+        if discovery is not None:
+            installed[inspected.manifest["package"]["id"]]["discovery"] = discovery
+            model_profile = catalog_model_profile(
+                {
+                    "manifest": inspected.manifest,
+                    "packageId": inspected.manifest["package"]["id"],
+                    "version": inspected.manifest["package"]["version"],
+                }
+            )
+            if model_profile is not None:
+                installed[inspected.manifest["package"]["id"]][
+                    "modelProfile"
+                ] = model_profile
+            model_install = catalog_model_install(
+                {
+                    "manifest": inspected.manifest,
+                    "packageId": inspected.manifest["package"]["id"],
+                    "version": inspected.manifest["package"]["version"],
+                }
+            )
+            if model_install is not None:
+                installed[inspected.manifest["package"]["id"]]["modelInstall"] = model_install
+        mini_apps = inspected.manifest.get("miniApps")
+        if isinstance(mini_apps, list) and mini_apps:
+            installed[inspected.manifest["package"]["id"]]["miniApps"] = mini_apps
         self._save_state(state)
         self._report_install_progress(
             progress,
@@ -2052,6 +2152,30 @@ class RegistryPackageManager:
         items = []
         for stored in self._load_state().get("installed", {}).values():
             item = dict(stored)
+            if (
+                item.get("packageType") == "app"
+                and not item.get("miniApps")
+                and self.extension_manager is not None
+            ):
+                try:
+                    effective = self.extension_manager.repository.effective(
+                        UnitKind.APP, item.get("runtimeKey", "")
+                    )
+                except Exception:
+                    effective = None
+                if effective is not None:
+                    mini_apps = mini_app_catalog_from_app_manifest(effective.manifest)
+                    if mini_apps:
+                        item["miniApps"] = mini_apps
+            discovery = catalog_discovery(item)
+            if discovery is not None:
+                item["discovery"] = discovery
+                model_profile = catalog_model_profile(item)
+                if model_profile is not None:
+                    item["modelProfile"] = model_profile
+                model_install = catalog_model_install(item)
+                if model_install is not None:
+                    item["modelInstall"] = model_install
             if item.get("packageType") == "service":
                 runtime_key = item.get("runtimeKey")
                 active = (

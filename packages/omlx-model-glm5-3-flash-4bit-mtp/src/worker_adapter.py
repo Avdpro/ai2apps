@@ -5,6 +5,38 @@ from typing import Any
 from ai2apps.model_worker.cache_moe import _authorized_path, _prepared_manifest
 from ai2apps.model_worker.omlx_chat import OmlxChatAdapter
 from ai2apps.model_worker.protocol import ModelWorkerCheckpoint, ModelWorkerError
+from omlx.utils.hardware import get_total_memory_bytes
+
+
+_GIB = 1024**3
+
+
+def _resolve_memory_tier(requested: object) -> str:
+    tier = str(requested or "auto").strip().lower()
+    estimates_gib = {"lean": 55, "balanced": 62}
+    if tier != "auto":
+        if tier not in estimates_gib:
+            raise ModelWorkerError(
+                f"Unsupported GLM-5 memory tier: {tier}",
+                code="invalid_request_error",
+                status_code=400,
+            )
+        return tier
+
+    physical = get_total_memory_bytes()
+    reserve = max(8 * _GIB, int(physical * 0.20))
+    usable = max(0, physical - reserve)
+    # Preserve the established Balanced default whenever it fits. Auto only
+    # downgrades to Lean; Performance remains an explicit product choice.
+    for candidate in ("balanced", "lean"):
+        if estimates_gib[candidate] * _GIB <= usable:
+            return candidate
+    raise ModelWorkerError(
+        "No GLM-5 Cache-MoE memory tier fits this device with the required "
+        "system and KV-cache reserve",
+        code="insufficient_memory",
+        status_code=503,
+    )
 
 
 class Glm5DynamicChatAdapter(OmlxChatAdapter):
@@ -51,16 +83,9 @@ class Glm5DynamicChatAdapter(OmlxChatAdapter):
                 status_code=503,
             )
 
-        tier = str(options.get("cache_moe_memory_tier", "balanced") or "balanced")
-        if tier == "auto":
-            tier = "balanced"
+        tier = _resolve_memory_tier(options.get("cache_moe_memory_tier", "auto"))
         slots = self._TIER_SLOTS.get(tier)
-        if slots is None:
-            raise ModelWorkerError(
-                f"Unsupported GLM-5 memory tier: {tier}",
-                code="invalid_request_error",
-                status_code=400,
-            )
+        assert slots is not None
 
         os.environ["OMLX_GLM5_DYNAMIC_STORE"] = str(expert_store)
         os.environ["OMLX_GLM5_DYNAMIC_SLOTS"] = str(slots)

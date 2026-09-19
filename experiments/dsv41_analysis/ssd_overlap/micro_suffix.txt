@@ -1,0 +1,36 @@
+class Micro(Overlap):
+ def close(self):
+  import hashlib,threading,numpy as np
+  rows=[];expected=None
+  inp=mx.full((6,5120),.01,dtype=mx.bfloat16);rw=mx.full((6,),1/6,dtype=mx.float32)
+  slots={l:mx.array(list(self.banks[l].main.values())[:6],dtype=mx.int32) for l in range(40)}
+  mx.eval(inp,rw,*slots.values())
+  def graph():
+   x=inp
+   for l in range(40):x=(.01*mx.tanh(self.expert(x,self.banks[l],slots[l],rw).astype(mx.float32))).astype(mx.bfloat16)
+   return x
+  mx.eval(graph()) # warm up real resident expert kernels, outside timing
+  for rep in range(3):
+   modes=['baseline','serial16','overlap16','serial48','overlap48']
+   if rep==1:modes=list(reversed(modes))
+   for mode in modes:
+    self.count=0 if mode=='baseline' else (16 if mode.endswith('16') else 48)
+    y=graph();began=time.perf_counter();future=None
+    if mode.startswith('overlap'):
+     ready=threading.Event()
+     def read_ready():
+      ready.set()
+      return self.read(10000+rep)
+     future=self.pool.submit(read_ready);ready.wait()
+    dispatched=time.perf_counter();mx.async_eval(y);mx.eval(y);computed=time.perf_counter()
+    if future:io=future.result()
+    elif mode.startswith('serial'):io=self.read(10000+rep)
+    else:io=dict(begin=computed,end=computed,bytes=0)
+    ended=time.perf_counter();digest=hashlib.sha256(np.array(y.astype(mx.float32)).tobytes()).hexdigest()
+    if expected is None:expected=digest
+    assert digest==expected,'scratch read changed resident expert output'
+    rows.append(dict(repeat=rep,mode=mode,compute_s=computed-dispatched,total_s=ended-began,io_s=io['end']-io['begin'],io_start_delay_s=io['begin']-began,dispatch_delay_s=dispatched-began,overlap_s=max(0,min(computed,io['end'])-max(dispatched,io['begin'])),bytes=io['bytes']))
+  Path(os.environ['OVERLAP_OUTPUT'],'micro.json').write_text(json.dumps(dict(workload='40 dependent real resident Top6 expert kernels; no foreground SSD or router',rows=rows,outputs_exact=True),indent=2))
+  super().close()
+run.Model=Micro
+run.main()

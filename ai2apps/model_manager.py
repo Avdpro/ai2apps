@@ -100,6 +100,9 @@ class ModelManagerStore:
         self.fusion_dir = self.base_path / "fusion"
         self.cloud_path = self.base_path / "ai2apps" / "cloud-providers.json"
         self.defaults_path = self.base_path / "ai2apps" / "default-models.json"
+        self.cloud_defaults_path = self.base_path / "ai2apps" / "cloud-defaults.json"
+        from ai2apps.cloud_client import resolve_cloud_base_url
+        self.cloud_defaults_origin = resolve_cloud_base_url()
         # Composition roots pass the platform-selected backend (Keychain on
         # macOS).  The encrypted fallback keeps standalone tools and tests from
         # ever regressing to plaintext provider credentials.
@@ -182,7 +185,38 @@ class ModelManagerStore:
 
         if purpose not in DEFAULT_MODEL_PURPOSES:
             raise ValueError(f"Unknown default model purpose: {purpose}")
-        return self.default_models()[purpose] or fallback
+        explicit = self.default_models()[purpose]
+        if explicit:
+            return explicit
+        from ai2apps.cloud_defaults import WORK_PURPOSES
+        if purpose in WORK_PURPOSES:
+            policy = self.cloud_default_policy()
+            model = policy.get("apiDefault")
+            if model:
+                return f"cloud/ai2apps/{model['modelId']}"
+        return fallback
+
+    def put_cloud_default_policy(self, payload: object, *, fetched_at: float) -> None:
+        from ai2apps.cloud_defaults import validate_policy
+        policy = validate_policy(payload)
+        _atomic_json(self.cloud_defaults_path, {
+            "origin": self.cloud_defaults_origin,
+            "fetchedAt": fetched_at,
+            "policy": policy,
+        })
+
+    def cloud_default_policy(self) -> dict[str, Any]:
+        from ai2apps.cloud_defaults import CACHE_SECONDS, validate_policy
+        try:
+            cached = json.loads(self.cloud_defaults_path.read_text(encoding="utf-8"))
+            if not isinstance(cached, dict) or cached.get("origin") != self.cloud_defaults_origin:
+                return {}
+            age = time.time() - float(cached["fetchedAt"])
+            if not 0 <= age <= CACHE_SECONDS:
+                return {}
+            return validate_policy(cached["policy"])
+        except (OSError, ValueError, TypeError, KeyError):
+            return {}
 
     def list_fusion(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []

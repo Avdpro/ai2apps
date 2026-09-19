@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from ai2apps.api.provisioning import create_provisioning_router
 from ai2apps.identity import RequestPrincipal
+from ai2apps.packages.registry import RegistryError
 from ai2apps.provisioning.orchestrator import CapabilityProvisioner
 from ai2apps.provisioning.profiles import (
     CapabilityProfileRegistry,
@@ -105,7 +106,9 @@ def test_legacy_hf_binding_preserves_registered_modelscope_downloader(
     assert installer.ms_downloader is ms_downloader
 
 
-def test_platform_registry_binds_trusted_checkpoint_acquisition(tmp_path) -> None:
+def test_platform_registry_binds_trusted_checkpoint_acquisition(
+    tmp_path, monkeypatch
+) -> None:
     registry_packages = SimpleNamespace(
         root=tmp_path / "packages/registry-v1",
         cloud=SimpleNamespace(),
@@ -128,6 +131,175 @@ def test_platform_registry_binds_trusted_checkpoint_acquisition(tmp_path) -> Non
     assert provisioner.checkpoint_acquisition.cache.root == (
         tmp_path / "packages/checkpoint-cache-v1"
     )
+
+    shared_root = tmp_path / "machine-cache/checkpoint-cache-v1"
+    support_root = tmp_path / "instance-support"
+    another_legacy = (
+        support_root / "test/data/platform/packages/checkpoint-cache-v1"
+    )
+    another_legacy.mkdir(parents=True)
+    preserved_root = tmp_path / "machine-cache/legacy-checkpoint-cache-v1"
+    preserved_legacy = preserved_root / "app-dev"
+    preserved_legacy.mkdir(parents=True)
+    monkeypatch.setenv("AI2APPS_CHECKPOINT_CACHE_ROOT", str(shared_root))
+    monkeypatch.setenv("AI2APPS_INSTANCE_SUPPORT_ROOT", str(support_root))
+    monkeypatch.setenv(
+        "AI2APPS_PRESERVED_CHECKPOINT_CACHE_ROOT", str(preserved_root)
+    )
+    shared_provisioner = CapabilityProvisioner(
+        runtime=SimpleNamespace(
+            package_repository=SimpleNamespace(installed=lambda: ()),
+            package_manager=None,
+            registry_packages=registry_packages,
+        ),
+        repository=SimpleNamespace(),
+    )
+    shared_provisioner.bind_checkpoint_downloaders(
+        SimpleNamespace(model_dir=tmp_path / "models")
+    )
+
+    assert shared_provisioner.checkpoint_acquisition.cache.root == shared_root
+    assert {
+        cache.root for cache in shared_provisioner.checkpoint_acquisition.legacy_caches
+    } == {
+        (tmp_path / "packages/checkpoint-cache-v1").resolve(),
+        another_legacy.resolve(),
+        preserved_legacy.resolve(),
+    }
+
+
+def test_discover_model_package_creates_durable_acpf_component_plan(tmp_path) -> None:
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(active=lambda _service_key: None),
+        package_manager=None,
+    )
+    provisioner = CapabilityProvisioner(
+        runtime=runtime,
+        repository=ProvisioningSessionRepository(database),
+    )
+    kwargs = {
+        "actor_id": "local-owner",
+        "installation_id": "installation-1",
+        "app_instance_id": "appi_discover",
+        "package_id": "example/model",
+        "package_version": "1.2.3",
+        "display_name": "Example Model",
+        "service_key": "example.model",
+        "models": [
+            {
+                "id": "example.model/default",
+                "label": "Default",
+                "recommended": True,
+            }
+        ],
+        "selected_model_id": "example.model/default",
+        "model_profile": {"minimumMemoryBytes": 8 * 1024**3},
+    }
+
+    first = provisioner.ensure_model_package(**kwargs)
+    repeated = provisioner.ensure_model_package(**kwargs)
+
+    assert first["status"] == "setup_required"
+    assert repeated["sessionId"] == first["sessionId"]
+    assert first["session"]["status"] == "awaiting_confirmation"
+    plan = first["session"]["plan"]
+    assert plan["source"] == "discover-model-package"
+    assert first["session"]["intent"]["returnTo"] == "/apps/ai2apps.discover"
+    assert first["session"]["intent"]["resumeToken"]
+    assert [item["kind"] for item in plan["stack"]["components"]] == [
+        "package",
+        "checkpoint",
+        "verify",
+    ]
+    assert plan["stack"]["components"][1]["model_id"] == "example.model/default"
+
+
+@pytest.mark.asyncio
+async def test_discover_model_install_stages_missing_restart_dependency(tmp_path) -> None:
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    repository = ProvisioningSessionRepository(database)
+    installs = []
+
+    class RegistryPackages:
+        async def trusted_snapshot(self):
+            return {
+                "releases": [
+                    {
+                        "packageId": "ai2apps/model-qwen38",
+                        "version": "0.3.2",
+                        "status": "published",
+                    }
+                ]
+            }
+
+        async def install(
+            self, namespace, name, version, *, approve_review, progress
+        ):
+            package_id = f"{namespace}/{name}"
+            installs.append((package_id, version, approve_review))
+            if package_id == "ai2apps/model-qwen38":
+                raise RegistryError(
+                    "dependency_restart_required",
+                    "Install or upgrade Runtime first",
+                    details={
+                        "dependency": {
+                            "packageId": "ai2apps/runtime-omlx",
+                            "availableVersion": "1.6.2",
+                            "restartScope": "local",
+                            "pendingRestart": False,
+                        }
+                    },
+                )
+            progress(
+                {
+                    "packageId": package_id,
+                    "stage": "finalizing",
+                    "bytesCompleted": None,
+                    "bytesTotal": None,
+                }
+            )
+
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(active=lambda _key: None),
+        registry_packages=RegistryPackages(),
+    )
+    provisioner = CapabilityProvisioner(runtime=runtime, repository=repository)
+    session = repository.create(
+        actor_id="local",
+        installation_id="local",
+        app_instance_id="appi_discover",
+        app_id="ai2apps.discover",
+        capability="model.package.install",
+        action_id="install:ai2apps/model-qwen38",
+        status="installing_provider",
+        profile_id="registry:qwen38",
+        request_fingerprint="5" * 64,
+        plan={},
+        intent={"returnTo": "/apps/ai2apps.discover"},
+    )
+
+    ready = await provisioner._install_package(
+        session["id"],
+        {
+            "package_id": "ai2apps/model-qwen38",
+            "service_key": "ai2apps.model.qwen38",
+            "version": "==0.3.2",
+        },
+        "installing_provider",
+        progress_start=5,
+        progress_end=45,
+    )
+
+    assert ready is False
+    assert installs == [
+        ("ai2apps/model-qwen38", "0.3.2", True),
+        ("ai2apps/runtime-omlx", "1.6.2", True),
+    ]
+    operation = repository.get(session["id"])["operations"][-1]
+    assert operation["packageId"] == "ai2apps/runtime-omlx"
 
 
 @pytest.mark.asyncio
@@ -227,7 +399,28 @@ def test_video_studio_compatible_profiles_exclude_bf16() -> None:
     assert {item["id"] for item in candidates} == {
         "apple-metal-h3-q4",
         "apple-metal-h3-q8",
+        "apple-metal-h3-lightx2v-4step-q4",
+        "apple-metal-h3-lightx2v-8step-q4",
+        "apple-metal-h3-openvdn-dmd8-q4",
+        "apple-metal-h3-openvdn-stageb50-q4",
     }
+
+
+def test_studio_package_mini_app_profiles_are_shared_by_audio_and_video_hosts() -> None:
+    registry = CapabilityProfileRegistry()
+
+    for app_id in ("ai2apps.readaloud", "ai2apps.video-studio"):
+        replacement = registry.capability(app_id, "audio.speaker_voice_replacement")
+        subtitles = registry.capability(app_id, "media.video_subtitles")
+        assert replacement is not None
+        assert subtitles is not None
+        components = replacement["profiles"][0]["stack"]["components"]
+        assert {item.get("package_id") for item in components if item["kind"] == "package"} == {
+            "ai2apps/runtime-omlx",
+            "ai2apps/model-detailed-transcription-mlx",
+            "ai2apps/model-demucs-mlx",
+            "ai2apps/model-seed-vc-v2-mlx",
+        }
 
 
 def test_capability_presentation_is_trusted_profile_metadata() -> None:
@@ -301,6 +494,12 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
         )
     }
     assert recommended_ids == {"apple-metal-deepseek-v4-flash"}
+    glm = next(
+        profile
+        for profile in capability["profiles"]
+        if profile["id"] == "apple-metal-glm53-flash-4bit-mtp"
+    )
+    assert glm["stack"]["provider"]["version"] == ">=0.1.5,<1.0.0"
 
 
 def test_chat_multi_model_plan_merges_simple_and_component_profiles(
@@ -730,6 +929,61 @@ def test_video_studio_explicit_q4_selection_targets_q4_profile(
     assert result["session"]["plan"]["stack"]["checkpoint"]["model_id"] == q4
 
 
+@pytest.mark.parametrize(
+    ("model_id", "profile_id"),
+    [
+        (
+            "ai2apps.model.minimax-h3/lightx2v-4step-4bit",
+            "apple-metal-h3-lightx2v-4step-q4",
+        ),
+        (
+            "ai2apps.model.minimax-h3/lightx2v-8step-4bit",
+            "apple-metal-h3-lightx2v-8step-q4",
+        ),
+        (
+            "ai2apps.model.minimax-h3/openvdn-dmd8-4bit",
+            "apple-metal-h3-openvdn-dmd8-q4",
+        ),
+        (
+            "ai2apps.model.minimax-h3/openvdn-stageb50-4bit",
+            "apple-metal-h3-openvdn-stageb50-q4",
+        ),
+    ],
+)
+def test_video_studio_explicit_h3_extension_selection_targets_profile(
+    tmp_path, monkeypatch, model_id, profile_id
+) -> None:
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    provisioner = CapabilityProvisioner(
+        runtime=SimpleNamespace(
+            package_repository=SimpleNamespace(active=lambda _key: None),
+            registry_packages=None,
+            package_manager=None,
+        ),
+        repository=ProvisioningSessionRepository(database),
+    )
+    monkeypatch.setattr(
+        "ai2apps.provisioning.orchestrator.device_profile",
+        lambda: _apple_device(128),
+    )
+
+    result = provisioner.ensure(
+        actor_id="local",
+        installation_id="local",
+        app_instance_id=APP_INSTANCE_ID,
+        app_id="ai2apps.video-studio",
+        capability="video.generation",
+        action_id="configure-generation",
+        requirements={"operations": ["text_to_video"], "modelId": model_id},
+        intent={},
+    )
+
+    assert result["status"] == "setup_required"
+    assert result["session"]["profileId"] == profile_id
+    assert result["session"]["plan"]["stack"]["checkpoint"]["model_id"] == model_id
+
+
 def test_acpf_plan_recommends_tier_and_disables_impossible_choices(
     tmp_path, monkeypatch
 ) -> None:
@@ -769,6 +1023,13 @@ def test_acpf_plan_recommends_tier_and_disables_impossible_choices(
     assert low["compatible"] is True
     assert high["compatible"] is False
     assert high["disabledReasons"] == ["至少需要 16 GiB 统一内存"]
+    assert low["installed"] is False
+    monkeypatch.setattr(
+        "ai2apps.provisioning.orchestrator.resolve_package_model",
+        lambda _runtime, _model_id: SimpleNamespace(checkpoint_ready=True),
+    )
+    installed_plan = provisioner.plan("ai2apps.general-chat", "audio.speech_generation", {})
+    assert all(option["installed"] for option in installed_plan["profileOptions"])
     with pytest.raises(ValueError, match="至少需要 16 GiB"):
         provisioner.select_profile(result["sessionId"], high["profileId"])
 
@@ -843,7 +1104,13 @@ def test_provisioning_session_is_durable_and_idempotent(tmp_path) -> None:
 
     assert duplicate["id"] == created["id"]
     assert ProvisioningSessionRepository(database).get(created["id"]) == created
-    ready = repository.update(created["id"], status="ready")
+    failed = repository.update(
+        created["id"],
+        status="failed",
+        error={"code": "temporary", "message": "retry", "retryable": True},
+    )
+    assert repository.list_returnable(actor_id="user-1")[0]["id"] == failed["id"]
+    ready = repository.update(created["id"], status="ready", clear_error=True)
     assert ready["completedAt"] is not None
     assert repository.list_returnable(actor_id="user-1")[0]["id"] == created["id"]
     acknowledged = repository.acknowledge_return(created["id"])
@@ -1098,16 +1365,23 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
     assert "resumeToken: value.resumeToken || null" in script
     assert "outcome: 'configured'" in script
     assert "outcome: 'already_ready'" in script
-    assert "async function resume(appId, { capability } = {})" in script
-    assert "item.capability === capability" in script
+    assert "async function resume(appId, { capability, actionId } = {})" in script
+    assert "session.capability === capability" in script
+    assert "session.actionId === actionId" in script
     assert "profileOptions" in script
     assert "function chooseProfile(plan)" in script
+    assert "const activeRuns = window.__AI2AppsCapabilityActiveRuns || new Map()" in script
+    assert "const active = activeRuns.get(sessionId)" in script
+    assert "activeRuns.set(sessionId, sharedRun)" in script
+    assert "activeRuns.delete(sessionId)" in script
     assert "AI2APPS CAPABILITY CHOICE" in script
     assert "data-choice-profile-id" in script
     assert "acpf-download-detail" in script
     assert "bytesCompleted ?? progressDetail.bytes_completed" in script
     assert "当前项目" in script
     assert "本次下载总计" in script
+    assert "session.status === 'awaiting_restart'" in script
+    assert "error.classList.toggle('is-notice'" in script
     assert "const probed = await probe(body)" in script
     assert "const profileSelection = await chooseProfile(probed.plan)" in script
     assert script.index("const profileSelection = await chooseProfile(probed.plan)") < script.index(
@@ -1123,7 +1397,7 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
     assert "/select-profile" not in script
     assert "acpf-selected-tier" in script
     assert (
-        "window.AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId }"
+        "window.AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }"
         in script
     )
 
@@ -1132,6 +1406,9 @@ def test_chat_recommends_local_model_without_blocking_cloud_models() -> None:
     chat = (Path(__file__).parents[1] / "ai2apps/web/templates/chat.html").read_text()
 
     assert 'data-app-id="ai2apps.general-chat"' in chat
+    # Alpine automatically invokes an x-data object's init() method. An
+    # explicit x-init would run Chat startup recovery twice and race ACPF.
+    assert 'x-data="chatApp()" x-init="init()"' not in chat
     assert "hasCloudConversationModel()" in chat
     assert "!['cloud', 'fusion'].includes(model.source_type)" in chat
     assert "localConversationModels().length === 0" in chat
@@ -1144,7 +1421,10 @@ def test_chat_recommends_local_model_without_blocking_cloud_models() -> None:
     assert "await this.resumeLocalModelRecommendation()" in chat
     assert '@click="requestSpeechRecognition()"' in chat
     assert '@click="requestSpeechSynthesis(msg)"' in chat
-    assert "requestAudioCapabilitySetup(kind)" in chat
+    assert "requestAudioCapabilitySetup(kind, installMore = false)" in chat
+    assert "onAudioModelSelect('stt', $event.target)" in chat
+    assert "onAudioModelSelect('tts', $event.target)" in chat
+    assert chat.count('<option value="__install_more__"') == 3
     assert "capability: 'audio.speech_recognition'" in chat
     assert "capability: 'audio.speech_generation'" in chat
     assert "awaiting_confirmation Session" in chat
@@ -1156,6 +1436,7 @@ def test_chat_recommends_local_model_without_blocking_cloud_models() -> None:
     assert "confirmLicenseChallenges" in acpf
     assert "checkpoint_license_consent_required" in acpf
     assert "licenseConsents" in acpf
+    assert "probed.plan.selectionMode = 'multiple'" in acpf
 
 
 def test_provisioning_confirm_api_starts_runner_on_asgi_event_loop(tmp_path) -> None:

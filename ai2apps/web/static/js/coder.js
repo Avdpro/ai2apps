@@ -281,11 +281,8 @@
             const items = grouped[group[0]];
             if (!items.length) return '';
             return '<optgroup label="' + group[1] + '">' + items.map(function (model) {
-                const alias = model.settings?.model_alias || model.model_alias || '';
-                const name = alias || model.display_name || model.id;
-                const detail = name === model.id ? '' : ' — ' + model.id;
-                const favorite = model.is_favorite ? '★ ' : '';
-                return '<option value="' + escapeHtml(model.id) + '">' + favorite + escapeHtml(name + detail) + '</option>';
+                const name = model.identity?.displayName || model.display_name || model.id;
+                return '<option value="' + escapeHtml(model.id) + '">' + escapeHtml(name) + '</option>';
             }).join('') + '</optgroup>';
         }).join('');
         modelSelect.innerHTML = options || '<option value="">No available AI2Apps models</option>';
@@ -306,10 +303,15 @@
             const data = await api('/admin/api/models');
             const catalog = (data.models || []).flatMap(function (model) {
                 const profiles = (model.exposed_profiles || []).filter(function (profile) { return profile.model_id; }).map(function (profile) {
+                    const modelName = profile.display_name || profile.api_name || profile.name || profile.model_id;
+                    const sourceLabel = model.identity?.sourceLabel || 'Local';
+                    const providerName = model.identity?.providerName || 'AI2Apps-MLX';
+                    const displayName = `(${sourceLabel}) ${providerName} · ${modelName}`;
                     return {
                         ...model,
                         id: profile.model_id,
-                        display_name: profile.display_name || profile.api_name || profile.name || profile.model_id,
+                        display_name: displayName,
+                        identity: { ...(model.identity || {}), modelId: profile.model_id, modelName, displayName },
                         exposed_profiles: [],
                         is_profile: true
                     };

@@ -1,0 +1,22 @@
+{{- '<｜begin▁of▁sentence｜>' -}}
+{%- if messages[0]['role'] == 'system' -%}
+{{- messages[0]['content'] -}}
+{%- set start = 1 -%}
+{%- else -%}
+{%- set start = 0 -%}
+{%- endif -%}
+{%- for m in messages[start:] -%}
+{%- if m['role'] == 'user' -%}
+{{- '<｜User｜>' + m['content'] -}}
+{%- elif m['role'] == 'assistant' -%}
+{{- '<｜Assistant｜>' + m['content'] + '<｜end▁of▁sentence｜>' -}}
+{%- endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+{{- '<｜Assistant｜>' -}}
+{%- if enable_thinking is defined and enable_thinking is false -%}
+{{- '</think>' -}}
+{%- else -%}
+{{- '<think>\n' -}}
+{%- endif -%}
+{%- endif -%}

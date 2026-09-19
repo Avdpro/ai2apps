@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import wave
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ from PIL import Image
 
 from ai2apps.api.video_studio import create_video_studio_router
 from ai2apps.config import PLATFORM_DATABASE_SCHEMA_VERSION, PlatformConfig
+from ai2apps.gallery import GalleryRepository
 from ai2apps.identity import RequestPrincipal
 from ai2apps.model_providers import PackageModel
 from ai2apps.storage import PlatformDatabase
@@ -30,20 +32,42 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     ).read_text()
 
     assert 'data-app-id="ai2apps.video-studio"' in template
+    assert 'x-init="init()"' not in template
     assert "data-client-environment" in template
     assert 'class="vs-studio-sidebar"' in template
-    assert 'class="vs-pipeline-workspace"' in template
+    assert 'class="vs-mini-app-workspace"' in template
     assert "vs-render-workspace" in template
-    assert "Pipeline" in template and "Gallery Mini Entry" in template
+    assert "video_studio.mini_apps" in template and "Gallery Mini Entry" in template
     assert "video_studio.live.title" in template and "video_studio.animation.title" in template
     assert "vs-mode-tabs" not in template
-    assert "selectPipeline(pipeline.id)" in template
+    assert "selectMiniApp(miniApp.id)" in template
+    assert "MINI_APPS" in script and "miniAppDrafts" in script
+    assert "saveCurrentMiniAppDraft" in script and "restoreMiniAppDraft" in script
+    assert "SHELL_STATE_KEY" in script and "persistShellState" in script
+    assert "left-collapsed" in template and "right-collapsed" in template
+    assert "toggleLeftPanel()" in template and "toggleRightPanel()" in template
+    assert ".vs-shell.left-collapsed" in stylesheet
+    assert ".vs-run-detail" in stylesheet and "video_studio.current_run" in template
+    assert "video_studio.history" in template and "retry(activeTask)" in template
+    assert "`${STUDIO_API}/tasks/${encodeURIComponent(task.id)}/retry`" in script
     assert "ai2apps.video.text-to-video" in script
     assert "ai2apps.video.image-to-video" in script
     assert "ai2apps.video.reference-to-video" in script
+    assert "ai2apps.video.extract-audio" in script
+    assert 'class="vs-mini-app-header studio-mini-header"' in template
+    assert "extractAudio()" in template
+    assert "activeAudioArtifact" in template
+    assert "/resource-handles" in script
+    assert "/extract-audio" in script
+    assert "mozAI2AppsFullPath" in script
+    assert "sourcePath: this.extractAsset.nativePath" in script
     assert "pipeline_id" in script
     assert "mountMiniEntry" in script
     assert "appId: 'ai2apps.gallery'" in script
+    assert "GALLERY_MINI_FALLBACK_URL" in script
+    assert "AI2Apps Host did not respond|Unsupported host mount" in script
+    assert "if (this.leftView === 'assets') this.mountGalleryMini()" in script
+    assert "if (force) { this.galleryMiniUrl = ''; this.galleryMiniMountId = ''; }" in script
     assert "application/x-ai2apps-gallery-asset" in script
     assert "application/x-ai2apps-video-artifact" in script
     assert "video_studio.add_gallery" in template
@@ -71,18 +95,19 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "/acknowledge-return" in provisioning_script
     assert "session.plan?.requirements" not in provisioning_script
     assert "resumeToken: value.resumeToken || null" in provisioning_script
-    assert "AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId }" in provisioning_script
+    assert "AI2AppsCapabilities = { ensure, resume, probe, acknowledge, appInstanceId, chooseProfile, runSession, createTransferMeter, formatDownloadProgress }" in provisioning_script
     assert "returnTo: `/apps/${APP_ID}`" in script
     assert "resumed.session?.intent?.draft" not in script
     assert "draft: this.provisioningDraft(action)" not in script
     assert "completionPolicy: 'configure_only'" in script
     assert "persistProvisioningDraft" in script
     assert "loadProvisioningDraft" in script
+    assert "action, pipelineId: this.currentMiniApp.id" not in script
     assert "AI2AppsCapabilities.acknowledge" in script
     assert "['video.reference_generation', 'video.generation']" in script
     assert "reference_to_video" in script
     assert "referenceImages" in script and "referenceVideos" in script
-    assert "video_studio.pipeline.r2v" in script
+    assert "video_studio.mini_app.r2v" in script
     assert "synchronizedAudio: true" in script
     assert "DRAFT_KEY" not in script
     restore_position = script.index("await this.loadProvisioningDraft(resumeToken)")
@@ -91,6 +116,17 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert restore_position < acknowledge_position < cleanup_position
     assert "modelId: this.modelId" in script
     assert "{ modelId: preferredModelId }" in script
+    assert template.count('value="__install_more__"') == 1
+    assert 'x-text="tr(\'chat.install_more_models\')"' in template
+    assert 'x-show="!modeProviders.length"' in template
+    assert "onModelSelect($event.target)" in template
+    assert "x-model=\"modelId\"" not in template
+    assert "select.value = this.modelId || ''" in script
+    assert "this.capabilityRequest('install-more-video-models', '', stored.resumeToken)" in script
+    assert "{ installMore: true }" in script
+    assert "preserveModelId: originalModelId" in script
+    assert "if (requestId !== this.refreshRequestId) return" in script
+    assert "model: overrides.model || this.modelId" in script
     assert "AI2AppsCapabilities?.probe" in script
     assert "probe?.plan?.stack?.checkpoint?.model_id" in script
     assert "video_studio.configure" in template
@@ -110,12 +146,163 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "--vs-bg" in stylesheet
     assert "{{ t('video_studio.title') }}" in template
     assert "function tr(key, values = {})" in script
-    assert "localizedPipeline" in script
+    assert "localizedMiniApp" in script
     english_keys = {key for key in english if key.startswith("video_studio.")}
     chinese_keys = {key for key in chinese if key.startswith("video_studio.")}
     assert english_keys == chinese_keys
-    assert english["video_studio.pipeline.t2v.name"] == "Text to Video"
-    assert chinese["video_studio.pipeline.t2v.name"] == "文生视频"
+    assert english["video_studio.mini_app.t2v.name"] == "Text to Video"
+    assert chinese["video_studio.mini_app.t2v.name"] == "文生视频"
+    assert english["video_studio.mini_app.x2a.name"] == "Extract Audio"
+    assert chinese["video_studio.mini_app.x2a.name"] == "提取音轨"
+
+
+def test_video_studio_extract_audio_run_materializes_wav_artifact(tmp_path):
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    config = PlatformConfig.from_base_path(tmp_path / "data")
+    principal = RequestPrincipal.legacy_local()
+    app_instance_id = "appi_video_studio"
+
+    class ExtensionManager:
+        def require_instance_access(self, instance_id, _principal):
+            assert instance_id == app_instance_id
+
+        def instance_entry(self, instance_id, *, principal):
+            self.require_instance_access(instance_id, principal)
+            return {"app_key": "ai2apps.video-studio"}
+
+    class VideoTasks:
+        def artifact_session(self):
+            return "sess_media"
+
+    captured = {}
+
+    class Workspace:
+        def import_artifact(self, session_id, source, name, **kwargs):
+            captured["data"] = source.read_bytes()
+            captured["metadata"] = kwargs["metadata"]
+            return SimpleNamespace(
+                id="arti_audio", name=name, media_type=kwargs["media_type"]
+            )
+
+    runtime = SimpleNamespace(
+        database=database,
+        config=config,
+        events=None,
+        extension_manager=ExtensionManager(),
+        video_tasks=VideoTasks(),
+        workspace=Workspace(),
+    )
+    gallery = GalleryRepository(database, config.paths.artifacts_path / "gallery")
+    source = BytesIO()
+    with wave.open(source, "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(8_000)
+        output.writeframes(b"\0\0" * 800)
+    asset, _created = gallery.import_stream(
+        principal.actor_user_id,
+        BytesIO(source.getvalue()),
+        name="interview.mp4",
+        media_type="video/mp4",
+    )
+    reference = gallery.create_asset_handle(
+        principal.actor_user_id,
+        asset["id"],
+        actor_id=principal.actor_user_id,
+        installation_id=principal.installation_id,
+        app_instance_id=app_instance_id,
+        consumer_app_id="ai2apps.video-studio",
+    )
+    app = FastAPI()
+    app.include_router(create_video_studio_router(lambda: runtime, lambda: principal))
+    client = TestClient(app)
+    headers = {"X-AI2Apps-App-Instance": app_instance_id}
+
+    catalog = client.get("/video-studio/mini-apps").json()
+    definition = next(
+        item for item in catalog["items"] if item["id"] == "ai2apps.video.extract-audio"
+    )
+    assert definition["schema"] == "ai2apps.mini-app/v1"
+    assert definition["kind"] == "clip"
+    assert definition["inputs"][0]["kind"] == "video"
+    assert definition["outputs"][0]["kind"] == "audio"
+
+    run = client.post(
+        "/video-studio/runs",
+        headers=headers,
+        json={
+            "miniAppId": definition["id"],
+            "title": "interview.wav",
+            "input": {"assetId": asset["id"], "assetName": asset["name"]},
+        },
+    ).json()
+    started = client.post(
+        f"/video-studio/runs/{run['id']}/extract-audio",
+        headers=headers,
+        json={"resourceHandle": reference["resourceHandle"], "outputName": "interview.wav"},
+    )
+    assert started.status_code == 202
+    completed = client.get(f"/video-studio/runs/{run['id']}", headers=headers).json()
+    assert completed["status"] == "succeeded"
+    assert completed["steps"][0]["status"] == "succeeded"
+    assert completed["artifacts"][0]["kind"] == "audio"
+    assert completed["artifacts"][0]["mediaType"] == "audio/wav"
+    assert completed["artifacts"][0]["downloadUrl"].endswith(
+        "/sessions/sess_media/artifacts/arti_audio/download"
+    )
+    assert captured["data"].startswith(b"RIFF")
+    assert captured["metadata"]["sourceAssetId"] == asset["id"]
+
+    local_source = tmp_path / "local-interview.mp4"
+    local_source.write_bytes(source.getvalue())
+    local_run = client.post(
+        "/video-studio/runs",
+        headers=headers,
+        json={
+            "miniAppId": definition["id"],
+            "title": "local-interview.wav",
+            "input": {
+                "sourceKind": "local",
+                "assetName": local_source.name,
+                "mediaType": "video/mp4",
+            },
+        },
+    ).json()
+    local_started = client.post(
+        f"/video-studio/runs/{local_run['id']}/extract-audio",
+        headers=headers,
+        json={
+            "sourcePath": str(local_source),
+            "sourceName": local_source.name,
+            "mediaType": "video/mp4",
+            "outputName": "local-interview.wav",
+        },
+    )
+    assert local_started.status_code == 202
+    local_completed = client.get(
+        f"/video-studio/runs/{local_run['id']}", headers=headers
+    ).json()
+    assert local_completed["status"] == "succeeded"
+    assert captured["metadata"]["sourceKind"] == "local"
+    assert "sourceAssetId" not in captured["metadata"]
+    assert str(local_source) not in json.dumps(local_completed)
+
+    invalid_run = client.post(
+        "/video-studio/runs",
+        headers=headers,
+        json={
+            "miniAppId": definition["id"],
+            "title": "invalid.wav",
+            "input": {"sourceKind": "local", "assetName": "missing.mp4"},
+        },
+    ).json()
+    invalid = client.post(
+        f"/video-studio/runs/{invalid_run['id']}/extract-audio",
+        headers=headers,
+        json={"sourcePath": "relative.mp4", "mediaType": "video/mp4"},
+    )
+    assert invalid.status_code == 422
 
 
 def test_video_studio_draft_api_persists_private_form_and_keyframe(tmp_path):
@@ -132,10 +319,17 @@ def test_video_studio_draft_api_persists_private_form_and_keyframe(tmp_path):
             self.require_instance_access(instance_id, principal)
             return {"app_key": "ai2apps.video-studio"}
 
+    class VideoTasks:
+        async def retry(self, task_id, *, actor_id):
+            assert task_id == "vgt_failed"
+            assert actor_id == RequestPrincipal.legacy_local().actor_user_id
+            return {"id": "vgt_retried", "status": "queued"}
+
     runtime = SimpleNamespace(
         database=database,
         config=config,
         extension_manager=ExtensionManager(),
+        video_tasks=VideoTasks(),
     )
     app = FastAPI()
     app.include_router(
@@ -180,6 +374,9 @@ def test_video_studio_draft_api_persists_private_form_and_keyframe(tmp_path):
     assert frame.status_code == 200 and frame.content == image.getvalue()
     assert client.delete(f"/video-studio/drafts/{token}", headers=headers).status_code == 204
     assert client.get(f"/video-studio/drafts/{token}", headers=headers).status_code == 404
+    retried = client.post("/video-studio/tasks/vgt_failed/retry", headers=headers)
+    assert retried.status_code == 202
+    assert retried.json() == {"id": "vgt_retried", "status": "queued"}
 
 
 def test_schema_v44_upgrades_to_private_video_studio_drafts(tmp_path):

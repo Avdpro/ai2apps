@@ -1,0 +1,28 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_qwen3_forced_aligner_0_6b_8bit_0e1a68e9_v1",
+  "modelId": "ai2apps.model.detailed-transcription-mlx/forced-aligner",
+  "repoId": "mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
+  "revision": "0e1a68e91d815300c7c9754b2a7639378b23db15",
+  "format": "safetensors",
+  "quantization": "8bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "chat_template.json", "config.json", "generation_config.json", "merges.txt",
+    "model.safetensors", "model.safetensors.index.json", "preprocessor_config.json",
+    "tokenizer_config.json", "vocab.json"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "mlx-community/Qwen3-ForcedAligner-0.6B-8bit", "revision": "0e1a68e91d815300c7c9754b2a7639378b23db15", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "mlx-community/Qwen3-ForcedAligner-0.6B-8bit", "revision": "998b617c695f61865d444c62051fe51030acef6f", "access": "public_anonymous"}
+  ]
+}

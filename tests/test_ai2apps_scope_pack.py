@@ -95,8 +95,8 @@ def test_legacy_package_asset_reference_is_repaired_into_model(tmp_path, monkeyp
         "version": 2,
         "model_id": "deepseek-v4-flash",
         "source": {
-            "repo_id": "deepseek-ai/DeepSeek-V4-Flash",
-            "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+            "repo_id": "Avdpro/DeepSeek-V4-Flash-SSD",
+            "revision": "8fab5a37c9eb2003abb9fd2bb3c74c071c13bca7",
         },
         "scope": {"profile": str(tmp_path / "removed-package" / "scope-profile.json"), "default": "general"},
     }

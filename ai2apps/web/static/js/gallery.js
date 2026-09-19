@@ -1,6 +1,7 @@
 (() => {
     'use strict';
     const API = '/v1/platform/gallery';
+    const CLIPBOARD_KEY = 'ai2apps.gallery.asset-clipboard.v1';
 
     function tr(key, values = {}) {
         let text = typeof window.t === 'function' ? window.t(key) : key;
@@ -30,8 +31,10 @@
 
     window.galleryApp = function () { return {
         tr,
-        collections: [], assets: [], selectedCollectionId: 'recent', selectedIds: [], selectionOperation: 'copy', targetCollectionId: '', search: '', kind: '', view: 'grid', loading: true, busy: false, notice: '', noticeTone: '', noticeTimer: null, creatingCollection: false, newCollectionName: '', newCollectionKind: 'custom', draggedAssetId: null, dragStartedAt: 0, hostMessageHandler: null, keyboardHandler: null, clientEnvironment: 'browser', surface: 'full',
+        collections: [], assets: [], selectedCollectionId: 'recent', selectedIds: [], selectionOperation: 'copy', targetCollectionId: '', search: '', kind: '', view: 'grid', loading: true, busy: false, notice: '', noticeTone: '', noticeTimer: null, creatingCollection: false, newCollectionName: '', newCollectionKind: 'custom', draggedAssetId: null, dragStartedAt: 0, hostMessageHandler: null, keyboardHandler: null, clipboardStorageHandler: null, clientEnvironment: 'browser', surface: 'full',
+        contextMenuOpen: false, contextMenuAsset: null, contextMenuX: 0, contextMenuY: 0, contextMoveOpen: false, contextClipboard: null,
         pageContext: null, isBrowserSidebar: false, pageClient: null, browserDrag: null, browserMediaImportPromise: null, browserImportStage: '', browserImportProgress: 0,
+        previewReadOnly: false,
         previewAsset: null, previewZoom: 1, previewPanX: 0, previewPanY: 0, previewPanStart: null, previewRenaming: false, previewName: '', previewSavingName: false,
         async init() {
             this.clientEnvironment = this.$root?.dataset?.clientEnvironment || 'browser';
@@ -56,9 +59,14 @@
                 if (event.origin === window.location.origin && event.source === window.parent && event.data?.type === 'ai2apps.gallery.refresh') this.loadAssets();
             };
             this.keyboardHandler = event => this.handlePreviewKey(event);
+            this.clipboardStorageHandler = event => {
+                if (event.key === CLIPBOARD_KEY) this.readAssetClipboard();
+            };
             window.addEventListener('message', this.hostMessageHandler);
             window.addEventListener('keydown', this.keyboardHandler);
+            window.addEventListener('storage', this.clipboardStorageHandler);
             window.addEventListener('beforeunload', () => this.cleanup(), { once: true });
+            this.readAssetClipboard();
             await this.refresh();
             if (this.surface === 'preview') await this.openRequestedPreview();
         },
@@ -78,7 +86,7 @@
             if (this.browserImportStage === 'saving') return tr('gallery.mini.import.saving');
             return tr('gallery.mini.import.accepted');
         },
-        get previewImageTransform() { return `transform:translate3d(${this.previewPanX}px,${this.previewPanY}px,0) scale(${this.previewZoom});cursor:${this.previewZoom > 1 ? (this.previewPanStart ? 'grabbing' : 'grab') : 'zoom-in'}`; },
+        get previewImageTransform() { return `transform:translate3d(${this.previewPanX}px,${this.previewPanY}px,0) scale(${this.previewZoom});cursor:${this.previewPanStart ? 'grabbing' : 'grab'}`; },
         async refresh() { await this.loadCollections(); await this.loadAssets(); },
         async loadCollections() { try { this.collections = (await request('/collections')).items || []; if (!this.collections.some(item => item.id === this.selectedCollectionId)) this.selectedCollectionId = 'recent'; if (this.selectedIds.length) this.ensureSelectionTarget(); this.$nextTick(() => window.lucide?.createIcons()); } catch (error) { this.fail(error); } },
         async loadAssets() { this.loading = true; this.selectedIds = []; this.targetCollectionId = ''; this.notifyActiveCollection(); const params = new URLSearchParams({ collectionId: this.selectedCollectionId, ...(this.kind ? { kind: this.kind } : {}), ...(this.search.trim() ? { search: this.search.trim() } : {}) }); try { this.assets = (await request('/assets?' + params)).items || []; } catch (error) { this.fail(error); } finally { this.loading = false; this.$nextTick(() => window.lucide?.createIcons()); } },
@@ -292,9 +300,17 @@
                 collectionName: this.selectedCollectionName,
             }, window.location.origin);
         },
+        notifyAssetSelection(asset) {
+            if (window.parent === window || !asset) return;
+            window.parent.postMessage({
+                type: 'ai2apps.gallery.asset-selected',
+                asset: { id: asset.id, name: asset.name, kind: asset.kind, mediaType: asset.media_type || asset.mediaType || '' },
+            }, window.location.origin);
+        },
         cleanup() {
             if (this.hostMessageHandler) window.removeEventListener('message', this.hostMessageHandler);
             if (this.keyboardHandler) window.removeEventListener('keydown', this.keyboardHandler);
+            if (this.clipboardStorageHandler) window.removeEventListener('storage', this.clipboardStorageHandler);
             if (this.noticeTimer) window.clearTimeout(this.noticeTimer);
             document.body.style.overflow = '';
             void this.pageClient?.connection?.close().catch(() => {});
@@ -302,6 +318,7 @@
         },
         async previewAssetFromMini(asset) {
             if (Date.now() - this.dragStartedAt < 500) return;
+            this.notifyAssetSelection(asset);
             try {
                 const options = {
                     assetId: asset?.id || '', collectionId: this.selectedCollectionId,
@@ -309,6 +326,14 @@
                 };
                 const bridge = window.parent !== window && window.parent.ai2appsShell
                     ? window.parent.ai2appsShell : window.ai2appsShell;
+                if (!bridge?.openGalleryPreview && this.isBrowserSidebar) {
+                    const params = new URLSearchParams({ surface: 'preview', assetId: options.assetId });
+                    if (options.collectionId) params.set('collectionId', options.collectionId);
+                    if (options.kind) params.set('kind', options.kind);
+                    if (options.search) params.set('search', options.search);
+                    window.open(`/admin/app-content/ai2apps.gallery?${params}`, '_blank', 'noopener');
+                    return;
+                }
                 if (!bridge?.openGalleryPreview) throw new Error(tr('gallery.error.preview_unsupported'));
                 await bridge.openGalleryPreview(options);
             } catch (error) { this.fail(error); }
@@ -379,6 +404,7 @@
             this.openPreview(this.assets[nextIndex]);
         },
         handlePreviewKey(event) {
+            if (this.contextMenuOpen && event.key === 'Escape') { this.closeAssetContextMenu(); return; }
             if (!this.previewAsset) return;
             if (event.key === 'Escape') { this.closePreview(); return; }
             if (event.target?.matches?.('input,textarea,select')) return;
@@ -406,7 +432,12 @@
         },
         changePreviewZoom(delta) {
             this.previewZoom = Math.max(.25, Math.min(6, Math.round((this.previewZoom + delta) * 100) / 100));
-            if (this.previewZoom <= 1) { this.previewPanX = 0; this.previewPanY = 0; }
+            this.$nextTick(() => {
+                const bounds = this.previewPanBounds();
+                if (bounds.fitsX) this.previewPanX = 0;
+                if (bounds.fitsY) this.previewPanY = 0;
+                this.clampPreviewPan();
+            });
         },
         togglePreviewZoom() {
             if (this.previewAsset?.kind !== 'image') return;
@@ -415,9 +446,38 @@
         },
         wheelPreview(event) { this.changePreviewZoom(event.deltaY < 0 ? .25 : -.25); },
         resetPreviewTransform() { this.previewZoom = 1; this.previewPanX = 0; this.previewPanY = 0; this.previewPanStart = null; },
+        previewPanBounds() {
+            const image = this.$refs.previewImage;
+            const viewport = image?.parentElement;
+            if (!image || !viewport) return { x: 0, y: 0 };
+            const style = window.getComputedStyle(viewport);
+            const width = viewport.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+            const height = viewport.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
+            // Measure the contained image, not its transformed bounding box or zoom label.
+            const fit = image.naturalWidth && image.naturalHeight
+                ? Math.min(image.clientWidth / image.naturalWidth, image.clientHeight / image.naturalHeight) : 1;
+            const imageWidth = image.naturalWidth ? image.naturalWidth * fit : image.clientWidth;
+            const imageHeight = image.naturalHeight ? image.naturalHeight * fit : image.clientHeight;
+            const scaledWidth = imageWidth * this.previewZoom;
+            const scaledHeight = imageHeight * this.previewZoom;
+            // Allow equal overscroll on every edge, including images smaller than the viewport.
+            return {
+                x: Math.abs(scaledWidth - width) / 2 + 48,
+                y: Math.abs(scaledHeight - height) / 2 + 48,
+                fitsX: scaledWidth <= width,
+                fitsY: scaledHeight <= height,
+            };
+        },
+        clampPreviewPan() {
+            const bounds = this.previewPanBounds();
+            this.previewPanX = Math.max(-bounds.x, Math.min(bounds.x, this.previewPanX));
+            this.previewPanY = Math.max(-bounds.y, Math.min(bounds.y, this.previewPanY));
+        },
         startPreviewPan(event) {
             if (this.previewAsset?.kind !== 'image') return;
-            if (this.previewZoom <= 1) return;
+            if (event.button != null && event.button !== 0) return;
+            const bounds = this.previewPanBounds();
+            if (!bounds.x && !bounds.y) return;
             this.previewPanStart = { x: event.clientX, y: event.clientY, panX: this.previewPanX, panY: this.previewPanY, pointerId: event.pointerId };
             event.currentTarget.setPointerCapture?.(event.pointerId);
         },
@@ -425,9 +485,10 @@
             if (!this.previewPanStart || event.pointerId !== this.previewPanStart.pointerId) return;
             this.previewPanX = this.previewPanStart.panX + event.clientX - this.previewPanStart.x;
             this.previewPanY = this.previewPanStart.panY + event.clientY - this.previewPanStart.y;
+            this.clampPreviewPan();
         },
         endPreviewPan(event) {
-            if (!this.previewPanStart) return;
+            if (!this.previewPanStart || event.pointerId !== this.previewPanStart.pointerId) return;
             event.currentTarget.releasePointerCapture?.(event.pointerId);
             this.previewPanStart = null;
         },
@@ -436,9 +497,144 @@
             // Keep native anchor navigation: Desktop routes it to macOS Save As,
             // while a regular browser owns its standard download flow.
         },
+        readAssetClipboard() {
+            try {
+                const value = JSON.parse(localStorage.getItem(CLIPBOARD_KEY) || 'null');
+                this.contextClipboard = value?.schema === 'ai2apps.gallery.asset-clipboard/v1'
+                    && Array.isArray(value.assetIds) && value.assetIds.length ? value : null;
+            } catch (_) { this.contextClipboard = null; }
+        },
+        get contextMoveTargets() { return this.writableCollections; },
+        get canPasteContext() {
+            return Boolean(this.contextClipboard?.assetIds?.length)
+                && this.selectedCollectionId !== 'recent'
+                && this.selectedCollection?.system_key !== 'trash';
+        },
+        get canMoveContextAsset() {
+            return Boolean(this.contextMenuAsset) && this.canMoveFromCurrent && this.contextMoveTargets.length > 0;
+        },
+        showAssetContextMenu(event, asset) {
+            this.contextMenuAsset = asset;
+            this.contextMoveOpen = false;
+            this.contextMenuOpen = true;
+            this.contextMenuX = Math.max(8, Number(event?.clientX || 0));
+            this.contextMenuY = Math.max(8, Number(event?.clientY || 0));
+            this.readAssetClipboard();
+            this.$nextTick(() => {
+                const menu = this.$refs.assetContextMenu;
+                if (!menu) return;
+                this.contextMenuX = Math.max(8, Math.min(this.contextMenuX, window.innerWidth - menu.offsetWidth - 8));
+                this.contextMenuY = Math.max(8, Math.min(this.contextMenuY, window.innerHeight - menu.offsetHeight - 8));
+                menu.focus({ preventScroll: true });
+                window.lucide?.createIcons();
+            });
+        },
+        showCollectionContextMenu(event) { this.showAssetContextMenu(event, null); },
+        closeAssetContextMenu() {
+            this.contextMenuOpen = false;
+            this.contextMoveOpen = false;
+        },
+        handleAssetContextKey(event, asset) {
+            if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            this.showAssetContextMenu({ clientX: rect.left + Math.min(36, rect.width / 2), clientY: rect.top + Math.min(36, rect.height / 2) }, asset);
+        },
+        async openContextAsset() {
+            const asset = this.contextMenuAsset;
+            this.closeAssetContextMenu();
+            if (!asset) return;
+            if (this.surface === 'mini-entry') await this.previewAssetFromMini(asset);
+            else this.openPreview(asset);
+        },
+        downloadContextAsset() {
+            const asset = this.contextMenuAsset;
+            this.closeAssetContextMenu();
+            if (!asset) return;
+            const link = document.createElement('a');
+            link.href = this.contentUrl(asset, true);
+            link.download = asset.name || '';
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        },
+        async renameContextAsset() {
+            const asset = this.contextMenuAsset;
+            this.closeAssetContextMenu();
+            if (!asset) return;
+            const name = window.prompt(tr('gallery.action.rename'), asset.name || '');
+            if (name === null || !name.trim() || name.trim() === asset.name) return;
+            this.busy = true;
+            try {
+                const updated = await request(`/assets/${encodeURIComponent(asset.id)}`, { method: 'PATCH', body: { name: name.trim() } });
+                const index = this.assets.findIndex(item => item.id === updated.id);
+                if (index >= 0) this.assets[index] = updated;
+                if (this.previewAsset?.id === updated.id) this.previewAsset = updated;
+                this.success(tr('gallery.success.renamed'));
+            } catch (error) { this.fail(error); } finally { this.busy = false; }
+        },
+        async deleteContextAsset() {
+            const asset = this.contextMenuAsset;
+            this.closeAssetContextMenu();
+            if (!asset) return;
+            if (this.selectedCollection?.system_key === 'trash') {
+                if (!confirm(tr('gallery.confirm.delete', { count: 1 }))) return;
+                await this.batchSingle(asset.id, id => request(`/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }), tr('gallery.success.deleted'));
+                return;
+            }
+            await this.batchSingle(asset.id, id => request(`/assets/${encodeURIComponent(id)}/trash`, { method: 'POST' }), tr('gallery.success.trashed'));
+        },
+        copyContextAsset() {
+            const asset = this.contextMenuAsset;
+            this.closeAssetContextMenu();
+            if (!asset || this.selectedCollection?.system_key === 'trash') return;
+            this.contextClipboard = {
+                schema: 'ai2apps.gallery.asset-clipboard/v1',
+                assetIds: [asset.id],
+                sourceCollectionId: this.selectedCollectionId,
+                copiedAt: new Date().toISOString(),
+            };
+            localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(this.contextClipboard));
+            this.success(tr('gallery.success.copied', { count: 1 }));
+        },
+        async pasteContextAssets() {
+            const clipboard = this.contextClipboard;
+            if (!this.canPasteContext || !clipboard) { this.closeAssetContextMenu(); return; }
+            this.closeAssetContextMenu();
+            this.busy = true;
+            try {
+                for (const assetId of clipboard.assetIds) {
+                    await request(`/collections/${encodeURIComponent(this.selectedCollectionId)}/assets/${encodeURIComponent(assetId)}`, { method: 'POST' });
+                }
+                await this.refresh();
+                this.success(tr('gallery.success.pasted', { count: clipboard.assetIds.length }));
+            } catch (error) { this.fail(error); } finally { this.busy = false; }
+        },
+        async moveContextAsset(collection) {
+            const asset = this.contextMenuAsset;
+            const sourceCollectionId = this.selectedCollectionId;
+            if (!asset || !collection || !this.canMoveFromCurrent) { this.closeAssetContextMenu(); return; }
+            this.closeAssetContextMenu();
+            this.busy = true;
+            try {
+                await request(`/collections/${encodeURIComponent(collection.id)}/assets/${encodeURIComponent(asset.id)}`, { method: 'POST' });
+                await request(`/collections/${encodeURIComponent(sourceCollectionId)}/assets/${encodeURIComponent(asset.id)}`, { method: 'DELETE' });
+                await this.refresh();
+                this.success(tr('gallery.success.transferred_move', { count: 1 }));
+            } catch (error) { this.fail(error); } finally { this.busy = false; }
+        },
+        async batchSingle(assetId, action, message) {
+            this.busy = true;
+            try {
+                await action(assetId);
+                await this.refresh();
+                this.success(message);
+            } catch (error) { this.fail(error); } finally { this.busy = false; }
+        },
         async dropOnCollection(event, collection) { if (collection.id === 'recent' || collection.system_key === 'trash') return; if (event.dataTransfer?.files?.length) return this.importFiles(event.dataTransfer.files, collection.id); const assetId = event.dataTransfer?.getData('application/x-ai2apps-gallery-asset') || this.draggedAssetId; if (!assetId) return; try { await request(`/collections/${encodeURIComponent(collection.id)}/assets/${encodeURIComponent(assetId)}`, { method: 'POST' }); await this.loadCollections(); this.success(tr('gallery.success.copied_to', { name: this.collectionName(collection) })); } catch (error) { this.fail(error); } },
-        toggleAsset(asset, event) { const additive = event?.metaKey || event?.ctrlKey || event?.shiftKey; if (!additive && !this.selectedIds.includes(asset.id)) this.selectedIds = [asset.id]; else if (this.selectedIds.includes(asset.id)) this.selectedIds = this.selectedIds.filter(id => id !== asset.id); else this.selectedIds = [...this.selectedIds, asset.id]; if (this.selectedIds.length) this.ensureSelectionTarget(); else this.targetCollectionId = ''; this.$nextTick(() => window.lucide?.createIcons()); },
-        dragAsset(event, asset) { this.draggedAssetId = asset.id; this.dragStartedAt = Date.now(); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('application/x-ai2apps-gallery-asset', asset.id); event.dataTransfer.setData('text/plain', asset.name); if (!this.isBrowserSidebar) event.dataTransfer.setData('text/uri-list', new URL(this.contentUrl(asset), window.location.origin).href); if (this.isBrowserSidebar) { const token = crypto.randomUUID(); event.dataTransfer.setData('application/x-ai2apps-gallery-drop-token', token); this.browserDrag = {token, assetId: asset.id, armPromise: this.ensureBrowserPageClient().then(client => client.armGalleryAssetDrop(token))}; } },
+        toggleAsset(asset, event) { const additive = event?.metaKey || event?.ctrlKey || event?.shiftKey; if (!additive && !this.selectedIds.includes(asset.id)) this.selectedIds = [asset.id]; else if (this.selectedIds.includes(asset.id)) this.selectedIds = this.selectedIds.filter(id => id !== asset.id); else this.selectedIds = [...this.selectedIds, asset.id]; if (this.selectedIds.length) { this.ensureSelectionTarget(); this.notifyAssetSelection(asset); } else this.targetCollectionId = ''; this.$nextTick(() => window.lucide?.createIcons()); },
+        dragAsset(event, asset) { this.draggedAssetId = asset.id; this.dragStartedAt = Date.now(); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('application/x-ai2apps-gallery-asset', asset.id); event.dataTransfer.setData('application/x-ai2apps-gallery-kind', asset.kind); event.dataTransfer.setData('text/plain', asset.name); if (!this.isBrowserSidebar) event.dataTransfer.setData('text/uri-list', new URL(this.contentUrl(asset), window.location.origin).href); if (this.isBrowserSidebar) { const token = crypto.randomUUID(); event.dataTransfer.setData('application/x-ai2apps-gallery-drop-token', token); this.browserDrag = {token, assetId: asset.id, armPromise: this.ensureBrowserPageClient().then(client => client.armGalleryAssetDrop(token))}; } },
         async finishBrowserAssetDrag(asset) {
             const active = this.browserDrag;
             this.browserDrag = null;
@@ -473,7 +669,8 @@
             const bridge = window.parent !== window && window.parent.ai2appsShell
                 ? window.parent.ai2appsShell
                 : window.ai2appsShell;
-            return bridge?.openEntry({ appId: 'ai2apps.gallery' });
+            if (bridge?.openEntry) return bridge.openEntry({ appId: 'ai2apps.gallery' });
+            return window.open('/admin/app-content/ai2apps.gallery', '_blank', 'noopener');
         },
         contentUrl(asset, download = false) { return `${API}/assets/${encodeURIComponent(asset.id)}/content${download ? '?download=true' : ''}`; },
         collectionName(collection) { return collection?.system_key ? tr(`gallery.collection.${collection.system_key}`) : (collection?.name || ''); },
@@ -499,4 +696,39 @@
         success(message) { this.showNotice(message, 'success', 3000); },
         fail(error) { this.showNotice(error?.message || String(error), 'error', 7000); },
     }; };
+    // Reuse Gallery's viewer without loading collections or creating an asset.
+    window.galleryResultViewer = function () {
+        return Object.assign(window.galleryApp(), {
+            previewReadOnly: true,
+            returnFocus: null,
+            previousOverflow: '',
+            init() {},
+            openResult(artifact) {
+                if (!artifact?.previewUrl) return;
+                const url = new URL(artifact.previewUrl, window.location.origin);
+                if (url.origin !== window.location.origin || !['http:', 'https:'].includes(url.protocol)) return;
+                let download = url.href;
+                if (artifact.downloadUrl) {
+                    const candidate = new URL(artifact.downloadUrl, window.location.origin);
+                    if (candidate.origin === url.origin && ['http:', 'https:'].includes(candidate.protocol)) download = candidate.href;
+                }
+                if (!this.previewAsset) {
+                    this.returnFocus = document.activeElement;
+                    this.previousOverflow = document.body.style.overflow;
+                }
+                this.assets = [{ id: artifact.id, name: artifact.name || 'Image', kind: 'image', size_bytes: artifact.sizeBytes || artifact.size_bytes || 0, previewUrl: url.href, downloadUrl: download }];
+                this.openPreview(this.assets[0]);
+                this.$nextTick(() => this.$refs.previewDialog?.focus({ preventScroll: true }));
+            },
+            contentUrl(asset, download = false) { return (download ? asset?.downloadUrl : asset?.previewUrl) || ''; },
+            closePreview() {
+                this.previewAsset = null;
+                this.assets = [];
+                this.previewPanStart = null;
+                document.body.style.overflow = this.previousOverflow;
+                this.returnFocus?.focus?.({ preventScroll: true });
+            },
+            destroy() { if (this.previewAsset) this.closePreview(); },
+        });
+    };
 })();

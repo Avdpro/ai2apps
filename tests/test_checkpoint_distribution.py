@@ -3,6 +3,10 @@ from __future__ import annotations
 import base64
 import builtins
 import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
 
 import httpx
 import pytest
@@ -390,6 +394,59 @@ def test_cache_promotes_only_verified_bytes(tmp_path) -> None:
     assert not partial.exists()
 
 
+def test_distribution_lock_serializes_separate_instance_processes(tmp_path) -> None:
+    cache_root = tmp_path / "checkpoint-cache"
+    manifest = parse_checkpoint_distribution_manifest(_manifest())
+    cache = CheckpointCache(cache_root)
+    descriptor = cache.try_acquire_distribution_lock(manifest)
+    assert descriptor is not None
+
+    probe = """
+import json
+import sys
+from ai2apps.checkpoint_distribution import (
+    CheckpointCache,
+    parse_checkpoint_distribution_manifest,
+)
+
+cache = CheckpointCache(sys.argv[1])
+manifest = parse_checkpoint_distribution_manifest(json.loads(sys.argv[2]))
+descriptor = cache.try_acquire_distribution_lock(manifest)
+expected = sys.argv[3]
+if descriptor is None:
+    raise SystemExit(0 if expected == "blocked" else 2)
+cache.release_distribution_lock(descriptor)
+raise SystemExit(0 if expected == "available" else 3)
+"""
+    arguments = [
+        sys.executable,
+        "-c",
+        probe,
+        str(cache_root),
+        json.dumps(manifest.raw),
+    ]
+    try:
+        blocked = subprocess.run(
+            [*arguments, "blocked"],
+            cwd=Path(__file__).resolve().parents[1],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert blocked.returncode == 0, blocked.stderr
+    finally:
+        cache.release_distribution_lock(descriptor)
+
+    available = subprocess.run(
+        [*arguments, "available"],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert available.returncode == 0, available.stderr
+
+
 def test_cache_rejects_wrong_digest_without_promotion(tmp_path) -> None:
     cache = CheckpointCache(tmp_path / "checkpoint-cache")
     partial = cache.partial_path("dist_test_v1", "model.safetensors")
@@ -449,6 +506,43 @@ async def test_http_source_probes_and_fetches_exact_ranges() -> None:
 
 
 @pytest.mark.asyncio
+async def test_modelscope_source_accepts_strict_range_200() -> None:
+    payload = b"checkpoint-bytes"
+    manifest = parse_checkpoint_distribution_manifest(_manifest(payload))
+    source = next(item for item in manifest.sources if item.provider == "modelscope")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Accept-Encoding"] == "identity"
+        value = request.headers["Range"]
+        start, end = (int(item) for item in value.removeprefix("bytes=").split("-"))
+        piece = payload[start : end + 1]
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{len(payload)}",
+                "Content-Length": str(len(piece)),
+                "Content-Encoding": "identity",
+            },
+            content=piece,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = HTTPRangePieceSource(
+            source,
+            "https://modelscope.cn/object",
+            client,
+            expected_size=len(payload),
+        )
+        capability = await adapter.probe()
+        piece = await adapter.fetch_piece(source.path, 2, 5)
+
+    assert capability.available is True
+    assert capability.range_supported is True
+    assert capability.content_length == len(payload)
+    assert piece == payload[2:7]
+
+
+@pytest.mark.asyncio
 async def test_http_source_rejects_ignored_or_mismatched_ranges() -> None:
     manifest = parse_checkpoint_distribution_manifest(_manifest())
     source = manifest.sources[0]
@@ -462,11 +556,69 @@ async def test_http_source_rejects_ignored_or_mismatched_ranges() -> None:
             source, "https://modelscope.example/object", client
         )
         capability = await adapter.probe()
-        with pytest.raises(CheckpointManifestError, match="did not honor"):
+        with pytest.raises(CheckpointManifestError, match="invalid range"):
             await adapter.fetch_piece(source.path, 0, 4)
 
     assert capability.available is True
     assert capability.range_supported is False
+
+
+@pytest.mark.asyncio
+async def test_huggingface_source_rejects_range_200() -> None:
+    manifest = parse_checkpoint_distribution_manifest(_manifest())
+    source = next(item for item in manifest.sources if item.provider == "huggingface")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Range": "bytes 0-0/10",
+                "Content-Length": "1",
+            },
+            content=b"x",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = HTTPRangePieceSource(
+            source,
+            "https://huggingface.co/object",
+            client,
+            expected_size=10,
+        )
+        capability = await adapter.probe()
+
+    assert capability.available is True
+    assert capability.range_supported is False
+    assert capability.error_code == "range_source_not_eligible"
+
+
+@pytest.mark.asyncio
+async def test_modelscope_source_rejects_range_body_excess() -> None:
+    manifest = parse_checkpoint_distribution_manifest(_manifest())
+    source = next(item for item in manifest.sources if item.provider == "modelscope")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Range": "bytes 0-0/10",
+                "Content-Length": "1",
+            },
+            content=b"whole file",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = HTTPRangePieceSource(
+            source,
+            "https://modelscope.cn/object",
+            client,
+            expected_size=10,
+        )
+        capability = await adapter.probe()
+
+    assert capability.available is True
+    assert capability.range_supported is False
+    assert capability.error_code == "range_body_excess"
 
 
 @pytest.mark.asyncio
@@ -578,6 +730,38 @@ async def test_piece_scheduler_completes_with_modelscope_only(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_piece_scheduler_reuses_verified_file_blob_and_downloads_only_missing(
+    tmp_path,
+) -> None:
+    first = b"a" * (1024 * 1024)
+    second = b"b" * 400_000
+    manifest = parse_checkpoint_distribution_manifest(
+        _multi_file_manifest(first, second)
+    )
+    cache = CheckpointCache(tmp_path / "cache")
+    seeded = tmp_path / "first.partial"
+    seeded.write_bytes(first)
+    cache.promote_verified_file(seeded, sha256=_sha(first), size=len(first))
+    first_source = _MemoryPieceSource(
+        "modelscope", "first.bin", first, latency_ms=1
+    )
+    second_source = _MemoryPieceSource(
+        "modelscope", "nested/second.bin", second, latency_ms=1
+    )
+    scheduler = PieceDownloadScheduler(
+        manifest, cache, [first_source, second_source], concurrency=1
+    )
+
+    blobs = await scheduler.download()
+
+    assert blobs["first.bin"].read_bytes() == first
+    assert blobs["nested/second.bin"].read_bytes() == second
+    assert first_source.requests == []
+    assert second_source.requests == [(0, len(second))]
+    assert scheduler.source_bytes == {"modelscope": len(second)}
+
+
+@pytest.mark.asyncio
 async def test_piece_scheduler_reports_current_file_and_byte_progress(tmp_path) -> None:
     first = b"a" * 700_000
     second = b"b" * 600_000
@@ -677,8 +861,10 @@ async def test_piece_scheduler_falls_back_after_bad_source_bytes(tmp_path) -> No
         corrupt=True,
     )
     hf = _MemoryPieceSource("huggingface", "model.safetensors", payload, latency_ms=10)
+    events = []
     scheduler = PieceDownloadScheduler(
-        manifest, CheckpointCache(tmp_path / "cache"), [ms, hf], concurrency=2
+        manifest, CheckpointCache(tmp_path / "cache"), [ms, hf], concurrency=2,
+        progress=events.append,
     )
 
     blobs = await scheduler.download()
@@ -686,6 +872,8 @@ async def test_piece_scheduler_falls_back_after_bad_source_bytes(tmp_path) -> No
     assert blobs["model.safetensors"].read_bytes() == payload
     assert ms.requests
     assert hf.requests
+    assert all(event["totalBytesCompleted"] <= len(payload) for event in events)
+    assert events[-1]["totalBytesVerified"] == len(payload)
 
 
 @pytest.mark.asyncio
@@ -772,3 +960,112 @@ async def test_piece_scheduler_rejects_when_no_verified_range_source(tmp_path) -
 
     with pytest.raises(CheckpointDownloadError, match="no usable range source"):
         await scheduler.download()
+
+
+@pytest.mark.asyncio
+async def test_http_scheduler_reports_inflight_bytes_before_verification(tmp_path):
+    payload = b'a' * (256 * 1024)
+    manifest = parse_checkpoint_distribution_manifest(_manifest(payload))
+    source = manifest.sources[0]
+    events = []
+
+    def respond(request):
+        start, end = map(int, request.headers['Range'][6:].split('-'))
+        return httpx.Response(206, headers={
+            'Content-Range': f'bytes {start}-{end}/{len(payload)}',
+        }, content=payload[start:end + 1])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        scheduler = PieceDownloadScheduler(
+            manifest, CheckpointCache(tmp_path / 'cache'),
+            [HTTPRangePieceSource(source, 'https://modelscope.example/object', client)],
+            progress=events.append,
+        )
+        await scheduler.download()
+
+    assert any(0 < event['bytesCompleted'] < len(payload)
+               and event['bytesVerified'] == 0 for event in events)
+    assert events[-1]['totalBytesVerified'] == len(payload)
+    assert events[-1]['totalBytesCompleted'] == len(payload)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_prefers_measured_throughput_over_probe_latency(tmp_path):
+    import asyncio
+
+    payload = b'x' * (24 * 1024 * 1024)
+    value = _manifest(payload)
+    value['pieceHashes'] = [_sha(payload[:1024 * 1024])] * 24
+    manifest = parse_checkpoint_distribution_manifest(value)
+
+    class TimedSource(_MemoryPieceSource):
+        async def fetch_piece(self, file_path, offset, length):
+            await asyncio.sleep(0.002 if self.provider == 'huggingface' else 0.08)
+            return await super().fetch_piece(file_path, offset, length)
+
+    fast = TimedSource('huggingface', 'model.safetensors', payload, latency_ms=100)
+    slow = TimedSource('modelscope', 'model.safetensors', payload, latency_ms=1)
+    scheduler = PieceDownloadScheduler(
+        manifest, CheckpointCache(tmp_path / 'cache'), [slow, fast], concurrency=4
+    )
+    blobs = await scheduler.download()
+    assert blobs['model.safetensors'].read_bytes() == payload
+    assert len(fast.requests) > len(slow.requests) * 2
+    assert slow.requests
+    assert sum(scheduler.source_bytes.values()) == len(payload)
+    assert all(count == 0 for count in scheduler._source_active.values())
+
+
+@pytest.mark.asyncio
+async def test_scheduler_demotes_fast_corrupt_source(tmp_path):
+    payload = b'x' * (8 * 1024 * 1024)
+    value = _manifest(payload)
+    value['pieceHashes'] = [_sha(payload[:1024 * 1024])] * 8
+    manifest = parse_checkpoint_distribution_manifest(value)
+    bad = _MemoryPieceSource('modelscope', 'model.safetensors', payload,
+                             latency_ms=1, corrupt=True)
+    good = _MemoryPieceSource('huggingface', 'model.safetensors', payload, latency_ms=10)
+    scheduler = PieceDownloadScheduler(
+        manifest, CheckpointCache(tmp_path / 'cache'), [bad, good], concurrency=1
+    )
+    await scheduler.download()
+    assert len(bad.requests) == 1
+    assert len(good.requests) == 8
+    assert 'modelscope' not in scheduler._source_rates
+    assert scheduler.source_bytes == {'huggingface': len(payload)}
+
+
+@pytest.mark.asyncio
+async def test_scheduler_cancellation_awaits_active_workers(tmp_path):
+    import asyncio
+
+    payload = b'x' * (8 * 1024 * 1024)
+    value = _manifest(payload)
+    value['pieceHashes'] = [_sha(payload[:1024 * 1024])] * 8
+    manifest = parse_checkpoint_distribution_manifest(value)
+    started = asyncio.Event()
+    active = 0
+
+    class BlockedSource(_MemoryPieceSource):
+        async def fetch_piece(self, *args):
+            nonlocal active
+            active += 1
+            if active == 3:
+                started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                active -= 1
+
+    source = BlockedSource('modelscope', 'model.safetensors', payload, latency_ms=1)
+    scheduler = PieceDownloadScheduler(
+        manifest, CheckpointCache(tmp_path / 'cache'), [source], concurrency=3
+    )
+    task = asyncio.create_task(scheduler.download())
+    await asyncio.wait_for(started.wait(), 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert active == 0
+    assert scheduler._source_active['modelscope'] == 0
+    assert scheduler.piece_map.completed == set()

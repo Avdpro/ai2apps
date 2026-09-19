@@ -239,6 +239,29 @@ Reviewer 使用同一脚本的 `--list-review` 查询队列，以 `--submission-
 
 脚本输出的 `packageId`、`version`、`sha256` 和 `size` 是本次发布收据的第一部分，应保存到发布记录中。
 
+当 App Package 的签名 `app.yaml` 已声明 Mini-App，但生产 Cloud 尚未接受可选的
+顶层 `miniApps` 搜索投影时，可以在上述命令显式增加：
+
+```bash
+  --omit-mini-app-catalog
+```
+
+该选项只从外层 Contract manifest 省略可选搜索投影；`app.yaml` 仍必须被文件索引和
+Publisher 签名覆盖，安装后客户端仍从有效 App 定义发现 Mini-App。不得把该选项用于
+省略 `app.yaml` 声明、绕过 Package 安装校验或伪造 Cloud 组件索引。Cloud 支持顶层
+`miniApps` 后，新发布应回到默认构建。
+
+当模型 Package 源码已经声明并通过校验的 `modelInstall`，但生产 Cloud 尚未接受该
+顶层搜索/安装投影时，可以显式增加：
+
+```bash
+  --omit-model-install-catalog
+```
+
+该兼容选项只省略发布物顶层的 `modelInstall` 投影；源码声明仍须完整，且客户端必须已有
+同 Package/version 的显式、版本有界 legacy install map。构建器会重新执行 Contract 校验，
+没有该有界映射的版本仍会失败。Cloud 支持 `modelInstall` 后应恢复默认构建。
+
 如果 `.ai2service` 已由专用构建器产生，只允许在原路径上签 envelope：
 
 ```bash
@@ -332,7 +355,19 @@ spctl --assess --type open --context context:primary-signature -v "$FINAL_DMG"
 
    > 允许读取当前 AI2Apps 会话 Cookie，仅用于发布 `<package id> <version>`。
 
-6. 获得授权后，只把准确的当前 profile `cookies.sqlite` 路径传给发布脚本。脚本以 SQLite read-only/immutable 模式读取所需 cookie；不得复制数据库、打印 cookie 或自行执行 SQL 导出。
+6. 获得授权后，优先向标准发布脚本传入 `--browser-live`。它通过所选实例的公开 bootstrap 核对 installation ID，复用 Helper 管理的认证 BiDi session，并验证精确的 `browser-profiles/app-shell` Profile；仅以 `storage.getCookies` 读取该实例命名的 `127.0.0.1`、`/` Cookie。Cookie 只在进程内使用，不输出、不落盘、不结束 Shell 的共享会话。Shell 与 Local 应保持运行，不要求退出 App。
+7. `--browser-cookie-db` 仅保留为显式离线兼容入口，与 `--browser-live` 互斥；只传准确的当前 Profile 路径，以普通 SQLite read-only 模式读取（包含 WAL）。不得使用 `immutable=1` 忽略 WAL、复制数据库、打印 Cookie、自行 SQL 导出或在 live 失败后静默回退。数据库被锁时应使用 live 模式，不将退出 App 作为正常发布前置步骤。
+
+在线查询示例（仍需本次精确 Package/version Cookie 授权）：
+
+```bash
+./.venv/bin/python scripts/publish_signed_registry_artifact.py \
+  --base-path "$BASE_PATH" \
+  --security-instance-id "$SECURITY_INSTANCE_ID" \
+  --browser-live --publishers-only
+```
+
+提交、恢复以及多源命令同样可将下文 `--browser-cookie-db` 参数替换为 `--browser-live`。
 
 Cookie 数据库位于当前实例的 `browser-profiles` 下，但 profile 名称由 AceFox 生成。必须根据当前实例和当前运行 profile 确认准确文件，禁止从多个 `cookies.sqlite` 中碰运气。授权在本次指定 Package 发布结束后立即失效。
 
@@ -448,6 +483,26 @@ POST /v1/admin/registry/packages/{namespace}/{name}/versions/{version}/sources/r
 5. 每激活一个源后重新读取最新 ETag，再处理下一个源；
 6. 保存 source ID、kind、不可变 URL、validation digest、激活操作人与审批人、新的
    Repository Snapshot digest，作为多源发布收据。
+
+Agent 执行上述操作时继续使用标准脚本，不手工拼 Cloud 请求：
+
+```bash
+./.venv/bin/python scripts/publish_signed_registry_artifact.py \
+  --base-path "$BASE_PATH" \
+  --security-instance-id "$SECURITY_INSTANCE_ID" \
+  --browser-cookie-db "$BROWSER_COOKIE_DB" \
+  --sources-package-id ai2apps/runtime-omlx \
+  --sources-version "$RUNTIME_VERSION" \
+  --source-action list
+```
+
+`--source-action register|status|validate|activate` 分别对应注册并启动预检、轮询单个
+Source、重新验证已有 Source，以及使用最新 validation 证据激活。注册和激活必须显式
+传入 `--source-etag` 和 `--source-idempotency-key`；重新验证只需要 `--source-id` 和
+`--source-idempotency-key`，Cloud 会对当前 Source revision 执行恢复验证。注册还需要
+`--source-kind`、`--source-url`，激活还需要 `--source-id`、
+`--source-validation-id` 和 `--source-validation-digest`。重试同一逻辑操作必须复用原
+幂等键；新操作必须使用新键。
 
 Cloud 预检必须覆盖 DNS/HTTPS/重定向白名单、HEAD、Range、size、完整 SHA-256 和逐 piece
 SHA-256。不得直接修改 Cloud 数据库、已有 Release 行或已经签名的 Snapshot，也不得为了

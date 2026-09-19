@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-z-image-base-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "Z-Image Base MLX",
+    "description": "Undistilled Z-Image generation with CFG and negative prompts; not Z-Image-Edit."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the pinned Z-Image checkpoint resolved by the Host.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run native MLX image generation.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.6.2 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "image"
+    ],
+    "tasks": [
+      "image-generation"
+    ]
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.z-image-base-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.z-image-base-mlx/base",
+        "label": "Z-Image Base MLX",
+        "recommended": true
+      }
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 20538488386,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {
+      "speed": 2,
+      "capability": 4
+    },
+    "benchmark": {
+      "label": "Publisher Q8 1024x1024 30 steps 166s; RAM floor estimated",
+      "device": "Apple M5 Max 128 GiB"
+    }
+  }
+}

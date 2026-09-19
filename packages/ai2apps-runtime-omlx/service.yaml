@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.runtime.omlx
 name: AI2Apps oMLX Runtime
 description: Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model Workers.
-version: 1.5.7
+version: 1.7.8
 
 publisher:
   id: ai2apps
@@ -16,13 +16,18 @@ runtime:
 capabilities:
   - mlx
   - model-worker-v1
+  - model-stream-codec-v1
   - cached-moe
+  - ssd-checkpoint-v1
   - vlm
   - nvfp4
   - metal
   - audio-stt
   - audio-tts
   - audio-processing
+  - audio-detailed-transcription-v1
+  - audio-reference-input-v1
+  - audio-voice-training-v1
   - text-punctuation
   - onnx
   - audio-codecs

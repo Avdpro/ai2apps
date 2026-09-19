@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import json
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, SecretStr
 
 from ai2apps.identity import RequestPrincipal
+from ai2apps.password_policy import PASSWORD_SCHEMA, SecretPassword
 from ai2apps.qr import svg_qr_data_url
 from ai2apps.sharing import CapabilityKind
 from ai2apps.sharing.agent_connector import agent_connector_tools
@@ -75,7 +76,7 @@ class UpstreamRoutingRequest(BaseModel):
 
 class CloudPairingAcceptRequest(BaseModel):
     pairing_code: SecretStr
-    owner_password: SecretStr = Field(min_length=12, max_length=128)
+    owner_password: SecretPassword = Field(json_schema_extra=PASSWORD_SCHEMA)
 
 
 class CloudPairingExchangeRequest(BaseModel):
@@ -90,11 +91,11 @@ class CloudNodeGrantRequest(BaseModel):
     concurrency_limit: int = Field(default=3, ge=1, le=100)
     monthly_point_limit: str | None = Field(default=None, max_length=100)
     expires_at: datetime | None = None
-    owner_password: SecretStr = Field(min_length=12, max_length=128)
+    owner_password: SecretPassword = Field(json_schema_extra=PASSWORD_SCHEMA)
 
 
 class CloudLinkOwnerRequest(BaseModel):
-    owner_password: SecretStr = Field(min_length=12, max_length=128)
+    owner_password: SecretPassword = Field(json_schema_extra=PASSWORD_SCHEMA)
 
 
 class CloudCredentialImportRequest(BaseModel):

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <defs>
+    <symbol id="icon-a" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.25 10.25 12 14.5l7.75-4.25"/>
+      <path d="M4.25 10.25v6.25L12 21l7.75-4.5v-6.25"/>
+      <path d="m4.25 10.25 3.8-2.5L12 10l3.95-2.25 3.8 2.5"/>
+      <path d="M12 2.25c.2 1.1.9 1.8 2 2-1.1.2-1.8.9-2 2-.2-1.1-.9-1.8-2-2 1.1-.2 1.8-.9 2-2Z" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="icon-b" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="6" height="6" rx="1.5"/>
+      <rect x="15" y="3" width="6" height="6" rx="1.5"/>
+      <rect x="3" y="15" width="6" height="6" rx="1.5"/>
+      <rect x="15" y="15" width="6" height="6" rx="1.5"/>
+      <path d="M12 8.25c.32 2.13 1.37 3.18 3.5 3.5-2.13.32-3.18 1.37-3.5 3.5-.32-2.13-1.37-3.18-3.5-3.5 2.13-.32 3.18-1.37 3.5-3.5Z" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="icon-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2.75 21.25 12 12 21.25 2.75 12 12 2.75Z"/>
+      <path d="M12 7.25 16.75 12 12 16.75 7.25 12 12 7.25Z"/>
+      <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="icon-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 4h10a2 2 0 0 1 2 2v8"/>
+      <rect x="4" y="7" width="12" height="13" rx="2"/>
+      <path d="M7.5 11h5M7.5 14h3"/>
+      <path d="M18.5 15.25c.25 1.55.95 2.25 2.5 2.5-1.55.25-2.25.95-2.5 2.5-.25-1.55-.95-2.25-2.5-2.5 1.55-.25 2.25-.95 2.5-2.5Z" fill="currentColor" stroke="none"/>
+    </symbol>
+  </defs>
+  <rect width="800" height="800" rx="24" fill="#f5f5f4"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" text-anchor="middle">
+    <g transform="translate(25 25)">
+      <rect width="360" height="360" rx="20" fill="white"/>
+      <text x="180" y="38" font-size="16" font-weight="650" fill="#171717">A · Package Spark</text>
+      <use href="#icon-a" x="110" y="65" width="140" height="140" color="#171717"/>
+      <use href="#icon-a" x="105" y="253" width="22" height="22" color="#171717"/>
+      <rect x="145" y="241" width="46" height="46" rx="14" fill="#171717"/>
+      <use href="#icon-a" x="157" y="253" width="22" height="22" color="white"/>
+      <text x="180" y="322" font-size="12" fill="#737373">22px · inactive / active</text>
+    </g>
+    <g transform="translate(415 25)">
+      <rect width="360" height="360" rx="20" fill="white"/>
+      <text x="180" y="38" font-size="16" font-weight="650" fill="#171717">B · Module Spark</text>
+      <use href="#icon-b" x="110" y="65" width="140" height="140" color="#171717"/>
+      <use href="#icon-b" x="105" y="253" width="22" height="22" color="#171717"/>
+      <rect x="145" y="241" width="46" height="46" rx="14" fill="#171717"/>
+      <use href="#icon-b" x="157" y="253" width="22" height="22" color="white"/>
+      <text x="180" y="322" font-size="12" fill="#737373">22px · inactive / active</text>
+    </g>
+    <g transform="translate(25 415)">
+      <rect width="360" height="360" rx="20" fill="white"/>
+      <text x="180" y="38" font-size="16" font-weight="650" fill="#171717">C · Layered Portal</text>
+      <use href="#icon-c" x="110" y="65" width="140" height="140" color="#171717"/>
+      <use href="#icon-c" x="105" y="253" width="22" height="22" color="#171717"/>
+      <rect x="145" y="241" width="46" height="46" rx="14" fill="#171717"/>
+      <use href="#icon-c" x="157" y="253" width="22" height="22" color="white"/>
+      <text x="180" y="322" font-size="12" fill="#737373">22px · inactive / active</text>
+    </g>
+    <g transform="translate(415 415)">
+      <rect width="360" height="360" rx="20" fill="white"/>
+      <text x="180" y="38" font-size="16" font-weight="650" fill="#171717">D · Card Spark</text>
+      <use href="#icon-d" x="110" y="65" width="140" height="140" color="#171717"/>
+      <use href="#icon-d" x="105" y="253" width="22" height="22" color="#171717"/>
+      <rect x="145" y="241" width="46" height="46" rx="14" fill="#171717"/>
+      <use href="#icon-d" x="157" y="253" width="22" height="22" color="white"/>
+      <text x="180" y="322" font-size="12" fill="#737373">22px · inactive / active</text>
+    </g>
+  </g>
+</svg>

@@ -25,7 +25,7 @@ from typing import Any
 import psutil
 
 from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
-from ai2apps.checkpoints import checkpoint_is_complete
+from ai2apps.checkpoints import checkpoint_is_complete, model_checkpoint_is_complete
 from ai2apps.core import EntityIdKind, new_entity_id, utc_now_text
 from ai2apps.services import ServiceInstanceStatus, ServiceRepository
 
@@ -337,6 +337,22 @@ class ManagedServiceSupervisor:
         return (Path.home() / ".cache" / "huggingface" / "hub").resolve()
 
     @staticmethod
+    def _huggingface_import_hub_cache() -> Path | None:
+        """Return the optional read-only Hub cache used for verified imports."""
+
+        configured = os.environ.get("AI2APPS_HF_IMPORT_HUB_CACHE", "")
+        if not configured:
+            return None
+        candidate = Path(configured).expanduser()
+        if not candidate.is_absolute():
+            return None
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            return None
+        return resolved if resolved.is_dir() else None
+
+    @staticmethod
     def _model_worker_checkpoints(
         manifest: dict[str, Any],
         hub_cache: Path,
@@ -376,7 +392,7 @@ class ManagedServiceSupervisor:
             snapshot_path = (
                 snapshot.resolve()
                 if snapshot.is_dir()
-                and ManagedServiceSupervisor._checkpoint_is_complete(snapshot)
+                and model_checkpoint_is_complete(snapshot, model)
                 else None
             )
             if (

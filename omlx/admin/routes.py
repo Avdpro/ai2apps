@@ -67,6 +67,7 @@ from ai2apps.identity import (
     RequestPrincipal,
 )
 from ai2apps.localization import localized_app_metadata
+from ai2apps.model_identity import with_model_identity
 from ai2apps.model_providers import list_package_models, resolve_package_model
 from ai2apps.terminal import TerminalServiceError
 from ai2apps.web import I18N_DIR, STATIC_DIR, TEMPLATES_DIR
@@ -93,6 +94,29 @@ MOBILE_CLIENT_COOKIE = "ai2apps_mobile_client"
 _MOBILE_CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
 PRESET_REMOTE_URL = "https://omlx.ai/assets/omlx_preset.json"
+
+
+def _sandbox_app_resource_csp(origin: str, *, development: bool) -> str:
+    """Return the sandbox policy for one Package-owned HTML entry.
+
+    Source-mounted Packages run only inside an explicitly enabled development
+    Runtime. They need a same-origin authoring loop so authenticated CSS/JS
+    resources and the mount-scoped Host Capability Broker remain reachable.
+    Installed Packages retain the opaque-origin production sandbox.
+    """
+
+    sandbox = "sandbox allow-scripts allow-forms allow-downloads"
+    connect_src = "'none'"
+    if development:
+        sandbox += " allow-same-origin"
+        connect_src = origin
+    return (
+        f"{sandbox}; default-src 'none'; "
+        f"script-src {origin} 'unsafe-inline'; "
+        f"style-src {origin} 'unsafe-inline'; "
+        f"img-src {origin} data: blob:; font-src {origin}; "
+        f"connect-src {connect_src}; form-action 'none'; base-uri 'none'"
+    )
 
 
 # =============================================================================
@@ -1312,6 +1336,8 @@ SYSTEM_APPS: tuple[dict[str, Any], ...] = tuple(
         "icon": manifest["navigation"]["icon"],
         "entry_url": "",
         "singleton": manifest["instances"]["mode"] == "singleton",
+        "status": manifest["navigation"].get("status", "active"),
+        "experimental": manifest["navigation"].get("experimental") is True,
         "presentation": manifest.get("presentation", {}),
     }
     for manifest in SYSTEM_APP_MANIFESTS
@@ -2004,7 +2030,12 @@ def _authorized_system_apps(principal: RequestPrincipal) -> tuple[dict[str, Any]
 
 def _require_system_app_access(app_id: str, principal: RequestPrincipal) -> None:
     manifest = _SYSTEM_APP_MANIFESTS_BY_ID.get(app_id)
-    if manifest is None or not can_access_app(principal, manifest):
+    navigation = {} if manifest is None else manifest.get("navigation", {})
+    if (
+        manifest is None
+        or navigation.get("status", "active") != "active"
+        or not can_access_app(principal, manifest)
+    ):
         raise HTTPException(status_code=404, detail="App not found")
 
 
@@ -3558,13 +3589,26 @@ async def shell_app_resource(
     }
     if entry["renderer"] == "sandbox" and resource == entry["resource"]:
         origin = str(request.base_url).rstrip("/")
-        headers["Content-Security-Policy"] = (
-            "sandbox allow-scripts allow-forms allow-downloads; "
-            f"default-src 'none'; script-src {origin} 'unsafe-inline'; "
-            f"style-src {origin} 'unsafe-inline'; "
-            f"img-src {origin} data: blob:; font-src {origin}; connect-src 'none'; "
-            "form-action 'none'; base-uri 'none'"
+        development = (
+            entry.get("source") == "development"
+            and os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") == "1"
         )
+        headers["Content-Security-Policy"] = _sandbox_app_resource_csp(
+            origin, development=development
+        )
+        if not development and media_type == "text/html":
+            from ai2apps.extensions.sandbox_document import inline_sandbox_assets
+
+            try:
+                document = inline_sandbox_assets(
+                    path.read_text(encoding="utf-8"), resource,
+                    lambda asset: manager.resolve_app_resource(
+                        instance_id, asset, principal=principal
+                    ).read_text(encoding="utf-8"),
+                )
+            except (ValueError, OSError, ExtensionError, RepositoryError) as error:
+                raise HTTPException(status_code=422, detail="Invalid sandbox document assets") from error
+            return HTMLResponse(document, headers=headers)
     return FileResponse(path, media_type=media_type, headers=headers)
 
 
@@ -4987,13 +5031,25 @@ async def list_models(
                 if profile.get("expose_as_model")
             ]
 
+        with_model_identity(
+            model_data,
+            source=source_type,
+            provider_id="ai2apps.runtime.omlx",
+            model_id=model_id,
+            display_name=(
+                settings.model_alias
+                if settings is not None and settings.model_alias
+                else model_id
+            ),
+        )
+
         models.append(model_data)
 
     if markitdown_model_visible(global_settings) and not any(
         m.get("id") == MARKITDOWN_MODEL_ID for m in models
     ):
         models.append(
-            {
+            with_model_identity({
                 "id": MARKITDOWN_MODEL_ID,
                 "model_path": "builtin://markitdown",
                 "display_name": MARKITDOWN_MODEL_ID,
@@ -5021,7 +5077,8 @@ async def list_models(
                 "is_paroquant": False,
                 "paroquant_reason": "",
                 "virtual": True,
-            }
+            }, source="builtin", provider_id="ai2apps.runtime.omlx",
+               model_id=MARKITDOWN_MODEL_ID, display_name="MarkItDown")
         )
 
     if global_settings is not None:
@@ -5041,6 +5098,9 @@ async def list_models(
                     "provider_id": "ai2apps",
                     "provider_name": "AI2Apps Cloud",
                     "protocol": "ai2apps-responses",
+                    "_identity_source": "ai2apps_cloud",
+                    "_identity_provider_id": model.get("provider")
+                    or str(model["id"]).split("/", 1)[0],
                 }
                 for model in ai2apps_provider["models"]
                 if f"cloud/{model['id']}" not in local_gateway_ids
@@ -5063,10 +5123,9 @@ async def list_models(
                 )
             )
             models.append(
-                {
+                with_model_identity({
                     "id": cloud_model["gateway_id"],
                     "model_path": f"cloud://{cloud_model['provider_id']}/{cloud_model['id']}",
-                    "display_name": cloud_model.get("name") or cloud_model["id"],
                     "loaded": True,
                     "is_loading": False,
                     "estimated_size": 0,
@@ -5099,7 +5158,16 @@ async def list_models(
                     "cloud_provider": cloud_model["provider_id"],
                     "cloud_protocol": cloud_model.get("protocol", "openai"),
                     "external_model_id": cloud_model["id"],
-                }
+                },
+                    source=cloud_model.get("_identity_source")
+                    or _model_manager_store().model_source(cloud_model["gateway_id"]),
+                    provider_id=cloud_model.get("_identity_provider_id")
+                    or cloud_model["provider_id"],
+                    provider_name=cloud_model.get("provider_name"),
+                    model_id=cloud_model["id"],
+                    display_name=cloud_model.get("displayName")
+                    or cloud_model.get("name"),
+                )
             )
 
         existing_ids = {model["id"] for model in models}
@@ -5113,6 +5181,7 @@ async def list_models(
                     in {
                         model["id"],
                         model.get("display_name"),
+                        model.get("model_name"),
                         model.get("settings", {}).get("model_alias"),
                     }
                     for model in models
@@ -5126,10 +5195,9 @@ async def list_models(
             ):
                 cached_role_ids.append("reviewer")
             models.append(
-                {
+                with_model_identity({
                     "id": fusion["id"],
                     "model_path": f"fusion://{fusion['id']}",
-                    "display_name": fusion.get("name") or fusion["id"],
                     "loaded": True,
                     "is_loading": False,
                     "estimated_size": 0,
@@ -5166,7 +5234,8 @@ async def list_models(
                         "cache_moe": fusion.get("cache_moe", {}),
                         "resolver": fusion.get("resolver", {}),
                     },
-                }
+                }, source="fusion", provider_id="ai2apps-fusion",
+                   model_id=fusion["id"], display_name=fusion.get("name"))
             )
             existing_ids.add(fusion["id"])
 

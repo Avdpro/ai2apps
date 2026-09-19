@@ -1,0 +1,6 @@
+.models/
+.artifacts/
+*.wav
+*.json
+!models.lock.json
+!fixtures/*.json

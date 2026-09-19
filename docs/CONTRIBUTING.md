@@ -50,11 +50,22 @@ When modifying source code, always check if existing tests are affected and upda
 
 ### License Header
 
-All source files should include the Apache 2.0 license identifier:
+Source files use the repository's Apache 2.0 default unless they are listed as
+exceptions in `LICENSE-POLICY.md`. Default-licensed files should include:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
 ```
+
+Files covered by the AI2Apps Official Cloud Connector license must retain:
+
+```python
+# SPDX-License-Identifier: BUSL-1.1
+```
+
+Do not move code across this license boundary without confirming copyright and
+license compatibility. Contributions to a covered Connector file are submitted
+under that file's current license and its stated future Change License.
 
 ## Project Structure
 

@@ -1,0 +1,29 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_mlx_seed_vc_v2_2122cee1_v1",
+  "modelId": "ai2apps.model.seed-vc-v2-mlx/default",
+  "repoId": "Avdpro/MLX-Seed-VC-v2",
+  "revision": "2122cee1aff2b0e17a843dfa7cdc0464271c43b4",
+  "format": "safetensors",
+  "quantization": "fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "GPL-3.0-only",
+    "name": "GNU General Public License v3.0 only",
+    "termsUrl": "https://huggingface.co/Avdpro/MLX-Seed-VC-v2/blob/2122cee1aff2b0e17a843dfa7cdc0464271c43b4/LICENSE",
+    "termsHash": "sha256:8b1ba204bb69a0ade2bfcf65ef294a920f6bb361b317dba43c7ef29d96332b9b",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE", "NOTICE.md", "README.md", "ai2apps-checkpoint.json", "config.json",
+    "ar.safetensors", "ar_length_regulator.safetensors", "astral_narrow.safetensors", "astral_wide.safetensors",
+    "bigvgan/config.json", "bigvgan/model.safetensors", "campplus.safetensors", "cfm.safetensors",
+    "cfm_length_regulator.safetensors", "hubert/config.json", "hubert/model.safetensors"
+  ],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "Avdpro/MLX-Seed-VC-v2", "revision": "2122cee1aff2b0e17a843dfa7cdc0464271c43b4", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "ai2apps/MLX-Seed-VC-v2", "revision": "f1c5ab39dbea53e68829d0c3ff8321acdcee16fa", "access": "public_anonymous"}
+  ]
+}

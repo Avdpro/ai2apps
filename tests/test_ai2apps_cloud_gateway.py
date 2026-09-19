@@ -376,6 +376,7 @@ async def test_ai2apps_account_image_uses_managed_image_api(tmp_path):
         captured["path"] = request.url.path
         captured["body"] = json.loads(request.content)
         captured["idempotency"] = request.headers["idempotency-key"]
+        captured["device_authorization"] = request.headers["x-ai2apps-device-authorization"]
         return httpx.Response(
             200,
             json={
@@ -401,12 +402,14 @@ async def test_ai2apps_account_image_uses_managed_image_api(tmp_path):
         edit=False,
         base_path=tmp_path,
         cloud_client=cloud,
+        cloud_headers={"X-AI2Apps-Device-Authorization": "device-proof"},
     )
 
     assert captured["path"] == "/v1/ai/images/generations"
     assert captured["body"]["model"] == "openai/gpt-image-2"
     assert captured["body"]["prompt"] == "draw a lighthouse"
     assert captured["idempotency"] == "image-request-1"
+    assert captured["device_authorization"] == "device-proof"
     assert result["image"]["dataUrl"].startswith("data:image/png;base64,")
     await cloud.close()
 

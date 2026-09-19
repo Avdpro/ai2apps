@@ -12,6 +12,7 @@ import pytest
 from ai2apps.model_worker import ModelWorkerCheckpoint, ModelWorkerContext
 from ai2apps.model_worker.cache_moe import (
     DeepseekV4ChatAdapter,
+    DeepseekV41ChatAdapter,
     Qwen36ChatAdapter,
     Qwen4ExpChatAdapter,
 )
@@ -95,6 +96,38 @@ async def test_deepseek_worker_selects_full_and_cached_engines(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
+async def test_deepseek_v41_worker_requires_activated_ssd_checkpoint(
+    monkeypatch, tmp_path
+):
+    checkpoint, context = _checkpoint(tmp_path)
+    manifest_path = checkpoint.path / "ai2apps-model.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(
+        family="deepseek_v41",
+        checkpoint_layout={
+            "format": "ai2apps-ssd-checkpoint",
+            "layout": "dsv41-original-fp4-six-segment-v1",
+        },
+    )
+    manifest["expert_store"] = str((checkpoint.path / "experts").resolve())
+    manifest_path.write_text(json.dumps(manifest))
+
+    formal = ModuleType("omlx.patches.deepseek_v41")
+    formal.DeepseekV41Engine = type("V41Engine", (_Engine,), {})
+    monkeypatch.setitem(sys.modules, "omlx.patches.deepseek_v41", formal)
+
+    adapter = DeepseekV41ChatAdapter(context)
+    engine = await adapter.create_engine(
+        checkpoint, {"moe_execution_mode": "cached"}
+    )
+
+    assert type(engine).__name__ == "V41Engine"
+    assert engine.model_name == checkpoint.path
+    with pytest.raises(Exception, match="lossless Cached mode"):
+        await adapter.create_engine(checkpoint, {"moe_execution_mode": "full"})
+
+
+@pytest.mark.asyncio
 async def test_qwen36_worker_selects_full_and_tiered_engines(monkeypatch, tmp_path):
     checkpoint, context = _checkpoint(tmp_path)
     configured = []
@@ -129,7 +162,7 @@ async def test_qwen36_worker_selects_full_and_tiered_engines(monkeypatch, tmp_pa
     assert type(full) is _Engine
     assert type(cached).__name__ == "TieredEngine"
     assert configured[0][0][-1] == 256
-    assert configured[0][1] == {"backend": "flesh", "arena_tail_slots": 0}
+    assert configured[0][1] == {"backend": "flesh"}
     assert configured[1][0][-1] == 96
     assert configured[1][1] == {"backend": "tiered", "arena_tail_slots": 24}
 

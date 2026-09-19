@@ -107,12 +107,28 @@ class TestGetTotalMemoryBytes:
 
     def test_get_total_memory_bytes_default_fallback(self):
         """Test get_total_memory_bytes default fallback."""
-        with patch("subprocess.run") as mock_run:
+        with patch("subprocess.run") as mock_run, patch(
+            "omlx.utils.hardware.os.sysconf", side_effect=ValueError("unsupported")
+        ):
             mock_run.side_effect = Exception("sysctl failed")
             # Mock HAS_MLX to False so MLX fallback is skipped
             with patch("omlx.utils.hardware.HAS_MLX", False):
                 result = get_total_memory_bytes()
                 assert result == DEFAULT_MEMORY_BYTES
+
+    def test_get_total_memory_bytes_sysconf_fallback(self):
+        """Restricted App processes can detect RAM without spawning sysctl."""
+
+        def fake_sysconf(name):
+            return {
+                "SC_PHYS_PAGES": 8_388_608,
+                "SC_PAGE_SIZE": 16_384,
+            }[name]
+
+        with patch("subprocess.run", side_effect=PermissionError), patch(
+            "omlx.utils.hardware.os.sysconf", side_effect=fake_sysconf
+        ):
+            assert get_total_memory_bytes() == 128 * 1024**3
 
 
 class TestGetTotalMemoryGb:

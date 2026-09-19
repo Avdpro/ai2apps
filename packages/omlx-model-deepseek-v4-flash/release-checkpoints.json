@@ -1,10 +1,18 @@
 {
-  "omlx-model-deepseek-v4-flash@0.1.0": [{
-    "source": "huggingface",
-    "repoId": "deepseek-ai/DeepSeek-V4-Flash",
-    "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
-    "displayName": "DeepSeek V4 Flash",
-    "installMode": "cache-moe",
-    "recipeId": "deepseek-v4-flash"
-  }]
+  "schema": "ai2apps.model-release-checkpoints/v1",
+  "package_id": "ai2apps/model-deepseek-v4-flash",
+  "package_version": "0.3.4",
+  "runtime_dependency": ">=1.7.5 <2.0.0",
+  "models": [
+    {
+      "model_id": "ai2apps.model.deepseek-v4-flash/deepseek-v4-flash",
+      "repo_id": "Avdpro/DeepSeek-V4-Flash-SSD",
+      "revision": "8fab5a37c9eb2003abb9fd2bb3c74c071c13bca7",
+      "modelscope_repo_id": "ai2apps/DeepSeek-V4-Flash-SSD",
+      "modelscope_revision": "0bdefefeca58c807727f0ec334f8533007615050",
+      "distribution_id": "dist_ai2apps_deepseek_v4_flash_ssd_8fab5a37_v1",
+      "preparation_recipe": "ai2apps/cache-moe/v1",
+      "ssd_layout": "deepseek-v4-expert-major-v1"
+    }
+  ]
 }

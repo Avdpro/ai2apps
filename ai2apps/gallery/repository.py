@@ -10,6 +10,7 @@ import re
 import tempfile
 import uuid
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -404,6 +405,75 @@ class GalleryRepository:
         finally:
             Path(temporary_name).unlink(missing_ok=True)
 
+    def replace_asset_stream(
+        self,
+        owner_user_id: str,
+        asset_id: str,
+        stream: BinaryIO,
+        *,
+        media_type: str,
+        source_app_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        max_bytes: int | None = None,
+    ) -> dict[str, Any]:
+        """Replace an asset's bytes while preserving its identity and collections."""
+        with self.database.transaction() as connection:
+            original = self._asset_row(connection, owner_user_id, asset_id, include_trashed=False)
+            original_name = original["name"]
+            old_storage_key = original["storage_key"]
+        staging_name = f".replace-{uuid.uuid4().hex}-{original_name}"
+        staged, _ = self.import_stream(
+            owner_user_id,
+            stream,
+            name=staging_name,
+            media_type=media_type,
+            source_app_id=source_app_id,
+            source_ref=f"gallery-replacement:{asset_id}",
+            metadata=metadata,
+            max_bytes=max_bytes,
+        )
+        now = utc_now_text()
+        with self.database.transaction(write=True) as connection:
+            self._asset_row(connection, owner_user_id, asset_id, include_trashed=False)
+            staged_row = self._asset_row(connection, owner_user_id, staged["id"])
+            connection.execute(
+                """
+                UPDATE gallery_assets
+                SET kind=?,media_type=?,content_hash=?,size_bytes=?,storage_key=?,
+                    source_app_id=?,source_ref=?,metadata_json=?,updated_at=?
+                WHERE id=? AND owner_user_id=?
+                """,
+                (
+                    self._kind(media_type, original_name), media_type,
+                    staged_row["content_hash"], staged_row["size_bytes"],
+                    staged_row["storage_key"], source_app_id,
+                    f"gallery-replacement:{asset_id}", canonical_json(metadata or {}),
+                    now, asset_id, owner_user_id,
+                ),
+            )
+            connection.execute("DELETE FROM gallery_assets WHERE id=?", (staged["id"],))
+            self._append_event(
+                connection,
+                event_type="gallery.asset.content_replaced",
+                subject_id=asset_id,
+                owner_user_id=owner_user_id,
+                payload={"media_type": media_type, "size_bytes": staged_row["size_bytes"]},
+            )
+            row = self._asset_row(connection, owner_user_id, asset_id)
+            old_referenced = connection.execute(
+                "SELECT 1 FROM gallery_assets WHERE storage_key=? LIMIT 1",
+                (old_storage_key,),
+            ).fetchone() is not None
+        if not old_referenced:
+            candidate = (self.blob_root / old_storage_key).resolve()
+            try:
+                candidate.relative_to(self.blob_root)
+            except ValueError:
+                pass
+            else:
+                candidate.unlink(missing_ok=True)
+        return self._decode(row)
+
     def list_assets(
         self,
         owner_user_id: str,
@@ -491,6 +561,82 @@ class GalleryRepository:
                 "gallery_storage_key_invalid", "Asset storage location is invalid."
             ) from error
         return asset, path
+
+    def create_asset_handle(
+        self,
+        owner_user_id: str,
+        asset_id: str,
+        *,
+        actor_id: str,
+        installation_id: str,
+        app_instance_id: str,
+        consumer_app_id: str,
+        ttl_seconds: int = 300,
+    ) -> dict[str, Any]:
+        """Issue a short-lived, consumer-bound handle for Studio asset delivery."""
+
+        asset = self.get_asset(owner_user_id, asset_id)
+        if asset["status"] != "active":
+            raise GalleryError("gallery_asset_unavailable", "Gallery asset is unavailable.")
+        handle_id = self._id("garh")
+        created_at = utc_now_text()
+        expires_at = (
+            datetime.now(UTC) + timedelta(seconds=max(30, min(900, ttl_seconds)))
+        ).isoformat(timespec="microseconds").replace("+00:00", "Z")
+        with self.database.transaction(write=True) as connection:
+            connection.execute(
+                """INSERT INTO gallery_asset_handles(
+                    id,actor_id,installation_id,app_instance_id,consumer_app_id,
+                    asset_id,capabilities_json,expires_at,revoked_at,created_at
+                ) VALUES (?,?,?,?,?,?,'["read"]',?,NULL,?)""",
+                (
+                    handle_id,
+                    actor_id,
+                    installation_id,
+                    app_instance_id,
+                    consumer_app_id,
+                    asset_id,
+                    expires_at,
+                    created_at,
+                ),
+            )
+        return {
+            "schema": "ai2apps.asset-reference/v1",
+            "assetId": asset["id"],
+            "resourceHandle": f"resource://{handle_id}",
+            "kind": asset["kind"],
+            "mediaType": asset["media_type"],
+            "name": asset["name"],
+            "expiresAt": expires_at,
+        }
+
+    def asset_handle_path(
+        self,
+        handle_or_uri: str,
+        *,
+        actor_id: str,
+        installation_id: str,
+        app_instance_id: str,
+        consumer_app_id: str,
+    ) -> tuple[dict[str, Any], Path]:
+        handle_id = handle_or_uri.removeprefix("resource://")
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                """SELECT asset_id FROM gallery_asset_handles
+                   WHERE id=? AND actor_id=? AND installation_id=? AND app_instance_id=?
+                   AND consumer_app_id=? AND revoked_at IS NULL AND expires_at>?""",
+                (
+                    handle_id,
+                    actor_id,
+                    installation_id,
+                    app_instance_id,
+                    consumer_app_id,
+                    utc_now_text(),
+                ),
+            ).fetchone()
+        if row is None:
+            raise GalleryError("gallery_resource_handle_invalid", "Gallery Resource Handle is invalid or expired.")
+        return self.asset_path(actor_id, row["asset_id"])
 
     def _add_to_collection_in_transaction(
         self,

@@ -56,14 +56,16 @@ If a configured fixed port is already occupied, startup fails closed with the
 stable `port_conflict` status and identifies the configured port; the Helper
 does not terminate or replace the listener. Different instances can run in
 parallel on distinct fixed ports.
-Model checkpoints, Hugging Face downloads, tokens, databases, settings,
-browser state, and inference/KV caches are all private to the instance
-directory tree. The Helper removes inherited HF token/cache variables and forces
-`HF_HOME`, `HF_TOKEN_PATH`, `HF_HUB_CACHE`, and the AI2Apps model root into the
-instance container before Local starts. Sibling installations obtain model
-capability through Local's authenticated Sharing/Upstream API; they never gain
-filesystem access to the model host's checkpoint directory. An installation
-that requires a private model downloads and prepares its own copy.
+Verified immutable Registry checkpoint bytes are content-addressed in
+`~/Library/Caches/AI2Apps/shared/checkpoint-cache-v1` and shared by every
+AI2Apps instance for the same macOS user. Downloads use a cross-process
+distribution lock, so concurrent installs produce one verified snapshot and
+the waiting instance reuses it. Hugging Face working downloads, tokens,
+databases, settings, browser state, prepared model output, Worker views, and
+inference/KV caches remain private to each instance. The Helper removes
+inherited HF token/cache variables and forces `HF_HOME`, `HF_TOKEN_PATH`,
+`HF_HUB_CACHE`, and the writable AI2Apps model root into the instance container
+before Local starts.
 
 The first runnable release deliberately does not enable the macOS App Sandbox.
 It keeps Firefox's own content-process sandbox and adds Developer ID signing,
@@ -130,6 +132,20 @@ packaging will replace it with a signed, manifest-verified embedded runtime.
 Every packaged App must carry a globally distinct `AI2AppsInstanceID`; this is
 the default identity used for data, Helper Socket, Local, and browser Profiles.
 
+App-Shell App development has a second, permanent environment with an embedded
+Runtime/dependency snapshot, a live `ai2apps` source mount, a distinct bundle
+identifier, and the isolated `app-dev` instance. Build it with:
+
+```bash
+scripts/build-app-dev-environment.sh
+```
+
+Its stable output is `.build/AI2Apps-app-dev.app`; rebuilding it never replaces
+`.build/AI2Apps-dev.app`. See `../../docs/ai2apps-app-dev-environment.md` for the
+environment boundary and workflow. Its Helper uses the standard menu bar icon
+with an orange dot in the upper-left corner so the isolated environment is
+immediately distinguishable.
+
 The Helper control response contains an internal `automation` contract for the
 Local Browser Service. It is validated as an authenticated
 `ws://127.0.0.1:<port>/session` endpoint and is intentionally omitted from the
@@ -148,15 +164,13 @@ operation. The release response never returns the BiDi endpoint or bearer
 credential. A successful request removes the Agent from the Helper's live table
 before requesting termination; a repeated release returns `not_running`.
 
-The supported multi-instance deployment is a model-host topology. One chosen
-instance owns model files and exports only selected model IDs through scoped,
-revocable bearer grants. Other instances register it as an Upstream, project
-its models into their own model list, and proxy inference over loopback or the
-explicitly enabled LAN data plane. Prompts cross into the trusted model host,
-but accounts, databases, Agents, browser Profiles, credentials, and all other
-instance state remain isolated. A future version may add a read-only external
-checkpoint provider with pinned-revision integrity checks; mutable shared HF
-caches and writable checkpoint links are outside the current product boundary.
+The supported multi-instance inference topology still uses a model host. One
+instance exports selected model IDs through scoped, revocable bearer grants;
+other instances proxy inference over loopback or the explicitly enabled LAN
+data plane. Sharing verified checkpoint storage only avoids duplicate local
+downloads. It does not share Package installation state, accounts, databases,
+Agents, browser Profiles, credentials, prepared model output, or a running
+Worker between instances.
 
 ## Build a release bundle
 
@@ -204,6 +218,26 @@ launcher, matching Firefox's main-process requirement.
 `BUILD_NUMBER` may be set to a positive integer for candidates built from an
 uncommitted tree; otherwise it defaults to the Git revision count. Production
 build numbers must be monotonically increasing.
+
+For release-shaped testing beside an installed production App, build the fixed
+`AI2Apps-test.app` environment:
+
+```bash
+scripts/build-test-app.sh
+```
+
+It uses the production `cloud` Runtime and release verification pipeline, but
+has the isolated `com.ai2apps.desktop.test` / `test` identity. Its Helper alone
+uses purple-diamond badges in both upper corners of its tray icon and shows
+**重置数据…**, which clears that instance's support data and private cache without deleting
+the machine-wide verified checkpoint cache or `~/.cache/huggingface/hub`.
+Pre-sharing per-instance checkpoint caches are moved outside the reset roots
+and remain available for verified import. See
+`../../ai2apps-test-system/docs/test-app.md` for the complete contract.
+
+The Test App icon uses a light-blue upper sphere. The fixed App-Dev environment
+uses a pale-purple upper sphere and also enables the same instance-scoped reset
+menu for its independent `app-dev` data.
 
 `verify-release-app.sh` is also run by both release packagers. Besides strict
 signature and broken-link checks, it rejects Gecko's mutable `.purgecaches`,

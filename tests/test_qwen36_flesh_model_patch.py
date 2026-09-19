@@ -10,6 +10,7 @@ from omlx.patches.qwen3_6_flesh.model_patch import (
     _arena_route_ids,
     _exact_scope_moe,
     _lossy_replace_routes,
+    _make_sanitize,
     apply_qwen36_flesh_model_patch,
     begin_qwen36_strict_arena_run,
     validate_qwen36_strict_arena_run,
@@ -197,6 +198,68 @@ def test_tiered_model_has_separate_l1_and_tail_switches(tmp_path):
 
     assert block.switch_mlp.down_proj.weight.shape[0] == 96
     assert block.tail_switch_mlp.down_proj.weight.shape[0] == 24
+
+
+def test_tiered_sanitize_accepts_reader_pre_split_banks(tmp_path, monkeypatch):
+    layers = {str(layer): list(range(120)) for layer in range(40)}
+    profile = tmp_path / "scope.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "phases": {
+                    "prefill": {"coding": layers},
+                    "decode": {"coding": layers},
+                }
+            }
+        )
+    )
+    store = tmp_path / "experts"
+    store.mkdir()
+    configure_qwen36_scope_policy(
+        profile,
+        "coding",
+        store,
+        120,
+        backend="tiered",
+        arena_tail_slots=24,
+    )
+
+    initialized = []
+
+    class Cache:
+        def initialize_layer(self, layer, protected, tail):
+            initialized.append((layer, protected, tail))
+
+    class Loader:
+        def register_prefill_blocks(self, _model_key, _blocks):
+            pass
+
+    monkeypatch.setattr(
+        "omlx.patches.qwen3_6_flesh.tiered_cache.get_qwen36_tiered_cache",
+        lambda _path: Cache(),
+    )
+    monkeypatch.setattr(
+        "omlx.patches.qwen3_6_flesh.scope_cache.get_qwen36_fallback_loader",
+        lambda _path: Loader(),
+    )
+
+    block = SimpleNamespace()
+    model = SimpleNamespace(
+        language_model=SimpleNamespace(
+            model=SimpleNamespace(layers=[SimpleNamespace(mlp=block)])
+        )
+    )
+    prefix = "language_model.model.layers.0.mlp"
+    weights = {}
+    for projection in ("gate_proj", "up_proj", "down_proj"):
+        weights[f"{prefix}.switch_mlp.{projection}.weight"] = mx.zeros((120, 1))
+        weights[f"{prefix}.tail_switch_mlp.{projection}.weight"] = mx.zeros((24, 1))
+
+    sanitized = _make_sanitize(lambda _self, value: dict(value))(model, weights)
+
+    assert sanitized[f"{prefix}.switch_mlp.gate_proj.weight"].shape == (120, 1)
+    assert sanitized[f"{prefix}.tail_switch_mlp.gate_proj.weight"].shape == (24, 1)
+    assert initialized and initialized[0][0] == 0
 
 
 def test_arena_pins_hit_routes_while_loading_misses():
@@ -397,6 +460,7 @@ def test_dual_prefill_backend_never_captures_single_token_decode(
 
 
 def test_arena_resolve_does_not_evict_a_requested_hit(tmp_path, monkeypatch):
+    monkeypatch.setenv("OMLX_MOE_DIRECT_L1", "0")
     arena = Qwen36DecodeArena(tmp_path)
     arena.initialize_layer(0, (0, 1, 2, 3, 4), protected_slots=2)
     store = SimpleNamespace(record_bytes=1)
@@ -457,6 +521,7 @@ def test_tiered_cache_bypasses_l1_without_copying_to_tail(tmp_path, monkeypatch)
 def test_tiered_cache_evicts_least_frequently_used_tail_expert(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("OMLX_MOE_DIRECT_L1", "0")
     cache = Qwen36TieredCache(tmp_path)
     cache.initialize_layer(0, (0, 1, 2, 3, 4, 5), (6, 7, 8))
     store = SimpleNamespace(record_bytes=1)

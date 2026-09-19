@@ -18,8 +18,8 @@ name = "ai2apps"
 dynamic = ["version"]
 description = "Local-first edge supermodel and Fusion inference runtime for Apple Silicon"
 readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+license = "Apache-2.0 AND BUSL-1.1"
+license-files = ["LICENSE", "NOTICE", "LICENSE-POLICY.md", "LICENSES/*", "TRADEMARKS.md"]
 requires-python = ">=3.11,<3.14"
 authors = [
     {name = "AI2Apps contributors"}
@@ -327,6 +327,7 @@ version = {attr = "ai2apps._version.__version__"}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ai2apps*", "omlx*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 "ai2apps" = ["engines/**/*.json"]

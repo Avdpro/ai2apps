@@ -359,7 +359,7 @@ def mock_engine_pool(mock_llm_engine, mock_embedding_engine, mock_reranker_engin
 @pytest.fixture
 def client(mock_engine_pool):
     """Create a test client with mocked server state."""
-    from omlx.server import app, _server_state
+    from omlx.server import app, _server_state, verify_ai2apps_platform_access
 
     # Store original state
     original_pool = _server_state.engine_pool
@@ -368,12 +368,23 @@ def client(mock_engine_pool):
     # Set mock state
     _server_state.engine_pool = mock_engine_pool
     _server_state.default_model = "test-model"
+    original_platform_override = app.dependency_overrides.get(
+        verify_ai2apps_platform_access
+    )
+    app.dependency_overrides[verify_ai2apps_platform_access] = lambda: True
 
-    yield TestClient(app)
-
-    # Restore original state
-    _server_state.engine_pool = original_pool
-    _server_state.default_model = original_default
+    try:
+        yield TestClient(app)
+    finally:
+        # Restore the process-global FastAPI and server state for other suites.
+        _server_state.engine_pool = original_pool
+        _server_state.default_model = original_default
+        if original_platform_override is None:
+            app.dependency_overrides.pop(verify_ai2apps_platform_access, None)
+        else:
+            app.dependency_overrides[verify_ai2apps_platform_access] = (
+                original_platform_override
+            )
 
 
 class TestHealthEndpoint:

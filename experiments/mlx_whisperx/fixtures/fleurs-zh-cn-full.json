@@ -1,0 +1,17 @@
+{
+  "schema": "ai2apps.mlx-whisperx-benchmark-manifest/v1",
+  "dataset": "FluidInference/fleurs-full",
+  "upstream_dataset": "google/fleurs",
+  "revision": "1cca811bb8ea4d370345f108f00518167040282c",
+  "config": "cmn_hans_cn",
+  "split": "test",
+  "license": "cc-by-4.0",
+  "language": "zh-CN",
+  "expected_cases": 945,
+  "transcript": {
+    "path": "cmn_hans_cn/cmn_hans_cn.trans.txt",
+    "sha256": "bd4047f9ef167e97f4d33d90b814149d0ba2324b1ce2c625acf1f0e3769c4ce1",
+    "audio_directory": "cmn_hans_cn",
+    "audio_suffix": ".wav"
+  }
+}

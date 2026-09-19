@@ -1952,10 +1952,10 @@ class EnginePool:
                     layout = (entry.cache_moe_config or {}).get(
                         "checkpoint_layout", {}
                     )
-                    if (
-                        layout.get("format")
-                        == "ai2apps-backbone-expert-store"
-                    ):
+                    if layout.get("format") in {
+                        "ai2apps-backbone-expert-store",
+                        "ai2apps-ssd-checkpoint",
+                    }:
                         from .patches.deepseek_v4.scope_policy import (
                             configure_scope_policy,
                         )

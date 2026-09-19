@@ -1,0 +1,49 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_mlx_ghostv2_974d5556_v1",
+  "modelId": "ai2apps.model.face-swap-mlx/default",
+  "repoId": "Avdpro/MLX-GhostV2",
+  "revision": "974d5556c454219594623de8f7a2eae4e5783ee2",
+  "format": "safetensors",
+  "quantization": "fp16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "BSD-3-Clause",
+    "name": "BSD 3-Clause License",
+    "termsUrl": "https://huggingface.co/Avdpro/MLX-GhostV2/blob/974d5556c454219594623de8f7a2eae4e5783ee2/LICENSE",
+    "termsHash": "sha256:6571bebff15d145096eaa5ad254183feef4244dd5958cb194ec7308b158bd660",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE",
+    "YUNET_LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "ai2apps-checkpoint.json",
+    "conversion-receipt.json",
+    "models/face_detection_yunet_2023mar.omlx/bundle.json",
+    "models/face_detection_yunet_2023mar.omlx/graph.json",
+    "models/face_detection_yunet_2023mar.omlx/weights.safetensors",
+    "models/ghostv2_cvlface.omlx/bundle.json",
+    "models/ghostv2_cvlface.omlx/graph.json",
+    "models/ghostv2_cvlface.omlx/weights.safetensors",
+    "models/ghostv2_generator.native/config.json",
+    "models/ghostv2_generator.native/weights.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/MLX-GhostV2",
+      "revision": "974d5556c454219594623de8f7a2eae4e5783ee2",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/MLX-GhostV2",
+      "revision": "627c704a6d196ae6c1d6db6d953d7a4467846b4c",
+      "access": "public_anonymous"
+    }
+  ]
+}

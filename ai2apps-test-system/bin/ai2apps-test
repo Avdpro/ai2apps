@@ -1,0 +1,16 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=${0:A:h}
+SYSTEM_ROOT=${SCRIPT_DIR:h}
+REPO_ROOT=${SYSTEM_ROOT:h}
+PYTHON=${REPO_ROOT}/.venv/bin/python
+
+if [[ ! -x ${PYTHON} ]]; then
+  PYTHON=$(command -v python3)
+fi
+
+cd ${SYSTEM_ROOT}
+export PYTHONPATH="${SYSTEM_ROOT}/src:${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+exec ${PYTHON} -m ai2apps_test.cli "$@"

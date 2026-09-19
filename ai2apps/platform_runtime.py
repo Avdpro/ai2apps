@@ -11,6 +11,7 @@ import re
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from ai2apps.agent_builder import (
@@ -157,6 +158,7 @@ class PlatformRuntime:
         self.secrets: SecretRepository | None = None
         self.cloud: AI2AppsCloudClient | None = None
         self._browser_cloud_clients: dict[str, AI2AppsCloudClient] = {}
+        self._cloud_defaults_task: asyncio.Task | None = None
         self._core_bootstrap_lock = asyncio.Lock()
         self.capability_policy: CapabilityPolicyEngine | None = None
         self.agents: AgentRepository | None = None
@@ -309,6 +311,14 @@ class PlatformRuntime:
             return
         if retention_interval_seconds <= 0:
             raise ValueError("retention_interval_seconds must be positive")
+        if self.cloud is not None and getattr(self, "model_manager", None) is not None:
+            from ai2apps.cloud_defaults import refresh_cloud_defaults, run_cloud_defaults_refresh
+            self.model_manager.cloud_defaults_origin = self.cloud.base_url
+            await refresh_cloud_defaults(self.model_manager, self.cloud)
+            self._cloud_defaults_task = asyncio.create_task(
+                run_cloud_defaults_refresh(self.model_manager, self.cloud),
+                name="ai2apps-cloud-defaults",
+            )
         self._retention_stop = asyncio.Event()
         self._retention_task = asyncio.create_task(
             self._run_session_retention(retention_interval_seconds),
@@ -441,6 +451,11 @@ class PlatformRuntime:
     async def stop_background_tasks(self) -> None:
         """Stop maintenance loops and wait until their current batch completes."""
 
+        if self._cloud_defaults_task is not None:
+            self._cloud_defaults_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._cloud_defaults_task
+            self._cloud_defaults_task = None
         if self.messager_peer_v2 is not None:
             await self.messager_peer_v2.shutdown()
         if self.model_share_controller is not None:
@@ -812,6 +827,7 @@ class PlatformRuntime:
         self.readaloud_tasks = ReadAloudTaskManager(
             runtime=self,
             database=database,
+            workspace=self.workspace,
             root=self.config.paths.base_path / "platform" / "readaloud-renders",
         )
         self.agents = AgentRepository(database, self.events, self.capabilities)
@@ -846,6 +862,12 @@ class PlatformRuntime:
             self.config.paths.packages_path,
             self.package_repository,
             self.agents,
+            development_source_root=(
+                Path(os.environ["AI2APPS_DEVELOPMENT_SOURCE_ROOT"])
+                if os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") == "1"
+                and os.environ.get("AI2APPS_DEVELOPMENT_SOURCE_ROOT")
+                else None
+            ),
         )
         self.extension_repository = self.extension_manager.repository
         self.agent_reliability = AgentReliabilityService(self.agent_builder)

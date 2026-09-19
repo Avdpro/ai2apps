@@ -58,7 +58,7 @@
                                         <span class="mt-2 block min-h-10 text-xs leading-5 text-neutral-500" x-text="route.description"></span>
                                         <select x-model="defaultModels[route.id]" @change="defaultModelsStatus=''; defaultModelsError=''"
                                                 class="mt-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm">
-                                            <option value="">{{ t('models.defaults.use_api_default') }}</option>
+                                            <option value="" x-text="cloudDefaultLabel()">{{ t('models.defaults.use_api_default') }}</option>
                                             <template x-if="defaultModels[route.id] && !defaultModelOptions(route.id).some(model => model.id === defaultModels[route.id])">
                                                 <option :value="defaultModels[route.id]" disabled x-text="window.t('models.defaults.unavailable').replace('{model}', defaultModels[route.id])"></option>
                                             </template>

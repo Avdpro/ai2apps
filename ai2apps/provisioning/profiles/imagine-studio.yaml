@@ -17,12 +17,12 @@ capabilities:
         checkpoint: 下载绘图模型 Checkpoint
         verify: 启动并验证图片生成与编辑
     requirements:
-      operations: [image_generation, image_edit]
+      operations: [image_generation]
       output_formats: [png, jpeg, webp]
     profiles:
       - id: apple-metal-z-image-turbo
         label: Z-Image Turbo MLX · 高质量推荐
-        description: 多语言文生图与单图编辑，适合 24 GiB 及以上 Apple Silicon。
+        description: 多语言文生图（当前不支持编辑），适合 24 GiB 及以上 Apple Silicon。
         priority: 110
         device:
           os: [macos]
@@ -46,3 +46,118 @@ capabilities:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
           provider: {package_id: ai2apps/model-flux2-klein-mlx, service_key: ai2apps.model.flux2-klein-mlx, version: ">=0.1.2,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.flux2-klein-mlx/4b}
+      - id: apple-metal-flux2-klein-9b
+        label: FLUX.2 Klein 9B MLX · 高质量版
+        description: 高质量文生图、单图编辑与多参考图创作；建议至少 48 GiB 统一内存，安装时需确认 FLUX 非商业许可。
+        priority: 95
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 48}}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.8,<2.0.0"}
+          provider: {package_id: ai2apps/model-flux2-klein-9b-mlx, service_key: ai2apps.model.flux2-klein-9b-mlx, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.flux2-klein-9b-mlx/9b}
+      - id: apple-metal-ideogram4
+        label: Ideogram 4 MLX Q4
+        description: 文生图（当前不支持 Remix 编辑），支持文字排版；至少需要 24 GiB 统一内存，模型许可将在安装时确认。
+        priority: 90
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 24}}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
+          provider: {package_id: ai2apps/model-ideogram4-mlx, service_key: ai2apps.model.ideogram4-mlx, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.ideogram4-mlx/fp8-q4}
+      - id: apple-metal-z-image-base
+        label: Z-Image Base MLX · 普通版
+        description: 非蒸馏文生图，支持 CFG 和负面提示词；默认 30 步，速度慢于 Turbo，不支持指令编辑。建议至少 32 GiB 统一内存。
+        priority: 85
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}
+        stack:
+          components:
+            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.6.2,<2.0.0"}
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-z-image-base-mlx, service_key: ai2apps.model.z-image-base-mlx, version: ">=0.1.0,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.z-image-base-mlx/base}
+            - {id: verify, kind: verify, service_key: ai2apps.model.z-image-base-mlx, capabilities: [image-generation]}
+      - id: apple-metal-qwen-image-2512
+        label: Qwen Image 2512 MLX
+        description: 高质量文生图与多语言文字渲染；至少需要 32 GiB 统一内存。此 Checkpoint 专用于文生图。
+        priority: 80
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}
+        stack:
+          components:
+            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen-image-mlx, service_key: ai2apps.model.qwen-image-mlx, version: ">=0.1.1,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.qwen-image-mlx/2512}
+            - {id: verify, kind: verify, service_key: ai2apps.model.qwen-image-mlx, capabilities: [image-generation]}
+  image.edit:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS IMAGINE STUDIO SETUP
+      title: 配置本地图片编辑模型
+      description: 根据当前 Mac 的统一内存选择并安装本地图片生成与编辑 Runtime、Model Package 和 Checkpoint。确认前不会下载或启动模型。
+      icon: palette
+      confirm_label: 下载并配置
+      ready_label: 本地绘图环境已配置
+      steps:
+        runtime: 配置 MLX 绘图 Runtime
+        provider: 安装本地绘图 Model Package
+        checkpoint: 下载绘图模型 Checkpoint
+        verify: 启动并验证图片生成与编辑
+    requirements:
+      operations: [image_edit]
+      output_formats: [png, jpeg, webp]
+    profiles:
+      - id: apple-metal-flux2-klein-4b
+        label: FLUX.2 Klein 4B MLX · 轻量推荐
+        description: 快速文生图、单图编辑与多参考图创作，适合 16–24 GiB Apple Silicon。
+        priority: 100
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 24}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
+          provider: {package_id: ai2apps/model-flux2-klein-mlx, service_key: ai2apps.model.flux2-klein-mlx, version: ">=0.1.2,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.flux2-klein-mlx/4b}
+      - id: apple-metal-flux2-klein-9b
+        label: FLUX.2 Klein 9B MLX · 高质量版
+        description: 高质量图片编辑与多参考图创作；建议至少 48 GiB 统一内存，安装时需确认 FLUX 非商业许可。
+        priority: 90
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 48}}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.8,<2.0.0"}
+          provider: {package_id: ai2apps/model-flux2-klein-9b-mlx, service_key: ai2apps.model.flux2-klein-9b-mlx, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.flux2-klein-9b-mlx/9b}
+      - id: apple-metal-qwen-image-edit-2511
+        label: Qwen Image Edit 2511 MLX
+        description: 图片编辑、多参考图创作与人物一致性；至少需要 48 GiB 统一内存，与文生图 Checkpoint 分别安装。
+        priority: 70
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 48}}
+        stack:
+          components:
+            - {id: runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
+            - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen-image-mlx, service_key: ai2apps.model.qwen-image-mlx, version: ">=0.1.1,<1.0.0"}
+            - {id: checkpoint, kind: checkpoint, model_id: ai2apps.model.qwen-image-mlx/edit-2511}
+            - {id: verify, kind: verify, service_key: ai2apps.model.qwen-image-mlx, capabilities: [image-edit]}

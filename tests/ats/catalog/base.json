@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "ai2apps.test-catalog.v1",
+  "cases": [
+    {"id":"static.python-syntax","name":"Python syntax","priority":"P0","group":"Static and Contract Gates","executor":"builtin","timeoutSeconds":120},
+    {"id":"static.javascript-syntax","name":"JavaScript syntax","priority":"P0","group":"Static and Contract Gates","executor":"builtin","timeoutSeconds":180},
+    {"id":"static.json-contracts","name":"JSON manifest syntax","priority":"P0","group":"Static and Contract Gates","executor":"builtin","timeoutSeconds":120},
+    {"id":"static.yaml-contracts","name":"YAML manifest syntax","priority":"P0","group":"Static and Contract Gates","executor":"builtin","timeoutSeconds":120},
+    {"id":"bundle.test-identity","name":"Test App fixed identity","priority":"P0","group":"Native Shell and Helper","executor":"builtin","timeoutSeconds":30},
+    {"id":"bundle.verify-release-app","name":"Release-shaped Test App verification","priority":"P0","group":"Native Shell and Helper","executor":"builtin","timeoutSeconds":300},
+    {
+      "id":"tests.swift-core","name":"Swift contracts, supervisor and updater tests","priority":"P0","group":"Native Shell and Helper","executor":"command",
+      "command":["swift","test","--package-path","apps/ai2apps-acefox"],"timeoutSeconds":600
+    },
+    {
+      "id":"tests.python-ai2apps-core","name":"Selected AI2Apps Python P0 tests","priority":"P0","group":"Static and Contract Gates","executor":"command","timeoutSeconds":900,
+      "command":[".venv/bin/python","-m","pytest","-q","tests/test_ai2apps_client_bootstrap.py","tests/test_ai2apps_helper_control.py","tests/test_ai2apps_platform_schema.py","tests/test_ai2apps_security_boundaries.py","tests/test_ai2apps_package_contract_v1.py","tests/test_ai2apps_app_icon.py"]
+    },
+    {"id":"cross-app.gallery-to-video-composer","name":"Gallery asset drag into Video Composer","priority":"P1","group":"Cross-App Workflows","executor":"codex-ui","requires":["computer-use","test-fixture-image"],"tags":["drag-drop","gallery","video-composer"]},
+    {"id":"video-composer.timeline-core","name":"Video Composer timeline core gestures","priority":"P1","group":"Cross-App Workflows","executor":"codex-ui","requires":["webdriver-bidi","computer-use","test-fixture-video"],"tags":["drag-drop","timeline","trim"]},
+    {"id":"ue.core-locales-accessibility","name":"Core UI locale and accessibility matrix","priority":"P2","group":"UE, Visual and Accessibility","executor":"codex-ui","requires":["computer-use","webdriver-bidi"]},
+    {"id":"release.real-capabilities","name":"Real provider golden workflows","priority":"P3","group":"Real Capabilities and Stability","executor":"codex-ui","requires":["real-models","network"]},
+    {"id":"release.update-rollback","name":"Candidate update, migration and rollback","priority":"P3","group":"Real Capabilities and Stability","executor":"codex-ui","requires":["signed-candidate","test-instance"]},
+    {"id":"release.long-running-stability","name":"Long-running resource and recovery test","priority":"P3","group":"Real Capabilities and Stability","executor":"codex-ui","requires":["test-instance"]}
+  ]
+}

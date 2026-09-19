@@ -7,6 +7,7 @@ import io
 import json
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 from fastapi.testclient import TestClient
@@ -15,8 +16,18 @@ from ai2apps.model_worker.server import create_app
 from ai2apps.packages.archive import ServicePackageArchive
 from ai2apps.packages.contract_v1 import build_package
 from ai2apps.packages.supervisor import ManagedServiceSupervisor
+from omlx.api.audio_routes import _package_transcription_max_tokens
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_qwen3_asr_legacy_runtime_receives_its_backend_default_token_limit():
+    qwen = SimpleNamespace(metadata={"family": "qwen3-asr"})
+    other = SimpleNamespace(metadata={"family": "other"})
+
+    assert _package_transcription_max_tokens(qwen, None) == 8192
+    assert _package_transcription_max_tokens(qwen, 2048) == 2048
+    assert _package_transcription_max_tokens(other, None) is None
 
 
 def _manifest(package: str):
@@ -254,6 +265,18 @@ def test_runtime_builder_preserves_audio_capabilities():
     assert '"AI2AppsOmlxRuntime.dmg"' in builder
 
 
+def test_runtime_worker_exposes_detailed_transcription_outside_chat_stt():
+    server = (ROOT / "ai2apps/model_worker/server.py").read_text(encoding="utf-8")
+
+    assert (
+        '"audio_detailed_transcription": "/v1/audio/transcriptions/detailed"'
+        in server
+    )
+    assert '"audio_detailed_transcription",' in server.partition(
+        "AUDIO_OPERATIONS ="
+    )[2]
+
+
 def test_standard_runtime_builder_supports_release_signed_knowledge_runtime():
     package_builder = (
         ROOT / "scripts" / "build_omlx_runtime_package.py"
@@ -322,14 +345,27 @@ def test_chat_exposes_wav_voice_input_and_package_tts_controls():
     assert "'/v1/audio/speech'" in chat
     assert "availableAudioModelsByType('audio_stt')" in chat
     assert "availableAudioModelsByType('audio_tts')" in chat
+    assert "audioModelReady(model)" in chat
+    assert "checkpoint_ready: adminModel?.checkpoint_ready !== false" in chat
+    assert "readyTts?.id || tts[0]?.id || ''" in chat
     assert 'x-show="availableAudioModels.length > 0"' in chat
-    assert 'x-model="audioSettings.sttModel"' in chat
-    assert 'x-model="audioSettings.ttsModel"' in chat
+    assert ':value="audioSettings.sttModel"' in chat
+    assert ':value="audioSettings.ttsModel"' in chat
+    assert "onAudioModelSelect('stt', $event.target)" in chat
+    assert "onAudioModelSelect('tts', $event.target)" in chat
     assert 'x-model="audioSettings.voice"' in chat
+    assert 'x-effect="$el.value = audioSettings.ttsModel"' in chat
+    assert 'x-effect="$el.value = audioSettings.voice"' in chat
+    assert ':selected="model.id === audioSettings.ttsModel"' in chat
+    assert ':selected="voice === audioSettings.voice"' in chat
     assert "voiceSettingsExpanded: false" in chat
     assert 'x-show="voiceSettingsExpanded" x-collapse' in chat
     assert 'x-model.number="audioSettings.speed"' in chat
     assert 'x-model="audioSettings.emotion"' in chat
+    assert 'x-effect="$el.value = audioSettings.emotion"' in chat
+    assert ':selected="emotion === audioSettings.emotion"' in chat
+    assert '<template x-if="audioEmotionOptions().length === 0">' in chat
+    assert 'x-show="audioEmotionOptions().length === 0" value="neutral"' not in chat
     assert "voice_speed_unavailable_tooltip" in chat
     assert "voice_emotion_unavailable_tooltip" in chat
     assert "isQwen3Tts" in chat
@@ -355,6 +391,11 @@ def test_chat_exposes_wav_voice_input_and_package_tts_controls():
     assert "chat.voice_input_busy_tooltip" in chat
     assert "chat.tts_busy_tooltip" in chat
     assert "audioEmotionOptions" in chat
+    assert "ai2apps-chat-audio-tts-preferences-v1" in chat
+    assert "ai2apps_chat_audio_tts_preferences_v1=" in chat
+    assert "'SameSite=Strict'" in chat
+    assert "restoreAudioTtsPreferences(this.audioSettings.ttsModel)" in chat
+    assert "rememberAudioTtsPreferences()" in chat
     assert "const settings = pipeline?.speechSettings || this.audioSettings" in chat
     assert "const voice = settings.voice || voices[0] || ''" in chat
     assert "if (voice) payload.voice = voice" in chat

@@ -28,6 +28,7 @@
 
     <!-- Lucide Icons -->
     <script src="/admin/static/js/lucide.min.js"></script>
+    <script src="/admin/static/js/ai2apps_icons.js?v=20260909-discover-rocket-gallery-b3-2"></script>
 
     <script>
         // Apply theme immediately to prevent flash of wrong theme
@@ -227,7 +228,8 @@
             function replaceIcon(el) {
                 var name = el.getAttribute('data-lucide');
                 if (!name) return;
-                var def = lucide.icons[toPascal(name)];
+                var key = toPascal(name);
+                var def = window.ai2appsIcons?.[key] || lucide.icons[key];
                 if (!def) return;
                 var svg = lucide.createElement(def);
                 Array.from(el.attributes).forEach(function(a) {
@@ -240,6 +242,10 @@
             function processAll() {
                 document.querySelectorAll('i[data-lucide]').forEach(replaceIcon);
             }
+
+            // Dynamic Shell surfaces call this synchronously after replacing
+            // their markup so custom and built-in icons paint in one frame.
+            window.ai2appsProcessIcons = processAll;
 
             // Initial pass
             if (document.readyState === 'loading') {

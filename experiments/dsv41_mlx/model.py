@@ -8,26 +8,37 @@ from collections import Counter
 import numpy as np
 import mlx.core as mx
 from storage import Storage
-from kernels import quant,norm,rope_freq,rope,rope_selected,sinkhorn,sparse
+from kernels import quant,norm,rope_freq,rope,rope_selected,sinkhorn,sparse,index_scores,index_topk
 from engram import HashState
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'dsv41_reference'))
 from lru_metal_bank import LRUMetalBank
 
 class Model:
-    def __init__(self,config,store,tokenizer,expert_store,max_seq=4096,main_slots=40,hot_slots=8,trace=None,matrix_prefill=True,prefill_slots=0,prefill_top=None,shared_dispatch=False,fused_gate_up=False):
+    def __init__(self,config,store,tokenizer,expert_store,max_seq=4096,main_slots=40,hot_slots=8,trace=None,matrix_prefill=True,prefill_slots=0,prefill_top=None,shared_dispatch=False,fused_gate_up=False,prefill_hot_direct=True,decode_dispatch="legacy",attention_chunk=64,main_shape=None,expert_no_cache=False):
         c=dict(gate_temp=1.,norm_topk_prob=True,temperature=0.);c.update(config);self.c=SimpleNamespace(**c)
         self.shared_dispatch=shared_dispatch or fused_gate_up
         self.fused_gate_up=fused_gate_up
+        if decode_dispatch not in ("legacy","shared","unsorted"):raise ValueError("invalid Decode dispatch")
+        self.decode_dispatch=decode_dispatch
+        if attention_chunk not in (64,128,256):raise ValueError("invalid attention chunk")
+        self.attention_chunk=attention_chunk
         self.prefill_executor=None
         if prefill_slots:
             from prefill import Prefill
-            self.prefill_executor=Prefill(prefill_slots,prefill_top)
+            self.prefill_executor=Prefill(prefill_slots,prefill_top,prefill_hot_direct)
         self.s=store;self.expert_store=Path(expert_store);self.main_slots=main_slots;self.hot_slots=hot_slots;self.trace=trace;self.matrix_prefill=matrix_prefill
+        self.expert_no_cache=expert_no_cache
+        self.main_capacities=tuple(main_shape) if main_shape is not None else (main_slots,)*self.c.n_layers
+        if len(self.main_capacities)!=self.c.n_layers or any(type(v) is not int or v<=0 for v in self.main_capacities):raise ValueError('invalid per-layer capacity')
+        if main_shape is not None:
+            balanced=all(type(v) is int and v in (32,36,40,44,48) for v in self.main_capacities) and sum(self.main_capacities)==1600
+            growth=all(type(v) is int and v in (40,48) for v in self.main_capacities) and self.main_capacities.count(48)==8
+            if not (balanced or growth) or hot_slots!=8:raise ValueError('invalid L1 shape budget')
         manifest=json.loads((self.expert_store/'manifest.json').read_text())
-        expected=hashlib.sha256((self.s.root/'model.safetensors.index.json').read_bytes()).hexdigest()
+        expected=self.s.source_index_sha256
         if manifest.get('status')!='complete' or manifest.get('checkpoint_index_sha256')!=expected or manifest.get('layers')!=list(range(self.c.n_layers)):raise ValueError('expert store/checkpoint mismatch')
         self.hash=HashState(self.c,tokenizer,max_seq);self.states={};self.banks={};self.shared={};self.freqs={};self.max_seq=max_seq
-        self.lookups={};self.ages={};self.ticks={};self.cache_counters=mx.zeros((self.c.n_layers,3),dtype=mx.uint32)
+        self.main_slot_masks={};self.lookups={};self.ages={};self.ticks={};self.cache_counters=mx.zeros((self.c.n_layers,3),dtype=mx.uint32)
         self.stats=dict(route_requests=0,l1_hits=0,l0_hits=0,misses=0,all_hit_steps=0,decode_host_ids=0,prefill_groups=0)
         for l in range(self.c.n_layers):
             ratio=self.c.compress_ratios[l]
@@ -65,6 +76,7 @@ class Model:
         rstd=mx.rsqrt(mx.mean(h*h,axis=-1)+c.norm_eps)*mx.rsqrt(mx.mean(key*key,axis=-1)+c.norm_eps)
         dot=mx.sum(h*weight*key,axis=-1)*rstd*c.dim**-.5
         signed=mx.where((dot.view(mx.uint32)&mx.array(0x80000000,dtype=mx.uint32))!=0,-1.,1.)*mx.sqrt(mx.maximum(mx.abs(dot),1e-6));gate=mx.sigmoid(signed)
+        if getattr(self,'image_mask',None) is not None:gate=mx.where(self.image_mask[...,None],0,gate)
         return (h+gate[...,None]*value[:,:,None,:]).astype(x.dtype)
     def compress(self,l,x,start):
         c=self.c;p=f'layers.{l}.attn.compressor';ratio=c.compress_ratios[l];st=self.states[l];n=x.shape[1]
@@ -103,13 +115,12 @@ class Model:
         q=quant(rope(q,freq,start,rd),32,True);k=self.shared['index'][:,:end//ratio]
         weights=self.linear(p+'.weights_proj',x)*(c.index_head_dim**-.5*c.index_n_heads**-.5)
         # Official einsum emits BF16 before relu/weight/reduce.
-        score=mx.einsum('bshd,btd->bsht',q,k)
-        score=mx.sum(mx.maximum(score,0)*weights[...,None],axis=2)
+        score=index_scores(q,k,weights)
         lens=(mx.arange(1,x.shape[1]+1)//ratio)[:,None] if start==0 else end//ratio
         if start==0:score=mx.where(mx.arange(end//ratio)>=lens,-mx.inf,score)
         if l==c.candidate_source_layer:self.shared['candidates']=self.candidates(score,lens)
         elif 0<=c.candidate_source_layer<l:score=mx.where(self.shared['candidates'],score,-mx.inf)
-        top=min(c.index_topk,end//ratio);idx=mx.sort(mx.argsort(score,axis=-1)[...,-top:],axis=-1).astype(mx.int32)
+        top=min(c.index_topk,end//ratio);idx=index_topk(score,top)
         return mx.where(idx<lens,idx+offset,-1).astype(mx.int32)
     def attention(self,l,x,start):
         c=self.c;p=f'layers.{l}.attn';st=self.states[l];n=x.shape[1];ratio=c.compress_ratios[l];freq=self.freqs[bool(ratio)];rd=c.rope_head_dim
@@ -140,7 +151,7 @@ class Model:
                 # MLX updates are functional: publish the updated array explicitly.
                 self.shared['compressed']=st['compressed']
             window=mx.concatenate([window,self.shared['compressed'][:,:clen]],axis=1);idx=mx.concatenate([idx,ci],axis=-1)
-        out=sparse(q,window,self.w(p+'.attn_sink'),idx,c.head_dim**-.5)
+        out=sparse(q,window,self.w(p+'.attn_sink'),idx,c.head_dim**-.5,self.attention_chunk)
         out=rope(out,freq,start,rd,True).reshape(1,n,c.o_groups,-1)
         w=self.s.grouped(p+'.wo_a').reshape(c.o_groups,c.o_lora_rank,-1)
         out=mx.transpose(mx.transpose(out,(0,2,1,3))@mx.swapaxes(w,-1,-2),(0,2,1,3)).reshape(1,n,-1)
@@ -164,6 +175,9 @@ class Model:
         out=mx.gather_qmm(z[order],w.view(mx.uint32),s,lhs_indices=mx.arange(x.shape[0],dtype=mx.uint32),rhs_indices=slots[order].astype(mx.uint32),group_size=32,bits=4,mode='mxfp4',sorted_indices=True)
         return out[inverse,0,:].astype(mx.bfloat16)
     def expert(self,x,bank,slots,rw,segments=None):
+        if segments is None and x.shape[0]<=self.c.n_activated_experts and self.decode_dispatch!="legacy":
+            from expert_dispatch import decode_expert
+            return decode_expert(x,bank.arrays,slots,rw,self.decode_dispatch)
         if self.shared_dispatch and segments is not None:
             from expert_dispatch import expert
             return expert(self,x,bank,slots,rw,segments)
@@ -174,20 +188,48 @@ class Model:
     def shared_expert(self,l,x):
         p=f'layers.{l}.ffn.shared_experts';gate=mx.minimum(self.linear(p+'.w1',x).astype(mx.float32),10);up=mx.clip(self.linear(p+'.w3',x).astype(mx.float32),-10,10)
         return self.linear(p+'.w2',(gate*mx.sigmoid(gate)*up).astype(x.dtype))
+    def refresh_slot_roles(self,l,bank):
+        if bank.dynamic_roles:
+            main=set(bank.main.values())
+            self.main_slot_masks[l]=mx.array([s in main for s in range(bank.capacity)],dtype=mx.bool_)
+    def route_cache_counts(self,l,mapped):
+        if l in self.main_slot_masks:
+            resident=mapped>=0
+            main=resident & self.main_slot_masks[l][mx.maximum(mapped,0)]
+            return mx.stack([mx.sum(main),mx.sum(resident & ~main),mx.sum(~resident)]).astype(mx.uint32)
+        return mx.stack([mx.sum((mapped>=0)&(mapped<self.main_capacities[l])),mx.sum(mapped>=self.main_capacities[l]),mx.sum(mapped<0)]).astype(mx.uint32)
+    def routes_all_hit(self,l,ids,mapped,required=None):
+        if required is not None:return not bool(mx.any(required&(mapped<0)).item())
+        return bool(mx.all(mapped>=0).item())
+    def burst_miss_metadata(self,l,ids,required,mapped):
+        if self.l1_policy=='eviction_dual':
+            if self.ticks[l]+self.c.n_activated_experts>=2**24:raise RuntimeError('packed cache ages exceed exact float32 integer range')
+            rank=.75*self.fast[l]*(32*(1-2**(-1/8)))+.25*self.slow[l]*(32*(1-2**(-1/64)))
+            packed=mx.concatenate([ids.astype(mx.float32),required.astype(mx.float32),mapped.astype(mx.float32),self.ages[l].astype(mx.float32),rank]).tolist()
+            n=self.c.n_activated_experts;k=self.banks[l].capacity
+            return ([int(v) for v in packed[:n]],[bool(v) for v in packed[n:2*n]],
+                    [int(v) for v in packed[2*n:3*n]],[int(v) for v in packed[3*n:3*n+k]],packed[3*n+k:])
+        return ids.tolist(),required.tolist(),mapped.tolist(),self.ages[l].tolist(),None
+    def miss_metadata(self,l,ids):
+        return ids.tolist(),self.ages[l].tolist(),None
+    def prepare_miss(self,l,bank,host,scores):
+        return bank.prepare(host)
     def moe(self,l,x,start):
         c=self.c;p=f'layers.{l}.ffn.gate';flat=x.reshape(-1,c.dim)
         scores=(flat.astype(mx.float32)@self.w(p+'.weight',mx.float32).T)/c.gate_temp
         scores=mx.sqrt(mx.logaddexp(scores,mx.array(0.,dtype=mx.float32)))
-        ids=mx.argsort(scores+self.w(p+'.bias'),axis=-1)[...,-c.n_activated_experts:][...,::-1]
+        bias=self.w(p+'.bias')
+        if getattr(self,'image_mask',None) is not None:bias=mx.where(self.image_mask.reshape(-1,1),self.w(p+'.bias_vl'),bias)
+        ids=mx.argsort(scores+bias,axis=-1)[...,-c.n_activated_experts:][...,::-1]
         weights=mx.take_along_axis(scores,ids,axis=-1);weights=weights/(mx.sum(weights,axis=-1,keepdims=True)+1e-20)*c.route_scale
         order=mx.argsort(ids,axis=-1);ids=mx.take_along_axis(ids,order,axis=-1);weights=mx.take_along_axis(weights,order,axis=-1)
         self.emit(f'layers.{l}.gate',ids)
         if l not in self.banks:
             # Host metadata only: choose current-context Main before SSD reads.
             mx.eval(ids);host=ids.tolist();counts=Counter(e for row in host for e in row)
-            selected=[e for e,_ in sorted(counts.items(),key=lambda p:(-p[1],p[0]))[:self.main_slots]]
-            selected+=[e for e in range(c.n_routed_experts) if e not in selected][:self.main_slots-len(selected)]
-            self.banks[l]=LRUMetalBank(self.expert_store/f'layer-{l}.bin',selected,l0_slots=self.hot_slots)
+            selected=[e for e,_ in sorted(counts.items(),key=lambda p:(-p[1],p[0]))[:self.main_capacities[l]]]
+            selected+=[e for e in range(c.n_routed_experts) if e not in selected][:self.main_capacities[l]-len(selected)]
+            self.banks[l]=LRUMetalBank(self.expert_store/f'layer-{l}.bin',selected,l0_slots=self.hot_slots,no_cache=self.expert_no_cache)
         bank=self.banks[l]
         if flat.shape[0]>1 and self.prefill_executor is not None:
             out=self.prefill_executor.dispatch(self,l,flat,ids,weights,bank,scores)
@@ -216,13 +258,13 @@ class Model:
                 for age,slot in enumerate(bank.hot.values()):ages[slot]=age+1
                 self.ages[l]=mx.array(ages,dtype=mx.int32);self.ticks[l]=bank.capacity
             mapped=self.lookups[l][ids[0]]
-            self.cache_counters[l]=self.cache_counters[l]+mx.stack([mx.sum((mapped>=0)&(mapped<self.main_slots)),mx.sum(mapped>=self.main_slots),mx.sum(mapped<0)]).astype(mx.uint32)
-            if bool(mx.all(mapped>=0).item()):
+            self.cache_counters[l]=self.cache_counters[l]+self.route_cache_counts(l,mapped)
+            if self.routes_all_hit(l,ids[0],mapped):
                 slots=mapped;self.stats['all_hit_steps']+=1
             else:
-                host=ids[0].tolist();ages=self.ages[l].tolist()
+                host,ages,promotion_scores=self.miss_metadata(l,ids[0])
                 bank.hot=dict(sorted(bank.hot.items(),key=lambda pair:ages[pair[1]]))
-                slots=bank.prepare(host);self.stats['decode_host_ids']+=len(host)
+                slots=self.prepare_miss(l,bank,host,promotion_scores);self.stats['decode_host_ids']+=len(host)
                 mapping=[-1]*c.n_routed_experts
                 for e,s in {**bank.main,**bank.hot}.items():mapping[e]=s
                 self.lookups[l]=mx.array(mapping,dtype=mx.int32)
@@ -239,7 +281,18 @@ class Model:
         c=self.c
         if ids.shape[0]!=1 or start+ids.shape[1]>self.max_seq:raise ValueError('batch/context limit')
         if start>0 and ids.shape[1]!=1:raise ValueError('incremental forward supports one decode token; chunked prefill is not implemented')
-        hashes=self.hash(ids,start);self.emit('engram_hashes',hashes);h=self.s.embedding('embed',ids)[:,:,None,:];h=mx.repeat(h,c.hc_mult,axis=2)
+        self.image_mask=(self.vision_types>=0) if start==0 and hasattr(self,'vision_types') else None
+        hashes=self.hash(ids,start,None if self.image_mask is None else ~self.image_mask);self.emit('engram_hashes',hashes)
+        h=self.s.embedding('embed',ids)
+        if start==0 and hasattr(self,'vision_images'):
+            for img in self.vision_images:
+                features=self.vision(img.patches,img.n_vit_h,img.n_vit_w);mx.eval(features)
+                ts=mx.array(img.types,dtype=mx.int32);span=mx.zeros((len(img.types),c.dim),dtype=h.dtype)
+                for kind,name in [(0,'image_start'),(2,'image_newline'),(3,'image_end')]:span=mx.where((ts==kind)[:,None],self.w(name),span)
+                positions=mx.array([i for i,t in enumerate(img.types) if t==1],dtype=mx.int32);span[positions]=features
+                h[0,img.start:img.start+len(img.types)]=span
+                if hasattr(self,'vision_stage'):self.vision_stage('encoded:'+img.path)
+        h=mx.repeat(h[:,:,None,:],c.hc_mult,axis=2)
         # Official initial mix selects the first residual stream.
         pre=mx.zeros(h.shape[:-1],dtype=mx.float32);pre[:,:,0]=1.0
         for l in range(c.n_layers):

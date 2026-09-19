@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Read Aloud persistence, isolation, and API contract tests."""
+"""Voice Studio persistence, isolation, and API contract tests."""
 
 from __future__ import annotations
 
@@ -21,6 +21,15 @@ from ai2apps.readaloud import ReadAloudRepository
 from ai2apps.storage import PlatformDatabase
 
 WEB_ROOT = Path(__file__).parents[1] / "ai2apps" / "web"
+
+
+def test_readaloud_gallery_mini_entry_recovers_from_stale_host_bridge():
+    script = (WEB_ROOT / "static/js/readaloud.js").read_text()
+
+    assert "GALLERY_MINI_FALLBACK_URL" in script
+    assert "AI2Apps Host did not respond|Unsupported host mount" in script
+    assert "if (this.leftView === 'assets') this.mountGalleryMini()" in script
+    assert "if (force) { this.galleryMiniUrl = ''; this.galleryMiniMountId = ''; }" in script
 
 
 def _principal(user_id: str) -> RequestPrincipal:
@@ -328,6 +337,9 @@ def test_readaloud_uses_first_party_ai2apps_visual_tokens():
     assert "AI2AppsCapabilities?.resume" in script
     assert "AI2AppsCapabilities.acknowledge" in script
     assert "completionPolicy: 'configure_only'" in script
+    assert "const effectiveResumeToken = resumeToken || globalThis.crypto?.randomUUID?.()" in script
+    assert "resumeToken: effectiveResumeToken" in script
+    assert "resumeToken: resumeToken || null" not in script
     assert "'audio.speech_generation'" in script
     assert "'audio.speech_recognition'" in script
     assert "'audio.voice_clone'" in script
@@ -337,13 +349,18 @@ def test_readaloud_uses_first_party_ai2apps_visual_tokens():
     assert "/v1/audio/transcriptions" in script
     assert "/v1/platform/gallery/assets/import" in script
     assert "reference_asset_id" in script
-    assert "CHARACTER VOICE TRAINING" in template
+    assert 'class="ra-pipeline-header studio-mini-header"' in template
     assert "await this.saveSegment(segment)" in script
     assert "if (capability.configured)" in script
     assert "/capabilities/ensure" in provisioning
     assert "readaloud.pipeline.quick.name" in locales["en"]
     assert "readaloud.pipeline.quick.name" in locales["zh"]
     assert "朗读工坊" not in template
+    assert locales["en"]["readaloud.title"] == "Voice Studio"
+    assert locales["zh"]["readaloud.title"] == "语音工坊"
+    assert 'class="ra-header studio-header"' in template
+    assert "Voice Studio ·" not in template
+    assert "Read Aloud ·" not in template
     assert "--ra-ink:#171717" in stylesheet
     assert "--ra-line:#e7e5e4" in stylesheet
     assert "background:var(--ra-accent)" in stylesheet

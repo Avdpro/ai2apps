@@ -1,0 +1,14 @@
+{
+  "format": "ai2apps-deepseek-v41-runtime-profile",
+  "version": 1,
+  "scope": "standard",
+  "cache": {
+    "main_slots": 40,
+    "hot_slots": 8,
+    "prefill_slots": 64
+  },
+  "routing": {
+    "decode_topk": 6,
+    "lossless": true
+  }
+}

@@ -1,0 +1,44 @@
+schemaVersion: 1
+id: chat-picture-cloud-local
+name: Chat 云端与本地模型图片对话
+description: 在 Chat with pictures 分组中，使用同一张内容已知的图片，分别验证 Cloud 模型 ChatGPT 5.6 Luna
+  和本地模型 QWen3.8 27B 能否正确识别图片内容。本地模型缺失时先通过 UI 安装。图片应包含清晰、无歧义的主体，并有可核对的预期内容。
+groupId: pic-chat-test-group
+priority: P2
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: valid
+componentId: null
+enabled: false
+required: true
+requires:
+- test-account
+tags:
+- codex-ui
+- multimodal
+- cloud
+- local
+instructions:
+- 通过 Computer Use 启动或切换至 bundle ID 为 com.ai2apps.desktop.test.shell、instance 为 test
+  的 AI2Apps 测试 App，确认当前处于测试实例并已登录测试账号；无法确认时停止本 Case 并记录阻塞原因。
+- 通过 Computer Use 查看本次测试提供的已知图片，记录其主要主体、显著属性和数量，作为两次回答的统一核对依据；没有可用图片时记录阻塞，不使用未经核对的图片。
+- 点击Dock上的图标进入 Chat，新建本 Case 专用对话，在模型选择 UI 中选择 Cloud 模型 ChatGPT 5.6 Luna，确认对话显示该模型；找不到该模型时记录云端分支阻塞，继续本地分支。
+- 使用 Chat 的图片上传按钮和 macOS 文件选择窗口上传assets目录里的图片，确认输入区显示图片附件，输入“这张图片里有什么？请描述主要主体、显著特征和数量。”并发送。
+- 等待云端回答完成，逐项对照已记录的图片事实，记录正确项、遗漏项和明显错误项，并保存不含账号秘密的 UI 证据。
+- 新建另一条本 Case 专用对话，打开本地模型选择 UI，查找 QWen3.8 27B。若尚未安装，通过模型管理或模型商店 UI 找到该模型并执行安装，等待 UI
+  显示安装完成；若不存在、资源不足或超时，记录本地分支阻塞，不用其他模型替代。
+- 在本地对话中选择 QWen3.8 27B，确认 UI 显示该模型已就绪。通过图片上传按钮和 macOS 文件选择窗口上传同一张图片，确认附件显示后发送与云端分支完全相同的问题。
+- 等待本地回答完成，逐项对照同一份图片事实，记录正确项、遗漏项和明显错误项，并保存不含账号秘密的 UI 证据。
+- 分别记录云端和本地分支的结果；某一分支失败或阻塞时，仍完成另一独立分支的验证。
+expectations:
+- 所有操作均发生在 com.ai2apps.desktop.test 的 test 实例中。
+- 云端对话明确使用 ChatGPT 5.6 Luna，本地对话明确使用 QWen3.8 27B，未发生可见的模型替换或回退。
+- 本地模型原先缺失时，安装 UI 最终显示安装成功且模型可选择、可就绪；无法满足时本地分支不能判为通过。
+- 两条对话均成功上传并发送同一张图片，消息中可见图片附件，没有上传失败提示。
+- 两个模型均完成针对图片的回答，没有报错、无限等待、拒绝读取图片或仅给出通用说明。
+- 每个回答均正确识别预先记录的主要主体；提及的显著属性和数量与图片一致，没有虚构明显不存在的主要物体或场景。
+- 仅当云端和本地分支均完成且满足上述判定条件时，本 Case 才通过；任何分支未验证均不得将整个 Case 标记为通过。
+cleanup:
+- 通过 Chat UI 删除本 Case 创建的两条测试对话，包括其中上传的图片消息。
+- 如果 QWen3.8 27B 是本 Case 新安装的，通过模型管理 UI 卸载该模型；原先已安装的模型保留。
+fixtures: []

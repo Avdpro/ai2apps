@@ -105,6 +105,11 @@ def main() -> None:
         )
         try:
             team_id = sign_runtime(mountpoint / bundle_name, args.sign_identity)
+            # Flush every embedded Mach-O signature to the APFS image before
+            # detaching.  A successful codesign verification can otherwise
+            # race dirty APFS pages and leave a converted image whose main
+            # executable no longer matches its embedded CodeDirectory.
+            run("/bin/sync")
         finally:
             run("/usr/bin/hdiutil", "detach", str(mountpoint))
         candidate = root / output.name
@@ -129,6 +134,30 @@ def main() -> None:
     # checksum metadata, so running it after codesign can invalidate the outer
     # signature even though the image payload is unchanged.
     run("/usr/bin/hdiutil", "verify", str(output))
+    verification_mount = Path(
+        tempfile.mkdtemp(prefix="ai2apps-omlx-runtime-verify-")
+    )
+    try:
+        run(
+            "/usr/bin/hdiutil",
+            "attach",
+            "-readonly",
+            "-nobrowse",
+            "-mountpoint",
+            str(verification_mount),
+            str(output),
+        )
+        run(
+            "/usr/bin/codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            str(verification_mount / bundle_name),
+        )
+    finally:
+        if verification_mount.is_mount():
+            run("/usr/bin/hdiutil", "detach", str(verification_mount))
+        verification_mount.rmdir()
     timestamp = [] if args.sign_identity == "-" else ["--timestamp"]
     run_codesign(
         "--force",

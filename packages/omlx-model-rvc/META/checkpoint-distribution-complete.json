@@ -1,0 +1,52 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_mlx_rvc_serena_e70_training_9218cca4_v1",
+  "modelId": "ai2apps.model.rvc-mlx/serena-e70",
+  "repoId": "Avdpro/MLX-RVC-Serena-E70",
+  "revision": "9218cca4417a28f860dbd18ebe8221051aebe6a5",
+  "format": "safetensors",
+  "quantization": "mixed-fp16-fp32",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "termsUrl": "https://opensource.org/license/mit",
+    "termsHash": "sha256:bec61ed1eb9a3748644ddbc50303aa6978e14eeaba46822e59a006c722b52585",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "ai2apps-checkpoint.json",
+    "contentvec/config.json",
+    "contentvec/manifest.json",
+    "contentvec/model.safetensors",
+    "rmvpe/manifest.json",
+    "rmvpe/mel_basis.safetensors",
+    "rmvpe/model.safetensors",
+    "training/discriminator.safetensors",
+    "training/generator.safetensors",
+    "training/manifest.json",
+    "voice/index.json",
+    "voice/index.safetensors",
+    "voice/model.json",
+    "voice/model.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/MLX-RVC-Serena-E70",
+      "revision": "9218cca4417a28f860dbd18ebe8221051aebe6a5",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/MLX-RVC-Serena-E70",
+      "revision": "48deaf95cc77a8cb471ebe7a52f70d5497be5475",
+      "access": "public_anonymous"
+    }
+  ]
+}

@@ -553,7 +553,8 @@ class TestSmallLRouting:
             legacy = run(L, 1)
             absorbed = run(L, 8)
             diff = float(mx.abs(legacy - absorbed).max())
-            assert diff < 2e-5, f"L={L}: {diff}"
+            # Both paths use FP16 matmuls but reduce in a different order.
+            assert diff < 5e-4, f"L={L}: {diff}"
 
     def test_topk_gather_matches_masked_reference(self, glm, mtp_active):
         """With the DSA indexer active (K > index_topk), the decode-shape
@@ -592,4 +593,5 @@ class TestSmallLRouting:
             idx, prefix = gm._parse_topk_state(state)
             assert idx is not None and idx.shape[2] == L and prefix == 0
             diff = float(mx.abs(legacy - gathered).max())
-            assert diff < 2e-5, f"L={L}: {diff}"
+            # The gathered path changes FP16 reduction order without changing routing.
+            assert diff < 5e-4, f"L={L}: {diff}"

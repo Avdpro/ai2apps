@@ -23,6 +23,7 @@ from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.ownership import require_session_access
 from ai2apps.config import DEFAULT_RESOURCE_IMPORT_LIMIT_BYTES
 from ai2apps.core import RepositoryError
+from ai2apps.extensions import ExtensionError
 from ai2apps.gallery import GalleryError, GalleryRepository
 from ai2apps.identity import RequestPrincipal
 
@@ -47,6 +48,13 @@ class ArtifactImportRequest(BaseModel):
 
 class AssetUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=512)
+
+
+class AssetHandleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    consumer_app_id: str = Field(alias="consumerAppId", min_length=3, max_length=200)
+    app_instance_id: str = Field(alias="appInstanceId", min_length=1, max_length=200)
 
 
 _BROWSER_TRANSFER_TTL_SECONDS = 24 * 60 * 60
@@ -313,6 +321,95 @@ def create_gallery_router(
                 "ETag": asset["content_hash"],
                 "X-Content-Type-Options": "nosniff",
             },
+        )
+
+    @router.post("/assets/{asset_id}/resource-handles", status_code=201)
+    def create_asset_resource_handle(
+        asset_id: str,
+        request: AssetHandleRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        selected = repository()
+        runtime = runtime_provider()
+        if isinstance(selected, JSONResponse):
+            return selected
+        if runtime is None:
+            return platform_error_response(
+                status_code=503,
+                code="platform_not_ready",
+                message="Gallery handle service is not ready.",
+                retryable=True,
+            )
+        try:
+            runtime.extension_manager.require_instance_access(
+                request.app_instance_id, principal
+            )
+            entry = runtime.extension_manager.instance_entry(
+                request.app_instance_id, principal=principal
+            )
+            if entry.get("app_key") != request.consumer_app_id:
+                return platform_error_response(
+                    status_code=404,
+                    code="app_instance_not_found",
+                    message="The target AppInstance was not found.",
+                )
+        except (RepositoryError, ExtensionError, ValueError):
+            return platform_error_response(
+                status_code=404,
+                code="app_instance_not_found",
+                message="The target AppInstance was not found.",
+            )
+        return guarded(
+            lambda: selected.create_asset_handle(
+                principal.actor_user_id,
+                asset_id,
+                actor_id=principal.actor_user_id,
+                installation_id=principal.installation_id,
+                app_instance_id=request.app_instance_id,
+                consumer_app_id=request.consumer_app_id,
+            )
+        )
+
+    @router.get("/resource-handles/{handle_id}/content")
+    def resource_handle_content(
+        handle_id: str,
+        app_instance_id: str = Query(alias="appInstanceId", min_length=1, max_length=200),
+        consumer_app_id: str = Query(alias="consumerAppId", min_length=3, max_length=200),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        selected = repository()
+        runtime = runtime_provider()
+        if isinstance(selected, JSONResponse):
+            return selected
+        if runtime is None:
+            return platform_error_response(
+                status_code=503, code="platform_not_ready",
+                message="Gallery handle service is not ready.", retryable=True,
+            )
+        try:
+            runtime.extension_manager.require_instance_access(app_instance_id, principal)
+            entry = runtime.extension_manager.instance_entry(app_instance_id, principal=principal)
+            if entry.get("app_key") != consumer_app_id:
+                raise ValueError("consumer mismatch")
+            asset, path = selected.asset_handle_path(
+                handle_id,
+                actor_id=principal.actor_user_id,
+                installation_id=principal.installation_id,
+                app_instance_id=app_instance_id,
+                consumer_app_id=consumer_app_id,
+            )
+        except (RepositoryError, ExtensionError, GalleryError, ValueError):
+            return platform_error_response(
+                status_code=404,
+                code="gallery_resource_handle_not_found",
+                message="Gallery Resource Handle was not found or has expired.",
+            )
+        return FileResponse(
+            path,
+            media_type=asset["media_type"],
+            filename=None,
+            content_disposition_type="inline",
+            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
         )
 
     @router.post("/assets/{asset_id}/browser-transfer")

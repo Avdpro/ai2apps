@@ -35,6 +35,67 @@ before dynamic cache replacement work begins.
   Release builds remain named `AI2Apps.app`.
 - When using Computer Use, identify AI2Apps by its exact bundle ID or executable path, not only by display name.
 
+## AI2Apps App-Shell development environment
+
+- App-Shell Apps such as Chat, Terminal, Coder, Knowledge, and other Local
+  HTML/Python Apps must use the permanent isolated development App at
+  `apps/ai2apps-acefox/.build/AI2Apps-app-dev.app`. Its fixed display name is
+  `AI2Apps-App-Dev`, bundle ID is `com.ai2apps.desktop.appdev`, and instance ID
+  is `app-dev`. Do not rename, clone, or replace these identities per feature.
+- Build or refresh this environment only through
+  `apps/ai2apps-acefox/scripts/build-app-dev-environment.sh`. The script stages
+  and verifies a complete replacement, archives the previous App under
+  `apps/ai2apps-acefox/.build/archive/`, and preserves the long-lived
+  `app-dev` instance data. Do not use `build-dev-app.sh` for this environment.
+- Keep `AI2Apps-app-dev.app` independent from the general lower-level
+  `AI2Apps-dev.app`/`dev` environment. Never copy or merge their Application
+  Support, Cache, browser Profile, Cookie, database, log, Package, or model
+  state. Both environments are expected to run concurrently.
+- The App Dev bundle embeds a `cloud` Runtime, `omlx`, Python dependencies,
+  Swift Helper/Launcher/Updater, and AceFox snapshot. It hot-mounts only the
+  current repository's `ai2apps/` source through the explicit trusted
+  Development Bundle contract; it must not inherit arbitrary source paths or
+  use the repository `.venv` as its runtime.
+- The App Dev builder must overlay the current matching AceFox
+  `browser/components/ai2apps/content/shell.mjs` into the packaged browser
+  `omni.ja`. This keeps the App Dev Shell aligned with the general Dev App's
+  Local-aware native window title while using `AI2Apps-App-Dev` as its prefix.
+  This source overlay is Development-only and must never be enabled for a
+  production build. After rebuilding, verify the live native title has the
+  form `AI2Apps-App-Dev: <device name> 127.0.0.1:<port>`; plist-only name checks
+  are insufficient because an outdated packaged `shell.mjs` falls back to the
+  embedded page title.
+- Use the smallest feedback loop that matches the change:
+  - For `ai2apps/web/templates/`, `ai2apps/web/static/`, ordinary HTML, CSS,
+    JavaScript, and directly loaded localization content, refresh the Shell
+    page; force-refresh only when browser caching masks a static change.
+  - For Python API, Service, App registration, or other imported `ai2apps/`
+    modules, restart the `app-dev` Local process from its Helper menu; do not
+    rebuild the App merely for these changes.
+  - Rebuild `AI2Apps-app-dev.app` after changes to `omlx/`, Runtime layers or
+    Python dependencies, Swift Helper/Launcher/Updater code, AceFox, embedded
+    entrypoints or manifests, bundle metadata, signing/entitlements, or App
+    development icons. Also rebuild whenever a new lower-level snapshot is
+    intentionally adopted by the App-Shell environment.
+- Before replacing the fixed App, quit only the exact `app-dev` Helper, Shell,
+  and Local processes; do not terminate other AI2Apps instances. After a
+  rebuild, launch the fixed path and verify the bundle identifier, instance ID,
+  Development flag, embedded Runtime profile, disabled production update URL,
+  source-root contract, `verify-release-app.sh`, and
+  `codesign --verify --deep --strict`.
+- The App Dev Helper uses the standard four-state menu bar icon with one orange
+  circle in its upper-left corner, and its App/Shell icon uses the pale-purple
+  upper sphere. Test uses two purple diamonds in the upper corners and a
+  light-blue upper sphere. Production, `main`, and `AI2Apps-dev.app` icons must
+  remain unchanged. These are fixed identity contracts, not optional build
+  decoration: always use `build-app-dev-environment.sh` or `build-test-app.sh`
+  for those identities. `build-release-app.sh` must centrally derive and verify
+  the corresponding App, embedded Shell, and all four Helper-state icons; do
+  not bypass, duplicate, or weaken those checks in another build path.
+- `docs/ai2apps-app-dev-environment.md` is the detailed workflow reference. The
+  App Dev bundle is never a releasable artifact; production Desktop work still
+  follows `docs/ai2apps-desktop-release-runbook.md` and the release ledger.
+
 ## AI2Apps Cloud change boundary
 
 - When work involves changes to AI2Apps backend Cloud APIs or any related

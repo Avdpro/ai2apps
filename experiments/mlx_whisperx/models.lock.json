@@ -1,0 +1,96 @@
+{
+  "schema": "ai2apps.mlx-whisperx-model-lock/v1",
+  "models": [
+    {
+      "role": "transcription",
+      "repository": "mlx-community/whisper-tiny-asr-6bit",
+      "revision": "0d4e06643e6f197f73a49f47a6c5a7a526ae71f3",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 31137098,
+      "weight_sha256": "4683645bdf934de3e9cc34e40317cb04a06952335e84b4d8d1e49a79188797d5",
+      "license": "apache-2.0"
+    },
+    {
+      "role": "transcription_quality_candidate",
+      "repository": "mlx-community/whisper-small-asr-6bit",
+      "revision": "a1adf859ce79899ebf9c379d535a66ecc9024288",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 198614694,
+      "weight_sha256": "299c25dccba8199a00c5ca7c1c5d5a2f84d6ecd88e1f74639ef77a14e93649c7",
+      "languages": ["zh", "en"],
+      "license": "apache-2.0"
+    },
+    {
+      "role": "transcription_high_performance_candidate",
+      "repository": "mlx-community/whisper-large-v3-turbo-asr-4bit",
+      "revision": "321a6ead9f6e0646bc8188a54d2a470e275c6b76",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 463462815,
+      "weight_sha256": "45298f6dc48df8c11e0a8d1dc5e0197c688bfa530646fa21f1a0238d2b0ecda3",
+      "languages": ["zh", "en"],
+      "license": null,
+      "license_review_required": true
+    },
+    {
+      "role": "transcription_chinese_candidate",
+      "repository": "mlx-community/Qwen3-ASR-0.6B-4bit",
+      "revision": "313d850181767edf09f00a9c289becca70e58cd0",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 708236945,
+      "weight_sha256": "70c7e67e588062adce4f10796e47ad42ead51c6671eda61a0987eae38ca95ddf",
+      "languages": ["zh", "yue", "en"],
+      "license": "apache-2.0"
+    },
+    {
+      "role": "transcription_high_quality_candidate",
+      "repository": "mlx-community/Qwen3-ASR-1.7B-4bit",
+      "revision": "78a389c776a5483b2d0d4ea5494e11012e0d6159",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 1603081617,
+      "weight_sha256": "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45",
+      "languages": ["zh", "yue", "en"],
+      "license": "apache-2.0"
+    },
+    {
+      "role": "diarization",
+      "repository": "mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16",
+      "revision": "e23e6404bd9859e93edbf94a740eb1c7fc58f12e",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 236108132,
+      "weight_sha256": "3b60b8df29e59a8abaf8061ceeeae6e9284a68fbcd2e762c68f5e058bfceebfa",
+      "license": null
+    },
+    {
+      "role": "forced_alignment_en",
+      "repository": "facebook/wav2vec2-base-960h",
+      "revision": "22aad52d435eb6dbaf354bdad9b0da84ce7d6156",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 377607901,
+      "weight_sha256": "8aa76ab2243c81747a1f832954586bc566090c83a0ac167df6f31f0fa917d74a",
+      "license": "apache-2.0",
+      "local_adapter": "mlx-audio-wav2vec2-ctc-adapter/v1"
+    },
+    {
+      "role": "forced_alignment_zh",
+      "repository": "wbbbbb/wav2vec2-large-chinese-zh-cn",
+      "revision": "b654b5f3df69725df32808de454a1b865c829e4c",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 1283008572,
+      "weight_sha256": "40dc8eaaef20377a3ed6bd97b0a61daf10f6499d1f27994f8a0f1ce9cf70cfec",
+      "languages": ["zh"],
+      "text_script": "Hans",
+      "license": "apache-2.0",
+      "local_adapter": "mlx-audio-wav2vec2-ctc-adapter/v1"
+    },
+    {
+      "role": "forced_alignment_multilingual",
+      "repository": "mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
+      "revision": "0e1a68e91d815300c7c9754b2a7639378b23db15",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 1271924386,
+      "weight_sha256": "be19ef8ac4326d032e7673342930b14c2df30bd68c1632493b0f563e30829f91",
+      "languages": ["zh", "yue", "en"],
+      "license": "apache-2.0"
+    }
+  ]
+}

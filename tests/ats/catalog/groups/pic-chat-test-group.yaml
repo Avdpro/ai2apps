@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: pic-chat-test-group
+name: Chat with pictures
+description: 多模态对话测试
+kind: regular
+order: 500
+lifecycle: enabled
+enabled: true
+defaultSelected: false
+tags: []

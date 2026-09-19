@@ -71,9 +71,25 @@ def validate_image_capabilities(value: Any) -> dict[str, Any]:
     operations = _strings(
         normalized.get("operations"), field="image_capabilities.operations", allowed=_OPERATIONS
     )
-    if operations[0] != "image_generation":
-        raise ImageCapabilitiesError("image_generation must be the first operation")
     normalized["operations"] = operations
+
+    # Editing-only checkpoints are valid; generation is not an implicit ability.
+    inputs = normalized.get("inputs")
+    if inputs is not None:
+        if not isinstance(inputs, Mapping):
+            raise ImageCapabilitiesError("image_capabilities.inputs must be an object")
+        references = inputs.get("reference_images")
+        if not isinstance(references, Mapping):
+            raise ImageCapabilitiesError("inputs.reference_images must be an object")
+        minimum, maximum = references.get("minimum"), references.get("maximum")
+        if (type(minimum) is not int or type(maximum) is not int
+                or not 0 <= minimum <= maximum <= 16):
+            raise ImageCapabilitiesError("Invalid reference image count range")
+        if "image_edit" in operations and minimum < 1:
+            raise ImageCapabilitiesError("Image editing requires at least one reference")
+        if "image_edit" not in operations and maximum != 0:
+            raise ImageCapabilitiesError("Generation-only models cannot declare references")
+        normalized["inputs"] = {"reference_images": {"minimum": minimum, "maximum": maximum}}
 
     formats = normalized.get("formats")
     if not isinstance(formats, Mapping):

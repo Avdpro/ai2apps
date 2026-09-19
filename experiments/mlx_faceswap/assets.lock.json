@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "source_snapshots": {
+    "Rope": {
+      "repository": "https://github.com/Hillobar/Rope",
+      "commit": "bf17d2305b127dde1c55ffe301c4ee0f32ae220b"
+    },
+    "VisoMaster": {
+      "repository": "https://github.com/visomaster/VisoMaster",
+      "commit": "d86cc97f499c39d275b7ef5a0d0ba03ea1b4b2a3"
+    },
+    "InsightFace": {
+      "repository": "https://github.com/deepinsight/insightface",
+      "commit": "7fadd420c2351d0ffa8cac403421c1a3ed733365"
+    },
+    "OpenCV Zoo": {
+      "repository": "https://github.com/opencv/opencv_zoo",
+      "commit": "47534e27c9851bb1128ccc0102f1145e27f23f98"
+    },
+    "FasterLivePortrait-MLX audit": {
+      "repository": "https://github.com/ivanfioravanti/fasterliveportrait-mlx",
+      "commit": "d5361f4806c14fe2051eecb1dd5a89930f46db0d",
+      "weights_repository": "ivanfioravanti/FasterLivePortrait-MLX-weights",
+      "weights_revision": "2cc2ac92c9fe65ca4fb68cb1a1556ead285e7391"
+    },
+    "LivePortrait official weights": {
+      "repository": "https://huggingface.co/KlingTeam/LivePortrait",
+      "revision": "82a4fa6735ca58432b6ce39301b4b9ee066dea47",
+      "license_repository": "https://github.com/KlingAIResearch/LivePortrait",
+      "license": "MIT"
+    }
+  },
+  "models": {
+    "yunet_2023mar": {
+      "filename": "face_detection_yunet_2023mar.onnx",
+      "url": "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "role": "permissive_face_detection_and_5_point_landmarks",
+      "license": "MIT"
+    },
+    "arcface_w600k_r50": {
+      "filename": "w600k_r50.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/w600k_r50.onnx",
+      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+      "role": "face_embedding"
+    },
+    "scrfd_2_5g_bnkps": {
+      "filename": "scrfd_2.5g_bnkps.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/scrfd_2.5g_bnkps.onnx",
+      "sha256": "bc24bb349491481c3ca793cf89306723162c280cb284c5a5e49df3760bf5c2ce",
+      "role": "face_detection_and_5_point_landmarks"
+    },
+    "inswapper_128_fp16": {
+      "filename": "inswapper_128.fp16.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/inswapper_128.fp16.onnx",
+      "sha256": "6d51a9278a1f650cffefc18ba53f38bf2769bf4bbff89267822cf72945f8a38b",
+      "role": "face_swap"
+    },
+    "xseg": {
+      "filename": "XSeg_model.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/XSeg_model.onnx",
+      "sha256": "4381395dcbec1eef469fa71cfb381f00ac8aadc3e5decb4c29c36b6eb1f38ad9",
+      "role": "face_and_obstacle_mask"
+    },
+    "simswap_512_unofficial": {
+      "filename": "simswap_512_unoff.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/simswap_512_unoff.onnx",
+      "sha256": "08c6ca9c0a65eff119bea42686a4574337141de304b9d26e2f9d11e78d9e8e86",
+      "role": "high_resolution_face_swap"
+    },
+    "simswap_arcface": {
+      "filename": "simswap_arcface_model.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/simswap_arcface_model.onnx",
+      "sha256": "58949c864ab4a89012aaefc117f1ab8548c5f470bbc3889474bca13a412fc843",
+      "role": "simswap_identity_embedding"
+    },
+    "gfpgan_v1_4": {
+      "filename": "GFPGANv1.4.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0/GFPGANv1.4.onnx",
+      "sha256": "6548e54cbcf248af385248f0c1193b359c37a0f98b836282b09cf48af4fd2b73",
+      "role": "face_restoration"
+    },
+    "liveportrait_appearance_feature_extractor": {
+      "filename": "appearance_feature_extractor.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0_lp/appearance_feature_extractor.onnx",
+      "sha256": "dbbbb44e4bba12302d7137bdee6a0f249b45fb6dd879509fd5baa27d70c40e32",
+      "role": "portrait_appearance_features"
+    },
+    "liveportrait_motion_extractor": {
+      "filename": "motion_extractor.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0_lp/motion_extractor.onnx",
+      "sha256": "99d4b3c9dd3fd301910de9415a29560e38c0afaa702da51398281376cc36fdd3",
+      "role": "portrait_pose_expression_and_keypoints"
+    },
+    "liveportrait_warping_spade": {
+      "filename": "warping_spade.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0_lp/warping_spade.onnx",
+      "sha256": "d6ee9af4352b47e88e0521eba6b774c48204afddc8d91c671a5f7b8a0dfb4971",
+      "role": "portrait_feature_warping_and_spade_rendering"
+    },
+    "liveportrait_stitching_eye": {
+      "filename": "stitching_eye.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0_lp/stitching_eye.onnx",
+      "sha256": "251004fe4a994c57c8cd9f2c50f3d89feb289fb42e6bc3af74470a3a9fa7d83b",
+      "role": "portrait_eye_retargeting"
+    },
+    "liveportrait_stitching_lip": {
+      "filename": "stitching_lip.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0_lp/stitching_lip.onnx",
+      "sha256": "1ca793eac4b0dc5464f1716cdaa62e595c2c2272c9971a444e39c164578dc34b",
+      "role": "portrait_lip_retargeting"
+    },
+    "liveportrait_stitching": {
+      "filename": "stitching.onnx",
+      "url": "https://github.com/visomaster/visomaster-assets/releases/download/v0.1.0_lp/stitching.onnx",
+      "sha256": "43598e9747a19f4c55d8e1604fb7d7fa70ab22377d129cb7d1fe38c9a737cc79",
+      "role": "portrait_keypoint_stitching"
+    }
+  },
+  "official_liveportrait_sources": {
+    "liveportrait/base_models/appearance_feature_extractor.pth": {
+      "sha256": "5279bb8654293dbdf327030b397f107237dd9212fb11dd75b83dfb635211ceb5",
+      "bytes": 3387959
+    },
+    "liveportrait/base_models/motion_extractor.pth": {
+      "sha256": "251e6a94ad667a1d0c69526d292677165110ef7f0cf0f6d199f0e414e8aa0ca5",
+      "bytes": 112545506
+    },
+    "liveportrait/base_models/spade_generator.pth": {
+      "sha256": "4780afc7909a9f84e24c01d73b31a555ef651521a1fe3b2429bd04534d992aee",
+      "bytes": 221813590
+    },
+    "liveportrait/base_models/warping_module.pth": {
+      "sha256": "2f61a6f265fe344f14132364859a78bdbbc2068577170693da57fb96d636e282",
+      "bytes": 182180086
+    },
+    "liveportrait/retargeting_models/stitching_retargeting_module.pth": {
+      "sha256": "3652d5a3f95099141a56986aaddec92fadf0a73c87a20fac9a2c07c32b28b611",
+      "bytes": 2393098
+    }
+  },
+  "distribution": {
+    "status": "mixed_review",
+    "note": "YuNet is explicitly MIT licensed. Other hashes make experiments reproducible but do not by themselves grant redistribution rights; follow LICENSE_REVIEW.md before packaging."
+  }
+}

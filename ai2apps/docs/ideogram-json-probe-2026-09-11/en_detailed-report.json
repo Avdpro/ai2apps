@@ -1,0 +1,41 @@
+{
+  "height": 1024,
+  "width": 1024,
+  "seed": 0,
+  "steps": 12,
+  "effective_steps": 12,
+  "operation": "image_edit",
+  "image_strength": null,
+  "text_tokens": 195,
+  "image_tokens": 4096,
+  "denoise_seconds": 71.2703506660182,
+  "decode_seconds": 0.9576892082113773,
+  "step_seconds": [
+    5.906079417094588,
+    5.767969333101064,
+    5.794293458107859,
+    5.8497447080444545,
+    5.907870583934709,
+    5.929600749863312,
+    5.958153916057199,
+    6.102655417053029,
+    5.977669874904677,
+    6.0006684579420835,
+    6.0437700839247555,
+    6.031860416987911
+  ],
+  "stage_seconds": {
+    "release_generation_models": 0.18094512494280934,
+    "load_text_encoder": 0.16896583302877843,
+    "encode_prompt": 0.10235408297739923,
+    "release_text_encoder": 0.032665417063981295,
+    "load_generation_models": 0.31781033310107887
+  },
+  "staged_model_lifecycle": true,
+  "compiled_denoisers": false,
+  "latent_mean": -0.021925078704953194,
+  "latent_std": 1.070634126663208,
+  "latent_absmax": 7.019158363342285,
+  "active_memory_bytes": 11446162358,
+  "peak_memory_bytes": 27857293826
+}

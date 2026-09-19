@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 import zipfile
 from contextlib import suppress
 from pathlib import Path, PurePosixPath
@@ -38,6 +39,7 @@ from ai2apps.storage import PlatformDatabase
 from ai2apps.storage.repositories import AppRepository, SessionRepository
 
 from .archive import InteractiveArchive
+from .development import DevelopmentAppPackage, DevelopmentPackageLoader
 from .models import (
     ExtensionError,
     InteractivePackageStatus,
@@ -57,6 +59,7 @@ class InteractivePackageManager:
         root: Path,
         publishers: PackageRepository,
         agents: AgentRepository,
+        development_source_root: Path | None = None,
     ) -> None:
         self.database = database
         self.events = events
@@ -68,10 +71,192 @@ class InteractivePackageManager:
         self.device = DeviceSigner(root)
         self.trust = InteractiveTrustVerifier(publishers, self.device)
         self._lock = asyncio.Lock()
+        self._development_lock = threading.RLock()
+        self._development_loader = (
+            None
+            if development_source_root is None
+            else DevelopmentPackageLoader(development_source_root)
+        )
+        self._development_packages: dict[str, DevelopmentAppPackage] = {}
         self._auditor = None
+        self.refresh_development_packages()
 
     def bind_local_ai_auditor(self, auditor) -> None:
         self._auditor = auditor
+
+    @staticmethod
+    def _is_development_manifest(manifest: dict) -> bool:
+        development = manifest.get("development")
+        return isinstance(development, dict) and development.get("mode") == "source"
+
+    def refresh_development_packages(self) -> tuple[DevelopmentAppPackage, ...]:
+        """Re-read source Package manifests without touching the Package Store."""
+
+        if self._development_loader is None:
+            for key in self._active_development_app_keys():
+                self._deactivate_development_app(key)
+            return ()
+        with self._development_lock:
+            discovered = self._development_loader.discover()
+            current = {item.package_id: item for item in discovered}
+            for package in discovered:
+                self._activate_development_app(package)
+            stale = (
+                set(self._development_packages) | set(self._active_development_app_keys())
+            ) - current.keys()
+            for key in stale:
+                self._deactivate_development_app(key)
+            self._development_packages = current
+            return discovered
+
+    def _active_development_app_keys(self) -> tuple[str, ...]:
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT package_id,manifest_json FROM app_definitions WHERE status='enabled'"
+            ).fetchall()
+        return tuple(
+            row["package_id"]
+            for row in rows
+            if self._is_development_manifest(json.loads(row["manifest_json"]))
+        )
+
+    def _activate_development_app(self, package: DevelopmentAppPackage) -> None:
+        manifest = package.manifest
+        instances = manifest.get("instances", {})
+        mode = AppInstanceMode(instances.get("mode", "multiple"))
+        scope = (
+            None
+            if mode is AppInstanceMode.MULTIPLE
+            else SingletonScope(instances.get("scope", "system"))
+        )
+        active = self._active_app_definition(package.package_id)
+        if (
+            active is not None
+            and active["effective_digest"] == package.effective_digest
+            and active["package_version"] == package.definition_version
+            and active["display_name"]
+            == str(manifest.get("name", package.package_id))
+            and active["instance_mode"] == mode.value
+            and active["singleton_scope"]
+            == (None if scope is None else scope.value)
+            and active["manifest_json"] == _json(manifest)
+        ):
+            return
+        active_instances = [] if active is None else self._instances(active["id"])
+        if (
+            active
+            and (
+                active["instance_mode"] != mode.value
+                or active["singleton_scope"] != (None if scope is None else scope.value)
+            )
+            and active_instances
+        ):
+            raise ExtensionError(
+                "development_instance_policy_conflict",
+                "Development app.yaml cannot change instance policy while instances exist",
+            )
+        effective = type(
+            "DevelopmentEffectiveDefinition",
+            (),
+            {"manifest": manifest, "effective_digest": package.effective_digest},
+        )()
+        migrated = self._migrate_states(active_instances, active, effective)
+        now = utc_now_text()
+        with self.database.transaction(write=True) as connection:
+            target = connection.execute(
+                "SELECT id FROM app_definitions WHERE package_id=? AND effective_digest=?",
+                (package.package_id, package.effective_digest),
+            ).fetchone()
+            definition_id = (
+                new_entity_id(EntityIdKind.APP_DEFINITION)
+                if target is None
+                else target["id"]
+            )
+            connection.execute(
+                "UPDATE app_definitions SET status='disabled',revision=revision+1,updated_at=? "
+                "WHERE package_id=? AND status='enabled' AND id!=?",
+                (now, package.package_id, definition_id),
+            )
+            values = (
+                package.definition_version,
+                str(manifest.get("name", package.package_id)),
+                mode.value,
+                None if scope is None else scope.value,
+                _json(manifest),
+                package.effective_digest,
+                package.effective_digest,
+                now,
+            )
+            if target is None:
+                connection.execute(
+                    """INSERT INTO app_definitions(
+                    id,package_id,package_version,display_name,instance_mode,
+                    singleton_scope,source,status,manifest_schema_version,manifest_json,
+                    upstream_digest,effective_digest,created_at,updated_at
+                    ) VALUES(?,?,?,?,?,?,'local','enabled',1,?,?,?,?,?)""",
+                    (
+                        definition_id,
+                        package.package_id,
+                        *values[:-1],
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                connection.execute(
+                    """UPDATE app_definitions SET package_version=?,display_name=?,
+                    instance_mode=?,singleton_scope=?,source='local',status='enabled',
+                    manifest_json=?,upstream_digest=?,effective_digest=?,
+                    revision=revision+1,updated_at=? WHERE id=?""",
+                    (*values, definition_id),
+                )
+            for instance, state, version in migrated:
+                connection.execute(
+                    """UPDATE app_instances SET app_definition_id=?,state_schema_version=?,
+                    state_json=?,revision=revision+1,updated_at=? WHERE id=?""",
+                    (definition_id, version, _json(state), now, instance["id"]),
+                )
+
+    def _deactivate_development_app(self, key: str) -> None:
+        active = self._active_app_definition(key)
+        if active is None:
+            return
+        try:
+            manifest = json.loads(active["manifest_json"])
+        except json.JSONDecodeError:
+            return
+        if not self._is_development_manifest(manifest):
+            return
+        with self.database.transaction() as connection:
+            candidates = connection.execute(
+                "SELECT * FROM app_definitions WHERE package_id=? AND id!=? "
+                "ORDER BY updated_at DESC",
+                (key, active["id"]),
+            ).fetchall()
+        fallback = next(
+            (
+                row
+                for row in candidates
+                if not self._is_development_manifest(json.loads(row["manifest_json"]))
+            ),
+            None,
+        )
+        now = utc_now_text()
+        with self.database.transaction(write=True) as connection:
+            connection.execute(
+                "UPDATE app_definitions SET status='disabled',revision=revision+1,updated_at=? WHERE id=?",
+                (now, active["id"]),
+            )
+            if fallback is not None:
+                connection.execute(
+                    "UPDATE app_definitions SET status='enabled',revision=revision+1,updated_at=? WHERE id=?",
+                    (now, fallback["id"]),
+                )
+                connection.execute(
+                    "UPDATE app_instances SET app_definition_id=?,revision=revision+1,updated_at=? "
+                    "WHERE app_definition_id=? AND status!='closed'",
+                    (fallback["id"], now, active["id"]),
+                )
 
     @staticmethod
     def _principal(value: RequestPrincipal | None) -> RequestPrincipal:
@@ -448,6 +633,12 @@ class InteractivePackageManager:
                         "patch_tests_failed",
                         "Effective definition failed Patch tests",
                     )
+        indexed_resources = {
+            str(item.get("path", "")) for item in record.file_index
+        } | set(resources)
+        InteractiveArchive._validate_manifest(
+            record.kind, manifest, indexed_resources
+        )
         return self.repository.activate_effective(
             kind=record.kind,
             key=record.unit_key,
@@ -816,11 +1007,22 @@ class InteractivePackageManager:
         state=None,
         principal: RequestPrincipal | None = None,
     ):
+        self.refresh_development_packages()
         request_principal = self._principal(principal)
         definition = self._active_app_definition(key)
         if definition is None:
             raise ResourceNotFoundError("app_definition", key)
         self._require_app_access(definition, request_principal)
+        manifest = json.loads(definition["manifest_json"])
+        navigation = manifest.get("navigation", {})
+        if (
+            isinstance(navigation, dict)
+            and navigation.get("status", "active") != "active"
+        ):
+            raise ExtensionError(
+                "app_unavailable",
+                "App is not available while it is still in development",
+            )
         mode = AppInstanceMode(definition["instance_mode"])
         scope = definition["singleton_scope"]
         if principal is not None and scope == "user":
@@ -891,6 +1093,7 @@ class InteractivePackageManager:
         principal: RequestPrincipal | None = None,
         locale: str | None = None,
     ) -> tuple[dict, ...]:
+        self.refresh_development_packages()
         request_principal = self._principal(principal)
         with self.database.transaction() as connection:
             rows = connection.execute(
@@ -925,17 +1128,22 @@ class InteractivePackageManager:
             manifest = json.loads(row["manifest_json"])
             if not can_access_app(request_principal, manifest):
                 continue
-            localized = localized_app_metadata(manifest, locale or "en")
             navigation = manifest.get("navigation", {})
+            if isinstance(navigation, dict) and navigation.get("launcher") is False:
+                continue
+            localized = localized_app_metadata(manifest, locale or "en")
             testflight = manifest.get("testflight")
             is_testflight = (
                 row["source"] == "local"
                 and isinstance(testflight, dict)
                 and testflight.get("signed") is False
             )
+            is_development = self._is_development_manifest(manifest)
             category = localized["category"]
             if is_testflight:
                 category = "TestFlight"
+            elif is_development:
+                category = "Development"
             elif category == "TestFlight":
                 category = "Third-party"
             entry = manifest.get("entry")
@@ -984,7 +1192,7 @@ class InteractivePackageManager:
                     "version": row["package_version"],
                     "display_name": localized["name"] if locale else row["display_name"],
                     "description": localized["description"],
-                    "source": row["source"],
+                    "source": "development" if is_development else row["source"],
                     "instance_mode": row["instance_mode"],
                     "singleton_scope": row["singleton_scope"],
                     "effective_digest": row["effective_digest"],
@@ -997,6 +1205,8 @@ class InteractivePackageManager:
                         "category": category,
                         "icon": str(navigation.get("icon", "app-window")),
                         "order": int(navigation.get("order", 1000)),
+                        "status": str(navigation.get("status", "active")),
+                        "experimental": navigation.get("experimental") is True,
                         "pinned_default": bool(
                             navigation.get("pinned_default", False)
                         ),
@@ -1004,7 +1214,13 @@ class InteractivePackageManager:
                     "instances": instances,
                     "running_count": len(instances),
                     "entry_url": f"/apps/{row['package_id']}",
-                    "distribution": "testflight" if is_testflight else "installed",
+                    "distribution": (
+                        "development"
+                        if is_development
+                        else "testflight"
+                        if is_testflight
+                        else "installed"
+                    ),
                 }
             )
         return tuple(
@@ -1016,6 +1232,192 @@ class InteractivePackageManager:
                 ),
             )
         )
+
+    def list_studio_mini_apps(
+        self,
+        studio_id: str,
+        *,
+        principal: RequestPrincipal | None = None,
+    ) -> tuple[dict, ...]:
+        """Discover Mini-App declarations from installed or source-mounted Apps."""
+
+        self.refresh_development_packages()
+        request_principal = self._principal(principal)
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT package_id,package_version,display_name,source,"
+                "effective_digest,manifest_json FROM app_definitions "
+                "WHERE status='enabled' ORDER BY package_id"
+            ).fetchall()
+        result: list[dict] = []
+        for row in rows:
+            manifest = json.loads(row["manifest_json"])
+            is_development = self._is_development_manifest(manifest)
+            if not can_access_app(request_principal, manifest):
+                continue
+            declarations = manifest.get("mini_apps", [])
+            if not isinstance(declarations, list):
+                continue
+            for declaration in declarations:
+                if not isinstance(declaration, dict):
+                    continue
+                matching = [
+                    placement
+                    for placement in declaration.get("placements", [])
+                    if isinstance(placement, dict)
+                    and placement.get("studio") == studio_id
+                ]
+                if not matching:
+                    continue
+                item = json.loads(json.dumps(declaration))
+                item["source"] = "package"
+                item["provider"] = {
+                    "appId": row["package_id"],
+                    "name": row["display_name"],
+                    "version": row["package_version"],
+                    "digest": row["effective_digest"],
+                    "distribution": (
+                        "development" if is_development else row["source"]
+                    ),
+                }
+                result.append(item)
+        return tuple(result)
+
+    def _studio_mini_app_definition(
+        self,
+        studio_id: str,
+        mini_app_id: str,
+        principal: RequestPrincipal,
+    ) -> tuple[dict, dict]:
+        self.refresh_development_packages()
+        matches: list[tuple[dict, dict]] = []
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM app_definitions WHERE status='enabled' "
+                "ORDER BY package_id"
+            ).fetchall()
+        for row in rows:
+            manifest = json.loads(row["manifest_json"])
+            if not can_access_app(principal, manifest):
+                continue
+            for declaration in manifest.get("mini_apps", []):
+                if not isinstance(declaration, dict) or declaration.get("id") != mini_app_id:
+                    continue
+                if any(
+                    isinstance(placement, dict)
+                    and placement.get("studio") == studio_id
+                    for placement in declaration.get("placements", [])
+                ):
+                    matches.append((dict(row), declaration))
+        if not matches:
+            raise ResourceNotFoundError("studio_mini_app", mini_app_id)
+        if len(matches) != 1:
+            raise ExtensionError(
+                "studio_mini_app_conflict",
+                "More than one installed Package declares this Studio Mini-App id",
+                details={"studio_id": studio_id, "mini_app_id": mini_app_id},
+            )
+        return matches[0]
+
+    def mount_studio_mini_app(
+        self,
+        studio_id: str,
+        mini_app_id: str,
+        *,
+        placement: str = "inline",
+        interaction_session_id: str | None = None,
+        context: dict | None = None,
+        principal: RequestPrincipal | None = None,
+    ) -> dict:
+        """Launch the provider App and mount one declared Studio Mini-App Entry."""
+
+        request_principal = self._principal(principal)
+        definition, declaration = self._studio_mini_app_definition(
+            studio_id, mini_app_id, request_principal
+        )
+        if placement not in {"inline", "sidebar"}:
+            raise ExtensionError(
+                "placement_denied", "Studio Mini-Apps support inline/sidebar mounts"
+            )
+        view = declaration["entry"]
+        if placement not in view.get("placements", ["inline", "sidebar"]):
+            raise ExtensionError(
+                "placement_denied", "Studio Mini-App placement is not declared"
+            )
+        if interaction_session_id is not None:
+            self._require_session_access(interaction_session_id, request_principal)
+        instance, _home, _created = self.launch_app(
+            definition["package_id"], principal=request_principal
+        )
+        mount_id = new_entity_id(EntityIdKind.APP_MOUNT)
+        now = utc_now_text()
+        mount_context = {
+            **dict(context or {}),
+            "studioId": studio_id,
+            "miniAppId": mini_app_id,
+            "providerAppId": definition["package_id"],
+            "providerVersion": definition["package_version"],
+            "providerDigest": definition["effective_digest"],
+        }
+        with self.database.transaction(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO app_mounts(
+                    id,app_instance_id,interaction_session_id,placement,
+                    renderer,resource,status,created_at,updated_at,context_json,
+                    entry_source
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    mount_id,
+                    instance.id,
+                    interaction_session_id,
+                    placement,
+                    view["kind"],
+                    view["resource"],
+                    "mounted",
+                    now,
+                    now,
+                    _json(mount_context),
+                    "mini_entry",
+                ),
+            )
+            event_app_instance_id = instance.id
+            if interaction_session_id is not None:
+                event_scope = connection.execute(
+                    "SELECT app_instance_id FROM sessions WHERE id=?",
+                    (interaction_session_id,),
+                ).fetchone()
+                event_app_instance_id = event_scope["app_instance_id"]
+            self.events.append_in_transaction(
+                connection,
+                event_type="app.studio_mini_app.mount",
+                subject_id=mount_id,
+                app_instance_id=event_app_instance_id,
+                session_id=interaction_session_id,
+                payload={
+                    "studio_id": studio_id,
+                    "mini_app_id": mini_app_id,
+                    "placement": placement,
+                    "renderer": view["kind"],
+                    "mounted_app_instance_id": instance.id,
+                    "provider_app_id": definition["package_id"],
+                },
+            )
+        return {
+            "id": mount_id,
+            "app_instance_id": instance.id,
+            "app_key": definition["package_id"],
+            "display_name": definition["display_name"],
+            "source": definition["source"],
+            "effective_digest": definition["effective_digest"],
+            "interaction_session_id": interaction_session_id,
+            "placement": placement,
+            "renderer": view["kind"],
+            "resource": view["resource"],
+            "entry_source": "mini_entry",
+            "context": mount_context,
+        }
 
     @staticmethod
     def resolve_mobile_entry(manifest: dict) -> tuple[str, dict] | None:
@@ -1042,6 +1444,8 @@ class InteractivePackageManager:
 
         result = []
         for app in self.list_apps(principal=principal, locale=locale):
+            if app["navigation"].get("status", "active") != "active":
+                continue
             manifest = {
                 "mobile": app.get("mobile"),
                 "mobile_entry": app.get("mobile_entry"),
@@ -1083,6 +1487,8 @@ class InteractivePackageManager:
         words = {word for word in normalized.replace("，", " ").replace("。", " ").split() if len(word) > 1}
         matches = []
         for app in self.list_apps(principal=principal):
+            if app["navigation"].get("status", "active") != "active":
+                continue
             activation = app.get("activation") or {}
             if not isinstance(activation, dict):
                 continue
@@ -1157,7 +1563,11 @@ class InteractivePackageManager:
             "instance_id": row["instance_id"],
             "app_key": row["package_id"],
             "display_name": row["display_name"],
-            "source": row["source"],
+            "source": (
+                "development"
+                if self._is_development_manifest(manifest)
+                else row["source"]
+            ),
             "renderer": entry.get("kind", "host"),
             "resource": entry.get("resource", ""),
             "effective_digest": row["effective_digest"],
@@ -1280,6 +1690,7 @@ class InteractivePackageManager:
     ) -> Path:
         """Resolve and re-hash one installed App resource before serving it."""
 
+        self.refresh_development_packages()
         safe = PurePosixPath(resource)
         if (
             not resource
@@ -1289,6 +1700,23 @@ class InteractivePackageManager:
         ):
             raise ExtensionError("unsafe_app_resource", "Unsafe App resource path")
         entry = self.instance_entry(instance_id, principal=principal)
+        if entry["source"] == "development":
+            package = self._development_packages.get(entry["app_key"])
+            if package is None or package.effective_digest != entry["effective_digest"]:
+                raise ExtensionError(
+                    "development_app_definition_stale",
+                    "Development App instance is not bound to the mounted source tree",
+                )
+            if resource not in package.files:
+                raise ResourceNotFoundError("app_resource", resource)
+            root = package.source_root.resolve(strict=True)
+            path = (root / resource).resolve(strict=True)
+            if not path.is_relative_to(root) or not path.is_file() or path.is_symlink():
+                raise ExtensionError(
+                    "unsafe_app_resource",
+                    "Development App resource escaped its source Package",
+                )
+            return path
         if entry["source"] == "local":
             with self.database.transaction() as connection:
                 definition = connection.execute(
@@ -1553,7 +1981,8 @@ class InteractivePackageManager:
         with self.database.transaction() as connection:
             row = connection.execute(
                 """
-                SELECT m.*,d.package_id,d.display_name,d.source,d.effective_digest
+                SELECT m.*,d.package_id,d.display_name,d.source,d.effective_digest,
+                       d.manifest_json
                 FROM app_mounts m
                 JOIN app_instances i ON i.id=m.app_instance_id
                 JOIN app_definitions d ON d.id=i.app_definition_id
@@ -1568,12 +1997,17 @@ class InteractivePackageManager:
         self._require_instance_access(
             row["app_instance_id"], self._principal(principal)
         )
+        manifest = json.loads(row["manifest_json"])
         return {
             "id": row["id"],
             "app_instance_id": row["app_instance_id"],
             "app_key": row["package_id"],
             "display_name": row["display_name"],
-            "source": row["source"],
+            "source": (
+                "development"
+                if self._is_development_manifest(manifest)
+                else row["source"]
+            ),
             "effective_digest": row["effective_digest"],
             "interaction_session_id": row["interaction_session_id"],
             "placement": row["placement"],

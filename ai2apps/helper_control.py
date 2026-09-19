@@ -175,6 +175,34 @@ class HelperControlClient:
             raise HelperControlError("Helper Local restart leaked automation data")
         return {"status": "restarting"}
 
+    def reset_instance_data(
+        self, *, actor_user_id: str, confirm_instance_id: str
+    ) -> dict[str, Any]:
+        """Ask an explicitly reset-capable Helper to erase its instance roots."""
+
+        self._validate_actor_user_id(actor_user_id)
+        if confirm_instance_id != "test":
+            raise HelperControlError("confirm_instance_id must be test")
+        request = {
+            "version": 1,
+            "request_id": str(uuid.uuid4()),
+            "token": self.token,
+            "operation": "instance.reset",
+            "actor_user_id": actor_user_id,
+            "confirm_instance_id": confirm_instance_id,
+        }
+        response = self._exchange(request)
+        if response.get("request_id") != request["request_id"]:
+            raise HelperControlError("Helper response request_id mismatch")
+        if response.get("ok") is not True:
+            raise HelperControlError(str(response.get("error") or "Helper rejected request"))
+        result = response.get("result")
+        if not isinstance(result, dict) or result.get("status") != "resetting":
+            raise HelperControlError("Helper instance reset status is invalid")
+        if result.get("automation") is not None:
+            raise HelperControlError("Helper instance reset leaked automation data")
+        return {"status": "resetting"}
+
     def renew_browser_agent(self, *, actor_user_id: str) -> dict[str, Any]:
         return self._change_browser_agent_lease(
             actor_user_id=actor_user_id,

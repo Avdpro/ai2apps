@@ -1,0 +1,42 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_sortformer_4spk_v2_1_fp16_e23e6404_v1",
+  "modelId": "ai2apps.model.detailed-transcription-mlx/diarizer",
+  "repoId": "mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16",
+  "revision": "e23e6404bd9859e93edbf94a740eb1c7fc58f12e",
+  "format": "safetensors",
+  "quantization": "fp16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-NVIDIA-Open-Model-License",
+    "name": "NVIDIA Open Model License Agreement",
+    "termsUrl": "https://www.nvidia.com/content/dam/en-zz/Solutions/license-agreements/enterprise-software/nvidia-open-model-license-agreements-24-10-2025.pdf",
+    "termsHash": "sha256:4d2fb590aa9b30c47f2058bff17291df7fa2aa0c1bd775a20703da9bb267cfab",
+    "usagePolicy": "commercial_allowed_with_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "allowed",
+      "attribution": {
+        "required": true,
+        "noticeText": "Licensed by NVIDIA Corporation under the NVIDIA Open Model License",
+        "noticeFile": "NOTICE",
+        "productDisplay": "not_required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I confirm that I have read and accept the NVIDIA Open Model License Agreement for this Sortformer checkpoint, or that I have obtained a separate license for my intended use.",
+      "acceptanceOptions": ["accepted_license_terms", "obtained_separate_license"]
+    }
+  },
+  "includePatterns": ["config.json", "model.safetensors"],
+  "sourceRepositories": [
+    {"type": "huggingface", "repoId": "mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16", "revision": "e23e6404bd9859e93edbf94a740eb1c7fc58f12e", "access": "public_anonymous"},
+    {"type": "modelscope", "repoId": "mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16", "revision": "4dcec436677a71e352b8d8bc6ee09c1faf60854d", "access": "public_anonymous"}
+  ]
+}

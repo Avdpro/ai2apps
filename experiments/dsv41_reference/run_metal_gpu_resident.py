@@ -36,7 +36,7 @@ def main():
         return result
     metal_dense.fp8_gemm=gemm;cpu_kernel.fp8_gemm=gemm
     sys.modules['kernel']=cpu_kernel
-    sys.path.insert(0,str(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/inference').resolve()))
+    sys.path.insert(0,str(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/inference').resolve()))
     import model
     original_init=model.Linear.__init__
     def init(self,*args,**kwargs):

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from omlx.model_settings import ModelSettings, ModelSettingsManager
-from omlx.server import ServerState, app
+from omlx.server import ServerState, app, verify_ai2apps_platform_access
 from omlx.settings import GlobalSettings
 
 
@@ -45,19 +45,27 @@ def _state(models: list[dict], tmp_path, *, hide_helpers: bool = False) -> Serve
     state = ServerState()
     state.engine_pool = _Pool(models)
     state.settings_manager = ModelSettingsManager(base_path=tmp_path)
-    gs = GlobalSettings()
+    gs = GlobalSettings(base_path=tmp_path)
     gs.model.hide_helper_models = hide_helpers
     state.global_settings = gs
     return state
 
 
 def _list_ids(state) -> list[str]:
-    with (
-        patch("omlx.server._server_state", state),
-        patch("omlx.server.get_max_context_window", return_value=None),
-    ):
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/v1/models")
+    previous = app.dependency_overrides.get(verify_ai2apps_platform_access)
+    app.dependency_overrides[verify_ai2apps_platform_access] = lambda: True
+    try:
+        with (
+            patch("omlx.server._server_state", state),
+            patch("omlx.server.get_max_context_window", return_value=None),
+        ):
+            client = TestClient(app, raise_server_exceptions=False)
+            response = client.get("/v1/models")
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(verify_ai2apps_platform_access, None)
+        else:
+            app.dependency_overrides[verify_ai2apps_platform_access] = previous
     assert response.status_code == 200
     return [m["id"] for m in response.json()["data"]]
 

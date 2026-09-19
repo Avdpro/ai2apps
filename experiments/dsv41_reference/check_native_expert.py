@@ -7,8 +7,8 @@ from run_reference import Store
 import native_mx
 import metal_expert
 
-store=Store(__import__('pathlib').Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash'))
-bank=MetalBank('artifacts/dsv41-full-expert-store/layer-0.bin',[0,1],l0_slots=6)
+store=Store(__import__('pathlib').Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD'))
+bank=MetalBank('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/experts/layer-0.bin',[0,1],l0_slots=6)
 try:
     torch.manual_seed(37);x=mx.array(torch.randn(4,5120).bfloat16().float().numpy()).astype(mx.bfloat16)
     slots=bank.prepare([3,0,2,1]);rw=mx.array([.1,.2,.3,.4])

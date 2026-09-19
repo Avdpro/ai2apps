@@ -53,6 +53,70 @@ capabilities:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
           provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.7.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.minimax-h3/fl2va-4bit}
+      - id: apple-metal-h3-lightx2v-4step-q4
+        label: LightX2V Turbo 4-step Q4 · 极速
+        description: 4 步蒸馏版本，适合快速预览与高吞吐生成。
+        priority: 80
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 32}
+        recommendation_memory_gib: {minimum: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.9.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/lightx2v-4step-4bit}
+      - id: apple-metal-h3-lightx2v-8step-q4
+        label: LightX2V Turbo 8-step Q4 · 均衡
+        description: 8 步蒸馏版本，在速度与细节稳定性之间取得平衡。
+        priority: 75
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 32}
+        recommendation_memory_gib: {minimum: 48}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.9.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/lightx2v-8step-4bit}
+      - id: apple-metal-h3-openvdn-dmd8-q4
+        label: OpenVDN DMD 8-step Q4 · 高速高质
+        description: OpenVDN 8 步 DMD 路径，面向更高质量的快速生成。
+        priority: 70
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 48}
+        recommendation_memory_gib: {minimum: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.9.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/openvdn-dmd8-4bit}
+      - id: apple-metal-h3-openvdn-stageb50-q4
+        label: OpenVDN Stage-B 50-step Q4 · 高精度
+        description: 50 步高精度路径，适合最终成片与质量评估。
+        priority: 60
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 48}
+        recommendation_memory_gib: {minimum: 64}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.4.1,<2.0.0"}
+          provider: {package_id: ai2apps/model-minimax-h3, service_key: ai2apps.model.minimax-h3, version: ">=0.9.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.minimax-h3/openvdn-stageb50-4bit}
       # H3 BF16/FP16 is temporarily excluded pending output-quality validation.
   video.reference_generation:
     trigger: on_action

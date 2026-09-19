@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/media-voice-studio-suite",
+    "type": "app",
+    "version": "0.1.1",
+    "displayName": "Media Voice Studio Suite",
+    "description": "Five local-first Mini-Apps for transcription, source separation, voice replacement, and video subtitles.",
+    "localizations": {
+      "zh-CN": {
+        "displayName": "音视频语音工作室套件",
+        "description": "包含录音转写、音轨分离、音色替换和视频字幕的五个本地优先 Mini-App。"
+      }
+    },
+    "license": {
+      "name": "MIT License",
+      "spdx": "MIT",
+      "path": "LICENSE",
+      "url": "https://opensource.org/license/mit"
+    }
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"]
+  },
+  "entrypoints": [
+    {
+      "name": "main",
+      "kind": "app",
+      "path": "web/index.html"
+    }
+  ],
+  "permissions": [],
+  "dependencies": [],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  }
+}

@@ -175,6 +175,8 @@
             source: item.source || 'builtin',
             entryUrl: item.entry_url || '',
             instances: Array.isArray(item.instances) ? item.instances : [],
+            status: navigation.status || item.status || 'active',
+            experimental: (navigation.experimental ?? item.experimental) === true,
         };
     }
 
@@ -189,9 +191,9 @@
     function readPins() {
         try {
             const value = JSON.parse(localStorage.getItem(storage.pinned));
-            if (Array.isArray(value)) return value.filter((id) => byId.has(id));
+            if (Array.isArray(value)) return value.filter((id) => byId.get(id)?.status === 'active');
         } catch (_) { /* use manifest defaults */ }
-        return apps.filter((app) => app.pinnedDefault).map((app) => app.id);
+        return apps.filter((app) => app.status === 'active' && app.pinnedDefault).map((app) => app.id);
     }
 
     function readDockOrder() {
@@ -246,7 +248,12 @@
 
     function provisioningReturnApp(session) {
         const raw = String(session?.intent?.returnTo || '');
-        if (!raw) return '';
+        if (!raw) {
+            return session?.appId === 'ai2apps.discover'
+                && session?.capability === 'model.package.install'
+                ? 'ai2apps.discover'
+                : '';
+        }
         const target = new URL(raw, window.location.origin);
         if (target.origin !== window.location.origin) return '';
         const parts = target.pathname.split('/').filter(Boolean);
@@ -360,7 +367,7 @@
         }
         byId = new Map(apps.map((app) => [app.id, app]));
         if (!pinned.length) pinned = readPins();
-        else pinned = pinned.filter((id) => byId.has(id));
+        else pinned = pinned.filter((id) => byId.get(id)?.status === 'active');
         if (!dockOrder.length) dockOrder = readDockOrder();
         else dockOrder = dockOrder.filter((id) => byId.has(id));
         if (!warmApps.length) warmApps = readWarmApps();
@@ -374,6 +381,10 @@
     }
 
     function refreshIcons() {
+        if (typeof window.ai2appsProcessIcons === 'function') {
+            window.ai2appsProcessIcons();
+            return;
+        }
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             try { window.lucide.createIcons(); } catch (_) { /* base template also processes icons */ }
         }
@@ -483,7 +494,7 @@
     }
 
     function runningApps() {
-        return apps.filter((app) => app.instances.length > 0).map((app) => app.id);
+        return apps.filter((app) => app.status === 'active' && app.instances.length > 0).map((app) => app.id);
     }
 
     function renderDock() {
@@ -515,6 +526,16 @@
         refreshIcons();
     }
 
+    function updateDockSelection() {
+        dockApps.querySelectorAll('[data-dock-drag-id]').forEach((wrap) => {
+            wrap.classList.toggle(
+                'is-current',
+                wrap.dataset.dockDragId === currentId
+            );
+        });
+        closeButton.disabled = !currentInstanceId;
+    }
+
     function launcherApps() {
         const term = search.value.trim().toLowerCase();
         return apps.filter((app) => {
@@ -525,6 +546,8 @@
     }
 
     function instanceControls(app) {
+        if (app.status !== 'active') return '';
+        if (app.singleton) return '';
         const switches = app.instances.slice(0, 4).map((instance, index) =>
             '<button class="launcher-instance" type="button" data-app-id="' + escapeHtml(app.id) +
             '" data-instance-id="' + escapeHtml(instance.id) + '">' +
@@ -537,24 +560,29 @@
     }
 
     function renderLauncher() {
+        hideDockTooltip();
         const visible = launcherApps();
-        launcherGrid.innerHTML = visible.map((app) =>
-            '<article class="launcher-app" role="listitem">' +
-              '<button class="launcher-app-open" type="button" data-app-id="' + escapeHtml(app.id) + '">' +
-                '<span class="launcher-app-icon">' + iconMarkup(app.icon) + '</span>' +
+        launcherGrid.innerHTML = visible.map((app) => {
+            const development = app.status === 'development';
+            return '<article class="launcher-app' + (development ? ' is-development' : '') + '" role="listitem">' +
+              '<button class="launcher-app-open" type="button" data-launcher-tooltip="' + escapeHtml(
+                [app.description, development ? tr('shell.launcher.in_development') : ''].filter(Boolean).join('\n')
+              ) + '" aria-label="' + escapeHtml(app.name) + '"' +
+                (development
+                    ? ' disabled aria-disabled="true" title="' + escapeHtml(tr('shell.launcher.in_development')) + '"'
+                    : ' data-app-id="' + escapeHtml(app.id) + '"') + '>' +
+                '<span class="launcher-app-icon-row"><span class="launcher-app-icon">' + iconMarkup(app.icon) + '</span>' +
+                (app.experimental ? '<span class="launcher-app-experimental">' +
+                    escapeHtml(tr('shell.launcher.experimental')) + '</span>' : '') + '</span>' +
                 '<span class="launcher-app-name">' + escapeHtml(app.name) + '</span>' +
-                '<span class="launcher-app-description">' + escapeHtml(app.description) + '</span>' +
-                '<span class="launcher-app-meta">' + escapeHtml(app.category) +
-                (app.singleton ? ' · Single instance' : ' · Multiple instances') +
-                (app.instances.length ? ' · Running ' + app.instances.length : '') + '</span>' +
               '</button>' + instanceControls(app) +
-              '<button class="launcher-pin' + (pinned.includes(app.id) ? ' is-pinned' : '') +
+              (development ? '' : '<button class="launcher-pin' + (pinned.includes(app.id) ? ' is-pinned' : '') +
               '" type="button" data-pin-id="' + escapeHtml(app.id) + '" aria-label="' +
               (pinned.includes(app.id) ? 'Unpin ' : 'Pin ') + escapeHtml(app.name) + '" title="' +
               (pinned.includes(app.id) ? 'Unpin from Dock' : 'Pin to Dock') + '">' +
-              iconMarkup('pin') + '</button>' +
-            '</article>'
-        ).join('');
+              iconMarkup('pin') + '</button>') +
+            '</article>';
+        }).join('');
         launcherEmpty.hidden = visible.length !== 0;
         refreshIcons();
     }
@@ -584,6 +612,7 @@
     }
 
     function closeLauncher() {
+        hideDockTooltip();
         launcher.classList.remove('is-open');
         launcher.setAttribute('aria-hidden', 'true');
         root.querySelectorAll('[data-shell-action="launcher"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
@@ -942,7 +971,7 @@
         currentName.textContent = tr('shell.home.name');
         closeButton.disabled = true;
         loading.hidden = true;
-        renderDock();
+        updateDockSelection();
         renderHomeApps();
         closeLauncher();
         closeDockContextMenu();
@@ -983,7 +1012,7 @@
             sendHostContext();
             postFrameLifecycle(record, 'ai2apps.host.activate');
         }
-        renderDock();
+        updateDockSelection();
         closeLauncher();
         closeDockContextMenu();
         updateRoute(app, record.instanceId, options);
@@ -1061,6 +1090,10 @@
         const app = byId.get(appId);
         if (!app) {
             showToast('App is not installed');
+            return;
+        }
+        if (app.status !== 'active') {
+            showToast(tr('shell.launcher.in_development'));
             return;
         }
         const requestedInstanceId = options && options.instanceId;
@@ -1244,8 +1277,11 @@
         dockTooltipTimer = setTimeout(() => {
             if (!button.isConnected) return;
             const bounds = button.getBoundingClientRect();
-            const tooltip = button.dataset.dockTooltip || '';
-            const rows = tooltip.includes('\n') ? tooltip.split('\n') : [];
+            const isLauncher = button.hasAttribute('data-launcher-tooltip');
+            const tooltip = isLauncher ? button.dataset.launcherTooltip : (button.dataset.dockTooltip || '');
+            if (!tooltip) return;
+            dockTooltipHost.classList.toggle('is-description', isLauncher);
+            const rows = !isLauncher && tooltip.includes('\n') ? tooltip.split('\n') : [];
             dockTooltipHost.classList.toggle('is-multiline', rows.length > 0);
             if (rows.length) {
                 dockTooltipHost.replaceChildren(...rows.map((text) => {
@@ -1270,7 +1306,10 @@
                 8,
                 Math.min(bounds.left + bounds.width / 2 - width / 2, window.innerWidth - width - 8)
             ) + 'px';
-            dockTooltipHost.style.top = (bounds.bottom + 7) + 'px';
+            const height = dockTooltipHost.offsetHeight;
+            const top = isLauncher && bounds.bottom + height + 15 > window.innerHeight
+                ? bounds.top - height - 7 : bounds.bottom + 7;
+            dockTooltipHost.style.top = Math.max(8, top) + 'px';
             requestAnimationFrame(() => dockTooltipHost.classList.add('is-visible'));
         }, 70);
     }
@@ -1538,6 +1577,20 @@
         const button = event.target.closest('[data-dock-tooltip]');
         if (button && !button.contains(event.relatedTarget)) hideDockTooltip();
     });
+    launcherGrid.addEventListener('pointerover', (event) => {
+        const button = event.target.closest('[data-launcher-tooltip]');
+        if (button && !button.contains(event.relatedTarget)) showDockTooltip(button);
+    });
+    launcherGrid.addEventListener('pointerout', (event) => {
+        const button = event.target.closest('[data-launcher-tooltip]');
+        if (button && !button.contains(event.relatedTarget)) hideDockTooltip();
+    });
+    launcherGrid.addEventListener('focusin', (event) => {
+        const button = event.target.closest('[data-launcher-tooltip]');
+        if (button) showDockTooltip(button);
+    });
+    launcherGrid.addEventListener('focusout', hideDockTooltip);
+    launcher.addEventListener('scroll', hideDockTooltip, true);
     accountButton.addEventListener('pointerenter', () => {
         if (accountButton.dataset.dockTooltip) showDockTooltip(accountButton);
     });

@@ -1,8 +1,8 @@
 schema: ai2apps.service/v1
 id: ai2apps.model.ideogram4-mlx
 name: Ideogram 4 MLX
-description: Optimized native MLX Ideogram 4 generation and single-image Remix editing on Apple Silicon.
-version: 0.1.1
+description: Ideogram 4 text-to-image generation only; Remix editing is disabled pending acceptance.
+version: 0.1.2
 publisher: {id: ai2apps}
 license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
 runtime:
@@ -15,7 +15,7 @@ models:
     display_name: Ideogram 4 MLX Q4
     model_type: image_generation
     upstream_id: ideogram-ai/ideogram-4-fp8
-    capabilities: [image_generation, image_edit, text_rendering, multilingual, layout_control, local, mlx]
+    capabilities: [image_generation, text_rendering, multilingual, layout_control, local, mlx]
     weights:
       provider: huggingface
       repo_id: Comfy-Org/Ideogram-4
@@ -41,7 +41,8 @@ models:
       device_recommendation: {minimum_memory_gib: 24, preferred_memory_gib: 32, quality_rank: 9}
     image_capabilities:
       schema: ai2apps.image-capabilities/v1
-      operations: [image_generation, image_edit]
+      operations: [image_generation]
+      inputs: {reference_images: {minimum: 0, maximum: 0}}
       formats: {input: [png, jpeg, webp], output: [png, jpeg, webp]}
       geometry:
         minimum: {width: 256, height: 256}
@@ -58,15 +59,14 @@ models:
         bf16_mlp: true
         bf16_sdpa: true
         fused_qk_rms_mrope: true
-        image_to_image: {references: 1, default_strength: 0.75, strength_range: [0.0, 1.0], method: sdedit}
         max_concurrency_per_device: 1
-capabilities: [image-generation, image-edit, ideogram4]
+capabilities: [image-generation, ideogram4]
 requires:
   services:
     - id: ai2apps.runtime.omlx
       version: ">=1.5.2,<2.0.0"
       optional: false
-      capabilities: [mlx, model-worker-v1, metal, image-generation, image-edit]
+      capabilities: [mlx, model-worker-v1, metal, image-generation]
   python: ">=3.11,<3.14"
 permissions:
   network: {outbound: false}

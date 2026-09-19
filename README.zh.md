@@ -208,7 +208,15 @@ AI2Apps 基于 oMLX commit
 [`49ec271`](https://github.com/jundot/omlx/commit/49ec271676ba9c14bbebb75da1912e3fcb5fb0f4)
 开发，并保留上游版权与归属信息。AI2Apps 的修改由文件内容和 Git 历史标识。
 
-本项目采用 [Apache License 2.0](LICENSE)：Copyright 2025 oMLX contributors；
-Copyright 2026 AI2Apps contributors。Apache-2.0 不授予对上游商品名或标识的广泛
+本项目是一个[多许可证发行物](LICENSE-POLICY.md)，默认采用
+[Apache License 2.0](LICENSE)。AI2Apps Official Cloud Connector 按
+[Business Source License 1.1](LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md)
+公开源码：客户端仅连接 AI2Apps 官方运营的 Cloud 服务时，生产使用无需另行取得商业
+授权；使用该组件实现、连接或提供替代 Cloud 服务时，必须取得商业授权。本版本在
+2029-09-07 自动转换为 Apache-2.0；此前已发布版本继续适用其发布时附带的许可证。
+
+Copyright 2025 oMLX contributors；Copyright 2026 AI2Apps contributors。
+所有软件许可证均不授予 AI2Apps 名称、Logo 或其他标识的使用权，详见
+[AI2Apps 商标政策](TRADEMARKS.md)。Apache-2.0 同样不授予对上游商品名或标识的广泛
 使用权，因此 AI2Apps 不使用 oMLX 名称或 Logo 作为产品标识，也不声称获得 oMLX
 项目或维护者的合作、认证或背书。

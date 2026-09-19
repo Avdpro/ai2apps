@@ -112,30 +112,6 @@ def test_generation_uses_optimized_q4_pipeline(tmp_path):
     assert pipeline.calls[0][1]["image"] is None
 
 
-def test_edit_passes_decoded_reference_and_strength(tmp_path):
-    pipeline = FakePipeline()
-    result = asyncio.run(
-        adapter(tmp_path, pipeline).invoke(
-            request(
-                tmp_path,
-                "image_edit",
-                {
-                    "model": MODULE.PACKAGE_MODEL_ID,
-                    "prompt": "change the circle to blue",
-                    "size": "512x512",
-                    "imageDataUrls": [data_url()],
-                    "strength": 0.55,
-                },
-            )
-        )
-    )
-    call = pipeline.calls[0][1]
-    assert isinstance(call["image"], Image.Image)
-    assert call["strength"] == 0.55
-    assert result["imageStrength"] == 0.55
-    assert result["optimization"]["effective_steps"] == 7
-    assert result["optimization"]["encode_image_seconds"] == 0.1
-
 
 def test_edit_rejects_invalid_reference_inputs(tmp_path):
     for payload in (
@@ -152,7 +128,7 @@ def test_edit_rejects_invalid_reference_inputs(tmp_path):
                 )
             )
         except Exception as exc:
-            assert getattr(exc, "code", None) == "invalid_request"
+            assert getattr(exc, "code", None) == "operation_not_supported"
         else:
             raise AssertionError("invalid edit request was accepted")
 
@@ -175,7 +151,7 @@ def test_manifest_pins_sources_and_optimized_capabilities():
     outer = json.loads((PACKAGE / "ai2apps.json").read_text())
     service = yaml.safe_load((PACKAGE / "service.yaml").read_text())
     lock = json.loads((PACKAGE / "META/source-lock.json").read_text())
-    assert outer["package"]["version"] == service["version"] == "0.1.1"
+    assert outer["package"]["version"] == service["version"] == "0.1.2"
     model = service["models"][0]
     assert model["weights"]["revision"] == MODULE.WEIGHTS_REVISION
     assert model["weights"]["distribution_id"] == (
@@ -186,13 +162,12 @@ def test_manifest_pins_sources_and_optimized_capabilities():
     )
     assert model["image_capabilities"]["operations"] == [
         "image_generation",
-        "image_edit",
     ]
     execution = model["image_capabilities"]["execution"]
     assert execution["quantizations"] == ["q4"]
     assert execution["staged_model_lifecycle"] is True
     assert execution["fused_qk_rms_mrope"] is True
-    assert execution["image_to_image"]["method"] == "sdedit"
+    assert "image_to_image" not in execution
     assert lock["qwen_config"]["revision"] == MODULE.QWEN_CONFIG_REVISION
 
 

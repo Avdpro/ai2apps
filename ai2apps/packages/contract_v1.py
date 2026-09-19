@@ -26,6 +26,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from packaging.version import Version
 
+from .discovery import (
+    MODEL_CATEGORIES,
+    is_legacy_model_release,
+    legacy_model_install,
+    validate_discovery,
+    validate_model_install,
+    validate_model_profile,
+)
+from .native_policy import is_model_worker_service, native_payload_paths
+
 PACKAGE_PREFIX = b"AI2APPS-PACKAGE-RELEASE-V1\n"
 REPOSITORY_PREFIX = b"AI2APPS-REPOSITORY-SNAPSHOT-V1\n"
 KEY_PROOF_PREFIX = b"AI2APPS-PUBLISHER-KEY-PROOF-V1\n"
@@ -50,6 +60,8 @@ _OS_VERSION = re.compile(r"^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){0,3}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _B64URL_SIGNATURE = re.compile(r"^[A-Za-z0-9_-]{86}$")
 _LICENSE_ID = re.compile(r"^(?:[A-Za-z0-9.-]+|LicenseRef-[A-Za-z0-9.-]+)$")
+_MINI_APP_ID = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$")
+_CATALOG_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 
 
 class PackageContractError(RuntimeError):
@@ -133,6 +145,137 @@ def _exact_keys(
         )
 
 
+def validate_mini_app_catalog(value: Any) -> list[dict[str, Any]]:
+    """Validate the signed package-level projection of Mini-App components."""
+
+    if not isinstance(value, list) or not 1 <= len(value) <= 64:
+        raise PackageContractError(
+            "mini_app_catalog_invalid", "miniApps must contain 1 to 64 entries"
+        )
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Every miniApps entry must be an object"
+            )
+        _exact_keys(
+            item,
+            {"componentId", "displayName", "version", "lifecycleKind", "categories", "placements"},
+            {"description", "icon"},
+        )
+        component_id = item["componentId"]
+        if not isinstance(component_id, str) or not _MINI_APP_ID.fullmatch(component_id):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App componentId is invalid"
+            )
+        if component_id in seen:
+            raise PackageContractError(
+                "mini_app_catalog_invalid", f"Duplicate Mini-App componentId: {component_id}"
+            )
+        seen.add(component_id)
+        if not isinstance(item["displayName"], str) or not 1 <= len(item["displayName"]) <= 160:
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App displayName is invalid"
+            )
+        if not isinstance(item["version"], str) or not _SEMVER.fullmatch(item["version"]):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App version is invalid"
+            )
+        if item["lifecycleKind"] not in {"clip", "project", "live_session"}:
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App lifecycleKind is invalid"
+            )
+        categories = item["categories"]
+        if (
+            not isinstance(categories, list)
+            or not 1 <= len(categories) <= 8
+            or any(not isinstance(entry, str) or not _CATALOG_ID.fullmatch(entry) for entry in categories)
+            or len(set(categories)) != len(categories)
+        ):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App categories are invalid"
+            )
+        placements = item["placements"]
+        if (
+            not isinstance(placements, list)
+            or not 1 <= len(placements) <= 16
+            or any(not isinstance(entry, str) or not _MINI_APP_ID.fullmatch(entry) for entry in placements)
+            or len(set(placements)) != len(placements)
+        ):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App placements are invalid"
+            )
+        if "description" in item and (
+            not isinstance(item["description"], str) or len(item["description"]) > 2000
+        ):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App description is invalid"
+            )
+        if "icon" in item and (
+            not isinstance(item["icon"], str) or not _CATALOG_ID.fullmatch(item["icon"])
+        ):
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Mini-App icon is invalid"
+            )
+        result.append(dict(item))
+    return result
+
+
+def mini_app_catalog_from_app_manifest(value: Any) -> list[dict[str, Any]]:
+    """Create the public catalog projection from a trusted app.yaml manifest."""
+
+    declarations = value.get("mini_apps") if isinstance(value, dict) else None
+    if not isinstance(declarations, list) or not declarations:
+        return []
+    result: list[dict[str, Any]] = []
+    for declaration in declarations:
+        if not isinstance(declaration, dict):
+            continue
+        component_id = declaration.get("id")
+        placements = [
+            placement.get("studio")
+            for placement in declaration.get("placements", [])
+            if isinstance(placement, dict) and isinstance(placement.get("studio"), str)
+        ]
+        catalog = declaration.get("catalog")
+        explicit = catalog.get("categories") if isinstance(catalog, dict) else None
+        categories = list(explicit) if isinstance(explicit, list) else []
+        if not categories:
+            joined = " ".join(placements).lower()
+            if "video" in joined:
+                categories = ["video"]
+            elif "imagine" in joined or "image" in joined:
+                categories = ["image"]
+            elif "audio" in joined or "voice" in joined or "readaloud" in joined:
+                categories = ["audio"]
+            elif "knowledge" in joined or "document" in joined:
+                categories = ["document"]
+            elif "coder" in joined or "developer" in joined:
+                categories = ["developer"]
+            else:
+                categories = ["utility"]
+        label = declaration.get("name") or declaration.get("displayName")
+        if not isinstance(label, str) or not label:
+            label = str(component_id or "Mini-App").rsplit(".", 1)[-1].replace("-", " ").title()
+        item: dict[str, Any] = {
+            "componentId": component_id,
+            "displayName": label,
+            "version": declaration.get("version"),
+            "lifecycleKind": declaration.get("kind", "clip"),
+            "categories": categories,
+            "placements": list(dict.fromkeys(placements)),
+        }
+        description = declaration.get("description") or declaration.get("summary")
+        if isinstance(description, str):
+            item["description"] = description
+        icon = declaration.get("icon")
+        if isinstance(icon, str):
+            item["icon"] = icon
+        result.append(item)
+    return validate_mini_app_catalog(result)
+
+
 def _safe_archive_path(value: Any) -> str:
     if not isinstance(value, str) or not value or len(value) > 240:
         raise PackageContractError("unsafe_archive_path", "Archive path is invalid")
@@ -212,7 +355,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     _exact_keys(
         value,
         {"schemaVersion", "package", "compatibility", "entrypoints", "permissions", "dependencies", "files"},
-        {"sbom"},
+        {"sbom", "discovery", "modelProfile", "modelInstall", "miniApps"},
     )
     if value["schemaVersion"] != "ai2apps.package-manifest.v1":
         raise PackageContractError("manifest_schema_unsupported", "Unsupported package manifest schema")
@@ -242,6 +385,51 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         _validate_package_license(package["license"])
     if "attribution" in package:
         _validate_package_attribution(package["attribution"])
+    if "miniApps" in value:
+        if package["type"] != "app":
+            raise PackageContractError(
+                "mini_app_catalog_invalid", "Only App Packages can declare miniApps"
+            )
+        value["miniApps"] = validate_mini_app_catalog(value["miniApps"])
+    if "discovery" in value:
+        try:
+            value["discovery"] = validate_discovery(
+                value["discovery"], package_type=package["type"]
+            )
+        except ValueError as error:
+            raise PackageContractError("manifest_invalid", str(error)) from error
+        if "modelProfile" not in value:
+            raise PackageContractError(
+                "model_profile_required",
+                "Model Packages must declare signed modelProfile metadata",
+            )
+        if "modelInstall" not in value and legacy_model_install(
+            package["id"], package["version"]
+        ) is None:
+            raise PackageContractError(
+                "model_install_required",
+                "Model Packages must declare signed modelInstall metadata",
+            )
+    if "modelProfile" in value:
+        if "discovery" not in value:
+            raise PackageContractError(
+                "model_profile_invalid",
+                "modelProfile is only valid with model discovery metadata",
+            )
+        try:
+            value["modelProfile"] = validate_model_profile(value["modelProfile"])
+        except ValueError as error:
+            raise PackageContractError("manifest_invalid", str(error)) from error
+    if "modelInstall" in value:
+        if "discovery" not in value:
+            raise PackageContractError(
+                "model_install_invalid",
+                "modelInstall is only valid with model discovery metadata",
+            )
+        try:
+            value["modelInstall"] = validate_model_install(value["modelInstall"])
+        except ValueError as error:
+            raise PackageContractError("manifest_invalid", str(error)) from error
     compatibility = value["compatibility"]
     if not isinstance(compatibility, dict):
         raise PackageContractError("manifest_invalid", "compatibility must be an object")
@@ -402,6 +590,7 @@ def inspect_package(path: str | Path) -> InspectedContractPackage:
             if len(infos) > MAX_FILES + 1:
                 raise PackageContractError("archive_file_limit", "Package has too many files")
             files: dict[str, ContractFile] = {}
+            file_headers: dict[str, bytes] = {}
             manifest_bytes: bytes | None = None
             expanded = 0
             for info in infos:
@@ -428,6 +617,7 @@ def inspect_package(path: str | Path) -> InspectedContractPackage:
                     manifest_bytes = content
                 else:
                     files[name] = ContractFile(name, hashlib.sha256(content).hexdigest(), len(content))
+                    file_headers[name] = content[:4]
     except zipfile.BadZipFile as error:
         raise PackageContractError("archive_invalid", "Package is not a valid ZIP archive") from error
     if manifest_bytes is None:
@@ -448,6 +638,40 @@ def inspect_package(path: str | Path) -> InspectedContractPackage:
     extension, media_type = PACKAGE_TYPES[kind]
     if source.suffix.lower() != extension:
         raise PackageContractError("artifact_extension_mismatch", f"Package type {kind} requires {extension}")
+    if kind == "service":
+        entrypoint = manifest["entrypoints"][0]["path"]
+        try:
+            with zipfile.ZipFile(source) as archive:
+                raw_service = archive.read(entrypoint)
+            if entrypoint.lower().endswith(".json"):
+                service_manifest = json.loads(raw_service.decode("utf-8"))
+            else:
+                import yaml
+
+                service_manifest = yaml.safe_load(raw_service.decode("utf-8"))
+        except Exception as error:
+            raise PackageContractError(
+                "service_entrypoint_invalid",
+                "Service entrypoint must be valid UTF-8 JSON/YAML",
+            ) from error
+        if is_model_worker_service(service_manifest):
+            native_paths = native_payload_paths(file_headers.items())
+            declarations = (
+                service_manifest.get("native_artifacts", [])
+                if isinstance(service_manifest, dict)
+                else []
+            )
+            if native_paths or declarations:
+                declared_paths = [
+                    item.get("path")
+                    for item in declarations
+                    if isinstance(item, dict) and isinstance(item.get("path"), str)
+                ]
+                raise PackageContractError(
+                    "model_worker_native_payload_forbidden",
+                    "Model Worker Packages may contain signed Python and data assets, but no native-code payloads",
+                    details={"paths": sorted(set(native_paths) | set(declared_paths))},
+                )
     return InspectedContractPackage(
         source,
         artifact_sha256,
@@ -628,7 +852,13 @@ def verify_repository_snapshot(
     return payload
 
 
-def build_package(source: str | Path, output: str | Path) -> InspectedContractPackage:
+def build_package(
+    source: str | Path,
+    output: str | Path,
+    *,
+    include_mini_app_catalog: bool = True,
+    include_model_install_catalog: bool = True,
+) -> InspectedContractPackage:
     source_path = Path(source).resolve(strict=True)
     manifest_path = source_path / "ai2apps.json"
     if not source_path.is_dir() or not manifest_path.is_file():
@@ -646,9 +876,13 @@ def build_package(source: str | Path, output: str | Path) -> InspectedContractPa
     rows = []
     for file in sorted(item for item in source_path.rglob("*") if item.is_file() and item != manifest_path):
         relative = file.relative_to(source_path).as_posix()
+        # Package release artifacts conventionally live beside their source in
+        # dist/. They are outputs, never Package payload, for every Package
+        # type. Excluding them also keeps repeat builds byte-for-byte stable.
+        if relative.startswith("dist/"):
+            continue
         if service_source and (
             relative == "README.md"
-            or relative.startswith("dist/")
             or relative in {
                 "META/files.json",
                 "attestations/publisher.json",
@@ -661,8 +895,122 @@ def build_package(source: str | Path, output: str | Path) -> InspectedContractPa
         _safe_archive_path(relative)
         content = file.read_bytes()
         rows.append({"path": relative, "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)})
+    if package_type == "app" and (source_path / "app.yaml").is_file():
+        try:
+            import yaml
+
+            app_manifest = yaml.safe_load(
+                (source_path / "app.yaml").read_text(encoding="utf-8")
+            )
+        except Exception as error:
+            raise PackageContractError(
+                "app_definition_invalid", "app.yaml must contain valid UTF-8 YAML"
+            ) from error
+        derived_mini_apps = mini_app_catalog_from_app_manifest(app_manifest)
+        declared_mini_apps = manifest.get("miniApps")
+        if declared_mini_apps is not None and declared_mini_apps != derived_mini_apps:
+            raise PackageContractError(
+                "mini_app_catalog_mismatch",
+                "miniApps must match the components declared by app.yaml",
+            )
+        if derived_mini_apps and include_mini_app_catalog:
+            manifest["miniApps"] = derived_mini_apps
+        elif not derived_mini_apps and declared_mini_apps is not None:
+            raise PackageContractError(
+                "mini_app_catalog_mismatch",
+                "miniApps requires matching app.yaml Mini-App components",
+            )
+        elif not include_mini_app_catalog:
+            # app.yaml remains indexed and Publisher-signed. This compatibility
+            # form lets an older Cloud schema distribute the App Package while
+            # current clients discover Mini-Apps from the installed definition.
+            manifest.pop("miniApps", None)
+    elif "miniApps" in manifest:
+        raise PackageContractError(
+            "mini_app_catalog_mismatch", "miniApps requires an app.yaml definition"
+        )
+    if not include_model_install_catalog:
+        # Keep the authoritative declaration in source while producing a
+        # compatibility artifact for Registry schemas that predate the signed
+        # modelInstall projection. The version-bounded legacy map remains the
+        # only permitted fallback and validate_manifest enforces that bound.
+        manifest.pop("modelInstall", None)
     manifest["files"] = rows
     manifest = validate_manifest(manifest)
+    if manifest["package"]["type"] == "service":
+        entrypoint = manifest["entrypoints"][0]["path"]
+        service_path = source_path / entrypoint
+        try:
+            if service_path.suffix.lower() == ".json":
+                service_manifest = json.loads(service_path.read_text(encoding="utf-8"))
+            else:
+                import yaml
+
+                service_manifest = yaml.safe_load(service_path.read_text(encoding="utf-8"))
+        except Exception as error:
+            raise PackageContractError(
+                "service_entrypoint_invalid",
+                "Service entrypoint must be valid UTF-8 JSON/YAML",
+            ) from error
+        models = service_manifest.get("models") if isinstance(service_manifest, dict) else None
+        package = manifest["package"]
+        if "discovery" in manifest and (not isinstance(models, list) or not models):
+            raise PackageContractError(
+                "model_discovery_invalid",
+                "Model discovery metadata requires a non-empty Service models list",
+            )
+        declared = manifest.get("modelInstall")
+        if declared is None and not is_legacy_model_release(package["id"], package["version"]):
+            # New compatibility releases have explicit discovery metadata and
+            # a bounded installation fallback; preserve historical validation.
+            declared = legacy_model_install(package["id"], package["version"])
+        if declared is not None:
+            service_id = service_manifest.get("id") if isinstance(service_manifest, dict) else None
+            available_model_ids = {
+                model.get("id")
+                for model in (models or [])
+                if isinstance(model, dict) and isinstance(model.get("weights"), dict)
+            }
+            declared_model_ids = {model["id"] for model in declared["models"]}
+            if service_id != declared["serviceKey"] or not declared_model_ids.issubset(available_model_ids):
+                raise PackageContractError(
+                    "model_install_invalid",
+                    "modelInstall must reference weighted models from the Service entrypoint",
+                )
+        if is_model_worker_service(service_manifest):
+            native_paths = native_payload_paths(
+                (row["path"], (source_path / row["path"]).read_bytes()[:4])
+                for row in rows
+            )
+            declarations = service_manifest.get("native_artifacts", [])
+            if native_paths or declarations:
+                declared_paths = [
+                    item.get("path")
+                    for item in declarations
+                    if isinstance(item, dict) and isinstance(item.get("path"), str)
+                ]
+                raise PackageContractError(
+                    "model_worker_native_payload_forbidden",
+                    "Model Worker Packages may contain signed Python and data assets, but no native-code payloads",
+                    details={"paths": sorted(set(native_paths) | set(declared_paths))},
+                )
+        if (
+            isinstance(models, list)
+            and models
+            and "discovery" not in manifest
+            and not is_legacy_model_release(package["id"], package["version"])
+        ):
+            raise PackageContractError(
+                "model_discovery_required",
+                "New model Packages must declare signed discovery metadata",
+                details={
+                    "required": {
+                        "kind": "model",
+                        "categories": sorted(MODEL_CATEGORIES),
+                        "tasks": ["lower-kebab-case-task"],
+                    }
+                },
+            )
     output_path = Path(output).expanduser().resolve()
     expected_extension = PACKAGE_TYPES[manifest["package"]["type"]][0]
     if output_path.suffix.lower() != expected_extension:

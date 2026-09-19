@@ -52,7 +52,7 @@
                     <h1>{{ t('account.auth.sign_in_title') }}</h1><p>{{ t('account.auth.sign_in_description') }}</p>
                     <form @submit.prevent="login()" x-init="email='';password='';credentialEntryEnabled=false">
                         <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" autocomplete="off" name="ai2apps-cloud-account" :readonly="!credentialEntryEnabled" @focus="credentialEntryEnabled=true" required x-model.trim="email"></label>
-                        <label class="account-field"><span>{{ t('account.field.password') }}</span><input class="account-input" type="password" autocomplete="off" name="ai2apps-cloud-credential" :readonly="!credentialEntryEnabled" @focus="credentialEntryEnabled=true" minlength="12" required x-model="password"></label>
+                        <label class="account-field"><span>{{ t('account.field.password') }}</span><input class="account-input" type="password" autocomplete="off" name="ai2apps-cloud-credential" :readonly="!credentialEntryEnabled" @focus="credentialEntryEnabled=true" maxlength="128" required x-model="password"></label>
                         <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.sign_in') }}</button><button type="button" class="account-link" @click="setMode('resetRequest')">{{ t('account.action.forgot_password') }}</button></div>
                     </form>
                     <div class="account-actions"><span class="text-[11px] text-neutral-500">{{ t('account.auth.new_to_ai2apps') }}</span><button class="account-link" @click="setMode('register')">{{ t('account.action.create_account') }}</button></div>
@@ -63,7 +63,8 @@
                     <form @submit.prevent="register()">
                         <label class="account-field"><span>{{ t('account.field.display_name') }}</span><input class="account-input" autocomplete="name" maxlength="120" required x-model.trim="displayName"></label>
                         <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" autocomplete="username" required x-model.trim="email"></label>
-                        <label class="account-field"><span>{{ t('account.field.password') }}</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="password"></label>
+                        <label class="account-field"><span>{{ t('account.field.password') }}</span><input class="account-input" type="password" autocomplete="new-password" maxlength="128" required aria-describedby="account-password-requirements" x-model="password"></label>
+                        <small id="account-password-requirements">{{ t('account.auth.password_requirements') }}</small>
                         <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.create_account') }}</button><button type="button" class="account-link" @click="setMode('login')">{{ t('account.action.back_to_sign_in') }}</button></div>
                     </form>
                 </div></template>
@@ -90,7 +91,7 @@
                     <form @submit.prevent="resetPassword()">
                         <label class="account-field"><span>{{ t('account.field.email') }}</span><input class="account-input" type="email" required x-model.trim="email"></label>
                         <label class="account-field"><span>{{ t('account.field.reset_code') }}</span><input class="account-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required x-model.trim="code"></label>
-                        <label class="account-field"><span>{{ t('account.field.new_password') }}</span><input class="account-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" required x-model="newPassword"></label>
+                        <label class="account-field"><span>{{ t('account.field.new_password') }}</span><input class="account-input" type="password" autocomplete="new-password" maxlength="128" required x-model="newPassword"></label>
                         <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.reset_password') }}</button><button type="button" class="account-link" @click="setMode('login')">{{ t('account.action.cancel') }}</button></div>
                     </form>
                 </div></template>
@@ -184,7 +185,7 @@
                     <div><button class="account-button primary" :disabled="busy||!profile" @click="setPrimaryDevice()">{{ t('account.primary_device.save') }}</button><p>{{ t('account.primary_device.note') }}</p></div>
                 </div>
                 <div class="account-card-body device-management-note">
-                    <label class="account-field"><span>{{ t('account.devices.revoke_password') }}</span><input class="account-input" type="password" autocomplete="off" name="device-revoke-owner-password" minlength="12" maxlength="128" x-model="deviceOwnerPassword" placeholder="{{ t('account.devices.revoke_password_placeholder') }}"></label>
+                    <label class="account-field"><span>{{ t('account.devices.revoke_password') }}</span><input class="account-input" type="password" autocomplete="off" name="device-revoke-owner-password" maxlength="128" x-model="deviceOwnerPassword" placeholder="{{ t('account.devices.revoke_password_placeholder') }}"></label>
                     <p>{{ t('account.devices.revocation_note') }}</p>
                 </div>
                 <div class="overflow-x-auto"><table class="account-ledger device-table"><thead><tr><th>{{ t('account.table.device') }}</th><th>{{ t('account.table.status') }}</th><th>{{ t('account.table.connection') }}</th><th>{{ t('account.table.last_active') }}</th><th>{{ t('account.table.actions') }}</th></tr></thead><tbody><template x-for="device in coreDevices" :key="device.id"><tr>
@@ -203,7 +204,7 @@
                     <label class="account-field"><span>{{ t('account.policy.monthly_points') }}</span><input class="account-input" inputmode="numeric" pattern="(0|[1-9][0-9]{0,18})" x-model.trim="policyDraft.defaultMonthlyPointLimit" placeholder="{{ t('account.policy.balance_placeholder') }}"></label>
                     <label class="account-field"><span>{{ t('account.policy.concurrency') }}</span><input class="account-input" type="number" min="1" max="100" required x-model.number="policyDraft.defaultConcurrencyLimit"></label>
                     <label class="account-field"><span>{{ t('account.policy.offline_grace') }}</span><input class="account-input" type="number" min="0" max="86400" required x-model.number="policyDraft.offlineGraceSeconds"></label>
-                    <label class="account-field"><span>{{ t('account.field.owner_password') }}</span><input class="account-input" type="password" autocomplete="off" name="organization-policy-owner-password" minlength="12" maxlength="128" required x-model="policyOwnerPassword"></label>
+                    <label class="account-field"><span>{{ t('account.field.owner_password') }}</span><input class="account-input" type="password" autocomplete="off" name="organization-policy-owner-password" maxlength="128" required x-model="policyOwnerPassword"></label>
                     <div class="policy-actions"><button class="account-button primary" :disabled="busy||!policy||!policyOwnerPassword">{{ t('account.action.save_policy') }}</button><small>{{ t('account.policy.save_note') }}</small></div>
                 </form>
             </section>
@@ -243,7 +244,7 @@
                         </tr></template></tbody></table></div>
                     </div>
                     <div class="member-role-verification">
-                        <label class="account-field"><span>{{ t('account.members.role_password') }}</span><input class="account-input" type="password" autocomplete="off" name="member-role-owner-password" minlength="12" maxlength="128" x-model="memberOwnerPassword" placeholder="{{ t('account.members.role_password_placeholder') }}"></label>
+                        <label class="account-field"><span>{{ t('account.members.role_password') }}</span><input class="account-input" type="password" autocomplete="off" name="member-role-owner-password" maxlength="128" x-model="memberOwnerPassword" placeholder="{{ t('account.members.role_password_placeholder') }}"></label>
                         <p>{{ t('account.members.password_note') }}</p>
                     </div>
                 </div>
@@ -255,7 +256,7 @@
                     <td><div x-show="member.role!=='core'&&member.role!=='owner'" class="member-actions"><button x-show="member.status==='active'" class="account-button" :disabled="busy" @click="updateMember(member,{status:'suspended'})">{{ t('account.action.suspend') }}</button><button x-show="member.status==='suspended'||member.status==='revoked'" class="account-button" :disabled="busy" @click="updateMember(member,{status:'active'})">{{ t('account.action.reactivate') }}</button><button x-show="member.status!=='revoked'" class="account-button danger" :disabled="busy" @click="updateMember(member,{status:'revoked'})">{{ t('account.action.remove') }}</button></div></td>
                 </tr></template></tbody></table><div x-show="!members.length" class="account-empty">{{ t('account.members.empty') }}</div></div>
                 <div class="account-card-body member-quota-list">
-                    <div class="member-quota-head"><div><strong>{{ t('account.quota.title') }}</strong><p>{{ t('account.quota.subtitle') }}</p></div><label class="account-field"><span>{{ t('account.quota.owner_password') }}</span><input class="account-input" type="password" autocomplete="off" name="member-quota-owner-password" minlength="12" maxlength="128" x-model="policyOwnerPassword"></label></div>
+                    <div class="member-quota-head"><div><strong>{{ t('account.quota.title') }}</strong><p>{{ t('account.quota.subtitle') }}</p></div><label class="account-field"><span>{{ t('account.quota.owner_password') }}</span><input class="account-input" type="password" autocomplete="off" name="member-quota-owner-password" maxlength="128" x-model="policyOwnerPassword"></label></div>
                     <template x-for="member in members.filter(item => item.role!=='core'&&item.role!=='owner')" :key="'quota-'+member.userId"><article class="member-quota-editor">
                         <div class="member-quota-identity"><strong x-text="member.displayName || shortIdentity(member.userId)"></strong><small x-text="member.quota ? tr('account.quota.policy_version',{version:member.quota.policyVersion}) : (member.quotaError || tr('account.quota.loading'))"></small></div>
                         <label class="account-field"><span>{{ t('account.quota.allowed_models') }}</span><textarea class="account-input policy-list" x-model="member.quotaDraft.allowedModelIds" :disabled="!member.quotaLoaded" placeholder="{{ t('account.quota.blank_inherit') }}"></textarea></label>
@@ -293,7 +294,7 @@
                 <div class="account-card-head"><div><h2>{{ t('account.admin.title') }}</h2><p>{{ t('account.admin.subtitle') }}</p></div></div>
                 <div class="account-card-body">
                     <form @submit.prevent="verifyAdmin()">
-                        <label class="account-field"><span>{{ t('account.admin.password') }}</span><input class="account-input" type="password" autocomplete="current-password" minlength="12" maxlength="128" required x-model="adminPassword"></label>
+                        <label class="account-field"><span>{{ t('account.admin.password') }}</span><input class="account-input" type="password" autocomplete="current-password" maxlength="128" required x-model="adminPassword"></label>
                         <label class="account-field"><span>{{ t('account.admin.duration') }}</span><select class="account-input" x-model.number="adminDurationMinutes"><option value="5">5 {{ t('account.common.minutes') }}</option><option value="15">15 {{ t('account.common.minutes') }}</option><option value="60">60 {{ t('account.common.minutes') }}</option><option value="180">180 {{ t('account.common.minutes') }}</option></select></label>
                         <div class="account-actions"><button class="account-button primary" :disabled="busy">{{ t('account.action.verify_admin') }}</button><span x-show="adminVerifiedUntil" class="text-[11px] text-green-700" x-text="tr('account.admin.verified_until',{time:formatTime(adminVerifiedUntil)})"></span></div>
                     </form>

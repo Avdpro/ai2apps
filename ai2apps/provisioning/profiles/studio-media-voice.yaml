@@ -1,0 +1,136 @@
+schema: ai2apps.capability-profiles/v1
+app_ids: [ai2apps.readaloud, ai2apps.video-studio]
+version: 1
+
+# Trusted Host-owned components. Package Mini-Apps may select only a capability;
+# they cannot supply or replace these Package, Checkpoint, or verification targets.
+definitions:
+  runtime: &runtime
+    {id: omlx-runtime, kind: package, phase: runtime, package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.6.2,<2.0.0"}
+  detailed-provider: &detailed-provider
+    {id: detailed-provider, kind: package, phase: provider, package_id: ai2apps/model-detailed-transcription-mlx, service_key: ai2apps.model.detailed-transcription-mlx, version: ">=0.1.2,<1.0.0"}
+  detailed-compact: &detailed-compact
+    {id: detailed-compact, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.detailed-transcription-mlx/compact}
+  detailed-quality: &detailed-quality
+    {id: detailed-quality, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.detailed-transcription-mlx/quality}
+  forced-aligner: &forced-aligner
+    {id: forced-aligner, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.detailed-transcription-mlx/forced-aligner}
+  diarizer: &diarizer
+    {id: diarizer, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.detailed-transcription-mlx/diarizer}
+  detailed-verify: &detailed-verify
+    {id: detailed-verify, kind: verify, phase: verify, service_key: ai2apps.model.detailed-transcription-mlx, capabilities: [audio-detailed-transcription-v1]}
+  demucs-provider: &demucs-provider
+    {id: demucs-provider, kind: package, phase: provider, package_id: ai2apps/model-demucs-mlx, service_key: ai2apps.model.demucs-mlx, version: ">=0.1.0,<1.0.0"}
+  demucs-checkpoint: &demucs-checkpoint
+    {id: demucs-checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.demucs-mlx/default}
+  demucs-verify: &demucs-verify
+    {id: demucs-verify, kind: verify, phase: verify, service_key: ai2apps.model.demucs-mlx, capabilities: [audio-processing]}
+  seed-vc-provider: &seed-vc-provider
+    {id: seed-vc-provider, kind: package, phase: provider, package_id: ai2apps/model-seed-vc-v2-mlx, service_key: ai2apps.model.seed-vc-v2-mlx, version: ">=0.1.0,<1.0.0"}
+  seed-vc-checkpoint: &seed-vc-checkpoint
+    {id: seed-vc-checkpoint, kind: checkpoint, phase: checkpoint, model_id: ai2apps.model.seed-vc-v2-mlx/default}
+  seed-vc-verify: &seed-vc-verify
+    {id: seed-vc-verify, kind: verify, phase: verify, service_key: ai2apps.model.seed-vc-v2-mlx, capabilities: [audio-reference-input-v1]}
+
+capabilities:
+  audio.detailed_transcription:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS DETAILED TRANSCRIPTION SETUP
+      title: 配置详细转写
+      description: 安装 MLX Detailed Transcription、强制对齐与说话人分离模型。
+      icon: captions
+      confirm_label: 下载并配置
+      ready_label: 详细转写已经可用
+      steps: {runtime: 配置音频 Runtime, provider: 安装转写 Package, checkpoint: 下载转写模型, verify: 启动并验证详细转写}
+    profiles:
+      - id: apple-metal-detailed-transcription-compact
+        label: Detailed Transcription Compact
+        description: 0.6B ASR、强制对齐与四说话人分离，兼顾速度和质量。
+        priority: 100
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-compact, *forced-aligner, *diarizer, *detailed-verify]}
+      - id: apple-metal-detailed-transcription-quality
+        label: Detailed Transcription Quality
+        description: 1.7B ASR、强制对齐与四说话人分离，适合更高质量转写。
+        priority: 110
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}}
+        recommendation_memory_gib: {minimum: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-quality, *forced-aligner, *diarizer, *detailed-verify]}
+
+  audio.source_separation:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS SOURCE SEPARATION SETUP
+      title: 配置人声与背景分离
+      description: 安装并验证 MLX Demucs，在本机生成对白/背景或多声部音轨。
+      icon: split
+      confirm_label: 下载并配置
+      ready_label: 音轨分离已经可用
+      steps: {runtime: 配置音频 Runtime, provider: 安装 MLX Demucs, checkpoint: 下载 Demucs 模型, verify: 启动并验证音轨分离}
+    profiles:
+      - id: apple-metal-demucs
+        label: MLX Demucs HTDemucs
+        description: 本地人声、背景与四声部分离。
+        priority: 100
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 8}}}
+        recommendation_memory_gib: {minimum: 8}
+        stack: {components: [*runtime, *demucs-provider, *demucs-checkpoint, *demucs-verify]}
+
+  audio.speaker_voice_replacement:
+    trigger: on_feature_request
+    presentation: &replacement-presentation
+      eyebrow: AI2APPS SPEAKER REPLACEMENT SETUP
+      title: 配置指定角色换声
+      description: 一次配置详细转写、MLX Demucs 与 MLX Seed-VC v2；确认前不会下载模型。
+      icon: audio-lines
+      confirm_label: 下载并配置全部依赖
+      ready_label: 指定角色换声已经可用
+      steps: {runtime: 配置音频 Runtime, provider: 安装模型 Package, checkpoint: 下载所需模型, verify: 启动并验证完整链路}
+    profiles: &replacement-profiles
+      - id: apple-metal-speaker-replacement-compact
+        label: 角色换声 · Compact 转写
+        description: 使用 0.6B 详细转写、Demucs 和 Seed-VC v2，推荐大多数设备。
+        priority: 100
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 24}}}
+        recommendation_memory_gib: {minimum: 24, maximum_exclusive: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-compact, *forced-aligner, *diarizer, *demucs-provider, *demucs-checkpoint, *seed-vc-provider, *seed-vc-checkpoint, *detailed-verify, *demucs-verify, *seed-vc-verify]}
+      - id: apple-metal-speaker-replacement-quality
+        label: 角色换声 · Quality 转写
+        description: 使用 1.7B 详细转写、Demucs 和 Seed-VC v2，适合大内存设备。
+        priority: 110
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 48}}}
+        recommendation_memory_gib: {minimum: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-quality, *forced-aligner, *diarizer, *demucs-provider, *demucs-checkpoint, *seed-vc-provider, *seed-vc-checkpoint, *detailed-verify, *demucs-verify, *seed-vc-verify]}
+
+  media.video_subtitles:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VIDEO SUBTITLE SETUP
+      title: 配置视频字幕
+      description: 安装详细转写、强制对齐与说话人分离模型；字幕导出和烧录由 Host 提供。
+      icon: subtitles
+      confirm_label: 下载并配置
+      ready_label: 视频字幕已经可用
+      steps: {runtime: 配置音频 Runtime, provider: 安装转写 Package, checkpoint: 下载转写模型, verify: 启动并验证字幕链路}
+    profiles:
+      - id: apple-metal-video-subtitles-compact
+        label: 视频字幕 · Compact
+        description: 使用 0.6B 详细转写，适合快速字幕生成。
+        priority: 100
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-compact, *forced-aligner, *diarizer, *detailed-verify]}
+      - id: apple-metal-video-subtitles-quality
+        label: 视频字幕 · Quality
+        description: 使用 1.7B 详细转写，适合更高质量字幕。
+        priority: 110
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}}
+        recommendation_memory_gib: {minimum: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-quality, *forced-aligner, *diarizer, *detailed-verify]}
+
+  media.video_speaker_voice_replacement:
+    trigger: on_feature_request
+    presentation: *replacement-presentation
+    profiles: *replacement-profiles

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -19,17 +19,24 @@ from ai2apps.api.identity import (
     require_app_capability,
     resolve_request_principal,
 )
+from ai2apps.api.ownership import authorize_app_instance
 from ai2apps.apps.access import APP_SYSTEM_MANAGE
 from ai2apps.core import RepositoryError
 from ai2apps.http_security import enforce_same_origin_cookie_request
 from ai2apps.identity import RequestPrincipal
-from ai2apps.model_providers import recommended_model_configuration_id
+from ai2apps.model_providers import (
+    list_package_models,
+    recommended_model_configuration_id,
+)
 from ai2apps.packages import PackageError, TrustStatus
 from ai2apps.packages.contract_v1 import PackageContractError
+from ai2apps.packages.discovery import MODEL_CATEGORIES, matches_model_category
 from ai2apps.packages.install_continuations import (
     RegistryInstallContinuationRepository,
 )
 from ai2apps.packages.registry import RegistryError
+from ai2apps.password_policy import PASSWORD_SCHEMA, Password
+from ai2apps.provisioning.profiles import device_profile
 
 
 class PublisherRequest(BaseModel):
@@ -43,6 +50,10 @@ class PublisherRequest(BaseModel):
 
 class PackageInspectRequest(BaseModel):
     archive_path: str = Field(min_length=1)
+
+
+class TestCandidateRequest(PackageInspectRequest):
+    expected_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
 class PackageInstallRequest(PackageInspectRequest):
@@ -77,6 +88,11 @@ class RegistryInstallRequest(BaseModel):
     approve_review: bool = False
 
 
+class RegistryModelInstallRequest(BaseModel):
+    version: str | None = None
+    model_id: str = Field(alias="modelId", min_length=1, max_length=255)
+
+
 class RegistryUninstallRequest(BaseModel):
     force: bool = False
     delete_checkpoints: bool = False
@@ -108,7 +124,7 @@ class CloudSubmissionReviewRequest(BaseModel):
 
 
 class CloudAdminReauthRequest(BaseModel):
-    password: str = Field(min_length=12, max_length=128)
+    password: Password = Field(json_schema_extra=PASSWORD_SCHEMA)
 
 
 def _package(record) -> dict[str, Any]:
@@ -130,6 +146,50 @@ def _package(record) -> dict[str, Any]:
         if record.activated_at is None
         else record.activated_at.isoformat(),
     }
+
+
+def _filter_catalog_content(
+    value: Any,
+    *,
+    content: str | None,
+    model_category: str | None,
+    model_task: str | None,
+    limit: int,
+) -> Any:
+    if (
+        content not in {"model", "service"}
+        and model_category is None
+        and model_task is None
+    ):
+        return value
+
+    def matches(item: Any) -> bool:
+        if not isinstance(item, dict):
+            return False
+        discovery = item.get("discovery")
+        is_model = isinstance(discovery, dict) and discovery.get("kind") == "model"
+        if content == "model" and not is_model:
+            return False
+        if content == "service" and is_model:
+            return False
+        if model_category is not None and (
+            not is_model or not matches_model_category(discovery, model_category)
+        ):
+            return False
+        return model_task is None or (
+            is_model and model_task in discovery.get("tasks", [])
+        )
+
+    if isinstance(value, list):
+        return [item for item in value if matches(item)][:limit]
+    if not isinstance(value, dict):
+        return value
+    for key in ("items", "packages", "results", "recommendations"):
+        if isinstance(value.get(key), list):
+            result = dict(value)
+            result[key] = [item for item in value[key] if matches(item)][:limit]
+            return result
+    return value
 
 
 def _error(error: PackageError) -> JSONResponse:
@@ -376,6 +436,56 @@ def create_package_router(
             return None
         return RegistryInstallContinuationRepository(database)
 
+    def trusted_discover_instance(
+        principal: RequestPrincipal, app_instance_id: str
+    ) -> None:
+        runtime = runtime_provider()
+        if runtime is None or runtime.extension_manager is None:
+            raise HTTPException(status_code=503, detail="App identity is not initialized")
+        authorize_app_instance(runtime, principal, app_instance_id)
+        entry = runtime.extension_manager.instance_entry(
+            app_instance_id, principal=principal
+        )
+        if entry.get("app_key") != "ai2apps.discover":
+            raise HTTPException(status_code=403, detail="Discover App instance required")
+
+    def catalog_package_facts(value: dict[str, Any]) -> tuple[str, str]:
+        manifest = value.get("manifest")
+        latest_release = value.get("latestRelease")
+        if not isinstance(latest_release, dict):
+            latest_release = {}
+        if not isinstance(manifest, dict):
+            manifest = latest_release.get("manifest", {})
+        manifest_package = (
+            manifest.get("package", {}) if isinstance(manifest, dict) else {}
+        )
+        catalog_package = (
+            value.get("package") if isinstance(value.get("package"), dict) else {}
+        )
+        version = (
+            value.get("version")
+            or value.get("latestVersion")
+            or latest_release.get("version")
+            or catalog_package.get("latestVersion")
+            or catalog_package.get("version")
+            or manifest_package.get("version")
+        )
+        display_name = (
+            value.get("displayName")
+            or catalog_package.get("displayName")
+            or manifest_package.get("displayName")
+        )
+        if not isinstance(version, str) or not version:
+            raise RegistryError(
+                "release_not_found", "The catalog release version is unavailable"
+            )
+        return version, str(
+            display_name
+            or catalog_package.get("packageId")
+            or manifest_package.get("id")
+            or "Model"
+        )
+
     def publishing_registry_or_error(request: Request):
         """Return a Registry manager bound to this browser's Cloud session."""
 
@@ -421,6 +531,13 @@ def create_package_router(
     async def registry_search(
         q: str = "",
         type: str | None = Query(default=None, pattern="^(app|agent|service)$"),
+        content: str | None = Query(default=None, pattern="^(model|service)$"),
+        model_category: str | None = Query(
+            default=None, pattern=f"^({'|'.join(sorted(MODEL_CATEGORIES))})$"
+        ),
+        model_task: str | None = Query(
+            default=None, min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+        ),
         publisher: str | None = None,
         sort: str = Query(
             default="recommended", pattern="^(recommended|relevance|rating|newest)$"
@@ -432,13 +549,20 @@ def create_package_router(
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            return await manager.search(
+            result = await manager.search(
                 q=q,
-                type=type,
+                type="service" if content in {"model", "service"} else type,
                 publisher=publisher,
                 sort=sort,
-                limit=limit,
+                limit=100 if content in {"model", "service"} else limit,
                 cursor=cursor,
+            )
+            return _filter_catalog_content(
+                result,
+                content=content,
+                model_category=model_category,
+                model_task=model_task,
+                limit=limit,
             )
         except RegistryError as error:
             return _registry_error(error)
@@ -446,6 +570,13 @@ def create_package_router(
     @router.get("/packages/catalog/recommendations")
     async def registry_recommendations(
         type: str | None = Query(default=None, pattern="^(app|agent|service)$"),
+        content: str | None = Query(default=None, pattern="^(model|service)$"),
+        model_category: str | None = Query(
+            default=None, pattern=f"^({'|'.join(sorted(MODEL_CATEGORIES))})$"
+        ),
+        model_task: str | None = Query(
+            default=None, min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+        ),
         limit: int = Query(default=24, ge=1, le=100),
         cursor: str | None = None,
     ):
@@ -453,7 +584,18 @@ def create_package_router(
         if isinstance(manager, JSONResponse):
             return manager
         try:
-            return await manager.recommendations(type=type, limit=limit, cursor=cursor)
+            result = await manager.recommendations(
+                type="service" if content in {"model", "service"} else type,
+                limit=100 if content in {"model", "service"} else limit,
+                cursor=cursor,
+            )
+            return _filter_catalog_content(
+                result,
+                content=content,
+                model_category=model_category,
+                model_task=model_task,
+                limit=limit,
+            )
         except RegistryError as error:
             return _registry_error(error)
 
@@ -467,12 +609,169 @@ def create_package_router(
         except RegistryError as error:
             return _registry_error(error)
 
+    @router.get("/packages/{namespace}/{name}/model-install-plan")
+    async def registry_model_install_plan(
+        namespace: str,
+        name: str,
+        version: str | None = None,
+        principal: RequestPrincipal = principal_dependency,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+    ):
+        trusted_discover_instance(principal, app_instance_id)
+        manager = registry_or_error()
+        if isinstance(manager, JSONResponse):
+            return manager
+        try:
+            item = await manager.catalog(namespace, name)
+            package_version, display_name = catalog_package_facts(item)
+            if version is not None and version != package_version:
+                raise RegistryError(
+                    "release_not_found",
+                    "The selected model release is no longer the catalog release",
+                )
+            install = item.get("modelInstall")
+            if not isinstance(install, dict):
+                raise RegistryError(
+                    "model_install_unavailable",
+                    "This Package does not declare a trusted model installation plan",
+                )
+            profile = item.get("modelProfile") or {}
+            minimum_bytes = profile.get("minimumMemoryBytes")
+            device = device_profile()
+            memory_bytes = int(float(device.get("system_memory_gib", 0)) * 1024**3)
+            compatible = not isinstance(minimum_bytes, int) or memory_bytes >= minimum_bytes
+            return {
+                "schema": "ai2apps.provisioning-plan/v1",
+                "appId": "ai2apps.discover",
+                "capability": "model.package.install",
+                "selectionMode": "single",
+                "device": device,
+                "presentation": {
+                    "title": f"选择 {display_name} 模型",
+                    "description": "选择要随 Package 一起下载并验证的 Checkpoint。",
+                    "icon": "box",
+                },
+                "profileOptions": [
+                    {
+                        "profileId": model["id"],
+                        "modelId": model["id"],
+                        "label": model["label"],
+                        "description": "",
+                        "compatible": compatible,
+                        "recommended": model["recommended"] and compatible,
+                        "selected": model["recommended"] and compatible,
+                        "disabledReasons": [] if compatible else ["设备内存低于 Package 声明的最低要求"],
+                        "minimumMemoryGiB": (
+                            minimum_bytes / 1024**3
+                            if isinstance(minimum_bytes, int)
+                            else None
+                        ),
+                    }
+                    for model in install["models"]
+                ],
+            }
+        except RegistryError as error:
+            return _registry_error(error)
+
+    @router.post("/packages/{namespace}/{name}/model-install-sessions")
+    async def registry_model_install_session(
+        namespace: str,
+        name: str,
+        request: RegistryModelInstallRequest,
+        principal: RequestPrincipal = principal_dependency,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+    ):
+        trusted_discover_instance(principal, app_instance_id)
+        if not principal.is_core:
+            raise HTTPException(status_code=403, detail="Installation owner required")
+        manager = registry_or_error()
+        if isinstance(manager, JSONResponse):
+            return manager
+        runtime = runtime_provider()
+        if runtime is None or runtime.provisioning is None:
+            return platform_error_response(
+                status_code=503,
+                code="platform_not_ready",
+                message="ACPF is not initialized.",
+                retryable=True,
+            )
+        try:
+            item = await manager.catalog(namespace, name)
+            package_version, display_name = catalog_package_facts(item)
+            if request.version is not None and request.version != package_version:
+                raise RegistryError("release_not_found", "The selected model release is no longer available")
+            install = item.get("modelInstall")
+            if not isinstance(install, dict):
+                raise RegistryError(
+                    "model_install_unavailable",
+                    "This Package does not declare a trusted model installation plan",
+                )
+            return runtime.provisioning.ensure_model_package(
+                actor_id=principal.actor_user_id,
+                installation_id=principal.installation_id,
+                app_instance_id=app_instance_id,
+                package_id=f"{namespace}/{name}",
+                package_version=package_version,
+                display_name=display_name,
+                service_key=install["serviceKey"],
+                models=install["models"],
+                selected_model_id=request.model_id,
+                model_profile=item.get("modelProfile"),
+            )
+        except RegistryError as error:
+            return _registry_error(error)
+        except ValueError as error:
+            return platform_error_response(
+                status_code=422,
+                code="model_install_invalid",
+                message=str(error),
+            )
+
     @router.get("/packages/installed")
     def registry_installed(locale: str | None = Query(default=None, max_length=64)):
         manager = registry_or_error()
         if isinstance(manager, JSONResponse):
             return manager
-        return {"items": manager.installed(locale=locale)}
+        items = manager.installed(locale=locale)
+        ready_model_ids = {
+            model.id
+            for model in list_package_models(runtime_provider())
+            if model.checkpoint_ready
+        }
+        for item in items:
+            model_install = item.get("modelInstall")
+            if not isinstance(model_install, dict):
+                continue
+            declared_ids = {
+                model.get("id")
+                for model in model_install.get("models", [])
+                if isinstance(model, dict) and isinstance(model.get("id"), str)
+            }
+            configured_ids = sorted(declared_ids & ready_model_ids)
+            item["readyModelConfigurationIds"] = configured_ids
+            item["modelReady"] = bool(configured_ids)
+        return {"items": items}
+
+    @router.get("/packages/test-candidates")
+    def test_candidate_available():
+        from ai2apps.packages.test_candidates import require_test_instance
+        try:
+            require_test_instance(runtime_provider())
+            return {"enabled": True}
+        except RegistryError:
+            return {"enabled": False}
+
+    @router.post("/packages/test-candidates")
+    async def test_candidate_import(request: TestCandidateRequest):
+        from ai2apps.extensions import ExtensionError
+        from ai2apps.packages.test_candidates import import_candidate
+        try:
+            return await import_candidate(runtime_provider(), request.archive_path,
+                                          expected_digest=request.expected_digest)
+        except (RegistryError, PackageContractError, ExtensionError) as error:
+            return _registry_error(error)
+        except (OSError, ValueError, KeyError):
+            return _registry_error(RegistryError("candidate_invalid", "Candidate or signature metadata is invalid"))
 
     @router.post("/packages/build")
     def registry_build(request: RegistryBuildRequest):

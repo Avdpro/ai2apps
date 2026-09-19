@@ -1,0 +1,27 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "implementation": {
+    "repository": "omlx-moe-cache",
+    "path": "packages/omlx-model-face-swap"
+  },
+  "model_api": {
+    "family": "ghostv2",
+    "checkpoint_layout": "ai2apps.mlx-ghostv2-checkpoint/v1",
+    "public_distribution": "pending_dual_source_distribution"
+  },
+  "ghostv2": {
+    "repository": "https://github.com/dimitribarbot/ghostv2",
+    "commit": "bc53ed086dbe8ea38e165aec7aaac90d1749a335",
+    "generator_sha256": "6e45013c280f0afb7ad2760e6d2f80f4e754e6f4096f11edf0faf8dec29f4c22",
+    "cvlface_sha256": "5fafd6b7d599a3ede5fac5bd1d01ad05e9e93e89b39b7687d4a3bc93ff2aebc0",
+    "native_generator_sha256": "5d55bbcaefd5aa2a5068c399c2fee5fcd765a08a36708314795839e296d3d587",
+    "license": "BSD-3-Clause"
+  },
+  "detector": {
+    "repository": "https://github.com/opencv/opencv_zoo",
+    "commit": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+    "model": "face_detection_yunet_2023mar.onnx",
+    "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "license": "MIT"
+  }
+}

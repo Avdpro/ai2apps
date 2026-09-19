@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import struct
@@ -206,6 +207,71 @@ async def test_native_package_distribution_reuses_verified_local_checkout(
         ManagedServiceSupervisor,
         "_huggingface_hub_cache",
         lambda: tmp_path / "hub",
+    )
+    installer = AI2AppsInstaller(
+        FakeDownloader(), checkpoint_acquisition=FakeAcquisition()
+    )
+    recipe = {
+        "id": "provider/model",
+        "name": "Model",
+        "recipe": "native",
+        "distribution_id": "dist_test_v1",
+        "sources": ({"repo_id": "owner/model", "revision": revision},),
+    }
+    task = InstallTask("task", recipe["id"], "huggingface", "owner/model", revision)
+
+    assert await installer._ensure_native_checkpoint(
+        task, recipe, "", dependency=False
+    ) is True
+
+
+@pytest.mark.asyncio
+async def test_native_package_distribution_imports_external_hf_snapshot(
+    tmp_path, monkeypatch
+):
+    revision = "c" * 40
+    private_hub = tmp_path / "private-hub"
+    external_hub = tmp_path / "external-hub"
+    external_snapshot = (
+        external_hub / "models--owner--model" / "snapshots" / revision
+    )
+    external_snapshot.mkdir(parents=True)
+    (external_snapshot / "config.json").write_text("{}")
+    (external_snapshot / "model.safetensors").write_bytes(b"existing weights")
+
+    class FakeDownloader:
+        model_dir = tmp_path / "models"
+
+    class FakeAcquisition:
+        async def acquire(self, distribution_id, **kwargs):
+            assert distribution_id == "dist_test_v1"
+            assert kwargs.pop("local_snapshot") == external_snapshot
+            assert callable(kwargs.pop("progress"))
+            assert kwargs == {"hf_token": None}
+            return SimpleNamespace(
+                cache_hit=True,
+                manifest=SimpleNamespace(
+                    distribution_id=distribution_id,
+                    model_id="provider/model",
+                    repo_id="owner/model",
+                    revision=revision,
+                ),
+            )
+
+        def materialize_worker_snapshot(self, _result, hub_cache):
+            assert Path(hub_cache) == private_hub
+
+    monkeypatch.setattr(
+        "ai2apps.model_installer.publish_configured_shared_model_reference",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor, "_huggingface_hub_cache", lambda: private_hub
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_import_hub_cache",
+        lambda: external_hub,
     )
     installer = AI2AppsInstaller(
         FakeDownloader(), checkpoint_acquisition=FakeAcquisition()
@@ -637,7 +703,7 @@ def test_catalog_exposes_qwen_when_its_scope_pack_is_configured(
 
     assert item["engine"]["id"] == "qwen3.6-tiered"
     assert item["sources"][0]["repo_id"] == (
-        "mlx-community/Qwen3.6-35B-A3B-4bit"
+        "Avdpro/Qwen3.6-35B-A3B-4bit-SSD"
     )
     assert [tier["experts"] for tier in item["memory_tiers"]] == [80, 96, 120]
 
@@ -825,6 +891,18 @@ def test_diffusers_snapshot_with_nested_indexed_components_is_complete(tmp_path:
     assert not checkpoint_is_complete(snapshot)
 
 
+def test_named_safetensors_config_pair_is_complete(tmp_path: Path):
+    snapshot = tmp_path / "demucs"
+    snapshot.mkdir()
+    (snapshot / "htdemucs.safetensors").write_bytes(b"weights")
+    (snapshot / "htdemucs_config.json").write_text("{}")
+
+    assert checkpoint_is_complete(snapshot)
+
+    (snapshot / "htdemucs_config.json").rename(snapshot / "other_config.json")
+    assert not checkpoint_is_complete(snapshot)
+
+
 def test_prepare_checkpoint_prefers_hf_cache(tmp_path: Path, monkeypatch):
     revision = "a" * 40
     snapshot = tmp_path / "snapshots" / revision
@@ -909,7 +987,7 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
             raise AssertionError("complete local checkpoint should not download")
 
     downloader = FakeDownloader()
-    source = downloader.model_dir / "mlx-community/Qwen3.6-35B-A3B-4bit"
+    source = downloader.model_dir / "Avdpro/Qwen3.6-35B-A3B-4bit-SSD"
     _write_fake_qwen_checkpoint(source)
     (source / ".ai2apps").mkdir()
     (source / ".ai2apps" / "source.json").write_text(
@@ -917,8 +995,8 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
             {
                 "format": "ai2apps-hf-source",
                 "version": 1,
-                "repo_id": "mlx-community/Qwen3.6-35B-A3B-4bit",
-                "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
+                "repo_id": "Avdpro/Qwen3.6-35B-A3B-4bit-SSD",
+                "revision": "c6b2081c394f6c1270b243eb77292e70769af341",
             }
         )
     )
@@ -940,7 +1018,7 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
     assert manifest["version"] == 2
     assert manifest["execution_modes"] == ["cached", "full"]
     assert manifest["source"]["revision"] == (
-        "38740b847e4cb78f352aba30aa41c76e08e6eb46"
+        "c6b2081c394f6c1270b243eb77292e70769af341"
     )
     assert manifest["conversion"]["variant"] == (
         "qwen3.6-affine-q4-gate-up-fused-v2"
@@ -966,7 +1044,9 @@ async def test_qwen_catalog_install_reuses_checkpoint_and_writes_runtime_manifes
         Path(manifest["expert_store"]) / "layer-000.moe"
     ) as store:
         assert "gate_up_proj.weight" in {tensor.name for tensor in store.tensors}
-    discovered = discover_models(downloader.model_dir)["Qwen3.6-35B-A3B-4bit"]
+    discovered = discover_models(downloader.model_dir)[
+        "Qwen3.6-35B-A3B-4bit-SSD"
+    ]
     assert discovered.source_type == "ai2apps"
     assert cache_moe_engine_id(discovered.cache_moe_config) == "qwen3.6-tiered"
 

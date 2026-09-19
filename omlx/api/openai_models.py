@@ -594,6 +594,10 @@ class ModelInfo(BaseModel):
     # instead of guessing multimodal support from a model name.
     model_type: str | None = None
     capabilities: list[str] | dict[str, Any] | None = None
+    # Stable AI2Apps presentation contract. ``id`` remains the routing key.
+    name: str | None = None
+    display_name: str | None = None
+    identity: dict[str, str] | None = None
 
 
 class ModelsResponse(BaseModel):

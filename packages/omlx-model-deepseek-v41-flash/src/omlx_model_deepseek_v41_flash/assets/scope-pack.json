@@ -1,0 +1,33 @@
+{
+  "format": "ai2apps-scope-pack",
+  "version": 1,
+  "id": "deepseek-v41-flash-runtime-profile",
+  "pack_version": "2026.09.17.1",
+  "family": "deepseek_v41",
+  "engine": "deepseek-v41-ssd",
+  "profile": {
+    "file": "scope-profile.json",
+    "format": "ai2apps-deepseek-v41-runtime-profile",
+    "sha256": "1450b8eda033380b5f012a937b33eba5d78e68eae566ce8fd9f703e9af8a7651",
+    "layers": 40,
+    "routed_layers": 40,
+    "experts": 384,
+    "max_ranked_experts": 40,
+    "scopes": 1
+  },
+  "compatibility": {
+    "model_ids": [
+      "deepseek-v41-flash"
+    ],
+    "source_revisions": {
+      "deepseek-v41-flash": "efb7e03fd718ebbeb3e0d7e60ed037a920d8e441"
+    },
+    "memory_tiers": [
+      40
+    ]
+  },
+  "provenance": {
+    "kind": "validated-runtime-defaults",
+    "benchmark_document": "docs/dsv41f-standard-inference-engine-2026-09-17.md"
+  }
+}

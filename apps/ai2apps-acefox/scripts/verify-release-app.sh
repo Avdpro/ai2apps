@@ -11,6 +11,9 @@ fail() {
 
 [[ -n ${APP} && -d ${APP} && ${APP:t} == *.app ]] || fail "set APP to a release .app bundle"
 [[ -x ${APP}/Contents/MacOS/AI2Apps ]] || fail "missing launcher"
+for license_file in LICENSE LICENSE-POLICY.md NOTICE TRADEMARKS.md LICENSES/AI2APPS-CLOUD-CONNECTOR-BSL-1.1.md; do
+  [[ -s ${APP}/Contents/Resources/Licenses/${license_file} ]] || fail "missing release license ${license_file}"
+done
 UPDATER_PROTOCOL=$(/usr/libexec/PlistBuddy -c 'Print :AI2AppsUpdaterProtocol' "${APP}/Contents/Info.plist" 2>/dev/null || true)
 if [[ -n ${UPDATER_PROTOCOL} ]]; then
   [[ ${UPDATER_PROTOCOL} == 1 ]] || fail "unsupported updater protocol"
@@ -89,6 +92,8 @@ SHELL_STORAGE_MODE=$(/usr/libexec/PlistBuddy -c 'Print :AI2AppsStorageMode' "${S
   fail "Helper minimum system version must be 13.0"
 BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${APP}/Contents/Info.plist")
 INSTANCE_ID=$(/usr/libexec/PlistBuddy -c 'Print :AI2AppsInstanceID' "${APP}/Contents/Info.plist")
+DISPLAY_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "${APP}/Contents/Info.plist")
+ICON_CONTRACT=$(/usr/libexec/PlistBuddy -c 'Print :AI2AppsIconContract' "${APP}/Contents/Info.plist" 2>/dev/null || true)
 HELPER_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${APP}/Contents/Library/LoginItems/AI2AppsHelper.app/Contents/Info.plist")
 [[ ${HELPER_ID} == ${BUNDLE_ID}.helper ]] || fail "Login Item identity does not match the main App"
 for component_info in \
@@ -96,6 +101,49 @@ for component_info in \
   "${HELPER_APP}/Contents/Info.plist"; do
   [[ $(/usr/libexec/PlistBuddy -c 'Print :AI2AppsInstanceID' "${component_info}" 2>/dev/null || true) == ${INSTANCE_ID} ]] || \
     fail "embedded component instance identity does not match the main App"
+done
+
+EXPECTED_ICON_CONTRACT=standard
+if [[ ${INSTANCE_ID} == test && ${BUNDLE_ID} == com.ai2apps.desktop.test && \
+      ${DISPLAY_NAME} == AI2Apps-test ]]; then
+  EXPECTED_ICON_CONTRACT=test
+elif [[ ${INSTANCE_ID} == app-dev && ${BUNDLE_ID} == com.ai2apps.desktop.appdev && \
+        ${DISPLAY_NAME} == AI2Apps-App-Dev ]]; then
+  EXPECTED_ICON_CONTRACT=app-dev
+elif [[ ${INSTANCE_ID} == test || ${BUNDLE_ID} == com.ai2apps.desktop.test || \
+        ${DISPLAY_NAME} == AI2Apps-test || ${INSTANCE_ID} == app-dev || \
+        ${BUNDLE_ID} == com.ai2apps.desktop.appdev || \
+        ${DISPLAY_NAME} == AI2Apps-App-Dev ]]; then
+  fail "reserved Test/App-Dev identity fields are incomplete"
+fi
+[[ ${ICON_CONTRACT} == ${EXPECTED_ICON_CONTRACT} ]] || \
+  fail "signed App icon contract does not match its instance identity"
+for component_info in \
+  "${SHELL_APP}/Contents/Info.plist" \
+  "${HELPER_APP}/Contents/Info.plist"; do
+  [[ $(/usr/libexec/PlistBuddy -c 'Print :AI2AppsIconContract' "${component_info}" 2>/dev/null || true) == ${EXPECTED_ICON_CONTRACT} ]] || \
+    fail "embedded component icon contract does not match the main App"
+done
+/usr/bin/cmp -s \
+  "${APP}/Contents/Resources/firefox.icns" \
+  "${SHELL_APP}/Contents/Resources/firefox.icns" || \
+  fail "main App and embedded Shell icons do not match"
+for menubar_icon in "${HELPER_APP}/Contents/Resources"/menubar-logo*.svg; do
+  case ${EXPECTED_ICON_CONTRACT} in
+    test)
+      /usr/bin/grep -Fq 'id="ai2apps-test-badge-left"' "${menubar_icon}" && \
+        /usr/bin/grep -Fq 'id="ai2apps-test-badge-right"' "${menubar_icon}" || \
+        fail "Test Helper icon is missing its two dedicated badges: ${menubar_icon:t}"
+      ;;
+    app-dev)
+      /usr/bin/grep -Fq 'id="ai2apps-app-dev-badge"' "${menubar_icon}" || \
+        fail "App-Dev Helper icon is missing its dedicated badge: ${menubar_icon:t}"
+      ;;
+    standard)
+      ! /usr/bin/grep -Eq 'id="ai2apps-(test|app-dev)-badge' "${menubar_icon}" || \
+        fail "standard Helper icon unexpectedly contains a reserved badge: ${menubar_icon:t}"
+      ;;
+  esac
 done
 codesign --verify --deep --strict "${APP}" || fail "signature verification failed"
 [[ -z $(find -L "${APP}" -type l -print -quit) ]] || fail "bundle contains broken symlinks"

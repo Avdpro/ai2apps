@@ -20,7 +20,7 @@ def main():
         return actual
     metal_dense.fp8_gemm=audited
     sys.modules['kernel']=cpu_kernel
-    sys.path.insert(0,str(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash/inference').resolve()))
+    sys.path.insert(0,str(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD/inference').resolve()))
     # run_metal_dense patches the kernel before importing model; preload with
     # the audited Metal function while keeping its captured CPU function intact.
     cpu_kernel.fp8_gemm=audited

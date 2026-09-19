@@ -1,0 +1,6 @@
+{
+  "model_type": "mlx_seed_vc_v2_composite",
+  "architectures": ["SeedVCV2ForVoiceConversion"],
+  "sample_rate": 22050,
+  "checkpoint_schema": "ai2apps.mlx-seed-vc-v2-composite/v1"
+}

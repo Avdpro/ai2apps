@@ -12,9 +12,10 @@ import yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from ai2apps.localization import validate_app_localizations
 from ai2apps.packages.archive import package_digest
 from ai2apps.packages.models import PackageFile
-from ai2apps.localization import validate_app_localizations
+from ai2apps.studio.mini_app_chat import validate_chat_declaration
 
 from .models import BundleFile, ExtensionError, InspectedBundle, UnitKind
 
@@ -246,6 +247,21 @@ class InteractiveArchive:
                     "invalid_agent_invocation", "invocation_ui must be an object"
                 )
         else:
+            navigation = manifest.get("navigation")
+            if navigation is not None and (
+                not isinstance(navigation, dict)
+                or (
+                    "launcher" in navigation
+                    and not isinstance(navigation["launcher"], bool)
+                )
+                or navigation.get("status", "active")
+                not in {"active", "development"}
+            ):
+                raise ExtensionError(
+                    "invalid_app_navigation",
+                    "App navigation must be an object; navigation.launcher must be boolean "
+                    "and navigation.status must be active or development",
+                )
             entry = manifest.get("entry")
             if not isinstance(entry, dict) or entry.get("kind") not in {
                 "host",
@@ -276,6 +292,101 @@ class InteractiveArchive:
                         "mini_entry_resource_missing",
                         "Mini-Entry resource is not indexed",
                     )
+            mini_apps = manifest.get("mini_apps")
+            if mini_apps is not None:
+                if not isinstance(mini_apps, list):
+                    raise ExtensionError(
+                        "invalid_studio_mini_apps", "mini_apps must be a list"
+                    )
+                seen_mini_app_ids: set[str] = set()
+                for item in mini_apps:
+                    if not isinstance(item, dict):
+                        raise ExtensionError(
+                            "invalid_studio_mini_app",
+                            "Every Studio Mini-App must be an object",
+                        )
+                    mini_app_id = item.get("id")
+                    if (
+                        item.get("schema") != "ai2apps.mini-app/v1"
+                        or not isinstance(mini_app_id, str)
+                        or not mini_app_id
+                        or not isinstance(item.get("version"), str)
+                    ):
+                        raise ExtensionError(
+                            "invalid_studio_mini_app",
+                            "Studio Mini-App schema, id, and version are required",
+                        )
+                    if mini_app_id in seen_mini_app_ids:
+                        raise ExtensionError(
+                            "duplicate_studio_mini_app",
+                            f"Duplicate Studio Mini-App id: {mini_app_id}",
+                        )
+                    seen_mini_app_ids.add(mini_app_id)
+                    chat = item.get("chat")
+                    if chat is not None:
+                        try:
+                            validate_chat_declaration(chat)
+                        except ValueError as error:
+                            raise ExtensionError(
+                                "invalid_studio_mini_app_chat", str(error)
+                            ) from error
+                        if chat["help"]["resource"] not in files:
+                            raise ExtensionError(
+                                "studio_mini_app_help_resource_missing",
+                                "Studio Mini-App help.md resource is not indexed",
+                            )
+                    mini_app_entry = item.get("entry")
+                    if not isinstance(mini_app_entry, dict) or mini_app_entry.get(
+                        "kind"
+                    ) not in {"schema", "safe-html", "sandbox"}:
+                        raise ExtensionError(
+                            "invalid_studio_mini_app_entry",
+                            "Package Studio Mini-Apps require a constrained Entry",
+                        )
+                    if mini_app_entry.get("resource") not in files:
+                        raise ExtensionError(
+                            "studio_mini_app_resource_missing",
+                            "Studio Mini-App Entry resource is not indexed",
+                        )
+                    entry_placements = mini_app_entry.get(
+                        "placements", ["inline", "sidebar"]
+                    )
+                    if (
+                        not isinstance(entry_placements, list)
+                        or not entry_placements
+                        or any(
+                            value not in {"inline", "sidebar"}
+                            for value in entry_placements
+                        )
+                    ):
+                        raise ExtensionError(
+                            "invalid_studio_mini_app_entry",
+                            "Studio Mini-App Entry placements must be inline/sidebar",
+                        )
+                    placements = item.get("placements")
+                    if not isinstance(placements, list) or not placements:
+                        raise ExtensionError(
+                            "invalid_studio_mini_app_placement",
+                            "Studio Mini-App placements are required",
+                        )
+                    for placement in placements:
+                        if (
+                            not isinstance(placement, dict)
+                            or not isinstance(placement.get("studio"), str)
+                            or not placement["studio"]
+                            or (
+                                "category" in placement
+                                and not isinstance(placement["category"], str)
+                            )
+                            or (
+                                "order" in placement
+                                and not isinstance(placement["order"], int)
+                            )
+                        ):
+                            raise ExtensionError(
+                                "invalid_studio_mini_app_placement",
+                                "Studio Mini-App placement is invalid",
+                            )
             mobile = manifest.get("mobile")
             if mobile is not None and (
                 not isinstance(mobile, dict)

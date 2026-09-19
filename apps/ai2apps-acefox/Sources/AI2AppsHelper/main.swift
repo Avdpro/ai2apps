@@ -8,6 +8,63 @@ import Security
 
 private typealias HelperArguments = HelperLaunchConfiguration
 
+private func validatedDevelopmentSourceRoot() throws -> URL? {
+    let development = Bundle.main.object(
+        forInfoDictionaryKey: "AI2AppsDevelopment"
+    ) as? Bool == true
+    guard development,
+          let rawRoot = Bundle.main.object(
+            forInfoDictionaryKey: "AI2AppsDevelopmentSourceRoot"
+          ) as? String else {
+        return nil
+    }
+    guard rawRoot.hasPrefix("/") else {
+        throw ContractError.invalidField(
+            field: "development_source_root",
+            reason: "must be absolute"
+        )
+    }
+    let root = URL(fileURLWithPath: rawRoot, isDirectory: true)
+        .standardizedFileURL
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(
+        atPath: root.appendingPathComponent("ai2apps/__init__.py").path,
+        isDirectory: &isDirectory
+    ), !isDirectory.boolValue else {
+        throw ContractError.invalidField(
+            field: "development_source_root",
+            reason: "must contain ai2apps/__init__.py"
+        )
+    }
+    return root
+}
+
+private func makeLocalSupervisor(
+    arguments: HelperArguments,
+    configuration: LocalConfiguration,
+    paths: InstancePaths,
+    controlCredentials: HelperControlCredentials,
+    developmentBuild: Bool,
+    developmentSourceRoot: URL?
+) -> LocalProcessSupervisor {
+    var environment = ProcessInfo.processInfo.environment.merging(
+        controlCredentials.environment
+    ) { _, required in required }
+    if developmentBuild {
+        // Development Runtime packages are intentionally accepted only by
+        // development builds. Release Helpers never receive this marker.
+        environment["AI2APPS_ALLOW_DEVELOPMENT_RUNTIME"] = "1"
+    }
+    return LocalProcessSupervisor(
+        instanceID: arguments.instanceID,
+        configuration: configuration,
+        paths: paths,
+        executable: arguments.runtimeExecutable,
+        baseEnvironment: environment,
+        developmentSourceRoot: developmentSourceRoot
+    )
+}
+
 private func validatePackagedRuntime(arguments: HelperArguments) throws {
     guard arguments.isPackaged else { return }
     if let appBundleURL = arguments.appBundleURL,
@@ -87,8 +144,11 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     )
     private let launchBuild: String
     private let mainBundleIdentifier: String?
+    private let appDisplayName: String
     private let sandboxedPackage: Bool
     private let developmentBuild: Bool
+    private let developmentSourceRoot: URL?
+    private let allowsInstanceDataReset: Bool
     private var actualPort: Int?
     private var healthMonitor: Task<Void, Never>?
     private var browserAgentLeaseMonitor: Task<Void, Never>?
@@ -103,6 +163,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     private var currentUpdatePhase: UpdatePhase = .idle
     private var currentUpdateMessage = "尚未检查更新"
     private var terminationTask: Task<Void, Never>?
+    private var resetInProgress = false
     private var serviceStoppedForTermination = false
     private var preserveLocalForUpdateHandoff = false
     private var currentHelperPhase: HelperPhase = .initializing
@@ -148,7 +209,8 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         arguments: HelperArguments,
         paths: InstancePaths,
         instanceLock: HelperInstanceLock,
-        controlCredentials: HelperControlCredentials
+        controlCredentials: HelperControlCredentials,
+        developmentSourceRoot: URL? = nil
     ) {
         self.arguments = arguments
         self.paths = paths
@@ -160,29 +222,32 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         mainBundleIdentifier = Bundle.main.object(
             forInfoDictionaryKey: "AI2AppsMainBundleIdentifier"
         ) as? String
+        appDisplayName = arguments.appBundleURL
+            .flatMap { Bundle(url: $0) }
+            .flatMap {
+                ($0.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                    ?? ($0.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            } ?? "AI2Apps"
         sandboxedPackage = Bundle.main.object(
             forInfoDictionaryKey: "AI2AppsApplicationGroupIdentifier"
         ) as? String != nil
-        developmentBuild = Bundle.main.object(
+        let isDevelopmentBuild = Bundle.main.object(
             forInfoDictionaryKey: "AI2AppsDevelopment"
+        ) as? Bool == true
+        developmentBuild = isDevelopmentBuild
+        self.developmentSourceRoot = developmentSourceRoot
+        allowsInstanceDataReset = Bundle.main.object(
+            forInfoDictionaryKey: "AI2AppsAllowInstanceDataReset"
         ) as? Bool == true
         let configURL = paths.configDirectory.appendingPathComponent("local.json")
         configuration = (try? ContractCodec.load(LocalConfiguration.self, from: configURL)) ?? LocalConfiguration()
-        var supervisorEnvironment = ProcessInfo.processInfo.environment.merging(
-            controlCredentials.environment
-        ) { _, required in required }
-        if developmentBuild {
-            // Development Runtime packages are intentionally accepted only by
-            // the fixed AI2Apps-dev.app build. Release Helpers never receive
-            // the AI2AppsDevelopment marker.
-            supervisorEnvironment["AI2APPS_ALLOW_DEVELOPMENT_RUNTIME"] = "1"
-        }
-        supervisor = LocalProcessSupervisor(
-            instanceID: arguments.instanceID,
+        supervisor = makeLocalSupervisor(
+            arguments: arguments,
             configuration: configuration,
             paths: paths,
-            executable: arguments.runtimeExecutable,
-            baseEnvironment: supervisorEnvironment
+            controlCredentials: controlCredentials,
+            developmentBuild: isDevelopmentBuild,
+            developmentSourceRoot: developmentSourceRoot
         )
         super.init()
     }
@@ -275,6 +340,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             NSSound.beep()
             return .terminateCancel
         }
+        guard !resetInProgress else {
+            NSSound.beep()
+            return .terminateCancel
+        }
         guard !serviceStoppedForTermination else {
             return .terminateNow
         }
@@ -352,6 +421,14 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             .target = self
         menu.addItem(withTitle: "导出安全诊断摘要…", action: #selector(exportDiagnostics), keyEquivalent: "")
             .target = self
+        if allowsInstanceDataReset {
+            menu.addItem(.separator())
+            menu.addItem(
+                withTitle: "重置数据…",
+                action: #selector(resetInstanceData),
+                keyEquivalent: ""
+            ).target = self
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出 AI2Apps 服务", action: #selector(quitAll), keyEquivalent: "q")
             .target = self
@@ -493,7 +570,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openAI2Apps() {
-        if let application = runningAI2AppsShellApplication() {
+        if let application = runningAI2AppsShellApplicationForActivation() {
             application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
             return
         }
@@ -638,18 +715,13 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func replaceSupervisor() {
-        var supervisorEnvironment = ProcessInfo.processInfo.environment.merging(
-            controlCredentials.environment
-        ) { _, required in required }
-        if developmentBuild {
-            supervisorEnvironment["AI2APPS_ALLOW_DEVELOPMENT_RUNTIME"] = "1"
-        }
-        supervisor = LocalProcessSupervisor(
-            instanceID: arguments.instanceID,
+        supervisor = makeLocalSupervisor(
+            arguments: arguments,
             configuration: configuration,
             paths: paths,
-            executable: arguments.runtimeExecutable,
-            baseEnvironment: supervisorEnvironment
+            controlCredentials: controlCredentials,
+            developmentBuild: developmentBuild,
+            developmentSourceRoot: developmentSourceRoot
         )
     }
 
@@ -781,6 +853,27 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                 return .success(
                     requestID: request.requestID,
                     result: HelperControlResult(status: "restarting")
+                )
+            }
+            if request.operation == "instance.reset" {
+                guard allowsInstanceDataReset,
+                      arguments.instanceID.rawValue == "test",
+                      mainBundleIdentifier == "com.ai2apps.desktop.test",
+                      request.actorUserID == "ai2apps-test-harness",
+                      request.confirmInstanceID == "test",
+                      canBeginInstanceDataReset else {
+                    return .failure(
+                        requestID: request.requestID,
+                        error: "Test instance reset request rejected"
+                    )
+                }
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(250))
+                    self?.beginInstanceDataReset()
+                }
+                return .success(
+                    requestID: request.requestID,
+                    result: HelperControlResult(status: "resetting")
                 )
             }
             let profileKey = request.browserProfileKey ?? "default"
@@ -2023,6 +2116,77 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    @objc private func resetInstanceData() {
+        guard canBeginInstanceDataReset else {
+            NSSound.beep()
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "重置 \(appDisplayName) 数据？"
+        alert.informativeText = "这会退出 \(appDisplayName)，永久删除 \(arguments.instanceID.rawValue) 实例的账号、设置、应用、下载、浏览器资料和私有模型准备数据。本机共享的已验证 Checkpoint 与公共 Hugging Face cache 不会被删除。"
+        alert.addButton(withTitle: "重置数据并退出")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        beginInstanceDataReset()
+    }
+
+    private var canBeginInstanceDataReset: Bool {
+        allowsInstanceDataReset && !resetInProgress
+            && updateProcess == nil && updateDownloadTask == nil
+    }
+
+    private func beginInstanceDataReset() {
+        guard canBeginInstanceDataReset else { return }
+
+        resetInProgress = true
+        healthMonitor?.cancel()
+        healthMonitor = nil
+        periodicUpdateTask?.cancel()
+        periodicUpdateTask = nil
+        browserAgentLeaseMonitor?.cancel()
+        browserAgentLeaseMonitor = nil
+        statusMenuItem.title = "状态：正在重置数据"
+        publishStatus(
+            .stopping,
+            message: "正在停止服务并重置 \(arguments.instanceID.rawValue) 实例数据…"
+        )
+
+        let shellApplication = runningAI2AppsShellApplication()
+        Task { [weak self] in
+            guard let self else { return }
+            await supervisor.stop()
+            // Reset has already received explicit confirmation and will delete
+            // the browser profile. Force termination avoids AceFox displaying
+            // a second, unrelated quit confirmation over the reset operation.
+            shellApplication?.forceTerminate()
+            for (_, agent) in browserAgents where !agent.application.isTerminated {
+                agent.application.forceTerminate()
+            }
+            browserAgents.removeAll()
+            controlServer?.stop()
+            controlServer = nil
+            actualPort = nil
+
+            do {
+                try InstanceDataReset(paths: paths).perform()
+            } catch {
+                presentError(
+                    ContractError.invalidField(
+                        field: "instance_data_reset",
+                        reason: "重置未能完整完成：\(error)；请重新打开 \(appDisplayName) 后再试"
+                    )
+                )
+            }
+            serviceStoppedForTermination = true
+            resetInProgress = false
+            NSApp.terminate(nil)
+        }
+    }
+
     private func runningAI2AppsShellApplication() -> NSRunningApplication? {
         guard let appBundle = arguments.appBundleURL,
               let expectedExecutable = arguments.aceFoxExecutable else {
@@ -2051,6 +2215,77 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         return application
     }
 
+    private func runningAI2AppsShellApplicationForActivation() -> NSRunningApplication? {
+        if let application = runningAI2AppsShellApplication() {
+            return application
+        }
+        guard let appBundle = arguments.appBundleURL,
+              let expectedExecutable = arguments.aceFoxExecutable,
+              let expectedMainBundleIdentifier = Bundle(url: appBundle)?.bundleIdentifier else {
+            return nil
+        }
+        let expectedShellBundleURL = expectedExecutable
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        guard let expectedShellBundleIdentifier = Bundle(
+            url: expectedShellBundleURL
+        )?.bundleIdentifier else {
+            return nil
+        }
+        let descriptorURL = paths.runDirectory.appendingPathComponent("shell.json")
+        guard let shell = try? ContractCodec.load(
+            ShellRunDescriptor.self,
+            from: descriptorURL
+        ),
+            let application = NSRunningApplication(
+                processIdentifier: shell.processID
+            ),
+            !application.isTerminated,
+            let liveExecutablePath = processExecutablePath(
+                pid: pid_t(shell.processID)
+            ),
+            let liveShellBundleURL = Self.containingAppBundle(
+                forExecutablePath: liveExecutablePath
+            ),
+            let liveShellBundle = Bundle(url: liveShellBundleURL),
+            let rawLiveInstanceID = liveShellBundle.object(
+                forInfoDictionaryKey: "AI2AppsInstanceID"
+            ) as? String,
+            let liveInstanceID = try? InstanceID(rawValue: rawLiveInstanceID) else {
+            return nil
+        }
+        let liveMainBundleURL = liveShellBundleURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        guard ShellProcessIdentityValidator().validateForActivation(
+            shell,
+            expectedInstanceID: arguments.instanceID,
+            expectedShellBundleIdentifier: expectedShellBundleIdentifier,
+            expectedMainBundleIdentifier: expectedMainBundleIdentifier,
+            liveShellBundleIdentifier: application.bundleIdentifier,
+            liveMainBundleIdentifier: Bundle(url: liveMainBundleURL)?.bundleIdentifier,
+            liveInstanceID: liveInstanceID,
+            liveExecutablePath: liveExecutablePath,
+            liveBundleExecutablePath: liveShellBundle.executableURL?.standardizedFileURL.path
+        ) else {
+            return nil
+        }
+        return application
+    }
+
+    private static func containingAppBundle(forExecutablePath path: String) -> URL? {
+        var candidate = URL(fileURLWithPath: path).deletingLastPathComponent()
+        while candidate.path != "/" {
+            if candidate.pathExtension == "app" {
+                return candidate.standardizedFileURL
+            }
+            candidate.deleteLastPathComponent()
+        }
+        return nil
+    }
+
     private func presentError(_ error: Error) {
         let alert = NSAlert(error: error)
         NSApp.activate(ignoringOtherApps: true)
@@ -2070,12 +2305,14 @@ do {
         instanceID: arguments.instanceID,
         paths: paths
     )
+    let developmentSourceRoot = try validatedDevelopmentSourceRoot()
     let application = NSApplication.shared
     let delegate = HelperDelegate(
         arguments: arguments,
         paths: paths,
         instanceLock: instanceLock,
-        controlCredentials: controlCredentials
+        controlCredentials: controlCredentials,
+        developmentSourceRoot: developmentSourceRoot
     )
     application.delegate = delegate
     application.run()

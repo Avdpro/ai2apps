@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import platform
+import re
 import secrets
 import signal
 import time
@@ -47,6 +48,25 @@ from ai2apps.supervision import (
 PlatformRuntimeProvider = Callable[[], PlatformRuntime | None]
 HelperControlProvider = Callable[[], HelperControlClient | None]
 logger = logging.getLogger(__name__)
+
+
+def _hardware_device_name() -> str:
+    """Return a compact Apple Silicon model and unified-memory label."""
+    try:
+        from omlx.utils.hardware import get_chip_name, get_total_memory_gb
+
+        match = re.search(
+            r"\bM\d+(?:\s+(?:Pro|Max|Ultra))?\b",
+            get_chip_name(),
+            flags=re.IGNORECASE,
+        )
+        if match is None:
+            return ""
+        chip = "".join(match.group(0).split())
+        memory_gb = round(get_total_memory_gb())
+        return f"{chip}-{memory_gb}G" if memory_gb > 0 else chip
+    except Exception:
+        return ""
 
 
 class ClientBootstrapResponse(BaseModel):
@@ -109,7 +129,7 @@ def _client_device_name(runtime: PlatformRuntime | None) -> str:
         except (AttributeError, IdentityBindingError, RuntimeError, ValueError):
             pass
     if not candidate:
-        candidate = platform.node()
+        candidate = _hardware_device_name() or platform.node()
     candidate = "".join(character for character in candidate if character >= " ")
     return " ".join(candidate.split())[:120] or "Local Device"
 

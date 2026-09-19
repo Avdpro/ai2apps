@@ -20,6 +20,7 @@ import psutil
 from fastapi import HTTPException
 from fastapi.responses import Response, StreamingResponse
 
+from ai2apps.model_identity import with_model_identity
 from ai2apps.model_worker.audio_capabilities import (
     AudioCapabilitiesError,
     default_audio_capabilities,
@@ -29,6 +30,10 @@ from ai2apps.model_worker.image_capabilities import (
     ImageCapabilitiesError,
     default_image_capabilities,
     validate_image_capabilities,
+)
+from ai2apps.model_worker.reasoning_capabilities import (
+    ReasoningCapabilitiesError,
+    validate_reasoning_capabilities,
 )
 from ai2apps.model_worker.video_capabilities import (
     VideoCapabilitiesError,
@@ -47,6 +52,7 @@ MODEL_TYPES = frozenset(
         "audio_stt",
         "audio_tts",
         "audio_processing",
+        "audio_detailed_transcription",
         "video_generation",
         "embedding",
     }
@@ -59,6 +65,10 @@ DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "audio_stt": ("speech_recognition",),
     "audio_tts": ("speech_generation",),
     "audio_processing": ("audio_processing",),
+    "audio_detailed_transcription": (
+        "speech_recognition",
+        "word_timestamps",
+    ),
     "video_generation": ("video_generation",),
     "embedding": ("text_embeddings",),
 }
@@ -71,6 +81,8 @@ DEFAULT_PATHS = {
     "audio_transcription": "/v1/audio/transcriptions",
     "audio_speech": "/v1/audio/speech",
     "audio_process": "/v1/audio/process",
+    "audio_voice_training": "/v1/audio/voices/train",
+    "audio_detailed_transcription": "/v1/audio/transcriptions/detailed",
     "video_generation": "/v1/videos/generations",
     "embeddings": "/v1/embeddings",
 }
@@ -152,7 +164,9 @@ def validate_package_models(
     if models is None:
         return ()
     if not isinstance(models, list) or len(models) > 128:
-        raise ModelProviderContractError("models must be an array of at most 128 entries")
+        raise ModelProviderContractError(
+            "models must be an array of at most 128 entries"
+        )
     if models and runtime_mode in {"embedded", "in_process"}:
         raise ModelProviderContractError(
             "Model providers must use a managed_process or external HTTP runtime"
@@ -190,16 +204,27 @@ def validate_package_models(
                 f"models[{index}].model_type is unsupported: {model_type!r}"
             )
         display_name = raw.get("display_name", raw.get("name", model_id))
-        if not isinstance(display_name, str) or not display_name.strip() or len(display_name) > 160:
+        if (
+            not isinstance(display_name, str)
+            or not display_name.strip()
+            or len(display_name) > 160
+        ):
             raise ModelProviderContractError(f"models[{index}].display_name is invalid")
         upstream_id = raw.get("upstream_id", model_id)
-        if not isinstance(upstream_id, str) or not upstream_id or len(upstream_id) > 512:
+        if (
+            not isinstance(upstream_id, str)
+            or not upstream_id
+            or len(upstream_id) > 512
+        ):
             raise ModelProviderContractError(f"models[{index}].upstream_id is invalid")
         capabilities = raw.get("capabilities", DEFAULT_CAPABILITIES[model_type])
         if (
             not isinstance(capabilities, (list, tuple))
             or not capabilities
-            or not all(isinstance(value, str) and _CAPABILITY.fullmatch(value) for value in capabilities)
+            or not all(
+                isinstance(value, str) and _CAPABILITY.fullmatch(value)
+                for value in capabilities
+            )
         ):
             raise ModelProviderContractError(f"models[{index}].capabilities is invalid")
         paths = raw.get("endpoints", raw.get("paths", {}))
@@ -224,7 +249,9 @@ def validate_package_models(
             or isinstance(context_window, bool)
             or context_window <= 0
         ):
-            raise ModelProviderContractError(f"models[{index}].context_window is invalid")
+            raise ModelProviderContractError(
+                f"models[{index}].context_window is invalid"
+            )
         weights = _validate_model_weights(
             raw.get("weights"), field=f"models[{index}].weights"
         )
@@ -260,6 +287,27 @@ def validate_package_models(
                 raise ModelProviderContractError(
                     f"models[{index}].image_capabilities is invalid: {exc}"
                 ) from exc
+        metadata = raw.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ModelProviderContractError(f"models[{index}].metadata is invalid")
+        try:
+            metadata = json.loads(json.dumps(metadata))
+        except (TypeError, ValueError) as exc:
+            raise ModelProviderContractError(
+                f"models[{index}].metadata must contain JSON values"
+            ) from exc
+        try:
+            reasoning = validate_reasoning_capabilities(metadata.get("reasoning"))
+        except ReasoningCapabilitiesError as exc:
+            raise ModelProviderContractError(
+                f"models[{index}].metadata.reasoning is invalid: {exc}"
+            ) from exc
+        if reasoning is not None:
+            if model_type not in {"llm", "vlm"}:
+                raise ModelProviderContractError(
+                    f"models[{index}].metadata.reasoning is only valid for llm/vlm"
+                )
+            metadata["reasoning"] = reasoning
         normalized.append(
             {
                 "id": model_id,
@@ -273,7 +321,7 @@ def validate_package_models(
                 "audio_capabilities": audio_capabilities,
                 "video_capabilities": video_capabilities,
                 "image_capabilities": image_capabilities,
-                "metadata": raw.get("metadata", {}) if isinstance(raw.get("metadata", {}), dict) else {},
+                "metadata": metadata,
             }
         )
     return tuple(normalized)
@@ -300,11 +348,11 @@ class PackageModel:
     internal_headers: Mapping[str, str] | None = None
     scheduler: WorkerJobScheduler | None = None
     runtime: Any | None = None
+    inference_provider_key: str | None = None
 
     def public_catalog_entry(self) -> dict[str, Any]:
-        return {
+        return with_model_identity({
             "id": self.id,
-            "display_name": self.display_name,
             "model_path": f"package://{self.service_key}/{self.id}",
             "loaded": self.checkpoint_ready,
             "is_loading": False,
@@ -316,14 +364,15 @@ class PackageModel:
             "is_default": False,
             # An installed provider is not usable until its exact pinned
             # checkpoint has been prepared by the trusted Host.
-            "is_hidden": not self.checkpoint_ready or bool(self.metadata.get("internal")),
+            "is_hidden": not self.checkpoint_ready
+            or bool(self.metadata.get("internal")),
             "is_favorite": False,
             "is_helper": False,
             "engine_type": "package",
             "model_type": self.model_type,
             "config_model_type": "package_provider",
             "capabilities": list(self.capabilities),
-            "cache_moe": False,
+            "cache_moe": (self.weights or {}).get("preparation", {}).get("recipe") == "ai2apps/cache-moe/v1",
             "source_type": "package",
             "source_repo_id": (self.weights or {}).get("repo_id"),
             "virtual": True,
@@ -337,7 +386,37 @@ class PackageModel:
             "audio_capabilities": dict(self.audio_capabilities or {}),
             "video_capabilities": dict(self.video_capabilities or {}),
             "image_capabilities": dict(self.image_capabilities or {}),
-        }
+            "reasoning": dict(self.metadata.get("reasoning") or {}),
+        }, source="package", provider_id=self.inference_provider_key or self.provider_key,
+           model_id=self.id, display_name=self.display_name)
+
+
+def _effective_image_declaration(raw: dict[str, Any]) -> dict[str, Any]:
+    """Narrow known image contracts without altering signed Package metadata.
+
+    Turbo/Ideogram edits remain disabled until a future explicitly accepted
+    implementation is reviewed. Reference limits reflect current adapters.
+    """
+    model_id = raw.get("id")
+    contracts = {
+        "ai2apps.model.z-image-mlx/turbo": (["image_generation"], 0),
+        "ai2apps.model.ideogram4-mlx/fp8-q4": (["image_generation"], 0),
+        "ai2apps.model.qwen-image-mlx/2512": (["image_generation"], 0),
+        "ai2apps.model.qwen-image-mlx/edit-2511": (["image_edit"], 3),
+        "ai2apps.model.flux2-klein-mlx/4b": (["image_generation", "image_edit"], 4),
+    }
+    if model_id not in contracts:
+        return raw
+    allowed, maximum = contracts[model_id]
+    result = dict(raw)
+    image = dict(raw.get("image_capabilities") or {})
+    declared = image.get("operations", raw.get("capabilities", ()))
+    operations = [operation for operation in allowed if operation in declared]
+    image["operations"] = operations
+    image.setdefault("inputs", {"reference_images": {"minimum": 1 if maximum else 0, "maximum": maximum}})
+    result["image_capabilities"] = image
+    result["capabilities"] = [item for item in raw.get("capabilities", ()) if item not in {"image_generation", "image_edit"} or item in operations]
+    return result
 
 
 def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
@@ -371,13 +450,18 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
             internal_headers = package_manager.supervisor.internal_headers(
                 service.service_key
             )
-        checkpoint_rows, _roots = package_manager.supervisor._model_worker_checkpoints(
-            service.config,
-            package_manager.supervisor._huggingface_hub_cache(),
-            package_manager.supervisor.model_root,
-        ) if package_manager is not None else ((), ())
+        checkpoint_rows, _roots = (
+            package_manager.supervisor._model_worker_checkpoints(
+                service.config,
+                package_manager.supervisor._huggingface_hub_cache(),
+                package_manager.supervisor.model_root,
+            )
+            if package_manager is not None
+            else ((), ())
+        )
         checkpoints = {row["model_id"]: row for row in checkpoint_rows}
         for raw in service.config.get("models", []):
+            raw = _effective_image_declaration(raw)
             checkpoint = checkpoints.get(raw["id"])
             result.append(
                 PackageModel(
@@ -418,13 +502,23 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
                     internal_headers=internal_headers,
                     scheduler=getattr(runtime, "worker_scheduler", None),
                     runtime=runtime,
+                    inference_provider_key=next(
+                        (
+                            dependency.service_key
+                            for dependency in service.dependencies
+                            if dependency.service_key.startswith("ai2apps.runtime.")
+                        ),
+                        None,
+                    ),
                 )
             )
     return tuple(sorted(result, key=lambda item: item.id))
 
 
 def resolve_package_model(runtime: Any | None, model_id: str) -> PackageModel | None:
-    return next((model for model in list_package_models(runtime) if model.id == model_id), None)
+    return next(
+        (model for model in list_package_models(runtime) if model.id == model_id), None
+    )
 
 
 async def _ensure_package_model_ready(model: PackageModel) -> PackageModel:
@@ -448,10 +542,7 @@ async def _ensure_package_model_ready(model: PackageModel) -> PackageModel:
     if resources is not None:
         resources.mark_started(model.service_key)
     refreshed = resolve_package_model(runtime, model.id)
-    if (
-        refreshed is None
-        or refreshed.endpoint is None
-    ):
+    if refreshed is None or refreshed.endpoint is None:
         raise HTTPException(status_code=503, detail="Model Worker did not become ready")
     return refreshed
 
@@ -562,22 +653,26 @@ def recommended_model_configuration_id(
     return chosen[0]["id"]
 
 
-def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, Any], ...]:
+def installed_model_preparation_recipes(
+    runtime: Any | None,
+) -> tuple[dict[str, Any], ...]:
     """Build trusted Host preparation recipes from active Worker manifests.
 
     This function interprets static data only. It never imports Package code.
     """
 
-    repository = None if runtime is None else getattr(runtime, "package_repository", None)
+    repository = (
+        None if runtime is None else getattr(runtime, "package_repository", None)
+    )
     if repository is None:
         return ()
     recipes: list[dict[str, Any]] = []
     seen: set[str] = set()
+    seen_install_ids: set[str] = set()
     for package in repository.installed():
-        if (
-            getattr(package.status, "value", package.status) != "active"
-            or not package.manifest.get("models")
-        ):
+        if getattr(
+            package.status, "value", package.status
+        ) != "active" or not package.manifest.get("models"):
             continue
         package_root = Path(package.store_path).resolve(strict=True)
         from ai2apps.packages.supervisor import ManagedServiceSupervisor
@@ -601,14 +696,15 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
                     )
                 required_model_ids = metadata.get("required_model_ids", ())
                 if not isinstance(required_model_ids, (list, tuple)) or any(
-                    not isinstance(item, str) or not item
-                    for item in required_model_ids
+                    not isinstance(item, str) or not item for item in required_model_ids
                 ):
                     raise ModelProviderContractError(
                         "Native model metadata.required_model_ids must be model IDs"
                     )
                 if not isinstance(recipe_id, str) or not recipe_id or recipe_id in seen:
-                    raise ModelProviderContractError("Invalid or duplicate native model ID")
+                    raise ModelProviderContractError(
+                        "Invalid or duplicate native model ID"
+                    )
                 recipes.append(
                     {
                         "id": recipe_id,
@@ -633,15 +729,24 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
                                     {
                                         "provider": "modelscope",
                                         "repo_id": metadata["modelscope"]["repo_id"],
-                                        "revision": metadata["modelscope"].get("revision", "master"),
-                                        "preferred": metadata["modelscope"].get("preferred", True) is True,
+                                        "revision": metadata["modelscope"].get(
+                                            "revision", "master"
+                                        ),
+                                        "preferred": metadata["modelscope"].get(
+                                            "preferred", True
+                                        )
+                                        is True,
                                         "allow_patterns": tuple(
                                             item
-                                            for item in metadata["modelscope"].get("allow_patterns", ())
+                                            for item in metadata["modelscope"].get(
+                                                "allow_patterns", ()
+                                            )
                                             if isinstance(item, str) and item
                                         ),
                                     },
-                                ) if isinstance(metadata.get("modelscope"), dict) else (),
+                                )
+                                if isinstance(metadata.get("modelscope"), dict)
+                                else (),
                             },
                         ),
                         **(
@@ -662,9 +767,19 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
                 continue
             if recipe_kind != "ai2apps/cache-moe/v1":
                 continue
-            recipe_id = preparation.get("install_id")
-            if not isinstance(recipe_id, str) or not recipe_id or recipe_id in seen:
-                raise ModelProviderContractError("Invalid or duplicate preparation install_id")
+            recipe_id = model.get("id")
+            install_id = preparation.get("install_id")
+            if (
+                not isinstance(recipe_id, str)
+                or not recipe_id
+                or recipe_id in seen
+                or not isinstance(install_id, str)
+                or not install_id
+                or install_id in seen_install_ids
+            ):
+                raise ModelProviderContractError(
+                    "Invalid or duplicate Cache-MoE model/install identity"
+                )
             engine = dict(preparation.get("engine", {}))
             for field in ("scope_asset", "scope_pack"):
                 relative = engine.get(field)
@@ -691,8 +806,12 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
             recipes.append(
                 {
                     "id": recipe_id,
+                    "install_id": install_id,
                     "name": model.get("display_name", recipe_id),
                     "description": package.manifest.get("description", ""),
+                    "service_key": getattr(
+                        package, "service_key", package.manifest["id"]
+                    ),
                     "family": preparation["family"],
                     "execution_modes": tuple(preparation.get("execution_modes", ())),
                     "storage_policies": tuple(preparation.get("storage_policies", ())),
@@ -722,6 +841,7 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
                 }
             )
             seen.add(recipe_id)
+            seen_install_ids.add(install_id)
     recipes_by_id = {recipe["id"]: recipe for recipe in recipes}
     resolving: set[str] = set()
 
@@ -754,13 +874,13 @@ def installed_model_preparation_recipes(runtime: Any | None) -> tuple[dict[str, 
             and isinstance(model["metadata"].get("device_recommendation"), dict)
             for model in models
         )
-        if has_profiles and (
-            recommended := recommended_model_configuration_id(models)
-        ):
+        if has_profiles and (recommended := recommended_model_configuration_id(models)):
             recommended_ids.add(recommended)
     for recipe in recipes:
         recipe["recommended"] = recipe["id"] in recommended_ids
-    return tuple(sorted(recipes, key=lambda item: (not item["recommended"], item["name"])))
+    return tuple(
+        sorted(recipes, key=lambda item: (not item["recommended"], item["name"]))
+    )
 
 
 def _response_headers(response: httpx.Response) -> dict[str, str]:
@@ -772,6 +892,24 @@ def _response_headers(response: httpx.Response) -> dict[str, str]:
         or key.lower().startswith("x-ai2apps-audio-")
         or key.lower().startswith("x-ai2apps-feature-")
     }
+
+
+async def control_package_engine_boost(model: PackageModel, session_id: str, mode: str) -> dict:
+    """Forward control only to an already running, authenticated Worker."""
+    if not model.endpoint:
+        raise HTTPException(status_code=409, detail="Model Worker is not running")
+    try:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
+            response = await client.post(
+                model.endpoint + "/v1/control/engine-boost",
+                headers=dict(model.internal_headers or {}),
+                json={"model": model.id, "session_id": session_id, "mode": mode},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Model Worker is unavailable") from exc
+    if response.is_error:
+        raise HTTPException(status_code=response.status_code, detail="Worker rejected Engine Boost control")
+    return response.json()
 
 
 async def proxy_package_json(
@@ -788,9 +926,21 @@ async def proxy_package_json(
 ) -> Response:
     if model.runtime is not None:
         model = resolve_package_model(model.runtime, model.id) or model
+    if model.model_type == "image_generation" and operation in {"image_generation", "image_edit"}:
+        image = model.image_capabilities or {}
+        if operation not in image.get("operations", model.capabilities):
+            raise HTTPException(status_code=400, detail=f"Model does not support {operation}")
+        if operation == "image_edit":
+            references = payload.get("imageDataUrls", payload.get("image_data_urls", []))
+            limits = image.get("inputs", {}).get("reference_images", {})
+            if (not isinstance(references, list)
+                    or not limits.get("minimum", 1) <= len(references) <= limits.get("maximum", 1)):
+                raise HTTPException(status_code=400, detail="Reference image count exceeds model capability")
     path = model.endpoints.get(operation)
     if not path:
-        raise HTTPException(status_code=400, detail=f"Model does not support {operation}")
+        raise HTTPException(
+            status_code=400, detail=f"Model does not support {operation}"
+        )
     body = dict(payload)
     body["model"] = model.upstream_id
     lease: SchedulerLease | None = None
@@ -843,7 +993,9 @@ async def proxy_package_json(
             await client.aclose()
         if lease is not None:
             await lease.release(failed=True)
-        raise HTTPException(status_code=502, detail=f"Model provider request failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Model provider request failed: {exc}"
+        ) from exc
     except BaseException:
         if client is not None:
             await client.aclose()
@@ -851,6 +1003,7 @@ async def proxy_package_json(
             await lease.release(failed=True)
         raise
     if body.get("stream"):
+
         async def chunks():
             failed = response.status_code >= 400
             try:
@@ -905,7 +1058,9 @@ async def proxy_package_multipart(
         model = resolve_package_model(model.runtime, model.id) or model
     path = model.endpoints.get(operation)
     if not path:
-        raise HTTPException(status_code=400, detail=f"Model does not support {operation}")
+        raise HTTPException(
+            status_code=400, detail=f"Model does not support {operation}"
+        )
     fields = {key: str(value) for key, value in data.items() if value is not None}
     fields["model"] = model.upstream_id
     lease: SchedulerLease | None = None
@@ -959,7 +1114,9 @@ async def proxy_package_multipart(
             await client.aclose()
         if lease is not None:
             await lease.release(failed=True)
-        raise HTTPException(status_code=502, detail=f"Model provider request failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Model provider request failed: {exc}"
+        ) from exc
     except BaseException:
         if client is not None:
             await client.aclose()
@@ -967,6 +1124,7 @@ async def proxy_package_multipart(
             await lease.release(failed=True)
         raise
     if stream:
+
         async def chunks():
             failed = response.status_code >= 400
             try:

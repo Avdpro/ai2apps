@@ -1,0 +1,46 @@
+{
+  "schema": "ai2apps.mlx-whisperx-benchmark-manifest/v1",
+  "dataset": "FluidInference/fleurs-full",
+  "upstream_dataset": "google/fleurs",
+  "revision": "1cca811bb8ea4d370345f108f00518167040282c",
+  "config": "cmn_hans_cn",
+  "split": "test",
+  "license": "cc-by-4.0",
+  "cases": [
+    {
+      "id": "cmn_hans_cn_0000",
+      "language": "zh-CN",
+      "audio": "cmn_hans_cn/cmn_hans_cn_0000.wav",
+      "audio_sha256": "5214e16584b6498ddbd22f321738c0f62b19117ab1880b21e405fba983986b6a",
+      "reference": "这 并 不 是 告 别 这 是 一 个 篇 章 的 结 束 也 是 新 篇 章 的 开 始"
+    },
+    {
+      "id": "cmn_hans_cn_0001",
+      "language": "zh-CN",
+      "audio": "cmn_hans_cn/cmn_hans_cn_0001.wav",
+      "audio_sha256": "d2ff70aa3a9b965bd2cab664852f2b5eb90d02dca4ed9066686d926152ade514",
+      "reference": "钙 钾 等 元 素 属 于 金 属 银 和 金 等 元 素 当 然 也 是 金 属"
+    },
+    {
+      "id": "cmn_hans_cn_0002",
+      "language": "zh-CN",
+      "audio": "cmn_hans_cn/cmn_hans_cn_0002.wav",
+      "audio_sha256": "a50269a834d0efd270df29173bbe5f53a1a17184fe3998dabb1a73cbd223fd6a",
+      "reference": "桥 下 垂 直 净 空 15 米 该 项 目 于 2011 年 8 月 完 工 但 直 到 2017 年 3 月 才 开 始 通 车"
+    },
+    {
+      "id": "cmn_hans_cn_0003",
+      "language": "zh-CN",
+      "audio": "cmn_hans_cn/cmn_hans_cn_0003.wav",
+      "audio_sha256": "63b40619cf2947db1fd13f0ab63bc502326eb40d73d87b3dbd969df426940536",
+      "reference": "适 当 使 用 博 客 可 以 使 学 生 变 得 更 善 于 分 析 和 进 行 思 辨 通 过 积 极 回 应 网 络 材 料 学 生 们 可 以 在 他 人 文 章 的 上 下 文 语 境 中 找 到 自 己 的 立 场 并 能 够 针 对 特 定 问 题 提 出 自 己 的 观 点 oravec 2002"
+    },
+    {
+      "id": "cmn_hans_cn_0004",
+      "language": "zh-CN",
+      "audio": "cmn_hans_cn/cmn_hans_cn_0004.wav",
+      "audio_sha256": "e98bd3a78fa3eb617164375180940917a8c8a87ce90b0dbffbfff156a009bf17",
+      "reference": "科 学 家 们 可 以 得 出 结 论 暗 物 质 对 其 他 暗 物 质 的 影 响 方 式 与 普 通 物 质 相 同"
+    }
+  ]
+}

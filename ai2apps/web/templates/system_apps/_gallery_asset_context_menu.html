@@ -1,0 +1,13 @@
+<div x-show="contextMenuOpen" x-cloak x-ref="assetContextMenu" class="gallery-context-menu" role="menu" tabindex="-1" :aria-label="contextMenuAsset?.name||selectedCollectionName" :style="`left:${contextMenuX}px;top:${contextMenuY}px`" @click.stop @contextmenu.prevent>
+    <button type="button" role="menuitem" @click="openContextAsset()" :disabled="!contextMenuAsset"><i data-lucide="external-link"></i><span>{{ t('gallery.action.open') }}</span></button>
+    <button type="button" role="menuitem" @click="downloadContextAsset()" :disabled="!contextMenuAsset"><i data-lucide="download"></i><span>{{ t('gallery.action.download') }}</span></button>
+    <button type="button" role="menuitem" @click="renameContextAsset()" :disabled="!contextMenuAsset||selectedCollection?.system_key==='trash'"><i data-lucide="pencil"></i><span>{{ t('gallery.action.rename') }}</span></button>
+    <button type="button" role="menuitem" class="danger" @click="deleteContextAsset()" :disabled="!contextMenuAsset"><i :data-lucide="selectedCollection?.system_key==='trash'?'shield-alert':'trash-2'"></i><span>{{ t('gallery.action.delete') }}</span></button>
+    <span class="gallery-context-divider" role="separator"></span>
+    <button type="button" role="menuitem" @click="copyContextAsset()" :disabled="!contextMenuAsset||selectedCollection?.system_key==='trash'"><i data-lucide="copy"></i><span>{{ t('gallery.action.copy') }}</span></button>
+    <button type="button" role="menuitem" @click="pasteContextAssets()" :disabled="!canPasteContext"><i data-lucide="clipboard-paste"></i><span>{{ t('gallery.action.paste') }}</span></button>
+    <button type="button" role="menuitem" @click="contextMoveOpen=!contextMoveOpen" :aria-expanded="contextMoveOpen" :disabled="!canMoveContextAsset"><i data-lucide="folder-input"></i><span>{{ t('gallery.action.move') }}</span><i class="gallery-context-chevron" :data-lucide="contextMoveOpen?'chevron-down':'chevron-right'"></i></button>
+    <div x-show="contextMoveOpen" x-cloak class="gallery-context-targets" role="group" aria-label="{{ t('gallery.target_collection') }}">
+        <template x-for="collection in contextMoveTargets" :key="collection.id"><button type="button" role="menuitem" @click="moveContextAsset(collection)"><i :data-lucide="collection.kind==='project'?'briefcase-business':'folder'"></i><span x-text="collectionName(collection)"></span></button></template>
+    </div>
+</div>

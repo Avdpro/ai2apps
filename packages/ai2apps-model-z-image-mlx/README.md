@@ -1,11 +1,13 @@
+> 0.1.3 capability contract: Z-Image Turbo text-to-image generation only; image editing is disabled pending acceptance.
+
 # Z-Image MLX Model Package
 
 AI2Apps Model Worker package for `Tongyi-MAI/Z-Image-Turbo` on Apple Silicon.
 
-It provides Q8, Q4 and BF16 generation and single-image Img2Img editing,
+It provides Q8, Q4 and BF16 text-to-image generation,
 revision-scoped persistent native MLX checkpoints, and guarded Metal
-RMSNorm/AdaLN block fusion. Img2Img accepts a strength in `(0, 1]`; the same
-optimized denoiser is reused after the one-time VAE encode. The original mflux
+RMSNorm/AdaLN block fusion. Public image editing is rejected before model loading
+because the current Img2Img path has not passed editing acceptance. The original mflux
 graph is used automatically when Metal fusion is unavailable.
 
 Build a local development artifact with:

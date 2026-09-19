@@ -89,6 +89,7 @@ NATIVE_SYMBOLS = (
     "deepseek_affine_gather_qmm_blocks",
     "deepseek_affine_gather_qmm_pair_concat_blocks",
     "preadv_fused_experts",
+    "copy_expert_slots",
 )
 
 
@@ -125,6 +126,14 @@ def preadv_fused_experts(*args, **kwargs) -> int:
 # The native primitive is record-layout agnostic: its historical GLM name is
 # retained for ABI compatibility while DSV4F uses this descriptive alias.
 preadv_expert_segments = preadv_fused_experts
+
+
+def copy_expert_slots(*args, **kwargs) -> int:
+    """Copy evaluated expert payloads between disjoint resident slots."""
+
+    if _ext is None or not hasattr(_ext, "copy_expert_slots"):
+        raise RuntimeError("native expert slot copy is unavailable")
+    return int(_ext.copy_expert_slots(*args, **kwargs))
 
 
 def _native_stream_kwargs(stream) -> dict[str, object]:

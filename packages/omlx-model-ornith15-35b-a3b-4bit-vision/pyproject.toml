@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-ornith15-35b-a3b-4bit-vision"
-version = "0.1.0"
+version = "0.1.4"
 description = "Ornith 1.5 35B A3B multimodal isolated Model Worker Package"
 readme = "README.md"
 license = "MIT"
@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["ai2apps>=0.1.0.dev2,<0.2", "mlx==0.32.0"]
+dev = ["ai2apps>=0.1.1.dev2,<0.2", "mlx==0.32.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

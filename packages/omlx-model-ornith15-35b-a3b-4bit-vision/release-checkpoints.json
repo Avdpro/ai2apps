@@ -1,10 +1,18 @@
 {
-  "omlx-model-ornith15-35b-a3b-4bit-vision@0.1.0": [{
-    "source": "huggingface",
-    "repoId": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision",
-    "revision": "31428ce8829c277f9255c59662b8efab58898ecf",
-    "displayName": "Ornith 1.5 35B A3B 4-bit Vision",
-    "installMode": "cache-moe",
-    "recipeId": "ornith-1.5-35b-a3b-mlx-4bit-vision"
-  }]
+  "schema": "ai2apps.model-release-checkpoints/v1",
+  "package_id": "ai2apps/model-ornith15-35b-a3b-4bit-vision",
+  "package_version": "0.1.4",
+  "runtime_dependency": ">=1.7.5 <2.0.0",
+  "models": [
+    {
+      "model_id": "ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision",
+      "repo_id": "Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision-SSD",
+      "revision": "114f31e6c416027b78488a4b8afa1e12c2156275",
+      "modelscope_repo_id": "ai2apps/Ornith-1.5-35B-A3B-MLX-4bit-Vision-SSD",
+      "modelscope_revision": "520901e3136a5f2e910fbb799109b04c80cef370",
+      "distribution_id": "dist_ai2apps_ornith1_5_35b_a3b_mlx_4bit_vision_ssd_114f31e6_v1",
+      "preparation_recipe": "ai2apps/cache-moe/v1",
+      "ssd_layout": "qwen3.6-affine-q4-gate-up-fused-direct-v3"
+    }
+  ]
 }

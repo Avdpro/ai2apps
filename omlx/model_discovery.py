@@ -1117,7 +1117,10 @@ def deepseek_cache_moe_memory_profile(
         full = estimate_model_size(path)
         scope = (cache_moe_config or {}).get("scope", {})
         layout = (cache_moe_config or {}).get("checkpoint_layout") or {}
-        if layout.get("format") == "ai2apps-backbone-expert-store":
+        if layout.get("format") in {
+            "ai2apps-backbone-expert-store",
+            "ai2apps-ssd-checkpoint",
+        }:
             store_manifest = json.loads(
                 (
                     Path(cache_moe_config["expert_store"]).expanduser()

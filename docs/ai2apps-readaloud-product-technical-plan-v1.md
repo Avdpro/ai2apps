@@ -1,20 +1,20 @@
-# AI2Apps 朗读工坊产品与技术方案 v1
+# AI2Apps Voice Studio 产品与技术方案 v1
 
 日期：2026-08-24  
 状态：产品与架构决策稿  
 内置 App ID：`ai2apps.readaloud`  
-中文名称：朗读工坊  
-英文名称：Read Aloud Studio
+中文名称：语音工坊
+英文名称：Voice Studio
 
 ## 1. 结论与核心决策
 
-朗读工坊是 AI2Apps 内置的本地优先有声内容制作 App。AI2Apps 提供创作界面、项目管理、模型发现与编排、音色授权门禁、长文本分段、多角色剧本分析、音频后期、生成记录和合规导出；模型权重、模型运行环境和推理资源由用户安装、部署和控制。
+Voice Studio（语音工坊）是 AI2Apps 内置的本地优先有声内容制作 App。AI2Apps 提供创作界面、项目管理、模型发现与编排、音色授权门禁、长文本分段、多角色剧本分析、音频后期、生成记录和合规导出；模型权重、模型运行环境和推理资源由用户安装、部署和控制。
 
-本方案不接入任何云 TTS、云音色训练或云 ASR API。用户可以在本机运行模型，也可以连接其本人控制的 AI2Apps 节点或局域网模型服务；音频和文本不得因为使用朗读工坊而被发送到 AI2Apps Cloud。
+本方案不接入任何云 TTS、云音色训练或云 ASR API。用户可以在本机运行模型，也可以连接其本人控制的 AI2Apps 节点或局域网模型服务；音频和文本不得因为使用 Voice Studio 而被发送到 AI2Apps Cloud。
 
 模型策略确定为：
 
-1. **Fish Audio S2 Pro 是理想能力与最高效果基准。** 它定义朗读工坊需要达到的目标能力：短样本音色克隆、克隆音色下的细粒度情绪控制、行内表演标记、原生多角色和多轮上下文。
+1. **Fish Audio S2 Pro 是理想能力与最高效果基准。** 它定义 Voice Studio 需要达到的目标能力：短样本音色克隆、克隆音色下的细粒度情绪控制、行内表演标记、原生多角色和多轮上下文。
 2. **CosyVoice 3 是主要开源自部署兜底。** 它负责在 Fish 不可用、硬件不足或许可证不满足时提供中文友好的音色克隆、指令控制、流式合成和方言能力。
 3. **Qwen3-TTS 是 Apple Silicon 本地兼容兜底。** 它复用当前 AI2Apps MLX Package，分别提供 Base 音色克隆、CustomVoice 情绪化预置音色和 VoiceDesign 虚构音色设计。
 4. **多角色作品默认由 App 分段编排。** 即使模型支持原生多说话人，工程主格式仍保存为独立角色与独立台词片段，以便局部重做、换声、调参、审计和后期混音。
@@ -207,7 +207,7 @@ feature_combinations:
 
 ```mermaid
 flowchart LR
-    UI["朗读工坊 UI"] --> APP["Read Aloud App Service"]
+    UI["Voice Studio UI"] --> APP["Voice Studio App Service"]
     APP --> RIGHTS["Rights and Consent Gate"]
     APP --> DIRECTOR["Script Director"]
     APP --> ROUTER["Audio Model Router"]
@@ -228,7 +228,7 @@ flowchart LR
 
 | 组件 | 职责 |
 |---|---|
-| 朗读工坊 UI | 项目、角色、音色、剧本、时间线、任务与导出交互 |
+| Voice Studio UI | 项目、角色、音色、剧本、时间线、任务与导出交互 |
 | App Service | 项目状态、权限校验、API、事务和事件 |
 | Rights Gate | 声音授权、文本权利、模型许可证和用途策略 |
 | Script Director | 角色识别、台词切分、情绪建议与结构化输出 |
@@ -248,7 +248,7 @@ flowchart LR
 
 ## 6. 统一协议
 
-现有 `ai2apps.audio-capabilities/v1` 继续作为低层模型能力声明。朗读工坊新增三个上层协议和一个项目格式：
+现有 `ai2apps.audio-capabilities/v1` 继续作为低层模型能力声明。Voice Studio 新增三个上层协议和一个项目格式：
 
 1. `ai2apps.readaloud-provider/v1`：朗读模型组合能力与运行约束；
 2. `ai2apps.voice-rights/v1`：声音来源、授权和用途；
@@ -481,7 +481,7 @@ App 不根据勾选框自动认定权利成立，但将声明、时间、文件�
 
 中国《人工智能生成合成内容标识办法》要求生成合成音频具有相应显式标识，并在文件元数据中添加生成属性、服务提供者或编码、内容编号等隐式标识；提供导出功能时同样应确保文件包含所需标识：<https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm>。
 
-朗读工坊默认执行：
+Voice Studio 默认执行：
 
 - 编辑器和播放器持续显示“AI 生成语音”；
 - 正式音频在片头或片尾加入可感知的 AI 音频提示或标准节奏标识；
@@ -509,7 +509,7 @@ App 不根据勾选框自动认定权利成立，但将声明、时间、文件�
 {
   "schema": "ai2apps.app/v1",
   "id": "ai2apps.readaloud",
-  "name": "Read Aloud Studio",
+  "name": "Voice Studio",
   "description": "Create local-first narration, audiobooks, and multi-character audio",
   "version": "0.1.0",
   "instances": {"mode": "singleton", "scope": "user"},
@@ -635,7 +635,7 @@ App 本身为每个用户单例，内部允许创建多个项目。这比每个�
 
 ## 14. 实施决策摘要
 
-- 产品名称：朗读工坊；
+- 产品名称：Voice Studio（语音工坊）；
 - 产品形态：AI2Apps 用户级单例内置 App，多项目；
 - 推理边界：只调用用户部署和控制的模型，不使用云 API；
 - 理想模型：Fish Audio S2 Pro；

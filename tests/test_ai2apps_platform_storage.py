@@ -154,6 +154,11 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         "gallery_collection_items",
         "video_studio_drafts",
         "imagine_studio_results",
+        "studio_drafts",
+        "studio_runs",
+        "studio_run_steps",
+        "studio_artifacts",
+        "gallery_asset_handles",
         "knowledge_spaces",
         "knowledge_items",
         "knowledge_representations",
@@ -264,6 +269,7 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (67, "model_share_provider_preferences"),
         (68, "durable_registry_install_continuations"),
         (69, "model_share_multimodal_pricing_projection"),
+        (70, "studio_runs_artifacts_drafts_and_gallery_handles"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 

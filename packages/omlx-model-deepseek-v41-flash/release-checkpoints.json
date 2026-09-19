@@ -1,0 +1,18 @@
+{
+  "schema": "ai2apps.model-release-checkpoints/v1",
+  "package_id": "ai2apps/model-deepseek-v41-flash",
+  "package_version": "0.1.0",
+  "runtime_dependency": ">=1.7.0 <2.0.0",
+  "models": [
+    {
+      "model_id": "ai2apps.model.deepseek-v41-flash/deepseek-v41-flash",
+      "repo_id": "Avdpro/DeepSeek-V4.1-Flash-SSD",
+      "revision": "efb7e03fd718ebbeb3e0d7e60ed037a920d8e441",
+      "modelscope_repo_id": "ai2apps/DeepSeek-V4.1-Flash-SSD",
+      "modelscope_revision": "f06bb1c499bf38694d84f8b5f3e345a84b8e44d3",
+      "distribution_id": "dist_ai2apps_deepseek_v41_flash_ssd_efb7e03f_v1",
+      "preparation_recipe": "ai2apps/cache-moe/v1",
+      "ssd_layout": "dsv41-original-fp4-six-segment-v1"
+    }
+  ]
+}

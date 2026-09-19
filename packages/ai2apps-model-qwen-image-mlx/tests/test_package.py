@@ -80,7 +80,7 @@ def data_url(color="red"):
 
 def test_manifest_locks_real_2512_and_2511_checkpoints():
     manifest = yaml.safe_load((PACKAGE / "service.yaml").read_text())
-    assert manifest["version"] == "0.1.1"
+    assert manifest["version"] == "0.1.2"
     assert manifest["requires"]["services"][0]["version"] == ">=1.5.1,<2.0.0"
     assert [model["upstream_id"] for model in manifest["models"]] == [
         "Qwen/Qwen-Image-2512",

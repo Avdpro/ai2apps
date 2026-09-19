@@ -1,0 +1,7 @@
+{
+  "model_type": "mlx_rvc_composite",
+  "architectures": ["RVCV2ForVoiceConversion"],
+  "sample_rate": 48000,
+  "uses_f0": true,
+  "checkpoint_schema": "ai2apps.mlx-rvc-composite/v1"
+}

@@ -29,6 +29,7 @@ from .models import (
     PackageFile,
     ServicePackageManifest,
 )
+from .native_policy import native_payload_paths
 
 MAX_PACKAGE_FILES = 10_000
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
@@ -540,6 +541,21 @@ class ServicePackageArchive:
             for item in sbom.get("files", [])
             if isinstance(item, dict)
         }
+        detected_native_paths = set(
+            native_payload_paths(
+                (path, archive.read(path)[:4]) for path in indexed
+            )
+        )
+        if manifest.protocol == "ai2apps-model-worker/v1" and (
+            detected_native_paths or declared
+        ):
+            raise PackageError(
+                "model_worker_native_payload_forbidden",
+                "Model Worker Packages may contain signed Python and data assets, but no native-code payloads",
+                details={
+                    "paths": sorted(detected_native_paths | set(declared)),
+                },
+            )
         native_paths = set()
         for path, item in indexed.items():
             header = archive.read(path)[:4]

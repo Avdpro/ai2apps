@@ -77,7 +77,8 @@ async def _wait_status(runtime, run_id, statuses, timeout=3.0):
         await asyncio.sleep(0.01)
     raise AssertionError(
         f"Run {run_id} did not reach {sorted(item.value for item in statuses)}; "
-        f"current={runtime.agents.get_run(run_id).status.value}"
+        f"current={runtime.agents.get_run(run_id).status.value}; "
+        f"steps={[(step.kind, step.status.value) for step in runtime.agents.list_steps(run_id)]}"
     )
 
 
@@ -1304,7 +1305,11 @@ async def test_general_agent_runs_model_tool_model_loop_durably(tmp_path):
             input={"model": "test-model", "message_id": user.message.id},
         )
         runtime.agent_runtime.wake()
-        completed = await _wait_status(runtime, run.id, AgentRunStatus.COMPLETED)
+        # Three durable steps plus final message persistence can exceed 3 s
+        # during the full release suite; keep all durability assertions below.
+        completed = await _wait_status(
+            runtime, run.id, AgentRunStatus.COMPLETED, timeout=10.0
+        )
         steps = runtime.agents.list_steps(run.id)
         invocations = runtime.services.list_invocations(trace_id=run.id)
 

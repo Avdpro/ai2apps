@@ -151,7 +151,7 @@ class TestListModelsSettings:
 
         model = result["models"][0]
         assert model["id"] == model_id
-        assert model["display_name"] == f"Dev: models/deepsweet/{model_id}"
+        assert model["display_name"] == "(Local) AI2Apps-MLX · Qwen 3.6 27B MLX oQ5 FP16"
 
     def test_list_models_omits_hf_cache_entries(self, tmp_path):
         model_root = tmp_path / "data" / "models"
@@ -217,7 +217,7 @@ class TestListModelsSettings:
         discovered = [model for model in result["models"] if not model.get("virtual")]
         assert [model["id"] for model in discovered] == ["SenseVoiceSmall"]
         assert discovered[0]["display_name"] == (
-            "Dev: data/models/mlx-community/SenseVoiceSmall"
+            "(Local) AI2Apps-MLX · SenseVoiceSmall"
         )
 
 
@@ -388,7 +388,7 @@ class TestLoginRejectsSubKey:
     """Tests that sub keys cannot be used for admin login."""
 
     def test_sub_key_rejected_for_login(self):
-        """Sub key should NOT grant admin login — only main key works."""
+        """Sub keys must not bypass the retired web login endpoint."""
         from fastapi import HTTPException
 
         mock_settings = _mock_global_settings(api_key="main-key")
@@ -402,12 +402,14 @@ class TestLoginRejectsSubKey:
             request = admin_routes.LoginRequest(api_key="sub-key-1")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(admin_routes.login(request, MagicMock()))
-            assert exc_info.value.status_code == 401
+            assert exc_info.value.status_code == 410
+            assert exc_info.value.detail["code"] == "api_key_web_login_retired"
         finally:
             _restore_getter(original)
 
-    def test_main_key_still_works_for_login(self):
-        """Main key should still work for admin login."""
+    def test_main_key_cannot_create_web_session(self):
+        """Even the main inference key cannot authenticate a web session."""
+        from fastapi import HTTPException
         mock_settings = _mock_global_settings(api_key="main-key")
         mock_settings.auth.sub_keys = [
             __import__("omlx.settings", fromlist=["SubKeyEntry"]).SubKeyEntry(
@@ -418,8 +420,11 @@ class TestLoginRejectsSubKey:
         original = _patch_getter(mock_settings)
         try:
             request = admin_routes.LoginRequest(api_key="main-key")
-            result = asyncio.run(admin_routes.login(request, mock_response))
-            assert result["success"] is True
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(admin_routes.login(request, mock_response))
+            assert exc.value.status_code == 410
+            assert exc.value.detail["code"] == "api_key_web_login_retired"
+            mock_response.set_cookie.assert_not_called()
         finally:
             _restore_getter(original)
 
@@ -585,147 +590,49 @@ def _restore_getter(original):
     admin_routes._get_global_settings = original
 
 
-class TestSetupApiKeyEndpoint:
-    """Tests for POST /admin/api/setup-api-key endpoint logic."""
+class TestRetiredWebApiKeyEndpoints:
+    """Legacy web keys never create sessions or mutate installation settings."""
 
-    def test_setup_rejects_when_key_already_set(self):
-        """Setup should fail if API key is already configured."""
+    @pytest.mark.parametrize("configured", [None, "correct-key"])
+    @pytest.mark.parametrize("key,confirm", [
+        ("correct-key", "correct-key"), ("wrong-key", "wrong-key"),
+        ("abc", "abc"), ("ab cd", "ab cd"), ("key1", "key2"),
+    ])
+    def test_setup_is_retired_without_side_effects(self, configured, key, confirm):
         from fastapi import HTTPException
 
-        mock_settings = _mock_global_settings(api_key="existing-key")
-        original = _patch_getter(mock_settings)
+        settings = _mock_global_settings(api_key=configured)
+        response = MagicMock()
+        original = _patch_getter(settings)
         try:
             request = admin_routes.SetupApiKeyRequest(
-                api_key="newkey", api_key_confirm="newkey"
+                api_key=key, api_key_confirm=confirm
             )
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(admin_routes.setup_api_key(request, MagicMock()))
-            assert exc_info.value.status_code == 400
-            assert "already configured" in exc_info.value.detail
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(admin_routes.setup_api_key(request, response))
+            assert exc.value.status_code == 410
+            assert exc.value.detail["code"] == "api_key_web_setup_retired"
+            assert settings.auth.api_key == configured
+            settings.save.assert_not_called()
+            response.set_cookie.assert_not_called()
         finally:
             _restore_getter(original)
 
-    def test_setup_rejects_mismatched_keys(self):
-        """Setup should fail if api_key and api_key_confirm don't match."""
+    @pytest.mark.parametrize("configured", [None, "correct-key"])
+    @pytest.mark.parametrize("key", ["correct-key", "wrong-key", "sub-key-1"])
+    def test_login_is_retired_without_creating_session(self, configured, key):
         from fastapi import HTTPException
 
-        mock_settings = _mock_global_settings(api_key=None)
-        original = _patch_getter(mock_settings)
+        settings = _mock_global_settings(api_key=configured)
+        response = MagicMock()
+        original = _patch_getter(settings)
         try:
-            request = admin_routes.SetupApiKeyRequest(
-                api_key="key1", api_key_confirm="key2"
-            )
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(admin_routes.setup_api_key(request, MagicMock()))
-            assert exc_info.value.status_code == 400
-            assert "do not match" in exc_info.value.detail
-        finally:
-            _restore_getter(original)
-
-    def test_setup_rejects_short_key(self):
-        """Setup should fail if key is too short."""
-        from fastapi import HTTPException
-
-        mock_settings = _mock_global_settings(api_key=None)
-        original = _patch_getter(mock_settings)
-        try:
-            request = admin_routes.SetupApiKeyRequest(
-                api_key="abc", api_key_confirm="abc"
-            )
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(admin_routes.setup_api_key(request, MagicMock()))
-            assert exc_info.value.status_code == 400
-            assert "at least 4" in exc_info.value.detail
-        finally:
-            _restore_getter(original)
-
-    def test_setup_rejects_whitespace_key(self):
-        """Setup should fail if key contains whitespace."""
-        from fastapi import HTTPException
-
-        mock_settings = _mock_global_settings(api_key=None)
-        original = _patch_getter(mock_settings)
-        try:
-            request = admin_routes.SetupApiKeyRequest(
-                api_key="ab cd", api_key_confirm="ab cd"
-            )
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(admin_routes.setup_api_key(request, MagicMock()))
-            assert exc_info.value.status_code == 400
-            assert "whitespace" in exc_info.value.detail
-        finally:
-            _restore_getter(original)
-
-    def test_setup_success_saves_key(self):
-        """Successful setup should save key to settings and server state."""
-        from unittest.mock import patch
-
-        mock_settings = _mock_global_settings(api_key=None)
-        mock_response = MagicMock()
-        mock_server_state = MagicMock()
-        mock_server_state.api_key = None
-
-        original = _patch_getter(mock_settings)
-        try:
-            with patch("omlx.server._server_state", mock_server_state):
-                request = admin_routes.SetupApiKeyRequest(
-                    api_key="validkey123", api_key_confirm="validkey123"
-                )
-                result = asyncio.run(
-                    admin_routes.setup_api_key(request, mock_response)
-                )
-
-                assert result["success"] is True
-                assert mock_settings.auth.api_key == "validkey123"
-                assert mock_server_state.api_key == "validkey123"
-                mock_settings.save.assert_called_once()
-                mock_response.set_cookie.assert_called_once()
-        finally:
-            _restore_getter(original)
-
-
-class TestLoginEndpoint:
-    """Tests for POST /admin/api/login endpoint logic."""
-
-    def test_login_rejects_when_no_key_configured(self):
-        """Login should fail with 400 when no API key is configured."""
-        from fastapi import HTTPException
-
-        mock_settings = _mock_global_settings(api_key=None)
-        original = _patch_getter(mock_settings)
-        try:
-            request = admin_routes.LoginRequest(api_key="anykey")
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(admin_routes.login(request, MagicMock()))
-            assert exc_info.value.status_code == 400
-            assert "No API key configured" in exc_info.value.detail
-        finally:
-            _restore_getter(original)
-
-    def test_login_rejects_invalid_key(self):
-        """Login should fail with 401 for wrong API key."""
-        from fastapi import HTTPException
-
-        mock_settings = _mock_global_settings(api_key="correct-key")
-        original = _patch_getter(mock_settings)
-        try:
-            request = admin_routes.LoginRequest(api_key="wrong-key")
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(admin_routes.login(request, MagicMock()))
-            assert exc_info.value.status_code == 401
-        finally:
-            _restore_getter(original)
-
-    def test_login_success(self):
-        """Login should succeed with correct API key."""
-        mock_settings = _mock_global_settings(api_key="correct-key")
-        mock_response = MagicMock()
-        original = _patch_getter(mock_settings)
-        try:
-            request = admin_routes.LoginRequest(api_key="correct-key")
-            result = asyncio.run(admin_routes.login(request, mock_response))
-            assert result["success"] is True
-            mock_response.set_cookie.assert_called_once()
+            request = admin_routes.LoginRequest(api_key=key)
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(admin_routes.login(request, response))
+            assert exc.value.status_code == 410
+            assert exc.value.detail["code"] == "api_key_web_login_retired"
+            response.set_cookie.assert_not_called()
         finally:
             _restore_getter(original)
 
@@ -733,8 +640,8 @@ class TestLoginEndpoint:
 class TestStatsSecurity:
     """Tests for /admin/api/stats response hardening."""
 
-    def test_stats_response_includes_api_key_for_admin(self):
-        """The stats payload includes api_key for admin CLI snippet generation."""
+    def test_stats_response_never_exposes_api_key(self):
+        """Even admin statistics must not disclose inference credentials."""
         mock_settings = MagicMock()
         mock_settings.server.host = "127.0.0.1"
         mock_settings.server.port = 9981
@@ -759,8 +666,8 @@ class TestStatsSecurity:
         ):
             result = asyncio.run(admin_routes.get_server_stats(is_admin=True))
 
-        # api_key is included for admin-only CLI snippet generation in the dashboard
-        assert result["api_key"] == "super-secret-key"
+        assert result["api_key"] == ""
+        assert "super-secret-key" not in str(result)
 
     def test_activity_response_does_not_build_runtime_cache_observability(self):
         active_models = {"models": [{"id": "model-a"}]}

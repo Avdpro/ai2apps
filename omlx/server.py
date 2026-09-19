@@ -82,6 +82,7 @@ from ai2apps.config import PlatformConfig
 from ai2apps.development import can_access_developer_surfaces
 from ai2apps.http_security import LocalBrowserSecurityHeadersMiddleware
 from ai2apps.identity import RequestPrincipal
+from ai2apps.model_identity import model_identity_fields
 from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.model_manager import ModelManagerStore
 from ai2apps.model_providers import (
@@ -1014,14 +1015,13 @@ from .api.mcp_routes import set_mcp_manager_getter
 set_mcp_manager_getter(get_mcp_manager)
 app.include_router(mcp_router, dependencies=[Depends(verify_api_key)])
 
-# The legacy audio router imports PCM helpers through ``omlx.engine`` and thus
-# pulls MLX into the process before any request is handled. Runtime-backed
-# audio providers will move to the package-provider gateway; until then the
-# inference-free Base App intentionally omits these legacy local routes.
-if not _CLOUD_RUNTIME_PROFILE:
-    from .api.audio_routes import router as audio_router
+# Audio Package providers are part of the inference-free Base App contract.
+# ``audio_routes`` keeps its legacy in-process engine imports lazy, so mounting
+# the OpenAI-compatible gateway does not load MLX until a legacy engine path is
+# actually invoked.
+from .api.audio_routes import router as audio_router
 
-    app.include_router(audio_router, dependencies=[Depends(verify_api_key)])
+app.include_router(audio_router, dependencies=[Depends(verify_api_key)])
 
 # Include admin routes
 from .admin.auth import _RedirectToLogin
@@ -3267,6 +3267,12 @@ async def list_models(
                         if m.get("model_type") == "llm"
                         else None
                     ),
+                    **model_identity_fields(
+                        source="local_runtime",
+                        provider_id="ai2apps.runtime.omlx",
+                        model_id=model_id,
+                        display_name=display_id,
+                    ),
                 )
             )
         if settings_manager and expose_raw_local_models:
@@ -3300,6 +3306,12 @@ async def list_models(
                             if source_entry.get("model_type") == "llm"
                             else None
                         ),
+                        **model_identity_fields(
+                            source="local_runtime",
+                            provider_id="ai2apps.runtime.omlx",
+                            model_id=profile_model_id,
+                            display_name=profile.get("display_name") or profile_model_id,
+                        ),
                     )
                 )
                 existing_ids.add(profile_model_id)
@@ -3310,6 +3322,12 @@ async def list_models(
         models.append(ModelInfo(
             id=MARKITDOWN_MODEL_ID, owned_by="omlx",
             source="local_runtime", shareable=True,
+            **model_identity_fields(
+                source="local_runtime",
+                provider_id="ai2apps.runtime.omlx",
+                model_id=MARKITDOWN_MODEL_ID,
+                display_name="MarkItDown",
+            ),
         ))
 
     if _server_state.global_settings is not None:
@@ -3329,6 +3347,13 @@ async def list_models(
                         else "llm"
                     ),
                     capabilities=cloud_model.get("capabilities") or None,
+                    **model_identity_fields(
+                        source=model_store.model_source(cloud_model["gateway_id"]),
+                        provider_id=cloud_model["provider_id"],
+                        provider_name=cloud_model.get("provider_name"),
+                        model_id=cloud_model["id"],
+                        display_name=cloud_model.get("name"),
+                    ),
                 )
             )
         existing_ids = {model.id for model in models}
@@ -3363,6 +3388,12 @@ async def list_models(
                         )
                     ),
                     capabilities=cloud_model.get("capabilities") or None,
+                    **model_identity_fields(
+                        source="ai2apps_cloud",
+                        provider_id=cloud_model.get("provider") or model_id.split("/", 1)[0],
+                        model_id=model_id,
+                        display_name=cloud_model.get("displayName") or cloud_model.get("name"),
+                    ),
                 )
             )
             existing_ids.add(gateway_id)
@@ -3373,6 +3404,12 @@ async def list_models(
             models.append(ModelInfo(
                 id=fusion["id"], owned_by="ai2apps-fusion",
                 source="local_runtime", shareable=True,
+                **model_identity_fields(
+                    source="fusion",
+                    provider_id="ai2apps-fusion",
+                    model_id=fusion["id"],
+                    display_name=fusion.get("name"),
+                ),
             ))
             existing_ids.add(fusion["id"])
 
@@ -3393,6 +3430,15 @@ async def list_models(
                     if getattr(package_model, "capabilities", None)
                     else None
                 ),
+                **model_identity_fields(
+                    source="package",
+                    provider_id=(
+                        package_model.inference_provider_key
+                        or package_model.provider_key
+                    ),
+                    model_id=package_model.id,
+                    display_name=package_model.display_name,
+                ),
             )
         )
         existing_ids.add(package_model.id)
@@ -3409,6 +3455,13 @@ async def list_models(
                     owned_by=f"gateway:{projected['gateway_label']}",
                     source="upstream_gateway",
                     shareable=False,
+                    **model_identity_fields(
+                        source="upstream_gateway",
+                        provider_id=projected.get("provider_id") or projected["gateway_label"],
+                        provider_name=projected["gateway_label"],
+                        model_id=projected.get("remote_id") or projected["id"],
+                        display_name=projected.get("display_name"),
+                    ),
                 )
             )
             existing_ids.add(projected["id"])
@@ -3636,6 +3689,11 @@ async def set_ai2apps_engine_boost(
     _: bool = Depends(verify_api_key),
 ):
     """Apply Engine Boost at the next safe Decode boundary."""
+
+    package_model = resolve_package_model(_server_state.ai2apps_platform_runtime, request.model)
+    if package_model is not None:
+        from ai2apps.model_providers import control_package_engine_boost
+        return await control_package_engine_boost(package_model, request.session_id, request.mode)
 
     pool = get_engine_pool()
     try:

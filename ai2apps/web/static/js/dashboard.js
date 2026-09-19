@@ -372,6 +372,12 @@
                 image_generation: '',
                 video_generation: '',
             },
+            cloudDefaultPolicy: {},
+            cloudDefaultLabel() {
+                const label = window.t('models.defaults.use_api_default');
+                const model = this.cloudDefaultPolicy?.apiDefault;
+                return model ? `${label} — (Cloud) ${model.displayName}` : label;
+            },
             defaultModelsSaving: false,
             defaultModelsStatus: '',
             defaultModelsError: '',
@@ -506,16 +512,7 @@
             },
 
             defaultModelLabel(model) {
-                const name = model.settings?.model_alias || model.display_name || model.id;
-                if (model.source_type === 'local') {
-                    return name.startsWith('Dev: ') ? name : `Dev: ${name}`;
-                }
-                const source = model.source_type === 'cloud'
-                    ? window.t('models.defaults.source.cloud')
-                    : (model.source_type === 'fusion'
-                        ? window.t('models.defaults.source.fusion')
-                        : window.t('models.defaults.source.local'));
-                return `${source} · ${name}`;
+                return model.identity?.displayName || model.display_name || model.id;
             },
 
             get fusionLocalModelOptions() {
@@ -529,7 +526,7 @@
                     const alias = model.settings?.model_alias;
                     options.push({
                         id,
-                        label: alias ? `${alias} — ${id}` : (model.display_name || id),
+                        label: model.identity?.displayName || (alias ? `${alias} — ${id}` : (model.display_name || id)),
                         group,
                         cache_moe: Boolean(model.cache_moe),
                     });
@@ -1423,6 +1420,13 @@
                         ...this.defaultModels,
                         ...(data.defaults || {}),
                     };
+                    this.cloudDefaultPolicy = {};
+                    try {
+                        const defaultsResponse = await fetch('/v1/platform/cloud/ai/defaults');
+                        if (defaultsResponse.ok) {
+                            this.cloudDefaultPolicy = (await defaultsResponse.json()).policy || {};
+                        }
+                    } catch (_) { /* Model selection remains usable while Cloud is unavailable. */ }
                     this.$nextTick(() => lucide.createIcons());
                 } catch (err) {
                     this.modelManagerError = err.message || window.t('models.defaults.load_error');

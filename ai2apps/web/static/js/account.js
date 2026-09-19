@@ -5,6 +5,13 @@
     const REMOTE_API = '/v1/platform/remote';
     const LOCAL_AUTH_API = '/v1/platform/auth';
     const apiKey = '';
+    const PASSWORD_MIN_UTF8_BYTES = 8;
+    const PASSWORD_MAX_UTF8_BYTES = 128;
+
+    function validAccountPassword(value) {
+        const bytes = new TextEncoder().encode(String(value || '')).length;
+        return bytes >= PASSWORD_MIN_UTF8_BYTES && bytes <= PASSWORD_MAX_UTF8_BYTES;
+    }
 
     function tr(key, params) {
         let text = typeof window.t === 'function' ? window.t(key) : key;
@@ -25,6 +32,7 @@
             INVALID_CREDENTIALS: tr('account.error.invalid_credentials'),
             EMAIL_NOT_VERIFIED: tr('account.error.email_not_verified'),
             EMAIL_ALREADY_REGISTERED: tr('account.error.email_already_registered'),
+            INVALID_PASSWORD: tr('account.error.password_length'),
             INVALID_VERIFICATION_CODE: tr('account.error.invalid_verification_code'),
             INVALID_PUBLIC_HANDLE: tr('account.error.invalid_public_handle'),
             PUBLIC_HANDLE_UNAVAILABLE: tr('account.error.public_handle_unavailable'),
@@ -687,6 +695,7 @@
                 finally { this.busy = false; }
             },
             async login() {
+                if (!validAccountPassword(this.password)) { this.fail(new Error(tr('account.error.password_length'))); return; }
                 this.busy = true; this.clearNotice();
                 try {
                     const result = await cloud('/auth/login', { method: 'POST', body: { email: this.email, password: this.password } });
@@ -697,6 +706,7 @@
                 } finally { this.password = ''; this.busy = false; }
             },
             async register() {
+                if (!validAccountPassword(this.password)) { this.fail(new Error(tr('account.error.password_length'))); return; }
                 this.busy = true; this.clearNotice();
                 try {
                     await cloud('/auth/register', { method: 'POST', body: { displayName: this.displayName, email: this.email, password: this.password } });
@@ -725,6 +735,7 @@
                 finally { this.busy = false; }
             },
             async resetPassword() {
+                if (!validAccountPassword(this.newPassword)) { this.fail(new Error(tr('account.error.password_length'))); return; }
                 this.busy = true; this.clearNotice();
                 try {
                     await cloud('/auth/password/reset', { method: 'POST', body: { email: this.email, code: this.code, newPassword: this.newPassword } });
@@ -851,6 +862,10 @@
             async revokeCoreDevice(device) {
                 if (!this.deviceOwnerPassword) {
                     this.fail(new Error(tr('account.error.device_revoke_password')));
+                    return;
+                }
+                if (!validAccountPassword(this.deviceOwnerPassword)) {
+                    this.fail(new Error(tr('account.error.password_length')));
                     return;
                 }
                 const deviceId = device.id || device.deviceId;
@@ -983,6 +998,7 @@
             },
             async savePolicy() {
                 if (!this.policyEtag || !this.policyOwnerPassword) { this.fail(new Error(tr('account.error.policy_owner_password'))); return; }
+                if (!validAccountPassword(this.policyOwnerPassword)) { this.fail(new Error(tr('account.error.password_length'))); return; }
                 this.busy = true; this.clearNotice();
                 try {
                     const result = await cloud('/installation/policy', { method: 'PATCH', includeMetadata: true, headers: { 'If-Match': this.policyEtag }, body: {
@@ -1008,6 +1024,7 @@
             },
             async saveMemberQuota(member) {
                 if (!member?.quotaDraft || !member.quotaEtag || !this.policyOwnerPassword) { this.fail(new Error(tr('account.error.quota_owner_password'))); return; }
+                if (!validAccountPassword(this.policyOwnerPassword)) { this.fail(new Error(tr('account.error.password_length'))); return; }
                 this.busy = true; this.clearNotice();
                 try {
                     const concurrency = String(member.quotaDraft.concurrencyLimit ?? '').trim();
@@ -1029,6 +1046,10 @@
                     this.fail(new Error(tr('account.error.owner_password_role')));
                     return;
                 }
+                if (roleChange && !validAccountPassword(this.memberOwnerPassword)) {
+                    this.fail(new Error(tr('account.error.password_length')));
+                    return;
+                }
                 if (changes.status === 'revoked' && !confirm(tr('account.confirm.remove_member'))) return;
                 this.busy = true; this.clearNotice();
                 try {
@@ -1043,6 +1064,7 @@
                 finally { this.memberOwnerPassword = ''; this.busy = false; }
             },
             async verifyAdmin() {
+                if (!validAccountPassword(this.adminPassword)) { this.fail(new Error(tr('account.error.password_length'))); return; }
                 this.busy = true; this.clearNotice();
                 try {
                     const result = await cloud('/admin/reauth', { method: 'POST', body: { password: this.adminPassword, durationMinutes: this.adminDurationMinutes } });

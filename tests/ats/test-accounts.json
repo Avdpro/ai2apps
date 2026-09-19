@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "ai2apps.test-account-pool.v1",
+  "poolId": "desktop-test-v1",
+  "brokerOrigin": "https://coder.ai2apps.com",
+  "leaseTtlSeconds": 7200,
+  "accounts": [
+    "test1@ai2apps.com",
+    "test2@ai2apps.com",
+    "test3@ai2apps.com",
+    "test4@ai2apps.com",
+    "test5@ai2apps.com",
+    "test6@ai2apps.com",
+    "test7@ai2apps.com",
+    "test8@ai2apps.com",
+    "test9@ai2apps.com",
+    "test10@ai2apps.com"
+  ]
+}

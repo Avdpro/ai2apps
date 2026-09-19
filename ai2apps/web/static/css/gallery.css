@@ -36,3 +36,14 @@
 /* Optically center the unselected ring inside the asset selection slot. */
 .gallery-check svg{display:block;width:13px;height:13px}
 .gallery-check .lucide-circle{transform:translateY(-1px)}
+
+/* Shared asset context menu for the full Gallery and every Mini-Entry. */
+.gallery-mini-action{position:relative;display:inline-flex}
+.gallery-mini-tooltip{position:absolute;z-index:200;top:calc(100% + 7px);right:0;width:max-content;max-width:170px;padding:6px 9px;border-radius:6px;color:#fff;background:#262626;box-shadow:0 4px 12px #0002;font-size:11px;line-height:1.4;white-space:normal;pointer-events:none;visibility:hidden;opacity:0;transition:opacity .12s ease}
+.gallery-mini-action:hover>.gallery-mini-tooltip,.gallery-mini-action:focus-within>.gallery-mini-tooltip{visibility:visible;opacity:1}
+.gallery-context-menu{position:fixed;z-index:180;width:190px;max-height:min(420px,calc(100vh - 16px));overflow:auto;padding:5px;border:1px solid #d6d3d1;border-radius:11px;color:#262626;background:rgba(255,255,255,.98);box-shadow:0 18px 48px rgba(0,0,0,.18);backdrop-filter:blur(18px)}
+.gallery-context-menu>button,.gallery-context-targets>button{width:100%;min-height:34px;display:flex;align-items:center;gap:9px;padding:7px 9px;border:0;border-radius:7px;color:inherit;background:transparent;font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.gallery-context-menu>button:hover,.gallery-context-menu>button:focus-visible,.gallery-context-targets>button:hover,.gallery-context-targets>button:focus-visible{outline:0;background:#f0efec}.gallery-context-menu>button.danger{color:#b91c1c}.gallery-context-menu>button:disabled{color:#b5b5b5;cursor:not-allowed;background:transparent}.gallery-context-menu button>svg{width:15px;height:15px;flex:0 0 15px}.gallery-context-menu button>span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gallery-context-menu .gallery-context-chevron{width:13px;height:13px}.gallery-context-divider{height:1px;display:block;margin:4px;background:#e7e5e4}.gallery-context-targets{margin:2px 0 3px 18px;padding-left:5px;border-left:1px solid #e7e5e4}.gallery-context-targets>button{min-height:31px;font-size:11px}
+.gallery-preview-stage>.gallery-preview-media{position:absolute;inset:0;width:auto;height:auto;min-width:0;min-height:0;box-sizing:border-box;padding:40px 78px;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.gallery-preview-media.image>img{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain;transition:none}
+@media(max-width:700px){.gallery-preview-stage>.gallery-preview-media{padding:24px 54px}}

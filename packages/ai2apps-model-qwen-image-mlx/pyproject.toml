@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai2apps-model-qwen-image-mlx"
-version = "0.1.1"
+version = "0.1.2"
 description = "Qwen Image generation and editing MLX Model Worker Package for AI2Apps"
 requires-python = ">=3.11,<3.14"
 dependencies = []

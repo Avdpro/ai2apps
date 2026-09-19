@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-deepseek-v41-flash",
+    "type": "service",
+    "version": "0.1.1",
+    "displayName": "DeepSeek V4.1 Flash",
+    "description": "Lossless multimodal DeepSeek V4.1 Flash Worker for the SSD-ready checkpoint."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": [
+      "darwin"
+    ],
+    "architectures": [
+      "arm64"
+    ],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [
+    {
+      "name": "model-worker",
+      "kind": "service",
+      "path": "service.yaml"
+    }
+  ],
+  "permissions": [
+    {
+      "capability": "model-weights.huggingface-cache.read",
+      "reason": "Read the Host-selected pinned DeepSeek V4.1 SSD checkpoint.",
+      "required": true
+    },
+    {
+      "capability": "accelerator.metal",
+      "reason": "Run the lossless MLX Cached-MoE engine on Apple GPU.",
+      "required": true
+    }
+  ],
+  "dependencies": [
+    {
+      "packageId": "ai2apps/runtime-omlx",
+      "version": ">=1.7.5 <2.0.0",
+      "optional": false
+    }
+  ],
+  "files": [],
+  "sbom": {
+    "format": "spdx-json-2.3",
+    "path": "META/sbom.spdx.json"
+  },
+  "discovery": {
+    "kind": "model",
+    "categories": [
+      "multimodal"
+    ],
+    "tasks": [
+      "multimodal-conversation",
+      "image-understanding"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 510320301313,
+    "minimumMemoryBytes": 103079215104,
+    "scores": {
+      "speed": 2,
+      "capability": 5
+    },
+    "benchmark": {
+      "label": "Lossless SSD Cached-MoE Main40/Hot8; <=65 GiB validated target",
+      "device": "AI2Apps runtime tier / reference-host measurement"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.deepseek-v41-flash",
+    "models": [
+      {
+        "id": "ai2apps.model.deepseek-v41-flash/deepseek-v41-flash",
+        "label": "DeepSeek V4.1 Flash",
+        "recommended": true
+      }
+    ]
+  }
+}

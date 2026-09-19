@@ -183,13 +183,17 @@ class OmlxSTTAdapter(OmlxAudioAdapterBase):
             _error("Internal model settings are invalid")
         engine, checkpoint = await self.engine_for(model, runtime_options)
         audio = request.part("file")
+        transcribe_kwargs = {
+            "language": body.get("language") or None,
+            "prompt": body.get("prompt") or None,
+            "word_timestamps": _boolean(body.get("word_timestamps")),
+        }
+        if body.get("max_tokens") not in {None, ""}:
+            transcribe_kwargs["max_tokens"] = int(body["max_tokens"])
         try:
             result = await engine.transcribe(
                 str(audio.path),
-                language=body.get("language") or None,
-                prompt=body.get("prompt") or None,
-                max_tokens=(int(body["max_tokens"]) if body.get("max_tokens") else None),
-                word_timestamps=_boolean(body.get("word_timestamps")),
+                **transcribe_kwargs,
             )
         except ModelWorkerError:
             raise

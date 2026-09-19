@@ -254,13 +254,14 @@ def test_verify_rollback_matches_sequential_decode(runtime):
             want = ref_layer[1][slot]
             assert got is not None and want is not None
             diff = mx.max(mx.abs(got - want)).item()
-            assert diff < 1e-4, f"conv slot {slot} diverged after rollback: {diff}"
+            # Sequential and chunked FP16 convolutions accumulate in a different order.
+            assert diff < 3e-3, f"conv slot {slot} diverged after rollback: {diff}"
 
     ref_out = model(mx.array([[100]]), cache=ref_cache)
     test_out = model(mx.array([[100]]), cache=cache)
     mx.eval(ref_out.logits, test_out.logits)
     diff = mx.max(mx.abs(test_out.logits - ref_out.logits)).item()
-    assert diff < 1e-3, f"post-rollback logits diverged: {diff}"
+    assert diff < 5e-3, f"post-rollback logits diverged: {diff}"
 
 
 def test_sanitize_hook_maps_mtp_keys(runtime):

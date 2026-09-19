@@ -54,6 +54,56 @@ def _source(tmp_path):
     return source
 
 
+def _model_worker_source(tmp_path):
+    source = tmp_path / "model-worker"
+    source.mkdir()
+    (source / "service.yaml").write_text(
+        """schema: ai2apps.service/v1
+id: example.model.worker
+name: Example Model Worker
+version: 1.0.0
+publisher: {id: example}
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: example.runtime
+  adapter: src/worker_adapter.py:create_adapter
+models: []
+""",
+        encoding="utf-8",
+    )
+    adapter = source / "src" / "worker_adapter.py"
+    adapter.parent.mkdir()
+    adapter.write_text("def create_adapter(context):\n    return object()\n", encoding="utf-8")
+    (source / "ai2apps.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": "ai2apps.package-manifest.v1",
+                "package": {
+                    "id": "example/model-worker",
+                    "type": "service",
+                    "version": "1.0.0",
+                    "displayName": "Example Model Worker",
+                    "description": "Pure Python model worker fixture",
+                },
+                "compatibility": {
+                    "ai2apps": ">=0.1.0 <2.0.0",
+                    "platforms": ["darwin"],
+                    "architectures": ["arm64"],
+                },
+                "entrypoints": [
+                    {"name": "service", "kind": "service", "path": "service.yaml"}
+                ],
+                "permissions": [],
+                "dependencies": [],
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return source
+
+
 def test_jcs_matches_cloud_contract_object_order():
     assert jcs({"z": 1, "a": [True, None, "雪"]}) == '{"a":[true,null,"雪"],"z":1}'
     with pytest.raises(PackageContractError, match="Floating-point"):
@@ -78,6 +128,34 @@ def test_build_inspect_sign_and_verify(tmp_path):
     )
     verified = verify_signed_package(archive, envelope, public_pem)
     assert verified.manifest["package"]["id"] == "example/hello-world"
+
+
+def test_app_build_ignores_dist_outputs_and_is_repeatable(tmp_path):
+    source = _source(tmp_path)
+    dist = source / "dist"
+    first = dist / "hello.ai2app"
+    second = tmp_path / "hello-rebuilt.ai2app"
+
+    build_package(source, first)
+    build_package(source, second)
+
+    assert first.read_bytes() == second.read_bytes()
+    with zipfile.ZipFile(second) as archive:
+        assert not any(name.startswith("dist/") for name in archive.namelist())
+
+
+@pytest.mark.parametrize(
+    "filename", ["model.dylib", "kernel.metallib", "kernel.metal", "addon.node"]
+)
+def test_model_worker_build_rejects_native_payloads(tmp_path, filename):
+    source = _model_worker_source(tmp_path)
+    (source / filename).write_bytes(b"native payload fixture")
+
+    with pytest.raises(PackageContractError) as error:
+        build_package(source, tmp_path / "model-worker.ai2service")
+
+    assert error.value.code == "model_worker_native_payload_forbidden"
+    assert error.value.details == {"paths": [filename]}
 
 
 def test_invalid_package_localization_is_rejected(tmp_path):

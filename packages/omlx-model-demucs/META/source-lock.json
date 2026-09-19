@@ -1,0 +1,27 @@
+{
+  "schema": "ai2apps.source-lock/v1",
+  "implementation": {
+    "repository": "omlx-moe-cache",
+    "path": "packages/omlx-model-demucs",
+    "validation": "experiments/mlx_demucs/VALIDATION.md"
+  },
+  "upstream": {
+    "repository": "https://github.com/facebookresearch/demucs",
+    "model": "htdemucs",
+    "license": "MIT"
+  },
+  "checkpoint": {
+    "huggingface": {
+      "repo_id": "mlx-community/demucs-mlx",
+      "revision": "d4519e24ddc2dd4a11d56a193092433d852c3961"
+    },
+    "modelscope": {
+      "repo_id": "mlx-community/demucs-mlx",
+      "revision": "3e2b356248c71ec999090ca6e5eebc65654b8893"
+    },
+    "files": {
+      "htdemucs.safetensors": "339d267a7a6983a11eedbdc00413c602a65e9b9103f695fb5c2b2a481cd9d297",
+      "htdemucs_config.json": "9258499513944fc062fbca0f11be425a446ec5702869a87e225323d7a57d2a01"
+    }
+  }
+}

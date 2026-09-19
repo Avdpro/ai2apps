@@ -122,6 +122,11 @@ def test_model_manifest_supports_conversation_image_audio_and_video():
             _model("example.multimodal", "stt", "audio_stt"),
             _model("example.multimodal", "tts", "audio_tts"),
             _model("example.multimodal", "audio", "audio_processing"),
+            _model(
+                "example.multimodal",
+                "detailed",
+                "audio_detailed_transcription",
+            ),
             _model("example.multimodal", "video", "video_generation"),
         ],
         runtime_mode="managed_process",
@@ -134,6 +139,7 @@ def test_model_manifest_supports_conversation_image_audio_and_video():
         "audio_stt",
         "audio_tts",
         "audio_processing",
+        "audio_detailed_transcription",
         "video_generation",
     }
     assert next(item for item in models if item["model_type"] == "audio_tts")[
@@ -142,6 +148,17 @@ def test_model_manifest_supports_conversation_image_audio_and_video():
     assert next(item for item in models if item["model_type"] == "audio_stt")[
         "audio_capabilities"
     ]["schema"] == "ai2apps.audio-capabilities/v1"
+    detailed = next(
+        item
+        for item in models
+        if item["model_type"] == "audio_detailed_transcription"
+    )
+    assert detailed["audio_capabilities"]["operations"] == [
+        "audio_detailed_transcription"
+    ]
+    assert detailed["endpoints"]["audio_detailed_transcription"] == (
+        "/v1/audio/transcriptions/detailed"
+    )
     assert next(item for item in models if item["model_type"] == "video_generation")[
         "video_capabilities"
     ]["schema"] == "ai2apps.video-capabilities/v1"
@@ -154,6 +171,56 @@ def test_video_model_manifest_rejects_missing_capabilities():
     with pytest.raises(ModelProviderContractError, match="video_capabilities"):
         validate_package_models(
             "example.video", [model], runtime_mode="process",
+            protocol="ai2apps-model-worker/v1",
+        )
+
+
+def test_conversation_model_manifest_normalizes_required_reasoning():
+    model = _model("example.chat", "reasoner", "llm")
+    model["metadata"] = {
+        "reasoning": {
+            "schema": "ai2apps.reasoning/v1",
+            "mode": "required",
+            "format": "think_tags",
+        }
+    }
+
+    normalized = validate_package_models(
+        "example.chat",
+        [model],
+        runtime_mode="process",
+        protocol="ai2apps-model-worker/v1",
+    )
+
+    assert normalized[0]["metadata"]["reasoning"]["default_enabled"] is True
+
+
+@pytest.mark.parametrize(
+    "reasoning",
+    [
+        {"schema": "wrong", "mode": "required", "format": "think_tags"},
+        {
+            "schema": "ai2apps.reasoning/v1",
+            "mode": "required",
+            "format": "think_tags",
+            "default_enabled": False,
+        },
+        {
+            "schema": "ai2apps.reasoning/v1",
+            "mode": "sometimes",
+            "format": "think_tags",
+        },
+    ],
+)
+def test_conversation_model_manifest_rejects_invalid_reasoning(reasoning):
+    model = _model("example.chat", "reasoner", "llm")
+    model["metadata"] = {"reasoning": reasoning}
+
+    with pytest.raises(ModelProviderContractError, match="reasoning"):
+        validate_package_models(
+            "example.chat",
+            [model],
+            runtime_mode="process",
             protocol="ai2apps-model-worker/v1",
         )
 
@@ -410,12 +477,81 @@ def test_host_reads_cache_moe_recipe_from_worker_manifest_without_importing_pack
     recipes = installed_model_preparation_recipes(runtime)
 
     assert len(recipes) == 1
-    assert recipes[0]["id"] == "deepseek-v4-flash-2bit"
+    assert recipes[0]["id"] == (
+        "ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit"
+    )
+    assert recipes[0]["install_id"] == "deepseek-v4-flash-2bit"
+    assert recipes[0]["service_key"] == "ai2apps.model.deepseek-v4-flash-2bit"
     assert recipes[0]["sources"][0]["revision"] == (
-        "722bf559b7de93575b2320973cf2002e05bfe6c9"
+        "19116161696aa83be5de1915df9f7dd5c6c23c48"
     )
     assert Path(recipes[0]["engine"]["scope_asset"]).is_file()
     assert Path(recipes[0]["engine"]["scope_pack"]).is_file()
+
+
+def test_glm_cache_moe_recipe_resolves_package_owned_scope_pack():
+    package_root = (
+        Path(__file__).resolve().parents[1]
+        / "packages"
+        / "omlx-model-glm5-3-flash-4bit-mtp"
+    )
+    manifest = yaml.safe_load((package_root / "service.yaml").read_text())
+    record = SimpleNamespace(
+        status=SimpleNamespace(value="active"),
+        protocol="ai2apps-model-worker/v1",
+        store_path=str(package_root),
+        manifest=manifest,
+    )
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(installed=lambda: (record,))
+    )
+
+    recipes = installed_model_preparation_recipes(runtime)
+
+    assert len(recipes) == 1
+    engine = recipes[0]["engine"]
+    assert Path(engine["scope_asset"]).is_file()
+    assert Path(engine["scope_pack"]).is_file()
+    assert Path(engine["scope_pack"]).name == "scope-pack.json"
+
+
+def test_deepseek_v41_cache_moe_recipe_uses_public_model_identity(tmp_path, monkeypatch):
+    package_root = (
+        Path(__file__).resolve().parents[1]
+        / "packages"
+        / "omlx-model-deepseek-v41-flash"
+    )
+    manifest = yaml.safe_load((package_root / "service.yaml").read_text())
+    record = SimpleNamespace(
+        status=SimpleNamespace(value="active"),
+        protocol="ai2apps-model-worker/v1",
+        service_key=manifest["id"],
+        store_path=str(package_root),
+        manifest=manifest,
+    )
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(installed=lambda: (record,))
+    )
+    monkeypatch.setattr(
+        ManagedServiceSupervisor,
+        "_huggingface_hub_cache",
+        lambda: tmp_path / "hub",
+    )
+
+    recipes = installed_model_preparation_recipes(runtime)
+
+    assert len(recipes) == 1
+    recipe = recipes[0]
+    assert recipe["id"] == (
+        "ai2apps.model.deepseek-v41-flash/deepseek-v41-flash"
+    )
+    assert recipe["install_id"] == "deepseek-v41-flash"
+    assert recipe["distribution_id"] == (
+        "dist_ai2apps_deepseek_v41_flash_ssd_efb7e03f_v1"
+    )
+    installer = AI2AppsInstaller(SimpleNamespace(), recipes)
+    assert installer._recipe(recipe["id"]) is recipe
+    assert installer._scope_profile(recipe).is_file()
 
 
 def test_host_exposes_native_worker_checkpoint_as_downloadable_package_recipe(

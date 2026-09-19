@@ -4405,6 +4405,103 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE model_share_jobs ADD COLUMN released_minor TEXT",
         ),
     ),
+    Migration(
+        version=70,
+        name="studio_runs_artifacts_drafts_and_gallery_handles",
+        statements=(
+            """
+            CREATE TABLE studio_drafts (
+                id TEXT PRIMARY KEY,
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                app_instance_id TEXT NOT NULL,
+                studio_id TEXT NOT NULL,
+                mini_app_id TEXT NOT NULL,
+                draft_json TEXT NOT NULL CHECK (json_valid(draft_json)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(actor_id,installation_id,app_instance_id,studio_id,mini_app_id)
+            )
+            """,
+            "CREATE INDEX ix_studio_drafts_owner ON studio_drafts(actor_id,installation_id,app_instance_id,studio_id,updated_at DESC)",
+            """
+            CREATE TABLE studio_runs (
+                id TEXT PRIMARY KEY,
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                app_instance_id TEXT NOT NULL,
+                studio_id TEXT NOT NULL,
+                mini_app_id TEXT NOT NULL,
+                mini_app_version TEXT NOT NULL,
+                placement TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('draft','queued','running','waiting_input','succeeded','failed','cancelled','expired')),
+                progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+                title TEXT NOT NULL,
+                input_json TEXT NOT NULL CHECK (json_valid(input_json)),
+                error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+                retry_of TEXT REFERENCES studio_runs(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_studio_runs_owner_status ON studio_runs(actor_id,installation_id,app_instance_id,studio_id,status,created_at DESC)",
+            """
+            CREATE TABLE studio_run_steps (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES studio_runs(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                label TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed','skipped','cancelled')),
+                progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+                detail TEXT NOT NULL DEFAULT '',
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL,
+                UNIQUE(run_id,position)
+            )
+            """,
+            """
+            CREATE TABLE studio_artifacts (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES studio_runs(id) ON DELETE RESTRICT,
+                step_id TEXT REFERENCES studio_run_steps(id) ON DELETE SET NULL,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                preview_url TEXT NOT NULL,
+                download_url TEXT NOT NULL,
+                is_final INTEGER NOT NULL DEFAULT 1 CHECK (is_final IN (0,1)),
+                metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+                created_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_studio_artifacts_run ON studio_artifacts(run_id,created_at,id)",
+            """
+            CREATE TABLE gallery_asset_handles (
+                id TEXT PRIMARY KEY,
+                actor_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                app_instance_id TEXT NOT NULL,
+                consumer_app_id TEXT NOT NULL,
+                asset_id TEXT NOT NULL REFERENCES gallery_assets(id) ON DELETE CASCADE,
+                capabilities_json TEXT NOT NULL CHECK (json_valid(capabilities_json)),
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT,
+                created_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_gallery_asset_handles_scope ON gallery_asset_handles(actor_id,installation_id,app_instance_id,consumer_app_id,expires_at)",
+            "ALTER TABLE readaloud_render_jobs ADD COLUMN mini_app_id TEXT NOT NULL DEFAULT 'ai2apps.audio.audiobook'",
+            "ALTER TABLE readaloud_render_jobs ADD COLUMN placement TEXT NOT NULL DEFAULT 'ai2apps.readaloud'",
+            "ALTER TABLE readaloud_render_jobs ADD COLUMN model_revision TEXT",
+            "ALTER TABLE readaloud_render_segments ADD COLUMN artifact_session_id TEXT",
+            "ALTER TABLE readaloud_render_segments ADD COLUMN artifact_id TEXT",
+            "CREATE INDEX ix_readaloud_render_segments_artifact ON readaloud_render_segments(artifact_id)",
+        ),
+    ),
 )
 
 

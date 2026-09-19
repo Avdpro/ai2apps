@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from ai2apps.api.agents import create_agent_router
 from ai2apps.api.agent_builder import create_agent_builder_router
 from ai2apps.api.agent_platform import create_agent_platform_router
+from ai2apps.api.agents import create_agent_router
 from ai2apps.api.auth import create_auth_router
 from ai2apps.api.browser import create_browser_router
 from ai2apps.api.capabilities import create_capability_router
@@ -36,6 +36,7 @@ from ai2apps.api.resources import create_resource_router
 from ai2apps.api.secrets import create_secret_router
 from ai2apps.api.services import create_service_router
 from ai2apps.api.sharing import create_sharing_management_router
+from ai2apps.api.studio_mini_apps import create_studio_mini_app_router
 from ai2apps.api.upstreams import create_upstream_router
 from ai2apps.api.video_studio import create_video_studio_router
 from ai2apps.api.workers import create_worker_router
@@ -111,6 +112,11 @@ def create_ai2apps_router(
         )
         router.include_router(
             create_imagine_studio_router(runtime_provider, effective_principal_provider)
+        )
+        router.include_router(
+            create_studio_mini_app_router(
+                runtime_provider, effective_principal_provider
+            )
         )
         router.include_router(
             create_provisioning_router(runtime_provider, effective_principal_provider)

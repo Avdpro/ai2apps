@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-qwen38",
     "type": "service",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "displayName": "Qwen3.8 27B NVFP4",
     "description": "Isolated oMLX Worker Package for the pinned Qwen3.8 27B NVFP4 checkpoint."
   },
@@ -21,8 +21,32 @@
     {"capability": "accelerator.metal", "reason": "Run the isolated oMLX engine on Apple GPU.", "required": true}
   ],
   "dependencies": [
-    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.0.1 <2.0.0", "optional": false}
+    {"packageId": "ai2apps/runtime-omlx", "version": ">=1.7.5 <2.0.0", "optional": false}
   ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {
+    "kind": "model",
+    "categories": ["multimodal"],
+    "tasks": ["multimodal-conversation", "image-understanding"]
+  },
+  "modelProfile": {
+    "sizeBytes": 23444503536,
+    "minimumMemoryBytes": 34359738368,
+    "scores": {"speed": 3, "capability": 5},
+    "benchmark": {
+      "label": "Full NVFP4 VLM: 25.672 GiB peak; context dependent",
+      "device": "128 GiB Apple Silicon validation host"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.qwen38",
+    "models": [
+      {
+        "id": "ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
+        "label": "Qwen3.8 27B NVFP4",
+        "recommended": true
+      }
+    ]
+  }
 }

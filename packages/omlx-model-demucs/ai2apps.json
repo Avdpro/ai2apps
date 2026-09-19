@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-demucs-mlx",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "MLX Demucs",
+    "description": "Native MLX HTDemucs source separation for music, vocals and dialogue/background workflows."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned MLX HTDemucs checkpoint.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run local source separation with MLX.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.6.2 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {
+    "kind": "model",
+    "categories": ["speech"],
+    "tasks": ["source-separation", "music-source-separation", "vocal-isolation"]
+  },
+  "modelProfile": {
+    "sizeBytes": 168007757,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {"speed": 5, "capability": 4},
+    "benchmark": {
+      "label": "Native MLX HTDemucs: 32x realtime warm; English +17.22 dB and Mandarin +18.73 dB SI-SDR",
+      "device": "Apple M5 Max"
+    }
+  }
+}

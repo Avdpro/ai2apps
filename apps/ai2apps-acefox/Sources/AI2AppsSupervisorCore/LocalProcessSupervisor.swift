@@ -19,6 +19,7 @@ public actor LocalProcessSupervisor {
     private let paths: InstancePaths
     private let executable: URL
     private let baseEnvironment: [String: String]
+    private let developmentSourceRoot: URL?
     private var process: Process?
     private var managedDescriptor: LocalRunDescriptor?
     private var processLogHandle: FileHandle?
@@ -28,13 +29,15 @@ public actor LocalProcessSupervisor {
         configuration: LocalConfiguration,
         paths: InstancePaths,
         executable: URL,
-        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment
+        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        developmentSourceRoot: URL? = nil
     ) {
         self.instanceID = instanceID
         self.configuration = configuration
         self.paths = paths
         self.executable = executable
         self.baseEnvironment = baseEnvironment
+        self.developmentSourceRoot = developmentSourceRoot
     }
 
     @discardableResult
@@ -61,7 +64,8 @@ public actor LocalProcessSupervisor {
             configuration: configuration,
             paths: paths,
             bootID: bootID,
-            inheritedEnvironment: baseEnvironment
+            inheritedEnvironment: baseEnvironment,
+            developmentSourceRoot: developmentSourceRoot
         )
         try prepareRunDirectory(descriptorURL: plan.runDescriptorURL)
         state = try SupervisorReducer.reduce(

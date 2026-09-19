@@ -1,3 +1,5 @@
+> Current default (2026-09-14): `artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD` and its `experts/` directory. Old-layout commands below document historical experiments. Current entrypoints read the SSD layout, including CPU reference experts. See `docs/dsv41f-ssd-only-engine-validation-2026-09-14.md`.
+
 # DS4.1 Flash SSD numerical reference
 
 **Current pure-MLX text runner:** [../dsv41_mlx](../dsv41_mlx/README.md)

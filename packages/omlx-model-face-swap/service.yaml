@@ -1,0 +1,107 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.face-swap-mlx
+name: MLX Actor Replacement
+description: Native MLX GhostV2 image and video actor replacement on Apple Silicon.
+version: 0.1.0
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: LICENSE}
+attribution:
+  notice: META/NOTICE.md
+  upstream: https://github.com/dimitribarbot/ghostv2
+  checkpoint: https://huggingface.co/Avdpro/MLX-GhostV2
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+models:
+  - id: ai2apps.model.face-swap-mlx/default
+    display_name: MLX Actor Replacement
+    model_type: video_generation
+    upstream_id: Avdpro/MLX-GhostV2
+    capabilities: [video_generation, image_edit, actor_replacement, reference_image, source_video, preserve_audio, face_tracking]
+    weights:
+      provider: huggingface
+      repo_id: Avdpro/MLX-GhostV2
+      revision: 974d5556c454219594623de8f7a2eae4e5783ee2
+      distribution_id: dist_ai2apps_mlx_ghostv2_974d5556_v1
+      preparation: {recipe: native}
+    metadata:
+      family: ghostv2
+      implementation: native-nhwc-mlx
+      upstream_revision: bc53ed086dbe8ea38e165aec7aaac90d1749a335
+      checkpoint_layout: ai2apps.mlx-ghostv2-checkpoint/v1
+      checkpoint_required: true
+      public_checkpoint_status: published
+      modelscope:
+        repo_id: ai2apps/MLX-GhostV2
+        revision: 627c704a6d196ae6c1d6db6d953d7a4467846b4c
+        preferred: true
+        allow_patterns: &ghostv2_files
+          - LICENSE
+          - YUNET_LICENSE
+          - NOTICE.md
+          - README.md
+          - ai2apps-checkpoint.json
+          - conversion-receipt.json
+          - models/face_detection_yunet_2023mar.omlx/bundle.json
+          - models/face_detection_yunet_2023mar.omlx/graph.json
+          - models/face_detection_yunet_2023mar.omlx/weights.safetensors
+          - models/ghostv2_cvlface.omlx/bundle.json
+          - models/ghostv2_cvlface.omlx/graph.json
+          - models/ghostv2_cvlface.omlx/weights.safetensors
+          - models/ghostv2_generator.native/config.json
+          - models/ghostv2_generator.native/weights.safetensors
+      detector: yunet-2023mar
+      identity_encoder: cvlface-vit-base
+      default_precision: fp16
+      default_batch_size: 2
+      default_detection_interval: 1
+    video_capabilities:
+      schema: ai2apps.video-capabilities/v1
+      operations: [video_generation]
+      content_combinations:
+        - id: reference_identity_source_video
+          required:
+            - {type: image_url, role: reference_image, min: 1, max: 1}
+            - {type: video_url, role: source_video, min: 1, max: 1}
+          optional: []
+          unsupported_roles: [prompt, negative_prompt, first_frame, last_frame, mask, reference_video, reference_audio, driving_audio, soundtrack]
+      formats:
+        image_input: [png, jpeg, webp]
+        audio_input: []
+        video_input: [mp4, mov, webm]
+        video_output: [mp4]
+        video_codecs: [h264]
+        audio_codecs: [aac]
+      geometry: {resolutions: [source], ratios: [source], framespersecond: [10, 15, 24, 25, 30, 50, 60], alpha: false}
+      duration: {mode: source_video, minimum_seconds: 0.04, maximum_seconds: null, long_video: native, native_window_frames: 8}
+      audio: {modes: [auto, none, preserve_driving_audio], default_mode: auto, generated_audio: false}
+      presets:
+        - {id: quality, display_name: Quality, deterministic: true, approximate: false, cancellable: true, resumable: unsupported}
+        - {id: fast_export, display_name: Fast Export, deterministic: true, approximate: true, cancellable: true, resumable: unsupported}
+      defaults: {resolution: source, ratio: source, framespersecond: 25, preset: quality, output_format: mp4, audio_output_mode: auto}
+      execution:
+        asynchronous: true
+        streaming_preview: false
+        progress: phase
+        max_concurrency_per_device: 1
+        memory_profiles:
+          standard: {minimum_unified_memory_gib: 16, resolutions: [source]}
+          comfortable: {minimum_unified_memory_gib: 24, resolutions: [source]}
+capabilities: [image-edit, video-generation]
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.6.2,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, metal, image-edit, video-generation, video-codecs, audio-codecs]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read the pinned MLX GhostV2 checkpoint.}
+  accelerator: {metal: true, reason: Run native GhostV2 actor replacement with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

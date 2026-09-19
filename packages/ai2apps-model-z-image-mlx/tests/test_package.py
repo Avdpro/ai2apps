@@ -108,33 +108,6 @@ def test_generation_returns_ai2apps_and_openai_shapes(tmp_path):
     ]
 
 
-def test_image_edit_passes_verified_reference_and_strength(tmp_path):
-    calls = []
-    adapter = MODULE.ZImageAdapter(
-        FakeContext(checkpoint(tmp_path / "weights"), tmp_path / "data"),
-        pipeline_factory=lambda **_kwargs: FakePipeline(calls),
-    )
-    result = asyncio.run(
-        adapter.invoke(
-            request(
-                tmp_path,
-                "image_edit",
-                {
-                    "model": MODULE.UPSTREAM_ID,
-                    "prompt": "turn the boat into folded copper",
-                    "size": "512x512",
-                    "imageDataUrls": [data_url()],
-                    "strength": 0.6,
-                },
-            )
-        )
-    )
-    assert result["operation"] == "image_edit"
-    assert result["imageStrength"] == 0.6
-    assert calls[0]["image_strength"] == 0.6
-    assert calls[0]["image_path"].is_file()
-    assert calls[0]["height"] == calls[0]["width"] == 512
-
 
 def test_image_edit_rejects_invalid_reference_and_strength(tmp_path):
     adapter = MODULE.ZImageAdapter(
@@ -151,7 +124,7 @@ def test_image_edit_rejects_invalid_reference_and_strength(tmp_path):
         try:
             asyncio.run(adapter.invoke(request(tmp_path, "image_edit", payload)))
         except Exception as exc:
-            assert getattr(exc, "code", None) == "invalid_request"
+            assert getattr(exc, "code", None) == "operation_not_supported"
         else:
             raise AssertionError("invalid edit request was accepted")
 
@@ -159,7 +132,7 @@ def test_image_edit_rejects_invalid_reference_and_strength(tmp_path):
 def test_manifests_pin_runtime_152_and_model_revision():
     outer = json.loads((PACKAGE / "ai2apps.json").read_text())
     service = yaml.safe_load((PACKAGE / "service.yaml").read_text())
-    assert outer["package"]["version"] == service["version"] == "0.1.1"
+    assert outer["package"]["version"] == service["version"] == "0.1.3"
     assert outer["dependencies"] == [
         {
             "packageId": "ai2apps/runtime-omlx",
@@ -171,7 +144,6 @@ def test_manifests_pin_runtime_152_and_model_revision():
     assert model["weights"]["revision"] == "f332072aa78be7aecdf3ee76d5c247082da564a6"
     assert model["image_capabilities"]["operations"] == [
         "image_generation",
-        "image_edit",
     ]
     assert model["image_capabilities"]["execution"]["metal_rms_adaln_fusion"] is True
 

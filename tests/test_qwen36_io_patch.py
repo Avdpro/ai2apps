@@ -72,19 +72,29 @@ def test_scope_reader_loads_only_protected_plus_tail_experts(tmp_path):
     loaded = _load_qwen36_scope_safetensors(path, policy)
     mx.eval(*loaded.values())
 
-    compact = loaded["language_model.model.layers.0.mlp.switch_mlp.gate_proj.weight"]
-    # Top-8 ranking followed by the first two non-protected tail experts.
-    assert compact.shape == (10, 1)
-    assert compact[:, 0].tolist() == [17, 3, 250, 9, 11, 12, 13, 14, 0, 1]
+    primary_key = "language_model.model.layers.0.mlp.switch_mlp.gate_proj.weight"
+    tail_key = "language_model.model.layers.0.mlp.tail_switch_mlp.gate_proj.weight"
+    compact = loaded[primary_key]
+    tail = loaded[tail_key]
+    # The I/O boundary places protected and replaceable rows directly in the
+    # two banks expected by the tiered runtime. No later full-bank split is
+    # needed, which also covers native MLX checkpoints that skip sanitize().
+    assert compact.shape == (8, 1)
+    assert compact[:, 0].tolist() == [17, 3, 250, 9, 11, 12, 13, 14]
+    assert tail.shape == (2, 1)
+    assert tail[:, 0].tolist() == [0, 1]
     assert loaded["language_model.model.layers.0.self_attn.weight"].shape == (2, 2)
     assert loaded["language_model.model.layers.0.self_attn.weight"].dtype == mx.bfloat16
 
 
 def test_scope_reader_context_is_qwen_only_and_restores_loader(tmp_path):
     _configure_policy(tmp_path)
+    import mlx_lm.utils as lm_utils
     import mlx_vlm.utils as vlm_utils
 
     original = vlm_utils._load_safetensors
+    original_lm_mx = lm_utils.mx
+    original_lm_loader = getattr(lm_utils, "_load_safetensors", None)
     qwen_dir = tmp_path / "qwen"
     qwen_dir.mkdir()
     (qwen_dir / "config.json").write_text(json.dumps({"model_type": "qwen3_5_moe"}))
@@ -94,7 +104,14 @@ def test_scope_reader_context_is_qwen_only_and_restores_loader(tmp_path):
 
     with qwen36_scope_safetensors_on_load(qwen_dir):
         assert vlm_utils._load_safetensors is not original
+        if original_lm_loader is None:
+            assert lm_utils.mx is not original_lm_mx
+        else:
+            assert lm_utils._load_safetensors is not original_lm_loader
     assert vlm_utils._load_safetensors is original
+    assert lm_utils.mx is original_lm_mx
+    if original_lm_loader is not None:
+        assert lm_utils._load_safetensors is original_lm_loader
 
     with qwen36_scope_safetensors_on_load(other_dir):
         assert vlm_utils._load_safetensors is original

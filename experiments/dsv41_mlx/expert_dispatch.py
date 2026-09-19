@@ -49,3 +49,29 @@ def expert(model,x,bank,slots,rw,segments):
     gate=mx.minimum(gate,10);up=mx.clip(up,-10,10)
     h=(rw[:,None]*((gate*mx.sigmoid(gate))*up)).astype(mx.bfloat16)
     return plan.project(quant(h).astype(mx.bfloat16),a[2],a[3])
+
+
+def decode_expert(x,arrays,slots,rw,mode):
+    """Reuse the route plan and gate/up activation quantization for small Decode.
+
+    Every output stays in the original route order. Down input quantization,
+    FP32 activation/router weighting and the final BF16 conversion are unchanged.
+    Unsorted mode also accepts repeated slots used by Burst's safe placeholders.
+    """
+    sorted_routes=mode=="shared"
+    order=mx.argsort(slots) if sorted_routes else None
+    inverse=mx.argsort(order) if sorted_routes else None
+    rhs=(slots[order] if sorted_routes else slots).astype(mx.uint32)
+    lhs=mx.arange(x.shape[0],dtype=mx.uint32)
+    def project(z,w,s):
+        z=z[order] if sorted_routes else z
+        out=mx.gather_qmm(z[:,None,:],w.view(mx.uint32),s,
+            lhs_indices=lhs,rhs_indices=rhs,group_size=32,bits=4,
+            mode='mxfp4',sorted_indices=sorted_routes)
+        return (out[inverse,0,:] if sorted_routes else out[:,0,:]).astype(mx.bfloat16)
+    z=quant(x).astype(mx.bfloat16)
+    gate=project(z,arrays[0],arrays[1]).astype(mx.float32)
+    up=project(z,arrays[4],arrays[5]).astype(mx.float32)
+    gate=mx.minimum(gate,10);up=mx.clip(up,-10,10)
+    h=(rw[:,None]*((gate*mx.sigmoid(gate))*up)).astype(mx.bfloat16)
+    return project(quant(h).astype(mx.bfloat16),arrays[2],arrays[3])

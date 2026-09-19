@@ -10,7 +10,7 @@ def main():
     ids=set()
     for step in range(4):
         weights,routes=torch.load(root/f'{step:02d}_layers.{a.layer}.ffn.gate.pt',weights_only=True);ids.update(routes.flatten().tolist())
-    store=Store(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash'));shapes=[];record_bytes=None
+    store=Store(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD'));shapes=[];record_bytes=None
     with a.output.open('xb') as f:
         for e in sorted(ids):
             start=f.tell()

@@ -1,0 +1,310 @@
+--- a/mlx/backend/metal/device.h
++++ b/mlx/backend/metal/device.h
+@@ -60,19 +60,30 @@
+   void dispatch_threadgroups(MTL::Size grid_dims, MTL::Size group_dims);
+   void dispatch_threads(MTL::Size grid_dims, MTL::Size group_dims);
+   void maybeInsertBarrier();
+-  bool miss_resume_active() const { return miss_resume_range_ != nullptr; }
++  bool miss_resume_active() const { return miss_resume_range_ != nullptr || capturing_; }
+   void set_miss_resume_range(MTL::Buffer* range) { miss_resume_range_ = range; }
++  bool miss_resume_protect_inputs() const { return miss_resume_range_ != nullptr; }
++  void warm_capture();
++  void begin_capture(MTL::Buffer* range,MTL::Buffer* ranges);
++  size_t capture_boundary();
++  void finish_capture();
++  void replay_capture(size_t first);
++  void clear_capture();
++  void capture_dispatch(MTL::Size grid, MTL::Size group, bool threads);
++  void capture_bytes(const void* data, size_t length, int idx);
++  void capture_binding(const MTL::Buffer* buffer, size_t offset, int idx);
++  void flush_capture();
+   void guarded_dispatch(MTL::Size grid, MTL::Size group, bool threads);
+
+   void set_compute_pipeline_state(MTL::ComputePipelineState* kernel) {
+     current_pipeline_ = kernel;
+-    get_command_encoder()->setComputePipelineState(kernel);
++    if(capturing_){capture_bindings_={};capture_threadgroup_={};}
++    else get_command_encoder()->setComputePipelineState(kernel);
+   }
+
+   template <typename Vec, typename = std::enable_if_t<is_vector_v<Vec>>>
+   void set_vector_bytes(const Vec& vec, size_t nelems, int idx) {
+-    get_command_encoder()->setBytes(
+-        vec.data(), nelems * sizeof(typename Vec::value_type), idx);
++    capture_bytes(vec.data(), nelems * sizeof(typename Vec::value_type), idx);
+   }
+   template <typename Vec, typename = std::enable_if_t<is_vector_v<Vec>>>
+   void set_vector_bytes(const Vec& vec, int idx) {
+@@ -81,16 +92,17 @@
+
+   template <typename T>
+   void set_bytes(const T* v, int n, int idx) {
+-    return get_command_encoder()->setBytes(v, n * sizeof(T), idx);
++    return capture_bytes(v, n * sizeof(T), idx);
+   }
+
+   template <typename T>
+   void set_bytes(const T& v, int idx) {
+-    return get_command_encoder()->setBytes(&v, sizeof(T), idx);
++    return capture_bytes(&v, sizeof(T), idx);
+   }
+
+   void set_threadgroup_memory_length(size_t length, int idx) {
+-    get_command_encoder()->setThreadgroupMemoryLength(length, idx);
++    if(capturing_) capture_threadgroup_.at(idx)=length;
++    else get_command_encoder()->setThreadgroupMemoryLength(length, idx);
+   }
+
+   ConcurrentContext start_concurrent() {
+@@ -112,6 +124,40 @@
+  private:
+   MTL::ComputeCommandEncoder* get_command_encoder();
+
++  static constexpr size_t capture_capacity_=1024;
++  NS::SharedPtr<MTL::ResidencySet> capture_residency_;
++  bool capture_barrier_{false};
++  std::vector<const MTL::Resource*> capture_resources_;
++  bool capturing_{false};
++  MTL::Buffer* capture_range_{nullptr};
++  MTL::Buffer* capture_ranges_{nullptr};
++  struct Binding { const MTL::Buffer* buffer=nullptr; size_t offset=0; };
++  struct CapturedGroup {
++    NS::SharedPtr<MTL::IndirectCommandBuffer> icb;
++    size_t size=0;
++    std::unordered_set<const MTL::Resource*> resources;
++  };
++  std::array<Binding,31> capture_bindings_{};
++  std::array<size_t,31> capture_threadgroup_{};
++  std::vector<CapturedGroup> capture_groups_;
++  struct CaptureLifetime {
++    std::mutex mutex;
++    bool active=true;
++    std::vector<std::pair<allocator::Buffer,Deleter>> retired;
++    void release() {
++      std::lock_guard lock(mutex);active=false;
++      for(auto& [buffer,deleter]:retired)deleter(buffer);
++      retired.clear();
++    }
++  };
++  std::shared_ptr<CaptureLifetime> capture_lifetime_;
++  std::vector<array> capture_arrays_;
++  std::unordered_set<const void*> capture_owned_;
++  std::vector<NS::SharedPtr<MTL::Buffer>> capture_constants_;
++  size_t capture_constant_used_=0;
++  size_t capture_constant_index_=0;
++  std::vector<NS::SharedPtr<MTL::IndirectCommandBuffer>> capture_pool_;
++  bool capture_open_=false;
+   struct GuardedHash {
+     size_t operator()(const std::array<uint64_t,8>& a) const {
+       size_t h=0;for(auto v:a)h^=std::hash<uint64_t>{}(v)+0x9e3779b97f4a7c15ULL+(h<<6)+(h>>2);return h;
+--- a/mlx/backend/metal/device.cpp
++++ b/mlx/backend/metal/device.cpp
+@@ -1,3 +1,4 @@
++#include <chrono>
+ // Copyright © 2023-2024 Apple Inc.
+
+ #include <cstdlib>
+@@ -338,7 +339,7 @@
+   all_inputs_.insert((void*)buf);
+   all_outputs_.insert((void*)buf);
+   if (miss_resume_range_) use_guarded_resource(buf, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+-  get_command_encoder()->setBuffer(buf, offset, idx);
++  capture_binding(buf, offset, idx);
+ }
+
+ void CommandEncoder::set_input_array(
+@@ -354,7 +355,14 @@
+       needs_barrier_ | (prev_outputs_.find(r_buf) != prev_outputs_.end());
+   auto a_buf = static_cast<const MTL::Buffer*>(a.buffer().ptr());
+   if (miss_resume_range_) use_guarded_resource(a_buf, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+-  get_command_encoder()->setBuffer(a_buf, a.offset() + offset, idx);
++  if(capturing_ && capture_owned_.insert(a.buffer().ptr()).second){
++    auto& data=a.data_shared_ptr();auto deleter=data->d;auto lifetime=capture_lifetime_;
++    data->d=[lifetime,deleter](allocator::Buffer buffer){
++      std::lock_guard lock(lifetime->mutex);
++      if(lifetime->active)lifetime->retired.emplace_back(buffer,deleter);else deleter(buffer);
++    };
++  }
++  capture_binding(a_buf, a.offset()+offset, idx);
+ }
+
+ void CommandEncoder::set_output_array(
+@@ -392,7 +400,8 @@
+
+ void CommandEncoder::maybeInsertBarrier() {
+   if (needs_barrier_) {
+-    get_command_encoder()->memoryBarrier(MTL::BarrierScopeBuffers);
++    if(capturing_)capture_barrier_=true;
++    else get_command_encoder()->memoryBarrier(MTL::BarrierScopeBuffers);
+     needs_barrier_ = false;
+     prev_inputs_ = std::move(next_inputs_);
+     prev_outputs_ = std::move(next_outputs_);
+@@ -409,7 +418,8 @@
+     MTL::Size group_dims) {
+   maybeInsertBarrier();
+   buffer_ops_++;
+-  if (miss_resume_range_) guarded_dispatch(grid_dims, group_dims, false);
++  if(capturing_) capture_dispatch(grid_dims,group_dims,false);
++  else if (miss_resume_range_) guarded_dispatch(grid_dims, group_dims, false);
+   else get_command_encoder()->dispatchThreadgroups(grid_dims, group_dims);
+ }
+
+@@ -418,11 +428,12 @@
+     MTL::Size group_dims) {
+   maybeInsertBarrier();
+   buffer_ops_++;
+-  if (miss_resume_range_) guarded_dispatch(grid_dims, group_dims, true);
++  if(capturing_) capture_dispatch(grid_dims,group_dims,true);
++  else if (miss_resume_range_) guarded_dispatch(grid_dims, group_dims, true);
+   else get_command_encoder()->dispatchThreads(grid_dims, group_dims);
+ }
+
+-const char* miss_resume_backend_version() { return "icb-gate-barrier-v3-mlx0320"; }
++const char* miss_resume_backend_version() { return "icb-replay-v4-mlx0320"; }
+
+ void CommandEncoder::use_guarded_resource(const MTL::Resource* resource, MTL::ResourceUsage usage) {
+   auto enc=get_command_encoder();
+@@ -454,10 +465,12 @@
+ }
+
+ void CommandEncoder::barrier() {
++  if(capturing_){capture_barrier_=true;return;}
+   get_command_encoder()->memoryBarrier(MTL::BarrierScopeBuffers);
+ }
+
+ void CommandEncoder::end_encoding() {
++  if(capturing_)flush_capture();
+   // Each command encoder has a unique fence. We also store a map of
+   // all previous outputs of command encoders to their corresponding fence.
+   // - The command encoder records its inputs and outputs.
+@@ -546,6 +559,7 @@
+ }
+
+ bool CommandEncoder::needs_commit() const {
++  if(capturing_)return false;
+   auto [max_ops, max_mb] = device_.get_max_ops_mb_per_buffer();
+   return (buffer_ops_ > max_ops) || ((buffer_sizes_ >> 20) > max_mb);
+ }
+@@ -1002,3 +1016,112 @@
+ }
+
+ } // namespace mlx::core::metal
++
++namespace mlx::core::metal {
++void CommandEncoder::capture_binding(const MTL::Buffer* buf,size_t offset,int idx) {
++  if(capturing_)capture_bindings_.at(idx)={buf,offset};
++  else get_command_encoder()->setBuffer(buf,offset,idx);
++}
++void CommandEncoder::capture_bytes(const void* data,size_t length,int idx) {
++  if(!capturing_){get_command_encoder()->setBytes(data,length,idx);return;}
++  constexpr size_t arena=4*1024*1024;
++  if(length>arena)throw std::runtime_error("capture constant too large");
++  if(capture_constant_used_+length>arena){capture_constant_index_++;capture_constant_used_=0;}
++  if(capture_constant_index_==capture_constants_.size())capture_constants_.push_back(NS::TransferPtr(device_.mtl_device()->newBuffer(arena,MTL::ResourceStorageModeShared)));
++  auto b=capture_constants_[capture_constant_index_].get();
++  memcpy(static_cast<char*>(b->contents())+capture_constant_used_,data,length);
++  capture_bindings_.at(idx)={b,capture_constant_used_};
++  capture_constant_used_+=(length+15)&~size_t(15);
++}
++void CommandEncoder::clear_capture() {
++  if(capturing_)throw std::runtime_error("capture still active");
++  capture_residency_.reset();
++  if(capture_lifetime_)capture_lifetime_->release();
++  capture_lifetime_.reset();
++  for(auto& g:capture_groups_)capture_pool_.push_back(std::move(g.icb));
++  capture_groups_.clear();capture_arrays_.clear();capture_owned_.clear();capture_constant_used_=0;capture_constant_index_=0;
++  capture_bindings_={};capture_threadgroup_={};capture_open_=false;capture_range_=nullptr;
++}
++void CommandEncoder::warm_capture(){
++  auto desc=NS::TransferPtr(MTL::IndirectCommandBufferDescriptor::alloc()->init());
++  desc->setCommandTypes(MTL::IndirectCommandTypeConcurrentDispatchThreads|MTL::IndirectCommandTypeConcurrentDispatch);
++  desc->setInheritBuffers(false);desc->setInheritPipelineState(false);desc->setMaxKernelBufferBindCount(31);
++  while(capture_pool_.size()<96){
++    auto icb=NS::TransferPtr(device_.mtl_device()->newIndirectCommandBuffer(desc.get(),capture_capacity_,MTL::ResourceStorageModeShared));
++    if(!icb)throw std::runtime_error("capture pool allocation");
++    icb->reset(NS::Range(0,capture_capacity_));capture_pool_.push_back(std::move(icb));
++  }
++  if(capture_constants_.empty())capture_constants_.push_back(NS::TransferPtr(device_.mtl_device()->newBuffer(4*1024*1024,MTL::ResourceStorageModeShared)));
++}
++void CommandEncoder::begin_capture(MTL::Buffer* range,MTL::Buffer* ranges) {
++  capture_ranges_=ranges;
++  clear_capture();capture_lifetime_=std::make_shared<CaptureLifetime>();capture_range_=range;capturing_=true;
++  ((uint32_t*)range->contents())[1]=capture_capacity_;
++}
++void CommandEncoder::capture_dispatch(MTL::Size grid,MTL::Size group,bool threads) {
++  if(!capture_open_) {
++    auto desc=NS::TransferPtr(MTL::IndirectCommandBufferDescriptor::alloc()->init());
++    desc->setCommandTypes(MTL::IndirectCommandTypeConcurrentDispatchThreads|MTL::IndirectCommandTypeConcurrentDispatch);
++    desc->setInheritBuffers(false);desc->setInheritPipelineState(false);desc->setMaxKernelBufferBindCount(31);
++    NS::SharedPtr<MTL::IndirectCommandBuffer> icb;
++    if(capture_pool_.empty())icb=NS::TransferPtr(device_.mtl_device()->newIndirectCommandBuffer(desc.get(),capture_capacity_,MTL::ResourceStorageModeShared));
++    else {icb=std::move(capture_pool_.back());capture_pool_.pop_back();}
++    if(!icb)throw std::runtime_error("capture ICB allocation");
++    icb->reset(NS::Range(0,capture_capacity_));
++    capture_groups_.push_back({std::move(icb),0,{}});capture_open_=true;
++  }
++  auto& g=capture_groups_.back();auto cmd=g.icb->indirectComputeCommand(g.size++);
++  if(capture_barrier_)cmd->setBarrier();
++  capture_barrier_=false;cmd->setComputePipelineState(current_pipeline_);
++  for(size_t i=0;i<capture_bindings_.size();i++)if(auto b=capture_bindings_[i];b.buffer){
++    cmd->setKernelBuffer(b.buffer,b.offset,i);g.resources.insert(b.buffer);
++  }
++  for(size_t i=0;i<capture_threadgroup_.size();i++)if(capture_threadgroup_[i])cmd->setThreadgroupMemoryLength(capture_threadgroup_[i],i);
++  if(threads)cmd->concurrentDispatchThreads(grid,group);else cmd->concurrentDispatchThreadgroups(grid,group);
++  if(g.size==capture_capacity_)flush_capture();
++}
++void CommandEncoder::flush_capture() {
++  if(!capture_open_)return;
++  auto& g=capture_groups_.back();auto enc=get_command_encoder();
++  for(auto r:g.resources)use_guarded_resource(r,MTL::ResourceUsageRead|MTL::ResourceUsageWrite);
++  use_guarded_resource(g.icb.get(),MTL::ResourceUsageRead);
++  use_guarded_resource(capture_range_,MTL::ResourceUsageRead|MTL::ResourceUsageWrite);
++  enc->memoryBarrier(MTL::BarrierScopeBuffers);
++  enc->executeCommandsInBuffer(g.icb.get(),capture_range_,0);
++  enc->memoryBarrier(MTL::BarrierScopeBuffers);capture_open_=false;
++}
++size_t CommandEncoder::capture_boundary(){flush_capture();return capture_groups_.size();}
++void CommandEncoder::finish_capture(){
++  flush_capture();capturing_=false;miss_resume_range_=nullptr;
++  std::unordered_set<const MTL::Resource*> unique;
++  for(auto& g:capture_groups_){unique.insert(g.resources.begin(),g.resources.end());unique.insert(g.icb.get());}
++  unique.insert(capture_ranges_);unique.insert(capture_range_);capture_resources_.assign(unique.begin(),unique.end());
++  auto desc=NS::TransferPtr(MTL::ResidencySetDescriptor::alloc()->init());NS::Error* error=nullptr;
++  capture_residency_=NS::TransferPtr(device_.mtl_device()->newResidencySet(desc.get(),&error));
++  if(!capture_residency_)throw std::runtime_error("capture residency allocation");
++  for(auto r:capture_resources_)capture_residency_->addAllocation(r);
++  capture_residency_->commit();
++}
++void CommandEncoder::replay_capture(size_t first) {
++  auto capture_t0=std::chrono::steady_clock::now();
++  if(capturing_||first>capture_groups_.size())throw std::runtime_error("invalid capture replay");
++  ((uint32_t*)capture_range_->contents())[1]=capture_capacity_;
++  if(capture_groups_.size()>1024)throw std::runtime_error("too many replay groups");
++  auto ranges=static_cast<uint32_t*>(capture_ranges_->contents());
++  for(size_t i=0;i<capture_groups_.size();i++){ranges[i*2]=0;ranges[i*2+1]=capture_groups_[i].size;}
++  auto enc=get_command_encoder();
++  get_command_buffer()->useResidencySet(capture_residency_.get());
++  for(size_t i=first;i<capture_groups_.size();i++){
++    const auto& g=capture_groups_[i];
++    enc->executeCommandsInBuffer(g.icb.get(),capture_ranges_,i*8);
++    enc->memoryBarrier(MTL::BarrierScopeBuffers);
++  }
++  auto capture_t1=std::chrono::steady_clock::now();
++  synchronize();
++  if(std::getenv("REPLAY_TRACE")){
++    auto capture_t2=std::chrono::steady_clock::now();size_t commands=0,resources=0;
++    for(size_t i=first;i<capture_groups_.size();i++){commands+=capture_groups_[i].size;resources+=capture_groups_[i].resources.size();}
++    fprintf(stderr,"replay %zu/%zu commands=%zu resources=%zu encode=%.6f wait=%.6f\n",first,capture_groups_.size(),commands,resources,std::chrono::duration<double>(capture_t1-capture_t0).count(),std::chrono::duration<double>(capture_t2-capture_t1).count());
++  }
++}
++}
+--- a/mlx/backend/metal/eval.cpp
++++ b/mlx/backend/metal/eval.cpp
+@@ -37,7 +37,7 @@
+     // If the array is a tracer hold a reference
+     // to its inputs so they don't get donated
+     std::vector<array> inputs;
+-    if (arr.is_tracer() || encoder.miss_resume_active()) {
++    if (arr.is_tracer() || encoder.miss_resume_protect_inputs()) {
+       inputs = arr.inputs();
+     }

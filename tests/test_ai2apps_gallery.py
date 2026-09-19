@@ -97,6 +97,31 @@ def test_gallery_repository_isolates_users_and_preserves_shared_blob(tmp_path):
     assert not shared_path.exists()
 
 
+def test_gallery_asset_handles_are_consumer_and_app_instance_scoped(tmp_path):
+    gallery, _database = _gallery(tmp_path)
+    asset, _ = gallery.import_stream(
+        "owner", BytesIO(b"image bytes"), name="reference.png", media_type="image/png"
+    )
+    reference = gallery.create_asset_handle(
+        "owner", asset["id"], actor_id="owner", installation_id="installation",
+        app_instance_id="appi_imagine", consumer_app_id="ai2apps.imagine-studio",
+    )
+
+    assert reference["schema"] == "ai2apps.asset-reference/v1"
+    assert reference["assetId"] == asset["id"]
+    assert reference["resourceHandle"].startswith("resource://garh_")
+    selected, path = gallery.asset_handle_path(
+        reference["resourceHandle"], actor_id="owner", installation_id="installation",
+        app_instance_id="appi_imagine", consumer_app_id="ai2apps.imagine-studio",
+    )
+    assert selected["id"] == asset["id"] and path.read_bytes() == b"image bytes"
+    with pytest.raises(Exception, match="invalid or expired"):
+        gallery.asset_handle_path(
+            reference["resourceHandle"], actor_id="owner", installation_id="installation",
+            app_instance_id="appi_other", consumer_app_id="ai2apps.imagine-studio",
+        )
+
+
 def test_gallery_api_import_and_content_are_principal_scoped(tmp_path):
     config = PlatformConfig.from_base_path(tmp_path)
     database = PlatformDatabase(config.paths.database_path)
@@ -229,8 +254,15 @@ def test_gallery_imports_authorized_workspace_artifact_into_active_collection(tm
 def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     manifest = next(item for item in SYSTEM_APP_MANIFESTS if item["id"] == "ai2apps.gallery")
     template = (WEB_ROOT / "templates/system_apps/gallery.html").read_text()
+    assert "_gallery_preview_dialog.html" in template
+    template += (WEB_ROOT / "templates/system_apps/_gallery_preview_dialog.html").read_text()
     mini_template = (WEB_ROOT / "templates/system_apps/gallery_mini.html").read_text()
+    context_menu_template = (
+        WEB_ROOT / "templates/system_apps/_gallery_asset_context_menu.html"
+    ).read_text()
     script = (WEB_ROOT / "static/js/gallery.js").read_text()
+    icon_script = (WEB_ROOT / "static/js/ai2apps_icons.js").read_text()
+    base_template = (WEB_ROOT / "templates/base.html").read_text()
     bidi_script = (WEB_ROOT / "static/js/browser_bidi_client.js").read_text()
     stylesheet = (WEB_ROOT / "static/css/gallery.css").read_text()
 
@@ -242,6 +274,12 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
         "placements": ["sidebar"],
     }
     assert manifest["navigation"]["pinned_default"] is True
+    assert manifest["navigation"]["icon"] == "gallery-stacked-horizontal"
+    assert "GalleryStackedHorizontal" in icon_script
+    assert "'stroke-width': 1.3" in icon_script
+    assert "20260909-discover-rocket-gallery-b3-2" in base_template
+    assert 'data-lucide="gallery-stacked-horizontal"' in template
+    assert 'data-lucide="gallery-stacked-horizontal"' in mini_template
     assert manifest["presentation"]["shell_sidebar"]["status"] == "active"
     assert 'data-app-id="ai2apps.gallery"' in template
     assert "data-client-environment" in template
@@ -250,7 +288,11 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert "movePreview(-1)" in template and "movePreview(1)" in template
     assert "startPreviewPan" in template and "wheelPreview" in template
     assert '@dblclick.prevent="togglePreviewZoom()"' in template
-    assert "if (this.previewZoom <= 1) return;" in script
+    assert "const bounds = this.previewPanBounds();" in script
+    assert "if (this.previewZoom <= 1) return;" not in script
+    assert "if (!bridge?.openGalleryPreview && this.isBrowserSidebar)" in script
+    assert "surface: 'preview', assetId: options.assetId" in script
+    assert "window.open('/admin/app-content/ai2apps.gallery', '_blank', 'noopener')" in script
     assert "savePreviewName" in template
     assert "downloadAsset($event,previewAsset)" in template
     assert "previewAsset?.kind==='video'" in template
@@ -263,6 +305,22 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert '@click="previewAssetFromMini(asset)"' in mini_template
     assert '@keydown.enter.prevent="previewAssetFromMini(asset)"' in mini_template
     assert '@dblclick="openAsset(asset)"' not in mini_template
+    assert '@contextmenu.prevent.stop="showAssetContextMenu($event,asset)"' in template
+    assert '@contextmenu.prevent.stop="showAssetContextMenu($event,asset)"' in mini_template
+    assert '_gallery_asset_context_menu.html' in template
+    assert '_gallery_asset_context_menu.html' in mini_template
+    assert "gallery-context-menu-1" in template
+    assert "gallery-context-menu-1" in mini_template
+    for action in ("open", "download", "rename", "delete", "copy", "paste", "move"):
+        assert f"gallery.action.{action}" in context_menu_template
+    assert "contextMoveTargets" in context_menu_template
+    assert "ai2apps.gallery.asset-clipboard.v1" in script
+    assert "pasteContextAssets" in script
+    assert "moveContextAsset" in script
+    assert "batchSingle" in script
+    assert "showCollectionContextMenu" in template
+    assert "showCollectionContextMenu" in mini_template
+    assert ':disabled="!contextMenuAsset"' in context_menu_template
     assert "/v1/platform/gallery" in script
     assert "openGalleryPreview(options)" in script
     assert "openRequestedPreview" in script
@@ -311,7 +369,9 @@ def test_gallery_is_a_pinned_user_system_app_with_first_party_surface():
     assert "ai2apps.gallery.collection-changed" in script
     assert "PATCH" in script and "previewImageTransform" in script
     assert "Desktop routes it to macOS Save As" in script
-    assert "openFullGallery()" in mini_template
+    assert "openFullGallery()" not in mini_template
+    assert '@click="loadAssets()"' in mini_template
+    assert 'data-lucide="refresh-cw"' in mini_template
     assert "window.parent.ai2appsShell" in script
     assert "--gal-bg" in stylesheet
     assert 'class="gallery-selection-bar gallery-toolbar-selection"' in template

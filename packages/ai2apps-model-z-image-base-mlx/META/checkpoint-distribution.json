@@ -1,0 +1,40 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_z_image_base_04cc4abb_v1",
+  "modelId": "ai2apps.model.z-image-base-mlx/base",
+  "repoId": "Tongyi-MAI/Z-Image",
+  "revision": "04cc4abb7c5069926f75c9bfde9ef43d49423021",
+  "format": "safetensors",
+  "quantization": "bf16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "vae/*",
+    "transformer/*",
+    "text_encoder/*",
+    "tokenizer/*",
+    "model_index.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Tongyi-MAI/Z-Image",
+      "revision": "04cc4abb7c5069926f75c9bfde9ef43d49423021",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "Tongyi-MAI/Z-Image",
+      "revision": "77e77d0c115ea46c072f7f3f0f5aa82381f84c5b",
+      "access": "public_anonymous"
+    }
+  ]
+}

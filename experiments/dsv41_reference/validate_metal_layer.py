@@ -43,7 +43,7 @@ def metrics(a,b):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--layer',type=int,default=0);p.add_argument('--store',type=Path,default=Path('artifacts/dsv41-layer0-experts.bin'));a=p.parse_args()
     torch.set_num_threads(4);torch.set_default_dtype(torch.bfloat16)
-    root=Path('artifacts/dsv41-reference-baseline-20260913');store=Store(Path('artifacts/dsv41-download/DeepSeek-V4.1-Flash'))
+    root=Path('artifacts/dsv41-reference-baseline-20260913');store=Store(Path('artifacts/chat-checkpoint-migration-20260914/DeepSeek-V4.1-Flash-SSD'))
     _,prefill_ids=torch.load(root/f'00_layers.{a.layer}.ffn.gate.pt',weights_only=True)
     l1=[i for i,_ in sorted(Counter(prefill_ids.flatten().tolist()).items(),key=lambda x:(-x[1],x[0]))[:8]]
     bank=MetalBank(a.store,l1);bank.verify_bytes(store,a.layer)
