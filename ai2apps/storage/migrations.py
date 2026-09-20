@@ -4502,6 +4502,20 @@ MIGRATIONS: tuple[Migration, ...] = (
             "CREATE INDEX ix_readaloud_render_segments_artifact ON readaloud_render_segments(artifact_id)",
         ),
     ),
+    Migration(
+        version=71,
+        name="video_task_invocation_identity",
+        statements=(
+            "ALTER TABLE video_generation_tasks "
+            "ADD COLUMN invocation_actor_id TEXT NOT NULL DEFAULT 'local'",
+            "UPDATE video_generation_tasks "
+            "SET invocation_actor_id=substr(actor_id,length('ai2apps-user:')+1) "
+            "WHERE actor_id LIKE 'ai2apps-user:%'",
+            "UPDATE video_generation_tasks "
+            "SET actor_id=substr(actor_id,length('ai2apps-user:')+1) "
+            "WHERE actor_id LIKE 'ai2apps-user:%'",
+        ),
+    ),
 )
 
 

@@ -230,6 +230,11 @@ async def test_video_task_uses_transparent_background_model_gateway(tmp_path):
     captured = {}
 
     class Gateway:
+        def context_for_actor(self, actor_id, **options):
+            captured["context_actor_id"] = actor_id
+            captured["context_options"] = options
+            return {"actor_id": actor_id}
+
         async def invoke_background_to_file(
             self, model_id, operation, _payload, target, **options
         ):
@@ -253,6 +258,7 @@ async def test_video_task_uses_transparent_background_model_gateway(tmp_path):
             ],
         },
         actor_id="actor-1",
+        invocation_actor_id="cloud-user-1",
     )
     await asyncio.wait_for(admitted.wait(), timeout=1)
     assert manager.get(created["id"], actor_id="actor-1")["status"] == "queued"
@@ -269,6 +275,59 @@ async def test_video_task_uses_transparent_background_model_gateway(tmp_path):
     assert captured["model_id"] == "example/video"
     assert captured["operation"] == "video_generation"
     assert captured["options"]["request_id"] == created["id"]
+    assert captured["context_actor_id"] == "cloud-user-1"
+    assert captured["context_options"] == {
+        "session_id": f"video:{created['id']}",
+        "consumer_app_id": "ai2apps.video-studio",
+    }
+    assert captured["options"]["context"] == {"actor_id": "cloud-user-1"}
+    await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_video_task_normalizes_legacy_runtime_actor_identity(tmp_path):
+    captured = {}
+
+    class Gateway:
+        def context_for_actor(self, actor_id, **_options):
+            captured["context_actor_id"] = actor_id
+            return {"actor_id": actor_id}
+
+        async def invoke_background_to_file(
+            self, _model_id, _operation, _payload, target, **options
+        ):
+            options["on_admitted"]()
+            target.write_bytes(b"fake-video")
+
+    manager = _manager(tmp_path, gateway=Gateway())
+    await manager.startup()
+    created = await manager.create(
+        {
+            "model": "example/video",
+            "content": [
+                {"type": "text", "role": "prompt", "text": "legacy route"}
+            ],
+        },
+        actor_id="ai2apps-user:cloud-user-1",
+    )
+    for _ in range(100):
+        completed = manager.get(
+            created["id"], actor_id="ai2apps-user:cloud-user-1"
+        )
+        if completed["status"] == "succeeded":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("legacy Runtime video task did not finish")
+
+    assert captured["context_actor_id"] == "cloud-user-1"
+    assert manager.list(actor_id="ai2apps-user:cloud-user-1")["data"][0]["id"] == created["id"]
+    with manager.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT actor_id,invocation_actor_id FROM video_generation_tasks WHERE id=?",
+            (created["id"],),
+        ).fetchone()
+    assert tuple(row) == ("cloud-user-1", "cloud-user-1")
     await manager.shutdown()
 
 

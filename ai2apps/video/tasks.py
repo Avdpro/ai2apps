@@ -178,6 +178,25 @@ class VideoTaskManager:
         return model
 
     @staticmethod
+    def _owner_actor_id(actor_id: str) -> str:
+        """Normalize owners emitted by both current and older Runtime routes."""
+
+        prefix = "ai2apps-user:"
+        if actor_id.startswith(prefix):
+            return actor_id[len(prefix) :]
+        return actor_id
+
+    @classmethod
+    def _background_actor_id(
+        cls, actor_id: str, invocation_actor_id: str | None
+    ) -> str:
+        if invocation_actor_id:
+            return invocation_actor_id
+        if actor_id.startswith("local-api:"):
+            return "local"
+        return cls._owner_actor_id(actor_id)
+
+    @staticmethod
     def _effective_request(payload: dict[str, Any], model: PackageModel) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise VideoGenerationError("invalid_request", "Request must be an object")
@@ -293,9 +312,14 @@ class VideoTaskManager:
         payload: dict[str, Any],
         *,
         actor_id: str,
+        invocation_actor_id: str | None = None,
         idempotency_key: str | None = None,
         uploads: dict[str, tuple[str, bytes, str]] | None = None,
     ) -> dict[str, Any]:
+        invocation_actor_id = self._background_actor_id(
+            actor_id, invocation_actor_id
+        )
+        actor_id = self._owner_actor_id(actor_id)
         model_id = str(payload.get("model") or "").strip()
         if not model_id:
             raise VideoGenerationError("invalid_request", "model is required")
@@ -333,12 +357,13 @@ class VideoTaskManager:
                         return self._response(existing)
                 connection.execute(
                     """INSERT INTO video_generation_tasks(
-                        id,actor_id,model_id,model_revision,status,request_json,request_hash,
+                        id,actor_id,invocation_actor_id,model_id,model_revision,status,request_json,request_hash,
                         idempotency_key,progress_json,input_manifest_json,created_at,updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         task_id,
                         actor_id,
+                        invocation_actor_id,
                         model.id,
                         str((model.weights or {}).get("revision") or ""),
                         "queued",
@@ -664,7 +689,7 @@ class VideoTaskManager:
             None
             if row is None or context_factory is None
             else context_factory(
-                row["actor_id"],
+                row["invocation_actor_id"],
                 session_id=f"video:{task_id}",
                 consumer_app_id="ai2apps.video-studio",
             )
@@ -767,7 +792,7 @@ class VideoTaskManager:
         parameters: tuple[Any, ...] = (task_id,)
         if actor_id is not None:
             query += " AND actor_id=?"
-            parameters += (actor_id,)
+            parameters += (self._owner_actor_id(actor_id),)
         with self.database.transaction() as connection:
             return connection.execute(query, parameters).fetchone()
 
@@ -814,7 +839,7 @@ class VideoTaskManager:
     def list(self, *, actor_id: str, limit: int = 20, after: str | None = None) -> dict[str, Any]:
         limit = max(1, min(MAX_TASKS_PER_LIST, int(limit)))
         query = "SELECT * FROM video_generation_tasks WHERE actor_id=?"
-        parameters: list[Any] = [actor_id]
+        parameters: list[Any] = [self._owner_actor_id(actor_id)]
         if after:
             query += " AND created_at < (SELECT created_at FROM video_generation_tasks WHERE id=?)"
             parameters.append(after)
@@ -884,7 +909,12 @@ class VideoTaskManager:
         payload.pop("prompt", None)
         payload.pop("reference_parts", None)
         payload["metadata"] = dict(payload.get("metadata") or {}) | {"retry_of": task_id}
-        return await self.create(payload, actor_id=actor_id, uploads=uploads)
+        return await self.create(
+            payload,
+            actor_id=actor_id,
+            invocation_actor_id=row["invocation_actor_id"],
+            uploads=uploads,
+        )
 
     async def cancel(
         self, task_id: str, *, actor_id: str | None, shutdown: bool = False

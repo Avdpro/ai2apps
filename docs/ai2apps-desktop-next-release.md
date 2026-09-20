@@ -105,6 +105,25 @@
   快照、`verify-release-app.sh` 和深度签名均通过。发布前门禁为 Swift 77/77、相关 Python
   107/107、`git diff --check` 通过；拟纳入 Desktop 0.1.0 Build 2252。
 
+### NXR-VIDEO-TASK-INVOCATION-IDENTITY-20260921：视频后台任务身份分层
+
+- 状态：`ready`（21 项 Video Task、Video Studio 与 schema 定向回归通过；App-Dev 原失败
+  OpenVDN DMD 8-step Q4 任务实机 Retry 已越过身份恢复并进入 `generate`）。
+- 修复 Video Studio 经 `/v1/videos/generations` 创建的持久任务把任务隔离键
+  `ai2apps-user:<UUID>` 直接交给 Cloud 身份仓库的问题；身份仓库只接受 URL-safe 用户 ID，
+  因此前一实现会在 Worker 调度前报
+  `cloud_user_id must contain 1 to 200 URL-safe identity characters`。
+- schema 71 为 `video_generation_tasks` 增加独立 `invocation_actor_id`：登录用户任务用真实用户
+  UUID 恢复调度身份，API Key 任务继续以 `local-api:<hash>` 隔离列表、取消和幂等范围，同时
+  以 `local` 进入本机后台调度。迁移保留已有任务并把历史 `ai2apps-user:<UUID>` 归属原位规范
+  化，Retry 继续继承原始调用身份。
+- `VideoTaskManager` 同时兼容已发布 Desktop 内嵌的旧 oMLX 路由与新路由：创建、读取、列表、
+  取消、重试和 Join 都在持久层边界统一旧前缀，避免要求开发实例先重建 App 才能恢复任务。
+  新 `omlx/server.py` 会直接传递分离后的任务归属与调用身份。App-Dev 只重启了自身 Local，
+  schema 实机从 70 升到 71，原任务在刷新后仍可见；点击 Retry 后状态从 `starting` 进入
+  `generate`，旧身份错误未复现。此修复不改模型 Package、Checkpoint 或
+  `ai2apps/runtime-omlx` Worker Package；Test 与生产需由下一版 Desktop App 带入。
+
 ### NXR-DEV-TEST-REBUILD-20260920：开发与测试实例同步
 
 - 状态：`ready`。按用户要求通过标准 `build-dev-app.sh` 与 `build-test-app.sh` 重建固定 Dev/Test App，旧 App 已分别归档；未改动实例数据。

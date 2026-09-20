@@ -4337,9 +4337,17 @@ def _video_actor(request: FastAPIRequest) -> str:
     principal = getattr(request.state, "ai2apps_principal", None)
     actor_user_id = getattr(principal, "actor_user_id", None)
     if actor_user_id:
-        return f"ai2apps-user:{actor_user_id}"
+        return str(actor_user_id)
     credential = request.headers.get("authorization") or request.headers.get("x-api-key") or "local"
     return "local-api:" + hashlib.sha256(credential.encode()).hexdigest()[:24]
+
+
+def _video_invocation_actor(request: FastAPIRequest) -> str:
+    """Return an identity that the background scheduler can reconstruct."""
+
+    principal = getattr(request.state, "ai2apps_principal", None)
+    actor_user_id = getattr(principal, "actor_user_id", None)
+    return str(actor_user_id) if actor_user_id else "local"
 
 
 def _video_error(error: VideoGenerationError) -> JSONResponse:
@@ -4401,6 +4409,7 @@ async def create_video_generation(
         task = await _video_manager().create(
             payload,
             actor_id=_video_actor(request),
+            invocation_actor_id=_video_invocation_actor(request),
             idempotency_key=request.headers.get("idempotency-key"),
             uploads=uploads,
         )
