@@ -2,6 +2,19 @@
 
 状态：滚动维护中的唯一下一版入口
 
+## Build 2252 双源已发布，待 Cloud 登记与升级验收（2026-09-21）
+
+- Build 2252 已从 clean、已推送 commit
+  `9521a6d674babd03125ed0e310c926863dbd6cde` 构建；Developer ID、Apple 公证
+  `3850a24c-4457-4516-b9d0-ff4cee2cc806`、Staple、Gatekeeper 和最终制品复验均通过。
+- GitHub 正式 Release `v0.1.0-build2252` 与 ModelScope immutable revision
+  `735eb1d4a1bfbc30677fc80308fc2bb9330a0429` 已发布；匿名完整回读的 DMG/metadata
+  字节数和 SHA-256 均与本地一致。生产 `stable.json` 仍为 Build 2251，不得把本项标记为
+  完整发布，直到 Cloud 0% 登记、同 rollout 扩灰、公开探针和目标 Mac 2251→2252 升级完成。
+- 本版只纳入 `NXR-VERIFIED-OVERLAY-CHECKPOINT-READINESS-20260921`，不升级 oMLX Runtime
+  或模型 Package。完整制品、测试、双源和 Cloud handoff 见
+  `docs/ai2apps-desktop-build-2252-release-receipt-2026-09-21.md`。
+
 ## Build 2251 已发布（2026-09-20）
 
 - Build 2251 已从已推送源码 commit
