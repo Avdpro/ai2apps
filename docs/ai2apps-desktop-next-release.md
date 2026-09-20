@@ -62,6 +62,33 @@
   固定 Runtime `>=1.7.8,<2.0.0`、Package `>=0.1.0,<1.0.0`、Checkpoint `/9b`、
   48 GiB 最低设备门槛及 FLUX 非商业许可提示；中英文 ACPF 文案同步补齐。
 
+### NXR-VERIFIED-OVERLAY-CHECKPOINT-READINESS-20260921：增量 Checkpoint 激活
+
+- 状态：`ready`（107 项相关回归及 App-Dev OpenVDN DMD 8-step Q4 实机重试通过）。
+- 修复已完整安装的 Registry 增量/overlay checkpoint 被通用独立模型布局探针误判为不完整的问题。
+  OpenVDN 的 5.09 GB checkpoint 已通过签名分发清单校验，但权重位于
+  `stage-dmd-step-250/` 等子目录，根目录按设计没有独立模型所需的 `config.json` 和
+  safetensors，因此旧逻辑向 Worker 输出空路径并在 ACPF 95% 报
+  `The model provider did not become ready after activation`。
+- 同一缺陷覆盖 H3 的四个增量变体：LightX2V 4-step、LightX2V 8-step、OpenVDN
+  DMD 8-step 和 OpenVDN Stage-B 50-step；本次通用修复一次覆盖四者。FL2VA Q4/Q8 与
+  Ref2VA Q4/Q8 是完整 checkpoint，继续走既有独立模型布局校验，不受原缺陷影响。
+- 模型感知校验现在接受与 Package 声明 `distribution_id` 精确一致的不可变 Registry
+  snapshot，并校验分发格式、manifest digest、完整文件集合、只读常规文件及安装时记录的
+  device/inode/size/mtime；任意文件变更、额外文件、符号链接或分发 ID 不匹配都会拒绝。
+  普通 Transformer、Diffusers、ONNX 和 SSD Cached-MoE 的既有布局门禁不变。
+- App-Dev Local 已通过 Helper 原位重启加载修复；对原失败会话点击 Retry 后直接复用共享
+  checkpoint cache，四步立即完成，Worker 配置获得非空 OpenVDN 路径，Video Studio 随后
+  识别 `(Local) AI2Apps-MLX · OpenVDN H3 DMD 8-step Q4` 并报告生成环境已就绪。Python
+  源码热挂载验证无需重建 App。校验发生在 Desktop Local/Host 的 Service Supervisor，模型
+  Package 与 `ai2apps/runtime-omlx` 均无需升版；正式交付需纳入下一版 Desktop App。使用当前
+  仓库热挂载的 App-Dev/Dev 只需重启 Local，嵌入固定快照的 Test 和生产实例则需重建或升级
+  Desktop App。
+- 2026-09-21 已通过标准 `build-test-app.sh` 重建固定 Test App 并启动验收：Bundle ID
+  `com.ai2apps.desktop.test`、instance `test`、cloud Runtime、生产更新地址、非 Development
+  快照、`verify-release-app.sh` 和深度签名均通过。发布前门禁为 Swift 77/77、相关 Python
+  107/107、`git diff --check` 通过；拟纳入 Desktop 0.1.0 Build 2252。
+
 ### NXR-DEV-TEST-REBUILD-20260920：开发与测试实例同步
 
 - 状态：`ready`。按用户要求通过标准 `build-dev-app.sh` 与 `build-test-app.sh` 重建固定 Dev/Test App，旧 App 已分别归档；未改动实例数据。

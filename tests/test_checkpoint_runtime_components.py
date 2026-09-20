@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ai2apps.checkpoints import checkpoint_is_complete
+from ai2apps.checkpoints import checkpoint_is_complete, model_checkpoint_is_complete
 from ai2apps.model_installer import AI2AppsInstaller, InstallTask
 from ai2apps.packages.supervisor import ManagedServiceSupervisor
 from omlx.ssd_checkpoint import ExternalTensorReader, inspect_ssd_checkpoint
@@ -71,6 +71,77 @@ def _write_ssd_checkpoint(root):
     }
     (root / "ssd-checkpoint.json").write_text(json.dumps(marker))
     return root
+
+
+def _write_verified_overlay(root: Path, distribution_id: str) -> Path:
+    payloads = {
+        "LICENSE": b"terms",
+        "stage-dmd-step-250/linear_branch/config.json": b"{}",
+        "stage-dmd-step-250/linear_branch/model.safetensors": b"overlay",
+    }
+    for relative, payload in payloads.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        target.chmod(0o444)
+    metadata = root / ".ai2apps" / "distribution.json"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(
+        json.dumps(
+            {
+                "format": "ai2apps-checkpoint-distribution",
+                "version": 1,
+                "distributionId": distribution_id,
+                "manifestDigest": "sha256:" + "a" * 64,
+            }
+        )
+    )
+    files = {}
+    for relative in payloads:
+        info = (root / relative).stat()
+        files[relative] = {
+            "device": info.st_dev,
+            "inode": info.st_ino,
+            "size": info.st_size,
+            "mtimeNs": info.st_mtime_ns,
+        }
+    verification = root / ".ai2apps" / "verification.json"
+    verification.write_text(
+        json.dumps(
+            {
+                "format": "ai2apps-checkpoint-verification",
+                "version": 1,
+                "manifestDigest": "sha256:" + "a" * 64,
+                "files": files,
+            }
+        )
+    )
+    metadata.chmod(0o444)
+    verification.chmod(0o444)
+    return root
+
+
+def test_model_checkpoint_accepts_verified_registry_overlay(tmp_path):
+    distribution_id = "dist_ai2apps_minimax_h3_openvdn_dmd8_overlay_test_v1"
+    root = _write_verified_overlay(tmp_path / "overlay", distribution_id)
+    model = {"weights": {"distribution_id": distribution_id}}
+
+    assert not checkpoint_is_complete(root)
+    assert model_checkpoint_is_complete(root, model)
+
+    weights = root / "stage-dmd-step-250/linear_branch/model.safetensors"
+    weights.chmod(0o644)
+    weights.write_bytes(b"changed")
+    weights.chmod(0o444)
+    assert not model_checkpoint_is_complete(root, model)
+
+
+def test_model_checkpoint_rejects_registry_overlay_for_another_distribution(tmp_path):
+    root = _write_verified_overlay(tmp_path / "overlay", "dist_expected")
+
+    assert not model_checkpoint_is_complete(
+        root, {"weights": {"distribution_id": "dist_other"}}
+    )
 
 
 def test_ssd_checkpoint_requires_every_declared_file_and_reads_selected_rows(tmp_path):
