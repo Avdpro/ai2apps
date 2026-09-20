@@ -3035,6 +3035,24 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 
 <!-- Checkpoint migration status: HF DS4.1F / MS Qwen SDK uploads completed, remote integrity gates pending. User explicitly confirmed HF Avdpro / MS ai2apps. HF Qwen metadata fix committed successfully at a1de2bbd1727b3c46162a0f8bd426316e6f8dd37; approval block resolved. MS DS4.1F remains uploading. See docs/chat-checkpoint-migration-2026-09-14.md. -->
 
+### NXR-VIDEO-STUDIO-READY-PROVIDER：优先恢复已安装的视频模型（ready）
+
+- 状态：`ready`
+- 类型：Video Studio、ACPF、模型选择恢复。
+- 用户可见结果：设备已经安装并验证 OpenVDN DMD8 等视频模型时，重新打开 Video Studio 会
+  直接恢复一个已就绪的模型，不再因为 ACPF 推荐的高规格 H3 8-bit 尚未下载而显示“当前设备
+  没有经过此 App 验证的本地配置方案”并再次要求配置。
+- 根因与修正：Provider 目录和共享 Checkpoint 均正常；OpenVDN DMD8 及其 H3 4-bit 基座已经
+  被 Worker 标为 `ready`。旧的首次选择逻辑只检查推荐模型 ID 是否存在，未检查它是否就绪，
+  因而在 128 GiB 设备上优先选中尚未安装的 H3 8-bit。现在仅在推荐项已就绪时优先选它；否则
+  先选任一已就绪模型，再回退到推荐或目录首项，以保留无模型设备进入安装流程的行为。用户
+  选定及 ACPF 安装完成后的模型 ID 会写入 Video Studio Shell 状态；刷新或重开后仍可用时直接
+  恢复；初始化空 Mini-App 草稿也不再覆盖刚恢复的模型 ID，例如不会把已选择的 OpenVDN
+  DMD8 降回仅作为依赖安装的 H3 4-bit 基座。
+- 需要进入 App 的文件：`ai2apps/web/static/js/video_studio.js`、
+  `tests/test_ai2apps_video_studio.py`。
+- 纳入 Build：待定。
+
 <!-- HF Qwen 73 / DS 172 files checked: only Hub-added .gitattributes differs, all other SHA256/size values match. Normalize metadata before distribution signing; not a completed publication gate. -->
 
 ### NXR-SHARED-CHECKPOINT-REUSE：跨实例共享 checkpoint 复用修正（runtime_published）

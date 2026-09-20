@@ -44,6 +44,10 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "MINI_APPS" in script and "miniAppDrafts" in script
     assert "saveCurrentMiniAppDraft" in script and "restoreMiniAppDraft" in script
     assert "SHELL_STATE_KEY" in script and "persistShellState" in script
+    assert "if (typeof state.modelId === 'string') this.modelId = state.modelId" in script
+    assert "leftView: this.leftView, mode: this.mode, modelId: this.modelId" in script
+    assert "const restoredModelId = this.modelId" in script
+    assert "if (restoredModelId) this.modelId = restoredModelId" in script
     assert "left-collapsed" in template and "right-collapsed" in template
     assert "toggleLeftPanel()" in template and "toggleRightPanel()" in template
     assert ".vs-shell.left-collapsed" in stylesheet
@@ -129,6 +133,10 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "model: overrides.model || this.modelId" in script
     assert "AI2AppsCapabilities?.probe" in script
     assert "probe?.plan?.stack?.checkpoint?.model_id" in script
+    assert "function preferredProviderId(providers, recommendedId = '')" in script
+    assert "recommended?.ready ? recommended : providers.find(item => item.ready)" in script
+    assert "preferredProviderId(this.modeProviders, recommendedId)" in script
+    assert "item.id === this.modelId && item.ready" in script
     assert "video_studio.configure" in template
     assert "video_studio.submit_setup" in template
     assert "await this.generate()" not in script
