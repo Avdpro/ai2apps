@@ -50,13 +50,14 @@ def test_trial_review_uses_read_only_codex_and_requests_user_material(
     captured: dict = {}
 
     def fake_run(command: list[str], **options) -> subprocess.CompletedProcess[str]:
+        assert options["env"]["PATH"] == "/resolved/bin:/usr/bin"
         captured.update(command=command, options=options)
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(json.dumps(_review(), ensure_ascii=False), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stderr="")
 
     monkeypatch.setattr(
-        "ai2apps_test.trial_review.shutil.which", lambda _: "/usr/bin/codex"
+        "ai2apps_test.trial_review.codex_environment", lambda: ("/usr/bin/codex", {"PATH": "/resolved/bin:/usr/bin"})
     )
     monkeypatch.setattr("ai2apps_test.trial_review.subprocess.run", fake_run)
 

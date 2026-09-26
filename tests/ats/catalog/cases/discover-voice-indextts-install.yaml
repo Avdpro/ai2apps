@@ -1,0 +1,34 @@
+schemaVersion: 1
+id: discover-voice-indextts-install
+name: Discover 语音模型分类与 IndexTTS 2.5 MLX 安装
+description: 验证 Discover App 的模型分类与语音分类展示正确，并通过 UI 安装 IndexTTS 2.5 MLX 模型。
+groupId: discover-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 1800
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- discover-app-basic
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中打开 Discover App；本 Case 的所有 Shell、App、原生窗口和
+  macOS 交互均使用 Computer Use。
+- 点击“模型”分类，等待列表加载完成，观察当前选中分类及列表内容。
+- 点击“语音”分类，等待列表加载完成，确认语音分类处于选中状态；通过滚动列表查找 IndexTTS 2.5 MLX。
+- 打开 IndexTTS 2.5 MLX 的详情，核对模型名称、MLX 标识及语音用途，记录安装前状态。
+- 若模型尚未安装，点击安装，核对安装确认界面中的目标模型后继续，观察下载和安装进度直到出现成功或失败结果；若已安装，记录此前已安装，本次未执行新增安装。
+- 进入 UI 中的已安装模型列表，找到 IndexTTS 2.5 MLX，核对其安装状态；若本次执行了安装，再返回 Discover 模型详情核对状态已更新。
+expectations:
+- Discover App 正常打开，模型分类可以点击，列表加载后没有错误提示。
+- 点击模型分类后，模型分类呈选中状态，列表展示模型条目。
+- 点击语音分类后，语音分类呈选中状态；可见条目的用途与语音分类一致，IndexTTS 2.5 MLX 出现在该分类中。
+- IndexTTS 2.5 MLX 详情中的名称、MLX 标识及语音用途与目标模型一致。
+- 模型初始未安装时，安装流程完成并显示已安装状态，没有下载或安装失败提示；模型初始已安装时，明确记录安装动作未覆盖，不将已有状态作为本次安装成功的证据。
+- 已安装模型列表中存在 IndexTTS 2.5 MLX，且其状态与 Discover 详情一致。
+cleanup:
+- 仅当本 Case 新增安装了 IndexTTS 2.5 MLX 时，通过 UI 卸载该模型并确认恢复未安装状态；保留测试前已安装的模型，不删除共享缓存或其他模型。
+fixtures: []

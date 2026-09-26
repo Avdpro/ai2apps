@@ -270,6 +270,7 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (68, "durable_registry_install_continuations"),
         (69, "model_share_multimodal_pricing_projection"),
         (70, "studio_runs_artifacts_drafts_and_gallery_handles"),
+        (71, "video_task_invocation_identity"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 
@@ -321,6 +322,63 @@ def test_v60_repairs_legacy_agent_active_generation_pointer(tmp_path):
     ).fetchone()
     assert row == ("active", "agen_legacy")
     connection.close()
+
+
+def test_v71_separates_video_task_owner_from_invocation_identity(tmp_path):
+    connection = sqlite3.connect(tmp_path / "video-identity-upgrade.sqlite3")
+    apply_migrations(connection, MIGRATIONS[:70])
+    now = "2026-09-21T00:00:00.000000Z"
+    cloud_user_id = "b8696bee-d730-46b6-848c-e41f1f96a0b4"
+    connection.execute(
+        """INSERT INTO video_generation_tasks(
+        id,actor_id,model_id,model_revision,status,request_json,request_hash,
+        progress_json,input_manifest_json,created_at,updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "vgt_cloud",
+            f"ai2apps-user:{cloud_user_id}",
+            "example/video",
+            "revision",
+            "failed",
+            "{}",
+            "sha256:test",
+            "{}",
+            "[]",
+            now,
+            now,
+        ),
+    )
+    connection.execute(
+        """INSERT INTO video_generation_tasks(
+        id,actor_id,model_id,model_revision,status,request_json,request_hash,
+        progress_json,input_manifest_json,created_at,updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "vgt_api",
+            "local-api:0123456789abcdef01234567",
+            "example/video",
+            "revision",
+            "failed",
+            "{}",
+            "sha256:test-api",
+            "{}",
+            "[]",
+            now,
+            now,
+        ),
+    )
+    connection.commit()
+
+    apply_migrations(connection)
+
+    rows = connection.execute(
+        "SELECT id,actor_id,invocation_actor_id FROM video_generation_tasks ORDER BY id"
+    ).fetchall()
+    connection.close()
+    assert rows == [
+        ("vgt_api", "local-api:0123456789abcdef01234567", "local"),
+        ("vgt_cloud", cloud_user_id, cloud_user_id),
+    ]
 
 
 def test_schema_v55_adds_durable_worker_management_state(tmp_path):

@@ -7,6 +7,7 @@ import re
 import sqlite3
 import subprocess
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -171,7 +172,7 @@ def _http_request(
             ) from error
         if error.code == 409:
             raise TestAccountPoolError(
-                "test account pool is exhausted or the Run is already complete"
+                "test account unavailable, busy, or Run/account conflict (409); no fallback account was selected"
             ) from error
         raise TestAccountBrokerError(
             f"test account broker request failed ({error.code})"
@@ -262,8 +263,12 @@ class TestAccountManager:
         if not _RUN_ID.fullmatch(run_id):
             raise ValueError("invalid run ID for test account lease")
 
-    def acquire(self, run_id: str) -> dict[str, Any]:
+    def acquire(self, run_id: str, account_email: str | None = None) -> dict[str, Any]:
         self._validate_run_id(run_id)
+        if account_email is not None:
+            account_email = unicodedata.normalize("NFKC", account_email.strip()).lower()
+            if account_email not in self.pool.accounts:
+                raise TestAccountConfigurationError("Selected account is not in the test pool")
         token = self._broker_token()
         request_payload = {
             "poolId": self.pool.pool_id,
@@ -274,6 +279,8 @@ class TestAccountManager:
                 "instanceId": "test",
             },
         }
+        if account_email is not None:
+            request_payload["accountEmail"] = account_email
         try:
             response = self.request(
                 "POST",
@@ -302,13 +309,17 @@ class TestAccountManager:
                 "test account broker lease response is invalid"
             ) from error
         if (
-            email not in self.pool.accounts
-            or not isinstance(password, str)
+            not isinstance(password, str)
             or not 8 <= len(password.encode("utf-8")) <= 128
             or not isinstance(lease_token, str)
             or not _LEASE_TOKEN.fullmatch(lease_token)
             or expiry.tzinfo is None
         ):
+            raise TestAccountBrokerError("test account broker lease response is invalid")
+        if account_email is not None and email != account_email:
+            self.request("POST", f"{self.pool.broker_origin}/v1/test-account-leases/{lease_id}/release", {"runId": run_id, "leaseToken": lease_token}, token)
+            raise TestAccountBrokerError("Broker returned a different account; lease released")
+        if email not in self.pool.accounts:
             raise TestAccountBrokerError("test account broker lease response is invalid")
         secret = json.dumps(
             {"password": password, "leaseToken": lease_token},
@@ -427,7 +438,9 @@ class TestAppAccountSession:
             / "test"
         )
 
-    def _launch(self) -> None:
+    def _launch(self, *, helper_only: bool = False) -> None:
+        from .redact import redact_text
+        diagnostic = getattr(self, '_launch_diagnostic', lambda **fields: None)
         try:
             info = plistlib.loads((self.app / "Contents" / "Info.plist").read_bytes())
         except (OSError, plistlib.InvalidFileException) as error:
@@ -437,15 +450,37 @@ class TestAppAccountSession:
             or info.get("AI2AppsInstanceID") != "test"
         ):
             raise TestAccountLoginError("Test App bundle identity is invalid")
-        completed = subprocess.run(
-            ["open", str(self.app)],
+        target = self.app
+        if helper_only:
+            target = self.app / 'Contents/Library/LoginItems/AI2AppsHelper.app'
+            try:
+                helper_info = plistlib.loads((target / 'Contents/Info.plist').read_bytes())
+            except (OSError, plistlib.InvalidFileException) as error:
+                raise TestAccountLoginError('Test Helper metadata is unavailable') from error
+            if (helper_info.get('CFBundleIdentifier') != 'com.ai2apps.desktop.test.helper'
+                    or not target.resolve().is_relative_to(self.app.resolve())):
+                raise TestAccountLoginError('Test Helper bundle identity is invalid')
+        command = ['open', '-g', str(target)] if helper_only else ['open', str(target)]
+        diagnostic(event='launch_command', command=[redact_text(item) for item in command])
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+            command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
             check=False,
-        )
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            diagnostic(event='launch_error', errorType=type(error).__name__,
+                       error=redact_text(str(error))[:4000], durationSeconds=time.monotonic()-started)
+            raise TestAccountLoginError('Test App launch command failed or timed out') from error
+        diagnostic(event='launch_result', exitCode=completed.returncode,
+                   stderr=redact_text(completed.stderr or '')[:4000], durationSeconds=time.monotonic()-started)
         if completed.returncode:
-            raise TestAccountLoginError("Test App could not be launched")
+            raise TestAccountLoginError(f"Test App could not be launched (open exit {completed.returncode}): {redact_text(completed.stderr or '')[:1000]}")
 
     def _local_origin(self) -> str:
         descriptor = self.support / "run" / "local.json"
@@ -545,6 +580,25 @@ class TestAppAccountSession:
                 "Test Shell native login helper is unavailable"
             ) from error
         return binary
+
+    def check_login_permission(self) -> None:
+        """Request OS permission without accessing accounts or changing Test data."""
+        binary = self._native_helper_binary()
+        try:
+            result = subprocess.run(
+                [str(binary)], input='{"operation":"permission-check"}',
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                timeout=10, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise TestAccountLoginError("Native login permission check unavailable") from error
+        if result.returncode or result.stdout.strip() != "trusted":
+            raise TestAccountLoginError(
+                "accessibility-permission: 请在系统设置 → 隐私与安全性 → 辅助功能中，"
+                "授权 macOS 提示的启动应用（从 Helper 启动时不等于 Codex 的权限）。"
+                f"原生登录程序：{binary}。授权后从同一 Helper 重试 Pipeline；"
+                "本次未租用账号，也未重置 Test 登录数据。"
+            )
 
     def _prepare_test_identity(self) -> None:
         """Remove only stale Local identity rows from the fixed test instance."""
@@ -708,7 +762,7 @@ def reset_test_instance(repo_root: Path, *, timeout_seconds: float = 60) -> None
     ):
         raise TestInstanceResetError("Test App reset identity is invalid")
 
-    session._launch()
+    session._launch(helper_only=True)
     endpoint = session.support / "run" / "helper-control.json"
     token_path = session.support / "run" / "helper-control.token"
     deadline = time.monotonic() + timeout_seconds
@@ -758,11 +812,14 @@ def acquire_for_run(
     state: dict[str, Any],
     *,
     manager: TestAccountManager | None = None,
+    only_case_id: str | None = None,
+    account_email: str | None = None,
 ) -> bool:
     pending = [
         case
         for case in state["plan"]["cases"]
         if case["id"] not in state["results"] and requires_account(case)
+        and (only_case_id is None or case["id"] == only_case_id)
     ]
     if not pending or state.get("testAccountLease", {}).get("status") == "leased":
         return True
@@ -774,7 +831,9 @@ def acquire_for_run(
     append_timeline(run_dir, {"event": "test_account_acquiring"})
     try:
         active_manager = manager or default_manager(repo_root)
-        lease = active_manager.acquire(state["runId"])
+        if manager is None and type(active_manager) is TestAccountManager:
+            TestAppAccountSession(repo_root).check_login_permission()
+        lease = active_manager.acquire(state["runId"], account_email=account_email) if account_email else active_manager.acquire(state["runId"])
         state["testAccountLease"] = {**lease, "sessionStatus": "starting"}
         save_state(run_dir, state)
         active_manager.authenticate(repo_root, state["runId"], lease)

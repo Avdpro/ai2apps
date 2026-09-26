@@ -1,0 +1,34 @@
+schemaVersion: 1
+id: account-logout
+name: 帐号概览退出登录
+description: 验证已登录测试帐号从 Dock 帐号信息进入 Account App，在帐号概览中退出登录后，帐号页面和 Dock 正确显示未登录状态。
+groupId: account-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 180
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires:
+- test-account
+tags:
+- codex-ui
+- account
+- logout
+instructions:
+- 使用 Computer Use 操作已校验的 AI2Apps Test Shell，确认当前已登录测试帐号；若未登录，将本 Case 标记为 blocked。
+- 点击 AI2Apps Shell 的 Dock 上的帐号信息，观察 Account App 是否打开。
+- 在 Account App 中打开“帐号概览”，确认页面显示当前测试帐号信息及“退出登录”入口。
+- 点击“退出登录”；若出现退出确认对话框，选择确认退出。
+- 等待页面更新，观察 Account App 的登录状态和 Dock 帐号区域。
+- 再次点击 Dock 帐号区域进入 Account App，打开帐号概览或对应的登录页面，检查退出状态是否保持。
+expectations:
+- 点击 Dock 帐号信息后成功打开 Account App。
+- 帐号概览显示当前已登录测试帐号的信息，并提供可操作的退出登录入口。
+- 确认退出后，Account App 显示未登录状态或登录入口，不再显示已登录帐号概览。
+- Dock 帐号区域更新为未登录状态，不再显示测试帐号的已登录信息。
+- 再次进入 Account App 后仍保持未登录状态，没有恢复旧帐号的已登录视图。
+- 退出过程中未出现错误提示、持续加载或应用崩溃。
+cleanup: []
+fixtures: []

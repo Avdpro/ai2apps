@@ -1,0 +1,38 @@
+schemaVersion: 1
+id: chat-install-deepseek-4-1-flash
+name: 从 Chat 安装并使用 DeepSeek 4.1 Flash
+description: 验证从 Chat 模型切换菜单进入模型安装页面，安装 DeepSeek 4.1 Flash 后，能够返回 Chat 选择该模型并完成简单对话。仅操作隔离的
+  Test App。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 3600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- model-install
+instructions:
+- 使用 Computer Use 连接测试系统提供并已校验的当前 Test App 内层 Shell，确认目标为 com.ai2apps.desktop.test.shell、实例为
+  test；无法确认时标记阻塞。
+- 通过 Shell 打开 Chat，记录当前选中的模型，打开模型切换菜单。
+- 从模型切换菜单中点击模型安装或管理入口，观察进入的页面。
+- 在模型安装页面查找 DeepSeek 4.1 Flash，核对显示名称与安装状态。若不存在该模型，记录阻塞；若已安装，记录前置条件不满足，不卸载已有模型来制造安装条件。
+- 选择 DeepSeek 4.1 Flash 并点击安装。若出现安装确认界面，核对目标模型后确认；观察进度，等待明确的安装完成状态。若出现权限、容量或兼容性错误，记录界面信息。
+- 安装完成后通过界面返回 Chat，新建本 Case 专用会话，打开模型切换菜单并选择 DeepSeek 4.1 Flash。
+- 确认当前模型显示为 DeepSeek 4.1 Flash，发送“你好，请用一句中文介绍你能提供什么帮助。”，等待回复结束。
+- 在同一会话发送“请把你刚才提到的一项能力举一个简单例子。”，等待回复结束，并再次观察当前模型名称。
+expectations:
+- Chat 模型切换菜单中存在可点击的模型安装或管理入口，点击后成功显示模型安装页面。
+- 安装页面存在名称匹配 DeepSeek 4.1 Flash 的模型，安装前处于未安装状态。
+- 点击安装后界面显示安装进度或进行中状态，最终显示安装完成或可用状态，没有安装失败提示。
+- 返回 Chat 后，DeepSeek 4.1 Flash 出现在模型切换菜单中且可选择；选择后当前模型名称正确更新。
+- 第一条消息发送成功，收到非空中文回复且生成正常结束，没有加载失败或对话错误提示。
+- 第二条消息收到与上一条回复所述能力相关的具体例子，生成正常结束；当前模型仍显示为 DeepSeek 4.1 Flash，没有回退到其他模型的提示。
+cleanup:
+- 通过 UI 删除本 Case 新建的专用会话。
+fixtures: []

@@ -106,14 +106,42 @@ def execute_pipeline_action(
     timeout_seconds: float = 60,
 ) -> dict[str, Any]:
     session = TestAppAccountSession(repo_root, timeout_seconds=timeout_seconds)
+    from .state import now_text
+    from .redact import redact_text
+    events = []
+    phase = 'initialize'
+    started = time.monotonic()
+    def log(**fields):
+        events.append({'at': now_text(), 'elapsedSeconds': time.monotonic()-started, **fields})
+    if action == 'restart-local':
+        state['_actionDiagnostics'] = events
+        session._launch_diagnostic = log
+        log(event='restart_local_started', processId=os.getpid(), parentProcessId=os.getppid(),
+            cwd=redact_text(os.getcwd()), timeoutSeconds=timeout_seconds,
+            localPid=_local_pid(session))
     try:
-        if action == "restart-local":
-            session._launch()
+        if action == "start-helper":
+            # Account login may already have started this exact Test instance.
+            if _local_pid(session) is None or _process_pid(session, 'shell.json') is None:
+                session._launch()
+            _wait_new_local(session, None, timeout_seconds)
+            _wait_new_shell(session, None, timeout_seconds)
+        elif action == "restart-local":
+            # The controller connects to the existing authenticated Test Helper.
+            # Starting an absent Helper is an explicit start-helper step.
             previous = _local_pid(session)
-            _helper_client(session, timeout_seconds).restart_local(
+            phase = 'connect_helper'
+            log(event=phase, previousLocalPid=previous)
+            client = _helper_client(session, timeout_seconds)
+            phase = 'request_restart_local'
+            log(event=phase)
+            client.restart_local(
                 actor_user_id="ai2apps-test-harness"
             )
+            phase = 'wait_new_local'
+            log(event=phase)
             _wait_new_local(session, previous, timeout_seconds)
+            log(event='restart_local_ready', previousLocalPid=previous, newLocalPid=_local_pid(session))
         elif action == "restart-app":
             previous = _process_pid(session, "shell.json")
             _native(session, "quit-shell")
@@ -126,9 +154,6 @@ def execute_pipeline_action(
             _wait_new_shell(session, None, timeout_seconds)
         elif action == "reset-data":
             reset_test_instance(repo_root, timeout_seconds=timeout_seconds)
-            session._launch()
-            _wait_new_local(session, None, timeout_seconds)
-            _wait_new_shell(session, None, timeout_seconds)
             lease = state.get("testAccountLease")
             if isinstance(lease, dict) and lease.get("status") == "leased":
                 default_manager(repo_root).authenticate(
@@ -137,5 +162,9 @@ def execute_pipeline_action(
         else:
             raise PipelineActionError(f"unsupported pipeline action: {action}")
     except (HelperControlError, TestAccountError, TestInstanceResetError) as error:
+        log(event='action_error', phase=phase, errorType=type(error).__name__, error=redact_text(str(error))[:4000])
         raise PipelineActionError(str(error)) from error
+    except Exception as error:
+        log(event='action_error', phase=phase, errorType=type(error).__name__, error=redact_text(str(error))[:4000])
+        raise
     return {"status": "passed", "summary": f"Pipeline action completed: {action}"}

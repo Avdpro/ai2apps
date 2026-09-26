@@ -14,6 +14,7 @@ from ai2apps_test.runner import (
     get_next,
     record_result,
     start_run,
+    resume_human_pipeline,
 )
 from ai2apps_test.state import read_json
 
@@ -64,6 +65,167 @@ def test_case_timing_uses_harness_start():
     assert result["startedAt"] == "2026-09-09T01:00:00+00:00"
 
 
+def test_pipeline_save_as_preserves_source_and_rejects_existing_id(tmp_path):
+    import copy
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save('groups', _group())
+    service.save('cases', _case())
+    original = _pipeline()
+    service.save('pipelines', original)
+    duplicate = copy.deepcopy(original)
+    duplicate.update(id='pipeline-copy', name='副本')
+    duplicate['steps'][1]['executionMode'] = 'manual'
+    service.save('pipelines', duplicate)
+    from ai2apps_test.catalog_store import CatalogStore
+    store = CatalogStore(root)
+    assert 'executionMode' not in store.get('pipelines', original['id'])['steps'][1]
+    assert store.get('pipelines', duplicate['id'])['steps'][1]['executionMode'] == 'manual'
+    with pytest.raises(CatalogConflictError):
+        service.save('pipelines', duplicate)
+
+
+def test_controller_owns_manual_timeout_after_record_returns(tmp_path, monkeypatch):
+    import threading
+    from ai2apps_test.runner import resume_human_pipeline
+    from ai2apps_test.selector import _status_payload
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save('groups', _group())
+    service.save('cases', _case())
+    pipeline = _pipeline()
+    automatic = pipeline['steps'][1]
+    automatic['expectedStatus'] = 'passed'
+    pipeline['steps'] = [automatic, {'id':'human', 'type':'action', 'action':'human-test',
+        'humanInstructions':'Test manually', 'confirmTimeoutSeconds':1}]
+    service.save('pipelines', pipeline)
+    plan = compile_pipeline(root, pipeline['id'])
+    run_id, directory, _ = start_run(root, plan)
+    evidence = directory / 'proof.txt'
+    evidence.write_text('test evidence')
+    monkeypatch.setattr('ai2apps_test.human_action.subprocess.Popen', lambda *args, **kwargs: None)
+    record_result(root, run_id, plan['cases'][0]['id'], {'status':'passed', 'summary':'done', 'evidence':['proof.txt']})
+    assert read_json(directory / 'state.json')['status'] == 'waiting_human'
+    assert not (directory / 'human-action.json').exists()  # record did not start a waiting subprocess
+    assert get_next(root, run_id)['status'] == 'waiting_human'
+    payload = _status_payload({'runDirectory':str(directory)}, threading.Lock())
+    assert [c['id'] for g in payload['groups'] for c in g['cases']] == [c['id'] for c in plan['cases']]
+    state = resume_human_pipeline(root, directory, lambda:False)
+    assert state['status'] == 'ready_to_finalize'
+    assert state['results']['pipeline.human']['status'] == 'skipped'
+    assert '超时' in state['results']['pipeline.human']['summary']
+    assert get_next(root, run_id)['status'] == 'done'
+
+
+@pytest.mark.parametrize('mode', ['run', 'skip', 'manual'])
+def test_case_execution_modes(tmp_path, mode, monkeypatch):
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save('groups', _group())
+    service.save('cases', _case())
+    pipeline = _pipeline()
+    step = pipeline['steps'][1]
+    step['executionMode'] = mode
+    pipeline['steps'] = [step]
+    service.save('pipelines', pipeline)
+    plan = compile_pipeline(root, pipeline['id'])
+    case = plan['cases'][0]
+    assert case['sourceCaseId'] == _case()['id']
+    assert case['stepEnabled'] == (mode != 'skip')
+    assert case['executionMode'] == mode
+    if mode == 'manual':
+        assert case['action'] == 'human-test'
+        assert case['confirmTimeoutSeconds'] == 120
+        assert _case()['instructions'][0] in case['humanInstructions']
+        assert _case()['expectations'][0] in case['humanInstructions']
+        calls = []
+        monkeypatch.setattr('ai2apps_test.human_action.execute', lambda directory, item, cancelled: calls.append(item['id']) or {'status':'failed', 'summary':'用户报告失败'})
+        _, _, state = start_run(root, plan)
+        assert calls == [case['id']]
+        assert state['results'][case['id']]['observedStatus'] == 'failed'
+        assert state['results'][case['id']]['status'] == 'passed'  # existing expected-failed policy
+    else:
+        assert case['executor'] == 'codex-ui'
+
+
+@pytest.mark.parametrize("mode", ["none", "auto", "selected"])
+def test_explicit_start_login_modes(tmp_path, monkeypatch, mode):
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save("groups", _group())
+    service.save("cases", _case())
+    pipeline = _pipeline()
+    start = {"id": "boot", "type": "action", "action": "start-helper", "loginMode": mode}
+    if mode == "selected":
+        start["accountEmail"] = "test3@ai2apps.com"
+    pipeline["steps"] = [start, pipeline["steps"][1]]
+    service.save("pipelines", pipeline)
+    actions, logins = [], []
+    monkeypatch.setattr("ai2apps_test.runner.execute_pipeline_action", lambda root, action, state: actions.append(action) or {"status": "passed"})
+    def acquire(*args, **kwargs):
+        assert not actions, 'must prepare login before starting the instance'
+        logins.append(kwargs)
+        return True
+    monkeypatch.setattr("ai2apps_test.runner.acquire_for_run", acquire)
+    plan = compile_pipeline(root, pipeline["id"])
+    start_run(root, plan)
+    assert actions == ["start-helper"]
+    assert len(logins) == (0 if mode == "none" else 1)
+    if logins:
+        assert logins[0]["only_case_id"] == "pipeline.boot"
+        assert logins[0]["account_email"] == start.get("accountEmail")
+    pipeline["steps"] = pipeline["steps"][1:]
+    pipeline["id"] = "without-start"
+    service.save("pipelines", pipeline)
+    actions.clear()
+    logins.clear()
+    monkeypatch.setattr("ai2apps_test.state.runs_root", lambda _: root / "second-runs")
+    start_run(root, compile_pipeline(root, pipeline["id"]))
+    assert actions == [] and logins == []
+
+
+def test_login_failure_only_blocks_start_action(tmp_path, monkeypatch):
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save("groups", _group())
+    service.save("cases", _case())
+    pipeline = _pipeline()
+    pipeline["steps"] = [{"id": "boot", "type": "action", "action": "start-helper", "loginMode": "auto"}, pipeline["steps"][1]]
+    service.save("pipelines", pipeline)
+    monkeypatch.setattr("ai2apps_test.runner.execute_pipeline_action", lambda *args: pytest.fail('must not launch after login preparation fails'))
+    def fail(root, directory, state, **kwargs):
+        state["results"][kwargs["only_case_id"]] = {"status": "blocked", "summary": "accessibility-permission"}
+        return False
+    monkeypatch.setattr("ai2apps_test.runner.acquire_for_run", fail)
+    _, _, state = start_run(root, compile_pipeline(root, pipeline["id"]))
+    assert state["results"]["pipeline.boot"]["status"] == "blocked"
+    assert len(state["results"]) == 2
+    dependent = next(value for key, value in state["results"].items() if key != "pipeline.boot")
+    assert dependent["details"]["executed"] is False
+    assert dependent["status"] == "blocked"
+    assert state["status"] != "awaiting_agent"
+
+
+def test_disabled_steps_do_not_execute(tmp_path, monkeypatch):
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save("groups", _group())
+    service.save("cases", _case())
+    pipeline = _pipeline()
+    for step in pipeline["steps"]:
+        step["enabled"] = False
+    service.save("pipelines", pipeline)
+    def unexpected(*args, **kwargs):
+        pytest.fail("disabled step executed")
+    monkeypatch.setattr("ai2apps_test.runner.execute_pipeline_action", unexpected)
+    monkeypatch.setattr("ai2apps_test.runner.acquire_for_run", unexpected)
+    run_id, _, state = start_run(root, compile_pipeline(root, pipeline["id"]))
+    assert len(state["results"]) == len(pipeline["steps"])
+    assert all(result["skipReason"] == "step-disabled" for result in state["results"].values())
+    assert get_next(root, run_id)["status"] == "done"
+    assert finalize_run(root, run_id)["conclusion"] != "BLOCKED"
+
+
 def _group() -> dict:
     return {
         "schemaVersion": 1,
@@ -74,6 +236,44 @@ def _group() -> dict:
         "defaultSelected": False,
         "lifecycle": "enabled",
     }
+
+
+def test_include_pipeline_expansion_and_validation(tmp_path):
+    root = _repo(tmp_path)
+    service = CatalogService(root)
+    service.save('groups', _group())
+    service.save('cases', _case())
+    child = {**_pipeline(), 'id': 'child', 'steps': [_pipeline()['steps'][1]]}
+    service.save('pipelines', child)
+    parent = {**_pipeline(), 'id': 'parent', 'steps': [
+        {'id': 'first', 'type': 'action', 'action': 'include-pipeline', 'pipelineId': 'child'},
+        {'id': 'second', 'type': 'action', 'action': 'include-pipeline', 'pipelineId': 'child', 'enabled': False},
+        _pipeline()['steps'][3],
+    ]}
+    service.save('pipelines', parent)
+    plan = compile_pipeline(root, 'parent')
+    assert [c['sourcePipelineId'] for c in plan['cases']] == ['child', 'child', 'parent']
+    assert [c['stepEnabled'] for c in plan['cases']] == [True, False, True]
+    assert len({c['id'] for c in plan['cases']}) == 3
+    assert plan['cases'][0]['pipelineStepPath'] == ['first', 'expected-failure']
+    assert set(plan['pipelineSources']) == {'parent', 'child'}
+    run_id, directory, _ = start_run(root, plan)
+    assert get_next(root, run_id)['case']['id'] == plan['cases'][0]['id']
+    record_result(root, run_id, plan['cases'][0]['id'], {'status': 'blocked', 'summary': 'test blocker'})
+    assert get_next(root, run_id)['case']['id'] == plan['cases'][2]['id']
+    assert read_json(directory / 'state.json')['results'][plan['cases'][1]['id']]['status'] == 'skipped'
+    cyclic = {**child, 'steps': [{'id': 'loop', 'type': 'action', 'action': 'include-pipeline', 'pipelineId': 'parent'}]}
+    with pytest.raises(ValueError, match='cycle'):
+        service.save('pipelines', cyclic)
+    assert not service.validate('pipelines', cyclic)['ok']
+    missing = {**parent, 'id': 'missing-parent', 'steps': [
+        {'id': 'missing', 'type': 'action', 'action': 'include-pipeline', 'pipelineId': 'absent'}]}
+    with pytest.raises(ValueError, match='not found'):
+        service.save('pipelines', missing)
+    service.save('pipelines', {**child, 'id': 'disabled-child', 'enabled': False})
+    missing['steps'][0]['pipelineId'] = 'disabled-child'
+    with pytest.raises(ValueError, match='disabled'):
+        service.save('pipelines', missing)
 
 
 def _case() -> dict:
@@ -194,8 +394,9 @@ def test_pipeline_case_content_is_shared_and_structural_fields_are_locked(tmp_pa
             service.save_shared_case(_case()["id"], {"revision": revision, "content": {**content, field: "changed"}})
 
 
+@pytest.mark.parametrize('restart_status', ['passed', 'blocked'])
 def test_pipeline_waits_at_ui_barrier_and_normalizes_expected_failure(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, restart_status
 ) -> None:
     root = _repo(tmp_path)
     service = CatalogService(root)
@@ -207,7 +408,7 @@ def test_pipeline_waits_at_ui_barrier_and_normalizes_expected_failure(
     monkeypatch.setattr(
         "ai2apps_test.runner.execute_pipeline_action",
         lambda _root, action, _state: actions.append(action)
-        or {"status": "passed", "summary": action},
+        or {"status": restart_status, "summary": action},
     )
 
     run_id, run_dir, state = start_run(root, plan)
@@ -239,6 +440,15 @@ def test_pipeline_waits_at_ui_barrier_and_normalizes_expected_failure(
     assert result["status"] == "passed"
     assert result["observedStatus"] == "failed"
     assert result["expectedStatus"] == "failed"
+    assert actions == ["restart-local"]
+    assert get_next(root, run_id)['status'] == 'waiting_controller'
+    with pytest.raises(ValueError, match='pending controller'):
+        finalize_run(root, run_id)
+    resume_human_pipeline(root, run_dir, lambda: False)
+    assert actions == ["restart-local", "restart-app"]
+    assert read_json(run_dir / 'state.json')['results']['pipeline.restart-after']['status'] == restart_status
+    assert get_next(root, run_id)['case']['id'] == plan['cases'][3]['id']
+    resume_human_pipeline(root, run_dir, lambda: False)
     assert actions == ["restart-local", "restart-app"]
 
 
@@ -273,7 +483,7 @@ def test_pipeline_conditional_stop(tmp_path, monkeypatch, executor, policy, obse
         record_result(root, run_id, plan["cases"][0]["id"], {
             "status": observed, "summary": "actual outcome", "evidence": [str(evidence)],
         })
-    state = read_json(run_dir / "state.json")
+    state = resume_human_pipeline(root, run_dir, lambda: False)
     assert bool(state.get("pipelineStop")) == stops
     assert actions == ([] if stops else ["restart-app"])
     assert get_next(root, run_id)["status"] == "done"

@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: chat-app-basic
+name: Chat App 基础测试
+description: 测试Chat App。
+kind: on-demand
+order: 500
+lifecycle: enabled
+enabled: true
+defaultSelected: false
+tags: []

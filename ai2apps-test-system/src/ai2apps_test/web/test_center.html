@@ -65,12 +65,13 @@
             <div class="pipeline-editor-scroll">
               <div class="inspector-head"><div><span class="type-badge">PIPELINE</span><h3 id="pipeline-title"></h3><p id="pipeline-id-label" class="mono muted"></p></div></div>
               <div class="form-grid pipeline-meta"><label class="field full">稳定 ID<input id="pipeline-id"></label><label class="field full">显示名称<input id="pipeline-name"></label><label class="field full">说明<textarea id="pipeline-description"></textarea></label><label class="field check-field"><input id="pipeline-enabled" type="checkbox">启用 Pipeline</label></div>
-              <div class="pipeline-toolbar"><button id="append-cases" class="button secondary">＋ 添加 Case</button><button id="insert-cases" class="button secondary">↳ 插入到选中步骤前</button><select id="pipeline-action"><option value="restart-app">重启 App</option><option value="restart-local">重启 Local</option><option value="quit-all-relaunch">全部退出再启动</option><option value="reset-data">重置数据</option></select><button id="append-action" class="button secondary">＋ 添加动作</button></div>
+              <p class="muted">Pipeline 不会自动启动或登录 Test 实例。请添加“启动 Test Helper”动作并选择登录方式；不登录不会清除已有 Session。</p>
+              <div class="pipeline-toolbar"><button id="append-cases" class="button secondary">＋ 添加 Case</button><button id="insert-cases" class="button secondary">↳ 插入到选中步骤前</button><select id="pipeline-action"><option value="start-helper">启动 Test Helper</option><option value="restart-app">重启 App</option><option value="restart-local">重启 Local</option><option value="quit-all-relaunch">全部退出再启动</option><option value="reset-data">重置数据</option></select><button id="append-action" class="button secondary">＋ 添加动作</button></div>
               <div id="pipeline-steps" class="pipeline-steps"></div>
               <div id="pipeline-errors" class="form-errors hidden"></div>
               <div id="pipeline-diff-shell" class="diff-shell hidden"><div class="diff-head"><span>Pipeline Diff</span><button id="close-pipeline-diff" class="icon-button">×</button></div><pre id="pipeline-diff" class="diff"></pre></div>
             </div>
-            <div class="inspector-actions"><button id="run-pipeline" class="button secondary">▶ 运行 Pipeline</button><span class="action-spacer"></span><button id="validate-pipeline" class="button secondary">校验与 Diff 预览</button><button id="save-pipeline" class="button primary">保存</button></div>
+            <div class="inspector-actions"><button id="run-pipeline" class="button secondary">▶ 运行 Pipeline</button><span class="action-spacer"></span><button id="save-as-pipeline" class="button secondary">另存为</button><button id="validate-pipeline" class="button secondary">校验与 Diff 预览</button><button id="save-pipeline" class="button primary">保存</button></div>
           </div>
         </section>
       </div>
@@ -180,6 +181,16 @@
         <section class="review-section"><div class="diff-head"><span>候选 Case Diff</span></div><pre id="review-diff" class="diff"></pre></section>
       </div>
       <div class="modal-actions"><button id="cancel-review" class="button quiet">关闭</button><button id="reanalyze-review" class="button secondary hidden">补充完成，重新分析</button><button id="apply-review" class="button primary hidden">应用到编辑器</button></div>
+    </div>
+  </div>
+  <div id="pipeline-save-as-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pipeline-save-as-title">
+    <div class="modal-card">
+      <h3 id="pipeline-save-as-title">Pipeline 另存为</h3>
+      <p>复制当前编辑内容，原 Pipeline 不变。Case 仍引用共享定义。</p>
+      <label>新稳定 ID<input id="pipeline-save-as-id" maxlength="128"></label>
+      <label>显示名称<input id="pipeline-save-as-name"></label>
+      <p id="pipeline-save-as-error" role="alert"></p>
+      <div class="modal-actions"><button id="cancel-pipeline-save-as" class="button quiet">取消</button><button id="confirm-pipeline-save-as" class="button primary">另存为新 Pipeline</button></div>
     </div>
   </div>
   <div id="pipeline-cases-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pipeline-cases-title">

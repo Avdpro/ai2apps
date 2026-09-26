@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: chat-qwen-3-8-27b
+name: 安装 Qwen 3.8 27B 并在 Chat 中对话
+description: 验证从 Chat 模型切换菜单进入模型安装页面，安装 Qwen 3.8 27B 后可在 Chat 中选择该模型并完成简单对话。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- model-install
+instructions:
+- 使用 Computer Use 在 AI2Apps Test Shell 中打开 Chat，记录当前选择的模型。
+- 点击模型切换菜单，再点击“安装更多模型”。
+- 在模型列表中查找 Qwen 3.8 27B，核对模型名称和参数规模；若没有完全匹配的模型，记录阻塞，不选择其他型号替代。
+- 确认模型尚未安装后点击安装，观察下载和安装状态，等待界面显示安装成功；若模型已安装，记录安装步骤无法验证，不卸载已有模型。
+- 返回 Chat，打开模型切换菜单，选择 Qwen 3.8 27B。
+- 新建对话，发送“你好，请用一句话介绍你能帮我做什么。”，等待回复完成。
+- 继续发送“请计算 12 加 15，只回答结果。”，等待回复完成。
+expectations:
+- 点击“安装更多模型”后显示可安装模型列表。
+- 列表中存在名称及参数规模与 Qwen 3.8 27B 完全匹配的模型。
+- 安装过程显示可观察的进度或状态，并最终显示安装成功，无失败提示。
+- Chat 的模型切换菜单中出现 Qwen 3.8 27B，选择后当前模型显示为该模型。
+- 第一条消息收到非空、可读且与提问相关的回复，生成正常结束，无模型加载或推理错误。
+- 第二条消息收到结果“27”，生成正常结束。
+cleanup:
+- 删除本 Case 新建的对话。
+fixtures: []

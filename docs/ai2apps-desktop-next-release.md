@@ -2,6 +2,22 @@
 
 状态：滚动维护中的唯一下一版入口
 
+## Build 2252 已发布（2026-09-21）
+
+- Build 2252 已从 clean、已推送 commit
+  `9521a6d674babd03125ed0e310c926863dbd6cde` 构建；Developer ID、Apple 公证
+  `3850a24c-4457-4516-b9d0-ff4cee2cc806`、Staple、Gatekeeper 和最终制品复验均通过。
+- GitHub 正式 Release `v0.1.0-build2252` 与 ModelScope immutable revision
+  `735eb1d4a1bfbc30677fc80308fc2bb9330a0429` 已发布；匿名完整回读的 DMG/metadata
+  字节数和 SHA-256 均与本地一致。Cloud 先以 0 basis points 原子登记并完成严格双源预检、
+  公网 GET/HEAD/ETag/304、Cloud 与数据库健康验收，随后将同一 `build2252-test` rollout
+  提升至 `10000`。最终生产清单 SHA-256 为
+  `894271943aa4977d78fae3a4c2f0d622382662905fd123b26a2e285df5002254`。
+- 本版只纳入 `NXR-VERIFIED-OVERLAY-CHECKPOINT-READINESS-20260921`，不升级 oMLX Runtime
+  或模型 Package。完整制品、测试、双源和生产发布回执见
+  `docs/ai2apps-desktop-build-2252-release-receipt-2026-09-21.md`。剩余验收只包括目标 Mac 的
+  2251→2252 自动发现、下载、安装、启动与更新后清理；不影响分发发布已完成的事实。
+
 ## Build 2251 已发布（2026-09-20）
 
 - Build 2251 已从已推送源码 commit
@@ -61,6 +77,52 @@
   Studio 现在为 FLUX.2 Klein 9B 的图片生成和编辑都提供明确 ACPF 安装方案，
   固定 Runtime `>=1.7.8,<2.0.0`、Package `>=0.1.0,<1.0.0`、Checkpoint `/9b`、
   48 GiB 最低设备门槛及 FLUX 非商业许可提示；中英文 ACPF 文案同步补齐。
+
+### NXR-VERIFIED-OVERLAY-CHECKPOINT-READINESS-20260921：增量 Checkpoint 激活
+
+- 状态：`ready`（107 项相关回归及 App-Dev OpenVDN DMD 8-step Q4 实机重试通过）。
+- 修复已完整安装的 Registry 增量/overlay checkpoint 被通用独立模型布局探针误判为不完整的问题。
+  OpenVDN 的 5.09 GB checkpoint 已通过签名分发清单校验，但权重位于
+  `stage-dmd-step-250/` 等子目录，根目录按设计没有独立模型所需的 `config.json` 和
+  safetensors，因此旧逻辑向 Worker 输出空路径并在 ACPF 95% 报
+  `The model provider did not become ready after activation`。
+- 同一缺陷覆盖 H3 的四个增量变体：LightX2V 4-step、LightX2V 8-step、OpenVDN
+  DMD 8-step 和 OpenVDN Stage-B 50-step；本次通用修复一次覆盖四者。FL2VA Q4/Q8 与
+  Ref2VA Q4/Q8 是完整 checkpoint，继续走既有独立模型布局校验，不受原缺陷影响。
+- 模型感知校验现在接受与 Package 声明 `distribution_id` 精确一致的不可变 Registry
+  snapshot，并校验分发格式、manifest digest、完整文件集合、只读常规文件及安装时记录的
+  device/inode/size/mtime；任意文件变更、额外文件、符号链接或分发 ID 不匹配都会拒绝。
+  普通 Transformer、Diffusers、ONNX 和 SSD Cached-MoE 的既有布局门禁不变。
+- App-Dev Local 已通过 Helper 原位重启加载修复；对原失败会话点击 Retry 后直接复用共享
+  checkpoint cache，四步立即完成，Worker 配置获得非空 OpenVDN 路径，Video Studio 随后
+  识别 `(Local) AI2Apps-MLX · OpenVDN H3 DMD 8-step Q4` 并报告生成环境已就绪。Python
+  源码热挂载验证无需重建 App。校验发生在 Desktop Local/Host 的 Service Supervisor，模型
+  Package 与 `ai2apps/runtime-omlx` 均无需升版；正式交付需纳入下一版 Desktop App。使用当前
+  仓库热挂载的 App-Dev/Dev 只需重启 Local，嵌入固定快照的 Test 和生产实例则需重建或升级
+  Desktop App。
+- 2026-09-21 已通过标准 `build-test-app.sh` 重建固定 Test App 并启动验收：Bundle ID
+  `com.ai2apps.desktop.test`、instance `test`、cloud Runtime、生产更新地址、非 Development
+  快照、`verify-release-app.sh` 和深度签名均通过。发布前门禁为 Swift 77/77、相关 Python
+  107/107、`git diff --check` 通过；拟纳入 Desktop 0.1.0 Build 2252。
+
+### NXR-VIDEO-TASK-INVOCATION-IDENTITY-20260921：视频后台任务身份分层
+
+- 状态：`ready`（21 项 Video Task、Video Studio 与 schema 定向回归通过；App-Dev 原失败
+  OpenVDN DMD 8-step Q4 任务实机 Retry 已越过身份恢复并进入 `generate`）。
+- 修复 Video Studio 经 `/v1/videos/generations` 创建的持久任务把任务隔离键
+  `ai2apps-user:<UUID>` 直接交给 Cloud 身份仓库的问题；身份仓库只接受 URL-safe 用户 ID，
+  因此前一实现会在 Worker 调度前报
+  `cloud_user_id must contain 1 to 200 URL-safe identity characters`。
+- schema 71 为 `video_generation_tasks` 增加独立 `invocation_actor_id`：登录用户任务用真实用户
+  UUID 恢复调度身份，API Key 任务继续以 `local-api:<hash>` 隔离列表、取消和幂等范围，同时
+  以 `local` 进入本机后台调度。迁移保留已有任务并把历史 `ai2apps-user:<UUID>` 归属原位规范
+  化，Retry 继续继承原始调用身份。
+- `VideoTaskManager` 同时兼容已发布 Desktop 内嵌的旧 oMLX 路由与新路由：创建、读取、列表、
+  取消、重试和 Join 都在持久层边界统一旧前缀，避免要求开发实例先重建 App 才能恢复任务。
+  新 `omlx/server.py` 会直接传递分离后的任务归属与调用身份。App-Dev 只重启了自身 Local，
+  schema 实机从 70 升到 71，原任务在刷新后仍可见；点击 Retry 后状态从 `starting` 进入
+  `generate`，旧身份错误未复现。此修复不改模型 Package、Checkpoint 或
+  `ai2apps/runtime-omlx` Worker Package；Test 与生产需由下一版 Desktop App 带入。
 
 ### NXR-DEV-TEST-REBUILD-20260920：开发与测试实例同步
 
@@ -2991,6 +3053,24 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 台账更新本身必须和导致状态变化的源码或发布回执一起进入版本控制，不能只存在于聊天记录。
 
 <!-- Checkpoint migration status: HF DS4.1F / MS Qwen SDK uploads completed, remote integrity gates pending. User explicitly confirmed HF Avdpro / MS ai2apps. HF Qwen metadata fix committed successfully at a1de2bbd1727b3c46162a0f8bd426316e6f8dd37; approval block resolved. MS DS4.1F remains uploading. See docs/chat-checkpoint-migration-2026-09-14.md. -->
+
+### NXR-VIDEO-STUDIO-READY-PROVIDER：优先恢复已安装的视频模型（ready）
+
+- 状态：`ready`
+- 类型：Video Studio、ACPF、模型选择恢复。
+- 用户可见结果：设备已经安装并验证 OpenVDN DMD8 等视频模型时，重新打开 Video Studio 会
+  直接恢复一个已就绪的模型，不再因为 ACPF 推荐的高规格 H3 8-bit 尚未下载而显示“当前设备
+  没有经过此 App 验证的本地配置方案”并再次要求配置。
+- 根因与修正：Provider 目录和共享 Checkpoint 均正常；OpenVDN DMD8 及其 H3 4-bit 基座已经
+  被 Worker 标为 `ready`。旧的首次选择逻辑只检查推荐模型 ID 是否存在，未检查它是否就绪，
+  因而在 128 GiB 设备上优先选中尚未安装的 H3 8-bit。现在仅在推荐项已就绪时优先选它；否则
+  先选任一已就绪模型，再回退到推荐或目录首项，以保留无模型设备进入安装流程的行为。用户
+  选定及 ACPF 安装完成后的模型 ID 会写入 Video Studio Shell 状态；刷新或重开后仍可用时直接
+  恢复；初始化空 Mini-App 草稿也不再覆盖刚恢复的模型 ID，例如不会把已选择的 OpenVDN
+  DMD8 降回仅作为依赖安装的 H3 4-bit 基座。
+- 需要进入 App 的文件：`ai2apps/web/static/js/video_studio.js`、
+  `tests/test_ai2apps_video_studio.py`。
+- 纳入 Build：待定。
 
 <!-- HF Qwen 73 / DS 172 files checked: only Hub-added .gitattributes differs, all other SHA256/size values match. Normalize metadata before distribution signing; not a completed publication gate. -->
 

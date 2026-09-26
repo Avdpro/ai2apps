@@ -1,0 +1,41 @@
+schemaVersion: 1
+id: chat-install-deepseek-v4-flash-2bit
+name: 从 Chat 安装 DeepSeek V4 Flash 2bit 并完成对话
+description: 仅在隔离的 Test App 中，验证从 Chat 模型切换菜单进入模型安装页面，安装 DeepSeek V4 Flash 2bit，返回
+  Chat 选择该模型并完成简单对话。所属按需 Group：Chat App Basic（chat-app-basic）。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 3600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat
+- model-install
+- on-demand
+instructions:
+- 确认测试上下文为 bundle ID com.ai2apps.desktop.test、instance test；使用测试系统 next 返回并校验的 shellAppPath，通过
+  Computer Use 连接当前固定 Test App 的内层 Shell，其 bundle ID 必须为 com.ai2apps.desktop.test.shell。若目标无法确认，则记录阻断。
+- 通过 Computer Use 打开 Chat，记录当前选中的模型及当前会话，以便结束后恢复。
+- 打开 Chat 的模型切换菜单，点击模型安装或添加模型入口。
+- 在打开的模型安装页面查找 DeepSeek V4 Flash 2bit，核对模型名称及 2bit 规格。若无对应条目或无法确认规格，记录阻断；若已安装，记录安装前置条件不满足，不卸载已有模型。
+- 点击该模型的安装按钮，观察下载及安装状态，等待安装成功。若出现错误或等待达到本 Case 时限，记录当前可见状态。
+- 使用界面提供的返回或导航入口返回 Chat，打开模型切换菜单并选择 DeepSeek V4 Flash 2bit。
+- 新建一个测试会话，确认当前选中模型仍为 DeepSeek V4 Flash 2bit。
+- 输入并发送“你好，请用中文简短介绍一下你能帮助我做什么。”，等待回复完成。
+- 继续发送“请计算 2 加 3，只回复结果。”，等待回复完成并检查显示结果。
+expectations:
+- 所有交互均发生在已校验的隔离 Test App 中，未切换到 default、dev 或 app-dev 实例。
+- Chat 模型切换菜单提供可点击的安装入口，点击后进入模型安装页面。
+- 安装目标明确显示为 DeepSeek V4 Flash 的 2bit 版本，安装前处于未安装状态。
+- 安装过程有可观察的状态反馈，最终显示安装成功或已安装，未出现安装失败提示。
+- 返回 Chat 后，模型切换菜单中可选择 DeepSeek V4 Flash 2bit，选择后当前模型标识与其一致。
+- 测试会话中的第一条消息发送成功，并获得完整、非空的中文回复，没有模型加载或推理错误提示。
+- 第二条消息获得完整回复，去除首尾空白后内容为“5”，对话期间当前模型标识保持不变。
+cleanup:
+- 通过 Computer Use 删除本 Case 新建的测试会话；若未创建则跳过。
+fixtures: []

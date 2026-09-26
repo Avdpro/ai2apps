@@ -31,12 +31,13 @@ def test_generate_case_uses_structured_codex_draft_and_forces_safe_state(
     captured: dict = {}
 
     def fake_run(command: list[str], **options) -> subprocess.CompletedProcess[str]:
+        assert options["env"]["PATH"] == "/resolved/bin:/usr/bin"
         captured.update(command=command, options=options)
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(json.dumps(_generated()), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stderr="")
 
-    monkeypatch.setattr("ai2apps_test.case_generator.shutil.which", lambda _: "/usr/bin/codex")
+    monkeypatch.setattr("ai2apps_test.case_generator.codex_environment", lambda: ("/usr/bin/codex", {"PATH": "/resolved/bin:/usr/bin"}))
     monkeypatch.setattr("ai2apps_test.case_generator.subprocess.run", fake_run)
     group = {"id": "corner-cases", "name": "Corner Cases", "kind": "on-demand"}
 

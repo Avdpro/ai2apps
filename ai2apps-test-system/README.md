@@ -2,6 +2,30 @@
 
 这是 AI2Apps 自动测试 Harness、Test Center、Codex Skill、专属自测、文档和新 Run 产物的统一工程目录。
 
+## 当前 Features
+
+以下为已实现能力（更新于 2026-09-26），不代表所有产品 Case 已通过真实 UI 验收。
+
+- **测试发现与选择**：基于产品注册表与 Package manifest 构建 Inventory，支持累计 P0–P3、按需 Group、单 Case 选择和覆盖诊断。
+- **可编辑测试库**：Group/Case 创建、复制、停用、归档、恢复、Diff 校验与隔离试运行；Case 内容按稳定 ID 共享，运行计划保存不可变快照。
+- **辅助编写与复盘**：自然语言生成结构化 Case 草稿；对试运行结果提出候选修订，支持受管理素材补充。候选需人工确认，不自动降低预期或改写测试结果。
+- **Pipeline 编排**：Case 与动作严格串行，支持排序、插入、另存为、期待结果及条件停止；Case 可选择运行、跳过或人工。
+- **组合 Pipeline**：“引入 Pipeline”按引用位置展开多个 Pipeline，支持嵌套和重复引用、独立步骤 ID、来源追踪及快照；拦截循环、缺失和停用引用。共用一个 Run、Test 实例与报告，不隐式重置环境。
+- **人工辅助测试**：操作说明、Confirm Start、确认超时跳过、循环提示音和静音；开始后提交 Skip/Pass/Block/Failed，Block/Failed 必须填写原因。
+- **Test 生命周期与账号**：启动 Helper、重启 App/Local、全部退出再启动、重置 Test 数据；可不登录、自动分配或指定测试账号。生命周期动作由宿主控制器执行，重启保留阶段日志与 PID 证据。
+- **Codex UI 执行**：固定 Test Shell 身份校验，`next`/`record` 顺序屏障，可取消、可接管；实时输出限量脱敏，单 Case 失败或阻断后继续后续步骤。
+- **TTS 音频证据**：macOS ScreenCaptureKit 捕获 Test 应用播放音频，使用本地 Qwen3-ASR 离线转写，对照实际朗读文本，保存音频统计、转写及原始证据；HTML 报告支持回放。
+- **报告与审计**：JSON、Markdown、HTML、JUnit、timeline、截图和音频证据；保留实际/期待状态、耗时、最近一次 Pipeline 结果及账号收尾状态。
+
+## 使用组合 Pipeline
+
+在 Test Center 的 Pipeline 页面新建总 Pipeline，添加多个“引入 Pipeline”动作，
+为每一步选择已经保存且启用的 Pipeline，保存后运行。子 Pipeline 内的重置、登录、
+人工步骤仍按原配置执行；一个 Run 不允许隐式切换已租用的账号。
+条件停止命中时结束整个组合 Run。当前限制为最多 16 层、展开最多 1000 步。
+
+测试系统后端代码更新后，需重启 Test Center；不必因此重新构建 Test App。
+
 ## 快速入口
 
 在本目录运行：
@@ -56,6 +80,7 @@ Test Center 的 **Pipeline** 页面可以把 Case 和 Test-only 生命周期动�
 - [Test Center 界面改造 v1](docs/test-center-ui-renovation-v1.md)
 - [Pipeline 机制 v1](docs/pipeline-mechanism-v1.md)
 - [Test App 环境](docs/test-app.md)
+- [TTS 捕获与本地 ASR 校验](docs/tts-audio-verification.md)
 - [Cloud 测试账号租约要求](docs/cloud-test-account-leases-requirements-v1.md)
 - [Cloud 首次登录 Session epoch 同步修复要求](docs/cloud-test-account-session-bootstrap-requirements-v1.md)
 
@@ -66,3 +91,19 @@ Test Center 的 **Pipeline** 页面可以把 Case 和 Test-only 生命周期动�
 - 不删除用户 HF 缓存。
 - 测试账号 Credential、临时密码和 lease token 不进入代码、命令行、Codex prompt、state、证据或报告。
 - 历史 `artifacts/ai2apps-test-runs/` 不迁移；新 Run 只写入本目录。
+- 人工确认超时是 skipped，不是 passed；缺证据或未执行不得报告通过。
+- 音频转写匹配不证明扬声器实际发声，也不评判音色、自然度或韵律；ASR 不一致需复听，不自动归因 TTS。
+- 音频捕获需要 macOS 权限及 Swift 编译环境；ASR 需要本地 Qwen checkpoint 和音频依赖，不自动下载模型或上传音频。
+- Run 产物、凭据、个人参考音频和模型权重不作为源码进度上传；Case 素材须另行准备，缺失时阻断。
+
+## 开发与验证
+
+```bash
+# 在已配置项目依赖的 Python 环境中运行
+python -m pytest -q
+node --check src/ai2apps_test/web/test_center.js
+./bin/ai2apps-test catalog validate
+```
+
+Harness 自测验证编排和安全边界；真实 UI、模型推理和 TTS 端到端测试需另行运行，
+不能用自测或历史 Run 代替当前产品验收。构建 Dev/App-Dev/Test 的产品脚本由父仓库维护。

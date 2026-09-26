@@ -89,6 +89,11 @@
         return isH3 && (['bf16', 'fp16', 'f16', '16bit', '16-bit'].includes(precision) || id.includes('/fl2va-bf16') || id.includes('/fl2va-fp16'));
     }
 
+    function preferredProviderId(providers, recommendedId = '') {
+        const recommended = providers.find(item => item.id === recommendedId);
+        return (recommended?.ready ? recommended : providers.find(item => item.ready) || recommended || providers[0])?.id || '';
+    }
+
     async function responsePayload(response) {
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
@@ -180,6 +185,7 @@
             try { const saved = JSON.parse(localStorage.getItem('ai2apps.video-studio.favorites') || '[]'); this.favoriteMiniApps = Array.isArray(saved) ? saved : []; } catch (_) {}
             this.clientEnvironment = this.$root?.dataset?.clientEnvironment || 'browser';
             this.restoreShellState();
+            const restoredModelId = this.modelId;
             await this.refreshPackageMiniApps();
             const pendingPackageMiniAppId = window.AI2AppsStudioMiniApps?.pendingSetup(APP_ID)?.miniAppId;
             const pendingPackageMiniApp = this.packageMiniApps.find(item => item.id === pendingPackageMiniAppId);
@@ -187,6 +193,7 @@
             this.setupMiniAppChat();
             this.miniAppDrafts = Object.fromEntries(MINI_APPS.map(item => [item.mode, emptyMiniAppDraft(item.mode)]));
             this.restoreMiniAppDraft(this.mode);
+            if (restoredModelId) this.modelId = restoredModelId;
             if (this.mode === 'x2a') await this.loadExtractorDraft();
             if (this.mode === 'composer') { await this.loadComposerProject(); await this.loadComposerChatModels(); }
             this.applyResponsiveDefaults();
@@ -445,6 +452,7 @@
                 const state = JSON.parse(localStorage.getItem(SHELL_STATE_KEY) || '{}');
                 if (['mini-apps', 'assets', 'chat'].includes(state.leftView)) this.leftView = state.leftView;
                 if (MINI_APPS.some(item => item.mode === state.mode)) this.mode = state.mode;
+                if (typeof state.modelId === 'string') this.modelId = state.modelId;
                 if (typeof state.selectedTaskId === 'string') this.selectedTaskId = state.selectedTaskId;
                 if (typeof state.selectedAudioRunId === 'string') this.selectedAudioRunId = state.selectedAudioRunId;
                 if (typeof state.selectedComposerRunId === 'string') this.selectedComposerRunId = state.selectedComposerRunId;
@@ -455,7 +463,8 @@
         persistShellState() {
             try {
                 localStorage.setItem(SHELL_STATE_KEY, JSON.stringify({
-                    leftView: this.leftView, mode: this.mode, selectedTaskId: this.selectedTaskId,
+                    leftView: this.leftView, mode: this.mode, modelId: this.modelId,
+                    selectedTaskId: this.selectedTaskId,
                     selectedAudioRunId: this.selectedAudioRunId, selectedComposerRunId: this.selectedComposerRunId,
                     leftCollapsed: this.leftCollapsed, rightCollapsed: this.rightCollapsed,
                 }));
@@ -773,12 +782,10 @@
                 this.tasks = tasks.data || [];
                 this.audioRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.extract-audio');
                 this.composerRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.composer');
-                if (!this.isLocalVideoTool && !this.modeProviders.some(item => item.id === this.modelId)) {
+                if (!this.isLocalVideoTool && !this.modeProviders.some(item => item.id === this.modelId && item.ready)) {
                     const probe = await window.AI2AppsCapabilities?.probe(this.capabilityRequest('probe', ''));
                     const recommendedId = probe?.provider?.modelId || probe?.plan?.stack?.checkpoint?.model_id || '';
-                    this.modelId = this.modeProviders.some(item => item.id === recommendedId)
-                        ? recommendedId
-                        : (this.modeProviders.find(item => item.ready)?.id || this.modeProviders[0]?.id || '');
+                    this.modelId = preferredProviderId(this.modeProviders, recommendedId);
                 }
                 this.syncDefaults(false);
                 if (!this.tasks.some(task => task.id === this.selectedTaskId)) this.selectedTaskId = this.tasks.find(task => task.status === 'succeeded')?.id || this.tasks[0]?.id || '';
@@ -2207,6 +2214,7 @@
             if (readyModelId) this.modelId = readyModelId;
             this.syncDefaults(false);
             if (!this.selectedProvider?.ready) throw new Error(tr('video_studio.error.provider_missing'));
+            this.persistShellState();
             if (result.outcome === 'configured' && result.session?.id) {
                 await window.AI2AppsCapabilities.acknowledge(result.session.id, { appId: APP_ID });
             }

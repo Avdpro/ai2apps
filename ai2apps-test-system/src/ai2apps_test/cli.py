@@ -38,6 +38,7 @@ from .runner import (
     finalize_run,
     get_next,
     record_result,
+    resume_human_pipeline,
     start_run,
 )
 from .selector import control
@@ -62,6 +63,18 @@ def _parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("doctor")
+    capture = subparsers.add_parser("audio-capture")
+    capture.add_argument("action", choices=("permission", "start", "status", "stop"))
+    capture.add_argument("--run")
+    capture.add_argument("--case")
+    capture.add_argument("--capture")
+    capture.add_argument("--seconds", type=int, default=120)
+    audio = subparsers.add_parser("audio-check")
+    audio.add_argument("--run", required=True)
+    audio.add_argument("--audio", type=Path, required=True)
+    audio.add_argument("--checkpoint", type=Path)
+    audio.add_argument("--expected-text", required=True)
+    audio.add_argument("--language", default="Chinese")
     plan = subparsers.add_parser("plan")
     plan.add_argument("--priority", choices=("P0", "P1", "P2", "P3"), default="P1")
     plan.add_argument("--group", action="append", default=[])
@@ -304,6 +317,22 @@ def _execute_run(
             if cancel_event is None:
                 time.sleep(0.2)
             state = read_json(run_dir / "state.json")
+            if state.get('status') in {'waiting_human', 'waiting_controller'}:
+                state = resume_human_pipeline(repo_root, run_dir,
+                    lambda: cancel_event is not None and cancel_event.is_set())
+                if cancel_event is not None and cancel_event.is_set():
+                    continue
+                if (driver == 'codex' and driver_process is not None
+                        and driver_process.poll() is not None
+                        and any(case['executor'] == 'codex-ui' and case['id'] not in state['results'] for case in plan['cases'])):
+                    driver_process.close_log()
+                    try:
+                        driver_process = start_codex_driver(repo_root, run_id, run_dir)
+                        driver_exit_recorded = False
+                        state = update_driver(driver_process.public_state(), 'codex_driver_restarted_after_human')
+                    except (CodexDriverError, OSError) as error:
+                        driver_process = None
+                        state = update_driver({'status':'failed', 'summary':str(error)}, 'codex_driver_start_failed')
             if state["status"] == "cancelled":
                 stop_driver()
                 result = read_json(run_dir / "result.json")
@@ -355,7 +384,7 @@ def _execute_run(
                                 f"./bin/ai2apps-test next --run {run_id}"
                             ),
                         }
-            if not pending_ui:
+            if not pending_ui and not any(case['id'] not in state['results'] for case in plan['cases']):
                 result = finalize_run(repo_root, run_id)
                 if driver_process is not None and not driver_exit_recorded:
                     exit_code = driver_process.wait(timeout=10)
@@ -383,7 +412,7 @@ def _execute_run(
                     "runDirectory": str(run_dir),
                     "report": str(run_dir / "report.html"),
                 }
-    if not pending_ui:
+    if not pending_ui and not any(case['id'] not in state['results'] for case in plan['cases']):
         result = finalize_run(repo_root, run_id)
         state["status"] = "completed"
     else:
@@ -405,6 +434,30 @@ def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = _parse_args(parser, argv)
     repo_root = _repo_root()
+    if args.command == "audio-capture":
+        from . import audio_capture
+        if args.action == "permission":
+            value = audio_capture.permission()
+        else:
+            if not args.run:
+                parser.error("audio-capture requires --run")
+            directory = find_run(repo_root, args.run)
+            if args.action == "start":
+                if not args.case:
+                    parser.error("audio-capture start requires --case")
+                value = audio_capture.start(repo_root, directory, args.case, args.seconds)
+            else:
+                if not args.capture:
+                    parser.error("audio-capture stop/status requires --capture")
+                value = getattr(audio_capture, args.action)(directory, args.capture)
+        _print(value)
+        return 0 if value["status"] in {"ready", "recording", "captured"} else 2
+    if args.command == "audio-check":
+        from .audio_check import check_audio, discover_checkpoint
+        value = check_audio(find_run(repo_root, args.run), args.audio, args.checkpoint or discover_checkpoint(),
+                            args.expected_text, args.language)
+        _print(value)
+        return 0 if value["status"] == "content-matched" else 2
     if args.command == "doctor":
         value = doctor(repo_root)
         _print(value)

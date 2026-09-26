@@ -32,8 +32,8 @@
 ## Safety
 
 - 只允许 `com.ai2apps.desktop.test` / instance `test`。
-- Computer Use 连接实际界面必须使用 `cua.getApp("com.ai2apps.desktop.test.shell")`。外层 `com.ai2apps.desktop.test` / `AI2Apps-test.app` 仅用于 Harness 启动和身份校验，不得作为 `cua.getApp` 目标。
-- Computer Use 超时先核对目标；误连外层 App 时必须改用 `.test.shell` 后再判断。正确目标仍超时才记录连接阻断，并保留实际调用目标、错误与重试结果；不得切换其他实例。
+- Computer Use 使用 `next` 返回的已校验 `shellAppPath` 完整内层 Shell 路径连接。路径必须位于当前固定 Test App 内且 Bundle ID 为 `com.ai2apps.desktop.test.shell`；禁止归档、显示名称及外层启动器。没有有效路径时阻断。
+- Computer Use 超时或歧义时重新读取 next，只重试已校验 shellAppPath；保留调用目标、错误与重试结果，不得切换实例。
 - 禁止操作 `default`、`dev` 或 `app-dev` 数据。
 - 禁止读取、打印或保存 Broker Credential、临时密码、lease token、Cookie 或 Bearer。
 - 验证 Broker Credential 是否已配置或已授权时，必须在宿主机环境（沙箱外）执行 `./bin/ai2apps-test account doctor`。macOS Keychain 对沙箱不可见，因此不得使用沙箱内的 `credentialConfigured` / `credentialAuthorized` 结果判断 Credential 缺失、无效或未授权，也不得据此要求用户重新配置。

@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: chat-glm53-flash-mtp
+name: 从 Chat 安装 GLM-5.3 Flash 4bit MTP 并完成 Chat 对话
+description: 验证从 Chat App 模型切换菜单进入模型安装页面，安装 GLM-5.3 Flash 4bit MTP，返回 Chat 选择该模型并完成简单对话的完整流程。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- model-install
+- on-demand
+instructions:
+- 使用 Computer Use 连接测试 Harness 提供并校验的当前 Test App 内层 Shell，确认处于 test 实例；无法确认时阻断本 Case。
+- 通过 Shell 打开 Chat App，记录当前选中的模型，创建本 Case 专用的新对话。
+- 打开模型切换菜单，点击进入模型安装页面的入口，确认安装页面可见。
+- 在安装页面查找 GLM-5.3 Flash 4bit MTP，核对模型名称、4bit 量化与 MTP 标识，记录其安装前状态。若目标不存在或已安装，记录阻断原因，不卸载已有模型来制造前置条件。
+- 点击目标模型的安装按钮，观察安装进度并等待安装完成；若出现错误或超过本 Case 超时，记录页面显示的状态。
+- 使用页面提供的返回或导航入口回到 Chat App，打开模型切换菜单，选择刚安装的 GLM-5.3 Flash 4bit MTP。
+- 在本 Case 新建的对话中输入“你好，请用一句中文介绍你能提供什么帮助。”并发送，等待回复完成。
+- 继续输入“请计算 2 加 3，只回复结果。”并发送，等待回复完成，确认整个过程中当前模型仍为目标模型。
+expectations:
+- Chat App 模型切换菜单提供可操作的安装入口，点击后成功显示模型安装页面。
+- 目标安装项明确对应 GLM-5.3 Flash 4bit MTP，没有误选其他量化或非 MTP 版本。
+- 安装过程有可见状态反馈，最终显示已安装或可用状态，无安装失败提示。
+- 返回 Chat 后，目标模型出现在模型切换菜单中，选择后当前模型标识与目标一致。
+- 第一条消息发送成功，产生非空中文回复并结束生成，没有模型加载失败或推理错误。
+- 第二条消息得到结果 5，生成正常结束，当前模型仍为 GLM-5.3 Flash 4bit MTP。
+cleanup:
+- 通过 Chat UI 删除本 Case 创建的对话。
+fixtures: []

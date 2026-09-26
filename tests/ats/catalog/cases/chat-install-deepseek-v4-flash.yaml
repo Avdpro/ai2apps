@@ -1,0 +1,41 @@
+schemaVersion: 1
+id: chat-install-deepseek-v4-flash
+name: 从 Chat 安装 DeepSeek V4 Flash 高质量并完成对话
+description: 仅在隔离的 Test App 中，验证从 Chat 模型切换菜单进入模型安装页面，安装 DeepSeek V4 Flash 高质量后返回
+  Chat，选择该模型并完成简单对话。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: chat-app-basic
+enabled: true
+required: true
+requires:
+- test-account
+tags:
+- codex-ui
+- chat
+- model-install
+instructions:
+- 使用 Computer Use 连接 Harness next 返回且已校验的 shellAppPath，确认其位于当前固定 Test App 内，Shell
+  Bundle ID 为 com.ai2apps.desktop.test.shell，所属实例为 test；没有有效目标时将本 Case 标记为 blocked。
+- 在 Test App 中打开 Chat，记录当前选择的模型，然后打开模型切换菜单。
+- 从模型切换菜单中点击模型安装入口，确认进入模型安装页面。
+- 查找 DeepSeek V4 Flash，选择“高质量”版本，核对模型名称与版本。如果该版本已安装且无法验证实际安装过程，将本 Case 标记为 blocked，不卸载预先存在的模型。
+- 点击安装，观察安装状态直到成功完成；若出现失败提示或超时，记录界面可见结果。
+- 使用页面提供的返回入口返回 Chat，打开模型切换菜单并选择 DeepSeek V4 Flash 高质量。
+- 新建对话并发送“你好，请用一句中文介绍你能做什么。”，等待回复完成。
+- 检查 Chat 当前模型显示、用户消息与助手回复，确认未出现模型加载失败、请求失败或自动切换到其他模型的提示。
+expectations:
+- 所有操作均发生在经过校验的隔离 Test App 中。
+- Chat 模型切换菜单提供可用的模型安装入口，点击后成功进入模型安装页面。
+- 安装页面可找到 DeepSeek V4 Flash，并可明确选择“高质量”版本。
+- 该版本从未安装状态进入安装流程，最终显示安装成功或已安装状态，未出现失败提示。
+- 安装完成后能够返回 Chat，模型切换菜单中出现可选择的 DeepSeek V4 Flash 高质量。
+- 选择后 Chat 当前模型明确显示为 DeepSeek V4 Flash 高质量。
+- 测试消息发送成功，助手返回与请求相关的非空中文回复，生成状态正常结束。
+- 对话期间未出现模型加载失败、请求失败或自动切换模型的提示。
+cleanup:
+- 删除本 Case 新建的测试对话。
+fixtures: []

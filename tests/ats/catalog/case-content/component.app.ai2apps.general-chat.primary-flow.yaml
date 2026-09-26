@@ -1,0 +1,13 @@
+id: component.app.ai2apps.general-chat.primary-flow
+content:
+  name: 'Chat: Primary navigation and recovery'
+  description: Generated common contract for ai2apps.general-chat
+  instructions:
+  - 点击 Dock 最左边的 Home 图标按钮，等待3秒，界面应该切换到Home
+  - 点击 Dock 最右边的 App Launcher 图标按钮，等待1秒
+  - 点击 App Launcher 里的 Chat 卡片，等待5秒
+  expectations:
+  - 点击 home 后，Shell 应该正确切换到 Home 界面
+  - 点击 App Launcher 后，Shell 应该展示 App Launcher
+  - 点击 Chat 卡片后，Shell 应该进入Chat App，并且已经可以开始聊天了。
+  cleanup: []

@@ -298,18 +298,95 @@ function renderPipelineSteps() {
   lastRunPanel.textContent = pipelineLastRun
     ? `上次运行：${pipelineLastRun.conclusion} · ${pipelineLastRun.runId} · ${new Date(pipelineLastRun.createdAt).toLocaleString()}${pipelineLastRun.revision !== pipelineRevision ? ' · Pipeline 已修改，以下为历史结果' : ''}`
     : '尚无运行结果';
-  const labels = {'restart-app': '重启 App', 'restart-local': '重启 Local', 'quit-all-relaunch': '全部退出再启动', 'reset-data': '重置数据'};
+  const labels = {'include-pipeline': '引入 Pipeline', 'human-test': '用户辅助测试', 'restart-app': '重启 App', 'restart-local': '重启 Local', 'quit-all-relaunch': '全部退出再启动', 'reset-data': '重置数据'};
   $('pipeline-steps').innerHTML = pipelineSteps.length ? '' : '<div class="empty-state"><div class="empty-icon">＋</div><h3>轨迹还是空的</h3><p>添加 Case 或动作来建立第一条测试路径。</p></div>';
   pipelineSteps.forEach((step, index) => {
     const row = document.createElement('div');
     row.className = 'pipeline-step' + (selectedPipelineStep === index ? ' selected' : '');
-    row.onclick = event => { if (!event.target.closest('button,select')) { selectedPipelineStep = index; renderPipelineSteps(); } };
+    row.onclick = event => { if (!event.target.closest('button,select,input,label,textarea')) { selectedPipelineStep = index; renderPipelineSteps(); } };
     const source = step.type === 'case' ? pipelineCase(step.caseId) : null;
-    const title = step.type === 'case' ? (source?.name || step.caseId) : labels[step.action] || step.action;
+    const title = step.type === 'case' ? (source?.name || step.caseId) : step.action === 'start-helper' ? '启动 Test Helper' : labels[step.action] || step.action;
     const subtitle = step.type === 'case' ? step.caseId : 'Test 实例动作';
     const expectation = step.type === 'case' ? `<select data-expectation><option value="passed">期待通过</option><option value="failed">期待失败</option><option value="blocked">期待阻断</option><option value="stop-when-failed">stop when failed（失败即停止）</option><option value="stop-when-succeed">stop when succeed（成功即停止）</option></select>` : '<span class="muted">必须成功</span>';
     row.innerHTML = `<span class="pipeline-step-index">${index + 1}</span><span class="pipeline-step-icon">${step.type === 'case' ? 'C' : '↻'}</span><span class="pipeline-step-main"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subtitle)}</span></span>${expectation}<span class="pipeline-step-actions"><button data-up title="上移">↑</button><button data-down title="下移">↓</button><button data-delete title="删除">×</button></span>`;
     const select = row.querySelector('[data-expectation]');
+    const enabled = document.createElement('label');
+    enabled.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:14px';
+    if (step.type === 'case') {
+      const mode = document.createElement('select');
+      mode.setAttribute('aria-label', `步骤执行方式 ${index + 1}：${title}`);
+      mode.innerHTML = '<option value="run">运行</option><option value="skip">跳过</option><option value="manual">人工</option>';
+      mode.value = step.executionMode || (step.enabled === false ? 'skip' : 'run');
+      mode.onchange = () => {
+        step.executionMode = mode.value;
+        delete step.enabled;
+        if (mode.value !== 'manual') delete step.confirmTimeoutSeconds;
+        renderPipelineSteps();
+      };
+      enabled.append(mode);
+      if (mode.value === 'manual') {
+        const timeout = document.createElement('input');
+        timeout.type = 'number'; timeout.min = 1; timeout.max = 86400;
+        timeout.value = step.confirmTimeoutSeconds || 120;
+        timeout.setAttribute('aria-label', '人工确认超时（秒）');
+        timeout.oninput = () => { step.confirmTimeoutSeconds = Number(timeout.value); };
+        enabled.append(document.createTextNode('确认超时（秒）'), timeout);
+      }
+    } else {
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = step.enabled !== false;
+    checkbox.setAttribute('aria-label', `运行步骤 ${index + 1}：${title}`);
+    checkbox.onchange = () => { step.enabled = checkbox.checked; renderPipelineSteps(); };
+    enabled.append(checkbox, document.createTextNode(step.enabled === false ? '已跳过' : '运行'));
+    }
+    row.querySelector('.pipeline-step-main').append(enabled);
+    if (step.type === 'action' && step.action === 'human-test') {
+      const settings = document.createElement('div');
+      settings.className = 'pipeline-step-result';
+      settings.innerHTML = '<label>用户操作说明<textarea aria-label="用户操作说明"></textarea></label><label>等待确认超时（秒）<input type="number" min="1" max="86400" aria-label="等待确认超时（秒）"></label><p>未确认时循环提示音；超时跳过。确认后由用户提交结果。</p>';
+      settings.querySelector('textarea').value = step.humanInstructions || '';
+      settings.querySelector('textarea').oninput = e => { step.humanInstructions = e.target.value; };
+      settings.querySelector('input').value = step.confirmTimeoutSeconds || 120;
+      settings.querySelector('input').oninput = e => { step.confirmTimeoutSeconds = Number(e.target.value); };
+      row.append(settings);
+    }
+    if (step.type === 'action' && step.action === 'include-pipeline') {
+      const settings = document.createElement('label');
+      settings.className = 'pipeline-step-result';
+      settings.append('引入 Pipeline ');
+      const select = document.createElement('select');
+      select.add(new Option('请选择 Pipeline', ''));
+      for (const candidate of catalogData?.pipelines || []) {
+        if (candidate.id !== activePipeline?.id && candidate.enabled !== false) {
+          select.add(new Option(candidate.name + ' · ' + candidate.id, candidate.id));
+        }
+      }
+      if (step.pipelineId && !Array.from(select.options).some(option => option.value === step.pipelineId)) {
+        select.add(new Option('不可用：' + step.pipelineId, step.pipelineId));
+      }
+      select.value = step.pipelineId || '';
+      select.onchange = () => { step.pipelineId = select.value; };
+      settings.append(select);
+      row.append(settings);
+    }
+    if (step.type === 'action' && step.action === 'start-helper') {
+      const settings = document.createElement('div');
+      settings.className = 'pipeline-step-result';
+      settings.innerHTML = `<label>测试账号登录 <select data-login><option value="none">不登录（保留现有 Session）</option><option value="auto">自动分配测试账号</option><option value="selected">指定测试账号</option></select></label>`;
+      const login = settings.querySelector('select');
+      login.value = step.loginMode || 'none';
+      login.onchange = () => { step.loginMode = login.value; if (login.value === 'selected') step.accountEmail = 'test1@ai2apps.com'; else delete step.accountEmail; renderPipelineSteps(); };
+      if (step.loginMode === 'selected') {
+        const account = document.createElement('select');
+        account.setAttribute('aria-label', '测试账号');
+        account.innerHTML = Array.from({length: 10}, (_, i) => `<option>test${i + 1}@ai2apps.com</option>`).join('');
+        account.value = step.accountEmail || '';
+        account.onchange = () => { step.accountEmail = account.value; };
+        settings.append(account);
+      }
+      row.append(settings);
+    }
     if (step.type === 'case') {
       const heading = row.querySelector('.pipeline-step-main strong');
       const edit = document.createElement('button');
@@ -324,7 +401,7 @@ function renderPipelineSteps() {
       const previous = pipelineLastRun.steps[step.id];
       const result = document.createElement('div');
       result.className = 'pipeline-step-result';
-      const matches = previous && (step.type === 'case' ? previous.sourceCaseId === step.caseId : previous.action === step.action);
+      const matches = previous && (step.type === 'case' ? previous.sourceCaseId === step.caseId : previous.action === step.action && (step.action !== 'include-pipeline' || previous.pipelineId === step.pipelineId));
       if (!matches) {
         result.textContent = '上次运行：此步骤未执行';
       } else {
@@ -332,7 +409,7 @@ function renderPipelineSteps() {
         const badge = statusNode(previous.status);
         result.append('上次运行：', badge);
         if (previous.observedStatus) result.append(' · 实际 ' + previous.observedStatus);
-        if (changed) result.append(' · 步骤或 Case 已修改，需重新验证');
+        if (changed || (step.type === 'case' && previous.executionMode !== (step.executionMode || (step.enabled === false ? 'skip' : 'run'))) || (step.action === 'start-helper' && (previous.loginMode !== (step.loginMode || 'none') || (previous.accountEmail || '') !== (step.accountEmail || '')))) result.append(' · 步骤或 Case 已修改，需重新验证');
         if (previous.summary) {
           const summary = document.createElement('div');
           summary.textContent = previous.summary;
@@ -437,6 +514,8 @@ function confirmPipelineCases() {
 
 function appendPipelineAction() {
   const step = {id: nextPipelineStepId(), type: 'action', action: $('pipeline-action').value};
+  if (step.action === 'include-pipeline') step.pipelineId = '';
+  if (step.action === 'human-test') Object.assign(step, {humanInstructions: '请在 Test App 中完成测试，并提交结果。', confirmTimeoutSeconds: 120});
   const index = selectedPipelineStep >= 0 ? selectedPipelineStep + 1 : pipelineSteps.length;
   pipelineSteps.splice(index, 0, step);
   selectedPipelineStep = index;
@@ -479,6 +558,34 @@ async function savePipelineEditor() {
     await refreshPipelines();
     await editPipeline(saved.id);
   } catch (error) { showPipelineErrors([error.message]); }
+}
+
+let pipelineSaveAsDraft = null;
+function openPipelineSaveAs() {
+  pipelineSaveAsDraft = structuredClone(pipelineValue());
+  $('pipeline-save-as-id').value = pipelineSaveAsDraft.id.slice(0, 123) + '-copy';
+  $('pipeline-save-as-name').value = pipelineSaveAsDraft.name + ' 副本';
+  $('pipeline-save-as-error').textContent = '';
+  $('pipeline-save-as-dialog').classList.remove('hidden');
+  $('pipeline-save-as-id').focus();
+}
+
+async function confirmPipelineSaveAs() {
+  const value = {...pipelineSaveAsDraft, id: $('pipeline-save-as-id').value.trim(), name: $('pipeline-save-as-name').value.trim()};
+  const button = $('confirm-pipeline-save-as');
+  button.disabled = true;
+  try {
+    if (!/^[a-z0-9][a-z0-9.-]{0,127}$/.test(value.id)) throw new Error('ID 只能包含小写字母、数字、点和连字符，最长 128 字符');
+    if (value.id === pipelineSaveAsDraft.id) throw new Error('请使用不同于原 Pipeline 的新 ID');
+    if (!value.name) throw new Error('请填写显示名称');
+    // POST without revision is create-only: an existing ID must never be overwritten.
+    const saved = await catalogApi('/api/catalog/pipelines', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(value)});
+    $('pipeline-save-as-dialog').classList.add('hidden');
+    showToast('已另存为新 Pipeline');
+    await refreshPipelines();
+    await editPipeline(saved.id);
+  } catch (error) { $('pipeline-save-as-error').textContent = error.message; }
+  finally { button.disabled = false; }
 }
 
 async function runPipeline() {
@@ -1139,6 +1246,57 @@ function renderCodexOutput(output) {
   $('codex-output-time').textContent = output.updatedAt ? '最近活动 ' + new Date(output.updatedAt).toLocaleTimeString() : '';
 }
 
+let humanKey = '';
+function renderHumanAction(value) {
+  let card = $('human-action-card');
+  if (!card) {
+    card = document.createElement('section');
+    card.id = 'human-action-card';
+    card.className = 'card';
+    card.tabIndex = -1;
+    card.style.cssText = 'padding:24px;border:2px solid #6366f1;margin:16px 0';
+    $('current').closest('.page-heading').after(card);
+  }
+  const visible = value && ['waiting', 'active'].includes(value.phase);
+  card.classList.toggle('hidden', !visible);
+  if (!visible) { humanKey = ''; return; }
+  const key = value.id + value.phase;
+  if (humanKey !== key) {
+    humanKey = key;
+    card.innerHTML = `<h3>用户辅助测试 · ${escapeHtml(value.caseId)}</h3><p style="white-space:pre-wrap">${escapeHtml(value.instructions)}</p><p data-countdown></p><div data-controls></div><p data-error role="alert"></p>`;
+    const controls = card.querySelector('[data-controls]');
+    if (value.phase === 'waiting') {
+      controls.innerHTML = '<button class="button primary" data-action="start">Confirm Start</button> <button class="button secondary" data-action="mute">静音提醒</button>';
+    } else {
+      controls.innerHTML = '<label>原因（Block / Failed 必填，请勿输入密码等秘密）<textarea data-reason maxlength="4000"></textarea></label><button class="button secondary" data-action="skipped">Skip</button> <button class="button primary" data-action="passed">Pass</button> <button class="button secondary" data-action="blocked">Block</button> <button class="button danger" data-action="failed">Failed</button>';
+    }
+    controls.querySelectorAll('[data-action]').forEach(button => {
+      button.onclick = async () => {
+        const reason = controls.querySelector('[data-reason]')?.value || '';
+        if (['blocked', 'failed'].includes(button.dataset.action) && !reason.trim()) {
+          card.querySelector('[data-error]').textContent = '请填写原因'; return;
+        }
+        button.disabled = true;
+        try {
+          const response = await fetch(apiUrl('/api/human-action'), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:value.id, action:button.dataset.action, reason})});
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || '提交失败');
+          await updateProgress();
+        } catch (e) { card.querySelector('[data-error]').textContent = e.message; }
+        finally { button.disabled = false; }
+      };
+    });
+    card.scrollIntoView({behavior:'smooth', block:'center'});
+    (controls.querySelector('button') || card).focus({preventScroll:true});
+  }
+  card.querySelector('[data-countdown]').textContent = value.phase === 'waiting' ? `等待确认：${Math.max(0, Math.ceil(value.deadline - Date.now()/1000))} 秒${value.muted ? ' · 已静音' : ' · 每 3 秒提示音'}` : '测试已开始，请操作 Test App 后提交结果。';
+  if (value.phase === 'waiting') {
+    const expired = Date.now()/1000 >= value.deadline;
+    card.querySelector('[data-action="start"]').disabled = expired;
+    if (expired) card.querySelector('[data-countdown]').textContent = '确认已超时，正在跳过此步骤…';
+  }
+}
+
 async function updateProgress() {
   try {
     const status = await (await fetch(apiUrl('/api/status'))).json();
@@ -1163,6 +1321,7 @@ async function updateProgress() {
     if (status.handoffPrompt) $('handoff-text').textContent = status.handoffPrompt;
     renderIssues(status.issues || []);
     renderCases(status.groups || []);
+    renderHumanAction(status.humanAction);
     if (status.report) $('report').innerHTML = '报告：' + artifactLink('report.html', '打开测试报告 ↗');
     $('return-to-case').classList.toggle('hidden', !status.terminal || !trialContext);
     $('return-to-pipeline').classList.toggle('hidden', !status.pipelineId);
@@ -1259,8 +1418,13 @@ $('close-pipeline-cases').onclick = () => $('pipeline-cases-dialog').classList.a
 $('cancel-pipeline-cases').onclick = () => $('pipeline-cases-dialog').classList.add('hidden');
 $('confirm-pipeline-cases').onclick = confirmPipelineCases;
 $('append-action').onclick = appendPipelineAction;
+$('pipeline-action').add(new Option('用户辅助测试', 'human-test'));
+$('pipeline-action').add(new Option('引入 Pipeline', 'include-pipeline'));
 $('validate-pipeline').onclick = validatePipelineEditor;
 $('save-pipeline').onclick = savePipelineEditor;
+$('save-as-pipeline').onclick = openPipelineSaveAs;
+$('confirm-pipeline-save-as').onclick = confirmPipelineSaveAs;
+$('cancel-pipeline-save-as').onclick = () => { $('pipeline-save-as-dialog').classList.add('hidden'); $('save-as-pipeline').focus(); };
 $('run-pipeline').onclick = runPipeline;
 $('close-pipeline-diff').onclick = () => $('pipeline-diff-shell').classList.add('hidden');
 $('copy-handoff').onclick = copyHandoff;

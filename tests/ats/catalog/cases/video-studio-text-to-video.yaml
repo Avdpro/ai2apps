@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: video-studio-text-to-video
+name: 文生视频：生成哈士奇吃香蕉视频
+description: 进入 Video Studio 文生视频 Mini-App，必要时安装 OpenVDN DMD 8-step Q4 模型，选择 OpenVDN
+  H3 DMD 8-step Q4 并提交提示词，确认右侧生成视频。
+groupId: video-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- video-studio
+- text-to-video
+- codex-ui
+instructions:
+- 使用 Computer Use 操作 AI2Apps Shell，进入 Video Studio，打开文生视频 Mini-App。
+- 查看模型选择区域。如果显示“暂无模型”，点击模型下拉框，选择“安装更多模型”。
+- 在模型安装界面找到 OpenVDN DMD 8-step Q4，点击安装；在模型许可区域勾选以“I confirm”开头的确认项，确认许可并继续下载。
+- 等待模型下载和安装完成，返回文生视频 Mini-App。
+- 打开模型下拉菜单，选择 OpenVDN H3 DMD 8-step Q4。
+- 在提示词输入框中输入“一只哈士奇跳上桌子吃香蕉”。
+- 点击“加入生成队列”，观察队列状态并等待右侧生成结果。
+- 在右侧结果区域打开或播放本次生成的视频，确认视频能够播放。
+expectations:
+- Video Studio 和文生视频 Mini-App 成功打开，模型选择、提示词输入和“加入生成队列”控件可见。
+- 如果初始显示“暂无模型”，模型安装流程可完成，许可确认后下载继续，安装完成后模型可供选择。
+- 模型选择区域显示 OpenVDN H3 DMD 8-step Q4。
+- 提示词输入框显示完整文本“一只哈士奇跳上桌子吃香蕉”。
+- 点击“加入生成队列”后出现本次任务，任务最终完成且未显示生成失败。
+- 右侧出现与本次任务对应的视频结果，视频可打开或播放，并能观察到连续画面。
+cleanup: []
+fixtures: []

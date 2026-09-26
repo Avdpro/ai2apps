@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: account-delete-device
+name: 删除绑定的 Device
+description: 验证用户在 Account App 中删除绑定 Device 后，该 Device 从绑定列表移除且刷新后仍保持删除状态。前置条件：测试账号中存在用户明确指定、允许删除且不承载当前测试会话的
+  Device；不满足时标记为 blocked。
+groupId: account-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 300
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires:
+- test-account
+tags:
+- codex-ui
+- account
+- device
+instructions:
+- 使用 Computer Use 连接 Harness 提供并校验的当前 Test App 内层 Shell，确认操作对象为隔离测试实例。
+- 通过 Shell 打开 Account App，确认当前为测试账号，然后进入绑定 Device 管理页面。
+- 找到用户指定且允许删除的 Device，通过页面可见名称及其他非敏感标识核对目标；目标不存在、无法唯一识别或承载当前测试会话时，停止本 Case 并标记为 blocked。
+- 记录目标 Device 的可见非敏感标识及其他绑定 Device，点击目标 Device 的删除操作。
+- 检查删除确认界面中的目标信息，选择取消，确认返回列表后目标 Device 仍存在。
+- 再次点击同一 Device 的删除操作，核对确认界面后确认删除，等待界面显示操作结果。
+- 检查绑定 Device 列表，再离开并重新进入该管理页面，核对目标 Device 和其他绑定 Device 的状态。
+expectations:
+- Account App 能正常打开，绑定 Device 管理页面可见。
+- 删除确认界面能明确识别待删除目标，并提供确认与取消操作。
+- 取消删除后，目标 Device 仍显示在绑定列表中。
+- 确认删除后，界面未显示删除失败，目标 Device 从绑定列表移除。
+- 离开并重新进入管理页面后，目标 Device 仍不在绑定列表中。
+- 其他原有绑定 Device 保持存在，当前测试会话仍可正常操作 Account App。
+cleanup: []
+fixtures: []

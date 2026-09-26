@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: account-redeem-code
+name: 兑换码兑换与点数核对
+description: 由用户在 Account App 中兑换测试兑换码，验证兑换结果及点数增加值。测试素材须由用户通过 Test Center 的受管理上传流程补充，明确预期到账点数及点数类型；素材缺失时标记为
+  blocked。
+groupId: account-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires:
+- test-account
+tags:
+- codex-ui
+- account
+- on-demand
+instructions:
+- 确认 Test Center 中已补充本 Case 的兑换测试素材，包含预期到账点数及点数类型；若缺失或无法确定预期值，标记为 blocked。
+- 使用 Computer Use 连接 Harness 提供并校验的当前 Test App 内层 Shell，确认处于 test 实例；从 AI2Apps Shell
+  打开 Account App，确认测试账号已登录。
+- 进入点数页面，等待加载完成，记录待兑换点数类型的当前余额及其他点数类型余额。测试期间暂停其他会消耗或增加点数的操作。
+- 通过 Account App 的可见入口进入兑换码页面，由用户在输入框内输入测试兑换码并点击兑换。避免在截图或测试记录中保存完整兑换码；只提交一次。
+- 等待兑换完成，记录页面显示的成功、失败或处理中状态及到账点数。若结果不明，不重复提交，继续查看点数页面。
+- 返回点数页面，使用页面提供的刷新入口或重新进入该页面，等待余额加载完成，记录兑换后的各类点数余额并计算差值。
+- 再次离开并返回点数页面，确认余额稳定，并逐项对照素材中的预期到账点数及点数类型。
+expectations:
+- Account App 显示兑换成功，且没有同时出现失败或持续处理中状态。
+- 指定点数类型的兑换后余额减去兑换前余额，等于测试素材中明确的预期到账点数。
+- 不属于本次兑换目标的其他点数类型余额保持不变。
+- 再次进入点数页面后余额保持一致，没有回退或重复增加。
+cleanup: []
+fixtures: []

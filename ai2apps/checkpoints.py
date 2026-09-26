@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import stat
+from pathlib import PurePosixPath
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +73,101 @@ def _diffusers_checkpoint_is_complete(root: Path, runtime_components: frozenset[
         and _indexed_shards_are_complete(root)
         and any(path.is_file() for path in root.rglob("*.safetensors"))
     )
+
+
+def _verified_distribution_checkpoint_is_complete(
+    root: Path, model: dict[str, Any]
+) -> bool:
+    """Accept an immutable Registry snapshot using its verified-file receipt.
+
+    Some native Service checkpoints are overlays rather than standalone model
+    roots.  They intentionally have neither a root ``config.json`` nor a root
+    safetensors file, so the generic Transformer/Diffusers layout probe cannot
+    describe them.  Checkpoint acquisition has already verified every file
+    against the signed distribution manifest and records immutable file stats;
+    reuse that receipt without rehashing multi-gigabyte weights on Worker start.
+    """
+
+    weights = model.get("weights")
+    distribution_id = (
+        weights.get("distribution_id") if isinstance(weights, dict) else None
+    )
+    if not isinstance(distribution_id, str) or not distribution_id:
+        return False
+
+    metadata_path = root / ".ai2apps" / "distribution.json"
+    verification_path = root / ".ai2apps" / "verification.json"
+    if (
+        metadata_path.is_symlink()
+        or verification_path.is_symlink()
+        or not metadata_path.is_file()
+        or not verification_path.is_file()
+    ):
+        return False
+    metadata = _read_json_object(metadata_path)
+    verification = _read_json_object(verification_path)
+    if (
+        metadata is None
+        or metadata.get("format") != "ai2apps-checkpoint-distribution"
+        or metadata.get("version") != 1
+        or metadata.get("distributionId") != distribution_id
+        or not isinstance(metadata.get("manifestDigest"), str)
+        or verification is None
+        or verification.get("format") != "ai2apps-checkpoint-verification"
+        or verification.get("version") != 1
+        or verification.get("manifestDigest") != metadata["manifestDigest"]
+        or not isinstance(verification.get("files"), dict)
+        or not verification["files"]
+    ):
+        return False
+
+    files = verification["files"]
+    expected_paths = set(files)
+    if not any(path.endswith(".safetensors") for path in expected_paths):
+        return False
+    actual_paths = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() or path.is_symlink()
+    }
+    if actual_paths != {
+        *expected_paths,
+        ".ai2apps/distribution.json",
+        ".ai2apps/verification.json",
+    }:
+        return False
+
+    for relative, recorded in files.items():
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or relative.startswith("/")
+            or ".." in PurePosixPath(relative).parts
+            or not isinstance(recorded, dict)
+        ):
+            return False
+        target = root
+        for part in PurePosixPath(relative).parts:
+            target = target / part
+            if target.is_symlink():
+                return False
+        try:
+            info = target.stat()
+        except OSError:
+            return False
+        current = {
+            "device": int(info.st_dev),
+            "inode": int(info.st_ino),
+            "size": int(info.st_size),
+            "mtimeNs": int(info.st_mtime_ns),
+        }
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_mode & 0o222
+            or recorded != current
+        ):
+            return False
+    return True
 
 
 def checkpoint_is_complete(
@@ -149,12 +246,14 @@ _IDEOGRAM_COMPONENTS = (
 def model_checkpoint_is_complete(path: Path, model: dict[str, Any]) -> bool:
     """Validate the exact adapter input layout, including Runtime-owned config."""
 
+    root = path.resolve()
+    if _verified_distribution_checkpoint_is_complete(root, model):
+        return True
     metadata = model.get("metadata") or {}
     backend = (metadata.get("family"), metadata.get("implementation"))
     if backend == ("ideogram4", "ai2apps-native-mlx-optimized"):
         # Configuration/tokenizer assets ship in this Package. Every source
         # tensor is nevertheless mandatory; one nested tensor is not enough.
-        root = path.resolve()
         for relative in _IDEOGRAM_COMPONENTS:
             component = root / relative
             try:

@@ -182,6 +182,12 @@ if request.operation == "quit-shell" {
     finish("quit-shell")
 }
 
+if request.operation == "permission-check" {
+    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+    let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
+    finish(trusted ? "trusted" : "accessibility-permission", code: trusted ? 0 : 2)
+}
+
 guard AXIsProcessTrusted() else { finish("accessibility-permission", code: 2) }
 
 let apps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)

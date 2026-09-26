@@ -21,7 +21,8 @@ def conclusion(state: dict[str, Any], finalize_pending: bool = False) -> str:
     cases = state["plan"]["cases"]
     statuses = [
         results.get(case["id"], {}).get("status", "pending") for case in cases
-        if not (state.get("pipelineStop") and
+        if results.get(case["id"], {}).get("skipReason") != "step-disabled"
+        and not (state.get("pipelineStop") and
                 results.get(case["id"], {}).get("skipReason") == "pipeline-stop")
     ]
     if "failed" in statuses:
@@ -112,6 +113,8 @@ def write_reports(
             relative = path.relative_to(run_dir.resolve()).as_posix()
             href = "./" + quote(relative, safe="/")
             links.append(f'<li><a href="{html.escape(href, quote=True)}" target="_blank" rel="noopener noreferrer">{html.escape(relative)}</a></li>')
+            if path.suffix.lower() in {'.wav', '.mp3', '.m4a', '.flac'}:
+                links.append(f'<li><audio controls preload="none" src="{html.escape(href, quote=True)}"></audio></li>')
             lines.append(f"- [{relative}]({href})")
         title = html.escape(f"{case['name']} · {case['id']}")
         evidence_sections.append(f"<section><h3>{title}</h3><ul>{''.join(links) if links else '<li>暂无证据文件</li>'}</ul></section>")

@@ -1,0 +1,34 @@
+schemaVersion: 1
+id: voice-studio-delete-character
+name: 删除语音角色
+description: 验证在 Voice Studio 的“Characters/角色管理”Mini-App 中删除角色 Clone Test 1 后，界面返回角色列表且该角色不再显示。前置条件：隔离
+  Test App 中已存在可供删除的角色 Clone Test 1；若不存在或存在多个同名角色而无法唯一识别，则标记为 blocked。
+groupId: voice-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 180
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- voice-studio
+- characters
+- delete
+instructions:
+- 使用 Computer Use 在隔离的 AI2Apps Test App（com.ai2apps.desktop.test，instance 为 test）中打开
+  Voice Studio。
+- 选择“Characters/角色管理”Mini-App，等待角色列表显示。
+- 找到名称为 Clone Test 1 的角色卡片，点击进入角色详情。
+- 确认详情中的角色名称为 Clone Test 1，点击“删除角色”按钮。
+- 在二次确认界面中确认删除操作。
+- 等待界面返回角色列表，检查完整列表；如提供搜索功能，搜索 Clone Test 1，确认没有该角色。
+expectations:
+- “Characters/角色管理”Mini-App 正常显示角色列表。
+- 点击 Clone Test 1 卡片后显示对应角色详情。
+- 点击“删除角色”后出现二次确认界面，角色未在确认前直接删除。
+- 确认删除后，界面自动返回角色列表，且没有显示删除失败提示。
+- 角色列表中不再存在 Clone Test 1；如使用搜索，搜索结果中没有该角色。
+cleanup: []
+fixtures: []

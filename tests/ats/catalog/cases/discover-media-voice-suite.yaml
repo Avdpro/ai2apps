@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: discover-media-voice-suite
+name: 安装 Media Voice Studio Suite 并检查语音与背景分离界面
+description: 在 Discover App 安装 Media Voice Studio Suite，确认 Voice Studio 中的 Voice and
+  Background Separation Mini-App 可见、可打开且界面正常。本 Case 仅检查界面，不上传素材或实际运行分离功能。
+groupId: discover-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires:
+- test-account
+tags:
+- codex-ui
+- discover-app-basic
+- on-demand
+instructions:
+- 使用 Computer Use 连接测试环境已校验的 AI2Apps Test Shell，打开 Discover App。
+- 搜索 Media Voice Studio Suite，打开名称完全匹配的 Package 详情页，记录其初始安装状态。
+- 若尚未安装，点击安装并等待界面显示安装完成；若已安装，保留现有安装，不卸载重装，并记录安装流程本次未覆盖。
+- 通过 AI2Apps Shell 打开 Voice Studio，查看 Mini-App 列表并查找 Voice and Background Separation。
+- 点击 Voice and Background Separation，等待其界面加载完成。
+- 检查标题、说明、素材输入区域及操作控件是否正常显示，观察是否存在空白页、错误提示、持续加载、重叠或裁切。
+- 观察未提供素材时操作控件的默认状态；不选择素材、不上传文件、不点击执行分离的按钮，记录界面检查结果。
+expectations:
+- Discover 搜索结果中存在名称为 Media Voice Studio Suite 的 Package，且详情页可以正常打开。
+- 初始未安装时，安装结束后界面明确显示已安装，且没有安装失败提示；初始已安装时，安装状态保持正常，并明确记录本次未验证安装过程。
+- Voice Studio 的 Mini-App 列表中可以看到 Voice and Background Separation。
+- 点击该 Mini-App 后可以进入对应界面，标题与所选 Mini-App 一致。
+- 界面加载完成，主要内容和控件可辨识，没有阻断使用的空白、报错、持续加载、重叠或裁切。
+- 未提供素材时，界面处于正常初始状态；因缺少素材而禁用执行按钮不判为失败。
+- 整个检查过程中未提交素材、未启动分离任务；结论仅覆盖界面可见性和可打开性，不宣称分离功能已验证。
+cleanup: []
+fixtures: []

@@ -1,0 +1,50 @@
+schemaVersion: 1
+id: voice-character-reference-clone
+name: 克隆语音角色并验证试听
+description: 在 Voice Studio 中使用参考音频创建 Clone Test 1 角色，验证试听输出、角色入库。归属按需 Group：Voice
+  Studio 基础测试（voice-studio-base-test）。执行前，用户须通过 Test Center 受管理上传流程补充指定音频素材；草稿不预置
+  fixture。仅操作已校验的 AI2Apps Test 实例，所有 Shell、Mini-App、原生窗口及 macOS 文件选择操作均使用 Computer
+  Use。
+groupId: voice-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 900
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- voice-studio
+- voice-studio-base-test
+instructions:
+- 使用 Computer Use 连接 Harness 提供并校验的当前 Test App 内层 Shell 完整路径，确认目标为 com.ai2apps.desktop.test.shell、实例为
+  test。
+- 打开 Voice Studio，选择“Characters/角色管理”Mini-App，确认角色库已显示。如果已有名为 Clone Test 1 的角色，记录名称冲突并将本
+  Case 标记为 blocked，不修改已有角色。
+- 点击“创建角色”，等待创建界面显示，检查音色环境的就绪状态；若无法就绪，记录可见状态并将本 Case 标记为 blocked。
+- 在“创建方式”中点击“参考克隆”。
+- 在“绑定模型”中选择“IndexTTS 2.5 MLX FP16”，确认选择已生效。
+- 确认 ASR 显示就绪，并确认“ASR 就绪时自动转录新素材”选项已启用；若未启用则点击启用。
+- 确认指定音频已由用户通过 Test Center 受管理上传流程补充。点击“上传音频”，使用 macOS 文件选择窗口的前往文件夹功能输入完整路径 /Users/avdpropang/sdk/omlx-moe-cache/ai2apps-test-system/assets/voice-1.wav，然后确认选择。若素材未补充或指定路径不可用，记录原因并将本
+  Case 标记为 blocked。
+- 等待音频上传及自动转录完成，检查“对照文本”。若内容不是“你好，很高兴见到你。窗外阳光正好，让我们慢慢说，把每句话说清楚。”，将其完整替换为该文本。
+- 点击“已对照音频校对文本”，确认其处于已确认状态。
+- 在角色名称输入框中输入“Clone Test 1”，点击“保存参考素材”，等待保存完成。
+- 点击“生成角色试听”，等待生成完成，检查右侧共享“试听与输出”面板，确认出现本次生成的新音频条目。
+- 点击顶部“返回角色库”，确认角色库中出现“Clone Test 1”角色卡片。
+expectations:
+- 所有 UI 操作均发生于已校验的 AI2Apps Test 实例。
+- “创建角色”打开创建界面，音色环境显示就绪。
+- 创建方式显示为“参考克隆”，绑定模型显示为“IndexTTS 2.5 MLX FP16”。
+- ASR 显示就绪，“ASR 就绪时自动转录新素材”已启用；上传后自动转录被触发并完成。
+- 上传的参考音频为指定完整路径下的 voice-1.wav，界面显示素材加载成功。
+- 保存前，对照文本精确等于“你好，很高兴见到你。窗外阳光正好，让我们慢慢说，把每句话说清楚。”，且“已对照音频校对文本”处于已确认状态。
+- 参考素材保存成功，角色名称为“Clone Test 1”。
+- 角色试听生成成功，右侧共享“试听与输出”面板新增与本次生成对应的音频条目，不能以已有音频条目判定通过。
+- 点击“返回角色库”后，角色库显示新建的“Clone Test 1”角色卡片。
+- 点击角色卡片可打开对应角色详情；删除操作显示二次确认窗口。
+- 确认删除后，界面返回角色库，角色库中不再存在本 Case 创建的“Clone Test 1”角色。
+cleanup: []
+fixtures: []

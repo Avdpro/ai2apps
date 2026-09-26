@@ -1,0 +1,43 @@
+schemaVersion: 1
+id: chat-read-aloud
+name: Chat 默认模型回复读出与系统音频验证
+description: 使用系统默认模型完成打招呼对话，验证回复读出功能。若提示安装模型，则安装 Qwen TTS 模型后重试。从触发读出时开始采集电脑系统输出音频，持续
+  20 秒，通过 ASR 判断窗口内是否正确读出回复；不要求读完全文。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 1800
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires:
+- system-audio-capture
+- asr
+tags:
+- codex-ui
+- chat-app-basic
+- on-demand
+- tts
+instructions:
+- 使用 Computer Use 连接 Harness 当前 next 返回并校验通过的 shellAppPath，确认属于固定 Test App，Shell Bundle
+  ID 为 com.ai2apps.desktop.test.shell、实例为 test；无法确认时将本 Case 标记为 blocked。
+- 通过 Computer Use 在 AI2Apps Shell 中打开 Chat，新建本 Case 专用会话，在模型选择界面选择“系统默认模型”，确认界面显示该选择。
+- 发送“你好，请用两三句话介绍一下你能怎样帮助我。”，等待模型回复完成，记录回复原文及对应消息的读出结果按钮。
+- 准备系统输出音频采集和 ASR 能力，采集来源选择电脑系统输出音频。若无法采集系统输出或无法进行 ASR，将本 Case 标记为 blocked。
+- 通过 Computer Use 点击该回复的读出结果按钮，同时启动系统输出音频采集，持续 20 秒后停止；记录点击与采集开始时间。
+- 若此次点击出现安装模型对话框，将这次采集标记为安装触发记录。通过 Computer Use 在对话框中选择 Qwen 的 TTS 模型并点击安装，等待界面明确显示安装成功；若没有可选的
+  Qwen TTS 模型或安装失败，记录界面结果并判定相应预期失败。
+- 若完成了模型安装，通过 Computer Use 再次点击同一条回复的读出结果按钮，同时重新启动一段系统输出音频采集，持续 20 秒后停止；记录点击与采集开始时间。
+- 对实际触发读出的那一次 20 秒录音执行 ASR，记录转写文本及可用的时间戳。仅使用这段录音中的语音与已记录的回复原文比较；若 ASR 结果存在歧义，通过 Computer
+  Use 回听同一段录音核对，不采纳窗口外的音频。
+expectations:
+- Chat 界面成功选择系统默认模型，打招呼消息获得非空且已完成的回复，回复具有可操作的读出结果按钮。
+- 若出现安装模型对话框，能够选择并成功安装 Qwen TTS 模型；安装后再次点击原回复的读出按钮能够触发读出。若未出现安装提示，此项记为不适用。
+- 用于最终判断的录音来自电脑系统输出，采集与实际读出点击同步开始，持续 20 秒；时间记录能够支持该采集窗口。
+- 20 秒录音中存在可辨识的回复语音，ASR 转写经必要回听核对后与回复原文的对应内容一致；忽略标点、空格和数字书写形式差异。
+- 不要求 20 秒内读完整条回复，窗口结束造成的句子或词语截断不判失败；窗口内只有静音、错误提示、无关语音或明确误读回复内容时判失败。
+cleanup:
+- 停止本 Case 启动且仍在运行的音频采集。
+- 通过 Computer Use 删除本 Case 创建的专用 Chat 会话。
+fixtures: []

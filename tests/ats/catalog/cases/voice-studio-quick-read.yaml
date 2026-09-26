@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: voice-studio-quick-read
+name: 快速朗读：ASR 校验生成与试听输出
+description: 在 Voice Studio 中使用演员 Clone Test 1 和 ASR 校验生成指定文本的朗读音频，验证生成完成后共享的“试听与输出”面板出现新音频。
+groupId: voice-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 900
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- voice-studio
+- quick-read
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中打开 Voice Studio，点击“快速朗读” Mini-App。
+- 记录右侧共享“试听与输出”面板现有音频条目，以便识别本次生成的新音频。
+- 在“朗读文本”输入框中填入：凡是有钱的单身汉，总想娶位太太，这已经成了一条举世公认的真理。这样的单身汉，每逢新搬到一个地方，四邻八舍虽然完全不了解他的性情如何，见解如何，可是，既然这样的一条真理早已在人们心目中根深蒂固，因此人们总是把他看作自己某一个女儿理所应得的一笔财产。
+- 打开演员选择控件，选择“Clone Test 1”，确认控件显示该演员；如果列表中没有该演员，记录阻塞原因。
+- 检查“ASR校验朗读”复选框，未勾选时将其勾选，确认处于勾选状态。
+- 打开 ASR 模型选择控件，选择一个可用模型，记录其显示名称并确认选择生效；如果没有可用模型，记录阻塞原因。
+- 点击“生成并播放”，观察生成状态，在本 Case 超时范围内等待生成结束。
+- 检查右侧共享“试听与输出”面板，对照生成前的条目，确认新增音频，并观察该音频的播放状态或播放进度。
+expectations:
+- 点击“快速朗读”后，其界面可见，包含朗读文本、演员、ASR 校验、ASR 模型和“生成并播放”控件。
+- 朗读文本输入框完整显示指定文本。
+- 演员选择结果为“Clone Test 1”。
+- 提交生成前，“ASR校验朗读”处于勾选状态，ASR 模型控件显示已选择的模型名称。
+- 生成在超时范围内结束，界面未显示生成失败或 ASR 校验失败提示。
+- 右侧共享“试听与输出”面板出现本次生成的新音频条目，原有条目仍保留。
+- 新音频进入播放状态，且可观察到播放进度推进。
+cleanup: []
+fixtures: []

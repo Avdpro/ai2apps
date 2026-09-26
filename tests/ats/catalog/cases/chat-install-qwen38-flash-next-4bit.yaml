@@ -1,0 +1,43 @@
+schemaVersion: 1
+id: chat-install-qwen38-flash-next-4bit
+name: 从 Chat 安装并使用 Qwen3.8 Flash Next 4-bit
+description: 验证从 Chat App 模型切换菜单进入模型安装页面，安装 Qwen3.8 Flash Next 4-bit，返回 Chat 选择该模型并完成简单对话的完整流程。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 3600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- model-install
+- on-demand
+instructions:
+- 通过 Computer Use 连接 Harness next 返回并已校验的 shellAppPath 对应的 Test Shell；确认属于 com.ai2apps.desktop.test
+  的 test 实例。若目标路径无效或实例不符，将 Case 标记为 blocked。
+- 通过 Shell 打开 Chat App，记录当前选中的模型，创建本 Case 专用的新对话。
+- 打开 Chat 的模型切换菜单，找到并点击用于安装或获取更多模型的入口。
+- 在打开的模型安装页面中查找 Qwen3.8 Flash Next 4-bit，核对模型名称和 4-bit 量化规格。若不存在精确匹配的模型，将 Case 标记为
+  blocked，不选择其他规格替代。
+- 检查目标模型的安装状态。如果已安装，将 Case 标记为 blocked，保留既有安装，不通过卸载已有模型制造测试前置条件。
+- 点击目标模型的安装按钮；若出现安装确认界面，核对模型和规格后确认。观察安装进度并等待安装完成；若出现错误或超过 Case 时限，记录界面显示的结果。
+- 使用界面中的返回或导航入口回到 Chat App，进入本 Case 创建的对话。
+- 再次打开模型切换菜单，选择 Qwen3.8 Flash Next 4-bit，等待界面显示该模型已选中且可以发送消息。
+- 发送“你好，请用一句中文介绍你能做什么。”，等待回复完整结束。
+- 继续发送“请计算 2 + 3，只回答数字。”，等待回复完整结束，观察是否存在错误提示或持续加载状态。
+expectations:
+- Chat 模型切换菜单提供可用的模型安装入口，点击后能够到达模型安装页面。
+- 安装页面能够定位 Qwen3.8 Flash Next 4-bit，并能明确判定目标为 4-bit 规格。
+- 安装启动后显示可观察的进度或进行中状态，最终显示已安装或安装成功，没有安装失败提示。
+- 安装完成后能够通过 UI 返回 Chat，且本 Case 创建的对话仍可访问。
+- Chat 模型切换菜单中出现已安装的目标模型；选择后，当前模型显示为 Qwen3.8 Flash Next 4-bit。
+- 第一条消息获得非空中文回复，回复正常结束，没有模型加载、推理或连接错误提示。
+- 第二条消息获得最终答案“5”，回复正常结束，没有持续加载状态。
+- 两次发送及回复期间，Chat 当前选中模型保持为目标模型，没有可见的自动回退或切换提示。
+cleanup:
+- 通过 Computer Use 删除本 Case 创建的专用对话。
+fixtures: []

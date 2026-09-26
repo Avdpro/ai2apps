@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: voice-character-design-preview
+name: 设计生成语音角色试听
+description: 在 Voice Studio 的角色管理中，通过设计生成方式配置“测试角色-1”，按需安装推荐模型并生成试听，验证右侧共享“试听与输出”栏出现新的音频文件。
+groupId: voice-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 1800
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- voice-studio
+- characters
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中打开 Voice Studio，在 Mini-Apps 中选择“Characters/角色管理”。
+- 查看音色环境状态；如界面提示需要准备环境，按照界面引导完成，等待显示就绪。若出现无法解决的错误，记录可见提示并将本 Case 标记为受阻。
+- 查看右侧“试听与输出”栏，记录已有音频条目，以便识别本次新增输出。
+- 点击“创建角色”，选择“Design/设计生成”，在角色名字中输入“测试角色-1”。
+- 打开声音模型选择控件。若存在可用模型，选择其中一个；若没有，点击“安装模型”，选择界面标注为推荐且支持当前创建方式的模型，等待安装成功，再返回并选中该模型。
+- 在声音描述中输入“40岁左右年轻北京男性。”。
+- 查看“生成角色试听”按钮状态。若按钮不可用且界面显示需要配置模型的入口，点击该入口，按界面引导安装推荐模型；完成后返回，确认所需模型已选中、角色名字和声音描述仍正确。若没有可用推荐模型或安装失败，记录可见提示并将本
+  Case 标记为受阻。
+- 确认“生成角色试听”按钮可用后点击一次，等待生成完成。若超时或显示失败，记录可见状态。
+- 检查右侧共享“试听与输出”栏，确认出现本次生成的新音频条目，并通过该条目的播放控件试听音频。
+expectations:
+- 成功打开 Voice Studio 的“Characters/角色管理”，音色环境显示就绪，无阻断提示。
+- 创建方式为“Design/设计生成”，角色名字为“测试角色-1”，声音描述为“40岁左右年轻北京男性。”。
+- 已选中一个可用的声音模型；若触发安装流程，界面显示安装成功，安装后的模型可被选中。
+- 所需模型配置完成后，“生成角色试听”按钮可用。
+- 点击生成后，在本 Case 超时前完成音频生成，界面未显示生成失败。
+- 右侧共享“试听与输出”栏新增至少一个可识别为本次生成的音频条目，且该条目可以播放。
+cleanup: []
+fixtures: []
