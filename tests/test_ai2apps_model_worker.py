@@ -541,3 +541,28 @@ def test_model_worker_rejects_non_wav_package_audio(tmp_path):
     assert response.status_code == 415
     assert response.json()["error"]["code"] == "unsupported_audio_format"
     assert not any((data / "requests").iterdir())
+
+
+def test_long_audio_upload_limits_are_scoped_and_enforced(tmp_path, monkeypatch):
+    from ai2apps.model_worker import server
+    assert server.MAX_MEDIA_INPUT_BYTES == 1024 ** 3
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(package, data, _manifest(), 9123)
+    audio = _wav_bytes()
+    monkeypatch.setattr(server, "MAX_MULTIPART_FILE_BYTES", len(audio) - 1)
+    monkeypatch.setattr(server, "MAX_MEDIA_INPUT_BYTES", len(audio))
+    app = create_app(config_path, token="worker-secret")
+    with TestClient(app) as client:
+        for endpoint in ["process", "transcriptions", "transcriptions/detailed"]:
+            response = client.post("/v1/audio/" + endpoint,
+                headers={"Authorization": "Bearer worker-secret"},
+                files={"file": ("episode.wav", audio, "audio/wav")})
+            assert response.status_code == 200
+            assert response.json()["part"]["size"] == len(audio)
+        for endpoint, field, content in [("process", "file", audio + b"x"),
+                                          ("process", "reference", audio),
+                                          ("speech", "file", audio)]:
+            response = client.post("/v1/audio/" + endpoint,
+                headers={"Authorization": "Bearer worker-secret"},
+                files={field: ("audio.wav", content, "audio/wav")})
+            assert response.status_code == 413

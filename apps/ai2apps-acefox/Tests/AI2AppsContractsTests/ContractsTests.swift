@@ -445,7 +445,7 @@ private func makePackagedHelperFixture(
         "Resources/AI2AppsLocal/bin/omlx"
     )
     let aceFox = contents.appendingPathComponent(
-        "Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+        "Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
     )
     try fileManager.createDirectory(
         at: helper.appendingPathComponent("Contents", isDirectory: true),

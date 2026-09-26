@@ -1,4 +1,12 @@
 {
+  "acpf.安装 {0}": "Установить {0}",
+  "acpf.选择要随 Package 一起下载并验证的 Checkpoint。": "Выберите контрольную точку для загрузки и проверки вместе с Package.",
+  "acpf.安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。": "Установите доверенный Package модели, загрузите выбранную контрольную точку, затем запустите и проверьте службу модели.",
+  "acpf.安装 Package 并下载模型": "Установить Package и загрузить модель",
+  "acpf.模型已安装并可用": "Модель установлена и готова",
+  "acpf.安装模型 Service Package": "Установить Service Package модели",
+  "acpf.下载所选模型 Checkpoint": "Загрузить выбранную контрольную точку модели",
+  "acpf.启动并验证模型服务": "Запустить и проверить службу модели",
   "acpf.完成": "Готово",
   "acpf.安装成功": "Установка завершена",
   "acpf.安装已完成，可以开始使用。": "Установка завершена. Можно начать использование.",
@@ -1172,5 +1180,14 @@
   "ai_browser.unauthorized": "Сеанс истёк или у вас нет разрешения. Войдите снова.",
   "ai_browser.network_error": "Не удалось подключиться. Проверьте соединение и повторите попытку.",
   "ai_browser.invalid_request": "Недопустимый запрос. Обновите страницу и повторите попытку.",
-  "discover.install.restart_local": "Перезапустить AI2Apps"
+  "discover.install.restart_local": "Перезапустить AI2Apps",
+  "account.password_change.title": "Изменить пароль",
+  "account.password_change.description": "Введите текущий пароль и подтвердите новый. После изменения потребуется снова войти.",
+  "account.password_change.current": "Текущий пароль",
+  "account.password_change.confirm": "Подтвердите новый пароль",
+  "account.password_change.mismatch": "Новые пароли не совпадают.",
+  "account.password_change.unchanged": "Новый пароль должен отличаться от текущего.",
+  "account.password_change.wrong_current": "Текущий пароль неверен.",
+  "account.password_change.unavailable": "Функция пока недоступна. Повторите после обновления сервиса Cloud.",
+  "account.password_change.success": "Пароль изменён. Войдите с новым паролем."
 }

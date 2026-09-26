@@ -63,6 +63,12 @@ resident and tail expert banks in the text-model sanitizer. This fixes valid
 Top120 + Tail24 checkpoints being rejected as though the 120-row resident bank
 were an incomplete combined bank.
 
+Version 1.7.9 adds native MLX VoxCPM2 and IndexTTS 2.5 execution. VoxCPM2 is
+provided by the pinned MLX-Audio 0.5.5 source revision. IndexTTS 2.5 uses the
+vendored, Torch-free WIndexTTS MLX inference path with structured emotion
+vectors, native duration control, reference-audio cloning, and offline WeText
+normalization for Chinese and English.
+
 The native payload is deliberately Runtime-only: it embeds the system Model
 Worker source rather than the full AI2Apps Host tree, omits Python test/cache
 content and xgrammar's link-time static archive, and excludes Host-owned
@@ -85,3 +91,10 @@ two-phase: notarize and staple that DMG, then pass it to the Package builder wit
 `--prepared-dmg --prepared-signing developer-id --team-id 84XL5V265N` while
 signing the outer Package with the official AI2Apps Publisher key. An
 unstapled Developer ID DMG is never accepted into a release Package.
+
+Version 1.7.10 fixes CosyVoice reference preprocessing on macOS Hardened Runtime. The private Python worker receives the executable-memory entitlement required by LLVM/Numba; library validation remains enabled.
+
+Version 1.7.12 keeps Direct Prefill for compute-ready six-segment DeepSeek V4
+expert stores and routes stores with required quantization biases through the
+asynchronous legacy Prefill loader. A stale Direct request marker now safely
+falls back after validating its layer and expert IDs.

@@ -437,3 +437,164 @@ async def test_workspace_tools_use_harness_invocation_and_progress(tmp_path):
     assert [item["progress"] for item in progress] == [0.25, 1.0]
     assert invocation.progress["text"] == "Workspace file written"
     assert len(runtime.services.list_invocations(trace_id="run_workspace_harness")) == 2
+
+@pytest.mark.asyncio
+async def test_audio_artifact_download_formats(tmp_path):
+    import io
+    import wave
+    import av
+    runtime = _runtime(tmp_path)
+    session = _session(runtime)
+    source = tmp_path / 'sample.wav'
+    with wave.open(str(source), 'wb') as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(24000)
+        output.writeframes(b'\x00\x00' * 24000)
+    artifact = runtime.workspace.import_artifact(session, source, 'sample.wav', media_type='audio/wav')
+    app = FastAPI()
+    app.include_router(create_ai2apps_router(runtime_provider=lambda: runtime, principal_provider=RequestPrincipal.legacy_local))
+    url = f'/v1/platform/sessions/{session}/artifacts/{artifact.id}/download'
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        for fmt, codec, mime in [('wav','pcm_s16le','audio/wav'),('mp3','mp3float','audio/mpeg'),('m4a','aac','audio/mp4'),('flac','flac','audio/flac')]:
+            response = await client.get(url, params={'audio_format': fmt})
+            assert response.status_code == 200
+            assert response.headers['content-type'] == mime
+            assert f'sample.{fmt}' in response.headers['content-disposition']
+            with av.open(io.BytesIO(response.content)) as audio:
+                assert audio.streams.audio[0].codec_context.name == codec
+                assert sum(frame.samples for frame in audio.decode(audio=0)) > 0
+        assert (await client.get(url, params={'audio_format': 'invalid'})).status_code == 422
+    runtime.stop()
+
+
+def test_quick_audio_history_survives_manager_restart_and_limits_twenty(tmp_path):
+    from ai2apps.readaloud.tasks import ReadAloudTaskManager
+    runtime = _runtime(tmp_path)
+    manager = runtime.readaloud_tasks
+    urls = []
+    for index in range(22):
+        urls.append(manager.save_quick_audio("local", b"RIFF" + bytes([index]),
+            title=f"Clip {index}", model_label="Test TTS", voice="alice"))
+    restarted = ReadAloudTaskManager(runtime=runtime, database=runtime.database,
+        workspace=runtime.workspace, root=manager.root)
+    history = restarted.quick_history("local")
+    assert len(history) == 20
+    assert history[0]["title"] == "Clip 21"
+    assert history[-1]["title"] == "Clip 2"
+    assert history[0]["downloadUrl"] == urls[-1]
+    assert history[0]["model"] == "Test TTS"
+    assert history[0]["actor"] == "alice"
+    assert restarted.quick_history("another-user") == []
+    runtime.stop()
+
+
+def test_quick_retention_removes_files_but_preserves_gallery_and_shared_artifacts(tmp_path):
+    from ai2apps.gallery import GalleryRepository
+    runtime = _runtime(tmp_path)
+    manager, workspace = runtime.readaloud_tasks, runtime.workspace
+    gallery = GalleryRepository(runtime.database, workspace.paths.artifacts_path / 'gallery')
+    first_url = manager.save_quick_audio('local', b'first-audio')
+    session, artifact_id = first_url.split('/')[4], first_url.split('/')[-2]
+    first = workspace.get_artifact(session, artifact_id)
+    source = workspace.artifact_path(first)
+    with source.open('rb') as stream:
+        asset, _ = gallery.import_stream('local', stream, name='saved.wav', media_type='audio/wav')
+    second_url = manager.save_quick_audio('local', b'shared-audio')
+    second = workspace.get_artifact(session, second_url.split('/')[-2])
+    shared_path = workspace.artifact_path(second)
+    shared = workspace.import_artifact(session, shared_path, 'other-app.wav')
+    for index in range(20):
+        manager.save_quick_audio('local', b'new-audio-' + bytes([index]))
+    assert not source.exists()
+    assert shared_path.read_bytes() == b'shared-audio'
+    assert gallery.asset_path('local', asset['id'])[1].read_bytes() == b'first-audio'
+    assert len(manager.quick_history('local')) == 20
+    workspace.retire_artifact(session, shared.id)
+    assert not shared_path.exists()
+    runtime.stop()
+
+
+def test_image_retention_removes_source_but_keeps_gallery(tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    from ai2apps.images.history import ImagineStudioHistoryRepository
+    from ai2apps.gallery import GalleryRepository
+    runtime = _runtime(tmp_path)
+    history = ImagineStudioHistoryRepository(runtime.database, tmp_path / 'image-history')
+    gallery = GalleryRepository(runtime.database, runtime.workspace.paths.artifacts_path / 'gallery')
+    scope = dict(actor_id='local', installation_id='test', app_instance_id='image-app')
+    data = BytesIO()
+    Image.new('RGB', (2, 2), 'red').save(data, format='PNG')
+    first = history.create(**scope, metadata={}, data=data.getvalue())
+    source = history.content_path(first['id'], **scope)[1]
+    with source.open('rb') as stream:
+        asset, _ = gallery.import_stream('local', stream, name='saved.png', media_type='image/png')
+    for _ in range(20):
+        history.create(**scope, metadata={}, data=data.getvalue())
+    assert not source.exists()
+    assert gallery.asset_path('local', asset['id'])[1].read_bytes() == data.getvalue()
+    runtime.stop()
+
+
+def test_video_studio_run_retention_keeps_gallery_and_active_runs(tmp_path):
+    from ai2apps.gallery import GalleryRepository
+    from ai2apps.studio.repository import StudioRepository
+    runtime = _runtime(tmp_path)
+    workspace = runtime.workspace
+    repository = StudioRepository(runtime.database)
+    gallery = GalleryRepository(runtime.database, workspace.paths.artifacts_path / 'gallery')
+    session = runtime.readaloud_tasks._artifact_session('local')
+    scope = dict(actor_id='local', installation_id='test', app_instance_id='video-app', studio_id='ai2apps.video-studio')
+    def create(mini='composer'):
+        return repository.create_run(**scope, mini_app_id=mini, mini_app_version='1',
+                                     placement='local', title='Video', input_data={})
+    pending = create()
+    other = create('extract-audio')
+    for index in range(21):
+        run = create()
+        output = tmp_path / 'render.mp4'
+        output.write_bytes(b'render-' + bytes([index]))
+        artifact = workspace.import_artifact(session, output, f'render-{index}.mp4')
+        repository.create_artifact(run['id'], **scope, kind='video', name=artifact.name,
+            media_type='video/mp4', source_id=artifact.id, preview_url='', download_url='',
+            metadata={'workspaceSessionId': session, 'workspaceArtifactId': artifact.id})
+        repository.update_run(run['id'], **scope, status='succeeded', progress=100)
+        if index == 0:
+            source = workspace.artifact_path(artifact)
+            with source.open('rb') as stream:
+                asset, _ = gallery.import_stream('local', stream, name='render.mp4', media_type='video/mp4')
+    repository.prune_output_history(workspace, **scope)
+    assert not source.exists()
+    assert gallery.asset_path('local', asset['id'])[1].read_bytes() == b'render-\x00'
+    runs = repository.list_runs(**scope)
+    assert len(runs) == 22
+    assert {pending['id'], other['id']} <= {run['id'] for run in runs}
+    runtime.stop()
+
+
+def test_voice_history_delete_preserves_gallery_and_invalidates_design(tmp_path):
+    from fastapi.testclient import TestClient
+    from ai2apps.api.readaloud import create_readaloud_router
+    from ai2apps.gallery import GalleryRepository
+    runtime=_runtime(tmp_path)
+    try:
+        url=runtime.readaloud_tasks.save_quick_audio('local',b'RIFF-reference',mini_app_id='ai2apps.audio.voice-design')
+        session_id,artifact_id=url.split('/')[4],url.split('/')[-2]
+        artifact=runtime.workspace.get_artifact(session_id,artifact_id)
+        source=runtime.workspace.artifact_path(artifact)
+        gallery=GalleryRepository(runtime.database,runtime.config.paths.artifacts_path/'gallery')
+        with source.open('rb') as stream:
+            asset,_=gallery.import_stream('local',stream,name='saved.wav',media_type='audio/wav')
+        from ai2apps.readaloud import ReadAloudRepository
+        repo=ReadAloudRepository(runtime.database,runtime.events)
+        profile=repo.save_design_profile('local',None,name='Design',model_id='test',description='calm',text='hello')
+        repo.attach_design_preview('local',profile['id'],('test','calm','hello'),{'artifact_id':artifact_id})
+        app=FastAPI();app.include_router(create_readaloud_router(lambda:runtime,lambda:RequestPrincipal.legacy_local()))
+        client=TestClient(app)
+        assert client.delete('/readaloud/audio-history/'+artifact_id).status_code==204
+        assert not source.exists()
+        assert gallery.asset_path('local',asset['id'])[1].read_bytes()==b'RIFF-reference'
+        assert not repo.get_voice_profile('local',profile['id'])['training']['design'].get('preview')
+    finally:
+        runtime.stop()

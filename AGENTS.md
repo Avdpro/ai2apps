@@ -204,3 +204,13 @@ before dynamic cache replacement work begins.
   verified, the Cloud endpoint passes production acceptance, and an eligible
   Mac completes an end-to-end upgrade. Record a release receipt, and never
   expose Apple, GitHub, ModelScope, Cookie, or redirect-signature secrets.
+
+
+## Voice Studio shared output contract
+
+All Voice Studio Mini-Apps, including Package-hosted frames, MUST use the one host-owned
+Preview & Output based on Quick Read. Never introduce per-Mini-App output history, playback,
+download or drag logic, or condition the right panel on the active Mini-App. See the mandatory
+"Voice Studio output ownership" section in `docs/ai2apps-studio-mini-app-package-contract-v1.md`.
+Run the shared output contract and cross-Mini-App selection tests when adding an output producer.
+Keep private Line audio caches and reference materials outside output retention/deletion.

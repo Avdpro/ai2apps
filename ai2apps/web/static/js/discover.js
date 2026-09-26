@@ -638,7 +638,17 @@
                 return !this.miniAppCategory || (item?.miniApp?.categories || []).includes(this.miniAppCategory);
             },
             isInstalled(id) { return Boolean(id && this.installed.some(item => item.packageId === id)); },
-            isModelReady(item) { return Boolean(this.installedItem(item?.packageId)?.modelReady); },
+            isModelReady(item) {
+                const installed = this.installedItem(item?.packageId);
+                const models = installed?.modelInstall?.models || [];
+                return models.length ? models.every(model => installed.readyModelConfigurationIds.includes(model.id)) : Boolean(installed?.modelReady);
+            },
+            modelReadinessLabel(item) {
+                const installed = this.installedItem(item?.packageId);
+                const models = installed?.modelInstall?.models || [];
+                const ready = models.filter(model => installed.readyModelConfigurationIds.includes(model.id)).length;
+                return models.length ? tr('discover.model.variants_ready', {ready, total:models.length}) : '';
+            },
             translate(key, values) { return tr(key, values); },
             installedItem(id) { return this.installed.find(item => item.packageId === id) || null; },
             pendingRestart(item) { return Boolean(this.installedItem(item?.packageId)?.restartRequired); },
@@ -752,6 +762,19 @@
                 try {
                     const suffix = item.version ? '?version=' + encodeURIComponent(item.version) : '';
                     const plan = await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/model-install-plan' + suffix);
+                    // Refresh per-checkpoint readiness: a Package can have several variants.
+                    const local = await request('/installed');
+                    const installed = (local.items || []).find(entry => entry.packageId === item.packageId);
+                    const readyIds = new Set(installed?.readyModelConfigurationIds || []);
+                    // A newer Package must still be allowed through the upgrade workflow.
+                    const currentVersion = installed && compareVersions(installed.version, item.version) >= 0;
+                    plan.installMore = true;
+                    plan.profileOptions = (plan.profileOptions || []).map(option => {
+                        const ready = Boolean(currentVersion && readyIds.has(option.modelId || option.profileId));
+                        return { ...option, installed: ready,
+                            selected: ready ? false : option.selected,
+                            recommended: ready ? false : option.recommended };
+                    });
                     const modelId = await window.AI2AppsCapabilities.chooseProfile(plan);
                     const result = await request('/' + encodeURIComponent(id.namespace) + '/' + encodeURIComponent(id.name) + '/model-install-sessions', {
                         method: 'POST', body: { version: item.version || null, modelId: modelId },
@@ -767,7 +790,7 @@
                     this.success(tr('discover.success.model_ready', { package: item.displayName }));
                     await this.loadCatalog();
                 } catch (error) {
-                    if (!String(error?.message || '').includes('已取消')) this.showError(error);
+                    if (error?.code !== 'provisioning_cancelled' && !String(error?.message || '').includes('已取消')) this.showError(error);
                 } finally { this.working = ''; redraw(); }
             },
             async resumeModelInstall() {
@@ -781,7 +804,7 @@
                     }
                     await this.loadCatalog();
                 } catch (error) {
-                    if (!String(error?.message || '').includes('已取消')) this.showError(error);
+                    if (error?.code !== 'provisioning_cancelled' && !String(error?.message || '').includes('已取消')) this.showError(error);
                 }
             },
             async resumeInstallContinuation() {
@@ -801,6 +824,9 @@
                         packageType: 'service',
                         description: '',
                     });
+                    // One-shot handoff: ACPF persists its own session after selection.
+                    // Cancelling selection must not replay this intent on every refresh.
+                    await request('/install-continuation', { method: 'DELETE' });
                     await this.install(item, pending.approveReview);
                 } catch (error) {
                     this.showError(error);

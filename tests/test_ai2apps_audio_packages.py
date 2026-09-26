@@ -219,6 +219,62 @@ def test_fish_and_cosyvoice_packages_use_native_mlx_runtime_contracts():
     assert "Built with Fish Audio" in fish_notice
 
 
+def test_voxcpm2_package_pins_native_mlx_variants_and_control_contract():
+    package = ServicePackageArchive._manifest(_manifest("omlx-model-voxcpm2"))
+    assert package.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
+    assert package.dependencies[0].version_spec == ">=1.7.9,<2.0.0"
+    assert {model["metadata"]["variant"] for model in package.models} == {
+        "4bit",
+        "8bit",
+    }
+    assert {
+        model["weights"]["revision"] for model in package.models
+    } == {
+        "dc9e5c187858da5f4a13dc4c247e297339216381",
+        "d52725898a0675703f7f9ddc5a4d1a3cdbb99032",
+    }
+    for model in package.models:
+        tts = model["audio_capabilities"]["tts"]
+        assert model["weights"]["distribution_id"] in {
+            "dist_ai2apps_voxcpm2_4bit_dc9e5c1_v1",
+            "dist_ai2apps_voxcpm2_8bit_d5272589_v1",
+        }
+        assert tts["voice_profiles"]["reference_transcript"] == "optional"
+        assert tts["voice_profiles"]["transcript_effect"] == (
+            "ignored_in_controlled_clone"
+        )
+        assert tts["speed"]["control"] == "instruction"
+        assert tts["speed"]["exact_multiplier"] is False
+        assert model["metadata"]["native_output_sample_rate"] == 48_000
+
+
+def test_indextts25_package_pins_native_mlx_checkpoint_and_p0_controls():
+    package = ServicePackageArchive._manifest(_manifest("omlx-model-indextts25"))
+    assert package.raw["runtime"]["provider"] == "ai2apps.runtime.omlx"
+    assert package.dependencies[0].version_spec == ">=1.7.9,<2.0.0"
+    model = package.models[0]
+    assert model["id"] == "ai2apps.model.indextts25/fp16"
+    assert model["weights"]["revision"] == (
+        "01d27e6d8a0c628859abe2142a0fd431b91e79af"
+    )
+    assert model["weights"]["distribution_id"] == (
+        "dist_ai2apps_mlx_indextts25_01d27e6d_v1"
+    )
+    tts = model["audio_capabilities"]["tts"]
+    assert tts["speed"] == {
+        "mode": "native",
+        "minimum": 0.5,
+        "maximum": 2.0,
+        "control": "duration_factor",
+        "exact_multiplier": False,
+    }
+    assert tts["emotion"]["values"] == [
+        "neutral", "happy", "sad", "angry", "calm", "surprised",
+    ]
+    assert tts["voice_profiles"]["reference_requirements"]["max_seconds"] == 15
+    assert tts["instructions"]["mode"] == "unsupported"
+
+
 def test_sensevoice_package_retains_model_license_and_attribution(tmp_path):
     package_root = ROOT / "packages" / "omlx-model-sensevoice-small"
     manifest = yaml.safe_load((package_root / "service.yaml").read_text(encoding="utf-8"))

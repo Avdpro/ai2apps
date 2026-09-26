@@ -323,7 +323,7 @@ def test_desktop_packages_one_shared_acefox_bundle_for_shell_and_agents():
         repository_root / "apps/ai2apps-acefox/scripts/verify-release-app.sh"
     ).read_text()
 
-    assert "Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin" in contracts
+    assert "Applications/AI2Apps.app/Contents/MacOS/acefox-bin" in contracts
     assert "Resources/AceFoxAgent.app/Contents/MacOS/acefox-bin" not in contracts
     assert '"MOZ_APP_NO_DOCK": "1"' in launch_plan
     assert "ditto \"${SHELL_APP}\" \"${AGENT_APP}\"" not in dev_packager
@@ -357,7 +357,7 @@ def test_release_shaped_test_app_has_an_isolated_resettable_instance():
     assert 'id="ai2apps-test-badge-right"' in test_builder
     assert '"${SCRIPT_DIR}/build-release-app.sh"' in test_builder
     assert "AI2AppsAllowInstanceDataReset bool true" in release_builder
-    assert 'withTitle: "重置数据…"' in helper
+    assert 'withTitle: L("重置数据…", "Reset data…")' in helper
     assert "InstanceDataReset(paths: paths).perform()" in helper
     assert "本机共享的已验证 Checkpoint 与公共 Hugging Face cache 不会被删除" in helper
     assert "shellApplication?.forceTerminate()" in helper

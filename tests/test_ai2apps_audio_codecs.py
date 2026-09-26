@@ -86,3 +86,31 @@ def test_decoded_duration_limit_rejects_pcm_expansion():
             sample_rate=160,
             max_duration_seconds=1,
         )
+
+
+def test_isolated_bad_packet_preserves_audio_timeline(monkeypatch):
+    from fractions import Fraction
+    from types import SimpleNamespace
+    closed = []
+    class Packet:
+        def __init__(self, pts): self.pts = pts
+        def decode(self):
+            if self.pts is None:
+                raise av.error.InvalidDataError(1094995529, "damaged packet")
+            frame = av.AudioFrame(format="s16", layout="mono", samples=160)
+            frame.sample_rate = 16000
+            frame.time_base = Fraction(1, 16000)
+            frame.pts = self.pts
+            frame.planes[0].update(b"\x01\x00" * 160)
+            return [frame]
+    source = SimpleNamespace(streams=[SimpleNamespace(type="audio")],
+        demux=lambda _: iter([Packet(0), Packet(None), Packet(320)]),
+        close=lambda: closed.append(True))
+    monkeypatch.setattr(av, "open", lambda *a, **kw: source)
+    result = decode_audio_to_wav(b"container", sample_rate=16000)
+    with wave.open(io.BytesIO(result)) as audio:
+        assert audio.getnframes() == 480
+        samples = audio.readframes(480)
+        assert samples[320:640] == b"\x00" * 320
+        assert samples[640:] == b"\x01\x00" * 160
+    assert closed == [True]

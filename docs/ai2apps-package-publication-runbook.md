@@ -77,8 +77,66 @@ KEYCHAIN_NAMESPACE='<SecretBackend namespace used when the Publisher key was sav
   `installation_id`（格式为 `local_` 加 32 位十六进制字符），不是 `dev` 等实例别名。
   `--security-instance-id` 必须使用此值；使用实例别名会导致 scoped Cookie 名称无法解析。
 - `KEYCHAIN_NAMESPACE` 必须和保存 Publisher 私钥时使用的 SecretBackend namespace 一致；它不一定永远等于实例 ID，发布前应从既有成功发布配置或 Publisher 上下文确认。
-- `PUBLISHER_KEY_SECRET` 是安全存储中的记录 ID，不是私钥内容。
+- `PUBLISHER_KEY_SECRET` 是本地 Secret 记录的 `keyRef`，不是私钥内容，也不是 Cloud
+  返回的 `PUBLISHER_KEY_ID`。macOS 上 `AI2Apps Secret Store` 只是 Keychain service 名称；
+  当前 namespaced account 名为
+  `ai2apps.v1.<KEYCHAIN_NAMESPACE>.<PUBLISHER_KEY_SECRET>`。
 - 正式发布物放在 Package 自己的 `dist/` 或专门的 release 目录，不覆盖旧版本。
+
+### 3.1 恢复既有 Publisher 签名上下文
+
+找不到本地签名记录时，不等于 Publisher 私钥已经丢失。最常见的问题是把 Cloud
+Publisher key ID 当成 `--keychain-secret`，或把当前实例别名/installation ID 猜成了
+`--keychain-namespace`。恢复顺序固定如下：
+
+1. 从 Registry Publisher 查询和既有正式发布回执确认 `PUBLISHER_ID`、
+   `PUBLISHER_KEY_ID` 与目标公钥 `fingerprintSha256`；不要只看 Package 名或 Publisher 名。
+2. 回查同一 Publisher key 最近一次成功发布所使用的标准构建命令元数据、签名记录元数据
+   或受控发布配置，找出当时真实的本地 `keyRef` 和 namespace。优先使用 Package 自己的
+   最近成功版本；也可使用明确由同一 Publisher key 签署的其他正式 Package。
+3. 只读取这一个精确候选记录。不要枚举、导出或逐个尝试整个 Keychain，也不要搜索其他
+   AI2Apps 实例的 Cookie、Profile、数据库或 Secret Store。
+4. 在内存中从该记录派生 Ed25519 公钥，只输出 SHA-256 公钥指纹；不得输出私钥 PEM、
+   Secret 值或 Keychain 数据。指纹必须与第 1 步 Cloud 返回值逐字节一致。
+5. 只有 `Publisher ID + Cloud key ID + 派生公钥指纹` 三者全部匹配，才能把恢复出的
+   `keyRef` 和 namespace 传给正式构建脚本。任一项不匹配都停止，不得新建或切换
+   Publisher/key，也不得复制实例数据来“修复”上下文。
+
+对已经确认的精确候选，可用下列只读诊断核对指纹。该命令只打印派生公钥指纹：
+
+```bash
+./.venv/bin/python - "$PUBLISHER_KEY_SECRET" "$KEYCHAIN_NAMESPACE" <<'PY'
+import sys
+from pathlib import Path
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from ai2apps.packages.contract_v1 import public_key_fingerprint
+from ai2apps.secrets.factory import create_secret_backend
+
+key_ref, namespace = sys.argv[1:]
+backend = create_secret_backend(
+    Path.home() / ".omlx" / "platform" / "secrets",
+    namespace=namespace,
+)
+private_pem = backend.load(key_ref)
+private_key = serialization.load_pem_private_key(
+    private_pem.encode("ascii"), password=None
+)
+if not isinstance(private_key, Ed25519PrivateKey):
+    raise SystemExit("Publisher signing record is not an Ed25519 private key")
+public_pem = private_key.public_key().public_bytes(
+    serialization.Encoding.PEM,
+    serialization.PublicFormat.SubjectPublicKeyInfo,
+).decode("ascii")
+print(public_key_fingerprint(public_pem))
+PY
+```
+
+把输出与 Cloud `fingerprintSha256` 比较，不把输出误当成 key ID。若既有成功发布记录仍无法
+确定唯一 `keyRef`/namespace，停止发布并请求明确的只读 Secret 元数据授权；不要扩大为
+全 Keychain 扫描。
 
 若本次计划配置外部源，还应在开始前明确并记录：
 
@@ -209,8 +267,9 @@ Reviewer 使用同一脚本的 `--list-review` 查询队列，以 `--submission-
 
 - Publisher ID 正确；
 - Publisher key 状态有效；
-- `PUBLISHER_KEY_SECRET` 元数据中的 `fingerprintSha256` 与 Cloud 返回的
-  `PUBLISHER_KEY_ID` 指纹完全一致；只匹配 key ID 或 Secret 记录名不够；
+- 从 `PUBLISHER_KEY_SECRET` 指向的精确记录派生出的公钥指纹，与 Cloud 中
+  `PUBLISHER_KEY_ID` 对应的 `fingerprintSha256` 完全一致；只匹配 key ID、`keyRef` 或
+  Secret 记录名不够；
 - Cloud session 属于预期账户/组织；
 - 不存在相同 Package/version 的进行中 submission。
 
@@ -560,6 +619,9 @@ Snapshot；Cloud fallback 必须保持可用。需要整体回退源集合时，
 | 管理员验证过期 | 让用户在 Account 中重新验证 | 询问或代输密码 |
 | Cookie unavailable | 确认当前实例/profile；重新获得本次授权 | 扫描并试用所有 profile |
 | Publisher/key 不匹配 | 查询 Publisher 上下文，使用原正确 key | 临时新建 Publisher/key |
+| Cloud Publisher key ID 被当成 `--keychain-secret` | 从同一 key 的成功发布上下文恢复本地 `keyRef` | 用 Cloud UUID 猜 Keychain account |
+| Keychain 记录存在但加载失败 | 核对原始 namespace 和 account `ai2apps.v1.<namespace>.<keyRef>`，再验证派生公钥指纹 | 猜 `dev`/`app-dev` namespace，或扫描全部 Keychain 记录 |
+| 本地记录派生指纹与 Cloud 不同 | 停止，重新核对成功发布上下文和唯一精确记录 | 使用另一个 active key、创建新 key 或复制实例数据 |
 | 相同版本已存在 | 比较 SHA；相同则停止重复发布，不同则提升版本 | 覆盖不可变版本 |
 | digest/size/signature 不匹配 | 重新构建 envelope，确认签的是同一 artifact | 手改 envelope JSON |
 | 已 submit、审核/发布失败 | 使用 submission ID 恢复 | 重新 submit |
@@ -577,7 +639,8 @@ Snapshot；Cloud fallback 必须保持可用。需要整体回退源集合时，
 Agent 每次发布只按下面顺序行动：
 
 - [ ] 阅读本手册和仓库 `AGENTS.md`；
-- [ ] 明确 Package ID、版本、source、artifact、Publisher/key、实例；
+- [ ] 明确 Package ID、版本、source、artifact、Publisher/key、实例；若恢复签名上下文，
+      已确认 `keyRef`、namespace 与 Cloud 公钥指纹三者匹配；
 - [ ] 检查版本、依赖、平台约束、SBOM、license；
 - [ ] 执行相关测试和真实 Package smoke test；
 - [ ] 查询 Publisher 与已有 submission；

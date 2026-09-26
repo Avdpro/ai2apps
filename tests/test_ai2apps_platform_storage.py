@@ -271,6 +271,12 @@ def test_database_bootstrap_creates_current_platform_schema(tmp_path):
         (69, "model_share_multimodal_pricing_projection"),
         (70, "studio_runs_artifacts_drafts_and_gallery_handles"),
         (71, "video_task_invocation_identity"),
+        (72, "readaloud_project_mini_app_scope"),
+        (73, "readaloud_training_materials"),
+        (74, "readaloud_segment_soft_delete"),
+        (75, "readaloud_dialogue_output"),
+        (76, "readaloud_cast_role"),
+        (77, "readaloud_project_asr"),
     ]
     assert all(row[2].endswith("Z") for row in ledger)
 

@@ -80,6 +80,13 @@ class FakeWhisperWithEmptySegments:
         }
 
 
+class FakeWhisperWithLanguageName(FakeWhisper):
+    def transcribe(self, path, **kwargs):
+        result = super().transcribe(path, **kwargs)
+        result["language"] = "English"
+        return result
+
+
 class FakeDiarizer:
     name = "fake_mlx_sortformer"
 
@@ -131,6 +138,17 @@ def test_pipeline_offsets_words_and_assigns_speakers(tmp_path: Path):
     assert transcript.segments[1].speaker == "speaker_1"
     assert transcript.features["alignment"]["method"] == "native_attention"
     assert transcript.features["forced_alignment"]["status"] == "rejected"
+
+
+def test_pipeline_normalizes_detected_language_names_before_alignment(tmp_path: Path):
+    audio = tmp_path / "four-seconds.wav"
+    _wav(audio, np.zeros(4 * 16000, dtype=np.float32))
+    transcript = MLXWhisperXPipeline(
+        FakeWhisperWithLanguageName(), vad=FixedVAD(), aligner=FakeAligner()
+    ).run(audio, config=PipelineConfig(word_timestamps=True))
+
+    assert transcript.language == "en"
+    assert transcript.features["alignment"]["status"] == "pipeline"
 
 
 def test_pipeline_reports_ctc_forced_alignment(tmp_path: Path):

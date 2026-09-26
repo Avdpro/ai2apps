@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import Future
+
+import mlx.core as mx
 import pytest
 
 from omlx.cache.direct_l1 import direct_l1_mode, use_direct_l1
@@ -186,8 +189,17 @@ def test_direct_prefill_bypasses_staging_and_stack(monkeypatch, tmp_path):
         "_read_records",
         lambda *args: pytest.fail("direct Prefill used staging"),
     )
+    monkeypatch.setattr(
+        loader,
+        "_read_transient_records_detached",
+        lambda *args: pytest.fail("direct Prefill used detached prefetch"),
+    )
     try:
-        switch, ids = loader.build_transient_switch(3, [7, 9], Switch())
+        prepared = loader.prefetch_transient_records(3, [7, 9])
+        assert isinstance(prepared.result(), scope_cache._PreparedDirectRequest)
+        switch, ids = loader.build_transient_switch(
+            3, [7, 9], Switch(), prepared=prepared
+        )
     finally:
         if loader._io_pool is not None:
             loader._io_pool.shutdown(wait=True)
@@ -197,3 +209,149 @@ def test_direct_prefill_bypasses_staging_and_stack(monkeypatch, tmp_path):
     assert ids == (7, 9)
     assert calls == [([0, 1], [7, 9])]
     assert loader.transient_experts_loaded == 2
+
+
+def test_direct_prefill_uses_async_legacy_for_bias_store(monkeypatch, tmp_path):
+    monkeypatch.setenv("OMLX_MOE_DIRECT_L1", "1")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_DIRECT_PREFILL", "1")
+    monkeypatch.setattr(
+        scope_cache.glm_fast,
+        "native_symbols",
+        lambda: ("preadv_fused_experts",),
+    )
+    loader = scope_cache.ScopeFallbackLoader(tmp_path)
+
+    class Tensor:
+        def __init__(self, name):
+            self.name = name
+
+    names = tuple(
+        f"{projection}.{tensor}"
+        for projection in ("gate_proj", "down_proj", "up_proj")
+        for tensor in ("weight", "scales", "biases")
+    )
+
+    class Store:
+        record_bytes = 8192
+        tensors = [Tensor(name) for name in names]
+
+        @staticmethod
+        def allocate_staging():
+            return bytearray(1)
+
+        @staticmethod
+        def read_into(expert_id, staging):
+            staging[0] = expert_id
+            return staging
+
+        @staticmethod
+        def mlx_tensor_views(record, *, copy_record):
+            assert copy_record
+            return {
+                name: mx.array([record[0] * 10 + offset], dtype=mx.int32)
+                for offset, name in enumerate(names)
+            }
+
+    class Switch:
+        pass
+
+    store = Store()
+    built = []
+    monkeypatch.setattr(loader, "_store", lambda _layer: store)
+    monkeypatch.setattr(
+        loader,
+        "_direct_load_slots",
+        lambda *args: pytest.fail("bias store used direct Prefill"),
+    )
+    monkeypatch.setattr(
+        loader,
+        "_make_switch",
+        lambda resident, ids, tensors: built.append(
+            {name: value.tolist() for name, value in tensors.items()}
+        )
+        or Switch(),
+    )
+    try:
+        prepared = loader.prefetch_transient_records(3, [7, 9])
+        assert isinstance(prepared.result(), scope_cache._PreparedTransientRecords)
+        loader.build_transient_switch(3, [7, 9], Switch(), prepared=prepared)
+
+        loader.direct_prefill = False
+        loader.build_transient_switch(3, [7, 9], Switch())
+    finally:
+        if loader._io_pool is not None:
+            loader._io_pool.shutdown(wait=True)
+        loader._prefetch_pool.shutdown(wait=True)
+
+    assert built[0] == built[1]
+    assert {name for name in built[0] if name.endswith(".biases")} == {
+        "gate_proj.biases",
+        "down_proj.biases",
+        "up_proj.biases",
+    }
+    assert loader.prefetch_hits == 1
+
+
+def test_stale_direct_prefill_marker_falls_back_for_bias_store(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("OMLX_MOE_DIRECT_L1", "1")
+    monkeypatch.setenv("OMLX_DEEPSEEK_V4_DIRECT_PREFILL", "1")
+    monkeypatch.setattr(
+        scope_cache.glm_fast,
+        "native_symbols",
+        lambda: ("preadv_fused_experts",),
+    )
+    loader = scope_cache.ScopeFallbackLoader(tmp_path)
+
+    class Tensor:
+        def __init__(self, name):
+            self.name = name
+
+    names = tuple(
+        f"{projection}.{tensor}"
+        for projection in ("gate_proj", "down_proj", "up_proj")
+        for tensor in ("weight", "scales", "biases")
+    )
+
+    class Store:
+        record_bytes = 8192
+        tensors = [Tensor(name) for name in names]
+
+    class Switch:
+        pass
+
+    reads = []
+    records = {
+        expert_id: {
+            name: mx.array([expert_id * 10 + offset], dtype=mx.int32)
+            for offset, name in enumerate(names)
+        }
+        for expert_id in (7, 9)
+    }
+    monkeypatch.setattr(loader, "_store", lambda _layer: Store())
+    monkeypatch.setattr(
+        loader,
+        "_read_records",
+        lambda layer, ids: reads.append((layer, tuple(ids))) or (records, 8192),
+    )
+    monkeypatch.setattr(loader, "_make_switch", lambda *args: Switch())
+
+    prepared = Future()
+    prepared.set_result(scope_cache._PreparedDirectRequest(layer=3, ids=(7, 9)))
+    mismatched = Future()
+    mismatched.set_result(scope_cache._PreparedDirectRequest(layer=4, ids=(7, 9)))
+    try:
+        switch, ids = loader.build_transient_switch(
+            3, [7, 9], Switch(), prepared=prepared
+        )
+        with pytest.raises(ValueError, match="does not match request"):
+            loader.build_transient_switch(3, [7, 9], Switch(), prepared=mismatched)
+    finally:
+        if loader._io_pool is not None:
+            loader._io_pool.shutdown(wait=True)
+        loader._prefetch_pool.shutdown(wait=True)
+
+    assert isinstance(switch, Switch)
+    assert ids == (7, 9)
+    assert reads == [(3, (7, 9))]

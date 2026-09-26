@@ -171,6 +171,39 @@ def _smoke_multipart_limit(endpoint: str, headers: dict[str, str]) -> dict:
     raise RuntimeError("Transport smoke unexpectedly started inference without a checkpoint")
 
 
+def _smoke_long_audio_limit(endpoint: str, headers: dict[str, str]) -> dict:
+    """Exercise installed Worker transport without downloading model weights."""
+    import io
+    import wave
+    import httpx
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(48000)
+        for _ in range(1369):
+            wav.writeframesraw(b"\x00" * 96000)
+    audio = output.getvalue()
+    response = httpx.post(endpoint.rstrip("/") + "/v1/audio/process",
+        headers=headers, timeout=120,
+        data={"model": "ai2apps.model.demucs-mlx/default", "profile": "vocals_instrumental"},
+        files={"file": ("episode.wav", audio, "audio/wav")})
+    if response.status_code == 200:
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            names = archive.namelist()
+            if archive.testzip() is not None or not any(name.endswith(".wav") for name in names):
+                raise RuntimeError("Long audio returned an invalid separation archive")
+        return {"bytes": len(audio), "seconds": 1369, "transportAccepted": True,
+                "inferenceSucceeded": True, "artifactBytes": len(response.content), "files": names}
+    body = response.json()
+    code = body.get("error", {}).get("code")
+    if response.status_code != 503 or code != "model_unavailable":
+        raise RuntimeError(f"Long audio did not reach checkpoint gate: {response.status_code} {body}")
+    return {"bytes": len(audio), "seconds": 1369, "adapter_error": code,
+            "transportAccepted": True}
+
+
 async def _prepare_checkpoint_distributions(runtime, model_ids: set[str]) -> list[dict]:
     registry_packages = runtime.registry_packages
     registry_root = registry_packages.root.parent
@@ -214,6 +247,7 @@ async def smoke(
     model_archive: Path,
     *,
     multipart_limit: bool = False,
+    long_audio_limit: bool = False,
     runtime_envelope: Path | None = None,
     model_envelope: Path | None = None,
     publisher_public_key: str | None = None,
@@ -364,6 +398,12 @@ async def smoke(
             report["multipart"] = await asyncio.to_thread(
                 _smoke_multipart_limit, instance.endpoint, headers
             )
+        if long_audio_limit:
+            headers = manager.supervisor.internal_headers(model.service_key)
+            if headers is None:
+                raise RuntimeError("Installed Model Worker has no authentication headers")
+            report["long_audio"] = await asyncio.to_thread(
+                _smoke_long_audio_limit, instance.endpoint, headers)
         if detailed_audio:
             headers = manager.supervisor.internal_headers(model.service_key)
             if headers is None:
@@ -421,6 +461,7 @@ def main() -> None:
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--multipart-limit", action="store_true")
+    parser.add_argument("--long-audio-limit", action="store_true")
     parser.add_argument("--runtime-envelope", type=Path)
     parser.add_argument("--model-envelope", type=Path)
     parser.add_argument(
@@ -458,6 +499,7 @@ def main() -> None:
             args.runtime.resolve(strict=True),
             args.model.resolve(strict=True),
             multipart_limit=args.multipart_limit,
+            long_audio_limit=args.long_audio_limit,
             runtime_envelope=(
                 None
                 if args.runtime_envelope is None

@@ -1,9 +1,9 @@
 {
   "schema": "ai2apps.inference-runtime/v1",
   "service_id": "ai2apps.runtime.omlx",
-  "version": "1.7.8",
+  "version": "1.7.12",
   "protocol": "ai2apps-model-worker/v1",
-  "capabilities": ["mlx", "model-worker-v1", "model-stream-codec-v1", "cached-moe", "ssd-checkpoint-v1", "vlm", "nvfp4", "metal", "audio-stt", "audio-tts", "audio-processing", "audio-detailed-transcription-v1", "audio-reference-input-v1", "audio-voice-training-v1", "text-punctuation", "onnx", "audio-codecs", "fish-s2", "cosyvoice3", "video-generation", "video-codecs", "image-generation", "image-edit", "flux2-klein", "z-image"],
+  "capabilities": ["mlx", "model-worker-v1", "model-stream-codec-v1", "cached-moe", "ssd-checkpoint-v1", "vlm", "nvfp4", "metal", "audio-stt", "audio-tts", "audio-processing", "audio-detailed-transcription-v1", "audio-reference-input-v1", "audio-voice-training-v1", "text-punctuation", "onnx", "audio-codecs", "fish-s2", "cosyvoice3", "voxcpm2", "indextts25", "video-generation", "video-codecs", "image-generation", "image-edit", "flux2-klein", "z-image"],
   "python": "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11",
   "python_home": "Contents/Resources/Runtime/Python/cpython-3.11",
   "framework_site_packages": "Contents/Resources/Runtime/Python/framework-mlx-base/lib/python3.11/site-packages",

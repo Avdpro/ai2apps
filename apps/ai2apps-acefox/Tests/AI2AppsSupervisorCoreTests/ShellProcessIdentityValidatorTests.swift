@@ -52,9 +52,9 @@ import Testing
         instanceID: instanceID,
         processID: 42,
         appBundlePath: "/Applications/AI2Apps-dev.app",
-        executablePath: "/Applications/AI2Apps-dev.app/Contents/Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+        executablePath: "/Applications/AI2Apps-dev.app/Contents/Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
     )
-    let relocatedExecutable = "/tmp/archive/AI2Apps-dev.app/Contents/Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+    let relocatedExecutable = "/tmp/archive/AI2Apps-dev.app/Contents/Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
 
     #expect(ShellProcessIdentityValidator().validateForActivation(
         descriptor,
@@ -76,9 +76,9 @@ import Testing
         instanceID: instanceID,
         processID: 42,
         appBundlePath: "/Applications/AI2Apps-dev.app",
-        executablePath: "/Applications/AI2Apps-dev.app/Contents/Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+        executablePath: "/Applications/AI2Apps-dev.app/Contents/Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
     )
-    let relocatedExecutable = "/tmp/archive/AI2Apps-dev.app/Contents/Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+    let relocatedExecutable = "/tmp/archive/AI2Apps-dev.app/Contents/Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
 
     #expect(!ShellProcessIdentityValidator().validateForActivation(
         descriptor,

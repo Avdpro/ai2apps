@@ -559,6 +559,10 @@ async def verify_ai2apps_platform_access(
             )
         )
     )
+    helper_control_route = helper_control_route or (
+        request.method == "POST"
+        and request.url.path == "/v1/platform/client/app-dev-test-environment"
+    )
     if helper_control_route:
         return True
 

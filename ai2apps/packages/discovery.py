@@ -58,7 +58,7 @@ LEGACY_MODEL_DISCOVERY: dict[str, dict[str, object]] = {
     "ai2apps/model-deepseek-v41-flash": _model("0.1.1", "multimodal", "multimodal-conversation", "image-understanding"),
     "ai2apps/model-demucs-mlx": _model("0.1.0", "speech", "source-separation"),
     "ai2apps/model-detailed-transcription-mlx": _model(
-        "0.1.2",
+        "0.1.3",
         "speech",
         "detailed-transcription",
         "speaker-diarization",
@@ -155,7 +155,7 @@ LEGACY_MODEL_PROFILES: dict[str, dict[str, object]] = {
     ),
     "ai2apps/model-demucs-mlx": _profile("0.1.0", 0.4, 4, 4, 4),
     "ai2apps/model-detailed-transcription-mlx": _profile(
-        "0.1.2", 3832992557 / 1024**3, 8, 3, 5
+        "0.1.3", 3832992557 / 1024**3, 8, 3, 5
     ),
     "ai2apps/model-echomimic-v3-mlx": _profile("0.1.1", 16, 32, 2, 4),
     "ai2apps/model-fish-s2-pro": _profile("0.1.1", 8, 16, 3, 5),
@@ -258,7 +258,7 @@ LEGACY_MODEL_INSTALLS: dict[str, dict[str, object]] = {
     "ai2apps/model-deepseek-v4-flash-2bit": _install("0.3.5", "ai2apps.model.deepseek-v4-flash-2bit", ("ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit", "DeepSeek V4 Flash 2-bit DQ")),
     "ai2apps/model-deepseek-v41-flash": _install("0.1.1", "ai2apps.model.deepseek-v41-flash", ("ai2apps.model.deepseek-v41-flash/deepseek-v41-flash", "DeepSeek V4.1 Flash")),
     "ai2apps/model-demucs-mlx": _install("0.1.0", "ai2apps.model.demucs-mlx", ("ai2apps.model.demucs-mlx/default", "MLX Demucs HTDemucs")),
-    "ai2apps/model-detailed-transcription-mlx": _install("0.1.2", "ai2apps.model.detailed-transcription-mlx", ("ai2apps.model.detailed-transcription-mlx/quality", "Detailed Transcription Quality"), ("ai2apps.model.detailed-transcription-mlx/compact", "Detailed Transcription Compact")),
+    "ai2apps/model-detailed-transcription-mlx": _install("0.1.4", "ai2apps.model.detailed-transcription-mlx", ("ai2apps.model.detailed-transcription-mlx/quality", "Detailed Transcription Quality"), ("ai2apps.model.detailed-transcription-mlx/compact", "Detailed Transcription Compact")),
     "ai2apps/model-echomimic-v3-mlx": _install("0.1.1", "ai2apps.model.echomimic-v3-mlx", ("ai2apps.model.echomimic-v3-mlx/default", "EchoMimic V3 MLX")),
     "ai2apps/model-fish-s2-pro": _install("0.1.1", "ai2apps.model.fish-s2-pro", ("ai2apps.model.fish-s2-pro/bf16", "Fish Audio S2 Pro BF16")),
     "ai2apps/model-face-swap-mlx": _install("0.1.0", "ai2apps.model.face-swap-mlx", ("ai2apps.model.face-swap-mlx/default", "MLX Actor Replacement")),
@@ -266,6 +266,7 @@ LEGACY_MODEL_INSTALLS: dict[str, dict[str, object]] = {
     "ai2apps/model-flux2-klein-9b-mlx": _install("0.1.0", "ai2apps.model.flux2-klein-9b-mlx", ("ai2apps.model.flux2-klein-9b-mlx/9b", "FLUX.2 Klein 9B MLX")),
     "ai2apps/model-glm5-3-flash-4bit-mtp": _install("0.1.5", "ai2apps.model.glm5-3-flash-4bit-mtp", ("ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp", "GLM-5.3 Flash 4-bit MTP")),
     "ai2apps/model-ideogram4-mlx": _install("0.1.2", "ai2apps.model.ideogram4-mlx", ("ai2apps.model.ideogram4-mlx/fp8-q4", "Ideogram 4 MLX Q4")),
+    "ai2apps/model-indextts25": _install("0.1.0", "ai2apps.model.indextts25", ("ai2apps.model.indextts25/fp16", "IndexTTS 2.5 MLX FP16")),
     "ai2apps/model-liveportrait-mlx": _install("0.1.0", "ai2apps.model.liveportrait-mlx", ("ai2apps.model.liveportrait-mlx/default", "MLX LivePortrait")),
     "ai2apps/model-multilingual-e5-small": _install("0.1.3", "ai2apps.model.multilingual-e5-small", ("ai2apps.model.multilingual-e5-small/default", "Multilingual E5 Small")),
     "ai2apps/model-minimax-h3": _install(
@@ -308,6 +309,7 @@ LEGACY_MODEL_INSTALLS: dict[str, dict[str, object]] = {
     "ai2apps/model-seed-vc-v2-mlx": _install("0.1.0", "ai2apps.model.seed-vc-v2-mlx", ("ai2apps.model.seed-vc-v2-mlx/default", "MLX Seed-VC v2")),
     "ai2apps/model-sensevoice-small": _install("0.2.2", "ai2apps.model.sensevoice-small", ("ai2apps.model.sensevoice-small/default", "SenseVoice Small")),
     "ai2apps/model-vibevoice-05b": _install("0.1.1", "ai2apps.model.vibevoice-0.5b", ("ai2apps.model.vibevoice-0.5b/realtime-4bit", "VibeVoice Realtime 0.5B 4-bit")),
+    "ai2apps/model-voxcpm2": _install("0.1.0", "ai2apps.model.voxcpm2", ("ai2apps.model.voxcpm2/4bit", "VoxCPM2 2B 4-bit"), ("ai2apps.model.voxcpm2/8bit", "VoxCPM2 2B 8-bit")),
     "ai2apps/model-z-image-mlx": _install("0.1.3", "ai2apps.model.z-image-mlx", ("ai2apps.model.z-image-mlx/turbo", "Z-Image Turbo MLX")),
     # Cloud currently rejects the optional modelInstall projection; source and
     # signed service.yaml retain the real model declaration. Bound to 0.1.0.

@@ -370,6 +370,18 @@ async def test_acpf_verification_starts_declared_service_without_model_inference
     assert started == ["example.model"]
 
 
+def test_imagine_studio_recommends_flux4b_for_generation_and_editing() -> None:
+    registry = CapabilityProfileRegistry()
+    for memory in (16, 24, 32, 48, 128, 256):
+        for capability in ("image.generation", "image.edit"):
+            candidates = registry.candidates(
+                "ai2apps.imagine-studio", capability, _apple_device(memory),
+                recommended=True,
+            )
+            assert candidates[0]["id"] == "apple-metal-flux2-klein-4b"
+            assert all(p["id"] != "apple-metal-z-image-turbo" for p in candidates)
+
+
 def test_video_studio_profile_recommends_quantization_by_memory() -> None:
     registry = CapabilityProfileRegistry()
 
@@ -412,8 +424,10 @@ def test_studio_package_mini_app_profiles_are_shared_by_audio_and_video_hosts() 
     for app_id in ("ai2apps.readaloud", "ai2apps.video-studio"):
         replacement = registry.capability(app_id, "audio.speaker_voice_replacement")
         subtitles = registry.capability(app_id, "media.video_subtitles")
+        dubbing = registry.capability(app_id, "media.video_audio_translation")
         assert replacement is not None
         assert subtitles is not None
+        assert dubbing is not None
         components = replacement["profiles"][0]["stack"]["components"]
         assert {item.get("package_id") for item in components if item["kind"] == "package"} == {
             "ai2apps/runtime-omlx",
@@ -421,6 +435,26 @@ def test_studio_package_mini_app_profiles_are_shared_by_audio_and_video_hosts() 
             "ai2apps/model-demucs-mlx",
             "ai2apps/model-seed-vc-v2-mlx",
         }
+        dubbing_components = dubbing["profiles"][0]["stack"]["components"]
+        assert {item.get("package_id") for item in dubbing_components if item["kind"] == "package"} == {
+            "ai2apps/runtime-omlx",
+            "ai2apps/model-detailed-transcription-mlx",
+            "ai2apps/model-demucs-mlx",
+        }
+
+
+def test_video_studio_original_voice_uses_voice_clone_acpf_profiles() -> None:
+    capability = CapabilityProfileRegistry().capability(
+        "ai2apps.video-studio", "audio.voice_clone"
+    )
+
+    assert capability is not None
+    assert capability["requirements"] == {"operations": ["voice_cloning"]}
+    assert {profile["stack"]["checkpoint"]["model_id"] for profile in capability["profiles"]} >= {
+        "ai2apps.model.indextts25/fp16",
+        "ai2apps.model.voxcpm2/4bit",
+        "ai2apps.model.qwen3-tts-1.7b/base-5bit",
+    }
 
 
 def test_capability_presentation_is_trusted_profile_metadata() -> None:
@@ -1775,3 +1809,13 @@ def test_provisioner_rejects_an_explicit_bf16_selection(
 
     assert result["status"] == "unsupported"
     assert "当前设备" in result["reasons"][0]
+
+
+def test_readaloud_design_configuration_covers_design_models():
+    registry = CapabilityProfileRegistry()
+    entry = registry.capability('ai2apps.readaloud', 'audio.voice_design')
+    assert set(entry['requirements']['operations']) == {'speech_generation', 'voice_design'}
+    assert {p['stack']['checkpoint']['model_id'] for p in entry['profiles']} == {
+        'ai2apps.model.voxcpm2/4bit', 'ai2apps.model.voxcpm2/8bit',
+        'ai2apps.model.qwen3-tts-1.7b/voice-design-5bit',
+    }

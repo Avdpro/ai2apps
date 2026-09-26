@@ -44,7 +44,7 @@ from ai2apps.messager import (
 )
 from ai2apps.model_identity import build_model_identity
 from ai2apps.model_invocation import ModelInvocationContext
-from ai2apps.password_policy import PASSWORD_SCHEMA, Password
+from ai2apps.password_policy import PASSWORD_SCHEMA, Password, SecretPassword
 from ai2apps.qr import svg_qr_data_url
 from ai2apps.remote import RemoteAccessError
 
@@ -207,6 +207,13 @@ class PasswordResetRequest(EmailCodeRequest):
         alias="newPassword",
         json_schema_extra=PASSWORD_SCHEMA,
     )
+
+
+class PasswordChangeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    current_password: SecretPassword = Field(alias="currentPassword", json_schema_extra=PASSWORD_SCHEMA)
+    new_password: SecretPassword = Field(alias="newPassword", json_schema_extra=PASSWORD_SCHEMA)
 
 
 class PromotionCodeRedeemRequest(BaseModel):
@@ -1191,6 +1198,27 @@ def create_cloud_router(
             "/v1/auth/password/reset",
             payload=request.model_dump(by_alias=True),
         )
+        if response.status_code < 400:
+            await cloud.clear_session()
+        return response
+
+    @router.post("/auth/password/change")
+    async def change_password(
+        request: PasswordChangeRequest,
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        cloud = _cloud_or_error(runtime_provider)
+        if isinstance(cloud, JSONResponse):
+            return cloud
+        response = await call("POST", "/v1/auth/password/change", payload={
+            "currentPassword": request.current_password.get_secret_value(),
+            "newPassword": request.new_password.get_secret_value(),
+        })
+        if response.status_code in (404, 405):
+            return JSONResponse(status_code=503, content={"error": {
+                "code": "PASSWORD_CHANGE_UNAVAILABLE",
+                "message": "Password change is not available on this Cloud server yet.",
+            }})
         if response.status_code < 400:
             await cloud.clear_session()
         return response

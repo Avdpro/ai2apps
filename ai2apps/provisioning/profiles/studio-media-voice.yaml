@@ -130,6 +130,32 @@ capabilities:
         recommendation_memory_gib: {minimum: 48}
         stack: {components: [*runtime, *detailed-provider, *detailed-quality, *forced-aligner, *diarizer, *detailed-verify]}
 
+  media.video_audio_translation:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VIDEO AUDIO TRANSLATION SETUP
+      title: 配置视频音轨翻译
+      description: 安装详细转写与 MLX Demucs；目标声音使用 Voice Studio 中已验证的 Character。
+      icon: languages
+      confirm_label: 下载并配置
+      ready_label: 视频音轨翻译已经可用
+      steps: {runtime: 配置音频 Runtime, provider: 安装模型 Package, checkpoint: 下载转写与分离模型, verify: 启动并验证音轨翻译链路}
+    profiles:
+      - id: apple-metal-video-audio-translation-compact
+        label: 视频音轨翻译 · Compact
+        description: 使用 0.6B 详细转写和 Demucs，适合大多数讲解类视频。
+        priority: 100
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 24}}}
+        recommendation_memory_gib: {minimum: 24, maximum_exclusive: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-compact, *forced-aligner, *demucs-provider, *demucs-checkpoint, *detailed-verify, *demucs-verify]}
+      - id: apple-metal-video-audio-translation-quality
+        label: 视频音轨翻译 · Quality
+        description: 使用 1.7B 详细转写和 Demucs，适合更高质量的讲解翻译。
+        priority: 110
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 48}}}
+        recommendation_memory_gib: {minimum: 48}
+        stack: {components: [*runtime, *detailed-provider, *detailed-quality, *forced-aligner, *demucs-provider, *demucs-checkpoint, *detailed-verify, *demucs-verify]}
+
   media.video_speaker_voice_replacement:
     trigger: on_feature_request
     presentation: *replacement-presentation

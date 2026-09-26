@@ -1,0 +1,71 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_mlx_indextts25_01d27e6d_v1",
+  "modelId": "ai2apps.model.indextts25/fp16",
+  "repoId": "Avdpro/MLX-IndexTTS-2.5",
+  "revision": "01d27e6d8a0c628859abe2142a0fd431b91e79af",
+  "format": "safetensors",
+  "quantization": "fp16",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "LicenseRef-Bilibili-Model-Use-License-Agreement",
+    "name": "bilibili Model Use License Agreement",
+    "termsUrl": "https://huggingface.co/Avdpro/MLX-IndexTTS-2.5/blob/01d27e6d8a0c628859abe2142a0fd431b91e79af/LICENSE-IndexTTS-2.5.txt",
+    "termsHash": "sha256:cc7da9ea0f8a97ef15ab3bf0389e636ce79ffca1aef5489520796ac87d87a87b",
+    "usagePolicy": "commercial_allowed_below_license_threshold",
+    "accessPolicy": "public",
+    "redistributionPolicy": "conditional",
+    "redistributionConditions": {
+      "termsAcceptance": "required",
+      "licenseDelivery": "required",
+      "downstreamTerms": "license_terms",
+      "commercialUse": "separate_license_required",
+      "attribution": {
+        "required": true,
+        "noticeText": "This MLX conversion is based on bilibili IndexTTS 2.5 and is not endorsed, warranted, or guaranteed by the original right-holder. The original right-holder disclaims liability related to this derivative work.",
+        "noticeFile": "LICENSE-IndexTTS-2.5.txt",
+        "productDisplay": "not_required"
+      },
+      "modifiedFilesNotice": "required"
+    },
+    "downloadConsent": {
+      "required": true,
+      "attestationText": "I have read and accept the bilibili Model Use License Agreement, including its downstream, restricted-use, and organization-size conditions, or I have obtained a separate applicable written license from bilibili.",
+      "acceptanceOptions": [
+        "accepted_license_terms",
+        "obtained_separate_license"
+      ]
+    }
+  },
+  "includePatterns": [
+    "LICENSE-IndexTTS-2.5.txt",
+    "LICENSE-WIndexTTS.txt",
+    "README.md",
+    "bigvgan.safetensors",
+    "bigvgan_config.json",
+    "campplus.safetensors",
+    "codec.safetensors",
+    "config.yaml",
+    "conversion-manifest.json",
+    "feat.npz",
+    "gpt.safetensors",
+    "multilingual_zh_ja_yue_char_del.tiktoken",
+    "s2mel.safetensors",
+    "stats.npz",
+    "w2v_bert.safetensors"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/MLX-IndexTTS-2.5",
+      "revision": "01d27e6d8a0c628859abe2142a0fd431b91e79af",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/MLX-IndexTTS-2.5",
+      "revision": "3d0db294644a2d4d6a140c52f1582b69a85e7b83",
+      "access": "public_anonymous"
+    }
+  ]
+}

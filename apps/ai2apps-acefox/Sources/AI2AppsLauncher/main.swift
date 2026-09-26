@@ -70,7 +70,7 @@ private struct LauncherConfiguration {
         aceFoxExecutable = try Self.executableURL(
             environment["AI2APPS_ACEFOX_EXECUTABLE"],
             fallback: contents.appendingPathComponent(
-                "Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+                "Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
             ),
             field: "acefox_executable"
         )

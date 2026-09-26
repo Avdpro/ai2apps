@@ -458,7 +458,12 @@ class ScopeFallbackLoader:
         if not ids:
             raise ValueError("cannot prefetch an empty fallback expert bank")
         self.prefetch_submits += 1
-        if self.direct_prefill and self._direct_enabled():
+        store = self._store(layer)
+        if (
+            self.direct_prefill
+            and self._direct_enabled()
+            and self._direct_store_compatible(store)
+        ):
             future: Future[_PreparedTransientRecords | _PreparedDirectRequest] = (
                 Future()
             )
@@ -526,19 +531,22 @@ class ScopeFallbackLoader:
                 wait_started = time.perf_counter()
                 self.prefetch_wait_seconds += time.perf_counter() - wait_started
                 if isinstance(prefetched, _PreparedDirectRequest):
-                    raise RuntimeError("direct Prefill marker reached legacy path")
-                if prefetched.layer != layer or prefetched.ids != ids:
+                    if prefetched.layer != layer or prefetched.ids != ids:
+                        raise ValueError("prefetched direct bank does not match request")
+                    records, record_bytes = self._read_records(layer, expert_ids)
+                elif prefetched.layer != layer or prefetched.ids != ids:
                     raise ValueError("prefetched expert bank does not match request")
-                store = self._store(layer)
-                records = {
-                    expert_id: store.mlx_tensor_views(
-                        prefetched.buffers[expert_id], copy_record=True
-                    )
-                    for expert_id in ids
-                }
-                record_bytes = prefetched.record_bytes
-                self.prefetch_hits += 1
-                self.prefetch_read_seconds += prefetched.read_seconds
+                else:
+                    store = self._store(layer)
+                    records = {
+                        expert_id: store.mlx_tensor_views(
+                            prefetched.buffers[expert_id], copy_record=True
+                        )
+                        for expert_id in ids
+                    }
+                    record_bytes = prefetched.record_bytes
+                    self.prefetch_hits += 1
+                    self.prefetch_read_seconds += prefetched.read_seconds
             if not direct:
                 assert records is not None
                 stacked = self._stack_records(ids, records)

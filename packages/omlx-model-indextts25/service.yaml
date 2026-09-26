@@ -1,0 +1,83 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.indextts25
+name: IndexTTS 2.5 MLX
+description: Native MLX IndexTTS 2.5 reference-voice synthesis with numeric emotion and duration control.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license:
+  name: bilibili Model Use License Agreement
+  id: LicenseRef-Bilibili-Model-Use-License-Agreement
+  path: META/licenses/IndexTTS-2.5-LICENSE.txt
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/index-tts/index-tts
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.indextts25/fp16
+    display_name: IndexTTS 2.5 MLX FP16
+    model_type: audio_tts
+    upstream_id: Avdpro/MLX-IndexTTS-2.5
+    capabilities: [speech_generation, reference_voice, voice_cloning, emotion]
+    metadata:
+      family: indextts25
+      variant: fp16
+      implementation: native-mlx
+      native_output_sample_rate: 22050
+      reference_audio_required: true
+      optional_text_emotion_model_included: false
+      independent_emotion_reference_supported: false
+      checkpoint_layout: ai2apps.indextts25-mlx-checkpoint/v1
+      modelscope:
+        repo_id: ai2apps/MLX-IndexTTS-2.5
+        revision: 3d0db294644a2d4d6a140c52f1582b69a85e7b83
+        preferred: true
+    weights:
+      provider: huggingface
+      repo_id: Avdpro/MLX-IndexTTS-2.5
+      revision: 01d27e6d8a0c628859abe2142a0fd431b91e79af
+      distribution_id: dist_ai2apps_mlx_indextts25_01d27e6d_v1
+      preparation: {recipe: native}
+    audio_capabilities:
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: unsupported, voices: []}
+        speed: {mode: native, minimum: 0.5, maximum: 2.0, control: duration_factor, exact_multiplier: false}
+        emotion: {mode: native, control: numeric_vector, values: [neutral, happy, sad, angry, calm, surprised]}
+        instructions: {mode: unsupported}
+        voice_profiles:
+          mode: native
+          reference_audio: true
+          reference_transcript: optional
+          transcript_effect: ignored
+          reference_requirements: {min_samples: 1, max_samples: 1, max_seconds: 15}
+        voice_design: {mode: unsupported}
+        continuation: {mode: unsupported}
+        multi_speaker: {mode: unsupported}
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.7.9,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs, indextts25]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only the Host-selected pinned MLX IndexTTS 2.5 checkpoint.}
+  accelerator: {metal: true, reason: Run IndexTTS 2.5 synthesis locally with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

@@ -348,7 +348,8 @@ def test_readaloud_uses_first_party_ai2apps_visual_tokens():
     assert "MediaRecorder" in script
     assert "/v1/audio/transcriptions" in script
     assert "/v1/platform/gallery/assets/import" in script
-    assert "reference_asset_id" in script
+    assert "/training/profiles" in script
+    assert "asset_id:item.assetId" in script
     assert 'class="ra-pipeline-header studio-mini-header"' in template
     assert "await this.saveSegment(segment)" in script
     assert "if (capability.configured)" in script
@@ -381,6 +382,181 @@ def test_readaloud_acpf_profiles_split_speech_and_voice_clone():
     assert speech["trigger"] == recognition["trigger"] == voice["trigger"] == "on_feature_request"
     assert all(
         "voice" not in profile["id"] or "custom-voice" in profile["id"]
-        for profile in speech["profiles"]
+        for profile in speech["profiles"] if profile.get("recommended", True)
     )
     assert all("voice-clone" in profile["id"] for profile in voice["profiles"])
+
+
+def test_project_mini_app_scope_survives_reload_and_validates_api(tmp_path):
+    database, events, repository = _repository(tmp_path)
+    app = FastAPI()
+    app.include_router(create_readaloud_router(
+        lambda: SimpleNamespace(database=database, events=events),
+        principal_provider=lambda: _principal("owner-1"),
+    ), prefix="/v1/platform")
+    client = TestClient(app)
+    base = "/v1/platform/readaloud/projects"
+    for mini_app in ("quick-read", "audiobook", "ensemble-drama"):
+        scope = "ai2apps.audio." + mini_app
+        response = client.post(base, json={"title": mini_app, "mini_app_id": scope})
+        assert response.status_code == 201
+        project = response.json()
+        assert project["miniAppId"] == scope
+        assert client.get(base + "/" + project["id"]).json()["miniAppId"] == scope
+        assert ReadAloudRepository(database).get_project("owner-1", project["id"])["mini_app_id"] == scope
+    assert len(client.get(base).json()["items"]) == 3
+    assert client.post(base, json={"title": "invalid", "mini_app_id": "ai2apps.audio.voice-design"}).status_code == 422
+    assert client.post(base, json={"title": "legacy client"}).json()["miniAppId"] == "ai2apps.audio.audiobook"
+
+
+def test_project_scope_migration_preserves_legacy_text(tmp_path):
+    import sqlite3
+    from ai2apps.storage.migrations import MIGRATIONS, apply_migrations
+    path = tmp_path / "old.sqlite3"
+    connection = sqlite3.connect(path)
+    apply_migrations(connection, MIGRATIONS[:-1])
+    connection.execute("INSERT INTO readaloud_projects (id,owner_user_id,title,purpose,source_rights,source_text,status,revision,created_at,updated_at) VALUES ('old','owner','Legacy','private','user_owned','Original text','draft',1,'now','now')")
+    connection.commit()
+    apply_migrations(connection)
+    assert connection.execute("SELECT source_text,mini_app_id FROM readaloud_projects WHERE id='old'").fetchone() == ("Original text", "ai2apps.audio.audiobook")
+    connection.close()
+
+
+def test_quick_read_generates_without_creating_projects(tmp_path, monkeypatch):
+    from fastapi.responses import Response
+    database, events, repository = _repository(tmp_path)
+    calls = []
+    model = SimpleNamespace(id="speech", model_type="audio_tts", checkpoint_ready=True,
+        audio_capabilities={"tts": {"named_voices": {"voices": ["alice", "bob"]}}})
+    class Invocations:
+        def model(self, model_id):
+            return model if model_id == "speech" else None
+        def context_for_actor(self, actor, *, session_id, consumer_app_id):
+            assert actor == "owner-1"
+            assert session_id.startswith("quick-read-")
+            assert consumer_app_id == "ai2apps.readaloud"
+            return "context"
+        async def invoke_foreground_json(self, model_id, operation, payload, **kwargs):
+            calls.append(payload)
+            assert operation == "audio_speech"
+            assert kwargs["context"] == "context"
+            return Response(b"RIFF-test-wave", media_type="audio/wav")
+    def save_quick_audio(owner, content, **metadata):
+        assert owner == "owner-1" and content == b"RIFF-test-wave"
+        return "/v1/platform/sessions/session/artifacts/audio/download"
+    runtime = SimpleNamespace(database=database, events=events, model_invocations=Invocations(),
+        readaloud_tasks=SimpleNamespace(save_quick_audio=save_quick_audio))
+    app = FastAPI()
+    app.include_router(create_readaloud_router(lambda: runtime,
+        principal_provider=lambda: _principal("owner-1")), prefix="/v1/platform")
+    client = TestClient(app)
+    endpoint = "/v1/platform/readaloud/quick-read"
+    response = client.post(endpoint, json={"text": " Hello ", "model_id": "speech", "voice": "bob"})
+    assert response.status_code == 200
+    assert response.content == b"RIFF-test-wave"
+    assert response.headers["X-AI2Apps-Download-URL"] == "/v1/platform/sessions/session/artifacts/audio/download"
+    assert response.headers["content-type"] == "audio/wav"
+    assert calls[-1]["voice"] == "bob" and calls[-1]["input"] == "Hello"
+    assert repository.list_projects("owner-1") == ()
+    assert client.post(endpoint, json={"text": "Hi", "model_id": "speech"}).status_code == 200
+    assert calls[-1]["voice"] == "alice"
+    tempo_calls = []
+    monkeypatch.setattr('ai2apps.audio_codecs.change_speech_tempo', lambda content, speed: (tempo_calls.append(speed), content)[1])
+    assert client.post(endpoint, json={'text':'Hi','model_id':'speech','speed':0.5}).status_code == 200
+    assert tempo_calls == [0.5] and 'speed' not in calls[-1]
+    model.audio_capabilities['tts']['speed'] = {'mode':'native','minimum':0.5,'maximum':2.0}
+    assert client.post(endpoint, json={'text':'Hi','model_id':'speech','speed':2}).status_code == 200
+    assert calls[-1]['speed'] == 2 and tempo_calls == [0.5]
+    for invalid in (0.49, 2.01):
+        assert client.post(endpoint, json={'text':'Hi','model_id':'speech','speed':invalid}).status_code == 422
+    del calls[-2:]
+    del model.audio_capabilities['tts']['speed']
+
+    for data in [
+        {"text": "   ", "model_id": "speech"},
+        {"text": "Hi", "model_id": "missing"},
+        {"text": "Hi", "model_id": "speech", "voice": "unknown"},
+        {"text": "x" * 10001, "model_id": "speech"},
+    ]:
+        assert client.post(endpoint, json=data).status_code == 422
+    profile_args = dict(name='Alice', source_type='synthetic_designed', model_id='speech', provider_voice_id=None,
+                        reference_transcript='reference', rights_scope={}, training={'design': {'description': 'Warm voice'}})
+    profile = repository.create_voice_profile('owner-1', **profile_args)
+    response = client.post(endpoint, json={'text':'Character words','model_id':'ignored','voice_profile_id':profile['id']})
+    assert response.status_code == 200
+    assert calls[-1]['instructions'] == 'Warm voice'
+    assert 'voice' not in calls[-1]
+    foreign = repository.create_voice_profile('other-owner', **profile_args)
+    assert client.post(endpoint,json={'text':'Hi','model_id':'speech','voice_profile_id':foreign['id']}).status_code == 404
+    assert client.post(endpoint,json={'text':'Hi','model_id':'speech','voice_profile_id':'missing'}).status_code == 404
+    clone = repository.create_voice_profile('owner-1', **{**profile_args, 'training': {'samples':[{'asset_id':'ref'}], 'model_revision':'r1'}})
+    runtime.config = SimpleNamespace(paths=SimpleNamespace(artifacts_path=tmp_path/'materials'))
+    monkeypatch.setattr('ai2apps.api.readaloud.prepare_training', lambda *args, **kwargs: ({'executable':True,'revision':'r1'}, [], []))
+    monkeypatch.setattr('ai2apps.api.readaloud.combined_reference', lambda *args: (b'reference-audio','Reference words'))
+    async def multipart(model_id, operation, *, data, files, **options):
+        assert files['reference_audio'][1] == b'reference-audio'
+        assert data['ref_text'] == 'Reference words' and data['input'] == 'Clone words'
+        assert 'voice' not in data
+        return Response(b'RIFF-test-wave', media_type='audio/wav')
+    runtime.model_invocations.invoke_foreground_multipart = multipart
+    assert client.post(endpoint,json={'text':'Clone words','model_id':'ignored','voice_profile_id':clone['id']}).status_code == 200
+    monkeypatch.setattr('ai2apps.api.readaloud.list_package_models', lambda runtime: [SimpleNamespace(id='other-asr', model_type='audio_stt', checkpoint_ready=True), SimpleNamespace(id='asr', model_type='audio_stt', checkpoint_ready=True)])
+    checks=[]
+    async def transcribe(model_id, operation, *, data, files, **options):
+        assert model_id=='asr' and operation=='audio_transcription'
+        assert files['file'][1]==b'RIFF-test-wave'
+        checks.append(options['request_id'])
+        return Response(b'{"text":"Hello"}',media_type='application/json')
+    runtime.model_invocations.invoke_foreground_multipart=transcribe
+    assert client.post(endpoint,json={'text':'Hello','model_id':'speech','asr_verification':True,'asr_model_id':'asr'}).status_code==200
+    assert len(checks)==1
+    model.checkpoint_ready = False
+    assert client.post(endpoint, json={"text": "Hi", "model_id": "speech"}).status_code == 503
+    assert len(calls) == 4
+
+
+def test_line_order_soft_delete_and_character_selection(tmp_path):
+    import pytest
+    from ai2apps.core import ResourceNotFoundError
+    database, _, repo = _repository(tmp_path)
+    project = repo.create_project('owner', title='Book', purpose='private', source_rights='user_owned', source_text='')
+    pid = project['id']
+    character = repo.create_character('owner', pid, name='Alice', description='', voice_profile_id=None)
+    lines = [repo.create_segment('owner', pid, speaker_id=character['id'], text=str(i), emotion='neutral', emotion_strength=1, speed=1, pause_after_ms=750) for i in range(3)]
+    saved = repo.get_project('owner', pid)['segments']
+    assert all(x['speaker_id'] == character['id'] and x['pause_after_ms'] == 750 for x in saved)
+    with pytest.raises(ResourceNotFoundError):
+        repo.change_segment_position('other', pid, lines[0]['id'], action='delete')
+    changed = repo.change_segment_position('owner', pid, lines[2]['id'], action='up')
+    assert [x['id'] for x in changed['segments']] == [lines[i]['id'] for i in [0, 2, 1]]
+    changed = repo.change_segment_position('owner', pid, lines[0]['id'], action='down')
+    assert [x['id'] for x in changed['segments']] == [lines[i]['id'] for i in [2, 0, 1]]
+    changed = repo.change_segment_position('owner', pid, lines[0]['id'], action='delete')
+    assert [x['ordinal'] for x in changed['segments']] == [0, 1]
+    with database.transaction() as connection:
+        assert connection.execute('SELECT deleted_at FROM readaloud_segments WHERE id=?', (lines[0]['id'],)).fetchone()[0]
+        assert connection.execute('PRAGMA foreign_key_check').fetchall() == []
+    assert repo.list_projects('owner')[0]['segment_count'] == 2
+
+
+def test_project_asr_api_returns_ui_fields_after_save_and_reload(tmp_path):
+    database, events, _ = _repository(tmp_path)
+    runtime = SimpleNamespace(database=database, events=events)
+    app = FastAPI()
+    app.include_router(create_readaloud_router(lambda: runtime,
+        principal_provider=lambda: _principal('owner-1')), prefix='/v1/platform')
+    client = TestClient(app)
+    root = '/v1/platform/readaloud/projects'
+    created = client.post(root, json={'title': 'ASR book'})
+    assert created.status_code == 201
+    project = created.json()
+    assert project['asrVerification'] is True
+    assert project['asrModelId'] == ''
+    endpoint = root + '/' + project['id']
+    for enabled in (False, True):
+        saved = client.patch(endpoint, json={'asr_verification': enabled, 'asr_model_id': 'chosen/asr'})
+        assert saved.status_code == 200
+        for body in (saved.json(), client.get(endpoint).json()):
+            assert body['asrVerification'] is enabled
+            assert body['asrModelId'] == 'chosen/asr'
+            assert 'asr_verification' not in body and 'asr_model_id' not in body

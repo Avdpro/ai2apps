@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,7 +10,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from ai2apps.api.video_studio import create_video_studio_router
-from ai2apps.config import PlatformConfig
+from ai2apps.config import DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES, PlatformConfig
 from ai2apps.identity import RequestPrincipal
 from ai2apps.storage import PlatformDatabase
 from ai2apps.video.composer import (
@@ -17,6 +18,7 @@ from ai2apps.video.composer import (
     ComposerProject,
     ComposerSourceStore,
     _clip_visual_state,
+    _fit_image_to_visual_box,
     _mix_audio,
     render_composition,
 )
@@ -170,6 +172,17 @@ def test_composer_keyframes_validate_and_interpolate_all_transition_modes():
         raise AssertionError("a key frame at the exclusive clip end must be rejected")
 
 
+def test_composer_export_centers_contained_media_inside_visual_box():
+    source = Image.new("RGBA", (40, 20), (240, 30, 20, 255))
+    layer = _fit_image_to_visual_box(source, 40, 40)
+
+    assert layer.size == (40, 40)
+    assert layer.getpixel((20, 5))[3] == 0
+    assert layer.getpixel((20, 10))[3] == 255
+    assert layer.getpixel((20, 29))[3] == 255
+    assert layer.getpixel((20, 30))[3] == 0
+
+
 def test_video_clips_always_have_fixed_start_and_end_keyframes():
     composition = ComposerProject.model_validate(
         {
@@ -272,6 +285,42 @@ def test_composer_source_store_is_scoped_and_render_is_playable(tmp_path):
     with av.open(str(output)) as rendered:
         assert rendered.streams.video and rendered.streams.audio
         assert float(rendered.duration or 0) / av.time_base >= 0.7
+
+
+def test_composer_stream_import_is_private_bounded_and_above_gallery_limit(tmp_path):
+    source_path = tmp_path / "source.mp4"
+    media_file(source_path)
+    store = ComposerSourceStore(tmp_path / "sources")
+    payload = source_path.read_bytes()
+
+    source = store.import_stream(
+        BytesIO(payload),
+        actor_id="owner",
+        installation_id="installation",
+        app_instance_id="appi_composer",
+        display_name="browser-source.mp4",
+        media_type="video/mp4",
+        max_bytes=len(payload),
+    )
+    assert source["name"] == "browser-source.mp4"
+    assert "path" not in source
+    assert DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES > 64 * 1024 * 1024
+
+    try:
+        store.import_stream(
+            BytesIO(payload),
+            actor_id="owner",
+            installation_id="installation",
+            app_instance_id="appi_composer",
+            display_name="too-large.mp4",
+            media_type="video/mp4",
+            max_bytes=max(1, len(payload) - 1),
+        )
+    except Exception as error:
+        assert getattr(error, "code", "") == "source_too_large"
+    else:
+        raise AssertionError("Composer stream imports must enforce their own media limit")
+    assert not list((tmp_path / "sources").rglob("*.part"))
 
 
 def test_composer_accepts_still_images_with_adjustable_timeline_duration(tmp_path):
@@ -422,6 +471,14 @@ def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path)
     assert source.status_code == 201
     source_payload = source.json()
     assert str(source_path) not in json.dumps(source_payload)
+    uploaded = client.post(
+        "/video-studio/composer/sources/import",
+        headers=headers,
+        files={"file": ("browser-source.mp4", source_path.read_bytes(), "video/mp4")},
+    )
+    assert uploaded.status_code == 201
+    assert uploaded.json()["name"] == "browser-source.mp4"
+    assert str(source_path) not in uploaded.text
     content = client.get(
         f"/video-studio/composer/sources/{source_payload['id']}/content",
         params={"appInstanceId": app_instance_id},
@@ -505,6 +562,8 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "/v1/chat/completions" in script and "allowed = new Set" in script
     assert "renderComposer" in template and "/compose" in script
     assert "beginComposerStageDrag" in script and "beginComposerStageResize" in script
+    assert "composerStageStyle" in template and "390 * ratio" in script
+    assert "max-height:390px" not in stylesheet
     assert "current.preventDefault()" in script and "pointercancel" in script
     assert "16 - width" in script and "canvasWidth - 16" in script
     assert "layer.style.left" in script and "layer.style.width" in script
@@ -580,6 +639,14 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "touch-action:none" in stylesheet and "width:18px;height:18px" in stylesheet
     assert "handleComposerKeydown" in script and "addActiveComposerToGallery" in script
     assert "mozAI2AppsFullPath" in script and "resourceHandle" in script
+    assert "`${STUDIO_API}/composer/sources/import`" in script
+    assert "source = await this.uploadComposerSource(file)" in script
+    assert 'get composerGridSeconds()' in script
+    assert 'get composerTimelineTicks()' in script
+    assert 'get composerClipMinimumWidth()' in script
+    assert 'min="2" max="120" step="2"' in template
+    assert 'background-size:${composerGridSeconds*composerScale}px 100%' in template
+    assert 'second in composerTimelineTicks' in template
     assert "vs-composer-mask-import" in stylesheet
     assert "openComposerDocument" in template and "saveComposerDocumentAs" in template
     assert "/composer/projects/open" in script and "/composer/projects/save" in script

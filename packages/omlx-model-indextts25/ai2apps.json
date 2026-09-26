@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-indextts25",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "IndexTTS 2.5 MLX",
+    "description": "Local MLX IndexTTS 2.5 reference-voice synthesis with numeric emotion and duration control."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read the pinned MLX IndexTTS 2.5 checkpoint selected by the Host.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run local IndexTTS 2.5 synthesis with MLX.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.7.9 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {
+    "kind": "model",
+    "categories": ["speech"],
+    "tasks": ["speech-synthesis", "voice-cloning", "emotion-control"]
+  },
+  "modelProfile": {
+    "sizeBytes": 3338231798,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {"speed": 4, "capability": 4},
+    "benchmark": {
+      "label": "Native MLX FP16 validation: RTF 0.72-0.94",
+      "device": "Apple M5 Max"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.indextts25",
+    "models": [
+      {"id": "ai2apps.model.indextts25/fp16", "label": "IndexTTS 2.5 MLX FP16", "recommended": true}
+    ]
+  }
+}

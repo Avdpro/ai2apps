@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import binascii
-from typing import Any
+from typing import Any, Literal
+from pathlib import Path
+import hashlib
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from ai2apps.audio_codecs import AudioCodecError, OUTPUT_MEDIA_TYPES, encode_wav_audio
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
@@ -282,7 +285,10 @@ def create_workspace_router(
             return repository_error_response(error)
 
     @router.get("/sessions/{session_id}/artifacts/{artifact_id}/download")
-    def download_artifact(session_id: str, artifact_id: str):
+    def download_artifact(
+        session_id: str, artifact_id: str,
+        audio_format: Literal["wav", "mp3", "m4a", "flac"] | None = Query(default=None),
+    ):
         workspace = workspace_or_error()
         if isinstance(workspace, JSONResponse):
             return workspace
@@ -290,12 +296,22 @@ def create_workspace_router(
             artifact = workspace.get_artifact(session_id, artifact_id)
             data = workspace.artifact_path(artifact).read_bytes()
             safe = artifact.name.replace('"', "")
+            media_type = artifact.media_type
+            if audio_format:
+                if artifact.media_type not in {"audio/wav", "audio/x-wav"}:
+                    raise HTTPException(status_code=422, detail="Audio format export requires a WAV source")
+                try:
+                    data = encode_wav_audio(data, audio_format)
+                except AudioCodecError as error:
+                    raise HTTPException(status_code=422, detail="Could not encode the requested audio format") from error
+                safe = str(Path(safe).with_suffix("." + audio_format))
+                media_type = OUTPUT_MEDIA_TYPES[audio_format]
             return Response(
                 data,
-                media_type=artifact.media_type,
+                media_type=media_type,
                 headers={
                     "Content-Disposition": f'attachment; filename="{safe}"',
-                    "ETag": artifact.content_hash,
+                    "ETag": hashlib.sha256(data).hexdigest() if audio_format else artifact.content_hash,
                 },
             )
         except RepositoryError as error:

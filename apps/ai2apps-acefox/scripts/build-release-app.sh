@@ -183,7 +183,7 @@ cleanup() {
 }
 trap cleanup EXIT
 APP=${STAGING_ROOT}/AI2Apps.app
-SHELL_APP=${APP}/Contents/Applications/AI2AppsShell.app
+SHELL_APP=${APP}/Contents/Applications/AI2Apps.app
 mkdir -p "${SHELL_APP}"
 rsync -aL "${ACEFOX_APP}/" "${SHELL_APP}/"
 # Objdir bundles contain a one-shot marker that Gecko deletes on first launch.
@@ -202,11 +202,15 @@ if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
   BROWSER_OMNI=${SHELL_APP}/Contents/Resources/browser/omni.ja
   [[ -f ${BROWSER_OMNI} ]] || fail "packaged AceFox is missing browser/omni.ja"
   SHELL_RESOURCE=chrome/browser/content/browser/ai2apps/shell.mjs
+  SHELL_DOCUMENT_RESOURCE=chrome/browser/content/browser/ai2apps/shell.xhtml
+  SHELL_DOCUMENT_SOURCE=${ACEFOX_SHELL_SOURCE:h}/shell.xhtml
+  [[ -f ${SHELL_DOCUMENT_SOURCE} ]] || fail "matching AceFox Shell document is missing"
   PROMPT_RESOURCE=actors/PromptParent.sys.mjs
   PROMPT_SOURCE=${ACEFOX_SHELL_SOURCE:h:h:h:h}/actors/PromptParent.sys.mjs
   [[ -f ${PROMPT_SOURCE} ]] || fail "matching AceFox PromptParent source is missing"
   SHELL_OVERLAY_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai2apps-shell-overlay.XXXXXX")
   mkdir -p "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE:h}"
+  cp "${SHELL_DOCUMENT_SOURCE}" "${SHELL_OVERLAY_ROOT}/${SHELL_DOCUMENT_RESOURCE}"
   mkdir -p "${SHELL_OVERLAY_ROOT}/${PROMPT_RESOURCE:h}"
   cp "${PROMPT_SOURCE}" "${SHELL_OVERLAY_ROOT}/${PROMPT_RESOURCE}"
   /usr/bin/sed \
@@ -218,7 +222,7 @@ if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
     fail "could not apply SHELL_TITLE_PREFIX to ACEFOX_SHELL_SOURCE"
   (
     cd "${SHELL_OVERLAY_ROOT}"
-    /usr/bin/zip -q -X "${BROWSER_OMNI}" "${SHELL_RESOURCE}" "${PROMPT_RESOURCE}"
+    /usr/bin/zip -q -X "${BROWSER_OMNI}" "${SHELL_RESOURCE}" "${SHELL_DOCUMENT_RESOURCE}" "${PROMPT_RESOURCE}"
   )
   rm -rf "${SHELL_OVERLAY_ROOT}"
 fi
@@ -415,15 +419,15 @@ fi
 SHELL_INFO=${SHELL_APP}/Contents/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${PRODUCT_IDENTIFIER}.shell" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable acefox-bin" "${SHELL_INFO}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_DISPLAY_NAME}" "${SHELL_INFO}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_DISPLAY_NAME}" "${SHELL_INFO}" 2>/dev/null || \
-  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_DISPLAY_NAME}" "${SHELL_INFO}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName AI2Apps" "${SHELL_INFO}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AI2Apps" "${SHELL_INFO}" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string AI2Apps" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsInstanceID string ${INSTANCE_ID}" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBrowserRole string shell" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsSharedBrowserBundle bool true" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsDisableRemoteServer bool true" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsIconContract string ${ICON_CONTRACT}" "${SHELL_INFO}"
-set_localized_bundle_name "${SHELL_APP}" "${APP_DISPLAY_NAME}"
+set_localized_bundle_name "${SHELL_APP}" "AI2Apps"
 if [[ ${SANDBOX_MODE} == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Add :AI2AppsStorageMode string app-group" "${SHELL_INFO}"
   /usr/libexec/PlistBuddy -c "Add :AI2AppsApplicationGroupIdentifier string ${APPLICATION_GROUP_IDENTIFIER}" "${SHELL_INFO}"

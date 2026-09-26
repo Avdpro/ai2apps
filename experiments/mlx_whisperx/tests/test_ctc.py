@@ -144,6 +144,8 @@ def test_segment_with_no_aligned_words_keeps_text_and_segment_timing(
 def test_qwen_language_names_and_window_limit(tmp_path: Path):
     assert MLXQwen3ForcedAligner._language_name("zh-CN") == "Chinese"
     assert MLXQwen3ForcedAligner._language_name("en_US") == "English"
+    assert MLXQwen3ForcedAligner._language_name("English") == "English"
+    assert MLXQwen3ForcedAligner._language_name("Cantonese") == "Cantonese"
     with pytest.raises(UnsupportedAlignmentLanguageError, match="got ar"):
         MLXQwen3ForcedAligner._language_name("ar")
     with pytest.raises(ValueError, match="in \\(0, 300\\]"):
@@ -176,6 +178,32 @@ def test_qwen_items_are_partitioned_back_to_segments(tmp_path: Path):
         "rewritten_segments": 0,
         "removed_text_characters": 0,
     }
+
+
+def test_qwen_alignment_preserves_asr_punctuation_and_casing(tmp_path: Path):
+    from types import SimpleNamespace
+
+    aligner = MLXQwen3ForcedAligner(str(tmp_path))
+    segments = [
+        Segment(0.0, 1.0, "Come on, Joey!"),
+        Segment(1.0, 2.0, "你好，世界！"),
+    ]
+    items = [
+        SimpleNamespace(text="come", start_time=0.1, end_time=0.3),
+        SimpleNamespace(text="on", start_time=0.3, end_time=0.5),
+        SimpleNamespace(text="joey", start_time=0.5, end_time=0.9),
+        SimpleNamespace(text="你", start_time=1.1, end_time=1.2),
+        SimpleNamespace(text="好", start_time=1.2, end_time=1.3),
+        SimpleNamespace(text="世", start_time=1.3, end_time=1.4),
+        SimpleNamespace(text="界", start_time=1.4, end_time=1.5),
+    ]
+
+    aligner._apply_items(segments, [3, 4], items, offset=0.0)
+
+    assert segments[0].text == "Come on, Joey!"
+    assert segments[1].text == "你好，世界！"
+    assert [word.word for word in segments[0].words] == ["come", "on", "joey"]
+    assert aligner.alignment_stats["rewritten_segments"] == 0
 
 
 def test_qwen_alignment_replaces_unalignable_hallucinated_text(tmp_path: Path):

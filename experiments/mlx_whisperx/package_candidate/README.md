@@ -18,11 +18,14 @@ by explicit `allow_patterns`. Each model identity has its own signed
 distribution specification under `META/`; all four exact distributions are
 published and anonymously verified in the Registry.
 
-Release 0.1.2 uses the Desktop's version-bounded legacy Discover mapping because
+Release 0.1.3 uses the Desktop's version-bounded legacy Discover mapping because
 the production Cloud schema does not yet accept signed `discovery` and
 `modelProfile` fields. The dedicated model type and all model capabilities
 remain signed in `service.yaml`.
 
-0.1.2 also avoids canonicalizing a sandbox-granted upload path before opening
+0.1.2 avoids canonicalizing a sandbox-granted upload path before opening
 it (important for macOS `/tmp` → `/private/tmp`) and accepts standard multipart
 boolean strings such as `diarization=false`.
+
+0.1.3 normalizes ASR language names and locale tags to the short codes required
+by Qwen3 ForcedAligner, while retaining direct support for canonical full names.

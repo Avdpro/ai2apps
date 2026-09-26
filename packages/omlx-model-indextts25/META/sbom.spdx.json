@@ -1,0 +1,32 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.indextts25-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.indextts25/0.1.0",
+  "packages": [
+    {
+      "name": "IndexTeam/IndexTTS-2.5",
+      "SPDXID": "SPDXRef-IndexTTS-2.5",
+      "versionInfo": "d0aa86e75bb6f3437f3831e95056fa72842d89ef",
+      "downloadLocation": "https://huggingface.co/IndexTeam/IndexTTS-2.5",
+      "licenseConcluded": "LicenseRef-Bilibili-Model-Use-License-Agreement",
+      "licenseDeclared": "LicenseRef-Bilibili-Model-Use-License-Agreement",
+      "licenseComments": "The Package carries the upstream model license verbatim."
+    },
+    {
+      "name": "WIndexTTS-pure-MLX-runtime",
+      "SPDXID": "SPDXRef-WIndexTTS",
+      "versionInfo": "eafb98c1b2ba46f6a608f29d8831208b89047681",
+      "downloadLocation": "https://github.com/baicai-1145/WIndexTTS",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Bilibili-Model-Use-License-Agreement",
+      "extractedText": "See META/licenses/IndexTTS-2.5-LICENSE.txt"
+    }
+  ]
+}

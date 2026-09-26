@@ -1,0 +1,40 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_voxcpm2_4bit_dc9e5c1_v1",
+  "modelId": "ai2apps.model.voxcpm2/4bit",
+  "repoId": "mlx-community/VoxCPM2-4bit",
+  "revision": "dc9e5c187858da5f4a13dc4c247e297339216381",
+  "format": "safetensors",
+  "quantization": "4bit",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "termsHash": "sha256:59df539296ae6da58dc5b1ffb9971147429c2a8f2fb6ab862ef8322b655df025",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "config.json",
+    "model.safetensors",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "mlx-community/VoxCPM2-4bit",
+      "revision": "dc9e5c187858da5f4a13dc4c247e297339216381",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "mlx-community/VoxCPM2-4bit",
+      "revision": "c523466da1ff69acd148625cb011a552d580cb85",
+      "access": "public_anonymous"
+    }
+  ]
+}

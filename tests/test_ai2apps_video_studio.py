@@ -37,6 +37,10 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert 'class="vs-studio-sidebar"' in template
     assert 'class="vs-mini-app-workspace"' in template
     assert "vs-render-workspace" in template
+    assert "@click=\"clearNotice()\"" in template
+    assert "position:fixed;z-index:70" in stylesheet
+    assert "tone === 'error' ? 12000 : 4500" in script
+    assert "if (this.noticeTimer) clearTimeout(this.noticeTimer)" in script
     assert "video_studio.mini_apps" in template and "Gallery Mini Entry" in template
     assert "video_studio.live.title" in template and "video_studio.animation.title" in template
     assert "vs-mode-tabs" not in template
@@ -77,6 +81,12 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "video_studio.add_gallery" in template
     assert "dragGeneratedVideo" in script
     assert "addActiveVideoToGallery" in script
+    assert "handlePackageOutput" in script and "ai2apps:studio-output" in script
+    assert "get activePackageArtifact()" in script
+    assert "liveUrl || this.activePackageArtifact?.downloadUrl" in script
+    assert "this.packageRuns = (runs.items || []).filter" in script
+    assert "!this.packageMiniAppId && this.mode === 'composer'" in script
+    assert '!packageMiniAppId&&!isLocalVideoTool' in template
     assert "galleryActiveCollectionId" in script
     assert "/v1/platform/gallery/assets/import-artifact/" in script
     assert "handleGalleryDrop" in script and "routeDroppedFile" in script
@@ -137,6 +147,9 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "recommended?.ready ? recommended : providers.find(item => item.ready)" in script
     assert "preferredProviderId(this.modeProviders, recommendedId)" in script
     assert "item.id === this.modelId && item.ready" in script
+    assert "this.syncDefaults(selectedProviderChanged)" in script
+    assert "const recommendedSteps = Number(defaults.steps ?? 20)" in script
+    assert "this.steps = recommendedSteps" in script
     assert "video_studio.configure" in template
     assert "video_studio.submit_setup" in template
     assert "await this.generate()" not in script
@@ -416,7 +429,12 @@ def test_video_studio_provider_catalog_exposes_signed_video_capabilities(monkeyp
         capabilities=("video_generation",),
         endpoints={},
         context_window=None,
-        metadata={"family": "minimax-h3", "precision": "q4", "residency": "staged"},
+        metadata={
+            "family": "minimax-h3",
+            "precision": "q4",
+            "residency": "staged",
+            "recommended_steps": 8,
+        },
         audio_capabilities=None,
         image_capabilities=None,
         video_capabilities=caps,
@@ -441,6 +459,7 @@ def test_video_studio_provider_catalog_exposes_signed_video_capabilities(monkeyp
     assert effective_caps["presets"] == caps["presets"]
     assert effective_caps["geometry"]["resolutions"] == list(H3_RESOLUTIONS)
     assert effective_caps["geometry"]["ratios"] == list(H3_RATIOS)
+    assert effective_caps["defaults"]["steps"] == 8
     assert payload["items"][0]["precision"] == "q4"
     assert payload["items"][0]["ready"] is True
 

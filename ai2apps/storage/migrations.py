@@ -4516,6 +4516,38 @@ MIGRATIONS: tuple[Migration, ...] = (
             "WHERE actor_id LIKE 'ai2apps-user:%'",
         ),
     ),
+    Migration(
+        version=72,
+        name="readaloud_project_mini_app_scope",
+        statements=(
+            "ALTER TABLE readaloud_projects ADD COLUMN mini_app_id TEXT NOT NULL DEFAULT 'ai2apps.audio.audiobook'",
+            "CREATE INDEX ix_readaloud_projects_mini_app ON readaloud_projects(owner_user_id,mini_app_id,updated_at DESC)",
+        ),
+    ),
+    Migration(
+        version=73,
+        name="readaloud_training_materials",
+        statements=(
+            "ALTER TABLE readaloud_voice_profiles ADD COLUMN training_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(training_json))",
+        ),
+    ),
+    Migration(
+        version=74,
+        name="readaloud_segment_soft_delete",
+        statements=("ALTER TABLE readaloud_segments ADD COLUMN deleted_at TEXT",),
+    ),
+    Migration(version=75, name="readaloud_dialogue_output", statements=(
+        "ALTER TABLE readaloud_render_jobs ADD COLUMN merge_output INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE readaloud_render_jobs ADD COLUMN merged_artifact_id TEXT",
+        "ALTER TABLE readaloud_render_jobs ADD COLUMN merged_session_id TEXT",
+    )),
+    Migration(version=76, name="readaloud_cast_role", statements=(
+        "ALTER TABLE readaloud_characters ADD COLUMN role TEXT NOT NULL DEFAULT 'auto' CHECK(role IN ('auto','narrator','female_lead','male_lead','default_male','default_female'))",
+    )),
+    Migration(version=77, name="readaloud_project_asr", statements=(
+        "ALTER TABLE readaloud_projects ADD COLUMN asr_verification INTEGER NOT NULL DEFAULT 1 CHECK(asr_verification IN (0,1))",
+        "ALTER TABLE readaloud_projects ADD COLUMN asr_model_id TEXT NOT NULL DEFAULT ''",
+    )),
 )
 
 

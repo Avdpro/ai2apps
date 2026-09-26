@@ -101,7 +101,11 @@ def test_h3_bf16_is_temporarily_disabled():
 def test_h3_effective_capabilities_expose_safe_native_resolutions():
     model = SimpleNamespace(
         id="ai2apps.model.minimax-h3/fl2va-8bit",
-        metadata={"family": "minimax-h3", "precision": "q8"},
+        metadata={
+            "family": "minimax-h3",
+            "precision": "q8",
+            "recommended_steps": 8,
+        },
         video_capabilities={
             "geometry": {"resolutions": ["512x512"], "ratios": ["1:1"]},
             "defaults": {"resolution": "512x512"},
@@ -113,6 +117,27 @@ def test_h3_effective_capabilities_expose_safe_native_resolutions():
     assert capabilities["geometry"]["resolutions"] == list(H3_RESOLUTIONS)
     assert capabilities["geometry"]["ratios"] == list(H3_RATIOS)
     assert capabilities["defaults"]["resolution"] == "512x512"
+    assert capabilities["defaults"]["steps"] == 8
+
+
+def test_effective_capabilities_ignore_invalid_recommended_steps():
+    model = SimpleNamespace(
+        id="example/video",
+        metadata={"recommended_steps": 0},
+        video_capabilities={"defaults": {"steps": 24}},
+    )
+
+    assert effective_video_capabilities(model)["defaults"]["steps"] == 24
+
+
+def test_effective_capabilities_default_to_twenty_steps():
+    model = SimpleNamespace(
+        id="ai2apps.model.minimax-h3/fl2va-8bit",
+        metadata={"family": "minimax-h3"},
+        video_capabilities={"defaults": {"resolution": "512x512"}},
+    )
+
+    assert effective_video_capabilities(model)["defaults"]["steps"] == 20
 
 
 @pytest.mark.asyncio
@@ -495,3 +520,58 @@ async def test_video_task_join_preserves_requested_clip_order(tmp_path, monkeypa
     artifact = manager.workspace.get_artifact(session_id, joined["video"]["artifact_id"])
     assert manager.workspace.artifact_path(artifact).read_bytes() == b"joined-video"
     await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_video_retention_removes_expired_files_and_preserves_gallery(tmp_path):
+    from ai2apps.gallery import GalleryRepository
+    manager = _manager(tmp_path)
+    gallery = GalleryRepository(manager.database, manager.workspace.paths.artifacts_path / 'gallery')
+    ids = []
+    for index in range(21):
+        task = await manager.create({'model': 'example/video', 'content': [
+            {'type': 'text', 'role': 'prompt', 'text': str(index)}]}, actor_id='actor-1')
+        ids.append(task['id'])
+        output = manager.root / task['id'] / 'result.mp4'
+        output.write_bytes(b'video-' + bytes([index]))
+        artifact = manager._materialize_artifact(task['id'], manager._model('example/video'), output)
+        manager._update(task['id'], status='succeeded', artifact_id=artifact.id,
+                        artifact_session_id=artifact.session_id)
+        if index == 0:
+            source = manager.workspace.artifact_path(artifact)
+            with source.open('rb') as stream:
+                asset, _ = gallery.import_stream('actor-1', stream, name='saved.mp4', media_type='video/mp4')
+    queued = await manager.create({'model': 'example/video', 'content': [
+        {'type': 'text', 'role': 'prompt', 'text': 'pending'}]}, actor_id='actor-1')
+    manager.prune_history('another-user')
+    assert source.exists()
+    manager.prune_history('actor-1')
+    assert not source.exists()
+    assert not (manager.root / ids[0]).exists()
+    assert (manager.root / ids[-1]).is_dir()
+    assert manager.get(queued['id'], actor_id='actor-1')['status'] == 'queued'
+    assert gallery.asset_path('actor-1', asset['id'])[1].read_bytes() == b'video-\x00'
+    assert len(manager.list(actor_id='actor-1', limit=100)['data']) == 21
+
+
+@pytest.mark.asyncio
+async def test_video_manual_delete_rejects_active_and_foreign_tasks(tmp_path):
+    from ai2apps.gallery import GalleryRepository
+    manager = _manager(tmp_path)
+    task = await manager.create({'model':'example/video','content':[{'type':'text','role':'prompt','text':'delete test'}]},actor_id='actor-1')
+    with pytest.raises(VideoGenerationError) as error:
+        manager.delete(task['id'],actor_id='actor-1')
+    assert error.value.status_code == 409
+    output=manager.root/task['id']/'result.mp4'; output.write_bytes(b'video-delete-test')
+    artifact=manager._materialize_artifact(task['id'],manager._model('example/video'),output)
+    manager._update(task['id'],status='succeeded',artifact_id=artifact.id,artifact_session_id=artifact.session_id)
+    gallery=GalleryRepository(manager.database,manager.workspace.paths.artifacts_path/'gallery')
+    source=manager.workspace.artifact_path(artifact)
+    with source.open('rb') as stream:
+        asset,_=gallery.import_stream('actor-1',stream,name='saved.mp4',media_type='video/mp4')
+    with pytest.raises(VideoGenerationError) as error:
+        manager.delete(task['id'],actor_id='another-user')
+    assert error.value.status_code == 404 and source.exists()
+    manager.delete(task['id'],actor_id='actor-1')
+    assert not source.exists() and not (manager.root/task['id']).exists()
+    assert gallery.asset_path('actor-1',asset['id'])[1].read_bytes()==b'video-delete-test'

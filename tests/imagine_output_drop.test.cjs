@@ -1,0 +1,61 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const {File}=require('node:buffer');
+const ctx={window:{location:{origin:'http://localhost:55646'}},document:{documentElement:{lang:'en'}},URL,File,Blob,console,structuredClone};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(__dirname+'/../ai2apps/web/static/js/imagine_studio.js','utf8'),ctx);
+const app=ctx.window.imagineStudioApp();
+app.appInstanceId=()=> 'app-test';
+const artifact={id:'artifact-test',name:'portrait.png',previewUrl:'/v1/platform/imagine-studio/results/isr_'+'a'.repeat(32)+'/content?appInstanceId=app-test'};
+app.runs=[{artifacts:[artifact]}];
+let requests=0;
+ctx.fetch=async(url,options)=>{requests++;assert.equal(options.credentials,'same-origin');return {ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})};};
+const data={};
+const transfer={setData:(k,v)=>data[k]=v,getData:k=>data[k]||'',files:[]};
+app.dragOutputImage({dataTransfer:transfer},artifact);
+assert.equal(transfer.effectAllowed,'copy');
+assert.equal(data['text/uri-list'],new URL(artifact.previewUrl,ctx.window.location.origin).href);
+app.persistPreferences=()=>{};
+app.fail=error=>{throw error;};
+let received;
+app.setReference=async(slot,file)=>{received={slot,file};};
+(async()=>{
+    for(const mini of app.miniApps.filter(item=>item.status==='ready'&&item.needsImages)) {
+        app.miniAppId=mini.id;
+        if(app.isPortraitMode)app.portraitClothing='custom';
+        for(let slot=0;slot<app.referenceSlotCount;slot++) {
+            await app.handleGalleryDrop({dataTransfer:transfer},slot);
+            assert.equal(received.slot,slot,mini.id);
+            assert.equal(received.file.name,'portrait.png');
+            assert.equal(received.file.type,'image/png');
+        }
+    }
+    const count=requests;
+    app.generating=true;
+    await app.handleGalleryDrop({dataTransfer:transfer},0);
+    assert.equal(requests,count);
+    app.generating=false;
+    data['application/x-ai2apps-image-result']=JSON.stringify({artifactId:artifact.id,appInstanceId:'another-app'});
+    await assert.rejects(()=>app.droppedOutputFile(transfer));
+    data['application/x-ai2apps-image-result']=JSON.stringify({artifactId:'missing',appInstanceId:'app-test'});
+    await assert.rejects(()=>app.droppedOutputFile(transfer));
+    data['application/x-ai2apps-image-result']=JSON.stringify({artifactId:artifact.id,appInstanceId:'app-test'});
+    const safe=artifact.previewUrl;
+    artifact.previewUrl='https://example.org/image.png';
+    await assert.rejects(()=>app.droppedOutputFile(transfer));
+    assert.equal(requests,count,'untrusted references never fetched');
+    artifact.previewUrl=safe;
+    ctx.fetch=async()=>({ok:false,status:404});
+    await assert.rejects(()=>app.droppedOutputFile(transfer));
+    ctx.fetch=async()=>({ok:true,blob:async()=>new Blob(['html'],{type:'text/html'})});
+    await assert.rejects(()=>app.droppedOutputFile(transfer));
+    data['application/x-ai2apps-image-result']='';
+    transfer.files=[new File(['native'],'native.png',{type:'image/png'})];
+    await app.handleGalleryDrop({dataTransfer:transfer},0);
+    assert.equal(received.file.name,'native.png');
+    transfer.files=[];data['application/x-ai2apps-gallery-asset']='gallery-id';
+    app.materializeAssetReference=async(ref,slot)=>{assert.equal(ref.assetId,'gallery-id');assert.equal(slot,0);};
+    await app.handleGalleryDrop({dataTransfer:transfer},0);
+    console.log('Output drop: every built-in image slot, Gallery/native compatibility and trust checks passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

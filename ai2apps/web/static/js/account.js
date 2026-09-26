@@ -33,6 +33,9 @@
             EMAIL_NOT_VERIFIED: tr('account.error.email_not_verified'),
             EMAIL_ALREADY_REGISTERED: tr('account.error.email_already_registered'),
             INVALID_PASSWORD: tr('account.error.password_length'),
+            CURRENT_PASSWORD_INVALID: tr('account.password_change.wrong_current'),
+            PASSWORD_UNCHANGED: tr('account.password_change.unchanged'),
+            PASSWORD_CHANGE_UNAVAILABLE: tr('account.password_change.unavailable'),
             INVALID_VERIFICATION_CODE: tr('account.error.invalid_verification_code'),
             INVALID_PUBLIC_HANDLE: tr('account.error.invalid_public_handle'),
             PUBLIC_HANDLE_UNAVAILABLE: tr('account.error.public_handle_unavailable'),
@@ -172,6 +175,11 @@
             localIdentity: null, handoffInput: '',
             handoffEntryEnabled: false, credentialEntryEnabled: false,
             displayName: '', email: '', password: '', code: '', newPassword: '',
+            currentPassword: '', changeNewPassword: '', confirmNewPassword: '',
+            clearPasswordChange() {
+                this.currentPassword = ''; this.changeNewPassword = ''; this.confirmNewPassword = '';
+            },
+            destroy() { this.clearPasswordChange(); },
             adminPassword: '', adminDurationMinutes: 15, adminVerifiedUntil: '',
             installation: null, members: [], pendingInvitations: [], memberOwnerPassword: '',
             coreDevices: [], deviceOwnerPassword: '',
@@ -213,6 +221,7 @@
                 if (!allowed.includes(section)) return;
                 if (['devices', 'organization'].includes(section) && this.installationAccess !== 'manager') return;
                 this.activeSection = section;
+                this.clearPasswordChange();
                 this.clearNotice();
             },
             setMode(mode) { this.clearNotice(); this.password = ''; this.code = ''; this.newPassword = ''; this.mode = mode; },
@@ -336,6 +345,7 @@
                 } finally { this.busy = false; notifyShell(); }
             },
             applyUser(user) {
+                this.clearPasswordChange();
                 this.user = user || null;
                 this.signedIn = Boolean(user);
                 this.cloudUnavailable = false;
@@ -742,6 +752,30 @@
                     this.code = ''; this.newPassword = ''; this.mode = 'login'; this.applyUser(null); this.success(tr('account.success.password_reset')); notifyShell();
                 } catch (error) { this.fail(error); }
                 finally { this.code = ''; this.newPassword = ''; this.busy = false; }
+            },
+            async changePassword() {
+                if (this.busy) return;
+                this.clearNotice();
+                if (!validAccountPassword(this.currentPassword) || !validAccountPassword(this.changeNewPassword)) {
+                    this.fail(new Error(tr('account.error.password_length'))); return;
+                }
+                if (this.changeNewPassword !== this.confirmNewPassword) {
+                    this.fail(new Error(tr('account.password_change.mismatch'))); return;
+                }
+                if (this.currentPassword === this.changeNewPassword) {
+                    this.fail(new Error(tr('account.password_change.unchanged'))); return;
+                }
+                this.busy = true;
+                try {
+                    await cloud('/auth/password/change', { method: 'POST', body: {
+                        currentPassword: this.currentPassword, newPassword: this.changeNewPassword,
+                    } });
+                    this.clearPromotionState(); this.applyUser(null); this.clearCurrency();
+                    this.adminPassword = ''; this.adminVerifiedUntil = '';
+                    this.clearInstallationAccess('unknown'); this.mode = 'login';
+                    this.success(tr('account.password_change.success')); notifyShell();
+                } catch (error) { this.fail(error); }
+                finally { this.clearPasswordChange(); this.busy = false; }
             },
             async logout() {
                 this.busy = true; this.clearNotice();

@@ -170,6 +170,48 @@ class StudioRepository:
             ).fetchall()]
         return self._run(row, steps, artifacts)
 
+    def delete_run(self, run_id, workspace=None, **scope):
+        run = self.get_run(run_id, **scope)
+        if run['status'] not in TERMINAL_RUN_STATUSES and run['status'] != 'draft':
+            raise StudioRepositoryError('run_active', 'Stop the task before deleting it', status_code=409)
+        for artifact in run['artifacts']:
+            metadata = artifact.get('metadata') or {}
+            if workspace is not None and metadata.get('workspaceSessionId') and metadata.get('workspaceArtifactId'):
+                workspace.retire_artifact(metadata['workspaceSessionId'], metadata['workspaceArtifactId'])
+        with self.database.transaction(write=True) as connection:
+            self._owned_row(connection, run_id, **scope)
+            connection.execute('DELETE FROM studio_artifacts WHERE run_id=?', (run_id,))
+            connection.execute('DELETE FROM studio_run_steps WHERE run_id=?', (run_id,))
+            connection.execute('DELETE FROM studio_runs WHERE id=?', (run_id,))
+        return run
+
+    def prune_output_history(self, workspace, *, actor_id: str, installation_id: str,
+                             app_instance_id: str, studio_id: str) -> None:
+        """Keep twenty terminal runs per Mini-App, including their owned outputs."""
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                """SELECT id FROM (
+                    SELECT id,ROW_NUMBER() OVER (
+                        PARTITION BY mini_app_id ORDER BY created_at DESC,id DESC) AS position
+                    FROM studio_runs WHERE actor_id=? AND installation_id=?
+                    AND app_instance_id=? AND studio_id=?
+                    AND status IN ('succeeded','failed','cancelled','expired'))
+                    WHERE position>20""",
+                (actor_id, installation_id, app_instance_id, studio_id),
+            ).fetchall()
+        for row in rows:
+            with self.database.transaction() as connection:
+                artifacts = connection.execute(
+                    "SELECT metadata_json FROM studio_artifacts WHERE run_id=?", (row["id"],)
+                ).fetchall()
+            for artifact in artifacts:
+                metadata = self._json(artifact["metadata_json"], {})
+                if metadata.get("workspaceSessionId") and metadata.get("workspaceArtifactId"):
+                    workspace.retire_artifact(metadata["workspaceSessionId"], metadata["workspaceArtifactId"])
+            with self.database.transaction(write=True) as connection:
+                connection.execute("DELETE FROM studio_artifacts WHERE run_id=?", (row["id"],))
+                connection.execute("DELETE FROM studio_runs WHERE id=?", (row["id"],))
+
     def list_runs(self, *, actor_id: str, installation_id: str, app_instance_id: str,
                   studio_id: str, limit: int = 50) -> tuple[dict[str, Any], ...]:
         with self.database.transaction() as connection:

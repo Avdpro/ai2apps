@@ -1,4 +1,12 @@
 {
+  "acpf.安装 {0}": "{0} 설치",
+  "acpf.选择要随 Package 一起下载并验证的 Checkpoint。": "Package와 함께 다운로드하고 검증할 체크포인트를 선택하세요.",
+  "acpf.安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。": "신뢰할 수 있는 모델 Package를 설치하고 선택한 체크포인트를 다운로드한 뒤 모델 서비스를 시작하고 검증합니다.",
+  "acpf.安装 Package 并下载模型": "Package 설치 및 모델 다운로드",
+  "acpf.模型已安装并可用": "모델 설치 완료 및 사용 가능",
+  "acpf.安装模型 Service Package": "모델 Service Package 설치",
+  "acpf.下载所选模型 Checkpoint": "선택한 모델 체크포인트 다운로드",
+  "acpf.启动并验证模型服务": "모델 서비스 시작 및 검증",
   "acpf.完成": "완료",
   "acpf.安装成功": "설치 성공",
   "acpf.安装已完成，可以开始使用。": "설치가 완료되었습니다. 이제 사용할 수 있습니다.",
@@ -1172,5 +1180,14 @@
   "ai_browser.unauthorized": "세션이 만료되었거나 권한이 없습니다. 다시 로그인하세요.",
   "ai_browser.network_error": "연결할 수 없습니다. 연결을 확인한 후 다시 시도하세요.",
   "ai_browser.invalid_request": "잘못된 요청입니다. 새로고침 후 다시 시도하세요.",
-  "discover.install.restart_local": "AI2Apps 다시 시작"
+  "discover.install.restart_local": "AI2Apps 다시 시작",
+  "account.password_change.title": "비밀번호 변경",
+  "account.password_change.description": "현재 비밀번호와 새 비밀번호를 입력하고 확인하세요. 변경 후 다시 로그인해야 합니다.",
+  "account.password_change.current": "현재 비밀번호",
+  "account.password_change.confirm": "새 비밀번호 확인",
+  "account.password_change.mismatch": "새 비밀번호가 일치하지 않습니다.",
+  "account.password_change.unchanged": "새 비밀번호는 현재 비밀번호와 달라야 합니다.",
+  "account.password_change.wrong_current": "현재 비밀번호가 올바르지 않습니다.",
+  "account.password_change.unavailable": "아직 사용할 수 없습니다. Cloud 서비스 업데이트 후 다시 시도하세요.",
+  "account.password_change.success": "비밀번호가 변경되었습니다. 새 비밀번호로 로그인하세요."
 }

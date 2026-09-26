@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Sign in · AI2Apps{% endblock %}
+{% block title %}{{ t('login.account.sign_in') }} · AI2Apps{% endblock %}
 
 {% block head %}
 <style>
@@ -26,41 +26,41 @@
 
     <form id="account-stage" class="space-y-4">
       <div class="grid grid-cols-2 gap-2 rounded-xl bg-neutral-100 p-1">
-        <button id="login-mode" type="button" class="rounded-lg py-2 text-sm font-semibold bg-white shadow-sm">Sign in</button>
-        <button id="register-mode" type="button" class="rounded-lg py-2 text-sm font-semibold text-neutral-500">Create account</button>
+        <button id="login-mode" type="button" class="rounded-lg py-2 text-sm font-semibold bg-white shadow-sm">{{ t('login.account.sign_in') }}</button>
+        <button id="register-mode" type="button" class="rounded-lg py-2 text-sm font-semibold text-neutral-500">{{ t('login.account.register') }}</button>
       </div>
       <input id="display-name" hidden class="auth-input w-full rounded-xl border px-4 py-3 text-sm"
-             maxlength="120" placeholder="Your name">
+             maxlength="120" placeholder="{{ t('login.account.name') }}">
       <input id="email" class="auth-input w-full rounded-xl border px-4 py-3 text-sm"
-             type="email" autocomplete="username" placeholder="Email" required>
+             type="email" autocomplete="username" placeholder="{{ t('login.account.email') }}" required>
       <input id="password" class="auth-input w-full rounded-xl border px-4 py-3 text-sm"
              type="password" autocomplete="current-password" maxlength="128"
-             placeholder="Password (8–128 UTF-8 bytes)" required>
+             placeholder="{{ t('login.account.password') }}" required>
       <button id="account-submit" class="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-50">
-        Sign in
+        {{ t('login.account.sign_in') }}
       </button>
     </form>
 
     <form id="verify-stage" hidden class="space-y-4">
-      <p class="text-sm text-neutral-600">Enter the 8-digit verification code sent to <strong id="verify-email"></strong>.</p>
+      <p class="text-sm text-neutral-600">{{ t('login.account.verify_hint') }} <strong id="verify-email"></strong></p>
       <input id="verification-code" class="auth-input w-full rounded-xl border px-4 py-3 text-center tracking-[0.35em]"
              inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="00000000" required>
-      <button class="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-50">Verify email</button>
-      <button id="resend-code" type="button" class="w-full text-xs text-neutral-500">Resend code</button>
+      <button class="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ t('login.account.verify') }}</button>
+      <button id="resend-code" type="button" class="w-full text-xs text-neutral-500">{{ t('login.account.resend') }}</button>
     </form>
 
     <div id="bind-stage" hidden class="space-y-4">
       <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-        <h2 class="font-semibold text-amber-900">Make this account the Core user?</h2>
-        <p class="mt-1 text-sm text-amber-800">This Local instance has no Core user yet. The Core user controls models, Packages, secrets and members on this device.</p>
+        <h2 class="font-semibold text-amber-900">{{ t('login.account.bind_title') }}</h2>
+        <p class="mt-1 text-sm text-amber-800">{{ t('login.account.bind_description') }}</p>
       </div>
       <input id="device-name" class="auth-input w-full rounded-xl border px-4 py-3 text-sm"
-             maxlength="120" placeholder="Device name" required>
-      <button id="bind-core" class="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-50">Confirm Core binding</button>
-      <button id="reset-login" class="w-full text-xs text-neutral-500">Use another account</button>
+             maxlength="120" placeholder="{{ t('login.account.device') }}" required>
+      <button id="bind-core" class="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ t('login.account.bind') }}</button>
+      <button id="reset-login" class="w-full text-xs text-neutral-500">{{ t('login.account.other_account') }}</button>
     </div>
 
-    <p class="mt-7 text-center text-[11px] text-neutral-400">Passwords stay with AI2Apps Cloud and are never stored by this Local instance.</p>
+    <p class="mt-7 text-center text-[11px] text-neutral-400">{{ t('login.account.privacy') }}</p>
   </section>
 </main>
 {% endblock %}

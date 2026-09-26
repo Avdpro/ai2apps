@@ -66,7 +66,7 @@ def test_imagine_studio_uses_studio_shell_with_builtin_mini_apps():
     assert "STYLE_TRANSFER_INSTRUCTION" in script
     assert "preferOpenAIStyleModel" in script
     assert "isStyleTransferMode ? Boolean(this.selectedStyle)" in script
-    assert "group-photo-1" in template
+    assert "js/imagine_studio.js" in template
     assert "GROUP_PHOTO_INSTRUCTION" in script
     assert "groupPersonFiles.length >= 2" in script
     assert "referenceSlotLabel(slot-1)" in template
@@ -298,7 +298,7 @@ def test_imagine_studio_uses_cloud_and_local_image_models_with_capability_aware_
 
 def test_imagine_studio_completed_artifact_controls():
     template = (WEB_ROOT / "templates/system_apps/imagine_studio.html").read_text()
-    assert '<h2>Output</h2>' in template
+    assert '<h2 x-text="tr(\'outputTitle\')"></h2>' in template
     css = (WEB_ROOT / "static/css/imagine_studio.css").read_text()
     assert '.vs-render-workspace>.is-image-preview:not(.empty){position:sticky;top:0;z-index:5;max-height:calc(100% - 20px)' in css
     assert ':disabled="!activeArtifact?.id || !!(activeArtifact?.adding || activeArtifact?.galleryAssetId)"' in template
@@ -417,8 +417,17 @@ def test_imagine_studio_durable_run_step_artifact_and_draft_api(tmp_path, monkey
         "ai2apps.imagine.reference-creation",
         "ai2apps.imagine.group-photo",
         "ai2apps.imagine.adjust-image",
+        "ai2apps.imagine.sticker-workshop",
+        "ai2apps.imagine.product-poster",
+        "ai2apps.imagine.portrait",
+        "ai2apps.imagine.extract-items",
+        "ai2apps.imagine.try-on",
     ]
     draft_url = "/imagine-studio/drafts/ai2apps.imagine.text-to-image"
+    portrait_draft_url = "/imagine-studio/drafts/ai2apps.imagine.portrait"
+    portrait_draft = {"portraitMode": "id", "portraitClothing": "custom", "portraitBackground": "blue"}
+    assert client.put(portrait_draft_url, headers=headers, json={"draft": portrait_draft}).status_code == 200
+    assert client.get(portrait_draft_url, headers=headers).json()["draft"] == portrait_draft
     assert client.put(draft_url, headers=headers, json={"draft": {"prompt": "durable"}}).status_code == 200
     assert client.get(draft_url, headers=headers).json()["draft"] == {"prompt": "durable"}
 
@@ -481,6 +490,7 @@ def test_imagine_studio_durable_run_step_artifact_and_draft_api(tmp_path, monkey
         f"/imagine-studio/runs/{run['id']}", headers=headers,
         json={"status": "running", "progress": 25, "detail": "Generating"},
     ).json()
+    assert client.delete(f"/imagine-studio/runs/{run['id']}",headers=headers).status_code == 409
     assert running["status"] == "running"
     assert running["steps"][0]["status"] == "running"
     assert running["steps"][0]["progress"] == 25
@@ -571,6 +581,11 @@ def test_imagine_studio_durable_run_step_artifact_and_draft_api(tmp_path, monkey
     gallery_repository = GalleryRepository(database, config.paths.artifacts_path / "gallery")
     _, gallery_path = gallery_repository.asset_path(principal.actor_user_id, gallery_asset_id)
     assert gallery_path.read_bytes() == replacement.getvalue()
+    assert client.delete(f"/imagine-studio/runs/{run['id']}",headers=headers).status_code == 204
+    assert all(item['id']!=run['id'] for item in client.get('/imagine-studio/runs',headers=headers).json()['items'])
+    assert gallery_path.read_bytes() == replacement.getvalue()
+    assert client.delete(f"/imagine-studio/runs/{run['id']}",headers=headers).status_code == 404
+
 
 
 def test_imagine_studio_history_persists_latest_twenty_images(tmp_path):
@@ -686,5 +701,5 @@ def test_imagine_studio_acpf_profiles_choose_a_local_image_stack_by_device_memor
         "checkpoint": {"model_id": "ai2apps.model.z-image-mlx/turbo"},
     }
     assert profiles["apple-metal-flux2-klein-4b"]["recommendation_memory_gib"] == {
-        "minimum": 16, "maximum_exclusive": 24
+        "minimum": 16
     }

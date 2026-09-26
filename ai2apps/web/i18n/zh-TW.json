@@ -1,4 +1,12 @@
 {
+  "acpf.安装 {0}": "安裝 {0}",
+  "acpf.选择要随 Package 一起下载并验证的 Checkpoint。": "選擇要隨 Package 一起下載並驗證的 Checkpoint。",
+  "acpf.安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。": "安裝可信任的模型 Package，下載所選 Checkpoint，並啟動及驗證模型服務。",
+  "acpf.安装 Package 并下载模型": "安裝 Package 並下載模型",
+  "acpf.模型已安装并可用": "模型已安裝並可用",
+  "acpf.安装模型 Service Package": "安裝模型 Service Package",
+  "acpf.下载所选模型 Checkpoint": "下載所選模型 Checkpoint",
+  "acpf.启动并验证模型服务": "啟動並驗證模型服務",
   "acpf.完成": "完成",
   "acpf.安装成功": "安裝成功",
   "acpf.安装已完成，可以开始使用。": "安裝已完成，可以開始使用。",
@@ -1172,5 +1180,14 @@
   "ai_browser.unauthorized": "登入已過期或沒有操作權限，請重新登入。",
   "ai_browser.network_error": "無法連線，請檢查連線後再試。",
   "ai_browser.invalid_request": "請求無效，請重新整理後再試。",
-  "discover.install.restart_local": "重新啟動 AI2Apps"
+  "discover.install.restart_local": "重新啟動 AI2Apps",
+  "account.password_change.title": "修改密碼",
+  "account.password_change.description": "輸入舊密碼，並輸入和確認新密碼。修改成功後需要重新登入。",
+  "account.password_change.current": "舊密碼",
+  "account.password_change.confirm": "確認新密碼",
+  "account.password_change.mismatch": "兩次輸入的新密碼不一致。",
+  "account.password_change.unchanged": "新密碼不能與舊密碼相同。",
+  "account.password_change.wrong_current": "舊密碼不正確。",
+  "account.password_change.unavailable": "修改密碼功能尚未開放，請在 Cloud 服務更新後重試。",
+  "account.password_change.success": "密碼修改成功，請使用新密碼重新登入。"
 }

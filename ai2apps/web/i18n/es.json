@@ -1,4 +1,12 @@
 {
+  "acpf.安装 {0}": "Instalar {0}",
+  "acpf.选择要随 Package 一起下载并验证的 Checkpoint。": "Elige el checkpoint que se descargará y verificará con este Package.",
+  "acpf.安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。": "Instala el Package de modelo de confianza, descarga el checkpoint seleccionado e inicia y verifica el servicio del modelo.",
+  "acpf.安装 Package 并下载模型": "Instalar Package y descargar modelo",
+  "acpf.模型已安装并可用": "Modelo instalado y listo",
+  "acpf.安装模型 Service Package": "Instalar el Service Package del modelo",
+  "acpf.下载所选模型 Checkpoint": "Descargar el checkpoint del modelo seleccionado",
+  "acpf.启动并验证模型服务": "Iniciar y verificar el servicio del modelo",
   "acpf.完成": "Listo",
   "acpf.安装成功": "Instalación completada",
   "acpf.安装已完成，可以开始使用。": "La instalación ha terminado. Ya puedes empezar a usarlo.",
@@ -1172,5 +1180,14 @@
   "ai_browser.unauthorized": "La sesión ha caducado o no tienes permiso. Inicia sesión de nuevo.",
   "ai_browser.network_error": "No se pudo conectar. Comprueba la conexión e inténtalo de nuevo.",
   "ai_browser.invalid_request": "La solicitud no es válida. Actualiza e inténtalo de nuevo.",
-  "discover.install.restart_local": "Reiniciar AI2Apps"
+  "discover.install.restart_local": "Reiniciar AI2Apps",
+  "account.password_change.title": "Cambiar contraseña",
+  "account.password_change.description": "Introduce tu contraseña actual y confirma la nueva. Después tendrás que iniciar sesión de nuevo.",
+  "account.password_change.current": "Contraseña actual",
+  "account.password_change.confirm": "Confirmar nueva contraseña",
+  "account.password_change.mismatch": "Las contraseñas nuevas no coinciden.",
+  "account.password_change.unchanged": "La contraseña nueva debe ser diferente de la actual.",
+  "account.password_change.wrong_current": "La contraseña actual es incorrecta.",
+  "account.password_change.unavailable": "Función no disponible. Inténtalo tras la actualización del servicio Cloud.",
+  "account.password_change.success": "Contraseña cambiada. Inicia sesión con la nueva contraseña."
 }

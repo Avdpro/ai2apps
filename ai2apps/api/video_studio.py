@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.ownership import authorize_app_instance
+from ai2apps.config import DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES
 from ai2apps.gallery import GalleryError, GalleryRepository
 from ai2apps.identity import RequestPrincipal
 from ai2apps.model_identity import build_model_identity
@@ -308,15 +309,23 @@ def create_video_studio_router(
             **scope(principal, app_instance_id),
         )
 
+    def prune_history(repository, run_scope):
+        runtime = runtime_provider()
+        workspace = getattr(runtime, "workspace", None)
+        if workspace is not None:
+            repository.prune_output_history(workspace, **run_scope)
+
     @router.get("/runs")
     def list_runs(
         limit: int = Query(default=50, ge=1, le=100),
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
     ):
+        repository = studio(principal, app_instance_id)
+        prune_history(repository, scope(principal, app_instance_id))
         return {
             "items": list(
-                studio(principal, app_instance_id).list_runs(
+                repository.list_runs(
                     limit=limit, **scope(principal, app_instance_id)
                 )
             )
@@ -407,6 +416,36 @@ def create_video_studio_router(
             )
         except ComposerError as error:
             return composer_error(error)
+
+    @router.post("/composer/sources/import", status_code=201)
+    async def import_composer_source(
+        file: Annotated[UploadFile, File()],
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        name = Path(file.filename or "media").name
+        media_type = str(file.content_type or "")
+        if media_type and not media_type.startswith(("image/", "video/", "audio/")):
+            raise HTTPException(
+                status_code=422,
+                detail="Composer accepts image, video, or audio media",
+            )
+        try:
+            return await asyncio.to_thread(
+                composer_sources().import_stream,
+                file.file,
+                actor_id=principal.actor_user_id,
+                installation_id=principal.installation_id,
+                app_instance_id=app_instance_id,
+                display_name=name,
+                media_type=media_type or None,
+                max_bytes=DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES,
+            )
+        except ComposerError as error:
+            return composer_error(error)
+        finally:
+            await file.close()
 
     def composer_document_sources(
         source_ids: list[str],
@@ -644,6 +683,7 @@ def create_video_studio_router(
                     )
             finally:
                 shutil.rmtree(work_root, ignore_errors=True)
+                prune_history(repository, run_scope)
 
         background_tasks.add_task(compose_in_background)
         return repository.get_run(run_id, **run_scope)
@@ -789,6 +829,7 @@ def create_video_studio_router(
                     )
             finally:
                 shutil.rmtree(work_root, ignore_errors=True)
+                prune_history(repository, run_scope)
 
         background_tasks.add_task(extract_in_background)
         return repository.get_run(run_id, **run_scope)
@@ -927,6 +968,23 @@ def create_video_studio_router(
             app_instance_id=app_instance_id,
         ):
             raise HTTPException(status_code=404, detail="Video Studio draft not found")
+        return Response(status_code=204)
+
+    @router.delete('/tasks/{task_id}', status_code=204)
+    def delete_task(task_id: str, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        studio(principal, app_instance_id)
+        try:
+            runtime_provider().video_tasks.delete(task_id, actor_id=principal.actor_user_id)
+        except VideoGenerationError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        return Response(status_code=204)
+
+    @router.delete('/runs/{run_id}', status_code=204)
+    def delete_run(run_id: str, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        try:
+            studio(principal, app_instance_id).delete_run(run_id, runtime_provider().workspace, **scope(principal, app_instance_id))
+        except StudioRepositoryError as error:
+            return studio_error(error)
         return Response(status_code=204)
 
     @router.post("/tasks/{task_id}/retry", status_code=202)

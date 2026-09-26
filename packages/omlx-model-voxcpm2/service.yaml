@@ -1,0 +1,82 @@
+schema: ai2apps.service/v1
+id: ai2apps.model.voxcpm2
+name: VoxCPM2 2B
+description: Native MLX VoxCPM2 speech synthesis with controllable reference cloning and voice design.
+version: 0.1.0
+
+publisher: {id: ai2apps}
+license: {name: Apache License 2.0, id: Apache-2.0, path: META/licenses/Apache-2.0.txt}
+attribution:
+  notice: META/NOTICE.md
+  source: https://github.com/OpenBMB/VoxCPM
+
+runtime:
+  mode: process
+  protocol: ai2apps-model-worker/v1
+  provider: ai2apps.runtime.omlx
+  adapter: src/worker_adapter.py:create_adapter
+
+models:
+  - id: ai2apps.model.voxcpm2/4bit
+    display_name: VoxCPM2 2B 4-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/VoxCPM2-4bit
+    capabilities: [speech_generation, reference_voice, voice_cloning, voice_design, voice_instructions, emotion]
+    metadata: {family: voxcpm2, variant: 4bit, reference_audio_required_for_cloning: true, native_output_sample_rate: 48000}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/VoxCPM2-4bit
+      revision: dc9e5c187858da5f4a13dc4c247e297339216381
+      distribution_id: dist_ai2apps_voxcpm2_4bit_dc9e5c1_v1
+      preparation: {recipe: native}
+    audio_capabilities: &voxcpm_audio
+      schema: ai2apps.audio-capabilities/v1
+      operations: [audio_speech]
+      languages: [auto, zh, en]
+      formats: {input: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm], output: [wav, pcm, mp3, m4a, aac, flac, ogg, opus, webm]}
+      streaming: {mode: unsupported, formats: []}
+      tts:
+        named_voices: {mode: unsupported, voices: []}
+        speed: {mode: fallback, minimum: 0.5, maximum: 2.0, control: instruction, exact_multiplier: false}
+        emotion: {mode: native, control: instruction, values: [neutral, happy, sad, angry, calm, excited, surprised]}
+        instructions: {mode: native}
+        voice_profiles:
+          mode: native
+          reference_audio: true
+          reference_transcript: optional
+          transcript_effect: ignored_in_controlled_clone
+          reference_requirements: {min_samples: 1, max_samples: 1, max_seconds: 600}
+        voice_design: {mode: native}
+        continuation: {mode: unsupported}
+        multi_speaker: {mode: unsupported}
+
+  - id: ai2apps.model.voxcpm2/8bit
+    display_name: VoxCPM2 2B 8-bit
+    model_type: audio_tts
+    upstream_id: mlx-community/VoxCPM2-8bit
+    capabilities: [speech_generation, reference_voice, voice_cloning, voice_design, voice_instructions, emotion]
+    metadata: {family: voxcpm2, variant: 8bit, reference_audio_required_for_cloning: true, native_output_sample_rate: 48000}
+    weights:
+      provider: huggingface
+      repo_id: mlx-community/VoxCPM2-8bit
+      revision: d52725898a0675703f7f9ddc5a4d1a3cdbb99032
+      distribution_id: dist_ai2apps_voxcpm2_8bit_d5272589_v1
+      preparation: {recipe: native}
+    audio_capabilities: *voxcpm_audio
+
+capabilities: []
+requires:
+  services:
+    - id: ai2apps.runtime.omlx
+      version: ">=1.7.9,<2.0.0"
+      optional: false
+      capabilities: [mlx, model-worker-v1, audio-tts, audio-processing, audio-codecs, voxcpm2]
+  python: ">=3.11,<3.14"
+permissions:
+  network: {outbound: false}
+  model_weights: {huggingface_cache: read, reason: Read only Host-selected pinned VoxCPM2 checkpoints.}
+  accelerator: {metal: true, reason: Run VoxCPM2 synthesis with MLX.}
+compatibility: {os: [macos], architectures: [arm64], minimum_os_version: "26.2"}
+health: {path: /health, startup_timeout_seconds: 120}
+restart: {max_attempts: 2, base_delay_seconds: 1}
+tools: []

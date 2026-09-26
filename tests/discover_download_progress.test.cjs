@@ -32,5 +32,9 @@ vm.runInNewContext(fs.readFileSync('ai2apps/web/static/js/discover.js', 'utf8'),
     app.showError = error => {throw error;};
     await app.installModel({packageId: 'ai2apps/model-test', packageType: 'model'});
     assert(delegated);
+    app.installed = [{packageId:'test/multi',modelReady:true,modelInstall:{models:[{id:'base'},{id:'design'}]},readyModelConfigurationIds:['base']}];
+    assert.equal(app.isModelReady({packageId:'test/multi'}),false);
+    app.installed[0].readyModelConfigurationIds.push('design');
+    assert.equal(app.isModelReady({packageId:'test/multi'}),true);
     console.log('Discover Package telemetry and Checkpoint delegation checks passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});

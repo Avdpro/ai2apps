@@ -43,7 +43,11 @@ HELPER_APP=${APP}/Contents/Library/LoginItems/AI2AppsHelper.app
 [[ -s ${HELPER_APP}/Contents/Resources/menubar-logo-ready.svg ]] || \
   fail "Helper is missing its update-ready menu bar SVG logo"
 RUNTIME_ROOT=${HELPER_APP}/Contents/Resources/AI2AppsLocal
-SHELL_APP=${APP}/Contents/Applications/AI2AppsShell.app
+SHELL_APP=${APP}/Contents/Applications/AI2Apps.app
+for name_key in CFBundleName CFBundleDisplayName; do
+  [[ $(/usr/libexec/PlistBuddy -c "Print :${name_key}" "${SHELL_APP}/Contents/Info.plist") == AI2Apps ]] || \
+    fail "Shell system display name must be AI2Apps"
+done
 [[ -x ${RUNTIME_ROOT}/bin/omlx ]] || fail "missing Helper-owned Local entrypoint"
 [[ -x ${RUNTIME_ROOT}/Python/cpython-3.11/bin/python3.11 ]] || \
   fail "missing Helper-owned update staging Python"

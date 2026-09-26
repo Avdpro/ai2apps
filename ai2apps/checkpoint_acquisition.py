@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,31 @@ from ai2apps.checkpoint_distribution import (
     require_checkpoint_license_consent,
 )
 from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
+
+
+def _download_hf_token() -> str | None:
+    """Read credentials in the host only; never alter the Worker environment."""
+    from huggingface_hub import get_token
+
+    try:
+        token = get_token()
+    except (OSError, UnicodeError):
+        token = None
+    if token:
+        return token
+    # Helper deliberately redirects HF_HOME/HF_TOKEN_PATH to instance-private
+    # storage. Only this isolated launch needs a read-only user-default fallback.
+    if os.environ.get("AI2APPS_SUPERVISED") != "helper":
+        return None
+    cache_root = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    try:
+        with (cache_root / "huggingface" / "token").open(encoding="utf-8") as stream:
+            token = stream.read(16385).strip()
+    except (OSError, UnicodeError):
+        return None
+    if not token or len(token) > 16384 or any(c.isspace() for c in token):
+        return None
+    return token
 
 
 @dataclass(frozen=True)
@@ -157,22 +183,43 @@ class CheckpointAcquisitionService:
                     modelscope_endpoint=self.modelscope_endpoint,
                 )
                 file_sizes = {item.path: item.size for item in manifest.files}
-                adapters = [
-                    resolver.resolve(
-                        source,
-                        user_token=(
-                            hf_token if source.provider == "huggingface" else None
-                        ),
-                        expected_size=file_sizes[source.path],
-                    )
-                    for source in enabled
-                ]
+                warnings: list[str] = []
+
+                def report(value: dict[str, Any]) -> None:
+                    if progress is not None:
+                        value = dict(value)
+                        value["download"] = {
+                            **value.get("download", {}), "warnings": list(warnings)
+                        }
+                        progress(value)
+
+                def warn(provider: str) -> None:
+                    message = f"{provider}: download source unavailable; trying other verified sources."
+                    if message not in warnings:
+                        warnings.append(message)
+                        report({})
+
+                if not hf_token and any(s.provider == "huggingface" for s in enabled):
+                    hf_token = await asyncio.to_thread(_download_hf_token)
+                adapters = []
+                for source in enabled:
+                    try:
+                        adapters.append(resolver.resolve(
+                            source,
+                            user_token=hf_token if source.provider == "huggingface" else None,
+                            expected_size=file_sizes[source.path],
+                        ))
+                    except CheckpointDownloadError:
+                        warn(source.provider)
+                if not adapters:
+                    raise CheckpointDownloadError("No usable checkpoint download sources; configure credentials or enable another source")
                 scheduler = PieceDownloadScheduler(
                     manifest,
                     self.cache,
                     adapters,
                     concurrency=self.concurrency,
-                    progress=progress,
+                    progress=report,
+                    warning=warn,
                 )
                 blobs = await scheduler.download()
             snapshot = await asyncio.to_thread(

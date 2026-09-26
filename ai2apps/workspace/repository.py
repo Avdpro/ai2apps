@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from functools import wraps
+from threading import RLock
+
 import base64
 import hashlib
 import json
@@ -53,6 +56,17 @@ def _safe_name(value: str) -> str:
     if not name or name in {".", ".."}:
         raise WorkspaceError("invalid_name", "A safe filename is required")
     return name[:255]
+
+
+_artifact_files_lock = RLock()
+
+
+def _serialize_artifact_files(method):
+    @wraps(method)
+    def locked(*args, **kwargs):
+        with _artifact_files_lock:
+            return method(*args, **kwargs)
+    return locked
 
 
 class WorkspaceRepository:
@@ -586,6 +600,7 @@ class WorkspaceRepository:
             metadata=metadata,
         )
 
+    @_serialize_artifact_files
     def import_artifact(
         self,
         session_id: str,
@@ -634,6 +649,9 @@ class WorkspaceRepository:
                 (session_id, f"sha256:{digest}", artifact_name),
             ).fetchone()
             if existing is not None:
+                connection.execute("UPDATE artifacts SET status='active',updated_at=? WHERE id=?",
+                                   (now, existing["id"]))
+                existing = connection.execute("SELECT * FROM artifacts WHERE id=?", (existing["id"],)).fetchone()
                 return self._artifact(existing)
             artifact_id = new_entity_id(EntityIdKind.ARTIFACT)
             connection.execute(
@@ -680,6 +698,36 @@ class WorkspaceRepository:
             ).fetchone()
             assert row is not None
             return self._artifact(row)
+
+    @_serialize_artifact_files
+    def retire_artifact(self, session_id: str, artifact_id: str) -> None:
+        """Expire a Studio output, reclaiming only an unreferenced shared blob.
+
+        Gallery owns separate copies. Live Workspace handles and pending exports
+        keep their source file available until their own lifecycle ends.
+        """
+        with self.database.transaction(write=True) as connection:
+            row = connection.execute(
+                "SELECT * FROM artifacts WHERE id=? AND session_id=?",
+                (artifact_id, session_id),
+            ).fetchone()
+            if row is None:
+                return
+            connection.execute("UPDATE artifacts SET status='trashed',updated_at=? WHERE id=?",
+                               (utc_now_text(), artifact_id))
+            referenced = connection.execute(
+                """SELECT 1 FROM artifacts a WHERE a.storage_key=? AND (
+                    a.status='active' OR EXISTS (
+                        SELECT 1 FROM resource_handles h WHERE h.artifact_id=a.id
+                        AND h.revoked_at IS NULL AND (h.expires_at IS NULL OR h.expires_at>?))
+                    OR EXISTS (SELECT 1 FROM artifact_exports e WHERE e.artifact_id=a.id
+                               AND e.status='pending')) LIMIT 1""",
+                (row["storage_key"], utc_now_text()),
+            ).fetchone()
+            if not referenced:
+                path = (self.paths.artifacts_path / row["storage_key"]).resolve()
+                path.relative_to(self.paths.artifacts_path.resolve())
+                path.unlink(missing_ok=True)
 
     def get_artifact(self, session_id: str, artifact_id: str):
         with self.database.transaction() as connection:

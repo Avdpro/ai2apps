@@ -49,6 +49,22 @@ def effective_video_capabilities(model: Any) -> dict[str, Any]:
     else:
         raw = getattr(model, "video_capabilities", {})
     capabilities = deepcopy(dict(raw or {}))
+    _, metadata = _model_identity(model)
+    defaults = dict(capabilities.get("defaults") or {})
+    recommended_steps = metadata.get("recommended_steps")
+    if (
+        isinstance(recommended_steps, int)
+        and not isinstance(recommended_steps, bool)
+        and 1 <= recommended_steps <= 60
+    ):
+        defaults["steps"] = recommended_steps
+    elif not (
+        isinstance(defaults.get("steps"), int)
+        and not isinstance(defaults.get("steps"), bool)
+        and 1 <= defaults["steps"] <= 60
+    ):
+        defaults["steps"] = 20
+    capabilities["defaults"] = defaults
     if is_h3_video_model(model):
         geometry = dict(capabilities.get("geometry") or {})
         geometry["resolutions"] = list(H3_RESOLUTIONS)

@@ -74,3 +74,33 @@ def test_omlx_runtime_bundle_keeps_only_worker_and_inference_payload(tmp_path: P
 
     info = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
     assert info["CFBundleShortVersionString"] == "1.6.2"
+
+
+def test_runtime_signs_only_python_with_llvm_entitlement(tmp_path, monkeypatch):
+    import subprocess
+    import build_omlx_runtime_package as builder
+
+    bundle = tmp_path / "runtime.bundle"
+    python = bundle / "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    library = bundle / "Contents/Resources/Runtime/Python/libLLVM.dylib"
+    for path in (python, library):
+        _write(path)
+    monkeypatch.setattr(builder, "is_macho", lambda p: p in (python, library))
+    monkeypatch.setattr(builder.subprocess, "run", lambda *a, **k: None)
+    signatures = {}
+    def sign(*args):
+        target = Path(args[-1])
+        assert "--deep" not in args
+        signatures[target] = (plistlib.loads(Path(args[args.index("--entitlements") + 1]).read_bytes())
+                              if "--entitlements" in args else {})
+        if target == bundle:
+            assert python in signatures and library in signatures
+    monkeypatch.setattr(builder, "run_codesign", sign)
+    def run(*args):
+        output = plistlib.dumps(signatures[python]).decode() if "--entitlements" in args else ""
+        return subprocess.CompletedProcess(args, 0, output, "TeamIdentifier=TEST\n")
+    monkeypatch.setattr(builder, "run", run)
+    assert builder.sign_runtime(bundle, "Developer ID test") == "TEST"
+    assert signatures[python] == {"com.apple.security.cs.allow-unsigned-executable-memory": True}
+    assert signatures[library] == {}
+    assert signatures[bundle] == {}

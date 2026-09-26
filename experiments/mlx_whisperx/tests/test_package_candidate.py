@@ -62,7 +62,7 @@ def test_candidate_builds_as_weightless_contract_v1_package(tmp_path: Path):
     assert inspected.manifest["package"] == {
         "id": "ai2apps/model-detailed-transcription-mlx",
         "type": "service",
-        "version": "0.1.2",
+        "version": "0.1.3",
         "displayName": "MLX WhisperX Detailed Transcription",
         "description": (
             "Standalone subtitle and meeting transcription with Qwen3 ASR, "

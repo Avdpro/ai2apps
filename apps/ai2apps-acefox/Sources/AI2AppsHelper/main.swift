@@ -82,7 +82,7 @@ private func validatePackagedRuntime(arguments: HelperArguments) throws {
 }
 
 @MainActor
-private final class HelperDelegate: NSObject, NSApplicationDelegate {
+private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private struct BrowserAgentAuditEvent: Codable {
         let version = 1
         let timestamp: Date
@@ -114,31 +114,31 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     private var configuration: LocalConfiguration
     private var supervisor: LocalProcessSupervisor
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let statusMenuItem = NSMenuItem(title: "正在初始化…", action: nil, keyEquivalent: "")
-    private let portMenuItem = NSMenuItem(title: "端口：自动", action: nil, keyEquivalent: "")
+    private let statusMenuItem = NSMenuItem(title: L("正在初始化…", "Initializing…"), action: nil, keyEquivalent: "")
+    private let portMenuItem = NSMenuItem(title: L("端口：自动", "Port: Automatic"), action: nil, keyEquivalent: "")
     private let modelStorageMenuItem = NSMenuItem(
-        title: "模型存储：本实例私有",
+        title: L("模型存储：本实例私有", "Model storage: Private to this instance"),
         action: nil,
         keyEquivalent: ""
     )
-    private let loginItemMenuItem = NSMenuItem(title: "登录启动：尚未配置", action: nil, keyEquivalent: "")
+    private let loginItemMenuItem = NSMenuItem(title: L("登录启动：尚未配置", "Launch at login: Not configured"), action: nil, keyEquivalent: "")
     private let loginItemToggleMenuItem = NSMenuItem(
-        title: "登录时启动",
+        title: L("登录时启动", "Launch at login"),
         action: nil,
         keyEquivalent: ""
     )
     private let updateStatusMenuItem = NSMenuItem(
-        title: "更新：尚未检查",
+        title: L("更新：尚未检查", "Update: Not checked"),
         action: nil,
         keyEquivalent: ""
     )
     private let checkUpdateMenuItem = NSMenuItem(
-        title: "检查更新",
+        title: L("检查更新", "Check for updates"),
         action: nil,
         keyEquivalent: ""
     )
     private let installUpdateMenuItem = NSMenuItem(
-        title: "安装更新并退出 AI2Apps…",
+        title: L("安装更新并退出 AI2Apps…", "Install update and quit AI2Apps…"),
         action: nil,
         keyEquivalent: ""
     )
@@ -155,19 +155,21 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     private var controlServer: HelperControlServer?
     private var browserAgents: [String: ManagedBrowserAgent] = [:]
     private var updateProcess: Process?
+    private var testEnvironmentProcess: Process?
+    private let testEnvironmentMenuItem = NSMenuItem(title: L("启动测试环境", "Start test environment"), action: nil, keyEquivalent: "")
     private var updateDownloadTask: Task<Void, Never>?
     private var periodicUpdateTask: Task<Void, Never>?
     private var updateTipPopover: NSPopover?
     private var updateTipDismissalTask: Task<Void, Never>?
     private var stagedCandidateBuild: String?
     private var currentUpdatePhase: UpdatePhase = .idle
-    private var currentUpdateMessage = "尚未检查更新"
+    private var currentUpdateMessage = L("尚未检查更新", "Updates not checked")
     private var terminationTask: Task<Void, Never>?
     private var resetInProgress = false
     private var serviceStoppedForTermination = false
     private var preserveLocalForUpdateHandoff = false
     private var currentHelperPhase: HelperPhase = .initializing
-    private var currentHelperMessage = "正在初始化…"
+    private var currentHelperMessage = L("正在初始化…", "Initializing…")
     private lazy var menuBarLogo: NSImage? = {
         guard let url = Bundle.main.url(
             forResource: "menubar-logo",
@@ -257,13 +259,13 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         statusItem.length = NSStatusItem.squareLength
         statusItem.button?.title = ""
         statusItem.button?.imagePosition = .imageOnly
-        statusItem.button?.toolTip = "AI2Apps 服务 — \(arguments.instanceID.rawValue)"
+        statusItem.button?.toolTip = L("AI2Apps 服务 — \(arguments.instanceID.rawValue)", "AI2Apps service — \(arguments.instanceID.rawValue)")
         updateStatusIcon(for: .initializing)
         rebuildMenu()
         do {
             try paths.preparePrivateDirectories()
-            publishStatus(.initializing, message: "正在初始化 Helper…")
-            publishUpdateStatus(.idle, message: "尚未检查更新")
+            publishStatus(.initializing, message: L("正在初始化 Helper…", "Initializing Helper…"))
+            publishUpdateStatus(.idle, message: L("尚未检查更新", "Updates not checked"))
         } catch {
             presentError(error)
             NSApp.terminate(nil)
@@ -283,7 +285,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         } catch {
             publishStatus(
                 .degraded,
-                message: "Helper 控制通道启动失败",
+                message: L("Helper 控制通道启动失败", "Could not start Helper control channel"),
                 errorCode: "control_channel_failed"
             )
             presentError(error)
@@ -352,18 +354,30 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         }
         healthMonitor?.cancel()
         healthMonitor = nil
-        statusMenuItem.title = "状态：正在停止服务"
-        publishStatus(.stopping, message: "正在停止 AI2Apps 服务…")
+        statusMenuItem.title = L("状态：正在停止服务", "Status: Stopping service")
+        publishStatus(.stopping, message: L("正在停止 AI2Apps 服务…", "Stopping AI2Apps service…"))
         terminationTask = Task { [weak self, weak sender] in
             guard let self else { return }
+            if let process = testEnvironmentProcess, process.isRunning {
+                process.interrupt()
+                while process.isRunning {
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+            }
             await supervisor.stop()
             actualPort = nil
             serviceStoppedForTermination = true
             terminationTask = nil
-            publishStatus(.helperExiting, message: "AI2Apps 服务已停止，Helper 正在退出")
+            publishStatus(.helperExiting, message: L("AI2Apps 服务已停止，Helper 正在退出", "AI2Apps service stopped; Helper is exiting"))
             sender?.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        for item in menu.items {
+            item.title = HelperLocalization.refresh(item.title)
+        }
     }
 
     private func rebuildMenu() {
@@ -371,8 +385,9 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         // AppKit otherwise re-enables any item whose target implements its
         // action, overriding the explicit update/readiness gates below.
         menu.autoenablesItems = false
+        menu.delegate = self
         let instance = NSMenuItem(
-            title: "实例：\(arguments.instanceID.rawValue)",
+            title: L("实例：\(arguments.instanceID.rawValue)", "Instance: \(arguments.instanceID.rawValue)"),
             action: nil,
             keyEquivalent: ""
         )
@@ -389,19 +404,19 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(loginItemMenuItem)
         menu.addItem(.separator())
         let openApp = menu.addItem(
-            withTitle: "打开 AI2Apps",
+            withTitle: L("打开 AI2Apps", "Open AI2Apps"),
             action: #selector(openAI2Apps),
             keyEquivalent: ""
         )
         openApp.target = self
         openApp.isEnabled = mainBundleIdentifier != nil || arguments.appBundleURL != nil
-        menu.addItem(withTitle: "启动 AI2Apps 服务", action: #selector(startLocalAction), keyEquivalent: "")
+        menu.addItem(withTitle: L("启动 AI2Apps 服务", "Start AI2Apps service"), action: #selector(startLocalAction), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "停止 AI2Apps 服务", action: #selector(stopLocalAction), keyEquivalent: "")
+        menu.addItem(withTitle: L("停止 AI2Apps 服务", "Stop AI2Apps service"), action: #selector(stopLocalAction), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "重启 AI2Apps 服务", action: #selector(restartLocalAction), keyEquivalent: "")
+        menu.addItem(withTitle: L("重启 AI2Apps 服务", "Restart AI2Apps service"), action: #selector(restartLocalAction), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "配置端口…", action: #selector(configurePort), keyEquivalent: "")
+        menu.addItem(withTitle: L("配置端口…", "Configure port…"), action: #selector(configurePort), keyEquivalent: "")
             .target = self
         loginItemToggleMenuItem.action = #selector(toggleLoginItem)
         loginItemToggleMenuItem.target = self
@@ -415,27 +430,119 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         installUpdateMenuItem.action = #selector(installStagedUpdate)
         installUpdateMenuItem.target = self
         menu.addItem(installUpdateMenuItem)
-        menu.addItem(withTitle: "复制服务地址", action: #selector(copyLocalAddress), keyEquivalent: "")
+        menu.addItem(withTitle: L("复制服务地址", "Copy service address"), action: #selector(copyLocalAddress), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "打开日志文件夹", action: #selector(openLogs), keyEquivalent: "")
+        menu.addItem(withTitle: L("打开日志文件夹", "Open logs folder"), action: #selector(openLogs), keyEquivalent: "")
             .target = self
-        menu.addItem(withTitle: "导出安全诊断摘要…", action: #selector(exportDiagnostics), keyEquivalent: "")
+        menu.addItem(withTitle: L("导出安全诊断摘要…", "Export safe diagnostics…"), action: #selector(exportDiagnostics), keyEquivalent: "")
             .target = self
         if allowsInstanceDataReset {
             menu.addItem(.separator())
             menu.addItem(
-                withTitle: "重置数据…",
+                withTitle: L("重置数据…", "Reset data…"),
                 action: #selector(resetInstanceData),
                 keyEquivalent: ""
             ).target = self
         }
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出 AI2Apps 服务", action: #selector(quitAll), keyEquivalent: "q")
+        if allowsTestEnvironment {
+            testEnvironmentMenuItem.action = #selector(toggleTestEnvironment)
+            testEnvironmentMenuItem.target = self
+            menu.addItem(testEnvironmentMenuItem)
+        }
+        menu.addItem(withTitle: L("退出 AI2Apps 服务", "Quit AI2Apps service"), action: #selector(quitAll), keyEquivalent: "q")
             .target = self
         statusItem.menu = menu
         updatePortLabel()
         updateLoginItemLabel()
         refreshUpdateMenu()
+    }
+
+    private var allowsTestEnvironment: Bool {
+        developmentBuild && arguments.instanceID.rawValue == "app-dev"
+            && mainBundleIdentifier == "com.ai2apps.desktop.appdev"
+            && developmentSourceRoot != nil
+    }
+
+    @objc private func toggleTestEnvironment() {
+        guard allowsTestEnvironment else { return }
+        if let process = testEnvironmentProcess, process.isRunning {
+            testEnvironmentMenuItem.title = L("正在停止测试…", "Stopping tests…")
+            testEnvironmentMenuItem.isEnabled = false
+            process.interrupt()
+            return
+        }
+        guard let root = developmentSourceRoot else { return }
+        let directory = root.appendingPathComponent("ai2apps-test-system")
+        let executable = directory.appendingPathComponent("bin/ai2apps-test")
+        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            presentError(ContractError.invalidField(field: "test_environment", reason: L("测试工具不存在：\(executable.path)", "Test tool not found: \(executable.path)")))
+            return
+        }
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = executable
+        process.arguments = ["select", "--no-open"]
+        process.currentDirectoryURL = directory
+        var environment = ProcessInfo.processInfo.environment
+        // Never pass App-Dev's privileged Local identity into the Test Harness.
+        for key in environment.keys where key.hasPrefix("AI2APPS_") {
+            environment.removeValue(forKey: key)
+        }
+        process.environment = environment
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.testEnvironmentProcess = nil
+                self?.testEnvironmentMenuItem.title = L("启动测试环境", "Start test environment")
+                self?.testEnvironmentMenuItem.isEnabled = true
+            }
+        }
+        do {
+            try process.run()
+            testEnvironmentProcess = process
+            testEnvironmentMenuItem.title = L("停止测试", "Stop tests")
+            openAI2Apps()
+            Task { [weak self] in
+                do {
+                    for try await line in output.fileHandleForReading.bytes.lines {
+                        guard let data = line.data(using: .utf8),
+                              let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                              let address = payload["selectorUrl"] as? String else { continue }
+                        try await self?.openTestEnvironmentPage(address)
+                        break
+                    }
+                } catch {
+                    self?.presentError(error)
+                }
+            }
+        } catch { presentError(error) }
+    }
+
+    private func openTestEnvironmentPage(_ address: String) async throws {
+        guard allowsTestEnvironment, let target = URL(string: address),
+              target.scheme == "http", target.host == "127.0.0.1", target.port != nil,
+              target.path == "/", target.fragment != nil else {
+            throw ContractError.invalidField(field: "test_environment", reason: L("无效测试地址", "Invalid test URL"))
+        }
+        for _ in 0..<30 {
+            if let port = actualPort {
+                var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/platform/client/app-dev-test-environment")!)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 30
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(controlCredentials.environment["AI2APPS_HELPER_TOKEN"] ?? "")", forHTTPHeaderField: "Authorization")
+                request.httpBody = try JSONSerialization.data(withJSONObject: ["initial_url": address])
+                let (_, response) = try await URLSession.shared.data(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw ContractError.invalidField(field: "test_environment", reason: L("App-Dev 打开测试页面失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)），请停止测试后重试。", "App-Dev could not open the test page (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)). Stop tests and try again."))
+                }
+                return
+            }
+            try await Task.sleep(for: .seconds(1))
+        }
+        throw ContractError.invalidField(field: "test_environment", reason: L("App-Dev 服务未就绪", "App-Dev service is not ready"))
     }
 
     private var updateDirectory: URL {
@@ -513,12 +620,12 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         currentUpdatePhase = phase
         currentUpdateMessage = message
         switch phase {
-        case .idle: updateStatusMenuItem.title = "更新：\(message)"
-        case .checking: updateStatusMenuItem.title = "更新：\(message)"
-        case .ready: updateStatusMenuItem.title = "更新：Build \(candidateBuild ?? "?") 可安装"
-        case .installing: updateStatusMenuItem.title = "更新：正在安装"
-        case .succeeded: updateStatusMenuItem.title = "更新：安装成功"
-        case .failed: updateStatusMenuItem.title = "更新：失败"
+        case .idle: updateStatusMenuItem.title = L("更新：\(message)", "Update: \(message)")
+        case .checking: updateStatusMenuItem.title = L("更新：\(message)", "Update: \(message)")
+        case .ready: updateStatusMenuItem.title = L("更新：Build \(candidateBuild ?? "?") 可安装", "Update: Build \(candidateBuild ?? "?") ready to install")
+        case .installing: updateStatusMenuItem.title = L("更新：正在安装", "Update: Installing")
+        case .succeeded: updateStatusMenuItem.title = L("更新：安装成功", "Update: Installed")
+        case .failed: updateStatusMenuItem.title = L("更新：失败", "Update: Failed")
         }
         refreshUpdateMenu()
         updateStatusIcon(for: currentHelperPhase)
@@ -526,12 +633,12 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
 
     private func updatePortLabel() {
         let configured = configuration.portMode == .automatic
-            ? "自动"
+            ? L("自动", "Automatic")
             : String(configuration.configuredPort ?? 0)
         if let actualPort {
-            portMenuItem.title = "端口：\(configured)（当前 \(actualPort)）"
+            portMenuItem.title = L("端口：\(configured)（当前 \(actualPort)）", "Port: \(configured) (current \(actualPort))")
         } else {
-            portMenuItem.title = "端口：\(configured)"
+            portMenuItem.title = L("端口：\(configured)", "Port: \(configured)")
         }
     }
 
@@ -540,22 +647,22 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         let statusURL = paths.runDirectory.appendingPathComponent("login-item.json")
         guard let status = try? ContractCodec.load(LoginItemStatus.self, from: statusURL),
               status.instanceID == arguments.instanceID else {
-            loginItemMenuItem.title = "登录启动：尚未配置"
+            loginItemMenuItem.title = L("登录启动：尚未配置", "Launch at login: Not configured")
             return
         }
         switch status.phase {
         case .enabled:
-            loginItemMenuItem.title = "登录启动：已启用"
+            loginItemMenuItem.title = L("登录启动：已启用", "Launch at login: Enabled")
         case .requiresApproval:
-            loginItemMenuItem.title = "登录启动：等待系统批准"
+            loginItemMenuItem.title = L("登录启动：等待系统批准", "Launch at login: Awaiting system approval")
         case .notRegistered, .notFound:
-            loginItemMenuItem.title = "登录启动：未注册"
+            loginItemMenuItem.title = L("登录启动：未注册", "Launch at login: Not registered")
         case .skippedReadOnly:
-            loginItemMenuItem.title = "登录启动：安装后启用"
+            loginItemMenuItem.title = L("登录启动：安装后启用", "Launch at login: Enable after installation")
         case .skippedDevelopment:
-            loginItemMenuItem.title = "登录启动：开发模式跳过"
+            loginItemMenuItem.title = L("登录启动：开发模式跳过", "Launch at login: Skipped in development")
         case .failed:
-            loginItemMenuItem.title = "登录启动：注册失败"
+            loginItemMenuItem.title = L("登录启动：注册失败", "Launch at login: Registration failed")
         }
     }
 
@@ -596,38 +703,38 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startLocal() {
-        statusMenuItem.title = "状态：正在启动"
-        publishStatus(.starting, message: "正在启动 AI2Apps 服务…")
+        statusMenuItem.title = L("状态：正在启动", "Status: Starting")
+        publishStatus(.starting, message: L("正在启动 AI2Apps 服务…", "Starting AI2Apps service…"))
         Task {
             do {
                 let ready = try await supervisor.start()
                 actualPort = ready.descriptor.actualPort
-                statusMenuItem.title = "状态：运行中"
+                statusMenuItem.title = L("状态：运行中", "Status: Running")
                 publishStatus(
                     .ready,
-                    message: "AI2Apps 服务已就绪",
+                    message: L("AI2Apps 服务已就绪", "AI2Apps service is ready"),
                     actualPort: ready.descriptor.actualPort
                 )
                 updatePortLabel()
                 beginHealthMonitoring()
             } catch LocalSupervisorError.alreadyRunning {
-                statusMenuItem.title = "状态：已在运行"
-                publishStatus(.ready, message: "AI2Apps 服务已在运行")
+                statusMenuItem.title = L("状态：已在运行", "Status: Already running")
+                publishStatus(.ready, message: L("AI2Apps 服务已在运行", "AI2Apps service is already running"))
             } catch LocalSupervisorError.portInUse(let conflict) {
                 actualPort = nil
-                statusMenuItem.title = "状态：端口 \(conflict.port) 被占用"
+                statusMenuItem.title = L("状态：端口 \(conflict.port) 被占用", "Status: Port \(conflict.port) is in use")
                 publishStatus(
                     .failed,
-                    message: "固定端口 \(conflict.port) 已被占用",
+                    message: L("固定端口 \(conflict.port) 已被占用", "Fixed port \(conflict.port) is in use"),
                     errorCode: "port_conflict"
                 )
                 updatePortLabel()
                 presentError(LocalSupervisorError.portInUse(conflict))
             } catch {
-                statusMenuItem.title = "状态：启动失败"
+                statusMenuItem.title = L("状态：启动失败", "Status: Startup failed")
                 publishStatus(
                     .failed,
-                    message: "AI2Apps 服务启动失败",
+                    message: L("AI2Apps 服务启动失败", "AI2Apps service failed to start"),
                     errorCode: "local_start_failed"
                 )
                 presentError(error)
@@ -636,16 +743,16 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func adoptOrStartLocal() {
-        statusMenuItem.title = "状态：正在检查服务"
-        publishStatus(.checking, message: "正在检查已有 AI2Apps 服务…")
+        statusMenuItem.title = L("状态：正在检查服务", "Status: Checking service")
+        publishStatus(.checking, message: L("正在检查已有 AI2Apps 服务…", "Checking existing AI2Apps service…"))
         Task {
             do {
                 if let ready = try await supervisor.adoptRunningLocal() {
                     actualPort = ready.descriptor.actualPort
-                    statusMenuItem.title = "状态：运行中（已接管）"
+                    statusMenuItem.title = L("状态：运行中（已接管）", "Status: Running (adopted)")
                     publishStatus(
                         .ready,
-                        message: "已接管运行中的 AI2Apps 服务",
+                        message: L("已接管运行中的 AI2Apps 服务", "Adopted running AI2Apps service"),
                         actualPort: ready.descriptor.actualPort
                     )
                     updatePortLabel()
@@ -654,10 +761,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                     startLocal()
                 }
             } catch {
-                statusMenuItem.title = "状态：现有服务验证失败"
+                statusMenuItem.title = L("状态：现有服务验证失败", "Status: Existing service verification failed")
                 publishStatus(
                     .failed,
-                    message: "已有 AI2Apps 服务验证失败",
+                    message: L("已有 AI2Apps 服务验证失败", "Existing AI2Apps service verification failed"),
                     errorCode: "local_adoption_failed"
                 )
                 presentError(error)
@@ -668,13 +775,13 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
     private func stopLocal(restart: Bool = false) {
         healthMonitor?.cancel()
         healthMonitor = nil
-        statusMenuItem.title = "状态：正在停止"
-        publishStatus(.stopping, message: "正在停止 AI2Apps 服务…")
+        statusMenuItem.title = L("状态：正在停止", "Status: Stopping")
+        publishStatus(.stopping, message: L("正在停止 AI2Apps 服务…", "Stopping AI2Apps service…"))
         Task {
             await supervisor.stop()
             actualPort = nil
-            statusMenuItem.title = "状态：已停止"
-            publishStatus(.stopped, message: "AI2Apps 服务已停止")
+            statusMenuItem.title = L("状态：已停止", "Status: Stopped")
+            publishStatus(.stopped, message: L("AI2Apps 服务已停止", "AI2Apps service stopped"))
             updatePortLabel()
             if restart {
                 replaceSupervisor()
@@ -693,20 +800,20 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                 updateLoginItemLabel()
                 if await supervisor.healthCheck() {
                     consecutiveFailures = 0
-                    statusMenuItem.title = "状态：运行中"
-                    publishStatus(.ready, message: "AI2Apps 服务运行正常")
+                    statusMenuItem.title = L("状态：运行中", "Status: Running")
+                    publishStatus(.ready, message: L("AI2Apps 服务运行正常", "AI2Apps service is healthy"))
                     continue
                 }
                 consecutiveFailures += 1
-                statusMenuItem.title = "状态：连接异常（\(consecutiveFailures)/3）"
+                statusMenuItem.title = L("状态：连接异常（\(consecutiveFailures)/3）", "Status: Connection failure (\(consecutiveFailures)/3)")
                 publishStatus(
                     .degraded,
-                    message: "AI2Apps 服务连接异常（\(consecutiveFailures)/3）",
+                    message: L("AI2Apps 服务连接异常（\(consecutiveFailures)/3）", "AI2Apps service connection failure (\(consecutiveFailures)/3)"),
                     errorCode: "local_health_failed"
                 )
                 if consecutiveFailures >= 3, configuration.autoRestart {
-                    statusMenuItem.title = "状态：自动重启中"
-                    publishStatus(.restarting, message: "正在自动重启 AI2Apps 服务…")
+                    statusMenuItem.title = L("状态：自动重启中", "Status: Restarting automatically")
+                    publishStatus(.restarting, message: L("正在自动重启 AI2Apps 服务…", "Automatically restarting AI2Apps service…"))
                     stopLocal(restart: true)
                     return
                 }
@@ -757,7 +864,8 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         let hasInstallableUpdate = stagedCandidateBuild != nil
             && FileManager.default.fileExists(atPath: stagedUpdateApp.path)
         let isDownloading = currentUpdatePhase == .checking
-            && currentUpdateMessage.hasPrefix("正在下载")
+            && (currentUpdateMessage.hasPrefix("正在下载")
+                || currentUpdateMessage.hasPrefix("Downloading "))
         let isBusy = (currentUpdatePhase == .checking && !isDownloading)
             || currentUpdatePhase == .installing
         let activityTitle = updateActivityTitle(
@@ -821,11 +929,11 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.imagePosition = activityTitle == nil ? .imageOnly : .imageLeft
         statusItem.button?.image = image
         if hasInstallableUpdate {
-            statusItem.button?.toolTip = "AI2Apps — Build \(stagedCandidateBuild ?? "?") 可安装"
+            statusItem.button?.toolTip = L("AI2Apps — Build \(stagedCandidateBuild ?? "?") 可安装", "AI2Apps — Build \(stagedCandidateBuild ?? "?") ready to install")
         } else if currentUpdatePhase == .checking || currentUpdatePhase == .installing {
             statusItem.button?.toolTip = "AI2Apps — \(currentUpdateMessage)"
         } else {
-            statusItem.button?.toolTip = "AI2Apps 服务 — \(arguments.instanceID.rawValue) — \(currentHelperMessage)"
+            statusItem.button?.toolTip = L("AI2Apps 服务 — \(arguments.instanceID.rawValue) — \(currentHelperMessage)", "AI2Apps service — \(arguments.instanceID.rawValue) — \(currentHelperMessage)")
         }
     }
 
@@ -833,10 +941,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         isDownloading: Bool
     ) -> String? {
         if isDownloading {
-            if let separator = currentUpdateMessage.lastIndex(of: "：") {
+            if let separator = currentUpdateMessage.lastIndex(where: { $0 == "：" || $0 == ":" }) {
                 let progress = currentUpdateMessage[currentUpdateMessage.index(after: separator)...]
                 if progress.hasSuffix("%") {
-                    return String(progress)
+                    return String(progress).trimmingCharacters(in: .whitespaces)
                 }
             }
             return "0%"
@@ -1344,12 +1452,12 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func configurePort() {
         let alert = NSAlert()
-        alert.messageText = "配置 AI2Apps 服务端口"
-        alert.informativeText = "留空表示自动分配；固定端口范围为 1024–65535。"
-        alert.addButton(withTitle: "保存并重启")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L("配置 AI2Apps 服务端口", "Configure AI2Apps service port")
+        alert.informativeText = L("留空表示自动分配；固定端口范围为 1024–65535。", "Leave blank for automatic allocation; fixed ports must be 1024–65535.")
+        alert.addButton(withTitle: L("保存并重启", "Save and restart"))
+        alert.addButton(withTitle: L("取消", "Cancel"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = "自动"
+        field.placeholderString = L("自动", "Automatic")
         if let port = configuration.configuredPort {
             field.stringValue = String(port)
         }
@@ -1569,7 +1677,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        publishUpdateStatus(.checking, message: "正在联网检查更新")
+        publishUpdateStatus(.checking, message: L("正在联网检查更新", "Checking for updates online"))
         updateDownloadTask = Task { [weak self] in
             guard let self else { return }
             await self.performOnlineUpdateCheck(showCurrentVersionTip: audibleFailure)
@@ -1589,11 +1697,11 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
               let runtimeProfile = appBundle.object(
                   forInfoDictionaryKey: "AI2AppsRuntimeProfile"
               ) as? String else {
-            publishUpdateStatus(.failed, message: "更新配置不完整", errorCode: "update_config_invalid")
+            publishUpdateStatus(.failed, message: L("更新配置不完整", "Update configuration is incomplete"), errorCode: "update_config_invalid")
             return
         }
         do {
-            publishUpdateStatus(.checking, message: "正在联网检查更新")
+            publishUpdateStatus(.checking, message: L("正在联网检查更新", "Checking for updates online"))
             let manifest = try await fetchUpdateManifest(from: manifestURL)
             let cohortID = try UpdateManifest.loadOrCreateCohortID(
                 at: paths.configDirectory.appendingPathComponent("update-cohort-id")
@@ -1616,7 +1724,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                 systemVersion: systemVersion,
                 cohortID: cohortID
             ) else {
-                publishUpdateStatus(.idle, message: "已是最新版本")
+                publishUpdateStatus(.idle, message: L("已是最新版本", "Already up to date"))
                 if showCurrentVersionTip {
                     presentCurrentVersionTip()
                 }
@@ -1635,21 +1743,21 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             _ = try await downloader.download(
                 release.metadata,
                 to: metadata,
-                progress: updateProgressHandler(build: release.bundleVersion, label: "清单")
+                progress: updateProgressHandler(build: release.bundleVersion, label: L("清单", "Manifest"))
             )
             _ = try await downloader.download(
                 release.dmg,
                 to: dmg,
-                progress: updateProgressHandler(build: release.bundleVersion, label: "安装包")
+                progress: updateProgressHandler(build: release.bundleVersion, label: L("安装包", "Package"))
             )
             try Task.checkCancellation()
             stageDownloadedUpdate(dmg: dmg, metadata: metadata)
         } catch is CancellationError {
-            publishUpdateStatus(.idle, message: "更新下载已暂停")
+            publishUpdateStatus(.idle, message: L("更新下载已暂停", "Update download paused"))
         } catch {
             publishUpdateStatus(
                 .failed,
-                message: "联网检查或下载更新失败",
+                message: L("联网检查或下载更新失败", "Update check or download failed"),
                 errorCode: "online_update_failed"
             )
             try? appendUpdateLog("online update failed: \(error)\n")
@@ -1661,7 +1769,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         updateTipDismissalTask?.cancel()
         updateTipPopover?.close()
 
-        let label = NSTextField(labelWithString: "当前已是最新版本")
+        let label = NSTextField(labelWithString: L("当前已是最新版本", "You are up to date"))
         label.font = .systemFont(ofSize: 13, weight: .medium)
         label.textColor = .labelColor
         label.alignment = .center
@@ -1728,7 +1836,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 self?.publishUpdateStatus(
                     .checking,
-                    message: "正在下载 Build \(build) \(label)：\(percent)%"
+                    message: L("正在下载 Build \(build) \(label)：\(percent)%", "Downloading Build \(build) \(label): \(percent)%")
                 )
             }
         }
@@ -1756,7 +1864,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
               FileManager.default.fileExists(atPath: metadata.path) else {
             publishUpdateStatus(
                 .failed,
-                message: "未找到已下载的更新文件",
+                message: L("未找到已下载的更新文件", "Downloaded update files were not found"),
                 errorCode: "candidate_missing"
             )
             return
@@ -1803,28 +1911,28 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                         self.stagedCandidateBuild = build
                         self.publishUpdateStatus(
                             .ready,
-                            message: "更新已验证，可以安装",
+                            message: L("更新已验证，可以安装", "Update verified and ready to install"),
                             candidateBuild: build
                         )
                     } else {
                         self.stagedCandidateBuild = nil
                         self.publishUpdateStatus(
                             .failed,
-                            message: "更新验证失败，请查看日志",
+                            message: L("更新验证失败，请查看日志", "Update verification failed; check logs"),
                             errorCode: "candidate_verification_failed"
                         )
                     }
                 }
             }
             updateProcess = process
-            publishUpdateStatus(.checking, message: "正在验证已下载更新")
+            publishUpdateStatus(.checking, message: L("正在验证已下载更新", "Verifying downloaded update"))
             try process.run()
         } catch {
             updateProcess = nil
             stagedCandidateBuild = nil
             publishUpdateStatus(
                 .failed,
-                message: "无法启动更新验证",
+                message: L("无法启动更新验证", "Could not start update verification"),
                 errorCode: "candidate_check_failed"
             )
             presentError(error)
@@ -1842,10 +1950,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let alert = NSAlert()
-        alert.messageText = "安装 AI2Apps 更新？"
-        alert.informativeText = "AI2Apps 窗口将退出并在验证成功后重新打开。Helper 和 AI2Apps 服务会继续运行；失败时自动恢复当前版本。"
-        alert.addButton(withTitle: "安装并退出")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L("安装 AI2Apps 更新？", "Install AI2Apps update?")
+        alert.informativeText = L("AI2Apps 窗口将退出并在验证成功后重新打开。Helper 和 AI2Apps 服务会继续运行；失败时自动恢复当前版本。", "AI2Apps windows will close and reopen after verification. Helper and the AI2Apps service will keep running. The current version will be restored if installation fails.")
+        alert.addButton(withTitle: L("安装并退出", "Install and quit"))
+        alert.addButton(withTitle: L("取消", "Cancel"))
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
@@ -1863,7 +1971,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
               ) else {
             publishUpdateStatus(
                 .failed,
-                message: "无法验证当前 AI2Apps 窗口进程",
+                message: L("无法验证当前 AI2Apps 窗口进程", "Could not verify the current AI2Apps window process"),
                 candidateBuild: candidateBuild,
                 errorCode: "shell_identity_invalid"
             )
@@ -1941,7 +2049,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                         self.stagedCandidateBuild = nil
                         self.publishUpdateStatus(
                             .succeeded,
-                            message: "更新已安装，正在重新打开 AI2Apps",
+                            message: L("更新已安装，正在重新打开 AI2Apps", "Update installed; reopening AI2Apps"),
                             candidateBuild: candidateBuild
                         )
                         do {
@@ -1951,7 +2059,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                         } catch {
                             self.publishUpdateStatus(
                                 .failed,
-                                message: "更新已安装，但自动重启失败",
+                                message: L("更新已安装，但自动重启失败", "Update installed, but automatic restart failed"),
                                 candidateBuild: candidateBuild,
                                 errorCode: "handoff_failed"
                             )
@@ -1960,7 +2068,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                     } else {
                         self.publishUpdateStatus(
                             .failed,
-                            message: "更新失败，当前版本已保留或恢复",
+                            message: L("更新失败，当前版本已保留或恢复", "Update failed; the current version was kept or restored"),
                             candidateBuild: candidateBuild,
                             errorCode: "installation_failed"
                         )
@@ -1970,7 +2078,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             updateProcess = process
             publishUpdateStatus(
                 .installing,
-                message: "正在等待 AI2Apps 窗口退出并安装更新",
+                message: L("正在等待 AI2Apps 窗口退出并安装更新", "Waiting for AI2Apps windows to close and install the update"),
                 candidateBuild: candidateBuild
             )
             try process.run()
@@ -1990,7 +2098,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
             try? log?.close()
             publishUpdateStatus(
                 .failed,
-                message: "无法启动更新安装",
+                message: L("无法启动更新安装", "Could not start update installation"),
                 candidateBuild: candidateBuild,
                 errorCode: "installation_start_failed"
             )
@@ -2099,11 +2207,11 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         if let application = runningAI2AppsShellApplication() {
             let alert = NSAlert()
             alert.alertStyle = .warning
-            alert.messageText = "AI2Apps 正在运行"
-            alert.informativeText = "退出 AI2Apps 服务后，当前 AI2Apps 窗口将无法继续使用本地功能。是否同时退出 AI2Apps？"
-            alert.addButton(withTitle: "退出 AI2Apps 和服务")
-            alert.addButton(withTitle: "仅退出服务")
-            alert.addButton(withTitle: "取消")
+            alert.messageText = L("AI2Apps 正在运行", "AI2Apps is running")
+            alert.informativeText = L("退出 AI2Apps 服务后，当前 AI2Apps 窗口将无法继续使用本地功能。是否同时退出 AI2Apps？", "AI2Apps windows will lose local functionality when the service quits. Quit AI2Apps as well?")
+            alert.addButton(withTitle: L("退出 AI2Apps 和服务", "Quit AI2Apps and service"))
+            alert.addButton(withTitle: L("仅退出服务", "Quit service only"))
+            alert.addButton(withTitle: L("取消", "Cancel"))
             NSApp.activate(ignoringOtherApps: true)
             let response = alert.runModal()
             if response == .alertThirdButtonReturn {
@@ -2124,10 +2232,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "重置 \(appDisplayName) 数据？"
-        alert.informativeText = "这会退出 \(appDisplayName)，永久删除 \(arguments.instanceID.rawValue) 实例的账号、设置、应用、下载、浏览器资料和私有模型准备数据。本机共享的已验证 Checkpoint 与公共 Hugging Face cache 不会被删除。"
-        alert.addButton(withTitle: "重置数据并退出")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L("重置 \(appDisplayName) 数据？", "Reset \(appDisplayName) data?")
+        alert.informativeText = L("这会退出 \(appDisplayName)，永久删除 \(arguments.instanceID.rawValue) 实例的账号、设置、应用、下载、浏览器资料和私有模型准备数据。本机共享的已验证 Checkpoint 与公共 Hugging Face cache 不会被删除。", "This will quit \(appDisplayName) and permanently delete accounts, settings, apps, downloads, browser profiles and private model preparation data for instance \(arguments.instanceID.rawValue). Shared verified checkpoints and the public Hugging Face cache will be kept.")
+        alert.addButton(withTitle: L("重置数据并退出", "Reset data and quit"))
+        alert.addButton(withTitle: L("取消", "Cancel"))
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
@@ -2149,10 +2257,10 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
         periodicUpdateTask = nil
         browserAgentLeaseMonitor?.cancel()
         browserAgentLeaseMonitor = nil
-        statusMenuItem.title = "状态：正在重置数据"
+        statusMenuItem.title = L("状态：正在重置数据", "Status: Resetting data")
         publishStatus(
             .stopping,
-            message: "正在停止服务并重置 \(arguments.instanceID.rawValue) 实例数据…"
+            message: L("正在停止服务并重置 \(arguments.instanceID.rawValue) 实例数据…", "Stopping the service and resetting instance \(arguments.instanceID.rawValue)…")
         )
 
         let shellApplication = runningAI2AppsShellApplication()
@@ -2177,7 +2285,7 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate {
                 presentError(
                     ContractError.invalidField(
                         field: "instance_data_reset",
-                        reason: "重置未能完整完成：\(error)；请重新打开 \(appDisplayName) 后再试"
+                        reason: L("重置未能完整完成：\(error)；请重新打开 \(appDisplayName) 后再试", "Reset did not complete: \(error). Reopen \(appDisplayName) and try again.")
                     )
                 )
             }
@@ -2300,6 +2408,7 @@ do {
     )
     try validatePackagedRuntime(arguments: arguments)
     let paths = try InstancePaths.packaged(instanceID: arguments.instanceID)
+    HelperLocalization.settingsURL = paths.dataDirectory.appendingPathComponent("settings.json")
     let instanceLock = try HelperInstanceLock(paths: paths)
     let controlCredentials = try HelperControlCredentials(
         instanceID: arguments.instanceID,

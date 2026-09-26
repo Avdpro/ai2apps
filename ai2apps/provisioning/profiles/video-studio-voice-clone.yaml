@@ -1,0 +1,72 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.video-studio
+version: 1
+capabilities:
+  audio.voice_clone:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VIDEO DUBBING SETUP
+      title: 配置原声音色克隆
+      description: 安装支持参考音频克隆的本地 TTS 模型。配置能力不代表已获得任何真人声音的使用授权。
+      icon: audio-waveform
+      confirm_label: 同意并配置
+      ready_label: 原声音色克隆已经可用
+      steps:
+        runtime: 配置音频推理 Runtime
+        provider: 安装语音克隆 Package
+        checkpoint: 下载语音克隆模型
+        verify: 启动并验证音色能力
+    requirements:
+      operations: [voice_cloning]
+    profiles:
+      - id: apple-metal-indextts25-fp16-video-voice-clone
+        label: IndexTTS 2.5 FP16 · 原声音色推荐
+        description: 参考音频克隆，支持情绪与时长控制；建议至少 16 GiB 统一内存。
+        priority: 140
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}}
+        recommendation_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-indextts25, service_key: ai2apps.model.indextts25, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.indextts25/fp16}
+      - id: apple-metal-voxcpm2-8bit-video-voice-clone
+        label: VoxCPM2 2B 8-bit · 原声音色推荐
+        description: 参考音频克隆与情绪指令控制；较高精度版本建议至少 32 GiB 统一内存。
+        priority: 130
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}}
+        recommendation_memory_gib: {minimum: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-voxcpm2, service_key: ai2apps.model.voxcpm2, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.voxcpm2/8bit}
+      - id: apple-metal-voxcpm2-4bit-video-voice-clone
+        label: VoxCPM2 2B 4-bit · 原声音色推荐
+        description: 参考音频克隆与情绪指令控制；较低权重占用，建议至少 16 GiB 统一内存。
+        priority: 120
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-voxcpm2, service_key: ai2apps.model.voxcpm2, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.voxcpm2/4bit}
+      - id: apple-metal-qwen3-tts-17b-base-video-voice-clone
+        label: Qwen3 TTS 1.7B Base · 原声音色
+        description: 参考音频驱动的多语言音色克隆，适合 16 GiB 及以上 Apple Silicon。
+        priority: 110
+        recommended: false
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}}
+        recommendation_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/base-5bit}
+      - id: apple-metal-cosyvoice3-05b-4bit-video-voice-clone
+        label: CosyVoice 3 0.5B 4-bit · 轻量原声音色
+        description: 支持参考音频、情绪和指令控制，适合 8–16 GiB Apple Silicon。
+        priority: 100
+        device: {os: [macos], architectures: [arm64], accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 8}}}
+        recommendation_memory_gib: {minimum: 8, maximum_exclusive: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.9,<2.0.0"}
+          provider: {package_id: ai2apps/model-cosyvoice3-05b, service_key: ai2apps.model.cosyvoice3-0.5b, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.cosyvoice3-0.5b/4bit}

@@ -143,24 +143,47 @@ def decode_audio_to_wav(
             target.setsampwidth(2)
             target.setframerate(sample_rate)
             decoded_samples = 0
-            for frame in source.decode(stream):
-                for converted in resampler.resample(frame):
-                    decoded_samples += converted.samples
-                    if decoded_samples > sample_rate * max_duration_seconds:
-                        raise AudioCodecError(
-                            "decoded audio exceeds the duration limit"
-                        )
-                    target.writeframesraw(
-                        bytes(converted.planes[0])[: converted.samples * 2]
-                    )
-            for converted in resampler.resample(None):
-                decoded_samples += converted.samples
-                if decoded_samples > sample_rate * max_duration_seconds:
+            origin = None
+
+            def write_frame(converted):
+                nonlocal decoded_samples, origin
+                if converted.pts is not None and converted.time_base is not None:
+                    position = round(converted.pts * converted.time_base * sample_rate)
+                    if origin is None:
+                        origin = position - decoded_samples
+                    gap = max(0, position - origin - decoded_samples)
+                else:
+                    gap = 0
+                if decoded_samples + gap + converted.samples > sample_rate * max_duration_seconds:
                     raise AudioCodecError("decoded audio exceeds the duration limit")
-                target.writeframesraw(
-                    bytes(converted.planes[0])[: converted.samples * 2]
-                )
-        source.close()
+                # Retain the media timeline when an isolated damaged packet is lost.
+                while gap:
+                    count = min(gap, sample_rate)
+                    target.writeframesraw(b"\x00" * (count * 2))
+                    decoded_samples += count
+                    gap -= count
+                target.writeframesraw(bytes(converted.planes[0])[: converted.samples * 2])
+                decoded_samples += converted.samples
+
+            consecutive_errors = 0
+            try:
+                for packet in source.demux(stream):
+                    try:
+                        frames = packet.decode()
+                    except av.error.InvalidDataError:
+                        consecutive_errors += 1
+                        if consecutive_errors >= 32:
+                            raise AudioCodecError("audio contains too many consecutive damaged packets")
+                        continue
+                    if frames:
+                        consecutive_errors = 0
+                    for frame in frames:
+                        for converted in resampler.resample(frame):
+                            write_frame(converted)
+                for converted in resampler.resample(None):
+                    write_frame(converted)
+            finally:
+                source.close()
         result = output.getvalue()
         if len(result) <= 44:
             raise AudioCodecError("uploaded audio contains no decodable samples")
@@ -218,3 +241,48 @@ def encode_wav_audio(wav_bytes: bytes, response_format: str) -> bytes:
         raise
     except Exception as exc:
         raise AudioCodecError(f"could not encode {normalized} audio: {exc}") from exc
+
+
+def change_speech_tempo(content: bytes, speed: float) -> bytes:
+    """Pitch-preserving time stretch using the bundled FFmpeg atempo filter."""
+    import math
+    import av
+
+    if not math.isfinite(speed) or not 0.5 <= speed <= 2.0:
+        raise ValueError('Speech speed must be between 0.5 and 2.0')
+    if speed == 1.0:
+        return content
+    normalized = decode_audio_to_wav(content, input_format='wav', sample_rate=24000, max_duration_seconds=3600)
+    output = io.BytesIO()
+    with av.open(io.BytesIO(normalized)) as source, wave.open(output, 'wb') as target:
+        target.setnchannels(1)
+        target.setsampwidth(2)
+        target.setframerate(24000)
+        graph = None
+        def drain():
+            while True:
+                try:
+                    frame = graph.pull()
+                except (av.error.BlockingIOError, av.error.EOFError):
+                    break
+                target.writeframes(frame.to_ndarray().astype('<i2', copy=False).tobytes())
+                if output.tell() > 64 * 1024 * 1024:
+                    raise ValueError('Adjusted speech exceeds 64 MiB')
+        for frame in source.decode(audio=0):
+            if graph is None:
+                graph = av.filter.Graph()
+                entry = graph.add_abuffer(sample_rate=frame.sample_rate, format=frame.format.name, layout=frame.layout.name, time_base=frame.time_base)
+                tempo = graph.add('atempo', str(speed))
+                fmt = graph.add('aformat', 'sample_fmts=s16:sample_rates=24000:channel_layouts=mono')
+                sink = graph.add('abuffersink')
+                entry.link_to(tempo)
+                tempo.link_to(fmt)
+                fmt.link_to(sink)
+                graph.configure()
+            graph.push(frame)
+            drain()
+        if graph is None:
+            raise ValueError('Empty speech audio')
+        graph.push(None)
+        drain()
+    return output.getvalue()

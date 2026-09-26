@@ -732,9 +732,8 @@ def build_venvstacks():
     if resolved_toml.exists():
         resolved_toml.unlink()
 
-    # Install mlx-audio separately: build wheel from git, install --no-deps.
-    # mlx-audio pins mlx-lm==0.31.1 which conflicts with our git-pinned mlx-lm,
-    # so it can't go through venvstacks' uv resolver.
+    # Install mlx-audio separately: build the reviewed git revision and install
+    # it without letting a floating PyPI release replace the audited source.
     _install_mlx_audio(EXPORT_DIR)
 
     # Overlay only the CosyVoice 3 MLX backend and the two codec modules it
@@ -772,7 +771,7 @@ def build_venvstacks():
 
 
 # mlx-audio git commit — aligned with pyproject.toml [audio] extra
-_MLX_AUDIO_GIT = "git+https://github.com/Blaizzy/mlx-audio@51753266e0a4f766fd5e6fbc46652224efc23981"
+_MLX_AUDIO_GIT = "git+https://github.com/Blaizzy/mlx-audio@cd605ecfcc266ccf6ea3077586c373101be982c6"
 _MLX_AUDIO_PLUS_VERSION = "0.1.8"
 _MLX_AUDIO_PLUS_WHEEL_SHA256 = "2e44ad5a65d46391db59b694ad4b9e9b1a739ea79c1e6013ad8f7db5cea9472b"
 _MLX_AUDIO_PLUS_OVERLAY = (

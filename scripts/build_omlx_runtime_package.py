@@ -181,17 +181,32 @@ def sign_runtime(bundle: Path, identity: str) -> str | None:
             check=False,
             capture_output=True,
         )
-    for path in native_paths:
-        run_codesign("--force", *timestamp, "--sign", identity, str(path))
+    # llvmlite/Numba (used by CosyVoice's librosa preprocessing) allocates
+    # executable pages without MAP_JIT. Only the Python worker executable
+    # needs this exception; keep library validation and hardened runtime on.
+    python_worker = bundle / "Contents/Resources/Runtime/Python/cpython-3.11/bin/python3.11"
+    with tempfile.TemporaryDirectory(prefix="ai2apps-runtime-entitlements-") as temporary:
+        entitlements = Path(temporary) / "python-worker.plist"
+        entitlements.write_bytes(plistlib.dumps({
+            "com.apple.security.cs.allow-unsigned-executable-memory": True,
+        }))
+        for path in native_paths:
+            options = ["--entitlements", str(entitlements)] if path == python_worker else []
+            run_codesign("--force", *timestamp, *options, "--sign", identity, str(path))
+    # All nested code was signed above. A recursive force-sign here would
+    # replace the Python signature and discard its narrowly scoped entitlement.
     run_codesign(
         "--force",
-        "--deep",
         *timestamp,
         "--sign",
         identity,
         str(bundle),
     )
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", str(bundle))
+    if python_worker in native_paths:
+        signed = run("/usr/bin/codesign", "-d", "--entitlements", ":-", str(python_worker))
+        if not plistlib.loads(signed.stdout.encode()).get("com.apple.security.cs.allow-unsigned-executable-memory"):
+            raise RuntimeError("Python worker is missing the LLVM executable-memory entitlement")
     if identity == "-":
         return None
     details = run("/usr/bin/codesign", "-dvvv", str(bundle)).stderr

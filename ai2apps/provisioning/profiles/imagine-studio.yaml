@@ -21,27 +21,27 @@ capabilities:
       output_formats: [png, jpeg, webp]
     profiles:
       - id: apple-metal-z-image-turbo
-        label: Z-Image Turbo MLX · 高质量推荐
+        label: Z-Image Turbo MLX
         description: 多语言文生图（当前不支持编辑），适合 24 GiB 及以上 Apple Silicon。
-        priority: 110
+        priority: 90
+        recommended: false
         device:
           os: [macos]
           architectures: [arm64]
           accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
-        recommendation_memory_gib: {minimum: 24}
         stack:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
           provider: {package_id: ai2apps/model-z-image-mlx, service_key: ai2apps.model.z-image-mlx, version: ">=0.1.1,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.z-image-mlx/turbo}
       - id: apple-metal-flux2-klein-4b
-        label: FLUX.2 Klein 4B MLX · 轻量推荐
-        description: 快速文生图、单图编辑与多参考图创作，适合 16–24 GiB Apple Silicon。
+        label: FLUX.2 Klein 4B MLX · 默认推荐
+        description: 快速文生图、单图编辑与多参考图创作，适合 16 GiB 及以上 Apple Silicon。
         priority: 100
         device:
           os: [macos]
           architectures: [arm64]
           accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
-        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 24}
+        recommendation_memory_gib: {minimum: 16}
         stack:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
           provider: {package_id: ai2apps/model-flux2-klein-mlx, service_key: ai2apps.model.flux2-klein-mlx, version: ">=0.1.2,<1.0.0"}
@@ -121,14 +121,14 @@ capabilities:
       output_formats: [png, jpeg, webp]
     profiles:
       - id: apple-metal-flux2-klein-4b
-        label: FLUX.2 Klein 4B MLX · 轻量推荐
-        description: 快速文生图、单图编辑与多参考图创作，适合 16–24 GiB Apple Silicon。
+        label: FLUX.2 Klein 4B MLX · 默认推荐
+        description: 快速文生图、单图编辑与多参考图创作，适合 16 GiB 及以上 Apple Silicon。
         priority: 100
         device:
           os: [macos]
           architectures: [arm64]
           accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
-        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 24}
+        recommendation_memory_gib: {minimum: 16}
         stack:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.5.2,<2.0.0"}
           provider: {package_id: ai2apps/model-flux2-klein-mlx, service_key: ai2apps.model.flux2-klein-mlx, version: ">=0.1.2,<1.0.0"}

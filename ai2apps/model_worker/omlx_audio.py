@@ -218,6 +218,39 @@ class OmlxSTTAdapter(OmlxAudioAdapterBase):
 
 
 class OmlxTTSAdapter(OmlxAudioAdapterBase):
+    def synthesis_options(
+        self,
+        model_id: str,
+        body: Mapping[str, Any],
+        *,
+        speed: float,
+        emotion: str | None,
+        emotion_strength: float,
+        instructions: str | None,
+    ) -> dict[str, Any]:
+        """Translate normalized API controls into backend synthesis options.
+
+        The public ``audio_speech`` contract stays model-neutral.  Packages
+        with structured native controls (for example an emotion vector or an
+        inverse duration factor) override this hook instead of parsing a
+        natural-language instruction inside their engine.
+        """
+        effective_instructions = instructions
+        if emotion and emotion.lower() != "neutral":
+            effective_instructions = " ".join(
+                part.strip()
+                for part in (
+                    effective_instructions,
+                    f"Speak with a {emotion} emotion.",
+                )
+                if isinstance(part, str) and part.strip()
+            )
+        return {
+            "speed": speed,
+            "instructions": effective_instructions or None,
+            "language": body.get("language") or None,
+        }
+
     def dependency_checkpoint_paths(
         self, checkpoint: ModelWorkerCheckpoint
     ) -> dict[str, str]:
@@ -363,6 +396,14 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
             _error("style must be an object")
         style = dict(style or {})
         emotion = style.get("emotion") or body.get("emotion")
+        try:
+            emotion_strength = float(
+                style.get("emotion_strength", body.get("emotion_strength", 1.0))
+            )
+        except (TypeError, ValueError) as exc:
+            raise ModelWorkerError("emotion_strength is invalid") from exc
+        if not 0.0 <= emotion_strength <= 1.0:
+            _error("emotion_strength must be between 0 and 1")
         instructions = style.get("instructions") or body.get("instructions")
         if emotion and str(emotion).lower() != "neutral":
             emotion_feature = self.require_feature(
@@ -374,12 +415,6 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
                     f"Emotion is not available for the selected model: {emotion}",
                     code="unsupported_feature",
                 )
-            emotion_instruction = f"Speak with a {emotion} emotion."
-            instructions = " ".join(
-                part.strip()
-                for part in (instructions, emotion_instruction)
-                if isinstance(part, str) and part.strip()
-            )
         if instructions:
             self.require_feature(
                 model, "tts", "instructions", requested=True
@@ -393,13 +428,18 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
         if not isinstance(runtime_options, dict):
             _error("Internal model settings are invalid")
         engine, checkpoint = await self.engine_for(model, runtime_options)
+        synthesis_options = self.synthesis_options(
+            model,
+            body,
+            speed=speed,
+            emotion=str(emotion) if emotion else None,
+            emotion_strength=emotion_strength,
+            instructions=str(instructions) if instructions else None,
+        )
         try:
             content = await engine.synthesize(
                 synthesis_text,
                 voice=voice or None,
-                language=body.get("language") or None,
-                speed=speed,
-                instructions=instructions or None,
                 ref_audio=(str(reference_part.path) if reference_part is not None else None),
                 ref_text=(
                     reference_text.strip()
@@ -411,6 +451,7 @@ class OmlxTTSAdapter(OmlxAudioAdapterBase):
                 top_p=body.get("top_p"),
                 repetition_penalty=body.get("repetition_penalty"),
                 max_tokens=body.get("max_tokens"),
+                **synthesis_options,
             )
         except ModelWorkerError:
             raise

@@ -16,7 +16,7 @@ def _app_manifest() -> dict:
     return yaml.safe_load((SOURCE / "app.yaml").read_text(encoding="utf-8"))
 
 
-def test_media_voice_suite_builds_as_one_contract_package_with_five_mini_apps(tmp_path):
+def test_media_voice_suite_builds_as_one_contract_package_with_six_mini_apps(tmp_path):
     artifact = tmp_path / "media-voice-studio-suite.ai2app"
     built = build_package(SOURCE, artifact)
     inspected = inspect_package(artifact)
@@ -24,13 +24,14 @@ def test_media_voice_suite_builds_as_one_contract_package_with_five_mini_apps(tm
     assert built.sha256 == inspected.sha256
     assert inspected.manifest["package"]["id"] == "ai2apps/media-voice-studio-suite"
     assert inspected.manifest["package"]["type"] == "app"
-    assert inspected.manifest["package"]["version"] == "0.1.1"
-    assert len(inspected.manifest["miniApps"]) == 5
+    assert inspected.manifest["package"]["version"] == "0.2.0"
+    assert len(inspected.manifest["miniApps"]) == 6
     assert {item["componentId"] for item in inspected.manifest["miniApps"]} == {
         "ai2apps.media-voice.transcription",
         "ai2apps.media-voice.source-separation",
         "ai2apps.media-voice.audio-speaker-replacement",
         "ai2apps.media-voice.video-subtitles",
+        "ai2apps.media-voice.video-audio-translation",
         "ai2apps.media-voice.video-speaker-replacement",
     }
     catalog = {
@@ -48,6 +49,7 @@ def test_media_voice_suite_builds_as_one_contract_package_with_five_mini_apps(tm
         "web/separation.html",
         "web/audio-voice-replacement.html",
         "web/video-subtitles.html",
+        "web/video-audio-translation.html",
         "web/video-voice-replacement.html",
         "web/mini-app.css",
         "web/mini-app.js",
@@ -102,6 +104,13 @@ def test_media_voice_suite_uses_lazy_capability_dependencies():
     assert "media.video.audio_mux" in mini_apps[
         "ai2apps.media-voice.video-speaker-replacement"
     ]["requirements"]["capabilities"]
+    dubbing = mini_apps["ai2apps.media-voice.video-audio-translation"]
+    assert dubbing["requirements"]["capabilities"][0] == "media.video_audio_translation"
+    assert "audio.speech_generation" in dubbing["requirements"]["capabilities"]
+    assert {"capability": "audio.voice_clone", "optional": True} in dubbing[
+        "requirements"
+    ]["capabilities"]
+    assert "audio.speaker_diarization" not in dubbing["requirements"]["capabilities"]
     assert "media.video_speaker_voice_replacement" in mini_apps[
         "ai2apps.media-voice.video-speaker-replacement"
     ]["requirements"]["capabilities"]
@@ -132,6 +141,22 @@ def test_executable_uis_use_the_mount_bound_capability_route():
     assert "开始本地转写" in client
     assert "开始本地分离" in client
     assert "开始生成字幕" in client
+    assert "开始翻译并配音" in client
+    assert "characters.list" in client
+    assert "voice-clone-models.list" in client
+    assert "原始音色" in client
+    assert "安装更多模型" in client
+    assert "voice_profile_id" in client
+    assert "voice_clone_model_id" in client
+    assert "asr_verification" in client
+    assert "ASR 回听校验" in client
+    assert "audio.detailed_transcription'" in client
+    assert "subtitleFontSize" in client
+    assert "subtitleBackground" in client
+    assert "subtitle_font_size" in client
+    assert "subtitle_background" in client
+    assert "白字 + 黑色粗描边" in client
+    assert "白字 + 半透明黑框" in client
     assert "先识别录音角色" in client
     assert "先识别视频角色" in client
     assert "ai2apps.model.detailed-transcription-mlx" not in client
@@ -165,8 +190,9 @@ def test_media_voice_suite_uses_the_studio_native_visual_contract():
         resource = (SOURCE / mini_app["entry"]["resource"]).read_text(
             encoding="utf-8"
         )
-        assert "mini-app.css?v=studio-native-v3" in resource
-        assert "mini-app.js?v=studio-native-v3" in resource
+        assert "mini-app.css?v=original-voice-v7" in resource
+        assert "mini-app.js?v=original-voice-v7" in resource
+    assert "progress?.phasePercent ?? progress?.percent" in client
 
     for template_name in ("readaloud.html", "video_studio.html", "imagine_studio.html"):
         template = (

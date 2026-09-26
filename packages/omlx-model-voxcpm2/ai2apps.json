@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "ai2apps.package-manifest.v1",
+  "package": {
+    "id": "ai2apps/model-voxcpm2",
+    "type": "service",
+    "version": "0.1.0",
+    "displayName": "VoxCPM2 2B",
+    "description": "Local MLX VoxCPM2 controllable voice cloning and voice design."
+  },
+  "compatibility": {
+    "ai2apps": ">=0.1.0 <2.0.0",
+    "platforms": ["darwin"],
+    "architectures": ["arm64"],
+    "minimumOsVersion": "26.2"
+  },
+  "entrypoints": [{"name": "model-worker", "kind": "service", "path": "service.yaml"}],
+  "permissions": [
+    {"capability": "model-weights.huggingface-cache.read", "reason": "Read pinned VoxCPM2 MLX checkpoints selected by the Host.", "required": true},
+    {"capability": "accelerator.metal", "reason": "Run local VoxCPM2 synthesis with MLX.", "required": true}
+  ],
+  "dependencies": [{"packageId": "ai2apps/runtime-omlx", "version": ">=1.7.9 <2.0.0", "optional": false}],
+  "files": [],
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {
+    "kind": "model",
+    "categories": ["speech"],
+    "tasks": ["speech-synthesis", "voice-cloning", "voice-design", "emotion-control"]
+  },
+  "modelProfile": {
+    "sizeBytes": 3225461623,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {"speed": 4, "capability": 4},
+    "benchmark": {
+      "label": "Native MLX 4-bit validation: 6.40 seconds of audio in 3.27 seconds (RTF 0.51)",
+      "device": "Apple M5 Max"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.voxcpm2",
+    "models": [
+      {"id": "ai2apps.model.voxcpm2/4bit", "label": "VoxCPM2 2B 4-bit", "recommended": true},
+      {"id": "ai2apps.model.voxcpm2/8bit", "label": "VoxCPM2 2B 8-bit", "recommended": false}
+    ]
+  }
+}

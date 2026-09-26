@@ -1506,6 +1506,7 @@ class PieceDownloadScheduler:
         concurrency: int = 8,
         max_source_attempts: int = 16,
         progress: Callable[[dict[str, Any]], None] | None = None,
+        warning: Callable[[str], None] | None = None,
     ) -> None:
         if concurrency < 1 or concurrency > 32:
             raise ValueError("concurrency must be between 1 and 32")
@@ -1520,6 +1521,7 @@ class PieceDownloadScheduler:
         self.piece_map = PieceCompletionMap(cache, manifest)
         self.source_bytes: dict[str, int] = {}
         self.progress = progress
+        self.warning = warning
         self._completed_bytes_by_file: dict[str, int] = {}
         self._map_lock = asyncio.Lock()
         self._inflight: dict[int, dict[str, int]] = {}
@@ -1619,6 +1621,8 @@ class PieceDownloadScheduler:
                 or not result.range_supported
                 or result.content_length != file_sizes.get(source.file_path)
             ):
+                if self.warning is not None:
+                    self.warning(source.provider)
                 continue
             ranked.setdefault(source.file_path, []).append(
                 (
@@ -1784,6 +1788,8 @@ class PieceDownloadScheduler:
                         )
                     except Exception:
                         self._source_retry_at[provider] = time.monotonic() + 30
+                        if self.warning is not None:
+                            self.warning(provider)
                         raise
                     finally:
                         self._source_active[provider] -= 1
