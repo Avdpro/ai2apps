@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: imagine-gpt-image-panda
+name: 使用 GPT Image 生成大熊猫图片并加入 Gallery Recent
+description: 验证 Imagine Studio 的基本文生图功能：使用 GPT Image 模型生成一只吃竹子的大熊猫，并将生成图片加入 Gallery
+  的 Recent 目录。
+groupId: imagine-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 900
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- imagine-studio
+- text-to-image
+- gallery
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中打开 Imagine Studio，进入文生图界面。
+- 打开模型选择控件，选择 GPT Image 模型，并确认界面显示的当前模型为 GPT Image。
+- 在提示词输入框中输入“一只正在吃竹子的大熊猫”，然后点击生成按钮。
+- 观察生成状态，等待图片出现；确认图片中可见一只正在吃竹子的大熊猫。
+- 对本次生成的图片使用加入 Gallery 的操作；如出现目录选择，选择 Recent 并确认。
+- 使用 Computer Use 打开 Gallery，进入 Recent 目录，找到本次加入的图片并打开预览，核对其与生成结果一致。
+expectations:
+- Imagine Studio 文生图界面成功打开，提示词输入框、模型选择和生成控件可见。
+- 提交生成时，当前选择的模型为 GPT Image，提示词为“一只正在吃竹子的大熊猫”。
+- 生成在本 Case 超时前完成，出现可查看的图片，无生成失败提示。
+- 生成图片中可辨认出一只大熊猫，并能看到其持有或啃食竹子的动作。
+- Gallery 的 Recent 目录中出现本次生成的图片。
+- Recent 中该图片的预览可以正常打开，内容与 Imagine Studio 的生成结果一致。
+cleanup: []
+fixtures: []

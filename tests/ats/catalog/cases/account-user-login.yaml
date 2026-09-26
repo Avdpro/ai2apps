@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: account-user-login
+name: 用户手动登录帐号
+description: 验证用户在登录页面手动输入 pxavdpro@gmail.com 及密码后能够成功登录。仅在隔离的 AI2Apps Test 实例中执行，开始时应处于未登录状态。
+groupId: account-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- account
+- on-demand
+instructions:
+- 使用 Computer Use 连接 Harness 已校验的当前 Test App 内层 Shell，确认实例为 test；无法确认时标记为阻塞。
+- 通过 AI2Apps Shell 打开 Account App，进入登录页面。如果已有帐号登录，标记为阻塞，不退出已有会话。
+- 将操作权交给用户，由用户在帐号输入框输入 pxavdpro@gmail.com，并自行输入密码、点击登录。用户输入期间暂停自动操作，不读取或记录密码。
+- 用户确认操作完成后，使用 Computer Use 观察页面；如出现额外验证，交由用户完成后继续。
+- 等待登录结果，检查 Account App 是否显示已登录状态以及当前帐号是否为 pxavdpro@gmail.com。若出现错误或超时仍未进入已登录状态，记录可见现象。
+expectations:
+- Account App 能显示包含帐号输入框、密码输入框和登录按钮的登录页面。
+- 用户提交登录并完成必要验证后，页面在超时前进入已登录状态。
+- Account App 当前帐号显示为 pxavdpro@gmail.com。
+- 登录完成后没有仍然显示的登录失败提示或持续加载状态。
+cleanup: []
+fixtures: []

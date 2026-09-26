@@ -1,0 +1,43 @@
+schemaVersion: 1
+id: discover-tests
+name: Discover App 测试
+description: ''
+enabled: true
+steps:
+- id: step-1
+  type: action
+  action: reset-data
+  enabled: true
+- id: step-2
+  type: action
+  action: start-helper
+  loginMode: selected
+  accountEmail: test1@ai2apps.com
+- id: step-3
+  type: case
+  caseId: discover-install-omlx-runtime
+  expectedStatus: passed
+  executionMode: skip
+- id: step-5
+  type: case
+  caseId: discover-omlx-runtime-update
+  expectedStatus: passed
+  executionMode: skip
+- id: step-4
+  type: case
+  caseId: discover-media-voice-suite
+  expectedStatus: passed
+  executionMode: skip
+- id: step-8
+  type: action
+  action: restart-local
+- id: step-7
+  type: case
+  caseId: uninstall-media-voice-suite
+  expectedStatus: passed
+  executionMode: skip
+- id: step-6
+  type: case
+  caseId: discover-voice-indextts-install
+  expectedStatus: passed
+  executionMode: manual

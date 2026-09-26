@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import platform
 import subprocess
 import sys
@@ -123,7 +124,9 @@ def compile_pipeline(
     if not pipeline.get("enabled", True):
         raise ValueError("pipeline is disabled")
     cases: list[dict[str, Any]] = []
-    for index, step in enumerate(pipeline["steps"], start=1):
+    from .pipeline_expansion import expand_pipeline
+    expanded, sources = expand_pipeline(pipeline, CatalogStore(repo_root), set(by_id))
+    for index, step in enumerate(expanded, start=1):
         step_case_id = f"pipeline.{step['id']}"
         if step["type"] == "action":
             cases.append(
@@ -134,15 +137,22 @@ def compile_pipeline(
                     "group": f"Pipeline · {pipeline['name']}",
                     "executor": "pipeline-action",
                     "action": step["action"],
+                    "humanInstructions": step.get("humanInstructions", ""),
+                    "confirmTimeoutSeconds": step.get("confirmTimeoutSeconds", 120),
+                    "loginMode": step.get("loginMode", "none"),
+                    "accountEmail": step.get("accountEmail"),
+                    "requires": ["test-account"] if step["action"] == "start-helper" and step.get("loginMode", "none") != "none" else [],
                     "required": True,
                     "expectedStatus": "passed",
                     "pipelineStepId": step["id"],
+                    "stepEnabled": step.get("enabled", True),
                     "sourceType": "pipeline",
                 }
             )
             continue
         source = by_id[step["caseId"]]
         value = source.to_dict()
+        mode = step.get('executionMode', 'run' if step.get('enabled', True) else 'skip')
         value.update(
             id=step_case_id,
             name=f"{index}. {value['name']}",
@@ -150,8 +160,23 @@ def compile_pipeline(
             expectedStatus=step.get("expectedStatus", "passed"),
             sourceCaseId=source.id,
             pipelineStepId=step["id"],
+            stepEnabled=mode != 'skip',
+            executionMode=mode,
         )
+        if mode == 'manual':
+            sections = [value['name']]
+            for label, field in [('说明', 'description'), ('操作步骤', 'instructions'), ('预期结果', 'expectations'), ('清理动作', 'cleanup'), ('测试素材', 'fixtures')]:
+                content = value.get(field)
+                if content:
+                    sections.append(label + '\n' + ('\n'.join(str(item) for item in content) if isinstance(content, (list, tuple)) else str(content)))
+            value.update(executor='pipeline-action', action='human-test',
+                         humanInstructions='\n\n'.join(sections),
+                         confirmTimeoutSeconds=step.get('confirmTimeoutSeconds', 120))
         cases.append(value)
+    for value, step in zip(cases, expanded):
+        value.update(step['_origin'])
+        if len(step['_origin']['pipelineStepPath']) > 1:
+            value['name'] += ' · ' + step['_origin']['sourcePipelineName']
     return {
         "schemaVersion": "ai2apps.test-plan.v1",
         "createdAt": now_text(),
@@ -168,6 +193,7 @@ def compile_pipeline(
             components, catalog, repo_root=repo_root
         ),
         "selection": {"pipelineId": pipeline_id},
+        "pipelineSources": sources,
         "pipeline": {
             "id": pipeline_id,
             "name": pipeline["name"],
@@ -252,6 +278,7 @@ def _advance_pipeline(
     run_dir: Path,
     state: dict[str, Any],
     is_cancelled: Callable[[], bool],
+    *, defer_human: bool = False,
 ) -> dict[str, Any]:
     cases = state["plan"]["cases"]
     cursor = int(state.get("pipelineCursor", 0))
@@ -262,11 +289,39 @@ def _advance_pipeline(
             continue
         if is_cancelled():
             return state
+        if case_data.get("stepEnabled", True) is False:
+            state["results"][case_data["id"]] = {
+                "status": "skipped", "skipReason": "step-disabled",
+                "summary": "步骤未勾选，未执行", "durationSeconds": 0,
+                "completedAt": now_text(),
+            }
+            save_state(run_dir, state)
+            cursor += 1
+            continue
+        if case_data["executor"] == "codex-ui" and state.get("pipelineStartupBlocker"):
+            state["results"][case_data["id"]] = {
+                "status": "blocked", "observedStatus": "blocked",
+                "expectedStatus": case_data.get("expectedStatus", "passed"),
+                "summary": "前置启动/登录失败，未执行 UI Case：" + state["pipelineStartupBlocker"],
+                "details": {"category": "dependency", "executed": False},
+                "completedAt": now_text(), "durationSeconds": 0,
+            }
+            save_state(run_dir, state)
+            cursor += 1
+            continue
         if case_data["executor"] == "codex-ui":
             state["pipelineCursor"] = cursor
             state["currentCaseId"] = case_data["id"]
             state["currentCaseName"] = case_data["name"]
             save_state(run_dir, state)
+            return state
+        if defer_human and case_data['executor'] == 'pipeline-action':
+            waiting = 'waiting_human' if case_data.get('action') == 'human-test' else 'waiting_controller'
+            state.update(status=waiting, pipelineCursor=cursor,
+                         currentCaseId=case_data['id'], currentCaseName=case_data['name'])
+            # record_result publishes the handoff with its final state write.
+            # Publishing here could let the controller advance before record
+            # finishes, then have its new state overwritten by record.
             return state
         state.setdefault("caseStartedAt", {}).setdefault(case_data["id"], now_text())
         append_timeline(
@@ -277,9 +332,30 @@ def _advance_pipeline(
         save_state(run_dir, state)
         try:
             if case_data["executor"] == "pipeline-action":
-                result = execute_pipeline_action(
-                    repo_root, str(case_data["action"]), state
-                )
+                if case_data['action'] == 'human-test':
+                    from .human_action import execute
+                    result = execute(run_dir, case_data, is_cancelled)
+                    latest = read_json(run_dir / 'state.json')
+                    if latest['status'] in {'cancelled', 'cancelling', 'completed'}:
+                        return latest
+                elif not (case_data['action'] == 'start-helper' and case_data.get('loginMode', 'none') != 'none'):
+                    result = execute_pipeline_action(repo_root, str(case_data["action"]), state)
+                    latest = read_json(run_dir / 'state.json')
+                    if latest['status'] in {'cancelled', 'cancelling', 'completed'}:
+                        return latest
+                if case_data["action"] == "start-helper" and case_data.get("loginMode", "none") != "none":
+                    requested = case_data.get("accountEmail")
+                    lease = state.get("testAccountLease", {})
+                    if requested and lease.get("status") == "leased" and lease.get("email") != requested:
+                        raise ValueError("This Run already leases another account; account switching is not allowed")
+                    if not acquire_for_run(repo_root, run_dir, state, only_case_id=case_data["id"], account_email=requested):
+                        result = state["results"].pop(case_data["id"])
+                        if "accessibility-permission" in result.get("summary", ""):
+                            result["summary"] += "；请在 macOS 隐私与安全性→辅助功能中授权负责原生登录的测试进程，然后重试。"
+                    else:
+                        # Authentication prepares identity before launching the
+                        # Test instance. Never launch it just to quit it again.
+                        result = execute_pipeline_action(repo_root, 'start-helper', state)
             else:
                 case = _case_from_dict(case_data)
                 result = (
@@ -297,6 +373,17 @@ def _advance_pipeline(
                 "status": "blocked",
                 "summary": f"Pipeline step blocked: {redact_text(str(error))}",
             }
+        if case_data.get("action") == "start-helper":
+            if result.get("status") == "passed":
+                state.pop("pipelineStartupBlocker", None)
+            else:
+                state["pipelineStartupBlocker"] = result.get("summary", "启动失败")
+        diagnostics = state.pop('_actionDiagnostics', None)
+        if diagnostics is not None:
+            from .state import atomic_write_json
+            diagnostic_path = f"logs/{case_data['id']}-restart-local.json"
+            atomic_write_json(run_dir / diagnostic_path, {'action': 'restart-local', 'events': diagnostics})
+            result.setdefault('evidence', []).append(diagnostic_path)
         result = _expected_result(case_data, result)
         result["completedAt"] = now_text()
         _record_timing(state, case_data["id"], result)
@@ -338,12 +425,11 @@ def start_run(
     if plan.get("pipeline"):
         state["pipelineCursor"] = 0
         state = _advance_pipeline(repo_root, run_dir, state, is_cancelled)
+        if state['status'] in {'completed', 'cancelled', 'cancelling'}:
+            return run_id, run_dir, state
         if is_cancelled():
             return cancel_run(repo_root, run_id)
         pending = next_agent_job(state)
-        if pending:
-            acquire_for_run(repo_root, run_dir, state)
-            pending = next_agent_job(state)
         state["status"] = "awaiting_agent" if pending else "ready_to_finalize"
         save_state(run_dir, state)
         write_reports(run_dir, state)
@@ -446,12 +532,14 @@ def next_agent_job(state: dict[str, Any]) -> dict[str, Any] | None:
         if case["executor"] == "codex-ui" and case["id"] not in state["results"]:
             instructions = [
                 "Target only com.ai2apps.desktop.test / instance test.",
-                'For Computer Use, connect with cua.getApp("com.ai2apps.desktop.test.shell"). This is the actual UI process. Never pass com.ai2apps.desktop.test or the outer AI2Apps-test.app path to cua.getApp; those identify the launcher, not the Shell.',
-                "On Computer Use timeout, verify the target first. If it was the outer App, retry with com.ai2apps.desktop.test.shell before reporting a connection blocker. If the correct Shell also times out, record the exact target, call, error and retry outcome; never switch to another instance.",
+                'For Computer Use, use cua.getApp with the Harness-validated shellAppPath supplied by next. Never use an archived App, display name, or the outer AI2Apps-test.app launcher. If shellAppPath is unavailable, record blocked.',
+                "On timeout or ambiguity, recheck next and retry only its validated shellAppPath; record target, error and retry outcome. Never switch instances or use the outer launcher.",
                 "Read fresh UI state before and after every action.",
                 "The privileged AI2Apps Shell chrome is not a BiDi browsing context; use Computer Use for Shell navigation, App/Mini-Entry launching, native UI, visible-state checks, and cross-context drag.",
                 "Use the protected AI2Apps WebDriver BiDi Gateway only for a Case that explicitly targets an AI Browser webpage and provides a validated authenticated Test-bound context; never substitute generic Chrome/Firefox BiDi or enumerate generic browser contexts for Shell Cases.",
                 "Store evidence under this run directory and record a structured result.",
+                "Pipeline human-test actions are completed only by the user in Test Center. Never call /api/human-action, confirm on behalf of the user, or submit their result. The Harness waits for the user and advances the Pipeline.",
+                "For TTS/audio-output Cases, read docs/tts-audio-verification.md. Start audio-capture for this Run and current Case; wait for recording before clicking playback. Stop after playback finishes, require captured, then audio-check the recorded WAV against the actual spoken text using local Qwen ASR. Include all returned evidence. Never synthesize replacement audio, capture the microphone, or fall back to a global system mix. Permission, capture, or session problems are blocked; ASR mismatch requires listening review and does not alone prove a TTS defect. Text match does not verify voice quality or physical speaker output.",
                 "Uninstall Apps, services, and models through Discover's installed-package management UI.",
                 "When uninstalling a model, preserve checkpoint caches unless this Case explicitly requires deleting them. Do not select cache-deletion options or delete checkpoint files as routine cleanup.",
             ]
@@ -460,6 +548,8 @@ def next_agent_job(state: dict[str, Any]) -> dict[str, Any] | None:
                     1,
                     "Use the Harness-managed Test account lease; never read, print, or place its password in a Codex prompt or result.",
                 )
+            if state["plan"].get("pipeline"):
+                instructions.append("Pipeline initial startup and account login are explicit Harness actions. Do not implicitly start an unavailable instance or authenticate it. Exception: when the current Case requires installing a model or Runtime and the Test UI explicitly requests a restart to finish that installation, you may accept that UI restart for the Test instance only. This is installation continuation, not initial startup. Record the restart prompt and installation progress before restarting. Check next immediately before and after; cancellation is terminal. After restart, discard stale Computer Use handles and element IDs, obtain a fresh validated shellAppPath from next, reconnect with cua.getApp(shellAppPath), and read fresh UI state. Confirm Test identity, session readiness and installation completion, then resume the same Case. Never report pass merely because restart succeeded. Do not use arbitrary kill/launch commands, reset data, switch instances, log in manually, or delete checkpoint caches. If restart fails, loops, or the session is unavailable, record evidence and blocked; do not use this exception for unrelated recovery restarts.")
             if case.get("instructions"):
                 instructions.extend(f"Case action: {value}" for value in case["instructions"])
             if case.get("fixtures"):
@@ -498,9 +588,22 @@ def get_next(repo_root: Path, run_id: str) -> dict[str, Any]:
     state = read_json(run_dir / "state.json")
     if state.get("status") in {"cancelled", "cancelling"}:
         return {"status": "cancelled", "runId": run_id}
+    if state.get('status') == 'waiting_human':
+        return {'status': 'waiting_human', 'runId': run_id,
+                'message': 'Human step is owned by Test Center. Do not submit a result or finalize. Wait and poll next until pending/done/cancelled.'}
+    if state.get('status') == 'waiting_controller':
+        return {'status': 'waiting_controller', 'runId': run_id,
+                'message': 'Lifecycle action is owned by the host controller. Do not execute it or finalize. Wait and poll next until pending/done/cancelled.'}
     heartbeat_for_run(repo_root, run_dir, state)
     job = next_agent_job(state)
     if job:
+        from .shell_target import test_shell_path
+        try:
+            job["shellAppPath"] = test_shell_path(repo_root)
+            job["instructions"].append("Connect using cua.getApp(" + json.dumps(job["shellAppPath"]) + "). This is the validated current Test Shell, not the outer launcher.")
+        except (OSError, ValueError) as error:
+            job["shellTargetError"] = str(error)
+            job["instructions"].append("Test Shell path validation failed; record blocked without connecting to another target.")
         state.setdefault("caseStartedAt", {}).setdefault(job["case"]["id"], now_text())
         save_state(run_dir, state)
     return job or {"status": "done", "runId": run_id}
@@ -565,13 +668,15 @@ def record_result(
         case = next(case for case in state["plan"]["cases"] if case["id"] == case_id)
         if not _stop_pipeline_if_matched(run_dir, state, case, normalized):
             state["pipelineCursor"] = int(state.get("pipelineCursor", 0)) + 1
-            state = _advance_pipeline(repo_root, run_dir, state, lambda: False)
+            state = _advance_pipeline(repo_root, run_dir, state, lambda: False, defer_human=True)
+            if state['status'] in {'cancelled', 'cancelling', 'completed'}:
+                return state
     pending = next_agent_job(state)
-    state["status"] = "awaiting_agent" if pending else "ready_to_finalize"
+    state["status"] = "awaiting_agent" if pending else (state['status'] if state.get('status') in {'waiting_human', 'waiting_controller'} else "ready_to_finalize")
     if pending:
         state["currentCaseId"] = pending["case"]["id"]
         state["currentCaseName"] = pending["case"]["name"]
-    else:
+    elif state['status'] not in {'waiting_human', 'waiting_controller'}:
         state.pop("currentCaseId", None)
         state.pop("currentCaseName", None)
     save_state(run_dir, state)
@@ -588,11 +693,34 @@ def record_result(
     return normalized
 
 
+def resume_human_pipeline(repo_root: Path, run_dir: Path, is_cancelled) -> dict[str, Any]:
+    state = read_json(run_dir / 'state.json')
+    if state.get('status') not in {'waiting_human', 'waiting_controller'}:
+        return state
+    state = _advance_pipeline(repo_root, run_dir, state, is_cancelled)
+    if is_cancelled() or state['status'] in {'cancelled', 'cancelling', 'completed'}:
+        return state
+    state['status'] = 'awaiting_agent' if next_agent_job(state) else 'ready_to_finalize'
+    save_state(run_dir, state)
+    write_reports(run_dir, state)
+    return state
+
+
 def finalize_run(repo_root: Path, run_id: str) -> dict[str, Any]:
     run_dir = find_run(repo_root, run_id)
     state = read_json(run_dir / "state.json")
     if state.get("status") == "cancelled":
         return write_reports(run_dir, state, finalize_pending=True)
+    if state.get('status') == 'waiting_controller':
+        raise ValueError('Pipeline still has pending controller actions')
+    # Human checkpoints remain pending after the last Codex UI result. Neither
+    # automatic nor explicit finalization may destroy that user's opportunity.
+    if state['plan'].get('pipeline') and any(
+        case.get('action') == 'human-test' and case['id'] not in state['results']
+        and case.get('stepEnabled', True)
+        for case in state['plan']['cases']
+    ):
+        raise ValueError('Pipeline still has pending human steps; complete or cancel them before finalizing')
     for case in state["plan"]["cases"]:
         if case["id"] not in state["results"]:
             state["results"][case["id"]] = {

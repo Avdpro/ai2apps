@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: discover-install-omlx-runtime
+name: Discover 安装 AI2Apps oMLX Runtime
+description: 在隔离的 AI2Apps Test App 中，通过 Discover 安装 AI2Apps oMLX Runtime，验证安装流程及安装状态持久化。归属按需测试组
+  discover-app-basic。
+groupId: discover-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 1800
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- discover
+- installation
+- runtime
+instructions:
+- 使用 Computer Use 连接测试系统提供并已校验的 Test App 内层 Shell，确认当前为 test 实例；无法确认时将本 Case 标记为 blocked。
+- 在 AI2Apps Shell 中打开 Discover App，等待内容加载完成。
+- 使用 Discover 的搜索界面查找“AI2Apps oMLX Runtime”，打开名称匹配的条目详情。
+- 检查条目的当前安装状态并记录界面显示的版本。如果已经安装，将本 Case 标记为 blocked，保留原有安装；如果界面要求登录或缺少安装权限且当前会话无法继续，同样标记为
+  blocked。
+- 点击该条目的安装按钮。若出现安装确认界面，核对目标名称及界面显示的版本后确认安装；涉及原生窗口或 macOS 交互时继续使用 Computer Use。
+- 观察安装进度直至出现成功或失败的终态；记录最终提示。若安装失败或超过本 Case 超时，记录可见错误信息及最后状态。
+- 安装成功后，检查详情中的已安装状态或已安装版本，然后离开该详情页，再从 Discover 重新打开同一条目，核对安装状态。
+expectations:
+- Discover 可以正常打开，搜索结果中存在名称为 AI2Apps oMLX Runtime 的可安装条目。
+- 条目详情展示的信息能够明确识别安装目标，安装前状态为未安装。
+- 点击安装并完成必要确认后，界面出现可观察的安装中状态或直接显示安装成功。
+- 在规定超时内安装完成，界面明确显示成功或已安装，且没有安装失败提示。
+- 重新打开同一条目后仍显示已安装；若界面展示已安装版本，其与此次选择的版本一致。
+cleanup: []
+fixtures: []

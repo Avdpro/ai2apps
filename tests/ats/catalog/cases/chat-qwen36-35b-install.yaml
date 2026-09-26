@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: chat-qwen36-35b-install
+name: 从 Chat 安装 Qwen3.6 35B 并完成对话
+description: 验证从 Chat 模型切换菜单进入模型安装页面，安装 Qwen3.6 35B，返回 Chat 选择该模型并完成简单对话的完整流程。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- model-install
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中打开 Chat App；所有 Shell、App、原生窗口及 macOS 交互均使用
+  Computer Use。
+- 记录 Chat 当前选择的模型，打开模型切换菜单，点击进入模型安装页面的入口。
+- 在模型安装页面找到 Qwen3.6 35B，核对模型名称与规模。若不存在该模型或存在无法区分的同名选项，记录界面信息并将 Case 标记为 blocked，不选择其他模型代替。
+- 检查 Qwen3.6 35B 的安装状态。若已安装，记录该状态并将 Case 标记为 blocked，避免卸载已有模型来制造安装前置条件。
+- 点击 Qwen3.6 35B 的安装按钮，观察安装进度并等待界面显示安装完成。若出现空间不足、下载失败或其他阻断提示，记录提示及当前状态。
+- 通过界面返回 Chat App，打开模型切换菜单，选择刚安装的 Qwen3.6 35B，并等待模型就绪。
+- 新建一个会话，发送“你好，请用一句中文介绍你自己。”，等待回复生成结束。
+- 检查用户消息和助手回复均显示在当前会话中，并再次确认当前选中的模型为 Qwen3.6 35B。
+expectations:
+- Chat App 可以打开，模型切换菜单提供可进入模型安装页面的入口。
+- 模型安装页面能够明确识别 Qwen3.6 35B，并提供安装操作。
+- 触发安装后界面展示安装过程，最终显示已安装或可用状态，无安装失败提示。
+- 返回 Chat 后，Qwen3.6 35B 出现在模型选择列表中，能够被选中并进入就绪状态。
+- 发送的用户消息出现在新建会话中，助手生成非空、可读且与问候相关的中文回复。
+- 回复生成正常结束，无模型加载失败、推理失败或持续卡住的状态；当前模型仍为 Qwen3.6 35B。
+cleanup:
+- 通过 Chat 界面删除本 Case 新建的会话；若未创建会话则跳过。
+fixtures: []

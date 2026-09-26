@@ -1,0 +1,40 @@
+schemaVersion: 1
+id: voice-studio-voice-env-setup
+name: 角色管理安装模型并确认音色环境就绪
+description: 在 Voice Studio 的 Characters/角色管理中配置音色环境，安装 IndexTTS 2.5 FP16 模型、确认模型许可并完成下载，验证关闭对话框后音色环境显示就绪。
+groupId: voice-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: voice-studio
+enabled: true
+required: true
+requires:
+- test-account
+tags:
+- voice-studio
+- characters
+- environment
+- model-install
+- codex-ui
+instructions:
+- 使用 Computer Use 在 AI2Apps Shell 中进入 Voice Studio App。
+- 在左侧 Mini-Apps 列表中选择“Characters/角色管理”。
+- 观察角色管理页面的音色环境状态，并点击“配置音色环境”按钮。
+- 在环境配置对话框中找到“IndexTTS 2.5 FP16”模型，点击其安装操作。
+- 在模型许可区域查看许可内容，勾选“已读同意”选项。
+- 点击“确认许可并继续下载”，观察模型进入下载或安装状态。
+- 等待下载和安装完成，确认对话框中该模型显示已安装或可用状态。
+- 关闭环境配置对话框，返回 Characters/角色管理页面。
+- 检查页面上的音色环境状态，确认显示为就绪或等价的可用状态。
+expectations:
+- Voice Studio App 成功打开，左侧 Mini-Apps 中可见 Characters/角色管理入口。
+- 选择 Characters/角色管理后显示对应页面，且可见“配置音色环境”按钮。
+- 配置对话框中可找到名称为“IndexTTS 2.5 FP16”的模型及安装操作。
+- 模型许可区域提供已读同意选项；勾选后可以确认许可并继续下载。
+- 确认许可后模型开始下载或安装，界面显示可观察的进度或状态变化。
+- 下载和安装完成后，IndexTTS 2.5 FP16 显示已安装或可用，且无失败提示。
+- 关闭对话框后，角色管理页面显示音色环境就绪或等价的可用状态。
+cleanup: []
+fixtures: []

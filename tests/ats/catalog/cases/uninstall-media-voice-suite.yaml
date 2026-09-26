@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: uninstall-media-voice-suite
+name: 卸载 Media Voice Studio Suite 后隐藏对应 Mini-App
+description: 验证在 Discover App 卸载已安装的 Media Voice Studio Suite package 后，Voice Studio
+  中不再显示 Voice and Background Separation mini-app。
+groupId: discover-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 300
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- discover-app-basic
+- uninstall
+- voice-studio
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中打开 Discover App，进入已安装的 package 列表，找到 Media
+  Voice Studio Suite 并确认其已安装；若未安装，记录前置条件不满足并将本 Case 标记为 blocked。
+- 通过 Shell 打开 Voice Studio，查看 Mini-App 列表，确认 Voice and Background Separation 可见；若不可见，记录前置条件不满足并将本
+  Case 标记为 blocked。
+- 返回 Discover App，打开 Media Voice Studio Suite 的详情或管理界面，点击卸载；若出现确认对话框，核对 package 名称后确认卸载，如果遇到“卸载要求关闭打开的实例并强制卸载”，选择强制关闭实例并卸载。
+- 等待卸载完成，查看该 package 的安装状态，确认其已不在已安装列表中，或详情界面已提供安装操作。
+- 返回 Voice Studio，通过可见的刷新操作更新界面；若没有刷新入口，则通过 Shell 关闭并重新打开 Voice Studio。
+- 清除 Mini-App 列表中的搜索和筛选条件，展开相关分类并滚动检查完整列表，确认不再显示 Voice and Background Separation。
+expectations:
+- 卸载前，Discover App 显示 Media Voice Studio Suite 已安装。
+- 卸载前，Voice Studio 的 Mini-App 列表中可见 Voice and Background Separation。
+- 卸载完成后，Media Voice Studio Suite 不再显示为已安装，且界面没有卸载失败提示。
+- 刷新或重新打开 Voice Studio 后，在未受搜索或筛选限制的完整 Mini-App 列表中，Voice and Background Separation
+  不可见。
+cleanup: []
+fixtures: []

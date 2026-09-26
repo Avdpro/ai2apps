@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: discover-omlx-runtime-update
+name: 检查并升级 AI2Apps oMLX Runtime
+description: 在隔离的 AI2Apps Test App 中进入 Discover，检查 AI2Apps oMLX Runtime 是否有可用升级；有升级时完成升级，无升级时确认已是最新版本。
+groupId: discover-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 1800
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- discover-app-basic
+instructions:
+- 使用 Computer Use 连接测试系统提供并已校验的 Test Shell 完整路径，确认目标为 instance test；若无法确认，记录阻断并停止本
+  Case。
+- 通过 AI2Apps Shell 打开 Discover App，等待页面加载完成。
+- 在 Discover 中查找并打开 AI2Apps oMLX Runtime，确认名称匹配，记录界面显示的安装状态、当前版本和可用版本。
+- 若 Runtime 未安装，记录前置条件不满足并将 Case 标记为 blocked，不执行首次安装。
+- 检查版本信息和升级按钮。若界面明确显示已是最新版本或无可用升级，记录结果并结束检查；若状态无法确定，记录阻断原因。
+- 若存在可用升级，记录升级前版本，通过界面的升级按钮启动升级；核对确认对话框指向 AI2Apps oMLX Runtime 后确认。
+- 观察下载、安装和完成状态。如界面要求重启测试实例，使用 Computer Use 按提示完成；若操作会影响其他实例或要求输入账号秘密，记录阻断，不继续该操作。
+- 升级完成后重新进入 Discover 的 Runtime 详情页，必要时使用界面刷新，记录安装版本和升级状态。若失败或超时，记录可见错误和最后进度，不将其判定为通过。
+expectations:
+- 所有交互均发生在已校验的 AI2Apps Test 实例中，Discover 能正常打开。
+- 能够找到名称为 AI2Apps oMLX Runtime 的条目，并从界面确定其安装状态及升级状态；未安装或状态不明确时结果为 blocked。
+- 无升级分支：界面明确显示已是最新版本或无可用升级，未启动安装或升级。
+- 有升级分支：升级流程显示成功完成，没有未处理的错误或持续中的下载、安装状态。
+- 有升级分支：重新打开详情后，安装版本与本次升级目标版本一致，且不再提供相同目标版本的升级。
+- 若需要重启，重启后测试实例可重新打开 Discover 并查看 Runtime 状态。
+cleanup: []
+fixtures: []

@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: chat-default-model-hi
+name: 默认模型回复问候
+description: 在 Chat App 中选择默认模型，发送 hi，确认模型正常返回与问候相关的回复。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 180
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+instructions:
+- 使用 Computer Use 进入已校验的 AI2Apps Test Shell，打开 Chat App。
+- 新建本 Case 专用对话，打开模型选择控件，选择界面标识的默认模型；若无法识别或选择默认模型，记录阻塞原因。
+- 确认当前模型显示为默认模型，在消息输入框输入 hi，点击发送。
+- 等待回复结束，检查用户消息、助手回复和界面错误提示。
+expectations:
+- 发送前，模型选择控件显示已选中界面标识的默认模型。
+- 当前对话显示一条内容为 hi 的用户消息。
+- 在超时前出现非空助手回复，且生成状态结束。
+- 助手回复包含问候或表示愿意提供帮助的内容，语言和具体措辞不限。
+- 本次发送和回复过程中未出现模型不可用、请求失败或生成失败提示。
+cleanup:
+- 使用 Computer Use 删除本 Case 新建的专用对话。
+fixtures: []

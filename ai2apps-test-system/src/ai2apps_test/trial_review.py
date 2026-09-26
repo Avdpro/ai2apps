@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from .case_generator import SECRET_ASSIGNMENT, CaseGenerationError
-from .codex_driver import read_codex_output
+from .codex_driver import read_codex_output, CodexDriverError, codex_environment
 from .redact import redact_text
 from .state import read_json
 
@@ -234,9 +233,10 @@ def generate_trial_review(
     timeout_seconds: int = 180,
 ) -> dict[str, Any]:
     safe_supplements = _safe_supplements(supplements)
-    executable = shutil.which("codex")
-    if executable is None:
-        raise CaseGenerationError("Codex CLI is not installed or unavailable on PATH")
+    try:
+        executable, resolved_environment = codex_environment()
+    except CodexDriverError as error:
+        raise CaseGenerationError(str(error)) from error
     with tempfile.TemporaryDirectory(prefix="ai2apps-trial-review-") as temporary:
         root = Path(temporary)
         schema_path = root / "schema.json"
@@ -262,6 +262,7 @@ def generate_trial_review(
             for key in ("PATH", "HOME", "CODEX_HOME", "LANG", "LC_ALL", "TMPDIR")
             if key in os.environ
         }
+        environment["PATH"] = resolved_environment["PATH"]
         try:
             completed = subprocess.run(
                 command,

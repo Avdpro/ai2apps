@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: voice-studio-base-test
+name: Voice Studio 基础测试
+description: ''
+kind: on-demand
+order: 500
+lifecycle: enabled
+enabled: true
+defaultSelected: false
+tags: []

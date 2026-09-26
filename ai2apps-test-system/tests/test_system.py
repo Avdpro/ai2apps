@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 import sqlite3
 import subprocess
 import sys
@@ -182,6 +183,22 @@ def test_account_lease_keeps_password_and_token_out_of_public_state() -> None:
     assert released["status"] == "released"
     assert "lease." + run_id not in vault.values
     assert calls[-1][2]["leaseToken"] == "a" * 43
+
+
+def test_selected_account_request_and_mismatch_release() -> None:
+    import pytest
+    vault = MemoryVault()
+    pool = AccountPool("desktop-test-v1", "https://coder.ai2apps.com", 7200, frozenset(["test1@ai2apps.com", "test2@ai2apps.com"]))
+    calls = []
+    def request(method, url, payload, token):
+        calls.append((url, payload))
+        return {"leaseId": "c505e206-822a-4ac6-8347-a544b74195d3", "email": "test1@ai2apps.com", "password": "temporary-password", "leaseToken": "a" * 43, "expiresAt": "2026-09-25T08:00:00Z"}
+    manager = TestAccountManager(pool, vault, request)
+    with pytest.raises(TestAccountBrokerError, match="different account"):
+        manager.acquire("20260925T053358Z-94042", account_email="test2@ai2apps.com")
+    assert calls[0][1]["accountEmail"] == "test2@ai2apps.com"
+    assert calls[-1][0].endswith("/release")
+    assert "lease.20260925T053358Z-94042" not in vault.values
 
 
 def test_account_broker_rejects_non_allowlisted_response() -> None:
@@ -758,8 +775,8 @@ def test_codex_driver_command_and_prompt_are_scoped(tmp_path: Path) -> None:
     assert "danger-full-access" not in command
     prompt = driver_prompt("20260908T075756Z-2632")
     assert "com.ai2apps.desktop.test" in prompt
-    assert 'cua.getApp("com.ai2apps.desktop.test.shell")' in prompt
-    assert "禁止将它们传给 cua.getApp" in prompt
+    assert "shellAppPath" in prompt
+    assert "禁止外层启动器、归档副本" in prompt
     assert "不修改 AI2Apps 产品代码" in prompt
     assert "./bin/ai2apps-test next" in prompt
     assert ".agents/skills/ai2apps-test/SKILL.md" in prompt
@@ -781,14 +798,27 @@ def test_codex_job_routes_shell_ui_to_computer_use() -> None:
     instructions = "\n".join(job["instructions"])
     assert "Shell chrome is not a BiDi browsing context" in instructions
     assert "use Computer Use for Shell navigation" in instructions
-    assert 'cua.getApp("com.ai2apps.desktop.test.shell")' in instructions
-    assert "Never pass com.ai2apps.desktop.test or the outer AI2Apps-test.app path" in instructions
-    assert "verify the target first" in instructions
+    assert "Harness-validated shellAppPath" in instructions
+    assert "Never use an archived App, display name, or the outer AI2Apps-test.app launcher" in instructions
+    assert "retry only its validated shellAppPath" in instructions
     assert "explicitly targets an AI Browser webpage" in instructions
     assert "never substitute generic Chrome/Firefox BiDi" in instructions
 
 
-def test_unattended_run_starts_codex_and_finalizes(tmp_path: Path, monkeypatch) -> None:
+def test_pipeline_installation_restart_exception() -> None:
+    case = Case("ui.install", "Install model", "P0", "UI", "codex-ui")
+    state = {"runId": "run-1", "plan": {"pipeline": {"id": "sample"}, "cases": [case.to_dict()]}, "results": {}}
+    instructions = "\n".join(next_agent_job(state)["instructions"])
+    assert "initial startup and account login are explicit Harness actions" in instructions
+    assert "Test UI explicitly requests a restart" in instructions
+    assert "discard stale Computer Use handles and element IDs" in instructions
+    assert "resume the same Case" in instructions
+    assert "cancellation is terminal" in instructions
+    assert "Do not use arbitrary kill/launch commands" in instructions
+
+
+@pytest.mark.parametrize('trailing_human', [False, True])
+def test_unattended_run_starts_codex_and_finalizes(tmp_path: Path, monkeypatch, trailing_human) -> None:
     case = Case("ui.sample", "Visible case", "P0", "UI", "codex-ui")
     plan = {
         "priority": "P0",
@@ -797,6 +827,12 @@ def test_unattended_run_starts_codex_and_finalizes(tmp_path: Path, monkeypatch) 
         "cases": [case.to_dict()],
     }
     started = []
+    if trailing_human:
+        plan['pipeline'] = {'id': 'human-tail', 'name': 'Human tail'}
+        plan['cases'].append({**case.to_dict(), 'id': 'human.tail', 'executor': 'pipeline-action',
+                              'action': 'human-test', 'humanInstructions': 'Manual check',
+                              'confirmTimeoutSeconds': 120})
+    polls = []
 
     class FakeDriver:
         log_path = tmp_path / "driver.jsonl"
@@ -807,6 +843,13 @@ def test_unattended_run_starts_codex_and_finalizes(tmp_path: Path, monkeypatch) 
         def poll(self):
             run_dir = started[0]
             state = read_json(run_dir / "state.json")
+            polls.append(1)
+            if trailing_human:
+                assert state['status'] != 'completed'
+                if len(polls) <= 4:
+                    assert 'human.tail' not in state['results']
+                if len(polls) >= 4:
+                    state['results']['human.tail'] = {'status': 'passed', 'summary': 'User confirmed'}
             state["results"][case.id] = {
                 "status": "blocked",
                 "summary": "synthetic completion",
@@ -843,6 +886,9 @@ def test_unattended_run_starts_codex_and_finalizes(tmp_path: Path, monkeypatch) 
     assert result["conclusion"] == "BLOCKED"
     state = read_json(started[0] / "state.json")
     assert state["codexDriver"]["status"] == "completed"
+    if trailing_human:
+        assert len(polls) >= 4
+        assert state['results']['human.tail']['status'] == 'passed'
 
 
 def test_progress_payload_exposes_driver_and_manual_handoff(tmp_path: Path) -> None:

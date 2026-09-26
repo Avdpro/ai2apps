@@ -138,14 +138,16 @@ def driver_prompt(run_id: str) -> str:
 
 这是无人值守 UI 测试执行任务。完整遵循当前项目 `.agents/skills/ai2apps-test/SKILL.md`：
 - 只操作固定的 `com.ai2apps.desktop.test` / instance `test`，禁止操作 default、dev 或 app-dev。
-- Computer Use 必须使用 `cua.getApp("com.ai2apps.desktop.test.shell")` 连接实际界面。`com.ai2apps.desktop.test` 和外层 `AI2Apps-test.app` 路径仅用于 Harness 启动与身份校验，禁止将它们传给 cua.getApp；两者会指向外层启动器，不能替代 Shell。
-- Computer Use 超时后先核对目标是否为 `com.ai2apps.desktop.test.shell`；若误连外层 App，改用正确 Shell ID 再读取状态，不得反复重试外层 ID/路径后就判定 Computer Use 不可用。正确 Shell 仍超时时，记录实际目标、调用、错误和重试结果，禁止切换其他实例。
+- Computer Use 必须使用 next 返回的已校验 shellAppPath 完整路径连接当前内层 Test Shell。禁止外层启动器、归档副本、显示名称；路径校验失败则 blocked。
+- Computer Use 超时或身份歧义时重新读取 next，只重试已校验 shellAppPath；仍失败则记录实际目标、调用、错误和重试结果，禁止切换实例。
 - 不修改 AI2Apps 产品代码、测试框架、测试计划或视觉基线。
+- Pipeline 初始启动和登录由 Harness 动作负责。但当前 Case 安装模型/Runtime 时，若 Test UI 明确要求重启以完成安装，可以通过该 UI 确认重启 Test。先记录提示和安装进度并检查 next；重启后再次检查 next，丢弃旧 Computer Use 句柄/元素 ID，用新返回的 shellAppPath 重新连接并读取状态，核验身份、Session 和安装完成后继续同一 Case。取消立即停止；重启失败、反复要求重启或 Session 不可用则记录 blocked。不得自行登录、清数据、删除 checkpoint 缓存或用任意命令强杀/启动进程；重启本身不代表 Case 通过。
 - 从 `./bin/ai2apps-test next --run {run_id}` 领取 Case；每个实质 UI 动作前后都重新执行 next 检查取消状态。
 - AI2Apps 特权 Shell chrome 不是 WebDriver BiDi browsing context；Shell 导航、App/Mini-Entry 启动、原生窗口、可见状态检查和跨上下文/macOS 拖拽一律使用 Computer Use。
 - 只有 Case 明确测试 AI Browser 网页、且 Harness 已提供并验证绑定 Test 实例的受保护 Gateway/context 时，才使用 AI2Apps WebDriver BiDi。禁止用通用 Chrome/Firefox BiDi 连接代替 Test Shell，也不要为 Shell Case 枚举通用浏览器 context。
 - 每个 Case 独立保存证据到该 Run 目录并调用 record；失败或 blocked 后继续独立 Case。
 - 不读取、显示、请求、输入或记录测试账号密码、lease token、Cookie、Bearer 或其他 Secret；账号已由 Harness 自动登录。
+- next 返回 waiting_controller 或 waiting_human 时等待并轮询，不执行宿主动作、不提交结果或 finalize。
 - next 返回 cancelled 时立即停止；返回 done 时结束，不要再次 finalize。
 """
 
@@ -210,12 +212,36 @@ class CodexDriverProcess:
             self.log.close()
 
 
+def codex_environment() -> tuple[str, dict[str, str]]:
+    """Resolve CLI dependencies for GUI launches without running shell profiles."""
+    environment = os.environ.copy()
+    directories = [p for p in environment.get("PATH", "").split(os.pathsep)
+                   if p and Path(p).is_absolute()]
+    directories.extend([
+        str(Path.home() / ".local" / "bin"),
+        "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+    ])
+    environment["PATH"] = os.pathsep.join(dict.fromkeys(directories))
+    executable = shutil.which("codex", path=environment["PATH"])
+    if executable is None:
+        raise CodexDriverError(
+            "找不到 Codex CLI：已检查 PATH、~/.local/bin、/opt/homebrew/bin 和 /usr/local/bin"
+        )
+    try:
+        with open(executable, "rb") as stream:
+            shebang = stream.readline(256)
+    except OSError as error:
+        raise CodexDriverError("Codex CLI 无法读取") from error
+    if shebang.startswith(b"#!") and b"node" in shebang:
+        if shutil.which("node", path=environment["PATH"]) is None:
+            raise CodexDriverError("已找到 Codex CLI，但缺少其所需的 Node.js；请安装 Node.js 或配置 PATH")
+    return executable, environment
+
+
 def start_codex_driver(
     repo_root: Path, run_id: str, run_dir: Path
 ) -> CodexDriverProcess:
-    executable = shutil.which("codex")
-    if executable is None:
-        raise CodexDriverError("Codex CLI is not installed or unavailable on PATH")
+    executable, environment = codex_environment()
     log_path = run_dir / "logs" / "codex-driver.jsonl"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log = log_path.open("ab", buffering=0)
@@ -231,6 +257,7 @@ def start_codex_driver(
             stdout=log,
             stderr=subprocess.STDOUT,
             cwd=project_root,
+            env=environment,
             start_new_session=True,
         )
         assert process.stdin is not None

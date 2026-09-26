@@ -1,0 +1,35 @@
+schemaVersion: 1
+id: chat-image-understanding
+name: Chat 默认模型识别熊猫水墨画
+description: 在 Chat 新建对话，使用系统默认模型识别熊猫吃竹子的水墨画。执行前，用户须通过 Test Center 的受管理上传流程补充 image-1.png
+  测试素材；未提供素材时标记为 blocked。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 240
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- chat
+- image-understanding
+instructions:
+- 使用 Computer Use 连接测试任务提供并校验的 Test Shell 完整路径，确认当前为隔离的 AI2Apps Test 实例。
+- 通过 Shell 界面打开 Chat，新建本 Case 专用对话。
+- 打开模型选择界面，选择界面标识的系统默认模型，并确认当前选中状态；若无法确定系统默认模型或其不可用，记录原因并标记为 blocked。
+- 点击添加附件，通过原生文件选择界面选择本 Case 受管理上传的 ~/sdk/omlx-moe-cache/ai2apps-test-system/assets/image-1.png，等待图片附件预览出现。
+- 在消息输入框输入“图片里有什么？”，发送消息。
+- 等待模型回答完成，检查回答是否正确描述图片主体、动作和画面风格。
+expectations:
+- 新建对话成功，发送前没有历史消息，当前模型为系统默认模型。
+- 发送的消息包含一张与受管理素材一致的图片以及“图片里有什么？”文本。
+- 模型在超时前完成有效回答，没有附件读取失败或模型调用错误。
+- 回答明确识别主体为熊猫，并描述其正在吃竹子；允许同义表达。
+- 回答没有与画面明显矛盾的主体或动作描述；若提及画面风格，应与水墨画一致。
+cleanup:
+- 通过 Computer Use 删除本 Case 新建的对话，并确认其从对话列表中消失。
+fixtures: []

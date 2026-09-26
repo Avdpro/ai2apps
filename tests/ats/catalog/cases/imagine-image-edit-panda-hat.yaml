@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: imagine-image-edit-panda-hat
+name: 图片编辑：给熊猫戴上帽子
+description: 验证 Imagine Studio 的“图片编辑”Mini-App 能通过素材拖拽设置主图片，并使用提示词“给熊猫带上帽子”生成保留熊猫吃竹子主体且新增帽子的图片。执行前，用户需通过
+  Test Center 受管理上传流程补充最新生成的熊猫吃竹子图片；缺少素材时标记为 blocked。
+groupId: imagine-studio-base-test
+priority: null
+executor: codex-ui
+timeoutSeconds: 600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- imagine-studio
+- image-edit
+instructions:
+- 使用 Computer Use 连接 Harness 提供并校验的当前 Test App 内层 Shell，确认操作对象为 test 实例。
+- 在 AI2Apps Shell 中打开 Imagine Studio，选择“图片编辑”Mini-App，确认可见“主图片”槽和提示词输入区域。
+- 点击“素材”入口，在素材面板中找到用户通过 Test Center 受管理上传流程补充的最新熊猫吃竹子图片；若无法唯一确认目标图片，标记为 blocked。
+- 使用 Computer Use 将该图片从素材面板拖拽到“主图片”槽，检查槽内缩略图与所选素材一致。
+- 在提示词输入区域填写“给熊猫带上帽子”，点击调用 AI 的生成按钮。
+- 等待生成结束，检查生成状态和输出图片；若出现错误，记录界面可见错误；若超时，记录当前可见状态。
+- 在输出预览中查看新生成的图片，必要时使用界面提供的放大功能，检查熊猫、竹子和帽子的视觉结果。
+expectations:
+- “图片编辑”Mini-App 正常打开，主图片槽、提示词输入区域及生成按钮可见。
+- 拖拽后，“主图片”槽显示目标熊猫吃竹子图片，没有上传或加载失败提示。
+- 提交时提示词为“给熊猫带上帽子”，界面进入可观察的生成中状态。
+- 在 Case 超时前生成完成，输出区域出现本次新生成且能够正常预览的图片，没有生成失败提示。
+- 输出图片中熊猫头上有清晰可辨的帽子，帽子位置符合佩戴关系。
+- 输出图片保留可辨识的熊猫吃竹子主体与动作，没有变成无关场景。
+cleanup:
+- 清空本 Case 填入的提示词，并移除本 Case 放入主图片槽的图片引用。
+- 若界面支持删除，删除本 Case 新生成的输出图片；保留用户提供的原始素材及其他既有输出。
+fixtures: []

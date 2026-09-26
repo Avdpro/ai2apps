@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: discover-app-basic
+name: Discover App 基础测试
+description: Discover App的基础测试。
+kind: on-demand
+order: 500
+lifecycle: enabled
+enabled: true
+defaultSelected: false
+tags: []

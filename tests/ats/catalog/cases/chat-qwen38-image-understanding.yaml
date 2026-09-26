@@ -1,0 +1,37 @@
+schemaVersion: 1
+id: chat-qwen38-image-understanding
+name: Chat 使用 Qwen 3.8 27B 识别熊猫水墨画
+description: 在 Chat App Basic（chat-app-basic）按需测试组中，新建对话，使用 Qwen 3.8 27B 识别熊猫吃竹子的水墨画。执行前，用户须通过
+  Test Center 的受管理上传流程补充 image-1.png 测试素材；原始素材为用户指定的本地图片。素材未补充或目标模型不可用时，记录为阻断。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 600
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat
+- image-understanding
+instructions:
+- 通过 Computer Use 连接测试任务提供并校验的完整 shellAppPath，确认当前为隔离的 AI2Apps Test 环境。
+- 通过 AI2Apps Shell 打开 Chat，点击新建对话，确认进入空白对话。
+- 打开模型选择器，查找并选择 Qwen 3.8 27B，确认当前模型显示为该模型；若不可用，记录阻断。
+- 确认 Test Center 已提供用户通过受管理上传流程补充的 ~/sdk/omlx-moe-cache/ai2apps-test-system/assets/image-1.png；若未提供，记录阻断。
+- 点击添加图片，通过 Computer Use 操作附件界面及必要的 macOS 文件选择窗口，选择本 Case 的受管理图片素材。
+- 等待图片附件加载完成，确认缩略图呈现熊猫吃竹子的水墨画。
+- 在输入框输入“图片里有什么？”，发送包含图片和问题的消息。
+- 等待模型回答结束，检查并记录回答是否识别出熊猫、竹子、吃竹子的行为和水墨画风格。
+expectations:
+- 新建对话初始为空，发送前当前模型显示为 Qwen 3.8 27B。
+- 用户消息同时包含指定图片和“图片里有什么？”，图片不存在加载失败提示。
+- 模型在本 Case 超时内完成回答，没有请求失败或不支持图片的提示。
+- 回答明确识别出熊猫和竹子，并描述熊猫正在吃、啃食或进食竹子。
+- 回答识别为水墨画或含义相同的中国水墨绘画风格。
+- 回答不存在将主体识别为其他动物、将画面描述为真实照片等明显错误。
+cleanup:
+- 通过 Computer Use 删除本 Case 新建的对话，并确认该对话已从对话列表移除。
+fixtures: []

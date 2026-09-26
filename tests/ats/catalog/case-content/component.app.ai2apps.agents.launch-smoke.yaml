@@ -1,0 +1,10 @@
+id: component.app.ai2apps.agents.launch-smoke
+content:
+  name: 'Agents: Launch and first ready view'
+  description: Generated common contract for ai2apps.agents
+  instructions:
+  - 查看AI2Apps是否启动，查看是否是App首页，App顶部Dock登录信息
+  expectations:
+  - 应该看到App首页，明确看到本地工作区已就绪的提示。
+  - App顶部登录信息正确，显示了登录用户名字
+  cleanup: []

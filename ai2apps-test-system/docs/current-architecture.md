@@ -142,7 +142,7 @@ Run 是一次具体测试执行，ID 格式类似：
 1. 用 `next --run` 领取当前 Case。
 2. 每个实质 UI 操作前后重新检查取消状态。
 3. 只操作固定 Test App。
-   Computer Use 必须使用 `cua.getApp("com.ai2apps.desktop.test.shell")` 连接实际 Shell UI；外层 `com.ai2apps.desktop.test` / `AI2Apps-test.app` 仅用于 Harness 启动与身份校验，不能作为 Computer Use 目标。遇到超时先检查实际目标，误连外层时改用 Shell ID 重试；正确目标仍超时才记录连接阻断及目标、错误和重试证据。
+   Computer Use 使用 `next` 返回的 `shellAppPath` 连接当前内层 Shell。Harness 校验固定外层 Test Bundle ID 和内层 `.test.shell` Bundle ID，只接受当前 Test App 内唯一且不逃逸的 Shell，不搜索归档。禁止外层启动器、显示名称及其他实例。缺少有效路径时阻断；超时只重试已校验路径并记录证据。
 4. AI2Apps 特权 Shell chrome 本身不是 WebDriver BiDi browsing context；Shell 导航、App/Mini-Entry 启动、原生窗口、可见状态检查和跨上下文/macOS 拖拽使用 Computer Use。
 5. 只有 Case 明确测试 AI Browser 网页，且 Harness 已提供并验证绑定 Test 实例的受保护 Gateway/context 时，才使用 AI2Apps WebDriver BiDi。通用 Chrome/Firefox BiDi 连接不能替代 Test Shell，也不应为 Shell Case 枚举通用浏览器 context。
 6. 将截图、日志等证据写入当前 Run 目录。

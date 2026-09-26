@@ -133,9 +133,25 @@ class CatalogService:
                 "index": index, "sourceCaseId": case.get("sourceCaseId"),
                 "action": case.get("action"), "expectedStatus": case.get("expectedStatus", "passed"),
                 "caseRevision": case.get("revision"),
+                "executionMode": case.get("executionMode", 'run' if case.get('stepEnabled', True) else 'skip'),
                 "caseContent": case.get("caseContent", {}),
+                "loginMode": case.get("loginMode", "none"), "accountEmail": case.get("accountEmail"),
                 **latest.get("results", {}).get(case["id"], {"status": "pending"}),
             }
+        root_snapshot = latest['plan'].get('pipelineSources', {}).get(pipeline_id, {})
+        for index, step in enumerate(root_snapshot.get('steps', [])):
+            if step.get('action') != 'include-pipeline':
+                if step['id'] in steps:
+                    steps[step['id']]['index'] = index
+                continue
+            children = [case for case in latest['plan']['cases']
+                        if case.get('pipelineStepPath', [None])[0] == step['id']]
+            statuses = [latest.get('results', {}).get(case['id'], {}).get('status', 'pending') for case in children]
+            status = next((s for s in ('failed', 'blocked', 'pending') if s in statuses),
+                          'skipped' if statuses and all(s == 'skipped' for s in statuses) else 'passed')
+            steps[step['id']] = {'index': index, 'action': 'include-pipeline',
+                'pipelineId': step['pipelineId'], 'expectedStatus': 'passed', 'status': status,
+                'summary': f"引入 {step['pipelineId']}：共 {len(children)} 步"}
         return {"run": {
             "runId": latest["runId"], "createdAt": latest.get("createdAt"),
             "conclusion": conclusion(latest), "steps": steps,
@@ -170,6 +186,12 @@ class CatalogService:
                 self.repo_root, discover_inventory(self.repo_root)
             )
             errors = validate_pipeline(value, {case.id for case in cases})
+            if not errors:
+                from .pipeline_expansion import expand_pipeline
+                try:
+                    expand_pipeline(value, self.store, {case.id for case in cases})
+                except (ValueError, KeyError, FileNotFoundError) as error:
+                    errors.append(str(error))
         conflict = self._conflict(
             kind, str(value.get("id", "")), updating=bool(value.get("revision"))
         )
@@ -189,6 +211,8 @@ class CatalogService:
                 self.repo_root, discover_inventory(self.repo_root)
             )
             require_valid(validate_pipeline(value, {case.id for case in cases}))
+            from .pipeline_expansion import expand_pipeline
+            expand_pipeline(value, self.store, {case.id for case in cases})
         conflict = self._conflict(
             kind, str(value.get("id", "")), updating=expected_revision is not None
         )

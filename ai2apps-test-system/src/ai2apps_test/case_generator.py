@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -11,6 +10,7 @@ from typing import Any
 
 from .catalog_validation import CatalogValidationError, require_valid, validate_case
 from .redact import redact_text
+from .codex_driver import CodexDriverError, codex_environment
 
 
 class CaseGenerationError(RuntimeError):
@@ -110,9 +110,10 @@ def generate_case_draft(
         raise ValueError("test description must not exceed 4000 characters")
     if SECRET_ASSIGNMENT.search(description) or "authorization: bearer " in description.lower():
         raise ValueError("test description must not contain secret-like values")
-    executable = shutil.which("codex")
-    if executable is None:
-        raise CaseGenerationError("Codex CLI is not installed or unavailable on PATH")
+    try:
+        executable, resolved_environment = codex_environment()
+    except CodexDriverError as error:
+        raise CaseGenerationError(str(error)) from error
 
     with tempfile.TemporaryDirectory(prefix="ai2apps-case-draft-") as temporary:
         temporary_root = Path(temporary)
@@ -140,6 +141,7 @@ def generate_case_draft(
                 for key in ("PATH", "HOME", "CODEX_HOME", "LANG", "LC_ALL", "TMPDIR")
                 if key in os.environ
             }
+            environment["PATH"] = resolved_environment["PATH"]
             completed = subprocess.run(
                 command,
                 input=generation_prompt(description, group),

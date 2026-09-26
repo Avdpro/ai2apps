@@ -1,0 +1,38 @@
+schemaVersion: 1
+id: chat-ornith-install-and-talk
+name: 从 Chat 安装 Ornith 模型并完成对话
+description: 验证从 Chat App 模型切换菜单进入模型安装页面，安装 Ornith 1.5 35B A3B 40bit，返回 Chat 选择该模型并完成简单对话的完整流程。
+groupId: chat-app-basic
+priority: null
+executor: codex-ui
+timeoutSeconds: 720
+lifecycle: enabled
+componentId: null
+enabled: true
+required: true
+requires: []
+tags:
+- codex-ui
+- chat-app-basic
+- model-install
+instructions:
+- 使用 Computer Use 在已校验的 AI2Apps Test Shell 中启动 Chat App。记录当前选中的模型及已有会话，后续仅操作本 Case
+  新建的会话。
+- 打开 Chat 的模型切换菜单，通过其中的安装模型入口进入模型安装页面。
+- 查找 Ornith 1.5 35B A3B 40bit，核对可见名称、版本、规模和量化规格。若不存在完全匹配的条目，记录页面显示内容并将本 Case 标记为 blocked，不选择相近型号代替。
+- 确认目标模型尚未安装。若已经安装，记录当前状态并将本 Case 标记为 blocked，不卸载已有模型来制造安装前置条件。
+- 点击目标模型的安装操作，观察下载和安装状态，等待页面明确显示安装完成。若安装失败或超时，记录可见错误和最终状态。
+- 通过界面导航返回 Chat App，打开模型切换菜单，选择刚安装的 Ornith 1.5 35B A3B 40bit。
+- 在 Chat 中新建会话，确认当前模型为目标模型，输入并发送“你好，请用一句中文介绍你能做什么。”，等待回复完成。
+- 继续发送“请把上一条介绍概括成三个关键词。”，等待回复完成，并检查两轮消息和当前模型显示。
+expectations:
+- Chat App 成功打开，模型切换菜单提供可用的模型安装入口。
+- 通过 Chat 的安装入口能够进入模型安装页面，并找到名称及规格完全匹配的目标模型。
+- 安装过程显示可观察的进度或状态，最终明确显示安装成功，无失败提示。
+- 返回 Chat 后，目标模型出现在可选模型列表中，选择后当前模型显示与目标一致。
+- 第一条用户消息成功发送，目标模型生成非空中文回复，回复正常结束且没有加载或推理错误提示。
+- 第二条用户消息成功发送，回复包含三个与上一条介绍相关的关键词，两轮消息均保留在同一会话中。
+- 两轮对话结束后，当前模型仍显示为目标模型，没有可见的自动切换或回退提示。
+cleanup:
+- 删除本 Case 新建的测试会话，保留执行前已有的会话。
+fixtures: []

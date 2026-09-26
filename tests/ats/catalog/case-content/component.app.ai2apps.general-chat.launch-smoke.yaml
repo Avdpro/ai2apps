@@ -1,0 +1,10 @@
+id: component.app.ai2apps.general-chat.launch-smoke
+content:
+  name: 'Chat: Launch and first ready view'
+  description: Generated common contract for ai2apps.general-chat
+  instructions:
+  - 点击Dock上的Chat图标
+  - 等待5秒
+  expectations:
+  - 应该看到Chat的界面
+  cleanup: []

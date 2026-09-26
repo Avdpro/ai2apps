@@ -8,7 +8,7 @@ from .model import PRIORITIES
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]{0,127}$")
 ALLOWED_EXECUTORS = {"builtin", "codex-ui"}
 LIFECYCLES = {"draft", "valid", "trial-passed", "enabled", "archived"}
-PIPELINE_ACTIONS = {"restart-app", "restart-local", "quit-all-relaunch", "reset-data"}
+PIPELINE_ACTIONS = {"start-helper", "restart-app", "restart-local", "quit-all-relaunch", "reset-data", "human-test", "include-pipeline"}
 EXPECTED_STATUSES = {"passed", "failed", "blocked", "stop-when-failed", "stop-when-succeed"}
 CASE_CONTENT_FIELDS = {"name", "description", "instructions", "expectations", "cleanup"}
 SECRET_KEYS = {"password", "token", "cookie", "authorization", "credential", "leaseToken"}
@@ -140,6 +140,40 @@ def validate_pipeline(
         else:
             seen.add(step_id)
         kind = step.get("type")
+        if kind == 'action' and step.get('action') == 'include-pipeline':
+            if not isinstance(step.get('pipelineId'), str) or not ID_PATTERN.fullmatch(step['pipelineId']):
+                errors.append('include-pipeline requires a valid pipelineId')
+        elif 'pipelineId' in step:
+            errors.append('pipelineId requires include-pipeline')
+        if 'executionMode' in step and (kind != 'case' or step['executionMode'] not in {'run', 'skip', 'manual'}):
+            errors.append('executionMode requires a Case and run/skip/manual')
+        if kind == 'action' and step.get('action') == 'human-test':
+            instruction = step.get('humanInstructions')
+            timeout = step.get('confirmTimeoutSeconds')
+            if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 12000:
+                errors.append('humanInstructions requires 1–12000 characters')
+            if type(timeout) is not int or not 1 <= timeout <= 86400:
+                errors.append('confirmTimeoutSeconds must be 1–86400')
+        elif kind == 'case' and step.get('executionMode') == 'manual':
+            if 'humanInstructions' in step:
+                errors.append('manual Case instructions come from its shared Case')
+            timeout = step.get('confirmTimeoutSeconds', 120)
+            if type(timeout) is not int or not 1 <= timeout <= 86400:
+                errors.append('confirmTimeoutSeconds must be 1–86400')
+        elif 'humanInstructions' in step or 'confirmTimeoutSeconds' in step:
+            errors.append('human settings are only allowed on human-test')
+        if "enabled" in step and not isinstance(step["enabled"], bool):
+            errors.append(f"steps[{index}].enabled must be boolean")
+        if "loginMode" in step or "accountEmail" in step:
+            if kind != "action" or step.get("action") != "start-helper":
+                errors.append("login settings are only allowed on start-helper")
+            if step.get("loginMode", "none") not in {"none", "auto", "selected"}:
+                errors.append("invalid loginMode")
+            if step.get("loginMode") == "selected":
+                if step.get("accountEmail") not in {f"test{i}@ai2apps.com" for i in range(1, 11)}:
+                    errors.append("selected login requires a test pool accountEmail")
+            elif "accountEmail" in step:
+                errors.append("accountEmail requires selected loginMode")
         if kind == "case":
             case_id = step.get("caseId")
             if not isinstance(case_id, str) or not ID_PATTERN.fullmatch(case_id):

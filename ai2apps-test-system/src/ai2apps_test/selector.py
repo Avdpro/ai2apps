@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import secrets
+import signal
 import threading
 import webbrowser
 from collections import Counter
@@ -19,6 +20,7 @@ from .catalog_store import CatalogConflictError
 from .catalog_validation import CatalogValidationError
 from .codex_driver import handoff_prompt, read_codex_output
 from .state import read_json
+from .human_action import current as current_human_action
 from .web_assets import build_test_center_html
 
 HTML = """<!doctype html>
@@ -161,7 +163,8 @@ def _status_payload(session: dict[str, Any], lock: threading.Lock) -> dict[str, 
             item["observedStatus"] = result["observedStatus"]
         if case.get("sourceCaseId") is not None:
             item["sourceCaseId"] = case["sourceCaseId"]
-        grouped.setdefault(case["group"], []).append(item)
+        display_group = ('Pipeline · ' + state['plan']['pipeline']['name']) if state['plan'].get('pipeline') else case['group']
+        grouped.setdefault(display_group, []).append(item)
         if status in {"failed", "blocked"}:
             details = result.get("details", {})
             detail = ""
@@ -197,6 +200,8 @@ def _status_payload(session: dict[str, Any], lock: threading.Lock) -> dict[str, 
     labels = {
         "running": "测试进行中",
         "awaiting_agent": "Codex UI 测试进行中",
+        "waiting_human": "等待用户辅助测试",
+        "waiting_controller": "宿主控制器执行生命周期动作中",
         "ready_to_finalize": "正在生成报告",
         "completed": "测试完成",
         "cancelled": "测试已中止",
@@ -232,6 +237,7 @@ def _status_payload(session: dict[str, Any], lock: threading.Lock) -> dict[str, 
         message = "Codex 自动执行未完成，可复制下方指令手工接管"
     return {
         "phase": state["status"],
+        "humanAction": current_human_action(Path(run_dir)) if not terminal else None,
         "pipelineId": state["plan"].get("pipeline", {}).get("id"),
         "canReturnToPipeline": bool(snapshot.get("pipelineId")) and snapshot.get("phase") in {"completed", "failed", "cancelled"},
         "label": labels.get(state["status"], state["status"]),
@@ -272,6 +278,17 @@ def control(
     cancel_event = threading.Event()
     finished = threading.Event()
     terminal_seen = threading.Event()
+    stopping = threading.Event()
+    worker_done = threading.Event()
+    worker_done.set()
+    previous_interrupt = None
+    if threading.current_thread() is threading.main_thread():
+        def stop_controller(_signum, _frame):
+            cancel_event.set()
+            stopping.set()
+            finished.set()
+            terminal_seen.set()
+        previous_interrupt = signal.signal(signal.SIGINT, stop_controller)
     session: dict[str, Any] = {"phase": "selecting"}
     catalog_service = CatalogService(repo_root) if repo_root is not None else None
 
@@ -284,6 +301,7 @@ def control(
         )
 
     def worker(selection: dict[str, Any]) -> None:
+        worker_done.clear()
         trial = selection.get("trialCase")
         try:
             outcome = run_callback(selection, cancel_event, publish_run)
@@ -303,6 +321,7 @@ def control(
             with lock:
                 session.update(phase="failed", conclusion="FAIL", error=str(error))
         finally:
+            worker_done.set()
             # A trial run returns to the same catalog editing session. Keep the
             # loopback controller alive until the user starts a normal run or
             # explicitly cancels from the selection view.
@@ -364,7 +383,7 @@ def control(
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Referrer-Policy", "no-referrer")
-                self.send_header("Content-Security-Policy", "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:")
+                self.send_header("Content-Security-Policy", "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'")
                 self.end_headers()
                 self.wfile.write(body)
                 return
@@ -542,6 +561,7 @@ def control(
                         )
                     selection = {"priority": plan_payload.get("priority", "P1"), "selected": [], "caseIds": [], "trialCase": raw}
                     self._json(202, {"status": "starting"})
+                    worker_done.clear()
                     threading.Thread(target=worker, args=(selection,), daemon=True).start()
                     return True
                 if method == "POST" and kind == "pipelines" and len(parts) == 5 and parts[4] == "run":
@@ -588,6 +608,9 @@ def control(
                 self.send_error(404)
 
         def do_POST(self) -> None:
+            if stopping.is_set():
+                self._json(409, {"error": "Test controller is stopping"})
+                return
             parsed = urlparse(self.path)
             if parsed.path.startswith("/api/catalog/"):
                 self._catalog_write("POST")
@@ -601,6 +624,17 @@ def control(
                     if session["phase"] not in {"completed", "cancelled", "failed"}:
                         session["phase"] = "cancelling"
                 self._json(202, {"status": "cancelling"})
+                return
+            if parsed.path == '/api/human-action':
+                from .human_action import submit
+                with lock:
+                    directory = session.get('runDirectory')
+                try:
+                    if not directory or cancel_event.is_set():
+                        raise ValueError('No active Run')
+                    self._json(200, submit(Path(directory), self._body()))
+                except (ValueError, OSError) as error:
+                    self._json(409, {'error': str(error)})
                 return
             if parsed.path != "/api/submit":
                 self.send_error(404)
@@ -622,6 +656,7 @@ def control(
                     trialActive=False,
                 )
             self._json(202, {"status": "starting"})
+            worker_done.clear()
             threading.Thread(target=worker, args=(payload,), daemon=True).start()
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -636,9 +671,13 @@ def control(
     if keep_open:
         print("测试已结束，报告与证据链接继续可用；按 Ctrl+C 关闭测试工具。", flush=True)
         try:
-            threading.Event().wait()
+            stopping.wait()
         except KeyboardInterrupt:
             pass
+    if stopping.is_set():
+        worker_done.wait()
+    if previous_interrupt is not None:
+        signal.signal(signal.SIGINT, previous_interrupt)
     server.shutdown()
     server.server_close()
     with lock:
