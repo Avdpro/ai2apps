@@ -8,6 +8,7 @@
         let key = source;
         // Legacy plans persist concrete device messages; normalize their values.
         const patterns = [
+            [/^安装 (.+)$/, '安装 {0}'],
             [/^匹配 (\S+) (\S+) 设备$/, '匹配 {0} {1} 设备'],
             [/^统一内存约 (\S+) GiB$/, '统一内存约 {0} GiB'],
             [/^App 推荐方案：(.*)$/, 'App 推荐方案：{0}'],
@@ -15,6 +16,8 @@
             [/^仅支持低于 (\S+) GiB 统一内存的设备$/, '仅支持低于 {0} GiB 统一内存的设备'],
         ];
         for (const [pattern, normalized] of patterns) {
+            // Exact phrases (e.g. the install button) take precedence over dynamic titles.
+            if (window._t?.['acpf.' + source] !== undefined) break;
             const match = source.match(pattern);
             if (match) { key = normalized; values = match.slice(1); break; }
         }
@@ -238,7 +241,7 @@
                     return;
                 }
                 const action = event.target.closest('[data-choice-action]')?.dataset.choiceAction;
-                if (action === 'cancel') finish(new Error(tr('已取消能力配置')));
+                if (action === 'cancel') finish(Object.assign(new Error(tr('已取消能力配置')), { code: 'provisioning_cancelled' }));
                 if (action === 'continue' && selectedIds.size > 0) {
                     finish(null, multiple ? Array.from(selectedIds) : Array.from(selectedIds)[0]);
                 }
@@ -487,8 +490,10 @@
         totalDetail.hidden = !(totalBytesTotal > bytesTotal);
         totalDetail.textContent = tr('本次下载总计 {0}% · {1} / {2}', Math.round(totalBytesCompleted / totalBytesTotal * 100), formatBytes(totalBytesCompleted), formatBytes(totalBytesTotal));
         const error = overlay.querySelector('.acpf-error');
-        error.hidden = !session.error; error.textContent = tr(session.error?.message || '');
-        error.classList.toggle('is-notice', session.status === 'awaiting_restart');
+        const sourceWarnings = (progressDetail.download || overlay.lastDownload)?.warnings || [];
+        error.hidden = !session.error && !sourceWarnings.length;
+        error.textContent = session.error ? tr(session.error.message || '') : `Warning: ${sourceWarnings.join(' ')}`;
+        error.classList.toggle('is-notice', !session.error || session.status === 'awaiting_restart');
         overlay.querySelector('[data-action="confirm"]').hidden = session.status !== 'awaiting_confirmation';
         overlay.querySelector('[data-action="confirm"]').textContent = session.error?.code === 'checkpoint_license_consent_required'
             ? tr('查看并确认模型许可')
@@ -531,7 +536,7 @@
                     }
                     if (action === 'cancel') {
                         if (!terminal.has(session.status)) await request(`/provisioning/sessions/${session.id}/cancel`, { method: 'POST' });
-                        clearPending(appId); finish(new Error(tr('已取消能力配置'))); return;
+                        clearPending(appId); finish(Object.assign(new Error(tr('已取消能力配置')), { code: 'provisioning_cancelled' })); return;
                     }
                     if (action === 'confirm' || action === 'retry') {
                         const challenges = session.error?.code === 'checkpoint_license_consent_required'
@@ -564,9 +569,11 @@
                         clearPending(appId); finish(new Error(labels[session.status] || session.status)); return;
                     }
                     await new Promise(done => setTimeout(done, 500));
+                    if (stopped) return;
                     try {
                         const polledSessionId = session.id;
                         const polled = await request(`/provisioning/sessions/${polledSessionId}`);
+                        if (stopped) return;
                         if (session.id !== polledSessionId) continue;
                         session = polled;
                         savePending({ sessionId: session.id, appId, resumeToken: session.intent?.resumeToken }); render(overlay, session);
@@ -625,6 +632,7 @@
             const session = (sessions.items || []).find(item =>
                 item.appId === appId
                 && item.appInstanceId === appInstanceId()
+                && !['cancelled', 'unsupported'].includes(item.status)
                 && matches(item)
             );
             if (!session) return null;
@@ -637,6 +645,7 @@
         }
         try {
             const session = await request(`/provisioning/sessions/${pending.sessionId}`);
+            if (['cancelled', 'unsupported'].includes(session.status)) { clearPending(appId); return null; }
             if (!matches(session)) return null;
             return runSession(session, appId);
         } catch (error) { clearPending(appId); throw error; }

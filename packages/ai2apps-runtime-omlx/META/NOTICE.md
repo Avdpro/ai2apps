@@ -15,3 +15,11 @@ wheel without Torch/OpenCV and makes its conversion, ControlNet, and PiD-only
 imports lazy; normal generation, editing, quantization, compiled denoising, and
 edit KV caching remain native MLX paths. The license is included in
 `META/licenses/mflux-MIT.txt`.
+
+The Torch-free IndexTTS 2.5 inference implementation under
+`omlx/vendor/indextts25` is derived from WIndexTTS commit
+`eafb98c1b2ba46f6a608f29d8831208b89047681` under Apache License 2.0. Its
+license and modification notice are retained beside the vendored source.
+IndexTTS model weights are not embedded in this Runtime and remain subject to
+the separate Bilibili Model Use License Agreement carried by their Model
+Package and checkpoint distribution.

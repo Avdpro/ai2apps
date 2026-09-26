@@ -144,12 +144,12 @@
             return candidates;
         },
         async dropFiles(event) {
-            if (event.dataTransfer?.files?.length) return this.importFiles(event.dataTransfer.files);
-            const raw = event.dataTransfer?.getData('application/x-ai2apps-video-artifact');
+            const raw = event.dataTransfer?.getData('application/x-ai2apps-audio-artifact') || event.dataTransfer?.getData('application/x-ai2apps-video-artifact');
             if (raw) {
                 try { await this.importArtifactReference(JSON.parse(raw)); } catch (error) { this.fail(error); }
                 return;
             }
+            if (event.dataTransfer?.files?.length) return this.importFiles(event.dataTransfer.files);
             const uris = this.droppedMediaURLs(event);
             const uri = uris[0] || '';
             const historyUrl = (() => {

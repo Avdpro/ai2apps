@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omlx-model-indextts25"
+version = "0.1.0"
+description = "IndexTTS 2.5 native MLX Model Worker Package for AI2Apps"
+readme = "README.md"
+license = "LicenseRef-Bilibili-Model-Use-License-Agreement"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[tool.setuptools]
+py-modules = []

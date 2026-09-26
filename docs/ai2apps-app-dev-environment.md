@@ -76,6 +76,12 @@ open apps/ai2apps-acefox/.build/AI2Apps-app-dev.app
 
 ## 日常开发循环
 
+App-Dev Helper 在“重置数据…”下提供“启动测试环境”。它启动受信任源码根中的
+`ai2apps-test-system/bin/ai2apps-test select --no-open`，并在 App-Dev AI 浏览器的固定
+Test Center 容器中打开页面。启动后菜单变为“停止测试”；停止先取消当前测试并等待收尾，
+再退出控制台。关闭浏览器页面不停止服务。Test、Dev 和 Release 均无此入口。
+测试 App 仍为独立 `test` 实例，不使用或重置 App-Dev 数据。
+
 固定 App 启动后，Local 从当前仓库加载 `ai2apps/`，但继续从 Bundle 加载 `omlx` 和第三方
 依赖。因此不同修改采用不同的反馈循环：
 
@@ -91,6 +97,7 @@ open apps/ai2apps-acefox/.build/AI2Apps-app-dev.app
 
 固定构建使用已打包 AceFox 作为二进制快照，同时把同一 AceFox 工作树中当前的
 `browser/components/ai2apps/content/shell.mjs` 覆盖进开发 Bundle 的 `browser/omni.ja`。
+同时覆盖匹配的 `shell.xhtml`，使启动页结构与中英文初始化代码保持一致。
 同时同步同一源码树的 `browser/actors/PromptParent.sys.mjs`，使 Shell 页面的原生
 `alert`、`confirm`、`prompt` 标题显示 `AI2Apps`。
 因此其窗口标题与通用 Dev App 一样包含设备名和 Local 地址，但前缀固定为

@@ -1,6 +1,619 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-011-2253-20260926：全量产品候选核对
+
+- 2026-09-26 用户进一步确认原生托盘/启动页双语、中文登录流程均已现场验收通过；NXR-NATIVE-I18N-20260926 与 NXR-LOGIN-I18N-20260926 的历史现场待办关闭，纳入候选。验收来源为用户，不重复操作实例或改写既有测试证据。
+- 全量复验完成：10231 passed、67 skipped、74 deselected（727.61 秒），无失败。日志及 JUnit 见发布准备文档。产品唯一版本源 `ai2apps/_version.py` 升至 0.1.1；Build 2253 由标准构建参数指定，不修改独立 Runtime/Package 版本。Developer ID 证书、公证 profile 和 GitHub Avdpro 账号可用；尚未构建或提交 Apple。
+
+- 2026-09-26 用户明确确认修改密码和 Imagine 新功能均已由其验证，无需 Agent 重复验收；对应真实改密/图片生成 UI 缺口按用户验收关闭，纳入本轮候选，源码回归及制品门禁仍须通过。此确认不代表 Agent 执行了真实密码操作或模型生成。
+
+- 状态：`in_progress`。用户选择先整理、验证并提交全部当前产品改动，再构建正式 Release；候选版本暂定 0.1.1 / Build 2253，尚未分配 tag、构建或发布。
+- 当前生产清单为 0.1.0 / Build 2252；本文下方 2249 基线段为未归档的历史记录，不作为本轮版本分配依据。全部开放项仍须逐项核对，不能据此把旧 in_progress 自动改为 ready。
+- 首轮源码验证：Swift 测试与 16 个 Node 测试文件通过；Python 定向回归 365 passed / 1 failed，发现共享 Studio setup 测试仍固定旧二参数签名。已更新为现行可选 installMore 参数并保留参数传递断言，待复验；完整 Python 回归进行中。
+- 发布前发现正式 packaged AceFox 的 shell.mjs、shell.xhtml 与当前源码不一致；必须通过正式浏览器打包流程刷新，不能用 Development overlay 替代。密码修改及 Imagine 人工验收已按上方用户确认关闭，不声称 Agent 重复执行。
+- 首轮全量 Python 为 10227 passed、4 failed、67 skipped、74 deselected；补齐 34 条 ACPF 中英文文案，并更新 Runtime 1.7.12、双语重置菜单及 Studio 客户端过期测试合同。124 项定向复验通过，全量复验仍在运行。翻译修复纳入本候选，回退可恢复对应键；不改变模型选择或权限逻辑。
+- 个人参考音频 assets/voice-1.wav 不纳入提交或发布。尚未更改生产清单、用户实例数据或任何 Cloud 状态。
+- 复验：更新旧接口与资源版本断言后，366 项定向 Python、16 个 Node 文件通过；额外行为测试确认 installMore 默认 false/显式 true 正确传递。Swift 为 77 项 Swift Testing 加 2 项 XCTest 通过。全量 Python 尚在运行；准备记录见 `docs/ai2apps-desktop-0.1.1-release-preparation-2026-09-26.md`，不是发布回执。
+
+### NXR-NATIVE-I18N-20260926：启动页与托盘菜单中英文
+
+- 状态：`ready`，2026-09-26 用户确认原生双语现场验收通过。固定 App-Dev 已重建并启动。NativeUILanguage 优先读取实例 data/settings.json 的 ui.language，没有有效值时读取系统第一首选语言（中文映射 zh，其余 en）。
+- Helper 菜单、运行状态、端口、更新、启动登录项、测试环境、退出/重置确认接入中英文，展开菜单时重读当前语言；AceFox shell.mjs/shell.xhtml 的启动/连接/重试/日志/错误及进度辅助标签接入相同规则。
+- Development-only Shell overlay 同时纳入匹配的 shell.xhtml，避免旧启动页硬编码中文闪现；生产构建仍使用正式 AceFox 快照，不开放源码 overlay。
+- AceFox 源码：`/Users/avdpropang/sdk/moz/acefox-firefox-153/browser/components/ai2apps/content/shell.mjs`、`shell.xhtml`，正式发布需纳入匹配浏览器快照。
+- 验证：Swift NativeUILanguageTests 2 项通过（覆盖系统第一首选语言、简繁体、已保存语言和删除/损坏设置回退）；Shell Node VM 6 个语言场景、JS 语法、定向 diff 检查通过。英文下载状态和百分比解析同时兼容，避免切换语言后进度归零。
+- 使用规定 build-app-dev-environment.sh 构建；verify-release-app.sh、codesign --verify --deep --strict、固定身份/Development/cloud Runtime/源码根/禁用生产更新 URL 合同及 omni.ja 内语言实现和匹配 XHTML 均通过。实机标题 `AI2Apps-App-Dev: App-Dev 127.0.0.1:49305`，Local ready，Helper 状态为“AI2Apps 服务运行正常”，中文 Shell 首页正常显示。保留实例数据。
+- Computer Use 无法读取无窗口 Helper/SystemUIServer（超时）；托盘展开菜单及短暂启动等待页的双语视觉验收未完成，不以首页检查代替。未触发真实更新安装、重置或退出确认操作。
+
+### NXR-LOGIN-I18N-20260926：账户登录流程中英文
+
+- 状态：`ready`，2026-09-26 用户确认中文登录现场验收通过；下方待验收描述为历史记录。
+- `ai2apps/web/templates/login.html` 与 `web/static/js/login.js` 原先硬编码英文；现在统一使用现有 t() 和安装级语言。覆盖标题、登录/注册、邮箱验证、Core 绑定、密码规则、加载状态及本地错误兜底；Cloud 返回的具体错误仍原样显示。
+- `web/i18n/en.json`、`zh.json` 新增 25 个 login.account 翻译键。中英文模板实际渲染、键完整性、JS 语法、Node VM 中英文已绑定/未绑定/注册切换/密码校验行为以及 diff check 通过。
+- 无 Cloud 或鉴权行为变更。当前进程已缓存 locale，需 Helper 重启 Local；Computer Use 读取 Helper 两次超时，未清空数据或代替用户登录。
+
+### NXR-SHELL-SYSTEM-LANGUAGE-20260926：首次启动按系统语言初始化
+
+- 状态：`implemented`。固定 App-Dev 已于 2026-09-26 通过规定脚本重建并启动，旧包已归档，保留实例数据。
+- `omlx/settings.py` 的 UI 默认值读取 macOS `AppleLanguages` 第一首选语言，中文地区/简繁体统一映射 `zh`，其余映射 `en`；读取失败时按 LC_ALL、LC_MESSAGES、LANG 和 locale 回退。GUI 启动不依赖终端 LANG。
+- 首次启动、缺少 ui.language 或重置删除 settings.json 后应用系统默认；已有持久化语言优先，用户手动选择不被启动覆盖。Shell、App catalog 与原生 Shell locale API 复用同一设置。
+- 新增 `tests/test_ui_system_language.py`，覆盖 macOS 首选顺序、地区标签、环境回退、读取超时、首次启动、保存英文与数据重置。与 `tests/test_settings.py` 合计 226 项测试通过；本机系统首选 zh-Hans-CN 实测得到 zh。
+- 本次涉及嵌入 omlx，固定 App-Dev 需通过 `build-app-dev-environment.sh` 重建后验收；未删除用户数据或发布 Desktop。
+- 重建验收：内嵌 settings.py 与源码逐字节一致；verify-release-app.sh、codesign --verify --deep --strict 通过；bundle ID、app-dev、Development、cloud Runtime、源码根合同与无生产更新 URL 已核对。实际原生窗口标题为 `AI2Apps-App-Dev: M5Max-128G 127.0.0.1:65268`。
+- 用户此前用旧包重置后已持久化 ui.language=en，因此当前登录页仍按保存值显示英文；未擅自删除数据或覆盖该设置。内嵌 Runtime 使用临时全新设置目录验证系统中文默认，真实实例再次重置的 UI 验收尚未执行。
+
+### NXR-SHELL-DOCK-ORDER-20260926：默认 Dock 按使用场景排序
+
+- 状态：`implemented`，待下一版 Desktop 纳入。
+- 默认顺序：聊天 → 创意画坊 → 语音工坊 → 视频工坊 → 图库 → 发现 → AI 浏览器 → 知识库 → 编程。
+- 文件：`ai2apps/web/static/js/shell.js`。Dock 默认顺序独立于 catalog 排序和本地化名称；仅对没有有效已保存顺序的配置应用，保留已有用户排序，未固定且未运行的 App 不会因此加入 Dock。
+- 验证：Node JavaScript 语法检查、定向 diff 检查通过；Node VM 验证默认顺序、损坏存储回退、自定义顺序保留、不可用 App 过滤与已保存空顺序保留。
+- 仅静态前端变更，App-Dev 刷新 Shell 即可加载；未重建或发布 Desktop，未执行实机 UI 验收。
+
+### NXR-ACCOUNT-PASSWORD-20260925：安全页修改密码
+
+- 状态：`ready`。Cloud 已部署 OpenAPI 1.52.0；2026-09-26 用户确认已完成修改密码验收，下方待验收记录保留为历史。Agent 不重复操作密码；正式候选制品门禁另行执行。
+- Account 安全页增加旧密码、新密码、确认新密码；手动提交，8–128 UTF-8 字节和一致性
+  校验；成功重新登录，离开页面/账户切换及提交结束清空密码字段。九种语言文案齐全。
+- Local 新增 `/v1/platform/cloud/auth/password/change`，转发当前浏览器 Cloud 会话，
+  成功清理会话缓存，失败不清理；Cloud 404/405 提示功能尚未上线。
+- 文件：`ai2apps/api/cloud.py`、`ai2apps/web/static/js/account.js`、
+  `ai2apps/web/templates/system_apps/account.html`、`ai2apps/web/i18n/*.json`。
+- Cloud 交接：`docs/ai2apps-cloud-change-password-requirements.md`。未修改 Cloud 代码。
+- 验证：密码修改接口及密码规则 23 tests passed；Node 前端 8 个行为场景通过；
+  九种语言 JSON/键完整性、JavaScript 语法与定向 diff 检查通过。
+  测试：`tests/test_ai2apps_password_change.py`、`tests/test_account_password_change.cjs`。
+  Cloud 合同与生产发布回执已核对：字段、错误码、成功后会话撤销及设备绑定保留均兼容。
+  2026-09-25 用户通过 Helper 重启后，固定 App-Dev 端口为 57023；只读检查
+  health=healthy，OpenAPI 已注册 `/v1/platform/cloud/auth/password/change`。
+  Computer Use 实机确认 Account → Security 的 Change password 标题、说明、Current password、
+  New password、Confirm new password、8–128 UTF-8 字节提示、提交与取消按钮均正常显示；
+  已截图检查表单布局，旧翻译 key 缓存问题消失。
+  当前登录的是真实管理员账号，未输入或提交密码；实际改密 E2E 仍待用户在专用测试账号
+  亲自输入和提交后，复核重新登录及错误状态。未将界面检查冒充真实改密验收。
+  Cloud 证据：`/Users/avdpropang/sdk/ai2apps-cloud/docs/change-password-v1.md`、
+  `/Users/avdpropang/sdk/ai2apps-cloud/docs/change-password-production-2026-09-25.md`。
+- 纳入 Build：待定。
+
+
+### NXR-OMLX-RUNTIME-1712-DSV4-2BIT-PREFILL-20260925：DeepSeek V4 2-bit Direct Prefill 安全回退
+
+- 状态：`released`。Runtime 1.7.12 统一 Direct Prefill 标记的生产与消费条件；带量化 biases 的九段 2-bit DQ store 使用异步 Legacy Prefill，陈旧 Direct 标记经 layer/expert IDs 校验后同步安全回退。模型代码、checkpoint 与 distribution 无需改动；现有模型 Package 0.3.5 的 `>=1.7.5` 依赖不会把已装 1.7.11 的实例自动升级到 1.7.12。自动 ACPF 修复需要另发提高最低 Runtime 版本的模型 Package。
+- 181 项 Direct-L1、DeepSeek Prefill/patch/Scope、Worker、adapter 与 Runtime contract 回归通过；Ruff、compileall 和 diff 检查通过。
+- 使用 Runtime 1.7.11 正式 CPython 3.11/MLX/已签名原生扩展的临时克隆完成真实 2-bit DQ A/B：`hi` 与 `20+20=?` 均非空，数学输出包含 40；Direct Prefill 开/关的 48-token SHA-256 完全一致，开启路径 40 次异步 Legacy 预取命中、0 次 Direct load，峰值 31.45 GiB。
+- Runtime 1.7.12 Developer ID 内部 DMG 已构建；384,542,702 bytes，SHA-256 `aade49e5e185980a33255c81861b1e4d24aea279be2f1da315432fd30c0bbc5e`。深层签名、嵌入修复文件字节、版本 1.7.12、CPython 3.11 与原生 Direct-L1 符号通过；直接从只读挂载候选运行 2-bit `hi` 通过。
+- Apple 公证 `c5c26f26-b75d-4bde-ba18-818692b16cb8` Accepted，staple/Gatekeeper、原 Publisher 指纹、正式 Package 隔离安装和 managed Worker 就绪均通过。Package 381892948 bytes，SHA-256 `1ad9dafbf39fca32ed6c1625a91cc6bd38ff06f562bf01cff514443fce89df87`。
+- Cloud submission `56e0d3c1-d751-4367-aa70-9f3dfb1f18e7` 已发布；GitHub 206 与 ModelScope 严格 `200 + Content-Range` 均通过匿名完整字节、49 次 Range 和 46-piece 校验并激活。最终 Repository metadata 202、Source revision 6、Snapshot `fd4504d911fec1fca13e3591c362af9c5da162fc4ce35cadf64a0bcf0adb2cf4`。全新匿名缓存验证 Package 与 envelope 精确一致。发布收据：`docs/ai2apps-mlx-runtime-1.7.12-deepseek-2bit-prefill-release.md`。
+- 当前 Test 的 4-bit SSD checkpoint 是 `scales, weight` 旧布局，不能执行 canonical `weight, scales` Direct Prefill 实测；六段 Direct 路径由单测保持。App-Dev/Test 安装正式制品后的 UI 复验仍属于实例升级，不阻塞已完成的 Runtime 发布。
+
+### NXR-APPDEV-TEST-CENTER-20260925：Helper 测试环境入口
+
+- 追加修复：实际完整服务返回 `local_session_required` 401，原因为外层 `verify_ai2apps_platform_access` 未将新入口交给 Helper 原生认证。现只为准确 POST 路径补入口，接口内凭据、Origin、app-dev/Development 校验保持不变。新增真实 guard + Client router 联合回归，覆盖合法请求、无凭据和浏览器 Origin；Helper 显示 HTTP 状态且跳过非 JSON 标准输出。相关回归 21 passed；Harness 80 passed/1 skipped。标准脚本已重建、verify-release-app 与 codesign 深度校验通过；旧 App 归档 `AI2Apps-app-dev-20260925-013408.app`，已重新启动，菜单点击验收待用户复核。
+
+- 状态：`in_progress`。仅固定 App-Dev 开发构建显示启动／停止测试环境，启动源码 Harness，并通过受 Helper 认证的 Local 原生浏览器窗口队列打开 Test Center。
+- Test/Dev/Release 不显示入口；Local 接口同时检查 app-dev 与 Development 标记。测试工具不继承 App-Dev 的 AI2APPS 身份环境变量。停止使用 SIGINT 请求 Harness 取消并等待运行收尾。
+- 复用固定 Test Center 浏览器容器；Shell 源码 overlay 支持该窗口重新启动测试工具后打开新地址。Swift Helper 编译通过；Harness 80 passed/1 skipped；Local 入口和既有 browser-agent 回归 7 passed；控制台宿主启动与 SIGINT 退出验证通过（未运行 Case）。
+- 已通过标准脚本重建固定 App-Dev，旧 App 归档为 `AI2Apps-app-dev-20260925-010021.app`，verify-release-app 与 codesign 深度校验通过。实机 Shell 标题 `AI2Apps-App-Dev: App-Dev 127.0.0.1:49625`；Computer Use 连接 Helper 两次超时，菜单点击到浏览器页面的端到端验收仍待完成。未修改其他实例或重置数据。
+
 状态：滚动维护中的唯一下一版入口
+
+### NXR-IMAGINE-MINI-APP-ORDER-20260924：内置列表排序
+
+- 按用户指定顺序展示：Text to Image、Image Edit、Adjust Image、Change Image Style、Reference Creation、Sticker Workshop、Group Photo、Product Photo Studio；规划中的角色设计、漫画分镜放在最后。
+- 仅调整前端定义顺序，不变更 ID、草稿、历史或 API；刷新页面生效，无需重启 Local。新增完整列表顺序回归断言。
+
+### NXR-IMAGINE-PRODUCT-STUDIO-20260924：商品摄影棚首版
+
+- 状态：`ready`。2026-09-26 用户确认 Imagine 新功能已验收，关闭下方历史人工验收待办，不重复付费生成。将原 Planned `ai2apps.imagine.product-poster` 升为内置 1.0.0 商品摄影棚，沿用原 ID。单商品参考图、六种场景（含自定义）、三种灯光、居中/左右留白，草稿和 Run 输入保存设置；复用 image_edit 模型筛选、OpenAI 优先和宿主 Run/Artifact/Gallery 输出。
+- 共享风格默认不应用；显式开启后仅作用于布景。提示词约束原商品角度、Logo、标签、结构和颜色，但 UI/帮助明确首版为模型重绘，不承诺蒙版原图合成或像素级保真。无自动广告文案、价格、上架操作。
+- 验证：商品摄影棚 Node 行为测试通过（缺图、自定义场景必填、预设无提示词运行条件、风格默认隔离、构图提示词、草稿恢复及无效值回退），表情包 Node 回归通过，Imagine API 14 tests passed，JS 语法及 diff check 通过。
+- App-Dev 61884 实机刷新后已检查入口、六个有名称的场景 toggle、Lighting/Composition 标签、风格开关默认关闭、自定义场景必填状态和截图布局。Local 仍为旧 Python 进程，Mini-App not found，待从 Helper 重启 Local 后进行真实生成与 Gallery 验收；未声称出图已验证。不需要重建 App，不涉及模型 Package 或 Runtime 发布。
+
+### NXR-IMAGINE-STICKER-WORKSHOP-20260924：表情包工坊首版
+
+- 状态：`ready`；2026-09-26 用户确认 Imagine 新功能已验收，关闭下方历史人工验收待办，不重复付费生成。新增内置 `ai2apps.imagine.sticker-workshop`，人物/宠物单参考图、开心/比心/震惊/委屈四种表情，共享 Style、编辑模型筛选、OpenAI 优先、Run/Artifact/Gallery 输出。
+- 可单张生成，整组串行四次生成，Cloud 上传与逐张费用显式确认；失败或取消停止后续任务，支持完成当前张后停止。运行中冻结输入和 Mini-App 切换，保留已完成结果。表情选择写入草稿与 Run 输入，Run 标题标识表情；同一表情重新生成不会覆盖历史。
+- 首版明确白底，不承诺透明 alpha；未加入文案排版、整组 ZIP、刷新后自动续队列。使用原照片为每张独立参考，不将上一张结果传给下一张。
+- 验证：Node 行为测试通过（四表情、prompt、草稿字段、逐张成功、取消/停止、异常解锁、拒绝确认），Imagine API 14 tests passed。首次在 ai2apps 子目录运行 pytest 遇 stdlib secrets 遮蔽，已从仓库根目录正确重跑；退出时 sandbox Metal 探测警告与本次 UI/API 无关。
+- App-Dev 原生 Shell 实机检查已确认入口、四个有名称的 toggle button、缺图禁用、表情选中状态、共享 Output 布局。当前 Local 仍加载旧 Python 注册，出现 Mini-App not found；Helper 控制两次超时，待用户从 app-dev Helper 重启 Local 后验证真实生成/刷新恢复。没有重建或终止任何其他实例；未声称真实出图完成。
+
+### NXR-SEPARATION-ARTIFACT-OUTPUT-20260923：音轨输出与Shell另存为
+
+- 状态：`ready`。Voice Studio分离结果持久化为当前用户Artifact：ZIP走宿主原生下载链接，分离WAV加入Preview & Output历史，刷新可恢复，不自动加入Gallery。
+- Package通过已校验mount通道请求下载，仅允许本次Host返回的Artifact URL；历史按音轨/ZIP分别20项，保持角色和Line音频独立。
+- 验证：40项相关pytest通过；Node测试覆盖Host签发下载链接、拒绝外部下载URL、Voice Studio既有作用域；新增用户隔离、刷新恢复、失败回滚和JSON接口协商回归。Python API需重启Local，前端刷新生效，无需Runtime升级。正式交付涉及Desktop Host与suite Package UI。
+
+### NXR-DEMUCS-MULTIPART-BOOLEAN-20260923：Host音轨分离参数修复
+
+- 状态：`ready`。Host显式发送float32_wav字符串false，Demucs要求bool；multipart文本不能保留JSON布尔类型。删除冗余字段，使用模型默认PCM16输出，避免错误。
+- Runtime1.7.11长请求验收没有这个字段，未覆盖页面Host请求参数差异。本次17项Broker回归通过；修复后的实际Host Broker以3秒48kHz测试WAV调用正式Runtime1.7.11+Demucs0.1.0，HTTP200返回vocals.wav/instrumental.wav，ZIP校验通过。此修改只需重启App Dev Local，无需Runtime或模型Package升级。
+
+### NXR-RUNTIME-1711-RELEASE-20260923：Runtime 1.7.11 发布
+
+- 状态：`released`。Runtime 1.7.11完成公证、签名、Cloud发布、Cloud/GitHub/ModelScope三源激活和匿名验签；包含Worker长音频主输入1GiB修复，沿用1.7.10签名及JIT权限。
+- 正式Package隔离安装，Demucs成功处理131424044字节/1369秒测试音频并返回校验通过的分离ZIP；70项回归通过。ModelScope通过`package-single-range-v2`严格`200 + Content-Range`完整验证，49次Range、完整SHA/size和46-piece manifest匹配；最终Repository metadata 199、Source revision 6。空缓存匿名客户端完成382394257字节三源下载及签名/字节验收约12.8秒。收据：`docs/ai2apps-mlx-runtime-1.7.11-long-audio-release.md`。
+
+### NXR-WORKER-LONG-AUDIO-LIMIT-20260923：Worker长音频请求限制
+
+- 状态：`released`（Runtime1.7.11；用户实例仍需升级）。S01E01约1368.677秒的48kHz单声道PCM WAV约125MiB，超过Worker独立100MiB上限；此前Host入口修复未覆盖此处。
+- audio_process/audio_transcription/audio_detailed_transcription的主file上限提高至1GiB，参考音频及其他操作仍100MiB；保留WAV校验、1小时/声道/采样率限制和临时文件清理。
+- 验证：Worker真实multipart到测试适配器的边界回归，覆盖三个长音频操作、超限和参考输入限制。
+- 交付：已纳入正式Runtime1.7.11发布；模型Worker由已安装Inference Runtime的launcher加载，用户实例须升级到1.7.11，仅重启Local不能更新旧签名Runtime。
+
+### NXR-MEDIA-DAMAGED-PACKET-20260923：视频音轨孤立坏包恢复
+
+- 状态：`ready`。用户S01E01.mp4在411帧后触发AAC InvalidDataError；逐包检查确认整段只有1个坏包，其余58943帧可解码。
+- Host音频规范化按包解码，跳过孤立InvalidDataError，依据重采样时间戳补静音保留后续时间线；连续32个坏包、无有效音频或超时长仍拒绝，解码结束/失败释放输入容器。
+- 验证：真实用户视频音轨完整规范化，新增坏包后静音补齐/音频保留/资源释放回归，以及既有音频codec和Broker测试。仅验证解码，未运行整集Demucs推理。重启App Dev Local生效。
+
+### NXR-STUDIO-MEDIA-UPLOAD-20260923：支持超过100 MiB的媒体输入
+
+- 状态：`ready`。修复261.5 MB视频被Host旧MVP限制拒绝：主素材前端/API统一放宽到1 GiB，参考音频单独保留100 MiB；空文件及超限明确提示。
+- API按块写入缓冲并在调用Broker前释放缓冲，避免保留分块列表与合并副本。依然使用既有媒体解析和模型调用路径。
+- 验证：相关Broker/API回归及上传边界测试；真实长视频模型推理尚未验证。Python API需要重启App Dev Local，再刷新页面。
+
+### NXR-MEDIA-SUITE-ACPF-BUTTONS-20260923：分离与角色换声安装配置入口
+
+- 状态：`ready`。音轨分离、音频角色换声、视频角色换声的缺模型提示均增加安装并配置按钮，复用已校验 mount 的 Host ACPF 通道。
+- 分离配置 Demucs；两个角色换声入口调用各自能力的组合配置，覆盖 Detailed Transcription、Demucs、Seed-VC v2。配置结束刷新状态，取消保留表单。
+- 验证：Package/Host 相关 pytest 与 JS 语法检查，通道回归覆盖四个入口。App Dev 刷新页面生效；正式交付纳入 suite Package 发布。
+
+### NXR-TRANSCRIPTION-ACPF-BUTTON-20260923：详细转写安装配置入口
+
+- 状态：`ready`。Package 详细转写页面缺少模型时展示安装并配置按钮，通过 mount 绑定的 Host MessageChannel 调用现有 ACPF，选择 Compact/Quality；结束后刷新就绪状态，取消保留表单。
+- Host 每次 setup 校验有效 mount 和已声明能力，仅返回完成状态，不向 Package 暴露会话凭据。按钮等待时禁用，失败允许重试。
+- 验证：9 项相关 pytest 通过、两处 JS 语法通过，新增 Node 通道回归验证 ACPF 调用及未声明能力拒绝。
+- 交付包含 Desktop Host JS 与 media-voice-studio-suite Package UI；App Dev 源码挂载刷新页面生效，正式版本须分别纳入 Desktop/Package 发布。
+
+### NXR-CLONE-PREVIEW-MULTIPART-20260923：修复情绪试听400错误
+
+- 状态：`ready`。日志确认 Characters 克隆试听 Worker HTTP400；新增style对象未展开为multipart标量。参照Audiobook路径，将style转换为emotion/emotion_strength后上传，JSON声音设计路径保留style。
+- 错误响应保留Worker状态码与原因，前端同时读取标准error.message，避免仅提示通用失败。
+- 验证：克隆情绪测试改为检查真实上传字段及无嵌套值，新增Worker错误透传回归；现有Design表达快照回归保留。重启Local后生效，不需要Runtime升级。
+
+### NXR-CHARACTER-PREVIEW-EXPRESSION-20260923：角色试听情绪与速度
+
+- 状态：`ready`。Characters Design与Reference Clone试听区增加情绪/速度控件；默认自然语气和1倍速，修改后旧试听失效。克隆试听设置随草稿保存，Design生成快照记录并恢复参数。
+- 后端Design/Training请求接收emotion/speed，按模型能力传递style与速度，速度限制到模型声明范围；不支持情绪提示后使用自然语气，不支持速度禁用输入并使用模型默认。
+- 验证：Design及克隆参数传递、模型不支持fallback、速度越界拒绝与预览快照回归；前端scope/语法。重启Local并刷新页面生效。
+
+### NXR-SOURCE-DIALOGUE-ATTRIBUTION-20260923：对白分配与引语提示省略
+
+- 状态：`ready`。AI文本分析改为明确的演播脚本规则：对白只归对应角色一次，不保留整段旁白副本；纯引语提示（她说/他回答道）省略，同一演员被提示打断的相邻对白合并，剧情动作/间接引语保留为旁白。增加用户示例及动作保留示例。
+- 对邻近旁白引号内容与角色对白完全重复的输出进行检测，使用同一模型自动纠正一次；不在客户端粗暴删除原文或推测说话人。重复纠正仍失败给出简短错误，分析仍不写入工程。
+- 验证：重复检测/动作旁白保留及分析API回归。重启Local后重新分析生效，已有Lines不自动改写。
+
+### NXR-SOURCE-MODEL-SELECTION-20260923：文本分析模型选择与音色容错
+
+- 状态：`ready`。追加文本对话框增加分析模型下拉框，通过系统/v1/models列出对话模型，默认使用系统work_standard中难度任务配置；可显式选择本次分析模型，不修改系统默认。
+- AI建议新演员的voice_profile_id在解析时统一清空，音色留给用户审核选择；不再因AI虚构音色ID阻断有效Lines。确认写入仍校验用户选择的音色归属。
+- 验证：默认模型与显式覆盖、无系统默认时显式选择、AI虚构音色清空并继续审核/写入回归，JS syntax/scope通过。重启Local并刷新页面生效。
+
+### NXR-SOURCE-ACTOR-ALIASES-20260923：容忍 AI 演员标识格式差异
+
+- 状态：`ready`。AI分析结果在schema校验前规范化新演员key（如 narrator、中文姓名），同步替换Lines speaker_id；已合法key和已有Cast引用保持不变，生成key避让冲突。
+- 仍拒绝重复/空标识及与已有演员ID冲突的歧义输出；最终schema和归属校验保留。校验错误不再显示Pydantic链接、原始输入和冗长错误堆叠。
+- 验证：原分析/确认插入API测试改用无前缀alias，新增中文别名、key冲突避让、已有角色保留、重复与歧义拒绝回归。重启Local生效。
+
+### NXR-AUDIOBOOK-SOURCE-AI-20260923：AI 分析追加文本
+
+- 状态：`ready`。Source text 页签改为追加文本按钮，原生对话框输入最多30,000字符；默认 Standard tasks/work_standard AI 参考全部 Cast role/Notes 与插入点前后各8行（每行上下文最多1000字符）生成结构化方案。
+- AI仅分析，不写项目。审核界面可编辑/移除台词、演员绑定、情绪/语速/间隔以及建议新演员的名称/定位/Notes/可选音色。确认才事务创建Cast和Lines，插入打开对话框时展开行后或末尾；已有台词内容保持不变。
+- 校验模型JSON、演员引用/归属、项目revision；拒绝截断输出、过期方案，180秒超时；batch_id幂等重试防重复。支持Package和系统统一chat路由，未配置Standard tasks给出错误。
+- 验证：API分析无写入、Standard选择、上下文边界、审核修改、插入顺序、尾部追加、新演员绑定、幂等与冲突回滚回归；JS语法/scope。重启Local并刷新页面生效。未调用用户付费模型实测。
+
+### NXR-CAST-ROLE-HINTS-20260923：演员角色定位与 AI 参考
+
+- 状态：`ready`。Audiobook 添加/编辑 Cast 增加自动匹配、旁白、女主角、男主角、默认男声、默认女声六项角色定位，配合原 Notes（description）保存；既有角色默认 auto。
+- Schema 76 添加受枚举约束的 role 列，创建/编辑 API 支持校验与持久化。Mini-App Chat 项目上下文传递 role、notes、voiceProfileId，为 AI 生成 Lines/分配说话人提供参考。
+- 验证：API角色与Notes创建/编辑/读取、默认值和非法枚举回归，前端scope/语法、数据库迁移检查。重启Local迁移并刷新页面生效。
+
+### NXR-CAST-EDIT-DELETE-20260923：Cast 编辑删除与台词缓存失效
+
+- 状态：`ready`。Cast 卡片支持点击/键盘打开编辑对话框，可改名称、描述、音色；保存后相关 Line 标为未更新。编辑框提供二次确认删除，仅删除项目 Cast，重置相关 Line speaker_id，角色库保留。
+- 新增 owner/project-scoped PATCH/DELETE characters API，事务内更新台词状态与项目 revision；音频请求快照加入 speakerRevision，角色修改后播放/完整对话均不可复用旧缓存。
+- 验证：API/tasks 回归，覆盖缓存生成→角色编辑→失效→重新生成→删除→角色重置与缓存失效、跨用户拒绝；前端scope与语法检查。重启Local并刷新页面生效。
+
+### NXR-LINE-EMOTION-SELECTION-20260923：台词情绪显示同步
+
+- 状态：`ready`。Line 编辑及新建对话框的动态 emotion option 增加显式 selected 绑定，避免 Alpine x-for 选项创建/重建后浏览器默认显示第一项 Neutral，而数据仍为已保存情绪。
+- 保留已选情绪与模型不支持时的自然语气 fallback/warning，展开编辑不修改已保存参数。
+- 验证：readaloud scope 回归、模板选项绑定及diff检查通过；静态页面刷新生效。
+
+### NXR-CHARACTER-DELETE-20260923：角色删除与确认
+
+- 状态：`ready`。编辑页返回按钮右侧增加红色 Delete character，已保存的 Design/Reference Clone 均可删除。原生模态确认显示角色名称和影响，默认聚焦取消，执行时禁止重复提交，生成/录音/ASR期间禁用。
+- 新增 owner-scoped DELETE voice-profiles API，事务内软删除角色并解除 Cast 音色绑定，保留已有音频与素材；成功清空编辑草稿并返回列表。
+- 验证：Voice training API回归、前端scope及JS语法；覆盖跨用户拒绝、删除后列表移除、重复删除和素材保留。重启Local并刷新页面生效。
+
+### NXR-SYNTHETIC-GALLERY-REFERENCE-20260923：允许设计音频经 Gallery 创建角色
+
+- 状态：`ready`。移除 synthetic_designed 必须来自直接转换且所有素材 ID 相同的路径限制；允许用户声明合成声音来源后，从自己的 Gallery/上传素材创建、更新和试听角色。原转换来源记录仍保留作历史信息。
+- 保留素材 owner、格式、时长、模型要求和文本确认校验，Gallery 导入仍复制到角色私有素材存储。
+- 验证：voice training 回归覆盖合成声音 Gallery 创建、替换、删除 Gallery 文件后试听、跨用户拒绝。重启 app-dev Local 后生效。
+
+### NXR-DESIGN-INSTALL-MORE-20260923：声音设计模型安装入口
+
+- 状态：`ready`。Design 模型下拉框增加安装更多模型，调用 ACPF installMore；独立 audio.voice_design 配置仅请求 speech_generation 与 voice_design，推荐 VoxCPM2（16–不足32 GiB 为4-bit，32 GiB以上为8-bit），Runtime最低1.7.10。
+- 安装前保存草稿，完成刷新模型，取消保留绑定；支持安装会话恢复，防止入口哨兵值写入角色。生成或配置期间禁用下拉框。
+- 验证：JS语法与scope回归、安装请求及绑定保留、真实Registry推荐分档、diff检查通过。重启Local加载ACPF配置并刷新页面生效。
+
+### NXR-VOICE-PREVIEW-EXAMPLES-20260923：试听示例文本菜单
+
+- 状态：`ready`。Design Preview 的 Use example text 改为下拉菜单，中文、英文、中英混合各提供长短两版；选择后替换试听文本并清除旧预览，保留自由编辑和草稿保存。示例正文固定语言，不随界面语言变化，生成中禁用菜单。
+- 验证：JS syntax、现有 readaloud scope 回归通过。静态资源刷新后生效。
+
+### NXR-CHARACTER-CLONE-RECOMMENDATIONS-20260923：角色克隆安装推荐
+
+- 状态：`ready`。Characters audio.voice_clone ACPF 新增 IndexTTS 2.5 FP16（优先）和 VoxCPM2；16–不足32 GiB 推荐 VoxCPM2 4-bit，32 GiB 以上推荐 8-bit。Qwen Base 保留可选但不再默认推荐，8–不足16 GiB 保留 CosyVoice3 轻量推荐。
+- 新模型绑定正式 Package/checkpoint ID，Runtime 最低 1.7.10。内存分档为保守产品策略，并非小内存设备实测保证；现有实测记录 VoxCPM2 4-bit peak footprint 8.67 GiB，8-bit 峰值尚待记录。
+- 验证：真实 CapabilityProfileRegistry 的 8/16/24/32/64/128 GiB 推荐结果、Package/service/checkpoint 一致性检查通过。重启 app-dev Local 后加载；未自动安装模型或修改已有角色绑定。
+
+### NXR-OMLX-RUNTIME-1710-RELEASE-20260922：Runtime 1.7.10 发布
+
+- 状态：`published`（Cloud 可安装；外部源待完成）。Apple Accepted/staple/Gatekeeper 通过；Cloud submission `a28bc3ec-9d6e-441d-8ef7-031edbada125` 为 published，metadata v191。
+- 正式 Package 摘要 `a18a4f7128c73eda724fbff9f25eed0e80af6793462a88f02f6de7383ec25d2a`，381986365 bytes。18 项测试、真实 Cosy 克隆、隔离安装/依赖锁及公开签名制品一致性验证通过。
+- GitHub 预检通过待独立审核；ModelScope Range 返回 200，未启用。当前 Cloud 单源，App-Dev 未执行升级。
+- 收据：`docs/ai2apps-mlx-runtime-1.7.10-cosy-jit-release.md`。本次 Cookie 授权结束。
+
+### NXR-COSY-RUNTIME-JIT-SIGNING-20260922：修复 Cosy LLVM JIT 签名崩溃
+
+- 状态：`released`（Runtime 1.7.10 已发布，用户实例待升级）。已安装 Runtime 1.7.9 的 Hardened Python 没有 LLVM 可执行内存 entitlement；Cosy librosa 静音裁剪触发 Numba，进程被 CODESIGNING Invalid Page 终止。
+- 标准 Runtime 构建器仅给私有 Python worker 配置 allow-unsigned-executable-memory，保留 Hardened Runtime/library validation；最外层封装不再 deep force 重签覆盖子进程权限，并检查最终 entitlement。
+- 验证：18 项相关测试；原签名 LLVM 探针 -9、修复后 0；标准签名候选 DMG 的真实 CosyVoice3 4-bit 克隆成功输出 24kHz/4.8秒 WAV，deep/strict 签名及最终权限复核通过。记录：`ai2apps/docs/cosyvoice-runtime-jit-fix-2026-09-22.md`。已安装 Runtime 未修改，候选尚未公证或发布。
+
+### NXR-VOICE-CLONE-INSTALL-MORE-20260922：角色克隆模型安装入口
+
+- 状态：`ready`。Reference Clone 与 Design 转参考克隆的模型下拉框增加“安装更多模型”，调用现有 ACPF ensure 的 installMore 模式，限定 audio.voice_clone / voice_cloning 能力。
+- 安装前保存角色草稿，完成后刷新 providers；安装入口不写入模型绑定，取消保留选择，配置中禁用重复操作。
+- 验证：能力请求/安装模式、原选择保留、取消状态恢复检查，以及前端 scope、JS syntax、diff check 通过。未实际下载模型；静态资源刷新生效。
+
+### NXR-VOICE-DIALOGUE-BUTTON-LAYOUT-20260922：完整对话生成按钮布局
+
+- 状态：`ready`。完整对话输出卡片操作区水平居中，与上方说明保留 16px 间距；生成和运行时取消按钮支持换行。
+- 验证：模板操作区结构与 diff check 通过；静态资源刷新生效。
+
+### NXR-VOICE-REMOVE-LOCAL-MODELS-20260922：移除 Audiobook 模型页签
+
+- 状态：`ready`。移除 Local models 标签及对应模型选择、模型列表与空状态 UI，清理专用样式和未使用的 capabilitySummary 方法。保留 Performance script 与 Source text。
+- 验证：前端 scope 回归、JS syntax 和 diff check 通过；静态资源刷新生效。
+
+### NXR-VOICE-LINE-ACCORDION-20260922：台词卡片单行展开编辑
+
+- 状态：`ready`。Line 默认紧缩，显示角色与台词摘要；点击卡片展开编辑，点击标题收起，展开另一行自动关闭前一行。生成、播放在紧缩状态继续可用，操作不会意外切换展开状态。
+- 使用单一 expandedLineId，切换项目重置；编辑区使用 x-show 保留原有数据绑定，提供 aria-expanded/aria-controls 与键盘可操作的标题按钮。
+- 验证：单行展开/切换/收起状态检查、现有前端 scope 回归、JS syntax 与 diff check 通过。仅静态资源变更，刷新 Shell 页面生效。
+
+### NXR-VOICE-LINE-AUDIO-RETENTION-20260922：预览清理不影响台词音频
+
+- 状态：`ready`。Line 成功生成后复制到按 owner/project/segment 隔离的私有存储，配置快照与音频独立于渲染任务目录和 Workspace artifact；每行仅保留一份最新配置音频。历史任务删除前为旧数据补存最新成功音频。
+- 播放接口校验项目 owner 与当前配置，私有音频可直接播放并供合并复用；删除预览 artifact 或任务目录不使 Line 失效。Gallery 导入副本不参与此清理。
+- 补接 Audiobook 按 Mini-App 保留最新 20 条终态任务的清理：任务结束及历史加载时执行，移除超限预览文件和 render jobs，保留 Line 私有音频；前端完成后刷新历史列表。
+- 验证：API/tasks 24 项通过，包括实际 21 次任务触发保留20条、旧目录移除而台词/私有音频仍存在，以及手动删除 artifact+任务后的播放/合并复用；前端 scope、diff check 通过。重启 app-dev Local 生效。
+
+### NXR-VOICE-DIALOGUE-STUDIO-OUTPUT-20260922：合并结果进入右侧输出
+
+- 状态：`ready`。完整对话通过 Studio run 的 mergeOutput 标记启动，底部卡片只提供操作及进度；最终合并音频发布为唯一 Studio artifact，进入右侧 Preview & Output 和历史，中间行继续保持私有，不发布。
+- Retry 保留 mergeOutput 语义；删除合并任务同时 retire 最终 Workspace artifact。输出文件名包含 job ID，避免同内容去重返回其他任务的来源 metadata。
+- 验证：ReadAloud API/tasks 23 项通过，合并测试确认只发布一次最终结果；前端 scope、diff check 通过。重启 app-dev Local 生效。此项替代此前底部卡片内播放/下载的交互。
+
+### NXR-VOICE-DIALOGUE-OUTPUT-20260922：完整对话合并输出
+
+- 状态：`ready`。Lines 底部增加完整对话输出卡片、进度、取消、播放器和 WAV 下载。按完整配置复用已生成行，缺失/修改行先后台生成；中间行不创建 Studio run/artifact，不进入右侧 Preview & Output。
+- 按台词顺序规范化至 24kHz 单声道 PCM 后合并，句间插入 pause_after_ms，末尾不额外追加间隔。使用持久化渲染队列，v75 增加合并标记与最终 artifact 引用；刷新恢复当前项目最后任务及输出。
+- 验证：ReadAloud tasks/API 23 项通过，新增实际 WAV 帧数、无中间 artifact、重复复用及仅修改一行重生成测试；前端 scope 和 diff check 通过。重启 app-dev Local 应用数据库升级及代码。
+
+### NXR-VOICE-LINE-PLAY-REGENERATE-20260922：台词播放与重新生成分离
+
+- 状态：`ready`。卡片右侧纵向显示生成/播放；生成始终创建新任务。播放先保存编辑并查询当前配置匹配的持久化音频，命中则播放；缺失或配置变化则生成，成功后播放。
+- 后端按 owner/project/segment 隔离，对比文本、角色、模型及 revision、参考素材、情绪强度、速度、句后间隔；只复用成功且 artifact active、输出文件存在的结果。旧记录缺少完整配置快照时保守重生成。
+- 验证：ReadAloud tasks/API 22 项通过，覆盖配置命中、速度/模型 revision 失配及已删除音频；前端 scope 检查、diff check 通过。Python 与静态资源更新，重启 app-dev Local 生效。
+
+### NXR-VOICE-LINE-EDITING-20260922：Audiobook 台词编辑
+
+- 状态：`ready`。增加行内上移、下移、删除确认与句后间隔（毫秒）输入。移动边界禁用；运行期间禁止移动/删除。项目范围与 owner 校验，事务更新顺序及 revision。
+- 数据库升级 v74：台词 deleted_at 软删除；项目读取、计数和新生成任务排除删除项，保留历史渲染外键和音频。原有 pause_after_ms 保存契约不变。
+- 新建角色选择显式绑定 change，行内动态角色 option 同步 selected，避免创建后下拉框显示未选择。
+- 验证：readaloud API/仓库/tasks 21 项通过，含顺序、越权、软删除、角色及间隔持久化回归；前端 scope 检查通过；diff check 通过。Python/数据库变更，重启 app-dev Local 生效，无 App 重建。
+
+### NXR-VOICE-PROJECT-CONTROL-ALIGN-20260922：项目选择行对齐
+
+- 状态：`ready`。Project switcher 改为底部对齐，New project/Delete project 按钮统一为与下拉框相同的 36px 高度；Project 标签保持在上方，保留窄屏换行。仅 CSS，刷新 Shell 生效。
+- 验证：检查最终选择器及 git diff --check 通过。
+
+### NXR-VOICE-EMOTION-FALLBACK-20260922：不支持情绪降级为自然语气
+
+- 状态：`ready`。Audiobook 调用按角色绑定模型的情绪枚举过滤；不支持的情绪省略控制字段，继续自然语气生成，不修改原始台词选择。台词编辑区显示中英文黄色 warning，切换模型/角色后实时更新。
+- 验证：ReadAloud tasks 9 项测试通过，覆盖 whisper 降级、angry 保留及 neutral；Voice Studio scope 前端检查通过。Python 模块变更需重启 app-dev Local。
+
+### NXR-VOICE-ARTIFACT-FOREIGN-KEY-20260922：Audiobook 生成结果保存失败
+
+- 状态：`ready`。修正 ReadAloudTaskManager 将 Studio/render job ID 写入 Workspace artifact 的 agent_runs 外键导致 FOREIGN KEY constraint failed；使用现有 metadata.runId 与 studio_artifacts 保留 Studio 关联，不修改数据库约束。
+- 验证：tests/test_ai2apps_readaloud_tasks.py 6 项通过，新增真实 PlatformRuntime/SQLite artifact 导入测试，检查 run_id 为空、Studio runId 保留、foreign_key_check 无异常。
+- 生效：Python 模块变更，重启 app-dev Local，无需重建 App。用户失败任务已有生成 WAV，错误在导入输出阶段。
+
+### NXR-DISCOVER-INSTALLED-VARIANT-20260922：模型选择框识别已安装档位
+
+- 状态：`ready`。打开 Discover 模型选择框前刷新 `/packages/installed`，按当前
+  Package 版本与 readyModelConfigurationIds 标记已就绪档位，使用公共 ACPF installMore
+  行为显示“已安装”并禁选；自动选择剩余兼容档位。全部就绪时继续按钮禁用。
+- 保留新版本 Package 的升级入口，不以 Package 已安装代替 Checkpoint 就绪判断。
+  仅 Discover JS 修改，刷新生效，不实际下载安装模型。
+
+### NXR-DISCOVER-CANCEL-RESUME-20260922：取消安装后不再反复恢复
+
+- 状态：`ready`。Runtime 依赖升级后的 Package continuation 在交接到安装 UI 前消费一次，
+  后续由 ACPF 会话自行持久化；取消配置选择不会在刷新后重复弹出。公共 ACPF 取消错误
+  使用稳定 code，Discover 不再将英文取消消息显示为失败；恢复忽略 cancelled/unsupported。
+- 轮询在延时和请求返回后检查 stopped，避免取消后的在途响应重新保存 pending session。
+  仅前端修改，刷新生效，不修改已安装 Package 或执行下载安装。
+
+### NXR-DISCOVER-MODEL-INSTALL-I18N-20260922：模型安装流程多语言补齐
+
+- 状态：`ready`。补齐 Discover 模型配置选择说明、安装标题、说明、确认按钮、
+  就绪提示及三个步骤的九种语言翻译。动态“安装 {模型名}”在公共 ACPF 渲染层
+  归一化，固定句子优先匹配，兼容已持久化的中文会话数据；不改后端会话协议。
+- 仅 JS 和翻译目录变更，刷新页面生效，无需重启 Local；未触发模型下载安装。
+- 验证：九种语言 JSON 解析、八类文案完整性、固定句子优先匹配及历史动态模型标题
+  的实际 JS 翻译执行均通过；JS 语法与 diff 空白检查通过。未进行 App-Dev 现场刷新验收。
+
+### NXR-DISCOVER-INSTALL-LAYOUT-20260922：安装弹窗三段式布局
+
+- 状态：`ready`。Discover 安装弹窗改为固定标题、独立滚动内容区、固定操作栏。
+  将按钮从滚动正文移到独立底部，弹窗外层禁止滚动，中段设置 min-height:0 和
+  overflow-y:auto；小窗口中关闭、重试、升级依赖与重启按钮不再滚出可见区域。
+- 仅模板/CSS 修改，刷新 Discover 生效，无需重启 Local 或重建 App；不改变安装状态机。
+
+### NXR-VOICE-VOXCPM2-INDEXTTS25-MLX-20260922：两套高级语音模型
+
+- 状态：`released`。2026-09-22 已发布 Runtime 1.7.9、VoxCPM2 0.1.0、IndexTTS 2.5
+  0.1.0 及三份 checkpoint distributions。Runtime 的 Cloud、GitHub、ModelScope 三源
+  均为 active；三个正式 Package 和三份 distribution 均完成匿名签名回读。完整收据见
+  `docs/ai2apps-mlx-runtime-1.7.9-voxcpm2-indextts25-release.md`。Runtime 1.7.9 新增 VoxCPM2 与纯 MLX
+  IndexTTS 2.5。统一 `audio_speech` 适配器增加模型专属结构化控制映射；VoxCPM2
+  提供无转写参考克隆、声音设计和指令式情绪/语速，IndexTTS 2.5 提供参考克隆、
+  八维数值情绪与原生 `duration_factor = 1 / speed`，P0 只开放中文和英文。
+- Runtime 固定 MLX-Audio 0.5.5 commit
+  `cd605ecfcc266ccf6ea3077586c373101be982c6`、Transformers 5.15.1 与 WeText
+  0.1.8，并 vendoring WIndexTTS commit
+  `eafb98c1b2ba46f6a608f29d8831208b89047681` 的 Torch-free MLX 路径。正式 Runtime
+  不携带 Torch；wheel 检查确认 Python、license 与两份 `.npz` 前端数据均已打包。
+- IndexTTS checkpoint 由固定官方主权重和 W2V-BERT/CAMPPlus/BigVGAN revision
+  可复现转换为 FP16 safetensors，排除训练状态及可选 Qwen 情绪模型；本地候选约
+  3.1GB。VoxCPM2 4-bit checkpoint 约 2.1GB；4-bit/8-bit 的现有 HF/MS 公共镜像
+  已固定 revision，并通过本地开发签名 `metadata_verified` envelope 双源逐字节校验，
+  无需重复上传 VoxCPM2 权重。
+- M5 Max 实测：VoxCPM2 4-bit 生成 6.40 秒音频耗时 3.27 秒，RTF 0.51；
+  8-bit 也已直接使用候选 Runtime 完成真实 Metal 推理，冷启动加生成 2.12 秒、输出
+  3.36 秒；
+  IndexTTS 2.5 FP16 中英文多组 RTF 0.72–0.94，最终可复现候选 4.42 秒音频耗时
+  3.48 秒，RTF 0.79。峰值 RSS 分别约 2.73GiB、3.72GiB；Apple peak memory
+  footprint 分别约 8.67GiB、4.55GiB。两者均在 MLX GPU 上完成真实推理。
+- 38 项定向 Adapter、Package 与 Runtime 回归通过，依赖锁与 wheel 构建通过；正式
+  Package/Checkpoint 发布兼容回归另有 65 项通过。最终 DMG 内 Bundle 验签、Apple 公证、staple
+  与 Gatekeeper 均通过，并直接用候选 Runtime 内嵌 Python 对两模型完成真实 Metal 推理。
+  Index checkpoint 已上传 HF/MS 不可变双源；三份 distribution、Runtime 及两个模型
+  Package 均已签名、审核、发布并完成公开逐字节验收。发布后重启 App-Dev Local，现场
+  确认 IndexTTS FP16 与 VoxCPM2 4-bit/8-bit 安装计划均可打开，未触发实际下载。
+
+### NXR-VOICE-SEGMENT-CAPABILITIES-20260922：逐句生成能力过滤
+
+- 状态：`ready`。根据每句角色绑定模型的 audio_capabilities 决定是否传 speed/emotion，缺失或 unsupported 不传，使用模型默认。修复 Qwen Base 因旧台词 speed=1.5 返回 400。支持的 multipart 情绪用独立字段传递；界面不显示不支持的情绪选项，语速显示 Model default。
+- 回归覆盖绑定克隆模型不支持语速/情绪但旧台词含自定义值时仍生成成功。App-Dev Local 重启生效，未发布。
+
+### NXR-VOICE-AUDIOBOOK-CLONE-RENDER-20260922：Audiobook 角色参考克隆
+
+- 状态：`ready`。修复 Audiobook 仅传 provider_voice_id 而未传克隆参考音频导致 Qwen Base HTTP 400。每句请求快照记录角色绑定模型及参考配置，执行时使用角色模型和私有素材，经相同文本/时长/版本检查及合并逻辑后走后台 multipart；Design 角色传入声音描述，普通预设音色保留 JSON 路径。
+- 模型错误保留受限长度的返回原因，便于定位。回归 23 项通过，包含使用不同于项目默认模型的角色及双参考音频合并。App-Dev Local 重启生效；旧失败任务可 Retry 重新获取角色配置，未发布。
+
+### NXR-VOICE-PROJECT-DELETE-20260922：Audiobook 删除项目
+
+- 状态：`ready`。项目选择栏新增删除入口及原生确认对话框，显示项目名称，默认取消。复用所有者隔离的项目 PATCH archived 状态实现软删除，列表移除并更新当前选择/草稿，保留生成历史、角色库及 Gallery；生成进行中入口禁用。
+- 前端回归验证取消不修改、确认只移除目标及清理选中状态；JS 语法/diff 检查通过。静态刷新生效，未发布。
+
+### NXR-VOICE-REMOVE-HEADER-RUN-20260922：移除顶部 Run
+
+- 状态：`ready`。移除 Audiobook Mini-App 标题栏的 Run 按钮，保留现有生成方法供后续工作流使用。
+- 仅模板变更，diff 检查通过；刷新生效，未发布。
+
+### NXR-VOICE-REMOVE-ENSEMBLE-20260922：合并朗读入口
+
+- 状态：`ready`。Mini-App 列表移除 Ensemble Drama，Characters 使用其 users-round 多人图标；列表顺序固定为 Quick Read、Characters、Audiobook（同步服务端排序及前端后备列表）。旧 Ensemble 项目在 Audiobook 项目列表继续可用；记忆的 Ensemble 入口转到 Audiobook，后台保留旧 ID 兼容读取/重试，不删除数据。
+- 前端回归覆盖入口移除、图标及旧项目访问；11 项 API 回归通过。App-Dev Local 已重启，未发布。
+
+### NXR-VOICE-PROJECT-TOOLBAR-FIT-20260922：项目用途下拉框溢出
+
+- 状态：`ready`。项目标题输入框取消相对窗口的固定宽度，工具栏按 Studio 中间面板可用宽度换行；Purpose 与 Rights 下拉框可收缩并保持在面板内，窄面板时移至标题下方。
+- CSS 及资源版本修改，diff 检查通过；刷新生效，未发布。
+
+### NXR-VOICE-PRIVATE-MATERIALS-20260922：角色专属参考音频
+
+- 状态：`ready`。新增按所有者隔离的 VoiceMaterials 存储；录音/上传及 Design 转 Clone 保存到角色素材目录，不再自动写入 Gallery。从 Gallery 选取只复制素材，角色引用与 Gallery 生命周期分离。保留原始音频及哈希，合并仍只在模型调用时生成。
+- Local 启动时迁移现有角色所有参考音频，保持 ID 与验证状态；旧草稿在使用时补迁移。不删除原 Gallery 资产，缺失旧文件记录待重新导入。角色私有内容接口执行所有者隔离。
+- 验证：29 项后端及前端回归通过，覆盖独立上传、Gallery 删除后试听、迁移幂等和跨用户拒绝。App-Dev 已重启并完成迁移，实地只读核对所有现存角色参考均有私有副本；帮助文档更新，未发布。
+
+### NXR-VOICE-NOTICE-TIMEOUT-20260922：提示自动关闭
+
+- 状态：`ready`。成功提示 4 秒后关闭，错误提示 8 秒后关闭；新提示替换时清除旧计时并重新计时，手动关闭同时清除计时器。
+- JS 语法及 diff 检查通过；静态刷新生效，未发布。
+
+### NXR-VOICE-SAVE-STAY-EDITOR-20260922：保存素材保留编辑界面
+
+- 状态：`ready`。Save reference materials 成功后留在当前编辑界面，保留样本、确认状态、授权勾选及试听文本/输出；绑定返回的 profile ID，后续保存和试听更新同一角色，局部更新底部卡片列表，不关闭/清空表单。
+- 前端回归覆盖保存后界面/素材/试听保留及重复保存复用 ID；JS 语法及 diff 检查通过。刷新生效，未发布。
+
+### NXR-VOICE-MATERIAL-CARD-SIMPLIFY-20260922：底部角色卡片简化
+
+- 状态：`ready`。移除 Saved reference materials 卡片内重复的 Edit materials 按钮，保留整卡点击及 Enter/Space 切换角色。
+- 仅模板修改，diff 检查通过；刷新生效，未发布。
+
+### NXR-VOICE-PREVIEW-DEFAULT-ICON-20260922：试听按钮状态与默认文本
+
+- 状态：`ready`。参考克隆试听按钮使用两个固定 SVG 按 busy 状态显隐，避免 Lucide 替换节点后动态图标停留在 loader。Preview text 留空或仅空格时，自动使用与 Design 相同的中英文混合文本；新建时保留空输入，placeholder 显示默认内容。
+- 前端回归覆盖空文本默认值及自定义文本保留；JS 语法及 diff 检查通过。刷新生效，未发布。
+
+### NXR-VOICE-TRAINING-ACTIONS-20260922：参考克隆操作按钮布局
+
+- 状态：`ready`。Generate voice preview 改为带播放图标的紧凑主按钮，居中对齐、不拉伸整行。Save reference materials 按钮保持单行、不压缩；说明文字可换行，窄容器时按钮整体换至下一行右对齐。
+- 模板/CSS 修改，diff 检查通过；刷新生效，未发布。
+
+### NXR-VOICE-MERGED-REFERENCE-20260922：单参考模型合并多素材
+
+- 状态：`ready`。单参考克隆模型支持选择多条素材，按列表顺序将归一化的 16kHz 单声道 PCM 拼接为 WAV，并合并对应文本后调用模型。原始 Gallery 文件/样本列表保持独立；验证合并时长及总时长限制，合并最长 600 秒。可选文本必须全部提供且确认或全部留空，避免部分文本与完整音频不匹配。
+- 前端保留多选、显示合并说明、取消单素材数量拦截，并同步合并时长/文本检查。保存与状态验证仍绑定完整所选样本；实际多参考模型及训练适配限制不变。
+- 验证：Voice Training/API 26 项及前端回归通过，覆盖 WAV 帧数/文本顺序、部分文本拒绝、无文本及总时长超限。App-Dev Local 已重启，未发布。
+
+### NXR-VOICE-REFERENCE-DELETE-CONFIRM-20260922：参考素材删除确认
+
+- 状态：`ready`。点击参考语音删除先打开确认对话框，显示素材名、仅从角色移除及 Gallery 原素材保留说明。默认焦点在取消，Esc 取消，明确确认后才移除；不影响已保存角色直至保存。
+- 前端回归覆盖打开/取消不修改列表、确认只移除目标；JS 语法及 diff 检查通过。静态刷新生效，未发布。
+
+### NXR-VOICE-ASR-WAIT-FIX-20260922：自动 ASR 完成状态同步
+
+- 状态：`ready`。自动导入传入原始 sample，完成时未通过 Alpine 响应式对象写回，导致识别成功仍显示等待。转录入口统一按 assetId 获取响应式 sample，成功/失败触发文本及等待框更新。识别请求增加 180 秒超时及 AbortController，超时退出等待并显示可重试错误。
+- 对话框文案改为客户端翻译并提供中英后备文本，解决运行中 Local 缓存旧语言表时直接显示 key。保留“在后台继续”/Esc 收起等待。
+- 验证：现场日志 ASR 返回 200；前端回归覆盖原始对象调用时响应式写入、完成关闭及超时关闭；JS 语法/diff 检查。静态修改刷新生效，未发布。
+
+### NXR-VOICE-REFERENCE-DELETE-20260922：参考语音删除入口
+
+- 状态：`ready`。将参考素材卡片底部 Remove from character 移到标题右侧，改为红色垃圾桶图标及 Delete 文本，长文件名换行且删除按钮不被挤出。沿用素材移除及草稿持久化逻辑，不删除 Gallery 原素材；保存角色后更新正式素材配置。
+- 模板/CSS 改动，diff 检查通过；刷新生效，未发布。
+
+### NXR-VOICE-WAIT-DIALOG-20260922：ASR 与试听等待对话框
+
+- 状态：`ready`。自动/手动 ASR、Design/Reference Clone 试听与 Quick Read 生成显示原生模态等待对话框，包含旋转指示、当前素材或角色、处理说明。成功或失败自动关闭；支持“在后台继续”及 Esc 隐藏，任务继续执行。原生 dialog 提供焦点限制/恢复，支持减少动画偏好。
+- 验证：前端回归覆盖 ASR/失败关闭、三种生成状态与完成关闭；JS 语法、i18n JSON 解析与 diff 检查通过。未发布。
+
+### NXR-VOICE-AUTO-ASR-20260922：新增参考素材自动转录
+
+- 状态：`ready`。移除自动转录对“模型强制要求参考文本”的限制：开启自动转录且 ASR 就绪时，录音、上传及 Gallery 新增样本均触发 ASR。文本可选或尚未选择克隆模型也生效；未就绪时显示配置提示，开关变更持久化。
+- 验证：前端回归覆盖触发、关闭开关和 ASR 未就绪；JS 语法及 diff 检查。模板/i18n/JS 变更，未发布。
+
+### NXR-VOICE-NEW-CHARACTER-RESET-20260922：新建角色清理旧克隆草稿
+
+- 状态：`ready`。Create character 同时重置 Design 和 Reference Clone 表单，清除旧 profile/model/source/rights、参考样本、试听文本及预览选中状态；新建表单不自动选中旧试听历史。已保存角色、Gallery 及任务历史不变，同一次新建内切换模式仍保留当前草稿。
+- 验证：前端回归覆盖编辑 Alice 后新建、切换克隆、表单与预览清理、模式切换保留及草稿恢复；JS 语法及 diff 检查。静态改动刷新生效，未发布。
+
+### NXR-VOICE-CHARACTER-TOOLBAR-20260922：角色编辑顶部布局
+
+- 状态：`ready`。Back to characters 与 Voice environment ready 共用首行，分别左/右对齐；Creation method 加粗，Design / Reference Clone 按钮紧随标签左对齐。移除克隆表单内重复环境按钮，Design 与 Clone 共用顶部布局。
+- Voice environment ready 在就绪时显示绿色文字、浅绿色背景及边框；角色列表与编辑页一致，配置中不使用绿色。
+- 静态模板/CSS 变更，刷新 Shell 生效；diff 检查通过，未发布。
+
+### NXR-VOICE-CLONE-VERIFICATION-20260922：参考克隆试听状态
+
+- 状态：`ready`。参考克隆试听前保存当前配置，成功后仅对匹配的模型、版本、所选参考音频/文本/确认状态及授权配置设置 Ready；失败或试听过程中保存了不同配置时不验证。重命名及重复保存保留 Ready，更改参考配置后回到待验证。
+- 前端即时刷新角色卡片；Unverified 文案改为 Pending validation / 待验证。旧历史缺少配置快照，不推断验证状态，需要重新试听一次。
+- 验证：Voice Training 与 Readaloud API 共 25 项回归通过，覆盖成功/失败、重复保存、重命名、参考变更及旧配置试听；前端 scope 回归、JS 语法和 diff 检查通过。App-Dev Local 重启生效，未发布。
+
+### NXR-STUDIO-TASK-DELETE-20260922：Studio 任务右键删除
+
+- 状态：`ready`。Video（生成/拼接/音频提取）、Voice（Quick Read/参考克隆/长文朗读）、Image 任务卡片共享右键菜单，支持 Shift+F10、Esc、点击外部关闭和视口定位。
+- 新增按用户/Studio 实例授权的本地删除接口，删除历史及其自有输出；运行中任务拒绝删除，Gallery 独立副本保留，清除已删除的 Design 试听引用。Image 同步删除旧结果，避免历史重新导入。
+- 验证：Video/Image/Workspace 删除及 Gallery 副本回归通过；Voice API、渲染删除及克隆回归通过，前端 scope 回归、JS 语法和 diff 检查通过。App-Dev Local 已重启，现场验证 Voice 卡片右键菜单与 Esc 关闭/焦点恢复，未删除用户现有素材。未发布。
+
+### NXR-VOICE-TASK-CARDS-20260922：音频任务卡片
+
+- 状态：`ready`。JS 语法、前端回归与 diff 检查通过。参考 Video Studio 的卡片结构，Reference Clone 与 Quick Read 共用纵向任务卡片：图标、标题、模型/演员、本地时间、状态、下载及选中高亮，支持键盘选择；最多 20 条，列表独立滚动。
+- 修复克隆历史显示为一排文字按钮、标题错误使用 Generate voice preview 的问题；仅前端，刷新 Shell 生效，未发布。
+
+### NXR-VOICE-CLONE-PREVIEW-REASONS-20260922：克隆试听禁用原因
+
+- 状态：`ready`。现场确认 Alice.wav 参考文本尚未确认；试听按钮改为显示具体缺项（文本确认、模型就绪、素材数量等），提示文本确认所在步骤，不代替用户勾选。
+- 修复合成来源克隆角色被素材列表过滤而显示 0 条的问题。前端回归覆盖未确认提示、确认后可试听及合成来源克隆列表；仅静态变更，刷新生效，未发布。
+
+### NXR-VOICE-DESIGN-SAMPLE-20260922：双语默认试听文本
+
+- 状态：`ready`。JS 语法、现有前端回归及 diff 检查通过。新建 Design 默认填写可编辑的中英双语短文；已有角色文本保留，增加“使用示例文本”按钮，替换文本后要求重新生成试听。
+- 中英文界面共享同一双语示例，帮助说明用于比较语言表现，不承诺提高克隆质量。仅静态内容，刷新 Shell 生效；未发布。
+
+### NXR-VOICE-CLONE-NAMING-20260922：参考克隆命名澄清
+
+- 状态：`ready`。前端回归与 diff 检查通过；中英文转换按钮、角色标签、创建方式、素材保存提示及帮助统一使用 Reference Clone / 参考克隆，明确不训练权重。
+- 新建转换副本名称后缀由 Trained 改为 Clone；已有用户角色名称保留。内部接口和持久化字段不变，未发布。
+
+### NXR-VOICE-DESIGN-READINESS-20260922：按模型变体显示和配置就绪状态
+
+- 状态：`ready`。45 项 provisioning 回归和两组前端回归通过；App-Dev 52322 实测配置入口默认选中 VoiceDesign。实际 checkpoint 校验确认为 Base/CustomVoice ready、VoiceDesign missing；未触发下载。此前包级任一变体就绪会隐藏其余变体安装入口。
+- Discover 展示已就绪变体数量，仅所有声明变体都就绪时隐藏配置入口。Design 表单增加精确绑定当前模型的配置按钮，复用 ACPF；ReadAloud profile 新增 VoiceDesign 非默认配置，防止误配置 CustomVoice。
+- 不改动各隔离实例权重，不绕过 checkpoint 完整性校验；未发布。
+
+### NXR-VOICE-DESIGN-EDITOR-20260922：角色试听编辑与参考克隆转换
+
+- 状态：`ready`（实现及接口回归）。23 项 Training/ReadAloud 回归、前端回归与 diff 检查通过；App-Dev 实测 Alice 卡片进入编辑器并保存描述/试听文本。当前 VoiceDesign checkpoint 未就绪，真实生成返回明确 409，未声称完成真实模型音色验收；未发布。
+- 点击角色卡片打开编辑器；Design 绑定兼容模型、保存描述与试听文本，通过真实 audio_speech instructions 接口生成共享 Preview & Output 音频。更改描述、模型或文本会使旧试听失效。
+- 可把生成音频复制到独立 Gallery 素材，创建绑定参考克隆模型的 Trained Voice 副本，保留原设计。带入文本待校对，保持 unverified；记录合成来源，禁止以转换来源替换任意真人音频。Gallery 副本不受试听历史清理影响。
+- 涉及 API、Repository、前端、中英文及帮助；需重启 app-dev Local。
+
+### NXR-VOICE-DESIGN-MODEL-FILTER-20260922：Design 模型能力筛选
+
+- 状态：`ready`。20 项 Training/ReadAloud API 回归及前端能力筛选/旧选择清理回归通过；app-dev Local 已重启加载保存校验，未发布。
+- Design 仅展示明确声明 voice_design 的 TTS 模型，不能用普通 instructions 支持推断声音设计；清理旧草稿中不适用的选择，保存 API 同样校验能力。
+- 当前 Qwen3 三变体中仅 VoiceDesign 可用于 Design；Base 为参考克隆，CustomVoice 为内置演员及风格指令。
+
+### NXR-CHARACTER-CREATION-LAYOUT-20260922：角色创建页空白修复
+
+- 状态：`ready`。diff 检查通过；App-Dev 64205 刷新后截图确认创建方式与 Design 表单紧接显示，名称、模型、参考文本及提交按钮均在首屏可见。
+- 创建方式选择区误用了带 580px 最小高度的整页样式，导致表单下移。改成按内容高度排布的紧凑工具栏，Design 表单紧接其后，Training 也共用该工具栏；窄屏允许换行。
+- 仅模板/CSS，刷新 Shell 生效，无需重启或重建 App。
+
+### NXR-VOICE-TRAINING-20260922：模型绑定与多段角色素材
+
+- 状态：`ready`（素材管理及单参考克隆接口；真实多参考执行/训练仍为明确的未接入能力）。
+- Training 绑定支持声音参考/训练能力的模型，展示模型声明的数量、单段/总时长与文本要求。统一素材列表支持批量上传、录音、Gallery、选用子集、逐段试听与删除引用。
+- ASR 支持自动识别（模型要求文本且 ASR 已配置）、批量识别缺失文本、单段重试和确认校对，避免覆盖识别期间的手工编辑。
+- Schema 73 持久化素材集、模型 revision 与要求；可重新编辑，保持 unverified，不把保存素材称为完成训练。原单参考音频协议接通绑定模型克隆试听；多参考/实际训练 adapter 尚不存在，明确阻止执行并允许准备素材，不虚构训练结果。
+- 服务端检查素材所有权、真实音频格式/时长、选用数量与文本确认；试听使用同用户 ModelInvocationContext。需重启 app-dev Local；未发布。
+- 验证：42 项 Training/ReadAloud/存储回归通过，后续扩展的 8 项 Training API 测试通过；20 项本地化/Workspace 回归通过。前端回归验证单参考选样、多段保留、确认条件、草稿恢复、ASR 不覆盖并发编辑与失败保留文本。App-Dev 64205 已加载 schema 73，旧 18 秒 Gallery 音频恢复，Qwen3 Base 显示单参考/文本可选，实机 ASR 成功返回未确认文本，刷新后模型绑定、素材、转录和未确认状态均保留；未执行实机克隆或真实训练。
+- 试听输出独立保留最近 20 条并复用安全文件清理，支持共享 Preview & Output、下载和 Gallery 拖拽；不会混入 Quick Read 历史。模型 revision 变化要求显式重新绑定。
+
+### NXR-VOICE-CHARACTERS-20260922：统一角色管理入口
+
+- 状态：`ready`。11 项 ReadAloud API 回归、前端入口/模式切换/草稿回归、JS 语法、JSON 与 diff 检查通过。App-Dev 62459 实测仅保留 Characters 入口，创建页 Design / Training 切换正常，Training 录音、上传、Gallery 和转录界面可见。
+- Voice Design 与 Train Character 合并为 Characters（角色管理）；创建角色时切换 Design / Training，统一角色列表，保留录音、Gallery 选择、转录及素材保存流程。
+- 保留旧 Mini-App ID 的草稿接口兼容，恢复旧 Training 入口及草稿到统一入口；新草稿保存创建方式。Design 目前仍为声音档案保存，文字描述生成音色尚未接入，页面明确说明。
+- 不迁移、不删除既有声音档案或 Gallery 参考音频。需要重启 app-dev Local 加载入口定义与翻译；未发布。
+
+### NXR-STUDIO-HISTORY-CLEANUP-20260922：Studio 历史素材磁盘回收
+
+- 状态：`ready`（50 项 Workspace、视频任务、视频 Studio、图片 Studio 回归通过）。
+- Quick Read 超过 20 条时清理过期音频；视频生成保留 20 条已结束任务，回收旧输出 Artifact 与任务输入/临时目录；视频合成与音轨提取按 Mini-App 各保留 20 条已结束任务。生成结束与读取历史时执行，排队/运行中任务不清理，按原用户/实例边界隔离。
+- Imagine Studio 已有最近 20 条及文件删除逻辑，本次补充 Gallery 副本保留验证。
+- Workspace 回收按内容存储键检测其他有效 Artifact、资源句柄和进行中的导出；仍被使用的共享文件保留。导入与回收串行，避免写入/删除竞态；重复导入过期内容恢复有效记录。
+- Gallery 导入是独立文件副本（独立 gallery 存储目录），来源链接只是元数据。回归覆盖音频、图片、视频生成和视频合成：旧 Studio 文件确实删除，Gallery 文件仍可逐字节读取；同时覆盖用户隔离、共享内容保护、运行中任务保留。
+- 无 Cloud、数据库结构或 App Bundle 修改；已重启 app-dev Local 至 61123 加载变更，未发布。
+
+### NXR-QUICK-READ-DIRECT-20260922：Quick Read 无工程朗读
+
+- Quick Read 历史持久化：复用用户隔离的 Workspace Artifact，持久保存标题、模型、演员与生成时间；历史 API 返回最新 20 条，页面启动后恢复列表和已选结果（缺失则选最新）。旧版已保存音频可恢复，缺少旧元数据时显示原文件名。播放/下载链接为当前 Local 相对路径，重启换端口后仍可用；恢复结果拖拽按需预载音频 File。15 项 Python 回归及前端历史选择/缺失回退回归通过；App-Dev 重启至 60279 后恢复 4 条旧音频，选择旧结果后刷新仍保持选中，并加载 15 秒时长与下载链接。
+
+- 用户确认 Preview→Gallery 拖拽已通过。修复播放进度拖动被外层 draggable 抢占：移除播放器父容器的 draggable，只允许音频图标、标题和提示作为素材拖拽起点；播放控件独立交互。diff 检查通过。
+
+- Preview 精简与拖拽：自定义播放/暂停、进度与时长控制，不展示音量；移除 Active speech model 区域。预览支持 audio Artifact 引用及标准 File 拖拽；Gallery 优先导入受权限校验的 Artifact，接受文件的音频 Mini-App 使用 WAV File。前端拖拽 payload/File 与生成回归通过，国际化 4 passed；App-Dev 59548 真实生成约 18 秒音频，截图确认无音量、无 Active speech model，播放/进度正常。自动化跨 iframe 拖拽未观察到 Gallery 新资产，端到端落点仍待人工复验，不标记拖拽实机通过。
+
+- 导出格式：Quick Read 下载旁增加 WAV / MP3 / M4A (AAC) / FLAC；标准 Artifact 下载接口接受受限 audio_format 参数，复用 Host audio_codecs 实际转码并匹配 MIME、扩展名和 ETag，不重新生成语音。保留原生 Save As。18 项编解码及下载 API 测试通过，逐一解码验证四种实际编码、MIME 和文件扩展名；前端格式链接回归通过。
+
+- Download audio 修复：生成结果通过标准 Workspace Artifact 保存，返回受 Session 所有权保护的 HTTP download URL；下载按钮沿用 Gallery/Video Studio 原生 anchor 导航，由 AceFox 弹出 Save As。Blob 仅用于页面试听。14 项相关 Python 回归及前端下载 URL 回归通过；App-Dev 58091 实测生成约 10 秒语音，点击 Download audio 后成功弹出原生 Save As（Waveform Audio / .wav / Cancel / Save）。对话框保留供用户选择目标位置。
+
+- 右侧栏细节：音频容器与原生控件限制在列宽内，长标题省略，下载按钮增加 12px 顶部间距；idle/succeeded 采用绿色。Quick Read 增加当前会话 Tasks，记录每次生成的标题、模型/演员、时间、状态，允许切回已有音频播放下载；历史持久化已由本条目后续改动补齐。前端多任务切换回归通过；App-Dev 53204 真实生成 9 秒音频，截图确认控件无溢出、下载间距、绿色 succeeded 与 Tasks 卡片均正常。
+
+- Preview & Output 调整：恢复 Quick Read 共享右侧输出区，生成状态、音频播放与 WAV 下载统一放在该区；生成时自动展开，移动端转到 Output。Mini-App 中只保留文本、模型、演员和生成操作，隐藏其他工程的输出历史，避免混淆。 前端行为回归、JS 语法与 diff 检查通过；App-Dev 53204 已实测当前草稿生成，右侧 Preview & Output 显示 running→succeeded、音频播放位置及 Download audio 链接。
+
+- 2026-09-22 实机修复：清理中英文 `readaloud.quick.help` 重复键；通过标准 Helper 控制接口重启唯一 app-dev Local，端口由 52011 变为 53204。重新打开后文本草稿完整恢复，说明与所有新控件翻译正常，Qwen3 TTS 1.7B CustomVoice 8-bit + serena 对现有 245 字草稿生成约 45 秒音频，UI 显示自动播放（Pause / 0:02 / 0:45）与 Download audio 链接；未再出现 404。国际化回归 4 passed。
+
+- 状态：`ready`（源码回归及 App-Dev 真实生成/自动播放通过）。
+- Quick Read 改为输入/粘贴文本、选择模型与模型声明的演员、生成并播放；不再要求创建项目，不创建隐藏工程。独立播放器支持下载 WAV，草稿保存文本与演员。
+- Local API 通过带用户上下文的现有模型调用服务调度生成，验证文本长度、TTS 模型就绪状态和演员；不改 Cloud。Audio Book/多角色演播保留工程模式。
+- 自动播放受浏览器策略限制时可手动播放；音频持久保存，刷新后恢复最近 20 条。更新内置帮助和中英文文案。
+- 验证：ReadAloud API/任务、Mini-App Chat、国际化专项 22 passed；`node tests/test_ai2apps_readaloud_scope.cjs` 验证无工程生成、自动播放、空文本、草稿和工程隔离通过。API 测试验证演员/模型/文本限制、默认演员、用户调度上下文及零工程写入。JS 语法和 diff 检查通过。App-Dev 已重启 Local 并完成真实模型生成和播放器状态验收；未发布。
+
+### NXR-VOICE-PROJECT-SCOPE-20260922：Voice Studio 项目归属隔离
+
+- 状态：`ready`（源码回归通过，待 App-Dev 实机验收）。
+- Quick Read、Audio Book、多角色演播的新项目持久保存 Mini-App 归属；各入口只显示自己的项目，切换时重置项目表单并恢复对应草稿，拒绝恢复其他入口的旧项目选择。
+- 数据库迁移 72 将无来源记录的历史项目保留在 Audio Book，不删除内容；不推断历史创建来源。
+- 影响：Local API、数据库和 Voice Studio 前端；开发验收需要重启 App-Dev Local 并刷新页面，无需重建 App。
+- 验证：`pytest tests/test_ai2apps_readaloud.py tests/test_ai2apps_readaloud_tasks.py tests/test_ai2apps_platform_storage.py -q -p no:cacheprovider`：36 passed；`node tests/test_ai2apps_readaloud_scope.cjs` 通过创建、切换、草稿恢复和跨入口旧选择回归；JS 语法与 diff 检查通过。尚未完成 App-Dev 实机验收，未发布。
 
 ## Build 2252 已发布（2026-09-21）
 
@@ -129,6 +742,16 @@
 - 状态：`ready`。按用户要求通过标准 `build-dev-app.sh` 与 `build-test-app.sh` 重建固定 Dev/Test App，旧 App 已分别归档；未改动实例数据。
 - Dev 保留 `com.ai2apps.desktop.dev` / `dev` 与当前仓库 Development source root；Test 保留 `com.ai2apps.desktop.test` / `test`、cloud Runtime、非 Development 独立快照。Test 内 Registry 源码与当前兼容修复逐字节一致。
 - Dev 严格签名验证、Test 标准 release App 验证通过；两实例已启动，本机 bootstrap 均返回 HTTP 200。仅本地开发/测试重建，未发布生产制品。
+- 2026-09-25 候选发布前再次从当前工作树重建全部三套固定实例：
+  `AI2Apps-dev.app`、`AI2Apps-app-dev.app` 与 `AI2Apps-test.app`。分别通过
+  `build-dev-app.sh`、`build-app-dev-environment.sh` 与 `build-test-app.sh`完成原子替换，
+  旧 App 进入 `.build/archive`，三个实例的 Application Support/Caches 数据均未重置。
+  Bundle/instance 身份、Dev 源码挂载、App-Dev/Test cloud Runtime、Test 非开发模式、
+  App-Dev 单橙点与 Test 双紫菱形托盘资源、三包严格深度签名均验证通过。
+  三套新 App 已实际启动且 Helper 均进入 `ready`；可见 Shell 身份分别为
+  `com.ai2apps.desktop.dev.shell`、`com.ai2apps.desktop.appdev.shell` 和
+  `com.ai2apps.desktop.test.shell`，App-Dev 原生标题为
+  `AI2Apps-App-Dev: App-Dev 127.0.0.1:58071`。本次仍只是本地实例重建，尚未生成或发布正式制品。
 
 ### NXR-DISCOVER-LEGACY-INSTALL-20260920：旧模型 Package 安装计划兼容
 
@@ -442,6 +1065,34 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 源码合并、App 构建成功或上传完成就提前标记。
 
 ## 3. 下一版候选工作
+
+### Shell 系统显示名称统一（2026-09-25）
+
+- 状态：`in_progress`。仅修改 Dock 缓存标签不能修复 Cmd+Tab 名称；内嵌 bundle
+  由 `AI2AppsShell.app` 改为 `AI2Apps.app`，其 CFBundleName/DisplayName/本地化名称统一 AI2Apps。
+- 同步 Launcher、Helper 默认浏览器路径、构建、签名、校验与回归用例；保留各实例
+  Bundle ID、Instance ID、数据、图标和窗口标题前缀。
+- 旧 Dock 固定项须迁移到同一实例的新内嵌路径；重建后验证，不发布生产版本。
+- 验证与交付：77 项 Swift、114 项 Shell 回归通过；Dev/App-Dev/Test 均已按标准脚本
+  重建，App-Dev/Test release-app 校验通过。原 Dock 固定项已迁移新路径并清除旧 bookmark。
+  App-Dev 实机系统名称与菜单为 AI2Apps，窗口仍保留 App-Dev 前缀，首页正常加载。
+
+### Shell Dock 独立启动补齐 Helper（2026-09-25）
+
+- 状态：`in_progress`，需要重建 App 并实机验收 Dock 冷启动。
+- AceFox 原生 Shell 入口在启动浏览器前，打开同一外层 App 的嵌套 Helper；
+  校验 Shell/Helper Bundle ID、Instance ID，以及沙箱模式的 App Group 一致。
+- 使用精确 bundle 路径交由 LaunchServices 复用 Helper，不启动外层 Launcher，
+  不使用新实例参数；Helper 的实例锁保留并发保护。
+- 文件：`/Users/avdpropang/sdk/moz/acefox-firefox-153/browser/app/nsBrowserApp.cpp`。
+- 注意：旧 Swift BrowserLauncher 已不在构建产物中，本次未修改该废弃入口。
+- 验证：实际 `make -C obj-aarch64-apple-darwin/browser/app nsBrowserApp.o`
+  编译通过；尚未重打包、签名或替换已安装 App，Dock 冷启动仍待端到端验收。
+- 2026-09-25 更新：已重新链接并 `mach package`，通过标准脚本更新固定 Dev、
+  App-Dev、Test，旧 App 各自归档且保留实例数据。三个内嵌 Shell 直接启动均已带起
+  对应 Helper；Dev/App-Dev Local ready，App-Dev 实机标题与首页正确；Test 到达
+  Local 登录页。App-Dev/Test 的 release-app 验证及深度签名检查通过。
+- 本轮为当前开发工作树的内部实例更新，不是生产发布；其他 NXR 的未验收状态不变。
 
 ### NXR-SHARED-CHECKPOINT-CACHE：同机实例共享已验证 Checkpoint（ready）
 
@@ -3169,3 +3820,373 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - Forward-only ICB continuation (2026-09-17, in_progress, isolated experiment): token graph/Metal commands are captured once, real Router misses patch only the current six slot indices and replay the remaining captured groups. Removes suffix rebuilding and rollback snapshots; adds token-scoped Residency Sets, pooled ICB/parameter storage, exact replay ranges, and deferred allocation retirement compatible with normal MLX donation. Natural four-token logits and full state match packet reference exactly; all-miss diagnostics show one graph and one GPU execution per layer, zero packet fallback, 40 MISS + DONE per token, <65GB sampled peak. Frozen 32-token ABBA performance gate is running; no production Runtime, Package or default activation. See `artifacts/dsv41-resume-replay-20260917/`.
 
 - Captured continuation outcome (2026-09-17; supersedes in_progress above): retained isolated v12 after full-state parity and Metal validation smoke. No repeated suffix construction, no packet fallback, exact per-layer execution and <65GB peak. Frozen ABBA still fails non-regression: all-miss 2.00977 vs 2.05591 TPS (-2.24%); natural 3.95339 vs 4.84065 TPS (-18.33%). Later native-prefix/event/residency/retirement/submission variants did not establish a passing gate and are archived outside the retained implementation. No production/default switch. Report: `docs/dsv41f-captured-continuation-2026-09-17.md`; retained binary/source receipt: `artifacts/dsv41-resume-replay-20260917/retained-receipt.json`.
+
+
+### NXR-VOICE-SHARED-OUTPUT-20260923 — ready
+
+- Voice Studio: one host-owned Quick Read-style Preview & Output across all built-in and Package Mini-Apps.
+- Common owner-scoped 20-result Artifact history, stable selection across Mini-App changes, shared audio export/drag; video and JSON outputs supported.
+- Package transcription and speaker replacement publish through the host; separation WAVs and native ZIP Save As retained.
+- Private Line caches and character reference files remain outside output retention. Contract fixed in the Studio Mini-App Package specification.
+- Validation: 54 focused pytest checks passed, both Node scope/bridge suites passed, three JavaScript syntax checks and git diff whitespace check passed. Native UI smoke is pending: App-Dev currently holds a completed unsaved transcript, so it was not restarted/refreshed. Source/API refresh requires app-dev Local restart; no Runtime publication required.
+
+
+### NXR-TRANSCRIPT-EXPORT-EDIT-20260923 — ready
+
+- Package text exports in Voice Studio go through a mount-authorized host Artifact endpoint and native Shell Save As, including JSON, Markdown and SRT.
+- Transcript segments support text and speaker correction. Draft save/restore includes results; exports use current edits. Text corrections invalidate old word alignment while preserving segment times.
+- Host draft/export payloads bounded to 4 MiB; filename/media types allowlisted and JSON validated. Shared Preview & Output receives exported artifacts.
+- Verification: 29 focused pytest checks passed; Node transcript-edit and host-bridge suites passed; JavaScript syntax and diff whitespace checks passed. Native Save As dialog smoke remains pending. Existing App-Dev result is kept intact; activation requires Local restart and refresh after preserving that result.
+
+
+### NXR-MEDIA-VOICE-MINIAPP-ORDER-20260923 — ready
+
+- Reordered the Media Voice Studio Suite manifest and placement priorities: Voice and Background Separation first, Detailed Transcription second, remaining Mini-Apps unchanged.
+- Validation: parsed app.yaml and verified declaration/placement order for Voice Studio and Video Studio. App registration changes require app-dev Local restart; no Runtime rebuild or publication.
+
+
+### NXR-QUICK-READ-CHARACTERS-20260923 — ready
+
+- Quick Read Actor selector includes Characters, uses the selected character's bound model, and persists selection in its existing draft.
+- Backend resolves the owner-scoped profile; reference clones use validated private reference materials and multipart speech, designed voices use saved instructions. No project is created; outputs retain the shared Studio history/export/drag flow.
+- Verification: 12 ReadAloud API tests and the Node scope/Quick Read suite passed, including designed voice, clone reference multipart, bound-model override and cross-owner rejection; JavaScript syntax and whitespace checks passed. Native UI generation was not run. Requires app-dev Local restart for API changes; no Runtime rebuild.
+
+
+### NXR-VOICE-SENTENCE-CHUNKING-20260923 — ready
+
+- Shared bounded speech invocation for Quick Read (including Characters), Character design/clone previews, and Audiobook Lines/full-dialogue inputs.
+- Deterministic punctuation/word-aware splitting without rewriting; 300 weighted units (CJK weight 3) per request, sequential generation with identical voice/expression/reference settings, single merged WAV output. Partial failures/cancellations never publish intermediate audio.
+- Long-Line cache signature includes the segmentation policy so old long-form audio is regenerated; short Line caches remain compatible.
+- Verification: 65 tests passed across sentence splitting, WAV concatenation/order, configuration/reference preservation, failure/cancellation, ReadAloud API/tasks and Character training; git diff whitespace check passed. Real-model long-text listening validation not performed. Source/API Local restart required, no Runtime release.
+
+
+### NXR-VIDEO-COMPOSER-LARGE-IMPORT-20260923 — ready
+
+- Video Composer keeps the authorized AceFox native-path fast path, but no longer falls back to Gallery's 64 MiB general import when that path is unavailable. A dedicated AppInstance-scoped endpoint streams browser-selected image, video, or audio media into private Composer storage and returns only the existing opaque source ID.
+- The fallback is bounded at 20 GiB, writes in 1 MiB chunks with private permissions, removes partial/invalid files, and leaves Gallery's global 64 MiB policy unchanged. Imported source paths remain absent from API responses and saved Composer project documents.
+- Validation: Video Studio and Composer targeted regression `17/17` passed; JavaScript syntax, Ruff, and diff whitespace checks passed. App-Dev Local was restarted onto port `55001`, the Shell reconnected, and Video Composer reopened without the stale 64 MiB error. Native selection of the user's original large file was not repeated because that file was not available to the test harness.
+
+
+### NXR-VIDEO-COMPOSER-TIMELINE-ZOOM-20260923 — ready
+
+- Video Composer timeline zoom now ranges from 2 to 120 pixels per second instead of stopping at 18. The ruler and grid automatically use 1-second cells at normal zoom, then 2-, 5-, and 10-second cells as the timeline is zoomed out.
+- The ruler fills the entire visible timeline rather than stopping shortly after the last clip. Short clips use a smaller visual minimum at overview zoom, and the selected zoom level persists as a Shell display preference.
+- Validation: native App-Dev checks confirmed 10-second cells at 2 px/s, 5-second cells at 6 px/s, and the 2-second scale tier at 12 px/s. Video Studio and Composer regression `17/17`, JavaScript syntax, both localization JSON parses, and diff whitespace checks passed.
+
+
+### NXR-VIDEO-COMPOSER-OUTPUT-GEOMETRY-20260923 — ready
+
+- Video Composer preview now preserves the configured canvas aspect ratio for both landscape and portrait projects instead of flattening portrait canvases against a fixed height cap.
+- Export uses the same centered `contain` geometry as the browser preview when a clip's visual box and source media have different aspect ratios, including masks and animated position/size states.
+- Validation: Video Studio and Composer regression `18/18`, JavaScript syntax, Ruff and diff whitespace checks passed. Native App-Dev force-refresh preserved the existing 48.83-second draft and confirmed the 1080p 9:16 preview is a true portrait canvas; the project was restored to its original 720p 16:9 setting afterward.
+
+
+### NXR-VIDEO-SUBTITLE-SHARED-OUTPUT-20260923 — completed
+
+- Video Subtitles and Translation still returns its ZIP bundle, while a requested burn-in MP4 is also persisted as a Video Studio Run/Artifact and sent to the host Preview & Output player.
+- Package Mini-Apps no longer inherit Composer/Extract Audio output mode from the previously selected built-in Mini-App; unrelated generation history is hidden while a Package output is active.
+- Video Studio restores the latest successful Package video Artifact after a page or Local restart, scoped to the selected Mini-App.
+- Subtitle burn-in now runs through `asyncio.to_thread`, so PyAV/libx264 frame rendering and encoding no longer block Local health checks or trigger the Helper's three-strike automatic restart.
+- Video subtitles now request word timestamps while retaining the punctuated ASR segment text. Cue splitting prefers complete sentence endings, then clause punctuation near the four-second/42-unit target, and only uses a roughly 5.6-second/52-unit hard fallback when no natural boundary exists. Chinese translation explicitly preserves punctuation and restores missing sentence-ending marks as full-width `。！？`. Burn-in uses measured pixel widths, at most two lines, adaptive font sizing, long-token splitting, and horizontal/bottom safe margins so captions stay inside the video frame.
+- When the ASR segment itself contains no punctuation, the subtitle workflow now invokes the installed `ai2apps.model.punctuation-restorer/default` CT-Transformer before cue splitting. This supplies semantic sentence boundaries instead of asking the length limiter or translator to infer them after the text has already been cut.
+- Verified in App-Dev with `IceCreamNoST.mp4`: the persisted `IceCreamNoST-subtitled.mp4` reopened in the host player with visibly burned-in English subtitles; 29 focused tests, Ruff, and JavaScript syntax checks pass.
+- Async burn-in, punctuation restoration, cue segmentation, word-timestamp timing, translation punctuation, and caption-boundary regression coverage brings the focused suite to 42 passing tests.
+
+
+### NXR-DETAILED-TRANSCRIPTION-LANGUAGE-NORMALIZATION-20260923 — in_progress
+
+- Voice Studio Detailed Transcription failed after successful ASR when Qwen3 ASR returned the full
+  language name `English`; the 0.1.2 pipeline forwarded it to Qwen3 ForcedAligner, which accepts a
+  language code such as `en` and raised `UnsupportedAlignmentLanguageError`.
+- Package 0.1.3 normalizes detected language names and locale tags to supported alignment codes and
+  also accepts canonical full names at the aligner boundary. The experimental baseline and formal
+  Package source remain byte-aligned for the changed runtime modules; the Desktop legacy Discover,
+  profile and install mappings are version-bounded through 0.1.3.
+- Validation so far: all 61 MLX WhisperX tests and all 75 Package/provisioning lifecycle tests
+  passed, including the live failure shape (`English` from ASR before forced alignment); Ruff,
+  formal/experimental runtime-source equality and diff whitespace checks passed. The registered
+  Publisher signed 0.1.3 production artifact is 31,382 bytes at SHA-256
+  `44ab6c4ab6d9b9ed9fa6c27186edbf06750680e34bba1f70acb66cc9380999c2`; Cloud submission
+  `4a4cb7c0-dcfd-4a33-92b8-488bb09bdc6f` is published at Repository Snapshot 193, and anonymous
+  download verified exact artifact bytes and envelope JSON.
+- App-Dev upgraded to 0.1.3, then correctly requested the missing Compact checkpoint. The Models
+  license challenge was created, but its dynamically generated Tailwind `z-[10000]` class was not
+  present in the built CSS, leaving the NVIDIA Sortformer confirmation behind the still-open model
+  dialog while that dialog displayed `Starting…`. The dashboard now assigns the challenge overlay
+  an explicit DOM z-index and has a source regression assertion. License acceptance and the final
+  real App-Dev transcription retry remain pending user action.
+- Requires Package 0.1.3 delivery plus the next Desktop Build for its version-bounded discovery map;
+  no Runtime rebuild or checkpoint redistribution is required.
+
+
+### NXR-DETAILED-TRANSCRIPTION-PUNCTUATION-PRESERVATION-20260923 — ready
+
+- Root cause: Qwen3-ASR already returned native punctuation and casing, but Qwen3 ForcedAligner
+  rebuilt every `Segment.text` from timestamp-bearing lexical units. Punctuation has no duration and
+  was absent from those units, so alignment replaced values such as `Come on, Joey!` with
+  `come on joey` before subtitle segmentation and translation.
+- Package 0.1.4 keeps the ASR transcript as the authoritative display text while continuing to use
+  forced alignment for `words[].start/end` and segment timing. The previous hallucination safeguard
+  remains active only when normalized aligned-text coverage falls below 65 percent; punctuation,
+  whitespace and casing differences alone never rewrite the transcript.
+- English and Chinese punctuation/casing regression coverage was added. Formal Package and
+  experimental aligner sources are byte-identical; 185 pipeline, Package, provisioning, Worker and
+  Studio tests pass, as do Ruff and diff-whitespace checks. Runtime and checkpoint distributions are
+  unchanged.
+- The 0.1.4 source now carries signed discovery/profile/install metadata; the production artifact
+  uses the Runbook's bounded legacy `modelInstall` projection compatibility for current Cloud. The
+  first attempt with a mismatched historical Keychain record was rejected before a submission was
+  created. The existing registered key was then identified without exposing secret contents and used
+  for the successful publication; no alternate Publisher, key, Package ID or version was created.
+- Package 0.1.4 is published as submission `cb49e7b6-eb88-4597-9715-ade6dcb71688` in Repository
+  Snapshot 194. Anonymous verification returned exact artifact bytes and exact envelope JSON for
+  SHA-256 `6ab0086aaec6ef30e6aa56f0bb6568235a9beff0b97608b74c9bdd64cab81bf8`.
+- The real App-Dev media inference regression remains a separate acceptance step because it requires
+  upgrading the installed Package and exercising the locally licensed checkpoints with user media.
+  After restarting App-Dev Local to load the new Python module, Discover resolved the version-bounded
+  install plan and no longer displayed the untrusted-plan error; 40 focused catalog/install fallback
+  tests pass. No Runtime or checkpoint redistribution is required.
+
+
+### NXR-VIDEO-SUBTITLE-OUTLINED-TEXT-20260923 — ready
+
+- Video Studio burn-in subtitles no longer draw a translucent black rounded backdrop. Captions now
+  use white glyphs with a scale-aware thick black outline, starting at 3 pixels and increasing with
+  the selected font size.
+- The existing two-line cap, adaptive font sizing, horizontal safe area and bottom safe area remain
+  in force; wrapping measurements include the outline width so the stroke stays inside the frame.
+- Validation: 37 Studio media-workflow and asynchronous capability-broker tests pass, including a
+  pixel-level regression for white fill, black outline and unchanged backdrop; Ruff passes. This is
+  Host Python code, so App-Dev requires a Local restart but no App or Runtime rebuild.
+- Follow-up configuration is implemented for `ai2apps/media-voice-studio-suite 0.1.2`: the Video
+  Subtitles Mini-App exposes Small, Standard, Large (default), and Extra Large font presets plus
+  outline or translucent-box background styles. The mount-bound invocation passes only validated
+  enums to the Host; layout jointly measures font size, outline width or box padding, wrapping and
+  safe areas, and adaptively shrinks when needed rather than clipping or truncating the frame.
+- Validation after adding the Package UI and broker contract: 79 focused media workflow, broker,
+  Package, sandbox-document, test-candidate and Studio bridge tests pass; Ruff, JavaScript syntax and
+  diff-whitespace checks pass. A further 10 Package-development-mount regressions passed after the
+  production compatibility adjustment.
+- Package 0.1.2 is published as submission `caa0b6b5-1ed4-42e8-b539-f048da3bd997` in Repository
+  Snapshot 195. Anonymous verification returned exact artifact bytes and exact envelope JSON for
+  SHA-256 `40d6425c1021b65c7de9c9584986ab4644ef68a661b6911c6e7a2ab198cbabe0` (32,164 bytes).
+  The initial full package-metadata attempt exposed the production Cloud's missing nested
+  `package.localizations` and `package.license` schema support and was rejected before submission;
+  those values remain in the signed `app.yaml`/indexed `LICENSE`, and the Cloud requirements handoff
+  now records the gap. The published outer manifest also uses the established
+  `--omit-mini-app-catalog` compatibility form.
+- App-Dev does not need this Package installed: its trusted Development Bundle source-mounts the
+  repository Package directly with `distribution=development` and hot-refreshes its resources.
+  Installed Dev/production environments use the published Package and must upgrade to 0.1.2 to see
+  the new controls. No Runtime or checkpoint redistribution is required.
+- Post-publication App-Dev smoke found that the Host frame's explicit FormData allowlist had not
+  been extended for `subtitle_font_size` and `subtitle_background`; the frame therefore rejected
+  the first new option as `Invalid or duplicate field` before reaching the API. Both names are now
+  allowlisted, all three Studio templates use the `media-style-fields-v2` cache key, and a bridge
+  regression verifies that both values cross the opaque Package boundary. The focused Host bridge,
+  client, broker and Package suite passes 36/36. This is a Desktop Host correction; the already
+  published Package 0.1.2 bytes are unchanged and do not require republishing.
+
+
+### NXR-TRANSCRIPT-PRIMARY-FORMAT-20260923 — ready
+
+- Detailed Transcription passes the selected JSON/Markdown/SRT primary format through the host bridge and validated invocation API. The saved shared-output Artifact matches that selection while the editor still receives structured JSON.
+- Export button label tracks the selected format, including restored drafts. Existing JSON exports/history are preserved.
+- Validation: 31 focused pytest checks passed, including all three output formats and structured editor payload preservation; Node host bridge and transcript editing checks, JavaScript syntax and git whitespace checks passed. Local restart required for API changes, no Runtime rebuild.
+
+
+### NXR-VIDEO-AUDIO-TRANSLATION-MINIAPP-20260923 — ready
+
+- Media Voice Studio Suite is advanced to source version 0.2.0 with a sixth Video Studio Mini-App, `Video Audio Translation`, for single-narrator/explainer videos. The user selects source/target languages and one already verified Voice Studio Character; Phase 1 deliberately does not diarize or map multiple speakers.
+- The mount-bound Host Broker owner-scopes the Character catalog and exposes only safe identity/readiness fields. It transcribes and punctuates source speech, splits sentence-sized cues, translates them, synthesizes the selected Character through the shared bounded Voice Studio speech path, removes the source dialogue stem, preserves the Demucs background stem, and remuxes an MP4 into Video Studio's host-owned Generation result.
+- The new ACPF profile installs/verifies only Detailed Transcription and MLX Demucs. Character-specific TTS remains bound to the user's existing Voice Studio preset and is validated at invocation time; no Character material, checkpoint path, Worker endpoint, Cookie, or browser storage crosses into the Package frame.
+- Validation: the final combined suite has 116 focused Package, provisioning, Host bridge, client, media-workflow and capability-broker tests passing, including timeline mixing, single-Character dispatch, non-diarized transcription, background-stem selection, temporary original-voice cloning, ASR back-listening and MP4 publication contracts. Ruff, Python/JavaScript syntax and whitespace checks pass. The exact `app-dev` Helper Control channel restarted only App-Dev Local (the `dev` boot ID remained unchanged), and the live source-mounted Video Studio shows 10 Mini-Apps, opens Video Audio Translation, and loads the owner-scoped Character selector without the previous `Not Found` error.
+- Package 0.2.0 is formally published as submission `a8f0664e-7729-4158-ae08-89518e4fd94f`, review `617ed92b-157d-4cab-9e63-84bf0c6c8c05`, in Repository metadata version 196. The 37,292-byte artifact SHA-256 is `78bb7f0e76bdead49ad9b873e161b820886efb2ba895a2151f93c4775f2efc02`. Anonymous Registry verification returned exact artifact bytes and exact envelope JSON. The Dev browser session was used only through the standard live publication script for this exact release; App-Dev Cookie/state was not read. See `docs/ai2apps-media-voice-studio-suite-0.2.0-release.md`.
+
+
+### NXR-VIDEO-AUDIO-TRANSLATION-TIMELINE-FIT-20260924 — ready
+
+- Video Audio Translation now measures every synthesized sentence against its original ASR start/end window. An overflowing sentence first receives one meaning-preserving concise-translation retry; if the selected Character model declares native speed control, the Host then regenerates at the bounded speed needed for that slot.
+- Any remaining overflow is compressed to the exact slot with a phase-vocoder time stretch that preserves pitch. Mixing always starts each sentence at its own source timestamp and never serializes it behind the previous sentence, eliminating cumulative drift and chipmunk-style resampling.
+- Validation: all 56 focused Studio media-workflow and capability-broker tests pass. New regressions cover concise-translation-before-speed ordering, exact independent clip windows, silence between cues and preservation of a 440 Hz pitch after 2x compression. Ruff passes. This is Host Python code and requires only an App-Dev Local restart, not an App or Runtime rebuild or Package publication.
+
+
+### NXR-VIDEO-AUDIO-TRANSLATION-PROGRESS-20260924 — ready
+
+- Video Audio Translation now reuses the authenticated Studio invocation/SSE progress channel used by Video Subtitles. Its six cards report audio extraction, narration transcription, text translation, per-sentence Character synthesis, background preservation and final muxing; completed cards show a checkmark and the active card shows its own phase percentage.
+- Character synthesis advances by completed sentence count, while mixing and MP4 muxing publish separate late-stage updates. The Host retains aggregate progress for event ordering and terminal detection, with capability-specific phase ranges for the six-stage workflow. Failure marks only the active phase.
+- The Host and Package static cache key advances to `pipeline-progress-v3`. Validation: 68 focused Broker, media-workflow, Host bridge, Mini-App client and Package tests pass; Ruff and both JavaScript syntax checks pass. App-Dev requires a Local restart plus refreshed Video Studio; no Runtime rebuild or Package publication is required for the source-mounted development instance.
+
+
+### NXR-VIDEO-AUDIO-TRANSLATION-ASR-VERIFICATION-20260924 — ready
+
+- Video Audio Translation adds an optional `ASR 回听校验` checkbox. Capability probing enables it only when the local Detailed Transcription ASR model is ready; otherwise it is unchecked and disabled, and the Host bridge accepts the new field only through the existing mount-bound allowlist.
+- When enabled, every synthesized Character sentence is transcribed locally and compared with the intended translated text after punctuation/spacing normalization. A low-score or empty result is regenerated up to two times; after three rejected attempts the workflow stops with the sentence number and verification details instead of exporting silent or garbled narration. The acceptance threshold is `0.62` so ordinary ASR wording variation does not cause excessive rejection.
+- Validation: 70 focused Broker, media-workflow, Host bridge, Mini-App client and Package tests pass, including a failed first synthesis followed by a successful ASR-verified retry. Ruff lint, Python/JavaScript syntax and whitespace checks pass. Host/Package cache keys advance to `dubbing-asr-v4`; App-Dev needs a Local restart and page refresh, with no Runtime rebuild or model Package publication.
+
+
+### NXR-VIDEO-AUDIO-TRANSLATION-ORIGINAL-VOICE-20260924 — ready
+
+- Video Audio Translation adds `原始音色 · 临时克隆` alongside saved Voice Studio Characters. Selecting it reveals a Host-filtered TTS model selector containing only executable single-reference voice-cloning providers; `安装更多模型…` restores the previous selection and invokes ACPF with `installMore` for the mount-declared optional `audio.voice_clone` capability.
+- ASR back-listening now canonicalizes Chinese spoken numerals before similarity scoring, so equivalent forms such as `54.99` and `五十四点九九` no longer exhaust retries or fail an otherwise valid dubbing run.
+- After transcription, the Host evaluates contiguous narration windows for duration proximity to ten seconds, speech density, audibility and clipping, then pairs the selected source WAV slice with exactly its ASR text. The reference remains request-scoped, is reused for each translated sentence, and is never written to Characters, Gallery or Package storage.
+- The mount bridge exposes only a safe voice-clone model catalog and validated `voice_clone_model_id`; model paths, Worker endpoints and reference media remain Host-owned. Character mode is unchanged, and original-voice mode keeps the existing concise-translation, model-speed, pitch-preserving timeline fit and optional ASR back-listening stages.
+- Validation: 116 focused provisioning, capability-broker, media-workflow, Host bridge and Package tests pass, including ten-second clear-window selection, model catalog filtering, Video Studio ACPF profile resolution, `installMore` forwarding and request-scoped reference synthesis without Character access. App-Dev needs a Local restart and page refresh; no Runtime rebuild or Package publication is required for the source-mounted development Package.
+
+
+### NXR-VIDEO-SUBTITLE-TRANSLATION-COUNT-RECOVERY-20260923 — ready
+
+- Video subtitle translation no longer rejects an entire run when the configured translation model merges or splits subtitle items in a JSON batch. The Host retains ownership of cue count and timing: a mismatched multi-item response is automatically retried by recursively dividing the batch, while a model-split single cue is safely rejoined before target-language punctuation restoration.
+- Invalid non-string response structures and empty single-cue translations still fail closed. The recovery applies to both Video Subtitles and the single-narrator Video Audio Translation pipeline because they share the bounded Host translation path.
+- Validation: all 109 focused Package, provisioning, Host bridge, client, media-workflow and capability-broker tests pass. New regressions cover a four-item batch returned as three items and a single cue returned as two fragments; Ruff and diff-whitespace checks pass. This is Host Python code and requires only an App-Dev Local restart, not an App or Runtime rebuild.
+
+
+### NXR-STUDIO-MINIAPP-PIPELINE-PROGRESS-20260923 — ready
+
+- Video Subtitles now reports real coarse pipeline progress for audio extraction, transcription, translation, subtitle layout and export. Completed cards show a checkmark; the current card shows a spinner and the Host-reported overall percentage; failures mark the active stage without falsely completing later stages.
+- The immediate Studio Host creates an actor-, installation-, mount- and capability-bound invocation ID, subscribes to a no-store SSE stream, and forwards validated events through the existing private MessagePort. The opaque Package frame receives no Cookie, credential, mount-controlled URL or arbitrary EventSource access. Records are short-lived and bounded; navigation closes active streams.
+- Live acceptance exposed three delivery defects: both the server stream and the Studio Host bridge treated a phase-level `completed` event as terminal after audio extraction, while the progress record retained only its newest event. Terminal detection at both layers now requires either failure or `completed` at 100%; the bridge regression explicitly keeps a 15% phase completion stream open. The record keeps a bounded 128-event replay window, every publication yields a scheduling point for StreamingResponse delivery, and audio decoding runs through `asyncio.to_thread` instead of blocking the Local event loop. The shared bridge asset cache key is advanced to `pipeline-progress-v2`, so later stages remain individually observable instead of all appearing complete when the final response arrives.
+- Pipeline cards display `phasePercent` (0–100% within the active step) instead of the aggregate workflow percentage. The SSE event retains aggregate `percent` for ordering and terminal detection. Subtitle burn-in now reports throttled frame-level progress from the worker thread back to the event loop, so the layout/burn step advances continuously rather than appearing frozen at the former aggregate 75% marker. Package resources use the `pipeline-progress-v2` cache key.
+- Validation: all 109 focused Package, provisioning, Host bridge, client, media-workflow and capability-broker tests pass, including SSE completion, invocation header binding, stage ordering and Package cache-key coverage. Ruff, Python/JavaScript syntax and diff-whitespace checks pass. The exact `app-dev` Helper Control channel restarted App-Dev only after the user's active 14:52 subtitle run completed; the `dev` boot ID remained unchanged. Live source-mount smoke opened the refreshed Video Subtitles Mini-App at the new App-Dev port with the five-stage Pipeline intact. No App or Runtime rebuild is required.
+
+
+### NXR-QUICK-READ-ASR-CHECK-20260924 — ready
+
+- Quick Read defaults to optional ASR back-listening for each bounded speech segment, including Character voices. Uses the video translation text normalization/similarity policy (0.62), maximum three total generation attempts.
+- Keeps highest-scoring audio on verification exhaustion, continues subsequent segments, and persists warnings in the shared output Artifact metadata. ASR unavailability/errors warn and preserve generated speech; cancellation still propagates.
+- Validation: 39 focused Python tests and Quick Read Node suite passed; API-to-ASR integration and final sentence-level retry changes separately rechecked (12 API + 13 chunking tests). Includes retries, best-result retention, continued subsequent generation, ASR error fallback and cancellation. Real-model listening not performed. App-dev Local restart required, no Runtime release.
+
+
+### NXR-QUICK-READ-ASR-MODEL-UI-20260924 — ready
+
+- Fixed Quick Read ASR checkbox alignment with scoped flex/checkbox sizing and separate help text.
+- Checking ASR reveals a model selector with automatic/installed ASR choices and Install new model via speech-recognition ACPF. Selection persists in the Quick Read draft and is honored by the backend; unavailable explicit selections warn instead of silently switching.
+- Validation: 12 ReadAloud API tests passed (explicit ASR choice over first available model), Node Quick Read/ACPF selection suite passed, JavaScript syntax and whitespace checks passed. Live UI not refreshed; API changes require app-dev Local restart, no Runtime rebuild.
+
+
+### NXR-INDEXTTS-CLAUSE-CHUNKING-20260924：IndexTTS 长句分段
+
+- 状态：`ready`。Host 统一 speech 调用对注册模型 ai2apps.model.indextts25/* 使用 120 加权字符预算（约 40 中文字），优先句号/逗号边界，逐段 ASR 校验与最多 3 次生成保持不变；其他模型仍为 300。
+- Characters、Quick Read、Audiobook 共用此策略；受影响的长 Line 缓存指纹更新。无需修改或发布 Runtime，仅 Python Host 重启后生效。
+- 调查：IndexTTS 引擎未设置固定 max_mel_tokens，vendored infer 按文本 token 动态计算；内部默认 120 文本 token 分段仍可能让截图长句整句执行。当前不能排除模型提前 EOS 或 ASR 误判；不宣称已完成真实音频质量验收。
+
+- 验证：41 项 speech chunking / readaloud API / render tasks 测试通过；截图文本拆成 4 段且完整还原。未执行真实模型音频质量 A/B，需重启 App-Dev Local 后验收。
+
+### NXR-INDEXTTS-EMPTY-AUDIO-RECOVERY-20260924：IndexTTS 无内容长音频细分恢复
+
+- 状态：`ready`。IndexTTS 校验未通过且音频超过 10 秒、ASR 无有效文字或 PCM 接近静音时，减半该段文本预算再生成，最多细分两层；子段继续最多 3 次 ASR 校验生成，成功替换原空白段，失败回退原音频并警告、继续后文。未启用 ASR 时仅按音频静音检测恢复。
+- 保留参考音频、语速和其他生成参数；递归请求和 ASR 请求使用不同 ID；非 IndexTTS 不变，Line 缓存策略版本更新。Host Python 修改，重启 Local 生效，无需 Runtime 发布。
+
+- 验证：50 项相关回归通过（49 项初次全组，追加无 ASR/取消测试及缓存调整后 38 项 speech/tasks 复验）；覆盖 >10 秒边界、空 ASR/静音、非 IndexTTS 不拆、普通识别不匹配不拆、子段失败回退、深度上限、继续后文及请求 ID 隔离。未执行真实模型音频验收。
+
+### NXR-AUDIOBOOK-INDEXTTS-ASR-20260924：Audiobook IndexTTS 校验及细分恢复
+
+- 状态：`ready`（受下述工程 ASR 开关与选择控制）。单行与整段对话生成共用 IndexTTS ASR 校验、最多三次生成及超过 10 秒空白音频的两层细分恢复。使用已就绪 audio_stt 模型，通过后台调用链路；无 ASR 时保留静音恢复并警告。Quick Read 和 Audiobook 共用 ASR verifier。
+- 警告随行音频私有缓存保留，单行 Artifact 和整段合并 Artifact 经宿主共用 Preview & Output 展示；合并警告标记 Line 序号。已有 IndexTTS 缓存策略升级，避免复用未经校验的旧音频。仅 Host 修改，重启 Local 生效。
+
+
+### NXR-AUDIOBOOK-ASR-SETTINGS-20260924：Audiobook 工程 ASR 设置
+
+- 状态：`ready`。工程新增默认开启的 ASR 开关与模型选择，含 ACPF 安装新模型入口；Schema 77 持久化设置，单行和整段渲染请求快照使用工程配置。关闭后不调用 ASR，IndexTTS 长静音恢复保留；指定模型不可用时警告而不偷偷切换。
+- ASR 配置进入 Line 缓存指纹；警告保留于私有缓存并通过共用 Preview & Output 显示。需重启 App-Dev Local 执行数据库迁移并刷新页面，无需 Runtime 或 Suite Package 更新。
+
+- 验证：52 项 ASR/生成/API 回归通过；后续设置开关与缓存回归通过，Node 测试覆盖工程 ASR 选择及安装回填，平台存储迁移测试清单更新至 77。未执行真实模型音频/UI 现场验收。
+
+### NXR-AUDIOBOOK-ASR-FIELD-MAPPING-20260924：修复勾选后 ASR 模型菜单隐藏
+
+- 状态：`ready`。项目 API 显式 camelCase 映射遗漏 asr_verification/asr_model_id，导致前端保存返回后丢失显示条件和已选模型。补齐 asrVerification/asrModelId 映射，覆盖新建、保存与重新读取工程的真实 API 回归。需重启 Local；无需额外数据库迁移或 Runtime 更新。
+
+### NXR-QUICK-READ-SPEED-20260924：Quick Read 原生及保持音高变速
+
+- 状态：`ready`。Quick Read 新增 0.5–2 倍速度输入，默认 1 倍并随草稿保存；后端按实际角色绑定模型判断原生速度能力，在支持范围内传 speed，否则在生成/ASR/合并完成后用已有 PyAV atempo 做保持音高的时间伸缩。试听、下载和共用输出历史使用同一份调整后音频，不重复变速；1 倍不处理。
+- API 拒绝超范围/非有限速度；输出保持 PCM WAV 24kHz，保留 64 MiB 限制。Host 变更，重启 Local 并刷新页面生效，无需 Runtime/Package 发布。
+
+- 验证：18 项 API/音频测试通过（新增速度请求影响旧计数断言，隔离后该项复验通过）；合成 440Hz 音频覆盖 0.5/0.75/1.25/2 倍，时长符合比例且音高保持；JS 语法和跨 Mini-App 输出选择测试通过。未做真实人声主观试听验收。
+
+### NXR-CHECKPOINT-HF-CREDENTIAL-FALLBACK-20260924：默认 HF 凭据及下载源降级
+
+- 补充修复：Helper 强制隔离 HF_HOME/HF_TOKEN_PATH，SDK 默认读取仍落到实例目录。Host 下载器现优先 SDK/App 凭据，缺省时仅在 Helper 隔离启动下只读用户 XDG_CACHE_HOME/huggingface/token（默认 ~/.cache/huggingface/token）。不修改环境、不复制凭据、不传入 Worker；异常/无效内容按缺凭据降级。58 项 acquisition/distribution 回归通过，新增隔离环境完整下载链路、优先级、只读及无效文件测试。需重启 Local，新请求生效；不打断当前 MS 下载。
+
+- 状态：`ready`。Checkpoint acquisition 在显式 Token 缺省时使用 huggingface_hub.get_token 读取标准 HF 环境/本地配置，不读取浏览器 Cookie、不复制或输出 Token；仅传入 HF adapter。
+- 源初始化缺凭据不再阻断其他源；探测不可用或传输失败继续现有备用源流程。脱敏、按 provider 去重的 Warning 随 download 进度传给 ACPF，以提示样式显示。所有源不可用仍失败；许可确认、Range 与分片/整文件哈希校验不变。
+- 验证：52 项 checkpoint acquisition/distribution 测试通过，覆盖默认/显式 Token 优先级、缺 Token、HF 403、超时、全源失败、MS 不带 HF Authorization 及警告无 Token。JS 语法检查通过。未执行真实账户下载；需重启 App-Dev Local 并刷新界面，无需更新模型 Package。
+
+### NXR-IMAGINE-FLUX4B-RECOMMENDATION-20260924
+
+- 状态：`ready`。Imagine Studio image.generation 与 image.edit 在所有兼容的 16 GiB 及以上 Apple Silicon 默认推荐 FLUX.2 Klein 4B，不再限制到 24 GiB 以下；Z-Image Turbo 保留可选但不再推荐，9B 保留手动选择。无需 Package 发布，重启 Local 后新 ACPF 会话生效。
+- 验证：Imagine Studio 14 项及 provisioning 原有 46 项测试通过；新增推荐测试覆盖 16/24/32/48/128/256 GiB 的生成和编辑场景。
+
+### NXR-IMAGINE-MINI-APP-I18N-20260924
+
+- 状态：`ready`（本轮完善现有中英文，其他系统语言仍回退英文，未宣称十语言全覆盖）。全部内置 Imagine Mini-App 共用翻译表；表情包工坊与商品摄影棚的引导、整组确认/进度、场景、光线、构图、占位符、风格开关统一使用翻译键，不再在模板里判断语言。
+- 补齐共享 Output/Chat、画质、规划中/依赖状态、加载/错误提示、调整导出阶段和聊天工具标题。模型指令、用户草稿、参数与输出记录不因切换语言改写。静态前端刷新生效，无需 Runtime 或 Package 发布。
+- 验证：中英文全部翻译键/占位符一致性、模板引用完整性、全部 Mini-App 元数据、双向语言切换及草稿保持测试；Sticker/Product 行为测试与 JS 语法检查通过。其他八种语言待确认扩展范围。
+
+### NXR-IMAGINE-PORTRAIT-20260924：内置单人人像 Mini-App
+
+- 状态：`ready`（实现与自动化回归完成；2026-09-26 用户确认 Imagine 新功能已验收，不重复付费生成）。新增 Portrait / 人像摄影棚，无需安装 Package；中英文支持，位于表情包工坊之后。复用 image_edit 模型筛选、Cloud 上传确认、Run/Artifact、共享 Output 与 Gallery。
+- 三种模式：Photo-ID（背景色、衣着、模型能力约束的比例/尺寸，固定头肩构图且不应用全局视觉风格）、杂志封面（封面风格、取景、可选刊名）、生活写真（场景、光线、取景、姿势气氛）。提示官方证件合规、生成文字和身份保真的限制。
+- 衣着 Custom 显示必填第二 Slot，严格用于服装参考，第一 Slot 必须有人物照。切回预设清除服装图，发送仅包含可见参考；Custom 筛除不支持双图的模型。独立草稿与参考恢复，生成时配置锁定，尺寸与生成指令分离。
+- 验证：14 项 Imagine Studio API 回归及 Portrait、i18n、Sticker、Product Node 测试通过；覆盖模式指令隔离、双图顺序、隐藏参考不发送、人物必填、模型筛选、草稿、中英文、目录注册及持久化。JS 语法通过；未调用付费生成。需重启 App-Dev Local 并刷新页面（不要为部署中断现有下载），无需重建 App/发布模型 Package。
+
+### NXR-IMAGINE-SUBMITTED-PROMPT-20260924
+
+- Prompt 输入框默认高度从 180px 缩为 120px（约 2/3），保留纵向拖动调整；纯 CSS，刷新生效。
+
+- 布局调整：Prompt 编辑区放入淡灰色 Generate 容器内部，位于生成说明/按钮行下方，移动端纵向排列；不改变提交和编辑逻辑。新增模板结构回归，Prompt 请求测试通过。刷新页面生效。
+
+- 状态：`ready`。内置 Image AI Mini-App 的生成区增加中英文完整 Prompt 预览/编辑；随参数实时计算，手动编辑可恢复自动，参数变化清除覆盖（界面明确说明），空白/超过 32000 字符禁用生成。Adjust Image 为本地像素调整，不显示模型 Prompt。
+- 编辑内容按 Mini-App 草稿保存，异步恢复参考图期间不丢失覆盖。Cloud/Local 都使用点击生成时的同一文本快照，Run input.submittedPrompt 记录原文；图片、尺寸等仍为独立请求字段。表情整组逐张按当前表情重组，沿用共享结果流程。
+- 验证：新增 Node 测试覆盖自动更新、手动编辑/恢复、参数失效、中英文切换、长度限制、草稿数据及真实请求构造的 Cloud/Local 原文一致；原有 Portrait/i18n/Sticker/Product 回归和 API 测试。纯前端刷新生效，无需 Package/Runtime 更新，未调用付费生成。
+
+### NXR-IMAGINE-OUTPUT-SLOT-DROP-20260924
+
+- 状态：`ready`。Output 显式拖出当前成果 ID/实例及兼容 Gallery 的 URL；所有内置 Mini-App 的共用图片 Slot 接收成果，读取原图为 File 后进入既有 setReference 流程，含多参考槽、合影背景、Portrait Custom 衣着和 Adjust Image。无需先存 Gallery。
+- 拒绝跨实例、未知成果、非同源/非历史图片内容 URL 和非支持图片 MIME；生成或调整导出期间不接收新拖入。保留原有本地文件、Gallery 素材拖入及 Gallery 拖出。此路径按本地上传图片处理，刷新后需重新选图。
+- 验证：Node 遍历全部就绪内置 Mini-App 的每个图片 Slot；覆盖双向 Gallery 兼容、原生文件、跨实例/外部 URL/未知成果/404/错误 MIME、忙碌锁。Portrait 和 Prompt 请求回归通过，JS 语法及 diff 检查通过。纯前端刷新生效，未执行现场鼠标拖动验收。
+
+### NXR-IMAGINE-EXTRACT-ITEMS-20260924
+
+- 状态：`ready`（实现及自动测试完成；2026-09-26 用户确认 Imagine 新功能已验收，不重复付费生成）。内置提取物品 / Extract Items，单图输入、image_edit 能力、OpenAI 优先；支持整套穿着、衣服、上衣、裤子、裙子、连衣裙、鞋、包及必填描述的 Custom。中英文界面/帮助、草稿与 Prompt 联动编辑，生成时锁定输入。
+- 默认生成去除人物/背景的白底独立物品参考图，整套衣着平铺于一张图；忽略共享视觉风格，明确 AI 重建非精确抠图、遮挡推测、无透明保证。复用 Run/Artifact、Output/Gallery 和图片 Slot 拖拽，可用于 Portrait Custom 衣着参考。
+- 验证：14 项 Imagine API 回归通过；Extract Items、i18n、Product、Output 全 Slot、Prompt 请求 Node 测试通过。未调用付费生成。需重启 App-Dev Local 并刷新；无需 Package 发布或 App 重建。
+
+### NXR-IMAGINE-TRY-ON-20260924
+
+- 状态：`ready`（代码及自动测试完成；2026-09-26 用户确认 Imagine 新功能已验收，不重复付费生成）。新增内置 Try On / 试穿试用，两个必填图片 Slot，第一张仅作人物身份、第二张仅作物品。支持穿戴、使用、手持三种互动，原姿势/站/坐/行走/Custom 与原背景/白棚/街景/公园/室内/Custom；自定义描述必填。
+- 筛选双参考 image_edit 模型，OpenAI 优先；忽略全局视觉风格保持原貌，明确非真实尺码/合身度保证。中英文界面/帮助、独立草稿、完整 Prompt 编辑、生成时输入锁定、共享 Run/Artifact/Output/Gallery，支持提取物品结果直接拖入。
+- 验证：14 项 Imagine API 回归；Try On 双输入/模式/自定义校验/模型筛选/草稿/i18n/Cloud 请求图片顺序测试以及 i18n、全 Slot 拖入、Product、Extract Items 测试通过。未调用付费生成；重启 App-Dev Local 并刷新生效，无需 Package 发布或 App 重建。
+
+
+### NXR-CHARACTER-ASR-INSTALL-20260926：角色参考克隆 ASR 空状态安装入口
+
+- 状态：`ready`。Characters 参考克隆始终显示 ASR 模型菜单，不依赖模型/素材数量或自动转写开关。包含安装更多模型入口，调用 ACPF audio.speech_recognition 并清除旧模型限制，安装后刷新并选中可用模型；取消保留选择。
+- 用户选择随草稿保存，并用于自动/单条/批量参考音频转写。沿用复选框对齐样式。Host HTML/JS 修改，App-Dev 刷新生效；截图中的 general Dev 需要纳入后续 Desktop 构建，非 Suite Package/Runtime 更新。
+- 验证：Node 前端回归覆盖无模型时安装、回填选中、取消和自动选择；JS 语法检查通过。
+
+### NXR-DEV-REBUILD-20260926：更新固定 Dev App
+
+- 状态：`ready`。按用户要求通过 build-dev-app.sh 重建固定 AI2Apps-dev.app，沿用 patched AceFox 153 和既有 .venv/bin/omlx 开发入口；身份 com.ai2apps.desktop.dev、instance dev、Development=true、源码根保持不变。
+- 旧 App 自动归档为 .build/archive/AI2Apps-dev-20260926-011755.app；只退出已确认的 dev Shell/Helper/Local，未复制或重置实例数据，未替换 App-Dev/Test/生产 App。
+- 构建及 codesign --verify --deep --strict 通过。已启动新 App，Shell PID 48198、Local PID 48200，127.0.0.1:62593/health 返回 healthy。包含当前源码的角色 ASR 模型菜单修复；未发布 Desktop/Package/Runtime。
+
+### NXR-CHARACTER-DESIGN-LABEL-20260926：创建方式设计生成汉化
+
+- 状态：`ready`。Characters 创建方式按钮移除硬编码 Design，使用 readaloud.character.design 翻译键；简体中文显示“设计生成”，英语保持 Design。翻译 JSON 和模板检查通过；刷新页面生效，无需重建或 Runtime/Package 更新。
+
+
+### NXR-VOICE-DESIGN-CONFIGURE-20260926：修复设计模型配置入口能力错配
+
+- 状态：`ready`。configureDesignModel 从 audio.speech_generation 改为 audio.voice_design，保留所选模型 ID 与 voice_design 操作约束；避免 VoxCPM2 被普通 TTS 候选列表过滤后误报 unsupported。声音设计 Profile 补入 Qwen3 VoiceDesign 5-bit（非默认推荐），继续优先 VoxCPM2。
+- 验证：前端回归断言配置按钮能力 ID，Profile 回归覆盖三种设计模型；Host JS 与 Profile 修改，重启 Local 并刷新生效，无需 Runtime/Suite Package 发布。
+
+### NXR-VIDEO-MODEL-RECOMMENDED-STEPS-20260926：按视频模型自动配置采样步数
+
+- 状态：`ready`。Video Studio Provider 能力响应把签名模型元数据中的 `recommended_steps` 合并到有效 `videoCapabilities.defaults.steps`；切换视频模型或自动选择新的可用模型时，采样步数随模型推荐值更新，不再沿用固定的 20。
+- 当前 MiniMax H3 Package 的 LightX2V 4-step、LightX2V 8-step、OpenVDN DMD 8-step、OpenVDN Stage-B 50-step 会分别自动配置为 4、8、8、50；未声明推荐值且能力中也未声明默认步数的标准 H3 等模型统一使用 20。普通刷新和草稿恢复不覆盖用户已保存的手动调整。
+- Host Python/Video Studio JavaScript 修改；重启 Local 并刷新页面生效，无需更新 H3 Model Package 或 Runtime。
+
+### NXR-VIDEO-STUDIO-TOASTS-20260926：提示信息悬浮与自动消失
+
+- 状态：`ready`。Video Studio 的成功和错误提示改为固定悬浮 Toast，不再占据文档流或把三栏工作区向下挤动；保留关闭按钮和淡入淡出效果。
+- 成功/普通提示显示 4.5 秒，错误提示显示 12 秒；新提示会取消旧计时器，页面卸载时清理计时器。错误使用 assertive `alert`，普通提示使用 polite `status`。纯 HTML/CSS/JavaScript 修改，刷新页面生效，无需重启 Local、更新 Package 或 Runtime。

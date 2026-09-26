@@ -1,4 +1,12 @@
 {
+  "acpf.安装 {0}": "Instalar {0}",
+  "acpf.选择要随 Package 一起下载并验证的 Checkpoint。": "Escolha o checkpoint para baixar e verificar com este Package.",
+  "acpf.安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。": "Instale o Package de modelo confiável, baixe o checkpoint selecionado e inicie e verifique o serviço do modelo.",
+  "acpf.安装 Package 并下载模型": "Instalar Package e baixar modelo",
+  "acpf.模型已安装并可用": "Modelo instalado e pronto",
+  "acpf.安装模型 Service Package": "Instalar o Service Package do modelo",
+  "acpf.下载所选模型 Checkpoint": "Baixar o checkpoint do modelo selecionado",
+  "acpf.启动并验证模型服务": "Iniciar e verificar o serviço do modelo",
   "acpf.完成": "Concluir",
   "acpf.安装成功": "Instalação concluída",
   "acpf.安装已完成，可以开始使用。": "A instalação foi concluída. Você já pode começar a usar.",
@@ -1172,5 +1180,14 @@
   "ai_browser.unauthorized": "Sua sessão expirou ou você não tem permissão. Entre novamente.",
   "ai_browser.network_error": "Não foi possível conectar. Verifique a conexão e tente novamente.",
   "ai_browser.invalid_request": "A solicitação é inválida. Atualize e tente novamente.",
-  "discover.install.restart_local": "Reiniciar AI2Apps"
+  "discover.install.restart_local": "Reiniciar AI2Apps",
+  "account.password_change.title": "Alterar senha",
+  "account.password_change.description": "Digite sua senha atual e confirme a nova. Depois, será necessário entrar novamente.",
+  "account.password_change.current": "Senha atual",
+  "account.password_change.confirm": "Confirmar nova senha",
+  "account.password_change.mismatch": "As novas senhas não coincidem.",
+  "account.password_change.unchanged": "A nova senha deve ser diferente da atual.",
+  "account.password_change.wrong_current": "A senha atual está incorreta.",
+  "account.password_change.unavailable": "Recurso indisponível. Tente novamente após a atualização do serviço Cloud.",
+  "account.password_change.success": "Senha alterada. Entre novamente com a nova senha."
 }

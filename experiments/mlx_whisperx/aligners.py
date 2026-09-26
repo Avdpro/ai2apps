@@ -308,7 +308,11 @@ class MLXQwen3ForcedAligner:
 
     @classmethod
     def _language_name(cls, language: str | None) -> str:
-        code = (language or "").lower().replace("_", "-").split("-", 1)[0]
+        normalized = (language or "").strip().lower()
+        for name in cls._LANGUAGES.values():
+            if normalized == name.lower():
+                return name
+        code = normalized.replace("_", "-").split("-", 1)[0]
         try:
             return cls._LANGUAGES[code]
         except KeyError as error:
@@ -352,6 +356,33 @@ class MLXQwen3ForcedAligner:
             groups.append(current)
         return groups
 
+    @staticmethod
+    def _alignment_text_key(value: str) -> str:
+        """Compare transcript text without alignment-neutral presentation marks."""
+
+        return "".join(
+            character.casefold()
+            for character in unicodedata.normalize("NFKC", value)
+            if character.isalnum()
+        )
+
+    @classmethod
+    def _should_replace_transcript_text(cls, original: str, aligned: str) -> bool:
+        """Replace only when alignment removed a substantial amount of content.
+
+        Qwen3-ASR owns transcript wording, casing, and punctuation.  The forced
+        aligner normally returns only timestamp-bearing lexical units, so rebuilding
+        ``Segment.text`` from those units would silently discard native punctuation.
+        A large coverage loss still indicates the aligner's existing hallucination
+        safeguard should win.
+        """
+
+        original_key = cls._alignment_text_key(original)
+        aligned_key = cls._alignment_text_key(aligned)
+        if not aligned_key or aligned_key == original_key:
+            return False
+        return len(aligned_key) < len(original_key) * 0.65
+
     def _apply_items(
         self,
         group: list[Segment],
@@ -394,7 +425,9 @@ class MLXQwen3ForcedAligner:
             aligned_text = separator.join(
                 word.word.strip() for word in segment.words if word.word.strip()
             ).strip()
-            if aligned_text and aligned_text != original_text.strip():
+            if aligned_text and self._should_replace_transcript_text(
+                original_text, aligned_text
+            ):
                 segment.text = aligned_text
                 rewritten_segments += 1
                 removed_text_characters += max(

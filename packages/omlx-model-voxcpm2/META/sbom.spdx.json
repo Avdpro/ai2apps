@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ai2apps.model.voxcpm2-0.1.0",
+  "documentNamespace": "https://ai2apps.com/spdx/ai2apps.model.voxcpm2/0.1.0",
+  "packages": [
+    {
+      "name": "mlx-community/VoxCPM2-4bit",
+      "SPDXID": "SPDXRef-VoxCPM2-4bit",
+      "versionInfo": "dc9e5c187858da5f4a13dc4c247e297339216381",
+      "downloadLocation": "https://huggingface.co/mlx-community/VoxCPM2-4bit",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    },
+    {
+      "name": "mlx-community/VoxCPM2-8bit",
+      "SPDXID": "SPDXRef-VoxCPM2-8bit",
+      "versionInfo": "d52725898a0675703f7f9ddc5a4d1a3cdbb99032",
+      "downloadLocation": "https://huggingface.co/mlx-community/VoxCPM2-8bit",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    }
+  ]
+}

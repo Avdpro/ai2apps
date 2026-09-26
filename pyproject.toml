@@ -50,14 +50,10 @@ dependencies = [
     # regex for mlx-lm's Gemma 4 tool parser (uses recursive patterns)
     "regex",
     "mlx-embeddings==0.1.0",
-    # mlx-vlm custom processors bypass HF AutoProcessor, so torch is not required
-    # Keep <5.13 until the broader dependency set gets a dedicated resolver
-    # smoke test with transformers 5.13+. The mlx-lm pin above includes the
-    # known NewlineTokenizer registration fix. Floor 5.12.1: AutoTokenizer's
-    # fix_mistral_regex backend gate (used by get_tokenizer_config for
-    # mistral-common models) first shipped in 5.12.1 — on older 5.x the kwarg
-    # is silently swallowed and Tekken prompts stay corrupted.
-    "transformers>=5.12.1,<5.13",
+    # MLX-Audio 0.5.5 requires transformers 5.14+ for current audio model
+    # tokenizers. Keep the source Runtime and the on-demand Knowledge Runtime
+    # on the same reviewed version to avoid mutually unsatisfiable extras.
+    "transformers==5.15.1",
     # transformers 5.x's tokenization_mistral_common module imports
     # ReasoningEffort from mistral_common (added in 1.10). The audio extras
     # transitively pull mistral-common via mlx-audio[stt], which historically
@@ -223,12 +219,12 @@ modelscope = [
     "modelscope>=1.10.0",
 ]
 audio = [
-    # Source checkouts can retain reviewed commit 5175326 via
+    # Source checkouts retain reviewed commit cd605ec via
     # [tool.uv.sources]; published metadata resolves entirely from PyPI.
-    # tts extra: misaki, num2words, spacy, phonemizer-fork, espeakng-loader, sentencepiece
-    # stt extra: tiktoken, mistral-common[audio]
-    # sts extra: tts deps + stt deps + webrtcvad
-    "mlx-audio[tts,stt,sts]==0.4.6",
+    "mlx-audio[tts,stt,sts]==0.5.5",
+    # Torch-free Chinese/English text normalization used by the native MLX
+    # IndexTTS 2.5 pipeline on macOS arm64.
+    "wetext==0.1.8",
     # Small native wrapper used by the CT-Transformer punctuation Package.
     # Wheels are available for the bundled CPython 3.11/arm64 runtime.
     "sherpa-onnx==1.13.4",
@@ -248,12 +244,10 @@ paroquant = [
 # version-free. End-users don't `pip install omlx[bundle]`; this is for
 # the macOS .app build pipeline.
 #
-# mlx-audio[tts,stt,sts]'s 12 transitive deps appear explicitly because
+# mlx-audio's Runtime dependencies appear explicitly because
 # venvstacks 0.7.0's internal `uv pip compile` runs with --no-config and
-# doesn't propagate pyproject.toml's `tool.uv.override-dependencies`,
-# so it can't resolve mlx-audio's `mlx-lm==0.31.1` pin against our
-# git-pinned mlx-lm (v0.31.3). build.py installs mlx-audio + paroquant
-# separately via --no-deps post-resolution.
+# doesn't propagate pyproject.toml's source pins. build.py installs the
+# reviewed mlx-audio revision and paroquant separately via --no-deps.
 bundle = [
     "mcp>=1.5.0",
     "modelscope>=1.10.0",
@@ -271,6 +265,7 @@ bundle = [
     "phonemizer-fork>=3.3.2",
     "espeakng-loader>=0.2.4",
     "webrtcvad>=2.0.10",
+    "wetext==0.1.8",
     "sherpa-onnx==1.13.4",
     "av==18.0.0",
     # [audio] extra on top of pyproject's plain mistral-common>=1.10
@@ -347,6 +342,7 @@ namespaces = false
     "tailwind.config.js",
 ]
 "omlx" = ["oq_calibration_data.json", "oqe_calibration_data.json"]
+"omlx.vendor.indextts25" = ["LICENSE", "NOTICE.md", "data/*.npz"]
 "omlx.admin" = [
     "bench_corpora/*",
 ]
@@ -377,7 +373,7 @@ override-dependencies = [
 mlx-lm = { git = "https://github.com/ml-explore/mlx-lm", rev = "ab1806e8f5d6aa035973af194a1b9198ab4754dc" }
 mlx-embeddings = { git = "https://github.com/Blaizzy/mlx-embeddings", rev = "32981fa4e8064ed664b52071789dd18271fe4206" }
 mlx-vlm = { git = "https://github.com/Blaizzy/mlx-vlm", rev = "78b96eb5462141447b9a6b4943ef553891da56dd" }
-mlx-audio = { git = "https://github.com/Blaizzy/mlx-audio", rev = "51753266e0a4f766fd5e6fbc46652224efc23981" }
+mlx-audio = { git = "https://github.com/Blaizzy/mlx-audio", rev = "cd605ecfcc266ccf6ea3077586c373101be982c6" }
 dflash-mlx = { git = "https://github.com/jundot/dflash-mlx", rev = "474f8e1ba95864f5bb0759cd1b9a13c80abc5ce3" }
 
 [tool.black]

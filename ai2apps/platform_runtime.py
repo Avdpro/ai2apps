@@ -824,6 +824,8 @@ class PlatformRuntime:
             workspace=self.workspace,
             root=self.config.paths.base_path / "platform" / "video-tasks",
         )
+        from ai2apps.readaloud.materials import VoiceMaterials
+        VoiceMaterials(database, self.config.paths.artifacts_path).migrate_profiles()
         self.readaloud_tasks = ReadAloudTaskManager(
             runtime=self,
             database=database,

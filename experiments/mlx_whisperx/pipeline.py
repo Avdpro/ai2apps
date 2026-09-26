@@ -18,6 +18,33 @@ from .schema import (
 )
 from .vad import EnergyVAD, VoiceActivityDetector
 
+_LANGUAGE_NAME_CODES = {
+    "chinese": "zh",
+    "mandarin": "zh",
+    "cantonese": "yue",
+    "english": "en",
+    "german": "de",
+    "spanish": "es",
+    "french": "fr",
+    "italian": "it",
+    "portuguese": "pt",
+    "russian": "ru",
+    "korean": "ko",
+    "japanese": "ja",
+}
+
+
+def normalize_language(value: str | None) -> str | None:
+    """Normalize ASR language names and locale tags to pipeline codes."""
+
+    normalized = str(value or "").strip().lower().replace("_", "-")
+    if not normalized:
+        return None
+    if normalized in _LANGUAGE_NAME_CODES:
+        return _LANGUAGE_NAME_CODES[normalized]
+    primary = normalized.split("-", 1)[0]
+    return "zh" if primary == "cmn" else primary
+
 
 class Transcriber(Protocol):
     name: str
@@ -142,7 +169,7 @@ class MLXWhisperXPipeline:
                 )
                 language = result.get("language")
                 if language:
-                    languages.append(str(language))
+                    languages.append(normalize_language(str(language)) or str(language))
                 local_fallback = TimeSpan(0.0, span.duration)
                 raw_segments = result.get("segments") or []
                 if raw_segments:
@@ -168,7 +195,7 @@ class MLXWhisperXPipeline:
                         )
                     )
 
-        language = settings.language or (languages[0] if languages else None)
+        language = normalize_language(settings.language) or (languages[0] if languages else None)
         alignment_error: str | None = None
         if self.aligner is not None:
             try:

@@ -4,12 +4,13 @@ import asyncio
 import copy
 import hashlib
 from types import SimpleNamespace
+from pathlib import Path
 
 import httpx
 import pytest
 
 import ai2apps.checkpoint_distribution as checkpoint_distribution
-from ai2apps.checkpoint_acquisition import CheckpointAcquisitionService
+from ai2apps.checkpoint_acquisition import CheckpointAcquisitionService, _download_hf_token
 from ai2apps.checkpoint_distribution import (
     CheckpointCache,
     CheckpointConsentRequiredError,
@@ -97,6 +98,112 @@ def _conditional_manifest(payload: bytes):
         },
     )
     return parse_checkpoint_distribution_manifest(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["default", "explicit", "missing", "denied", "timeout", "all_failed", "isolated"])
+async def test_hf_credentials_and_source_fallback(tmp_path, monkeypatch, mode):
+    import huggingface_hub
+
+    monkeypatch.setenv("AI2APPS_SUPERVISED", "helper")
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    if mode == "isolated":
+        token_file = tmp_path / ".cache/huggingface/token"
+        token_file.parent.mkdir(parents=True)
+        token_file.write_text("test-default-token\n")
+
+    payload = b"checkpoint"
+    raw = copy.deepcopy(_manifest(payload).raw)
+    raw["distribution"]["sources"].insert(0, {
+        "type": "huggingface", "repoId": "publisher/model",
+        "revision": "a" * 40, "path": "model.safetensors",
+        "access": "gated_user_token", "verified": True,
+    })
+    manifest = parse_checkpoint_distribution_manifest(raw)
+    default_calls = []
+
+    def get_token():
+        default_calls.append(True)
+        return None if mode in {"missing", "isolated"} else "test-default-token"
+
+    monkeypatch.setattr(huggingface_hub, "get_token", get_token)
+
+    async def distribution(_):
+        return manifest
+
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.url.host == "huggingface.co":
+            assert request.headers["Authorization"] == (
+                "Bearer test-explicit-token" if mode == "explicit" else "Bearer test-default-token"
+            )
+            if mode == "timeout":
+                raise httpx.ReadTimeout("simulated", request=request)
+            if mode in {"denied", "all_failed"}:
+                return httpx.Response(403)
+        else:
+            assert "Authorization" not in request.headers
+            if mode == "all_failed":
+                return httpx.Response(503)
+        start, end = map(int, request.headers["Range"].removeprefix("bytes=").split("-"))
+        return httpx.Response(206, headers={
+            "Content-Range": f"bytes {start}-{end}/{len(payload)}"
+        }, content=payload[start:end + 1])
+
+    service = CheckpointAcquisitionService(
+        registry=SimpleNamespace(distribution=distribution),
+        cache=CheckpointCache(tmp_path / "cache"),
+        transport=httpx.MockTransport(respond),
+    )
+    progress = []
+    if mode == "all_failed":
+        with pytest.raises(CheckpointDownloadError):
+            await service.acquire(manifest.distribution_id, progress=progress.append)
+        return
+    result = await service.acquire(
+        manifest.distribution_id, progress=progress.append,
+        hf_token="test-explicit-token" if mode == "explicit" else None,
+    )
+    assert (result.snapshot / "model.safetensors").read_bytes() == payload
+    assert bool(default_calls) == (mode != "explicit")
+    if mode in {"missing", "denied", "timeout"}:
+        assert result.source_bytes == {"modelscope": len(payload)}
+        assert len(progress[-1]["download"]["warnings"]) == 1
+    if mode == "missing":
+        assert all(r.url.host != "huggingface.co" for r in requests)
+    assert "test-default-token" not in str(progress)
+    assert "test-explicit-token" not in str(progress)
+
+
+@pytest.mark.parametrize("contents", ["", "bad\nvalue", "x" * 17000, "\udcff"])
+def test_user_hf_token_invalid_is_ignored(tmp_path, monkeypatch, contents):
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+    monkeypatch.setenv("AI2APPS_SUPERVISED", "helper")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    token_file = tmp_path / "huggingface/token"
+    token_file.parent.mkdir()
+    token_file.write_bytes(contents.encode("utf-8", errors="surrogateescape"))
+    assert _download_hf_token() is None
+
+
+def test_user_hf_token_fallback_is_read_only_and_lower_priority(tmp_path, monkeypatch):
+    import huggingface_hub
+    monkeypatch.setenv("AI2APPS_SUPERVISED", "helper")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    token_file = tmp_path / "huggingface/token"
+    token_file.parent.mkdir()
+    token_file.write_text("user-token\n")
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: "app-token")
+    assert _download_hf_token() == "app-token"
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+    assert _download_hf_token() == "user-token"
+    assert token_file.read_text() == "user-token\n"
+    monkeypatch.delenv("AI2APPS_SUPERVISED")
+    assert _download_hf_token() is None
 
 
 @pytest.mark.asyncio

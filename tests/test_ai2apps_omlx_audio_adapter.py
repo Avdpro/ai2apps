@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import importlib.util
 import wave
 from pathlib import Path
 
@@ -154,6 +155,21 @@ class _TTSEngine:
 class _TTSAdapter(OmlxTTSAdapter):
     async def create_engine(self, checkpoint, runtime_options=None):
         return _TTSEngine()
+
+
+class _StructuredTTSAdapter(_TTSAdapter):
+    def synthesis_options(
+        self, model_id, body, *, speed, emotion, emotion_strength, instructions
+    ):
+        return {
+            "speed": 1.0,
+            "duration_factor": 1.0 / speed,
+            "emotion_vector": [0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            if emotion == "happy"
+            else None,
+            "language": "ZH",
+            "instructions": instructions,
+        }
 
 
 def test_omlx_tts_adapter_resolves_only_declared_dependency_paths(tmp_path):
@@ -313,6 +329,47 @@ async def test_omlx_tts_adapter_maps_emotion_to_native_instructions(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_omlx_tts_adapter_allows_package_structured_controls(tmp_path):
+    context = _context(tmp_path, "example.audio/tts")
+    context.models[0]["audio_capabilities"]["tts"]["speed"] = {
+        "mode": "native",
+        "minimum": 0.5,
+        "maximum": 2.0,
+    }
+    context.models[0]["audio_capabilities"]["tts"]["instructions"] = {
+        "mode": "unsupported"
+    }
+    adapter = _StructuredTTSAdapter(context)
+
+    await adapter.invoke(
+        ModelWorkerRequest(
+            operation="audio_speech",
+            request_id="request-structured-controls",
+            payload={
+                "model": "upstream/audio",
+                "input": "你好",
+                "speed": 1.25,
+                "style": {"emotion": "happy"},
+            },
+        )
+    )
+
+    assert adapter._engine.kwargs["speed"] == 1.0
+    assert adapter._engine.kwargs["duration_factor"] == pytest.approx(0.8)
+    assert adapter._engine.kwargs["emotion_vector"] == [
+        0.8,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
+    assert adapter._engine.kwargs["instructions"] is None
+
+
+@pytest.mark.asyncio
 async def test_omlx_tts_adapter_rejects_unavailable_voice_and_speed(tmp_path):
     adapter = _TTSAdapter(_context(tmp_path, "example.audio/tts"))
     for payload, message in (
@@ -439,3 +496,32 @@ async def test_omlx_tts_adapter_requires_voice_design_instructions(tmp_path):
                 payload={"model": "upstream/audio", "input": "你好"},
             )
         )
+
+
+def test_voxcpm2_package_adapter_combines_controls_with_standard_priority():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "packages/omlx-model-voxcpm2/src/worker_adapter.py"
+    )
+    spec = importlib.util.spec_from_file_location("voxcpm2_worker_adapter", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    adapter = module.VoxCPM2Adapter.__new__(module.VoxCPM2Adapter)
+
+    options = adapter.synthesis_options(
+        "ai2apps.model.voxcpm2/4bit",
+        {"language": "zh"},
+        speed=1.25,
+        emotion="happy",
+        emotion_strength=1.0,
+        instructions="Speak slowly and sadly.",
+    )
+
+    assert options["speed"] == 1.0
+    assert options["language"] == "zh"
+    assert options["instructions"].startswith("Speak slowly and sadly.")
+    assert options["instructions"].endswith(
+        "Mandatory delivery controls override conflicting earlier style: "
+        "sound genuinely happy and warm; speak faster than normal."
+    )

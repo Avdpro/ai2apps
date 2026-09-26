@@ -654,6 +654,8 @@ class VideoTaskManager:
                 error={"code": code, "message": str(exc)},
                 completed_at=utc_now_text(),
             )
+        finally:
+            self.prune_history(row["actor_id"])
 
     async def _invoke(
         self,
@@ -836,7 +838,40 @@ class VideoTaskManager:
             raise VideoGenerationError("task_not_found", "Video task was not found", status_code=404)
         return self._response(row)
 
+    def delete(self, task_id, *, actor_id):
+        row = self._row(task_id, actor_id)
+        if row is None:
+            raise VideoGenerationError('task_not_found', 'Video task was not found', status_code=404)
+        if row['status'] not in {'succeeded','failed','cancelled','expired'}:
+            raise VideoGenerationError('task_active', 'Stop the task before deleting it', status_code=409)
+        if row['artifact_id']:
+            self.workspace.retire_artifact(row['artifact_session_id'], row['artifact_id'])
+        task_root = (self.root / row['id']).resolve()
+        task_root.relative_to(self.root)
+        shutil.rmtree(task_root, ignore_errors=True)
+        with self.database.transaction(write=True) as connection:
+            connection.execute('DELETE FROM video_generation_tasks WHERE id=?', (task_id,))
+
+    def prune_history(self, actor_id: str) -> None:
+        # Running and queued jobs are never candidates for retention cleanup.
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                """SELECT * FROM video_generation_tasks WHERE actor_id=?
+                   AND status IN ('succeeded','failed','cancelled','expired')
+                   ORDER BY created_at DESC,id DESC LIMIT -1 OFFSET 20""",
+                (self._owner_actor_id(actor_id),),
+            ).fetchall()
+        for row in rows:
+            if row["artifact_id"]:
+                self.workspace.retire_artifact(row["artifact_session_id"], row["artifact_id"])
+            task_root = (self.root / row["id"]).resolve()
+            task_root.relative_to(self.root)
+            shutil.rmtree(task_root, ignore_errors=True)
+            with self.database.transaction(write=True) as connection:
+                connection.execute("DELETE FROM video_generation_tasks WHERE id=?", (row["id"],))
+
     def list(self, *, actor_id: str, limit: int = 20, after: str | None = None) -> dict[str, Any]:
+        self.prune_history(actor_id)
         limit = max(1, min(MAX_TASKS_PER_LIST, int(limit)))
         query = "SELECT * FROM video_generation_tasks WHERE actor_id=?"
         parameters: list[Any] = [self._owner_actor_id(actor_id)]

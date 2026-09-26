@@ -26,7 +26,8 @@ def test_studios_load_shared_package_mini_app_client_and_resume_setup():
     assert "AI2AppsStudioMiniApps.probe" in video
     assert "AI2AppsStudioMiniApps.probe" in readaloud
     assert "AI2AppsCapabilities.ensure" in helper
-    assert "async setup(studioId, miniApp)" in helper
+    assert "async setup(studioId, miniApp, {installMore = false} = {})" in helper
+    assert "}, {installMore});" in helper
     assert "async resumeSetup(studioId, miniApps = [])" in helper
     assert "pendingSetup(studioId)" in helper
     assert "actionId: 'setup-mini-app'" in helper
@@ -70,9 +71,12 @@ def test_studios_load_shared_package_mini_app_client_and_resume_setup():
     assert "message?.version !== 1" in helper
     assert "Math.min(20000, Math.max(620" in helper
     assert "frame.style.height = `${height}px`" in helper
-    assert "package-auto-height-v1" in video_template
-    assert "package-auto-height-v1" in readaloud_template
-    assert "package-auto-height-v1" in imagine_template
+    assert "'subtitle_font_size', 'subtitle_background'" in helper
+    assert "'asr_verification'" in helper
+    shared_script = "static('js/studio_mini_apps.js') }}?v=original-voice-v7"
+    assert shared_script in video_template
+    assert shared_script in readaloud_template
+    assert shared_script in imagine_template
 
 
 def test_acpf_groups_repeated_steps_and_keeps_only_step_region_scrollable():
@@ -91,3 +95,19 @@ def test_acpf_groups_repeated_steps_and_keeps_only_step_region_scrollable():
     assert ".acpf-run-sheet{height:" in styles
     assert ".acpf-steps>li.active>i" in styles
     assert ".acpf-steps>li.failed>i" in styles
+
+
+def test_voice_studio_output_is_host_owned_and_mode_independent():
+    template = (ROOT / "web/templates/system_apps/readaloud.html").read_text()
+    panel = template.split('<aside class="ra-render-workspace"', 1)[1].split('</aside>', 1)[0]
+    assert 'pipelineMode' not in panel
+    assert 'separationActive' not in panel
+    assert panel.count('x-for="task in audioTasks"') == 1
+    assert 'x-for="item in runs"' not in panel
+    assert panel.count('x-ref="audioPlayer"') == 1
+    client = (ROOT / "web/static/js/readaloud.js").read_text()
+    assert "get audioTasks() { return this.studioOutputs; }" in client
+    assert "request('/outputs')" in client
+    package = (ROOT.parent / "packages/ai2apps-media-voice-studio-suite/web/mini-app.js").read_text()
+    assert "hostRequest('output.read'" in package
+    assert "response.headers.get('x-ai2apps-download-url')" in package

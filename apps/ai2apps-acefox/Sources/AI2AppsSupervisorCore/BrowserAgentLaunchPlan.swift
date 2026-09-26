@@ -96,7 +96,7 @@ public struct BrowserAgentLaunchPlan: Equatable, Sendable {
             "AI2APPS_INSTANCE_ID": instanceID.rawValue,
             "AI2APPS_BROWSER_PROFILE_ID": profileID.rawValue,
             "AI2APPS_BROWSER_ROLE": "agent",
-            // The shared AI2AppsShell.app is a regular foreground App for the
+            // The shared AI2Apps.app is a regular foreground App for the
             // product Shell. Agent instances remain visible but do not create
             // extra Dock or Command-Tab entries.
             "MOZ_APP_NO_DOCK": "1",

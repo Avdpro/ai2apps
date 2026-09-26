@@ -4,6 +4,8 @@
   var root = document.getElementById("account-login");
   if (!root) return;
 
+  var t = window.t;
+
   var installationBound = root.dataset.installationBound === "true";
   var mode = "login";
   var email = "";
@@ -23,12 +25,12 @@
   var deviceName = document.getElementById("device-name");
 
   document.getElementById("login-subtitle").textContent = installationBound
-    ? "Sign in with an account authorized for this device"
-    : "Sign in or register to set up the Core user";
+    ? t("login.account.bound_subtitle")
+    : t("login.account.setup_subtitle");
   deviceName.value = "Mac";
 
   function showError(message) {
-    errorBox.textContent = message || "Something went wrong";
+    errorBox.textContent = message || t("login.account.error");
     errorBox.hidden = false;
   }
 
@@ -45,8 +47,8 @@
   function setLoading(value) {
     submitButton.disabled = value;
     submitButton.textContent = value
-      ? "Please wait…"
-      : mode === "login" ? "Sign in" : "Create account";
+      ? t("login.account.waiting")
+      : mode === "login" ? t("login.account.sign_in") : t("login.account.register");
     verifyStage.querySelector("button").disabled = value;
     document.getElementById("bind-core").disabled = value;
   }
@@ -118,7 +120,7 @@
       setStage("bind");
       return;
     }
-    throw new Error(message(result.data, "This account is not authorized for this Local instance"));
+    throw new Error(message(result.data, t("login.account.unauthorized")));
   }
 
   loginMode.addEventListener("click", function () { setMode("login"); });
@@ -130,7 +132,7 @@
     email = emailInput.value.trim();
     password = passwordInput.value;
     if (!validPassword(password)) {
-      showError("Password must contain 8–128 UTF-8 bytes.");
+      showError(t("login.account.password_error"));
       return;
     }
     setLoading(true);
@@ -143,7 +145,7 @@
           }),
         });
         if (!registration.response.ok) {
-          throw new Error(message(registration.data, "Registration failed"));
+          throw new Error(message(registration.data, t("login.account.register_error")));
         }
         verifyEmail.textContent = email;
         setStage("verify");
@@ -152,7 +154,7 @@
       var login = await json("/v1/platform/cloud/auth/login", {
         method: "POST", body: JSON.stringify({ email: email, password: password }),
       });
-      if (!login.response.ok) throw new Error(message(login.data, "Sign in failed"));
+      if (!login.response.ok) throw new Error(message(login.data, t("login.account.login_error")));
       await activate();
     } catch (error) {
       showError(error.message);
@@ -171,12 +173,12 @@
         body: JSON.stringify({ email: email, code: verificationCode.value.trim() }),
       });
       if (!verification.response.ok) {
-        throw new Error(message(verification.data, "Verification failed"));
+        throw new Error(message(verification.data, t("login.account.verify_error")));
       }
       var login = await json("/v1/platform/cloud/auth/login", {
         method: "POST", body: JSON.stringify({ email: email, password: password }),
       });
-      if (!login.response.ok) throw new Error(message(login.data, "Sign in failed"));
+      if (!login.response.ok) throw new Error(message(login.data, t("login.account.login_error")));
       await activate();
     } catch (error) {
       showError(error.message);
@@ -190,7 +192,7 @@
     var result = await json("/v1/platform/cloud/auth/email/resend", {
       method: "POST", body: JSON.stringify({ email: email }),
     });
-    if (!result.response.ok) showError(message(result.data, "Could not resend code"));
+    if (!result.response.ok) showError(message(result.data, t("login.account.resend_error")));
   });
 
   document.getElementById("bind-core").addEventListener("click", async function () {
@@ -204,7 +206,7 @@
           ownerPassword: password,
         }),
       });
-      if (!result.response.ok) throw new Error(message(result.data, "Core binding failed"));
+      if (!result.response.ok) throw new Error(message(result.data, t("login.account.bind_error")));
       finish();
     } catch (error) {
       showError(error.message);

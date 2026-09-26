@@ -3,7 +3,7 @@
   "package": {
     "id": "ai2apps/model-detailed-transcription-mlx",
     "type": "service",
-    "version": "0.1.2",
+    "version": "0.1.4",
     "displayName": "MLX WhisperX Detailed Transcription",
     "description": "Standalone subtitle and meeting transcription with Qwen3 ASR, forced alignment, VAD, and anonymous diarization. Not a Chat STT model."
   },
@@ -24,5 +24,38 @@
     {"packageId": "ai2apps/runtime-omlx", "version": ">=1.6.0 <2.0.0", "optional": false}
   ],
   "files": [],
-  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"}
+  "sbom": {"format": "spdx-json-2.3", "path": "META/sbom.spdx.json"},
+  "discovery": {
+    "kind": "model",
+    "categories": ["speech"],
+    "tasks": [
+      "detailed-transcription",
+      "speaker-diarization",
+      "subtitle-generation"
+    ]
+  },
+  "modelProfile": {
+    "sizeBytes": 3832992557,
+    "minimumMemoryBytes": 8589934592,
+    "scores": {"speed": 3, "capability": 5},
+    "benchmark": {
+      "label": "Existing package estimate; not a new hardware benchmark",
+      "device": "Apple Silicon reference hardware"
+    }
+  },
+  "modelInstall": {
+    "serviceKey": "ai2apps.model.detailed-transcription-mlx",
+    "models": [
+      {
+        "id": "ai2apps.model.detailed-transcription-mlx/quality",
+        "label": "Detailed Transcription Quality",
+        "recommended": true
+      },
+      {
+        "id": "ai2apps.model.detailed-transcription-mlx/compact",
+        "label": "Detailed Transcription Compact",
+        "recommended": false
+      }
+    ]
+  }
 }

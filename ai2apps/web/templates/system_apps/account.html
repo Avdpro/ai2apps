@@ -290,6 +290,18 @@
                     </div>
                 </div>
             </section>
+            <section x-show="activeSection==='security' && signedIn" x-cloak class="account-card account-wide">
+                <div class="account-card-head"><div><h2>{{ t('account.password_change.title') }}</h2><p>{{ t('account.password_change.description') }}</p></div></div>
+                <div class="account-card-body">
+                    <form @submit.prevent="changePassword()">
+                        <label class="account-field"><span>{{ t('account.password_change.current') }}</span><input class="account-input" type="password" autocomplete="current-password" maxlength="128" required :disabled="busy" x-model="currentPassword"></label>
+                        <label class="account-field"><span>{{ t('account.field.new_password') }}</span><input class="account-input" type="password" autocomplete="new-password" maxlength="128" required :disabled="busy" aria-describedby="account-change-password-requirements" x-model="changeNewPassword"></label>
+                        <small id="account-change-password-requirements">{{ t('account.auth.password_requirements') }}</small>
+                        <label class="account-field"><span>{{ t('account.password_change.confirm') }}</span><input class="account-input" type="password" autocomplete="new-password" maxlength="128" required :disabled="busy" x-model="confirmNewPassword"></label>
+                        <div class="account-actions"><button type="submit" class="account-button primary" :disabled="busy">{{ t('account.password_change.title') }}</button><button type="button" class="account-button" :disabled="busy" @click="clearPasswordChange();clearNotice()">{{ t('account.action.cancel') }}</button></div>
+                    </form>
+                </div>
+            </section>
             <section x-show="activeSection==='security' && user?.systemRole === 'admin'" x-cloak class="account-card account-wide">
                 <div class="account-card-head"><div><h2>{{ t('account.admin.title') }}</h2><p>{{ t('account.admin.subtitle') }}</p></div></div>
                 <div class="account-card-body">

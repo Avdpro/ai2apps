@@ -756,6 +756,7 @@ def test_model_package_config_exposes_weight_download():
     assert "/admin/api/ai2apps/preflight" in script
     assert "confirmCheckpointLicenses" in script
     assert "checkpoint_license_consent_required" in script
+    assert "overlay.style.zIndex = '10000'" in script
     assert "license_consents: licenseConsents" in script
     assert "dynaPreflight?.ready" in template
 

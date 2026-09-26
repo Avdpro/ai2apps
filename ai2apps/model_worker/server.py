@@ -53,6 +53,8 @@ OPERATIONS = {
 }
 MAX_JSON_BYTES = 32 * 1024 * 1024
 MAX_MULTIPART_FILE_BYTES = 100 * 1024 * 1024
+MAX_MEDIA_INPUT_BYTES = 1024 * 1024 * 1024
+LONG_AUDIO_OPERATIONS = {"audio_transcription", "audio_detailed_transcription", "audio_process"}
 MAX_MULTIPART_FIELD_BYTES = 64 * 1024
 # Video reference models such as MiniMax H3 Ref2VA accept up to twelve
 # ordered media inputs.  Keep the transport limit aligned with the public
@@ -124,12 +126,13 @@ async def _multipart_payload(
     root: Path,
 ) -> tuple[dict[str, Any], dict[str, ModelWorkerPart], Path]:
     payload: dict[str, Any] = {}
+    request_file_limit = (MAX_MEDIA_INPUT_BYTES if operation in LONG_AUDIO_OPERATIONS else MAX_MULTIPART_FILE_BYTES)
     parts: dict[str, ModelWorkerPart] = {}
     try:
         async with request.form(
             max_files=MAX_MULTIPART_PARTS,
             max_fields=MAX_MULTIPART_PARTS * 4,
-            max_part_size=MAX_MULTIPART_FILE_BYTES,
+            max_part_size=request_file_limit,
         ) as form:
             if len(form) > MAX_MULTIPART_PARTS * 4:
                 raise ModelWorkerError(
@@ -166,9 +169,10 @@ async def _multipart_payload(
                             if not chunk:
                                 break
                             size += len(chunk)
-                            if size > MAX_MULTIPART_FILE_BYTES:
+                            file_limit = request_file_limit if name == "file" else MAX_MULTIPART_FILE_BYTES
+                            if size > file_limit:
                                 raise ModelWorkerError(
-                                    "Uploaded file exceeds the request limit",
+                                    f"Uploaded {name} exceeds the {file_limit // (1024 * 1024)} MiB request limit",
                                     code="audio_too_large",
                                     status_code=413,
                                 )

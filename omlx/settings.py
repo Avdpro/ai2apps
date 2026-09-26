@@ -22,9 +22,12 @@ Usage:
 from __future__ import annotations
 
 import json
+import locale
 import logging
 import os
 import shutil
+import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -675,11 +678,44 @@ class LoggingSettings:
         )
 
 
+def default_ui_language() -> str:
+    """Choose Chinese or English from the OS's primary preferred language."""
+    language = ""
+    if sys.platform == "darwin":
+        # GUI launches may have no LANG, or inherit an English shell locale.
+        # Read only the user's ordered language preference, not region settings.
+        try:
+            result = subprocess.run(
+                ["/usr/bin/defaults", "read", "-g", "AppleLanguages"],
+                capture_output=True, text=True, timeout=2, check=True,
+            )
+            for line in result.stdout.splitlines():
+                candidate = line.strip().rstrip(",").strip('"')
+                if candidate and candidate not in {"(", ")"}:
+                    language = candidate
+                    break
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if not language:
+        language = next(
+            (os.environ[key] for key in ("LC_ALL", "LC_MESSAGES", "LANG")
+             if os.environ.get(key)),
+            "",
+        )
+    if not language:
+        try:
+            language = locale.getlocale()[0] or ""
+        except (ValueError, TypeError):
+            pass
+    primary = language.replace("_", "-").split("-", 1)[0].split(".", 1)[0].lower()
+    return "zh" if primary == "zh" else "en"
+
+
 @dataclass
 class UISettings:
     """Admin UI settings."""
 
-    language: str = "en"
+    language: str = field(default_factory=default_ui_language)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -688,7 +724,9 @@ class UISettings:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> UISettings:
         """Create from dictionary."""
-        return cls(language=data.get("language", "en"))
+        if "language" in data:
+            return cls(language=data["language"])
+        return cls()
 
 
 @dataclass

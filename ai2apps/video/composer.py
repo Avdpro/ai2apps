@@ -9,6 +9,7 @@ import mimetypes
 import os
 import uuid
 from fractions import Fraction
+from io import BufferedIOBase
 from pathlib import Path
 from typing import Any, Literal
 
@@ -220,6 +221,25 @@ def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float]
     return previous
 
 
+def _fit_image_to_visual_box(image: Image.Image, width: float, height: float) -> Image.Image:
+    """Match the browser preview's object-fit: contain box semantics."""
+
+    box_width = max(1, round(width))
+    box_height = max(1, round(height))
+    ratio = min(box_width / image.width, box_height / image.height)
+    fitted = image.resize(
+        (max(1, round(image.width * ratio)), max(1, round(image.height * ratio))),
+        Image.Resampling.BILINEAR,
+    )
+    layer = Image.new("RGBA", (box_width, box_height), (0, 0, 0, 0))
+    layer.alpha_composite(
+        fitted,
+        ((box_width - fitted.width) // 2, (box_height - fitted.height) // 2),
+    )
+    fitted.close()
+    return layer
+
+
 class ComposerSourceStore:
     """Persist native paths privately while exposing only scoped opaque IDs."""
 
@@ -304,6 +324,63 @@ class ComposerSourceStore:
         os.chmod(temporary, 0o600)
         temporary.replace(destination)
         return self.public(record)
+
+    def import_stream(
+        self,
+        stream: BufferedIOBase,
+        *,
+        actor_id: str,
+        installation_id: str,
+        app_instance_id: str,
+        display_name: str,
+        media_type: str | None = None,
+        max_bytes: int,
+    ) -> dict[str, Any]:
+        """Stream browser-selected media into private Composer storage.
+
+        AceFox normally provides an authorized native path, so desktop imports
+        do not copy the source. This fallback deliberately bypasses Gallery's
+        small general-purpose import quota while retaining a bounded, private
+        copy for browsers that cannot expose a native path.
+        """
+
+        if max_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+        suffix = Path(display_name).suffix.lower()
+        if len(suffix) > 16 or any(not (character.isalnum() or character == ".") for character in suffix):
+            suffix = ""
+        directory = self._directory(actor_id, installation_id, app_instance_id) / "imports"
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        destination = directory / f"media_{uuid.uuid4().hex}{suffix}"
+        temporary = destination.with_suffix(destination.suffix + ".part")
+        size = 0
+        try:
+            with temporary.open("xb") as output:
+                os.chmod(temporary, 0o600)
+                while chunk := stream.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise ComposerError(
+                            "source_too_large",
+                            f"Composer media exceeds the {max_bytes}-byte import limit",
+                            status_code=413,
+                        )
+                    output.write(chunk)
+            if size == 0:
+                raise ComposerError("source_unavailable", "Selected media is empty")
+            temporary.replace(destination)
+            return self.register(
+                destination,
+                actor_id=actor_id,
+                installation_id=installation_id,
+                app_instance_id=app_instance_id,
+                display_name=display_name,
+                media_type=media_type,
+            )
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            destination.unlink(missing_ok=True)
+            raise
 
     def get(
         self, source_id: str, *, actor_id: str, installation_id: str, app_instance_id: str
@@ -495,11 +572,9 @@ def _render_with_pyav(
                         image = Image.fromarray(frame.to_ndarray(format="rgba"), "RGBA")
                     box_width = visual_state["width"] or image.width
                     box_height = visual_state["height"] or image.height
-                    ratio = min(box_width / image.width, box_height / image.height)
-                    image = image.resize(
-                        (max(1, round(image.width * ratio)), max(1, round(image.height * ratio))),
-                        Image.Resampling.BILINEAR,
-                    )
+                    source_image = image
+                    image = _fit_image_to_visual_box(source_image, box_width, box_height)
+                    source_image.close()
                     layer_alpha = image.getchannel("A")
                     if clip.mask_source_id:
                         mask_alpha = mask_images[clip.mask_source_id].resize(
@@ -516,6 +591,7 @@ def _render_with_pyav(
                         image,
                         (round(visual_state["x"]), round(visual_state["y"])),
                     )
+                    image.close()
                 output = av.VideoFrame.from_ndarray(np.asarray(canvas.convert("RGB")), format="rgb24")
                 output.pts = frame_index
                 output.time_base = Fraction(1, settings.fps)

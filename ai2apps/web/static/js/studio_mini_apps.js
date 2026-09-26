@@ -53,9 +53,16 @@
     const mountedFrames = new Map();
     const channels = new WeakMap();
     const mediaCapabilities = new Set(['audio.detailed_transcription', 'audio.source_separation',
-        'media.video_subtitles', 'audio.speaker_voice_replacement', 'media.video_speaker_voice_replacement']);
-    const formFields = new Set(['file', 'reference', 'profile', 'language', 'word_timestamps', 'diarization',
+        'media.video_subtitles', 'media.video_audio_translation',
+        'audio.speaker_voice_replacement', 'media.video_speaker_voice_replacement']);
+    const setupCapabilities = new Set([...mediaCapabilities, 'audio.voice_clone']);
+    const progressCapabilities = new Set([
+        'media.video_subtitles',
+        'media.video_audio_translation',
+    ]);
+    const formFields = new Set(['file', 'reference', 'profile', 'language', 'word_timestamps', 'diarization', 'output_format',
         'source_language', 'target_language', 'subtitle_format', 'bilingual', 'burn_in', 'speaker_labels',
+        'subtitle_font_size', 'subtitle_background', 'voice_profile_id', 'voice_clone_model_id', 'asr_verification',
         'action', 'target_speaker', 'consent', 'conversion_profile', 'voice_name']);
     window.addEventListener('message', event => {
         if (event.data?.type !== 'ai2apps:studio-connect' || event.data?.version !== 1) return;
@@ -68,10 +75,14 @@
         const src = frame.src;
         let closed = false;
         let busy = false;
+        const downloads = new Set();
+        const progressSources = new Set();
         const abort = new AbortController();
         const active = () => !closed && frame.isConnected && frame.src === src && frame.contentWindow === source;
         const close = () => {
-            closed = true; abort.abort(); channel.port1.close(); observer.disconnect();
+            closed = true; abort.abort();
+            progressSources.forEach(source => source.close()); progressSources.clear();
+            channel.port1.close(); observer.disconnect();
             frame.removeEventListener('load', revoke);
         };
         const revoke = () => { mountedFrames.delete(src); close(); };
@@ -83,6 +94,7 @@
         const storageKey = `ai2apps.studio-draft.v1:${binding.owner}:${binding.provider}:${binding.resource}`;
         channel.port1.onmessage = async message => {
             const request = message.data;
+            let progressSource = null;
             if (!active()) { close(); return; }
             if (!Number.isSafeInteger(request?.id) || request.id < 1) return;
             const reply = value => { if (active()) channel.port1.postMessage({id: request.id, ...value}); };
@@ -96,10 +108,64 @@
                 }));
                 if (!active()) return;
                 if (request.operation === 'probe') reply({value: probe});
+                else if (request.operation === 'output.read') {
+                    if (binding.studioId !== 'ai2apps.readaloud') throw new Error('Output source is not allowed');
+                    const reference = request.reference;
+                    const history = await payload(await fetch('/v1/platform/readaloud/outputs', {credentials: 'same-origin', signal: abort.signal}));
+                    const expected = `/v1/platform/sessions/${encodeURIComponent(reference?.sessionId || '')}/artifacts/${encodeURIComponent(reference?.artifactId || '')}/download`;
+                    const item = history.items?.find(item => item.downloadUrl === expected && item.mediaType?.startsWith('audio/'));
+                    if (!item) throw new Error('Unknown Studio audio output');
+                    const response = await fetch(item.downloadUrl, {credentials: 'same-origin', signal: abort.signal});
+                    if (!response.ok) throw new Error('Could not read Studio output');
+                    reply({value: {body: await response.blob(), name: item.title + '.wav'}});
+                }
+                else if (request.operation === 'export.text') {
+                    if (typeof request.content !== 'string' || new TextEncoder().encode(request.content).length > 4 * 1024 * 1024) throw new Error('Export exceeds 4 MiB');
+                    const result = await payload(await fetch(`${base}/exports`, {
+                        method: 'POST', credentials: 'same-origin', signal: abort.signal,
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({filename: request.filename, content: request.content}),
+                    }));
+                    const url = new URL(result.downloadUrl, location.origin);
+                    if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid export URL');
+                    downloads.add(result.downloadUrl);
+                    window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result}}));
+                    const link = document.createElement('a');
+                    link.href = result.downloadUrl; link.download = result.filename;
+                    document.body.append(link); link.click(); link.remove();
+                    reply({value: {started: true}});
+                }
+                else if (request.operation === 'download') {
+                    if (!downloads.has(request.url)) throw new Error('Unknown Mini-App output');
+                    const link = document.createElement('a');
+                    link.href = request.url; link.download = ''; document.body.append(link);
+                    link.click(); link.remove();
+                    reply({value: {started: true}});
+                }
+                else if (request.operation === 'setup') {
+                    if (!setupCapabilities.has(request.capability) || !probe.items?.some(item => item.capability === request.capability)) throw new Error('Capability is not allowed');
+                    const result = await window.AI2AppsStudioMiniApps.setup(binding.studioId, {
+                        id: binding.miniAppId,
+                        requirements: {capabilities: [request.capability]},
+                    }, {installMore: request.installMore === true});
+                    reply({value: {outcome: result?.outcome || 'cancelled'}});
+                }
+                else if (request.operation === 'characters.list') {
+                    if (!probe.items?.some(item => item.capability === 'audio.speech_generation')) throw new Error('Character access is not allowed');
+                    reply({value: await payload(await fetch(`${base}/characters`, {
+                        credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
+                    }))});
+                }
+                else if (request.operation === 'voice-clone-models.list') {
+                    if (!probe.items?.some(item => item.capability === 'audio.voice_clone')) throw new Error('Voice-clone model access is not allowed');
+                    reply({value: await payload(await fetch(`${base}/voice-clone-models`, {
+                        credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
+                    }))});
+                }
                 else if (request.operation === 'draft.get') reply({value: localStorage.getItem(storageKey)});
                 else if (request.operation === 'draft.remove') { localStorage.removeItem(storageKey); reply({value: null}); }
                 else if (request.operation === 'draft.set') {
-                    if (typeof request.value !== 'string' || new TextEncoder().encode(request.value).length > 65536) throw new Error('Draft exceeds 64 KiB');
+                    if (typeof request.value !== 'string' || new TextEncoder().encode(request.value).length > 4 * 1024 * 1024) throw new Error('Draft exceeds 4 MiB');
                     const draft = JSON.parse(request.value);
                     if (draft?.schema !== 'ai2apps.mini-app-draft/v1' || draft.miniApp !== binding.miniAppId) throw new Error('Invalid Mini-App draft');
                     localStorage.setItem(storageKey, request.value); reply({value: null});
@@ -108,7 +174,6 @@
                     if (!Array.isArray(request.fields) || request.fields.length > 24) throw new Error('Invalid media fields');
                     const body = new FormData();
                     const names = new Set();
-                    let bytes = 0;
                     for (const entry of request.fields) {
                         if (!Array.isArray(entry) || entry.length !== 2) throw new Error('Invalid field');
                         const [name, value] = entry;
@@ -116,23 +181,81 @@
                         names.add(name);
                         if (name === 'file' || name === 'reference') {
                             if (!(value instanceof Blob)) throw new Error('Expected media file');
-                            bytes += value.size;
+                            const limit = name === 'file' ? 1024 * 1024 * 1024 : 100 * 1024 * 1024;
+                            if (value.size === 0) throw new Error('Media input is empty');
+                            if (value.size > limit) throw new Error(name === 'file'
+                                ? 'Media input exceeds the 1 GiB limit'
+                                : 'Reference audio exceeds the 100 MiB limit');
                             body.append(name, value, value.name || 'media.bin');
                         } else {
                             if (typeof value !== 'string' || value.length > 4096) throw new Error('Invalid option');
                             body.append(name, value);
                         }
                     }
-                    if (!names.has('file') || bytes > 100 * 1024 * 1024) throw new Error('Invalid media upload size');
+                    if (!names.has('file')) throw new Error('Media file is required');
+                    let invocationId = '';
+                    if (progressCapabilities.has(request.capability)) {
+                        const invocation = await payload(await fetch(`${base}/invocations`, {
+                            method: 'POST', credentials: 'same-origin', signal: abort.signal,
+                            headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+                            body: JSON.stringify({capability: request.capability}),
+                        }));
+                        if (!/^[0-9a-f]{32}$/.test(invocation?.id || '')) throw new Error('Invalid progress invocation');
+                        const eventsUrl = new URL(invocation.eventsUrl, location.origin);
+                        if (eventsUrl.origin !== location.origin
+                            || !eventsUrl.pathname.startsWith(`${base}/invocations/${invocation.id}/events`)) throw new Error('Invalid progress URL');
+                        invocationId = invocation.id;
+                        progressSource = new EventSource(eventsUrl.href, {withCredentials: true});
+                        progressSources.add(progressSource);
+                        progressSource.addEventListener('progress', event => {
+                            try {
+                                const progress = JSON.parse(event.data);
+                                if (!active() || progress?.invocationId !== invocationId) return;
+                                channel.port1.postMessage({type: 'ai2apps:studio-progress', progress});
+                                const terminal = progress.status === 'failed'
+                                    || (progress.status === 'completed' && Number(progress.percent) >= 100);
+                                if (terminal) {
+                                    progressSource.close(); progressSources.delete(progressSource);
+                                }
+                            } catch (_) {}
+                        });
+                    }
+                    window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: true}}));
                     const response = await fetch(`${base}/capabilities/${encodeURIComponent(request.capability)}/invoke`, {
                         method: 'POST', credentials: 'same-origin', body, signal: abort.signal,
+                        headers: {Accept: 'application/json', ...(invocationId ? {'X-AI2Apps-Invocation-ID': invocationId} : {})},
                     });
-                    reply({value: {status: response.status, body: await response.blob(),
-                        headers: {'content-type': response.headers.get('content-type') || '',
+                    const responseBody = await response.blob();
+                    if (response.ok && request.capability === 'audio.source_separation' && response.headers.get('content-type')?.includes('application/json')) {
+                        const result = JSON.parse(await responseBody.text());
+                        const url = new URL(result.downloadUrl, location.origin);
+                        if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid output URL');
+                        downloads.add(result.downloadUrl);
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result}}));
+                    }
+                    const outputUrl = response.headers.get('X-AI2Apps-Download-URL');
+                    const outputRunId = response.headers.get('X-AI2Apps-Studio-Run-ID') || '';
+                    if (response.ok && outputUrl) {
+                        const url = new URL(outputUrl, location.origin);
+                        if (url.origin !== location.origin || !/^\/v1\/platform\/sessions\/[^/]+\/artifacts\/[^/]+\/download$/.test(url.pathname)) throw new Error('Invalid output URL');
+                        downloads.add(outputUrl);
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId, result: {downloadUrl: outputUrl, runId: outputRunId}}}));
+                    }
+                    reply({value: {status: response.status, body: responseBody,
+                        headers: {'x-ai2apps-download-url': outputUrl || '', 'content-type': response.headers.get('content-type') || '',
                             'content-disposition': response.headers.get('content-disposition') || ''}}});
                 } else throw new Error('Unknown Mini-App operation');
             } catch (error) { reply({error: error?.message || 'Mini-App operation failed'}); }
-            finally { busy = false; }
+            finally {
+                busy = false;
+                if (request.operation === 'invoke') {
+                    window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: false}}));
+                    if (progressSource && progressSources.has(progressSource)) {
+                        const cleanupTimer = setTimeout(() => { progressSource.close(); progressSources.delete(progressSource); }, 30000);
+                        cleanupTimer?.unref?.();
+                    }
+                }
+            }
         };
         source.postMessage({type: 'ai2apps:studio-connected', version: 1}, '*', [channel.port2]);
     });
@@ -180,7 +303,7 @@
                 return [probe.miniAppId, required.length > 0 && required.every(value => value?.implemented === true && value?.ready === true)];
             }));
         },
-        async setup(studioId, miniApp) {
+        async setup(studioId, miniApp, {installMore = false} = {}) {
             const capability = primaryCapability(miniApp);
             if (!capability) throw new Error('Mini-App does not declare a setup capability');
             if (!window.AI2AppsCapabilities?.ensure) throw new Error('ACPF is unavailable');
@@ -197,7 +320,7 @@
                         resumeToken,
                         completionPolicy: 'configure_only',
                     },
-                });
+                }, {installMore});
                 if (result?.outcome === 'configured' && result.session?.id) {
                     await window.AI2AppsCapabilities.acknowledge(result.session.id, { appId: studioId });
                 }

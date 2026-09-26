@@ -75,6 +75,22 @@ capabilities:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
           provider: {package_id: ai2apps/model-qwen3-tts-06b, service_key: ai2apps.model.qwen3-tts-0.6b, version: ">=0.2.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.qwen3-tts-0.6b/custom-voice-6bit}
+      - id: apple-metal-qwen3-tts-17b-voice-design-5bit
+        label: Qwen3 TTS 1.7B VoiceDesign 5-bit · 声音设计
+        description: 根据文字指令设计声音并控制情绪，适合 16 GiB 及以上设备。
+        priority: 94
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/voice-design-5bit}
   audio.voice_clone:
     trigger: on_feature_request
     presentation:
@@ -92,10 +108,50 @@ capabilities:
     requirements:
       operations: [voice_cloning]
     profiles:
+      - id: apple-metal-indextts25-fp16-voice-clone
+        label: IndexTTS 2.5 FP16 · 角色克隆推荐
+        description: 参考音频克隆，支持情绪与时长控制；建议至少 16 GiB 统一内存。
+        priority: 140
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-indextts25, service_key: ai2apps.model.indextts25, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.indextts25/fp16}
+      - id: apple-metal-voxcpm2-8bit-voice-clone
+        label: VoxCPM2 2B 8-bit · 角色克隆推荐
+        description: 参考音频克隆与情绪指令控制；较高精度版本建议至少 32 GiB 统一内存。
+        priority: 130
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}
+        recommendation_memory_gib: {minimum: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-voxcpm2, service_key: ai2apps.model.voxcpm2, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.voxcpm2/8bit}
+      - id: apple-metal-voxcpm2-4bit-voice-clone
+        label: VoxCPM2 2B 4-bit · 角色克隆推荐
+        description: 参考音频克隆与情绪指令控制；较低权重占用，建议至少 16 GiB 统一内存。
+        priority: 120
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-voxcpm2, service_key: ai2apps.model.voxcpm2, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.voxcpm2/4bit}
       - id: apple-metal-qwen3-tts-17b-base-voice-clone
         label: Qwen3 TTS 1.7B Base · 音色克隆
         description: 参考音频驱动的多语言音色克隆，适合 16 GiB 及以上 Apple Silicon。
         priority: 110
+        recommended: false
         device:
           os: [macos]
           architectures: [arm64]
@@ -118,3 +174,57 @@ capabilities:
           runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.9,<2.0.0"}
           provider: {package_id: ai2apps/model-cosyvoice3-05b, service_key: ai2apps.model.cosyvoice3-0.5b, version: ">=0.1.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.cosyvoice3-0.5b/4bit}
+  audio.voice_design:
+    trigger: on_feature_request
+    presentation:
+      eyebrow: AI2APPS VOICE DESIGN SETUP
+      title: 配置声音设计模型
+      description: 根据文字描述设计角色声音，优先推荐 VoxCPM2。
+      icon: audio-waveform
+      confirm_label: 同意并配置
+      ready_label: 声音设计模型已经可用
+    requirements:
+      operations: [speech_generation, voice_design]
+    profiles:
+      - id: apple-metal-voxcpm2-8bit-voice-design
+        label: VoxCPM2 2B 8-bit · 声音设计推荐
+        description: 文字声音设计与情绪指令控制；较高精度版本建议至少 32 GiB 统一内存。
+        priority: 130
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 32}}
+        recommendation_memory_gib: {minimum: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-voxcpm2, service_key: ai2apps.model.voxcpm2, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.voxcpm2/8bit}
+      - id: apple-metal-voxcpm2-4bit-voice-design
+        label: VoxCPM2 2B 4-bit · 声音设计推荐
+        description: 文字声音设计与情绪指令控制；较低权重占用，建议至少 16 GiB 统一内存。
+        priority: 120
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator: {vendor: apple, api: metal, unified_memory_gib: {minimum: 16}}
+        recommendation_memory_gib: {minimum: 16, maximum_exclusive: 32}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.10,<2.0.0"}
+          provider: {package_id: ai2apps/model-voxcpm2, service_key: ai2apps.model.voxcpm2, version: ">=0.1.0,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.voxcpm2/4bit}
+      - id: apple-metal-qwen3-tts-17b-voice-design-5bit
+        label: Qwen3 TTS 1.7B VoiceDesign 5-bit · 声音设计
+        description: 根据文字指令设计声音并控制情绪，适合 16 GiB 及以上设备。
+        priority: 94
+        recommended: false
+        device:
+          os: [macos]
+          architectures: [arm64]
+          accelerator:
+            vendor: apple
+            api: metal
+            unified_memory_gib: {minimum: 16}
+        stack:
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.3.0,<2.0.0"}
+          provider: {package_id: ai2apps/model-qwen3-tts-17b, service_key: ai2apps.model.qwen3-tts-1.7b, version: ">=0.1.1,<1.0.0"}
+          checkpoint: {model_id: ai2apps.model.qwen3-tts-1.7b/voice-design-5bit}

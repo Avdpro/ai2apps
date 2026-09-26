@@ -1,4 +1,12 @@
 {
+  "acpf.安装 {0}": "Installer {0}",
+  "acpf.选择要随 Package 一起下载并验证的 Checkpoint。": "Choisissez le checkpoint à télécharger et à vérifier avec ce Package.",
+  "acpf.安装可信的模型 Package，下载所选 Checkpoint，并启动验证模型服务。": "Installez le Package de modèle de confiance, téléchargez le checkpoint sélectionné, puis démarrez et vérifiez le service du modèle.",
+  "acpf.安装 Package 并下载模型": "Installer le Package et télécharger le modèle",
+  "acpf.模型已安装并可用": "Modèle installé et prêt",
+  "acpf.安装模型 Service Package": "Installer le Service Package du modèle",
+  "acpf.下载所选模型 Checkpoint": "Télécharger le checkpoint du modèle sélectionné",
+  "acpf.启动并验证模型服务": "Démarrer et vérifier le service du modèle",
   "acpf.完成": "Terminé",
   "acpf.安装成功": "Installation réussie",
   "acpf.安装已完成，可以开始使用。": "L’installation est terminée. Vous pouvez commencer à l’utiliser.",
@@ -1172,5 +1180,14 @@
   "ai_browser.unauthorized": "Votre session a expiré ou vous n’avez pas l’autorisation. Reconnectez-vous.",
   "ai_browser.network_error": "Connexion impossible. Vérifiez votre connexion et réessayez.",
   "ai_browser.invalid_request": "La requête est invalide. Actualisez et réessayez.",
-  "discover.install.restart_local": "Redémarrer AI2Apps"
+  "discover.install.restart_local": "Redémarrer AI2Apps",
+  "account.password_change.title": "Modifier le mot de passe",
+  "account.password_change.description": "Saisissez votre mot de passe actuel et confirmez le nouveau. Vous devrez ensuite vous reconnecter.",
+  "account.password_change.current": "Mot de passe actuel",
+  "account.password_change.confirm": "Confirmer le nouveau mot de passe",
+  "account.password_change.mismatch": "Les nouveaux mots de passe ne correspondent pas.",
+  "account.password_change.unchanged": "Le nouveau mot de passe doit être différent.",
+  "account.password_change.wrong_current": "Le mot de passe actuel est incorrect.",
+  "account.password_change.unavailable": "Fonction indisponible. Réessayez après la mise à jour du service Cloud.",
+  "account.password_change.success": "Mot de passe modifié. Reconnectez-vous avec le nouveau mot de passe."
 }

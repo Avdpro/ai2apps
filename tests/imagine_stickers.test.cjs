@@ -1,0 +1,48 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ctx = {window: {confirm: () => true}, document: {documentElement: {lang: 'zh'}}, structuredClone, console};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(__dirname + '/../ai2apps/web/static/js/imagine_studio.js', 'utf8'), ctx);
+function app() {
+  const a = ctx.window.imagineStudioApp();
+  a.miniAppId = 'ai2apps.imagine.sticker-workshop';
+  a.scheduleDraftSave = () => {};
+  Object.defineProperty(a, 'canGenerate', {value: true});
+  return a;
+}
+(async () => {
+  const a = app();
+  assert.equal(a.requiredOperation, 'image_edit');
+  assert.equal(a.currentMiniApp.maxImages, 1);
+  assert.equal(a.prefersOpenAIModel, true);
+  assert.match(a.composedPrompt(), /reference image/);
+  assert.match(a.composedPrompt(), /not a grid/);
+  assert.match(a.composedPrompt(), /No letters/);
+  a.stickerEmotion = 'sad';
+  assert.match(a.composedPrompt(), /teary eyes/);
+  assert.equal(a.draftPayload().stickerEmotion, 'sad');
+  const seen = [];
+  a.generate = async (_, options) => {assert.equal(options.stickerBatch, true); seen.push(a.stickerEmotion);return {status:'succeeded'};};
+  await a.generateStickerSet();
+  assert.deepEqual(seen, ['happy','love','wow','sad']);
+  assert.equal(a.stickerBatchDone, 4);
+  assert.equal(a.stickerBatchBusy, false);
+  a.generate = async () => ({status:'cancelled'});
+  await a.generateStickerSet();
+  assert.equal(a.stickerBatchDone, 0);
+  let n=0;
+  a.generate = async () => {n++; a.stickerBatchStop=true; return {status:'succeeded'};};
+  await a.generateStickerSet();
+  assert.equal(n, 1);
+  a.generate = async () => {throw Error('network')};
+  let failure;
+  a.fail = e => {failure=e;};
+  await a.generateStickerSet();
+  assert.match(failure.message, /network/);
+  assert.equal(a.stickerBatchBusy, false);
+  ctx.window.confirm=()=>false;
+  a.generate=()=>{throw Error('must not generate')};
+  await a.generateStickerSet();
+  console.log('Sticker Workshop behavior: passed');
+})().catch(e=>{console.error(e);process.exitCode=1});

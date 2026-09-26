@@ -131,7 +131,7 @@ if [[ ${MODE} == full ]]; then
     sign_code "${SIGN_FLAGS[@]}" "${framework}"
   done < <(find "${APP}" -type d -name '*.framework' -print0)
   for browser_app in \
-    "${APP}/Contents/Applications/AI2AppsShell.app"; do
+    "${APP}/Contents/Applications/AI2Apps.app"; do
     sign_code "${SIGN_FLAGS[@]}" \
       --entitlements "${ACTIVE_ENTITLEMENTS_DIR}/browser.plist" \
       "${browser_app}"

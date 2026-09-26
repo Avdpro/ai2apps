@@ -387,6 +387,20 @@ def create_client_router(
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @router.post("/client/app-dev-test-environment", include_in_schema=False)
+    async def open_app_dev_test_environment(body: BrowserAgentLaunchRequest, request: Request):
+        _require_helper_authorization(request)
+        if current_supervised_instance_id(fallback="") != "app-dev" or os.environ.get("AI2APPS_ALLOW_DEVELOPMENT_RUNTIME") != "1":
+            raise HTTPException(status_code=403, detail="App-Dev only")
+        target = urlsplit(body.initial_url or "")
+        if target.scheme != "http" or target.hostname != "127.0.0.1" or not target.port or target.path != "/" or not target.fragment or target.username or target.password:
+            raise HTTPException(status_code=422, detail="Invalid Test Center URL")
+        request_id = shell_browser_window_broker.enqueue(
+            action="open", profile_key=hashlib.sha256(b"app-dev-test-center").hexdigest(),
+            profile_name="Test Center", is_default=False, initial_url=body.initial_url,
+        )
+        return await asyncio.to_thread(shell_browser_window_broker.wait, request_id)
+
     @router.get("/client/shell-browser-window/next", include_in_schema=False)
     async def next_shell_browser_window_request(request: Request):
         _require_helper_authorization(request)

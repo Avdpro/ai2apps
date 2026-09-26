@@ -1,0 +1,50 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ctx = {window: {}, document: {documentElement: {lang:'zh'}}, structuredClone, console};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(__dirname+'/../ai2apps/web/static/js/imagine_studio.js','utf8'), ctx);
+const app = ctx.window.imagineStudioApp();
+assert.deepEqual(Array.from(app.filteredMiniApps, item => item.id.split('.').pop()), [
+  'text-to-image', 'image-edit', 'adjust-image', 'style-transfer',
+  'reference-creation', 'sticker-workshop', 'portrait', 'extract-items', 'try-on', 'group-photo', 'product-poster',
+  'character-design', 'comic-storyboard',
+]);
+app.miniAppId='ai2apps.imagine.product-poster';
+assert.equal(app.currentMiniApp.name,'商品摄影棚');
+assert.equal(app.currentMiniApp.status,'ready');
+assert.equal(app.currentMiniApp.maxImages,1);
+assert.equal(app.requiredOperation,'image_edit');
+assert.equal(app.prefersOpenAIModel,true);
+Object.defineProperty(app,'selectedModel',{value:{id:'test',source:'local'}});
+Object.defineProperty(app,'sizeError',{value:''});
+assert.equal(app.canGenerate,false,'reference required');
+app.referenceFiles=[{}];
+assert.equal(app.canGenerate,true,'presets work without a freeform prompt');
+Object.defineProperty(app,'selectedStyle',{value:{prompt:'TEST_STYLE'}});
+assert.doesNotMatch(app.composedPrompt(),/TEST_STYLE/,'style off by default');
+assert.match(app.composedPrompt(),/logos and existing readable label text/);
+app.productUseStyle=true;
+assert.match(app.composedPrompt(),/only to the setting, not the product: TEST_STYLE/);
+app.productScene='custom';
+assert.equal(app.canGenerate,false);
+app.productSceneDescription='A blue table';
+app.productComposition='left';
+app.productLight='window';
+assert.equal(app.canGenerate,true);
+assert.match(app.composedPrompt(),/A blue table/);
+assert.match(app.composedPrompt(),/negative space on the right/);
+const draft=app.draftPayload();
+app.restoreProductDraft({});
+assert.equal(app.productScene,'white');
+assert.equal(app.productUseStyle,false);
+app.restoreProductDraft(draft);
+assert.equal(app.productScene,'custom');
+assert.equal(app.productLight,'window');
+assert.equal(app.productComposition,'left');
+assert.equal(app.productUseStyle,true);
+app.restoreProductDraft({productScene:'bad', productLight:'bad',productComposition:'bad'});
+assert.equal(app.productScene,'white');
+assert.equal(app.productLight,'soft');
+assert.equal(app.productComposition,'center');
+console.log('Product Photo Studio behavior: passed');

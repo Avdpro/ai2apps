@@ -5,6 +5,7 @@
   // browser storage. Only the immediate Studio Host can supply this port.
   let sequence = 0;
   let queue = Promise.resolve();
+  let activeProgressHandler = null;
   const pending = new Map();
   const connected = new Promise((resolve, reject) => {
     const timer = setTimeout(() => { window.removeEventListener('message', accept); reject(new Error('Studio Host 通道不可用，请更新 App 后重新打开。')); }, 15000);
@@ -14,6 +15,10 @@
       window.removeEventListener('message', accept);
       const port = event.ports[0];
       port.onmessage = event => {
+        if (event.data?.type === 'ai2apps:studio-progress') {
+          activeProgressHandler?.(event.data.progress);
+          return;
+        }
         const request = pending.get(event.data?.id);
         if (!request) return;
         pending.delete(event.data.id); clearTimeout(request.timer);
@@ -29,22 +34,27 @@
   });
   // Avoid unhandled rejection while the synchronous form is being constructed.
   connected.catch(() => {});
-  function hostRequest(operation, fields = {}) {
+  function hostRequest(operation, fields = {}, onProgress = null) {
     const task = queue.then(async () => {
       const port = await connected;
-      return new Promise((resolve, reject) => {
-        const id = ++sequence;
-        const timer = setTimeout(() => { pending.delete(id); reject(new Error('操作等待超时，请检查任务状态，不要重复提交。')); }, operation === 'invoke' ? 1800000 : 30000);
-        pending.set(id, {resolve, reject, timer});
-        port.postMessage({id, operation, ...fields});
-      });
+      if (operation === 'invoke') activeProgressHandler = onProgress;
+      try {
+        return await new Promise((resolve, reject) => {
+          const id = ++sequence;
+          const timer = setTimeout(() => { pending.delete(id); reject(new Error('操作等待超时，请检查任务状态，不要重复提交。')); }, ['invoke', 'setup'].includes(operation) ? 1800000 : 30000);
+          pending.set(id, {resolve, reject, timer});
+          port.postMessage({id, operation, ...fields});
+        });
+      } finally {
+        if (operation === 'invoke' && activeProgressHandler === onProgress) activeProgressHandler = null;
+      }
     });
     queue = task.catch(() => {});
     return task;
   }
-  async function invokeHost(capabilityUrl, options) {
+  async function invokeHost(capabilityUrl, options, onProgress = null) {
     const capability = decodeURIComponent(capabilityUrl.split('/capabilities/')[1]?.split('/')[0] || '');
-    const result = await hostRequest('invoke', {capability, fields: [...options.body.entries()]});
+    const result = await hostRequest('invoke', {capability, fields: [...options.body.entries()]}, onProgress);
     return new Response(result.body, {status: result.status, headers: result.headers});
   }
   const draftStorage = {
@@ -129,8 +139,30 @@
         {id: 'targetLanguage', label: '翻译', type: 'select', options: [['none', '不翻译'], ['zh', '翻译为中文'], ['en', 'Translate to English'], ['ja', '日本語に翻訳'], ['ko', '한국어로 번역']]},
         {id: 'subtitleFormat', label: '字幕文件', type: 'select', options: [['srt', 'SRT'], ['vtt', 'WebVTT'], ['ass', 'ASS']]},
         {id: 'burnIn', label: '同时生成烧录字幕的视频', type: 'checkbox', value: false},
+        {id: 'subtitleFontSize', label: '字体大小', type: 'select', value: 'large', options: [['small', '小'], ['medium', '标准'], ['large', '大 · 推荐'], ['extra_large', '特大']]},
+        {id: 'subtitleBackground', label: '背景样式', type: 'select', value: 'outline', options: [['outline', '白字 + 黑色粗描边'], ['box', '白字 + 半透明黑框']]},
         {id: 'bilingual', label: '翻译时保留双语字幕', type: 'checkbox', value: true},
         {id: 'speakerLabels', label: '字幕中显示角色名', type: 'checkbox', value: false}
+      ]
+    },
+    'video-audio-translation': {
+      id: 'ai2apps.media-voice.video-audio-translation',
+      eyebrow: 'Video dubbing',
+      title: '翻译视频音轨',
+      description: '面向单讲解者视频：翻译原始旁白，可选 Voice Studio Character 或临时克隆原始音色重新配音，并保留音乐与环境背景。',
+      accept: 'video/*',
+      fileLabel: '单讲解者或旁白视频',
+      capabilities: ['media.video_audio_translation', 'audio.detailed_transcription', 'text.translation', 'audio.source_separation', 'audio.speech_generation', 'audio.voice_clone', 'media.audio.extract', 'media.video.audio_mux'],
+      primaryCapability: 'media.video_audio_translation',
+      phases: ['提取音轨', '转写旁白', '翻译文本', '生成配音', '保留背景', '封装视频'],
+      executable: true,
+      runLabel: '开始翻译并配音',
+      fields: [
+        {id: 'sourceLanguage', label: '原始语言', type: 'select', options: [['auto', '自动检测'], ['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어']]},
+        {id: 'targetLanguage', label: '目标语言', type: 'select', value: 'zh', required: true, options: [['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어']]},
+        {id: 'voiceProfileId', label: '配音 Character', type: 'character-select', required: true},
+        {id: 'voiceCloneModelId', label: '语音克隆模型', type: 'select', options: []},
+        {id: 'asrVerification', label: 'ASR 回听校验（异常句自动重试）', type: 'checkbox', value: true, disabled: true, full: true}
       ]
     },
     'video-voice-replacement': {
@@ -162,7 +194,7 @@
   const root = document.getElementById('app');
   if (!config || !root) return;
 
-  const state = {files: {}, fileObjects: {}, roles: [{id: 'speaker-1', name: '角色 1'}, {id: 'speaker-2', name: '角色 2'}], draft: null, analysis: null, result: null, resultUrl: null};
+  const state = {files: {}, fileObjects: {}, roles: [{id: 'speaker-1', name: '角色 1'}, {id: 'speaker-2', name: '角色 2'}], characters: [], voiceCloneModels: [], draft: null, analysis: null, result: null, resultUrl: null};
   const storageKey = `ai2apps.media-voice-suite.${mode}.draft.v1`;
   let refreshRoles = null;
 
@@ -204,9 +236,15 @@
     input.addEventListener('change', () => select(input.files[0]));
     ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, event => { event.preventDefault(); zone.classList.add('dragging'); }));
     ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, event => { event.preventDefault(); zone.classList.remove('dragging'); }));
-    zone.addEventListener('drop', event => {
+    zone.addEventListener('drop', async event => {
       const file = event.dataTransfer.files[0];
-      if (file) select(file);
+      if (file) { select(file); return; }
+      const raw = event.dataTransfer.getData('application/x-ai2apps-audio-artifact');
+      if (!raw) return;
+      try {
+        const result = await hostRequest('output.read', {reference: JSON.parse(raw)});
+        select(new File([result.body], result.name, {type: result.body.type}));
+      } catch (error) { setStatus(error.message, 'error'); }
     });
     return wrap;
   }
@@ -220,6 +258,7 @@
       input.id = field.id;
       input.checked = Boolean(field.value);
       input.required = Boolean(field.required);
+      input.disabled = Boolean(field.disabled);
       label.append(input, document.createTextNode(field.label));
       wrap.append(label);
       return wrap;
@@ -227,9 +266,10 @@
     const label = node('label', '', field.label);
     label.htmlFor = field.id;
     let input;
-    if (field.type === 'select' || field.type === 'role-select') {
+    if (field.type === 'select' || field.type === 'role-select' || field.type === 'character-select') {
       input = document.createElement('select');
       if (field.type === 'role-select') input.dataset.roleSelect = 'true';
+      if (field.type === 'character-select') input.dataset.characterSelect = 'true';
       (field.options || []).forEach(([value, text]) => {
         const option = document.createElement('option');
         option.value = value;
@@ -243,6 +283,7 @@
     }
     input.id = field.id;
     input.required = Boolean(field.required);
+    if (field.value != null) input.value = String(field.value);
     wrap.append(label, input);
     return wrap;
   }
@@ -312,6 +353,27 @@
     ? '此工作流已接入 mount-bound Host Capability Broker。文件只提交给本机已安装的可信模型 Package。'
     : 'MVP 已完成 Package、Mini-App UI、工作流配置与草稿导出。此工作流的模型执行仍在接入 Host Capability Broker。');
   root.append(notice);
+  const setupButton = node('button', 'secondary', '安装并配置模型');
+  setupButton.type = 'button';
+  setupButton.hidden = true;
+  const setupActions = node('div', 'setup-actions');
+  setupActions.hidden = true;
+  setupActions.append(setupButton);
+  root.append(setupActions);
+  setupButton.addEventListener('click', async () => {
+    if (setupButton.disabled) return;
+    setupButton.disabled = true;
+    setupButton.textContent = '正在安装配置…';
+    try {
+      await hostRequest('setup', {capability: config.primaryCapability});
+      await probeCapabilities();
+    } catch (error) {
+      notice.textContent = error.message || '无法打开安装配置，请重试。';
+    } finally {
+      setupButton.disabled = false;
+      setupButton.textContent = '安装并配置模型';
+    }
+  });
 
   const sourcePanel = node('section', 'panel');
   const sourceHeading = node('div', 'panel-heading');
@@ -352,10 +414,14 @@
   pipelineTitle.append(node('span', 'step', config.roles ? 'Step 04' : 'Step 03'), node('h2', '', '处理链路'));
   pipelineHeading.append(pipelineTitle);
   const pipeline = node('div', 'pipeline');
+  pipeline.setAttribute('aria-live', 'polite');
   pipeline.style.setProperty('--phase-count', String(config.phases.length));
+  const phaseItems = [];
   config.phases.forEach((phase, index) => {
     const item = node('div', 'phase');
-    item.append(node('div', 'phase-index', String(index + 1).padStart(2, '0')), node('div', 'phase-name', phase));
+    const phaseState = node('div', 'phase-state', '');
+    item.append(node('div', 'phase-index', String(index + 1).padStart(2, '0')), node('div', 'phase-name', phase), phaseState);
+    phaseItems.push({item, phaseState});
     pipeline.append(item);
   });
   pipelinePanel.append(pipelineHeading, pipeline);
@@ -365,6 +431,12 @@
   const reset = node('button', 'secondary', '重置');
   reset.type = 'button';
   const exportButton = node('button', 'secondary', '导出 JSON');
+  function updateExportLabel() {
+    const format = mode === 'transcription' ? document.getElementById('output')?.value : 'json';
+    exportButton.textContent = '导出 ' + ({markdown: 'Markdown', srt: 'SRT', json: 'JSON'}[format] || 'JSON');
+  }
+  document.getElementById('output')?.addEventListener('change', updateExportLabel);
+  updateExportLabel();
   exportButton.type = 'button';
   exportButton.disabled = true;
   const save = node('button', config.executable ? 'secondary' : 'primary', '保存任务草稿');
@@ -389,6 +461,56 @@
     status.className = `status${kind ? ` ${kind}` : ''}`;
   }
 
+  function resetPipelineProgress() {
+    phaseItems.forEach(({item, phaseState}) => {
+      item.classList.remove('running', 'completed', 'failed');
+      item.removeAttribute('title');
+      phaseState.textContent = '';
+    });
+  }
+
+  function updatePipelineProgress(progress) {
+    const phaseIndex = Math.max(0, Math.min(phaseItems.length - 1, Number(progress?.phaseIndex) || 0));
+    const phaseStatus = String(progress?.status || 'running');
+    const percent = Math.max(0, Math.min(100, Math.round(
+      Number(progress?.phasePercent ?? progress?.percent) || 0,
+    )));
+    phaseItems.forEach(({item, phaseState}, index) => {
+      item.classList.remove('running', 'completed', 'failed');
+      if (index < phaseIndex || (index === phaseIndex && phaseStatus === 'completed')) {
+        item.classList.add('completed');
+        phaseState.textContent = '✓';
+      } else if (index === phaseIndex && phaseStatus === 'failed') {
+        item.classList.add('failed');
+        phaseState.textContent = '!';
+      } else if (index === phaseIndex && ['queued', 'running'].includes(phaseStatus)) {
+        item.classList.add('running');
+        phaseState.textContent = `${percent}%`;
+      } else {
+        phaseState.textContent = '';
+      }
+      if (index === phaseIndex && progress?.detail) item.title = progress.detail;
+      else item.removeAttribute('title');
+    });
+    if (progress?.detail) setStatus(progress.detail, phaseStatus === 'failed' ? 'error' : undefined);
+  }
+
+  function completePipelineProgress() {
+    phaseItems.forEach(({item, phaseState}) => {
+      item.classList.remove('running', 'failed');
+      item.classList.add('completed');
+      phaseState.textContent = '✓';
+    });
+  }
+
+  function failPipelineProgress(message) {
+    const active = phaseItems.find(({item}) => item.classList.contains('running')) || phaseItems[0];
+    active.item.classList.remove('running');
+    active.item.classList.add('failed');
+    active.phaseState.textContent = '!';
+    if (message) active.item.title = message;
+  }
+
   function collect() {
     const options = {};
     config.fields.forEach(field => {
@@ -403,7 +525,9 @@
       options,
       roles: config.roles ? state.roles.map(role => ({...role})) : [],
       requiredCapabilities: [...config.capabilities],
-      executionStatus: 'draft'
+      result: state.result,
+      analysis: state.analysis,
+      executionStatus: state.result ? 'completed' : 'draft'
     };
   }
 
@@ -429,11 +553,29 @@
     title.append(node('span', 'step', 'Result'), node('h2', '', '角色识别结果'), node('p', 'hint', `${transcriptResult.language || '未知语言'} · ${clock(transcriptResult.duration)} · ${transcriptResult.segments.length} 个片段`));
     heading.append(title);
     const transcript = node('div', 'transcript');
-    transcriptResult.segments.forEach(segment => {
+    transcriptResult.segments.forEach((segment, index) => {
       const row = node('article', 'transcript-row');
       const meta = node('div', 'transcript-meta');
       meta.append(node('strong', '', speakerName(segment.speaker)), node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
-      row.append(meta, node('p', '', segment.text || ''));
+      const speaker = document.createElement('select');
+      speaker.setAttribute('aria-label', `片段 ${index + 1} 角色`);
+      const options = [{id: '', name: '未分配'}, ...state.roles];
+      if (segment.speaker && !options.some(role => role.id === segment.speaker)) options.push({id: segment.speaker, name: segment.speaker});
+      options.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; speaker.append(option); });
+      speaker.value = segment.speaker || '';
+      speaker.addEventListener('change', () => { segment.speaker = speaker.value || null; setStatus('识别结果已修改，请保存草稿或导出。'); });
+      meta.replaceChildren(speaker, node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
+      const text = document.createElement('textarea');
+      text.value = segment.text || '';
+      text.rows = Math.min(8, Math.max(2, Math.ceil(text.value.length / 80)));
+      text.setAttribute('aria-label', `片段 ${index + 1} 文本`);
+      text.addEventListener('input', () => {
+        segment.text = text.value;
+        // Corrected text no longer has verified word-level alignment. Segment timing stays intact.
+        if (Array.isArray(segment.words)) { delete segment.words; segment.wordTimestampsNeedReview = true; }
+        setStatus('识别结果已修改，请保存草稿或导出。');
+      });
+      row.append(meta, text);
       transcript.append(row);
     });
     resultPanel.append(heading, transcript);
@@ -468,6 +610,7 @@
     form.append('language', language === 'auto' ? '' : language);
     form.append('word_timestamps', String(document.getElementById('wordTimestamps').checked));
     form.append('diarization', 'true');
+    form.append('output_format', document.getElementById('output').value === 'transcript-json' ? 'json' : document.getElementById('output').value);
     try {
       const response = await invokeHost(capabilityUrl, {
         method: 'POST', credentials: 'same-origin', body: form
@@ -513,13 +656,16 @@
         method: 'POST', credentials: 'same-origin', body: form
       });
       if (!response.ok) throw new Error(await responseError(response, '音轨分离失败'));
-      const archive = await response.blob();
-      if (state.resultUrl) URL.revokeObjectURL(state.resultUrl);
-      state.resultUrl = URL.createObjectURL(archive);
+      const persisted = response.headers.get('content-type')?.includes('application/json');
+      const output = persisted ? await response.json() : null;
+      const archive = persisted ? null : await response.blob();
+      if (state.resultUrl?.startsWith('blob:')) URL.revokeObjectURL(state.resultUrl);
+      state.resultUrl = output?.downloadUrl || URL.createObjectURL(archive);
       const disposition = response.headers.get('content-disposition') || '';
       const match = disposition.match(/filename="?([^";]+)"?/i);
-      const filename = match?.[1] || `separated-${profile}.zip`;
-      state.result = {schema: 'ai2apps.source-separation-result/v1', profile, filename, size: archive.size};
+      const filename = output?.filename || match?.[1] || `separated-${profile}.zip`;
+      const size = output?.size || archive?.size || 0;
+      state.result = {schema: 'ai2apps.source-separation-result/v1', profile, filename, size};
       state.draft = {...collect(), executionStatus: 'completed', resultSummary: state.result};
       await draftStorage.setItem(storageKey, JSON.stringify(state.draft));
       exportButton.disabled = false;
@@ -527,13 +673,18 @@
       resultPanel.replaceChildren();
       const heading = node('div', 'panel-heading');
       const title = node('div');
-      title.append(node('span', 'step', 'Result'), node('h2', '', '音轨分离完成'), node('p', 'hint', `${profile} · ${fileSize(archive.size)} · ZIP 内含 WAV 音轨和 separation.json`));
+      title.append(node('span', 'step', 'Result'), node('h2', '', '音轨分离完成'), node('p', 'hint', `${profile} · ${fileSize(size)} · ZIP 内含 WAV 音轨和 separation.json`));
       heading.append(title);
       const download = node('a', 'primary', '下载分离音轨 ZIP');
       download.href = state.resultUrl;
       download.download = filename;
+      if (persisted) download.addEventListener('click', async event => {
+        event.preventDefault();
+        try { await hostRequest('download', {url: output.downloadUrl}); }
+        catch (error) { setStatus(error.message || '无法下载，请重试。', 'error'); }
+      });
       resultPanel.append(heading, download);
-      setStatus('本地音轨分离完成。结果只保留在当前页面，请及时下载。', 'ready');
+      setStatus(persisted ? '本地音轨分离完成。各音轨已加入 Preview & Output，可单独试听或下载。' : '本地音轨分离完成。请下载保存结果。', 'ready');
     } catch (runError) {
       setStatus(runError?.message || String(runError), 'error');
     } finally {
@@ -549,6 +700,8 @@
     const capabilityUrl = mountedCapabilityUrl(config.primaryCapability);
     if (!capabilityUrl) { setStatus('可信 Mini-App mount 上下文不可用。', 'error'); return; }
     runButton.disabled = true;
+    resetPipelineProgress();
+    updatePipelineProgress({phaseIndex: 0, status: 'queued', percent: 0, detail: '正在准备字幕工作流…'});
     setStatus('正在本机提取对白、生成字幕并准备导出…');
     const sourceLanguage = document.getElementById('sourceLanguage').value;
     const targetLanguage = document.getElementById('targetLanguage').value;
@@ -562,11 +715,14 @@
     form.append('bilingual', String(document.getElementById('bilingual').checked));
     form.append('burn_in', String(burnIn));
     form.append('speaker_labels', String(document.getElementById('speakerLabels').checked));
+    form.append('subtitle_font_size', document.getElementById('subtitleFontSize').value);
+    form.append('subtitle_background', document.getElementById('subtitleBackground').value);
     try {
       const response = await invokeHost(capabilityUrl, {
         method: 'POST', credentials: 'same-origin', body: form
-      });
+      }, updatePipelineProgress);
       if (!response.ok) throw new Error(await responseError(response, '字幕生成失败'));
+      completePipelineProgress();
       const archive = await response.blob();
       if (state.resultUrl) URL.revokeObjectURL(state.resultUrl);
       state.resultUrl = URL.createObjectURL(archive);
@@ -596,6 +752,82 @@
       resultPanel.append(heading, download);
       setStatus('字幕工作流完成。结果只保留在当前页面，请及时下载。', 'ready');
     } catch (runError) {
+      failPipelineProgress(runError?.message || String(runError));
+      setStatus(runError?.message || String(runError), 'error');
+    } finally {
+      runButton.disabled = false;
+    }
+  }
+
+  async function runVideoAudioTranslation() {
+    const error = validate();
+    if (error) { setStatus(error, 'error'); return; }
+    const source = state.fileObjects.source;
+    if (!source) { setStatus('执行前请重新选择本地视频文件。', 'error'); return; }
+    const capabilityUrl = mountedCapabilityUrl(config.primaryCapability);
+    if (!capabilityUrl) { setStatus('可信 Mini-App mount 上下文不可用。', 'error'); return; }
+    runButton.disabled = true;
+    resetPipelineProgress();
+    updatePipelineProgress({phaseIndex: 0, status: 'queued', percent: 0, detail: '正在准备视频音轨翻译…'});
+    setStatus('正在转写和翻译旁白、生成 Character 配音并保留背景声；较长视频需要一些时间…');
+    const sourceLanguage = document.getElementById('sourceLanguage').value;
+    const targetLanguage = document.getElementById('targetLanguage').value;
+    const voiceProfileId = document.getElementById('voiceProfileId').value;
+    const voiceCloneModelId = voiceProfileId === '__original_voice__'
+      ? document.getElementById('voiceCloneModelId').value
+      : '';
+    const asrVerificationInput = document.getElementById('asrVerification');
+    const asrVerification = !asrVerificationInput.disabled && asrVerificationInput.checked;
+    const form = new FormData();
+    form.append('file', source, source.name);
+    form.append('source_language', sourceLanguage === 'auto' ? '' : sourceLanguage);
+    form.append('target_language', targetLanguage);
+    form.append('voice_profile_id', voiceProfileId);
+    form.append('voice_clone_model_id', voiceCloneModelId);
+    form.append('asr_verification', String(asrVerification));
+    try {
+      const response = await invokeHost(capabilityUrl, {
+        method: 'POST', credentials: 'same-origin', body: form
+      }, updatePipelineProgress);
+      if (!response.ok) throw new Error(await responseError(response, '视频音轨翻译失败'));
+      completePipelineProgress();
+      const hostedOutput = response.headers.get('x-ai2apps-download-url');
+      const character = state.characters.find(item => item.id === voiceProfileId);
+      state.result = {
+        schema: 'ai2apps.video-audio-translation-result/v1',
+        sourceLanguage: sourceLanguage === 'auto' ? null : sourceLanguage,
+        targetLanguage,
+        voiceProfileId,
+        voiceCloneModelId: voiceCloneModelId || null,
+        characterName: voiceProfileId === '__original_voice__' ? '原始音色' : (character?.name || ''),
+        downloadUrl: hostedOutput || null
+      };
+      state.draft = {...collect(), executionStatus: 'completed', resultSummary: state.result};
+      await draftStorage.setItem(storageKey, JSON.stringify(state.draft));
+      exportButton.disabled = false;
+      if (hostedOutput) {
+        resultPanel.hidden = true;
+        setStatus('视频音轨翻译完成。结果已加入 Video Studio 的 Generation result，可播放、下载或加入 Gallery。', 'ready');
+        return;
+      }
+      const video = await response.blob();
+      if (state.resultUrl) URL.revokeObjectURL(state.resultUrl);
+      state.resultUrl = URL.createObjectURL(video);
+      state.result.filename = 'translated-audio.mp4';
+      state.result.size = video.size;
+      resultPanel.hidden = false;
+      resultPanel.replaceChildren();
+      const heading = node('div', 'panel-heading');
+      const title = node('div');
+      title.append(node('span', 'step', 'Result'), node('h2', '', '视频音轨翻译完成'), node('p', 'hint', `${character?.name || 'Character'} · ${fileSize(video.size)} · MP4`));
+      heading.append(title);
+      const download = node('a', 'primary', '下载翻译配音视频');
+      download.href = state.resultUrl;
+      download.download = state.result.filename;
+      resultPanel.append(heading, download);
+      setStatus('视频音轨翻译完成。请及时下载结果。', 'ready');
+    } catch (runError) {
+      failPipelineProgress(runError?.message || String(runError));
       setStatus(runError?.message || String(runError), 'error');
     } finally {
       runButton.disabled = false;
@@ -644,6 +876,13 @@
         setStatus('角色识别完成。请命名角色、选择目标角色和参考声音，然后再次执行。', 'ready');
         return;
       }
+      const hostedOutput = response.headers.get('x-ai2apps-download-url');
+      if (hostedOutput) {
+        state.result = {downloadUrl: hostedOutput};
+        resultPanel.hidden = true;
+        setStatus('换声完成。请在 Voice Studio 的 Preview & Output 中播放、下载或拖拽结果。', 'ready');
+        return;
+      }
       const audio = await response.blob();
       if (state.resultUrl) URL.revokeObjectURL(state.resultUrl);
       state.resultUrl = URL.createObjectURL(audio);
@@ -683,9 +922,13 @@
     if (config.referenceRequired && (!stagedReplacement || replacementStage) && !state.files.voiceReference) return '请选择目标声音参考。';
     for (const field of config.fields) {
       if (stagedReplacement && !replacementStage && ['targetSpeaker', 'voiceName', 'conversionProfile', 'consent'].includes(field.id)) continue;
+      if (field.id === 'voiceCloneModelId' && document.getElementById('voiceProfileId')?.value !== '__original_voice__') continue;
       const input = document.getElementById(field.id);
       if (field.required && (field.type === 'checkbox' ? !input.checked : !input.value.trim())) return `请完成“${field.label}”。`;
     }
+    if (mode === 'video-audio-translation'
+        && document.getElementById('voiceProfileId')?.value === '__original_voice__'
+        && !document.getElementById('voiceCloneModelId')?.value) return '请选择语音克隆模型。';
     return '';
   }
 
@@ -700,7 +943,21 @@
     window.parent.postMessage({type: 'ai2apps:mini-app-draft-saved', miniAppId: state.draft.miniApp}, '*');
   });
 
-  exportButton.addEventListener('click', () => {
+  async function exportText(content, filename, type) {
+    if (new URLSearchParams(location.search).get('studio_id') === 'ai2apps.readaloud') {
+      await hostRequest('export.text', {content, filename});
+      setStatus('已请求 Shell 另存为；导出文件也已加入 Preview & Output。', 'ready');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([content], {type}));
+    link.download = filename; link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  exportButton.addEventListener('click', async () => {
+    exportButton.disabled = true;
+    try {
     if (!state.draft) return;
     if (mode === 'transcription' && state.result?.segments) {
       const output = document.getElementById('output').value;
@@ -730,25 +987,18 @@
         filename = 'transcript.json';
         type = 'application/json';
       }
-      const blob = new Blob([content], {type});
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 0);
+      await exportText(content, filename, type);
       return;
     }
-    const exported = state.result ? {...state.draft, result: state.result} : state.draft;
+    const exported = collect();
     if (state.result && config.roles) exported.roleNames = Object.fromEntries(state.roles.map(role => [role.id, role.name]));
-    const blob = new Blob([JSON.stringify(exported, null, 2)], {type: 'application/json'});
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${mode}-draft.json`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 0);
+    await exportText(JSON.stringify(exported, null, 2), `${mode}-draft.json`, 'application/json');
+    } catch (error) { setStatus(error.message || '导出失败', 'error'); }
+    finally { exportButton.disabled = false; }
+
   });
 
-  const runners = {transcription: runTranscription, separation: runSeparation, 'video-subtitles': runVideoSubtitles, 'audio-voice-replacement': runAudioSpeakerReplacement, 'video-voice-replacement': runAudioSpeakerReplacement};
+  const runners = {transcription: runTranscription, separation: runSeparation, 'video-subtitles': runVideoSubtitles, 'video-audio-translation': runVideoAudioTranslation, 'audio-voice-replacement': runAudioSpeakerReplacement, 'video-voice-replacement': runAudioSpeakerReplacement};
   runButton?.addEventListener('click', runners[mode]);
 
   reset.addEventListener('click', async () => {
@@ -764,10 +1014,15 @@
       for (const field of config.fields) {
         const input = document.getElementById(field.id);
         if (field.type === 'checkbox') input.checked = Boolean(field.value);
+        else if (field.value != null) input.value = String(field.value);
         else if (input.tagName === 'SELECT') input.selectedIndex = 0;
         else input.value = '';
       }
-      resultPanel.hidden = true; resultPanel.replaceChildren(); exportButton.disabled = true;
+      const asrVerification = document.getElementById('asrVerification');
+      if (asrVerification?.disabled) asrVerification.checked = false;
+      syncOriginalVoiceControls();
+      resultPanel.hidden = true; resultPanel.replaceChildren(); exportButton.disabled = true; updateExportLabel();
+      resetPipelineProgress();
       if (runButton) runButton.textContent = config.runLabel;
       setStatus('草稿和输入已重置。', 'ready');
     }
@@ -778,6 +1033,8 @@
     const saved = JSON.parse(await draftStorage.getItem(storageKey) || 'null');
     if (saved && saved.schema === 'ai2apps.mini-app-draft/v1') {
       state.draft = saved;
+      state.result = saved.result || null;
+      state.analysis = saved.analysis || null;
       state.files = saved.files || {};
       if (config.roles && Array.isArray(saved.roles) && saved.roles.length) {
         state.roles = saved.roles;
@@ -791,7 +1048,9 @@
         else input.value = value;
       });
       exportButton.disabled = false;
-      setStatus('已恢复上次草稿。执行前需要重新选择本地素材文件。', 'ready');
+      renderTranscript();
+      updateExportLabel();
+      setStatus('已恢复上次草稿和已保存的识别结果。重新执行前需要选择本地素材文件。', 'ready');
     }
   } catch (error) {
     setStatus(error.message || '无法恢复草稿。', 'error');
@@ -806,32 +1065,155 @@
     try {
       const payload = await hostRequest('probe');
       const capability = payload.items?.find(item => item.capability === config.primaryCapability);
+      if (mode === 'video-audio-translation') {
+        const checkbox = document.getElementById('asrVerification');
+        const asr = payload.items?.find(item => item.capability === 'audio.detailed_transcription');
+        const asrReady = asr?.ready === true;
+        checkbox.disabled = !asrReady;
+        if (!asrReady) checkbox.checked = false;
+        checkbox.parentElement?.classList.toggle('disabled', !asrReady);
+        checkbox.parentElement.title = asrReady
+          ? '逐句回听生成的配音；不合格时最多自动重试两次。'
+          : '未检测到可用的 Detailed Transcription ASR 模型。';
+      }
       notice.classList.toggle('ready', capability?.ready === true);
+      setupActions.hidden = setupButton.hidden = !['transcription', 'separation', 'video-audio-translation', 'audio-voice-replacement', 'video-voice-replacement'].includes(mode) || capability?.ready === true;
       if (mode === 'separation') {
         notice.textContent = capability?.ready
           ? '音轨分离能力已就绪。素材只提交给本机已安装并验证的 MLX Demucs Package。'
-          : '音轨分离模型尚未配置。请先在 Models/ACPF 安装 MLX Demucs。';
+          : '音轨分离模型尚未配置。点击下方按钮，安装并配置 MLX Demucs。';
       } else if (mode === 'video-subtitles') {
         notice.textContent = capability?.ready
           ? '视频字幕 Host 流程已就绪；转写、翻译和烧录能力会在执行时分别校验。'
           : '视频字幕 Host 流程不可用；请更新当前 AI2Apps App。';
+      } else if (mode === 'video-audio-translation') {
+        notice.textContent = capability?.ready
+          ? '单讲解者音轨翻译链路已就绪；原对白会被移除，翻译后的配音将与保留的背景声重新混合。'
+          : '视频音轨翻译所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription 和 MLX Demucs。';
       } else if (mode === 'audio-voice-replacement') {
         notice.textContent = capability?.ready
           ? '指定角色换声链路已就绪；先识别角色，再用授权参考声音替换所选角色。'
-          : '指定角色换声所需模型尚未齐备。请安装 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。';
+          : '指定角色换声所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。';
       } else if (mode === 'video-voice-replacement') {
         notice.textContent = capability?.ready
           ? '视频指定角色换声链路已就绪；先识别角色，再转换目标对白并保留原画面封装。'
-          : '视频角色换声所需模型尚未齐备。请安装 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。';
+          : '视频角色换声所需模型尚未齐备。点击下方按钮，配置 Detailed Transcription、MLX Demucs 和 MLX Seed-VC v2。';
       } else {
         notice.textContent = capability?.ready
           ? '详细转写能力已就绪。文件只提交给本机已安装并验证的 MLX WhisperX Package。'
-          : '详细转写模型尚未配置。请先在 Models/ACPF 安装 Detailed Transcription Compact 或 Quality。';
+          : '详细转写模型尚未配置。点击下方按钮，选择并安装 Compact 或 Quality。';
       }
     } catch (_) {
+      const checkbox = document.getElementById('asrVerification');
+      if (checkbox) {
+        checkbox.checked = false;
+        checkbox.disabled = true;
+        checkbox.parentElement?.classList.add('disabled');
+        checkbox.parentElement.title = '无法确认本机 ASR 能力。';
+      }
       notice.textContent = '无法检查本地模型能力；重新打开 Mini-App 后可重试。';
     }
   }
+
+  async function loadCharacters() {
+    if (mode !== 'video-audio-translation') return;
+    const select = document.getElementById('voiceProfileId');
+    if (!select) return;
+    const savedValue = state.draft?.options?.voiceProfileId || select.value;
+    select.disabled = true;
+    select.replaceChildren(new Option('正在读取 Voice Studio Characters…', ''));
+    try {
+      const payload = await hostRequest('characters.list');
+      state.characters = Array.isArray(payload?.items) ? payload.items : [];
+      select.replaceChildren(
+        new Option('请选择已验证的 Character', ''),
+        new Option('原始音色 · 临时克隆', '__original_voice__'),
+      );
+      state.characters.forEach(character => {
+        const option = new Option(
+          `${character.name}${character.modelName ? ` · ${character.modelName}` : ''}${character.ready ? '' : ' · 未就绪'}`,
+          character.id
+        );
+        option.disabled = !character.ready;
+        select.append(option);
+      });
+      if (savedValue === '__original_voice__' || state.characters.some(item => item.id === savedValue && item.ready)) select.value = savedValue;
+      const readyCount = state.characters.filter(item => item.ready).length;
+      if (!readyCount && select.value !== '__original_voice__') {
+        setStatus('请先在 Voice Studio → Characters 创建、预览并验证一个配音角色。', 'error');
+      }
+    } catch (error) {
+      select.replaceChildren(new Option('Characters 读取失败', ''));
+      setStatus(error.message || '无法读取 Voice Studio Characters。', 'error');
+    } finally {
+      select.disabled = false;
+      syncOriginalVoiceControls();
+    }
+  }
+
+  async function loadVoiceCloneModels({preserve = true} = {}) {
+    if (mode !== 'video-audio-translation') return;
+    const select = document.getElementById('voiceCloneModelId');
+    if (!select) return;
+    const previous = preserve ? (select.value || state.draft?.options?.voiceCloneModelId || '') : '';
+    select.disabled = true;
+    select.replaceChildren(new Option('正在读取本机语音克隆模型…', ''));
+    try {
+      const payload = await hostRequest('voice-clone-models.list');
+      state.voiceCloneModels = Array.isArray(payload?.items) ? payload.items : [];
+      select.replaceChildren(new Option('请选择语音克隆模型', ''));
+      state.voiceCloneModels.forEach(model => {
+        const option = new Option(`${model.name}${model.ready ? '' : ' · 未就绪'}`, model.id);
+        option.disabled = !model.ready;
+        select.append(option);
+      });
+      select.append(new Option('安装更多模型…', '__install_more__'));
+      if (state.voiceCloneModels.some(model => model.id === previous && model.ready)) select.value = previous;
+      else {
+        const firstReady = state.voiceCloneModels.find(model => model.ready);
+        if (firstReady) select.value = firstReady.id;
+      }
+      select.dataset.previous = select.value;
+    } catch (error) {
+      select.replaceChildren(new Option('安装更多模型…', '__install_more__'));
+      setStatus(error.message || '无法读取语音克隆模型。', 'error');
+    } finally {
+      select.disabled = false;
+    }
+  }
+
+  function syncOriginalVoiceControls() {
+    if (mode !== 'video-audio-translation') return;
+    const voice = document.getElementById('voiceProfileId');
+    const model = document.getElementById('voiceCloneModelId');
+    if (!voice || !model) return;
+    const original = voice.value === '__original_voice__';
+    model.closest('.field').hidden = !original;
+    model.required = original;
+    if (original && model.options.length === 0) void loadVoiceCloneModels();
+  }
+
+  document.getElementById('voiceProfileId')?.addEventListener('change', syncOriginalVoiceControls);
+  document.getElementById('voiceCloneModelId')?.addEventListener('change', async event => {
+    const select = event.currentTarget;
+    if (select.value !== '__install_more__') {
+      select.dataset.previous = select.value;
+      return;
+    }
+    const previous = select.dataset.previous || '';
+    select.value = previous;
+    select.disabled = true;
+    try {
+      await hostRequest('setup', {capability: 'audio.voice_clone', installMore: true});
+      await loadVoiceCloneModels({preserve: true});
+      await probeCapabilities();
+    } catch (error) {
+      setStatus(error.message || '无法打开语音克隆模型安装器。', 'error');
+    } finally {
+      select.disabled = false;
+    }
+  });
+  syncOriginalVoiceControls();
 
   let resizeFrame = 0;
   function reportHostHeight() {
@@ -846,4 +1228,5 @@
   window.addEventListener('load', reportHostHeight, {once: true});
   reportHostHeight();
   probeCapabilities();
+  loadCharacters();
 })();

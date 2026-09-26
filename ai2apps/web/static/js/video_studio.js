@@ -104,13 +104,14 @@
 
     window.videoStudioApp = function () { return {
         refreshing: false, refreshRequestId: 0, submitting: false, batchSubmitting: false, polling: false, joining: false, addingToGallery: false, galleryAdded: false, retryingTaskId: '', modelInstallBusy: false,
-        notice: '', noticeTone: 'error', providers: [], modelId: '', tasks: [], selectedTaskId: '', audioRuns: [], selectedAudioRunId: '',
+        notice: '', noticeTone: 'error', noticeTimer: null, providers: [], modelId: '', tasks: [], selectedTaskId: '', audioRuns: [], selectedAudioRunId: '', packageRuns: [],
         dismissed: [], pollTimer: null, mode: 't2v', prompt: '', resolution: '512x512', duration: 5,
         preset: 'strict', steps: 20, seed: 42, label: '', firstFile: null, lastFile: null,
         firstPreview: '', lastPreview: '', referenceImages: [], referenceVideos: [], referenceAudios: [], referenceOrder: [],
         batchText: '', joinedVideoUrl: '', clientEnvironment: 'browser', leftView: 'mini-apps', leftCollapsed: false, rightCollapsed: false,
         miniAppDrafts: {}, resizeHandler: null, responsiveNarrow: false, responsiveMobile: false,
         packageMiniApps: [], packageMiniAppId: '', packageMiniAppUrl: '', packageMiniAppMountId: '', packageMiniAppLoading: false, packageMiniAppError: '', packageMiniAppReadiness: {}, packageMiniAppSetupBusy: false,
+        packageOutputUrl: '', packageOutputRunId: '', packageOutputMiniAppId: '', packageOutputHandler: null,
         galleryMiniUrl: '', galleryMiniMountId: '', galleryMiniLoading: false, galleryMiniError: '', galleryDragActive: false, gallerySlotTarget: '',
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryMessageHandler: null, galleryAddedTimer: null,
@@ -121,8 +122,8 @@
         get selectedProvider() { return this.providers.find(item => item.id === this.modelId) || null; },
         get currentMiniApp() { return this.packageMiniAppId ? (this.miniApps.find(item => item.id === this.packageMiniAppId) || this.miniAppForMode(this.mode)) : this.miniAppForMode(this.mode); },
         get miniAppChatEnabled() { return Boolean(window.AI2AppsMiniAppChat && this.currentMiniApp && (this.currentMiniApp.source !== 'package' || this.currentMiniApp.chat?.enabled === true)); },
-        get isAudioExtractor() { return this.mode === 'x2a'; },
-        get isComposer() { return this.mode === 'composer'; },
+        get isAudioExtractor() { return !this.packageMiniAppId && this.mode === 'x2a'; },
+        get isComposer() { return !this.packageMiniAppId && this.mode === 'composer'; },
         get isLocalVideoTool() { return this.isAudioExtractor || this.isComposer; },
         get currentMiniAppReady() { return this.packageMiniAppId ? this.miniAppReady(this.currentMiniApp) : (this.isLocalVideoTool || Boolean(this.selectedProvider?.ready)); },
         get modeProviders() {
@@ -148,7 +149,19 @@
         get canPrimaryAction() { return this.needsConfiguration || this.canGenerate; },
         get visibleTasks() { return this.tasks.filter(task => !this.dismissed.includes(task.id)); },
         get activeTask() { return this.visibleTasks.find(task => task.id === this.selectedTaskId) || this.visibleTasks.find(task => task.status === 'succeeded') || null; },
-        get activeVideoUrl() { return this.joinedVideoUrl || this.activeTask?.result?.video?.download_url || ''; },
+        get activePackageRun() {
+            return this.packageRuns.find(run => run.id === this.packageOutputRunId && run.miniAppId === this.packageMiniAppId)
+                || this.packageRuns.find(run => run.miniAppId === this.packageMiniAppId && run.status === 'succeeded')
+                || null;
+        },
+        get activePackageArtifact() { return this.activePackageRun?.artifacts?.find(item => item.kind === 'video' && item.final) || null; },
+        get activeVideoUrl() {
+            if (this.packageMiniAppId) {
+                const liveUrl = this.packageOutputMiniAppId === this.packageMiniAppId ? this.packageOutputUrl : '';
+                return liveUrl || this.activePackageArtifact?.downloadUrl || '';
+            }
+            return this.joinedVideoUrl || this.activeTask?.result?.video?.download_url || '';
+        },
         get completedTasks() { return this.visibleTasks.filter(task => task.status === 'succeeded').slice().reverse(); },
         get queueSummary() { const active = this.visibleTasks.filter(task => !terminal.has(task.status)).length; return tr('video_studio.queue_summary', { count: this.visibleTasks.length }) + (active ? tr('video_studio.queue_active', { count: active }) : ''); },
         get presetHelp() { return tr(this.preset === 'strict' ? 'video_studio.preset.strict_help' : this.preset === 'fast_max' ? 'video_studio.preset.fast_max_help' : 'video_studio.preset.fast_help'); },
@@ -157,7 +170,19 @@
         get composerDuration() { return Math.max(1, ...this.composerProject.clips.map(clip => clip.start + clip.duration)); },
         get composerFps() { return Math.max(1, Math.min(60, Math.round(Number(this.composerProject.settings.fps) || 30))); },
         get composerFrameDuration() { return 1 / this.composerFps; },
-        get composerTimelineWidth() { return Math.max(720, Math.ceil((this.composerDuration + 2) * this.composerScale)); },
+        get composerGridSeconds() {
+            if (this.composerScale >= 18) return 1;
+            if (this.composerScale >= 8) return 2;
+            if (this.composerScale >= 4) return 5;
+            return 10;
+        },
+        get composerTimelineSeconds() { return Math.max(this.composerDuration + Math.max(2, this.composerGridSeconds), 720 / this.composerScale); },
+        get composerTimelineWidth() { return Math.ceil(this.composerTimelineSeconds * this.composerScale); },
+        get composerTimelineTicks() {
+            const count = Math.floor(this.composerTimelineSeconds / this.composerGridSeconds) + 1;
+            return Array.from({ length: count }, (_item, index) => index * this.composerGridSeconds);
+        },
+        get composerClipMinimumWidth() { return this.composerScale >= 18 ? 18 : Math.max(6, this.composerScale); },
         get composerSelectedClip() { return this.composerProject.clips.find(clip => clip.id === this.composerSelectedClipId) || null; },
         get composerSelectedClips() { const ids = new Set(this.composerSelectedClipIds); return this.composerProject.clips.filter(clip => ids.has(clip.id)); },
         get composerSelectedKeyframe() { return this.composerSelectedClip?.keyframes?.find(keyframe => keyframe.id === this.composerSelectedKeyframeId) || null; },
@@ -203,6 +228,8 @@
             window.addEventListener('message', this.galleryMessageHandler);
             this.composerKeyHandler = event => this.handleComposerKeydown(event);
             window.addEventListener('keydown', this.composerKeyHandler);
+            this.packageOutputHandler = event => this.handlePackageOutput(event);
+            window.addEventListener('ai2apps:studio-output', this.packageOutputHandler);
             try { this.dismissed = JSON.parse(localStorage.getItem('ai2apps-video-studio-dismissed') || '[]'); } catch (_) { this.dismissed = []; }
             await this.refresh();
             if (this.leftView === 'assets') this.mountGalleryMini();
@@ -237,8 +264,10 @@
             if (this.composerRaf) cancelAnimationFrame(this.composerRaf);
             if (this.composerSaveTimer) clearTimeout(this.composerSaveTimer);
             if (this.galleryAddedTimer) clearTimeout(this.galleryAddedTimer);
+            if (this.noticeTimer) clearTimeout(this.noticeTimer);
             if (this.galleryMessageHandler) window.removeEventListener('message', this.galleryMessageHandler);
             if (this.composerKeyHandler) window.removeEventListener('keydown', this.composerKeyHandler);
+            if (this.packageOutputHandler) window.removeEventListener('ai2apps:studio-output', this.packageOutputHandler);
             if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
             this.chatController?.dispose();
             this.packageChatBridge?.dispose();
@@ -247,8 +276,35 @@
             this.revokePreview('first'); this.revokePreview('last');
         },
         icons() { this.$nextTick(() => window.lucide?.createIcons()); },
-        fail(error) { this.notice = error?.message || String(error); this.noticeTone = 'error'; this.icons(); },
-        success(message) { this.notice = message; this.noticeTone = 'success'; this.icons(); },
+        clearNotice() {
+            if (this.noticeTimer) clearTimeout(this.noticeTimer);
+            this.noticeTimer = null;
+            this.notice = '';
+        },
+        showNotice(message, tone = 'success') {
+            this.clearNotice();
+            this.notice = String(message || '');
+            this.noticeTone = tone;
+            if (this.notice) {
+                const timeout = tone === 'error' ? 12000 : 4500;
+                this.noticeTimer = window.setTimeout(() => this.clearNotice(), timeout);
+            }
+            this.icons();
+        },
+        fail(error) { this.showNotice(error?.message || String(error), 'error'); },
+        success(message) { this.showNotice(message, 'success'); },
+        handlePackageOutput(event) {
+            const detail = event?.detail;
+            const url = detail?.result?.downloadUrl || '';
+            if (detail?.studioId !== APP_ID || !url) return;
+            this.packageOutputUrl = url;
+            this.packageOutputRunId = detail.result?.runId || '';
+            this.packageOutputMiniAppId = detail.miniAppId || '';
+            this.rightCollapsed = false;
+            this.persistShellState();
+            this.icons();
+            void this.refresh();
+        },
         setupMiniAppChat() {
             if (!window.AI2AppsMiniAppChat) return;
             this.chatController = window.AI2AppsMiniAppChat.createStudioController({
@@ -456,6 +512,7 @@
                 if (typeof state.selectedTaskId === 'string') this.selectedTaskId = state.selectedTaskId;
                 if (typeof state.selectedAudioRunId === 'string') this.selectedAudioRunId = state.selectedAudioRunId;
                 if (typeof state.selectedComposerRunId === 'string') this.selectedComposerRunId = state.selectedComposerRunId;
+                if (Number.isFinite(state.composerScale)) this.composerScale = Math.max(2, Math.min(120, Math.round(state.composerScale / 2) * 2));
                 if (typeof state.leftCollapsed === 'boolean') this.leftCollapsed = state.leftCollapsed;
                 if (typeof state.rightCollapsed === 'boolean') this.rightCollapsed = state.rightCollapsed;
             } catch (_) { /* Ignore invalid display preferences. */ }
@@ -466,6 +523,7 @@
                     leftView: this.leftView, mode: this.mode, modelId: this.modelId,
                     selectedTaskId: this.selectedTaskId,
                     selectedAudioRunId: this.selectedAudioRunId, selectedComposerRunId: this.selectedComposerRunId,
+                    composerScale: this.composerScale,
                     leftCollapsed: this.leftCollapsed, rightCollapsed: this.rightCollapsed,
                 }));
             } catch (_) { /* Display preferences must never block Studio work. */ }
@@ -631,7 +689,7 @@
             const parsed = new URL(String(url || ''), window.location.origin);
             const match = parsed.pathname.match(/^\/v1\/platform\/sessions\/([^/]+)\/artifacts\/([^/]+)\/download$/);
             if (parsed.origin !== window.location.origin || !match) throw new Error(tr('video_studio.error.artifact_invalid'));
-            const rawName = task ? this.taskTitle(task) : tr('video_studio.joined_video');
+            const rawName = this.packageOutputUrl === url ? 'subtitled-video.mp4' : (task ? this.taskTitle(task) : tr('video_studio.joined_video'));
             const generatedVideo = tr('video_studio.generated_video');
             const safeName = String(rawName || generatedVideo).replace(/[\\/:*?"<>|]/g, '-').slice(0, 120) || generatedVideo;
             return {
@@ -643,7 +701,7 @@
         dragGeneratedVideo(event, url, task = null) {
             if (!url || !event.dataTransfer) { event.preventDefault(); return; }
             try {
-                const reference = this.artifactReference(url, this.joinedVideoUrl === url ? null : task);
+                const reference = this.artifactReference(url, (this.joinedVideoUrl === url || this.packageOutputUrl === url) ? null : task);
                 event.dataTransfer.effectAllowed = 'copy';
                 event.dataTransfer.setData('application/x-ai2apps-video-artifact', JSON.stringify(reference));
                 event.dataTransfer.setData('text/uri-list', new URL(url, window.location.origin).href);
@@ -654,7 +712,7 @@
             if (!this.activeVideoUrl || this.addingToGallery) return;
             this.addingToGallery = true; this.galleryAdded = false;
             try {
-                const reference = this.artifactReference(this.activeVideoUrl, this.joinedVideoUrl ? null : this.activeTask);
+                const reference = this.artifactReference(this.activeVideoUrl, (this.joinedVideoUrl || this.packageOutputUrl) ? null : this.activeTask);
                 await responsePayload(await fetch(
                     `/v1/platform/gallery/assets/import-artifact/${encodeURIComponent(reference.sessionId)}/${encodeURIComponent(reference.artifactId)}`,
                     {
@@ -782,12 +840,15 @@
                 this.tasks = tasks.data || [];
                 this.audioRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.extract-audio');
                 this.composerRuns = (runs.items || []).filter(run => run.miniAppId === 'ai2apps.video.composer');
+                this.packageRuns = (runs.items || []).filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer'].includes(run.miniAppId));
+                let selectedProviderChanged = false;
                 if (!this.isLocalVideoTool && !this.modeProviders.some(item => item.id === this.modelId && item.ready)) {
                     const probe = await window.AI2AppsCapabilities?.probe(this.capabilityRequest('probe', ''));
                     const recommendedId = probe?.provider?.modelId || probe?.plan?.stack?.checkpoint?.model_id || '';
                     this.modelId = preferredProviderId(this.modeProviders, recommendedId);
+                    selectedProviderChanged = true;
                 }
-                this.syncDefaults(false);
+                this.syncDefaults(selectedProviderChanged);
                 if (!this.tasks.some(task => task.id === this.selectedTaskId)) this.selectedTaskId = this.tasks.find(task => task.status === 'succeeded')?.id || this.tasks[0]?.id || '';
                 if (!this.audioRuns.some(run => run.id === this.selectedAudioRunId)) this.selectedAudioRunId = this.audioRuns[0]?.id || '';
                 if (!this.composerRuns.some(run => run.id === this.selectedComposerRunId)) this.selectedComposerRunId = this.composerRuns[0]?.id || '';
@@ -801,7 +862,7 @@
             }
         },
         async poll() {
-            if (this.polling || this.refreshing || (!this.tasks.some(task => !terminal.has(task.status)) && !this.audioRuns.some(run => !terminal.has(run.status)) && !this.composerRuns.some(run => !terminal.has(run.status)))) return;
+            if (this.polling || this.refreshing || (!this.tasks.some(task => !terminal.has(task.status)) && !this.audioRuns.some(run => !terminal.has(run.status)) && !this.composerRuns.some(run => !terminal.has(run.status)) && !this.packageRuns.some(run => !terminal.has(run.status)))) return;
             this.polling = true;
             try {
                 const [tasksResponse, runsResponse] = await Promise.all([
@@ -812,6 +873,7 @@
                 const runs = (await responsePayload(runsResponse)).items || [];
                 this.audioRuns = runs.filter(run => run.miniAppId === 'ai2apps.video.extract-audio');
                 this.composerRuns = runs.filter(run => run.miniAppId === 'ai2apps.video.composer');
+                this.packageRuns = runs.filter(run => !['ai2apps.video.extract-audio', 'ai2apps.video.composer'].includes(run.miniAppId));
                 this.icons();
             } catch (error) { this.fail(error); } finally { this.polling = false; }
         },
@@ -820,7 +882,11 @@
             const defaults = this.caps.defaults || {};
             if (force || !this.resolutions.includes(this.resolution)) this.resolution = defaults.resolution || this.resolutions[0];
             if (force || !this.presets.some(item => item.id === this.preset)) this.preset = defaults.preset || this.presets[0]?.id || 'strict';
-            if (force) this.seed = Number(defaults.seed ?? 42);
+            if (force) {
+                this.seed = Number(defaults.seed ?? 42);
+                const recommendedSteps = Number(defaults.steps ?? 20);
+                if (Number.isInteger(recommendedSteps) && recommendedSteps >= 1 && recommendedSteps <= 60) this.steps = recommendedSteps;
+            }
             this.duration = Math.min(this.durationMax, Math.max(this.durationMin, Number(this.duration) || 5));
             this.syncModelSelectValue();
             this.icons();
@@ -991,7 +1057,13 @@
                 return track.kind === 'audio' ? !track.muted : track.kind === 'video' && track.muted;
             });
         },
-        composerClipStyle(clip) { const color = clip.color || '#3b82f6'; return `left:${clip.start * this.composerScale}px;width:${Math.max(18, clip.duration * this.composerScale)}px;background:${color};border-color:${color}`;
+        composerClipStyle(clip) { const color = clip.color || '#3b82f6'; return `left:${clip.start * this.composerScale}px;width:${Math.max(this.composerClipMinimumWidth, clip.duration * this.composerScale)}px;background:${color};border-color:${color}`;
+        },
+        composerStageStyle() {
+            const settings = this.composerProject.settings;
+            const ratio = settings.width / settings.height;
+            const width = Math.min(680, 390 * ratio);
+            return `width:min(100%,${width}px);aspect-ratio:${settings.width}/${settings.height};background:${settings.background}`;
         },
         composerPreviewStyle(clip) {
             const settings = this.composerProject.settings;
@@ -1178,7 +1250,7 @@
                 const record = await responsePayload(await fetch(`${STUDIO_API}/composer/projects/open`, {
                     method: 'POST', credentials: 'same-origin', headers: this.composerDocumentHeaders(), body: JSON.stringify({ sourcePath }),
                 }));
-                this.applyComposerDocument(record); this.notice = tr('video_studio.composer.project_opened', { name: file.name }); this.noticeTone = 'success';
+                this.applyComposerDocument(record); this.success(tr('video_studio.composer.project_opened', { name: file.name }));
             } catch (error) { this.fail(error); } finally { if (event?.target) event.target.value = ''; }
         },
         async writeComposerDocument(targetPath) {
@@ -1188,7 +1260,7 @@
             }));
             this.composerDocumentPath = record.path; this.composerSources = record.sources;
             await this.saveComposerProject();
-            this.notice = tr('video_studio.composer.project_saved', { name: record.path.split('/').pop() }); this.noticeTone = 'success';
+            this.success(tr('video_studio.composer.project_saved', { name: record.path.split('/').pop() }));
         },
         async saveComposerDocument() {
             if (!this.composerDocumentPath) { this.$refs.composerSaveAs?.click(); return; }
@@ -1219,6 +1291,13 @@
                 body: JSON.stringify(payload),
             }));
         },
+        async uploadComposerSource(file) {
+            const form = new FormData();
+            form.append('file', file, file.name);
+            return responsePayload(await fetch(`${STUDIO_API}/composer/sources/import`, {
+                method: 'POST', credentials: 'same-origin', headers: { ...this.draftHeaders(), Accept: 'application/json' }, body: form,
+            }));
+        },
         async importComposerFiles(filesOrEvent, targetTrackId = '', startAt = null) {
             const files = Array.from(filesOrEvent?.target?.files || filesOrEvent || []);
             if (!files.length || this.composerImporting) return;
@@ -1232,9 +1311,7 @@
                     if (sourcePath) {
                         source = await this.registerComposerSource({ sourcePath, name: file.name, mediaType: file.type });
                     } else {
-                        const form = new FormData(); form.append('file', file, file.name); form.append('sourceAppId', APP_ID);
-                        const imported = await responsePayload(await fetch('/v1/platform/gallery/assets/import', { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' }, body: form }));
-                        source = await this.importComposerGalleryAsset(imported.asset, false);
+                        source = await this.uploadComposerSource(file);
                     }
                     const clip = this.addComposerSource(source, targetTrackId, cursor);
                     if (cursor !== null) cursor = clip.start + clip.duration;
@@ -1255,9 +1332,7 @@
                 let source;
                 if (sourcePath) source = await this.registerComposerSource({ sourcePath, name: file.name, mediaType: file.type });
                 else {
-                    const form = new FormData(); form.append('file', file, file.name); form.append('sourceAppId', APP_ID);
-                    const imported = await responsePayload(await fetch('/v1/platform/gallery/assets/import', { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' }, body: form }));
-                    source = await this.importComposerGalleryAsset(imported.asset, false);
+                    source = await this.uploadComposerSource(file);
                 }
                 const clip = this.composerProject.clips.find(item => item.id === clipId); if (!clip) return;
                 this.composerPushHistory();
@@ -1753,7 +1828,7 @@
                     nextSourceStart = Math.max(0, sourceStart + applied * clip.speed);
                     element.style.left = `${nextStart * this.composerScale}px`;
                 }
-                element.style.width = `${Math.max(18, nextDuration * this.composerScale)}px`;
+                element.style.width = `${Math.max(this.composerClipMinimumWidth, nextDuration * this.composerScale)}px`;
                 for (const [id, next] of trimPlan.starts) { if (id !== clip.id) { const node = clipElement(id); if (node) node.style.left = `${next * this.composerScale}px`; } }
                 element.classList.toggle('snapped', feedback.snapped);
             };
@@ -2042,7 +2117,7 @@
 
         async extractAudio(retryOf = null) {
             if (!(this.extractAsset?.id || this.extractAsset?.nativePath) || this.extractSubmitting) return;
-            this.extractSubmitting = true; this.notice = '';
+            this.extractSubmitting = true; this.clearNotice();
             try {
                 await this.saveExtractorDraft();
                 const instanceId = window.AI2AppsCapabilities?.appInstanceId?.() || '';
@@ -2302,7 +2377,7 @@
         },
         async generate() {
             if (!this.canPrimaryAction || this.submitting) return;
-            this.submitting = true; this.notice = '';
+            this.submitting = true; this.clearNotice();
             try {
                 const capability = await this.ensureVideoCapability('configure-generation');
                 if (capability.configured) {
@@ -2323,6 +2398,14 @@
                 const updated = await responsePayload(await fetch(TASKS_API + '/' + encodeURIComponent(task.id), { method: 'DELETE', credentials: 'same-origin', headers: { Accept: 'application/json' } }));
                 Object.assign(task, updated); this.success(tr('video_studio.success.cancelled'));
             } catch (error) { this.fail(error); }
+        },
+        taskMenu(event, task, kind) { window.AI2AppsStudioTaskMenu.open(event,{disabled:!['draft','succeeded','failed','cancelled','expired'].includes(task.status),onDelete:()=>this.deleteHistoryTask(task,kind)}); },
+        async deleteHistoryTask(task,kind) {
+            try {
+                await responsePayload(await fetch(`${STUDIO_API}/${kind}/${encodeURIComponent(task.id)}`,{method:'DELETE',credentials:'same-origin',headers:this.draftHeaders()}));
+                if(kind==='tasks'&&this.selectedTaskId===task.id)this.joinedVideoUrl='';
+                await this.refresh();
+            }catch(error){this.fail(error);}
         },
         selectTask(task) {
             this.joinedVideoUrl = ''; this.selectedTaskId = task.id;

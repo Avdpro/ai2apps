@@ -43,7 +43,7 @@ BUILD_BIN=$(swift build --package-path "${PROJECT_DIR}" --show-bin-path)
 STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai2apps-dev-app.XXXXXX")
 trap 'rm -rf "${STAGING_ROOT}"' EXIT
 APP="${STAGING_ROOT}/AI2Apps.app"
-SHELL_APP="${APP}/Contents/Applications/AI2AppsShell.app"
+SHELL_APP="${APP}/Contents/Applications/AI2Apps.app"
 
 mkdir -p "${SHELL_APP}"
 rsync -aL "${ACEFOX_APP}/" "${SHELL_APP}/"
@@ -145,7 +145,8 @@ SHELL_INFO="${SHELL_APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${PRODUCT_IDENTIFIER}.shell" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable acefox-bin" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName AI2Apps" "${SHELL_INFO}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AI2Apps" "${SHELL_INFO}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AI2Apps" "${SHELL_INFO}" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string AI2Apps" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsInstanceID string ${INSTANCE_ID}" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsBrowserRole string shell" "${SHELL_INFO}"
 /usr/libexec/PlistBuddy -c "Add :AI2AppsSharedBrowserBundle bool true" "${SHELL_INFO}"

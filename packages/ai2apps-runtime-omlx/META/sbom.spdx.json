@@ -1,9 +1,34 @@
 {
   "spdxVersion": "SPDX-2.3",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ai2apps-runtime-omlx-1.7.8",
+  "name": "ai2apps-runtime-omlx-1.7.12",
   "dataLicense": "CC0-1.0",
   "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-MLXAudio",
+      "name": "mlx-audio",
+      "versionInfo": "0.5.5+git.cd605ecfcc266ccf6ea3077586c373101be982c6",
+      "downloadLocation": "https://github.com/Blaizzy/mlx-audio/tree/cd605ecfcc266ccf6ea3077586c373101be982c6",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-WIndexTTS",
+      "name": "WIndexTTS-pure-MLX-runtime",
+      "versionInfo": "git.eafb98c1b2ba46f6a608f29d8831208b89047681",
+      "downloadLocation": "https://github.com/baicai-1145/WIndexTTS/tree/eafb98c1b2ba46f6a608f29d8831208b89047681",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "comment": "Only the Torch-free MLX inference runtime is vendored; conversion-only Torch modules and model weights are excluded."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-WeText",
+      "name": "wetext",
+      "versionInfo": "0.1.8",
+      "downloadLocation": "https://pypi.org/project/wetext/0.1.8/",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0"
+    },
     {
       "SPDXID": "SPDXRef-Package-PyAV",
       "name": "av",

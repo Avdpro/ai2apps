@@ -11,6 +11,18 @@
         order: 'ai2apps.shell.dockOrder',
         warm: 'ai2apps.shell.warmApps',
     };
+    // Product Dock order is independent of catalog order and translated names.
+    const defaultDockOrder = [
+        'ai2apps.general-chat',
+        'ai2apps.imagine-studio',
+        'ai2apps.readaloud',
+        'ai2apps.video-studio',
+        'ai2apps.gallery',
+        'ai2apps.discover',
+        'ai2apps.ai-browser',
+        'ai2apps.knowledge',
+        'ai2apps.coder',
+    ];
     const appStage = root.querySelector('.app-stage');
     const home = root.querySelector('.desktop-home');
     const homeApps = root.querySelector('[data-desktop-home-apps]');
@@ -200,8 +212,8 @@
         try {
             const value = JSON.parse(localStorage.getItem(storage.order));
             if (Array.isArray(value)) return value.filter((id) => byId.has(id));
-        } catch (_) { /* begin with manifest order */ }
-        return [];
+        } catch (_) { /* use product Dock defaults */ }
+        return defaultDockOrder.filter((id) => byId.has(id));
     }
 
     function readWarmApps() {

@@ -5901,7 +5901,11 @@
                 for (const challenge of challenges || []) {
                     const license = challenge.license || {};
                     const overlay = document.createElement('div');
-                    overlay.className = 'fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm grid place-items-center p-5';
+                    overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm grid place-items-center p-5';
+                    // This overlay is created dynamically, so Tailwind cannot reliably
+                    // discover an arbitrary z-[10000] utility during the static build.
+                    // Keep the license challenge above the already-open model dialog.
+                    overlay.style.zIndex = '10000';
                     overlay.innerHTML = '<section class="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">' +
                         '<p class="text-[10px] tracking-[.18em] font-bold text-neutral-400">CHECKPOINT LICENSE</p>' +
                         '<h2 data-license-title class="mt-1 text-xl font-semibold"></h2>' +

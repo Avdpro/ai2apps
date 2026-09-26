@@ -58,7 +58,7 @@ public struct PackagedHelperLayout: Equatable, Sendable {
         // automation port, and lease; only the immutable program files are
         // shared so the installed App does not carry a second Gecko runtime.
         let aceFox = contents.appendingPathComponent(
-            "Applications/AI2AppsShell.app/Contents/MacOS/acefox-bin"
+            "Applications/AI2Apps.app/Contents/MacOS/acefox-bin"
         )
         guard fileManager.isExecutableFile(atPath: runtime.path) else {
             throw ContractError.invalidField(

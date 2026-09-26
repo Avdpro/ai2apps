@@ -52,7 +52,12 @@ MINI_APPS = (
     {"id": "ai2apps.imagine.reference-creation", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "images", "source": "official", "entry": {"kind": "host-adapter", "adapter": "reference-creation"}, "inputs": ["image", "text"], "outputs": ["image"]},
     {"id": "ai2apps.imagine.group-photo", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "users-round", "source": "official", "entry": {"kind": "host-adapter", "adapter": "group-photo"}, "inputs": ["image", "background", "text"], "outputs": ["image"]},
     {"id": "ai2apps.imagine.adjust-image", "version": "1.0.0", "kind": "clip", "category": "edit", "icon": "sliders-horizontal", "source": "official", "entry": {"kind": "host-adapter", "adapter": "adjust-image"}, "inputs": ["image"], "outputs": ["image"]},
+    {"id": "ai2apps.imagine.sticker-workshop", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "smile", "source": "official", "entry": {"kind": "host-adapter", "adapter": "sticker-workshop"}, "inputs": ["image", "text"], "outputs": ["image"]},
+    {"id": "ai2apps.imagine.product-poster", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "shopping-bag", "source": "official", "entry": {"kind": "host-adapter", "adapter": "product-poster"}, "inputs": ["image", "text"], "outputs": ["image"]},
+    {"id": "ai2apps.imagine.portrait", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "contact-round", "source": "official", "entry": {"kind": "host-adapter", "adapter": "portrait"}, "inputs": ["image", "text"], "outputs": ["image"]},
+    {"id": "ai2apps.imagine.extract-items", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "scissors", "source": "official", "entry": {"kind": "host-adapter", "adapter": "extract-items"}, "inputs": ["image", "text"], "outputs": ["image"]},
 )
+MINI_APPS += ({"id": "ai2apps.imagine.try-on", "version": "1.0.0", "kind": "clip", "category": "create", "icon": "shirt", "source": "official", "entry": {"kind": "host-adapter", "adapter": "try-on"}, "inputs": ["image", "text"], "outputs": ["image"]},)
 MINI_APP_BY_ID = {item["id"]: item for item in MINI_APPS}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -319,6 +324,9 @@ def create_imagine_studio_router(
             "reference-create": "ai2apps.imagine.reference-creation",
             "group-photo": "ai2apps.imagine.group-photo",
             "adjust-image": "ai2apps.imagine.adjust-image",
+            "portrait": "ai2apps.imagine.portrait",
+            "extract-items": "ai2apps.imagine.extract-items",
+            "try-on": "ai2apps.imagine.try-on",
         }
         for record in history(principal, app_instance_id).list(
             actor_id=principal.actor_user_id, installation_id=principal.installation_id,
@@ -337,6 +345,22 @@ def create_imagine_studio_router(
         return {"items": list(repository.list_runs(
             limit=limit, **scoped_kwargs(principal, app_instance_id)
         ))}
+
+    @router.delete('/runs/{run_id}', status_code=204)
+    def delete_run(run_id: str, app_instance_id: str = Header(alias='X-AI2Apps-App-Instance'), principal: RequestPrincipal = principal_dependency):
+        repository = studio(principal, app_instance_id)
+        try:
+            run = repository.get_run(run_id, **scoped_kwargs(principal, app_instance_id))
+            if run['status'] not in {'draft','succeeded','failed','cancelled','expired'}:
+                raise HTTPException(status_code=409, detail='Stop the task before deleting it')
+            for artifact in run['artifacts']:
+                result_id = (artifact.get('metadata') or {}).get('historyResultId')
+                if result_id:
+                    history(principal, app_instance_id).delete(result_id, actor_id=principal.actor_user_id, installation_id=principal.installation_id, app_instance_id=app_instance_id)
+            repository.delete_run(run_id, getattr(runtime_provider(), 'workspace', None), **scoped_kwargs(principal, app_instance_id))
+        except StudioRepositoryError as error:
+            return studio_error(error)
+        return Response(status_code=204)
 
     @router.post("/runs", status_code=201)
     def create_run(
@@ -403,6 +427,11 @@ def create_imagine_studio_router(
         payload["idempotencyKey"] = f"imagine-run-{run_id}"
         mini_app_id = run["miniAppId"]
         legacy_id = {
+            "ai2apps.imagine.product-poster": "product-poster",
+            "ai2apps.imagine.sticker-workshop": "sticker-workshop",
+            "ai2apps.imagine.portrait": "portrait",
+            "ai2apps.imagine.extract-items": "extract-items",
+            "ai2apps.imagine.try-on": "try-on",
             "ai2apps.imagine.text-to-image": "text-image",
             "ai2apps.imagine.image-edit": "image-edit",
             "ai2apps.imagine.style-transfer": "style-transfer",

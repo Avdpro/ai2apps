@@ -20,6 +20,10 @@ from ai2apps.cloud_client import (
 from ai2apps.config import PlatformConfig
 from ai2apps.packages.registry import RegistryPackageManager
 from ai2apps.secrets.factory import create_secret_backend
+if __package__:
+    from .registry_browser_session import live_browser_session_namespace
+else:
+    from registry_browser_session import live_browser_session_namespace
 
 
 def _browser_session_namespace(cookie_db: Path, security_instance_id: str) -> str:
@@ -31,6 +35,7 @@ def _browser_session_namespace(cookie_db: Path, security_instance_id: str) -> st
     connection = sqlite3.connect(
         f"{cookie_db.as_uri()}?mode=ro",
         uri=True,
+        timeout=30.0,
     )
     try:
         row = connection.execute(
@@ -53,7 +58,11 @@ async def operate(args: argparse.Namespace) -> dict[str, Any]:
         namespace=args.security_instance_id,
     )
     namespace = f"installation:{args.security_instance_id}"
-    if args.browser_cookie_db is not None:
+    if args.browser_live:
+        namespace = await live_browser_session_namespace(
+            args.base_path, args.security_instance_id
+        )
+    elif args.browser_cookie_db is not None:
         namespace = _browser_session_namespace(
             args.browser_cookie_db, args.security_instance_id
         )
@@ -145,7 +154,20 @@ def main() -> None:
     parser.add_argument("--base-path", type=Path, required=True)
     parser.add_argument("--security-instance-id", required=True)
     parser.add_argument("--cloud-base-url", default=DEFAULT_AI2APPS_CLOUD_BASE_URL)
-    parser.add_argument("--browser-cookie-db", type=Path)
+    browser_auth = parser.add_mutually_exclusive_group()
+    browser_auth.add_argument(
+        "--browser-cookie-db",
+        type=Path,
+        help="Explicit offline SQLite fallback",
+    )
+    browser_auth.add_argument(
+        "--browser-live",
+        action="store_true",
+        help=(
+            "Read the scoped session via authenticated live Shell BiDi "
+            "(requires explicit Cookie authorization)"
+        ),
+    )
     parser.add_argument("--envelope", type=Path)
     parser.add_argument("--verification-receipt", type=Path)
     parser.add_argument("--submission-id")

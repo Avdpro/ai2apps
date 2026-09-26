@@ -311,7 +311,7 @@ Packages that do not implement this event retain a bounded compatibility height 
 
 This foundation standardizes discovery and trusted WebUI mounting. Shared Run/Step/Artifact, Asset-drop,
 the general Capability Broker, and Coder authoring bridges remain separate contracts and must not be
-inferred from the mount API. The Local media Broker extension below implements only the five explicitly
+inferred from the mount API. The Local media Broker extension below implements only the six explicitly
 listed MVP operations; it does not make arbitrary declared capabilities executable.
 
 ## Local media MVP Broker extension
@@ -329,17 +329,22 @@ After the frame load, a Package sends `ai2apps:studio-connect` version 1 to its 
 The Studio accepts only the exact iframe whose URL came from its authenticated mount
 response and transfers a private MessageChannel. A navigation revokes that mount's
 channel; reopening through the Studio creates a fresh mount. Requests expose only
-`probe`, `invoke`, `draft.get`, `draft.set`, and `draft.remove`; no URL, mount ID,
+`probe`, `invoke`, `setup`, `characters.list`, `voice-clone-models.list`, `draft.get`, `draft.set`, and `draft.remove`; no URL, mount ID,
 credential or arbitrary storage key is accepted from the Package. The Host determines
 the endpoint from its recorded mount. Every request first revalidates the actor and
 mount through the Broker. Invocation additionally runs the existing server-side signed
-capability allowlist and media validation. Uploads are bounded to 100 MiB total.
+capability allowlist and media validation. For capabilities with progress support, the
+Host may send unsolicited `ai2apps:studio-progress` messages on the same private channel;
+the Package cannot choose a progress URL or invocation identity. Uploads are bounded to
+1 GiB for primary media and 100 MiB for reference media.
 
-Drafts are limited to 64 KiB, schema/miniApp checked, and namespaced by the user-scoped
+Drafts are limited to 4 MiB (including saved transcript results), schema/miniApp checked, and namespaced by the user-scoped
 Studio instance, provider instance and entry resource. They are stored by the Host,
 not opaque-frame localStorage. Binary input and output remain live Blob objects, not
 durable drafts. This transport does not provide arbitrary fetch, direct Worker access,
-automatic model installation, or durable media jobs.
+unprompted model installation, or durable media jobs. `setup` may open the Host-owned ACPF only for
+a capability declared by the exact mount; an explicit `installMore` request keeps the previous model
+selection and opens the chooser even when another compatible model is already ready.
 
 The first executable Package Mini-App path is mount-bound and Local-only:
 
@@ -353,6 +358,26 @@ The first executable Package Mini-App path is mount-bound and Local-only:
 - `POST .../capabilities/media.video_subtitles/invoke` composes Detailed Transcription, optional translation
   through the configured Standard model, SRT/WebVTT/ASS serialization, and optional PyAV subtitle burn-in.
   It returns one ZIP containing the subtitle, transcript JSON, and optional MP4.
+- `POST .../invocations` creates a short-lived, actor- and mount-bound progress identity for an allowlisted
+  capability. `GET .../invocations/{invocationId}/events` emits no-store SSE updates. The immediate Studio
+  Host creates and subscribes to this stream, forwards only validated progress payloads over the private
+  MessageChannel, and supplies the invocation ID to the capability request; the opaque Package frame never
+  receives session credentials or direct network authority.
+- `GET .../characters` returns only the current owner's safe Character identities, labels, bound model labels,
+  and readiness flags. The Package never receives Character training material, reference paths, model
+  endpoints, or another user's profiles.
+- `GET .../voice-clone-models` returns only TTS providers whose signed audio contract supports one executable
+  reference-audio cloning request. It exposes safe labels, readiness, transcript policy, and reference-duration
+  limits; checkpoint paths and Worker endpoints remain Host-owned.
+- `POST .../capabilities/media.video_audio_translation/invoke` handles the single-narrator Phase 1 workflow.
+  It transcribes without diarization, restores punctuation, splits sentence-sized cues, translates through
+  the configured Standard model, and synthesizes every translated cue with either one selected ready Voice
+  Studio Character or a request-scoped clone of the original narrator. Original-voice mode selects a clear,
+  speech-dense window near ten seconds from the source timeline, pairs it with the matching ASR text, and sends
+  both only as the current TTS request's reference; it never creates or updates a Character. The workflow omits
+  the source dialogue stem, mixes the generated narration over the Demucs background stem,
+  and replaces the video's audio in a new MP4. Multiple speakers, lip sync, and per-speaker voice mapping are
+  deliberately outside this operation.
 - `POST .../capabilities/audio.speaker_voice_replacement/invoke` first supports an `analyze` action that
   returns diarized transcript JSON. Its `replace` action requires explicit rights confirmation, a selected
   anonymous speaker ID, and reference audio. It composes Detailed Transcription, Demucs
@@ -371,10 +396,13 @@ Reference-based voice conversion considers only installed providers whose valida
 advertises `reference_audio` and the exact requested profile. The current MVP therefore selects Seed-VC and
 does not silently reinterpret a named RVC voice as a user-supplied reference.
 
-These MVP operations are synchronous. Large transcription and media artifact bytes remain in the Mini-App's
-live state rather than browser `localStorage`. Video processing uses the bundled PyAV/FFmpeg libraries and
-does not launch an external executable. Durable Run/Artifact persistence, automatic ACPF setup,
-cancellation/progress, and reusable long-running media Jobs are follow-up contracts.
+These MVP operations are awaited Host requests, while CPU-heavy decoding, mixing, subtitle rendering, and
+remuxing run off the server event loop. Video Studio persists final video outputs as host-owned Runs and
+Artifacts; opaque Package frames never own output history. Video processing uses the bundled PyAV/FFmpeg
+libraries and does not launch an external executable. Video Subtitles exposes coarse, real stage progress
+for extraction, transcription, translation, layout, and export through the bounded SSE bridge. Cancellation,
+provider-native fine-grained percentages, reconnectable durable Jobs, and progress coverage for the remaining
+media workflows remain follow-up contracts.
 
 ## Optional Mini-App Chat capability
 
@@ -429,3 +457,40 @@ call, and `confirmation: always` is enforced by the Studio host rather than trus
 Context is model input, not authority. Mini-Apps must omit secrets, native paths, bearer credentials, hidden
 DOM, and unrelated App state. Tool handlers must validate arguments again and use the normal Capability
 Broker for operations that require capabilities outside the App's existing grant.
+
+## Voice Studio output ownership (mandatory)
+
+All built-in and Package Mini-Apps mounted in `ai2apps.readaloud` MUST use the host-owned
+Preview & Output. Quick Read is the shared UI baseline, not a separate output implementation.
+The host owns selection, playback, the common 20-result feed, format export, native Shell Save As,
+and audio Artifact drag payloads. Switching Mini-App MUST NOT reset or filter this feed or selection.
+Do not branch the output panel on `pipelineMode` or a Package Mini-App ID.
+
+Producers persist final results in the owner's Voice Studio Artifact session with `studioId`
+and `miniAppId` metadata. `/v1/platform/readaloud/outputs` is the sole visible history endpoint.
+Package capability invocation is the publication boundary: the authenticated host saves the
+result and emits `ai2apps:studio-output`; frames never implement their own history or media player.
+Audio/video results use durable Artifact download URLs; transcription JSON also appears in the feed.
+Transcript review and speaker naming remain input/editing tools, not a second output workspace.
+Separation publishes each WAV and retains a host-issued ZIP download handled by the bridge.
+
+Output retention/deletion MUST NOT remove private Line cache files, character reference materials,
+or Gallery assets. Intermediate Lines generated for full-dialogue output stay private; only the
+merged dialogue is published. Playing an existing private Line cache does not republish it.
+New Mini-Apps must pass the shared output regression tests; private blob media results inside a
+Voice Studio frame are not an acceptable implementation. Other Studios retain their own contracts.
+
+
+Voice Studio text export uses the `export.text` bridge operation. The host validates the live mount,
+allows only JSON/Markdown/SRT filenames, bounds UTF-8 content to 4 MiB, validates JSON, and stores
+an owner-scoped Artifact before invoking Shell Save As. Never create iframe blob downloads for
+Voice Studio text exports. The export also enters the shared Preview & Output feed.
+Transcript correction edits segments and speaker assignments; saved drafts include the result.
+Changing text invalidates word alignment but preserves segment start/end times.
+
+
+Voice Studio built-in speech producers must use `ai2apps.readaloud.speech.invoke_speech` for
+bounded sentence-aware synthesis. Preserve original text and per-request voice/expression/reference
+settings; only publish the final concatenated WAV. Do not expose intermediate chunks in output
+history or bypass segmentation for a new character/preview entry point. Long-Line cache keys
+include the segmentation policy version.
