@@ -102,6 +102,7 @@ class AI2AppsCloudClient:
             connect=15.0, read=3600.0, write=120.0, pool=30.0
         )
         self._client: httpx.AsyncClient | None = None
+        self._public_client: httpx.AsyncClient | None = None
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -168,6 +169,28 @@ class AI2AppsCloudClient:
         self._persist_response_session(response)
         return response
 
+    async def request_public(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> httpx.Response:
+        """Call an anonymous public Cloud endpoint without account cookies."""
+
+        if not path.startswith("/v1/"):
+            raise ValueError("Cloud API requests must use a /v1/ path")
+        if self._public_client is None:
+            self._public_client = httpx.AsyncClient(
+                base_url=self.base_url,
+                follow_redirects=False,
+                timeout=self.timeout,
+                transport=self.transport,
+                headers={"Accept": "application/json"},
+            )
+        request = self._public_client.build_request(method, path, headers=headers)
+        return await self._public_client.send(request)
+
     async def clear_session(self) -> None:
         self.session_store.clear()
         if self._client is not None:
@@ -177,3 +200,6 @@ class AI2AppsCloudClient:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        if self._public_client is not None:
+            await self._public_client.aclose()
+            self._public_client = None

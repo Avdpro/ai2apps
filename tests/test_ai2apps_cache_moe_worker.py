@@ -21,6 +21,7 @@ from ai2apps.model_worker.cache_moe import (
 class _Engine:
     def __init__(self, model_name, **kwargs):
         self.model_name = model_name
+        self.max_context = kwargs.get("max_context")
 
 
 def _checkpoint(tmp_path):
@@ -55,7 +56,13 @@ def _checkpoint(tmp_path):
         service_id="example.worker",
         package_root=tmp_path,
         data_root=tmp_path,
-        models=(),
+        models=(
+            {
+                "id": checkpoint.model_id,
+                "upstream_id": checkpoint.upstream_id,
+                "context_window": 16384,
+            },
+        ),
         checkpoints=(checkpoint,),
     )
     return checkpoint, context
@@ -123,6 +130,7 @@ async def test_deepseek_v41_worker_requires_activated_ssd_checkpoint(
 
     assert type(engine).__name__ == "V41Engine"
     assert engine.model_name == checkpoint.path
+    assert engine.max_context == 16384
     with pytest.raises(Exception, match="lossless Cached mode"):
         await adapter.create_engine(checkpoint, {"moe_execution_mode": "full"})
 
@@ -172,7 +180,10 @@ async def test_qwen4_worker_configures_exact_cached_vlm(monkeypatch, tmp_path):
     checkpoint, context = _checkpoint(tmp_path)
     vlm = ModuleType("omlx.engine.vlm")
     vlm.VLMBatchedEngine = type("VLMEngine", (_Engine,), {})
+    dynamic = ModuleType("omlx.engine.qwen4_dynamic")
+    dynamic.Qwen4DynamicVLMEngine = type("Qwen4DynamicEngine", (_Engine,), {})
     monkeypatch.setitem(sys.modules, "omlx.engine.vlm", vlm)
+    monkeypatch.setitem(sys.modules, "omlx.engine.qwen4_dynamic", dynamic)
     boost = ModuleType("omlx.patches.qwen38_next_cache.boost")
     boost.normalize_qwen4_boost = lambda value: value
     monkeypatch.setitem(sys.modules, "omlx.patches.qwen38_next_cache.boost", boost)
@@ -187,7 +198,7 @@ async def test_qwen4_worker_configures_exact_cached_vlm(monkeypatch, tmp_path):
         },
     )
 
-    assert type(cached).__name__ == "VLMEngine"
+    assert type(cached).__name__ == "Qwen4DynamicEngine"
     assert cached.model_name == str(checkpoint.path)
     assert os.environ["OMLX_QWEN4_DYNAMIC_SLOTS"] == "160"
     assert os.environ["OMLX_QWEN4_HOT_SLOTS"] == "10"

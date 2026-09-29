@@ -3,6 +3,23 @@
 
 from __future__ import annotations
 
+
+def test_activated_package_checkpoint_requires_matching_commit(tmp_path):
+    import json
+    from ai2apps.model_providers import _activated_package_checkpoint
+
+    model = {"id": "model/ssd", "weights": {"repo_id": "publisher/ssd", "revision": "abc"}}
+    assert not _activated_package_checkpoint(str(tmp_path), model)
+    value = {"format": "ai2apps-cache-moe-model", "version": 2,
+             "model_id": model["id"], "source": dict(model["weights"])}
+    descriptor = tmp_path / "ai2apps-model.json"
+    descriptor.write_text(json.dumps(value))
+    assert _activated_package_checkpoint(str(tmp_path), model)
+    assert not _activated_package_checkpoint(None, model)
+    value["source"]["revision"] = "wrong"
+    descriptor.write_text(json.dumps(value))
+    assert not _activated_package_checkpoint(str(tmp_path), model)
+
 import hashlib
 import json
 import platform
@@ -162,6 +179,74 @@ def test_model_manifest_supports_conversation_image_audio_and_video():
     assert next(item for item in models if item["model_type"] == "video_generation")[
         "video_capabilities"
     ]["schema"] == "ai2apps.video-capabilities/v1"
+    assert next(item for item in models if item["model_type"] == "llm")[
+        "context_window"
+    ] == 32768
+    assert next(item for item in models if item["model_type"] == "image_generation")[
+        "context_window"
+    ] is None
+
+
+def test_conversation_model_manifest_preserves_declared_context_window():
+    model = _model("example.chat", "assistant", "vlm")
+    model["context_window"] = 131072
+
+    normalized = validate_package_models(
+        "example.chat",
+        [model],
+        runtime_mode="process",
+        protocol="ai2apps-model-worker/v1",
+    )
+
+    assert normalized[0]["context_window"] == 131072
+
+
+def test_non_conversation_llm_does_not_gain_chat_context_default():
+    model = _model("example.audio", "audio-tokenizer", "llm")
+    model["capabilities"] = ["speech_tokenizer"]
+
+    normalized = validate_package_models(
+        "example.audio",
+        [model],
+        runtime_mode="process",
+        protocol="ai2apps-model-worker/v1",
+    )
+
+    assert normalized[0]["context_window"] is None
+
+
+def test_all_checked_in_conversation_packages_have_an_effective_context_window():
+    packages_root = Path(__file__).resolve().parents[1] / "packages"
+    checked: dict[str, int] = {}
+    for service_path in sorted(packages_root.glob("*/service.yaml")):
+        service = yaml.safe_load(service_path.read_text())
+        runtime = service.get("runtime", {})
+        if runtime.get("protocol") != "ai2apps-model-worker/v1":
+            continue
+        models = service.get("models", [])
+        normalized = validate_package_models(
+            service["id"],
+            models,
+            runtime_mode=runtime.get("mode", "process"),
+            protocol=runtime["protocol"],
+        )
+        for source, model in zip(models, normalized, strict=True):
+            if "conversation" not in model["capabilities"]:
+                continue
+            declared = source.get("context_window")
+            expected = declared if declared is not None else 32768
+            assert model["context_window"] == expected
+            checked[model["id"]] = expected
+
+    assert {
+        "ai2apps.model.deepseek-v4-flash/deepseek-v4-flash",
+        "ai2apps.model.deepseek-v41-flash/deepseek-v41-flash",
+        "ai2apps.model.glm5-3-flash-4bit-mtp/glm5-3-flash-mlx-4bit-mtp",
+        "ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision",
+        "ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit",
+        "ai2apps.model.qwen38-flash-next-4bit/qwen3.8-flash-next-mlx-4bit",
+        "ai2apps.model.qwen38/qwen3.8-27b-nvfp4",
+    } <= checked.keys()
 
 
 def test_video_model_manifest_rejects_missing_capabilities():

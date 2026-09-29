@@ -1015,7 +1015,7 @@
   "chat.not_supported": "Не поддерживается",
   "chat.voice_speed_unavailable_tooltip": "Выбранная модель TTS не поддерживает настройку скорости",
   "chat.voice_emotion_unavailable_tooltip": "Выбранная модель TTS не поддерживает управление эмоциями",
-  "chat.engine_boost_rush_tooltip": "Отпустите RUSH перед изменением Engine Boost",
+  "chat.engine_boost_rush_tooltip": "Отключите RUSH перед изменением Engine Boost",
   "chat.save_profile_disabled_tooltip": "Выберите профиль и измените его содержимое перед сохранением",
   "chat.stop_generating_tooltip": "Остановить генерацию",
   "chat.show_settings_tooltip": "Показать настройки",

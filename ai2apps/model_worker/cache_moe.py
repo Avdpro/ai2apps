@@ -138,6 +138,17 @@ class DeepseekV4ChatAdapter(OmlxChatAdapter):
 class DeepseekV41ChatAdapter(OmlxChatAdapter):
     """Run the dedicated lossless DeepSeek V4.1 SSD engine."""
 
+    def _context_window(self, checkpoint: ModelWorkerCheckpoint) -> int:
+        for model in self.context.models:
+            if checkpoint.model_id not in {
+                model.get("id"),
+                model.get("upstream_id"),
+            }:
+                continue
+            value = model.get("context_window")
+            return 32768 if value is None else int(value)
+        return 32768
+
     async def create_engine(
         self,
         checkpoint: ModelWorkerCheckpoint,
@@ -183,6 +194,7 @@ class DeepseekV41ChatAdapter(OmlxChatAdapter):
 
         return DeepseekV41Engine(
             checkpoint.path,
+            max_context=self._context_window(checkpoint),
             stream_codec=self.create_stream_codec(checkpoint, runtime_options),
         )
 
@@ -342,4 +354,8 @@ class Qwen4ExpChatAdapter(OmlxChatAdapter):
         os.environ["OMLX_QWEN4_PREFILL_CANONICAL_REUSE"] = "1"
         os.environ["OMLX_QWEN4_PREFILL_RETAIN_L1"] = "1"
         os.environ.setdefault("OMLX_QWEN4_PLE_MODE", "auto")
-        return VLMBatchedEngine(str(checkpoint.path), trust_remote_code=False)
+        from omlx.engine.qwen4_dynamic import Qwen4DynamicVLMEngine
+
+        return Qwen4DynamicVLMEngine(
+            str(checkpoint.path), trust_remote_code=False
+        )

@@ -7,7 +7,6 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-
 BOOST_TO_LOSSY = {
     "natural": "exact",
     "turbo": "tail2",
@@ -79,11 +78,17 @@ class Qwen36BoostController:
         self.switches = 0
         self._lock = threading.Lock()
 
+    def _blocks(self):
+        model = getattr(self.owner, "_model", None)
+        if model is None:
+            model = getattr(self.owner, "_vlm_model", None)
+        return model.language_model.model.layers
+
     def _apply(self, session_id: str, mode: str) -> bool:
         mode = normalize_qwen36_boost(mode)
         changed = mode != self.mode or session_id != self.session_id
         policy = qwen36_lossy_policy(mode)
-        for decoder in self.owner._model.language_model.model.layers:
+        for decoder in self._blocks():
             decoder.mlp.scope_lossy_policy = policy
         if mode != self.mode:
             self.switches += 1
@@ -176,8 +181,9 @@ class Qwen36BoostController:
     def stats(self) -> dict[str, Any]:
         replaced = before = after = 0
         layers = 0
-        if getattr(self.owner, "_model", None) is not None:
-            for decoder in self.owner._model.language_model.model.layers:
+        if (getattr(self.owner, "_model", None) is not None
+                or getattr(self.owner, "_vlm_model", None) is not None):
+            for decoder in self._blocks():
                 counters = getattr(decoder.mlp, "scope_lossy_stats", None)
                 if counters is None:
                     continue

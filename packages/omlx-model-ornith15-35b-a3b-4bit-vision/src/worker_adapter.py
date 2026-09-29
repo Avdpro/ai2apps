@@ -124,7 +124,11 @@ class Ornith15VisionChatAdapter(OmlxChatAdapter):
         os.environ["OMLX_QWEN36_TIERED_TOKEN_TXN"] = "0"
         os.environ.setdefault("OMLX_MOE_DIRECT_L1", "1")
         os.environ.setdefault("OMLX_QWEN36_ADAPTIVE_L1", "0")
-        return VLMBatchedEngine(str(checkpoint.path), trust_remote_code=False)
+        from omlx.engine.qwen36_dynamic import Qwen36DynamicVLMEngine
+
+        return Qwen36DynamicVLMEngine(
+            str(checkpoint.path), trust_remote_code=False
+        )
 
 
 def create_adapter(context):

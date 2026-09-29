@@ -98,3 +98,51 @@ Version 1.7.12 keeps Direct Prefill for compute-ready six-segment DeepSeek V4
 expert stores and routes stores with required quantization biases through the
 asynchronous legacy Prefill loader. A stale Direct request marker now safely
 falls back after validating its layer and expert IDs.
+
+Version 1.7.13 bounds DeepSeek V4.1 long-Decode Metal resource lifetime. At the
+existing per-token materialization boundary it evaluates persistent cache state
+and releases completed resident-bank output graphs, without adding a GPU-to-CPU
+readback. Model Worker streams now record failures and cancellations explicitly
+and return structured SSE errors instead of marking truncated generations as
+successful.
+
+Version 1.8.0 enforces each conversational model Package's declared context
+window across Chat Completions and Responses, for streaming and non-streaming
+text, vision, and DeepSeek V4.1 paths. Requested output is capped to the space
+remaining after the formatted prompt; requests that leave no generation space
+fail before Decode. Legacy conversational Packages without a declaration use a
+32K compatibility window.
+
+Version 1.8.1 completes the session-scoped Engine Boost production path for
+DeepSeek V4/V4.1, GLM-5.3, Qwen3.6 text and vision models, Ornith 1.5, and
+Qwen3.8 Flash Next Cached-MoE. Natural preserves each model's exact routing;
+Turbo and Blast apply the model-specific protected Top-N policy at token
+boundaries. Worker usage and idle status expose the effective mode and bounded
+route/cache counters without adding a generation-time Metal synchronization.
+
+Version 1.8.2 adds bounded per-session, whole-turn SSD telemetry alongside the
+existing rolling 10-token Decode window. The Runtime reports cumulative expert
+loads, bytes read, routed-expert bytes, pressure, and severity for the active
+turn; the Host can combine this idle-safe snapshot with Worker RSS sampling to
+show a completed turn's average SSD pressure and peak Worker memory. Collection
+reuses existing counters and does not add a generation-time Metal readback.
+
+Version 1.8.3 carries the already-materialized rolling SSD window and whole-turn
+average in the existing local Worker metrics stream, so Chat can update SSD
+pressure while Decode is active without polling full engine stats or adding a
+Metal synchronization. It also lets clients compute rolling Token Gen speed
+from local monotonic receipt time when an engine output omits native generation
+timestamps while continuing to report cumulative completion tokens.
+
+Version 1.8.5 extends that telemetry contract to every shipped Cached-MoE
+engine, including the dedicated DeepSeek V4.1 engine, GLM-5.3, Qwen3.6/Ornith,
+and Qwen3.8 Flash Next. The V4.1 path establishes the Decode baseline after
+Prefill, derives exact expert
+loads from each resident bank's completed SSD bytes, and publishes both the
+rolling 10-token window and whole-turn average by Session. The counters are
+plain Python values updated at the existing completed-token boundary, so the
+fix does not add an MLX evaluation or GPU-to-CPU synchronization. Pressure uses
+completed Decode steps; the first token sampled from Prefill logits is excluded.
+The Host now reports macOS physical footprint in addition to legacy RSS and
+Chat uses the footprint for Worker memory, so Metal unified allocations are no
+longer omitted from DeepSeek V4.1's displayed current and sampled peak memory.

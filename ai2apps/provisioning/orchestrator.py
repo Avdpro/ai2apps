@@ -203,6 +203,93 @@ class CapabilityProvisioner:
             await asyncio.gather(*runners, return_exceptions=True)
         self._runners.clear()
 
+    async def refresh_registry_status(self) -> bool:
+        """Best-effort refresh of signed Registry status used by every ACPF."""
+
+        manager = getattr(self.runtime, "registry_packages", None)
+        refresh = getattr(manager, "refresh_package_lifecycle", None)
+        if not callable(refresh):
+            return False
+        try:
+            await refresh()
+        except Exception:
+            # Status metadata is advisory for explicit/installed workflows.
+            # ACPF falls back to unknown rather than blocking offline use.
+            return False
+        return True
+
+    def _package_lifecycle_records(self) -> dict[str, dict[str, Any]] | None:
+        manager = getattr(self.runtime, "registry_packages", None)
+        cached = getattr(manager, "package_lifecycle_snapshot", None)
+        if not callable(cached):
+            return None
+        payload = cached()
+        if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+            return None
+        return {
+            str(record["packageId"]): record
+            for record in payload["records"]
+            if isinstance(record, dict) and isinstance(record.get("packageId"), str)
+        }
+
+    @staticmethod
+    def _profile_provider_package_ids(profile: dict[str, Any]) -> tuple[str, ...]:
+        stack = profile.get("stack", {})
+        package_ids: list[str] = []
+        provider = stack.get("provider")
+        if isinstance(provider, dict) and isinstance(provider.get("package_id"), str):
+            package_ids.append(provider["package_id"])
+        for component in stack.get("components", ()):
+            if (
+                isinstance(component, dict)
+                and component.get("kind") == "package"
+                and component.get("phase") == "provider"
+                and isinstance(component.get("package_id"), str)
+            ):
+                package_ids.append(component["package_id"])
+        return tuple(dict.fromkeys(package_ids))
+
+    def _profile_lifecycle(
+        self,
+        profile: dict[str, Any],
+        records: dict[str, dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        if records is None:
+            return {
+                "lifecycleState": "unknown",
+                "deprecated": False,
+                "lifecycleReason": None,
+                "replacementPackageId": None,
+            }
+        deprecated = [
+            records[package_id]
+            for package_id in self._profile_provider_package_ids(profile)
+            if records.get(package_id, {}).get("state") == "deprecated"
+        ]
+        if not deprecated:
+            return {
+                "lifecycleState": "active",
+                "deprecated": False,
+                "lifecycleReason": None,
+                "replacementPackageId": None,
+            }
+        reasons = [
+            str(record["reason"]).strip()
+            for record in deprecated
+            if isinstance(record.get("reason"), str) and record["reason"].strip()
+        ]
+        replacements = [
+            str(record["replacementPackageId"])
+            for record in deprecated
+            if isinstance(record.get("replacementPackageId"), str)
+        ]
+        return {
+            "lifecycleState": "deprecated",
+            "deprecated": True,
+            "lifecycleReason": "；".join(dict.fromkeys(reasons)) or None,
+            "replacementPackageId": next(iter(dict.fromkeys(replacements)), None),
+        }
+
     @staticmethod
     def _model_satisfies(model: Any, requirements: dict[str, Any]) -> bool:
         operations = set(requirements.get("operations", ()))
@@ -559,16 +646,53 @@ class CapabilityProvisioner:
             or len(set(preferred_profile_ids)) != len(preferred_profile_ids)
         ):
             return None
+        automatic_selection = (
+            not isinstance(requirements.get("modelId"), str)
+            and not isinstance(preferred_profile_id, str)
+            and not isinstance(preferred_profile_ids, list)
+        )
+        lifecycle_records = self._package_lifecycle_records()
         candidates = self.profiles.candidates(
             app_id,
             capability,
             device,
-            recommended=(
-                not isinstance(requirements.get("modelId"), str)
-                and not isinstance(preferred_profile_id, str)
-                and not isinstance(preferred_profile_ids, list)
-            ),
+            recommended=automatic_selection,
         )
+        if automatic_selection:
+            installed_deprecated = next(
+                (
+                    profile
+                    for profile in candidates
+                    if self._profile_lifecycle(profile, lifecycle_records)["deprecated"]
+                    and self.resolve_ready(
+                        app_id,
+                        capability,
+                        requirements,
+                        profile_id=str(profile.get("id") or ""),
+                    )
+                    is not None
+                ),
+                None,
+            )
+            candidates = tuple(
+                profile
+                for profile in candidates
+                if not self._profile_lifecycle(profile, lifecycle_records)["deprecated"]
+            )
+            if installed_deprecated is not None:
+                # Existing installs keep working; lifecycle only changes new
+                # automatic recommendations and explicit install presentation.
+                candidates = (installed_deprecated, *candidates)
+            elif not candidates:
+                candidates = tuple(
+                    profile
+                    for profile in self.profiles.candidates(
+                        app_id, capability, device, recommended=False
+                    )
+                    if not self._profile_lifecycle(profile, lifecycle_records)[
+                        "deprecated"
+                    ]
+                )
         preferred_model_id = requirements.get("modelId")
         if isinstance(preferred_model_id, str):
             candidates = tuple(
@@ -600,11 +724,15 @@ class CapabilityProvisioner:
             for item in self.profiles.candidates(
                 app_id, capability, device, recommended=True
             )
+            if not self._profile_lifecycle(item, lifecycle_records)["deprecated"]
         }
         profile_options = []
         for option in sorted(
             capability_entry.get("profiles", ()),
-            key=lambda item: int(item.get("priority", 0)),
+            key=lambda item: (
+                not self._profile_lifecycle(item, lifecycle_records)["deprecated"],
+                int(item.get("priority", 0)),
+            ),
             reverse=True,
         ):
             compatible, disabled_reasons = profile_device_compatibility(option, device)
@@ -634,6 +762,7 @@ class CapabilityProvisioner:
             )
             label = option.get("label")
             description = option.get("description")
+            lifecycle = self._profile_lifecycle(option, lifecycle_records)
             profile_options.append(
                 {
                     "profileId": option_id,
@@ -650,7 +779,11 @@ class CapabilityProvisioner:
                     "modelId": option_model_id,
                     "compatible": compatible,
                     "installed": installed,
-                    "recommended": compatible and option_id in recommended_ids,
+                    "recommended": (
+                        compatible
+                        and not lifecycle["deprecated"]
+                        and option_id in recommended_ids
+                    ),
                     "selected": (
                         option_id in preferred_profile_ids
                         if isinstance(preferred_profile_ids, list)
@@ -661,6 +794,7 @@ class CapabilityProvisioner:
                     .get("accelerator", {})
                     .get("unified_memory_gib", {})
                     .get("minimum"),
+                    **lifecycle,
                 }
             )
         selection_mode = str(capability_entry.get("selection_mode", "single"))
@@ -815,6 +949,10 @@ class CapabilityProvisioner:
             minimum_bytes = model_profile.get("minimumMemoryBytes")
             if isinstance(minimum_bytes, int) and minimum_bytes > 0:
                 minimum_memory_gib = minimum_bytes / (1024**3)
+        lifecycle = self._profile_lifecycle(
+            {"stack": {"provider": {"package_id": package_id}}},
+            self._package_lifecycle_records(),
+        )
         options = [
             {
                 "profileId": item["id"],
@@ -822,10 +960,12 @@ class CapabilityProvisioner:
                 "description": "",
                 "modelId": item["id"],
                 "compatible": True,
-                "recommended": bool(item.get("recommended")),
+                "recommended": bool(item.get("recommended"))
+                and not lifecycle["deprecated"],
                 "selected": item["id"] == selected_model_id,
                 "disabledReasons": [],
                 "minimumMemoryGiB": minimum_memory_gib,
+                **lifecycle,
             }
             for item in models
         ]

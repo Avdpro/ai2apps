@@ -1015,7 +1015,7 @@
   "chat.not_supported": "未対応",
   "chat.voice_speed_unavailable_tooltip": "選択した TTS モデルは速度調整に対応していません",
   "chat.voice_emotion_unavailable_tooltip": "選択した TTS モデルは感情制御に対応していません",
-  "chat.engine_boost_rush_tooltip": "Engine Boost を変更する前に RUSH を解除してください",
+  "chat.engine_boost_rush_tooltip": "Engine Boost を変更する前に RUSH をオフにしてください",
   "chat.save_profile_disabled_tooltip": "プロファイルを選択し、プロンプト内容を変更してから保存してください",
   "chat.stop_generating_tooltip": "Stop generating",
   "chat.show_settings_tooltip": "Show settings",

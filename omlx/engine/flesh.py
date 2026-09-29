@@ -112,6 +112,8 @@ class DeepseekV4FleshEngine(BatchedEngine):
         }
         self._ssd_window_session_id: str | None = None
         self._ssd_recent_by_session: dict[str, dict[str, Any]] = {}
+        self._ssd_turn_baseline: tuple[int, int] | None = None
+        self._ssd_turn_by_session: dict[str, dict[str, Any]] = {}
 
     async def start(self) -> None:
         await super().start()
@@ -472,6 +474,7 @@ class DeepseekV4FleshEngine(BatchedEngine):
         self._ssd_window_samples.clear()
         self._ssd_window_samples.append((0, loads, loaded_bytes))
         self._ssd_window_session_id = session_id
+        self._ssd_turn_baseline = (loads, loaded_bytes)
         self._ssd_recent_10_tokens = {
             "tokens": 0,
             "expert_loads": 0,
@@ -481,6 +484,9 @@ class DeepseekV4FleshEngine(BatchedEngine):
             "severity": "healthy",
         }
         self._ssd_recent_by_session[session_id] = dict(
+            self._ssd_recent_10_tokens
+        )
+        self._ssd_turn_by_session[session_id] = dict(
             self._ssd_recent_10_tokens
         )
 
@@ -522,6 +528,29 @@ class DeepseekV4FleshEngine(BatchedEngine):
             self._ssd_recent_by_session[self._ssd_window_session_id] = dict(
                 self._ssd_recent_10_tokens
             )
+            baseline_loads, baseline_bytes = self._ssd_turn_baseline or (
+                loads,
+                loaded_bytes,
+            )
+            turn_loads = max(loads - baseline_loads, 0)
+            turn_bytes = max(loaded_bytes - baseline_bytes, 0)
+            turn_routed_bytes = token_count * self._routed_expert_bytes_per_token
+            turn_pressure = (
+                turn_bytes / turn_routed_bytes if turn_routed_bytes > 0 else 0.0
+            )
+            turn_severity = (
+                "critical" if turn_pressure >= _SSD_CRITICAL_PRESSURE
+                else "elevated" if turn_pressure > _SSD_ELEVATED_PRESSURE
+                else "healthy"
+            )
+            self._ssd_turn_by_session[self._ssd_window_session_id] = {
+                "tokens": token_count,
+                "expert_loads": turn_loads,
+                "bytes_loaded": turn_bytes,
+                "pressure": turn_pressure,
+                "pressure_percent": turn_pressure * 100.0,
+                "severity": turn_severity,
+            }
 
     def _refresh_ssd_prefill_baseline(self) -> None:
         """Exclude chunked-Prefill reads before the first Decode token."""
@@ -534,6 +563,29 @@ class DeepseekV4FleshEngine(BatchedEngine):
             int(stats["experts_loaded"]),
             int(stats["bytes_loaded"]),
         )
+        self._ssd_turn_baseline = (
+            int(stats["experts_loaded"]),
+            int(stats["bytes_loaded"]),
+        )
+
+    def get_live_metrics(self, session_id: str | None = None) -> dict[str, Any]:
+        """Return already-materialized Decode telemetry without syncing MLX."""
+
+        resolved_session = session_id or self._ssd_window_session_id
+        recent = (
+            self._ssd_recent_by_session.get(resolved_session)
+            if resolved_session is not None
+            else None
+        )
+        turn = (
+            self._ssd_turn_by_session.get(resolved_session)
+            if resolved_session is not None
+            else None
+        )
+        return {
+            "ssd_recent_10_tokens": dict(recent or self._ssd_recent_10_tokens),
+            "ssd_turn_average": dict(turn) if turn is not None else {},
+        }
 
     @staticmethod
     def _stats_delta(after: dict[str, Any], before: dict[str, Any], key: str) -> int:
@@ -1336,6 +1388,10 @@ class DeepseekV4FleshEngine(BatchedEngine):
                 "ssd_recent_by_session": {
                     session_id: dict(window)
                     for session_id, window in self._ssd_recent_by_session.items()
+                },
+                "ssd_turn_by_session": {
+                    session_id: dict(window)
+                    for session_id, window in self._ssd_turn_by_session.items()
                 },
                 "last_decode_tail": self._last_decode_tail,
                 "prefill_adaptive_l1": {

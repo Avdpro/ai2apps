@@ -183,6 +183,25 @@ App action
 将 App 推荐列表、设备事实、Package 真实依赖、现有资产、用户/组织策略和磁盘条件合并成
 一个可解释的执行计划。Planner 只规划可信目录中存在且兼容性校验通过的不可变版本。
 
+#### 3.5.1 Package 状态是所有 ACPF 的统一输入
+
+所有 Capability Choice Sheet，不区分 Chat、Voice、Video、Knowledge、内置 App 或 Package App，
+都必须合并 Cloud 的独立签名 Package lifecycle 快照。`deprecated` 是 Package 级状态，必须按
+provider `package_id` 关联，不能根据模型名称猜测，也不能信任未签名的搜索结果。
+
+- 自动推荐和自动选择必须排除 `deprecated` provider；如果原推荐已过时，Planner 从仍兼容的
+  active profile 中选择下一项，不能继续以静态 YAML priority 推荐旧模型。
+- Choice Sheet 仍可列出过时 profile，但必须统一移动到全部正常候选之后，显示“已过时”徽标及
+  lifecycle reason；replacement Package 只作为说明，不能未经用户确认自动替换。
+- 用户可以明确选择过时 Package，既有安装和离线启动不得被阻断；“过时”不是 revoke/yank，
+  也不是安全撤销。
+- 有效完整快照中缺少记录表示 implicit active；签名、过期、反回滚或网络检查失败表示状态
+  unknown，不得谎称 active，也不得因此阻断已经安装的能力。
+- 客户端必须复用固定 Repository Ed25519 信任根，独立保存 lifecycle 版本计数、payload digest、
+  ETag 和未过期的已验证缓存；同版本不同 payload 与较低版本都必须拒绝。
+- 版本级 maturity/warning/advisory 与 Package lifecycle 是另一维度；后续接入时仍须按
+  `(packageId, version)` 关联，不能覆盖本节的 Package 级结果。
+
 ### 3.6 Provisioning Session
 
 持久化整个执行过程。Local 或桌面 App 重启后必须能够继续，不依赖页面内 JavaScript 状态。

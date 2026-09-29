@@ -38,6 +38,8 @@ class Model:
         if manifest.get('status')!='complete' or manifest.get('checkpoint_index_sha256')!=expected or manifest.get('layers')!=list(range(self.c.n_layers)):raise ValueError('expert store/checkpoint mismatch')
         self.tokenizer=tokenizer;self.hash=HashState(self.c,tokenizer,max_seq);self.states={};self.banks={};self.shared={};self.freqs={};self.max_seq=max_seq
         self.main_slot_masks={};self.lookups={};self.ages={};self.ticks={};self.cache_counters=mx.zeros((self.c.n_layers,3),dtype=mx.uint32)
+        self.boost_mode="natural";self.boost_top=self.c.n_activated_experts
+        self.boost_counts=mx.zeros((self.c.n_layers,4),dtype=mx.uint32)
         self.stats=dict(route_requests=0,l1_hits=0,l0_hits=0,misses=0,all_hit_steps=0,decode_host_ids=0,prefill_groups=0)
         for l in range(self.c.n_layers):
             ratio=self.c.compress_ratios[l]
@@ -55,6 +57,7 @@ class Model:
         if self.prefill_executor is not None:self.prefill_executor.release()
         self.hash=HashState(self.c,self.tokenizer,self.max_seq);self.states={};self.shared={}
         self.cache_counters=mx.zeros((self.c.n_layers,3),dtype=mx.uint32)
+        self.boost_counts=mx.zeros((self.c.n_layers,4),dtype=mx.uint32)
         self.stats=dict(route_requests=0,l1_hits=0,l0_hits=0,misses=0,all_hit_steps=0,decode_host_ids=0,prefill_groups=0)
         for l in range(self.c.n_layers):
             ratio=self.c.compress_ratios[l]
@@ -67,6 +70,10 @@ class Model:
                     self.states[l]['score_state']=mx.full((1,ratio,self.c.head_dim),-mx.inf,dtype=mx.float32)
         for name in ('image_mask','vision_images','vision_types'):
             if hasattr(self,name):delattr(self,name)
+    def set_boost_mode(self,mode,protected_top):
+        if mode not in ("natural","turbo","blast"):raise ValueError("invalid DeepSeek V4.1 Boost mode")
+        if protected_top not in (2,4,self.c.n_activated_experts):raise ValueError("invalid DeepSeek V4.1 protected route count")
+        self.boost_mode=mode;self.boost_top=protected_top
     def emit(self,name,x):
         if self.trace:self.trace(name,x)
     def w(self,name,dtype=None):return self.s.weight(name,dtype)
@@ -236,9 +243,10 @@ class Model:
         scores=mx.sqrt(mx.logaddexp(scores,mx.array(0.,dtype=mx.float32)))
         bias=self.w(p+'.bias')
         if getattr(self,'image_mask',None) is not None:bias=mx.where(self.image_mask.reshape(-1,1),self.w(p+'.bias_vl'),bias)
-        ids=mx.argsort(scores+bias,axis=-1)[...,-c.n_activated_experts:][...,::-1]
-        weights=mx.take_along_axis(scores,ids,axis=-1);weights=weights/(mx.sum(weights,axis=-1,keepdims=True)+1e-20)*c.route_scale
-        order=mx.argsort(ids,axis=-1);ids=mx.take_along_axis(ids,order,axis=-1);weights=mx.take_along_axis(weights,order,axis=-1)
+        ranked=mx.argsort(scores+bias,axis=-1)[...,-c.n_activated_experts:][...,::-1]
+        weights=mx.take_along_axis(scores,ranked,axis=-1);weights=weights/(mx.sum(weights,axis=-1,keepdims=True)+1e-20)*c.route_scale
+        order=mx.argsort(ranked,axis=-1);ids=mx.take_along_axis(ranked,order,axis=-1);weights=mx.take_along_axis(weights,order,axis=-1)
+        required=(order[0]<self.boost_top) if start and self.boost_top<c.n_activated_experts else None
         self.emit(f'layers.{l}.gate',ids)
         if l not in self.banks:
             # Host metadata only: choose current-context Main before SSD reads.
@@ -275,7 +283,23 @@ class Model:
                 self.ages[l]=mx.array(ages,dtype=mx.int32);self.ticks[l]=bank.capacity
             mapped=self.lookups[l][ids[0]]
             self.cache_counters[l]=self.cache_counters[l]+self.route_cache_counts(l,mapped)
-            if self.routes_all_hit(l,ids[0],mapped):
+            if required is not None:
+                before=mapped
+                required_misses=mx.sum((required&(before<0)).astype(mx.uint32))
+                if not self.routes_all_hit(l,ids[0],mapped,required):
+                    host,needed,current,ages,promotion_scores=self.burst_miss_metadata(l,ids[0],required,mapped)
+                    bank.hot=dict(sorted(bank.hot.items(),key=lambda pair:ages[pair[1]]))
+                    requested=[e for e,must,slot in zip(host,needed,current) if must or slot>=0]
+                    self.prepare_miss(l,bank,requested,promotion_scores);self.stats['decode_host_ids']+=len(requested)
+                    mapping=[-1]*c.n_routed_experts
+                    for e,s in {**bank.main,**bank.hot}.items():mapping[e]=s
+                    self.lookups[l]=mx.array(mapping,dtype=mx.int32);mapped=self.lookups[l][ids[0]]
+                valid=mapped>=0;slots=mx.maximum(mapped,0)
+                omitted=mx.sum(((~required)&(~valid)).astype(mx.uint32))
+                executed=mx.sum(valid.astype(mx.uint32))
+                self.boost_counts[l]=self.boost_counts[l]+mx.stack([required_misses,omitted,executed,mx.sum(required.astype(mx.uint32))])
+                if self.routes_all_hit(l,ids[0],before):self.stats['all_hit_steps']+=1
+            elif self.routes_all_hit(l,ids[0],mapped):
                 slots=mapped;self.stats['all_hit_steps']+=1
             else:
                 host,ages,promotion_scores=self.miss_metadata(l,ids[0])
@@ -285,10 +309,17 @@ class Model:
                 for e,s in {**bank.main,**bank.hot}.items():mapping[e]=s
                 self.lookups[l]=mx.array(mapping,dtype=mx.int32)
             self.ticks[l]+=c.n_activated_experts
-            self.ages[l][slots]=self.ticks[l]+mx.arange(c.n_activated_experts,dtype=mx.int32)
+            if required is None:
+                self.ages[l][slots]=self.ticks[l]+mx.arange(c.n_activated_experts,dtype=mx.int32)
+            else:
+                updates=self.ticks[l]+mx.arange(c.n_activated_experts,dtype=mx.int32)
+                mask=(mx.arange(bank.capacity)[:,None]==mapped[None,:])&valid[None,:]
+                self.ages[l]=mx.max(mx.where(mask,updates[None,:],self.ages[l][:,None]),axis=1)
             # Cache-policy metadata on a miss; all-hit indices remain on GPU.
             self.stats['route_requests']+=c.n_activated_experts
-            out=self.expert(mx.broadcast_to(flat,(c.n_activated_experts,c.dim)),bank,slots,weights[0])[None]
+            out=self.expert(mx.broadcast_to(flat,(c.n_activated_experts,c.dim)),bank,slots,weights[0])
+            if required is not None:out=mx.where(valid[:,None],out,mx.zeros_like(out))
+            out=out[None]
             bank.track(out)
         y=mx.zeros((flat.shape[0],c.dim),dtype=mx.float32)
         for rank in range(c.n_activated_experts):y=y+out[:,rank,:].astype(mx.float32)
@@ -323,6 +354,13 @@ class Model:
         h=self.norm('norm',self.hc_pre(h,pre))
         logits=h[:,-1].astype(mx.float32)@self.w('head.weight',mx.float32).T
         return logits
+    def complete_forward(self,*outputs):
+        """Materialize token state and release bank graphs at the eval boundary."""
+        persistent=[self.cache_counters]
+        boost_counts=getattr(self,'boost_counts',None)
+        if boost_counts is not None:persistent.append(boost_counts)
+        mx.eval(*outputs,*persistent,*self.ages.values())
+        for bank in self.banks.values():bank.release_completed_uses()
     def close(self):
         if self.prefill_executor is not None:self.prefill_executor.release()
         for b in self.banks.values():b.close()

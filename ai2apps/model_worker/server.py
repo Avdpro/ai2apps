@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -37,6 +38,8 @@ from .protocol import (
     ModelWorkerResponse,
     ModelWorkerStream,
 )
+
+logger = logging.getLogger(__name__)
 
 PROTOCOL = "ai2apps-model-worker/v1"
 OPERATIONS = {
@@ -387,17 +390,33 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
     @app.get("/v1/status")
     async def worker_status():
         records = state["requests"].values()
+        active_requests = sum(
+            1 for record in records if record.get("status") == "running"
+        )
+        adapter = state["adapter"]
+        engine = getattr(adapter, "_engine", None) if adapter is not None else None
+        stats_getter = getattr(engine, "get_stats", None)
+        engine_stats = None
+        # Some counters are MLX arrays. Read them only while idle so status
+        # polling cannot insert a synchronization into active generation.
+        if active_requests == 0 and callable(stats_getter):
+            try:
+                engine_stats = stats_getter()
+            except Exception:
+                engine_stats = None
         return {
             "status": "ready" if state["adapter"] is not None else "starting",
             "protocol": PROTOCOL,
             "service": context.service_id,
             "accepting_requests": state["accepting_requests"],
-            "active_requests": sum(
-                1 for record in records if record.get("status") == "running"
-            ),
+            "active_requests": active_requests,
             "queued_requests": sum(
                 1 for record in records if record.get("status") == "queued"
             ),
+            "engine_boost_supported": callable(
+                getattr(engine, "request_engine_boost", None)
+            ),
+            "engine_stats": engine_stats,
         }
 
     @app.post("/v1/control/engine-boost")
@@ -555,6 +574,9 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
             output_root=output_root,
             progress=report_progress,
         )
+        model_id = payload.get("model")
+        if isinstance(model_id, str) and 0 < len(model_id) <= 512:
+            record["model"] = model_id
         records[request_id] = record
         lock: asyncio.Lock = state["invocation_lock"]
         await lock.acquire()
@@ -574,8 +596,47 @@ def create_app(config_path: str | Path, *, token: str | None = None) -> FastAPI:
                 try:
                     async for chunk in result.chunks:
                         yield chunk
-                finally:
+                except (asyncio.CancelledError, GeneratorExit):
+                    record["status"] = "cancelled"
+                    record["error"] = {
+                        "code": "model_worker_stream_cancelled",
+                        "message": "Model Worker stream was cancelled",
+                        "request_id": request_id,
+                        "operation": operation,
+                        "model": record.get("model"),
+                    }
+                    raise
+                except Exception as exc:
+                    logger.exception(
+                        "Model Worker stream failed request_id=%s operation=%s model=%s",
+                        request_id,
+                        operation,
+                        record.get("model"),
+                    )
+                    error = {
+                        "code": (
+                            exc.code
+                            if isinstance(exc, ModelWorkerError)
+                            else "model_worker_stream_failed"
+                        ),
+                        "message": str(exc) or type(exc).__name__,
+                        "request_id": request_id,
+                        "operation": operation,
+                        "model": record.get("model"),
+                    }
+                    record["status"] = "failed"
+                    record["error"] = error
+                    if result.media_type.split(";", 1)[0].strip().lower() == "text/event-stream":
+                        yield (
+                            "data: "
+                            + json.dumps({"error": error}, ensure_ascii=False)
+                            + "\n\n"
+                        ).encode("utf-8")
+                    else:
+                        raise
+                else:
                     record["status"] = "succeeded"
+                finally:
                     lock.release()
                     shutil.rmtree(request_root, ignore_errors=True)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -486,6 +487,48 @@ def create_package_router(
             or "Model"
         )
 
+    async def package_lifecycle_status(
+        manager: Any, package_id: str
+    ) -> dict[str, Any]:
+        """Return advisory lifecycle metadata for dynamic Discover ACPF plans."""
+
+        refresh = getattr(manager, "refresh_package_lifecycle", None)
+        if callable(refresh):
+            # A missing status service must not block explicit/installed
+            # workflows; a previously verified cache remains usable.
+            with suppress(Exception):
+                await refresh()
+        cached = getattr(manager, "package_lifecycle_snapshot", None)
+        payload = cached() if callable(cached) else None
+        if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+            return {
+                "lifecycleState": "unknown",
+                "deprecated": False,
+                "lifecycleReason": None,
+                "replacementPackageId": None,
+            }
+        record = next(
+            (
+                item
+                for item in payload["records"]
+                if isinstance(item, dict) and item.get("packageId") == package_id
+            ),
+            None,
+        )
+        if not isinstance(record, dict) or record.get("state") != "deprecated":
+            return {
+                "lifecycleState": "active",
+                "deprecated": False,
+                "lifecycleReason": None,
+                "replacementPackageId": None,
+            }
+        return {
+            "lifecycleState": "deprecated",
+            "deprecated": True,
+            "lifecycleReason": record.get("reason"),
+            "replacementPackageId": record.get("replacementPackageId"),
+        }
+
     def publishing_registry_or_error(request: Request):
         """Return a Registry manager bound to this browser's Cloud session."""
 
@@ -640,6 +683,9 @@ def create_package_router(
             device = device_profile()
             memory_bytes = int(float(device.get("system_memory_gib", 0)) * 1024**3)
             compatible = not isinstance(minimum_bytes, int) or memory_bytes >= minimum_bytes
+            lifecycle = await package_lifecycle_status(
+                manager, f"{namespace}/{name}"
+            )
             return {
                 "schema": "ai2apps.provisioning-plan/v1",
                 "appId": "ai2apps.discover",
@@ -658,14 +704,23 @@ def create_package_router(
                         "label": model["label"],
                         "description": "",
                         "compatible": compatible,
-                        "recommended": model["recommended"] and compatible,
-                        "selected": model["recommended"] and compatible,
+                        "recommended": (
+                            model["recommended"]
+                            and compatible
+                            and not lifecycle["deprecated"]
+                        ),
+                        "selected": (
+                            model["recommended"]
+                            and compatible
+                            and not lifecycle["deprecated"]
+                        ),
                         "disabledReasons": [] if compatible else ["设备内存低于 Package 声明的最低要求"],
                         "minimumMemoryGiB": (
                             minimum_bytes / 1024**3
                             if isinstance(minimum_bytes, int)
                             else None
                         ),
+                        **lifecycle,
                     }
                     for model in install["models"]
                 ],
@@ -706,6 +761,7 @@ def create_package_router(
                     "model_install_unavailable",
                     "This Package does not declare a trusted model installation plan",
                 )
+            await package_lifecycle_status(manager, f"{namespace}/{name}")
             return runtime.provisioning.ensure_model_package(
                 actor_id=principal.actor_user_id,
                 installation_id=principal.installation_id,

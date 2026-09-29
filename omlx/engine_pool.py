@@ -2061,6 +2061,21 @@ class EnginePool:
                         from .engine.glm5_dynamic import Glm5DynamicVLMEngine
 
                         vlm_engine_class = Glm5DynamicVLMEngine
+                    elif (
+                        entry.config_model_type == "qwen4_exp"
+                        and os.environ.get("OMLX_QWEN4_DYNAMIC_STORE", "").strip()
+                    ):
+                        from .engine.qwen4_dynamic import Qwen4DynamicVLMEngine
+
+                        vlm_engine_class = Qwen4DynamicVLMEngine
+                    elif (
+                        entry.config_model_type == "qwen3_5_moe"
+                        and cache_moe_requested
+                        and entry.cache_moe_config is not None
+                    ):
+                        from .engine.qwen36_dynamic import Qwen36DynamicVLMEngine
+
+                        vlm_engine_class = Qwen36DynamicVLMEngine
                     engine = vlm_engine_class(
                         model_name=entry.model_path,
                         trust_remote_code=trc,

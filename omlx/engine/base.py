@@ -16,6 +16,8 @@ import mlx.core as mx
 
 from omlx.engine_core import get_mlx_executor
 
+from ..exceptions import InvalidRequestError
+
 _preflight_logger = logging.getLogger("omlx.engine.preflight")
 
 _PREFLIGHT_CLEANUP_WAIT_TIMEOUT_S = 4.0
@@ -27,6 +29,24 @@ _PREFLIGHT_CLEANUP_POLL_INTERVAL_S = 0.05
 # runtime condition — so once-per-pair is enough to alert oncall
 # without flooding the journal at request rate.
 _PREFLIGHT_UNREACHABLE_WARNED: set[tuple[str, str]] = set()
+
+
+def cap_generation_tokens_to_context(
+    requested_tokens: int,
+    prompt_tokens: int,
+    max_context_window: int | None,
+) -> int:
+    """Cap generation to the Package-declared prompt + output window."""
+
+    if max_context_window is None:
+        return requested_tokens
+    remaining = int(max_context_window) - int(prompt_tokens)
+    if remaining <= 0:
+        raise InvalidRequestError(
+            "Prompt exceeds the model context window "
+            f"({prompt_tokens} tokens >= {max_context_window})"
+        )
+    return min(requested_tokens, remaining)
 
 
 def _clear_teardown_references(

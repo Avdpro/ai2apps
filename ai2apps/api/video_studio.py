@@ -153,6 +153,14 @@ class ComposerProjectSaveRequest(BaseModel):
     source_ids: list[str] = Field(default_factory=list, alias="sourceIds", max_length=600)
 
 
+class ComposerProjectExportRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    output_name: str | None = Field(default=None, alias="outputName", max_length=255)
+    project: ComposerProject
+    source_ids: list[str] = Field(default_factory=list, alias="sourceIds", max_length=600)
+
+
 def create_video_studio_router(
     runtime_provider: PlatformRuntimeProvider,
     principal_provider: PrincipalProvider = resolve_request_principal,
@@ -453,7 +461,7 @@ def create_video_studio_router(
         principal: RequestPrincipal,
         app_instance_id: str,
     ) -> tuple[list[str], list[dict[str, Any]]]:
-        referenced = {clip.source_id for clip in project.clips}
+        referenced = {clip.source_id for clip in project.clips if clip.source_id}
         referenced.update(clip.mask_source_id for clip in project.clips if clip.mask_source_id)
         ordered = list(dict.fromkeys([*source_ids, *sorted(referenced)]))
         public_sources: list[dict[str, Any]] = []
@@ -538,6 +546,51 @@ def create_video_studio_router(
             "sources": public_sources,
         }
 
+    @router.post("/composer/projects/export")
+    def export_composer_project(
+        request: ComposerProjectExportRequest,
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        runtime = runtime_provider()
+        video_tasks = None if runtime is None else getattr(runtime, "video_tasks", None)
+        workspace = None if runtime is None else getattr(runtime, "workspace", None)
+        paths = None if runtime is None else getattr(runtime.config, "paths", None)
+        if video_tasks is None or workspace is None or paths is None:
+            raise HTTPException(status_code=503, detail="Project export storage is not ready")
+        source_ids, _ = composer_document_sources(
+            request.source_ids, request.project, principal, app_instance_id
+        )
+        safe_name = Path(request.output_name or request.project.title).name.replace("\x00", "").strip()
+        if not safe_name or safe_name in {".", ".."}:
+            safe_name = "Untitled composition.ai2video"
+        if Path(safe_name).suffix.lower() not in {".ai2video", ".json"}:
+            safe_name += ".ai2video"
+        document = ComposerProjectDocument(project=request.project, sourceIds=source_ids)
+        export_root = paths.artifacts_path / "video-composer-project-export"
+        export_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = export_root / f"{uuid.uuid4().hex}.ai2video"
+        try:
+            temporary.write_text(
+                document.model_dump_json(by_alias=True, indent=2), encoding="utf-8"
+            )
+            os.chmod(temporary, 0o600)
+            session_id = video_tasks.artifact_session()
+            artifact = workspace.import_artifact(
+                session_id,
+                temporary,
+                safe_name,
+                media_type="application/vnd.ai2apps.video-composer+json",
+                metadata={"generator": COMPOSER_ID, "schema": document.schema_name},
+            )
+        finally:
+            temporary.unlink(missing_ok=True)
+        return {
+            "name": artifact.name,
+            "downloadUrl": f"/v1/platform/sessions/{session_id}/artifacts/{artifact.id}/download",
+        }
+
     @router.get("/composer/sources/{source_id}/content")
     def composer_source_content(
         source_id: str,
@@ -577,11 +630,11 @@ def create_video_studio_router(
             return studio_error(error)
         if run["miniAppId"] != COMPOSER_ID or run["status"] != "queued":
             raise HTTPException(status_code=409, detail="Composer Run is not queued")
-        source_ids = {clip.source_id for clip in request.project.clips}
+        source_ids = {clip.source_id for clip in request.project.clips if clip.source_id}
         source_ids.update(
             clip.mask_source_id for clip in request.project.clips if clip.mask_source_id
         )
-        if not source_ids:
+        if not request.project.clips:
             raise HTTPException(status_code=422, detail="Add at least one clip before exporting")
         resolved: dict[str, tuple[dict[str, Any], Path]] = {}
         try:
@@ -600,6 +653,8 @@ def create_video_studio_router(
                     status_code=422,
                     detail=f"Clip {clip.name!r} mask must be an image",
                 )
+            if clip.layer_type != "media" or not clip.source_id:
+                continue
             source_duration = float(resolved[clip.source_id][0].get("duration") or 0)
             source_end = clip.source_start + clip.duration * clip.speed
             if not resolved[clip.source_id][0].get("hasImage") and source_duration > 0 and source_end > source_duration + 0.1:

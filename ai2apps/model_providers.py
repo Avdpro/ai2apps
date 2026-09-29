@@ -58,6 +58,8 @@ MODEL_TYPES = frozenset(
     }
 )
 
+DEFAULT_CONVERSATION_CONTEXT_WINDOW = 32768
+
 DEFAULT_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "llm": ("work", "conversation"),
     "vlm": ("work", "conversation", "image_recognition"),
@@ -252,6 +254,12 @@ def validate_package_models(
             raise ModelProviderContractError(
                 f"models[{index}].context_window is invalid"
             )
+        if (
+            context_window is None
+            and model_type in {"llm", "vlm"}
+            and "conversation" in capabilities
+        ):
+            context_window = DEFAULT_CONVERSATION_CONTEXT_WINDOW
         weights = _validate_model_weights(
             raw.get("weights"), field=f"models[{index}].weights"
         )
@@ -471,7 +479,13 @@ def list_package_models(runtime: Any | None) -> tuple[PackageModel, ...]:
                     upstream_id=raw["upstream_id"],
                     capabilities=tuple(raw["capabilities"]),
                     endpoints=dict(raw["endpoints"]),
-                    context_window=raw.get("context_window"),
+                    context_window=(
+                        raw.get("context_window")
+                        if raw.get("context_window") is not None
+                        or raw["model_type"] not in {"llm", "vlm"}
+                        or "conversation" not in raw["capabilities"]
+                        else DEFAULT_CONVERSATION_CONTEXT_WINDOW
+                    ),
                     metadata=dict(raw.get("metadata", {})),
                     audio_capabilities=(
                         dict(raw["audio_capabilities"])
@@ -653,6 +667,29 @@ def recommended_model_configuration_id(
     return chosen[0]["id"]
 
 
+def _activated_package_checkpoint(path: str | None, model: dict[str, Any]) -> bool:
+    """A verified payload is installed only after matching activation is committed."""
+    if not path:
+        return False
+    try:
+        descriptor = Path(path) / "ai2apps-model.json"
+        if descriptor.is_symlink():
+            return False
+        value = json.loads(descriptor.read_text(encoding="utf-8"))
+        weights = model.get("weights", {})
+        return (
+            isinstance(value, dict)
+            and value.get("format") == "ai2apps-cache-moe-model"
+            and value.get("version") == 2
+            and value.get("model_id") == model.get("id")
+            and isinstance(value.get("source"), dict)
+            and value["source"].get("repo_id") == weights.get("repo_id")
+            and value["source"].get("revision") == weights.get("revision")
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def installed_model_preparation_recipes(
     runtime: Any | None,
 ) -> tuple[dict[str, Any], ...]:
@@ -807,6 +844,7 @@ def installed_model_preparation_recipes(
                 {
                     "id": recipe_id,
                     "install_id": install_id,
+                    "installed": _activated_package_checkpoint(checkpoints.get(recipe_id, {}).get("path"), model),
                     "name": model.get("display_name", recipe_id),
                     "description": package.manifest.get("description", ""),
                     "service_key": getattr(

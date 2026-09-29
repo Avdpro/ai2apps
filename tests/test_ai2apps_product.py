@@ -78,9 +78,9 @@ def test_chat_exposes_engine_boost_modes() -> None:
     routes = Path("omlx/admin/routes.py").read_text()
     assert "ENGINE BOOST" in html
     assert 'value="natural">Natural · Full fidelity' in html
-    assert 'value="auto">Auto · 2K Turbo / 10K Blast' in html
-    assert 'value="turbo">Turbo · Head3 Prefill' in html
-    assert 'value="blast">Blast · Head2' in html
+    assert 'value="auto">Auto · Model policy' in html
+    assert 'value="turbo">Turbo · Model optimized' in html
+    assert 'value="blast">Blast · Maximum speed' in html
     assert "/v1/ai2apps/engine/boost" in html
     assert "ai2apps_engine_boost" in html
     assert "KV CONTINUITY" in html
@@ -88,12 +88,26 @@ def test_chat_exposes_engine_boost_modes() -> None:
     assert 'value="session">Continuous · Same session' in html
     assert "SSD PRESSURE · 10 TOK" in html
     assert "currentSsdPressure" in html
+    assert "currentSsdSwapsLabel" in html
     assert "currentSsdSwapColor" in html
-    assert "state?.epoch || 0" in html
+    assert "WORKER MEMORY" in html
+    assert "currentWorkerMemory" in html
+    assert "'/v1/platform/workers'" in html
+    assert html.count('x-show="isCurrentModelLocal"') >= 2
+    assert "this.currentSsdSwaps == null ? '—'" in html
     assert ">RUSH</span>" in html
-    assert '@pointerdown.prevent="beginRush($event)"' in html
-    assert '@pointerup.prevent="releaseRush()"' in html
-    assert "Hold for temporary Blast (Head2)" in html
-    assert html.count('x-show="isCacheMoeMode"') >= 2
+    assert '@click.prevent="toggleRush()"' in html
+    assert ':aria-pressed="rushActive"' in html
+    assert ':disabled="!isCacheMoeMode || isRushUnavailable"' in html
+    assert '@pointerdown.prevent="beginRush($event)"' not in html
+    assert "Click to start the model-specific Blast policy" in html
+    assert "Rush stopped · restored" in html
+    assert "?.rushEnabled === true" in html
+    assert "New replies will use this model’s Blast policy" in html
+    assert "if (session) session.rushEnabled = true" in html
+    assert "window.addEventListener('blur', () => this.releaseRush())" not in html
+    assert "if (typeof onFailure === 'function') onFailure()" in html
+    assert "if (document.visibilityState !== 'visible') return" in html
+    assert 'x-show="isCacheMoeMode" x-cloak' not in html
     assert '"cache_moe"' in pool
     assert '"cache_moe"' in routes

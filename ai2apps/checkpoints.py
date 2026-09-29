@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import re
 import stat
 from pathlib import PurePosixPath
 from pathlib import Path
@@ -15,6 +17,34 @@ def _read_json_object(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return value if isinstance(value, dict) else None
+
+
+def valid_local_checkpoint_metadata(root: Path, extras: set[str]) -> bool:
+    """Allow only activation-owned JSON sidecars, never extra model payloads."""
+    for relative in extras:
+        scope = re.fullmatch(r"\.ai2apps/scope-assets/([0-9a-f]{64})\.json", relative)
+        if relative != "ai2apps-model.json" and scope is None:
+            return False
+        path = root
+        for part in PurePosixPath(relative).parts:
+            path = path / part
+            if path.is_symlink():
+                return False
+        try:
+            if not path.is_file() or path.stat().st_size > 16 * 1024 * 1024:
+                return False
+            payload = path.read_bytes()
+            value = json.loads(payload)
+            if not isinstance(value, dict):
+                return False
+            if scope:
+                if hashlib.sha256(payload).hexdigest() != scope.group(1):
+                    return False
+            elif value.get("format") != "ai2apps-cache-moe-model" or value.get("version") != 2:
+                return False
+        except (OSError, ValueError):
+            return False
+    return True
 
 
 def _indexed_shards_are_complete(root: Path) -> bool:
@@ -130,11 +160,12 @@ def _verified_distribution_checkpoint_is_complete(
         for path in root.rglob("*")
         if path.is_file() or path.is_symlink()
     }
-    if actual_paths != {
+    required_paths = {
         *expected_paths,
         ".ai2apps/distribution.json",
         ".ai2apps/verification.json",
-    }:
+    }
+    if not required_paths <= actual_paths or not valid_local_checkpoint_metadata(root, actual_paths - required_paths):
         return False
 
     for relative, recorded in files.items():

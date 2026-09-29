@@ -107,6 +107,41 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         var lease: BrowserAgentLease
     }
 
+    private struct ScreenRecordingWindowCommand: ValidatedContract, Sendable {
+        let version = 1
+        let instanceID: String
+        let command = "prepare-screen-recording"
+        let createdAt = Date()
+
+        enum CodingKeys: String, CodingKey {
+            case version
+            case instanceID = "instance_id"
+            case command
+            case createdAt = "created_at"
+        }
+
+        func validate() throws {
+            guard version == 1 else {
+                throw ContractError.unsupportedSchema(
+                    contract: "screen-recording-window-command",
+                    version: version
+                )
+            }
+            guard instanceID == "app-dev" else {
+                throw ContractError.invalidField(
+                    field: "instance_id",
+                    reason: "must be app-dev"
+                )
+            }
+            guard command == "prepare-screen-recording" else {
+                throw ContractError.invalidField(
+                    field: "command",
+                    reason: "must be prepare-screen-recording"
+                )
+            }
+        }
+    }
+
     private let arguments: HelperArguments
     private let paths: InstancePaths
     private let instanceLock: HelperInstanceLock
@@ -410,6 +445,14 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         )
         openApp.target = self
         openApp.isEnabled = mainBundleIdentifier != nil || arguments.appBundleURL != nil
+        if allowsRecordingPreparation {
+            let prepareRecording = menu.addItem(
+                withTitle: L("准备录屏", "Prepare for Screen Recording"),
+                action: #selector(prepareScreenRecording),
+                keyEquivalent: ""
+            )
+            prepareRecording.target = self
+        }
         menu.addItem(withTitle: L("启动 AI2Apps 服务", "Start AI2Apps service"), action: #selector(startLocalAction), keyEquivalent: "")
             .target = self
         menu.addItem(withTitle: L("停止 AI2Apps 服务", "Stop AI2Apps service"), action: #selector(stopLocalAction), keyEquivalent: "")
@@ -462,6 +505,28 @@ private final class HelperDelegate: NSObject, NSApplicationDelegate, NSMenuDeleg
         developmentBuild && arguments.instanceID.rawValue == "app-dev"
             && mainBundleIdentifier == "com.ai2apps.desktop.appdev"
             && developmentSourceRoot != nil
+    }
+
+    private var allowsRecordingPreparation: Bool {
+        allowsTestEnvironment
+    }
+
+    @objc private func prepareScreenRecording() {
+        guard allowsRecordingPreparation else { return }
+        do {
+            try ContractCodec.save(
+                ScreenRecordingWindowCommand(
+                    instanceID: arguments.instanceID.rawValue
+                ),
+                to: paths.runDirectory.appendingPathComponent(
+                    "screen-recording-window.json"
+                ),
+                mode: 0o600
+            )
+            openAI2Apps()
+        } catch {
+            presentError(error)
+        }
     }
 
     @objc private func toggleTestEnvironment() {

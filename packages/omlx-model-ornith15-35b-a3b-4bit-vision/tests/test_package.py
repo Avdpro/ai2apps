@@ -29,7 +29,7 @@ def test_manifest_pins_dual_source_distribution_and_required_reasoning():
         (ROOT / "META/checkpoint-distribution.json").read_text()
     )
 
-    assert service["version"] == "0.1.4"
+    assert service["version"] == "0.1.5"
     assert manifest["package"]["version"] == service["version"]
     assert manifest["compatibility"]["ai2apps"] == ">=0.1.0 <2.0.0"
     assert model["model_type"] == "vlm"
@@ -40,7 +40,7 @@ def test_manifest_pins_dual_source_distribution_and_required_reasoning():
     assert preparation["default_execution_mode"] == "full"
     assert preparation["arena_tail_slots"] == 32
     assert [tier["experts"] for tier in preparation["memory_tiers"]] == [160, 192]
-    assert service["requires"]["services"][0]["version"] == ">=1.7.5,<2.0.0"
+    assert service["requires"]["services"][0]["version"] == ">=1.8.1,<2.0.0"
     assert model["metadata"]["reasoning"] == {
         "schema": "ai2apps.reasoning/v1",
         "mode": "required",
@@ -140,3 +140,60 @@ async def test_worker_uses_vlm_engine_for_full_mode(monkeypatch, tmp_path):
             {"backend": "flesh"},
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_worker_uses_boost_capable_vlm_engine_for_cached_mode(
+    monkeypatch, tmp_path
+):
+    module = _load_worker()
+    checkpoint = module.ModelWorkerCheckpoint(
+        model_id="ornith",
+        upstream_id="Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision-SSD",
+        provider="huggingface",
+        repo_id="Avdpro/Ornith-1.5-35B-A3B-MLX-4bit-Vision-SSD",
+        revision="114f31e6c416027b78488a4b8afa1e12c2156275",
+        path=tmp_path / "models--Avdpro--Ornith" / "snapshots" / "revision",
+        preparation={},
+    )
+    checkpoint.path.mkdir(parents=True)
+    profile = checkpoint.path / "scope.json"
+    profile.write_text("{}")
+    expert_store = checkpoint.path / "experts"
+    expert_store.mkdir()
+    monkeypatch.setattr(
+        module,
+        "_prepared_manifest",
+        lambda _checkpoint: {
+            "scope": {"profile": str(profile), "default": "general"},
+            "expert_store": str(expert_store),
+            "arena_tail_slots": 32,
+        },
+    )
+    policy = ModuleType("omlx.patches.qwen3_6_flesh.scope_policy")
+    policy.disable_qwen36_scope_policy = lambda: None
+    policy.configure_qwen36_scope_policy = lambda *args, **kwargs: None
+    discovery = ModuleType("omlx.model_discovery")
+    discovery.resolve_qwen36_cache_moe_experts = lambda *args: 160
+    dynamic = ModuleType("omlx.engine.qwen36_dynamic")
+    dynamic.Qwen36DynamicVLMEngine = (
+        lambda path, trust_remote_code=False: ("boost", path, trust_remote_code)
+    )
+    vlm = ModuleType("omlx.engine.vlm")
+    vlm.VLMBatchedEngine = lambda path, trust_remote_code=False: (
+        "plain",
+        path,
+        trust_remote_code,
+    )
+    monkeypatch.setitem(sys.modules, "omlx.engine.vlm", vlm)
+    monkeypatch.setitem(sys.modules, "omlx.engine.qwen36_dynamic", dynamic)
+    monkeypatch.setitem(sys.modules, "omlx.model_discovery", discovery)
+    monkeypatch.setitem(sys.modules, "omlx.patches.qwen3_6_flesh.scope_policy", policy)
+    monkeypatch.setattr(module, "_physical_memory_bytes", lambda: 24 * 1024**3)
+
+    engine = await module.Ornith15VisionChatAdapter(object()).create_engine(
+        checkpoint,
+        {"moe_execution_mode": "cached", "cache_moe_memory_tier": "compact"},
+    )
+
+    assert engine == ("boost", str(checkpoint.path), False)

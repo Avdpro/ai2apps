@@ -387,5 +387,38 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../ai2apps/web/static/j
   assert.equal(trainingAsr.trainingAsrModelId,'new-asr');
   await trainingAsr.selectTrainingAsrModel({target:{value:''}});
   assert.equal(trainingAsr.trainingAsrModelId,'');
+  const lineDrag=context.window.readAloudApp();
+  lineDrag.providers=[{id:'tts',modelType:'audio_tts',ready:true}];
+  lineDrag.selected={id:'book',characters:[{id:'actor',name:'Narrator'}]};
+  const line={id:'line',speakerId:'actor',text:'Hello',reviewStatus:'approved'};
+  const blob={size:128,type:'audio/wav'};
+  const transfer={values:{},files:[],setData(k,v){this.values[k]=v;},items:{add(file){transfer.files.push(file);}}};
+  const event={dataTransfer:transfer,target:{closest:()=>null},preventDefault(){this.prevented=true;}};
+  lineDrag.dragLineAudio(event,line);assert.equal(event.prevented,true);
+  context.fetch=async url=>url.includes('/audio?')
+    ? {ok:true,json:async()=>({audio:{url:'/private-line.wav'}})}
+    : {ok:true,blob:async()=>blob};
+  await lineDrag.prepareLineDrag(line);
+  event.prevented=false;lineDrag.dragLineAudio(event,line);
+  assert.equal(event.prevented,false);assert.equal(transfer.files.length,1);
+  assert.equal(transfer.files[0].name,'Narrator · Hello.wav');
+  assert.equal(transfer.values['application/x-ai2apps-audio-artifact'],undefined);
+  assert.equal(transfer.values['text/uri-list'],undefined);
+  const originalKey=lineDrag.lineDragKey(line);
+  line.text='Edited';lineDrag.dragLineAudio(event,line);assert.equal(event.prevented,true);
+  assert.notEqual(lineDrag.lineDragKey(line),originalKey);
+  line.reviewStatus='needs_review';assert.equal(lineDrag.lineDragKey(line),'');
+  line.reviewStatus='approved';
+  let resolveAudio;
+  context.fetch=async url=>url.includes('/audio?')
+    ? {ok:true,json:async()=>({audio:{url:'/private-line.wav'}})}
+    : {ok:true,blob:()=>new Promise(resolve=>{resolveAudio=resolve;})};
+  const pending=lineDrag.prepareLineDrag(line);
+  while(!resolveAudio) await new Promise(resolve=>setImmediate(resolve));
+  line.text='Changed during fetch';resolveAudio(blob);await pending;
+  assert.equal(lineDrag.lineDragAudio,null);
+  lineDrag.lineDragAudio={key:lineDrag.lineDragKey(line),blob};
+  event.prevented=false;event.target.closest=()=>({});
+  lineDrag.dragLineAudio(event,line);assert.equal(event.prevented,true);
   console.log('Voice Studio: project isolation and project-free Quick Read generation passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

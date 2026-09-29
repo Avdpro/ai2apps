@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.runtime.omlx
 name: AI2Apps oMLX Runtime
 description: Official signed MLX/oMLX execution Runtime for isolated AI2Apps Model Workers.
-version: 1.7.12
+version: 1.8.5
 
 publisher:
   id: ai2apps

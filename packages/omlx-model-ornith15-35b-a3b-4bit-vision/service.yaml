@@ -2,7 +2,7 @@ schema: ai2apps.service/v1
 id: ai2apps.model.ornith15-35b-a3b-4bit-vision
 name: Ornith 1.5 35B A3B 4-bit Vision
 description: Multimodal Ornith 1.5 Worker with full and exact Cached-MoE execution.
-version: 0.1.4
+version: 0.1.5
 publisher:
   id: ai2apps
 runtime:
@@ -77,7 +77,7 @@ capabilities: []
 requires:
   services:
   - id: ai2apps.runtime.omlx
-    version: '>=1.7.5,<2.0.0'
+    version: '>=1.8.1,<2.0.0'
     optional: false
     capabilities:
     - mlx

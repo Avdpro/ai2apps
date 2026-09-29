@@ -12,6 +12,8 @@ import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -37,6 +39,7 @@ from ai2apps.packages import (
     TrustStatus,
     package_digest,
 )
+from ai2apps.packages.supervisor import ManagedServiceSupervisor
 from ai2apps.platform_runtime import PlatformRuntime
 from ai2apps.services import (
     ServiceInstanceStatus,
@@ -52,6 +55,81 @@ def _runtime(tmp_path):
     assert runtime.package_manager is not None
     assert runtime.package_repository is not None
     return runtime
+
+
+def test_worker_telemetry_projects_only_ssd_observability() -> None:
+    telemetry = ManagedServiceSupervisor._inference_telemetry(
+        {
+            "engine_stats": {
+                "private": {"must_not_escape": True},
+                "flesh": {
+                    "bank": {"implementation": "private"},
+                    "ssd_recent_10_tokens": {
+                        "pressure_percent": 12.5,
+                        "expert_loads": 3,
+                    },
+                    "ssd_recent_by_session": {
+                        "chat-1": {"pressure_percent": 7.5, "expert_loads": 2},
+                        "invalid": "ignored",
+                    },
+                    "ssd_turn_by_session": {
+                        "chat-1": {"pressure_percent": 6.0, "expert_loads": 8},
+                    },
+                },
+            }
+        }
+    )
+
+    assert telemetry == {
+        "ssd_recent_10_tokens": {
+            "pressure_percent": 12.5,
+            "expert_loads": 3,
+        },
+        "ssd_recent_by_session": {
+            "chat-1": {"pressure_percent": 7.5, "expert_loads": 2},
+        },
+        "ssd_turn_by_session": {
+            "chat-1": {"pressure_percent": 6.0, "expert_loads": 8},
+        },
+    }
+    assert ManagedServiceSupervisor._inference_telemetry(
+        {"engine_stats": None}
+    ) is None
+
+
+def test_worker_memory_prefers_macos_physical_footprint() -> None:
+    with (
+        patch("ai2apps.packages.supervisor.psutil.Process") as process,
+        patch(
+            "ai2apps.packages.supervisor.get_phys_footprint",
+            return_value=48 * 1024**3,
+        ),
+    ):
+        process.return_value.memory_info.return_value = SimpleNamespace(
+            rss=20 * 1024**3
+        )
+        memory = ManagedServiceSupervisor._worker_memory(123)
+
+    assert memory == {
+        "residentMemoryBytes": 20 * 1024**3,
+        "physicalFootprintBytes": 48 * 1024**3,
+        "memoryMetric": "phys_footprint",
+    }
+
+
+def test_worker_memory_falls_back_to_rss() -> None:
+    with (
+        patch("ai2apps.packages.supervisor.psutil.Process") as process,
+        patch("ai2apps.packages.supervisor.get_phys_footprint", return_value=0),
+    ):
+        process.return_value.memory_info.return_value = SimpleNamespace(rss=1234)
+        memory = ManagedServiceSupervisor._worker_memory(123)
+
+    assert memory == {
+        "residentMemoryBytes": 1234,
+        "physicalFootprintBytes": 1234,
+        "memoryMetric": "rss",
+    }
 
 
 def _publisher(

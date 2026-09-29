@@ -26,6 +26,21 @@ from ai2apps.video.composer import (
 WEB_ROOT = Path(__file__).parents[1] / "ai2apps" / "web"
 
 
+def test_composer_clip_accepts_twenty_times_speed():
+    clip = ComposerClip.model_validate(
+        {
+            "id": "fast",
+            "sourceId": "source",
+            "trackId": "video",
+            "name": "Fast clip",
+            "start": 0,
+            "duration": 1,
+            "speed": 20,
+        }
+    )
+    assert clip.speed == 20
+
+
 def media_file(path: Path, *, color: int = 80) -> None:
     with av.open(str(path), "w", format="mp4") as container:
         video = container.add_stream("libx264", rate=12)
@@ -142,8 +157,8 @@ def test_composer_keyframes_validate_and_interpolate_all_transition_modes():
     hold = _clip_visual_state(animated("hold"), 5)
     linear = _clip_visual_state(animated("linear"), 5)
     ease = _clip_visual_state(animated("ease"), 2)
-    assert hold == {"x": 0.0, "y": 0.0, "width": 100.0, "height": 50.0, "opacity": 0.0}
-    assert linear == {"x": 50.0, "y": 25.0, "width": 150.0, "height": 75.0, "opacity": 0.5}
+    assert hold == {"x": 0.0, "y": 0.0, "width": 100.0, "height": 50.0, "opacity": 0.0, "scale": 1.0}
+    assert linear == {"x": 50.0, "y": 25.0, "width": 150.0, "height": 75.0, "opacity": 0.5, "scale": 1.0}
     assert round(ease["x"], 3) == 10.4 and round(ease["opacity"], 3) == 0.104
     assert _clip_visual_state(animated("hold"), 10)["x"] == 100
 
@@ -170,6 +185,46 @@ def test_composer_keyframes_validate_and_interpolate_all_transition_modes():
         assert "inside the clip duration" in str(error)
     else:
         raise AssertionError("a key frame at the exclusive clip end must be rejected")
+
+
+def test_special_layers_need_no_media_source_and_render_spotlight_and_text(tmp_path):
+    composition = ComposerProject.model_validate(
+        {
+            "title": "Special layers",
+            "settings": {"width": 96, "height": 64, "fps": 10, "background": "#ffffff"},
+            "tracks": [
+                {"id": "spot", "kind": "video", "name": "Spotlight", "order": 0},
+                {"id": "text", "kind": "video", "name": "Text", "order": 1},
+            ],
+            "clips": [
+                {
+                    "id": "spotlight", "layerType": "spotlight", "trackId": "spot",
+                    "name": "Spotlight", "start": 0, "duration": 0.3,
+                    "x": 32, "y": 16, "width": 32, "height": 32,
+                    "spotlightShape": "ellipse", "dimOpacity": 0.8, "feather": 2,
+                },
+                {
+                    "id": "title", "layerType": "text", "trackId": "text",
+                    "name": "Title", "start": 0, "duration": 0.3,
+                    "x": 48, "y": 32, "text": "Hi", "fontSize": 18,
+                    "textColor": "#ff0000", "textAnchor": "center",
+                    "reveal": True, "revealSpeed": 100,
+                    "keyframes": [{"id": "scale", "frame": 1, "scale": 1.5}],
+                },
+            ],
+        }
+    )
+    assert all(clip.source_id is None for clip in composition.clips)
+    assert _clip_visual_state(composition.clips[1], 1)["scale"] == 1.5
+
+    output = tmp_path / "special-layers.mp4"
+    import asyncio
+
+    asyncio.run(render_composition(composition, {}, output))
+    with av.open(str(output)) as rendered:
+        frames = [frame.to_ndarray(format="rgb24") for frame in rendered.decode(video=0)]
+    assert frames
+    assert frames[0][32, 48].mean() > frames[0][2, 2].mean() + 80
 
 
 def test_composer_export_centers_contained_media_inside_visual_box():
@@ -500,6 +555,21 @@ def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path)
     assert document["schema"] == "ai2apps.video-composer-project/v1"
     assert document["sourceIds"] == [source_payload["id"]]
     assert str(source_path) not in project_path.read_text()
+    exported = client.post(
+        "/video-studio/composer/projects/export",
+        headers=headers,
+        json={
+            "outputName": "Composer smoke.ai2video",
+            "project": project(source_payload["id"]).model_dump(by_alias=True),
+            "sourceIds": [source_payload["id"]],
+        },
+    )
+    assert exported.status_code == 200
+    assert exported.json()["name"] == "Composer smoke.ai2video"
+    assert exported.json()["downloadUrl"].endswith("/artifacts/arti_composer/download")
+    exported_document = json.loads(captured["bytes"])
+    assert exported_document["schema"] == "ai2apps.video-composer-project/v1"
+    assert exported_document["sourceIds"] == [source_payload["id"]]
     opened = client.post(
         "/video-studio/composer/projects/open",
         headers=headers,
@@ -572,6 +642,9 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "resetComposerClipSize" in template and "source.hasImage ? 1" in script
     assert "dropComposerOnTrack" in template and "application/x-ai2apps-gallery-kind" in script
     assert "setData('application/x-ai2apps-gallery-kind', asset.kind)" in gallery_script
+    assert "Gallery Mini-Entry clicks belong to Gallery's preview flow" in script
+    assert "if (this.isComposer) return;" in script
+    assert "if (['video', 'audio'].includes(asset.kind)) void this.importComposerGalleryAsset(asset)" not in script
     assert "beginComposerScrub" in template and "pointer-events:none" in stylesheet
     assert "settings.snapping" in script and "vs-composer-clip.snapped" in stylesheet
     assert "snapComposerPlayhead" in script and "clip.start + clip.duration" in script
@@ -587,6 +660,11 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "addComposerKeyframe" in template and "composerVisualStateAtFrame" in script
     assert "transition_hold" in template and "transition_linear" in template and "transition_ease" in template
     assert "vs-composer-keyframe-marker" in template and "splitComposerKeyframes" in script
+    assert "insertComposerFreezeFrame()" in template and "captureComposerVideoFrame" in script
+    assert "this.quantizeComposerTime(2, 1)" in script and "image-plus" in template
+    assert "item.start >= at - COMPOSER_TIME_EPSILON" in script
+    assert english["video_studio.composer.freeze_frame"] == "Insert freeze frame"
+    assert chinese["video_studio.composer.freeze_frame"] == "插入静帧"
     assert "composerSelectedKeyframeIsEndpoint" in template and "composerIsEndpointKeyframe" in script
     assert "lock-keyhole" in template and "keyframe.endpoint === 'end'" in script
     assert "composerIsProtectedKeyframe" in script and "this.composerSelectedKeyframe ? this.deleteComposerKeyframe()" in script
@@ -600,6 +678,11 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "maskSourceId" in script and "mask-mode:${mode}" in script
     assert "video_studio.composer.mask_none" in template and "composerMaskSources" in template
     assert "ImageChops.multiply" in composer_backend and "ImageOps.grayscale" in composer_backend
+    assert "addComposerSpecialLayer('spotlight')" in template and "addComposerSpecialLayer('text')" in template
+    assert "composerSpotlightStyle" in script and "composerTextPreview" in script
+    assert "spotlightShape" in template and "revealSpeed" in template
+    assert "ImageFilter.GaussianBlur" in composer_backend and "_apply_text_layer" in composer_backend
+    assert chinese["video_studio.composer.add_spotlight"] == "聚光遮罩"
     assert template.count('x-show="composerSource(composerSelectedClip.sourceId)?.hasAudio"') == 2
     assert english["video_studio.composer.fade_in"] == "Audio fade in"
     assert chinese["video_studio.composer.fade_out"] == "音频淡出"
@@ -650,6 +733,14 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "vs-composer-mask-import" in stylesheet
     assert "openComposerDocument" in template and "saveComposerDocumentAs" in template
     assert "/composer/projects/open" in script and "/composer/projects/save" in script
+    assert "newComposerDocument" in template and "newComposerDocument()" in script
+    assert "webkitdirectory" not in template
+    assert "/composer/projects/export" in script and "project_confirm_new" in script
+    assert "link.download" in script and "project_save_dialog" in script
+    assert "interimManagedPath" in script and "projects[\\\\/]video-studio" in script
     assert "composerCompatibleSources" in template and "setComposerClipSource" in script
     assert "retimeComposerClip" in script and "sourceSpan / speed" in script
+    assert 'min="0.25" max="20"' in template and "setComposerClipSpeed($event.target.value)" in template
+    assert 'x-model.number="composerSelectedClip.speed"' not in template
+    assert "COMPOSER_MAX_SPEED = 20" in script
     assert ".vs-composer-clip" in stylesheet and ".vs-composer-stage" in stylesheet

@@ -519,6 +519,47 @@ def test_worker_snapshot_rejects_repository_symlink_escape(tmp_path):
         )
 
 
+def test_worker_snapshot_accepts_activation_metadata_only(tmp_path):
+    import hashlib
+    from ai2apps.checkpoints import model_checkpoint_is_complete
+
+    payload = b"checkpoint"
+    manifest = _manifest(payload)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "model.safetensors").write_bytes(payload)
+    cache = CheckpointCache(tmp_path / "cache")
+    snapshot = cache.import_local_snapshot(manifest, source)
+    worker = cache.materialize_snapshot_view(manifest, snapshot, tmp_path / "worker")
+    worker.chmod(0o755)
+    (worker / ".ai2apps").chmod(0o755)
+    (worker / "ai2apps-model.json").write_text('{"format":"ai2apps-cache-moe-model","version":2}')
+    scope = b'{"experts": []}'
+    assets = worker / ".ai2apps/scope-assets"
+    assets.mkdir()
+    scope_file = assets / (hashlib.sha256(scope).hexdigest() + ".json")
+    scope_file.write_bytes(scope)
+    model = {"weights": {"distribution_id": manifest.distribution_id}}
+    assert model_checkpoint_is_complete(worker, model)
+    assert cache.materialize_snapshot_view(manifest, snapshot, worker) == worker
+    # Shared signed cache stays strict; only the Worker view allows sidecars.
+    assert not cache._snapshot_matches(manifest, worker)
+    scope_file.write_bytes(b'{}')
+    with pytest.raises(ValueError, match="conflicts"):
+        cache.materialize_snapshot_view(manifest, snapshot, worker)
+    scope_file.write_bytes(scope)
+    (worker / "extra.safetensors").write_bytes(b"unexpected")
+    with pytest.raises(ValueError, match="conflicts"):
+        cache.materialize_snapshot_view(manifest, snapshot, worker)
+    (worker / "extra.safetensors").unlink()
+    scope_file.unlink()
+    external_scope = tmp_path / "external-scope.json"
+    external_scope.write_bytes(scope)
+    scope_file.symlink_to(external_scope)
+    with pytest.raises(ValueError, match="conflicts"):
+        cache.materialize_snapshot_view(manifest, snapshot, worker)
+
+
 def test_verified_snapshot_receipt_avoids_rehash_and_detects_changes(
     tmp_path, monkeypatch
 ):
@@ -550,3 +591,53 @@ def test_verified_snapshot_receipt_avoids_rehash_and_detects_changes(
     checkpoint.write_bytes(b"checkpoinx")
     checkpoint.chmod(0o444)
     assert cache.verified_snapshot(manifest) is None
+
+
+def test_verified_snapshot_reports_hash_progress_before_writing_receipt(tmp_path):
+    payload = b"checkpoint" * 1024
+    manifest = _manifest(payload)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "model.safetensors").write_bytes(payload)
+    cache = CheckpointCache(tmp_path / "cache")
+    snapshot = cache.import_local_snapshot(manifest, source)
+    receipt = snapshot / ".ai2apps/verification.json"
+    receipt.parent.chmod(0o755)
+    receipt.chmod(0o644)
+    receipt.unlink()
+    updates = []
+
+    assert cache.verified_snapshot(manifest, updates.append) == snapshot
+    assert updates
+    assert updates[-1]["stage"] == "verifying_checkpoint"
+    assert updates[-1]["percent"] == 100.0
+    assert updates[-1]["totalBytesCompleted"] == len(payload)
+    assert updates[-1]["totalBytesTotal"] == len(payload)
+    assert receipt.is_file()
+
+
+def test_worker_snapshot_regenerates_receipt_without_rehashing_hardlinks(
+    tmp_path, monkeypatch
+):
+    payload = b"checkpoint"
+    manifest = _manifest(payload)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "model.safetensors").write_bytes(payload)
+    cache = CheckpointCache(tmp_path / "cache")
+    snapshot = cache.import_local_snapshot(manifest, source)
+    original_receipt_inode = (snapshot / ".ai2apps/verification.json").stat().st_ino
+
+    monkeypatch.setattr(
+        checkpoint_distribution,
+        "_sha256_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("hard-linked Worker view must not rehash model bytes")
+        ),
+    )
+    worker = cache.materialize_snapshot_view(manifest, snapshot, tmp_path / "worker")
+
+    assert (worker / "model.safetensors").stat().st_ino == (
+        snapshot / "model.safetensors"
+    ).stat().st_ino
+    assert (worker / ".ai2apps/verification.json").stat().st_ino != original_receipt_inode

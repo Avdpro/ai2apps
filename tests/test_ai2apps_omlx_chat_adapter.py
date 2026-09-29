@@ -26,6 +26,8 @@ class _Output:
     cached_tokens: int = 0
     prompt_tps: float = 120.5
     generation_tps: float = 42.5
+    generated_at: float | None = None
+    generated_until: float | None = None
     tool_calls: list | None = None
 
 
@@ -34,6 +36,8 @@ class _Engine:
         self.started = False
         self.stopped = False
         self.stream_closed = False
+        self.chat_kwargs = None
+        self.stream_kwargs = None
 
     async def start(self):
         self.started = True
@@ -42,14 +46,45 @@ class _Engine:
         self.stopped = True
 
     async def chat(self, messages, **kwargs):
+        self.chat_kwargs = kwargs
         return _Output()
 
     async def stream_chat(self, messages, **kwargs):
+        self.stream_kwargs = kwargs
         try:
-            yield _Output(text="he", new_text="he", finish_reason="length")
-            yield _Output(text="hello", new_text="llo", finish_reason="stop")
+            yield _Output(
+                text="he", new_text="he", finish_reason="length",
+                completion_tokens=1, generated_at=10.0, generated_until=10.0,
+            )
+            yield _Output(
+                text="hello", new_text="llo", finish_reason="stop",
+                completion_tokens=3, generated_at=10.1, generated_until=10.1,
+            )
         finally:
             self.stream_closed = True
+
+    def get_stats(self):
+        return {
+            "engine_boost": {
+                "available": True,
+                "mode": "blast",
+                "cache_hit_rate": 0.75,
+            }
+        }
+
+    def get_live_metrics(self, session_id=None):
+        return {
+            "ssd_recent_10_tokens": {
+                "tokens": 10,
+                "pressure_percent": 12.5,
+                "expert_loads": 3,
+            },
+            "ssd_turn_average": {
+                "tokens": 3,
+                "pressure_percent": 8.0,
+                "expert_loads": 4,
+            },
+        }
 
 
 class _Adapter(OmlxChatAdapter):
@@ -63,7 +98,7 @@ class _Adapter(OmlxChatAdapter):
         return engine
 
 
-def _context(tmp_path, *, reasoning=None):
+def _context(tmp_path, *, reasoning=None, context_window=None):
     first = tmp_path / "first"
     second = tmp_path / "second"
     first.mkdir()
@@ -80,15 +115,14 @@ def _context(tmp_path, *, reasoning=None):
         )
         for name, revision, path in (("first", "a", first), ("second", "b", second))
     )
-    models = ()
-    if reasoning is not None:
-        models = (
-            {
-                "id": "example.worker/first",
-                "upstream_id": "upstream-first",
-                "metadata": {"reasoning": reasoning},
-            },
-        )
+    first_model = {
+        "id": "example.worker/first",
+        "upstream_id": "upstream-first",
+        "metadata": {"reasoning": reasoning} if reasoning is not None else {},
+    }
+    if context_window is not None:
+        first_model["context_window"] = context_window
+    models = (first_model,)
     return ModelWorkerContext(
         service_id="example.worker",
         package_root=tmp_path,
@@ -96,6 +130,60 @@ def _context(tmp_path, *, reasoning=None):
         models=models,
         checkpoints=checkpoints,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "payload", "kwargs_attr"),
+    (
+        (
+            "chat_completions",
+            {"model": "upstream-first", "messages": [{"role": "user", "content": "hi"}]},
+            "chat_kwargs",
+        ),
+        (
+            "chat_completions",
+            {
+                "model": "upstream-first",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": True,
+            },
+            "stream_kwargs",
+        ),
+        ("responses", {"model": "upstream-first", "input": "hi"}, "chat_kwargs"),
+        (
+            "responses",
+            {"model": "upstream-first", "input": "hi", "stream": True},
+            "stream_kwargs",
+        ),
+    ),
+)
+async def test_omlx_adapter_passes_package_context_window_to_every_generation_path(
+    tmp_path, operation, payload, kwargs_attr
+):
+    adapter = _Adapter(_context(tmp_path, context_window=131072))
+    result = await adapter.invoke(
+        ModelWorkerRequest(operation=operation, payload=payload, request_id="context")
+    )
+    if isinstance(result, ModelWorkerStream):
+        _ = b"".join([chunk async for chunk in result.chunks])
+    assert getattr(adapter.created[0], kwargs_attr)["max_context_window"] == 131072
+
+
+@pytest.mark.asyncio
+async def test_omlx_adapter_defaults_legacy_chat_package_context_to_32768(tmp_path):
+    adapter = _Adapter(_context(tmp_path))
+    await adapter.invoke(
+        ModelWorkerRequest(
+            operation="chat_completions",
+            payload={
+                "model": "upstream-first",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            request_id="legacy-context",
+        )
+    )
+    assert adapter.created[0].chat_kwargs["max_context_window"] == 32768
 
 
 class _RequiredReasoningEngine(_Engine):
@@ -198,6 +286,22 @@ async def test_omlx_adapter_chat_and_responses_sse(tmp_path):
                       if event.startswith(b"data: {")]
             assert events[-1]["usage"]["prompt_tokens_per_second"] == 120.5
             assert events[-1]["usage"]["generation_tokens_per_second"] == 42.5
+            assert events[-1]["usage"]["ai2apps_engine_boost"] == {
+                "available": True,
+                "mode": "blast",
+                "cache_hit_rate": 0.75,
+            }
+            live_metrics = [
+                event["ai2apps_metrics"] for event in events
+                if "ai2apps_metrics" in event
+            ]
+            assert [item["completion_tokens"] for item in live_metrics] == [1, 3]
+            assert [item["generation_sample_time"] for item in live_metrics] == [10.0, 10.1]
+            assert all(item["prompt_tokens"] == 2 for item in live_metrics)
+            assert all(item["prefill_tokens_per_second"] == 120.5 for item in live_metrics)
+            assert all(item["prefill_timing_source"] == "engine_native" for item in live_metrics)
+            assert all(item["ssd_recent_10_tokens"]["tokens"] == 10 for item in live_metrics)
+            assert all(item["ssd_turn_average"]["tokens"] == 3 for item in live_metrics)
         for event in content.split(b"\n\n"):
             if event.startswith(b"data: {"):
                 json.loads(event.removeprefix(b"data: "))

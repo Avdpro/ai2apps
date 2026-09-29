@@ -22,8 +22,8 @@ import yaml
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-from ai2apps.download_progress import DownloadProgress
 from ai2apps.cloud_client import AI2AppsCloudClient
+from ai2apps.download_progress import DownloadProgress
 from ai2apps.extensions import ExtensionError, UnitKind
 from ai2apps.extensions.models import BundleFile, InspectedBundle
 from ai2apps.http_range import (
@@ -52,8 +52,10 @@ from .contract_v1 import (
     create_signature_envelope,
     generate_publisher_key,
     inspect_package,
+    jcs_bytes,
     mini_app_catalog_from_app_manifest,
     public_key_fingerprint,
+    verify_package_lifecycle_snapshot,
     verify_repository_snapshot,
     verify_signed_package,
 )
@@ -130,7 +132,10 @@ class RegistryPackageManager:
             or DEFAULT_REPOSITORY_FINGERPRINT
         ).removeprefix("sha256:")
         self.state_path = self.root / "state.json"
+        self.repository_key_path = self.root / "repository-key.pem"
+        self.lifecycle_cache_path = self.root / "package-lifecycle-envelope.json"
         self._artifact_download_locks: dict[str, asyncio.Lock] = {}
+        self._lifecycle_refresh_lock = asyncio.Lock()
 
     def for_cloud(self, cloud: AI2AppsCloudClient) -> RegistryPackageManager:
         """Bind shared local package state to one request-scoped Cloud session."""
@@ -159,6 +164,19 @@ class RegistryPackageManager:
                         error.get("message")
                         or f"Registry request failed ({response.status_code})"
                     ),
+                    details={"status": response.status_code},
+                )
+            return response.json()
+        finally:
+            await response.aclose()
+
+    async def _public_json(self, method: str, path: str) -> Any:
+        response = await self.cloud.request_public(method, path)
+        try:
+            if response.status_code >= 400:
+                raise RegistryError(
+                    "registry_request_failed",
+                    f"Registry request failed ({response.status_code})",
                     details={"status": response.status_code},
                 )
             return response.json()
@@ -218,6 +236,187 @@ class RegistryPackageManager:
             json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         os.replace(temporary, self.state_path)
+
+    @staticmethod
+    def _read_json_file(path: Path) -> dict[str, Any] | None:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError, OSError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    @staticmethod
+    def _save_json_file(path: Path, value: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        temporary.write_text(
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, path)
+
+    def _cached_repository_public_key(self) -> str | None:
+        try:
+            value = self.repository_key_path.read_text(encoding="ascii")
+        except (FileNotFoundError, UnicodeDecodeError, OSError):
+            return None
+        try:
+            fingerprint = public_key_fingerprint(value)
+        except PackageContractError:
+            return None
+        return value if fingerprint == self.repository_fingerprint else None
+
+    async def _status_repository_public_key(self) -> str:
+        cached = self._cached_repository_public_key()
+        if cached is not None:
+            return cached
+        key_info = await self._public_json("GET", "/v1/registry/repository-key")
+        public_key_pem = (
+            key_info.get("publicKeyPem") if isinstance(key_info, dict) else None
+        )
+        if not isinstance(public_key_pem, str):
+            raise RegistryError(
+                "repository_key_invalid", "Registry did not return a public key"
+            )
+        try:
+            fingerprint = public_key_fingerprint(public_key_pem)
+        except PackageContractError as error:
+            raise RegistryError(error.code, str(error), details=error.details) from error
+        if fingerprint != self.repository_fingerprint:
+            raise RegistryError(
+                "repository_key_unpinned",
+                "Repository key does not match the local pin",
+            )
+        self.root.mkdir(parents=True, exist_ok=True)
+        temporary = self.repository_key_path.with_name(
+            f".{self.repository_key_path.name}.{os.getpid()}.tmp"
+        )
+        temporary.write_text(public_key_pem, encoding="ascii")
+        os.replace(temporary, self.repository_key_path)
+        return public_key_pem
+
+    @staticmethod
+    def _validate_fresh_snapshot(payload: dict[str, Any], *, kind: str) -> None:
+        now = datetime.now(UTC)
+        if _utc(payload["expiresAt"]) <= now:
+            raise RegistryError(f"{kind}_expired", f"{kind} snapshot has expired")
+        generated_at = _utc(payload["generatedAt"])
+        if generated_at > now and (generated_at - now).total_seconds() > 300:
+            raise RegistryError(
+                f"{kind}_future", f"{kind} snapshot is dated in the future"
+            )
+
+    def package_lifecycle_snapshot(self) -> dict[str, Any] | None:
+        """Return the still-valid verified cache, or unknown when unavailable."""
+
+        public_key_pem = self._cached_repository_public_key()
+        envelope = self._read_json_file(self.lifecycle_cache_path)
+        if public_key_pem is None or envelope is None:
+            return None
+        try:
+            payload = verify_package_lifecycle_snapshot(
+                envelope,
+                public_key_pem,
+                pinned_fingerprint=self.repository_fingerprint,
+            )
+            self._validate_fresh_snapshot(payload, kind="package_lifecycle")
+        except (PackageContractError, RegistryError):
+            return None
+        state = self._load_state()
+        previous = int(state.get("lifecycleMetadataVersion", 0))
+        digest = hashlib.sha256(jcs_bytes(payload)).hexdigest()
+        if int(payload["version"]) < previous:
+            return None
+        previous_digest = state.get("lifecycleMetadataDigest")
+        if (
+            int(payload["version"]) == previous
+            and isinstance(previous_digest, str)
+            and previous_digest != digest
+        ):
+            return None
+        return payload
+
+    async def refresh_package_lifecycle(self) -> dict[str, Any]:
+        """Fetch, verify and cache the Package lifecycle full snapshot."""
+
+        async with self._lifecycle_refresh_lock:
+            return await self._refresh_package_lifecycle_locked()
+
+    async def _refresh_package_lifecycle_locked(self) -> dict[str, Any]:
+        """Refresh lifecycle metadata while serializing local state writes."""
+
+        public_key_pem = await self._status_repository_public_key()
+        state = self._load_state()
+        headers = {}
+        etag = state.get("lifecycleEtag")
+        if isinstance(etag, str) and etag:
+            headers["If-None-Match"] = etag
+        response = await self.cloud.request_public(
+            "GET", "/v1/registry/package-lifecycle/latest", headers=headers
+        )
+        try:
+            if response.status_code == 304:
+                envelope = self._read_json_file(self.lifecycle_cache_path)
+                if envelope is None:
+                    raise RegistryError(
+                        "package_lifecycle_cache_missing",
+                        "Package lifecycle cache is missing after 304",
+                    )
+            elif response.status_code >= 400:
+                raise RegistryError(
+                    "package_lifecycle_request_failed",
+                    f"Package lifecycle request failed ({response.status_code})",
+                    details={"status": response.status_code},
+                )
+            else:
+                try:
+                    envelope = response.json()
+                except ValueError as error:
+                    raise RegistryError(
+                        "package_lifecycle_invalid",
+                        "Package lifecycle response is not JSON",
+                    ) from error
+            try:
+                payload = verify_package_lifecycle_snapshot(
+                    envelope,
+                    public_key_pem,
+                    pinned_fingerprint=self.repository_fingerprint,
+                )
+            except PackageContractError as error:
+                raise RegistryError(error.code, str(error), details=error.details) from error
+            self._validate_fresh_snapshot(payload, kind="package_lifecycle")
+            # Reload after network I/O so Package installs performed by another
+            # manager/process are not overwritten by stale local state.
+            state = self._load_state()
+            previous = int(state.get("lifecycleMetadataVersion", 0))
+            version = int(payload["version"])
+            digest = hashlib.sha256(jcs_bytes(payload)).hexdigest()
+            previous_digest = state.get("lifecycleMetadataDigest")
+            if version < previous:
+                raise RegistryError(
+                    "package_lifecycle_rollback",
+                    "Package lifecycle snapshot version moved backwards",
+                    details={"previous": previous, "received": version},
+                )
+            if (
+                version == previous
+                and isinstance(previous_digest, str)
+                and previous_digest != digest
+            ):
+                raise RegistryError(
+                    "package_lifecycle_equivocation",
+                    "Package lifecycle snapshot changed without a version increase",
+                )
+            self._save_json_file(self.lifecycle_cache_path, envelope)
+            state["lifecycleMetadataVersion"] = version
+            state["lifecycleMetadataDigest"] = digest
+            response_etag = response.headers.get("etag")
+            if isinstance(response_etag, str) and response_etag:
+                state["lifecycleEtag"] = response_etag
+            self._save_state(state)
+            return payload
+        finally:
+            await response.aclose()
 
     async def trusted_snapshot(self) -> dict[str, Any]:
         key_info = await self._json("GET", "/v1/registry/repository-key")
