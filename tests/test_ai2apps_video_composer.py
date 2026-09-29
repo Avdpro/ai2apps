@@ -579,6 +579,22 @@ def test_video_composer_api_registers_source_and_materializes_artifact(tmp_path)
     assert opened.json()["project"]["title"] == "Composer smoke"
     assert opened.json()["sources"][0]["id"] == source_payload["id"]
     assert str(source_path) not in json.dumps(opened.json())
+    imported = client.post(
+        "/video-studio/composer/projects/import",
+        headers=headers,
+        files={
+            "file": (
+                "saved.ai2video",
+                project_path.read_bytes(),
+                "application/vnd.ai2apps.video-composer+json",
+            )
+        },
+    )
+    assert imported.status_code == 200
+    assert imported.json()["path"] == ""
+    assert imported.json()["project"]["title"] == "Composer smoke"
+    assert imported.json()["sources"][0]["id"] == source_payload["id"]
+    assert str(source_path) not in json.dumps(imported.json())
 
     mask_path = tmp_path / "mask.png"
     Image.new("RGB", (32, 32), "white").save(mask_path)
@@ -732,7 +748,8 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert 'second in composerTimelineTicks' in template
     assert "vs-composer-mask-import" in stylesheet
     assert "openComposerDocument" in template and "saveComposerDocumentAs" in template
-    assert "/composer/projects/open" in script and "/composer/projects/save" in script
+    assert "/composer/projects/open" in script and "/composer/projects/import" in script
+    assert "/composer/projects/save" in script and "form.append('file', file, file.name)" in script
     assert "newComposerDocument" in template and "newComposerDocument()" in script
     assert "webkitdirectory" not in template
     assert "/composer/projects/export" in script and "project_confirm_new" in script
