@@ -2,9 +2,13 @@
 
 ### NXR-RELEASE-011-2254-20260929：Desktop 0.1.1 Build 2254
 
-- 状态：`source_ready`。用户已批准构建、公证、双源上传并在 Cloud 生产 stable 频道走
-  100% rollout；生产匿名基线为 0.1.1 / Build 2253，因此分配 0.1.1 / Build 2254，
-  rollout id 固定为 `build2254-test`。
+- 状态：`released_pending_target_mac`。正式 main
+  `7850b8ab6edfa701504badb2788ecf4307e85e01` 已完成构建、Developer ID 签名、Apple 公证、
+  GitHub/ModelScope 同字节双源发布；Cloud 已按同一 `build2254-test` 先 0% 原子登记并扩至
+  10000 basis points。最终生产清单 SHA-256 为
+  `e743e9a5e018e5535d4ebaae6717d3492ab01c0bd865943109035e21b34d40c9`。当前只待目标 Mac
+  实际升级、启动及旧备份清理验收，完成前不标记 `included`。正式记录见
+  `docs/ai2apps-desktop-build-2254-release-receipt-2026-09-29.md`。
 - 本候选汇总 2253 后已实现的 ACPF 生命周期/Checkpoint 阶段、Chat Rush/上下文/实时与
   整轮遥测、Models/Worker SSD 状态、Video Composer、Unicode Artifact、Audiobook 拖拽
   以及对应 Runtime 1.8.5 Host/UI 承载。App-Dev 录屏工具仍严格限定 Development，生产
@@ -15,9 +19,9 @@
   Engine 的空 tokenizer。现已限定为只有显式窗口才计数，Batched/VLM/SpecPrefill 定向
   56 项通过；最终完整 Python 复验为 10287 passed、68 skipped、74 deselected，742.17 秒，
   无失败。JUnit：`/private/tmp/ai2apps-2254-full-final2.xml`。
-- 正式发布仍以 clean、已推送 main commit、Developer ID、公证/staple/Gatekeeper、
-  GitHub/ModelScope 同字节双源、Cloud 0% 原子登记和 100% 扩灰为门禁。个人参考音频
-  `ai2apps-test-system/assets/voice-1.wav` 明确排除。
+- 发布门禁已经通过：clean main、Developer ID、公证/staple/Gatekeeper、GitHub/ModelScope
+  匿名完整回读与 Range 字节校验、Cloud 0%/100% 两阶段验收均成功。个人参考音频
+  `ai2apps-test-system/assets/voice-1.wav` 明确排除；四网络矩阵和目标 Mac 端到端升级仍待完成。
 
 ### NXR-AUDIOBOOK-LINE-GALLERY-DRAG-20260929：已生成 Line 音频拖入 Gallery
 
