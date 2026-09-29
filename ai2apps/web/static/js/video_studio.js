@@ -1295,10 +1295,18 @@
             if (!file) return;
             try {
                 const sourcePath = nativeFilePath(file);
-                if (!sourcePath) throw new Error(tr('video_studio.composer.project_native_required'));
-                const record = await responsePayload(await fetch(`${STUDIO_API}/composer/projects/open`, {
-                    method: 'POST', credentials: 'same-origin', headers: this.composerDocumentHeaders(), body: JSON.stringify({ sourcePath }),
-                }));
+                let response;
+                if (sourcePath) {
+                    response = await fetch(`${STUDIO_API}/composer/projects/open`, {
+                        method: 'POST', credentials: 'same-origin', headers: this.composerDocumentHeaders(), body: JSON.stringify({ sourcePath }),
+                    });
+                } else {
+                    const form = new FormData(); form.append('file', file, file.name);
+                    response = await fetch(`${STUDIO_API}/composer/projects/import`, {
+                        method: 'POST', credentials: 'same-origin', headers: this.draftHeaders(), body: form,
+                    });
+                }
+                const record = await responsePayload(response);
                 this.applyComposerDocument(record); this.success(tr('video_studio.composer.project_opened', { name: file.name }));
             } catch (error) { this.fail(error); } finally { if (event?.target) event.target.value = ''; }
         },

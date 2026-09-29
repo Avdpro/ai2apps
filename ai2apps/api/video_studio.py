@@ -478,6 +478,24 @@ def create_video_studio_router(
             public_sources.append(ComposerSourceStore.public(record))
         return ordered, public_sources
 
+    def composer_project_payload(
+        document: ComposerProjectDocument,
+        *,
+        source_path: Path | None,
+        principal: RequestPrincipal,
+        app_instance_id: str,
+    ) -> dict[str, Any]:
+        source_ids, public_sources = composer_document_sources(
+            document.source_ids, document.project, principal, app_instance_id
+        )
+        return {
+            "schema": document.schema_name,
+            "path": str(source_path) if source_path is not None else "",
+            "project": document.project.model_dump(by_alias=True),
+            "sourceIds": source_ids,
+            "sources": public_sources,
+        }
+
     @router.post("/composer/projects/open")
     def open_composer_project(
         request: ComposerProjectOpenRequest,
@@ -495,16 +513,40 @@ def create_video_studio_router(
             document = ComposerProjectDocument.model_validate_json(source.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, ValidationError, json.JSONDecodeError) as error:
             raise HTTPException(status_code=422, detail="The selected Composer project is invalid") from error
-        source_ids, public_sources = composer_document_sources(
-            document.source_ids, document.project, principal, app_instance_id
+        return composer_project_payload(
+            document,
+            source_path=source,
+            principal=principal,
+            app_instance_id=app_instance_id,
         )
-        return {
-            "schema": document.schema_name,
-            "path": str(source),
-            "project": document.project.model_dump(by_alias=True),
-            "sourceIds": source_ids,
-            "sources": public_sources,
-        }
+
+    @router.post("/composer/projects/import")
+    async def import_composer_project(
+        file: Annotated[UploadFile, File()],
+        app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
+        principal: RequestPrincipal = principal_dependency,
+    ):
+        studio(principal, app_instance_id)
+        filename = Path(file.filename or "").name
+        if Path(filename).suffix.lower() not in {".ai2video", ".json"}:
+            raise HTTPException(status_code=422, detail="Select an AI2Apps Video Composer project file")
+        try:
+            payload = await file.read(4 * 1024 * 1024 + 1)
+            if len(payload) > 4 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="The selected Composer project is too large")
+            document = ComposerProjectDocument.model_validate_json(payload)
+        except HTTPException:
+            raise
+        except (UnicodeError, ValidationError, json.JSONDecodeError) as error:
+            raise HTTPException(status_code=422, detail="The selected Composer project is invalid") from error
+        finally:
+            await file.close()
+        return composer_project_payload(
+            document,
+            source_path=None,
+            principal=principal,
+            app_instance_id=app_instance_id,
+        )
 
     @router.post("/composer/projects/save")
     def save_composer_project(

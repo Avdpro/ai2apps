@@ -1,5 +1,18 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-012-2255-20260929：Desktop 0.1.2 Build 2255
+
+- 状态：`source_ready`。生产匿名基线为 0.1.1 / Build 2254；用户已批准提升产品版本至
+  0.1.2，重建 Dev、App-Dev、Test 和正式 Release，并完成签名、公证、GitHub/ModelScope
+  双源及 Cloud 100% 发布。Build 分配为 2255，rollout ID 固定为 `build2255-test`。
+- 相对 2254 的产品代码增量仅为 Video Composer 无原生文件路径时的安全文件流导入修复，
+  以及产品版本提升；不重发独立 Runtime 或模型 Package。范围与门禁见
+  `docs/ai2apps-desktop-0.1.2-build2255-release-preparation-2026-09-29.md`。
+- 个人参考音频 `ai2apps-test-system/assets/voice-1.wav` 明确排除。完整 Python 为 10287
+  passed、68 skipped、74 deselected；Swift 77+2、Node 16/16 通过。Dev、App-Dev、Test
+  已按固定脚本重建并通过身份/深层签名验证；正式 Release 仍须 clean main、Developer ID、
+  公证、双源和 Cloud 两阶段验收。
+
 ### NXR-RELEASE-011-2254-20260929：Desktop 0.1.1 Build 2254
 
 - 状态：`released_pending_target_mac`。正式 main
@@ -4435,3 +4448,5 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - 工具栏新增“新建”按钮；有片段时先确认，再重置项目、素材引用、播放头、选择与撤销历史并立即持久化新的自动草稿，已经写入磁盘的项目文件不受影响。
 - Composer 14 项回归、JavaScript、双语 JSON、Ruff 与 diff 检查通过；固定 Dev 已确认“新建”会先显示保护性确认。迁移并强制刷新后，现场分别点击“另存为”和无外部路径项目的“保存”，两者都打开了 macOS 原生“另存为”面板，默认文件名均为 `宣传视频-1.ai2video`，位置选择与文件类型正常。两次面板均选择取消，原项目内容保持不变。
 - 兼容迁移会清除短暂受管目录实现写入草稿的内部 `documentPath` 绑定，使受影响项目下一次点击“保存”也重新进入 Shell 原生“另存为”面板；恢复副本本身不会被删除。
+- 工程打开同时支持 AceFox 原生路径和浏览器文件流：Shell 能提供 `mozAI2AppsFullPath` 时由 Local 直接读取原文件；能力尚不可用或授权缺失时，页面把不超过 4 MiB 的 `.ai2video` 文档上传给同源 Local 解析，不再错误提示“需要在 AI2Apps Desktop 中打开项目文件”。文件流打开没有可持久化的原路径，因此后续“保存”会安全地进入原生“另存为”面板，不会误写其它位置。
+- 打开修复验证：Composer 14 项回归、JavaScript、Ruff 与 diff 检查通过；固定 Dev Local 重启至 `63655` 后，使用系统文件选择器打开 `/Users/avdpropang/Documents/ai2apps/promotion/宣传视频-1.ai2video`，界面显示“已打开”，并正确恢复项目名、1080p 画布、5 条轨道和 149.27 秒时间线。
