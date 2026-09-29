@@ -216,6 +216,59 @@ def test_discover_model_package_creates_durable_acpf_component_plan(tmp_path) ->
     assert plan["stack"]["components"][1]["model_id"] == "example.model/default"
 
 
+def test_discover_model_package_persists_deprecated_status_in_session_plan(
+    tmp_path,
+) -> None:
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(active=lambda _service_key: None),
+        package_manager=None,
+        registry_packages=SimpleNamespace(
+            package_lifecycle_snapshot=lambda: {
+                "records": [
+                    {
+                        "packageId": "example/model",
+                        "state": "deprecated",
+                        "reason": "已有更强的新模型",
+                        "replacementPackageId": "example/model-next",
+                    }
+                ]
+            }
+        ),
+    )
+    provisioner = CapabilityProvisioner(
+        runtime=runtime,
+        repository=ProvisioningSessionRepository(database),
+    )
+
+    result = provisioner.ensure_model_package(
+        actor_id="local-owner",
+        installation_id="installation-1",
+        app_instance_id="appi_discover",
+        package_id="example/model",
+        package_version="1.2.3",
+        display_name="Example Model",
+        service_key="example.model",
+        models=[
+            {
+                "id": "example.model/default",
+                "label": "Default",
+                "recommended": True,
+            }
+        ],
+        selected_model_id="example.model/default",
+    )
+
+    option = result["session"]["plan"]["profileOptions"][0]
+    assert option["deprecated"] is True
+    assert option["lifecycleState"] == "deprecated"
+    assert option["lifecycleReason"] == "已有更强的新模型"
+    assert option["replacementPackageId"] == "example/model-next"
+    assert option["recommended"] is False
+    assert option["selected"] is True
+
+
 @pytest.mark.asyncio
 async def test_discover_model_install_stages_missing_restart_dependency(tmp_path) -> None:
     database = PlatformDatabase(tmp_path / "platform.sqlite3")
@@ -480,6 +533,12 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
     assert registry.candidates(
         "ai2apps.general-chat",
         "text.chat.local",
+        _apple_device(8),
+        recommended=True,
+    )[0]["id"] == "apple-metal-qwen35-2b-4bit"
+    assert registry.candidates(
+        "ai2apps.general-chat",
+        "text.chat.local",
         _apple_device(16),
         recommended=True,
     )[0]["id"] == "apple-metal-qwen36-35b-4bit"
@@ -488,19 +547,25 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
         "text.chat.local",
         _apple_device(32),
         recommended=True,
-    )[0]["id"] == "apple-metal-deepseek-v4-flash-2bit"
+    )[0]["id"] == "apple-metal-qwen38-27b-nvfp4"
     assert registry.candidates(
         "ai2apps.general-chat",
         "text.chat.local",
         _apple_device(64),
         recommended=True,
-    )[0]["id"] == "apple-metal-deepseek-v4-flash"
-    assert not registry.candidates(
+    )[0]["id"] == "apple-metal-qwen38-flash-next-4bit"
+    assert registry.candidates(
         "ai2apps.general-chat",
         "text.chat.local",
         _apple_device(15),
         recommended=True,
-    )
+    )[0]["id"] == "apple-metal-qwen35-2b-4bit"
+    assert registry.candidates(
+        "ai2apps.general-chat",
+        "text.chat.local",
+        _apple_device(96),
+        recommended=True,
+    )[0]["id"] == "apple-metal-deepseek-v41-flash"
     deepseek = next(
         profile
         for profile in capability["profiles"]
@@ -527,13 +592,87 @@ def test_general_chat_local_model_is_optional_device_recommendation() -> None:
             recommended=True,
         )
     }
-    assert recommended_ids == {"apple-metal-deepseek-v4-flash"}
+    assert recommended_ids == {"apple-metal-deepseek-v41-flash"}
     glm = next(
         profile
         for profile in capability["profiles"]
         if profile["id"] == "apple-metal-glm53-flash-4bit-mtp"
     )
     assert glm["stack"]["provider"]["version"] == ">=0.1.5,<1.0.0"
+
+
+def test_all_acpf_plans_rank_deprecated_provider_last_and_do_not_recommend_it(
+    tmp_path, monkeypatch
+) -> None:
+    lifecycle = {
+        "version": 4,
+        "records": [
+            {
+                "packageId": "ai2apps/model-deepseek-v41-flash",
+                "state": "deprecated",
+                "reason": "请改用更新的模型 Package",
+                "replacementPackageId": "ai2apps/model-qwen38-flash-next-4bit",
+            }
+        ],
+    }
+    runtime = SimpleNamespace(
+        package_repository=SimpleNamespace(active=lambda _key: None),
+        registry_packages=SimpleNamespace(
+            package_lifecycle_snapshot=lambda: lifecycle
+        ),
+        package_manager=None,
+    )
+    database = PlatformDatabase(tmp_path / "platform.sqlite3")
+    database.initialize()
+    provisioner = CapabilityProvisioner(
+        runtime=runtime,
+        repository=ProvisioningSessionRepository(database),
+    )
+    monkeypatch.setattr(
+        "ai2apps.provisioning.orchestrator.device_profile",
+        lambda: _apple_device(128),
+    )
+
+    plan = provisioner.plan("ai2apps.general-chat", "text.chat.local", {})
+
+    assert plan["profileId"] == "apple-metal-qwen38-flash-next-4bit"
+    assert plan["profileOptions"][-1]["profileId"] == "apple-metal-deepseek-v41-flash"
+    deprecated = plan["profileOptions"][-1]
+    assert deprecated["deprecated"] is True
+    assert deprecated["lifecycleState"] == "deprecated"
+    assert deprecated["lifecycleReason"] == "请改用更新的模型 Package"
+    assert deprecated["replacementPackageId"] == "ai2apps/model-qwen38-flash-next-4bit"
+    assert deprecated["recommended"] is False
+
+    explicit = provisioner.plan(
+        "ai2apps.general-chat",
+        "text.chat.local",
+        {"profileId": "apple-metal-deepseek-v41-flash"},
+    )
+    assert explicit["profileId"] == "apple-metal-deepseek-v41-flash"
+    assert next(
+        item
+        for item in explicit["profileOptions"]
+        if item["profileId"] == "apple-metal-deepseek-v41-flash"
+    )["selected"] is True
+
+    monkeypatch.setattr(
+        "ai2apps.provisioning.orchestrator.resolve_package_model",
+        lambda _runtime, model_id: (
+            SimpleNamespace(
+                id=model_id,
+                service_key="ai2apps.model.deepseek-v41-flash",
+                checkpoint_ready=True,
+                capabilities=("conversation",),
+                video_capabilities=None,
+            )
+            if model_id == "ai2apps.model.deepseek-v41-flash/deepseek-v41-flash"
+            else None
+        ),
+    )
+    reused = provisioner.plan("ai2apps.general-chat", "text.chat.local", {})
+    assert reused["profileId"] == "apple-metal-deepseek-v41-flash"
+    assert provisioner.resolve_plan_ready(reused)["reused"] is True
 
 
 def test_chat_multi_model_plan_merges_simple_and_component_profiles(
@@ -652,7 +791,9 @@ def test_chat_can_plan_multiple_local_models_in_one_session(
     plan = result["session"]["plan"]
     assert plan["selectionMode"] == "multiple"
     assert plan["profileIds"] == profile_ids
-    assert [item["profileId"] for item in plan["profileOptions"] if item["selected"]] == profile_ids
+    assert {
+        item["profileId"] for item in plan["profileOptions"] if item["selected"]
+    } == set(profile_ids)
     components = plan["stack"]["components"]
     assert sum(item["phase"] == "runtime" for item in components) == 1
     assert sum(item["phase"] == "provider" for item in components) == 3
@@ -1412,6 +1553,10 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
     assert "data-choice-profile-id" in script
     assert "acpf-download-detail" in script
     assert "bytesCompleted ?? progressDetail.bytes_completed" in script
+    assert "progressStage === 'verifying_checkpoint'" in script
+    assert "progressStage === 'materializing_checkpoint'" in script
+    assert "progressStage === 'activating_checkpoint'" in script
+    assert "progressStage.startsWith('downloading_')" in script
     assert "当前项目" in script
     assert "本次下载总计" in script
     assert "session.status === 'awaiting_restart'" in script
@@ -1422,6 +1567,9 @@ def test_shared_client_stores_only_opaque_resume_metadata_and_defers_ack() -> No
         "request('/capabilities/ensure'"
     )
     assert "plan?.selectionMode === 'multiple'" in script
+    assert "Boolean(left.deprecated)" in script
+    assert "option.deprecated ? tr('已过时')" in script
+    assert "acpf-tier.deprecated" in stylesheet
     assert "{ profileIds: profileSelection }" in script
     assert 'class="acpf-choice-header"' in script
     assert 'class="acpf-actions acpf-choice-actions"' in script

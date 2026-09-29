@@ -4,21 +4,31 @@ from __future__ import annotations
 
 import base64
 import binascii
-from typing import Any, Literal
-from pathlib import Path
 import hashlib
+from pathlib import Path
+from typing import Any, Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from ai2apps.audio_codecs import AudioCodecError, OUTPUT_MEDIA_TYPES, encode_wav_audio
 from ai2apps.api.errors import platform_error_response, repository_error_response
 from ai2apps.api.health import PlatformRuntimeProvider
 from ai2apps.api.identity import PrincipalProvider, resolve_request_principal
 from ai2apps.api.ownership import require_session_access
+from ai2apps.audio_codecs import OUTPUT_MEDIA_TYPES, AudioCodecError, encode_wav_audio
 from ai2apps.core import RepositoryError
 from ai2apps.workspace import ArtifactRecord, ResourceHandleRecord, WorkspaceError
+
+
+def _artifact_content_disposition(filename: str) -> str:
+    safe = str(filename).replace('"', "").replace("\r", "").replace("\n", "")
+    try:
+        safe.encode("ascii")
+    except UnicodeEncodeError:
+        return f"attachment; filename*=utf-8''{quote(safe, safe='')}"
+    return f'attachment; filename="{safe}"'
 
 
 class ResourceImportRequest(BaseModel):
@@ -310,7 +320,7 @@ def create_workspace_router(
                 data,
                 media_type=media_type,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{safe}"',
+                    "Content-Disposition": _artifact_content_disposition(safe),
                     "ETag": hashlib.sha256(data).hexdigest() if audio_format else artifact.content_hash,
                 },
             )

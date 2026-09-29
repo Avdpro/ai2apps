@@ -142,6 +142,96 @@ def test_chat_has_only_one_settings_modal_entry():
         assert "oMLX" in json.loads(path.read_text())["chat.inference_attribution"]
 
 
+def test_composer_mode_surface_is_distinct_and_focuses_message_input():
+    html = CHAT_TEMPLATE.read_text()
+    assert 'class="chat-mode-row" @click="focusComposerFromSurface($event)"' in html
+    assert ".chat-mode-row {" in html
+    assert "border-bottom: 1px solid var(--border-faint);" in html
+    assert "background: var(--bg-tertiary);" in html
+
+    method = html.split("    focusComposerFromSurface(event) {", 1)[1].split(
+        "    async agentPlatformFetch", 1
+    )[0].strip().removesuffix(",")
+    script = "const focusSurface = function(event) {" + method + ";\n" + r'''
+const assert = require('node:assert/strict');
+let focused = 0;
+const state = {$refs:{messageInput:{focus(){focused += 1;}}}, $nextTick(callback){callback();}};
+focusSurface.call(state, {target:{closest(){return null;}}});
+assert.equal(focused, 1);
+focusSurface.call(state, {target:{closest(){return {};}}});
+assert.equal(focused, 1);
+'''
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_local_worker_cards_use_real_telemetry_and_explicit_dashes():
+    html = CHAT_TEMPLATE.read_text()
+    getters = html.split("    get currentDynamoeModelStatus() {", 1)[1].split(
+        "    async loadDynamoeStatus()", 1
+    )[0].strip().removesuffix(",")
+    script = "const telemetry = {get currentDynamoeModelStatus() {" + getters + "};\n" + r'''
+const assert = require('node:assert/strict');
+const cachedModel = {id:'pkg/cached', source_type:'package', cache_moe:true};
+const plainModel = {id:'pkg/plain', source_type:'local', cache_moe:false};
+const cloudModel = {id:'cloud/model', source_type:'cloud', cache_moe:false};
+const worker = {
+  serviceKey:'pkg', state:'ready', residentMemoryBytes:3 * 1024 ** 3,
+  models:[{id:'pkg/cached'}],
+  inferenceTelemetry:{
+    ssd_recent_10_tokens:{pressure_percent:12.5, expert_loads:3, bytes_loaded:1048576, severity:'healthy'},
+    ssd_recent_by_session:{chat:{pressure_percent:20, expert_loads:4, bytes_loaded:2097152, severity:'elevated'}},
+    ssd_turn_by_session:{chat:{pressure_percent:25, expert_loads:9, bytes_loaded:4194304, severity:'critical'}},
+  },
+};
+function state(model, workers=[worker]) {
+  return Object.assign(Object.create(telemetry), {
+    currentModel:model.id, currentChatId:'chat', availableModels:[model], modelWorkers:workers,
+    modelStatusMap:{}, workerTelemetryByService:{}, ai2appsStatus:null,
+    resolveGatewayModelId:id=>id, engineBoostMode:'natural', recentStats:{},
+    isCurrentChatStreaming:()=>false,
+    currentStream:()=>null,
+  });
+}
+const cached = state(cachedModel);
+cached.recentStats = {worker_peak_memory_bytes:4 * 1024 ** 3, worker_peak_service_key:'pkg'};
+assert.equal(cached.isCurrentModelLocal, true);
+assert.equal(cached.isCacheMoeMode, true);
+assert.equal(cached.currentSsdLabel, 'SSD PRESSURE · TURN AVG');
+assert.equal(cached.currentSsdPressure, '25.0%');
+assert.equal(cached.currentSsdSwapsLabel, '9 experts');
+assert.equal(cached.currentSsdSwapColor, '#ef4444');
+assert.equal(cached.currentWorkerMemory, '4.0 GiB');
+assert.equal(cached.currentWorkerMemoryLabel, 'WORKER MEMORY · PEAK');
+
+const streaming = state(cachedModel);
+streaming.recentStats = {worker_peak_memory_bytes:4 * 1024 ** 3, worker_peak_service_key:'pkg'};
+streaming.isCurrentChatStreaming = () => true;
+assert.equal(streaming.currentSsdLabel, 'SSD PRESSURE · 10 TOK');
+assert.equal(streaming.currentSsdPressure, '20.0%');
+assert.equal(streaming.currentWorkerMemory, '3.0 GiB');
+assert.equal(streaming.currentWorkerMemoryLabel, 'WORKER MEMORY');
+
+const plain = state(plainModel, [{...worker, models:[{id:'pkg/plain'}], inferenceTelemetry:null}]);
+assert.equal(plain.isCurrentModelLocal, true);
+assert.equal(plain.isCacheMoeMode, false);
+assert.equal(plain.currentSsdPressure, '—');
+assert.equal(plain.currentSsdSwapsLabel, '—');
+assert.equal(plain.currentWorkerMemory, '3.0 GiB');
+
+const cloud = state(cloudModel, []);
+assert.equal(cloud.isCurrentModelLocal, false);
+assert.equal(cloud.currentModelWorker, null);
+assert.equal(cloud.currentWorkerMemory, '—');
+'''
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_cloud_performance_panel_only_keeps_end_to_end_duration():
+    html = CHAT_TEMPLATE.read_text()
+    assert html.count('x-show="isCurrentModelLocal" x-cloak') >= 5
+    assert ':class="isCurrentModelLocal ? \'\' : \'col-span-2\'"' in html
+
+
 def test_chat_registers_points_default_from_legacy_provider_catalog():
     html = CHAT_TEMPLATE.read_text()
     method = html.split("            registerCloudDefaultModel(apiDefault, models = this.availableModels) {", 1)[1].split(
@@ -795,3 +885,83 @@ def test_image_regeneration_uses_the_image_endpoint():
     assert "origMsg.meta?.image_generation" in regenerate
     assert "await this.generateImageResponse" in regenerate
     assert "model: opts.model || origMsg.model || this.currentModel" in regenerate
+
+
+def test_chat_rejects_failed_or_truncated_sse_as_incomplete_messages():
+    stream = _section(
+        _template(),
+        "async streamResponse(streamContext = null, depth = 0)",
+        "async executeToolCalls(",
+    )
+
+    assert "let receivedDone = false" in stream
+    assert "receivedDone = true" in stream
+    assert "if (data?.error)" in stream
+    assert "streamError.ai2appsStreamFatal = true" in stream
+    assert "if (!receivedDone)" in stream
+    assert "streamError.code = 'MODEL_STREAM_INCOMPLETE'" in stream
+    assert "status: 'failed'" in stream
+    assert "status: 'cancelled'" in stream
+    assert "errorMsg.meta.inference_error" in stream
+    assert "this.attachThinkingToAssistantMessage(errorMsg" in stream
+
+
+def test_live_inference_metrics_show_thinking_progress_and_rolling_speed():
+    html = CHAT_TEMPLATE.read_text()
+
+    assert "const ROLLING_GENERATION_WINDOW_TOKENS = 20;" in html
+    assert "applyStreamMetrics(chatId, stream, metrics)" in html
+    assert "this.applyStreamMetrics(context.chatId, stream, data.ai2apps_metrics);" in html
+    assert "stream._rollingGenerationTps = tokenDelta / timeDelta;" in html
+    assert "currentStream()?._thinkTokens" in html
+    assert "msg._recentStats?.thinking_tokens" in html
+
+    method = html.split("            applyStreamMetrics(chatId, stream, metrics) {", 1)[1].split(
+        "            getChatSession(", 1
+    )[0].strip().removesuffix(",")
+    script = (
+        "const ROLLING_GENERATION_WINDOW_TOKENS = 20;\n"
+        "let sampleClock=0; const performance={now:()=>{sampleClock += 100; return sampleClock;}};\n"
+        "const apply = function(chatId, stream, metrics) {" + method + ";\n" + r'''
+const assert = require('node:assert/strict');
+const state = {
+  currentChatId: 'chat', recentStats: null,
+  emptyStats: () => ({avg_prefill_tps:0,avg_generation_tps:0,prompt_tokens:0,total_tokens:0,thinking_tokens:0,total_time:0}),
+};
+const stream = {
+  _statusStart: Date.now() - 1000, _generationSamples: [],
+  _liveFooterStats: null, thinkingState: {isInThinking:true},
+};
+for (let tokens = 1; tokens <= 25; tokens += 1) {
+  apply.call(state, 'chat', stream, {
+    prompt_tokens: 400, completion_tokens: tokens,
+    prefill_tokens_per_second: 100,
+    generation_sample_time: 10 + tokens * 0.1,
+    ssd_recent_10_tokens: {tokens:10, pressure_percent:12.5},
+    ssd_turn_average: {tokens, pressure_percent:8},
+  });
+}
+assert.equal(stream._thinkTokens, 25);
+assert.equal(state.recentStats.prompt_tokens, 400);
+assert.equal(state.recentStats.total_tokens, 25);
+assert.equal(state.recentStats.avg_prefill_tps, 100);
+assert.ok(Math.abs(state.recentStats.avg_generation_tps - 10) < 1e-9);
+assert.ok(stream._generationSamples.length <= 21);
+assert.equal(stream._liveSsdWindow.pressure_percent, 12.5);
+assert.equal(stream._ssdTurnAverage.tokens, 25);
+
+sampleClock = 0;
+const fallback = {
+  _statusStart: Date.now() - 1000, _generationSamples: [],
+  _liveFooterStats: null, thinkingState: {isInThinking:true},
+};
+for (let tokens = 1; tokens <= 25; tokens += 1) {
+  apply.call(state, 'chat', fallback, {
+    prompt_tokens: 400, completion_tokens: tokens,
+    prefill_tokens_per_second: 100,
+  });
+}
+assert.ok(Math.abs(fallback._rollingGenerationTps - 10) < 1e-9);
+'''
+    )
+    subprocess.run(['node', '-e', script], check=True, capture_output=True, text=True)

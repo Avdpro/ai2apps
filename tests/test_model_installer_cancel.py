@@ -2,7 +2,37 @@ import asyncio
 
 import pytest
 
-from ai2apps.model_installer import AI2AppsInstaller, InstallTask
+from ai2apps.model_installer import (
+    AI2AppsInstaller,
+    InstallTask,
+    _set_checkpoint_install_stage,
+)
+
+
+def test_checkpoint_post_transfer_stage_clears_stale_byte_progress() -> None:
+    task = InstallTask(
+        "task", "model", "huggingface", "owner/model", "a" * 40
+    )
+    task.progress_stage = "verifying_checkpoint"
+    task.current_file = "vocab.json"
+    task.bytes_completed = 10
+    task.bytes_total = 10
+    task.total_bytes_completed = 100
+    task.total_bytes_total = 100
+
+    _set_checkpoint_install_stage(
+        task,
+        stage="activating_checkpoint",
+        phase="Starting local model service",
+        progress=97.0,
+    )
+
+    assert task.progress_stage == "activating_checkpoint"
+    assert task.phase == "Starting local model service"
+    assert task.progress == 97.0
+    assert task.current_file == ""
+    assert task.bytes_completed == task.bytes_total == 0
+    assert task.total_bytes_completed == task.total_bytes_total == 0
 
 
 @pytest.mark.asyncio

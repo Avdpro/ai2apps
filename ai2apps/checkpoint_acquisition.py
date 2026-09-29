@@ -108,7 +108,7 @@ class CheckpointAcquisitionService:
             # promptly cancel this acquisition instead of leaving the UI
             # closed while range downloads continue in the background.
             cached = await asyncio.to_thread(
-                self.cache.verified_snapshot, manifest
+                self.cache.verified_snapshot, manifest, progress
             )
             if cached is not None:
                 return CheckpointAcquisitionResult(
@@ -129,7 +129,7 @@ class CheckpointAcquisitionService:
                 )
             for legacy_cache in self.legacy_caches:
                 legacy_snapshot = await asyncio.to_thread(
-                    legacy_cache.verified_snapshot, manifest
+                    legacy_cache.verified_snapshot, manifest, progress
                 )
                 if legacy_snapshot is None:
                     continue

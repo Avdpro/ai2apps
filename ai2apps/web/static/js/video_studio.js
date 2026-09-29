@@ -17,6 +17,8 @@
         Object.freeze({ id: 'ai2apps.video.extract-audio', mode: 'x2a', key: 'video_studio.mini_app.x2a', icon: 'audio-lines' }),
     ]);
     const COMPOSER_CLIP_COLORS = Object.freeze(['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#65a30d']);
+    const COMPOSER_MIN_SPEED = .25;
+    const COMPOSER_MAX_SPEED = 20;
     const COMPOSER_TIME_EPSILON = .002;
 
     function tr(key, values = {}) {
@@ -30,12 +32,6 @@
     function nativeFilePath(file) {
         try { return String(file?.mozAI2AppsFullPath || ''); }
         catch (_) { return ''; }
-    }
-    function selectedDirectory(files) {
-        const file = Array.from(files || [])[0];
-        const fullPath = nativeFilePath(file), relativePath = String(file?.webkitRelativePath || '');
-        if (!fullPath || !relativePath || !fullPath.endsWith(relativePath)) return '';
-        return fullPath.slice(0, -relativePath.length).replace(/\/$/, '');
     }
     function composerId(prefix) { return `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`; }
     function newComposerProject() {
@@ -116,7 +112,7 @@
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryMessageHandler: null, galleryAddedTimer: null,
         extractAsset: null, extractOutputName: '', extractImporting: false, extractSubmitting: false, localAudioSources: {}, addingAudioToGallery: false, audioGalleryAdded: false,
-        composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerRendering: false, composerSaveTimer: 0, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
+        composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerFreezeBusy: false, composerRendering: false, composerSaveTimer: 0, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
         tr,
         get miniApps() { return [...MINI_APPS, ...this.packageMiniApps].map(localizedMiniApp); },
         get selectedProvider() { return this.providers.find(item => item.id === this.modelId) || null; },
@@ -187,9 +183,13 @@
         get composerSelectedClips() { const ids = new Set(this.composerSelectedClipIds); return this.composerProject.clips.filter(clip => ids.has(clip.id)); },
         get composerSelectedKeyframe() { return this.composerSelectedClip?.keyframes?.find(keyframe => keyframe.id === this.composerSelectedKeyframeId) || null; },
         get composerSelectedKeyframeIsEndpoint() { return this.composerIsProtectedKeyframe(this.composerSelectedClip, this.composerSelectedKeyframe); },
+        get composerCanFreezeFrame() {
+            const clip = this.composerSelectedClip, source = this.composerSource(clip?.sourceId), track = this.composerTrack(clip?.trackId);
+            return Boolean(clip && source?.hasVideo && track?.kind === 'video' && !track.locked && this.composerPlayhead >= clip.start - COMPOSER_TIME_EPSILON && this.composerPlayhead <= clip.start + clip.duration + COMPOSER_TIME_EPSILON);
+        },
         get composerCanAddKeyframe() {
             const clip = this.composerSelectedClip, source = clip ? this.composerSource(clip.sourceId) : null;
-            return Boolean(clip && (source?.hasVideo || source?.hasImage) && this.composerPlayhead >= clip.start && this.composerPlayhead < clip.start + clip.duration);
+            return Boolean(clip && (clip.layerType === 'spotlight' || clip.layerType === 'text' || source?.hasVideo || source?.hasImage) && this.composerPlayhead >= clip.start && this.composerPlayhead < clip.start + clip.duration);
         },
         get composerCanGroupSelection() {
             const clips = this.composerSelectedClips;
@@ -607,11 +607,9 @@
             if (event.origin !== window.location.origin || event.source !== this.$refs.galleryMini?.contentWindow) return;
             if (event.data?.type === 'ai2apps.gallery.asset-selected') {
                 const asset = event.data.asset || {};
-                if (this.isComposer) {
-                    if (['video', 'audio'].includes(asset.kind)) void this.importComposerGalleryAsset(asset).catch(error => this.fail(error));
-                    else this.fail(new Error(tr('video_studio.error.asset_type')));
-                    return;
-                }
+                // Gallery Mini-Entry clicks belong to Gallery's preview flow.
+                // Composer media is added only through an explicit drop/import.
+                if (this.isComposer) return;
                 if (!this.isAudioExtractor) return;
                 if (asset.kind === 'video') void this.selectExtractAsset(asset).catch(error => this.fail(error));
                 else this.fail(new Error(tr('video_studio.error.extract_video_only')));
@@ -963,6 +961,7 @@
         composerSource(sourceId) { return this.composerSources.find(source => source.id === sourceId) || null; },
         composerMaskSources() { return this.composerSources.filter(source => source.hasImage); },
         composerCompatibleSources(clip) {
+            if (clip?.layerType && clip.layerType !== 'media') return [];
             const current = this.composerSource(clip?.sourceId); if (!current) return [];
             if (current.hasVideo) return this.composerSources.filter(source => source.hasVideo);
             if (current.hasImage) return this.composerSources.filter(source => source.hasImage);
@@ -977,6 +976,12 @@
         setComposerClipTime(field, value) {
             const clip = this.composerSelectedClip; if (!clip || !['start', 'duration'].includes(field)) return;
             clip[field] = this.quantizeComposerTime(value, field === 'duration' ? 1 : 0);
+        },
+        setComposerClipSpeed(value) {
+            const clip = this.composerSelectedClip; if (!clip) return;
+            const speed = Math.max(COMPOSER_MIN_SPEED, Math.min(COMPOSER_MAX_SPEED, Number(value) || 1));
+            if (Math.abs(speed - Number(clip.speed)) <= COMPOSER_TIME_EPSILON) { this.composerChanged(); return; }
+            this.composerPushHistory(); this.retimeComposerClip(clip, speed); this.composerChanged(); this.syncComposerPreview();
         },
         composerClipKeyframes(clip) { return Array.isArray(clip?.keyframes) ? clip.keyframes.slice().sort((a, b) => a.frame - b.frame) : []; },
         composerIsEndpointKeyframe(keyframe) { return keyframe?.endpoint === 'start' || keyframe?.endpoint === 'end'; },
@@ -998,7 +1003,7 @@
         },
         composerBaseVisualState(clip) {
             const settings = this.composerProject.settings;
-            return { x: Number(clip.x) || 0, y: Number(clip.y) || 0, width: Number(clip.width) || settings.width, height: Number(clip.height) || settings.height, opacity: Number.isFinite(Number(clip.opacity)) ? Number(clip.opacity) : 1 };
+            return { x: Number(clip.x) || 0, y: Number(clip.y) || 0, width: Number(clip.width) || settings.width, height: Number(clip.height) || settings.height, opacity: Number.isFinite(Number(clip.opacity)) ? Number(clip.opacity) : 1, scale: Number.isFinite(Number(clip.scale)) ? Number(clip.scale) : 1 };
         },
         composerVisualStateAtFrame(clip, localFrame) {
             let previousFrame = 0, previous = this.composerBaseVisualState(clip);
@@ -1027,12 +1032,13 @@
             return state;
         },
         setComposerKeyframeValue(field, value) {
-            const keyframe = this.composerSelectedKeyframe; if (!keyframe || !['x', 'y', 'width', 'height', 'opacity'].includes(field)) return;
+            const keyframe = this.composerSelectedKeyframe; if (!keyframe || !['x', 'y', 'width', 'height', 'opacity', 'scale'].includes(field)) return;
             if (value === '') keyframe[field] = null;
             else {
                 let number = Number(value); if (!Number.isFinite(number)) return;
                 if (field === 'width' || field === 'height') number = Math.max(16, Math.round(number));
                 else if (field === 'opacity') number = Math.max(0, Math.min(1, number));
+                else if (field === 'scale') number = Math.max(.05, Math.min(20, number));
                 else number = Math.round(number);
                 keyframe[field] = number;
             }
@@ -1068,7 +1074,32 @@
         composerPreviewStyle(clip) {
             const settings = this.composerProject.settings;
             const state = this.composerVisualStateAt(clip);
-            return `left:${state.x / settings.width * 100}%;top:${state.y / settings.height * 100}%;width:${state.width / settings.width * 100}%;height:${state.height / settings.height * 100}%;opacity:${state.opacity}`;
+            const anchor = clip.layerType === 'text' ? this.composerTextAnchorTransform(clip.textAnchor) : '';
+            if (clip.layerType === 'text') return `left:${state.x / settings.width * 100}%;top:${state.y / settings.height * 100}%;opacity:${state.opacity};transform:${anchor} scale(${state.scale});transform-origin:${this.composerTextTransformOrigin(clip.textAnchor)}`;
+            return `left:${state.x / settings.width * 100}%;top:${state.y / settings.height * 100}%;width:${state.width / settings.width * 100}%;height:${state.height / settings.height * 100}%;opacity:${state.opacity};transform:${anchor} scale(${state.scale});transform-origin:${this.composerTextTransformOrigin(clip.textAnchor)}`;
+        },
+        composerTextAnchorTransform(anchor = 'center') {
+            const x = anchor.endsWith('left') || anchor === 'left' ? '0' : anchor.endsWith('right') || anchor === 'right' ? '-100%' : '-50%';
+            const y = anchor.startsWith('top') || anchor === 'top' ? '0' : anchor.startsWith('bottom') || anchor === 'bottom' ? '-100%' : '-50%';
+            return `translate(${x},${y})`;
+        },
+        composerTextTransformOrigin(anchor = 'center') {
+            const x = anchor.endsWith('left') || anchor === 'left' ? 'left' : anchor.endsWith('right') || anchor === 'right' ? 'right' : 'center';
+            const y = anchor.startsWith('top') || anchor === 'top' ? 'top' : anchor.startsWith('bottom') || anchor === 'bottom' ? 'bottom' : 'center';
+            return `${x} ${y}`;
+        },
+        composerTextPreview(clip) {
+            const text = String(clip.text || '');
+            if (!clip.reveal) return text;
+            return text.slice(0, Math.max(0, Math.floor((this.composerPlayhead - clip.start) * (Number(clip.revealSpeed) || 12))));
+        },
+        composerTextStyle(clip) {
+            return `font-size:${Math.max(8, Number(clip.fontSize)||64) / this.composerProject.settings.width * 100}cqw;color:${clip.textColor||'#ffffff'}`;
+        },
+        composerSpotlightStyle(clip) {
+            const alpha = Math.max(0, Math.min(1, Number(clip.dimOpacity) || 0));
+            const radius = clip.spotlightShape === 'ellipse' ? '50%' : `${Math.max(0, Number(clip.cornerRadius) || 0)}px`;
+            return `border-radius:${radius};box-shadow:0 0 ${Math.max(0, Number(clip.feather)||0)}px 9999px rgba(0,0,0,${alpha})`;
         },
         composerPreviewMaskStyle(clip) {
             const mask = this.composerSource(clip.maskSourceId); if (!mask?.hasImage) return '';
@@ -1079,7 +1110,7 @@
             const tracks = new Map(this.composerProject.tracks.map(track => [track.id, track]));
             return this.composerProject.clips.filter(clip => {
                 const source = this.composerSource(clip.sourceId), track = tracks.get(clip.trackId);
-                return (source?.hasVideo || source?.hasImage) && track?.kind === 'video' && !track.muted && this.composerPlayhead >= clip.start && this.composerPlayhead < clip.start + clip.duration;
+                return (clip.layerType === 'spotlight' || clip.layerType === 'text' || source?.hasVideo || source?.hasImage) && track?.kind === 'video' && !track.muted && this.composerPlayhead >= clip.start && this.composerPlayhead < clip.start + clip.duration;
             }).sort((a, b) => (tracks.get(a.trackId)?.order || 0) - (tracks.get(b.trackId)?.order || 0));
         },
         composerPushHistory() {
@@ -1107,6 +1138,8 @@
             this.composerProject.tracks.forEach(track => {
                 let cursor = 0;
                 this.composerTrackClips(track.id).forEach(clip => {
+                    clip.layerType = clip.layerType || 'media';
+                    clip.scale = Number.isFinite(Number(clip.scale)) ? Number(clip.scale) : 1;
                     const isVideoTrack = track.kind === 'video';
                     clip.duration = this.quantizeComposerTime(clip.duration, isVideoTrack ? 2 : 1);
                     clip.start = this.quantizeComposerTime(Math.max(cursor, Math.max(0, Number(clip.start) || 0)));
@@ -1125,17 +1158,18 @@
                             width: keyframe.width === null || keyframe.width === '' || keyframe.width === undefined ? null : Math.max(16, Math.round(Number(keyframe.width))),
                             height: keyframe.height === null || keyframe.height === '' || keyframe.height === undefined ? null : Math.max(16, Math.round(Number(keyframe.height))),
                             opacity: keyframe.opacity === null || keyframe.opacity === '' || keyframe.opacity === undefined ? null : Math.max(0, Math.min(1, Number(keyframe.opacity))),
+                            scale: keyframe.scale === null || keyframe.scale === '' || keyframe.scale === undefined ? null : Math.max(.05, Math.min(20, Number(keyframe.scale))),
                         });
                     });
                     if (isVideoTrack) {
                         const endFrame = durationFrames - 1;
                         let start = [...byFrame.values()].find(keyframe => keyframe.endpoint === 'start') || byFrame.get(0);
-                        if (!start) start = { id: composerId('keyframe'), frame: 0, transition: 'hold', x: Math.round(base.x), y: Math.round(base.y), width: Math.max(16, Math.round(base.width)), height: Math.max(16, Math.round(base.height)), opacity: base.opacity };
+                        if (!start) start = { id: composerId('keyframe'), frame: 0, transition: 'hold', x: Math.round(base.x), y: Math.round(base.y), width: Math.max(16, Math.round(base.width)), height: Math.max(16, Math.round(base.height)), opacity: base.opacity, scale: base.scale };
                         start.frame = 0; start.endpoint = 'start'; start.transition = 'hold'; byFrame.set(0, start);
                         let end = [...byFrame.values()].find(keyframe => keyframe.endpoint === 'end') || byFrame.get(endFrame);
                         if (!end || end === start) {
                             const state = this.composerVisualStateAtFrame({ ...clip, keyframes: [...byFrame.values()] }, endFrame);
-                            end = { id: composerId('keyframe'), frame: endFrame, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)) };
+                            end = { id: composerId('keyframe'), frame: endFrame, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)), scale: state.scale };
                         }
                         end.frame = endFrame; end.endpoint = 'end'; byFrame.set(endFrame, end);
                     }
@@ -1226,7 +1260,12 @@
                     this.normalizeComposerTimeline();
                 }
                 if (Array.isArray(record.draft?.sources)) this.composerSources = record.draft.sources;
-                if (typeof record.draft?.documentPath === 'string') this.composerDocumentPath = record.draft.documentPath;
+                if (typeof record.draft?.documentPath === 'string') {
+                    const savedPath = record.draft.documentPath;
+                    const interimManagedPath = /[\\/]data[\\/]projects[\\/]video-studio[\\/][^\\/]+$/i.test(savedPath);
+                    this.composerDocumentPath = interimManagedPath ? '' : savedPath;
+                    if (interimManagedPath) this.scheduleComposerSave();
+                }
             } catch (error) { this.fail(error); }
         },
         composerProjectFileName() {
@@ -1240,6 +1279,16 @@
             this.composerProject = record.project; this.composerSources = record.sources; this.composerDocumentPath = record.path || '';
             this.composerHistory = []; this.composerFuture = []; this.composerSelectedClipId = ''; this.composerSelectedClipIds = []; this.composerSelectedKeyframeId = '';
             this.composerPlayhead = 0; this.normalizeComposerTimeline(); this.scheduleComposerSave(); this.icons();
+        },
+        async newComposerDocument() {
+            if (this.composerProject.clips.length && !window.confirm(tr('video_studio.composer.project_confirm_new'))) return;
+            if (this.composerPlaying) this.toggleComposerPreview();
+            if (this.composerSaveTimer) { clearTimeout(this.composerSaveTimer); this.composerSaveTimer = 0; }
+            this.composerProject = newComposerProject(); this.composerSources = []; this.composerDocumentPath = '';
+            this.composerHistory = []; this.composerFuture = []; this.composerSelectedClipId = ''; this.composerSelectedClipIds = []; this.composerSelectedKeyframeId = '';
+            this.composerPlayhead = 0; this.composerPlayheadSnapped = false;
+            await this.saveComposerProject(); this.icons();
+            this.success(tr('video_studio.composer.project_created'));
         },
         async openComposerDocument(event) {
             const file = Array.from(event?.target?.files || [])[0];
@@ -1262,28 +1311,31 @@
             await this.saveComposerProject();
             this.success(tr('video_studio.composer.project_saved', { name: record.path.split('/').pop() }));
         },
+        async exportComposerDocument() {
+            if (this.composerDocumentSaving) return;
+            this.composerDocumentSaving = true;
+            try {
+                const record = await responsePayload(await fetch(`${STUDIO_API}/composer/projects/export`, {
+                    method: 'POST', credentials: 'same-origin', headers: this.composerDocumentHeaders(),
+                    body: JSON.stringify({ outputName: this.composerProjectFileName(), project: this.composerProject, sourceIds: this.composerSources.map(source => source.id) }),
+                }));
+                const link = document.createElement('a');
+                link.href = record.downloadUrl; link.download = record.name || this.composerProjectFileName();
+                document.body.appendChild(link); link.click(); link.remove();
+                this.success(tr('video_studio.composer.project_save_dialog'));
+            } catch (error) { this.fail(error); }
+            finally { this.composerDocumentSaving = false; this.icons(); }
+        },
         async saveComposerDocument() {
-            if (!this.composerDocumentPath) { this.$refs.composerSaveAs?.click(); return; }
+            if (!this.composerDocumentPath) return this.exportComposerDocument();
             if (this.composerDocumentSaving) return;
             this.composerDocumentSaving = true;
             try { await this.writeComposerDocument(this.composerDocumentPath); }
             catch (error) { this.fail(error); }
             finally { this.composerDocumentSaving = false; this.icons(); }
         },
-        async saveComposerDocumentAs(event) {
-            const directory = selectedDirectory(event?.target?.files);
-            if (!directory) { if (event?.target?.files?.length) this.fail(new Error(tr('video_studio.composer.project_folder_required'))); if (event?.target) event.target.value = ''; return; }
-            const proposed = this.composerProjectFileName();
-            let name = window.prompt(tr('video_studio.composer.project_file_name'), proposed);
-            if (name === null) { event.target.value = ''; return; }
-            name = String(name).trim().replace(/[\\/]/g, '-');
-            if (!/\.(ai2video|json)$/i.test(name)) name += '.ai2video';
-            if (!name || this.composerDocumentSaving) { event.target.value = ''; return; }
-            if (Array.from(event.target.files || []).some(file => file.name === name) && !window.confirm(tr('video_studio.composer.project_confirm_overwrite', { name }))) { event.target.value = ''; return; }
-            this.composerDocumentSaving = true;
-            try { await this.writeComposerDocument(`${directory}/${name}`); }
-            catch (error) { this.fail(error); }
-            finally { this.composerDocumentSaving = false; event.target.value = ''; this.icons(); }
+        async saveComposerDocumentAs() {
+            return this.exportComposerDocument();
         },
         async registerComposerSource(payload) {
             return responsePayload(await fetch(`${STUDIO_API}/composer/sources`, {
@@ -1297,6 +1349,35 @@
             return responsePayload(await fetch(`${STUDIO_API}/composer/sources/import`, {
                 method: 'POST', credentials: 'same-origin', headers: { ...this.draftHeaders(), Accept: 'application/json' }, body: form,
             }));
+        },
+        async captureComposerVideoFrame(clip, source, sourceTime) {
+            const video = document.createElement('video');
+            video.muted = true; video.playsInline = true; video.preload = 'auto';
+            const ready = new Promise((resolve, reject) => {
+                const fail = () => reject(new Error(tr('video_studio.error.freeze_frame')));
+                video.addEventListener('error', fail, { once: true });
+                video.addEventListener('loadedmetadata', () => {
+                    const duration = Number.isFinite(video.duration) ? video.duration : Number(source.duration) || 0;
+                    const maximum = Math.max(0, duration - this.composerFrameDuration);
+                    const target = Math.max(0, Math.min(maximum || sourceTime, sourceTime));
+                    if (Math.abs((video.currentTime || 0) - target) < .001) { resolve(); return; }
+                    video.addEventListener('seeked', resolve, { once: true });
+                    try { video.currentTime = target; } catch (_) { fail(); }
+                }, { once: true });
+            });
+            video.src = this.composerSourceUrl(source.id); video.load();
+            try {
+                await ready;
+                if (!video.videoWidth || !video.videoHeight) throw new Error(tr('video_studio.error.freeze_frame'));
+                const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                const context = canvas.getContext('2d'); if (!context) throw new Error(tr('video_studio.error.freeze_frame'));
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                if (!blob) throw new Error(tr('video_studio.error.freeze_frame'));
+                const stem = String(source.name || clip.name || 'video').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '-').slice(0, 96) || 'video';
+                const sourceFrame = this.composerFrameNumber(sourceTime);
+                return new File([blob], `${stem}-F${sourceFrame}.png`, { type: 'image/png' });
+            } finally { video.removeAttribute('src'); video.load(); }
         },
         async importComposerFiles(filesOrEvent, targetTrackId = '', startAt = null) {
             const files = Array.from(filesOrEvent?.target?.files || filesOrEvent || []);
@@ -1387,18 +1468,39 @@
             const visual = source.hasVideo || source.hasImage;
             const scale = visual && source.width ? Math.min(settings.width / source.width, settings.height / source.height, 1) : 1;
             const clip = {
-                id: composerId('clip'), sourceId: source.id, trackId: track.id, name: source.name,
+                id: composerId('clip'), layerType: 'media', sourceId: source.id, trackId: track.id, name: source.name,
                 start, sourceStart: 0, duration: this.quantizeComposerTime(source.hasImage ? 1 : Math.max(this.composerFrameDuration, source.duration || 5), 1), speed: 1,
                 volume: 1, fadeIn: 0, fadeOut: 0, x: 0, y: 0,
                 width: visual ? Math.round((source.width || settings.width) * scale) : null,
                 height: visual ? Math.round((source.height || settings.height) * scale) : null,
-                opacity: 1, audioEnabled: true, groupId: null,
+                opacity: 1, scale: 1, audioEnabled: true, groupId: null,
                 maskSourceId: null,
                 color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length],
                 keyframes: [],
             };
             this.insertComposerClip(clip); this.composerProject.clips.push(clip); this.setComposerSelection([clip.id], clip.id); this.composerChanged();
             return clip;
+        },
+        addComposerSpecialLayer(layerType) {
+            if (!['spotlight', 'text'].includes(layerType)) return;
+            this.composerPushHistory();
+            const track = this.addComposerTrack('video', false);
+            track.name = tr(layerType === 'spotlight' ? 'video_studio.composer.spotlight_layer' : 'video_studio.composer.text_layer');
+            const settings = this.composerProject.settings, start = this.quantizeComposerTime(this.composerPlayhead);
+            const clip = {
+                id: composerId('clip'), layerType, sourceId: null, trackId: track.id,
+                name: track.name, start, sourceStart: 0, duration: this.quantizeComposerTime(3, 2), speed: 1,
+                volume: 0, fadeIn: 0, fadeOut: 0,
+                x: layerType === 'text' ? Math.round(settings.width / 2) : Math.round(settings.width * .25),
+                y: layerType === 'text' ? Math.round(settings.height / 2) : Math.round(settings.height * .25),
+                width: Math.round(settings.width * .5), height: Math.round(settings.height * (layerType === 'text' ? .18 : .5)),
+                opacity: 1, scale: 1, audioEnabled: false, groupId: null, maskSourceId: null,
+                color: layerType === 'spotlight' ? '#334155' : '#9333ea', keyframes: [],
+                spotlightShape: 'rounded', dimOpacity: .65, feather: 24, cornerRadius: 32,
+                text: tr('video_studio.composer.text_default'), fontSize: 64, textColor: '#ffffff', textAnchor: 'center', reveal: false, revealSpeed: 12,
+            };
+            this.composerProject.clips.push(clip); this.setComposerSelection([clip.id], clip.id);
+            this.composerPlayhead = start; this.composerChanged(); this.syncComposerPreview();
         },
         insertComposerClip(clip) {
             clip.start = this.quantizeComposerTime(clip.start);
@@ -1552,7 +1654,7 @@
             const existing = this.composerClipKeyframes(clip).find(keyframe => keyframe.frame === frame);
             if (existing) { this.composerSelectedKeyframeId = existing.id; return; }
             this.composerPushHistory(); const state = this.composerVisualStateAtFrame(clip, frame);
-            const keyframe = { id: composerId('keyframe'), frame, endpoint: null, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)) };
+            const keyframe = { id: composerId('keyframe'), frame, endpoint: null, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)), scale: state.scale };
             clip.keyframes = [...this.composerClipKeyframes(clip), keyframe].sort((a, b) => a.frame - b.frame);
             this.composerSelectedKeyframeId = keyframe.id; this.composerChanged(); this.syncComposerPreview();
         },
@@ -1587,12 +1689,52 @@
         splitComposerKeyframes(clip, splitFrame) {
             const state = this.composerVisualStateAtFrame(clip, splitFrame);
             const leftEndState = this.composerVisualStateAtFrame(clip, splitFrame - 1);
-            const makeEndpoint = (endpoint, frame, value) => ({ id: composerId('keyframe'), frame, endpoint, transition: endpoint === 'start' ? 'hold' : 'linear', x: Math.round(value.x), y: Math.round(value.y), width: Math.max(16, Math.round(value.width)), height: Math.max(16, Math.round(value.height)), opacity: Math.max(0, Math.min(1, value.opacity)) });
+            const makeEndpoint = (endpoint, frame, value) => ({ id: composerId('keyframe'), frame, endpoint, transition: endpoint === 'start' ? 'hold' : 'linear', x: Math.round(value.x), y: Math.round(value.y), width: Math.max(16, Math.round(value.width)), height: Math.max(16, Math.round(value.height)), opacity: Math.max(0, Math.min(1, value.opacity)), scale: value.scale });
             const middle = this.composerClipKeyframes(clip).filter(keyframe => !this.composerIsEndpointKeyframe(keyframe));
             const left = [makeEndpoint('start', 0, this.composerVisualStateAtFrame(clip, 0)), ...middle.filter(keyframe => keyframe.frame < splitFrame), makeEndpoint('end', splitFrame - 1, leftEndState)];
             const durationFrames = this.composerFrameNumber(clip.duration), rightDuration = durationFrames - splitFrame;
             const right = [makeEndpoint('start', 0, state), ...middle.filter(keyframe => keyframe.frame > splitFrame).map(keyframe => ({ ...keyframe, id: composerId('keyframe'), frame: keyframe.frame - splitFrame })), makeEndpoint('end', rightDuration - 1, this.composerVisualStateAtFrame(clip, durationFrames - 1))];
             return { state, left, right };
+        },
+        async insertComposerFreezeFrame() {
+            if (!this.composerCanFreezeFrame || this.composerFreezeBusy) return;
+            const selected = this.composerSelectedClip, selectedId = selected.id, source = this.composerSource(selected.sourceId);
+            const splitAt = this.quantizeComposerTime(Math.max(selected.start, Math.min(selected.start + selected.duration, this.composerPlayhead)));
+            const sourceTime = Math.max(0, Number(selected.sourceStart || 0) + (splitAt - selected.start) * (Number(selected.speed) || 1));
+            this.composerFreezeBusy = true; this.icons();
+            try {
+                const file = await this.captureComposerVideoFrame(selected, source, sourceTime);
+                const stillSource = await this.uploadComposerSource(file);
+                const clip = this.composerProject.clips.find(item => item.id === selectedId);
+                if (!clip || this.composerTrack(clip.trackId)?.locked) throw new Error(tr('video_studio.error.freeze_frame'));
+                const at = this.quantizeComposerTime(Math.max(clip.start, Math.min(clip.start + clip.duration, splitAt)));
+                const offset = this.quantizeComposerTime(at - clip.start), duration = this.quantizeComposerTime(2, 1);
+                const durationFrames = Math.max(1, this.composerFrameNumber(clip.duration));
+                const visualFrame = Math.max(0, Math.min(durationFrames - 1, this.composerFrameNumber(offset)));
+                const visual = this.composerVisualStateAtFrame(clip, visualFrame);
+                this.composerPushHistory();
+                if (!this.composerSources.some(item => item.id === stillSource.id)) this.composerSources.push(stillSource);
+                this.composerTrackClips(clip.trackId).filter(item => item.id !== clip.id && item.start >= at - COMPOSER_TIME_EPSILON).forEach(item => { item.start = this.quantizeComposerTime(item.start + duration); });
+                let right = null;
+                if (offset >= this.composerFrameDuration && offset <= clip.duration - this.composerFrameDuration) {
+                    const keyframes = this.splitComposerKeyframes(clip, this.composerFrameNumber(offset));
+                    right = { ...clip, id: composerId('clip'), start: at + duration, sourceStart: clip.sourceStart + offset * clip.speed, duration: this.quantizeComposerTime(clip.duration - offset, 1), fadeIn: 0, keyframes: keyframes.right, ...keyframes.state };
+                    clip.duration = offset; clip.fadeOut = 0; clip.keyframes = keyframes.left;
+                } else if (offset < this.composerFrameDuration) clip.start = this.quantizeComposerTime(clip.start + duration);
+                const freeze = {
+                    id: composerId('clip'), layerType: 'media', sourceId: stillSource.id, trackId: clip.trackId,
+                    name: tr('video_studio.composer.freeze_frame_name', { name: clip.name }), start: at, sourceStart: 0, duration, speed: 1,
+                    volume: 0, fadeIn: 0, fadeOut: 0, x: Math.round(visual.x), y: Math.round(visual.y),
+                    width: Math.max(16, Math.round(visual.width)), height: Math.max(16, Math.round(visual.height)),
+                    opacity: Math.max(0, Math.min(1, visual.opacity)), scale: visual.scale, audioEnabled: false, groupId: null,
+                    maskSourceId: clip.maskSourceId || null, color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length], keyframes: [],
+                };
+                if (right) this.composerProject.clips.push(right);
+                this.composerProject.clips.push(freeze); this.composerSelectedKeyframeId = '';
+                this.setComposerSelection([freeze.id], freeze.id); this.composerPlayhead = at; this.composerChanged(); this.syncComposerPreview();
+                this.success(tr('video_studio.success.freeze_frame_inserted'));
+            } catch (error) { this.fail(error); }
+            finally { this.composerFreezeBusy = false; this.icons(); }
         },
         splitComposerClip() {
             const clip = this.composerSelectedClip, splitAt = this.quantizeComposerTime(this.composerPlayhead), offset = splitAt - (clip?.start || 0);
@@ -1734,8 +1876,9 @@
             return { start, duration, starts };
         },
         retimeComposerClip(clip, desiredSpeed) {
-            const speed = Math.max(.25, Math.min(4, Number(desiredSpeed) || 1));
-            const oldSpeed = Math.max(.25, Number(clip.speed) || 1), sourceSpan = clip.duration * oldSpeed;
+            const speed = Math.max(COMPOSER_MIN_SPEED, Math.min(COMPOSER_MAX_SPEED, Number(desiredSpeed) || 1));
+            const oldSpeed = Math.max(COMPOSER_MIN_SPEED, Math.min(COMPOSER_MAX_SPEED, Number(clip.speed) || 1));
+            const sourceSpan = clip.duration * oldSpeed;
             const desiredDuration = this.quantizeComposerTime(sourceSpan / speed, this.composerTrack(clip.trackId)?.kind === 'video' ? 2 : 1);
             clip.speed = speed;
             const plan = this.composerTrimPlan(clip, 'right', clip.start + desiredDuration); clip.duration = plan.duration;
@@ -1893,9 +2036,16 @@
             const settings = this.composerProject.settings, canvasWidth = settings.width, canvasHeight = settings.height;
             const activeKeyframe = this.composerKeyframeAtPlayhead(clip), activeKeyframeId = activeKeyframe?.id || '';
             const visual = this.composerVisualStateAt(clip), originX = event.clientX, originY = event.clientY, width = visual.width || canvasWidth, height = visual.height || canvasHeight;
-            let nextWidth = width, nextHeight = height;
+            const textLayer = clip.layerType === 'text', originalScale = visual.scale || 1;
+            let nextWidth = width, nextHeight = height, nextScale = originalScale;
             const move = current => {
                 current.preventDefault();
+                if (textLayer) {
+                    const delta = (current.clientX - originX) / Math.max(80, bounds.width);
+                    nextScale = Math.max(.05, Math.min(20, originalScale * (1 + delta * 2)));
+                    layer.style.transform = `${this.composerTextAnchorTransform(clip.textAnchor)} scale(${nextScale})`;
+                    return;
+                }
                 nextWidth = Math.round(Math.max(16, Math.min(canvasWidth - visual.x, width + (current.clientX - originX) / bounds.width * canvasWidth)));
                 nextHeight = Math.round(Math.max(16, Math.min(canvasHeight - visual.y, height + (current.clientY - originY) / bounds.height * canvasHeight)));
                 layer.style.width = `${nextWidth / canvasWidth * 100}%`;
@@ -1906,7 +2056,13 @@
                 const targetClip = this.composerProject.clips.find(item => item.id === clip.id);
                 if (targetClip) {
                     const keyframe = activeKeyframeId ? targetClip.keyframes?.find(item => item.id === activeKeyframeId) : null;
-                    if (keyframe) { keyframe.width = nextWidth; keyframe.height = nextHeight; }
+                    if (textLayer && keyframe) keyframe.scale = nextScale;
+                    else if (textLayer) {
+                        const factor = nextScale / Math.max(.05, originalScale);
+                        targetClip.scale = Math.max(.05, Math.min(20, (Number(targetClip.scale) || 1) * factor));
+                        this.composerClipKeyframes(targetClip).forEach(item => { if (item.scale !== null && item.scale !== '' && item.scale !== undefined) item.scale = Math.max(.05, Math.min(20, Number(item.scale) * factor)); });
+                    }
+                    else if (keyframe) { keyframe.width = nextWidth; keyframe.height = nextHeight; }
                     else this.resizeComposerClipVisual(targetClip, nextWidth, nextHeight, width, height);
                 }
                 try { if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId); } catch (_) {}
@@ -1963,7 +2119,7 @@
         },
         handleComposerKeydown(event) {
             if (!this.isComposer || event.defaultPrevented) return;
-            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.shiftKey ? this.$refs.composerSaveAs?.click() : this.saveComposerDocument(); return; }
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.shiftKey ? this.saveComposerDocumentAs() : this.saveComposerDocument(); return; }
             if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || '')) return;
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); this.toggleComposerSnapping(); return; }
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? this.composerRedo() : this.composerUndo(); return; }
@@ -2046,7 +2202,7 @@
             if (/分割|切开|split/i.test(text)) return [{ op: 'clip.split', clipId: clip.id, at: this.composerPlayhead }];
             if (/删除|移除|delete|remove/i.test(text)) return [{ op: 'clip.delete', clipId: clip.id }];
             const changes = {};
-            const speed = text.match(/(?:速度|速率|speed)[^0-9]*(0\.25|0\.5|1(?:\.\d+)?|2|3|4)/i);
+            const speed = text.match(/(?:速度|速率|speed)[^0-9]*(\d+(?:\.\d+)?)/i);
             const volume = text.match(/(?:音量|volume)[^0-9]*(\d+(?:\.\d+)?)\s*%?/i);
             const fade = text.match(/(?:淡入淡出|淡入|fade)[^0-9]*(\d+(?:\.\d+)?)\s*(?:秒|s)?/i);
             if (speed) changes.speed = Number(speed[1]);
@@ -2060,7 +2216,7 @@
         applyComposerOperations(operations) {
             if (!Array.isArray(operations) || !operations.length || operations.length > 20) throw new Error('The edit plan is empty or too large.');
             const allowed = new Set(['trackId', 'start', 'duration', 'speed', 'volume', 'fadeIn', 'fadeOut', 'x', 'y', 'width', 'height', 'opacity', 'audioEnabled', 'color']);
-            const numberRanges = { start: [0, 3600], duration: [.1, 3600], speed: [.25, 4], volume: [0, 4], fadeIn: [0, 30], fadeOut: [0, 30], x: [-3840, 3840], y: [-2160, 2160], width: [16, 3840], height: [16, 2160], opacity: [0, 1] };
+            const numberRanges = { start: [0, 3600], duration: [.1, 3600], speed: [COMPOSER_MIN_SPEED, COMPOSER_MAX_SPEED], volume: [0, 4], fadeIn: [0, 30], fadeOut: [0, 30], x: [-3840, 3840], y: [-2160, 2160], width: [16, 3840], height: [16, 2160], opacity: [0, 1] };
             const before = copyComposerProject(this.composerProject); this.composerPushHistory(); const summaries = [];
             try { for (const operation of operations) {
                 const clip = this.composerProject.clips.find(item => item.id === operation.clipId);

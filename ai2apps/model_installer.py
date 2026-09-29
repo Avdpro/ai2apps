@@ -384,6 +384,7 @@ class InstallTask:
     status: InstallStatus = InstallStatus.PENDING
     phase: str = "Queued"
     progress: float = 0.0
+    progress_stage: str = ""
     detail: str = ""
     error: str = ""
     current_file: str = ""
@@ -409,6 +410,7 @@ class InstallTask:
             "status": self.status.value,
             "phase": self.phase,
             "progress": round(self.progress, 1),
+            "stage": self.progress_stage,
             "detail": self.detail,
             "error": self.error,
             "current_file": self.current_file,
@@ -421,6 +423,21 @@ class InstallTask:
             "completed_at": self.completed_at,
             "cache_hit": self.cache_hit,
         }
+
+
+def _set_checkpoint_install_stage(
+    task: InstallTask, *, stage: str, phase: str, progress: float
+) -> None:
+    """Leave byte-transfer UI behind when checkpoint acquisition is complete."""
+
+    task.progress_stage = stage
+    task.phase = phase
+    task.progress = progress
+    task.current_file = ""
+    task.bytes_completed = 0
+    task.bytes_total = 0
+    task.total_bytes_completed = 0
+    task.total_bytes_total = 0
 
 
 def link_cached_snapshot(snapshot: Path, destination: Path) -> None:
@@ -1785,6 +1802,8 @@ class AI2AppsInstaller:
                 acquire_options["license_consent"] = license_consents[distribution_id]
 
             def checkpoint_progress(value: dict[str, Any]) -> None:
+                verifying = value.get("stage") == "verifying_checkpoint"
+                task.progress_stage = str(value.get("stage") or "")
                 task.download = value.get("download")
                 task.current_file = str(value.get("fileName") or "")
                 task.bytes_completed = int(value.get("bytesCompleted") or 0)
@@ -1796,7 +1815,16 @@ class AI2AppsInstaller:
                     value.get("totalBytesTotal") or task.bytes_total
                 )
                 task.progress = float(value.get("percent") or 0)
-                task.detail = f"Downloading {task.current_file} for {label}"
+                task.phase = (
+                    f"Verifying shared checkpoint for {label}"
+                    if verifying
+                    else f"Downloading checkpoint for {label}"
+                )
+                task.detail = (
+                    f"Verifying {task.current_file or label}"
+                    if verifying
+                    else f"Downloading {task.current_file} for {label}"
+                )
 
             acquire_options["progress"] = checkpoint_progress
             if (
@@ -1818,10 +1846,22 @@ class AI2AppsInstaller:
                 raise RuntimeError(
                     "Registry checkpoint distribution does not match the Package contract"
                 )
+            _set_checkpoint_install_stage(
+                task,
+                stage="materializing_checkpoint",
+                phase=f"Preparing Worker checkpoint view for {label}",
+                progress=96.0,
+            )
             await asyncio.to_thread(
                 self.checkpoint_acquisition.materialize_worker_snapshot,
                 acquired,
                 hub_cache,
+            )
+            _set_checkpoint_install_stage(
+                task,
+                stage="activating_checkpoint",
+                phase=f"Starting local model service for {label}",
+                progress=99.0,
             )
             task.detail = (
                 f"Reused verified checkpoint for {label}"
@@ -1984,6 +2024,8 @@ class AI2AppsInstaller:
                     task.detail = "Checking for a verified machine-shared checkpoint"
 
                     def checkpoint_progress(value: dict[str, Any]) -> None:
+                        verifying = value.get("stage") == "verifying_checkpoint"
+                        task.progress_stage = str(value.get("stage") or "")
                         task.download = value.get("download")
                         task.current_file = str(value.get("fileName") or "")
                         task.bytes_completed = int(value.get("bytesCompleted") or 0)
@@ -1995,7 +2037,16 @@ class AI2AppsInstaller:
                             value.get("totalBytesTotal") or task.bytes_total
                         )
                         task.progress = float(value.get("percent") or 0) * 0.95
-                        task.detail = f"Downloading {task.current_file}"
+                        task.phase = (
+                            "Verifying shared checkpoint cache"
+                            if verifying
+                            else "Downloading model checkpoint"
+                        )
+                        task.detail = (
+                            f"Verifying {task.current_file or 'shared checkpoint cache'}"
+                            if verifying
+                            else f"Downloading {task.current_file}"
+                        )
 
                     acquire_options: dict[str, Any] = {
                         "hf_token": token or None,
@@ -2018,6 +2069,12 @@ class AI2AppsInstaller:
                         raise RuntimeError(
                             "Registry checkpoint distribution does not match the Package contract"
                         )
+                    _set_checkpoint_install_stage(
+                        task,
+                        stage="materializing_checkpoint",
+                        phase="Preparing Worker checkpoint view",
+                        progress=96.0,
+                    )
                     materialized = await asyncio.to_thread(
                         self.checkpoint_acquisition.materialize_worker_snapshot,
                         acquired,
@@ -2087,7 +2144,7 @@ class AI2AppsInstaller:
                             source_dir,
                         )
                 if distribution_id is not None:
-                    task.progress = 95.0
+                    task.progress = 96.0
                     task.detail = (
                         "Reused verified checkpoint distribution"
                         if task.cache_hit
@@ -2127,8 +2184,12 @@ class AI2AppsInstaller:
 
                 if (source_dir / "ssd-checkpoint.json").is_file():
                     task.status = InstallStatus.CONFIGURING
-                    task.phase = "Activating SSD-ready checkpoint"
-                    task.progress = 97.0
+                    _set_checkpoint_install_stage(
+                        task,
+                        stage="activating_checkpoint",
+                        phase="Activating SSD-ready checkpoint",
+                        progress=97.0,
+                    )
                     await asyncio.to_thread(
                         self._activate_ssd_checkpoint,
                         task,
@@ -2145,6 +2206,7 @@ class AI2AppsInstaller:
                         await self.on_ready(recipe)
                     task.status = InstallStatus.COMPLETED
                     task.phase = "Ready"
+                    task.progress_stage = ""
                     task.progress = 100.0
                     task.detail = str(source_dir)
                     task.completed_at = time.time()
@@ -2653,6 +2715,7 @@ class AI2AppsInstaller:
                     await self.on_ready(recipe)
                 task.status = InstallStatus.COMPLETED
                 task.phase = "Ready"
+                task.progress_stage = ""
                 task.progress = 100.0
                 task.detail = str(source_dir)
                 task.completed_at = time.time()

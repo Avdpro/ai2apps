@@ -218,6 +218,25 @@ models:
 - `audio_detailed_transcription`（字幕/会议转写专用，不参与 Chat STT 选型）
 - `video_generation`
 
+### 对话模型的上下文窗口契约
+
+`llm`、`vlm` Package 应通过 `context_window` 声明 Worker 实际支持的最大上下文
+token 数。声明值应以公开上游模型卡或正式配置为依据，同时不得超过当前 Adapter、
+Runtime 和执行后端已经验证可用的窗口；不能把仅训练时或理论上的最大值直接当成服务
+承诺。
+
+为兼容未声明该字段的既有 Package，Host 对具有 `conversation` 能力的 `llm`、`vlm`
+统一采用 `32768` 作为有效默认值。隔离 Worker 从 Host 已验证并归一化的签名模型声明中
+读取最终值，Package 显式声明时以声明值为准；语音 tokenizer、标点恢复器等非对话辅助
+模型不会被填入这个默认值。新建或升级的对话模型 Package 必须显式声明，旧 Package
+无需仅为补字段而升级。
+
+Worker 必须把有效窗口传给每一种对话入口（Chat Completions/Responses、流式/非流式）。
+通用文本、VLM 和专用引擎都必须在完成模板与多模态展开后，按实际 Prompt token 数把
+输出上限裁剪到“上下文窗口减去 Prompt token 数”的剩余空间。达到边界时应正常返回
+`finish_reason: length`，不得再执行一次 Decode 后向用户暴露 `batch/context limit` 等
+引擎内部异常。
+
 ### 对话模型的 Reasoning 契约（必选）
 
 新建或升级的 `llm`、`vlm` Package 必须在签名的模型 `metadata.reasoning`

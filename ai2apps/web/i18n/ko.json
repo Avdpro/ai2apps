@@ -1015,7 +1015,7 @@
   "chat.not_supported": "지원되지 않음",
   "chat.voice_speed_unavailable_tooltip": "선택한 TTS 모델은 속도 조절을 지원하지 않습니다",
   "chat.voice_emotion_unavailable_tooltip": "선택한 TTS 모델은 감정 제어를 지원하지 않습니다",
-  "chat.engine_boost_rush_tooltip": "Engine Boost를 변경하기 전에 RUSH를 해제하세요",
+  "chat.engine_boost_rush_tooltip": "Engine Boost를 변경하기 전에 RUSH를 끄세요",
   "chat.save_profile_disabled_tooltip": "프로필을 선택하고 프롬프트 내용을 변경한 후 저장하세요",
   "chat.stop_generating_tooltip": "Stop generating",
   "chat.show_settings_tooltip": "Show settings",

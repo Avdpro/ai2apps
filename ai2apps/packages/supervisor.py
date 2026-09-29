@@ -27,6 +27,7 @@ import psutil
 from ai2apps.checkpoint_paths import checkpoint_distribution_cache_key
 from ai2apps.checkpoints import checkpoint_is_complete, model_checkpoint_is_complete
 from ai2apps.core import EntityIdKind, new_entity_id, utc_now_text
+from ai2apps.proc_memory import get_phys_footprint
 from ai2apps.services import ServiceInstanceStatus, ServiceRepository
 
 from .inference_runtime import InferenceRuntimeResolver, ResolvedInferenceRuntime
@@ -84,6 +85,26 @@ class ManagedServiceSupervisor:
         return {"Authorization": f"Bearer {managed.internal_token}"}
 
     @staticmethod
+    def _worker_memory(pid: int) -> dict[str, int | str]:
+        """Return RSS for compatibility and macOS physical footprint for UI."""
+
+        rss = 0
+        with suppress(psutil.Error, ProcessLookupError):
+            rss = int(psutil.Process(pid).memory_info().rss)
+        footprint = int(get_phys_footprint(pid))
+        if footprint > 0:
+            return {
+                "residentMemoryBytes": rss,
+                "physicalFootprintBytes": footprint,
+                "memoryMetric": "phys_footprint",
+            }
+        return {
+            "residentMemoryBytes": rss,
+            "physicalFootprintBytes": rss,
+            "memoryMetric": "rss",
+        }
+
+    @staticmethod
     def _worker_json_request(
         endpoint: str,
         path: str,
@@ -103,6 +124,31 @@ class ManagedServiceSupervisor:
             raise ValueError("Model Worker returned a non-object status")
         return value
 
+    @staticmethod
+    def _inference_telemetry(status: dict[str, Any]) -> dict[str, Any] | None:
+        """Project the small Worker observability surface safe for Host UIs."""
+
+        engine_stats = status.get("engine_stats")
+        flesh = engine_stats.get("flesh") if isinstance(engine_stats, dict) else None
+        if not isinstance(flesh, dict):
+            return None
+        recent = flesh.get("ssd_recent_10_tokens")
+        by_session = flesh.get("ssd_recent_by_session")
+        turn_by_session = flesh.get("ssd_turn_by_session")
+        return {
+            "ssd_recent_10_tokens": dict(recent) if isinstance(recent, dict) else {},
+            "ssd_recent_by_session": {
+                str(session_id): dict(window)
+                for session_id, window in by_session.items()
+                if isinstance(window, dict)
+            } if isinstance(by_session, dict) else {},
+            "ssd_turn_by_session": {
+                str(session_id): dict(window)
+                for session_id, window in turn_by_session.items()
+                if isinstance(window, dict)
+            } if isinstance(turn_by_session, dict) else {},
+        }
+
     async def worker_snapshot(
         self, package: InstalledPackageRecord, *, probe: bool = True
     ) -> dict[str, Any]:
@@ -114,6 +160,7 @@ class ManagedServiceSupervisor:
         models = [
             {
                 "id": model.get("id"),
+                "upstreamId": model.get("upstream_id"),
                 "displayName": model.get("display_name", model.get("id")),
                 "capabilities": list(model.get("capabilities", [])),
             }
@@ -131,8 +178,11 @@ class ManagedServiceSupervisor:
             "queuedRequests": 0,
             "pid": None,
             "residentMemoryBytes": 0,
+            "physicalFootprintBytes": 0,
+            "memoryMetric": "rss",
             "endpoint": None,
             "models": models,
+            "inferenceTelemetry": None,
             "lastError": None,
             "startedAgeSeconds": None,
             "evictionReason": self._evicted.get(service_key),
@@ -151,10 +201,7 @@ class ManagedServiceSupervisor:
             return snapshot
         snapshot["state"] = "draining" if service_key in self._draining else "ready"
         snapshot["acceptingRequests"] = service_key not in self._draining
-        with suppress(psutil.Error, ProcessLookupError):
-            snapshot["residentMemoryBytes"] = psutil.Process(
-                managed.process.pid
-            ).memory_info().rss
+        snapshot.update(self._worker_memory(managed.process.pid))
         if not probe or managed.internal_token is None:
             snapshot["activeRequests"] = None
             snapshot["queuedRequests"] = None
@@ -178,6 +225,12 @@ class ManagedServiceSupervisor:
         snapshot["activeRequests"] = int(status.get("active_requests", 0))
         snapshot["queuedRequests"] = int(status.get("queued_requests", 0))
         snapshot["acceptingRequests"] = bool(status.get("accepting_requests", True))
+        telemetry = self._inference_telemetry(status)
+        if telemetry is not None:
+            # Only project the small, UI-safe SSD observability surface.  The
+            # complete engine stats remain private to the Worker and may carry
+            # implementation details or grow substantially over time.
+            snapshot["inferenceTelemetry"] = telemetry
         if service_key in self._draining or not snapshot["acceptingRequests"]:
             snapshot["state"] = "draining"
         elif snapshot["activeRequests"] or snapshot["queuedRequests"]:

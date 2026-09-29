@@ -70,11 +70,15 @@ class CheckpointConsentRequiredError(CheckpointDownloadError):
         super().__init__("checkpoint license consent is required before download")
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(
+    path: Path, progress: Callable[[int], None] | None = None
+) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
         while chunk := source.read(8 * 1024 * 1024):
             digest.update(chunk)
+            if progress is not None:
+                progress(len(chunk))
     return digest.hexdigest()
 
 
@@ -1048,12 +1052,15 @@ class CheckpointCache:
         return self.root / "snapshots" / key[:2] / key
 
     def verified_snapshot(
-        self, manifest: CheckpointDistributionManifest
+        self,
+        manifest: CheckpointDistributionManifest,
+        progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> Path | None:
         snapshot = self.snapshot_path(manifest)
         return (
             snapshot
-            if snapshot.is_dir() and self._snapshot_matches(manifest, snapshot)
+            if snapshot.is_dir()
+            and self._snapshot_matches(manifest, snapshot, progress=progress)
             else None
         )
 
@@ -1240,15 +1247,21 @@ class CheckpointCache:
         target = Path(destination)
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
-            if target.is_dir() and self._snapshot_matches(manifest, target):
+            if target.is_dir() and self._snapshot_matches(manifest, target, allow_local_metadata=True):
                 return target.resolve()
             raise CheckpointManifestError(
                 "existing Worker checkpoint distribution conflicts with Registry"
             )
         staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
         try:
+            copied_from_another_filesystem = False
             for path in sorted(source.rglob("*")):
                 relative = path.relative_to(source)
+                # A verification receipt is bound to file identity and is
+                # regenerated for the destination below. Never copy/link a
+                # receipt from a different snapshot tree.
+                if relative.as_posix() == _SNAPSHOT_VERIFICATION_FILE:
+                    continue
                 copied = staging / relative
                 if path.is_dir():
                     copied.mkdir(parents=True, exist_ok=True)
@@ -1264,6 +1277,12 @@ class CheckpointCache:
                     if error.errno != errno.EXDEV:
                         raise
                     shutil.copyfile(path, copied)
+                    copied_from_another_filesystem = True
+            if not copied_from_another_filesystem:
+                # Every file is the same inode as the source that was just
+                # cryptographically verified. Record the destination stats so
+                # validation remains O(number of files), not O(model bytes).
+                self._write_snapshot_verification(manifest, staging)
             if not self._snapshot_matches(manifest, staging):
                 raise CheckpointManifestError(
                     "Worker checkpoint snapshot does not match Registry"
@@ -1381,7 +1400,9 @@ class CheckpointCache:
 
     @classmethod
     def _snapshot_matches(
-        cls, manifest: CheckpointDistributionManifest, snapshot: Path
+        cls, manifest: CheckpointDistributionManifest, snapshot: Path,
+        *, allow_local_metadata: bool = False,
+        progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> bool:
         try:
             metadata = json.loads(
@@ -1406,20 +1427,70 @@ class CheckpointCache:
             if path.is_file() or path.is_symlink()
         }
         if actual_files != expected_files:
-            return False
+            from ai2apps.checkpoints import valid_local_checkpoint_metadata
+
+            if (
+                not allow_local_metadata
+                or not expected_files <= actual_files
+                or not valid_local_checkpoint_metadata(snapshot, actual_files - expected_files)
+            ):
+                return False
         if verification.is_file() and cls._snapshot_verification_matches(
             manifest, snapshot
         ):
+            if progress is not None:
+                progress(
+                    {
+                        "stage": "verifying_checkpoint",
+                        "percent": 100.0,
+                        "bytesCompleted": manifest.estimated_size_bytes,
+                        "bytesTotal": manifest.estimated_size_bytes,
+                        "totalBytesCompleted": manifest.estimated_size_bytes,
+                        "totalBytesTotal": manifest.estimated_size_bytes,
+                    }
+                )
             return True
+        total_bytes = manifest.estimated_size_bytes
+        completed_bytes = 0
         for checkpoint_file in manifest.files:
             target = snapshot / checkpoint_file.path
+            file_completed = 0
+
+            def report_file_progress(
+                increment: int,
+                *,
+                current_file: CheckpointFile = checkpoint_file,
+                completed_before: int = completed_bytes,
+            ) -> None:
+                nonlocal file_completed
+                file_completed += increment
+                if progress is not None:
+                    current_total = completed_before + file_completed
+                    progress(
+                        {
+                            "stage": "verifying_checkpoint",
+                            "fileName": current_file.path,
+                            "bytesCompleted": file_completed,
+                            "bytesTotal": current_file.size,
+                            "totalBytesCompleted": current_total,
+                            "totalBytesTotal": total_bytes,
+                            "percent": (
+                                current_total / total_bytes * 100.0
+                                if total_bytes
+                                else 100.0
+                            ),
+                        }
+                    )
+
             if (
                 target.is_symlink()
                 or not target.is_file()
                 or target.stat().st_size != checkpoint_file.size
-                or _sha256_file(target) != checkpoint_file.sha256
+                or _sha256_file(target, report_file_progress)
+                != checkpoint_file.sha256
             ):
                 return False
+            completed_bytes += checkpoint_file.size
         with suppress(OSError):
             cls._write_snapshot_verification(manifest, snapshot)
         return True

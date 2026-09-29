@@ -1814,8 +1814,8 @@ def test_chat_right_sidebar_consolidates_controls_and_keeps_runtime_options_disc
     ):
         assert runtime_control in settings_markup
         assert runtime_control not in sidebar_markup
-    assert "beginRush" in sidebar_markup
-    assert "beginRush" not in settings_markup
+    assert "toggleRush" in sidebar_markup
+    assert "toggleRush" not in settings_markup
     assert "chat-hover-tip" in chat
     assert "chat-runtime-setting" in settings_markup
     assert ':data-tooltip="isFusionMode ?' in settings_markup

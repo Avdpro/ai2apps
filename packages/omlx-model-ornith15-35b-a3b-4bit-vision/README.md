@@ -12,3 +12,8 @@ This release binds the published SSD-ready checkpoint and requires AI2Apps oMLX 
 Version 0.1.4 declares Ornith as a required-reasoning model and requires
 Runtime 1.7.5 or later for structured reasoning transport. Its checkpoint-owned
 template already opens generation with `<think>`, so no template override is needed.
+
+Version 0.1.5 uses Runtime 1.8.1's session-aware Qwen3.6 dynamic VLM engine for
+Cached-MoE execution. Natural remains exact, while Turbo and Blast switch the
+model-specific protected Top-N policy at token boundaries and report the
+effective mode and routing counters through the Worker contract.

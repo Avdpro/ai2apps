@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from .base import GenerationOutput
+from .ssd_telemetry import SsdPressureTelemetry
 from .vlm import VLMBatchedEngine
 
 
@@ -18,6 +19,47 @@ class Glm5DynamicVLMEngine(VLMBatchedEngine):
         self._glm5_lock = asyncio.Lock()
         self._glm5_boost = None
         self._glm5_sessions = None
+        self._ssd_telemetry = SsdPressureTelemetry(self._ssd_storage_totals)
+
+    def _moe_blocks(self) -> list[Any]:
+        model = getattr(self, "_vlm_model", None)
+        if model is None:
+            return []
+        return [
+            decoder.mlp
+            for decoder in model.language_model.model.layers
+            if getattr(decoder.mlp, "dynamic_cache", None) is not None
+        ]
+
+    def _ssd_storage_totals(self) -> tuple[int, int, int]:
+        blocks = self._moe_blocks()
+        if not blocks:
+            return 0, 0, 0
+        cache = blocks[0].dynamic_cache
+        cache_stats = cache.stats()
+        routed_bytes = 0
+        for block in blocks:
+            store = cache._stores.get(int(block.dynamic_layer))
+            if store is not None:
+                routed_bytes += int(store.record_bytes) * int(
+                    block.num_experts_per_tok
+                )
+        return (
+            int(cache_stats.get("experts_loaded", 0)),
+            int(cache_stats.get("bytes_loaded", 0)),
+            routed_bytes,
+        )
+
+    def _between_decode_step(self, output: Any) -> None:
+        self._glm5_boost.on_scheduler_step(output)
+        self._ssd_telemetry.record_scheduler_output(output)
+
+    def _between_prefill_chunk(self, request: Any, **kwargs: Any) -> None:
+        self._glm5_boost.between_prefill_chunk(request, **kwargs)
+        if int(kwargs.get("remaining_tokens", -1)) == 0:
+            session_id = self._glm5_boost.session_id
+            if session_id is not None:
+                self._ssd_telemetry.reset(session_id)
 
     async def start(self) -> None:
         await super().start()
@@ -48,12 +90,8 @@ class Glm5DynamicVLMEngine(VLMBatchedEngine):
             self._glm5_boost = Glm5BoostController(self)
             self._glm5_sessions = Glm5SessionCacheController(self)
             core = self._engine.engine
-            core._between_decode_step_callback = (
-                self._glm5_boost.on_scheduler_step
-            )
-            core.scheduler._prefill_chunk_callback = (
-                self._glm5_boost.between_prefill_chunk
-            )
+            core._between_decode_step_callback = self._between_decode_step
+            core.scheduler._prefill_chunk_callback = self._between_prefill_chunk
 
     async def _prepare_glm5(
         self, prompt: str | list[int], kwargs: dict[str, Any]
@@ -72,6 +110,7 @@ class Glm5DynamicVLMEngine(VLMBatchedEngine):
             self._glm5_sessions.prepare,
             session_id,
         )
+        self._ssd_telemetry.reset(session_id)
         kv_policy = str(kwargs.pop("flesh_kv_policy", "session")).lower()
         if kv_policy not in {"strict", "session", "persistent"}:
             raise ValueError(f"unsupported GLM-5 KV continuity policy: {kv_policy}")
@@ -115,12 +154,16 @@ class Glm5DynamicVLMEngine(VLMBatchedEngine):
             return {"accepted": False, "reason": "engine_not_started"}
         return self._glm5_boost.request(session_id, mode)
 
+    def get_live_metrics(self, session_id: str | None = None) -> dict[str, Any]:
+        return self._ssd_telemetry.live(session_id)
+
     def get_stats(self) -> dict[str, Any]:
         stats = super().get_stats()
         if self._glm5_boost is not None:
             stats["engine_boost"] = self._glm5_boost.stats()
         if self._glm5_sessions is not None:
             stats["session_l1"] = self._glm5_sessions.stats()
+        stats["flesh"] = {"family": "glm5", **self._ssd_telemetry.stats()}
         return stats
 
 

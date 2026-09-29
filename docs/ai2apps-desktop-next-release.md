@@ -1,13 +1,149 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-011-2254-20260929：Desktop 0.1.1 Build 2254
+
+- 状态：`source_ready`。用户已批准构建、公证、双源上传并在 Cloud 生产 stable 频道走
+  100% rollout；生产匿名基线为 0.1.1 / Build 2253，因此分配 0.1.1 / Build 2254，
+  rollout id 固定为 `build2254-test`。
+- 本候选汇总 2253 后已实现的 ACPF 生命周期/Checkpoint 阶段、Chat Rush/上下文/实时与
+  整轮遥测、Models/Worker SSD 状态、Video Composer、Unicode Artifact、Audiobook 拖拽
+  以及对应 Runtime 1.8.5 Host/UI 承载。App-Dev 录屏工具仍严格限定 Development，生产
+  Shell 不注入该变换。详细范围见
+  `docs/ai2apps-desktop-0.1.1-build2254-release-preparation-2026-09-29.md`。
+- Node 16 个测试文件及 Swift 77+2 项通过。完整 Python 首轮发现两处过期合同并已修正；
+  下一轮只出现 5 个上下文窗口兼容失败，根因是未传 `max_context_window` 时仍访问合成
+  Engine 的空 tokenizer。现已限定为只有显式窗口才计数，Batched/VLM/SpecPrefill 定向
+  56 项通过；最终完整 Python 复验为 10287 passed、68 skipped、74 deselected，742.17 秒，
+  无失败。JUnit：`/private/tmp/ai2apps-2254-full-final2.xml`。
+- 正式发布仍以 clean、已推送 main commit、Developer ID、公证/staple/Gatekeeper、
+  GitHub/ModelScope 同字节双源、Cloud 0% 原子登记和 100% 扩灰为门禁。个人参考音频
+  `ai2apps-test-system/assets/voice-1.wav` 明确排除。
+
+### NXR-AUDIOBOOK-LINE-GALLERY-DRAG-20260929：已生成 Line 音频拖入 Gallery
+
+- 状态：`implemented`，待下一版 Desktop 纳入；静态页面刷新即可生效，无需更新 Runtime 或 Media Voice Studio Suite。
+- Audiobook Line 卡片悬停时读取现有、服务端验证匹配的私有音频缓存，复用 Host 音频拖拽方法，以 WAV File 导入 Gallery。无需重新生成或向共享输出历史发布中间 Line；Gallery 副本与私有缓存独立。
+- 仅暂存一个卡片的音频，最多 64 MiB；未生成、待更新以及文本、角色或配置发生变化的卡片不拖出旧结果。编辑框和卡片操作按钮保留原交互，异步请求过期时丢弃结果。
+- 验证：JavaScript 语法与 Voice Studio scope 回归通过，覆盖 File 拖拽、缺失/过期音频拒绝、异步失效和编辑区域保护；尚未完成 Shell 中真实鼠标拖放验证。
+
+### NXR-ACPF-SHARED-CHECKPOINT-VERIFY-20260929：共享模型命中不再假死
+
+- 状态：`implemented`，已通过受认证 Helper 控制通道重启固定 App-Dev Local（当前端口 56424）并确认 Shell 恢复；待下一次全新实例安装进行完整实机时序复验并纳入下一版 Desktop。重置实例后安装已存在于机器共享 Cache 的 DeepSeek V4.1 时，后台并非重新下载或死锁，而是对约 206 GiB 权重生成首次 SHA-256 验证收据；随后创建 Worker 视图又重复全量读取一次，ACPF 全程停在“下载 55%”，造成卡死观感。
+- 同文件系统的 Worker 视图现在只硬链接刚完成密码学验证的只读文件，并为目标树生成独立、绑定 inode/stat 的验证收据，不再进行第二遍 O(model bytes) 哈希。若跨文件系统退化为真实复制，仍保留完整 SHA-256 校验，不能以性能优化绕过信任边界。
+- 没有验证收据的旧共享 Cache 仍会执行一次必要的全量校验，但按当前文件和总字节持续上报 `verifying_checkpoint` 进度；ACPF 将该阶段显示为验证而非下载，进度条不再固定在 55%。已有有效收据的后续实例重置只做 O(number of files) 的只读 stat 校验。
+- Qwen3.8 Flash Next 实机跟进确认首次 103.94 GB 校验到 100% 后，Worker 启动期间仍短暂停在 88%，并继续显示过期的 `vocab.json · 100% · 0 B/s`，造成第二种“卡住”观感。现于校验结束后立即清空逐文件传输字段，依次切换为 `materializing_checkpoint` 与 `activating_checkpoint`；ACPF 隐藏过期传输卡并改显验证/启动阶段。该次安装随后成功，两个快照验证收据均存在，抽查权重的 device/inode 完全相同，确认没有第二次复制或哈希。
+- 部署：修改 Host Python、共享 ACPF JavaScript 与测试；App-Dev 只需从 Helper 重启 Local 并刷新页面，无需重建 App、升级模型 Package 或 Runtime。
+- 验证：Checkpoint acquisition/distribution、Installer 状态清理与 ACPF Provisioning 定向回归 76 passed；JavaScript 语法、Python compile 与 `git diff --check` 通过。Ruff 对本次新增闭包绑定无新增告警；文件中既有 Piece download 闭包仍有独立 B023 基线告警，不在本修复范围内。
+
+### NXR-RUNTIME-185-MOE-TELEMETRY-MEMORY-20260929：全 Cached-MoE SSD SSE 与 macOS footprint
+
+- 状态：`runtime_1_8_5_released`。Runtime 1.8.5 已完成 Developer ID 构建、Apple 公证、
+  精确签名 Package 隔离安装、Cloud 发布和 GitHub/ModelScope 三源激活。Package SHA-256
+  为 `56997274091b7c7df8d7823c26767c7111eb53539ff400e361220b0f0fec7c97`；Cloud submission
+  `bc7414ec-5cea-4854-aea2-98da196138da`，最终 Repository metadata 224、Source revision 6、
+  Snapshot `3a07275ea889a89005f9c9610e1c522686fe9e95842508abd37dfbb88c3f2d0b`。正式收据见
+  `docs/ai2apps-mlx-runtime-1.8.5-moe-telemetry-memory-release.md`。
+- Runtime 将 rolling 10-token 与 whole-turn SSD pressure 接入全部已发布 Cached-MoE
+  引擎：DeepSeek V4/V4 2-bit、DeepSeek V4.1、GLM-5.3、Qwen3.6 text、Ornith 1.5
+  Vision 和 Qwen3.8 Flash Next。新增共享 helper 只采样既有缓存计数，并复用 Decode
+  完成 callback；原 Boost/adaptive callback 保持在同一边界执行，不增加 MLX 求值、
+  Metal readback 或 GPU→CPU 同步。模型 Package 与 checkpoint 无需升版。
+- Desktop/Host Worker snapshot 新增 macOS `phys_footprint`，同时保留 RSS；Chat 当前值
+  与整轮峰值优先显示 footprint，并以 `FOOTPRINT` 标明口径。真实 V4.1 短推理峰值
+  RSS 43.4923 GiB、physical footprint 51.6140 GiB，相差 8.1218 GiB，确认旧 UI 低报
+  来自 Metal/IOAccelerator 统一内存未完整计入 RSS。此项必须随下一版 Desktop/App
+  纳入，单独发布 Runtime 不能改变旧 Host 的内存卡片。
+- 验证：共享 telemetry/四引擎接线 9 passed；Runtime、Worker、Package、Engine、
+  Adapter 与 Chat 联合套件 237 passed；Desktop Product、Shell、Package、Chat UI 收口
+  198 passed；Ruff、compileall 与 diff whitespace 通过。真实 V4.1 的 1 个完整 Decode
+  步读取 83 个专家、1,560,453,120 bytes，pressure 34.583333%，recent/turn 一致。
+  交接见 `docs/ai2apps-mlx-runtime-1.8.5-moe-telemetry-memory-handoff.md`。
+
+### NXR-CHAT-TURN-TELEMETRY-20260929：整轮 SSD 平均、Worker 峰值与 Cloud 指标收口
+
+- 状态：`runtime_1_8_5_released`。Runtime 1.8.3 已完成的传输链路在 1.8.5 中扩展到全部已发布 Cached-MoE 引擎，并正式完成 Developer ID 构建、公证、精确隔离安装、Cloud 发布和 GitHub/ModelScope 三源激活；submission `bc7414ec-5cea-4854-aea2-98da196138da`，最终 Repository metadata 224、Snapshot `3a07275ea889a89005f9c9610e1c522686fe9e95842508abd37dfbb88c3f2d0b`。中间 1.8.4 候选已由 1.8.5 取代。Desktop/Host 展示仍待下一版 Desktop 纳入。本地 Cached-MoE 生成期间继续显示最近 10 个 Decode token 的 SSD pressure；推理结束后切换为本轮累计 SSD 读取字节 / 本轮理论路由专家字节的加权整体平均，并保留整轮专家加载次数与健康分级，不再让最后一个 10-token 窗口冒充整轮结果。
+- 本地模型的 Worker memory 在生成期间显示当前 macOS physical footprint，并以 250ms 频率采样本轮最大值；结束后显示并随回复保存 `WORKER MEMORY · PEAK`。峰值与 Worker service key 绑定，切换模型或历史回复时不会套用另一 Worker 的数值；系统 footprint 不可用时安全回退到 RSS。
+- Cloud/Fusion 模型的性能区只保留横跨整行的端到端 `DURATION`。客户端虽然能观察 SSE chunk 到达时间，但无法获得可信的提供方 Prefill、Thinking 分段或逐 token 发射时间，故不展示可能受网络、代理缓冲和 chunk 合并影响的伪 Prefill/Token Gen TPS；本地模型继续显示完整六项指标。
+- Runtime/Host 合同：DeepSeek V4 Flesh 与 DeepSeek V4.1 专用引擎均按 Session 维护 `ssd_turn_by_session`，并通过 `get_live_metrics(session_id)` 只导出已经物化的 `ssd_recent_10_tokens` / `ssd_turn_average`；Worker 将其放入既有 `ai2apps_metrics` SSE 扩展帧。V4.1 在 Prefill 完成后建立基线，并从各层 resident bank 已完成的 SSD 字节精确换算专家数；统计读取纯 Python 计数，不新增 MLX 求值或 GPU→CPU 同步。无需升级模型 Package。
+- 验证：整轮 SSD 数学回归以及 Runtime、Worker、Package、Product、Chat 与 Engine Pool 定向回归共 254 项通过；Python 编译与 diff whitespace 检查通过。正式 Runtime 1.8.3 的公证、staple、Gatekeeper、匿名三源逐字节/Range、Publisher envelope、CPython 3.11.10、MLX 0.32.0、Metal、原生 `preadv_fused_experts`、实时遥测接线和 DeepSeek V4.1 Worker 启动均通过；发布收据见 `docs/ai2apps-mlx-runtime-1.8.3-live-telemetry-release.md`。固定 `AI2Apps-app-dev.app` 已通过专用脚本重建并完成严格深层签名验证，bundle ID/instance ID 分别为 `com.ai2apps.desktop.appdev` / `app-dev`；实机刷新后本地模型空闲态显示 `SSD PRESSURE · TURN AVG`，非本地/模型目录加载前只显示 `DURATION`。
+- 2026-09-29 实机跟进：Runtime 1.8.3 的滚动 Token Gen 已在 DeepSeek V4.1 生效，但 SSD 卡片仍为空，由此定位到专用引擎遗漏。中间 1.8.4 候选在 V4.1 完成 Decode 步的既有安全边界更新统计；最终 1.8.5 统一 GLM/Qwen/Ornith 遥测并已正式发布，同时改正 Host 内存口径。完整测试、实测与发布结果以 1.8.5 发布收据为准；仍待包含 Host/UI 的下一版 Desktop/App 纳入并实机复验。
+
+### NXR-CHAT-LOCAL-WORKER-TELEMETRY-20260928：本地模型 SSD 压力与 Worker 内存
+
+- 状态：`implemented`，待下一版 Desktop 纳入。Chat 右侧性能区对任意本地对话模型始终显示 `SSD PRESSURE · 10 TOK` 与 `WORKER MEMORY`；Cloud/Fusion 模型不显示这两张本地运行卡片。
+- Cached-MoE 从当前模型独立 Worker 的最近 10 个 Decode token 窗口显示真实 SSD pressure、专家加载数与健康颜色；生成中 Worker 暂停导出引擎统计时保留最近一次有效窗口。非 Cached-MoE 或尚无真实窗口时明确显示 `— / —`，不再把缺失数据伪装为 `0.0% / 0 experts`。
+- 原 `SCOPE` 卡片移除，改为当前模型 Worker 进程内存（GiB/MiB）；1.8.5 Host 修正后主值为 macOS physical footprint，并保留 RSS 作为回退/诊断。未驻留或 Worker 不可用时显示 `—`。该数值代表 Worker 的 Runtime、模型与缓存，不伪装成模型权重或全系统内存压力。
+- Host 的 Worker snapshot 只从空闲状态安全投影 SSD 窗口，不向浏览器暴露完整引擎内部统计；Chat 以最多每秒一次的频率读取既有同源 `/v1/platform/workers`，内存可在生成期间更新，SSD 窗口在安全可读时更新。
+- 部署：HTML/JavaScript 刷新即可加载；新增 Host Python Worker snapshot 字段需重启 App-Dev Local。无需重建 App，也无需升级 Runtime 或模型 Package。
+- 验证：Worker 遥测投影、完整 Chat UI、Chat 产品合同与 Worker 管理接口共 64 项定向回归通过；Ruff（忽略该文件既有无关 `SIM102`）与 diff whitespace 检查通过。仅通过认证 Helper 控制通道重启固定 `app-dev` Local 后，实机 Chat 已显示 `SSD PRESSURE · 10 TOK — / —` 与 `WORKER MEMORY 80 MiB RSS`，原 `SCOPE` 卡片消失；当前 Worker 尚未执行新一轮 Decode，因此未把无样本状态冒充为 SSD 真值，真实压力数值随下一次完成的 Cached-MoE Decode 窗口更新。
+
+### NXR-CHAT-LIVE-INFERENCE-METRICS-20260928：思考 token 与流式性能指标
+
+- 状态：`implemented`，待下一版 Desktop 纳入。Chat 的 Thinking 块无论展开或折叠，生成期间都显示引擎已生成的思考 token 数；完成后随消息保存，切换历史消息仍可见。
+- oMLX Worker 在每个 Chat Completions 流式输出中增加隔离的 `ai2apps_metrics` 扩展帧，携带累计 prompt/completion token、引擎单调生成时间与 Prefill 速度。Prefill 在首 token 到达时立即显示；若引擎未提供原生值，明确使用 Worker 观测 TTFT 估算，不包含模型加载。
+- 生成期间的 Token Gen 速度按最近 20 token 的引擎时间窗口计算，反映当前速度而非从请求开始到当前的累计平均；完成后仍以最终 usage 的整次平均作为回执。旧 Worker/Cloud 路径仍保留 `/admin/api/stats` 轮询兼容。
+- 部署：Host HTML/JavaScript 刷新即可加载；Worker Python 需重启 App-Dev Local，无需重建 App，也不需升级模型 Package 或独立 Runtime Package。
+- 验证：Worker SSE 与 Chat UI 定向回归 56 项通过，覆盖原生/估算 Prefill、累计 token 扩展帧、20-token 滑动窗口、Thinking 折叠计数和多会话隔离；`git diff --check` 通过。App-Dev 已热刷新前端，但本轮未能通过 Helper 状态栏重启 Local，故尚未完成真实模型的流式界面验收。
+
+### NXR-CHAT-RUSH-TOGGLE-20260928：Rush 改为单击开关
+
+- 状态：`packages_released`。Runtime 1.8.1 与 Ornith 0.1.5 已按依赖顺序正式发布；App-Dev 页面开关与重启复位已实机验收，仍待最终签名 Runtime 的六后端真实 Natural/Blast 矩阵及长回复中途切换速度验收。Chat 右侧 Rush 不再要求持续按住，也不要求已经开始生成：单击开启后，下一轮对话从请求起始即使用该模型声明的 Blast 策略；生成过程中开启或关闭仍可实时切换，再次单击恢复 Rush 前的 Engine Boost 模式。各模型的 Blast 保护路由数不同，界面不再把所有 MoE 错写成 Head2。
+
+- 2026-09-28 Engine Boost 生产链修复：DeepSeek V4.1 正式接入既有 Decode Burst（Natural=精确 Top6、Turbo=Top4、Blast=Top2，Prefill 保持精确），控制切换在请求/下一 Token 边界生效；Qwen3.8 Flash Next Cached-MoE 与 Ornith 1.5/Qwen3.6 VLM Worker 改用带会话控制器的专用 VLM Engine，不再静默忽略 `flesh_boost_mode`。Worker 最终 usage 与空闲状态端点记录实际 Boost 模式、替换/miss/命中统计。现有 DeepSeek V4、Qwen3.6 文本版和 GLM 5.3 控制链保持不变，并纳入跨模型契约测试。
+- Package 发布：`ai2apps/runtime-omlx 1.8.1` 已完成 Apple 公证、Cloud 发布和 GitHub/ModelScope 三源激活；`ai2apps/model-ornith15-35b-a3b-4bit-vision 0.1.5` 随后发布，Runtime 下限为 `>=1.8.1,<2.0.0`。其余模型 Package 复用公共 Runtime 修复，无需仅为依赖重锁而升版。正式收据见 `docs/ai2apps-mlx-runtime-1.8.1-boost-release.md`，未完成的真实模型门禁保留在 `docs/ai2apps-mlx-runtime-1.8.1-boost-release-handoff.md`。
+- 按钮通过 `aria-pressed` 和 On/Off 文案明确当前状态；键盘 Enter/Space 复用原生 button click。Rush 在当前 Chat 会话内跨轮保持，切出窗口、页面隐藏或本轮生成结束不会意外关闭；切换 Chat 时各会话保留各自的内存态，切换模型或新建 Chat 时安全回到 Off，App 重启后也默认 Off。
+- Engine Boost 设置在 Rush 开启时继续禁用并提示先关闭 Rush。英文、简中、繁中、西语、韩语、葡语、法语、俄语和日语提示已同步为开关语义。
+- 验证：最初的开关 UI 变更完成 Chat 产品契约、Shell 结构和 UI overhaul 定向回归 162 项；随后生产链修复的 MoE 矩阵 85 项通过，覆盖 DeepSeek V4/V4.1、Qwen3.6 文本/VLM（含 Ornith 1.5）、Qwen3.8 Flash Next 与 GLM 5.3。Engine Pool/Worker 154 项、Package/Provider/Adapter/资源兼容套件 131 项、最终收口套件 52 项分别通过；套件间有重叠。Runtime 1.8.1 正式制品的公证、staple、Gatekeeper、三源、匿名回读和隔离安装通过；DeepSeek V4.1 与 Ornith Worker 均在各自隔离根目录中锁定该 Runtime 并启动。DeepSeek V4.1 源码阶段同检查点对照的 Blast 回执为 `protected_top=2`、`omitted_tail_routes=220`、`executed_routes=500`，Natural 为 `protected_top=6`、`omitted_tail_routes=0`。最终签名 Runtime 的六后端真实 Natural/Blast 推理与现有 Dev/Test 全量依赖锁迁移尚未验收，不宣称已完成。
+
+### NXR-MODEL-PACKAGE-CONTEXT-WINDOW-20260928：对话 Package 缺省上下文统一为 32K
+
+- 状态：`runtime_released`。Runtime 1.8.0 已完成 Developer ID 签名、Apple 公证、隔离安装、Cloud 发布及 GitHub/ModelScope 三源激活；submission `0492a1f9-bfc7-436c-8364-a62cf95a2925`，最终 Repository metadata 211、Snapshot `8bd0639ff4dbb91604e404b47b15d93d2f790ddf5b7643801acb9fa6b6ea86a2`。Desktop/Host 的 Package 归一化与展示部分仍待下一版 Desktop 纳入。`llm`、`vlm` Package 的 `context_window` 显式声明优先；既有 Package 未声明时统一按 32768 token 归一化，非对话模型不错误填入上下文窗口。
+- Host 在验证 Package 时归一化有效窗口，隔离 Worker 从签名模型声明读取该值。Chat Completions/Responses 的流式与非流式路径均把有效窗口传入引擎；通用文本、VLM 与 DeepSeek V4.1 专用引擎都按实际 Prompt token 数裁剪输出上限。因此旧 Package 无需升级。
+- DeepSeek V4.1 专用引擎默认值由 4096 对齐为 32768；全部对话引擎抵达窗口边界时正常返回 `finish_reason=length`，不再多执行一次 Decode 后暴露 `batch/context limit`。语音 tokenizer、标点恢复器等非对话辅助 LLM 不套用 32K 对话默认值。
+- 模型 Package 手册已明确：新建或升级的对话 Package 必须按公开模型卡/正式配置声明，同时不得超过 Adapter、Runtime 与执行后端实际验证的能力；旧 Package 走 32K 兼容默认值。
+- 验证：逐项读取全部已签入 Package 的 Worker manifest，覆盖 DeepSeek V4/V4.1、GLM-5.3、Ornith 1.5、Qwen3.6、Qwen3.8 Flash Next、Qwen3.8 27B、Qwen3.5 与 CUDA Qwen；Model Provider、四种 oMLX API 路径、通用文本/VLM 引擎上下文裁剪、DeepSeek V4.1 流式边界及 Cache-MoE Worker 定向回归已在正式 CPython 3.11 / MLX ABI 下扩展为 115 项通过。正式 DMG 的深层签名、staple、Gatekeeper、CPython 3.11.10、MLX 0.32.0 与 Direct-L1 原生符号通过；精确签名 Package 隔离安装后 DeepSeek V4.1 Worker 为 `running`，依赖锁精确指向 Runtime 1.8.0。Cloud/GitHub/ModelScope 完整摘要、46-piece manifest、两类 Range 兼容与匿名回读通过。当前验证的是配置与执行合同，没有逐个下载并运行全部 checkpoint。发布收据见 `docs/ai2apps-mlx-runtime-1.8.0-context-window-release.md`。
+- App-Dev 实机：2026-09-28 通过固定脚本重建 `AI2Apps-app-dev.app`，严格深层签名、`com.ai2apps.desktop.appdev` 与 `app-dev` 身份检查通过；嵌入 Runtime 对未声明窗口的 DeepSeek V4.1 在通用 Adapter、专用 Engine 与请求参数三处均求值得到 32768。重启后的本地 DeepSeek V4.1 在 Thinking Off 下对短请求真实返回 `OK`，旧会话中的 `Error: batch/context limit` 仅作为历史失败消息保留。
+
+### NXR-ACPF-PACKAGE-LIFECYCLE-20260928：全部 ACPF 统一识别过时模型
+
+- 状态：`implemented`，待下一版 Desktop 纳入。共享 Registry 客户端通过独立无 Cookie 公共 Cloud 通道接入 `/v1/registry/package-lifecycle/latest` 完整签名快照，不携带当前用户或管理员会话；复用固定 Repository Ed25519 信任根，校验 schema/domain/字段/签名/有效期/重复记录，独立持久化 lifecycle 版本、payload digest、ETag 与验证缓存；拒绝回滚和同版本不同 payload。
+- 所有 ACPF Planner 按 provider Package 统一关联 lifecycle。`deprecated` profile 退出自动推荐和自动选择，正常候选耗尽时改选下一项 active 兼容 profile；过时项仍允许明确选择并保留已安装/离线工作流。Discover 由 Registry Package 动态生成的模型安装计划与持久化安装会话也走同一规则，不存在旁路。
+- 共享 Choice Sheet 将过时项稳定移动到全部正常项之后，以虚线弱化样式显示“已过时”徽标和 Cloud reason；已安装过时模型同时显示“已安装 · 已过时”，不伪装成推荐项。
+- 状态接口或可信缓存不可用时降级为 unknown，不把未知宣称为 active，也不阻断现有能力。该行为写入 ACPF 唯一规范，不在 Chat 等 App 中复制特例。
+- 生产公共快照只读联调确认 lifecycle v2 当前将 `ai2apps/model-qwen36-35b` 标为 deprecated，reason“已有更强的新模型”，replacement 为 `ai2apps/model-ornith15-35b-a3b-4bit-vision`；返回 keyId 与 Desktop 固定 Repository 指纹一致。未调用管理 API 或修改 Cloud 状态。
+- 验证：Cloud Client、Registry、Provisioning 与动态 Discover ACPF 联合回归 135 项通过；Ruff、共享 Choice Sheet JavaScript 语法、英文/简中文案 JSON 和 `git diff --check` 通过。App-Dev 仍需重启 Local 后进行页面实机验收，无需重建 App。
+
+### NXR-CHAT-ACPF-STRONG-MODEL-RECOMMENDATIONS-20260928：按新一代模型重排本地聊天推荐
+
+- 状态：`implemented`，待下一版 Desktop 纳入。Chat 本地模型 ACPF 不再把旧 DeepSeek V4/V4 2-bit 作为 32/64/128 GiB 默认推荐；两者继续作为兼容选项列出。
+- 推荐分档调整为：8–15 GiB Qwen3.5 2B、16–31 GiB Qwen3.6 35B、32–63 GiB Qwen3.8 27B NVFP4、64–95 GiB Qwen3.8 Flash Next 4-bit、96 GiB 及以上 DeepSeek V4.1 Flash。列表优先级同步按 DeepSeek V4.1、Qwen3.8 Next、Qwen3.8 27B 排在旧模型之前。
+- ACPF 的 Qwen3.8 27B/Next 最低内存由过时的 24/48 GiB 对齐各自 Package `modelProfile` 的 32/64 GiB；最低 Runtime 对齐到 1.7.5。DeepSeek V4.1 推荐要求 Runtime 1.7.13，以包含长 Decode Metal 资源生命周期修复。
+- 补齐 8–15 GiB 推荐空洞，并更新 Chat ACPF 分档回归；未安装、升级或发布任何模型、Runtime 或 Desktop 制品。
+
+### NXR-DSV41-LONG-DECODE-RESOURCE-LIFETIME-20260928：长 Decode Metal 资源有界化
+
+- 状态：`runtime_released`。Runtime 1.7.13 已完成 Developer ID 签名、Apple 公证、Cloud 发布及 GitHub/ModelScope 三源激活；submission `480c75c6-a842-4b7a-a09c-864388bd123a`，最终 Repository metadata 208、Snapshot `5d5039fb63ff3e7de23e5676ea5828ff1f2fef0d4cab43de78f8a061c66bc8c6`。Desktop 的 Chat 流失败 UI 防御仍待下一版 Desktop 纳入。DeepSeek V4.1 的 resident bank 原先跨 token 保留每层专家输出，只有 SSD reload 才 fence/清空；连续命中会按层×token 累积 MLX lazy graph，最终触发 Metal 499000 resource limit。现于既有 logits materialization 边界同时 materialize cache counters/ages，并清除已完成输出引用，不新增 GPU→CPU 同步或 router readback。
+- Model Worker 仅在完整消费流后标记成功；流内异常记录 request/operation/model 上下文、标记 failed、写日志并发送结构化 SSE error，取消标记 cancelled。Chat 明确要求 `[DONE]`，错误帧或异常 EOF 保存为 failed 并保留 partial answer/reasoning；用户停止保存为 cancelled。DeepSeek V4.1 达到 max_tokens 的最终 chunk 现在报告 `finish_reason=length`。
+- 其它 Cached-MoE 路径源码审计未发现同构引用链：DeepSeek V4 每次 forward materialize cache arrays；GLM 预填充 pending 为固定双 bank 并逐组 drain，promotion 仅保存有界专家 ID；Qwen Next/Qwen3.6 的 promotion/Scope collector 均为按层或单次 probe 有界状态。该结论不等同于所有模型完成 32K 真机压力测试。
+- 验证完成：真实 475GB 共享 SSD checkpoint 的 12K 强制 Decode 通过，Decode 1,157.792 秒（资源回归 10.365 TPS），Metal active 仅增 3,100,812 bytes，pending 始终为0；480,000层次中89.788% all-hit，49,017层为非 all-hit，后续第二短请求完成。Runtime/DeepSeek V4.1/Worker/Package 合计 149 passed。逐点数据 `artifacts/dsv41-long-decode-resource-20260928/report.json`；修复报告 `docs/dsv41f-long-decode-resource-lifetime-fix-2026-09-28.md`；发布收据 `docs/ai2apps-mlx-runtime-1.7.13-deepseek-v41-long-decode-release.md`。Runtime 已发布；仍需要包含 Chat 防御的 Desktop Release，checkpoint 不变。
+
+### NXR-CHAT-COMPOSER-MODE-BAR-20260927：明确区分模式栏与消息输入区
+
+- 状态：`implemented`，待下一版 Desktop 纳入。
+- Chat 输入组件顶部的 Chat/Agent 模式栏增加独立弱底色与下边界，避免模式说明及其右侧空白继续呈现为输入区域。
+- 点击模式说明或模式栏非控件空白处会直接聚焦真正的消息输入框；模式按钮、Agent 选择及其他交互控件保持原行为。
+- 仅修改 `ai2apps/web/templates/chat.html` 的静态样式与前端焦点交互；App-Dev 刷新即可加载，无需重建 App。
+- 验证：Chat UI 与 Shell 定向回归 155 passed；App-Dev 热刷新后视觉检查确认模式栏形成独立工具栏。Computer Use 的坐标点击受窗口绑定错误影响，空白区域焦点仍需补一次人工点击验收。
+
 ### NXR-RELEASE-011-2253-20260926：全量产品候选核对
 
+- 进展：正式 0.1.1 / 2253 已由 clean、已推送 main `ecb64006311317d65f7794148d9a209a6989a82a` 构建，Developer ID、Apple Accepted/staple/Gatekeeper 与 2252→2253 资格检查通过。GitHub `v0.1.1-build2253` 与 ModelScope immutable revision `b18618ac138fef2c5e0ef30d9f9d2e614d2c2626` 均已发布，同字节制品完成匿名完整摘要及 Range 验证。Cloud 已部署严格限定的 ModelScope `200 + Content-Range` 预检兼容修复，并于 2026-09-26 完成 0% 原子登记及同一 `build2253-test` rollout 扩至 10000 basis points；最终生产清单 SHA-256 `9c6438fe1802d3d4581cb7441f14fd259033a7e6c57256cb7636de14c8970cff`，审计新增 publish/rollout 两条。当前仅待目标 Mac 实际升级与启动验收；完成前不更新基线或将 NXR 标 included。见 `docs/ai2apps-desktop-build-2253-release-receipt-2026-09-26.md`。
 - 2026-09-26 用户进一步确认原生托盘/启动页双语、中文登录流程均已现场验收通过；NXR-NATIVE-I18N-20260926 与 NXR-LOGIN-I18N-20260926 的历史现场待办关闭，纳入候选。验收来源为用户，不重复操作实例或改写既有测试证据。
-- 全量复验完成：10231 passed、67 skipped、74 deselected（727.61 秒），无失败。日志及 JUnit 见发布准备文档。产品唯一版本源 `ai2apps/_version.py` 升至 0.1.1；Build 2253 由标准构建参数指定，不修改独立 Runtime/Package 版本。Developer ID 证书、公证 profile 和 GitHub Avdpro 账号可用；尚未构建或提交 Apple。
+- 全量复验完成：10231 passed、67 skipped、74 deselected（727.61 秒），无失败。日志及 JUnit 见发布准备文档。产品唯一版本源 `ai2apps/_version.py` 升至 0.1.1；Build 2253 由标准构建参数指定，不修改独立 Runtime/Package 版本。正式 App/DMG 已构建、签名、公证并完成双源发布；Cloud 与真实升级仍待完成。
 
 - 2026-09-26 用户明确确认修改密码和 Imagine 新功能均已由其验证，无需 Agent 重复验收；对应真实改密/图片生成 UI 缺口按用户验收关闭，纳入本轮候选，源码回归及制品门禁仍须通过。此确认不代表 Agent 执行了真实密码操作或模型生成。
 
-- 状态：`in_progress`。用户选择先整理、验证并提交全部当前产品改动，再构建正式 Release；候选版本暂定 0.1.1 / Build 2253，尚未分配 tag、构建或发布。
+- 状态：`in_progress`。版本 0.1.1 / Build 2253 已完成源码、构建、公证、GitHub/ModelScope 双源和 Cloud 100% 发布；当前只剩目标 Mac 实际升级与启动闭环，完成前不改为 `included`。
 - 当前生产清单为 0.1.0 / Build 2252；本文下方 2249 基线段为未归档的历史记录，不作为本轮版本分配依据。全部开放项仍须逐项核对，不能据此把旧 in_progress 自动改为 ready。
 - 首轮源码验证：Swift 测试与 16 个 Node 测试文件通过；Python 定向回归 365 passed / 1 failed，发现共享 Studio setup 测试仍固定旧二参数签名。已更新为现行可选 installMore 参数并保留参数传递断言，待复验；完整 Python 回归进行中。
 - 发布前发现正式 packaged AceFox 的 shell.mjs、shell.xhtml 与当前源码不一致；必须通过正式浏览器打包流程刷新，不能用 Development overlay 替代。密码修改及 Imagine 人工验收已按上方用户确认关闭，不声称 Agent 重复执行。
@@ -96,6 +232,67 @@
 - 已通过标准脚本重建固定 App-Dev，旧 App 归档为 `AI2Apps-app-dev-20260925-010021.app`，verify-release-app 与 codesign 深度校验通过。实机 Shell 标题 `AI2Apps-App-Dev: App-Dev 127.0.0.1:49625`；Computer Use 连接 Helper 两次超时，菜单点击到浏览器页面的端到端验收仍待完成。未修改其他实例或重置数据。
 
 状态：滚动维护中的唯一下一版入口
+
+### NXR-VIDEO-COMPOSER-SPECIAL-LAYERS-20260929
+
+- 状态：`implemented`，固定 App-Dev 已完成前端实机检查和导出 API 实机复验。首次导出返回 422 的原因是长驻 Local 仍持有升级前的 Pydantic 请求模型；通过固定 App-Dev Helper 的 `local.restart` 控制通道重启后，新请求模型已加载，当前 4 轨道／3 Clip 项目成功渲染 5 秒 MP4，预览与下载均可用。
+- Video Composer 新增可排序、可保存和可导出的聚光遮罩层与文本层。聚光遮罩支持圆角矩形／椭圆、高亮区外暗度、圆角和羽化，既有位置和尺寸关键帧控制高亮区域。文本层支持内容、字号、颜色、九点锚点、逐字读出及字符速度，新增关键帧缩放参数。
+- 特殊层不依赖媒体素材源；Python 合成器按视频轨顺序将遮罩和文本合成进最终 MP4，项目打开／保存和纯特殊层导出均保留其配置。旧媒体片段在前端规范化时自动补 `layerType=media` 和 `scale=1`。
+- 文件：`ai2apps/video/composer.py`、`ai2apps/api/video_studio.py`、`ai2apps/web/static/js/video_studio.js`、`ai2apps/web/templates/system_apps/video_studio.html`、`ai2apps/web/static/css/video_composer.css`、中英文 locale 与 Composer 回归测试。
+- 验证：Composer 定向回归 13 passed，覆盖无素材源特殊层、遮罩明暗像素、文本缩放关键帧与可播放 MP4；Ruff、Node 语法和 diff check 通过。固定 App-Dev 强制刷新后实际创建聚光遮罩层和文本层，轨道、预览边框、Inspector 的形状／暗度／羽化／圆角、文本内容／字号／颜色／锚点／读出和关键帧 Scale 控件均可见，布局未溢出。当前 Local 进程缓存旧 locale，新增标签暂显示 key；按 App-Dev 工作流需从 Helper 重启 Local 后再验中文标签及实时导出。未重建或发布 Desktop。
+
+### NXR-APPDEV-SCREEN-RECORDING-WINDOW-20260929
+
+- 状态：`implemented_and_verified`。App-Dev 专用 Helper 菜单增加“准备录屏 / Prepare for
+  Screen Recording”；入口只在 `app-dev` instance、`com.ai2apps.desktop.appdev` 主包和
+  Development source-root 三重身份校验通过时出现，不触碰 Dev、Test 或生产实例。点击后
+  唤起 App-Dev Shell；Shell 已运行时立即处理，尚未运行时会在启动后消费命令。
+- Helper 只向实例私有 `run` 目录写入固定、不可自定义几何的 0600 命令；App-Dev Shell
+  校验版本、实例 ID 与命令后自行调用原生窗口接口，按当前屏幕倍率把主窗口设为
+  1600×900、移动到主屏幕可用区域左上角、激活窗口，并立即删除命令。该路径不需要辅助
+  功能权限，也不允许控制其他进程。App-Dev 专用 Shell 变换由仓库内脚本在构建时注入，
+  不修改或依赖外部未跟踪的 AceFox 源文件。
+- 验证：Swift 构建及 79 项测试、Shell 变换与 JavaScript 语法、两次完整固定 App-Dev
+  重建、`verify-release-app.sh`、严格深层签名均通过。最终旧包归档为
+  `.build/archive/AI2Apps-app-dev-20260929-042026.app`；新实例标题为
+  `AI2Apps-App-Dev: App-Dev 127.0.0.1:53100`，健康端点返回 `healthy`。实机先将窗口改为
+  1000×650 @ (120,120)，再点击菜单，首版系统读数为 1360×768 @ (0,34)；`y=34` 是当前
+  macOS 菜单栏下方的可用屏幕顶边。用户现场确认该尺寸在 1728×1083 工作区内视觉偏小，
+  因此目标调整为 1600×900；固定 App-Dev 再次重建，旧包归档为
+  `.build/archive/AI2Apps-app-dev-20260929-043352.app`。最终实机点击后的系统读数为
+  1600×900 @ (0,34)，新实例端口为 54062。一次性命令已消费，Dev Helper 菜单确认没有该入口。
+
+### NXR-LOCAL-FOUR-INSTANCE-REBUILD-20260928
+
+- 状态：`ready`。用户要求重建固定 app-dev、dev、test 和 main 四个本地实例，四项均完成。
+  本次为当前工作树内部集成快照，不是正式候选，不发布、不公证、不改变生产基线或更新通道。
+  保留各实例数据与共享权重；固定旧 App 归档。包含 Models SSD 激活状态修复。
+  既有台账的未完成/延期工作不因本机构建而视为完成或获准发布。
+- 验证：app-dev/test/main 均通过 verify-release-app.sh 与构建中的 deep strict 验签；
+  dev 通过 deep strict 验签。三套内嵌 Runtime 确认包含 SSD installed 修复。
+  App-Dev 现场窗口为 `AI2Apps-App-Dev: App-Dev 127.0.0.1:63105`，Models 卡片为 Ready，
+  Configure 显示 `Model installation complete`，不再出现 Download & Prepare。
+  旧包归档时间：app-dev 082257、test 082407、dev 082411、main 082518（20260928）。
+  main 保留本地 Build 2250，内部 ad-hoc 签名，未公证发布；test/main 原先未运行，未主动启动。
+
+### NXR-MODELS-SSD-INSTALLED-20260928：Models 页面读取 SSD 激活状态
+
+- 状态：`ready`。上次修复只覆盖 Checkpoint 完整性；Model Manager 的非 native
+  分支仍只查 model_dir/repo_id，遗漏 Worker Hub distribution。Package recipe 现在从
+  已验证 Worker 路径检查激活描述文件的 model ID、repo、revision，再提供 installed。
+  Admin 聚合保留该状态，旧转换目录仍保留兼容检测。现有配置弹窗会自动切换完成面板。
+- 涉及 `omlx/admin/routes.py`，App-Dev 必须通过固定构建脚本更新内嵌快照；仅重启
+  Local 不足。四实例已重建，App-Dev 已现场确认 Ready 与安装完成面板；71 项定向测试通过。
+
+### NXR-WORKER-CHECKPOINT-SIDECARS-20260928：已激活 SSD Checkpoint 复用
+
+- 状态：`ready`。Worker 完整性判断与缓存视图复用允许严格限定的本地激活元数据：
+  v2 ai2apps-cache-moe-model 描述文件、按 SHA-256 命名且内容匹配的 Scope JSON。
+  拒绝符号链接、异常 JSON、额外权重和缺失签名文件；共享签名缓存仍要求精确文件清单。
+- 修复 DeepSeek V4.1 已下载后被误报 Weights required，重试又报 Registry 冲突。
+  不删除、搬移或重新下载权重；Python 修改需要重启 App-Dev Local。
+- 验证：checkpoint acquisition 22 项通过；现有 App-Dev DeepSeek V4.1 的 171 文件
+  验证收据在修正后的完整性判断中通过，未修改缓存。未重启当前 Local。
 
 ### NXR-IMAGINE-MINI-APP-ORDER-20260924：内置列表排序
 
@@ -752,6 +949,21 @@
   `com.ai2apps.desktop.dev.shell`、`com.ai2apps.desktop.appdev.shell` 和
   `com.ai2apps.desktop.test.shell`，App-Dev 原生标题为
   `AI2Apps-App-Dev: App-Dev 127.0.0.1:58071`。本次仍只是本地实例重建，尚未生成或发布正式制品。
+- 2026-09-29 在 Runtime 1.8.5 MoE SSD 压力与进程物理内存统计更新完成后，再次通过固定入口
+  `build-dev-app.sh`、`build-app-dev-environment.sh`、`build-test-app.sh` 从当前工作树重建
+  Dev、App-Dev、Test。旧包分别归档为
+  `.build/archive/AI2Apps-dev-20260929-035135.app`、
+  `.build/archive/AI2Apps-app-dev-20260929-035301.app`、
+  `.build/archive/AI2Apps-test-20260929-035427.app`；三个实例的 Application Support、Cache
+  与共享 checkpoint 均未重置或删除。
+- 三包的固定 bundle/instance/Development/source-root/cloud-Runtime 身份与严格深度签名通过；
+  App-Dev、Test 另通过完整 `verify-release-app.sh`。Dev 是不含正式 Release 许可证目录的轻量
+  Development bundle，使用其专用构建门禁和深度签名验收。App-Dev/Test 内嵌
+  `omlx/engine/ssd_telemetry.py` 与 `ai2apps/proc_memory.py` 均和当前源码逐字节一致。
+  三套新实例已启动，App-Dev `127.0.0.1:50721`、Dev `127.0.0.1:50910`、Test
+  `127.0.0.1:50906` 的 `/health` 均返回 `healthy`；App-Dev 原生标题确认是
+  `AI2Apps-App-Dev: App-Dev 127.0.0.1:50721`。本次只更新本地开发/测试实例，不产生新的
+  Desktop Release。
 
 ### NXR-DISCOVER-LEGACY-INSTALL-20260920：旧模型 Package 安装计划兼容
 
@@ -4190,3 +4402,32 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 
 - 状态：`ready`。Video Studio 的成功和错误提示改为固定悬浮 Toast，不再占据文档流或把三栏工作区向下挤动；保留关闭按钮和淡入淡出效果。
 - 成功/普通提示显示 4.5 秒，错误提示显示 12 秒；新提示会取消旧计时器，页面卸载时清理计时器。错误使用 assertive `alert`，普通提示使用 polite `status`。纯 HTML/CSS/JavaScript 修改，刷新页面生效，无需重启 Local、更新 Package 或 Runtime。
+
+### NXR-VIDEO-COMPOSER-GALLERY-PREVIEW-20260929：Gallery 单击只预览
+
+- 状态：`ready`。Video Composer 内嵌 Gallery Mini-Entry 的单击与键盘打开操作只进入 Gallery 素材预览，不再把素材自动添加到时间线；拖入指定轨道和 Composer 的显式导入入口仍会添加素材。
+- 仅修改 Video Studio 前端消息路由，刷新页面生效，无需重启 Local、更新 Package 或 Runtime。新增静态回归防止 Gallery 的 `asset-selected` 消息再次触发 Composer 导入；固定 App-Dev 强制刷新后实机单击图片素材，Gallery Preview 正常打开，时间线 Clip 数保持不变。
+
+### NXR-ARTIFACT-UNICODE-DOWNLOAD-20260929：中文 Artifact 文件名下载
+
+- 状态：`ready`。修复 Workspace Artifact 下载接口把中文文件名直接写入 Latin-1 响应头而触发 500 的问题；非 ASCII 文件名改用 RFC 5987 `filename*=utf-8''...`，ASCII 文件名保持原有 `filename="..."` 兼容格式，并清除 CR/LF。
+- 该问题会让已成功生成的视频播放器拿到错误响应而误报“不支持的视频格式和 MIME 类型”，视频内容本身并未损坏。中文 MP4 文件名下载与音频格式回归 2 项通过，Workspace API Ruff 与 diff 检查通过。已通过固定 Dev Helper 重启 `dev` Local；现有 `宣传视频-1.mp4` 无需重新生成，实机播放器识别 16 秒时长并从 0:00 正常播放到 0:01。
+
+### NXR-VIDEO-COMPOSER-FREEZE-FRAME-20260929：播放头插入静帧
+
+- 状态：`ready`。片段属性工具栏在“在播放头分割”左侧新增“插入静帧”：播放头位于所选、未锁定的视频 Clip 内时，从对应源视频时间提取 PNG，并在同一轨道插入默认 2 秒的静帧 Clip。
+- 播放头在 Clip 中间时自动分开左右片段，右半段及同轨后续 Clip 整体后移 2 秒；位于首尾时在对应边界插入。静帧继承当前位置的尺寸、位置、透明度、缩放与蒙版，不含音频，支持撤销和后续时长调整。Composer 13 项、JavaScript 语法及 diff 检查通过；固定 Dev 实机提取 `F0.png` 并生成 60 帧／2.000 秒 Clip，随后撤销恢复原项目。纯前端及本地 Composer 素材导入路径，刷新页面生效。
+
+### NXR-VIDEO-COMPOSER-SPEED-RETIME-20260929：连续变速时长修复
+
+- 状态：`ready`。Composer 视频／音频 Clip 的速度上限继续从 8× 提高到 20×，前端输入、聊天编辑范围和 Python 合成模型保持一致。
+- 速度输入不再通过 `x-model` 先改值并依赖一次性的焦点快照；每次 change 都作为独立可撤销操作，以修改前的 `时长 × 旧速度` 固定源片段跨度，再计算新时长，并沿用轨道 Trim 规划推移或回收后续 Clip，避免同一输入框连续改速后时长与速度脱节。
+- Composer 14 项回归、JavaScript 语法、Ruff 与 diff 检查通过；固定 Dev 实机在同一输入框连续执行 `4× → 8× → 2× → 8×`，时长稳定对应 `314f → 157f → 628f → 157f`，随后三次撤销恢复为原始 `4× / 314f`。
+- 20× 上限扩展继续通过上述 14 项 Composer 回归及前后端静态检查，测试模型可接受并保留 `speed=20`；固定 Dev 强制刷新后现场输入 `20×`，界面正确显示 `20× / 63f / 2.100s`，随后撤销并在 Local 重启后确认项目恢复为原始 `4× / 314f / 10.467s`。
+
+### NXR-VIDEO-COMPOSER-PROJECT-SAVE-NEW-20260929：可靠保存与新建项目
+
+- 状态：`ready`。Video Composer 首次保存和“另存为”不再依赖 `webkitdirectory` 从非空文件夹中的子文件反推路径，也不再绕到受管项目目录；Local 先把 `.ai2video` 序列化为当前用户的 Workspace Artifact，再通过同源 Artifact 下载链接交给 Shell，使 AceFox 按桌面统一策略弹出原生“另存为”面板并由用户选择完整路径。已经从磁盘“打开”的项目仍可用“保存”直接写回其已授权原路径，“另存为”继续走原生面板。
+- 工具栏新增“新建”按钮；有片段时先确认，再重置项目、素材引用、播放头、选择与撤销历史并立即持久化新的自动草稿，已经写入磁盘的项目文件不受影响。
+- Composer 14 项回归、JavaScript、双语 JSON、Ruff 与 diff 检查通过；固定 Dev 已确认“新建”会先显示保护性确认。迁移并强制刷新后，现场分别点击“另存为”和无外部路径项目的“保存”，两者都打开了 macOS 原生“另存为”面板，默认文件名均为 `宣传视频-1.ai2video`，位置选择与文件类型正常。两次面板均选择取消，原项目内容保持不变。
+- 兼容迁移会清除短暂受管目录实现写入草稿的内部 `documentPath` 绑定，使受影响项目下一次点击“保存”也重新进入 Shell 原生“另存为”面板；恢复副本本身不会被删除。

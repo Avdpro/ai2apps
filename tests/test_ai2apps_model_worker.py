@@ -70,6 +70,8 @@ class Adapter:
         if request.payload.get("stream"):
             async def chunks():
                 yield b'data: {"ok":true}\\n\\n'
+                if request.payload.get("stream_fail"):
+                    raise RuntimeError("synthetic decode failure")
                 yield b'data: [DONE]\\n\\n'
             return ModelWorkerStream(chunks())
         if request.payload.get("artifact"):
@@ -350,6 +352,43 @@ def test_model_worker_auth_lifecycle_json_and_stream(tmp_path):
         assert streamed.content.endswith(b"data: [DONE]\n\n")
 
 
+def test_model_worker_stream_failure_is_structured_and_not_marked_succeeded(tmp_path):
+    package, data = _worker_files(tmp_path)
+    _, config_path = ManagedServiceSupervisor._model_worker_command(
+        package, data, _manifest(), 9123
+    )
+    app = create_app(config_path, token="worker-secret")
+    headers = {
+        "Authorization": "Bearer worker-secret",
+        "X-Request-Id": "decode-failure-1",
+    }
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": "example-checkpoint",
+                "stream": True,
+                "stream_fail": True,
+            },
+        )
+        status = client.get("/v1/requests/decode-failure-1", headers=headers)
+
+    assert response.status_code == 200
+    assert b'"code": "model_worker_stream_failed"' in response.content
+    assert b"data: [DONE]" not in response.content
+    assert status.json()["status"] == "failed"
+    assert status.json()["error"] == {
+        "code": "model_worker_stream_failed",
+        "message": "synthetic decode failure",
+        "request_id": "decode-failure-1",
+        "operation": "chat_completions",
+        "model": "example-checkpoint",
+    }
+    assert not any((data / "requests").iterdir())
+
+
 def test_model_worker_status_and_drain_gate_new_requests(tmp_path):
     package, data = _worker_files(tmp_path)
     _, config_path = ManagedServiceSupervisor._model_worker_command(
@@ -375,6 +414,8 @@ def test_model_worker_status_and_drain_gate_new_requests(tmp_path):
         "accepting_requests": True,
         "active_requests": 0,
         "queued_requests": 0,
+        "engine_boost_supported": False,
+        "engine_stats": None,
     }
     assert drained.json() == {"status": "draining"}
     assert after.json()["accepting_requests"] is False

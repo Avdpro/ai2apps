@@ -1315,7 +1315,12 @@
         display: flex;
         align-items: center;
         gap: 0.55rem;
-        padding: 0.45rem 0.65rem 0;
+        min-height: 2.35rem;
+        padding: 0.35rem 0.55rem;
+        border-bottom: 1px solid var(--border-faint);
+        border-radius: calc(1.5rem - 1px) calc(1.5rem - 1px) 0 0;
+        background: var(--bg-tertiary);
+        cursor: text;
     }
     .chat-mode-switch {
         display: inline-flex;
@@ -1341,7 +1346,13 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     }
     .chat-mode-option:disabled { cursor: not-allowed; opacity: 0.55; }
-    .chat-mode-hint { min-width: 0; color: var(--text-tertiary); font-size: 0.68rem; }
+    .chat-mode-hint {
+        min-width: 0;
+        color: var(--text-tertiary);
+        font-size: 0.68rem;
+        pointer-events: none;
+        user-select: none;
+    }
     .chat-agent-select {
         min-width: 7rem;
         max-width: 13rem;
@@ -2380,6 +2391,9 @@
                                             <path d="M12 8v4M12 16h.01" />
                                         </svg>
                                         <span class="thinking-text" x-text="msg._fusionTrace ? 'Generator draft' : window.t('chat.thinking_label')"></span>
+                                        <span x-show="!msg._fusionTrace && Number(msg._recentStats?.thinking_tokens || 0) > 0"
+                                            class="text-[10px] ml-auto mr-2" style="color:var(--text-tertiary);"
+                                            x-text="`${msg._recentStats.thinking_tokens} ${window.t('chat.stats.token_suffix')}`"></span>
                                         <svg class="thinking-toggle" :class="{ collapsed: !msg._thinkingOpen }"
                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <polyline points="18 15 12 9 6 15" />
@@ -2579,6 +2593,9 @@
                                 </svg>
                                 <span class="thinking-text"
                                     x-text="currentStream()?.fusionTrace ? 'Generator draft' : (currentStream()?.finalContent ? window.t('chat.thinking_label') : window.t('chat.thinking_progress'))"></span>
+                                <span x-show="!currentStream()?.fusionTrace && Number(currentStream()?._thinkTokens || 0) > 0"
+                                    class="text-[10px] ml-auto mr-2" style="color:var(--text-tertiary);"
+                                    x-text="`${currentStream()._thinkTokens} ${window.t('chat.stats.token_suffix')}`"></span>
                                 <svg class="thinking-toggle"
                                     :class="{ collapsed: !currentStream()?.streamingThinkingOpen }" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2">
@@ -2645,7 +2662,7 @@
                     <input type="file" id="documentInput" accept=".pdf,.docx,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown" multiple x-ref="documentInput"
                         @change="handleDocumentSelect($event)" class="hidden">
 
-                    <div class="chat-mode-row">
+                    <div class="chat-mode-row" @click="focusComposerFromSurface($event)">
                         <div class="chat-mode-switch" role="group" aria-label="Conversation mode">
                             <button type="button" class="chat-mode-option"
                                 :class="{ 'is-active': !agentMode }"
@@ -3376,32 +3393,28 @@
 
         </div>
 
-        <!-- Momentary Cache-MoE acceleration remains directly accessible. -->
+        <!-- Toggleable Cache-MoE acceleration remains directly accessible. -->
         <div class="chat-hover-tip chat-hover-tip-top chat-hover-tip-align-right px-3 pt-3 bg-surface flex-shrink-0"
             :data-tooltip="isCacheMoeMode ? rushButtonTooltip : window.t('chat.cached_moe_unavailable_tooltip')">
             <button type="button"
-                @pointerdown.prevent="beginRush($event)"
-                @pointerup.prevent="releaseRush()"
-                @pointercancel="releaseRush()"
-                @lostpointercapture="releaseRush()"
-                @keydown.space.prevent="beginRush()"
-                @keyup.space.prevent="releaseRush()"
-                :disabled="!isCacheMoeMode || !isCurrentChatStreaming() || isRushUnavailable"
+                @click.prevent="toggleRush()"
+                :disabled="!isCacheMoeMode || isRushUnavailable"
+                :aria-pressed="rushActive"
                 :class="rushActive
                     ? 'border-red-400 bg-red-500 text-white shadow-md scale-[0.99]'
                     : 'border-line bg-surface-muted hover:bg-surface-alt'"
-                class="w-full min-h-11 px-4 py-2 rounded-xl border transition-all select-none disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                style="touch-action: none;">
+                class="w-full min-h-11 px-4 py-2 rounded-xl border transition-all select-none disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 <i data-lucide="gauge" class="w-4 h-4"></i>
                 <span class="text-xs font-bold tracking-wide">RUSH</span>
-                <span class="text-[10px] opacity-75" x-text="rushActive ? 'Blast active' : 'Hold for Blast'"></span>
+                <span class="text-[10px] opacity-75" x-text="rushActive ? 'On · Click to stop' : 'Off · Click to start'"></span>
             </button>
         </div>
 
         <!-- Performance Stats Panel on the Bottom -->
         <div class="p-3 border-t border-line bg-surface flex-shrink-0">
             <div class="grid grid-cols-2 gap-2">
-                <div class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
+                <div x-show="isCurrentModelLocal" x-cloak
+                     class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
                     <span class="text-[9px] font-bold uppercase tracking-wider"
                         style="color: var(--text-tertiary);">{{ t('chat.stats.prefill') }}</span>
                     <div class="flex items-end justify-between">
@@ -3412,7 +3425,8 @@
                             x-show="recentStats?.prompt_tokens > 0" x-text="recentStats.prompt_tokens + ' ' + window.t('chat.stats.token_suffix')"></div>
                     </div>
                 </div>
-                <div class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
+                <div x-show="isCurrentModelLocal" x-cloak
+                     class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
                     <span class="text-[9px] font-bold uppercase tracking-wider"
                         style="color: var(--text-tertiary);">{{ t('chat.stats.token_generation') }}</span>
                     <div class="flex items-end justify-between">
@@ -3423,7 +3437,8 @@
                             x-show="recentStats?.total_tokens > 0" x-text="recentStats.total_tokens + ' ' + window.t('chat.stats.token_suffix')"></div>
                     </div>
                 </div>
-                <div class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
+                <div x-show="isCurrentModelLocal" x-cloak
+                     class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
                     <span class="text-[9px] font-bold uppercase tracking-wider"
                         style="color: var(--text-tertiary);">{{ t('chat.stats.thinking') }}</span>
                     <div class="flex items-end justify-between">
@@ -3435,7 +3450,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between">
+                <div class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between"
+                     :class="isCurrentModelLocal ? '' : 'col-span-2'">
                     <span class="text-[9px] font-bold uppercase tracking-wider"
                         style="color: var(--text-tertiary);">{{ t('chat.stats.duration') }}</span>
                     <div class="flex items-end justify-between">
@@ -3443,27 +3459,28 @@
                             x-text="recentStats?.total_time ? Number(recentStats.total_time).toFixed(1) : '-'"></div>
                     </div>
                 </div>
-                <div x-show="isCacheMoeMode" x-cloak
+                <div x-show="isCurrentModelLocal" x-cloak
                      class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between"
                      :title="currentSsdTooltip">
                     <span class="text-[9px] font-bold uppercase tracking-wider"
-                        style="color: var(--text-tertiary);">SSD PRESSURE · 10 TOK</span>
+                        style="color: var(--text-tertiary);" x-text="currentSsdLabel"></span>
                     <div class="flex items-end justify-between">
                         <div class="text-sm font-semibold transition-colors"
                             :style="'color: ' + currentSsdSwapColor"
                             x-text="currentSsdPressure"></div>
                         <div class="text-[10px]" style="color: var(--text-tertiary);"
-                            x-text="currentSsdSwaps + ' experts'"></div>
+                            x-text="currentSsdSwapsLabel"></div>
                     </div>
                 </div>
-                <div x-show="isCacheMoeMode" x-cloak
+                <div x-show="isCurrentModelLocal" x-cloak
                      class="bg-surface-muted p-2 rounded-xl border border-line flex flex-col justify-between"
-                     title="An asterisk means this Session has applied an L1 optimization">
+                     :title="currentWorkerMemoryTooltip">
                     <span class="text-[9px] font-bold uppercase tracking-wider"
-                        style="color: var(--text-tertiary);">SCOPE</span>
+                        style="color: var(--text-tertiary);" x-text="currentWorkerMemoryLabel"></span>
                     <div class="flex items-end justify-between">
                         <div class="text-sm font-semibold truncate" style="color: var(--text-primary);"
-                            x-text="currentDynamoeScope"></div>
+                            x-text="currentWorkerMemory"></div>
+                        <div class="text-[10px]" style="color: var(--text-tertiary);" x-text="currentWorkerMemoryMetricLabel"></div>
                     </div>
                 </div>
             </div>
@@ -3598,7 +3615,7 @@
                                 : (rushActive ? window.t('chat.engine_boost_rush_tooltip') : '')">
                             <label class="text-[10px] font-bold uppercase tracking-wider block">ENGINE BOOST</label>
                             <select :value="engineBoostMode" :disabled="rushActive || !isCacheMoeMode" @change="setEngineBoostMode($event.target.value)" class="w-full px-3 py-2 text-xs border border-line rounded-xl bg-surface-muted">
-                                <option value="auto">Auto · 2K Turbo / 10K Blast</option><option value="natural">Natural · Full fidelity</option><option value="turbo">Turbo · Head3 Prefill</option><option value="blast">Blast · Head2</option>
+                                <option value="auto">Auto · Model policy</option><option value="natural">Natural · Full fidelity</option><option value="turbo">Turbo · Model optimized</option><option value="blast">Blast · Maximum speed</option>
                             </select>
                             <p class="text-[10px] text-fg-tertiary">Live changes take effect after the next generated token.</p>
                         </div>
@@ -3725,6 +3742,7 @@
     const PROMPT_PROFILES_STORAGE_KEY = 'omlx_chat_prompt_profiles';
     const ACTIVE_AGENT_RUNS_STORAGE_KEY = 'ai2apps_active_agent_runs_v1';
     const CHAT_RIGHT_SIDEBAR_STORAGE_KEY = 'ai2apps_chat_right_sidebar_open_v1';
+    const ROLLING_GENERATION_WINDOW_TOKENS = 20;
     const AGENT_TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 
     function readChatRightSidebarOpen() {
@@ -4074,7 +4092,12 @@
                 avg_prefill_tps: 0,
                 avg_generation_tps: 0,
                 thinking_time: 0,
-                total_time: 0
+                total_time: 0,
+                ssd_turn_average: null,
+                ssd_model_id: null,
+                worker_peak_memory_bytes: 0,
+                worker_peak_service_key: null,
+                worker_memory_metric: null
             },
             statsInterval: null,
 
@@ -4085,6 +4108,11 @@
             versionHover: false,
             _updateCheckTimer: null,
             ai2appsStatus: null,
+            modelWorkers: [],
+            workerTelemetryByService: {},
+            _workerStatsFetchedAt: 0,
+            _workerStatsInFlight: null,
+            _workerStatsTimer: null,
 
             // Timeline navigation rail
             timelineDots: [],              // [{ index, topPx }]
@@ -4335,7 +4363,12 @@
                     total_time: 0,
                     prompt_tokens: 0,
                     thinking_tokens: 0,
-                    total_tokens: 0
+                    total_tokens: 0,
+                    ssd_turn_average: null,
+                    ssd_model_id: null,
+                    worker_peak_memory_bytes: 0,
+                    worker_peak_service_key: null,
+                    worker_memory_metric: null
                 };
             },
 
@@ -5071,7 +5104,9 @@
                     ai2apps_idempotency_key: cloudRequestKey,
                     ...(!this.isFusionMode && {
                         ai2apps_l1_mode: this.getChatSession(context.chatId, false)?.l1OptimizationMode || 'auto',
-                        ai2apps_engine_boost: this.getChatSession(context.chatId, false)?.engineBoostMode || 'natural',
+                        ai2apps_engine_boost: this.getChatSession(context.chatId, false)?.rushEnabled === true
+                            ? 'blast'
+                            : (this.getChatSession(context.chatId, false)?.engineBoostMode || 'natural'),
                     }),
                     ai2apps_kv_policy: this.getChatSession(context.chatId, false)?.kvPolicy || 'session',
                     messages: apiMessages,
@@ -5477,6 +5512,17 @@
                     targetMessageId: null,
                     _statsRequestId: null,
                     _liveFooterStats: null,
+                    _livePromptTokens: 0,
+                    _liveCompletionTokens: 0,
+                    _livePrefillTps: 0,
+                    _rollingGenerationTps: 0,
+                    _generationSamples: [],
+                    _thinkTokens: 0,
+                    _liveSsdWindow: null,
+                    _ssdTurnAverage: null,
+                    _peakWorkerMemoryBytes: 0,
+                    _peakWorkerServiceKey: null,
+                    _workerMemoryMetric: null,
                 };
             },
 
@@ -5570,6 +5616,11 @@
                 if (!claimed) {
                     return {
                         ...base,
+                        avg_prefill_tps: stream._livePrefillTps || base.avg_prefill_tps || 0,
+                        avg_generation_tps: stream._rollingGenerationTps || base.avg_generation_tps || 0,
+                        prompt_tokens: stream._livePromptTokens || base.prompt_tokens || 0,
+                        total_tokens: stream._liveCompletionTokens || base.total_tokens || 0,
+                        thinking_tokens: stream._thinkTokens || base.thinking_tokens || 0,
                         total_time: stream._statusStart
                             ? ((Date.now() - stream._statusStart) / 1000).toFixed(1)
                             : base.total_time,
@@ -5588,6 +5639,19 @@
                     }
                 }
 
+                if (stream._livePrefillTps > 0) {
+                    base.avg_prefill_tps = stream._livePrefillTps;
+                }
+                if (stream._rollingGenerationTps > 0) {
+                    base.avg_generation_tps = stream._rollingGenerationTps;
+                }
+                if (stream._livePromptTokens > 0) {
+                    base.prompt_tokens = stream._livePromptTokens;
+                }
+                if (stream._liveCompletionTokens > 0) {
+                    base.total_tokens = stream._liveCompletionTokens;
+                }
+
                 if (stream._statusStart) {
                     base.total_time = ((Date.now() - stream._statusStart) / 1000).toFixed(1);
                 }
@@ -5603,6 +5667,84 @@
                 }
 
                 return base;
+            },
+
+            applyStreamMetrics(chatId, stream, metrics) {
+                if (!stream || !metrics || typeof metrics !== 'object') return;
+                const promptTokens = Number(metrics.prompt_tokens || 0);
+                const completionTokens = Number(metrics.completion_tokens || 0);
+                const prefillTps = Number(metrics.prefill_tokens_per_second || 0);
+                const nativeSampleTime = Number(metrics.generation_sample_time);
+                const sampleTime = Number.isFinite(nativeSampleTime)
+                    ? nativeSampleTime
+                    : performance.now() / 1000;
+
+                if (Number.isFinite(promptTokens) && promptTokens > 0) {
+                    stream._livePromptTokens = promptTokens;
+                }
+                if (Number.isFinite(completionTokens) && completionTokens >= 0) {
+                    stream._liveCompletionTokens = completionTokens;
+                }
+                if (Number.isFinite(prefillTps) && prefillTps > 0) {
+                    stream._livePrefillTps = prefillTps;
+                }
+                if (metrics.ssd_recent_10_tokens
+                    && typeof metrics.ssd_recent_10_tokens === 'object') {
+                    stream._liveSsdWindow = { ...metrics.ssd_recent_10_tokens };
+                }
+                if (metrics.ssd_turn_average
+                    && typeof metrics.ssd_turn_average === 'object'
+                    && Number(metrics.ssd_turn_average.tokens || 0) > 0) {
+                    stream._ssdTurnAverage = { ...metrics.ssd_turn_average };
+                }
+
+                if (completionTokens > 0 && Number.isFinite(sampleTime)) {
+                    const samples = stream._generationSamples || (stream._generationSamples = []);
+                    const previous = samples.at(-1);
+                    if (!previous || completionTokens > previous.tokens) {
+                        samples.push({ tokens: completionTokens, time: sampleTime });
+                    } else if (completionTokens === previous.tokens && sampleTime > previous.time) {
+                        previous.time = sampleTime;
+                    }
+
+                    const latest = samples.at(-1);
+                    if (latest) {
+                        let baseline = samples[0];
+                        for (let i = samples.length - 2; i >= 0; i -= 1) {
+                            baseline = samples[i];
+                            if (latest.tokens - baseline.tokens >= ROLLING_GENERATION_WINDOW_TOKENS) break;
+                        }
+                        const tokenDelta = latest.tokens - baseline.tokens;
+                        const timeDelta = latest.time - baseline.time;
+                        if (tokenDelta > 0 && timeDelta > 0) {
+                            stream._rollingGenerationTps = tokenDelta / timeDelta;
+                        }
+                        while (samples.length > 2
+                            && latest.tokens - samples[1].tokens >= ROLLING_GENERATION_WINDOW_TOKENS) {
+                            samples.shift();
+                        }
+                    }
+                }
+
+                if (stream.thinkingState?.isInThinking && completionTokens > 0) {
+                    stream._thinkTokens = completionTokens;
+                }
+
+                const base = { ...(stream._liveFooterStats || this.emptyStats()) };
+                stream._liveFooterStats = {
+                    ...base,
+                    avg_prefill_tps: stream._livePrefillTps || base.avg_prefill_tps || 0,
+                    avg_generation_tps: stream._rollingGenerationTps || base.avg_generation_tps || 0,
+                    prompt_tokens: stream._livePromptTokens || base.prompt_tokens || 0,
+                    total_tokens: stream._liveCompletionTokens || base.total_tokens || 0,
+                    thinking_tokens: stream._thinkTokens || base.thinking_tokens || 0,
+                    total_time: stream._statusStart
+                        ? ((Date.now() - stream._statusStart) / 1000).toFixed(1)
+                        : base.total_time,
+                };
+                if (chatId === this.currentChatId) {
+                    this.recentStats = { ...stream._liveFooterStats };
+                }
             },
 
             getChatSession(chatId = this.currentChatId, create = false) {
@@ -5627,6 +5769,7 @@
                         contextTokens: historyChat?.contextTokens ?? 0,
                         l1OptimizationMode: historyChat?.l1OptimizationMode ?? 'auto',
                         engineBoostMode: historyChat?.engineBoostMode ?? 'natural',
+                        rushEnabled: false,
                         kvPolicy: historyChat?.kvPolicy ?? 'session',
                         knowledgeEnabled: historyChat?.knowledgeEnabled === true,
                         agentMode: historyChat?.agentMode ?? false,
@@ -5684,6 +5827,13 @@
                     prompt_tokens: usage.prompt_tokens ?? 0,
                     thinking_tokens: stream?._thinkTokens || 0,
                     total_tokens: usage.completion_tokens ?? 0,
+                    ssd_turn_average: stream?._ssdTurnAverage
+                        ? { ...stream._ssdTurnAverage }
+                        : null,
+                    ssd_model_id: stream?.sourceModel || null,
+                    worker_peak_memory_bytes: stream?._peakWorkerMemoryBytes || 0,
+                    worker_peak_service_key: stream?._peakWorkerServiceKey || null,
+                    worker_memory_metric: stream?._workerMemoryMetric || null,
                 };
             },
 
@@ -5833,7 +5983,7 @@
                 return response.json();
             },
 
-            queueRushBoost(sessionId, modelId, mode, statusText) {
+            queueRushBoost(sessionId, modelId, mode, statusText, onFailure = null) {
                 const prior = this._rushControlChain || Promise.resolve();
                 this._rushControlChain = prior.catch(() => {}).then(async () => {
                     try {
@@ -5842,6 +5992,7 @@
                             text: statusText, icon: 'gauge'
                         });
                     } catch (error) {
+                        if (typeof onFailure === 'function') onFailure();
                         this.setEngineStatus(sessionId, {
                             text: `Rush unavailable: ${error.message}`,
                             icon: 'alert-triangle'
@@ -5850,21 +6001,40 @@
                 });
             },
 
-            beginRush(event = null) {
+            toggleRush() {
+                if (this.rushActive) {
+                    this.releaseRush();
+                    return;
+                }
+                this.beginRush();
+            },
+
+            beginRush() {
                 if (this.rushActive || !this.isCacheMoeMode
-                    || !this.isCurrentChatStreaming()
                     || this.isRushUnavailable || !this.currentModel) return;
                 this.rushActive = true;
                 this.rushRestoreMode = this.engineBoostMode;
                 this.rushSessionId = this.currentChatId;
                 this.rushModelId = this.resolveGatewayModelId(this.currentModel);
-                if (event?.currentTarget && event?.pointerId != null) {
-                    try { event.currentTarget.setPointerCapture(event.pointerId); }
-                    catch (e) { /* Pointer capture is best-effort. */ }
-                }
+                const session = this.getChatSession(this.rushSessionId, true);
+                if (session) session.rushEnabled = true;
+                const sessionId = this.rushSessionId;
+                const modelId = this.rushModelId;
+                if (!this.isChatStreaming(sessionId)) return;
                 this.queueRushBoost(
-                    this.rushSessionId, this.rushModelId, 'blast',
-                    'Rush: Blast active'
+                    sessionId, modelId, 'blast',
+                    'Rush: Blast active',
+                    () => {
+                        if (!this.rushActive
+                            || this.rushSessionId !== sessionId
+                            || this.rushModelId !== modelId) return;
+                        this.rushActive = false;
+                        this.rushRestoreMode = null;
+                        this.rushSessionId = null;
+                        this.rushModelId = null;
+                        const failedSession = this.getChatSession(sessionId, false);
+                        if (failedSession) failedSession.rushEnabled = false;
+                    }
                 );
             },
 
@@ -5873,17 +6043,20 @@
                 const sessionId = this.rushSessionId;
                 const modelId = this.rushModelId;
                 const restoreMode = this.rushRestoreMode || 'natural';
+                const wasStreaming = this.isChatStreaming(sessionId);
                 this.rushActive = false;
                 this.rushRestoreMode = null;
                 this.rushSessionId = null;
                 this.rushModelId = null;
-                if (sessionId && modelId) {
+                const session = this.getChatSession(sessionId, false);
+                if (session) session.rushEnabled = false;
+                if (wasStreaming && sessionId && modelId) {
                     const label = {
                         auto: 'Auto', natural: 'Natural', turbo: 'Turbo', blast: 'Blast'
                     }[restoreMode] || 'Natural';
                     this.queueRushBoost(
                         sessionId, modelId, restoreMode,
-                        `Rush released · restored ${label}`
+                        `Rush stopped · restored ${label}`
                     );
                 }
             },
@@ -5951,6 +6124,17 @@
                 stream.targetMessageId = null;
                 stream._statsRequestId = null;
                 stream._liveFooterStats = null;
+                stream._livePromptTokens = 0;
+                stream._liveCompletionTokens = 0;
+                stream._livePrefillTps = 0;
+                stream._rollingGenerationTps = 0;
+                stream._generationSamples = [];
+                stream._thinkTokens = 0;
+                stream._liveSsdWindow = null;
+                stream._ssdTurnAverage = null;
+                stream._peakWorkerMemoryBytes = 0;
+                stream._peakWorkerServiceKey = null;
+                stream._workerMemoryMetric = null;
                 if (stream._domUpdateRaf) {
                     cancelAnimationFrame(stream._domUpdateRaf);
                     stream._domUpdateRaf = null;
@@ -6393,6 +6577,7 @@
         await this.loadMiniEntriesForSession();
         this.fetchMcpTools();
         this.loadDynamoeStatus();
+        this.startWorkerStatsTimer();
 
         window.addEventListener('ai2apps:account-changed', async () => {
             await this.loadModels();
@@ -6433,10 +6618,7 @@
         // Refresh model list when returning to chat (e.g. after HF download on dashboard).
         this._modelsVisibilityTimer = null;
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState !== 'visible') {
-                this.releaseRush();
-                return;
-            }
+            if (document.visibilityState !== 'visible') return;
             if (!this.apiKeySet) return;
             clearTimeout(this._modelsVisibilityTimer);
             this._modelsVisibilityTimer = setTimeout(async () => {
@@ -6451,8 +6633,6 @@
                 }
             }, 300);
         });
-        window.addEventListener('blur', () => this.releaseRush());
-
     },
 
             // ===== VLM Detection =====
@@ -7998,6 +8178,7 @@
             if (this.$refs.activeModelSelect) {
                 this.$refs.activeModelSelect.value = this.currentModel || '';
             }
+            await this.fetchWorkerStats({ force: true });
         } catch (error) {
             console.error('Error loading models:', error);
         }
@@ -8416,7 +8597,82 @@
     },
 
     // Poll stats during generation (per-stream request_id claims avoid bleed across chats/models)
+    async fetchWorkerStats({ force = false } = {}) {
+        const now = Date.now();
+        if (this._workerStatsInFlight) return this._workerStatsInFlight;
+        const minInterval = this.anyChatStreaming() ? 250 : 1000;
+        if (!force && now - this._workerStatsFetchedAt < minInterval) return;
+        this._workerStatsFetchedAt = now;
+        this._workerStatsInFlight = (async () => {
+            try {
+                const serviceKey = this.currentModelWorker?.serviceKey || '';
+                const endpoint = serviceKey
+                    ? `/v1/platform/workers/${encodeURIComponent(serviceKey)}`
+                    : '/v1/platform/workers';
+                const response = await fetch(endpoint, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                const workers = Array.isArray(data.items)
+                    ? data.items
+                    : (data?.serviceKey ? [data] : []);
+                const telemetry = { ...this.workerTelemetryByService };
+                for (const worker of workers) {
+                    const serviceKey = String(worker?.serviceKey || '');
+                    if (!serviceKey) continue;
+                    if (worker.inferenceTelemetry) {
+                        telemetry[serviceKey] = worker.inferenceTelemetry;
+                    } else if (['stopped', 'failed', 'evicted'].includes(worker.state)) {
+                        delete telemetry[serviceKey];
+                    }
+                }
+                if (Array.isArray(data.items)) {
+                    this.modelWorkers = workers;
+                } else if (workers.length) {
+                    const next = this.modelWorkers.filter(
+                        worker => worker.serviceKey !== workers[0].serviceKey
+                    );
+                    this.modelWorkers = [...next, workers[0]];
+                }
+                this.workerTelemetryByService = telemetry;
+                const currentWorker = this.currentModelWorker;
+                const currentStream = this.currentStream();
+                const residentBytes = Number(
+                    currentWorker?.physicalFootprintBytes
+                    || currentWorker?.residentMemoryBytes
+                    || 0
+                );
+                if (currentStream?.isStreaming && currentWorker && residentBytes > 0) {
+                    currentStream._peakWorkerMemoryBytes = Math.max(
+                        Number(currentStream._peakWorkerMemoryBytes || 0),
+                        residentBytes
+                    );
+                    currentStream._peakWorkerServiceKey = currentWorker.serviceKey;
+                    currentStream._workerMemoryMetric = currentWorker.memoryMetric || 'rss';
+                }
+            } catch (error) {
+                console.debug('Worker telemetry unavailable:', error);
+            }
+        })();
+        try {
+            await this._workerStatsInFlight;
+        } finally {
+            this._workerStatsInFlight = null;
+        }
+    },
+
+    startWorkerStatsTimer() {
+        if (this._workerStatsTimer) clearInterval(this._workerStatsTimer);
+        this._workerStatsTimer = setInterval(() => {
+            if (document.visibilityState !== 'visible' || !this.isCurrentModelLocal) return;
+            void this.fetchWorkerStats();
+        }, 5000);
+    },
+
     async fetchStats() {
+        void this.fetchWorkerStats();
         try {
             const resp = await fetch('/admin/api/stats', { credentials: 'same-origin' });
             if (!resp.ok) return;
@@ -8620,6 +8876,11 @@
         const gatewayId = this.resolveGatewayModelId(modelId);
         try {
             if (session?.model && session.model !== gatewayId) {
+                session.rushEnabled = false;
+                this.rushActive = false;
+                this.rushRestoreMode = null;
+                this.rushSessionId = null;
+                this.rushModelId = null;
                 this.syncSessionModelSettingsFromUi(session);
                 this.saveModelSettingsForModel(session, session.model);
             }
@@ -8642,6 +8903,7 @@
         } catch (e) {
             console.error('Failed to switch model:', e);
         }
+        await this.fetchWorkerStats({ force: true });
     },
 
     setConversationMode(mode) {
@@ -8657,6 +8919,14 @@
                 { touchUpdatedAt: false }
             );
         }
+    },
+
+    focusComposerFromSurface(event) {
+        const interactive = event?.target?.closest?.(
+            'button, select, input, textarea, summary, a, label'
+        );
+        if (interactive) return;
+        this.$nextTick(() => this.$refs.messageInput?.focus());
     },
 
     async agentPlatformFetch(path, options = {}) {
@@ -9656,6 +9926,10 @@
         this.currentAgentKey = this.defaultAgentKey();
         this.l1OptimizationMode = 'auto';
         this.engineBoostMode = 'natural';
+        this.rushActive = false;
+        this.rushRestoreMode = null;
+        this.rushSessionId = null;
+        this.rushModelId = null;
         this.kvPolicy = 'session';
         this.knowledgeEnabled = false;
         this.uploadImages = [];
@@ -9681,6 +9955,7 @@
             modelSettingsByModel: {},
             l1OptimizationMode: 'auto',
             engineBoostMode: 'natural',
+            rushEnabled: false,
             kvPolicy: 'session',
             knowledgeEnabled: false,
             agentMode: false,
@@ -9769,6 +10044,11 @@
             this.currentChatId = chatId;
             this.l1OptimizationMode = session.l1OptimizationMode ?? 'auto';
             this.engineBoostMode = session.engineBoostMode ?? 'natural';
+            this.rushActive = session.rushEnabled === true;
+            this.rushRestoreMode = this.rushActive ? this.engineBoostMode : null;
+            this.rushSessionId = this.rushActive ? chatId : null;
+            this.rushModelId = this.rushActive && session.model
+                ? this.resolveGatewayModelId(session.model) : null;
             this.kvPolicy = session.kvPolicy ?? 'session';
             this.knowledgeEnabled = session.knowledgeEnabled === true;
             this.agentMode = session.agentMode ?? false;
@@ -10379,6 +10659,7 @@
             let buffer = '';
             const toolCallsMap = {}; // accumulate streaming tool_call chunks by index
             let finishReason = null;
+            let receivedDone = false;
             let firstToken = false;  // flipped on first content/reasoning delta
             let lastUsage = null;    // filled by the stream_options usage chunk
 
@@ -10391,14 +10672,30 @@
                 buffer = lines.pop() || '';
 
                 for (const line of lines) {
-                    if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+                    if (line.trim() === '') continue;
+                    if (line.trim() === 'data: [DONE]') {
+                        receivedDone = true;
+                        continue;
+                    }
 
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6));
+                            if (data?.error) {
+                                const streamError = new Error(
+                                    data.error.message || window.t('chat.error.stream_failed')
+                                );
+                                streamError.code = data.error.code || 'MODEL_STREAM_FAILED';
+                                streamError.ai2appsStreamFatal = true;
+                                throw streamError;
+                            }
                             const choice = data.choices?.[0];
                             const delta = choice?.delta;
                             if (choice?.finish_reason) finishReason = choice.finish_reason;
+
+                            if (data.ai2apps_metrics) {
+                                this.applyStreamMetrics(context.chatId, stream, data.ai2apps_metrics);
+                            }
 
                             // Usage chunk arrives as { choices: [], usage: {...} }
                             if (data.usage) {
@@ -10469,6 +10766,15 @@
                                     stream.thinkingState.thinkingStartTime = Date.now();
                                     this.setEngineStatus(context.chatId, { text: window.t('chat.thinking_label') });
                                 }
+                                if (stream._liveCompletionTokens > 0) {
+                                    stream._thinkTokens = stream._liveCompletionTokens;
+                                    if (stream._liveFooterStats) {
+                                        stream._liveFooterStats.thinking_tokens = stream._thinkTokens;
+                                        if (this.currentChatId === context.chatId) {
+                                            this.recentStats = { ...stream._liveFooterStats };
+                                        }
+                                    }
+                                }
                                 // Generator draft is rendered from
                                 // streamingThinking rather than streamingContent,
                                 // so it needs its own near-tail auto-follow tick.
@@ -10526,10 +10832,18 @@
                                 }
                             }
                         } catch (e) {
+                            if (e?.ai2appsStreamFatal) throw e;
                             console.error('Error parsing SSE:', e);
                         }
                     }
                 }
+            }
+
+            if (buffer.trim() === 'data: [DONE]') receivedDone = true;
+            if (!receivedDone) {
+                const streamError = new Error(window.t('chat.error.stream_incomplete'));
+                streamError.code = 'MODEL_STREAM_INCOMPLETE';
+                throw streamError;
             }
 
             if (stream.cloudFailure) {
@@ -10546,7 +10860,10 @@
                 stream.thinkingState.isInThinking = false;
                 stream.thinkingState.thinkingStartTime = null;
                 stream._thinkSecs = thinkSecs;
-                stream._thinkTokens = this.recentStats?.thinking_tokens || 0;
+                stream._thinkTokens = stream._thinkTokens
+                    || stream._liveFooterStats?.thinking_tokens
+                    || stream._liveCompletionTokens
+                    || 0;
             }
 
             // Log usage metrics as a single compact entry
@@ -10746,6 +11063,7 @@
                     const assistantMsg = {
                         id: assistantId,
                         role: 'assistant',
+                        status: 'cancelled',
                         content: this.assistantContentWithImages(
                             stream.streamingContent,
                             stream.streamingImages
@@ -10802,10 +11120,13 @@
                 const errorMsg = {
                     id: assistantId,
                     role: 'assistant',
+                    status: 'failed',
                     content: this.assistantContentWithImages(
                         partialText,
                         stream.streamingImages
                     ),
+                    reasoning_content: this.hasVisibleThinking(stream.streamingThinking)
+                        ? stream.streamingThinking : null,
                     model: requestModel,
                     meta: this.captureGenerationContext(
                         requestModel,
@@ -10815,16 +11136,22 @@
                     ),
                     _perfVisible: false,
                 };
-                errorMsg.meta.ai2apps_cloud = {
-                    request_id: stream.cloudRequestId,
-                    idempotency_key: stream.cloudIdempotencyKey,
-                    error: {
-                        code: recovery?.code || error.code || 'CLOUD_REQUEST_FAILED',
-                        message: failureMessage,
-                    },
-                    recovery_state: recovery?.state || null,
-                    settlements: this.cloneData(stream.cloudSettlements),
+                errorMsg.meta.inference_error = {
+                    code: recovery?.code || error.code || 'MODEL_REQUEST_FAILED',
+                    message: failureMessage,
                 };
+                if (stream.cloudRequestId || stream.cloudIdempotencyKey || stream.cloudSettlements.length) {
+                    errorMsg.meta.ai2apps_cloud = {
+                        request_id: stream.cloudRequestId,
+                        idempotency_key: stream.cloudIdempotencyKey,
+                        error: {
+                            code: recovery?.code || error.code || 'CLOUD_REQUEST_FAILED',
+                            message: failureMessage,
+                        },
+                        recovery_state: recovery?.state || null,
+                        settlements: this.cloneData(stream.cloudSettlements),
+                    };
+                }
                 if (stream.imagePersistenceWarnings.length) {
                     errorMsg.meta.image_persistence = {
                         durable: false,
@@ -10837,6 +11164,7 @@
                 if ((recovery?.code || error.code) === 'AI_MODEL_NOT_FOUND') {
                     this.loadModels();
                 }
+                this.attachThinkingToAssistantMessage(errorMsg, stream.streamingThinking);
                 this.attachProfileToAssistantMessage(errorMsg, context._profile);
                 chatSession.messages.push(errorMsg);
                 this._setActiveVariant(chatSession, assistantId, context._variantUserIndex);
@@ -10922,9 +11250,6 @@
                 }
                 // Persist perf timeline that was just attached (saved earlier, before finally ran)
                 this.saveCurrentChat(context.chatId, chatSession.messages, chatSession.model, context.systemPrompt);
-            }
-            if (this.rushActive && this.rushSessionId === context.chatId) {
-                this.releaseRush();
             }
             this.resetStreamSession(stream, { preserveFinalContent: true });
             this.thinkingAutoScroll = true;
@@ -12525,17 +12850,57 @@
 
     get currentDynamoeModelStatus() {
         const gatewayId = this.resolveGatewayModelId(this.currentModel);
-        return (this.ai2appsStatus?.models || []).find(model =>
+        const hostStatus = (this.ai2appsStatus?.models || []).find(model =>
+            model.id === gatewayId || model.id === this.currentModel
+        );
+        if (hostStatus) return hostStatus;
+        const telemetry = this.currentWorkerTelemetry;
+        return telemetry ? { id: gatewayId, ...telemetry } : null;
+    },
+
+    get currentModelRecord() {
+        const gatewayId = this.resolveGatewayModelId(this.currentModel);
+        return this.availableModels.find(model =>
             model.id === gatewayId || model.id === this.currentModel
         ) || null;
     },
 
-    get isCacheMoeMode() {
-        if (this.currentDynamoeModelStatus) return true;
+    get isCurrentModelLocal() {
+        return Boolean(this.currentModelRecord
+            && !['cloud', 'fusion'].includes(this.currentModelRecord.source_type));
+    },
+
+    get currentModelWorker() {
+        if (!this.isCurrentModelLocal) return null;
         const gatewayId = this.resolveGatewayModelId(this.currentModel);
-        return Boolean(this.availableModels.find(model =>
-            model.id === gatewayId || model.id === this.currentModel
-        )?.cache_moe);
+        const candidates = new Set([gatewayId, this.currentModel].filter(Boolean));
+        const status = this.modelStatusMap[gatewayId] || this.modelStatusMap[this.currentModel];
+        for (const value of [status?.id, status?.source_model_id, status?.model_alias]) {
+            if (value) candidates.add(value);
+        }
+        return this.modelWorkers.find(worker =>
+            (worker.models || []).some(model =>
+                candidates.has(model?.id) || candidates.has(model?.upstreamId)
+            )
+        ) || null;
+    },
+
+    get currentWorkerTelemetry() {
+        const worker = this.currentModelWorker;
+        if (!worker) return null;
+        return worker.inferenceTelemetry
+            || this.workerTelemetryByService[worker.serviceKey]
+            || null;
+    },
+
+    get isCacheMoeMode() {
+        const status = this.currentDynamoeModelStatus;
+        return Boolean(this.currentModelRecord?.cache_moe
+            || status?.ssd_recent_10_tokens
+            || status?.ssd_recent_by_session
+            || status?.ssd_turn_by_session
+            || status?.adaptive_l1?.enabled
+            || status?.bank);
     },
 
     get isFusionMode() {
@@ -12572,60 +12937,142 @@
 
     get rushButtonTooltip() {
         if (this.isRushUnavailable) {
-            return 'Rush is unavailable because Engine Boost is already Blast (Head2).';
+            return 'Rush is unavailable because Engine Boost is already in the model-specific Blast mode.';
         }
         if (!this.isCurrentChatStreaming()) {
-            return 'Hold during generation to temporarily use Blast (Head2); release to restore the previous Engine Boost mode.';
+            return this.rushActive
+                ? 'Rush is on. New replies will use this model’s Blast policy. Click to turn it off.'
+                : 'Click to turn on Rush. New replies will use this model’s Blast policy.';
         }
         return this.rushActive
-            ? 'Release to restore the previous Engine Boost mode.'
-            : 'Hold for temporary Blast (Head2). Release to restore the previous mode.';
+            ? 'Rush is on. Click to restore the previous Engine Boost mode.'
+            : 'Click to start the model-specific Blast policy. Click again to restore the previous mode.';
     },
 
     get isRushUnavailable() {
-        const runtimeMode = this.currentDynamoeModelStatus?.engine_boost?.mode;
-        return this.engineBoostMode === 'blast'
-            || (!this.rushActive && runtimeMode === 'blast');
-    },
-
-    get currentDynamoeScope() {
-        const model = this.currentDynamoeModelStatus;
-        const state = model?.adaptive_l1?.session_states?.[this.currentChatId];
-        const scope = state?.scope
-            || model?.bank?.current_scope
-            || this.ai2appsStatus?.initial_scope
-            || 'auto';
-        return scope + (Number(state?.epoch || 0) > 0 ? '*' : '');
+        return this.engineBoostMode === 'blast';
     },
 
     get currentSsdSwaps() {
-        return Number(this.currentSsdWindow?.expert_loads || 0);
+        return this.currentSsdWindow
+            ? Number(this.currentSsdWindow.expert_loads || 0)
+            : null;
+    },
+
+    get currentSsdSwapsLabel() {
+        return this.currentSsdSwaps == null ? '—' : `${this.currentSsdSwaps} experts`;
     },
 
     get currentSsdPressure() {
-        return Number(this.currentSsdWindow?.pressure_percent || 0).toFixed(1) + '%';
+        return this.currentSsdWindow
+            ? Number(this.currentSsdWindow.pressure_percent || 0).toFixed(1) + '%'
+            : '—';
     },
 
     get currentSsdTooltip() {
+        if (!this.isCacheMoeMode) {
+            return 'SSD pressure applies to Cached-MoE expert loading; this local model does not use that path.';
+        }
+        if (!this.currentSsdWindow) {
+            return 'SSD pressure will appear after this Cached-MoE Worker completes a Decode window.';
+        }
         const bytes = Number(this.currentSsdWindow?.bytes_loaded || 0);
         const mib = (bytes / (1024 * 1024)).toFixed(1);
-        return `Model-normalized SSD pressure over the latest 10 Decode tokens · `
+        const range = this.isCurrentChatStreaming()
+            ? 'the latest 10 Decode tokens'
+            : 'the completed turn';
+        return `Model-normalized SSD pressure over ${range} · `
             + `${this.currentSsdSwaps} experts · ${mib} MiB · `
             + `healthy ≤16.7% · elevated 16.7–25% · critical ≥25%`;
     },
 
+    get currentSsdLabel() {
+        return this.isCurrentChatStreaming()
+            ? 'SSD PRESSURE · 10 TOK'
+            : 'SSD PRESSURE · TURN AVG';
+    },
+
     get currentSsdWindow() {
-        const model = this.currentDynamoeModelStatus;
-        return model?.ssd_recent_by_session?.[this.currentChatId]
+        const stream = this.currentStream();
+        if (stream?.isStreaming && stream._liveSsdWindow) {
+            return stream._liveSsdWindow;
+        }
+        const telemetry = this.currentWorkerTelemetry || {};
+        const model = this.currentDynamoeModelStatus || {};
+        if (!this.isCurrentChatStreaming()) {
+            const recentModel = this.resolveGatewayModelId(
+                this.recentStats?.ssd_model_id
+            );
+            const currentModel = this.resolveGatewayModelId(this.currentModel);
+            if (this.recentStats?.ssd_turn_average
+                && recentModel
+                && recentModel === currentModel) {
+                return this.recentStats.ssd_turn_average;
+            }
+            const turn = telemetry?.ssd_turn_by_session?.[this.currentChatId]
+                || model?.ssd_turn_by_session?.[this.currentChatId];
+            if (turn) return turn;
+        }
+        return telemetry?.ssd_recent_by_session?.[this.currentChatId]
+            || model?.ssd_recent_by_session?.[this.currentChatId]
+            || telemetry?.ssd_recent_10_tokens
             || model?.ssd_recent_10_tokens
             || null;
     },
 
     get currentSsdSwapColor() {
+        if (!this.currentSsdWindow) return 'var(--text-tertiary)';
         const severity = this.currentSsdWindow?.severity || 'healthy';
         if (severity === 'critical') return '#ef4444';
         if (severity === 'elevated') return '#f59e0b';
         return 'var(--text-tertiary)';
+    },
+
+    get currentWorkerMemory() {
+        const worker = this.currentModelWorker;
+        const peakBytes = Number(this.recentStats?.worker_peak_memory_bytes || 0);
+        const peakMatchesWorker = Boolean(
+            worker
+            && peakBytes > 0
+            && this.recentStats?.worker_peak_service_key === worker.serviceKey
+        );
+        const bytes = !this.isCurrentChatStreaming() && peakMatchesWorker
+            ? peakBytes
+            : Number(worker?.physicalFootprintBytes || worker?.residentMemoryBytes || 0);
+        if (bytes <= 0) return '—';
+        const gib = bytes / (1024 ** 3);
+        if (gib >= 1) return `${gib.toFixed(1)} GiB`;
+        return `${Math.max(1, Math.round(bytes / (1024 ** 2)))} MiB`;
+    },
+
+    get currentWorkerMemoryTooltip() {
+        const worker = this.currentModelWorker;
+        if (!worker || this.currentWorkerMemory === '—') {
+            return 'The selected local model Worker is not currently resident.';
+        }
+        if (this.currentWorkerMemoryLabel.endsWith('PEAK')) {
+            return 'Maximum sampled macOS physical footprint of the selected local model Worker during this turn, including Metal unified memory, its Runtime, model, and caches.';
+        }
+        return 'Current macOS physical footprint of the selected local model Worker, including Metal unified memory, its Runtime, model, and caches.';
+    },
+
+    get currentWorkerMemoryMetricLabel() {
+        const worker = this.currentModelWorker;
+        const metric = this.recentStats?.worker_memory_metric
+            || worker?.memoryMetric
+            || 'rss';
+        return metric === 'phys_footprint' ? 'FOOTPRINT' : 'RSS';
+    },
+
+    get currentWorkerMemoryLabel() {
+        const worker = this.currentModelWorker;
+        const hasMatchingPeak = Boolean(
+            !this.isCurrentChatStreaming()
+            && worker
+            && Number(this.recentStats?.worker_peak_memory_bytes || 0) > 0
+            && this.recentStats?.worker_peak_service_key === worker.serviceKey
+        );
+        return hasMatchingPeak ? 'WORKER MEMORY · PEAK' : 'WORKER MEMORY';
     },
 
     get currentEngineBoost() {

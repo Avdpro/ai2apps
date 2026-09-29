@@ -5353,7 +5353,7 @@ async def get_model_manager(
             ),
             None,
         )
-        if recipe.get("recipe") == "native":
+        if recipe.get("recipe") == "native" or recipe.get("installed") is True:
             installed = bool(recipe.get("installed"))
         else:
             installed = False

@@ -138,12 +138,15 @@ or lossy L1 layout changes after Prefill, the completed KV is stored in a
 Session-owned namespace. The next turn can reuse that mixed-policy history,
 while unrelated Sessions cannot mistake it for globally exact/Tail2/Head2 KV.
 
-The Chat status panel also exposes a momentary **Rush** control for Cache-MoE
-models. Holding it queues Blast/Head2 at the next safe Decode boundary;
-releasing it restores the Session's previously selected Engine Boost mode.
-Pointer cancellation, window blur, page hiding, and generation completion all
-release Rush defensively. It is disabled when the base mode is already Blast
-and hidden, together with Scope/SSD telemetry, for non-Cache-MoE engines.
+The Chat status panel also exposes a session-owned **Rush** toggle for
+Cache-MoE models. Turning it on selects that model's declared Blast policy for
+the next request, or queues it at the next safe Decode boundary during an
+active request. Turning it off restores the Session's previously selected
+Engine Boost mode. Rush remains on across replies in the same Chat, resets to
+Off for a new Chat or model, and is hidden together with Scope/SSD telemetry
+for engines that do not advertise Cache-MoE Boost support. Blast is
+model-specific: DeepSeek V4 and Qwen3.6 use Head2, while GLM 5.3 and Qwen3.8
+Flash Next use their separately benchmarked Top3 policies.
 
 The Chat performance panel reports model-normalized SSD pressure over the
 latest 10 Decode tokens. It divides actual expert bytes read from SSD by the

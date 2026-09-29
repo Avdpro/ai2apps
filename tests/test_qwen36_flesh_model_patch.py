@@ -334,6 +334,27 @@ def test_qwen_boost_live_change_is_applied_at_next_decode_boundary():
     assert all(block.scope_lossy_policy.replace_count == 6 for block in blocks)
 
 
+def test_qwen_boost_controller_supports_vlm_model_owner():
+    blocks = [SimpleNamespace(scope_lossy_policy=None) for _ in range(2)]
+    owner = SimpleNamespace(
+        _model=None,
+        _vlm_model=SimpleNamespace(
+            language_model=SimpleNamespace(
+                model=SimpleNamespace(
+                    layers=[SimpleNamespace(mlp=block) for block in blocks]
+                )
+            )
+        ),
+        has_active_requests=lambda: False,
+    )
+    controller = Qwen36BoostController(owner)
+
+    controller._apply("ornith-chat", "blast")
+
+    assert controller.mode == "blast"
+    assert all(block.scope_lossy_policy.replace_count == 6 for block in blocks)
+
+
 def test_qwen_prefill_auto_boost_thresholds():
     assert resolve_qwen36_prefill_boost("auto", 2048) == "natural"
     assert resolve_qwen36_prefill_boost("auto", 2049) == "turbo"

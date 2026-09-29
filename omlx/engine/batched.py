@@ -22,6 +22,7 @@ from .base import (
     _clear_teardown_references,
     _run_scheduler_preflight_with_cleanup_retry,
     _warn_scheduler_unreachable_once,
+    cap_generation_tokens_to_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -880,6 +881,17 @@ class BatchedEngine(BaseEngine):
         if not self._loaded:
             await self.start()
 
+        max_context_window = kwargs.pop("max_context_window", None)
+        if max_context_window is not None:
+            prompt_tokens = (
+                len(prompt)
+                if isinstance(prompt, list)
+                else len(self._tokenizer.encode(prompt))
+            )
+            max_tokens = cap_generation_tokens_to_context(
+                max_tokens, prompt_tokens, max_context_window
+            )
+
         from ..request import SamplingParams
 
         sampling_params = SamplingParams(
@@ -957,6 +969,17 @@ class BatchedEngine(BaseEngine):
         """
         if not self._loaded:
             await self.start()
+
+        max_context_window = kwargs.pop("max_context_window", None)
+        if max_context_window is not None:
+            prompt_tokens = (
+                len(prompt)
+                if isinstance(prompt, list)
+                else len(self._tokenizer.encode(prompt))
+            )
+            max_tokens = cap_generation_tokens_to_context(
+                max_tokens, prompt_tokens, max_context_window
+            )
 
         from ..request import SamplingParams
 

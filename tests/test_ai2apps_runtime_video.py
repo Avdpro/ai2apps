@@ -23,7 +23,7 @@ def test_runtime_manifests_are_synchronized_for_video():
         service["version"]
         == package["package"]["version"]
         == descriptor["version"]
-        == "1.7.12"
+        == "1.8.5"
     )
     for capability in (
         "video-generation",

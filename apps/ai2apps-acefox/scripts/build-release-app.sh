@@ -27,6 +27,7 @@ DEVELOPMENT_SOURCE_ROOT=${DEVELOPMENT_SOURCE_ROOT:-}
 MENUBAR_ICON_BADGE=${MENUBAR_ICON_BADGE:-none}
 ALLOW_INSTANCE_DATA_RESET=${ALLOW_INSTANCE_DATA_RESET:-0}
 ACEFOX_SHELL_SOURCE=${ACEFOX_SHELL_SOURCE:-}
+ACEFOX_SHELL_TRANSFORM=${ACEFOX_SHELL_TRANSFORM:-}
 SHELL_TITLE_PREFIX=${SHELL_TITLE_PREFIX:-AI2Apps}
 
 fail() {
@@ -148,6 +149,14 @@ if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
     "${ACEFOX_SHELL_SOURCE}" || \
     fail "ACEFOX_SHELL_SOURCE lacks the Local-aware Shell title contract"
 fi
+if [[ -n ${ACEFOX_SHELL_TRANSFORM} ]]; then
+  [[ -n ${ACEFOX_SHELL_SOURCE} ]] || \
+    fail "ACEFOX_SHELL_TRANSFORM requires ACEFOX_SHELL_SOURCE"
+  [[ ${DEVELOPMENT_BUILD} == 1 ]] || \
+    fail "ACEFOX_SHELL_TRANSFORM requires DEVELOPMENT_BUILD=1"
+  [[ -f ${ACEFOX_SHELL_TRANSFORM} ]] || \
+    fail "ACEFOX_SHELL_TRANSFORM is not a file: ${ACEFOX_SHELL_TRANSFORM}"
+fi
 if [[ -n ${UPDATE_MANIFEST_URL} ]]; then
   [[ ${UPDATE_MANIFEST_URL} == https://* ]] || fail "UPDATE_MANIFEST_URL must use HTTPS"
 fi
@@ -213,9 +222,15 @@ if [[ -n ${ACEFOX_SHELL_SOURCE} ]]; then
   cp "${SHELL_DOCUMENT_SOURCE}" "${SHELL_OVERLAY_ROOT}/${SHELL_DOCUMENT_RESOURCE}"
   mkdir -p "${SHELL_OVERLAY_ROOT}/${PROMPT_RESOURCE:h}"
   cp "${PROMPT_SOURCE}" "${SHELL_OVERLAY_ROOT}/${PROMPT_RESOURCE}"
+  SHELL_OVERLAY_SOURCE=${ACEFOX_SHELL_SOURCE}
+  if [[ -n ${ACEFOX_SHELL_TRANSFORM} ]]; then
+    SHELL_OVERLAY_SOURCE=${SHELL_OVERLAY_ROOT}/shell-transformed.mjs
+    /usr/bin/python3 "${ACEFOX_SHELL_TRANSFORM}" \
+      "${ACEFOX_SHELL_SOURCE}" "${SHELL_OVERLAY_SOURCE}"
+  fi
   /usr/bin/sed \
     "s@const title = \`AI2Apps: \${deviceName} \${localAddress}\`;@const title = \`${SHELL_TITLE_PREFIX}: \${deviceName} \${localAddress}\`;@" \
-    "${ACEFOX_SHELL_SOURCE}" > "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE}"
+    "${SHELL_OVERLAY_SOURCE}" > "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE}"
   /usr/bin/grep -Fq \
     "const title = \`${SHELL_TITLE_PREFIX}: \${deviceName} \${localAddress}\`;" \
     "${SHELL_OVERLAY_ROOT}/${SHELL_RESOURCE}" || \

@@ -468,6 +468,41 @@ async def test_audio_artifact_download_formats(tmp_path):
     runtime.stop()
 
 
+@pytest.mark.asyncio
+async def test_artifact_download_supports_unicode_filename(tmp_path):
+    from urllib.parse import quote
+
+    runtime = _runtime(tmp_path)
+    session = _session(runtime)
+    source = tmp_path / "rendered.mp4"
+    content = b"unicode-named-video"
+    source.write_bytes(content)
+    filename = "宣传视频-1.mp4"
+    artifact = runtime.workspace.import_artifact(
+        session, source, filename, media_type="video/mp4"
+    )
+    app = FastAPI()
+    app.include_router(
+        create_ai2apps_router(
+            runtime_provider=lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+    url = f"/v1/platform/sessions/{session}/artifacts/{artifact.id}/download"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(url)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "video/mp4"
+    assert response.content == content
+    assert response.headers["content-disposition"] == (
+        f"attachment; filename*=utf-8''{quote(filename, safe='')}"
+    )
+    runtime.stop()
+
+
 def test_quick_audio_history_survives_manager_restart_and_limits_twenty(tmp_path):
     from ai2apps.readaloud.tasks import ReadAloudTaskManager
     runtime = _runtime(tmp_path)

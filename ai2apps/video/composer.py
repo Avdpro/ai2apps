@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 import av
 import numpy as np
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -59,19 +59,21 @@ class ComposerKeyframe(BaseModel):
     width: int | None = Field(default=None, ge=16, le=16384)
     height: int | None = Field(default=None, ge=16, le=16384)
     opacity: float | None = Field(default=None, ge=0, le=1)
+    scale: float | None = Field(default=None, ge=0.05, le=20)
 
 
 class ComposerClip(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     id: str = Field(min_length=1, max_length=80)
-    source_id: str = Field(alias="sourceId", min_length=1, max_length=100)
+    layer_type: Literal["media", "spotlight", "text"] = Field(default="media", alias="layerType")
+    source_id: str | None = Field(default=None, alias="sourceId", min_length=1, max_length=100)
     track_id: str = Field(alias="trackId", min_length=1, max_length=80)
     name: str = Field(min_length=1, max_length=255)
     start: float = Field(ge=0, le=3600)
     source_start: float = Field(default=0, alias="sourceStart", ge=0, le=86400)
     duration: float = Field(gt=0, le=3600)
-    speed: float = Field(default=1, ge=0.25, le=4)
+    speed: float = Field(default=1, ge=0.25, le=20)
     volume: float = Field(default=1, ge=0, le=4)
     fade_in: float = Field(default=0, alias="fadeIn", ge=0, le=30)
     fade_out: float = Field(default=0, alias="fadeOut", ge=0, le=30)
@@ -80,6 +82,20 @@ class ComposerClip(BaseModel):
     width: int | None = Field(default=None, ge=16, le=16384)
     height: int | None = Field(default=None, ge=16, le=16384)
     opacity: float = Field(default=1, ge=0, le=1)
+    scale: float = Field(default=1, ge=0.05, le=20)
+    spotlight_shape: Literal["rounded", "ellipse"] = Field(default="rounded", alias="spotlightShape")
+    dim_opacity: float = Field(default=0.65, alias="dimOpacity", ge=0, le=1)
+    feather: int = Field(default=24, ge=0, le=512)
+    corner_radius: int = Field(default=32, alias="cornerRadius", ge=0, le=4096)
+    text: str = Field(default="Text", max_length=4000)
+    font_size: int = Field(default=64, alias="fontSize", ge=8, le=512)
+    text_color: str = Field(default="#ffffff", alias="textColor", pattern=r"^#[0-9a-fA-F]{6}$")
+    text_anchor: Literal[
+        "top-left", "top", "top-right", "left", "center", "right",
+        "bottom-left", "bottom", "bottom-right",
+    ] = Field(default="center", alias="textAnchor")
+    reveal: bool = False
+    reveal_speed: float = Field(default=12, alias="revealSpeed", ge=0.1, le=200)
     audio_enabled: bool = Field(default=True, alias="audioEnabled")
     mask_source_id: str | None = Field(default=None, alias="maskSourceId", max_length=100)
     group_id: str | None = Field(default=None, alias="groupId", max_length=80)
@@ -88,6 +104,10 @@ class ComposerClip(BaseModel):
 
     @model_validator(mode="after")
     def validate_fades(self):
+        if self.layer_type == "media" and not self.source_id:
+            raise ValueError("media clips require a source")
+        if self.layer_type != "media" and self.mask_source_id:
+            raise ValueError("special layers cannot use an image mask")
         if self.fade_in + self.fade_out > self.duration:
             raise ValueError("clip fades cannot exceed its timeline duration")
         return self
@@ -126,6 +146,7 @@ class ComposerProject(BaseModel):
                         transition="hold", x=clip.x, y=clip.y,
                         width=clip.width or self.settings.width,
                         height=clip.height or self.settings.height, opacity=clip.opacity,
+                        scale=clip.scale,
                     )
                     clip.keyframes.append(start)
                 start.frame = 0
@@ -141,6 +162,7 @@ class ComposerProject(BaseModel):
                         id=f"end-{clip.id}"[:80], frame=end_frame, endpoint="end",
                         transition="linear", x=source.x, y=source.y,
                         width=source.width, height=source.height, opacity=source.opacity,
+                        scale=source.scale,
                     )
                     clip.keyframes.append(end)
                 end.frame = end_frame
@@ -197,6 +219,7 @@ def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float]
         "width": float(clip.width or 0),
         "height": float(clip.height or 0),
         "opacity": float(clip.opacity),
+        "scale": float(clip.scale),
     }
     previous_frame = 0
     previous = state
@@ -207,6 +230,7 @@ def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float]
             "width": previous["width"] if keyframe.width is None else float(keyframe.width),
             "height": previous["height"] if keyframe.height is None else float(keyframe.height),
             "opacity": previous["opacity"] if keyframe.opacity is None else float(keyframe.opacity),
+            "scale": previous["scale"] if keyframe.scale is None else float(keyframe.scale),
         }
         if local_frame >= keyframe.frame:
             previous_frame, previous = keyframe.frame, target
@@ -238,6 +262,81 @@ def _fit_image_to_visual_box(image: Image.Image, width: float, height: float) ->
     )
     fitted.close()
     return layer
+
+
+def _composer_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for path in (
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ):
+        try:
+            return ImageFont.truetype(path, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _anchor_position(anchor: str, x: float, y: float, width: int, height: int) -> tuple[int, int]:
+    horizontal = 0 if anchor.endswith("left") or anchor == "left" else width if anchor.endswith("right") or anchor == "right" else width / 2
+    vertical = 0 if anchor.startswith("top") or anchor == "top" else height if anchor.startswith("bottom") or anchor == "bottom" else height / 2
+    return round(x - horizontal), round(y - vertical)
+
+
+def _apply_spotlight(canvas: Image.Image, clip: ComposerClip, state: dict[str, float]) -> None:
+    hole = Image.new("L", canvas.size, 0)
+    draw = ImageDraw.Draw(hole)
+    box = (
+        round(state["x"]), round(state["y"]),
+        round(state["x"] + max(1, state["width"])),
+        round(state["y"] + max(1, state["height"])),
+    )
+    if clip.spotlight_shape == "ellipse":
+        draw.ellipse(box, fill=255)
+    else:
+        draw.rounded_rectangle(box, radius=clip.corner_radius, fill=255)
+    if clip.feather:
+        hole = hole.filter(ImageFilter.GaussianBlur(clip.feather))
+    darkness = ImageOps.invert(hole).point(
+        lambda value: round(value * clip.dim_opacity * state["opacity"])
+    )
+    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 255))
+    overlay.putalpha(darkness)
+    canvas.alpha_composite(overlay)
+    overlay.close()
+    hole.close()
+
+
+def _apply_text_layer(
+    canvas: Image.Image,
+    clip: ComposerClip,
+    state: dict[str, float],
+    local_seconds: float,
+) -> None:
+    text = clip.text
+    if clip.reveal:
+        text = text[: max(0, int(local_seconds * clip.reveal_speed))]
+    if not text:
+        return
+    font = _composer_font(clip.font_size)
+    probe = ImageDraw.Draw(Image.new("L", (1, 1)))
+    bounds = probe.multiline_textbbox((0, 0), text, font=font, spacing=max(2, clip.font_size // 5))
+    width, height = max(1, bounds[2] - bounds[0]), max(1, bounds[3] - bounds[1])
+    layer = Image.new("RGBA", (width + 8, height + 8), (0, 0, 0, 0))
+    ImageDraw.Draw(layer).multiline_text(
+        (4 - bounds[0], 4 - bounds[1]), text, font=font, fill=clip.text_color,
+        spacing=max(2, clip.font_size // 5),
+    )
+    scale = state["scale"]
+    if abs(scale - 1) > 1e-6:
+        layer = layer.resize(
+            (max(1, round(layer.width * scale)), max(1, round(layer.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    if state["opacity"] < 1:
+        layer.putalpha(layer.getchannel("A").point(lambda value: round(value * state["opacity"])))
+    canvas.alpha_composite(layer, _anchor_position(clip.text_anchor, state["x"], state["y"], layer.width, layer.height))
+    layer.close()
 
 
 class ComposerSourceStore:
@@ -476,6 +575,8 @@ def _mix_audio(
     tracks = {track.id: track for track in project.tracks}
     for clip in project.clips:
         track = tracks[clip.track_id]
+        if clip.layer_type != "media" or not clip.source_id:
+            continue
         record, path = sources[clip.source_id]
         if (
             (track.kind == "audio" and track.muted)
@@ -523,12 +624,19 @@ def _render_with_pyav(
         clip for clip in project.clips
         if tracks[clip.track_id].kind == "video"
         and not tracks[clip.track_id].muted
-        and (sources[clip.source_id][0]["hasVideo"] or sources[clip.source_id][0].get("hasImage"))
+        and (
+            clip.layer_type in {"spotlight", "text"}
+            or (
+                clip.source_id is not None
+                and (sources[clip.source_id][0]["hasVideo"] or sources[clip.source_id][0].get("hasImage"))
+            )
+        )
     ]
     visual_clips.sort(key=lambda clip: (tracks[clip.track_id].order, clip.start, clip.id))
     readers = {
         clip.id: _VideoReader(sources[clip.source_id][1], clip.source_start)
-        for clip in visual_clips if sources[clip.source_id][0]["hasVideo"]
+        for clip in visual_clips
+        if clip.layer_type == "media" and clip.source_id and sources[clip.source_id][0]["hasVideo"]
     }
     still_images = {
         source_id: Image.open(path).convert("RGBA")
@@ -562,6 +670,14 @@ def _render_with_pyav(
                         continue
                     local_frame = max(0, frame_index - round(clip.start * settings.fps))
                     visual_state = _clip_visual_state(clip, local_frame)
+                    if clip.layer_type == "spotlight":
+                        _apply_spotlight(canvas, clip, visual_state)
+                        continue
+                    if clip.layer_type == "text":
+                        _apply_text_layer(canvas, clip, visual_state, timeline_time - clip.start)
+                        continue
+                    if not clip.source_id:
+                        continue
                     if sources[clip.source_id][0].get("hasImage"):
                         image = still_images[clip.source_id].copy()
                     else:

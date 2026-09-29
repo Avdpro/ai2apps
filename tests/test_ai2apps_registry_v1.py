@@ -18,6 +18,7 @@ from ai2apps.api.packages import create_package_router
 from ai2apps.cloud_client import AI2AppsCloudClient, CloudSessionStore
 from ai2apps.identity import RequestPrincipal
 from ai2apps.packages.contract_v1 import (
+    PACKAGE_LIFECYCLE_PREFIX,
     REPOSITORY_PREFIX,
     build_package,
     create_signature_envelope,
@@ -164,6 +165,81 @@ async def test_discover_model_install_route_creates_acpf_session_from_catalog():
     assert captured["package_id"] == "example/model"
     assert captured["selected_model_id"] == "example.model/default"
     assert captured["app_instance_id"] == "appi_discover"
+
+
+@pytest.mark.asyncio
+async def test_discover_dynamic_acpf_marks_deprecated_package_without_recommending_it():
+    catalog = {
+        "version": "0.4.0",
+        "displayName": "Qwen3.6 35B",
+        "modelProfile": {"minimumMemoryBytes": 1024},
+        "modelInstall": {
+            "serviceKey": "ai2apps.model.qwen36-35b",
+            "models": [
+                {
+                    "id": "ai2apps.model.qwen36-35b/default",
+                    "label": "Qwen3.6 35B",
+                    "recommended": True,
+                }
+            ],
+        },
+    }
+
+    class LifecycleManager:
+        refresh_count = 0
+
+        async def catalog(self, _namespace, _name):
+            return catalog
+
+        async def refresh_package_lifecycle(self):
+            self.refresh_count += 1
+
+        def package_lifecycle_snapshot(self):
+            return {
+                "records": [
+                    {
+                        "packageId": "ai2apps/model-qwen36-35b",
+                        "state": "deprecated",
+                        "reason": "已有更强的新模型",
+                        "replacementPackageId": (
+                            "ai2apps/model-ornith15-35b-a3b-4bit-vision"
+                        ),
+                    }
+                ]
+            }
+
+    manager = LifecycleManager()
+    runtime = SimpleNamespace(
+        registry_packages=manager,
+        extension_manager=_DiscoverExtensionManager(),
+    )
+    app = FastAPI()
+    app.include_router(
+        create_package_router(
+            lambda: runtime,
+            principal_provider=RequestPrincipal.legacy_local,
+        )
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/packages/ai2apps/model-qwen36-35b/model-install-plan",
+            headers={"X-AI2Apps-App-Instance": "appi_discover"},
+        )
+
+    assert response.status_code == 200
+    assert manager.refresh_count == 1
+    option = response.json()["profileOptions"][0]
+    assert option["lifecycleState"] == "deprecated"
+    assert option["deprecated"] is True
+    assert option["lifecycleReason"] == "已有更强的新模型"
+    assert option["replacementPackageId"] == (
+        "ai2apps/model-ornith15-35b-a3b-4bit-vision"
+    )
+    assert option["recommended"] is False
+    assert option["selected"] is False
 
 
 @pytest.mark.parametrize("name,version,model_suffix", [
@@ -382,6 +458,96 @@ def _snapshot(private, fingerprint, release, version=7):
         "payload": payload,
         "signature": {"keyId": fingerprint, "algorithm": "Ed25519", "value": signature},
     }
+
+
+def _lifecycle_snapshot(private, fingerprint, records, version=7):
+    now = datetime.now(UTC)
+    payload = {
+        "domain": "ai2apps.package-lifecycle.v1",
+        "version": version,
+        "generatedAt": now.isoformat().replace("+00:00", "Z"),
+        "expiresAt": (now + timedelta(hours=24)).isoformat().replace("+00:00", "Z"),
+        "records": records,
+    }
+    signature = (
+        base64.urlsafe_b64encode(
+            private.sign(PACKAGE_LIFECYCLE_PREFIX + jcs_bytes(payload))
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return {
+        "schemaVersion": "ai2apps.package-lifecycle-envelope.v1",
+        "payload": payload,
+        "signature": {
+            "keyId": fingerprint,
+            "algorithm": "Ed25519",
+            "value": signature,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_registry_verifies_and_caches_package_lifecycle_snapshot(tmp_path):
+    private, public, fingerprint = _repository_key()
+    envelope = _lifecycle_snapshot(
+        private,
+        fingerprint,
+        [
+            {
+                "packageId": "ai2apps/model-old",
+                "state": "deprecated",
+                "reason": "建议使用新版",
+                "replacementPackageId": "ai2apps/model-new",
+                "revision": 2,
+                "updatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            }
+        ],
+    )
+    requests = []
+
+    def handler(request: httpx.Request):
+        requests.append(
+            (
+                request.url.path,
+                request.headers.get("if-none-match"),
+                request.headers.get("cookie"),
+            )
+        )
+        if request.url.path.endswith("/repository-key"):
+            return httpx.Response(200, json={"publicKeyPem": public})
+        if request.headers.get("if-none-match") == '"lifecycle-7"':
+            return httpx.Response(304)
+        return httpx.Response(200, json=envelope, headers={"ETag": '"lifecycle-7"'})
+
+    session_store = CloudSessionStore(
+        MemorySecretBackend(), "https://coder.ai2apps.test"
+    )
+    session_store.save("must-not-reach-public-status-endpoints")
+    cloud = AI2AppsCloudClient(
+        base_url="https://coder.ai2apps.test",
+        session_store=session_store,
+        transport=httpx.MockTransport(handler),
+    )
+    manager = RegistryPackageManager(
+        cloud=cloud,
+        root=tmp_path / "packages",
+        secrets=_Secrets(),
+        extension_manager=None,
+        service_manager=None,
+        repository_fingerprint=fingerprint,
+    )
+
+    assert (await manager.refresh_package_lifecycle())["records"][0]["state"] == "deprecated"
+    assert manager.package_lifecycle_snapshot()["version"] == 7
+    assert (await manager.refresh_package_lifecycle())["version"] == 7
+    assert requests[-1] == (
+        "/v1/registry/package-lifecycle/latest",
+        '"lifecycle-7"',
+        None,
+    )
+    assert all(cookie is None for _path, _etag, cookie in requests)
+    await cloud.close()
 
 
 def test_registry_rejects_non_reserved_inference_runtime_package_id(tmp_path):

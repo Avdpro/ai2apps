@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omlx-model-ornith15-35b-a3b-4bit-vision"
-version = "0.1.4"
+version = "0.1.5"
 description = "Ornith 1.5 35B A3B multimodal isolated Model Worker Package"
 readme = "README.md"
 license = "MIT"

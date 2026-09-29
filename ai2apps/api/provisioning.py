@@ -110,6 +110,11 @@ def create_provisioning_router(
             raise HTTPException(status_code=503, detail="ACPF is not initialized")
         return value
 
+    async def refresh_registry_status(engine) -> None:
+        refresh = getattr(engine, "refresh_registry_status", None)
+        if callable(refresh):
+            await refresh()
+
     def trusted_app(
         body: CapabilityRequest, principal: RequestPrincipal
     ) -> tuple[str, str]:
@@ -171,12 +176,13 @@ def create_provisioning_router(
         return session
 
     @router.post("/capabilities/probe")
-    def probe(
+    async def probe(
         body: CapabilityRequest,
         principal: RequestPrincipal = principal_dependency,
     ):
         trusted_app_id, _ = trusted_app(body, principal)
         engine = provisioner()
+        await refresh_registry_status(engine)
         plan = engine.plan(trusted_app_id, body.capability, body.requirements)
         ready = None if plan is None else engine.resolve_plan_ready(plan)
         return {
@@ -189,12 +195,14 @@ def create_provisioning_router(
         }
 
     @router.post("/capabilities/ensure")
-    def ensure(
+    async def ensure(
         body: CapabilityRequest,
         principal: RequestPrincipal = principal_dependency,
     ):
         trusted_app_id, app_instance_id = trusted_app(body, principal)
-        return provisioner().ensure(
+        engine = provisioner()
+        await refresh_registry_status(engine)
+        return engine.ensure(
             actor_id=principal.actor_user_id,
             installation_id=principal.installation_id,
             app_instance_id=app_instance_id,

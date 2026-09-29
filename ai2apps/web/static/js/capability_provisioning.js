@@ -154,7 +154,8 @@
     }
 
     function chooseProfile(plan) {
-        const options = plan?.profileOptions || [];
+        const options = (plan?.profileOptions || []).map((option, index) => ({ ...option, __order: index }))
+            .sort((left, right) => Number(Boolean(left.deprecated)) - Number(Boolean(right.deprecated)) || left.__order - right.__order);
         if (options.length === 0) return Promise.resolve(plan?.profileId || null);
         const compatible = options.filter(option => option.compatible && !(plan.installMore && option.installed));
         if (compatible.length === 0 && !plan.installMore) {
@@ -162,7 +163,8 @@
         }
         const multiple = plan?.selectionMode === 'multiple';
         const initial = compatible.filter(option => option.selected);
-        const fallback = compatible.find(option => option.recommended) || compatible[0];
+        const fallback = compatible.find(option => option.recommended && !option.deprecated)
+            || compatible.find(option => !option.deprecated);
         const selectedIds = new Set((initial.length ? initial : (fallback ? [fallback] : [])).map(option => option.profileId));
         const presentation = { ...defaultPresentation, ...(plan.presentation || {}) };
         const memory = Math.round(plan.device?.system_memory_gib || 0);
@@ -192,7 +194,7 @@
                 button.disabled = !option.compatible || Boolean(plan.installMore && option.installed);
                 const selected = selectedIds.has(option.profileId);
                 button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-                button.className = 'acpf-tier' + (selected ? ' selected' : '') + (button.disabled ? ' unavailable' : '');
+                button.className = 'acpf-tier' + (selected ? ' selected' : '') + (button.disabled ? ' unavailable' : '') + (option.deprecated ? ' deprecated' : '');
                 if (multiple) {
                     const check = document.createElement('span'); check.className = 'acpf-tier-check';
                     check.textContent = selected ? '✓' : ''; button.append(check);
@@ -200,12 +202,15 @@
                 const copy = document.createElement('span'); copy.className = 'acpf-tier-copy';
                 const name = document.createElement('strong'); name.textContent = tr(option.label);
                 const detail = document.createElement('small');
-                detail.textContent = plan.installMore && option.installed ? tr('已安装')
+                const baseDetail = plan.installMore && option.installed ? tr('已安装')
                     : option.compatible
                     ? tr(option.description || option.modelId || '')
                     : (option.disabledReasons || []).map(tr).join(' · ');
+                detail.textContent = [baseDetail, option.deprecated ? tr('已过时') : '', option.lifecycleReason || ''].filter(Boolean).join(' · ');
                 copy.append(name, detail); button.append(copy);
-                if (option.recommended) {
+                if (option.deprecated) {
+                    const badge = document.createElement('em'); badge.textContent = tr('已过时'); button.append(badge);
+                } else if (option.recommended) {
                     const badge = document.createElement('em'); badge.textContent = tr('推荐'); button.append(badge);
                 } else if (selected) {
                     const badge = document.createElement('em'); badge.textContent = tr('已选择'); button.append(badge);
@@ -459,8 +464,15 @@
         }
         const percent = Math.max(0, Math.min(100, Number(session.progress?.percent || 0)));
         overlay.querySelector('.acpf-progress i').style.width = `${percent}%`;
-        overlay.querySelector('.acpf-status').textContent = `${labels[session.status] || session.status} · ${Math.round(percent)}%`;
         const progressDetail = session.progress?.detail || {};
+        const progressStage = String(progressDetail.stage || '');
+        const statusLabel = progressStage === 'verifying_checkpoint'
+            || progressStage === 'materializing_checkpoint'
+            ? labels.verifying
+            : progressStage === 'activating_checkpoint'
+                ? labels.activating
+                : (labels[session.status] || session.status);
+        overlay.querySelector('.acpf-status').textContent = `${statusLabel} · ${Math.round(percent)}%`;
         const bytesCompleted = Number(progressDetail.bytesCompleted ?? progressDetail.bytes_completed ?? 0);
         const bytesTotal = Number(progressDetail.bytesTotal ?? progressDetail.bytes_total ?? 0);
         const totalBytesCompleted = Number(progressDetail.totalBytesCompleted ?? progressDetail.total_bytes_completed ?? bytesCompleted);
@@ -468,7 +480,8 @@
         const currentFile = progressDetail.fileName || progressDetail.current_file || progressDetail.packageId || progressDetail.model_id || '';
         const itemPercent = bytesTotal > 0 ? Math.max(0, Math.min(100, bytesCompleted / bytesTotal * 100)) : 0;
         const downloadDetail = overlay.querySelector('.acpf-download-detail');
-        downloadDetail.hidden = !(currentFile && bytesTotal > 0 && ['installing_runtime', 'installing_provider', 'downloading_checkpoint'].includes(session.status));
+        const transferStage = progressStage === 'verifying_checkpoint' || progressStage.startsWith('downloading_');
+        downloadDetail.hidden = !(transferStage && currentFile && bytesTotal > 0 && ['installing_runtime', 'installing_provider', 'downloading_checkpoint'].includes(session.status));
         downloadDetail.querySelector('strong').textContent = currentFile;
         downloadDetail.querySelector('.acpf-download-progress i').style.width = `${itemPercent}%`;
         downloadDetail.querySelector('p').textContent = tr('当前项目 {0}% · {1} / {2}', Math.round(itemPercent), formatBytes(bytesCompleted), formatBytes(bytesTotal));

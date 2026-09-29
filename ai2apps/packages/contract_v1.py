@@ -38,6 +38,7 @@ from .native_policy import is_model_worker_service, native_payload_paths
 
 PACKAGE_PREFIX = b"AI2APPS-PACKAGE-RELEASE-V1\n"
 REPOSITORY_PREFIX = b"AI2APPS-REPOSITORY-SNAPSHOT-V1\n"
+PACKAGE_LIFECYCLE_PREFIX = b"AI2APPS-PACKAGE-LIFECYCLE-V1\n"
 KEY_PROOF_PREFIX = b"AI2APPS-PUBLISHER-KEY-PROOF-V1\n"
 MAX_ARTIFACT_BYTES = 1_073_741_824
 MAX_MANIFEST_BYTES = 1_048_576
@@ -62,6 +63,9 @@ _B64URL_SIGNATURE = re.compile(r"^[A-Za-z0-9_-]{86}$")
 _LICENSE_ID = re.compile(r"^(?:[A-Za-z0-9.-]+|LicenseRef-[A-Za-z0-9.-]+)$")
 _MINI_APP_ID = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$")
 _CATALOG_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+_STATUS_PACKAGE_ID = re.compile(
+    r"^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+)
 
 
 class PackageContractError(RuntimeError):
@@ -849,6 +853,122 @@ def verify_repository_snapshot(
     _exact_keys(payload, {"domain", "version", "generatedAt", "expiresAt", "releases"})
     if payload["domain"] != "ai2apps.repository-snapshot.v1" or not isinstance(payload["version"], int) or payload["version"] < 1 or not isinstance(payload["releases"], list):
         raise PackageContractError("repository_metadata_invalid", "Repository snapshot payload is invalid")
+    return payload
+
+
+def verify_package_lifecycle_snapshot(
+    envelope: Any,
+    public_key_pem: str,
+    *,
+    pinned_fingerprint: str,
+) -> dict[str, Any]:
+    """Verify the independent package-wide active/deprecated snapshot."""
+
+    if public_key_fingerprint(public_key_pem) != pinned_fingerprint:
+        raise PackageContractError(
+            "repository_key_unpinned", "Repository key does not match the local pin"
+        )
+    if not isinstance(envelope, dict):
+        raise PackageContractError(
+            "package_lifecycle_invalid", "Package lifecycle metadata must be an object"
+        )
+    _exact_keys(envelope, {"schemaVersion", "payload", "signature"})
+    signature = envelope["signature"]
+    payload = envelope["payload"]
+    if (
+        envelope["schemaVersion"]
+        != "ai2apps.package-lifecycle-envelope.v1"
+        or not isinstance(signature, dict)
+        or not isinstance(payload, dict)
+    ):
+        raise PackageContractError(
+            "package_lifecycle_invalid", "Package lifecycle metadata is invalid"
+        )
+    _exact_keys(signature, {"keyId", "algorithm", "value"})
+    if (
+        signature["keyId"] != pinned_fingerprint
+        or signature["algorithm"] != "Ed25519"
+    ):
+        raise PackageContractError(
+            "package_lifecycle_invalid",
+            "Package lifecycle signature metadata is invalid",
+        )
+    try:
+        _public_key(public_key_pem).verify(
+            _b64url_decode(signature["value"]),
+            PACKAGE_LIFECYCLE_PREFIX + jcs_bytes(payload),
+        )
+    except InvalidSignature as error:
+        raise PackageContractError(
+            "package_lifecycle_signature_invalid",
+            "Package lifecycle snapshot signature is invalid",
+        ) from error
+    _exact_keys(payload, {"domain", "version", "generatedAt", "expiresAt", "records"})
+    if (
+        payload["domain"] != "ai2apps.package-lifecycle.v1"
+        or not isinstance(payload["version"], int)
+        or isinstance(payload["version"], bool)
+        or payload["version"] < 1
+        or not isinstance(payload["generatedAt"], str)
+        or not isinstance(payload["expiresAt"], str)
+        or not isinstance(payload["records"], list)
+    ):
+        raise PackageContractError(
+            "package_lifecycle_invalid", "Package lifecycle payload is invalid"
+        )
+    package_ids: set[str] = set()
+    for record in payload["records"]:
+        if not isinstance(record, dict):
+            raise PackageContractError(
+                "package_lifecycle_invalid", "Package lifecycle record is invalid"
+            )
+        _exact_keys(
+            record,
+            {
+                "packageId",
+                "state",
+                "reason",
+                "replacementPackageId",
+                "revision",
+                "updatedAt",
+            },
+        )
+        package_id = record["packageId"]
+        replacement = record["replacementPackageId"]
+        reason = record["reason"]
+        if (
+            not isinstance(package_id, str)
+            or not _STATUS_PACKAGE_ID.fullmatch(package_id)
+            or package_id in package_ids
+            or record["state"] not in {"active", "deprecated"}
+            or not isinstance(record["revision"], int)
+            or isinstance(record["revision"], bool)
+            or record["revision"] < 1
+            or not isinstance(record["updatedAt"], str)
+            or (
+                replacement is not None
+                and (
+                    not isinstance(replacement, str)
+                    or not _STATUS_PACKAGE_ID.fullmatch(replacement)
+                )
+            )
+            or (reason is not None and not isinstance(reason, str))
+            or (isinstance(reason, str) and len(reason) > 1000)
+        ):
+            raise PackageContractError(
+                "package_lifecycle_invalid", "Package lifecycle record is invalid"
+            )
+        if record["state"] == "active" and (reason is not None or replacement is not None):
+            raise PackageContractError(
+                "package_lifecycle_invalid", "Active Package lifecycle record is invalid"
+            )
+        if record["state"] == "deprecated" and (
+            not isinstance(reason, str) or not reason.strip()
+        ):
+            raise PackageContractError(
+                "package_lifecycle_invalid", "Deprecated Package requires a reason"
+            )
+        package_ids.add(package_id)
     return payload
 
 

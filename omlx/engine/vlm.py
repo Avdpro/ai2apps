@@ -59,6 +59,7 @@ from .base import (
     _clear_teardown_references,
     _run_scheduler_preflight_with_cleanup_retry,
     _warn_scheduler_unreachable_once,
+    cap_generation_tokens_to_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -3229,6 +3230,17 @@ class VLMBatchedEngine(BaseEngine):
                 cached_tokens=0,
             )
 
+        max_context_window = kwargs.pop("max_context_window", None)
+        if max_context_window is not None:
+            prompt_tokens = (
+                len(prompt)
+                if isinstance(prompt, list)
+                else len(self._tokenizer.encode(prompt))
+            )
+            max_tokens = cap_generation_tokens_to_context(
+                max_tokens, prompt_tokens, max_context_window
+            )
+
         # OCR models: add extra stop token IDs to prevent degeneration.
         # Sampling params (temperature, repetition_penalty, max_tokens) are
         # resolved by get_sampling_params() with OCR defaults as a fallback
@@ -3343,6 +3355,17 @@ class VLMBatchedEngine(BaseEngine):
             ):
                 yield output
             return
+
+        max_context_window = kwargs.pop("max_context_window", None)
+        if max_context_window is not None:
+            prompt_tokens = (
+                len(prompt)
+                if isinstance(prompt, list)
+                else len(self._tokenizer.encode(prompt))
+            )
+            max_tokens = cap_generation_tokens_to_context(
+                max_tokens, prompt_tokens, max_context_window
+            )
 
         # OCR models: add extra stop token IDs to prevent degeneration.
         # Sampling params (temperature, repetition_penalty, max_tokens) are

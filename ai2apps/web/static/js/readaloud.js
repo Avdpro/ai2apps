@@ -132,7 +132,7 @@
         audioPlaying: false, audioPosition: 0, audioDuration: 0, previewAudioBlob: null, previewAudioBlobUrl: '',
         quickForm: { text: '', voice: '', speed: 1, asrVerification: true, asrModelId: '' }, configuringQuickAsr: false, configuringProjectAsr: false, quickGenerating: false, quickAudioUrl: '', quickDownloadUrl: '', quickDownloadFormat: 'wav', quickAudioTitle: '', quickStatus: 'idle', quickTasks: [], selectedQuickTaskId: '',
         projects: [], selected: null, selectedProjectId: '', providers: [], voiceProfiles: [], selectedTtsModel: '',
-        lineAudioArtifact: null, dialogueJob: null, dialogueTimer: null, dialogueStarting: false, autoPlayRunId: '', previewing: '', configuringSpeech: false, configuringVoice: false, currentAudioUrl: '', currentAudioTitle: '', previewHistory: [],
+        lineAudioArtifact: null, lineDragAudio: null, lineDragPending: '', dialogueJob: null, dialogueTimer: null, dialogueStarting: false, autoPlayRunId: '', previewing: '', configuringSpeech: false, configuringVoice: false, currentAudioUrl: '', currentAudioTitle: '', previewHistory: [],
         designBusy: false, designPreviewUrl: '', designStatus: 'idle', conversionModelId: '', trainingHistory: [], trainingPreviewTitle: '', trainingSamples: [], trainingPreviewUrl: '', trainingPreviewStatus: 'idle', trainingPreviewText: '', trainingPreviewEmotion: 'neutral', trainingPreviewSpeed: 1, trainingBusy: false, autoTrainingAsr: true, trainingAsrModelId: '', configuringTrainingAsr: false,
         transcribingTraining: false, savingTraining: false, recordingTraining: false, trainingAudioUrl: '', trainingRecorder: null, trainingStream: null, trainingChunks: [],
         capabilityProbes: {},
@@ -201,25 +201,54 @@
             if (!url) return;
             try { const response = await fetch(url, { credentials: 'same-origin' }); if (!response.ok) return; const blob = await response.blob(); if (this.outputAudioUrl === url && blob.type.startsWith('audio/')) { this.previewAudioBlob = blob; this.previewAudioBlobUrl = url; } } catch (_) {}
         },
-        dragPreviewAudio(event) {
-            const url = this.outputDownloadUrl;
-            const mediaType = this.outputMediaType;
+        writeAudioDrag(event, {url = '', title = '', mediaType = 'audio/wav', blob = null}) {
             const suffix = mediaType.startsWith('video/') ? '.mp4' : '.wav';
-            const title = (this.outputAudioTitle || 'voice-studio').replace(/[\\/:*?"<>|]/g, '-').slice(0, 100);
-            const name = title.toLowerCase().endsWith(suffix) ? title : title + suffix;
-            if (!url || !event.dataTransfer) { event.preventDefault(); return; }
+            const safeTitle = (title || 'voice-studio').replace(/[\\/:*?"<>|]/g, '-').slice(0, 100);
+            const name = safeTitle.toLowerCase().endsWith(suffix) ? safeTitle : safeTitle + suffix;
+            if ((!url && !blob) || !event.dataTransfer) { event.preventDefault(); return; }
             try {
-                const parsed = new URL(url, window.location.origin);
-                const match = parsed.pathname.match(/^\/v1\/platform\/sessions\/([^/]+)\/artifacts\/([^/]+)\/download$/);
-                if (parsed.origin !== window.location.origin || !match) throw new Error('Invalid audio artifact');
-                const reference = { sessionId: decodeURIComponent(match[1]), artifactId: decodeURIComponent(match[2]), name, sourceAppId: APP_ID, mediaType };
                 event.dataTransfer.effectAllowed = 'copy';
-                event.dataTransfer.setData(mediaType.startsWith('video/') ? 'application/x-ai2apps-video-artifact' : 'application/x-ai2apps-audio-artifact', JSON.stringify(reference));
-                event.dataTransfer.setData('text/uri-list', parsed.href);
+                if (url) {
+                    const parsed = new URL(url, window.location.origin);
+                    const match = parsed.pathname.match(/^\/v1\/platform\/sessions\/([^/]+)\/artifacts\/([^/]+)\/download$/);
+                    if (parsed.origin !== window.location.origin || !match) throw new Error('Invalid audio artifact');
+                    const reference = {sessionId:decodeURIComponent(match[1]), artifactId:decodeURIComponent(match[2]), name, sourceAppId:APP_ID, mediaType};
+                    event.dataTransfer.setData(mediaType.startsWith('video/') ? 'application/x-ai2apps-video-artifact' : 'application/x-ai2apps-audio-artifact', JSON.stringify(reference));
+                    event.dataTransfer.setData('text/uri-list', parsed.href);
+                }
                 event.dataTransfer.setData('text/plain', name);
-                const blob = this.previewAudioBlobUrl === this.outputAudioUrl ? this.previewAudioBlob : null;
-                if (blob) event.dataTransfer.items.add(new File([blob], name, { type: 'audio/wav' }));
+                if (blob) event.dataTransfer.items.add(new File([blob], name, {type:mediaType}));
             } catch (error) { event.preventDefault(); this.fail(error); }
+        },
+        dragPreviewAudio(event) {
+            this.writeAudioDrag(event, {url:this.outputDownloadUrl, title:this.outputAudioTitle, mediaType:this.outputMediaType,
+                blob:this.previewAudioBlobUrl === this.outputAudioUrl ? this.previewAudioBlob : null});
+        },
+        lineDragKey(segment) {
+            if (!this.selected || !this.selectedSpeechProvider || segment.reviewStatus === 'needs_review') return '';
+            return JSON.stringify([this.selected.id,this.selected.revision,this.selected.asrVerification,this.selected.asrModelId,
+                this.selectedSpeechProvider.id,segment,this.selected.characters,this.voiceProfiles]);
+        },
+        async prepareLineDrag(segment) {
+            const key = this.lineDragKey(segment);
+            if (!key || this.lineDragAudio?.key === key || this.lineDragPending === key) return;
+            this.lineDragAudio = null; this.lineDragPending = key;
+            const projectId = this.selected.id, modelId = this.selectedSpeechProvider.id;
+            try {
+                const cached = await request('/projects/'+encodeURIComponent(projectId)+'/segments/'+encodeURIComponent(segment.id)+'/audio?model_id='+encodeURIComponent(modelId));
+                if (!cached.audio?.url) return;
+                const response = await fetch(cached.audio.url, {credentials:'same-origin'});
+                if (!response.ok) return;
+                const blob = await response.blob();
+                if (blob.size && blob.size <= 64*1024*1024 && blob.type.startsWith('audio/') && this.lineDragPending === key && this.lineDragKey(segment) === key)
+                    this.lineDragAudio = {key, blob};
+            } catch (_) {} finally { if (this.lineDragPending === key) this.lineDragPending = ''; }
+        },
+        dragLineAudio(event, segment) {
+            const key = this.lineDragKey(segment);
+            if (!key || this.lineDragAudio?.key !== key || event.target.closest?.('.ra-line-editor,.ra-line-actions')) { event.preventDefault(); return; }
+            const actor = this.selected.characters.find(item=>item.id===segment.speakerId)?.name || '';
+            this.writeAudioDrag(event, {title:[actor,segment.text.slice(0,60)].filter(Boolean).join(' · '), blob:this.lineDragAudio.blob});
         },
         get outputAudioUrl() { return this.outputMediaType.startsWith('audio/') ? this.outputDownloadUrl : ''; },
         get outputAudioTitle() { return this.selectedOutput?.title || ''; },

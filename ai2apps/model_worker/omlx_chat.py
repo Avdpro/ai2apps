@@ -145,10 +145,27 @@ def _thinking_enabled(
     return bool(reasoning and reasoning.get("mode") == "required")
 
 
-def _usage(output: Any) -> dict[str, Any]:
+def _engine_boost_stats(engine: Any) -> dict[str, Any] | None:
+    getter = getattr(engine, "get_stats", None)
+    if not callable(getter):
+        return None
+    try:
+        stats = getter()
+    except Exception:
+        return None
+    if not isinstance(stats, Mapping):
+        return None
+    boost = stats.get("engine_boost")
+    if not isinstance(boost, Mapping):
+        flesh = stats.get("flesh")
+        boost = flesh.get("engine_boost") if isinstance(flesh, Mapping) else None
+    return dict(boost) if isinstance(boost, Mapping) else None
+
+
+def _usage(output: Any, engine: Any | None = None) -> dict[str, Any]:
     prompt = int(getattr(output, "prompt_tokens", 0) or 0)
     completion = int(getattr(output, "completion_tokens", 0) or 0)
-    return {
+    result = {
         "prompt_tokens": prompt,
         "completion_tokens": completion,
         "total_tokens": prompt + completion,
@@ -158,6 +175,10 @@ def _usage(output: Any) -> dict[str, Any]:
             "cached_tokens": int(getattr(output, "cached_tokens", 0) or 0)
         },
     }
+    boost = _engine_boost_stats(engine) if engine is not None else None
+    if boost is not None:
+        result["ai2apps_engine_boost"] = boost
+    return result
 
 
 def _sse(value: Mapping[str, Any]) -> bytes:
@@ -245,6 +266,30 @@ class OmlxChatAdapter:
             reasoning = metadata.get("reasoning")
             return reasoning if isinstance(reasoning, Mapping) else None
         return None
+
+    def context_window_contract(self, model_id: str) -> int:
+        """Return the validated Package context limit for a chat model."""
+
+        for model in self.context.models:
+            if model_id not in {model.get("id"), model.get("upstream_id")}:
+                continue
+            value = model.get("context_window")
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+            break
+        # Backward compatibility for already-installed Packages whose model
+        # declaration predates context_window.
+        return 32768
+
+    def generation_kwargs(
+        self,
+        model_id: str,
+        body: Mapping[str, Any],
+        reasoning: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        result = _generation_kwargs(body, reasoning)
+        result["max_context_window"] = self.context_window_contract(model_id)
+        return result
 
     def engine_key(
         self,
@@ -340,7 +385,7 @@ class OmlxChatAdapter:
                 ),
                 headers={"Cache-Control": "no-cache"},
             )
-        generation_kwargs = _generation_kwargs(body, reasoning)
+        generation_kwargs = self.generation_kwargs(model, body, reasoning)
         output = await engine.chat(messages, **generation_kwargs)
         raw_text = str(getattr(output, "text", ""))
         thinking = ""
@@ -368,7 +413,7 @@ class OmlxChatAdapter:
                     "finish_reason": getattr(output, "finish_reason", None) or "stop",
                 }
             ],
-            "usage": _usage(output),
+            "usage": _usage(output, engine),
         }
 
     async def _chat_stream(
@@ -390,7 +435,7 @@ class OmlxChatAdapter:
                 "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
             }
         )
-        generation_kwargs = _generation_kwargs(body, reasoning)
+        generation_kwargs = self.generation_kwargs(model, body, reasoning)
         stream = engine.stream_chat(messages, **generation_kwargs)
         thinking_parser = (
             ThinkingParser(
@@ -409,6 +454,49 @@ class OmlxChatAdapter:
                 if first_token_at is None and (getattr(output, "completion_tokens", 0) or getattr(output, "new_text", "")):
                     first_token_at = time.perf_counter()
                     first_completion_tokens = int(getattr(output, "completion_tokens", 0) or 0)
+                prompt_tokens = int(getattr(output, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(output, "completion_tokens", 0) or 0)
+                sample_time = (
+                    getattr(output, "generated_until", None)
+                    or getattr(output, "generated_at", None)
+                )
+                metrics: dict[str, Any] = {
+                    "phase": "generating",
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                }
+                if sample_time is not None:
+                    metrics["generation_sample_time"] = float(sample_time)
+                if first_token_at is not None:
+                    ttft = first_token_at - started_at
+                    native_prompt_tps = float(getattr(output, "prompt_tps", 0) or 0)
+                    if native_prompt_tps > 0:
+                        metrics["prefill_tokens_per_second"] = native_prompt_tps
+                        metrics["prefill_timing_source"] = "engine_native"
+                    elif prompt_tokens > 0 and ttft > 0:
+                        metrics["prefill_tokens_per_second"] = prompt_tokens / ttft
+                        metrics["prefill_timing_source"] = "worker_ttft_estimate"
+                    metrics["time_to_first_token"] = ttft
+                live_metrics_getter = getattr(engine, "get_live_metrics", None)
+                if callable(live_metrics_getter):
+                    try:
+                        live_metrics = live_metrics_getter(
+                            generation_kwargs.get("flesh_session_id")
+                        )
+                    except Exception:
+                        live_metrics = None
+                    if isinstance(live_metrics, Mapping):
+                        metrics.update(live_metrics)
+                yield _sse(
+                    {
+                        "id": response_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": model,
+                        "choices": [],
+                        "ai2apps_metrics": metrics,
+                    }
+                )
                 text = getattr(output, "new_text", "")
                 thinking_delta, content_delta = (
                     thinking_parser.feed(text) if thinking_parser else ("", text)
@@ -476,7 +564,7 @@ class OmlxChatAdapter:
                 ],
             }
         )
-        usage = _usage(final)
+        usage = _usage(final, engine)
         if first_token_at is not None:
             ttft = first_token_at - started_at
             decode_time = time.perf_counter() - first_token_at
@@ -512,13 +600,13 @@ class OmlxChatAdapter:
                 ),
                 headers={"Cache-Control": "no-cache"},
             )
-        generation_kwargs = _generation_kwargs(body, reasoning)
+        generation_kwargs = self.generation_kwargs(model, body, reasoning)
         output = await engine.chat(messages, **generation_kwargs)
         raw_text = str(getattr(output, "text", ""))
         text = raw_text
         if reasoning and reasoning.get("format") == "think_tags":
             _thinking, text = extract_thinking(raw_text)
-        usage = _usage(output)
+        usage = _usage(output, engine)
         return {
             "id": response_id,
             "object": "response",
@@ -569,7 +657,7 @@ class OmlxChatAdapter:
                 "item": {"id": message_id, "type": "message", "status": "in_progress", "role": "assistant", "content": []},
             }
         )
-        generation_kwargs = _generation_kwargs(body, reasoning)
+        generation_kwargs = self.generation_kwargs(model, body, reasoning)
         stream = engine.stream_chat(messages, **generation_kwargs)
         thinking_parser = (
             ThinkingParser(
@@ -628,7 +716,7 @@ class OmlxChatAdapter:
                 "text": text,
             }
         )
-        usage = _usage(final)
+        usage = _usage(final, engine)
         completed = dict(base)
         completed["status"] = "completed"
         completed["output_text"] = text

@@ -22,9 +22,8 @@ capabilities:
     profiles:
       - id: apple-metal-deepseek-v41-flash
         label: DeepSeek V4.1 Flash · 无损 SSD Cached-MoE
-        description: 原始 FP4/FP8 精度的多模态本地模型；标准路径峰值控制在 65 GiB 以内，适合 96 GiB 及以上设备。
-        priority: 125
-        recommended: false
+        description: 当前最高质量的多模态本地模型；原始 FP4/FP8 精度，适合 96 GiB 及以上设备。
+        priority: 150
         device:
           os: [macos]
           architectures: [arm64]
@@ -34,13 +33,14 @@ capabilities:
             unified_memory_gib: {minimum: 96}
         recommendation_memory_gib: {minimum: 96}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.13,<2.0.0"}
           provider: {package_id: ai2apps/model-deepseek-v41-flash, service_key: ai2apps.model.deepseek-v41-flash, version: ">=0.1.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.deepseek-v41-flash/deepseek-v41-flash}
       - id: apple-metal-deepseek-v4-flash
         label: DeepSeek V4 Flash · 高质量 Cached-MoE
-        description: 高质量本地推理档，至少需要 48 GiB，推荐 64 GiB 及以上设备。
-        priority: 120
+        description: 上一代高质量 Cached-MoE 兼容选项，至少需要 48 GiB 统一内存。
+        priority: 110
+        recommended: false
         device:
           os: [macos]
           architectures: [arm64]
@@ -55,8 +55,9 @@ capabilities:
           checkpoint: {model_id: ai2apps.model.deepseek-v4-flash/deepseek-v4-flash}
       - id: apple-metal-deepseek-v4-flash-2bit
         label: DeepSeek V4 Flash 2-bit · 平衡档
-        description: 节省内存的 Cached-MoE 档，适合 32–64 GiB 设备。
-        priority: 110
+        description: 上一代节省内存的 Cached-MoE 兼容选项，至少需要 32 GiB 统一内存。
+        priority: 100
+        recommended: false
         device:
           os: [macos]
           architectures: [arm64]
@@ -71,8 +72,8 @@ capabilities:
           checkpoint: {model_id: ai2apps.model.deepseek-v4-flash-2bit/deepseek-v4-flash-2bit}
       - id: apple-metal-qwen36-35b-4bit
         label: Qwen3.6 35B · 本地聊天
-        description: Cached-MoE 4-bit，适合 16 GiB 及以上 Apple Silicon。
-        priority: 100
+        description: Cached-MoE 4-bit 本地聊天模型，推荐用于 16–31 GiB 设备。
+        priority: 120
         device:
           os: [macos]
           architectures: [arm64]
@@ -87,9 +88,8 @@ capabilities:
           checkpoint: {model_id: ai2apps.model.qwen36-35b/qwen3.6-35b-a3b-4bit}
       - id: apple-metal-qwen35-2b-4bit
         label: Qwen3.5 2B 4-bit · 轻量多模态
-        description: 轻量聊天和图片理解模型，适合 8 GiB 及以上 Apple Silicon。
-        priority: 95
-        recommended: false
+        description: 轻量聊天和图片理解模型，推荐用于 8–15 GiB 设备。
+        priority: 115
         device:
           os: [macos]
           architectures: [arm64]
@@ -97,6 +97,7 @@ capabilities:
             vendor: apple
             api: metal
             unified_memory_gib: {minimum: 8}
+        recommendation_memory_gib: {minimum: 8, maximum_exclusive: 16}
         stack:
           components:
             - {id: provider, kind: package, phase: provider, package_id: ai2apps/model-qwen35, service_key: ai2apps.qwen35, version: ">=0.1.1,<1.0.0"}
@@ -121,34 +122,34 @@ capabilities:
             - {id: verify, kind: verify, phase: verify, service_key: ai2apps.qwen35, capabilities: [conversation]}
       - id: apple-metal-qwen38-27b-nvfp4
         label: Qwen3.8 27B NVFP4 · 多模态
-        description: 27B 多模态本地模型，支持聊天和图片理解；新模型，暂不作为默认推荐。
-        priority: 99
-        recommended: false
+        description: 新一代 27B 多模态本地模型，支持聊天和图片理解；推荐用于 32–63 GiB 设备。
+        priority: 130
         device:
           os: [macos]
           architectures: [arm64]
           accelerator:
             vendor: apple
             api: metal
-            unified_memory_gib: {minimum: 24}
+            unified_memory_gib: {minimum: 32}
+        recommendation_memory_gib: {minimum: 32, maximum_exclusive: 64}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.0.1,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.5,<2.0.0"}
           provider: {package_id: ai2apps/model-qwen38, service_key: ai2apps.model.qwen38, version: ">=0.3.2,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.qwen38/qwen3.8-27b-nvfp4}
       - id: apple-metal-qwen38-flash-next-4bit
         label: Qwen3.8 Flash Next 4-bit · 多模态 Cached-MoE
-        description: 支持聊天和图片理解的 Cached-MoE 模型；Lean 档约 41 GiB，至少需要 48 GiB 统一内存。
-        priority: 97
-        recommended: false
+        description: 新一代多模态 Cached-MoE 模型，支持聊天和图片理解；推荐用于 64–95 GiB 设备。
+        priority: 140
         device:
           os: [macos]
           architectures: [arm64]
           accelerator:
             vendor: apple
             api: metal
-            unified_memory_gib: {minimum: 48}
+            unified_memory_gib: {minimum: 64}
+        recommendation_memory_gib: {minimum: 64, maximum_exclusive: 96}
         stack:
-          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.0,<2.0.0"}
+          runtime: {package_id: ai2apps/runtime-omlx, service_key: ai2apps.runtime.omlx, version: ">=1.7.5,<2.0.0"}
           provider: {package_id: ai2apps/model-qwen38-flash-next-4bit, service_key: ai2apps.model.qwen38-flash-next-4bit, version: ">=0.1.0,<1.0.0"}
           checkpoint: {model_id: ai2apps.model.qwen38-flash-next-4bit/qwen3.8-flash-next-mlx-4bit}
       - id: apple-metal-ornith15-35b-vision-4bit

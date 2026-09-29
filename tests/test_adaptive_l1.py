@@ -271,6 +271,51 @@ def test_kv_continuity_namespaces_ignore_scope_and_physical_bank():
     )
 
 
+def test_ssd_telemetry_keeps_rolling_window_and_whole_turn_average():
+    from collections import deque
+    from types import SimpleNamespace
+
+    from omlx.engine.flesh import DeepseekV4FleshEngine
+
+    counters = {"experts_loaded": 10, "bytes_loaded": 1000}
+    engine = object.__new__(DeepseekV4FleshEngine)
+    engine._scope_bank = SimpleNamespace(loader=SimpleNamespace(stats=lambda: counters))
+    engine._routed_expert_bytes_per_token = 100
+    engine._ssd_window_samples = deque(maxlen=32)
+    engine._ssd_recent_10_tokens = {}
+    engine._ssd_window_session_id = None
+    engine._ssd_recent_by_session = {}
+    engine._ssd_turn_baseline = None
+    engine._ssd_turn_by_session = {}
+
+    engine._reset_ssd_window("chat-1")
+    counters.update(experts_loaded=15, bytes_loaded=1500)
+    engine._record_ssd_window(5)
+    counters.update(experts_loaded=16, bytes_loaded=1600)
+    engine._record_ssd_window(15)
+
+    assert engine._ssd_recent_by_session["chat-1"] == {
+        "tokens": 10,
+        "expert_loads": 1,
+        "bytes_loaded": 100,
+        "pressure": 0.1,
+        "pressure_percent": 10.0,
+        "severity": "healthy",
+    }
+    assert engine._ssd_turn_by_session["chat-1"] == {
+        "tokens": 15,
+        "expert_loads": 6,
+        "bytes_loaded": 600,
+        "pressure": 0.4,
+        "pressure_percent": 40.0,
+        "severity": "critical",
+    }
+    assert engine.get_live_metrics("chat-1") == {
+        "ssd_recent_10_tokens": engine._ssd_recent_by_session["chat-1"],
+        "ssd_turn_average": engine._ssd_turn_by_session["chat-1"],
+    }
+
+
 def test_chat_request_accepts_ai2apps_session_id():
     from omlx.api.openai_models import ChatCompletionRequest
 

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import tempfile
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,30 @@ _IMAGE_DATA_URL = re.compile(
 _IMAGE_SUFFIXES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 _MAX_IMAGE_BYTES = 32 * 1024 * 1024
 _DEFAULT_STREAM_CODEC = PrefixTextStreamCodec()
+_DEFAULT_MAX_CONTEXT = 32768
+_SSD_ELEVATED_PRESSURE = 1.0 / 6.0
+_SSD_CRITICAL_PRESSURE = 0.25
+
+
+def _generation_finish_reason(
+    stopped: bool, index: int, max_tokens: int
+) -> str | None:
+    if stopped:
+        return "stop"
+    if index + 1 >= max(1, int(max_tokens)):
+        return "length"
+    return None
+
+
+def _effective_generation_limit(
+    requested_max_tokens: int, prompt_tokens: int, max_context: int
+) -> int:
+    """Cap output at the remaining context instead of overrunning the engine."""
+
+    remaining = int(max_context) - int(prompt_tokens)
+    if remaining <= 0:
+        raise ValueError("Prompt leaves no room for generation")
+    return min(max(1, int(requested_max_tokens)), remaining)
 
 
 def _decode_generated_prefix(tokenizer, token_ids: list[int], eos_token_id: int | None) -> str:
@@ -75,16 +100,158 @@ class DeepseekV41Engine:
     ):
         self.checkpoint = Path(checkpoint).expanduser().resolve()
         self.max_context = int(
-            max_context or os.environ.get("OMLX_DSV41_MAX_CONTEXT", "4096")
+            max_context
+            if max_context is not None
+            else os.environ.get("OMLX_DSV41_MAX_CONTEXT", str(_DEFAULT_MAX_CONTEXT))
         )
         if not 2048 <= self.max_context <= 32768:
             raise ValueError("DeepSeek V4.1 context must be in [2048, 32768]")
         self._model = None
         self._tokenizer = None
         self._lock = asyncio.Lock()
+        self._active_session_id: str | None = None
+        from .boost import DeepseekV41BoostController
+
+        self._boost = DeepseekV41BoostController(self)
         self._stream_codec = validate_model_stream_codec(
             stream_codec or _DEFAULT_STREAM_CODEC
         )
+        self._routed_expert_bytes_per_token = 0
+        self._ssd_window_samples: deque[tuple[int, int, int]] = deque(maxlen=32)
+        self._ssd_recent_10_tokens = self._empty_ssd_window()
+        self._ssd_window_session_id: str | None = None
+        self._ssd_recent_by_session: dict[str, dict[str, Any]] = {}
+        self._ssd_turn_baseline: tuple[int, int] | None = None
+        self._ssd_turn_by_session: dict[str, dict[str, Any]] = {}
+
+    @staticmethod
+    def _empty_ssd_window() -> dict[str, Any]:
+        return {
+            "tokens": 0,
+            "expert_loads": 0,
+            "bytes_loaded": 0,
+            "pressure": 0.0,
+            "pressure_percent": 0.0,
+            "severity": "healthy",
+        }
+
+    def _ssd_storage_totals(self) -> tuple[int, int, int]:
+        """Return materialized SSD expert reads and the exact Top-6 denominator."""
+
+        if self._model is None:
+            return 0, 0, 0
+        expert_loads = 0
+        loaded_bytes = 0
+        routed_bytes_per_token = 0
+        activated = int(self._model.c.n_activated_experts)
+        for bank in self._model.banks.values():
+            record_bytes = int(bank.info["record_bytes"])
+            bank_bytes = int(bank.bytes)
+            expert_loads += bank_bytes // record_bytes if record_bytes > 0 else 0
+            loaded_bytes += bank_bytes
+            routed_bytes_per_token += record_bytes * activated
+        return expert_loads, loaded_bytes, routed_bytes_per_token
+
+    def _reset_ssd_window(self, session_id: str) -> None:
+        loads, loaded_bytes, routed_bytes = self._ssd_storage_totals()
+        self._routed_expert_bytes_per_token = routed_bytes
+        self._ssd_window_samples.clear()
+        self._ssd_window_samples.append((0, loads, loaded_bytes))
+        self._ssd_window_session_id = session_id
+        self._ssd_turn_baseline = (loads, loaded_bytes)
+        self._ssd_recent_10_tokens = self._empty_ssd_window()
+        self._ssd_recent_by_session[session_id] = dict(
+            self._ssd_recent_10_tokens
+        )
+        self._ssd_turn_by_session[session_id] = dict(
+            self._ssd_recent_10_tokens
+        )
+
+    def _record_ssd_window(self, token_count: int) -> None:
+        loads, loaded_bytes, _routed_bytes = self._ssd_storage_totals()
+        if self._ssd_window_samples and self._ssd_window_samples[-1][0] == token_count:
+            self._ssd_window_samples[-1] = (token_count, loads, loaded_bytes)
+        else:
+            self._ssd_window_samples.append((token_count, loads, loaded_bytes))
+        cutoff = max(token_count - 10, 0)
+        baseline_token, baseline_loads, baseline_bytes = self._ssd_window_samples[0]
+        for sample_token, sample_loads, sample_bytes in self._ssd_window_samples:
+            if sample_token > cutoff:
+                break
+            baseline_token, baseline_loads, baseline_bytes = (
+                sample_token,
+                sample_loads,
+                sample_bytes,
+            )
+        window_tokens = min(max(token_count - baseline_token, 0), 10)
+        recent_loads = max(loads - baseline_loads, 0)
+        recent_bytes = max(loaded_bytes - baseline_bytes, 0)
+        routed_bytes = window_tokens * self._routed_expert_bytes_per_token
+        pressure = recent_bytes / routed_bytes if routed_bytes > 0 else 0.0
+        severity = (
+            "critical"
+            if pressure >= _SSD_CRITICAL_PRESSURE
+            else "elevated"
+            if pressure > _SSD_ELEVATED_PRESSURE
+            else "healthy"
+        )
+        self._ssd_recent_10_tokens = {
+            "tokens": window_tokens,
+            "expert_loads": recent_loads,
+            "bytes_loaded": recent_bytes,
+            "pressure": pressure,
+            "pressure_percent": pressure * 100.0,
+            "severity": severity,
+        }
+        if self._ssd_window_session_id is None:
+            return
+        self._ssd_recent_by_session[self._ssd_window_session_id] = dict(
+            self._ssd_recent_10_tokens
+        )
+        turn_baseline_loads, turn_baseline_bytes = self._ssd_turn_baseline or (
+            loads,
+            loaded_bytes,
+        )
+        turn_loads = max(loads - turn_baseline_loads, 0)
+        turn_bytes = max(loaded_bytes - turn_baseline_bytes, 0)
+        turn_routed_bytes = token_count * self._routed_expert_bytes_per_token
+        turn_pressure = (
+            turn_bytes / turn_routed_bytes if turn_routed_bytes > 0 else 0.0
+        )
+        turn_severity = (
+            "critical"
+            if turn_pressure >= _SSD_CRITICAL_PRESSURE
+            else "elevated"
+            if turn_pressure > _SSD_ELEVATED_PRESSURE
+            else "healthy"
+        )
+        self._ssd_turn_by_session[self._ssd_window_session_id] = {
+            "tokens": token_count,
+            "expert_loads": turn_loads,
+            "bytes_loaded": turn_bytes,
+            "pressure": turn_pressure,
+            "pressure_percent": turn_pressure * 100.0,
+            "severity": turn_severity,
+        }
+
+    def get_live_metrics(self, session_id: str | None = None) -> dict[str, Any]:
+        """Return already-materialized Decode telemetry without syncing MLX."""
+
+        resolved_session = session_id or self._ssd_window_session_id
+        recent = (
+            self._ssd_recent_by_session.get(resolved_session)
+            if resolved_session is not None
+            else None
+        )
+        turn = (
+            self._ssd_turn_by_session.get(resolved_session)
+            if resolved_session is not None
+            else None
+        )
+        return {
+            "ssd_recent_10_tokens": dict(recent or self._ssd_recent_10_tokens),
+            "ssd_turn_average": dict(turn) if turn is not None else {},
+        }
 
     async def start(self) -> None:
         if self._model is not None:
@@ -218,7 +385,7 @@ class DeepseekV41Engine:
             raise ValueError("DeepSeek V4.1 thinking_mode must be 'chat' or 'thinking'")
         return thinking_mode, options.get("reasoning_effort")
 
-    def _prepare_sync(self, messages, tools, seed, chat_template_kwargs):
+    def _prepare_sync(self, messages, tools, seed, chat_template_kwargs, session_id, boost_mode):
         import mlx.core as mx
 
         from .encoding import encode_messages
@@ -229,6 +396,7 @@ class DeepseekV41Engine:
         if seed is not None:
             mx.random.seed(int(seed))
         self._model.reset_sequence()
+        self._boost.prepare(session_id, boost_mode)
         thinking_mode, reasoning_effort = self._reasoning_options(
             chat_template_kwargs
         )
@@ -279,16 +447,18 @@ class DeepseekV41Engine:
                 f"DeepSeek V4.1 prompt has {len(ids)} tokens; limit is {self.max_context - 1}"
             )
         logits = self._model(mx.array([ids], dtype=mx.int32), 0)
-        mx.eval(logits)
+        self._model.complete_forward(logits)
         if self._model.prefill_executor is not None:
             self._model.prefill_executor.release()
+        self._reset_ssd_window(session_id)
         return ids, logits
 
-    def _decode_sync(self, token: int, position: int):
+    def _decode_sync(self, token: int, position: int, session_id: str):
         import mlx.core as mx
 
+        self._boost.apply_pending(session_id)
         logits = self._model(mx.array([[token]], dtype=mx.int32), position)
-        mx.eval(logits)
+        self._model.complete_forward(logits)
         return logits
 
     async def stream_chat(
@@ -306,7 +476,7 @@ class DeepseekV41Engine:
         stop=None,
         seed=None,
         chat_template_kwargs=None,
-        **_kwargs,
+        **kwargs,
     ):
         import mlx.core as mx
         from mlx_lm.sample_utils import make_logits_processors, make_sampler
@@ -333,76 +503,122 @@ class DeepseekV41Engine:
         )
         loop = asyncio.get_running_loop()
         executor = get_mlx_executor()
+        session_id = str(kwargs.pop("flesh_session_id", "default"))
+        boost_mode = kwargs.pop("flesh_boost_mode", None)
         async with self._lock:
-            prompt_ids, logits = await loop.run_in_executor(
-                executor,
-                self._prepare_sync,
-                messages,
-                tools,
-                seed,
-                chat_template_kwargs,
-            )
-            thinking_mode, _reasoning_effort = self._reasoning_options(
-                chat_template_kwargs
-            )
-            generated: list[int] = []
-            logits_hashes: list[str] = []
-            emitted_text = ""
-            eos = self._tokenizer.token_to_id("<｜end▁of▁sentence｜>")
-            finish_reason = "length"
-            for index in range(max(1, int(max_tokens))):
-                import numpy as np
+            self._active_session_id = session_id
+            try:
+                prompt_ids, logits = await loop.run_in_executor(
+                    executor,
+                    self._prepare_sync,
+                    messages,
+                    tools,
+                    seed,
+                    chat_template_kwargs,
+                    session_id,
+                    boost_mode,
+                )
+                thinking_mode, _reasoning_effort = self._reasoning_options(
+                    chat_template_kwargs
+                )
+                generation_limit = _effective_generation_limit(
+                    max_tokens, len(prompt_ids), self.max_context
+                )
+                generated: list[int] = []
+                logits_hashes: list[str] = []
+                emitted_text = ""
+                eos = self._tokenizer.token_to_id("<｜end▁of▁sentence｜>")
+                finish_reason = "length"
+                for index in range(generation_limit):
+                    import numpy as np
 
-                logits_hashes.append(
-                    hashlib.sha256(
-                        np.array(logits.astype(mx.float32)).tobytes()
-                    ).hexdigest()
-                )
-                processed = logits
-                for processor in processors:
-                    processed = processor(generated, processed)
-                token = int(sampler(processed).item())
-                generated.append(token)
-                text = self._stream_codec.decode_prefix(
-                    self._tokenizer, generated, eos_token_id=eos
-                )
-                stopped = token == eos
-                for marker in stop_strings:
-                    offset = text.find(marker)
-                    if offset >= 0:
-                        text = text[:offset]
-                        stopped = True
-                        break
-                emitted_text, new_text = self._stream_codec.append_delta(
-                    emitted_text, text
-                )
-                text = emitted_text
-                finish_reason = "stop" if stopped else "length"
-                tool_calls = None
-                if stopped and tools:
-                    from .encoding import parse_message_from_completion_text
-
-                    parsed = parse_message_from_completion_text(text, thinking_mode)
-                    tool_calls = parsed.get("tool_calls")
-                yield DeepseekV41Output(
-                    text=text,
-                    new_text=new_text,
-                    prompt_tokens=len(prompt_ids),
-                    completion_tokens=len(generated),
-                    finish_reason=finish_reason if stopped else None,
-                    tool_calls=tool_calls,
-                    token_ids=tuple(generated),
-                    logits_sha256=tuple(logits_hashes),
-                )
-                if stopped:
-                    break
-                if index + 1 < int(max_tokens):
-                    logits = await loop.run_in_executor(
-                        executor,
-                        self._decode_sync,
-                        token,
-                        len(prompt_ids) + index,
+                    logits_hashes.append(
+                        hashlib.sha256(
+                            np.array(logits.astype(mx.float32)).tobytes()
+                        ).hexdigest()
                     )
+                    processed = logits
+                    for processor in processors:
+                        processed = processor(generated, processed)
+                    token = int(sampler(processed).item())
+                    generated.append(token)
+                    text = self._stream_codec.decode_prefix(
+                        self._tokenizer, generated, eos_token_id=eos
+                    )
+                    stopped = token == eos
+                    for marker in stop_strings:
+                        offset = text.find(marker)
+                        if offset >= 0:
+                            text = text[:offset]
+                            stopped = True
+                            break
+                    emitted_text, new_text = self._stream_codec.append_delta(
+                        emitted_text, text
+                    )
+                    text = emitted_text
+                    finish_reason = _generation_finish_reason(
+                        stopped, index, generation_limit
+                    )
+                    tool_calls = None
+                    if stopped and tools:
+                        from .encoding import parse_message_from_completion_text
+
+                        parsed = parse_message_from_completion_text(text, thinking_mode)
+                        tool_calls = parsed.get("tool_calls")
+                    # The first sampled token comes from Prefill logits. Count
+                    # only completed one-token forwards in the Decode pressure
+                    # denominator so short turns do not under-report SSD load.
+                    self._record_ssd_window(max(len(generated) - 1, 0))
+                    yield DeepseekV41Output(
+                        text=text,
+                        new_text=new_text,
+                        prompt_tokens=len(prompt_ids),
+                        completion_tokens=len(generated),
+                        finish_reason=finish_reason,
+                        tool_calls=tool_calls,
+                        token_ids=tuple(generated),
+                        logits_sha256=tuple(logits_hashes),
+                    )
+                    if stopped:
+                        break
+                    if index + 1 < generation_limit:
+                        logits = await loop.run_in_executor(
+                            executor,
+                            self._decode_sync,
+                            token,
+                            len(prompt_ids) + index,
+                            session_id,
+                        )
+            finally:
+                self._active_session_id = None
+
+    def request_engine_boost(self, session_id: str, mode: str) -> dict[str, Any]:
+        return self._boost.request(session_id, mode)
+
+    def get_stats(self) -> dict[str, Any]:
+        boost = self._boost.stats()
+        return {
+            "engine_boost": boost,
+            "flesh": {
+                "engine_boost": boost,
+                "ssd_recent_10_tokens": dict(self._ssd_recent_10_tokens),
+                "ssd_health_thresholds": {
+                    "elevated_above_percent": _SSD_ELEVATED_PRESSURE * 100.0,
+                    "critical_at_percent": _SSD_CRITICAL_PRESSURE * 100.0,
+                    "routed_expert_bytes_per_token": (
+                        self._routed_expert_bytes_per_token
+                    ),
+                },
+                "ssd_recent_by_session": {
+                    session_id: dict(window)
+                    for session_id, window in self._ssd_recent_by_session.items()
+                },
+                "ssd_turn_by_session": {
+                    session_id: dict(window)
+                    for session_id, window in self._ssd_turn_by_session.items()
+                },
+            },
+        }
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs):
         final = None

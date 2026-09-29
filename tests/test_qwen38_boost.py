@@ -6,6 +6,7 @@ import mlx.core as mx
 
 from omlx.patches.glm5_next_cache.boost import replace_missed_routes
 from omlx.patches.qwen38_next_cache.boost import (
+    Qwen4BoostController,
     normalize_qwen4_boost,
     qwen4_boost_policy,
     set_qwen4_boost_mode,
@@ -64,3 +65,49 @@ def test_qwen4_boost_validation():
         assert "top2" not in str(error).split(":", 1)[-1]
     else:
         raise AssertionError("invalid Qwen4 Boost mode was accepted")
+
+
+async def _prepare_qwen4_controller(controller, kwargs):
+    await controller.prepare(kwargs)
+
+
+def test_qwen4_session_controller_applies_requested_product_mode():
+    import asyncio
+
+    blocks = [
+        SimpleNamespace(
+            boost_policy=None,
+            boost_mode="natural",
+            boost_stats={
+                "routes_replaced": 0,
+                "misses_before": 0,
+                "misses_after": 0,
+            },
+        )
+        for _ in range(2)
+    ]
+    owner = SimpleNamespace(
+        _engine=SimpleNamespace(engine=SimpleNamespace(_mlx_executor=None)),
+        _vlm_model=SimpleNamespace(
+            language_model=SimpleNamespace(
+                model=SimpleNamespace(
+                    layers=[SimpleNamespace(mlp=block) for block in blocks]
+                )
+            )
+        ),
+        has_active_requests=lambda: False,
+    )
+    controller = Qwen4BoostController(owner)
+
+    asyncio.run(
+        _prepare_qwen4_controller(
+            controller,
+            {"flesh_session_id": "chat-qwen4", "flesh_boost_mode": "blast"},
+        )
+    )
+
+    assert controller.mode == "blast"
+    assert all(block.boost_policy.protected_top == 3 for block in blocks)
+    stats = controller.stats()
+    assert stats["available"] is True
+    assert stats["protected_top"] == 3

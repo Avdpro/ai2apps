@@ -1015,7 +1015,7 @@
   "chat.not_supported": "Não compatível",
   "chat.voice_speed_unavailable_tooltip": "O modelo TTS selecionado não permite ajustar a velocidade",
   "chat.voice_emotion_unavailable_tooltip": "O modelo TTS selecionado não oferece controle de emoção",
-  "chat.engine_boost_rush_tooltip": "Solte o RUSH antes de alterar o Engine Boost",
+  "chat.engine_boost_rush_tooltip": "Desative o RUSH antes de alterar o Engine Boost",
   "chat.save_profile_disabled_tooltip": "Selecione um perfil e altere o conteúdo antes de salvar",
   "chat.stop_generating_tooltip": "Stop generating",
   "chat.show_settings_tooltip": "Show settings",

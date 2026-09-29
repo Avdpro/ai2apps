@@ -10,6 +10,7 @@ from typing import Any
 
 from .base import GenerationOutput
 from .batched import BatchedEngine
+from .ssd_telemetry import SsdPressureTelemetry
 
 
 class Qwen36TieredEngine(BatchedEngine):
@@ -24,9 +25,41 @@ class Qwen36TieredEngine(BatchedEngine):
         self._qwen_adaptive: Any | None = None
         self._qwen_selector: Any | None = None
         self._qwen_last_selection: Any | None = None
+        self._ssd_routed_bytes_per_token = 0
+        self._ssd_telemetry = SsdPressureTelemetry(self._ssd_storage_totals)
         from ..patches.qwen3_6_flesh.boost import Qwen36BoostController
 
         self._qwen_boost = Qwen36BoostController(self)
+
+    def _ssd_storage_totals(self) -> tuple[int, int, int]:
+        if self._scope_policy is None:
+            return 0, 0, 0
+        from ..patches.qwen3_6_flesh.scope_cache import (
+            get_qwen36_fallback_loader,
+        )
+        from ..patches.qwen3_6_flesh.tiered_cache import get_qwen36_tiered_cache
+
+        path = str(self._scope_policy.store_path)
+        tiered = get_qwen36_tiered_cache(path).stats()
+        fallback = get_qwen36_fallback_loader(path).stats()
+        return (
+            int(tiered.get("ssd_experts_loaded", 0))
+            + int(fallback.get("experts_loaded", 0)),
+            int(tiered.get("bytes_loaded", 0))
+            + int(fallback.get("bytes_loaded", 0)),
+            self._ssd_routed_bytes_per_token,
+        )
+
+    def _between_decode_step(self, output: Any) -> None:
+        self._qwen_adaptive.between_step(output)
+        self._ssd_telemetry.record_scheduler_output(output)
+
+    def _between_prefill_chunk(self, request: Any, **kwargs: Any) -> None:
+        self._qwen_adaptive.between_prefill_chunk(request, **kwargs)
+        if int(kwargs.get("remaining_tokens", -1)) == 0:
+            session_id = self._qwen_boost.session_id
+            if session_id is not None:
+                self._ssd_telemetry.reset(session_id)
 
     async def start(self) -> None:
         await super().start()
@@ -47,6 +80,20 @@ class Qwen36TieredEngine(BatchedEngine):
 
         self._qwen_adaptive = Qwen36AdaptiveController(self, policy)
         self._qwen_adaptive.start()
+        from ..patches.qwen3_6_flesh.scope_cache import (
+            get_qwen36_fallback_loader,
+        )
+
+        loader = get_qwen36_fallback_loader(str(policy.store_path))
+        self._ssd_routed_bytes_per_token = sum(
+            int(loader.expert_record_bytes(int(decoder.mlp.scope_layer)))
+            * int(decoder.mlp.top_k)
+            for decoder in self._model.language_model.model.layers
+            if getattr(decoder.mlp, "scope_policy", None) is not None
+        )
+        core = self._engine.engine
+        core._between_decode_step_callback = self._between_decode_step
+        core.scheduler._prefill_chunk_callback = self._between_prefill_chunk
         from ..patches.qwen3_6_flesh.scope_runtime import Qwen36ScopeSelector
 
         self._qwen_selector = Qwen36ScopeSelector(
@@ -99,6 +146,7 @@ class Qwen36TieredEngine(BatchedEngine):
         session_id, boost = await self._qwen_boost.prepare(
             kwargs, context_tokens=len(token_ids)
         )
+        self._ssd_telemetry.reset(session_id)
         adaptive_keys = await self._qwen_adaptive.prepare(
             kwargs, scope_name=scope
         )
@@ -141,11 +189,11 @@ class Qwen36TieredEngine(BatchedEngine):
     def get_stats(self) -> dict[str, Any]:
         stats = super().get_stats()
         if self._scope_policy is not None:
-            from ..patches.qwen3_6_flesh.tiered_cache import (
-                get_qwen36_tiered_cache,
-            )
             from ..patches.qwen3_6_flesh.scope_cache import (
                 get_qwen36_fallback_loader,
+            )
+            from ..patches.qwen3_6_flesh.tiered_cache import (
+                get_qwen36_tiered_cache,
             )
 
             policy = self._scope_policy
@@ -179,8 +227,12 @@ class Qwen36TieredEngine(BatchedEngine):
                 ).stats(),
                 "adaptive_l1": self._qwen_adaptive.stats(),
                 "engine_boost": self._qwen_boost.stats(),
+                **self._ssd_telemetry.stats(),
             }
         return stats
+
+    def get_live_metrics(self, session_id: str | None = None) -> dict[str, Any]:
+        return self._ssd_telemetry.live(session_id)
 
     def request_l1_optimization(self, session_id: str) -> dict[str, Any]:
         if self._qwen_adaptive is None:

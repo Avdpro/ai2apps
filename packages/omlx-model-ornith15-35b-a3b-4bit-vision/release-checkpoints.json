@@ -1,8 +1,8 @@
 {
   "schema": "ai2apps.model-release-checkpoints/v1",
   "package_id": "ai2apps/model-ornith15-35b-a3b-4bit-vision",
-  "package_version": "0.1.4",
-  "runtime_dependency": ">=1.7.5 <2.0.0",
+  "package_version": "0.1.5",
+  "runtime_dependency": ">=1.8.1 <2.0.0",
   "models": [
     {
       "model_id": "ai2apps.model.ornith15-35b-a3b-4bit-vision/ornith-1.5-35b-a3b-mlx-4bit-vision",

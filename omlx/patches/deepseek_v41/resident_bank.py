@@ -140,6 +140,18 @@ class MetalBank:
     def track(self, value):
         self.pending.append(value)
 
+    def release_completed_uses(self):
+        """Drop output references after the caller materializes the forward.
+
+        ``pending`` protects expert outputs from an in-place slot reload while
+        their lazy graph can still read the resident bank.  Once the final
+        logits and persistent model state have been evaluated, those reads are
+        complete and retaining the outputs until a future cache miss only pins
+        one MLX graph per layer and Decode token.
+        """
+
+        self.pending.clear()
+
     def close(self):
         if self.pending:
             mx.eval(*self.pending)
