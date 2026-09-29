@@ -1,5 +1,16 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-RELEASE-012-2255-20260929：Desktop 0.1.2 Build 2255
+
+- 状态：`preparing`。生产匿名基线为 0.1.1 / Build 2254；用户已批准提升产品版本至
+  0.1.2，重建 Dev、App-Dev、Test 和正式 Release，并完成签名、公证、GitHub/ModelScope
+  双源及 Cloud 100% 发布。Build 分配为 2255，rollout ID 固定为 `build2255-test`。
+- 相对 2254 的产品代码增量仅为 Video Composer 无原生文件路径时的安全文件流导入修复，
+  以及产品版本提升；不重发独立 Runtime 或模型 Package。范围与门禁见
+  `docs/ai2apps-desktop-0.1.2-build2255-release-preparation-2026-09-29.md`。
+- 个人参考音频 `ai2apps-test-system/assets/voice-1.wav` 明确排除。正式发布仍须 clean main、
+  全量测试、四个 App 构建、Developer ID、公证、双源和 Cloud 两阶段验收。
+
 ### NXR-RELEASE-011-2254-20260929：Desktop 0.1.1 Build 2254
 
 - 状态：`released_pending_target_mac`。正式 main
