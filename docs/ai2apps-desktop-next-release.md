@@ -1,5 +1,29 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-AVTR1-MLX-20261001：授权权重与完整推理移植
+
+- 状态：`in_progress`。用户已同意 AVTR-1 协议，固定 revision `4c9bd5550f2617d0409ac602f75378502f675731` 的 TorchScript 已成功下载。开始原生 MLX 编码器、运动模型和渲染链验证，使用开发缓存，未更改生产 Runtime 或发布 Package。
+- 原有三维采样算子保留，后续真实权重数值与成片验收待记录。
+
+
+### NXR-RELEASE-013-2256-20261001：Desktop 0.1.2 Build 2256
+
+- 状态：`candidate_testing`。生产匿名基线仍为 0.1.1 / Build 2254；此前 0.1.2 / Build 2255
+  只完成 App/DMG、公证和 GitHub/ModelScope 双源，未经过 Cloud stable 发布，因此不会被
+  客户端发现，现由 2256 取代，不再激活 2255。
+- 2256 纳入已经完成的数字人 Host/ACPF/素材槽位、照片说话持久任务与共享输出、FlashHead
+  已发布源码记录、Video Composer 特殊层/轨道/羽化/相邻片段空帧修复、字幕提取后校对与
+  渲染，以及 multipart 复杂字段编码修复。产品版本保持 0.1.2，rollout ID 固定为
+  `build2256-test`。
+- 明确延期并排除 AVTR-1、MuseTalk、InfiniteTalk、Ex-Omni 的实验移植、对应 parity 测试与
+  权重准备脚本；个人参考音频 `ai2apps-test-system/assets/voice-1.wav` 继续排除。Avatar Studio
+  Suite 仍须作为独立签名 App Package 发布，不作为 Desktop DMG 内置 Package 冒充已发布。
+- 首轮候选门禁：Python 定向 187 项、ACPF 本地化 3 项、Node 专项 5 项、全部 18 个 Node
+  文件、Swift 77 项 Swift Testing + 2 项 XCTest、JavaScript 语法、限定 Ruff 和 diff check
+  通过。完整 Python 首轮发现 Avatar ACPF 新 Profile 缺少 9 组中英文映射；已在
+  `fff39864` 修复并专项复验，正式候选须在最终源码提交上重新跑完整 Python。
+- 发布准备记录：`docs/ai2apps-desktop-0.1.2-build2256-release-preparation-2026-10-01.md`。
+
 ### NXR-VIDEO-DURATION-HALF-SECOND-GRID-20261001：视频时长滑块对齐半秒档位
 
 - 状态：`implemented`，待下一版 Desktop 纳入。Video Studio 现在先将模型声明的时长上下限收紧到 0.5 秒网格，再以相同步长量化恢复或切换模型后的时长。修复 OpenVDN 因 `minimum_seconds: 0.92` 导致浏览器产生 `0.92/1.42/1.92/2.42...` 档位，界面只能显示 1.9/2.4 而无法选择 2.0 秒的问题。
@@ -42,9 +66,11 @@
 
 ### NXR-RELEASE-012-2255-20260929：Desktop 0.1.2 Build 2255
 
-- 状态：`source_ready`。生产匿名基线为 0.1.1 / Build 2254；用户已批准提升产品版本至
+- 状态：`superseded_unpublished`。生产匿名基线为 0.1.1 / Build 2254；用户已批准提升产品版本至
   0.1.2，重建 Dev、App-Dev、Test 和正式 Release，并完成签名、公证、GitHub/ModelScope
-  双源及 Cloud 100% 发布。Build 分配为 2255，rollout ID 固定为 `build2255-test`。
+  双源及 Cloud 100% 发布。Build 分配为 2255，rollout ID 固定为 `build2255-test`。实际仅
+  完成公证与双源上传，Cloud 因需在生产任务中逐 Build 直接授权而未发布；生产始终保持
+  2254。2026-10-01 已决定由包含后续修复的 Build 2256 取代，2255 不再进入 stable。
 - 相对 2254 的产品代码增量仅为 Video Composer 无原生文件路径时的安全文件流导入修复，
   以及产品版本提升；不重发独立 Runtime 或模型 Package。范围与门禁见
   `docs/ai2apps-desktop-0.1.2-build2255-release-preparation-2026-09-29.md`。
