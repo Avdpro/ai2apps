@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import uuid
+from collections.abc import Callable
 from fractions import Fraction
 from io import BufferedIOBase
 from pathlib import Path
@@ -48,7 +49,7 @@ class ComposerTrack(BaseModel):
 
 
 class ComposerKeyframe(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     id: str = Field(min_length=1, max_length=80)
     frame: int = Field(ge=0, le=216_000)
@@ -60,6 +61,18 @@ class ComposerKeyframe(BaseModel):
     height: int | None = Field(default=None, ge=16, le=16384)
     opacity: float | None = Field(default=None, ge=0, le=1)
     scale: float | None = Field(default=None, ge=0.05, le=20)
+    crop_left: float | None = Field(default=None, alias="cropLeft", ge=0, le=95)
+    crop_top: float | None = Field(default=None, alias="cropTop", ge=0, le=95)
+    crop_right: float | None = Field(default=None, alias="cropRight", ge=0, le=95)
+    crop_bottom: float | None = Field(default=None, alias="cropBottom", ge=0, le=95)
+    crop_shape: Literal["rectangle", "ellipse", "rounded"] | None = Field(
+        default=None, alias="cropShape"
+    )
+    crop_corner_radius: int | None = Field(
+        default=None, alias="cropCornerRadius", ge=0, le=4096
+    )
+    crop_feather: int | None = Field(default=None, alias="cropFeather", ge=0, le=512)
+    crop_scale: float | None = Field(default=None, alias="cropScale", ge=0.01, le=20)
 
 
 class ComposerClip(BaseModel):
@@ -90,6 +103,26 @@ class ComposerClip(BaseModel):
     text: str = Field(default="Text", max_length=4000)
     font_size: int = Field(default=64, alias="fontSize", ge=8, le=512)
     text_color: str = Field(default="#ffffff", alias="textColor", pattern=r"^#[0-9a-fA-F]{6}$")
+    text_bold: bool = Field(default=False, alias="textBold")
+    text_italic: bool = Field(default=False, alias="textItalic")
+    text_underline: bool = Field(default=False, alias="textUnderline")
+    text_strikethrough: bool = Field(default=False, alias="textStrikethrough")
+    text_stroke_enabled: bool = Field(default=False, alias="textStrokeEnabled")
+    text_stroke_width: int = Field(default=2, alias="textStrokeWidth", ge=0, le=128)
+    text_stroke_color: str = Field(
+        default="#000000", alias="textStrokeColor", pattern=r"^#[0-9a-fA-F]{6}$"
+    )
+    text_stroke_style: Literal["solid", "feather"] = Field(
+        default="solid", alias="textStrokeStyle"
+    )
+    text_shadow_enabled: bool = Field(default=False, alias="textShadowEnabled")
+    text_shadow_color: str = Field(
+        default="#000000", alias="textShadowColor", pattern=r"^#[0-9a-fA-F]{6}$"
+    )
+    text_shadow_opacity: float = Field(default=0.5, alias="textShadowOpacity", ge=0, le=1)
+    text_shadow_blur: int = Field(default=12, alias="textShadowBlur", ge=0, le=512)
+    text_shadow_offset_x: int = Field(default=8, alias="textShadowOffsetX", ge=-4096, le=4096)
+    text_shadow_offset_y: int = Field(default=8, alias="textShadowOffsetY", ge=-4096, le=4096)
     text_anchor: Literal[
         "top-left", "top", "top-right", "left", "center", "right",
         "bottom-left", "bottom", "bottom-right",
@@ -98,6 +131,17 @@ class ComposerClip(BaseModel):
     reveal_speed: float = Field(default=12, alias="revealSpeed", ge=0.1, le=200)
     audio_enabled: bool = Field(default=True, alias="audioEnabled")
     mask_source_id: str | None = Field(default=None, alias="maskSourceId", max_length=100)
+    crop_left: float = Field(default=0, alias="cropLeft", ge=0, le=95)
+    crop_top: float = Field(default=0, alias="cropTop", ge=0, le=95)
+    crop_right: float = Field(default=0, alias="cropRight", ge=0, le=95)
+    crop_bottom: float = Field(default=0, alias="cropBottom", ge=0, le=95)
+    crop_shape: Literal["rectangle", "ellipse", "rounded"] = Field(
+        default="rectangle", alias="cropShape"
+    )
+    crop_corner_radius: int = Field(default=32, alias="cropCornerRadius", ge=0, le=4096)
+    crop_feather: int = Field(default=0, alias="cropFeather", ge=0, le=512)
+    crop_scale: float = Field(default=1, alias="cropScale", ge=0.01, le=20)
+    crop_viewport_version: int = Field(default=2, alias="cropViewportVersion", ge=1, le=2)
     group_id: str | None = Field(default=None, alias="groupId", max_length=80)
     color: str = Field(default="#3b82f6", pattern=r"^#[0-9a-fA-F]{6}$")
     keyframes: list[ComposerKeyframe] = Field(default_factory=list, max_length=200)
@@ -108,6 +152,10 @@ class ComposerClip(BaseModel):
             raise ValueError("media clips require a source")
         if self.layer_type != "media" and self.mask_source_id:
             raise ValueError("special layers cannot use an image mask")
+        if self.crop_left + self.crop_right >= 100:
+            raise ValueError("horizontal crop must leave part of the source visible")
+        if self.crop_top + self.crop_bottom >= 100:
+            raise ValueError("vertical crop must leave part of the source visible")
         if self.fade_in + self.fade_out > self.duration:
             raise ValueError("clip fades cannot exceed its timeline duration")
         return self
@@ -146,7 +194,12 @@ class ComposerProject(BaseModel):
                         transition="hold", x=clip.x, y=clip.y,
                         width=clip.width or self.settings.width,
                         height=clip.height or self.settings.height, opacity=clip.opacity,
-                        scale=clip.scale,
+                        scale=clip.scale, crop_left=clip.crop_left, crop_top=clip.crop_top,
+                        crop_right=clip.crop_right, crop_bottom=clip.crop_bottom,
+                        crop_shape=clip.crop_shape,
+                        crop_corner_radius=clip.crop_corner_radius,
+                        crop_feather=clip.crop_feather,
+                        crop_scale=clip.crop_scale,
                     )
                     clip.keyframes.append(start)
                 start.frame = 0
@@ -157,12 +210,9 @@ class ComposerProject(BaseModel):
                 if end is None:
                     end = next((item for item in clip.keyframes if item.frame == end_frame and item is not start), None)
                 if end is None:
-                    source = max(clip.keyframes, key=lambda item: item.frame, default=start)
                     end = ComposerKeyframe(
                         id=f"end-{clip.id}"[:80], frame=end_frame, endpoint="end",
-                        transition="linear", x=source.x, y=source.y,
-                        width=source.width, height=source.height, opacity=source.opacity,
-                        scale=source.scale,
+                        transition="linear",
                     )
                     clip.keyframes.append(end)
                 end.frame = end_frame
@@ -173,6 +223,12 @@ class ComposerProject(BaseModel):
             if any(frame >= duration_frames for frame in frames):
                 raise ValueError("clip keyframes must be inside the clip duration")
             clip.keyframes.sort(key=lambda keyframe: (keyframe.frame, keyframe.id))
+            for keyframe in clip.keyframes:
+                state = _clip_visual_state(clip, keyframe.frame)
+                if float(state["crop_left"]) + float(state["crop_right"]) >= 100:
+                    raise ValueError("horizontal keyframe crop must leave source content visible")
+                if float(state["crop_top"]) + float(state["crop_bottom"]) >= 100:
+                    raise ValueError("vertical keyframe crop must leave source content visible")
         track_ids = {track.id for track in self.tracks}
         if len(track_ids) != len(self.tracks):
             raise ValueError("track IDs must be unique")
@@ -212,7 +268,7 @@ class ComposerProject(BaseModel):
         return max((clip.start + clip.duration for clip in self.clips), default=0)
 
 
-def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float]:
+def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float | str]:
     state = {
         "x": float(clip.x),
         "y": float(clip.y),
@@ -220,18 +276,29 @@ def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float]
         "height": float(clip.height or 0),
         "opacity": float(clip.opacity),
         "scale": float(clip.scale),
+        "crop_left": float(clip.crop_left),
+        "crop_top": float(clip.crop_top),
+        "crop_right": float(clip.crop_right),
+        "crop_bottom": float(clip.crop_bottom),
+        "crop_shape": clip.crop_shape,
+        "crop_corner_radius": float(clip.crop_corner_radius),
+        "crop_feather": float(clip.crop_feather),
+        "crop_scale": float(clip.crop_scale),
     }
+    numeric_fields = (
+        "x", "y", "width", "height", "opacity", "scale", "crop_left", "crop_top",
+        "crop_right", "crop_bottom", "crop_corner_radius", "crop_feather", "crop_scale",
+    )
     previous_frame = 0
     previous = state
     for keyframe in clip.keyframes:
-        target = {
-            "x": previous["x"] if keyframe.x is None else float(keyframe.x),
-            "y": previous["y"] if keyframe.y is None else float(keyframe.y),
-            "width": previous["width"] if keyframe.width is None else float(keyframe.width),
-            "height": previous["height"] if keyframe.height is None else float(keyframe.height),
-            "opacity": previous["opacity"] if keyframe.opacity is None else float(keyframe.opacity),
-            "scale": previous["scale"] if keyframe.scale is None else float(keyframe.scale),
-        }
+        target = dict(previous)
+        for name in numeric_fields:
+            value = getattr(keyframe, name)
+            if value is not None:
+                target[name] = float(value)
+        if keyframe.crop_shape is not None:
+            target["crop_shape"] = keyframe.crop_shape
         if local_frame >= keyframe.frame:
             previous_frame, previous = keyframe.frame, target
             continue
@@ -241,7 +308,12 @@ def _clip_visual_state(clip: ComposerClip, local_frame: int) -> dict[str, float]
         progress = max(0.0, min(1.0, progress))
         if keyframe.transition == "ease":
             progress = progress * progress * (3 - 2 * progress)
-        return {name: previous[name] + (target[name] - previous[name]) * progress for name in previous}
+        result = dict(previous)
+        for name in numeric_fields:
+            result[name] = float(previous[name]) + (
+                float(target[name]) - float(previous[name])
+            ) * progress
+        return result
     return previous
 
 
@@ -250,18 +322,133 @@ def _fit_image_to_visual_box(image: Image.Image, width: float, height: float) ->
 
     box_width = max(1, round(width))
     box_height = max(1, round(height))
-    ratio = min(box_width / image.width, box_height / image.height)
+    fitted_box = _fitted_content_box(image.size, (box_width, box_height))
     fitted = image.resize(
-        (max(1, round(image.width * ratio)), max(1, round(image.height * ratio))),
+        (fitted_box[2] - fitted_box[0], fitted_box[3] - fitted_box[1]),
         Image.Resampling.BILINEAR,
     )
     layer = Image.new("RGBA", (box_width, box_height), (0, 0, 0, 0))
-    layer.alpha_composite(
-        fitted,
-        ((box_width - fitted.width) // 2, (box_height - fitted.height) // 2),
-    )
+    layer.alpha_composite(fitted, fitted_box[:2])
     fitted.close()
     return layer
+
+
+def _fitted_content_box(
+    source_size: tuple[int, int], target_size: tuple[int, int]
+) -> tuple[int, int, int, int]:
+    source_width, source_height = source_size
+    target_width, target_height = target_size
+    ratio = min(target_width / source_width, target_height / source_height)
+    width = max(1, round(source_width * ratio))
+    height = max(1, round(source_height * ratio))
+    left = (target_width - width) // 2
+    top = (target_height - height) // 2
+    return left, top, left + width, top + height
+
+
+def _crop_image_to_visible_region(
+    image: Image.Image,
+    clip: ComposerClip,
+    state: dict[str, float | str] | None = None,
+) -> Image.Image:
+    state = state or _clip_visual_state(clip, 0)
+    crop_left = float(state["crop_left"])
+    crop_top = float(state["crop_top"])
+    crop_right = float(state["crop_right"])
+    crop_bottom = float(state["crop_bottom"])
+    left = min(image.width - 1, round(image.width * crop_left / 100))
+    top = min(image.height - 1, round(image.height * crop_top / 100))
+    right = max(left + 1, round(image.width * (1 - crop_right / 100)))
+    bottom = max(top + 1, round(image.height * (1 - crop_bottom / 100)))
+    return image.crop((left, top, min(image.width, right), min(image.height, bottom)))
+
+
+def _place_cropped_image_in_visual_box(
+    cropped: Image.Image,
+    width: float,
+    height: float,
+    crop_scale: float,
+) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """Place a cropped source at the viewport origin without stretching it.
+
+    ``crop_scale`` is an absolute source-pixel to canvas-pixel ratio.  The
+    viewport may grow beyond the scaled source; those pixels intentionally
+    remain transparent so lower tracks can show through.
+    """
+
+    box_width = max(1, round(width))
+    box_height = max(1, round(height))
+    scale = max(0.01, min(20.0, float(crop_scale)))
+    scaled_width = max(1, round(cropped.width * scale))
+    scaled_height = max(1, round(cropped.height * scale))
+    resized = cropped.resize((scaled_width, scaled_height), Image.Resampling.BILINEAR)
+    layer = Image.new("RGBA", (box_width, box_height), (0, 0, 0, 0))
+    visible_width = min(box_width, scaled_width)
+    visible_height = min(box_height, scaled_height)
+    if visible_width and visible_height:
+        visible = resized.crop((0, 0, visible_width, visible_height))
+        layer.alpha_composite(visible, (0, 0))
+        visible.close()
+    resized.close()
+    return layer, (0, 0, visible_width, visible_height)
+
+
+def _crop_shape_mask(
+    clip: ComposerClip,
+    size: tuple[int, int],
+    content_box: tuple[int, int, int, int] | None = None,
+    state: dict[str, float | str] | None = None,
+) -> Image.Image:
+    state = state or _clip_visual_state(clip, 0)
+    width, height = size
+    hard = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(hard)
+    if content_box is None:
+        box = (0, 0, max(0, width - 1), max(0, height - 1))
+    else:
+        box = (
+            content_box[0], content_box[1],
+            max(content_box[0], content_box[2] - 1),
+            max(content_box[1], content_box[3] - 1),
+        )
+    crop_shape = str(state["crop_shape"])
+    corner_radius = round(float(state["crop_corner_radius"]))
+    if crop_shape == "ellipse":
+        draw.ellipse(box, fill=255)
+    elif crop_shape == "rounded":
+        draw.rounded_rectangle(box, radius=corner_radius, fill=255)
+    else:
+        draw.rectangle(box, fill=255)
+    content_width = box[2] - box[0] + 1
+    content_height = box[3] - box[1] + 1
+    feather = min(
+        round(float(state["crop_feather"])),
+        max(0, (min(content_width, content_height) - 1) // 2),
+    )
+    if not feather:
+        return hard
+    inner = Image.new("L", size, 0)
+    inner_draw = ImageDraw.Draw(inner)
+    inner_box = (
+        box[0] + feather,
+        box[1] + feather,
+        max(box[0] + feather, box[2] - feather),
+        max(box[1] + feather, box[3] - feather),
+    )
+    if crop_shape == "ellipse":
+        inner_draw.ellipse(inner_box, fill=255)
+    elif crop_shape == "rounded":
+        inner_draw.rounded_rectangle(
+            inner_box, radius=max(0, corner_radius - feather), fill=255
+        )
+    else:
+        inner_draw.rectangle(inner_box, fill=255)
+    softened = inner.filter(ImageFilter.GaussianBlur(max(0.5, feather / 2)))
+    inner.close()
+    result = ImageChops.multiply(hard, softened)
+    hard.close()
+    softened.close()
+    return result
 
 
 def _composer_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -295,8 +482,31 @@ def _apply_spotlight(canvas: Image.Image, clip: ComposerClip, state: dict[str, f
         draw.ellipse(box, fill=255)
     else:
         draw.rounded_rectangle(box, radius=clip.corner_radius, fill=255)
-    if clip.feather:
-        hole = hole.filter(ImageFilter.GaussianBlur(clip.feather))
+    feather = min(
+        clip.feather,
+        max(0, (min(box[2] - box[0], box[3] - box[1]) - 1) // 2),
+    )
+    if feather:
+        inner = Image.new("L", canvas.size, 0)
+        inner_draw = ImageDraw.Draw(inner)
+        inner_box = (
+            box[0] + feather,
+            box[1] + feather,
+            max(box[0] + feather, box[2] - feather),
+            max(box[1] + feather, box[3] - feather),
+        )
+        if clip.spotlight_shape == "ellipse":
+            inner_draw.ellipse(inner_box, fill=255)
+        else:
+            inner_draw.rounded_rectangle(
+                inner_box, radius=max(0, clip.corner_radius - feather), fill=255
+            )
+        softened = inner.filter(ImageFilter.GaussianBlur(max(0.5, feather / 2)))
+        inner.close()
+        inward = ImageChops.multiply(hole, softened)
+        hole.close()
+        softened.close()
+        hole = inward
     darkness = ImageOps.invert(hole).point(
         lambda value: round(value * clip.dim_opacity * state["opacity"])
     )
@@ -319,14 +529,108 @@ def _apply_text_layer(
     if not text:
         return
     font = _composer_font(clip.font_size)
+    spacing = max(2, clip.font_size // 5)
     probe = ImageDraw.Draw(Image.new("L", (1, 1)))
-    bounds = probe.multiline_textbbox((0, 0), text, font=font, spacing=max(2, clip.font_size // 5))
-    width, height = max(1, bounds[2] - bounds[0]), max(1, bounds[3] - bounds[1])
-    layer = Image.new("RGBA", (width + 8, height + 8), (0, 0, 0, 0))
-    ImageDraw.Draw(layer).multiline_text(
-        (4 - bounds[0], 4 - bounds[1]), text, font=font, fill=clip.text_color,
-        spacing=max(2, clip.font_size // 5),
+    bold_width = max(1, round(clip.font_size / 28)) if clip.text_bold else 0
+    bounds = probe.multiline_textbbox(
+        (0, 0), text, font=font, spacing=spacing, stroke_width=bold_width
     )
+    width, height = max(1, bounds[2] - bounds[0]), max(1, bounds[3] - bounds[1])
+    stroke_width = clip.text_stroke_width if clip.text_stroke_enabled else 0
+    stroke_blur = max(1.0, stroke_width * 0.5) if clip.text_stroke_style == "feather" else 0
+    shadow_blur = clip.text_shadow_blur if clip.text_shadow_enabled else 0
+    effect_extent = max(
+        stroke_width + round(stroke_blur * 3),
+        abs(clip.text_shadow_offset_x) + round(shadow_blur * 3),
+        abs(clip.text_shadow_offset_y) + round(shadow_blur * 3),
+    )
+    padding = 4 + effect_extent
+    size = (width + padding * 2, height + padding * 2)
+    origin = (padding - bounds[0], padding - bounds[1])
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    fill_mask = Image.new("L", size, 0)
+    ImageDraw.Draw(fill_mask).multiline_text(
+        origin, text, font=font, fill=255, spacing=spacing,
+        stroke_width=bold_width, stroke_fill=255,
+    )
+
+    if clip.text_shadow_enabled and clip.text_shadow_opacity > 0:
+        shadow_mask = Image.new("L", size, 0)
+        shadow_origin = (
+            origin[0] + clip.text_shadow_offset_x,
+            origin[1] + clip.text_shadow_offset_y,
+        )
+        ImageDraw.Draw(shadow_mask).multiline_text(
+            shadow_origin, text, font=font, fill=255, spacing=spacing,
+            stroke_width=bold_width, stroke_fill=255,
+        )
+        if shadow_blur:
+            shadow_mask = shadow_mask.filter(ImageFilter.GaussianBlur(shadow_blur))
+        shadow_mask = shadow_mask.point(
+            lambda value: round(value * clip.text_shadow_opacity)
+        )
+        shadow_rgb = tuple(int(clip.text_shadow_color[index:index + 2], 16) for index in (1, 3, 5))
+        shadow_layer = Image.new("RGBA", size, (*shadow_rgb, 0))
+        shadow_layer.putalpha(shadow_mask)
+        layer.alpha_composite(shadow_layer)
+        shadow_layer.close()
+        shadow_mask.close()
+
+    if stroke_width:
+        stroke_mask = Image.new("L", size, 0)
+        ImageDraw.Draw(stroke_mask).multiline_text(
+            origin, text, font=font, fill=255, spacing=spacing,
+            stroke_width=stroke_width + bold_width, stroke_fill=255,
+        )
+        outside_mask = ImageChops.subtract(stroke_mask, fill_mask)
+        stroke_mask.close()
+        if clip.text_stroke_style == "feather":
+            softened_mask = outside_mask.filter(ImageFilter.GaussianBlur(stroke_blur))
+            outside_mask.close()
+            outside_mask = softened_mask
+        stroke_rgb = tuple(
+            int(clip.text_stroke_color[index:index + 2], 16) for index in (1, 3, 5)
+        )
+        stroke_layer = Image.new("RGBA", size, (*stroke_rgb, 0))
+        stroke_layer.putalpha(outside_mask)
+        layer.alpha_composite(stroke_layer)
+        stroke_layer.close()
+        outside_mask.close()
+
+    # Paint the glyph fill last so neither solid nor feathered outlines can
+    # cover the text itself. The configured stroke width is entirely external.
+    draw = ImageDraw.Draw(layer)
+    draw.multiline_text(
+        origin, text, font=font, fill=clip.text_color, spacing=spacing,
+        stroke_width=bold_width, stroke_fill=clip.text_color,
+    )
+    decoration_width = max(1, round(clip.font_size / 16))
+    decoration_left = padding
+    decoration_right = padding + width
+    if clip.text_underline:
+        underline_y = padding + height - max(1, round(clip.font_size / 14))
+        draw.line(
+            (decoration_left, underline_y, decoration_right, underline_y),
+            fill=clip.text_color, width=decoration_width,
+        )
+    if clip.text_strikethrough:
+        strike_y = padding + round(height * 0.52)
+        draw.line(
+            (decoration_left, strike_y, decoration_right, strike_y),
+            fill=clip.text_color, width=decoration_width,
+        )
+    fill_mask.close()
+    if clip.text_italic:
+        shear = 0.22
+        extra_width = max(1, round(layer.height * shear))
+        italic_layer = layer.transform(
+            (layer.width + extra_width, layer.height),
+            Image.Transform.AFFINE,
+            (1, shear, -shear * layer.height, 0, 1, 0),
+            resample=Image.Resampling.BICUBIC,
+        )
+        layer.close()
+        layer = italic_layer
     scale = state["scale"]
     if abs(scale - 1) > 1e-6:
         layer = layer.resize(
@@ -506,9 +810,10 @@ async def render_composition(
     project: ComposerProject,
     sources: dict[str, tuple[dict[str, Any], Path]],
     destination: Path,
+    progress: Callable[[float, float], None] | None = None,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    await asyncio.to_thread(_render_with_pyav, project, sources, destination)
+    await asyncio.to_thread(_render_with_pyav, project, sources, destination, progress)
 
 
 class _VideoReader:
@@ -615,6 +920,7 @@ def _render_with_pyav(
     project: ComposerProject,
     sources: dict[str, tuple[dict[str, Any], Path]],
     destination: Path,
+    progress: Callable[[float, float], None] | None = None,
 ) -> None:
     if project.duration <= 0:
         raise ComposerError("empty_composition", "Add at least one clip before exporting")
@@ -660,28 +966,49 @@ def _render_with_pyav(
             video.width, video.height, video.pix_fmt = settings.width, settings.height, "yuv420p"
             audio = container.add_stream("aac", rate=48_000)
             audio.layout = "stereo"
-            frame_count = max(1, round(project.duration * settings.fps))
+            clip_frame_ranges = {
+                clip.id: (
+                    round(clip.start * settings.fps),
+                    max(1, round(clip.duration * settings.fps)),
+                )
+                for clip in visual_clips
+            }
+            frame_count = max(
+                1,
+                max(
+                    (
+                        round(clip.start * settings.fps)
+                        + max(1, round(clip.duration * settings.fps))
+                        for clip in project.clips
+                    ),
+                    default=0,
+                ),
+            )
+            progress_interval = max(1, settings.fps)
+            if progress is not None:
+                progress(0, project.duration)
             background = tuple(int(settings.background[index : index + 2], 16) for index in (1, 3, 5))
             for frame_index in range(frame_count):
-                timeline_time = frame_index / settings.fps
                 canvas = Image.new("RGBA", (settings.width, settings.height), (*background, 255))
                 for clip in visual_clips:
-                    if not clip.start <= timeline_time < clip.start + clip.duration:
+                    clip_start_frame, clip_duration_frames = clip_frame_ranges[clip.id]
+                    if not clip_start_frame <= frame_index < clip_start_frame + clip_duration_frames:
                         continue
-                    local_frame = max(0, frame_index - round(clip.start * settings.fps))
+                    local_frame = frame_index - clip_start_frame
+                    local_time = local_frame / settings.fps
                     visual_state = _clip_visual_state(clip, local_frame)
                     if clip.layer_type == "spotlight":
                         _apply_spotlight(canvas, clip, visual_state)
                         continue
                     if clip.layer_type == "text":
-                        _apply_text_layer(canvas, clip, visual_state, timeline_time - clip.start)
+                        _apply_text_layer(canvas, clip, visual_state, local_time)
                         continue
                     if not clip.source_id:
                         continue
                     if sources[clip.source_id][0].get("hasImage"):
                         image = still_images[clip.source_id].copy()
                     else:
-                        source_time = clip.source_start + (timeline_time - clip.start) * clip.speed
+                        source_time = clip.source_start + local_time * clip.speed
                         frame = readers[clip.id].at(source_time)
                         if frame is None:
                             continue
@@ -689,9 +1016,23 @@ def _render_with_pyav(
                     box_width = visual_state["width"] or image.width
                     box_height = visual_state["height"] or image.height
                     source_image = image
-                    image = _fit_image_to_visual_box(source_image, box_width, box_height)
+                    cropped_image = _crop_image_to_visible_region(
+                        source_image, clip, visual_state
+                    )
+                    image, fitted_box = _place_cropped_image_in_visual_box(
+                        cropped_image,
+                        box_width,
+                        box_height,
+                        float(visual_state["crop_scale"]),
+                    )
+                    cropped_image.close()
                     source_image.close()
                     layer_alpha = image.getchannel("A")
+                    crop_alpha = _crop_shape_mask(
+                        clip, image.size, fitted_box, visual_state
+                    )
+                    layer_alpha = ImageChops.multiply(layer_alpha, crop_alpha)
+                    crop_alpha.close()
                     if clip.mask_source_id:
                         mask_alpha = mask_images[clip.mask_source_id].resize(
                             image.size, Image.Resampling.BILINEAR
@@ -713,6 +1054,15 @@ def _render_with_pyav(
                 output.time_base = Fraction(1, settings.fps)
                 for packet in video.encode(output):
                     container.mux(packet)
+                completed_frames = frame_index + 1
+                if progress is not None and (
+                    completed_frames == frame_count
+                    or completed_frames % progress_interval == 0
+                ):
+                    progress(
+                        min(project.duration, completed_frames / settings.fps),
+                        project.duration,
+                    )
             for packet in video.encode():
                 container.mux(packet)
             for offset in range(0, audio_samples.shape[1], 1024):

@@ -1,0 +1,16 @@
+{
+  "lite": {
+    "huggingface": "2f96aeeeb08795d2a21c4837f5df4e810cc39da2",
+    "modelscope": "32f984e38940b07df0ed603de7376941799c1133",
+    "totalBytes": 8161967215,
+    "distributionId": "dist_ai2apps_flashhead_lite_mlx_2f96aeee_v1",
+    "status": "uploaded-not-registry-published"
+  },
+  "pro": {
+    "huggingface": "f1909ebd943017292d82249de0c1221f26a08a6b",
+    "modelscope": "a207948724e6b4af00a86752572b90c246b11e39",
+    "totalBytes": 6916081660,
+    "distributionId": "dist_ai2apps_flashhead_pro_mlx_f1909ebd_v1",
+    "status": "uploaded-not-registry-published"
+  }
+}

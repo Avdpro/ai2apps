@@ -1,5 +1,45 @@
 # AI2Apps Desktop 下一版 Release 台账
 
+### NXR-VIDEO-DURATION-HALF-SECOND-GRID-20261001：视频时长滑块对齐半秒档位
+
+- 状态：`implemented`，待下一版 Desktop 纳入。Video Studio 现在先将模型声明的时长上下限收紧到 0.5 秒网格，再以相同步长量化恢复或切换模型后的时长。修复 OpenVDN 因 `minimum_seconds: 0.92` 导致浏览器产生 `0.92/1.42/1.92/2.42...` 档位，界面只能显示 1.9/2.4 而无法选择 2.0 秒的问题。
+- 变更仅涉及 Host 静态 UI 与回归断言；不需要更新 MiniMax H3 Package 或 Runtime。
+
+### NXR-AVATAR-SLOTS-20261001：数字人模型菜单与素材槽位
+
+- 状态：`completed`（开发实现）。模型下拉菜单增加“安装模型…”并启动 ACPF，保留当前模型选择；图片/声音使用支持选择、替换、移除的素材槽位，图片显示缩略图，声音显示文件信息。
+- Finder 直接读取 File，Gallery 和图片/声音 Output 通过已授权 mount 的 `avatar.input.read` 桥接读取；Host 固定源 API、验证 actor/实例可见性、媒体类型和大小，拒绝任意 URL、未知引用和类型不匹配。图片上限 20 MiB，声音 100 MiB；读取时限制流大小。
+- 本项修改共享 Host JS 与缓存版本，须随 Desktop 发布；App Package 尚未发布。验证：20 项 Python 定向回归；Node 覆盖 ACPF 菜单、Finder/Gallery/Output 拖拽处理、清空/类型拒绝、引用权限和共享输出。App-Dev 实测菜单打开 ACPF、取消保留模型、图片选择/移除及声音选材，Gallery 跨 iframe 的原生拖拽自动化未观测到投递，未计作实机通过；对应事件与桥接路径由 Node 回归验证。Package 沙箱目前没有 media-src，故声音槽位不新增内嵌播放器。
+
+### NXR-AVATAR-MINIAPP-20261001：照片说话独立 Package 与可选模型
+
+- 状态：`completed`（开发实现与 App-Dev 成片验收完成，待发布）。独立 `ai2apps/avatar-studio-suite` 源码 Package 挂载 Video Studio；必需能力 `video.avatar_generation` 由 Host ACPF 按用户选择解析模型 Package、Runtime 和 checkpoint，默认 FlashHead Lite，另有 Pro/EchoMimic。App 不强制安装全部模型。
+- 新增签名模型能力协商、持久视频任务、mount-bound 模型/任务查询、显式取消和冻结输入重试。页面断开不取消，重新挂载恢复状态；Local 中断的推理可重试，不承诺断点续算。Host 输出回读幂等发布 Studio Artifact，Mini-App 不维护播放器/下载/输出历史。
+- Host 后台 multipart 对 list/dict/bool 使用 JSON 编码，修复真实 FlashHead 请求的 reference_parts 400 错误。共享输出接收没有下载 URL 的任务状态通知并刷新；更新静态资源版本。挂载上下文中的 studioInstanceId 由已授权的 Host Header 决定，不允许请求 context 覆盖。
+- 验证：90 项 Python 定向回归通过；Node 数字人任务/共享输出通知与 Voice Studio 输出选择检查通过；Ruff、JavaScript 语法检查通过。
+- 实机：固定 App-Dev 的 ACPF 成功安装已发布 FlashHead 0.1.0、共享 Runtime 1.8.5 及 Lite checkpoint（7.60 GiB 下载显示）。正常 UI 上传上游测试人像和两秒音轨，首次请求暴露上述传输错误，修复后重启 Local，通过 Mini-App 重试保存输入成功。生成期间切换“提取音轨”，返回后状态恢复完成；Host 播放器显示视频、Gallery 和下载入口。底层任务用时 31.27 秒，输出 H.264 512×512、25 fps、50 帧及 AAC 音轨，容器 2.064 秒、116889 字节；这是功能验收，未作性能基准。
+- 成功任务 `vgt_0752f6a8cccf45f7a79714ea0a582756`，Run `strun_522558f1bab64e009585c3bbc5462e93`，一次输出 `sta_6f36f37ed89a4c1d85d622e08c05cf1c`。权限范围与重复投影、取消/重试路径有自动回归；本轮未单独做生成中取消的 GUI 验收。
+- 发布门槛：本项必须纳入未来 Desktop（Host Python/JS/ACPF 改动）。Mini-App 0.1.0 尚未签名构建或发布，须在支持该 Host 桥接的 Desktop 上完成精确签名归档的严格沙箱安装验收，再发布 App Package。完整公共 Avatar SDK（plan、人物准备、实时会话）仍待实现。
+
+### NXR-FLASHHEAD-PACKAGE-20261001：FlashHead Lite/Pro 独立模型 Package
+
+- 状态：`completed`（Package 已独立发布）。Cloud schema 修复已生产部署；FlashHead 0.1.0 与两项权重 Distribution 均已发布。submission `9bdace9a-a530-4055-b2d1-a1fd73bd86be`，Repository Snapshot 227。原始归档/签名未变。
+- 一个 Package 提供 Lite/Pro，Lite 推荐；不内嵌 Runtime 或权重，依赖已发布共享 oMLX Runtime >=1.8.5,<2.0.0。没有新建 Runtime。
+- 新增 Worker Adapter、变体切换、按需加载/卸载、取消与输出清理、自包含检查点清单和双源规格；修复非整数帧音频尾部截断、multipart 文本参数解析和 Sandbox 父目录探测。
+- 验证：16 项定向测试、标准 harness 和 Ruff 通过；真实 Runtime Worker Lite 60 秒/1500 帧耗时 99.71 秒，MLX 峰值 8.53 GiB；Pro 10 秒/250 帧耗时 132.59 秒，峰值 10.53 GiB（含加载和媒体校验）。
+- 精确签名归档在独立临时实例安装，依赖锁为 Runtime 1.8.5。Host 验证已发布 Distribution 并激活 checkpoint，两版真实 Sandbox 生成 2 秒视频成功；生成中取消、健康、停止、重启和卸载通过。保留权重；未修改用户 Dev/App-Dev 安装状态。
+- Cloud OpenAPI 1.55.0 已接受完整安装投影，无需新增 legacy map。Cloud 回执：370 passed、旧客户端 130/130、独立实际安装 active；本轮未重跑推理。本地匿名回读确认双模型选择、Lite 推荐、归档逐字节与 envelope JSON 一致。未发布新的 Desktop；本项不要求重建 Desktop。
+- 归档 SHA-256：`9441a6f06dc0a3175f858be678e8eb13d53993fed4ba2c946a220d666a051e69`，59,293 字节；收据位于 Package `dist/0.1.0/`，详情见 `docs/ai2apps-flashhead-mlx-0.1.0-release-2026-10-01.md`。
+
+### NXR-AVATAR-STUDIO-20260930：数字人 Package 与照片说话接入
+
+- 状态：`in_progress`。新增 Avatar Studio Suite 源码 Package、EchoMimic 的 ACPF Profile、mount-bound Broker、视频队列与共享输出接线；复用现有 oMLX Runtime。随后按用户要求暂停 UI 推进，新增 MuseTalk、FlashHead Lite/Pro、AVTR-1、InfiniteTalk、Ex-Omni 的原生 MLX 移植源码；现有 EchoMimic 和 MoE 算子保持原样。
+- 验证：Package manifest/ACPF 校验、新增数字人 Python 回归及既有 Broker、视频队列、Mini-App、Video Studio 定向回归共 76 项通过；Node 数字人取消、setup 和 Voice Studio 输出选择回归通过。App-Dev 界面控制超时，真实挂载、成片、取消与正式 sandbox 安装验收待完成；尚未发布。
+- 模型阶段进展：FlashHead Lite/Pro、MuseTalk 模板、InfiniteTalk 单人和 Ex-Omni Teacher 已跑通原生 MLX 短视频；Ex-Omni Thinker/Talker/codec/参考音色 encoder 真实权重分别验证。新增离线 CLI、安全权重转换和数值/媒体回归。AVTR-1 完整权重访问返回 401，尚未完成模型还原；自动预处理、完整多模态、长视频与最终 Runtime 仍在进行。
+- 模型验证与缺口：`docs/ai2apps-avatar-model-port-status.md`。新模型源码尚未注册为可安装 Service，未进入生产发布或升级现有 Runtime。
+- 计划：`docs/ai2apps-avatar-studio-implementation-plan.md`。
+- 接口设计：`docs/ai2apps-avatar-capability-contract-v1.md` 已形成，覆盖人物准备、能力协商、离线 Job/输出与未来实时会话。尚未落地新 API；后续迁移必须移除 Host 对 EchoMimic/固定分辨率的绑定，并验收同请求切换 Provider。
+
 ### NXR-RELEASE-012-2255-20260929：Desktop 0.1.2 Build 2255
 
 - 状态：`source_ready`。生产匿名基线为 0.1.1 / Build 2254；用户已批准提升产品版本至
@@ -253,10 +293,15 @@
 ### NXR-VIDEO-COMPOSER-SPECIAL-LAYERS-20260929
 
 - 状态：`implemented`，固定 App-Dev 已完成前端实机检查和导出 API 实机复验。首次导出返回 422 的原因是长驻 Local 仍持有升级前的 Pydantic 请求模型；通过固定 App-Dev Helper 的 `local.restart` 控制通道重启后，新请求模型已加载，当前 4 轨道／3 Clip 项目成功渲染 5 秒 MP4，预览与下载均可用。
-- Video Composer 新增可排序、可保存和可导出的聚光遮罩层与文本层。聚光遮罩支持圆角矩形／椭圆、高亮区外暗度、圆角和羽化，既有位置和尺寸关键帧控制高亮区域。文本层支持内容、字号、颜色、九点锚点、逐字读出及字符速度，新增关键帧缩放参数。
+- Video Composer 新增可排序、可保存和可导出的聚光遮罩层与文本层。聚光遮罩支持圆角矩形／椭圆、高亮区外暗度、圆角和向内羽化，既有位置和尺寸关键帧控制高亮区域。向内羽化保持高亮区外的暗度不变，仅在边界内侧由暗向透明渐变；快速预览使用硬外部阴影加内嵌渐变，Pillow 导出使用硬形状与内缩模糊形状相乘，两者方向一致。文本层支持内容、字号、颜色、九点锚点、逐字读出及字符速度，新增关键帧缩放参数。
 - 特殊层不依赖媒体素材源；Python 合成器按视频轨顺序将遮罩和文本合成进最终 MP4，项目打开／保存和纯特殊层导出均保留其配置。旧媒体片段在前端规范化时自动补 `layerType=media` 和 `scale=1`。
 - 文件：`ai2apps/video/composer.py`、`ai2apps/api/video_studio.py`、`ai2apps/web/static/js/video_studio.js`、`ai2apps/web/templates/system_apps/video_studio.html`、`ai2apps/web/static/css/video_composer.css`、中英文 locale 与 Composer 回归测试。
 - 验证：Composer 定向回归 13 passed，覆盖无素材源特殊层、遮罩明暗像素、文本缩放关键帧与可播放 MP4；Ruff、Node 语法和 diff check 通过。固定 App-Dev 强制刷新后实际创建聚光遮罩层和文本层，轨道、预览边框、Inspector 的形状／暗度／羽化／圆角、文本内容／字号／颜色／锚点／读出和关键帧 Scale 控件均可见，布局未溢出。当前 Local 进程缓存旧 locale，新增标签暂显示 key；按 App-Dev 工作流需从 Helper 重启 Local 后再验中文标签及实时导出。未重建或发布 Desktop。
+- 2026-10-01 向内羽化增量验证：Composer 回归增至 16 passed，新像素测试确认遮罩外侧暗度恒定、边缘内侧逐步恢复亮度；Node 语法、Ruff、双语 JSON 与 diff check 通过。
+- 2026-10-01 预览羽化反馈增量：为选中的普通媒体 Clip 与聚光遮罩层增加跟随当前关键帧、形状、圆角和羽化像素宽度的半透明向内范围指示；媒体使用青色、聚光使用橙色，辅助层不进入导出。保留浏览器实时羽化近似，并以范围指示规避多重 CSS mask／透明 inset shadow 在不同浏览器中的不稳定表现。
+- 2026-10-01 轨道入口增量：移除 Composer 顶部“聚光遮罩 / 文本”按钮，将轨道区原“+ 视频轨 / + 音轨”改为“+ 轨道 / + 项目”下拉菜单。轨道头和空白行可明确选中当前轨道；新轨道在当前轨道后插入并成为当前轨道。“+ 项目”仅在未锁定的视频轨可用，聚光遮罩和文本直接插入当前轨道并继续执行同轨不重叠/后移规则，音频轨或锁定轨上禁用。Composer 16 项回归、JavaScript、双语 JSON 与 diff check 通过；固定 Dev Local 重启至 `56626`，实机确认顶部旧按钮消失、两个菜单的中文选项完整，并确认选择音轨后“+ 项目”变为禁用。
+- 2026-10-01 轨道右键插入增量：“+ 轨道”左键继续直接选择视频轨/音轨并默认插在当前轨道之后；右键改为两级菜单，先选择“在当前轨道前/后”，再选择轨道类型，插入完成后新轨道成为当前轨道。补充前后插入索引、右键入口、两级状态及中英文文案回归覆盖；Composer 17 项回归、JavaScript、双语 JSON 与 diff check 通过，固定 Dev Local 重启至 `50636`，实机辅助功能树确认右键第一级菜单正确显示“在当前轨道前 / 在当前轨道后”。
+- 2026-10-01 相邻片段空帧修复：导出渲染不再用经过 9 位小数舍入的浮点秒区间判断 Clip 是否命中，统一以项目 FPS 换算出的整数起始帧/持续帧选择片段，并以局部帧计算源时间和文字读出时间，消除相邻片段边界处两边都未命中的纳秒级缝隙。预览改用同一套整数帧命中规则，并提前一秒挂载、定位即将播放的相邻媒体，避免切片边界临时创建 `<video>` 带来的偶发首帧闪黑。新增 30fps 非零起点相邻片段的逐帧渲染回归，明确验证 F32 为第二段首帧而不是背景空帧；Composer 回归增至 18 passed，JavaScript、Ruff 与 diff check 通过，固定 Dev Local 已重启至 `53916`。
 
 ### NXR-APPDEV-SCREEN-RECORDING-WINDOW-20260929
 
@@ -3589,6 +3634,20 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 
 ### NXR-030：Media Voice Studio Suite 五条 Mini-App 执行链路
 
+- 视频字幕分段校对（2026-09-30）：Video Subtitles Mini-App 从一次性“转写后直接导出/烧录”改为
+  `extract → review → render` 两阶段。第一阶段列出所有带时间范围的字幕段落，用户可逐段修改文本或
+  清空以移除字幕；第二阶段以校对文本执行可选翻译、SRT/WebVTT/ASS 导出和 MP4 烧录。新的
+  `subtitle_action`/`subtitle_segments` 只经过当前 mount-bound MessageChannel，Host 将 UTF-8 JSON
+  限制为 2 MiB，并重新校验 1–10000 段、时间范围、顺序、单段文本和 speaker，只保留公开字段；
+  修改后不会重新转写，也不会信任 Package 提交的 word/provider 内部数据。最终烧录视频继续进入
+  Video Studio 共用 Preview & Output，Mini-App 不新增私有播放器或输出历史。相关 Package、
+  Broker、媒体工作流和 Host bridge 回归 `109/109` 通过，Ruff、JavaScript 语法与
+  diff 空白检查通过。固定 `app-dev` Local 已通过认证 Helper 控制通道单独重启，端口从
+  `51397` 切换到 `52306`；实机 Video Studio 已加载 Package Mini-App 的“提取字幕段落”入口。
+  本轮未执行真实长视频模型推理，不宣称字幕质量或烧录速度已完成实片验收。
+  后续布局修正（2026-09-30）：校对面板改为无 Step 标记的独立内容区，排在处理链路之前；
+  删除“同时生成烧录字幕的视频” Checkbox，提取后在处理链路底部分开显示“生成字幕文件”
+  和主操作“生成字幕视频”，只有后者传入 `burn_in=true`。
 - 安装入口位置修正（2026-09-10）：按用户澄清，删除 STT/TTS 下拉框下方按钮，将“安装更多模型”放在两个下拉菜单末尾。动作项不写入 audioSettings，触发 ACPF 前立即恢复实际模型值，取消安装不改变原模型。新增执行实际 JavaScript 的动作项与正常选择回归测试。
 - 安装更多模型（2026-09-10）：Chat STT/TTS 选择器下新增本地化入口，进入 ACPF 全部能力配置列表；新增 installMore 浏览模式避免已有可用模型时提前返回，已安装 Checkpoint 对应项显示“已安装”并禁选，全部已安装时仍可查看列表但无法继续安装。保持 ACPF 原有确认、许可证和下载流程。变更涉及 Local Python，App-Dev 需重启 Local 后验收。
 - Chat 语音模型可用性修复（2026-09-10）：STT/TTS 列表只保留已就绪模型，综合目录、管理目录和运行状态排除缺权重、隐藏、加载失败项；Package 需明确 checkpoint_ready 才显示，已安装但尚未驻留内存的普通模型不因 loaded=false 被误排除。旧选项不可用时回退至可用项，无可用项则清空。新增实际 JS 判定回归测试，避免未安装 Base/VoiceDesign 仍可选择后才报 Checkpoint is not installed。
@@ -4420,6 +4479,21 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - 状态：`ready`。Video Studio 的成功和错误提示改为固定悬浮 Toast，不再占据文档流或把三栏工作区向下挤动；保留关闭按钮和淡入淡出效果。
 - 成功/普通提示显示 4.5 秒，错误提示显示 12 秒；新提示会取消旧计时器，页面卸载时清理计时器。错误使用 assertive `alert`，普通提示使用 polite `status`。纯 HTML/CSS/JavaScript 修改，刷新页面生效，无需重启 Local、更新 Package 或 Runtime。
 
+### NXR-VIDEO-MULTIPART-UPLOAD-TYPE-20261001：修复图生视频素材被忽略
+
+- 状态：`ready`。视频生成 Host 的原始 multipart 解析改为识别 Starlette 实际返回的 `UploadFile` 类型，避免 FastAPI 子类判断把 `first_frame`、`last_frame` 和参考素材静默丢弃后误报 `Multipart part is missing`。
+- 新增真实 ASGI multipart 回归，覆盖 JSON `request` 字段与 `first_frame` 文件名、内容和 MIME 类型。底层 Host Python 修改，无需更新模型 Package。
+- App-Dev 部署纠正（2026-10-01）：首次只重启 Local 后仍复现，因为 `omlx/` 属于 App-Dev 内嵌 Runtime，不在热挂载的 `ai2apps/` 源码范围；随后仅停止固定 `app-dev` 的 Local、Helper 和 Shell，使用 `build-app-dev-environment.sh` 重建固定 App，旧版归档为 `AI2Apps-app-dev-20261001-070818.app`。已确认新包内 `omlx/server.py` 使用 Starlette `UploadFile`，`verify-release-app.sh` 和 `codesign --verify --deep --strict` 通过，新实例以 Build 2239、端口 55230 启动。后续 `omlx/` 修改必须重建 App-Dev，不能只重启 Local。
+
+### NXR-MINIMAX-H3-MULTIPART-BOOLEAN-20261001：图生视频 fast 布尔值兼容
+
+- 状态：`published_pending_appdev_validation`。MiniMax H3 Model Package 适配器接受 Worker multipart 协议的规范文本布尔值 `"true"` / `"false"`，使带首尾帧或参考素材的 H3 任务与 JSON-only 文生视频保持相同语义；继续拒绝 `"yes"` 等非规范值。
+- 根因已由 App-Dev 失败任务确认：Host 任务中 `fast` 为原生 `false`，带图片调用转为 multipart 后按 HTTP 表单契约成为文本 `"false"`，H3 0.9.0 仅接受 Python `bool` 而在模型加载前返回 400。通用 Host/Worker 协议不改动。
+- `ai2apps/model-minimax-h3 0.9.1` 已正式发布；不改模型 ID、Checkpoint Distribution、权重、Runtime 依赖或推荐步数。Artifact SHA-256 `4a3e137db64db3da0d8fdb29d63e3dbca344229f006e4f95095541e2ff114b47`，submission `08272d73-8099-4cab-ab24-28caced7e6d5`，Repository metadata 228；匿名回读确认制品字节和 envelope 均精确一致。
+- 适配器定向回归 18 项通过；完整 MLX 套件在当前无 Metal 子进程中于收集阶段中止，不视为断言失败。Discover 已显示 App-Dev 本地 0.9.0 / 服务器 0.9.1；用户选择自行升级，升级后待重试原 OpenVDN DMD8 图生视频 Run 收口。
+- App-Dev 首次点击“安装模型”被错误拒绝：0.9.1 签名制品实际包含完整 `modelInstall`，但当前 Cloud catalog 投影未回传该字段，本地可信兼容表又仅放行至 0.9.0。已把 MiniMax H3 的本地可信安装映射精确扩展到已发布且逐字节验证的 0.9.1，未来 0.9.2 仍保持拒绝；Discover 分类/安装计划回归 `66 passed`。该 Python 改动需重启固定 `app-dev` Local 后再安装。
+- 已通过固定 `app-dev` Helper 认证控制通道只重启 App-Dev Local，端口 `55230 → 59998`；重新打开 Discover 后安装计划错误提示消失，本地 0.9.0 / 服务器 0.9.1 显示正常。按用户要求未代为执行安装，仍待用户升级并重试原 Run。
+
 ### NXR-VIDEO-COMPOSER-GALLERY-PREVIEW-20260929：Gallery 单击只预览
 
 - 状态：`ready`。Video Composer 内嵌 Gallery Mini-Entry 的单击与键盘打开操作只进入 Gallery 素材预览，不再把素材自动添加到时间线；拖入指定轨道和 Composer 的显式导入入口仍会添加素材。
@@ -4450,3 +4524,31 @@ Runtime profile、安装行为或发布流程的工作，都必须在完成该�
 - 兼容迁移会清除短暂受管目录实现写入草稿的内部 `documentPath` 绑定，使受影响项目下一次点击“保存”也重新进入 Shell 原生“另存为”面板；恢复副本本身不会被删除。
 - 工程打开同时支持 AceFox 原生路径和浏览器文件流：Shell 能提供 `mozAI2AppsFullPath` 时由 Local 直接读取原文件；能力尚不可用或授权缺失时，页面把不超过 4 MiB 的 `.ai2video` 文档上传给同源 Local 解析，不再错误提示“需要在 AI2Apps Desktop 中打开项目文件”。文件流打开没有可持久化的原路径，因此后续“保存”会安全地进入原生“另存为”面板，不会误写其它位置。
 - 打开修复验证：Composer 14 项回归、JavaScript、Ruff 与 diff 检查通过；固定 Dev Local 重启至 `63655` 后，使用系统文件选择器打开 `/Users/avdpropang/Documents/ai2apps/promotion/宣传视频-1.ai2video`，界面显示“已打开”，并正确恢复项目名、1080p 画布、5 条轨道和 149.27 秒时间线。
+
+### NXR-VIDEO-COMPOSER-TEXT-EFFECTS-20260930：文字样式、描边与投影
+
+- 状态：`ready`。Video Composer 文本层新增可组合的加粗、斜体、下划线和删除线，以及可独立启用的描边与投影效果；描边支持像素宽度、颜色及纯色/模糊羽化模式，投影支持颜色、透明度、扩散/模糊范围和 X/Y 距离。
+- 快速预览与最终导出使用同一组工程字段；Pillow 合成器按“投影 → 描边 → 文字 → 装饰线”顺序生成透明文字层，以字体轮廓扩展实现跨中英文字形的稳定加粗，并对整层执行斜切变换实现斜体，同时为模糊、偏移和斜体外扩预留边界，避免效果被裁切。旧工程缺少新增字段时使用关闭效果的兼容默认值。
+- 需要进入 App 的文件：`ai2apps/video/composer.py`、`ai2apps/web/templates/system_apps/video_studio.html`、`ai2apps/web/static/js/video_studio.js`、`ai2apps/web/static/css/video_composer.css`、中英文 i18n 及 Composer 回归测试。
+- 验证：Composer 14 项回归、JavaScript、Ruff、双语 JSON 与 diff 检查通过；固定 Dev Local 再次重启至 `55889` 后，临时添加文本层确认检查器完整显示默认关闭的“加粗 / 斜体 / 下划线 / 删除线”“描边”和“投影”，随后立即撤销，原工程内容不变。渲染回归同时覆盖四种可组合文字样式、羽化描边、投影透明度/模糊/偏移及旧字段默认兼容。
+- 2026-10-01 描边方向修复：快速预览使用 `paint-order: stroke fill` 并把用户设置的外描边宽度换算为两倍的浏览器居中描边，显式设置文字填充色；最终 Pillow 合成改为从扩展字形中减去正文蒙版，只合成字形外圈后再在顶层重绘正文。实色和羽化描边均不会再侵占或遮住文字本身。新增像素回归分别验证两种描边的正文纯色像素完全不变、字形外侧仍存在描边，Composer 回归增至 17 passed；JavaScript、Ruff 与 diff check 通过。固定 Dev Local 重启至 `58170`，实机在 17.20 秒文本层确认白色正文完整覆盖蓝色外描边。
+
+### NXR-VIDEO-COMPOSER-RENDER-TIME-PROGRESS-20260930：按合成时长持续显示导出进度
+
+- 状态：`ready`。Video Composer 不再在逐帧合成阶段长期停留于 15%；PyAV 渲染器按实际完成帧数约每一秒回报一次已合成秒数和总秒数，Run 百分比同步在 15%～88% 区间推进，随后进入 Artifact 保存阶段。
+- 运行区会将结构化进度详情本地化显示为“已合成 x 秒 / 共 y 秒”（英文为 `Rendered xs / ys`）；旧的已完成 Run 和非合成阶段详情保持兼容。
+- 需要进入 App 的文件：`ai2apps/video/composer.py`、`ai2apps/api/video_studio.py`、`ai2apps/web/templates/system_apps/video_studio.html`、`ai2apps/web/static/js/video_studio.js`、中英文 i18n 及 Composer 回归测试。
+- 验证：Composer 14 项回归通过，真实 PyAV 编码测试确认进度从 0 秒单调推进到工程总时长；JavaScript 语法、Ruff、双语 JSON 和 diff 检查通过。固定 Dev Local 已重启至 `56500` 并重新打开 Video Composer，原 `宣传视频-1` 工程仍保持 5 轨道、164.73 秒，未为验收重复触发该长工程导出。
+
+### NXR-VIDEO-COMPOSER-MEDIA-CROP-20260930：媒体区域裁剪、形状与向内羽化
+
+- 状态：`ready`。Video Composer 的视频和图片 Clip 新增非破坏性四边裁剪，四个方向按源素材百分比设置；裁剪区域继续服从 Clip 的位置、尺寸、缩放、透明度和关键帧布局，双击恢复尺寸时使用裁剪后的素材宽高。
+- 裁剪形状支持矩形、椭圆和圆角矩形；圆角矩形可设置圆角像素，三种形状均支持向内羽化像素。快速预览先裁取源区域并保持比例放入 Clip，再应用形状和羽化；最终 PyAV/Pillow 合成使用相同顺序，并可继续与已有蒙版图相交组合。
+- 预览画面支持直接调整取景：按住 Cmd/Ctrl 滚轮会围绕当前裁剪中心缩放源素材，按住 Cmd/Ctrl 拖拽会在固定显示区域内平移源素材。播放头位于关键帧时操作写入该关键帧，否则同一变换应用到 Clip 基准和已有显式裁剪关键帧。
+- 视频和图片素材在预览区拖动右下角尺寸手柄时，默认锁定源素材横纵比，并根据横向或纵向的主拖动方向等比缩放；拖动过程中按住 Shift 才允许宽高独立变化。普通 Clip 和关键帧尺寸编辑使用相同规则，聚光遮罩等非媒体层仍可自由调整形状。
+- 媒体 Clip 选中后同时绘制两层几何反馈：高对比实线外框表示 Clip 在画布中的实际位置和显示窗口尺寸，内层虚线贴合经裁剪后实际有内容的矩形、椭圆或圆角矩形区域。实线外框使用常驻的真实顶层 DOM 覆盖元素绘制，不依赖 `:has()` 伪元素重绘；尺寸手柄上的 Cmd/Ctrl 和 Shift 只解释为缩放模式，不再触发多选切换而取消当前 Clip 选中。因此外框在 Cmd/Ctrl 实时拖动以及拖动结束后都持续显示，也不会被视频或图片内容遮挡；Clip/关键帧编辑继续使用青色/橙色区分，模式标签位于外框左上角，尺寸手柄位于外框右下角。
+- 裁剪现在拥有独立的“裁剪缩放”参数，可在 Clip 基准状态和关键帧中单独输入；预览和导出统一按源素材像素到画布像素的绝对倍率布置。按住 Cmd/Ctrl 拖动右下角手柄时可以自由改变显示窗口宽高，不受横纵比约束；操作只锁定裁剪左上角和拖拽前的裁剪缩放，右/下裁剪边界按新窗口尺寸重算，因此会先继续展示原素材，只有窗口真正越过原素材右边或底边后的剩余区域才保持透明。该计算同时适用于 Clip 基准状态和关键帧；新增的裁剪窗口版本标记会在打开旧工程时执行一次迁移，修复旧 Cmd/Ctrl 逻辑已写入的过大右/下裁剪值；更旧的工程没有裁剪缩放字段时会先根据原尺寸和裁剪区域推导等价倍率。
+- 四边裁剪、裁剪形状、圆角和向内羽化均进入统一关键帧状态；连续数值服从硬切/线性/柔性过渡，形状在到达目标关键帧时切换。新 Clip 和拆分后的 Clip 只在起始关键帧写入完整状态，结束关键帧的所有位置、尺寸、透明度、缩放及裁剪参数默认留空并继承上一关键帧。
+- 旧工程缺少新字段时自动使用四边 0%、矩形、0 像素羽化的兼容默认值；新导入素材和插入静帧会初始化或继承完整裁剪状态。
+- 需要进入 App 的文件：`ai2apps/video/composer.py`、`ai2apps/web/templates/system_apps/video_studio.html`、`ai2apps/web/static/js/video_studio.js`、`ai2apps/web/static/css/video_composer.css`、中英文 i18n 及 Composer 回归测试。
+- 验证：Composer 15 项回归通过（覆盖源区域裁取、裁剪关键帧插值/离散形状切换、空结束帧继承、椭圆/圆角形状与向内羽化像素、绝对裁剪缩放与超出窗口的透明像素），JavaScript 语法、Ruff、双语 JSON 和 diff 检查通过。固定 Dev Local 已重启至 `64606` 并打开 Video Composer；已恢复原工程并选中 `DeepSeek.mov` 目视确认顶层橙色布局外框、右下手柄和迁移后的取景画面正常显示；Cmd/Ctrl 不再触发取消选中、真实 DOM 外框、旧裁剪窗口迁移、右/下边界重算和裁剪缩放输入均由静态契约测试覆盖。

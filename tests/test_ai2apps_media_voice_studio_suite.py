@@ -140,7 +140,14 @@ def test_executable_uis_use_the_mount_bound_capability_route():
     assert "capabilities/${encodeURIComponent(capability)}/invoke" in client
     assert "开始本地转写" in client
     assert "开始本地分离" in client
-    assert "开始生成字幕" in client
+    assert "提取字幕段落" in client
+    assert "subtitle_action" in client
+    assert "subtitle_segments" in client
+    assert "校对字幕段落" in client
+    assert "生成字幕文件" in client
+    assert "生成字幕视频" in client
+    assert "{id: 'burnIn'" not in client
+    assert "root.append(resultPanel, pipelinePanel)" in client
     assert "开始翻译并配音" in client
     assert "characters.list" in client
     assert "voice-clone-models.list" in client
@@ -177,6 +184,7 @@ def test_media_voice_suite_uses_the_studio_native_visual_contract():
     assert ".capability-disclosure" in styles
     assert ".panel { margin: 0; padding: 22px 0; border: 0; border-top:" in styles
     assert "background: #1c1917" in styles
+    assert "[hidden] { display: none !important; }" in styles
     assert "capabilityDisclosure" in client
     assert "所需能力 ·" in client
     assert "notice.classList.toggle('ready'" in client
@@ -190,8 +198,8 @@ def test_media_voice_suite_uses_the_studio_native_visual_contract():
         resource = (SOURCE / mini_app["entry"]["resource"]).read_text(
             encoding="utf-8"
         )
-        assert "mini-app.css?v=original-voice-v7" in resource
-        assert "mini-app.js?v=original-voice-v7" in resource
+        assert "mini-app.css?v=subtitle-actions-v9" in resource
+        assert "mini-app.js?v=subtitle-actions-v9" in resource
     assert "progress?.phasePercent ?? progress?.percent" in client
 
     for template_name in ("readaloud.html", "video_studio.html", "imagine_studio.html"):

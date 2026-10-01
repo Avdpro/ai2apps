@@ -112,7 +112,7 @@
         chatController: null, chatMiniUrl: '', packageChatBridge: null,
         galleryActiveCollectionId: 'recent', galleryActiveCollectionName: 'Recent', galleryMessageHandler: null, galleryAddedTimer: null,
         extractAsset: null, extractOutputName: '', extractImporting: false, extractSubmitting: false, localAudioSources: {}, addingAudioToGallery: false, audioGalleryAdded: false,
-        composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerFreezeBusy: false, composerRendering: false, composerSaveTimer: 0, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
+        composerProject: newComposerProject(), composerSources: [], composerDocumentPath: '', composerDocumentSaving: false, composerRuns: [], selectedComposerRunId: '', composerSelectedClipId: '', composerSelectedClipIds: [], composerSelectedKeyframeId: '', composerSelectedTrackId: '', composerTrackMenuOpen: false, composerTrackMenuStep: 'type', composerTrackInsertSide: 'after', composerItemMenuOpen: false, composerDropTrackId: '', composerScale: 42, composerPlayhead: 0, composerPlayheadSnapped: false, composerPlaying: false, composerRaf: 0, composerHistory: [], composerFuture: [], composerEditSnapshot: null, composerImporting: false, composerMaskImporting: false, composerFreezeBusy: false, composerRendering: false, composerSaveTimer: 0, composerCropWheelTimer: 0, composerCropWheelEditing: false, composerChatText: '', composerChatLog: [], composerChatBusy: false, composerChatModels: [], composerChatModelId: '', composerKeyHandler: null, composerHoverTip: { text: '', left: 0, top: 0 }, addingComposerToGallery: false, composerGalleryAdded: false,
         tr,
         get miniApps() { return [...MINI_APPS, ...this.packageMiniApps].map(localizedMiniApp); },
         get selectedProvider() { return this.providers.find(item => item.id === this.modelId) || null; },
@@ -130,8 +130,16 @@
         get caps() { return this.selectedProvider?.videoCapabilities || {}; },
         get resolutions() { return this.caps.geometry?.resolutions || ['512x512']; },
         get presets() { return this.caps.presets?.length ? this.caps.presets : [{ id: 'strict', display_name: 'Strict' }]; },
-        get durationMin() { return Number(this.caps.duration?.minimum_seconds ?? 1); },
-        get durationMax() { return Number(this.caps.duration?.maximum_seconds ?? 15); },
+        get durationStep() { return .5; },
+        get durationMin() {
+            const raw = Number(this.caps.duration?.minimum_seconds ?? 1);
+            return Math.ceil((raw - Number.EPSILON) / this.durationStep) * this.durationStep;
+        },
+        get durationMax() {
+            const raw = Number(this.caps.duration?.maximum_seconds ?? 15);
+            const aligned = Math.floor((raw + Number.EPSILON) / this.durationStep) * this.durationStep;
+            return Math.max(this.durationMin, aligned);
+        },
         get frameNote() { const fps = Number(this.caps.defaults?.framespersecond || 24); return tr('video_studio.frame_note', { frames: Math.max(1, Math.round(this.duration * fps)), fps }); },
         get canGenerate() {
             if (this.isAudioExtractor) return Boolean(this.extractAsset?.id || this.extractAsset?.nativePath);
@@ -181,6 +189,13 @@
         get composerClipMinimumWidth() { return this.composerScale >= 18 ? 18 : Math.max(6, this.composerScale); },
         get composerSelectedClip() { return this.composerProject.clips.find(clip => clip.id === this.composerSelectedClipId) || null; },
         get composerSelectedClips() { const ids = new Set(this.composerSelectedClipIds); return this.composerProject.clips.filter(clip => ids.has(clip.id)); },
+        get composerSelectedTrack() {
+            return this.composerTrack(this.composerSelectedClip?.trackId)
+                || this.composerTrack(this.composerSelectedTrackId)
+                || this.composerProject.tracks[0]
+                || null;
+        },
+        get composerCanAddProjectItem() { return Boolean(this.composerSelectedTrack?.kind === 'video' && !this.composerSelectedTrack.locked); },
         get composerSelectedKeyframe() { return this.composerSelectedClip?.keyframes?.find(keyframe => keyframe.id === this.composerSelectedKeyframeId) || null; },
         get composerSelectedKeyframeIsEndpoint() { return this.composerIsProtectedKeyframe(this.composerSelectedClip, this.composerSelectedKeyframe); },
         get composerCanFreezeFrame() {
@@ -296,7 +311,8 @@
         handlePackageOutput(event) {
             const detail = event?.detail;
             const url = detail?.result?.downloadUrl || '';
-            if (detail?.studioId !== APP_ID || !url) return;
+            if (detail?.studioId !== APP_ID) return;
+            if (!url) { void this.refresh(); return; }
             this.packageOutputUrl = url;
             this.packageOutputRunId = detail.result?.runId || '';
             this.packageOutputMiniAppId = detail.miniAppId || '';
@@ -885,9 +901,14 @@
                 const recommendedSteps = Number(defaults.steps ?? 20);
                 if (Number.isInteger(recommendedSteps) && recommendedSteps >= 1 && recommendedSteps <= 60) this.steps = recommendedSteps;
             }
-            this.duration = Math.min(this.durationMax, Math.max(this.durationMin, Number(this.duration) || 5));
+            this.duration = this.normalizeDuration(this.duration);
             this.syncModelSelectValue();
             this.icons();
+        },
+        normalizeDuration(value) {
+            const numeric = Number(value) || 5;
+            const aligned = Math.round(numeric / this.durationStep) * this.durationStep;
+            return Math.min(this.durationMax, Math.max(this.durationMin, aligned));
         },
         syncModelSelectValue() {
             this.$nextTick(() => {
@@ -1003,17 +1024,35 @@
         },
         composerBaseVisualState(clip) {
             const settings = this.composerProject.settings;
-            return { x: Number(clip.x) || 0, y: Number(clip.y) || 0, width: Number(clip.width) || settings.width, height: Number(clip.height) || settings.height, opacity: Number.isFinite(Number(clip.opacity)) ? Number(clip.opacity) : 1, scale: Number.isFinite(Number(clip.scale)) ? Number(clip.scale) : 1 };
+            return {
+                x: Number(clip.x) || 0, y: Number(clip.y) || 0,
+                width: Number(clip.width) || settings.width, height: Number(clip.height) || settings.height,
+                opacity: Number.isFinite(Number(clip.opacity)) ? Number(clip.opacity) : 1,
+                scale: Number.isFinite(Number(clip.scale)) ? Number(clip.scale) : 1,
+                cropLeft: Math.max(0, Math.min(95, Number(clip.cropLeft)||0)),
+                cropTop: Math.max(0, Math.min(95, Number(clip.cropTop)||0)),
+                cropRight: Math.max(0, Math.min(95, Number(clip.cropRight)||0)),
+                cropBottom: Math.max(0, Math.min(95, Number(clip.cropBottom)||0)),
+                cropShape: ['rectangle','ellipse','rounded'].includes(clip.cropShape) ? clip.cropShape : 'rectangle',
+                cropCornerRadius: Math.max(0, Number(clip.cropCornerRadius)||0),
+                cropFeather: Math.max(0, Number(clip.cropFeather)||0),
+                cropScale: Math.max(.01, Math.min(20, Number(clip.cropScale)||1)),
+            };
         },
         composerVisualStateAtFrame(clip, localFrame) {
+            const numeric = ['x','y','width','height','opacity','scale','cropLeft','cropTop','cropRight','cropBottom','cropCornerRadius','cropFeather','cropScale'];
             let previousFrame = 0, previous = this.composerBaseVisualState(clip);
             for (const keyframe of this.composerClipKeyframes(clip)) {
-                const target = Object.fromEntries(Object.keys(previous).map(key => [key, keyframe[key] === null || keyframe[key] === '' || keyframe[key] === undefined ? previous[key] : Number(keyframe[key])]));
+                const target = { ...previous };
+                numeric.forEach(key => { if (keyframe[key] !== null && keyframe[key] !== '' && keyframe[key] !== undefined) target[key] = Number(keyframe[key]); });
+                if (['rectangle','ellipse','rounded'].includes(keyframe.cropShape)) target.cropShape = keyframe.cropShape;
                 if (localFrame >= keyframe.frame) { previousFrame = keyframe.frame; previous = target; continue; }
                 if (keyframe.transition === 'hold' || keyframe.frame <= previousFrame) return { ...previous };
                 let progress = Math.max(0, Math.min(1, (localFrame - previousFrame) / (keyframe.frame - previousFrame)));
                 if (keyframe.transition === 'ease') progress = progress * progress * (3 - 2 * progress);
-                return Object.fromEntries(Object.keys(previous).map(key => [key, previous[key] + (target[key] - previous[key]) * progress]));
+                const result = { ...previous };
+                numeric.forEach(key => { result[key] = previous[key] + (target[key] - previous[key]) * progress; });
+                return result;
             }
             return { ...previous };
         },
@@ -1024,24 +1063,41 @@
             return clip.id === this.composerSelectedClipId && this.composerKeyframeAtPlayhead(clip) ? this.composerKeyframeAtPlayhead(clip) : clip;
         },
         composerPreviousKeyframeState(clip, keyframe) {
+            const numeric = ['x','y','width','height','opacity','scale','cropLeft','cropTop','cropRight','cropBottom','cropCornerRadius','cropFeather','cropScale'];
             let state = this.composerBaseVisualState(clip);
             for (const item of this.composerClipKeyframes(clip)) {
                 if (item.id === keyframe?.id) break;
-                state = Object.fromEntries(Object.keys(state).map(key => [key, item[key] === null || item[key] === '' || item[key] === undefined ? state[key] : Number(item[key])]));
+                const next = { ...state };
+                numeric.forEach(key => { if (item[key] !== null && item[key] !== '' && item[key] !== undefined) next[key] = Number(item[key]); });
+                if (['rectangle','ellipse','rounded'].includes(item.cropShape)) next.cropShape = item.cropShape;
+                state = next;
             }
             return state;
         },
         setComposerKeyframeValue(field, value) {
-            const keyframe = this.composerSelectedKeyframe; if (!keyframe || !['x', 'y', 'width', 'height', 'opacity', 'scale'].includes(field)) return;
+            const keyframe = this.composerSelectedKeyframe; if (!keyframe || !['x', 'y', 'width', 'height', 'opacity', 'scale', 'cropLeft', 'cropTop', 'cropRight', 'cropBottom', 'cropCornerRadius', 'cropFeather', 'cropScale'].includes(field)) return;
             if (value === '') keyframe[field] = null;
             else {
                 let number = Number(value); if (!Number.isFinite(number)) return;
                 if (field === 'width' || field === 'height') number = Math.max(16, Math.round(number));
                 else if (field === 'opacity') number = Math.max(0, Math.min(1, number));
                 else if (field === 'scale') number = Math.max(.05, Math.min(20, number));
+                else if (['cropLeft','cropTop','cropRight','cropBottom'].includes(field)) {
+                    const opposite = { cropLeft:'cropRight', cropRight:'cropLeft', cropTop:'cropBottom', cropBottom:'cropTop' }[field];
+                    const state = this.composerVisualStateAtFrame(this.composerSelectedClip, keyframe.frame);
+                    number = Math.max(0, Math.min(95, 99 - (Number(state[opposite])||0), number));
+                }
+                else if (field === 'cropCornerRadius') number = Math.max(0, Math.min(4096, Math.round(number)));
+                else if (field === 'cropFeather') number = Math.max(0, Math.min(512, Math.round(number)));
+                else if (field === 'cropScale') number = Math.max(.01, Math.min(20, number));
                 else number = Math.round(number);
                 keyframe[field] = number;
             }
+            this.syncComposerPreview();
+        },
+        setComposerKeyframeCropShape(value) {
+            const keyframe = this.composerSelectedKeyframe; if (!keyframe) return;
+            keyframe.cropShape = ['rectangle','ellipse','rounded'].includes(value) ? value : null;
             this.syncComposerPreview();
         },
         setComposerKeyframeFrame(value) {
@@ -1059,7 +1115,7 @@
         composerPreviewAudioClips() {
             return this.composerProject.clips.filter(clip => {
                 const source = this.composerSource(clip.sourceId), track = this.composerTrack(clip.trackId);
-                if (!source?.hasAudio || !track || !clip.audioEnabled || this.composerPlayhead < clip.start || this.composerPlayhead >= clip.start + clip.duration) return false;
+                if (!source?.hasAudio || !track || !clip.audioEnabled || !this.composerClipActiveAtPlayhead(clip)) return false;
                 return track.kind === 'audio' ? !track.muted : track.kind === 'video' && track.muted;
             });
         },
@@ -1076,7 +1132,13 @@
             const state = this.composerVisualStateAt(clip);
             const anchor = clip.layerType === 'text' ? this.composerTextAnchorTransform(clip.textAnchor) : '';
             if (clip.layerType === 'text') return `left:${state.x / settings.width * 100}%;top:${state.y / settings.height * 100}%;opacity:${state.opacity};transform:${anchor} scale(${state.scale});transform-origin:${this.composerTextTransformOrigin(clip.textAnchor)}`;
-            return `left:${state.x / settings.width * 100}%;top:${state.y / settings.height * 100}%;width:${state.width / settings.width * 100}%;height:${state.height / settings.height * 100}%;opacity:${state.opacity};transform:${anchor} scale(${state.scale});transform-origin:${this.composerTextTransformOrigin(clip.textAnchor)}`;
+            let mediaFrame = '';
+            const source = this.composerSource(clip.sourceId);
+            if (source?.hasVideo || source?.hasImage) {
+                const geometry = this.composerCropFrameGeometry(clip, state);
+                mediaFrame = `;--media-frame-left:${geometry.left}%;--media-frame-top:${geometry.top}%;--media-frame-width:${geometry.width}%;--media-frame-height:${geometry.height}%;--media-frame-radius:${geometry.radius}`;
+            }
+            return `left:${state.x / settings.width * 100}%;top:${state.y / settings.height * 100}%;width:${state.width / settings.width * 100}%;height:${state.height / settings.height * 100}%;opacity:${state.opacity};transform:${anchor} scale(${state.scale});transform-origin:${this.composerTextTransformOrigin(clip.textAnchor)}${mediaFrame}`;
         },
         composerTextAnchorTransform(anchor = 'center') {
             const x = anchor.endsWith('left') || anchor === 'left' ? '0' : anchor.endsWith('right') || anchor === 'right' ? '-100%' : '-50%';
@@ -1094,25 +1156,123 @@
             return text.slice(0, Math.max(0, Math.floor((this.composerPlayhead - clip.start) * (Number(clip.revealSpeed) || 12))));
         },
         composerTextStyle(clip) {
-            return `font-size:${Math.max(8, Number(clip.fontSize)||64) / this.composerProject.settings.width * 100}cqw;color:${clip.textColor||'#ffffff'}`;
+            const canvasWidth = this.composerProject.settings.width;
+            const unit = value => `${Math.max(0, Number(value)||0) / canvasWidth * 100}cqw`;
+            const signedUnit = value => `${(Number(value)||0) / canvasWidth * 100}cqw`;
+            const rgba = (color, opacity) => {
+                const match = /^#([0-9a-f]{6})$/i.exec(String(color || '#000000'));
+                const value = parseInt(match?.[1] || '000000', 16);
+                return `rgba(${value >> 16},${value >> 8 & 255},${value & 255},${Math.max(0, Math.min(1, Number(opacity)||0))})`;
+            };
+            const shadows = [];
+            const strokeWidth = clip.textStrokeEnabled ? Math.max(0, Number(clip.textStrokeWidth)||0) : 0;
+            let stroke = '0 transparent';
+            if (strokeWidth && clip.textStrokeStyle === 'feather') shadows.push(`0 0 ${unit(strokeWidth)} ${clip.textStrokeColor||'#000000'}`);
+            else if (strokeWidth) stroke = `${unit(strokeWidth * 2)} ${clip.textStrokeColor||'#000000'}`;
+            if (clip.textShadowEnabled && Number(clip.textShadowOpacity) > 0) {
+                shadows.push(`${signedUnit(clip.textShadowOffsetX)} ${signedUnit(clip.textShadowOffsetY)} ${unit(clip.textShadowBlur)} ${rgba(clip.textShadowColor,clip.textShadowOpacity)}`);
+            }
+            const decorations = [clip.textUnderline && 'underline', clip.textStrikethrough && 'line-through'].filter(Boolean).join(' ') || 'none';
+            return `font-size:${Math.max(8, Number(clip.fontSize)||64) / canvasWidth * 100}cqw;color:${clip.textColor||'#ffffff'};-webkit-text-fill-color:${clip.textColor||'#ffffff'};font-weight:${clip.textBold?'800':'600'};font-style:${clip.textItalic?'italic':'normal'};text-decoration-line:${decorations};paint-order:stroke fill;-webkit-text-stroke:${stroke};text-shadow:${shadows.length?shadows.join(','):'none'}`;
         },
         composerSpotlightStyle(clip) {
             const alpha = Math.max(0, Math.min(1, Number(clip.dimOpacity) || 0));
             const radius = clip.spotlightShape === 'ellipse' ? '50%' : `${Math.max(0, Number(clip.cornerRadius) || 0)}px`;
-            return `border-radius:${radius};box-shadow:0 0 ${Math.max(0, Number(clip.feather)||0)}px 9999px rgba(0,0,0,${alpha})`;
+            const feather = Math.max(0, Number(clip.feather)||0) / this.composerProject.settings.width * 100;
+            const color = `rgba(0,0,0,${alpha})`;
+            const inward = feather ? `,inset 0 0 ${feather}cqw ${feather/2}cqw ${color}` : '';
+            return `border-radius:${radius};box-shadow:0 0 0 9999px ${color}${inward}`;
+        },
+        composerPreviewFeather(clip) {
+            if (clip.layerType === 'spotlight') return Math.max(0, Number(clip.feather)||0);
+            return Math.max(0, Number(this.composerVisualStateAt(clip).cropFeather)||0);
+        },
+        composerFeatherGuideStyle(clip) {
+            const feather = this.composerPreviewFeather(clip) / this.composerProject.settings.width * 100;
+            const state = this.composerVisualStateAt(clip);
+            const shape = clip.layerType === 'spotlight' ? clip.spotlightShape : state.cropShape;
+            const radiusValue = clip.layerType === 'spotlight' ? clip.cornerRadius : state.cropCornerRadius;
+            const radius = shape === 'ellipse' ? '50%' : shape === 'rounded' ? `${Math.max(0,Number(radiusValue)||0) / this.composerProject.settings.width * 100}cqw` : '0';
+            return `--feather-guide:${feather}cqw;border-radius:${radius}`;
         },
         composerPreviewMaskStyle(clip) {
             const mask = this.composerSource(clip.maskSourceId); if (!mask?.hasImage) return '';
             const url = this.composerSourceUrl(mask.id), mode = mask.hasAlpha ? 'alpha' : 'luminance';
             return `mask-image:url(${url});mask-size:100% 100%;mask-repeat:no-repeat;mask-mode:${mode};-webkit-mask-image:url(${url});-webkit-mask-size:100% 100%;-webkit-mask-repeat:no-repeat`;
         },
-        composerPreviewClips() {
+        composerCropInsetsForViewport(state, width, height, source) {
+            const cropLeft = Math.max(0, Math.min(95, Number(state.cropLeft)||0));
+            const cropTop = Math.max(0, Math.min(95, Number(state.cropTop)||0));
+            const cropScale = Math.max(.01, Math.min(20, Number(state.cropScale)||1));
+            const sourceWidth = Math.max(1, Number(source?.width)||width);
+            const sourceHeight = Math.max(1, Number(source?.height)||height);
+            const cropRight = 100 - cropLeft - Math.max(16, Number(width)||16) / (sourceWidth * cropScale) * 100;
+            const cropBottom = 100 - cropTop - Math.max(16, Number(height)||16) / (sourceHeight * cropScale) * 100;
+            return {
+                cropRight: Math.max(0, Math.min(95, 99-cropLeft, cropRight)),
+                cropBottom: Math.max(0, Math.min(95, 99-cropTop, cropBottom)),
+            };
+        },
+        composerCropFrameGeometry(clip, overrideState = null) {
+            const source = this.composerSource(clip.sourceId), state = overrideState || this.composerVisualStateAt(clip);
+            const left = Math.max(0, Math.min(95, Number(state.cropLeft)||0)) / 100;
+            const top = Math.max(0, Math.min(95, Number(state.cropTop)||0)) / 100;
+            const right = Math.max(0, Math.min(95, Number(state.cropRight)||0)) / 100;
+            const bottom = Math.max(0, Math.min(95, Number(state.cropBottom)||0)) / 100;
+            const visibleWidth = Math.max(.01, 1 - left - right), visibleHeight = Math.max(.01, 1 - top - bottom);
+            const cropScale = Math.max(.01, Math.min(20, Number(state.cropScale)||1));
+            const contentWidth = Math.max(.01, Number(source?.width)||state.width) * visibleWidth * cropScale;
+            const contentHeight = Math.max(.01, Number(source?.height)||state.height) * visibleHeight * cropScale;
+            const width = Math.min(100, contentWidth / Math.max(.01, state.width) * 100);
+            const height = Math.min(100, contentHeight / Math.max(.01, state.height) * 100);
+            const shape = state.cropShape || 'rectangle';
+            const radius = shape === 'ellipse' ? '50%' : shape === 'rounded' ? `${Math.max(0,Number(state.cropCornerRadius)||0) / this.composerProject.settings.width * 100}cqw` : '0';
+            return { left: 0, top: 0, width, height, radius, shape, contentWidth, contentHeight };
+        },
+        composerCropFrameStyle(clip, overrideState = null) {
+            const state = overrideState || this.composerVisualStateAt(clip);
+            const geometry = this.composerCropFrameGeometry(clip, state);
+            const feather = Math.max(0, Number(state.cropFeather)||0) / this.composerProject.settings.width * 100;
+            let mask = '';
+            if (feather > 0) {
+                const distance = `${feather}cqw`;
+                mask = geometry.shape === 'ellipse'
+                    ? `mask-image:radial-gradient(ellipse at center,#000 calc(100% - ${distance}),transparent 100%);-webkit-mask-image:radial-gradient(ellipse at center,#000 calc(100% - ${distance}),transparent 100%)`
+                    : `mask-image:linear-gradient(to right,transparent,#000 ${distance},#000 calc(100% - ${distance}),transparent),linear-gradient(to bottom,transparent,#000 ${distance},#000 calc(100% - ${distance}),transparent);mask-composite:intersect;-webkit-mask-image:linear-gradient(to right,transparent,#000 ${distance},#000 calc(100% - ${distance}),transparent),linear-gradient(to bottom,transparent,#000 ${distance},#000 calc(100% - ${distance}),transparent);-webkit-mask-composite:source-in`;
+            }
+            return `left:${geometry.left}%;top:${geometry.top}%;width:${geometry.width}%;height:${geometry.height}%;border-radius:${geometry.radius};${mask}`;
+        },
+        composerCropMediaStyle(clip, overrideState = null) {
+            const state = overrideState || this.composerVisualStateAt(clip);
+            const source = this.composerSource(clip.sourceId);
+            const left = Math.max(0, Math.min(95, Number(state.cropLeft)||0)) / 100;
+            const top = Math.max(0, Math.min(95, Number(state.cropTop)||0)) / 100;
+            const right = Math.max(0, Math.min(95, Number(state.cropRight)||0)) / 100;
+            const bottom = Math.max(0, Math.min(95, Number(state.cropBottom)||0)) / 100;
+            const visibleWidth = Math.max(.01, 1-left-right), visibleHeight = Math.max(.01, 1-top-bottom);
+            const cropScale = Math.max(.01, Math.min(20, Number(state.cropScale)||1));
+            const sourceWidth = Math.max(.01, Number(source?.width)||state.width), sourceHeight = Math.max(.01, Number(source?.height)||state.height);
+            const frameWidth = Math.max(.01, Math.min(Number(state.width)||1, sourceWidth * visibleWidth * cropScale));
+            const frameHeight = Math.max(.01, Math.min(Number(state.height)||1, sourceHeight * visibleHeight * cropScale));
+            return `left:${-sourceWidth*left*cropScale/frameWidth*100}%;top:${-sourceHeight*top*cropScale/frameHeight*100}%;width:${sourceWidth*cropScale/frameWidth*100}%;height:${sourceHeight*cropScale/frameHeight*100}%`;
+        },
+        composerClipFrameRange(clip) {
+            return { start: this.composerFrameNumber(clip?.start), duration: Math.max(1, this.composerFrameNumber(clip?.duration)) };
+        },
+        composerClipActiveAtPlayhead(clip) {
+            const frame = this.composerFrameNumber(this.composerPlayhead), range = this.composerClipFrameRange(clip);
+            return frame >= range.start && frame < range.start + range.duration;
+        },
+        composerPreviewTimelineClips() {
             const tracks = new Map(this.composerProject.tracks.map(track => [track.id, track]));
+            const frame = this.composerFrameNumber(this.composerPlayhead), preloadAhead = this.composerFps, retainBehind = Math.ceil(this.composerFps / 4);
             return this.composerProject.clips.filter(clip => {
                 const source = this.composerSource(clip.sourceId), track = tracks.get(clip.trackId);
-                return (clip.layerType === 'spotlight' || clip.layerType === 'text' || source?.hasVideo || source?.hasImage) && track?.kind === 'video' && !track.muted && this.composerPlayhead >= clip.start && this.composerPlayhead < clip.start + clip.duration;
+                const range = this.composerClipFrameRange(clip), nearPlayhead = range.start <= frame + preloadAhead && range.start + range.duration > frame - retainBehind;
+                return nearPlayhead && (clip.layerType === 'spotlight' || clip.layerType === 'text' || source?.hasVideo || source?.hasImage) && track?.kind === 'video' && !track.muted;
             }).sort((a, b) => (tracks.get(a.trackId)?.order || 0) - (tracks.get(b.trackId)?.order || 0));
         },
+        composerPreviewClips() { return this.composerPreviewTimelineClips().filter(clip => this.composerClipActiveAtPlayhead(clip)); },
         composerPushHistory() {
             this.composerHistory.push(copyComposerProject(this.composerProject));
             if (this.composerHistory.length > 100) this.composerHistory.shift();
@@ -1140,6 +1300,27 @@
                 this.composerTrackClips(track.id).forEach(clip => {
                     clip.layerType = clip.layerType || 'media';
                     clip.scale = Number.isFinite(Number(clip.scale)) ? Number(clip.scale) : 1;
+                    clip.cropLeft = Math.max(0, Math.min(95, Number(clip.cropLeft)||0));
+                    clip.cropTop = Math.max(0, Math.min(95, Number(clip.cropTop)||0));
+                    clip.cropRight = Math.max(0, Math.min(95, Number(clip.cropRight)||0));
+                    clip.cropBottom = Math.max(0, Math.min(95, Number(clip.cropBottom)||0));
+                    if (clip.cropLeft + clip.cropRight >= 100) clip.cropRight = Math.max(0, 99 - clip.cropLeft);
+                    if (clip.cropTop + clip.cropBottom >= 100) clip.cropBottom = Math.max(0, 99 - clip.cropTop);
+                    clip.cropShape = ['rectangle','ellipse','rounded'].includes(clip.cropShape) ? clip.cropShape : 'rectangle';
+                    clip.cropCornerRadius = Math.max(0, Math.min(4096, Math.round(Number(clip.cropCornerRadius)||32)));
+                    clip.cropFeather = Math.max(0, Math.min(512, Math.round(Number(clip.cropFeather)||0)));
+                    const migrateCropViewport = Number(clip.cropViewportVersion||0) < 2;
+                    if (!Number.isFinite(Number(clip.cropScale)) || Number(clip.cropScale) <= 0) {
+                        const source = this.composerSource(clip.sourceId), settings = this.composerProject.settings;
+                        const visibleWidth = Math.max(.01, 1 - clip.cropLeft / 100 - clip.cropRight / 100);
+                        const visibleHeight = Math.max(.01, 1 - clip.cropTop / 100 - clip.cropBottom / 100);
+                        clip.cropScale = Math.min(
+                            (Number(clip.width)||settings.width) / (Math.max(1,Number(source?.width)||settings.width) * visibleWidth),
+                            (Number(clip.height)||settings.height) / (Math.max(1,Number(source?.height)||settings.height) * visibleHeight),
+                        );
+                    }
+                    clip.cropScale = Math.max(.01, Math.min(20, Number(clip.cropScale)||1));
+                    clip.cropViewportVersion = 2;
                     const isVideoTrack = track.kind === 'video';
                     clip.duration = this.quantizeComposerTime(clip.duration, isVideoTrack ? 2 : 1);
                     clip.start = this.quantizeComposerTime(Math.max(cursor, Math.max(0, Number(clip.start) || 0)));
@@ -1159,21 +1340,38 @@
                             height: keyframe.height === null || keyframe.height === '' || keyframe.height === undefined ? null : Math.max(16, Math.round(Number(keyframe.height))),
                             opacity: keyframe.opacity === null || keyframe.opacity === '' || keyframe.opacity === undefined ? null : Math.max(0, Math.min(1, Number(keyframe.opacity))),
                             scale: keyframe.scale === null || keyframe.scale === '' || keyframe.scale === undefined ? null : Math.max(.05, Math.min(20, Number(keyframe.scale))),
+                            cropLeft: keyframe.cropLeft === null || keyframe.cropLeft === '' || keyframe.cropLeft === undefined ? null : Math.max(0, Math.min(95, Number(keyframe.cropLeft))),
+                            cropTop: keyframe.cropTop === null || keyframe.cropTop === '' || keyframe.cropTop === undefined ? null : Math.max(0, Math.min(95, Number(keyframe.cropTop))),
+                            cropRight: keyframe.cropRight === null || keyframe.cropRight === '' || keyframe.cropRight === undefined ? null : Math.max(0, Math.min(95, Number(keyframe.cropRight))),
+                            cropBottom: keyframe.cropBottom === null || keyframe.cropBottom === '' || keyframe.cropBottom === undefined ? null : Math.max(0, Math.min(95, Number(keyframe.cropBottom))),
+                            cropShape: ['rectangle','ellipse','rounded'].includes(keyframe.cropShape) ? keyframe.cropShape : null,
+                            cropCornerRadius: keyframe.cropCornerRadius === null || keyframe.cropCornerRadius === '' || keyframe.cropCornerRadius === undefined ? null : Math.max(0, Math.min(4096, Math.round(Number(keyframe.cropCornerRadius)))),
+                            cropFeather: keyframe.cropFeather === null || keyframe.cropFeather === '' || keyframe.cropFeather === undefined ? null : Math.max(0, Math.min(512, Math.round(Number(keyframe.cropFeather)))),
+                            cropScale: keyframe.cropScale === null || keyframe.cropScale === '' || keyframe.cropScale === undefined ? null : Math.max(.01, Math.min(20, Number(keyframe.cropScale))),
                         });
                     });
                     if (isVideoTrack) {
                         const endFrame = durationFrames - 1;
                         let start = [...byFrame.values()].find(keyframe => keyframe.endpoint === 'start') || byFrame.get(0);
-                        if (!start) start = { id: composerId('keyframe'), frame: 0, transition: 'hold', x: Math.round(base.x), y: Math.round(base.y), width: Math.max(16, Math.round(base.width)), height: Math.max(16, Math.round(base.height)), opacity: base.opacity, scale: base.scale };
+                        if (!start) start = { id: composerId('keyframe'), frame: 0, transition: 'hold', x: Math.round(base.x), y: Math.round(base.y), width: Math.max(16, Math.round(base.width)), height: Math.max(16, Math.round(base.height)), opacity: base.opacity, scale: base.scale, cropLeft: base.cropLeft, cropTop: base.cropTop, cropRight: base.cropRight, cropBottom: base.cropBottom, cropShape: base.cropShape, cropCornerRadius: base.cropCornerRadius, cropFeather: base.cropFeather, cropScale: base.cropScale };
                         start.frame = 0; start.endpoint = 'start'; start.transition = 'hold'; byFrame.set(0, start);
                         let end = [...byFrame.values()].find(keyframe => keyframe.endpoint === 'end') || byFrame.get(endFrame);
                         if (!end || end === start) {
-                            const state = this.composerVisualStateAtFrame({ ...clip, keyframes: [...byFrame.values()] }, endFrame);
-                            end = { id: composerId('keyframe'), frame: endFrame, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)), scale: state.scale };
+                            end = { id: composerId('keyframe'), frame: endFrame, transition: 'linear', x: null, y: null, width: null, height: null, opacity: null, scale: null, cropLeft: null, cropTop: null, cropRight: null, cropBottom: null, cropShape: null, cropCornerRadius: null, cropFeather: null, cropScale: null };
                         }
                         end.frame = endFrame; end.endpoint = 'end'; byFrame.set(endFrame, end);
                     }
                     clip.keyframes = [...byFrame.values()].sort((a, b) => a.frame - b.frame);
+                    if (migrateCropViewport && (this.composerSource(clip.sourceId)?.hasVideo || this.composerSource(clip.sourceId)?.hasImage)) {
+                        const source = this.composerSource(clip.sourceId);
+                        Object.assign(clip, this.composerCropInsetsForViewport(this.composerBaseVisualState(clip), clip.width, clip.height, source));
+                        this.composerClipKeyframes(clip).forEach(keyframe => {
+                            const hasOwnViewport = ['width','height','cropLeft','cropTop','cropRight','cropBottom','cropScale'].some(field => keyframe[field] !== null && keyframe[field] !== '' && keyframe[field] !== undefined);
+                            if (!hasOwnViewport) return;
+                            const state = this.composerVisualStateAtFrame(clip, keyframe.frame);
+                            Object.assign(keyframe, this.composerCropInsetsForViewport(state, state.width, state.height, source));
+                        });
+                    }
                     cursor = this.quantizeComposerTime(clip.start + clip.duration);
                 });
             });
@@ -1439,6 +1637,95 @@
             if (sourceId && !this.composerSource(sourceId)?.hasImage) return;
             this.composerPushHistory(); clip.maskSourceId = sourceId || null; this.composerChanged();
         },
+        setComposerCropInset(side, value) {
+            const clip = this.composerSelectedClip;
+            const fields = { left: ['cropLeft','cropRight'], right: ['cropRight','cropLeft'], top: ['cropTop','cropBottom'], bottom: ['cropBottom','cropTop'] };
+            const pair = fields[side]; if (!clip || !pair) return;
+            const opposite = Math.max(0, Math.min(95, Number(clip[pair[1]])||0));
+            clip[pair[0]] = Math.max(0, Math.min(95, 99 - opposite, Number(value)||0));
+            this.syncComposerPreview();
+        },
+        transformComposerCropState(state, transform = {}) {
+            const left = Math.max(0, Math.min(95, Number(state.cropLeft)||0));
+            const top = Math.max(0, Math.min(95, Number(state.cropTop)||0));
+            const right = Math.max(0, Math.min(95, Number(state.cropRight)||0));
+            const bottom = Math.max(0, Math.min(95, Number(state.cropBottom)||0));
+            const width = Math.max(1, 100 - left - right), height = Math.max(1, 100 - top - bottom);
+            const requestedFactor = Number.isFinite(Number(transform.factor)) ? Number(transform.factor) : 1;
+            const minimumFactor = Math.max(1 / width, 1 / height);
+            const maximumFactor = Math.min(100 / width, 100 / height);
+            const factor = Math.max(minimumFactor, Math.min(maximumFactor, requestedFactor));
+            const nextWidth = width * factor, nextHeight = height * factor;
+            let centerX = left + width / 2 + (Number(transform.panX)||0);
+            let centerY = top + height / 2 + (Number(transform.panY)||0);
+            centerX = Math.max(nextWidth / 2, Math.min(100 - nextWidth / 2, centerX));
+            centerY = Math.max(nextHeight / 2, Math.min(100 - nextHeight / 2, centerY));
+            return {
+                cropLeft: Math.max(0, centerX - nextWidth / 2),
+                cropTop: Math.max(0, centerY - nextHeight / 2),
+                cropRight: Math.max(0, 100 - centerX - nextWidth / 2),
+                cropBottom: Math.max(0, 100 - centerY - nextHeight / 2),
+                cropScale: Math.max(.01, Math.min(20, (Number(state.cropScale)||1) / factor)),
+            };
+        },
+        applyComposerCropTransform(clip, transform, activeKeyframeId = '') {
+            const active = activeKeyframeId ? clip.keyframes?.find(item => item.id === activeKeyframeId) : null;
+            if (active) {
+                Object.assign(active, this.transformComposerCropState(this.composerVisualStateAtFrame(clip, active.frame), transform));
+                return;
+            }
+            const keyframeStates = new Map(this.composerClipKeyframes(clip).map(item => [item.id, this.composerVisualStateAtFrame(clip, item.frame)]));
+            Object.assign(clip, this.transformComposerCropState(this.composerBaseVisualState(clip), transform));
+            this.composerClipKeyframes(clip).forEach(item => {
+                const hasCropValue = ['cropLeft','cropTop','cropRight','cropBottom','cropScale'].some(field => item[field] !== null && item[field] !== '' && item[field] !== undefined);
+                if (hasCropValue) Object.assign(item, this.transformComposerCropState(keyframeStates.get(item.id), transform));
+            });
+        },
+        handleComposerCropWheel(event, clip) {
+            if (!(event.metaKey || event.ctrlKey) || this.composerTrack(clip.trackId)?.locked || !(this.composerSource(clip.sourceId)?.hasVideo || this.composerSource(clip.sourceId)?.hasImage)) return;
+            event.preventDefault(); event.stopPropagation();
+            this.selectComposerClip(clip, null, false); this.syncComposerKeyframeSelection();
+            if (!this.composerCropWheelEditing) { this.composerPushHistory(); this.composerCropWheelEditing = true; }
+            const activeId = this.composerKeyframeAtPlayhead(clip)?.id || '';
+            const factor = Math.exp(Math.max(-120, Math.min(120, event.deltaY)) * .0018);
+            this.applyComposerCropTransform(clip, { factor }, activeId);
+            this.syncComposerPreview();
+            if (this.composerCropWheelTimer) window.clearTimeout(this.composerCropWheelTimer);
+            this.composerCropWheelTimer = window.setTimeout(() => {
+                this.composerCropWheelTimer = 0; this.composerCropWheelEditing = false; this.composerChanged();
+            }, 180);
+        },
+        beginComposerCropPan(event, clip, layer) {
+            event.preventDefault(); event.stopPropagation();
+            this.selectComposerClip(clip, null, false); this.syncComposerKeyframeSelection(); this.composerPushHistory();
+            const activeId = this.composerKeyframeAtPlayhead(clip)?.id || '';
+            const initial = this.composerVisualStateAt(clip), frame = layer.querySelector('.vs-composer-media-frame');
+            const media = frame?.querySelector('img,video'), bounds = frame?.getBoundingClientRect();
+            if (!frame || !media || !bounds?.width || !bounds?.height) return;
+            const originX = event.clientX, originY = event.clientY;
+            const visibleWidth = Math.max(1, 100 - initial.cropLeft - initial.cropRight);
+            const visibleHeight = Math.max(1, 100 - initial.cropTop - initial.cropBottom);
+            let transform = { panX: 0, panY: 0 }, next = initial;
+            try { layer.setPointerCapture(event.pointerId); } catch (_) {}
+            const move = current => {
+                current.preventDefault();
+                transform = {
+                    panX: -(current.clientX - originX) / bounds.width * visibleWidth,
+                    panY: -(current.clientY - originY) / bounds.height * visibleHeight,
+                };
+                next = { ...initial, ...this.transformComposerCropState(initial, transform) };
+                frame.style.cssText = this.composerCropFrameStyle(clip, next);
+                media.style.cssText = this.composerCropMediaStyle(clip, next);
+            };
+            const finish = () => {
+                window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', finish); window.removeEventListener('pointercancel', finish);
+                const target = this.composerProject.clips.find(item => item.id === clip.id);
+                if (target) this.applyComposerCropTransform(target, transform, activeId);
+                try { if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId); } catch (_) {}
+                this.composerChanged(); this.syncComposerPreview();
+            };
+            window.addEventListener('pointermove', move); window.addEventListener('pointerup', finish, { once: true }); window.addEventListener('pointercancel', finish, { once: true });
+        },
         setComposerClipSource(sourceId) {
             const clip = this.composerSelectedClip, source = this.composerSource(sourceId);
             if (!clip || !source || !this.composerCompatibleSources(clip).some(item => item.id === source.id) || clip.sourceId === source.id) return;
@@ -1483,6 +1770,8 @@
                 height: visual ? Math.round((source.height || settings.height) * scale) : null,
                 opacity: 1, scale: 1, audioEnabled: true, groupId: null,
                 maskSourceId: null,
+                cropLeft: 0, cropTop: 0, cropRight: 0, cropBottom: 0,
+                cropShape: 'rectangle', cropCornerRadius: 32, cropFeather: 0, cropScale: scale, cropViewportVersion: 2,
                 color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length],
                 keyframes: [],
             };
@@ -1491,13 +1780,13 @@
         },
         addComposerSpecialLayer(layerType) {
             if (!['spotlight', 'text'].includes(layerType)) return;
+            const track = this.composerSelectedTrack;
+            if (!track || track.kind !== 'video' || track.locked) return;
             this.composerPushHistory();
-            const track = this.addComposerTrack('video', false);
-            track.name = tr(layerType === 'spotlight' ? 'video_studio.composer.spotlight_layer' : 'video_studio.composer.text_layer');
             const settings = this.composerProject.settings, start = this.quantizeComposerTime(this.composerPlayhead);
             const clip = {
                 id: composerId('clip'), layerType, sourceId: null, trackId: track.id,
-                name: track.name, start, sourceStart: 0, duration: this.quantizeComposerTime(3, 2), speed: 1,
+                name: tr(layerType === 'spotlight' ? 'video_studio.composer.spotlight_layer' : 'video_studio.composer.text_layer'), start, sourceStart: 0, duration: this.quantizeComposerTime(3, 2), speed: 1,
                 volume: 0, fadeIn: 0, fadeOut: 0,
                 x: layerType === 'text' ? Math.round(settings.width / 2) : Math.round(settings.width * .25),
                 y: layerType === 'text' ? Math.round(settings.height / 2) : Math.round(settings.height * .25),
@@ -1506,8 +1795,11 @@
                 color: layerType === 'spotlight' ? '#334155' : '#9333ea', keyframes: [],
                 spotlightShape: 'rounded', dimOpacity: .65, feather: 24, cornerRadius: 32,
                 text: tr('video_studio.composer.text_default'), fontSize: 64, textColor: '#ffffff', textAnchor: 'center', reveal: false, revealSpeed: 12,
+                textBold: false, textItalic: false, textUnderline: false, textStrikethrough: false,
+                textStrokeEnabled: false, textStrokeWidth: 2, textStrokeColor: '#000000', textStrokeStyle: 'solid',
+                textShadowEnabled: false, textShadowColor: '#000000', textShadowOpacity: .5, textShadowBlur: 12, textShadowOffsetX: 8, textShadowOffsetY: 8,
             };
-            this.composerProject.clips.push(clip); this.setComposerSelection([clip.id], clip.id);
+            this.insertComposerClip(clip); this.composerProject.clips.push(clip); this.setComposerSelection([clip.id], clip.id);
             this.composerPlayhead = start; this.composerChanged(); this.syncComposerPreview();
         },
         insertComposerClip(clip) {
@@ -1524,9 +1816,14 @@
         resetComposerClipSize(clip) {
             const source = this.composerSource(clip.sourceId);
             if (!source?.width || !source?.height || this.composerTrack(clip.trackId)?.locked) return;
+            const cropState = this.composerVisualStateAt(clip);
+            const cropWidth = Math.max(.01, 1 - (Number(cropState.cropLeft)||0) / 100 - (Number(cropState.cropRight)||0) / 100);
+            const cropHeight = Math.max(.01, 1 - (Number(cropState.cropTop)||0) / 100 - (Number(cropState.cropBottom)||0) / 100);
+            const naturalWidth = Math.max(16, Math.round(source.width * cropWidth));
+            const naturalHeight = Math.max(16, Math.round(source.height * cropHeight));
             this.composerPushHistory(); const keyframe = this.composerKeyframeAtPlayhead(clip);
-            if (keyframe) { keyframe.width = source.width; keyframe.height = source.height; }
-            else { const state = this.composerBaseVisualState(clip); this.resizeComposerClipVisual(clip, source.width, source.height, state.width, state.height); }
+            if (keyframe) { keyframe.width = naturalWidth; keyframe.height = naturalHeight; }
+            else { const state = this.composerBaseVisualState(clip); this.resizeComposerClipVisual(clip, naturalWidth, naturalHeight, state.width, state.height); }
             this.composerChanged();
         },
         translateComposerClipVisual(clip, dx, dy) {
@@ -1536,13 +1833,26 @@
                 if (keyframe.y !== null && keyframe.y !== '' && keyframe.y !== undefined) keyframe.y = Math.round(Number(keyframe.y) + dy);
             });
         },
-        resizeComposerClipVisual(clip, nextWidth, nextHeight, previousWidth, previousHeight) {
+        resizeComposerClipVisual(clip, nextWidth, nextHeight, previousWidth, previousHeight, scaleCrop = true) {
             const scaleX = nextWidth / Math.max(1, previousWidth), scaleY = nextHeight / Math.max(1, previousHeight);
             clip.width = Math.max(16, Math.round(nextWidth)); clip.height = Math.max(16, Math.round(nextHeight));
+            const cropFactor = Math.max(.01, Math.min(scaleX, scaleY));
+            if (scaleCrop) clip.cropScale = Math.max(.01, Math.min(20, (Number(clip.cropScale)||1) * cropFactor));
             this.composerClipKeyframes(clip).forEach(keyframe => {
                 if (keyframe.width !== null && keyframe.width !== '' && keyframe.width !== undefined) keyframe.width = Math.max(16, Math.round(Number(keyframe.width) * scaleX));
                 if (keyframe.height !== null && keyframe.height !== '' && keyframe.height !== undefined) keyframe.height = Math.max(16, Math.round(Number(keyframe.height) * scaleY));
+                if (scaleCrop && keyframe.cropScale !== null && keyframe.cropScale !== '' && keyframe.cropScale !== undefined) keyframe.cropScale = Math.max(.01, Math.min(20, Number(keyframe.cropScale) * cropFactor));
             });
+            const source = this.composerSource(clip.sourceId);
+            if (!scaleCrop && (source?.hasVideo || source?.hasImage)) {
+                Object.assign(clip, this.composerCropInsetsForViewport(this.composerBaseVisualState(clip), clip.width, clip.height, source));
+                this.composerClipKeyframes(clip).forEach(keyframe => {
+                    const hasOwnViewport = ['width','height','cropLeft','cropTop','cropRight','cropBottom','cropScale'].some(field => keyframe[field] !== null && keyframe[field] !== '' && keyframe[field] !== undefined);
+                    if (!hasOwnViewport) return;
+                    const state = this.composerVisualStateAtFrame(clip, keyframe.frame);
+                    Object.assign(keyframe, this.composerCropInsetsForViewport(state, state.width, state.height, source));
+                });
+            }
         },
         composerTrackDropTime(event) {
             const row = event.currentTarget, bounds = row.getBoundingClientRect();
@@ -1563,15 +1873,47 @@
                 await this.importComposerGalleryAsset({ id: assetId, name: event.dataTransfer?.getData('text/plain') || 'Media', kind }, true, track.id, at);
             } catch (error) { this.fail(error); }
         },
-        addComposerTrack(kind = 'video', recordHistory = true) {
+        addComposerTrack(kind = 'video', recordHistory = true, relativeTrackId = '', placement = 'after') {
             if (recordHistory) this.composerPushHistory();
             const count = this.composerProject.tracks.filter(track => track.kind === kind).length + 1;
             const track = { id: composerId('track'), kind, name: `${kind === 'video' ? 'Video' : 'Audio'} ${count}`, order: this.composerProject.tracks.length, muted: false, locked: false };
-            const selectedTrackId = this.composerSelectedClip?.trackId;
+            const selectedTrackId = relativeTrackId || this.composerSelectedTrack?.id;
             const selectedIndex = this.composerProject.tracks.findIndex(item => item.id === selectedTrackId);
-            this.composerProject.tracks.splice(selectedIndex >= 0 ? selectedIndex + 1 : this.composerProject.tracks.length, 0, track);
+            const insertionIndex = selectedIndex < 0 ? this.composerProject.tracks.length : selectedIndex + (placement === 'before' ? 0 : 1);
+            this.composerProject.tracks.splice(insertionIndex, 0, track);
             this.composerProject.tracks.forEach((item, index) => { item.order = index; });
+            this.composerSelectedTrackId = track.id;
             if (recordHistory) this.composerChanged(); return track;
+        },
+        closeComposerAddMenus() {
+            this.composerTrackMenuOpen = false; this.composerItemMenuOpen = false;
+            this.composerTrackMenuStep = 'type'; this.composerTrackInsertSide = 'after';
+        },
+        toggleComposerTrackMenu() {
+            this.composerTrackMenuOpen = !this.composerTrackMenuOpen; this.composerItemMenuOpen = false;
+            this.composerTrackMenuStep = 'type'; this.composerTrackInsertSide = 'after';
+        },
+        openComposerTrackContextMenu() {
+            this.composerTrackMenuOpen = true; this.composerItemMenuOpen = false;
+            this.composerTrackMenuStep = 'position'; this.composerTrackInsertSide = 'after';
+        },
+        chooseComposerTrackInsertSide(side) {
+            this.composerTrackInsertSide = side === 'before' ? 'before' : 'after';
+            this.composerTrackMenuStep = 'type';
+        },
+        toggleComposerItemMenu() {
+            if (!this.composerCanAddProjectItem) return;
+            this.composerItemMenuOpen = !this.composerItemMenuOpen; this.composerTrackMenuOpen = false;
+        },
+        addComposerTrackFromMenu(kind) {
+            this.addComposerTrack(kind, true, this.composerSelectedTrack?.id || '', this.composerTrackInsertSide);
+            this.closeComposerAddMenus();
+        },
+        addComposerItemFromMenu(layerType) { this.addComposerSpecialLayer(layerType); this.closeComposerAddMenus(); },
+        isComposerTrackSelected(track) { return this.composerSelectedTrack?.id === track?.id; },
+        selectComposerTrack(track) {
+            if (!track) return;
+            this.composerSelectedTrackId = track.id; this.setComposerSelection([], ''); this.closeComposerAddMenus();
         },
         removeComposerTrack(track) {
             if (this.composerProject.tracks.length <= 1) return;
@@ -1579,9 +1921,11 @@
             if (clipCount && !window.confirm(tr('video_studio.composer.confirm_remove_track', { name: track.name, count: clipCount }))) return;
             this.composerPushHistory();
             const ids = new Set(this.composerProject.clips.filter(clip => clip.trackId === track.id).map(clip => clip.id));
+            const removedIndex = this.composerProject.tracks.findIndex(item => item.id === track.id);
             this.composerProject.tracks = this.composerProject.tracks.filter(item => item.id !== track.id);
             this.composerProject.clips = this.composerProject.clips.filter(clip => clip.trackId !== track.id);
             if (this.composerSelectedClipIds.some(id => ids.has(id))) this.setComposerSelection([], '');
+            if (this.composerSelectedTrackId === track.id) this.composerSelectedTrackId = this.composerProject.tracks[Math.max(0, removedIndex - 1)]?.id || '';
             this.composerProject.tracks.forEach((item, index) => { item.order = index; }); this.composerChanged();
         },
         toggleComposerTrack(track, key) { this.composerPushHistory(); track[key] = !track[key]; this.composerChanged(); },
@@ -1641,6 +1985,7 @@
             this.syncComposerPreview();
         },
         selectComposerClip(clip, event = null, syncPlayhead = true) {
+            this.composerSelectedTrackId = clip.trackId;
             const unit = this.composerClipSelectionUnit(clip), toggle = Boolean(event?.metaKey || event?.ctrlKey);
             if (event?.shiftKey && this.composerSelectedClip) {
                 const anchor = this.composerSelectedClip;
@@ -1662,7 +2007,7 @@
             const existing = this.composerClipKeyframes(clip).find(keyframe => keyframe.frame === frame);
             if (existing) { this.composerSelectedKeyframeId = existing.id; return; }
             this.composerPushHistory(); const state = this.composerVisualStateAtFrame(clip, frame);
-            const keyframe = { id: composerId('keyframe'), frame, endpoint: null, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)), scale: state.scale };
+            const keyframe = { id: composerId('keyframe'), frame, endpoint: null, transition: 'linear', x: Math.round(state.x), y: Math.round(state.y), width: Math.max(16, Math.round(state.width)), height: Math.max(16, Math.round(state.height)), opacity: Math.max(0, Math.min(1, state.opacity)), scale: state.scale, cropLeft: state.cropLeft, cropTop: state.cropTop, cropRight: state.cropRight, cropBottom: state.cropBottom, cropShape: state.cropShape, cropCornerRadius: Math.round(state.cropCornerRadius), cropFeather: Math.round(state.cropFeather), cropScale: state.cropScale };
             clip.keyframes = [...this.composerClipKeyframes(clip), keyframe].sort((a, b) => a.frame - b.frame);
             this.composerSelectedKeyframeId = keyframe.id; this.composerChanged(); this.syncComposerPreview();
         },
@@ -1697,7 +2042,9 @@
         splitComposerKeyframes(clip, splitFrame) {
             const state = this.composerVisualStateAtFrame(clip, splitFrame);
             const leftEndState = this.composerVisualStateAtFrame(clip, splitFrame - 1);
-            const makeEndpoint = (endpoint, frame, value) => ({ id: composerId('keyframe'), frame, endpoint, transition: endpoint === 'start' ? 'hold' : 'linear', x: Math.round(value.x), y: Math.round(value.y), width: Math.max(16, Math.round(value.width)), height: Math.max(16, Math.round(value.height)), opacity: Math.max(0, Math.min(1, value.opacity)), scale: value.scale });
+            const makeEndpoint = (endpoint, frame, value) => endpoint === 'end'
+                ? { id: composerId('keyframe'), frame, endpoint, transition: 'linear', x: null, y: null, width: null, height: null, opacity: null, scale: null, cropLeft: null, cropTop: null, cropRight: null, cropBottom: null, cropShape: null, cropCornerRadius: null, cropFeather: null, cropScale: null }
+                : { id: composerId('keyframe'), frame, endpoint, transition: 'hold', x: Math.round(value.x), y: Math.round(value.y), width: Math.max(16, Math.round(value.width)), height: Math.max(16, Math.round(value.height)), opacity: Math.max(0, Math.min(1, value.opacity)), scale: value.scale, cropLeft: value.cropLeft, cropTop: value.cropTop, cropRight: value.cropRight, cropBottom: value.cropBottom, cropShape: value.cropShape, cropCornerRadius: Math.round(value.cropCornerRadius), cropFeather: Math.round(value.cropFeather), cropScale: value.cropScale };
             const middle = this.composerClipKeyframes(clip).filter(keyframe => !this.composerIsEndpointKeyframe(keyframe));
             const left = [makeEndpoint('start', 0, this.composerVisualStateAtFrame(clip, 0)), ...middle.filter(keyframe => keyframe.frame < splitFrame), makeEndpoint('end', splitFrame - 1, leftEndState)];
             const durationFrames = this.composerFrameNumber(clip.duration), rightDuration = durationFrames - splitFrame;
@@ -1735,7 +2082,10 @@
                     volume: 0, fadeIn: 0, fadeOut: 0, x: Math.round(visual.x), y: Math.round(visual.y),
                     width: Math.max(16, Math.round(visual.width)), height: Math.max(16, Math.round(visual.height)),
                     opacity: Math.max(0, Math.min(1, visual.opacity)), scale: visual.scale, audioEnabled: false, groupId: null,
-                    maskSourceId: clip.maskSourceId || null, color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length], keyframes: [],
+                    maskSourceId: clip.maskSourceId || null,
+                    cropLeft: visual.cropLeft, cropTop: visual.cropTop, cropRight: visual.cropRight, cropBottom: visual.cropBottom,
+                    cropShape: visual.cropShape, cropCornerRadius: Math.round(visual.cropCornerRadius), cropFeather: Math.round(visual.cropFeather), cropScale: visual.cropScale,
+                    color: COMPOSER_CLIP_COLORS[this.composerProject.clips.length % COMPOSER_CLIP_COLORS.length], keyframes: [],
                 };
                 if (right) this.composerProject.clips.push(right);
                 this.composerProject.clips.push(freeze); this.composerSelectedKeyframeId = '';
@@ -2004,8 +2354,12 @@
         },
         beginComposerStageDrag(event, clip) {
             if (event.button !== 0 || this.composerTrack(clip.trackId)?.locked) return;
+            const layer = event.currentTarget;
+            if ((event.metaKey || event.ctrlKey) && (this.composerSource(clip.sourceId)?.hasVideo || this.composerSource(clip.sourceId)?.hasImage)) {
+                this.beginComposerCropPan(event, clip, layer); return;
+            }
             event.preventDefault();
-            const layer = event.currentTarget, stage = layer.closest('.vs-composer-stage'), bounds = stage.getBoundingClientRect();
+            const stage = layer.closest('.vs-composer-stage'), bounds = stage.getBoundingClientRect();
             this.selectComposerClip(clip, event, false); this.syncComposerKeyframeSelection(); this.composerPushHistory();
             try { layer.setPointerCapture(event.pointerId); } catch (_) {}
             const settings = this.composerProject.settings, canvasWidth = settings.width, canvasHeight = settings.height;
@@ -2039,13 +2393,21 @@
             if (event.button !== 0 || this.composerTrack(clip.trackId)?.locked) return;
             event.preventDefault();
             const layer = event.currentTarget.closest('.vs-composer-layer'), stage = layer.closest('.vs-composer-stage'), bounds = stage.getBoundingClientRect();
-            this.selectComposerClip(clip, event, false); this.syncComposerKeyframeSelection(); this.composerPushHistory();
+            // Cmd/Ctrl and Shift select resize behavior here; they must not
+            // toggle timeline selection and hide the selected-layer frame.
+            this.selectComposerClip(clip, null, false); this.syncComposerKeyframeSelection(); this.composerPushHistory();
             try { layer.setPointerCapture(event.pointerId); } catch (_) {}
             const settings = this.composerProject.settings, canvasWidth = settings.width, canvasHeight = settings.height;
             const activeKeyframe = this.composerKeyframeAtPlayhead(clip), activeKeyframeId = activeKeyframe?.id || '';
             const visual = this.composerVisualStateAt(clip), originX = event.clientX, originY = event.clientY, width = visual.width || canvasWidth, height = visual.height || canvasHeight;
-            const textLayer = clip.layerType === 'text', originalScale = visual.scale || 1;
-            let nextWidth = width, nextHeight = height, nextScale = originalScale;
+            const source = this.composerSource(clip.sourceId), textLayer = clip.layerType === 'text';
+            const aspectLocked = clip.layerType === 'media' && Boolean(source?.hasVideo || source?.hasImage);
+            const preserveCropScale = aspectLocked && (event.metaKey || event.ctrlKey);
+            const sourceAspect = Math.max(.01, Number(source?.width)||width) / Math.max(.01, Number(source?.height)||height);
+            const originalScale = visual.scale || 1;
+            const originalCropScale = Math.max(.01, Math.min(20, Number(visual.cropScale)||1));
+            let nextWidth = width, nextHeight = height, nextScale = originalScale, nextCropScale = originalCropScale;
+            let nextCropRight = Number(visual.cropRight)||0, nextCropBottom = Number(visual.cropBottom)||0;
             const move = current => {
                 current.preventDefault();
                 if (textLayer) {
@@ -2054,10 +2416,40 @@
                     layer.style.transform = `${this.composerTextAnchorTransform(clip.textAnchor)} scale(${nextScale})`;
                     return;
                 }
-                nextWidth = Math.round(Math.max(16, Math.min(canvasWidth - visual.x, width + (current.clientX - originX) / bounds.width * canvasWidth)));
-                nextHeight = Math.round(Math.max(16, Math.min(canvasHeight - visual.y, height + (current.clientY - originY) / bounds.height * canvasHeight)));
+                const deltaX = (current.clientX - originX) / bounds.width * canvasWidth;
+                const deltaY = (current.clientY - originY) / bounds.height * canvasHeight;
+                const maximumWidth = Math.max(16, canvasWidth - visual.x), maximumHeight = Math.max(16, canvasHeight - visual.y);
+                if (aspectLocked && !preserveCropScale && !current.shiftKey) {
+                    const horizontal = Math.abs(deltaX / Math.max(1, width)) >= Math.abs(deltaY / Math.max(1, height));
+                    const desiredWidth = horizontal ? width + deltaX : (height + deltaY) * sourceAspect;
+                    const minimumWidth = Math.max(16, 16 * sourceAspect);
+                    const maximumLockedWidth = Math.min(maximumWidth, maximumHeight * sourceAspect);
+                    const effectiveMaximumWidth = Math.max(minimumWidth, maximumLockedWidth);
+                    nextWidth = Math.round(Math.max(minimumWidth, Math.min(effectiveMaximumWidth, desiredWidth)));
+                    nextHeight = Math.round(nextWidth / sourceAspect);
+                } else {
+                    nextWidth = Math.round(Math.max(16, Math.min(maximumWidth, width + deltaX)));
+                    nextHeight = Math.round(Math.max(16, Math.min(maximumHeight, height + deltaY)));
+                }
+                if (aspectLocked && !preserveCropScale) nextCropScale = Math.max(.01, Math.min(20, originalCropScale * Math.min(nextWidth / Math.max(1,width), nextHeight / Math.max(1,height))));
+                if (preserveCropScale) {
+                    const insets = this.composerCropInsetsForViewport(visual, nextWidth, nextHeight, source);
+                    nextCropRight = insets.cropRight; nextCropBottom = insets.cropBottom;
+                }
                 layer.style.width = `${nextWidth / canvasWidth * 100}%`;
                 layer.style.height = `${nextHeight / canvasHeight * 100}%`;
+                if (aspectLocked) {
+                    const liveState = { ...visual, width: nextWidth, height: nextHeight, cropScale: nextCropScale, cropRight: nextCropRight, cropBottom: nextCropBottom };
+                    const geometry = this.composerCropFrameGeometry(clip, liveState);
+                    layer.style.setProperty('--media-frame-left', `${geometry.left}%`);
+                    layer.style.setProperty('--media-frame-top', `${geometry.top}%`);
+                    layer.style.setProperty('--media-frame-width', `${geometry.width}%`);
+                    layer.style.setProperty('--media-frame-height', `${geometry.height}%`);
+                    layer.style.setProperty('--media-frame-radius', geometry.radius);
+                    const frame = layer.querySelector('.vs-composer-media-frame'), media = frame?.querySelector('img,video');
+                    if (frame) frame.style.cssText = this.composerCropFrameStyle(clip, liveState);
+                    if (media) media.style.cssText = this.composerCropMediaStyle(clip, liveState);
+                }
             };
             const finish = () => {
                 window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', finish); window.removeEventListener('pointercancel', finish);
@@ -2070,8 +2462,12 @@
                         targetClip.scale = Math.max(.05, Math.min(20, (Number(targetClip.scale) || 1) * factor));
                         this.composerClipKeyframes(targetClip).forEach(item => { if (item.scale !== null && item.scale !== '' && item.scale !== undefined) item.scale = Math.max(.05, Math.min(20, Number(item.scale) * factor)); });
                     }
-                    else if (keyframe) { keyframe.width = nextWidth; keyframe.height = nextHeight; }
-                    else this.resizeComposerClipVisual(targetClip, nextWidth, nextHeight, width, height);
+                    else if (keyframe) {
+                        keyframe.width = nextWidth; keyframe.height = nextHeight;
+                        if (preserveCropScale) { keyframe.cropRight = nextCropRight; keyframe.cropBottom = nextCropBottom; }
+                        else keyframe.cropScale = nextCropScale;
+                    }
+                    else this.resizeComposerClipVisual(targetClip, nextWidth, nextHeight, width, height, !preserveCropScale);
                 }
                 try { if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId); } catch (_) {}
                 this.composerChanged();
@@ -2102,12 +2498,13 @@
             this.$nextTick(() => {
                 document.querySelectorAll('.vs-composer-stage video,.vs-composer-stage audio').forEach(media => {
                     const clip = this.composerProject.clips.find(item => item.id === media.dataset.clipId); if (!clip) return;
+                    const active = this.composerClipActiveAtPlayhead(clip);
                     const target = clip.sourceStart + Math.max(0, this.composerPlayhead - clip.start) * clip.speed;
                     const elapsed = Math.max(0, this.composerPlayhead - clip.start), remaining = Math.max(0, clip.duration - elapsed);
                     const fade = Math.min(clip.fadeIn ? elapsed / clip.fadeIn : 1, clip.fadeOut ? remaining / clip.fadeOut : 1, 1);
                     media.playbackRate = clip.speed; media.volume = Math.min(1, clip.volume * Math.max(0, fade));
                     if (Math.abs((media.currentTime || 0) - target) > .2) media.currentTime = target;
-                    if (this.composerPlaying) media.play().catch(() => {}); else media.pause();
+                    if (this.composerPlaying && active) media.play().catch(() => {}); else media.pause();
                 });
             });
         },
@@ -2161,6 +2558,16 @@
             } catch (error) { this.fail(error); } finally { this.icons(); }
         },
         selectComposerRun(run) { this.selectedComposerRunId = run.id; this.composerGalleryAdded = false; this.persistShellState(); },
+        composerRunDetail(run) {
+            const detail = String(run?.steps?.[0]?.detail || '');
+            const match = /^composer\.rendering:([0-9.]+):([0-9.]+)$/.exec(detail);
+            if (!match) return detail;
+            const format = value => {
+                const seconds = Math.max(0, Number(value) || 0);
+                return seconds >= 100 ? seconds.toFixed(0) : seconds.toFixed(1);
+            };
+            return tr('video_studio.composer.render_progress', { current: format(match[1]), total: format(match[2]) });
+        },
         async addActiveComposerToGallery() {
             const artifact = this.activeComposerArtifact;
             if (!artifact?.downloadUrl || this.addingComposerToGallery) return;

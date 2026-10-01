@@ -22,6 +22,7 @@ from ai2apps.studio.capability_broker import (
     StudioCapabilityBroker,
     StudioCapabilityError,
     _speech_text_similarity,
+    validate_edited_subtitle_segments,
 )
 
 STUDIO_ID = "ai2apps.readaloud"
@@ -45,6 +46,45 @@ def test_speech_text_similarity_ignores_case_spacing_and_punctuation():
     assert _speech_text_similarity("总共1024GB。", "总共一千零二十四 GB") == 1.0
     assert _speech_text_similarity("发布于2026年。", "发布于二零二六年") == 1.0
     assert _speech_text_similarity("正常语音", "") == 0.0
+
+
+def test_edited_subtitle_segments_keep_only_bounded_timeline_text_and_speaker():
+    result = validate_edited_subtitle_segments(
+        [
+            {
+                "start": 0,
+                "end": 1.25,
+                "text": "  校对后的字幕。  ",
+                "speaker": "SPEAKER_00",
+                "words": [{"word": "untrusted"}],
+                "providerInternal": "discarded",
+            },
+            {"start": 1.25, "end": 2.0, "text": "   "},
+        ]
+    )
+
+    assert result == [
+        {
+            "start": 0.0,
+            "end": 1.25,
+            "text": "校对后的字幕。",
+            "speaker": "SPEAKER_00",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "segments",
+    [
+        [],
+        [{"start": -1, "end": 1, "text": "bad"}],
+        [{"start": 2, "end": 1, "text": "bad"}],
+        [{"start": 0, "end": 1, "text": "x" * 4_001}],
+    ],
+)
+def test_edited_subtitle_segments_reject_invalid_content(segments):
+    with pytest.raises(StudioCapabilityError, match="subtitle"):
+        validate_edited_subtitle_segments(segments)
 
 
 def _wav() -> bytes:
@@ -1097,6 +1137,65 @@ async def test_broker_packages_video_subtitle_and_transcript(monkeypatch):
         (4, "running", 90),
         (4, "running", 98),
     ]
+
+
+@pytest.mark.asyncio
+async def test_video_subtitles_can_extract_then_render_edited_segments(monkeypatch):
+    runtime = _runtime(extension_manager=VideoSubtitleExtensionManager())
+    monkeypatch.setattr(
+        "ai2apps.studio.capability_broker.list_package_models",
+        lambda _runtime: (_model(),),
+    )
+    monkeypatch.setattr(
+        "ai2apps.studio.capability_broker.validate_video_media", lambda _content: None
+    )
+    request = Request({"type": "http", "app": FastAPI(), "headers": []})
+    broker = StudioCapabilityBroker(runtime)
+
+    extracted = await broker.video_subtitles(
+        STUDIO_ID,
+        MOUNT_ID,
+        principal=RequestPrincipal.legacy_local(),
+        request=request,
+        content=_wav(),
+        filename="sample.mp4",
+        media_type="video/mp4",
+        source_language="zh",
+        target_language=None,
+        subtitle_format="srt",
+        bilingual=False,
+        burn_in=False,
+        speaker_labels=False,
+        extract_only=True,
+    )
+    payload = json.loads(extracted.body)
+    assert payload["segments"] and payload["segments"][0]["text"] == "你好"
+
+    async def must_not_transcribe(*args, **kwargs):
+        raise AssertionError("rendering edited segments must not transcribe again")
+
+    monkeypatch.setattr(broker, "detailed_transcription", must_not_transcribe)
+    rendered = await broker.video_subtitles(
+        STUDIO_ID,
+        MOUNT_ID,
+        principal=RequestPrincipal.legacy_local(),
+        request=request,
+        content=_wav(),
+        filename="sample.mp4",
+        media_type="video/mp4",
+        source_language="zh",
+        target_language=None,
+        subtitle_format="srt",
+        bilingual=False,
+        burn_in=False,
+        speaker_labels=False,
+        edited_segments=[{"start": 0, "end": 1, "text": "手动修改后的字幕。"}],
+    )
+
+    with zipfile.ZipFile(io.BytesIO(rendered.body)) as archive:
+        assert "手动修改后的字幕。" in archive.read("subtitles.srt").decode("utf-8")
+        transcript = json.loads(archive.read("transcript.json"))
+        assert transcript["edited"] is True
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,105 @@
+schema: ai2apps.capability-profiles/v1
+app_id: ai2apps.video-studio
+version: 1
+capabilities:
+  video.avatar_generation:
+    trigger: on_action
+    presentation:
+      eyebrow: AI2APPS CAPABILITY SETUP
+      title: 配置照片说话
+      description: 选择数字人模型，将人像图片和音频生成为视频；推荐 FlashHead Lite。
+      icon: user-round
+      confirm_label: 下载并配置
+      ready_label: 照片说话已配置
+      steps:
+        runtime: 配置推理 Runtime
+        provider: 安装数字人模型
+        checkpoint: 下载模型权重
+        verify: 验证数字人服务
+    requirements:
+      operations:
+      - video_generation
+      output_formats:
+      - mp4
+    profiles:
+    - id: apple-metal-flashhead-lite
+      label: FlashHead Lite MLX
+      description: 512 方形视频，最长 60 秒；至少 32 GiB 统一内存。
+      priority: 200
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 32
+      recommendation_memory_gib:
+        minimum: 32
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.5,<2.0.0'
+        provider:
+          package_id: ai2apps/model-flashhead-mlx
+          service_key: ai2apps.model.flashhead-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.flashhead-mlx/lite
+    - id: apple-metal-flashhead-pro
+      label: FlashHead Pro MLX
+      description: 512 方形视频，最长 10 秒；至少 32 GiB 统一内存。
+      priority: 100
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 32
+      recommendation_memory_gib:
+        minimum: 32
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.8.5,<2.0.0'
+        provider:
+          package_id: ai2apps/model-flashhead-mlx
+          service_key: ai2apps.model.flashhead-mlx
+          version: '>=0.1.0,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.flashhead-mlx/pro
+    - id: apple-metal-echomimic-v3
+      label: EchoMimic V3 MLX
+      description: 512 方形视频，建议至少 32 GiB 统一内存。
+      priority: 50
+      device:
+        os:
+        - macos
+        architectures:
+        - arm64
+        accelerator:
+          vendor: apple
+          api: metal
+          unified_memory_gib:
+            minimum: 32
+      recommendation_memory_gib:
+        minimum: 32
+      stack:
+        runtime:
+          package_id: ai2apps/runtime-omlx
+          service_key: ai2apps.runtime.omlx
+          version: '>=1.4.1,<2.0.0'
+        provider:
+          package_id: ai2apps/model-echomimic-v3-mlx
+          service_key: ai2apps.model.echomimic-v3-mlx
+          version: '>=0.1.1,<1.0.0'
+        checkpoint:
+          model_id: ai2apps.model.echomimic-v3-mlx/default

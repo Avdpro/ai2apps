@@ -59,7 +59,6 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Response,
-    UploadFile,
     WebSocketException,
 )
 from fastapi import Request as FastAPIRequest
@@ -67,6 +66,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.datastructures import UploadFile
 from starlette.requests import HTTPConnection
 
 from ai2apps._version import __version__ as _ai2apps_version

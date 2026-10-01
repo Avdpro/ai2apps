@@ -46,6 +46,7 @@ from ai2apps.studio import (
     StudioMiniAppRegistry,
     StudioRepository,
 )
+from ai2apps.studio.repository import StudioRepositoryError
 
 BUILTIN_MINI_APPS = {
     VIDEO_STUDIO_ID: VIDEO_MINI_APPS,
@@ -55,6 +56,7 @@ BUILTIN_MINI_APPS = {
 MAX_CAPABILITY_UPLOAD_BYTES = 1024 * 1024 * 1024
 MAX_REFERENCE_UPLOAD_BYTES = 100 * 1024 * 1024
 PROGRESS_PHASE_RANGES = {
+    "video.avatar_generation": ((0, 10), (10, 95), (95, 100)),
     "media.video_subtitles": ((0, 15), (15, 45), (45, 70), (70, 90), (90, 100)),
     "media.video_audio_translation": (
         (0, 15),
@@ -483,7 +485,7 @@ def create_studio_mini_app_router(
                 request.mini_app_id,
                 placement=request.placement,
                 interaction_session_id=request.interaction_session_id,
-                context={"studioInstanceId": studio_instance_id, **request.context},
+                context={**request.context, "studioInstanceId": studio_instance_id},
                 principal=principal,
             )
         except ResourceNotFoundError as error:
@@ -515,6 +517,40 @@ def create_studio_mini_app_router(
                 status_code=409,
                 detail={"code": error.code, "message": str(error)},
             ) from error
+
+    @router.get("/{studio_id}/mini-app-mounts/{mount_id}/avatar/{resource}")
+    def avatar_resource(studio_id: str, mount_id: str, resource: Literal["models", "jobs"],
+                        principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.avatar import jobs_for_mount, models_for_mount
+        runtime, _ = manager()
+        try:
+            method = models_for_mount if resource == "models" else jobs_for_mount
+            return method(StudioCapabilityBroker(runtime), studio_id, mount_id, principal)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except StudioRepositoryError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        except ResourceNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ExtensionError as error:
+            raise HTTPException(status_code=409, detail={"code": error.code, "message": str(error)}) from error
+
+    @router.post("/{studio_id}/mini-app-mounts/{mount_id}/avatar/jobs/{job_id}/{action}")
+    async def mutate_avatar_job(studio_id: str, mount_id: str, job_id: str, action: Literal["cancel", "retry"],
+                                principal: RequestPrincipal = principal_dependency):
+        from ai2apps.studio.avatar import cancel_job, retry_job
+        runtime, _ = manager()
+        try:
+            method = cancel_job if action == "cancel" else retry_job
+            return await method(StudioCapabilityBroker(runtime), studio_id, mount_id, principal, job_id)
+        except StudioCapabilityError as error:
+            raise capability_error(error) from error
+        except StudioRepositoryError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        except ResourceNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ExtensionError as error:
+            raise HTTPException(status_code=409, detail={"code": error.code, "message": str(error)}) from error
 
     @router.get("/{studio_id}/mini-app-mounts/{mount_id}/characters")
     def list_mini_app_characters(
@@ -716,6 +752,8 @@ def create_studio_mini_app_router(
         ] = None,
         reference: Annotated[UploadFile | None, File()] = None,
         profile: Annotated[str, Form()] = "compact",
+        avatar_model_id: Annotated[str, Form()] = "",
+        avatar_resolution: Annotated[str, Form()] = "",
         language: Annotated[str, Form()] = "",
         output_format: Annotated[Literal["json", "markdown", "srt"], Form()] = "json",
         word_timestamps: Annotated[bool, Form()] = True,
@@ -723,6 +761,8 @@ def create_studio_mini_app_router(
         source_language: Annotated[str, Form()] = "",
         target_language: Annotated[str, Form()] = "",
         subtitle_format: Annotated[str, Form()] = "srt",
+        subtitle_action: Annotated[Literal["extract", "render"], Form()] = "render",
+        subtitle_segments: Annotated[str, Form()] = "",
         bilingual: Annotated[bool, Form()] = True,
         burn_in: Annotated[bool, Form()] = False,
         speaker_labels: Annotated[bool, Form()] = False,
@@ -740,6 +780,7 @@ def create_studio_mini_app_router(
         principal: RequestPrincipal = principal_dependency,
     ) -> Response:
         if capability not in {
+            "video.avatar_generation",
             "audio.detailed_transcription",
             "audio.source_separation",
             "media.video_subtitles",
@@ -798,6 +839,25 @@ def create_studio_mini_app_router(
 
         try:
             broker = StudioCapabilityBroker(runtime)
+            if capability == "video.avatar_generation":
+                from ai2apps.studio.avatar import generate_avatar
+
+                # Authenticate the mount before accepting the second media input.
+                mounted = broker.mounted_mini_app(studio_id, mount_id, principal=principal)
+                if capability not in mounted.capabilities:
+                    raise StudioCapabilityError("capability_not_declared", "Avatar generation is not allowed", status_code=403)
+                if reference is None:
+                    raise StudioCapabilityError("image_required", "A reference image is required")
+                portrait = await reference.read(20 * 1024 * 1024 + 1)
+                output = await generate_avatar(
+                    broker, studio_id, mount_id, principal=principal, request=request,
+                    content=content, filename=file.filename or "speech.wav", media_type=file.content_type,
+                    image=portrait, image_name=reference.filename or "portrait.png",
+                    image_type=reference.content_type or "application/octet-stream",
+                    preset=profile, progress=report_progress,
+                    model_id=avatar_model_id, resolution=avatar_resolution,
+                )
+                return JSONResponse(output, status_code=202)
             invocation = {
                 "principal": principal,
                 "content": content,
@@ -843,6 +903,20 @@ def create_studio_mini_app_router(
                     return JSONResponse(output)
                 return result
             if capability == "media.video_subtitles":
+                edited_segments = None
+                if subtitle_segments:
+                    if len(subtitle_segments.encode("utf-8")) > 2 * 1024 * 1024:
+                        raise StudioCapabilityError(
+                            "subtitle_segments_too_large",
+                            "Edited subtitle data exceeds the 2 MiB limit",
+                        )
+                    try:
+                        edited_segments = json.loads(subtitle_segments)
+                    except json.JSONDecodeError as error:
+                        raise StudioCapabilityError(
+                            "subtitle_segments_invalid",
+                            "Edited subtitle data is not valid JSON",
+                        ) from error
                 result = await broker.video_subtitles(
                     studio_id,
                     mount_id,
@@ -859,8 +933,12 @@ def create_studio_mini_app_router(
                     speaker_labels=speaker_labels,
                     subtitle_font_size=subtitle_font_size,
                     subtitle_background=subtitle_background,
+                    extract_only=subtitle_action == "extract",
+                    edited_segments=edited_segments,
                     progress=report_progress,
                 )
+                if subtitle_action == "extract":
+                    return result
                 if (
                     studio_id == VIDEO_STUDIO_ID
                     and burn_in

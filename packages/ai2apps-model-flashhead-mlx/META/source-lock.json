@@ -1,0 +1,37 @@
+{
+  "upstream": {
+    "commit": "9bc03de06bb0de82cd6bc477804512ae06144bf2",
+    "origin": "https://github.com/Soul-AILab/SoulX-FlashHead.git"
+  },
+  "weights": {
+    "Soul-AILab/SoulX-FlashHead-1_3B": {
+      "revision": "59119b6c681230c3eeee157e224ae1941746711e"
+    },
+    "facebook/wav2vec2-base-960h": {
+      "revision": "22aad52d435eb6dbaf354bdad9b0da84ce7d6156"
+    }
+  },
+  "checkpoint_publication": {
+    "status": "published",
+    "variants": {
+      "lite": {
+        "indexVersion": 94,
+        "distributionId": "dist_ai2apps_flashhead_lite_mlx_2f96aeee_v1",
+        "manifestDigest": "sha256:a0b70b5fe31537a41a20ae7920213b9c169db1ac274a6f08a3726b0f4e023f99",
+        "recordCount": 64,
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "envelopeExactJson": true
+      },
+      "pro": {
+        "indexVersion": 95,
+        "distributionId": "dist_ai2apps_flashhead_pro_mlx_f1909ebd_v1",
+        "manifestDigest": "sha256:cfb919ab4baa7b1ec1d7e364412798e35143d899cd1979ec338e51e9f06fd909",
+        "recordCount": 65,
+        "publisherId": "229d6350-cd0e-408a-9905-41367385ae5c",
+        "publisherKeyId": "8afc0a51-f7f8-4fef-b3d0-8d30abe2a5bc",
+        "envelopeExactJson": true
+      }
+    }
+  }
+}

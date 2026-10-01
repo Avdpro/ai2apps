@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import math
 import re
 import unicodedata
 import uuid
@@ -16,7 +17,7 @@ from typing import Any
 
 import httpx
 from fastapi import Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from ai2apps.audio_codecs import (
     AudioCodecError,
@@ -27,6 +28,7 @@ from ai2apps.core import RepositoryError, ResourceNotFoundError
 from ai2apps.identity import RequestPrincipal
 from ai2apps.model_invocation import ModelInvocationContext
 from ai2apps.model_providers import PackageModel, list_package_models
+from ai2apps.studio.avatar import AVATAR_CAPABILITY, avatar_models
 from ai2apps.studio.media_workflows import (
     StudioMediaError,
     audio_duration,
@@ -81,6 +83,63 @@ _CHINESE_DIGITS = {
 }
 _CHINESE_SMALL_UNITS = {"十": 10, "百": 100, "千": 1_000}
 _CHINESE_LARGE_UNITS = {"万": 10_000, "亿": 100_000_000}
+
+
+def validate_edited_subtitle_segments(value: Any) -> list[dict[str, Any]]:
+    """Validate the narrow user-editable part of a subtitle timeline."""
+    if not isinstance(value, list) or not 1 <= len(value) <= 10_000:
+        raise StudioCapabilityError(
+            "subtitle_segments_invalid",
+            "Edited subtitles must contain between 1 and 10,000 segments",
+        )
+    result: list[dict[str, Any]] = []
+    previous_start = -1.0
+    for item in value:
+        if not isinstance(item, dict):
+            raise StudioCapabilityError(
+                "subtitle_segments_invalid", "Each subtitle segment must be an object"
+            )
+        start = item.get("start")
+        end = item.get("end")
+        text = item.get("text")
+        if (
+            isinstance(start, bool)
+            or isinstance(end, bool)
+            or not isinstance(start, (int, float))
+            or not isinstance(end, (int, float))
+            or not math.isfinite(float(start))
+            or not math.isfinite(float(end))
+            or float(start) < 0
+            or float(end) <= float(start)
+            or float(end) > 21_600
+            or float(start) < previous_start
+            or not isinstance(text, str)
+            or len(text) > 4_000
+        ):
+            raise StudioCapabilityError(
+                "subtitle_segments_invalid",
+                "Edited subtitle timing or text is invalid",
+            )
+        previous_start = float(start)
+        normalized = {
+            "start": float(start),
+            "end": float(end),
+            "text": text.strip(),
+        }
+        speaker = item.get("speaker")
+        if speaker is not None:
+            if not isinstance(speaker, str) or len(speaker) > 128:
+                raise StudioCapabilityError(
+                    "subtitle_segments_invalid", "Edited subtitle speaker is invalid"
+                )
+            normalized["speaker"] = speaker
+        if normalized["text"]:
+            result.append(normalized)
+    if not result:
+        raise StudioCapabilityError(
+            "subtitle_segments_empty", "At least one subtitle segment must contain text"
+        )
+    return result
 
 
 async def _report_progress(
@@ -438,6 +497,9 @@ class StudioCapabilityBroker:
             }:
                 models = detailed_models
                 implemented = True
+            elif capability == AVATAR_CAPABILITY:
+                models = avatar_models(self.runtime)
+                implemented = studio_id == "ai2apps.video-studio"
             elif capability == SOURCE_SEPARATION_CAPABILITY:
                 models = separation_models
                 implemented = True
@@ -1136,6 +1198,8 @@ class StudioCapabilityBroker:
         speaker_labels: bool,
         subtitle_font_size: str = "large",
         subtitle_background: str = "outline",
+        extract_only: bool = False,
+        edited_segments: list[dict[str, Any]] | None = None,
         progress: ProgressCallback | None = None,
     ) -> Response:
         mounted = self.mounted_mini_app(studio_id, mount_id, principal=principal)
@@ -1163,42 +1227,54 @@ class StudioCapabilityBroker:
                 error.code, str(error), status_code=415
             ) from error
         await _report_progress(progress, 0, "running", 0, "正在提取视频音轨")
-        transcript_response = await self.detailed_transcription(
-            studio_id,
-            mount_id,
-            principal=principal,
-            content=content,
-            filename=filename,
-            media_type=media_type,
-            profile=self._preferred_detailed_profile(),
-            language=source_language,
-            word_timestamps=True,
-            diarization=False,
-            progress=progress,
-        )
-        try:
-            transcript = json.loads(bytes(transcript_response.body))
-        except (AttributeError, json.JSONDecodeError, TypeError) as error:
-            raise StudioCapabilityError(
-                "transcription_response_invalid",
-                "Detailed transcription returned invalid JSON",
-                status_code=502,
-            ) from error
-        segments = transcript.get("segments") if isinstance(transcript, dict) else None
-        if not isinstance(segments, list) or not all(
-            isinstance(item, dict) for item in segments
-        ):
-            raise StudioCapabilityError(
-                "transcription_response_invalid",
-                "Detailed transcription returned invalid segments",
-                status_code=502,
+        if edited_segments is None:
+            transcript_response = await self.detailed_transcription(
+                studio_id,
+                mount_id,
+                principal=principal,
+                content=content,
+                filename=filename,
+                media_type=media_type,
+                profile=self._preferred_detailed_profile(),
+                language=source_language,
+                word_timestamps=True,
+                diarization=False,
+                progress=progress,
             )
-        segments = await self._punctuate_segments(
-            segments, principal=principal, mounted=mounted
-        )
-        segments = split_subtitle_segments(segments)
-        transcript["segments"] = segments
-        await _report_progress(progress, 1, "completed", 45, "字幕时间轴已生成")
+            try:
+                transcript = json.loads(bytes(transcript_response.body))
+            except (AttributeError, json.JSONDecodeError, TypeError) as error:
+                raise StudioCapabilityError(
+                    "transcription_response_invalid",
+                    "Detailed transcription returned invalid JSON",
+                    status_code=502,
+                ) from error
+            segments = transcript.get("segments") if isinstance(transcript, dict) else None
+            if not isinstance(segments, list) or not all(
+                isinstance(item, dict) for item in segments
+            ):
+                raise StudioCapabilityError(
+                    "transcription_response_invalid",
+                    "Detailed transcription returned invalid segments",
+                    status_code=502,
+                )
+            segments = await self._punctuate_segments(
+                segments, principal=principal, mounted=mounted
+            )
+            segments = split_subtitle_segments(segments)
+            transcript["segments"] = segments
+            await _report_progress(progress, 1, "completed", 45, "字幕时间轴已生成")
+        else:
+            segments = validate_edited_subtitle_segments(edited_segments)
+            transcript = {
+                "language": source_language,
+                "segments": segments,
+                "edited": True,
+            }
+            await _report_progress(progress, 0, "completed", 15, "视频已准备")
+            await _report_progress(progress, 1, "completed", 45, "已载入校对后的字幕段落")
+        if extract_only:
+            return JSONResponse(transcript)
         translations = None
         if target_language:
             await _report_progress(progress, 2, "running", 45, "正在翻译与校对字幕")

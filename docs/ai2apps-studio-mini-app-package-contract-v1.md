@@ -488,9 +488,33 @@ Voice Studio text exports. The export also enters the shared Preview & Output fe
 Transcript correction edits segments and speaker assignments; saved drafts include the result.
 Changing text invalidates word alignment but preserves segment start/end times.
 
+Video subtitle creation is likewise a staged editing workflow: extraction returns a bounded timeline to
+the mounted Mini-App, the user may edit only cue text while start/end remain Host-validated, and the render
+request sends the reviewed segments back through the mount-bound bridge. The Host strips undeclared fields,
+limits segment count/UTF-8 size/text length/timeline range, and performs translation, subtitle serialization,
+and burn-in only after review. The editable cue panel precedes the processing pipeline and carries no fake
+workflow step number. After extraction, the pipeline actions expose separate subtitle-file and subtitle-video
+buttons; do not represent video generation as a checkbox. Final video remains owned by Video Studio Preview & Output.
+
 
 Voice Studio built-in speech producers must use `ai2apps.readaloud.speech.invoke_speech` for
 bounded sentence-aware synthesis. Preserve original text and per-request voice/expression/reference
 settings; only publish the final concatenated WAV. Do not expose intermediate chunks in output
 history or bypass segmentation for a new character/preview entry point. Long-Line cache keys
 include the segmentation policy version.
+
+
+## Avatar durable jobs (2026-10-01 development)
+
+A Video Studio Mini-App declaring `video.avatar_generation` can call the private, mount-bound bridge operations `avatar.models`, `avatar.jobs`, `avatar.cancel` and `avatar.retry`. Model descriptors expose signed presets, resolutions, duration bounds and readiness. Required semantic capabilities are resolved through ACPF; alternative model Packages must not all become hard dependencies of the App Package.
+
+The avatar invocation returns HTTP 202 with a Host Studio Run identifier. Accepted renders continue after the frame closes. Cancellation and retry require a current authorized mount, matching actor/installation/Studio instance and Mini-App. Retry creates a new Run linked to the original and reuses frozen input assets. Local restart does not promise continuation from inference state.
+
+Host read reconciliation projects durable video-task status and publishes each completed result once into Studio Artifacts. Mini-Apps only show input controls and task status; Preview & Output remains Host-owned. These private operations implement the offline portrait subset, not the full draft avatar SDK contract.
+
+
+### Avatar input slots
+
+The model selector includes an “Install model…” action which starts ACPF with `installMore`; cancelling retains the previous model. The image/audio slots accept Finder `File` objects and the existing Gallery, Imagine Output and Voice Output drag types. Selected images have thumbnails; audio shows its file name and size. Both sources can be replaced and removed without creating a Mini-App output player or history. Audio playback inside a Package frame is not enabled by the current sandbox media policy.
+
+`avatar.input.read` is a private Video Studio bridge operation requiring a current authorized mount declaring `video.avatar_generation`. It accepts `kind: image|audio` and structured references only: `gallery/assetId`, `image-output/appInstanceId/artifactId` or `audio-output/sessionId/artifactId`. The Host resolves its fixed authenticated APIs, verifies output membership, checks MIME and caps streamed bytes (20 MiB images, 100 MiB audio). Arbitrary URLs and filesystem paths are not accepted. The frame receives a Blob and display name, never credentials.
