@@ -452,7 +452,8 @@ class ModelInvocationService:
                     "POST",
                     url,
                     data={
-                        key: str(value).lower() if isinstance(value, bool) else str(value)
+                        key: json.dumps(value, ensure_ascii=False)
+                        if isinstance(value, (dict, list, bool)) else str(value)
                         for key, value in body.items()
                         if value is not None
                     },

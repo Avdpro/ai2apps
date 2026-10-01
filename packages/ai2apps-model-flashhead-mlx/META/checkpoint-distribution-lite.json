@@ -1,0 +1,46 @@
+{
+  "schema": "ai2apps.checkpoint-build/v1",
+  "distributionId": "dist_ai2apps_flashhead_lite_mlx_2f96aeee_v1",
+  "modelId": "ai2apps.model.flashhead-mlx/lite",
+  "repoId": "Avdpro/FlashHead-Lite-MLX",
+  "revision": "2f96aeeeb08795d2a21c4837f5df4e810cc39da2",
+  "format": "safetensors",
+  "quantization": "native-mlx",
+  "pieceSize": 8388608,
+  "license": {
+    "id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "termsUrl": "https://huggingface.co/Avdpro/FlashHead-Lite-MLX/blob/2f96aeeeb08795d2a21c4837f5df4e810cc39da2/LICENSE",
+    "termsHash": "sha256:c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "usagePolicy": "license_terms",
+    "accessPolicy": "public",
+    "redistributionPolicy": "allowed"
+  },
+  "includePatterns": [
+    "LICENSE",
+    "Model_Lite/config.json",
+    "Model_Lite/diffusion_pytorch_model.safetensors",
+    "NOTICE.md",
+    "README.md",
+    "VAE_LTX/config.json",
+    "VAE_LTX/diffusion_pytorch_model.safetensors",
+    "ai2apps-checkpoint.json",
+    "wav2vec2/config.json",
+    "wav2vec2/model.safetensors",
+    "wav2vec2/preprocessor_config.json"
+  ],
+  "sourceRepositories": [
+    {
+      "type": "huggingface",
+      "repoId": "Avdpro/FlashHead-Lite-MLX",
+      "revision": "2f96aeeeb08795d2a21c4837f5df4e810cc39da2",
+      "access": "public_anonymous"
+    },
+    {
+      "type": "modelscope",
+      "repoId": "ai2apps/FlashHead-Lite-MLX",
+      "revision": "32f984e38940b07df0ed603de7376941799c1133",
+      "access": "public_anonymous"
+    }
+  ]
+}

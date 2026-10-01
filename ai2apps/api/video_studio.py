@@ -330,6 +330,8 @@ def create_video_studio_router(
         principal: RequestPrincipal = principal_dependency,
     ):
         repository = studio(principal, app_instance_id)
+        from ai2apps.studio.avatar import reconcile_outputs
+        reconcile_outputs(runtime_provider(), repository, scope(principal, app_instance_id))
         prune_history(repository, scope(principal, app_instance_id))
         return {
             "items": list(
@@ -724,11 +726,26 @@ def create_video_studio_router(
         async def compose_in_background() -> None:
             stage = "render"
             try:
+                total_seconds = request.project.duration
                 repository.update_run(
                     run_id, status="running", progress=15,
-                    detail="Rendering video and audio tracks", **run_scope,
+                    detail=f"composer.rendering:0:{total_seconds:.3f}", **run_scope,
                 )
-                await render_composition(request.project, resolved, destination)
+
+                def report_render_progress(completed: float, total: float) -> None:
+                    ratio = min(1.0, max(0.0, completed / total)) if total > 0 else 1.0
+                    with suppress(StudioRepositoryError):
+                        repository.update_run(
+                            run_id,
+                            status="running",
+                            progress=round(15 + ratio * 73),
+                            detail=f"composer.rendering:{completed:.3f}:{total:.3f}",
+                            **run_scope,
+                        )
+
+                await render_composition(
+                    request.project, resolved, destination, report_render_progress
+                )
                 stage = "workspace_artifact"
                 current = repository.get_run(run_id, **run_scope)
                 if current["status"] == "cancelled":
@@ -932,7 +949,7 @@ def create_video_studio_router(
         return repository.get_run(run_id, **run_scope)
 
     @router.post("/runs/{run_id}/cancel")
-    def cancel_run(
+    async def cancel_run(
         run_id: str,
         app_instance_id: str = Header(alias="X-AI2Apps-App-Instance"),
         principal: RequestPrincipal = principal_dependency,
@@ -943,10 +960,17 @@ def create_video_studio_router(
             run = repository.get_run(run_id, **run_scope)
             if run["status"] in {"succeeded", "failed", "cancelled", "expired"}:
                 return run
+            if run["input"].get("avatarOperation") == "portrait_animation":
+                from ai2apps.studio.avatar import reconcile_outputs
+                await runtime_provider().video_tasks.cancel(run["input"]["videoTaskId"], actor_id=principal.actor_user_id)
+                reconcile_outputs(runtime_provider(), repository, run_scope)
+                return repository.get_run(run_id, **run_scope)
             return repository.update_run(
                 run_id, status="cancelled", progress=run["progress"],
                 detail="Cancelled", **run_scope,
             )
+        except VideoGenerationError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
         except StudioRepositoryError as error:
             return studio_error(error)
 

@@ -658,6 +658,25 @@ def test_catalog_model_install_rejects_legacy_mapping_after_version_cap():
     }) is None
 
 
+def test_minimax_h3_091_retains_version_bounded_install_plan():
+    package_id = "ai2apps/model-minimax-h3"
+    release = {
+        "packageId": package_id,
+        "packageType": "service",
+        "version": "0.9.1",
+    }
+
+    install = catalog_model_install(release)
+
+    assert install is not None
+    assert install["serviceKey"] == "ai2apps.model.minimax-h3"
+    assert any(
+        model["id"] == "ai2apps.model.minimax-h3/openvdn-dmd8-4bit"
+        for model in install["models"]
+    )
+    assert catalog_model_install({**release, "version": "0.9.2"}) is None
+
+
 @pytest.mark.parametrize("package_id,row", LEGACY_MODEL_INSTALLS.items())
 def test_catalog_install_mapping_does_not_depend_on_discovery(package_id, row):
     value = {"package": {"packageId": package_id,

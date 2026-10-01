@@ -14,6 +14,54 @@
         return value;
     }
 
+    async function readAvatarInput(request, signal) {
+        const ref = request.reference;
+        const kind = request.kind;
+        if (!['image', 'audio'].includes(kind) || !ref) throw new Error('Invalid avatar input');
+        const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value);
+        const get = url => fetch(url, {credentials: 'same-origin', cache: 'no-store', signal});
+        let url, name;
+        if (ref.source === 'gallery' && identifier(ref.assetId)) {
+            const asset = await payload(await get(`/v1/platform/gallery/assets/${encodeURIComponent(ref.assetId)}`));
+            if (asset.kind !== kind) throw new Error('素材类型与槽位不匹配');
+            url = `/v1/platform/gallery/assets/${encodeURIComponent(ref.assetId)}/content`;
+            name = asset.name;
+        } else if (ref.source === 'image-output' && kind === 'image' && identifier(ref.artifactId) && identifier(ref.appInstanceId)) {
+            const runs = await payload(await fetch('/v1/platform/imagine-studio/runs?limit=100', {
+                credentials: 'same-origin', cache: 'no-store', signal, headers: {'X-AI2Apps-App-Instance': ref.appInstanceId},
+            }));
+            const artifact = runs.items?.flatMap(run => run.artifacts || []).find(item => item.id === ref.artifactId);
+            const parsed = new URL(artifact?.previewUrl || '/', location.origin);
+            if (parsed.origin !== location.origin || !/^\/v1\/platform\/imagine-studio\/results\/isr_[0-9a-f]{32}\/content$/.test(parsed.pathname) || parsed.searchParams.get('appInstanceId') !== ref.appInstanceId) throw new Error('图片输出不可用');
+            url = parsed.href; name = artifact.name;
+        } else if (ref.source === 'audio-output' && kind === 'audio' && identifier(ref.sessionId) && identifier(ref.artifactId)) {
+            const outputs = await payload(await get('/v1/platform/readaloud/outputs'));
+            const expected = `/v1/platform/sessions/${encodeURIComponent(ref.sessionId)}/artifacts/${encodeURIComponent(ref.artifactId)}/download`;
+            const item = outputs.items?.find(item => item.downloadUrl === expected && item.mediaType?.startsWith('audio/'));
+            if (!item) throw new Error('声音输出不可用');
+            url = expected; name = (item.title || 'speech') + '.wav';
+        } else throw new Error('素材来源或类型不支持');
+        const response = await get(url);
+        if (!response.ok) throw new Error('无法读取素材');
+        const type = (response.headers.get('content-type') || '').split(';')[0];
+        const limit = (kind === 'image' ? 20 : 100) * 1024 * 1024;
+        if (kind === 'image' ? !['image/png','image/jpeg','image/webp'].includes(type) : !type.startsWith('audio/')) throw new Error('素材类型与槽位不匹配');
+        if (Number(response.headers.get('content-length')) > limit) throw new Error('素材超过槽位大小限制');
+        const reader = response.body.getReader(), chunks = [];
+        let size = 0;
+        try {
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                size += value.byteLength;
+                if (size > limit) throw new Error('素材超过槽位大小限制');
+                chunks.push(value);
+            }
+        } finally { await reader.cancel(); }
+        if (!size) throw new Error('素材为空');
+        return {body: new Blob(chunks, {type}), name: String(name || (kind === 'image' ? 'portrait.png' : 'speech.wav')).replace(/[\\/]/g, '-')};
+    }
+
     function primaryCapability(miniApp) {
         const values = miniApp?.requirements?.capabilities;
         if (!Array.isArray(values) || values.length === 0) return '';
@@ -52,16 +100,17 @@
 
     const mountedFrames = new Map();
     const channels = new WeakMap();
-    const mediaCapabilities = new Set(['audio.detailed_transcription', 'audio.source_separation',
+    const mediaCapabilities = new Set(['video.avatar_generation', 'audio.detailed_transcription', 'audio.source_separation',
         'media.video_subtitles', 'media.video_audio_translation',
         'audio.speaker_voice_replacement', 'media.video_speaker_voice_replacement']);
     const setupCapabilities = new Set([...mediaCapabilities, 'audio.voice_clone']);
     const progressCapabilities = new Set([
+        'video.avatar_generation',
         'media.video_subtitles',
         'media.video_audio_translation',
     ]);
-    const formFields = new Set(['file', 'reference', 'profile', 'language', 'word_timestamps', 'diarization', 'output_format',
-        'source_language', 'target_language', 'subtitle_format', 'bilingual', 'burn_in', 'speaker_labels',
+    const formFields = new Set(['avatar_model_id', 'avatar_resolution', 'file', 'reference', 'profile', 'language', 'word_timestamps', 'diarization', 'output_format',
+        'source_language', 'target_language', 'subtitle_format', 'subtitle_action', 'subtitle_segments', 'bilingual', 'burn_in', 'speaker_labels',
         'subtitle_font_size', 'subtitle_background', 'voice_profile_id', 'voice_clone_model_id', 'asr_verification',
         'action', 'target_speaker', 'consent', 'conversion_profile', 'voice_name']);
     window.addEventListener('message', event => {
@@ -75,6 +124,7 @@
         const src = frame.src;
         let closed = false;
         let busy = false;
+        let avatarJobsState = "";
         const downloads = new Set();
         const progressSources = new Set();
         const abort = new AbortController();
@@ -108,6 +158,28 @@
                 }));
                 if (!active()) return;
                 if (request.operation === 'probe') reply({value: probe});
+                else if (request.operation === 'avatar.input.read') {
+                    if (binding.studioId !== 'ai2apps.video-studio' || !probe.items?.some(item => item.capability === 'video.avatar_generation')) throw new Error('Capability is not allowed');
+                    reply({value: await readAvatarInput(request, abort.signal)});
+                }
+                else if (['avatar.models', 'avatar.jobs', 'avatar.cancel', 'avatar.retry'].includes(request.operation)) {
+                    if (!probe.items?.some(item => item.capability === 'video.avatar_generation')) throw new Error('Capability is not allowed');
+                    let suffix = request.operation === 'avatar.models' ? 'models' : 'jobs';
+                    const cancelling = ['avatar.cancel', 'avatar.retry'].includes(request.operation);
+                    if (cancelling) {
+                        if (typeof request.jobId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(request.jobId)) throw new Error('Invalid avatar job');
+                        suffix = `jobs/${encodeURIComponent(request.jobId)}/${request.operation === "avatar.retry" ? "retry" : "cancel"}`;
+                    }
+                    const result = await payload(await fetch(`${base}/avatar/${suffix}`, {
+                        method: cancelling ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
+                    }));
+                    if (request.operation !== 'avatar.models') {
+                        const nextState = JSON.stringify(result);
+                        if (nextState !== avatarJobsState) window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId}}));
+                        avatarJobsState = nextState;
+                    }
+                    reply({value: result});
+                }
                 else if (request.operation === 'output.read') {
                     if (binding.studioId !== 'ai2apps.readaloud') throw new Error('Output source is not allowed');
                     const reference = request.reference;
@@ -188,13 +260,14 @@
                                 : 'Reference audio exceeds the 100 MiB limit');
                             body.append(name, value, value.name || 'media.bin');
                         } else {
-                            if (typeof value !== 'string' || value.length > 4096) throw new Error('Invalid option');
+                            const limit = name === 'subtitle_segments' ? 2 * 1024 * 1024 : 4096;
+                            if (typeof value !== 'string' || new TextEncoder().encode(value).length > limit) throw new Error('Invalid option');
                             body.append(name, value);
                         }
                     }
                     if (!names.has('file')) throw new Error('Media file is required');
                     let invocationId = '';
-                    if (progressCapabilities.has(request.capability)) {
+                    if (progressCapabilities.has(request.capability) && request.capability !== 'video.avatar_generation') {
                         const invocation = await payload(await fetch(`${base}/invocations`, {
                             method: 'POST', credentials: 'same-origin', signal: abort.signal,
                             headers: {'Content-Type': 'application/json', Accept: 'application/json'},
@@ -222,10 +295,14 @@
                     }
                     window.dispatchEvent(new CustomEvent('ai2apps:studio-output-state', {detail: {studioId: binding.studioId, running: true}}));
                     const response = await fetch(`${base}/capabilities/${encodeURIComponent(request.capability)}/invoke`, {
-                        method: 'POST', credentials: 'same-origin', body, signal: abort.signal,
+                        method: 'POST', credentials: 'same-origin', body,
+                        signal: abort.signal,
                         headers: {Accept: 'application/json', ...(invocationId ? {'X-AI2Apps-Invocation-ID': invocationId} : {})},
                     });
                     const responseBody = await response.blob();
+                    if (response.status === 202 && request.capability === 'video.avatar_generation') {
+                        window.dispatchEvent(new CustomEvent('ai2apps:studio-output', {detail: {studioId: binding.studioId, miniAppId: binding.miniAppId}}));
+                    }
                     if (response.ok && request.capability === 'audio.source_separation' && response.headers.get('content-type')?.includes('application/json')) {
                         const result = JSON.parse(await responseBody.text());
                         const url = new URL(result.downloadUrl, location.origin);

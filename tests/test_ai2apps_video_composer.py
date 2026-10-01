@@ -7,7 +7,7 @@ import av
 import numpy as np
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ai2apps.api.video_studio import create_video_studio_router
 from ai2apps.config import DEFAULT_COMPOSER_IMPORT_LIMIT_BYTES, PlatformConfig
@@ -17,9 +17,14 @@ from ai2apps.video.composer import (
     ComposerClip,
     ComposerProject,
     ComposerSourceStore,
+    _apply_spotlight,
+    _apply_text_layer,
     _clip_visual_state,
+    _crop_image_to_visible_region,
+    _crop_shape_mask,
     _fit_image_to_visual_box,
     _mix_audio,
+    _place_cropped_image_in_visual_box,
     render_composition,
 )
 
@@ -140,6 +145,55 @@ def test_composer_quantizes_timeline_times_to_project_frames():
     assert clip.duration == 1.033333333
 
 
+def test_composer_renders_adjacent_clips_without_a_float_rounding_gap(tmp_path):
+    first_path = tmp_path / "first.png"
+    second_path = tmp_path / "second.png"
+    Image.new("RGB", (64, 64), (240, 20, 20)).save(first_path)
+    Image.new("RGB", (64, 64), (20, 240, 20)).save(second_path)
+    store = ComposerSourceStore(tmp_path / "sources")
+    source_args = {
+        "actor_id": "owner", "installation_id": "installation",
+        "app_instance_id": "appi_composer", "media_type": "image/png",
+    }
+    first = store.register(first_path, **source_args)
+    second = store.register(second_path, **source_args)
+    composition = ComposerProject.model_validate(
+        {
+            "title": "Adjacent clips",
+            "settings": {"width": 64, "height": 64, "fps": 30, "background": "#000000"},
+            "tracks": [{"id": "v1", "kind": "video", "name": "Video 1", "order": 0}],
+            "clips": [
+                {
+                    "id": "first", "sourceId": first["id"], "trackId": "v1", "name": "First",
+                    "start": 1 / 30, "duration": 31 / 30, "width": 64, "height": 64,
+                },
+                {
+                    "id": "second", "sourceId": second["id"], "trackId": "v1", "name": "Second",
+                    "start": 32 / 30, "duration": 2 / 30, "width": 64, "height": 64,
+                },
+            ],
+        }
+    )
+    first_end = composition.clips[0].start + composition.clips[0].duration
+    assert first_end < 32 / 30 < composition.clips[1].start
+    sources = {
+        item["id"]: store.get(
+            item["id"], actor_id="owner", installation_id="installation",
+            app_instance_id="appi_composer",
+        )
+        for item in (first, second)
+    }
+    output = tmp_path / "adjacent.mp4"
+    import asyncio
+
+    asyncio.run(render_composition(composition, sources, output))
+    with av.open(str(output)) as rendered:
+        frames = [frame.to_ndarray(format="rgb24") for frame in rendered.decode(video=0)]
+    seam = frames[32].mean(axis=(0, 1))
+    assert seam[1] > seam[0] + 100, "the first frame of the second clip must render at the seam"
+    assert seam.mean() > 40, "an adjacent clip seam must never fall back to the black canvas"
+
+
 def test_composer_keyframes_validate_and_interpolate_all_transition_modes():
     def animated(transition: str) -> ComposerClip:
         return ComposerClip.model_validate(
@@ -147,9 +201,15 @@ def test_composer_keyframes_validate_and_interpolate_all_transition_modes():
                 "id": "clip", "sourceId": "source", "trackId": "v1", "name": "Animated",
                 "start": 0, "duration": 1, "x": 0, "y": 0, "width": 100, "height": 50,
                 "opacity": 0,
+                "cropLeft": 0, "cropTop": 10, "cropRight": 0, "cropBottom": 10,
+                "cropShape": "rectangle", "cropCornerRadius": 4, "cropFeather": 0,
+                "cropScale": 1,
                 "keyframes": [{
                     "id": "keyframe", "frame": 10, "transition": transition,
                     "x": 100, "y": 50, "width": 200, "height": 100, "opacity": 1,
+                    "cropLeft": 20, "cropTop": 20, "cropRight": 20, "cropBottom": 20,
+                    "cropShape": "ellipse", "cropCornerRadius": 24, "cropFeather": 8,
+                    "cropScale": 2,
                 }],
             }
         )
@@ -157,8 +217,13 @@ def test_composer_keyframes_validate_and_interpolate_all_transition_modes():
     hold = _clip_visual_state(animated("hold"), 5)
     linear = _clip_visual_state(animated("linear"), 5)
     ease = _clip_visual_state(animated("ease"), 2)
-    assert hold == {"x": 0.0, "y": 0.0, "width": 100.0, "height": 50.0, "opacity": 0.0, "scale": 1.0}
-    assert linear == {"x": 50.0, "y": 25.0, "width": 150.0, "height": 75.0, "opacity": 0.5, "scale": 1.0}
+    assert {key: hold[key] for key in ("x", "y", "width", "height", "opacity", "scale")} == {"x": 0.0, "y": 0.0, "width": 100.0, "height": 50.0, "opacity": 0.0, "scale": 1.0}
+    assert {key: linear[key] for key in ("x", "y", "width", "height", "opacity", "scale")} == {"x": 50.0, "y": 25.0, "width": 150.0, "height": 75.0, "opacity": 0.5, "scale": 1.0}
+    assert linear["crop_left"] == 10 and linear["crop_top"] == 15
+    assert linear["crop_corner_radius"] == 14 and linear["crop_feather"] == 4
+    assert linear["crop_scale"] == 1.5
+    assert linear["crop_shape"] == "rectangle"
+    assert _clip_visual_state(animated("linear"), 10)["crop_shape"] == "ellipse"
     assert round(ease["x"], 3) == 10.4 and round(ease["opacity"], 3) == 0.104
     assert _clip_visual_state(animated("hold"), 10)["x"] == 100
 
@@ -208,6 +273,13 @@ def test_special_layers_need_no_media_source_and_render_spotlight_and_text(tmp_p
                     "name": "Title", "start": 0, "duration": 0.3,
                     "x": 48, "y": 32, "text": "Hi", "fontSize": 18,
                     "textColor": "#ff0000", "textAnchor": "center",
+                    "textBold": True, "textItalic": True,
+                    "textUnderline": True, "textStrikethrough": True,
+                    "textStrokeEnabled": True, "textStrokeWidth": 2,
+                    "textStrokeColor": "#0000ff", "textStrokeStyle": "feather",
+                    "textShadowEnabled": True, "textShadowColor": "#000000",
+                    "textShadowOpacity": 0.6, "textShadowBlur": 3,
+                    "textShadowOffsetX": 3, "textShadowOffsetY": 2,
                     "reveal": True, "revealSpeed": 100,
                     "keyframes": [{"id": "scale", "frame": 1, "scale": 1.5}],
                 },
@@ -216,6 +288,12 @@ def test_special_layers_need_no_media_source_and_render_spotlight_and_text(tmp_p
     )
     assert all(clip.source_id is None for clip in composition.clips)
     assert _clip_visual_state(composition.clips[1], 1)["scale"] == 1.5
+    assert composition.clips[1].text_stroke_style == "feather"
+    assert composition.clips[1].text_shadow_opacity == 0.6
+    assert composition.clips[1].text_bold is True
+    assert composition.clips[1].text_italic is True
+    assert composition.clips[1].text_underline is True
+    assert composition.clips[1].text_strikethrough is True
 
     output = tmp_path / "special-layers.mp4"
     import asyncio
@@ -227,6 +305,60 @@ def test_special_layers_need_no_media_source_and_render_spotlight_and_text(tmp_p
     assert frames[0][32, 48].mean() > frames[0][2, 2].mean() + 80
 
 
+def test_spotlight_feather_only_softens_inside_the_highlight():
+    canvas = Image.new("RGBA", (80, 60), (255, 255, 255, 255))
+    clip = ComposerClip.model_validate(
+        {
+            "id": "spotlight", "layerType": "spotlight", "trackId": "video",
+            "name": "Spotlight", "start": 0, "duration": 1,
+            "x": 20, "y": 15, "width": 40, "height": 30,
+            "spotlightShape": "rounded", "cornerRadius": 0,
+            "dimOpacity": 0.75, "feather": 6,
+        }
+    )
+    _apply_spotlight(canvas, clip, _clip_visual_state(clip, 0))
+
+    outside = canvas.getpixel((10, 30))[0]
+    assert canvas.getpixel((19, 30))[0] == outside
+    assert outside <= canvas.getpixel((20, 30))[0] < canvas.getpixel((24, 30))[0]
+    assert canvas.getpixel((30, 30))[0] > canvas.getpixel((24, 30))[0]
+
+
+def test_text_outline_is_outside_and_never_covers_the_fill():
+    state = {"x": 120, "y": 60, "scale": 1, "opacity": 1}
+    base_clip = {
+        "id": "text", "layerType": "text", "trackId": "video",
+        "name": "Text", "start": 0, "duration": 1,
+        "text": "TEST", "fontSize": 54, "textColor": "#ff0000",
+        "textAnchor": "center",
+    }
+    plain = Image.new("RGBA", (240, 120), (255, 255, 255, 255))
+    _apply_text_layer(
+        plain, ComposerClip.model_validate(base_clip), state, local_seconds=0
+    )
+    plain_pixels = np.asarray(plain)
+    fill_pixels = np.all(plain_pixels == np.array([255, 0, 0, 255]), axis=2)
+    assert fill_pixels.any()
+
+    for style in ("solid", "feather"):
+        outlined = Image.new("RGBA", plain.size, (255, 255, 255, 255))
+        clip = ComposerClip.model_validate(
+            {
+                **base_clip,
+                "textStrokeEnabled": True,
+                "textStrokeWidth": 5,
+                "textStrokeColor": "#0000ff",
+                "textStrokeStyle": style,
+            }
+        )
+        _apply_text_layer(outlined, clip, state, local_seconds=0)
+        pixels = np.asarray(outlined)
+        assert np.all(pixels[fill_pixels] == np.array([255, 0, 0, 255]))
+        red = pixels[:, :, 0].astype(np.int16)
+        blue = pixels[:, :, 2].astype(np.int16)
+        assert ((blue > red + 40) & ~fill_pixels).any()
+
+
 def test_composer_export_centers_contained_media_inside_visual_box():
     source = Image.new("RGBA", (40, 20), (240, 30, 20, 255))
     layer = _fit_image_to_visual_box(source, 40, 40)
@@ -236,6 +368,39 @@ def test_composer_export_centers_contained_media_inside_visual_box():
     assert layer.getpixel((20, 10))[3] == 255
     assert layer.getpixel((20, 29))[3] == 255
     assert layer.getpixel((20, 30))[3] == 0
+
+
+def test_composer_crop_selects_source_region_and_builds_feathered_shapes():
+    source = Image.new("RGBA", (100, 60), (240, 30, 20, 255))
+    ImageDraw.Draw(source).rectangle((50, 0, 99, 59), fill=(20, 180, 60, 255))
+    clip = ComposerClip.model_validate(
+        {
+            "id": "crop", "sourceId": "source", "trackId": "video", "name": "Crop",
+            "start": 0, "duration": 1, "cropLeft": 50, "cropShape": "ellipse",
+            "cropFeather": 6,
+        }
+    )
+
+    cropped = _crop_image_to_visible_region(source, clip)
+    assert cropped.size == (50, 60)
+    assert cropped.getpixel((10, 30))[:3] == (20, 180, 60)
+
+    ellipse = _crop_shape_mask(clip, (60, 60))
+    assert ellipse.getpixel((0, 0)) == 0
+    assert ellipse.getpixel((30, 30)) > 240
+    assert ellipse.getpixel((30, 1)) < ellipse.getpixel((30, 10))
+
+    rounded = clip.model_copy(
+        update={"crop_shape": "rounded", "crop_corner_radius": 12, "crop_feather": 0}
+    )
+    rounded_mask = _crop_shape_mask(rounded, (60, 40))
+    assert rounded_mask.getpixel((0, 0)) == 0
+    assert rounded_mask.getpixel((30, 20)) == 255
+
+    viewport, content_box = _place_cropped_image_in_visual_box(cropped, 80, 70, 0.5)
+    assert viewport.size == (80, 70) and content_box == (0, 0, 25, 30)
+    assert viewport.getpixel((10, 10))[3] == 255
+    assert viewport.getpixel((40, 10))[3] == 0
 
 
 def test_video_clips_always_have_fixed_start_and_end_keyframes():
@@ -256,6 +421,14 @@ def test_video_clips_always_have_fixed_start_and_end_keyframes():
     visual, audio = composition.clips
     assert [(keyframe.endpoint, keyframe.frame) for keyframe in visual.keyframes] == [("start", 0), ("end", 9)]
     assert visual.keyframes[0].transition == "hold"
+    assert visual.keyframes[0].crop_shape == "rectangle"
+    assert all(
+        getattr(visual.keyframes[-1], field) is None
+        for field in (
+            "x", "y", "width", "height", "opacity", "scale", "crop_left", "crop_top",
+            "crop_right", "crop_bottom", "crop_shape", "crop_corner_radius", "crop_feather", "crop_scale",
+        )
+    )
     assert audio.keyframes == []
 
     deleted_endpoints = composition.model_dump(by_alias=True)
@@ -336,7 +509,22 @@ def test_composer_source_store_is_scoped_and_render_is_playable(tmp_path):
     output = tmp_path / "composition.mp4"
     import asyncio
 
-    asyncio.run(render_composition(project(source["id"]), {source["id"]: (record, resolved)}, output))
+    render_progress = []
+    composition = project(source["id"])
+    asyncio.run(
+        render_composition(
+            composition,
+            {source["id"]: (record, resolved)},
+            output,
+            lambda completed, total: render_progress.append((completed, total)),
+        )
+    )
+    assert render_progress[0] == (0, composition.duration)
+    assert abs(render_progress[-1][0] - composition.duration) < 1e-6
+    assert all(total == composition.duration for _, total in render_progress)
+    assert [completed for completed, _ in render_progress] == sorted(
+        completed for completed, _ in render_progress
+    )
     with av.open(str(output)) as rendered:
         assert rendered.streams.video and rendered.streams.audio
         assert float(rendered.duration or 0) / av.time_base >= 0.7
@@ -647,6 +835,10 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert 'class="vs-composer-chat" hidden aria-hidden="true"' in template
     assert "/v1/chat/completions" in script and "allowed = new Set" in script
     assert "renderComposer" in template and "/compose" in script
+    assert "composerRunDetail(activeComposerRun)" in template
+    assert "composer\\.rendering:" in script and "render_progress" in script
+    assert english["video_studio.composer.render_progress"] == "Rendered {current}s / {total}s"
+    assert chinese["video_studio.composer.render_progress"] == "已合成 {current} 秒 / 共 {total} 秒"
     assert "beginComposerStageDrag" in script and "beginComposerStageResize" in script
     assert "composerStageStyle" in template and "390 * ratio" in script
     assert "max-height:390px" not in stylesheet
@@ -689,15 +881,59 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "item.id !== keyframe.id && item.frame === frame" in script
     assert "composerStageEditMode" in template and "keyframe-edit" in stylesheet and "clip-edit" in stylesheet
     assert "translateComposerClipVisual" in script and "resizeComposerClipVisual" in script
+    assert "aspectLocked" in script and "!current.shiftKey" in script
+    assert "sourceAspect" in script and "maximumLockedWidth" in script
     assert "setComposerKeyframeValue" in template and "composerPreviousKeyframeState" in template
     assert "importComposerMask" in template and "composerPreviewMaskStyle" in script
     assert "maskSourceId" in script and "mask-mode:${mode}" in script
     assert "video_studio.composer.mask_none" in template and "composerMaskSources" in template
+    assert "composerCropFrameStyle" in script and "composerCropMediaStyle" in script
+    assert "composerCropFrameGeometry" in script and "--media-frame-width" in script
+    assert ":has(.vs-composer-media-frame)" in stylesheet
+    assert "class=\"vs-composer-layout-frame\"" in template
+    assert ".vs-composer-layout-frame{position:absolute;inset:0;z-index:5" in stylesheet
+    assert "z-index:5" in stylesheet and "pointer-events:none" in stylesheet
+    assert ".vs-composer-layer.selected .vs-composer-media-frame{outline:1px dashed" in stylesheet
+    assert ".vs-composer-layer:has(.vs-composer-media-frame) .resize" in stylesheet
+    assert "right:auto" not in stylesheet and "bottom:auto" not in stylesheet
+    assert "setComposerCropInset" in script and "cropShape" in template
+    assert "handleComposerCropWheel" in template and "beginComposerCropPan" in script
+    assert "applyComposerCropTransform" in script and "setComposerKeyframeCropShape" in script
+    assert "preserveCropScale" in script and "cropScale" in template
+    assert "composerCropInsetsForViewport" in script
+    assert "keyframe.cropRight = nextCropRight" in script
+    assert "migrateCropViewport" in script and "cropViewportVersion: 2" in script
+    assert "crop_viewport_version: int" in composer_backend
+    assert english["video_studio.composer.crop_scale"] == "Crop scale"
+    assert "_place_cropped_image_in_visual_box" in composer_backend
+    assert english["video_studio.composer.inherit_previous"] == "Inherit previous"
+    assert "crop_left: float | None" in composer_backend
+    assert "_crop_image_to_visible_region" in composer_backend and "_crop_shape_mask" in composer_backend
+    assert chinese["video_studio.composer.crop_feather"] == "向内羽化（像素）"
+    assert english["video_studio.composer.shape_rectangle"] == "Rectangle"
     assert "ImageChops.multiply" in composer_backend and "ImageOps.grayscale" in composer_backend
-    assert "addComposerSpecialLayer('spotlight')" in template and "addComposerSpecialLayer('text')" in template
+    assert "addComposerItemFromMenu('spotlight')" in template and "addComposerItemFromMenu('text')" in template
     assert "composerSpotlightStyle" in script and "composerTextPreview" in script
+    assert "composerFeatherGuideStyle" in script and "composerPreviewFeather" in script
+    assert "vs-composer-feather-guide media" in template
+    assert "vs-composer-feather-guide spotlight" in template
+    assert ".vs-composer-feather-guide.media" in stylesheet
+    assert ".vs-composer-feather-guide.spotlight" in stylesheet
     assert "spotlightShape" in template and "revealSpeed" in template
     assert "ImageFilter.GaussianBlur" in composer_backend and "_apply_text_layer" in composer_backend
+    assert "textStrokeEnabled" in template and "textShadowEnabled" in template
+    assert "textStrokeStyle" in template and "textShadowOpacity" in template
+    assert "-webkit-text-stroke" in script and "paint-order:stroke fill" in script
+    assert "strokeWidth * 2" in script and "-webkit-text-fill-color" in script
+    assert "textShadowOffsetX" in script
+    assert "text_stroke_style" in composer_backend and "text_shadow_blur" in composer_backend
+    assert "textBold" in template and "textStrikethrough" in template
+    assert "text-decoration-line" in script and "font-style" in script
+    assert "text_underline" in composer_backend and "text_strikethrough" in composer_backend
+    assert chinese["video_studio.composer.text_strikethrough"] == "删除线"
+    assert english["video_studio.composer.text_bold"] == "Bold"
+    assert chinese["video_studio.composer.text_stroke_feather"] == "模糊 / 羽化"
+    assert english["video_studio.composer.text_shadow_opacity"] == "Shadow opacity"
     assert chinese["video_studio.composer.add_spotlight"] == "聚光遮罩"
     assert template.count('x-show="composerSource(composerSelectedClip.sourceId)?.hasAudio"') == 2
     assert english["video_studio.composer.fade_in"] == "Audio fade in"
@@ -723,7 +959,23 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "type=\"color\"" in template and "COMPOSER_CLIP_COLORS" in script
     assert "clip.groupId&&'grouped'" in template and ".vs-composer-clip.grouped" in stylesheet
     assert 'class="track-add"' not in template
-    assert template.count("addComposerTrack('video')") == 1 and template.count("addComposerTrack('audio')") == 1
+    assert template.count("addComposerTrackFromMenu('video')") == 1 and template.count("addComposerTrackFromMenu('audio')") == 1
+    assert '@contextmenu.prevent.stop="openComposerTrackContextMenu()"' in template
+    assert "composerTrackMenuStep = 'position'" in script and "chooseComposerTrackInsertSide" in script
+    assert "placement === 'before' ? 0 : 1" in script
+    assert "composerCanAddProjectItem" in script and ":disabled=\"!composerCanAddProjectItem\"" in template
+    assert "composerPreviewTimelineClips" in script and 'x-show="composerClipActiveAtPlayhead(clip)"' in template
+    assert "clip_start_frame <= frame_index < clip_start_frame + clip_duration_frames" in composer_backend
+    assert "composerSelectedTrackId" in script and "isComposerTrackSelected(track)" in template
+    assert "this.insertComposerClip(clip); this.composerProject.clips.push(clip)" in script
+    assert chinese["video_studio.composer.add_track"] == "轨道"
+    assert chinese["video_studio.composer.add_item"] == "项目"
+    assert english["video_studio.composer.add_track"] == "Track"
+    assert english["video_studio.composer.add_item"] == "Item"
+    assert chinese["video_studio.composer.insert_before"] == "在当前轨道前"
+    assert chinese["video_studio.composer.insert_after"] == "在当前轨道后"
+    assert english["video_studio.composer.insert_before"] == "Before current track"
+    assert english["video_studio.composer.insert_after"] == "After current track"
     assert "showComposerHoverTip" in script and "vs-composer-hover-tip" in template
     assert 'x-teleport="body"' in template
     assert "Number.isFinite(event.clientX)" in script
@@ -734,7 +986,7 @@ def test_video_composer_surface_exposes_timeline_preview_and_chat_editing():
     assert "composerTrackOutputLabel" in template and "video_studio.composer.hide_track" in script
     assert "track.kind === 'audio' ? !track.muted" in script
     assert "confirm_remove_track" in script and "window.confirm" in script
-    assert "selectedIndex + 1" in script and "tracks.splice" in script
+    assert "insertionIndex" in script and "tracks.splice(insertionIndex" in script
     assert "touch-action:none" in stylesheet and "width:18px;height:18px" in stylesheet
     assert "handleComposerKeydown" in script and "addActiveComposerToGallery" in script
     assert "mozAI2AppsFullPath" in script and "resourceHandle" in script

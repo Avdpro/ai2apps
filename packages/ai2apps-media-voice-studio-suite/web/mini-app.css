@@ -28,6 +28,7 @@ body {
 
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
+[hidden] { display: none !important; }
 
 .shell {
   width: min(920px, 100%);
@@ -263,11 +264,14 @@ h2 { font-size: 17px; letter-spacing: -.025em; }
 .transcript-row p { font-size: 11px; line-height: 1.6; }
 .transcript-meta strong { color: #1c1917; font-size: 10px; }
 .transcript-meta span { color: #78716c; font-size: 9px; }
+.subtitle-generated { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 14px; border: 1px solid #bbf7d0; border-radius: 10px; background: #f0fdf4; }
+.subtitle-generated .panel-heading { margin: 0; }
 
 @media (max-width: 620px) {
   .shell { padding: 18px 16px 30px; }
   .role-row { grid-template-columns: 72px 1fr auto; }
   .status { flex-basis: 100%; }
+  .subtitle-generated { align-items: stretch; flex-direction: column; }
 }
 
 .setup-actions { margin: -8px 0 20px; }

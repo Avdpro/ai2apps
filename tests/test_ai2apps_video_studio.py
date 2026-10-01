@@ -150,6 +150,11 @@ def test_video_studio_uses_first_party_surface_and_async_video_api():
     assert "this.syncDefaults(selectedProviderChanged)" in script
     assert "const recommendedSteps = Number(defaults.steps ?? 20)" in script
     assert "this.steps = recommendedSteps" in script
+    assert "get durationStep() { return .5; }" in script
+    assert "Math.ceil((raw - Number.EPSILON) / this.durationStep)" in script
+    assert "Math.floor((raw + Number.EPSILON) / this.durationStep)" in script
+    assert "this.duration = this.normalizeDuration(this.duration)" in script
+    assert ':step="durationStep"' in template
     assert "video_studio.configure" in template
     assert "video_studio.submit_setup" in template
     assert "await this.generate()" not in script

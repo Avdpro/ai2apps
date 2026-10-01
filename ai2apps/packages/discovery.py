@@ -270,7 +270,7 @@ LEGACY_MODEL_INSTALLS: dict[str, dict[str, object]] = {
     "ai2apps/model-liveportrait-mlx": _install("0.1.0", "ai2apps.model.liveportrait-mlx", ("ai2apps.model.liveportrait-mlx/default", "MLX LivePortrait")),
     "ai2apps/model-multilingual-e5-small": _install("0.1.3", "ai2apps.model.multilingual-e5-small", ("ai2apps.model.multilingual-e5-small/default", "Multilingual E5 Small")),
     "ai2apps/model-minimax-h3": _install(
-        "0.9.0",
+        "0.9.1",
         "ai2apps.model.minimax-h3",
         ("ai2apps.model.minimax-h3/fl2va-4bit", "MiniMax H3 Q4"),
         ("ai2apps.model.minimax-h3/fl2va-8bit", "MiniMax H3 Q8"),

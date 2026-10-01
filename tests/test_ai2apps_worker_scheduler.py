@@ -300,3 +300,42 @@ async def test_model_invocation_service_forwards_only_trusted_scheduling_identit
     assert proxy.await_args.kwargs["app_id"] == "app-trusted"
     assert proxy.await_args.kwargs["session_id"] == "session-trusted"
     assert proxy.await_args.kwargs["queue_timeout_seconds"] == 30.0
+
+
+@pytest.mark.asyncio
+async def test_background_video_multipart_preserves_structured_fields(tmp_path, monkeypatch):
+    import json
+    from email.parser import BytesParser
+    from email.policy import default
+    import httpx
+
+    model = SimpleNamespace(id="avatar/lite", upstream_id="lite", internal_headers={},
+                            endpoint="http://127.0.0.1:1234", endpoints={"video_generation": "/video"})
+    service = ModelInvocationService(SimpleNamespace())
+    monkeypatch.setattr(service, "_require_model", lambda _: model)
+    monkeypatch.setattr(service, "request_progress", AsyncMock(return_value=None))
+    monkeypatch.setattr("ai2apps.model_invocation.ensure_package_model_ready", AsyncMock(return_value=model))
+    seen = {}
+
+    async def handle(request):
+        message = BytesParser(policy=default).parsebytes(
+            f"Content-Type: {request.headers['content-type']}\r\n\r\n".encode() + await request.aread())
+        for part in message.iter_parts():
+            seen[part.get_param("name", header="content-disposition")] = part.get_payload(decode=True)
+        return httpx.Response(200, content=b"video")
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr("ai2apps.model_invocation.httpx.AsyncClient",
+                        lambda **kw: client_type(transport=httpx.MockTransport(handle), **kw))
+    source = tmp_path / "portrait.png"
+    source.write_bytes(b"portrait")
+    references = [{"kind": "image", "part_name": "reference_00_image"}]
+    output = tmp_path / "result.mp4"
+    await service.invoke_background_to_file(model.id, "video_generation",
+        {"reference_parts": references, "parameters": {"label": "照片"}, "flag": False, "seed": 0},
+        output, files={"reference_00_image": (source.name, source, "image/png")}, request_id="test")
+    assert json.loads(seen["reference_parts"]) == references
+    assert json.loads(seen["parameters"]) == {"label": "照片"}
+    assert seen["flag"] == b"false" and seen["seed"] == b"0"
+    assert seen["reference_00_image"] == b"portrait"
+    assert output.read_bytes() == b"video"

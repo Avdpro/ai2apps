@@ -133,12 +133,11 @@
       primaryCapability: 'media.video_subtitles',
       phases: ['提取音轨', '生成字幕', '翻译与校对', '排版', '导出'],
       executable: true,
-      runLabel: '开始生成字幕',
+      runLabel: '提取字幕段落',
       fields: [
         {id: 'sourceLanguage', label: '原始语言', type: 'select', options: [['auto', '自动检测'], ['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어']]},
         {id: 'targetLanguage', label: '翻译', type: 'select', options: [['none', '不翻译'], ['zh', '翻译为中文'], ['en', 'Translate to English'], ['ja', '日本語に翻訳'], ['ko', '한국어로 번역']]},
         {id: 'subtitleFormat', label: '字幕文件', type: 'select', options: [['srt', 'SRT'], ['vtt', 'WebVTT'], ['ass', 'ASS']]},
-        {id: 'burnIn', label: '同时生成烧录字幕的视频', type: 'checkbox', value: false},
         {id: 'subtitleFontSize', label: '字体大小', type: 'select', value: 'large', options: [['small', '小'], ['medium', '标准'], ['large', '大 · 推荐'], ['extra_large', '特大']]},
         {id: 'subtitleBackground', label: '背景样式', type: 'select', value: 'outline', options: [['outline', '白字 + 黑色粗描边'], ['box', '白字 + 半透明黑框']]},
         {id: 'bilingual', label: '翻译时保留双语字幕', type: 'checkbox', value: true},
@@ -227,6 +226,16 @@
 
     function select(file) {
       if (!file) return;
+      if (id === 'source' && mode === 'video-subtitles') {
+        state.analysis = null;
+        state.result = null;
+        if (state.resultUrl?.startsWith('blob:')) URL.revokeObjectURL(state.resultUrl);
+        state.resultUrl = null;
+        resultPanel.hidden = true;
+        resultPanel.replaceChildren();
+        resetSubtitleActions();
+        resetPipelineProgress();
+      }
       state.files[id] = {name: file.name, size: file.size, type: file.type || 'application/octet-stream'};
       state.fileObjects[id] = file;
       detail.textContent = `${file.name} · ${fileSize(file.size)}`;
@@ -443,18 +452,32 @@
   save.type = 'button';
   actions.append(status, reset, exportButton, save);
   let runButton = null;
+  let subtitleVideoButton = null;
   if (config.executable) {
     runButton = node('button', 'primary', config.runLabel || '开始本地处理');
     runButton.type = 'button';
     actions.append(runButton);
+    if (mode === 'video-subtitles') {
+      subtitleVideoButton = node('button', 'primary', '生成字幕视频');
+      subtitleVideoButton.type = 'button';
+      subtitleVideoButton.hidden = true;
+      actions.append(subtitleVideoButton);
+    }
   }
   pipelinePanel.append(actions);
-  root.append(pipelinePanel);
 
   const resultPanel = node('section', 'panel result-panel');
   resultPanel.hidden = true;
   resultPanel.id = 'result-panel';
-  root.append(resultPanel);
+  if (mode === 'video-subtitles') root.append(resultPanel, pipelinePanel);
+  else root.append(pipelinePanel, resultPanel);
+
+  function resetSubtitleActions() {
+    if (!runButton) return;
+    runButton.textContent = config.runLabel || '开始本地处理';
+    runButton.className = 'primary';
+    if (subtitleVideoButton) subtitleVideoButton.hidden = true;
+  }
 
   function setStatus(message, kind) {
     status.textContent = message;
@@ -546,25 +569,35 @@
   function renderTranscript() {
     const transcriptResult = state.analysis || state.result;
     if (!transcriptResult?.segments) return;
+    const subtitleEditor = mode === 'video-subtitles';
     resultPanel.hidden = false;
     resultPanel.replaceChildren();
     const heading = node('div', 'panel-heading');
     const title = node('div');
-    title.append(node('span', 'step', 'Result'), node('h2', '', '角色识别结果'), node('p', 'hint', `${transcriptResult.language || '未知语言'} · ${clock(transcriptResult.duration)} · ${transcriptResult.segments.length} 个片段`));
+    title.append(
+      ...(subtitleEditor ? [] : [node('span', 'step', 'Result')]),
+      node('h2', '', subtitleEditor ? '校对字幕段落' : '角色识别结果'),
+      node('p', 'hint', subtitleEditor
+        ? `${transcriptResult.segments.length} 个字幕段落 · 修改文本不会改变时间轴；清空文本可移除该段字幕。`
+        : `${transcriptResult.language || '未知语言'} · ${clock(transcriptResult.duration)} · ${transcriptResult.segments.length} 个片段`),
+    );
     heading.append(title);
     const transcript = node('div', 'transcript');
     transcriptResult.segments.forEach((segment, index) => {
       const row = node('article', 'transcript-row');
       const meta = node('div', 'transcript-meta');
-      meta.append(node('strong', '', speakerName(segment.speaker)), node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
-      const speaker = document.createElement('select');
-      speaker.setAttribute('aria-label', `片段 ${index + 1} 角色`);
-      const options = [{id: '', name: '未分配'}, ...state.roles];
-      if (segment.speaker && !options.some(role => role.id === segment.speaker)) options.push({id: segment.speaker, name: segment.speaker});
-      options.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; speaker.append(option); });
-      speaker.value = segment.speaker || '';
-      speaker.addEventListener('change', () => { segment.speaker = speaker.value || null; setStatus('识别结果已修改，请保存草稿或导出。'); });
-      meta.replaceChildren(speaker, node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
+      if (subtitleEditor) {
+        meta.append(node('strong', '', `片段 ${String(index + 1).padStart(2, '0')}`), node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
+      } else {
+        const speaker = document.createElement('select');
+        speaker.setAttribute('aria-label', `片段 ${index + 1} 角色`);
+        const options = [{id: '', name: '未分配'}, ...state.roles];
+        if (segment.speaker && !options.some(role => role.id === segment.speaker)) options.push({id: segment.speaker, name: segment.speaker});
+        options.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; speaker.append(option); });
+        speaker.value = segment.speaker || '';
+        speaker.addEventListener('change', () => { segment.speaker = speaker.value || null; setStatus('识别结果已修改，请保存草稿或导出。'); });
+        meta.append(speaker, node('span', '', `${clock(segment.start)} – ${clock(segment.end)}`));
+      }
       const text = document.createElement('textarea');
       text.value = segment.text || '';
       text.rows = Math.min(8, Math.max(2, Math.ceil(text.value.length / 80)));
@@ -573,12 +606,17 @@
         segment.text = text.value;
         // Corrected text no longer has verified word-level alignment. Segment timing stays intact.
         if (Array.isArray(segment.words)) { delete segment.words; segment.wordTimestampsNeedReview = true; }
-        setStatus('识别结果已修改，请保存草稿或导出。');
+        setStatus(subtitleEditor ? '字幕文本已修改。确认后生成字幕文件或视频。' : '识别结果已修改，请保存草稿或导出。');
       });
       row.append(meta, text);
       transcript.append(row);
     });
     resultPanel.append(heading, transcript);
+    if (subtitleEditor) {
+      runButton.textContent = '生成字幕文件';
+      runButton.className = 'secondary';
+      subtitleVideoButton.hidden = false;
+    }
   }
 
   function mountedCapabilityUrl(capability) {
@@ -692,37 +730,55 @@
     }
   }
 
-  async function runVideoSubtitles() {
+  async function runVideoSubtitles(generateVideo = false) {
     const error = validate();
     if (error) { setStatus(error, 'error'); return; }
     const source = state.fileObjects.source;
     if (!source) { setStatus('执行前请重新选择本地视频文件。', 'error'); return; }
     const capabilityUrl = mountedCapabilityUrl(config.primaryCapability);
     if (!capabilityUrl) { setStatus('可信 Mini-App mount 上下文不可用。', 'error'); return; }
+    const extracting = !Array.isArray(state.analysis?.segments);
     runButton.disabled = true;
+    if (subtitleVideoButton) subtitleVideoButton.disabled = true;
     resetPipelineProgress();
     updatePipelineProgress({phaseIndex: 0, status: 'queued', percent: 0, detail: '正在准备字幕工作流…'});
-    setStatus('正在本机提取对白、生成字幕并准备导出…');
+    setStatus(extracting ? '正在本机提取对白并生成可编辑字幕段落…' : '正在使用校对后的文本生成字幕结果…');
     const sourceLanguage = document.getElementById('sourceLanguage').value;
     const targetLanguage = document.getElementById('targetLanguage').value;
     const subtitleFormat = document.getElementById('subtitleFormat').value;
-    const burnIn = document.getElementById('burnIn').checked;
+    const burnIn = !extracting && generateVideo === true;
     const form = new FormData();
     form.append('file', source, source.name);
     form.append('source_language', sourceLanguage === 'auto' ? '' : sourceLanguage);
-    form.append('target_language', targetLanguage === 'none' ? '' : targetLanguage);
+    form.append('subtitle_action', extracting ? 'extract' : 'render');
+    form.append('target_language', extracting || targetLanguage === 'none' ? '' : targetLanguage);
     form.append('subtitle_format', subtitleFormat);
     form.append('bilingual', String(document.getElementById('bilingual').checked));
     form.append('burn_in', String(burnIn));
     form.append('speaker_labels', String(document.getElementById('speakerLabels').checked));
     form.append('subtitle_font_size', document.getElementById('subtitleFontSize').value);
     form.append('subtitle_background', document.getElementById('subtitleBackground').value);
+    if (!extracting) form.append('subtitle_segments', JSON.stringify(state.analysis.segments));
     try {
       const response = await invokeHost(capabilityUrl, {
         method: 'POST', credentials: 'same-origin', body: form
       }, updatePipelineProgress);
       if (!response.ok) throw new Error(await responseError(response, '字幕生成失败'));
+      if (extracting) {
+        const payload = await response.json();
+        const segments = Array.isArray(payload?.segments) ? payload.segments : [];
+        if (!segments.length) throw new Error('没有识别到可编辑的字幕段落。');
+        state.analysis = {...payload, segments};
+        state.result = null;
+        state.draft = {...collect(), executionStatus: 'editing', resultSummary: {segmentCount: segments.length}};
+        await draftStorage.setItem(storageKey, JSON.stringify(state.draft));
+        exportButton.disabled = false;
+        renderTranscript();
+        setStatus('字幕段落已提取。请逐段检查和修改文本，然后生成字幕文件或视频。', 'ready');
+        return;
+      }
       completePipelineProgress();
+      const hostedOutput = response.headers.get('x-ai2apps-download-url');
       const archive = await response.blob();
       if (state.resultUrl) URL.revokeObjectURL(state.resultUrl);
       state.resultUrl = URL.createObjectURL(archive);
@@ -733,14 +789,15 @@
         targetLanguage: targetLanguage === 'none' ? null : targetLanguage,
         subtitleFormat,
         burnIn,
+        downloadUrl: hostedOutput || null,
         filename,
         size: archive.size
       };
       state.draft = {...collect(), executionStatus: 'completed', resultSummary: state.result};
       await draftStorage.setItem(storageKey, JSON.stringify(state.draft));
       exportButton.disabled = false;
-      resultPanel.hidden = false;
-      resultPanel.replaceChildren();
+      renderTranscript();
+      const generated = node('div', 'subtitle-generated');
       const heading = node('div', 'panel-heading');
       const title = node('div');
       const contents = burnIn ? `.${subtitleFormat}、转写 JSON 和烧录视频` : `.${subtitleFormat} 和转写 JSON`;
@@ -749,13 +806,17 @@
       const download = node('a', 'primary', '下载字幕结果 ZIP');
       download.href = state.resultUrl;
       download.download = filename;
-      resultPanel.append(heading, download);
-      setStatus('字幕工作流完成。结果只保留在当前页面，请及时下载。', 'ready');
+      generated.append(heading, download);
+      resultPanel.append(generated);
+      setStatus(hostedOutput
+        ? '字幕工作流完成。带字幕视频已加入 Video Studio 的 Preview & Output；字幕 ZIP 可在此下载。'
+        : '字幕工作流完成。可以继续修改段落后重新生成，或下载当前字幕 ZIP。', 'ready');
     } catch (runError) {
       failPipelineProgress(runError?.message || String(runError));
       setStatus(runError?.message || String(runError), 'error');
     } finally {
       runButton.disabled = false;
+      if (subtitleVideoButton) subtitleVideoButton.disabled = false;
     }
   }
 
@@ -999,7 +1060,8 @@
   });
 
   const runners = {transcription: runTranscription, separation: runSeparation, 'video-subtitles': runVideoSubtitles, 'video-audio-translation': runVideoAudioTranslation, 'audio-voice-replacement': runAudioSpeakerReplacement, 'video-voice-replacement': runAudioSpeakerReplacement};
-  runButton?.addEventListener('click', runners[mode]);
+  runButton?.addEventListener('click', () => runners[mode]?.());
+  subtitleVideoButton?.addEventListener('click', () => runVideoSubtitles(true));
 
   reset.addEventListener('click', async () => {
     try {
@@ -1023,7 +1085,7 @@
       syncOriginalVoiceControls();
       resultPanel.hidden = true; resultPanel.replaceChildren(); exportButton.disabled = true; updateExportLabel();
       resetPipelineProgress();
-      if (runButton) runButton.textContent = config.runLabel;
+      resetSubtitleActions();
       setStatus('草稿和输入已重置。', 'ready');
     }
     catch (error) { setStatus(error.message, 'error'); }

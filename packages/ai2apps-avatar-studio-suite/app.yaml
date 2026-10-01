@@ -1,0 +1,34 @@
+schema: ai2apps.app/v1
+id: ai2apps.avatar-studio-suite
+name: Avatar Studio Suite
+version: 0.1.0
+description: Create talking portrait videos locally.
+publisher: {id: ai2apps}
+instances: {mode: singleton, scope: user}
+entry: {kind: sandbox, resource: web/index.html}
+navigation: {launcher: false}
+localizations:
+  zh-CN: {name: 数字人工作室套件, description: 在本地将人像和音频生成数字人视频。}
+mini_apps:
+  - schema: ai2apps.mini-app/v1
+    id: ai2apps.avatar.photo-speaking
+    name: Talking Portrait
+    version: 0.1.0
+    kind: clip
+    icon: user-round
+    description: Animate a portrait with speech using a compatible local avatar model.
+    catalog: {categories: [video]}
+    entry: {kind: sandbox, resource: web/photo-speaking.html, placements: [inline, sidebar]}
+    placements:
+      - {studio: ai2apps.video-studio, category: avatar, order: 60}
+    inputs:
+      - {id: reference_image, kind: image, required: true}
+      - {id: driving_audio, kind: audio, required: true}
+    outputs:
+      - {id: video, kind: video, final: true}
+    executor: {operation: video_generation}
+    requirements: {capabilities: [video.avatar_generation]}
+    localizations:
+      zh-CN:
+        name: 照片说话
+        description: 选择本地数字人模型，将人像和音频生成视频。

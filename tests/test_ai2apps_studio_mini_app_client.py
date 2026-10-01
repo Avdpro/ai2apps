@@ -73,7 +73,9 @@ def test_studios_load_shared_package_mini_app_client_and_resume_setup():
     assert "frame.style.height = `${height}px`" in helper
     assert "'subtitle_font_size', 'subtitle_background'" in helper
     assert "'asr_verification'" in helper
-    shared_script = "static('js/studio_mini_apps.js') }}?v=original-voice-v7"
+    assert "'subtitle_action', 'subtitle_segments'" in helper
+    assert "name === 'subtitle_segments' ? 2 * 1024 * 1024 : 4096" in helper
+    shared_script = "static('js/studio_mini_apps.js') }}?v=avatar-slots-v1"
     assert shared_script in video_template
     assert shared_script in readaloud_template
     assert shared_script in imagine_template
