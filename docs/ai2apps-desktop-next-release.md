@@ -8,7 +8,8 @@
 
 ### NXR-RELEASE-013-2256-20261001：Desktop 0.1.2 Build 2256
 
-- 状态：`candidate_testing`。生产匿名基线仍为 0.1.1 / Build 2254；此前 0.1.2 / Build 2255
+- 状态：`released`。2026-10-01 已从生产 0.1.1 / Build 2254 先以 0% 原子登记，再使用
+  `build2256-test` 扩到 100%；此前 0.1.2 / Build 2255
   只完成 App/DMG、公证和 GitHub/ModelScope 双源，未经过 Cloud stable 发布，因此不会被
   客户端发现，现由 2256 取代，不再激活 2255。
 - 2256 纳入已经完成的数字人 Host/ACPF/素材槽位、照片说话持久任务与共享输出、FlashHead
@@ -22,7 +23,11 @@
   文件、Swift 77 项 Swift Testing + 2 项 XCTest、JavaScript 语法、限定 Ruff 和 diff check
   通过。完整 Python 首轮发现 Avatar ACPF 新 Profile 缺少 9 组中英文映射；已在
   `fff39864` 修复并专项复验，正式候选须在最终源码提交上重新跑完整 Python。
-- 发布准备记录：`docs/ai2apps-desktop-0.1.2-build2256-release-preparation-2026-10-01.md`。
+- 最终完整 Python 为 10317 passed、68 skipped、74 deselected；Developer ID、Apple 公证、
+  staple、Gatekeeper、GitHub/ModelScope 同字节双源、Cloud 双源预检与生产 GET/HEAD/304、
+  健康和审计链均通过。目标 Mac 从低 Build 自动升级、启动和旧备份清理仍待实机验收。
+- 发布准备记录：`docs/ai2apps-desktop-0.1.2-build2256-release-preparation-2026-10-01.md`；
+  最终回执：`docs/ai2apps-desktop-0.1.2-build2256-release-2026-10-01.md`。
 
 ### NXR-VIDEO-DURATION-HALF-SECOND-GRID-20261001：视频时长滑块对齐半秒档位
 

@@ -2,7 +2,7 @@
 
 日期：2026-10-01
 
-状态：候选测试中
+状态：已发布，目标 Mac 实机升级验收待完成
 
 ## 发布身份
 
@@ -40,7 +40,8 @@
 
 - 功能候选：`b97bc0f8`（avatar workflows and video studio fixes）
 - 本地化修复：`fff39864`（avatar provisioning profile localization）
-- 正式 main 提交：待 clean main 合并后填写
+- 正式 main 提交：`23ba608fe86a692c418fc815a24e2c0c1e76645a`
+- Homebrew formula 自动更新：`c5c5e3e8`
 
 ## 已完成门禁
 
@@ -56,13 +57,20 @@
 - 完整 Python 首轮：10316 passed、68 skipped、74 deselected、1 failed；唯一失败为新增
   Avatar ACPF Profile 缺少 9 组中英文映射，已修复并由本地化专项 3/3 复验。该轮不作为
   发布通过证据；JUnit：`/private/tmp/ai2apps-2256-full.xml`
+- 修复后的完整 Python 最终门禁：10317 passed、68 skipped、74 deselected；JUnit：
+  `/private/tmp/ai2apps-2256-full-final2.xml`
+- Dev、App-Dev、Test 固定实例均已重建并通过身份与深层签名验证。
+- 正式 App 为 `0.1.2 / 2256`、`com.ai2apps.desktop`、`default`、`arm64`、`cloud`；
+  Developer ID 深层签名通过，App 约 700 MiB。
+- Apple 公证 Accepted，Submission ID `9dc11d31-20bd-4f3a-804a-df983e146815`；staple、
+  Gatekeeper、DMG 与 metadata 最终验证通过。
+- GitHub 与 ModelScope 匿名完整下载 size/SHA-256 相同；GitHub Range 为 `206`，ModelScope
+  为已支持的 `200 + 精确区间字节` 兼容行为。
+- Cloud 已先以 0% 原子登记，再使用同一 `build2256-test` rollout 扩到 100%；生产
+  GET/HEAD/ETag 304、双源预检、健康、既有 API 和审计链验证通过。
 
-## 待完成门禁
+## 发布后待完成验收
 
-- 最终候选提交上的完整 Python 回归
-- Dev、App-Dev、Test 固定实例重建与身份/深层签名验证
-- clean main 合并、推送与正式 Release 构建
-- Developer ID 签名、DMG、公证、staple、Gatekeeper
-- GitHub/ModelScope 同字节不可变双源及完整/Range 验证
-- Cloud 0% 原子登记、100% rollout 与生产 GET/HEAD/ETag 验收
 - 目标 Mac 从低 Build 升级、启动和旧备份清理验收
+
+完整发布回执：`docs/ai2apps-desktop-0.1.2-build2256-release-2026-10-01.md`。
